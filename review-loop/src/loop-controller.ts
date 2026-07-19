@@ -31,6 +31,7 @@ import type { ProgressReporter } from './progress-log.js'
 import { buildReviewPrompt } from './prompt-templates.js'
 import { saveRunState, type RunState } from './run-state.js'
 import type { RoundMetric, TraceLogger } from './trace-log.js'
+import type { WorkerPool } from './worker-pool.js'
 
 const TERMINAL_STATUSES = new Set<LedgerIssueRecord['status']>(['rejected', 'already_fixed', 'needs_human'])
 
@@ -44,6 +45,7 @@ export interface ReviewLoopDeps {
   exec: ShellExecFn
   log: ProgressReporter
   trace: TraceLogger
+  pool: WorkerPool
 }
 
 export interface ReviewLoopResult {
@@ -164,6 +166,30 @@ async function runMatchAndRecord(
   return { records: roundRecords, newCount, matchedCount }
 }
 
+function runProcessPendingIssues(
+  deps: ReviewLoopDeps,
+  round: number,
+  collector: RoundCollector,
+  pending: readonly LedgerIssueRecord[],
+): Promise<number> {
+  return processPendingIssues(
+    {
+      config: deps.config,
+      runState: deps.runState,
+      ledger: deps.ledger,
+      spawn: deps.spawn,
+      exec: deps.exec,
+      log: deps.log,
+      trace: deps.trace,
+      pool: deps.pool,
+      inspect: true,
+    },
+    round,
+    collector,
+    pending,
+  )
+}
+
 async function runRound(round: number, deps: ReviewLoopDeps, metrics: RoundMetric[]): Promise<ReviewLoopResult> {
   deps.runState.currentRound = round
   emitRoundStart(deps.trace, round, deps.config.maxRounds, deps.config.maxNoProgressRounds, deps.config.checkCommand)
@@ -190,7 +216,7 @@ async function runRound(round: number, deps: ReviewLoopDeps, metrics: RoundMetri
 
   deps.log.log(`[round ${round}] Found ${newIssues.length} issues`)
   const pending = filterActionable(matched.records)
-  const fixedThisRound = await processPendingIssues(deps, round, collector, pending)
+  const fixedThisRound = await runProcessPendingIssues(deps, round, collector, pending)
   deps.log.log(`[round ${round}] Fixed ${fixedThisRound}/${pending.length} issues`)
 
   const newNoProgress = fixedThisRound === 0 ? deps.runState.noProgressRounds + 1 : 0

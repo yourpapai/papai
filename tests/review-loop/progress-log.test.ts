@@ -15,7 +15,7 @@ import { runReviewLoop } from '../../review-loop/src/loop-controller.js'
 import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
 import { createRunState } from '../../review-loop/src/run-state.js'
 import { execGit } from '../../review-loop/src/worktree.js'
-import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir, silentTrace } from './test-helpers.js'
+import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir, fakePool, silentTrace } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
 
@@ -170,6 +170,7 @@ describe('progress logging', () => {
       exec: passingExec,
       log: makeReporter(messages),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     expect(result.doneReason).toBe('clean')
@@ -209,6 +210,7 @@ describe('progress logging', () => {
       exec: passingExec,
       log: makeReporter(messages),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     expect(result.doneReason).toBe('no_progress')
@@ -240,6 +242,7 @@ describe('progress logging', () => {
       exec: passingExec,
       log: makeReporter(messages),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     const fixMessage = messages.find((m) => m.startsWith('[fix]'))
@@ -280,6 +283,7 @@ describe('progress logging', () => {
       exec: passingExec,
       log: makeReporter(messages),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     expect(messages).toContain('[round 2] Fixed 1/1 issues')

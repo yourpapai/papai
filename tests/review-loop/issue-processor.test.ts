@@ -20,6 +20,7 @@ import { execGit } from '../../review-loop/src/worktree.js'
 import {
   cleanupTempDirs,
   createReviewLoopConfigFixture,
+  fakePool,
   makeTempDir,
   mockSpawnForFixerAndInspector,
   silentReporter,
@@ -72,7 +73,7 @@ interface ScenarioResult {
   collector: RoundCollector
 }
 
-async function runScenario(spawn: SpawnFn, exec: ShellExecFn = passingExec): Promise<ScenarioResult> {
+async function runScenario(spawn: SpawnFn, exec: ShellExecFn = passingExec, inspect = true): Promise<ScenarioResult> {
   const repoRoot = makeTempDir('issue-proc-')
   const config = createReviewLoopConfigFixture(repoRoot)
   const planPath = path.join(repoRoot, 'plan.md')
@@ -84,8 +85,9 @@ async function runScenario(spawn: SpawnFn, exec: ShellExecFn = passingExec): Pro
   const { logger, events } = createCapturingTraceLogger()
   const reporter: ProgressReporter = silentReporter()
   const collector = newCollector()
+  const { pool } = fakePool({ size: 1, worktreePath: runState.worktreePath })
   const fixed = await processPendingIssues(
-    { config, runState, ledger, spawn, exec, log: reporter, trace: logger },
+    { config, runState, ledger, spawn, exec, log: reporter, trace: logger, pool, inspect },
     1,
     collector,
     [ledger.snapshot.issues['rec-1']],
@@ -349,6 +351,174 @@ describe('processIssue unified retry budget', () => {
     }
     expect(collector.inspector.runs).toBe(2)
     expect(collector.inspector.rejected).toBe(2)
+  })
+})
+
+function createFixerOnlySpawn(opts: { fixed?: boolean; writeFile?: boolean } = {}): {
+  spawn: SpawnFn
+  calls: { current: number }
+} {
+  const calls = { current: 0 }
+  const spawn: SpawnFn = (_cmd, args, spawnOpts) => {
+    const prompt = args[args.length - 1] ?? ''
+    const outputPath = prompt.match(/(?:to|JSON to):\s*(\S+)/u)?.[1]
+    if (outputPath === undefined) return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+    calls.current += 1
+    writeFileSync(
+      path.join(spawnOpts.cwd, outputPath),
+      JSON.stringify({
+        verdict: 'valid',
+        fixability: 'auto',
+        fixed: opts.fixed ?? true,
+        reasoning: 'mock fixer reasoning',
+        targetFiles: [],
+        commitSha: 'abc',
+        commitMessage: 'fix: mock',
+        severity: 'low',
+      }),
+    )
+    if (opts.writeFile !== false) {
+      writeFileSync(path.join(spawnOpts.cwd, `fixed-${calls.current}.ts`), 'ok\n')
+    }
+    return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+  }
+  return { spawn, calls }
+}
+
+describe('processPendingIssues pool dispatch', () => {
+  async function setupTwoIssues(): Promise<{
+    runState: Awaited<ReturnType<typeof createRunState>>
+    ledger: IssueLedger
+    recordA: LedgerIssueRecord
+    recordB: LedgerIssueRecord
+  }> {
+    const repoRoot = makeTempDir('issue-proc-pool-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupRepo(runState.worktreePath)
+    const issueA: ReviewerIssue = { ...issue, title: 'Race in queue A', file: 'src/a.ts' }
+    const issueB: ReviewerIssue = { ...issue, title: 'Race in queue B', file: 'src/b.ts' }
+    ledger.snapshot.issues['rec-a'] = {
+      id: 'rec-a',
+      issue: issueA,
+      status: 'discovered',
+      firstSeenRound: 1,
+      latestSeenRound: 1,
+      fixAttempts: 0,
+      verifierDecision: null,
+    }
+    ledger.snapshot.issues['rec-b'] = {
+      id: 'rec-b',
+      issue: issueB,
+      status: 'discovered',
+      firstSeenRound: 1,
+      latestSeenRound: 1,
+      fixAttempts: 0,
+      verifierDecision: null,
+    }
+    return { runState, ledger, recordA: ledger.snapshot.issues['rec-a'], recordB: ledger.snapshot.issues['rec-b'] }
+  }
+
+  test('K=2 pool processes 2 independent-file issues in parallel', async () => {
+    const { runState, ledger, recordA, recordB } = await setupTwoIssues()
+    const workerRepo1 = makeTempDir('worker-')
+    const workerRepo2 = makeTempDir('worker-')
+    await setupRepo(workerRepo1)
+    await setupRepo(workerRepo2)
+    const { spawn } = createFixerOnlySpawn()
+    const { pool, acquireLog, releaseLog } = fakePool({ size: 2, worktreePaths: [workerRepo1, workerRepo2] })
+    const collector = newCollector()
+    const { logger } = createCapturingTraceLogger()
+    const reporter: ProgressReporter = silentReporter()
+
+    const fixed = await processPendingIssues(
+      {
+        config: createReviewLoopConfigFixture(runState.repoRoot),
+        runState,
+        ledger,
+        spawn,
+        exec: passingExec,
+        log: reporter,
+        trace: logger,
+        pool,
+        inspect: false,
+      },
+      1,
+      collector,
+      [recordA, recordB],
+    )
+
+    expect(fixed).toBe(2)
+    expect(acquireLog).toHaveLength(2)
+    expect(releaseLog).toHaveLength(2)
+    expect(releaseLog[0]!).toBeGreaterThanOrEqual(acquireLog[1]!)
+  })
+
+  test('K=1 pool serializes (equivalent to today)', async () => {
+    const { runState, ledger, recordA, recordB } = await setupTwoIssues()
+    const workerRepo = makeTempDir('worker-')
+    await setupRepo(workerRepo)
+    const { spawn } = createFixerOnlySpawn()
+    const { pool, acquireLog, releaseLog } = fakePool({ size: 1, worktreePaths: [workerRepo] })
+    const collector = newCollector()
+    const { logger } = createCapturingTraceLogger()
+    const reporter: ProgressReporter = silentReporter()
+
+    const fixed = await processPendingIssues(
+      {
+        config: createReviewLoopConfigFixture(runState.repoRoot),
+        runState,
+        ledger,
+        spawn,
+        exec: passingExec,
+        log: reporter,
+        trace: logger,
+        pool,
+        inspect: false,
+      },
+      1,
+      collector,
+      [recordA, recordB],
+    )
+
+    expect(fixed).toBe(2)
+    expect(acquireLog).toHaveLength(2)
+    expect(releaseLog).toHaveLength(2)
+    expect(acquireLog[1]!).toBeGreaterThanOrEqual(releaseLog[0]!)
+  })
+
+  test('merge conflict does not consume retry budget', async () => {
+    const repoRoot = makeTempDir('issue-proc-merge-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupRepo(runState.worktreePath)
+    const workerRepo = makeTempDir('worker-')
+    await setupRepo(workerRepo)
+    ledger.snapshot.issues['rec-1'] = buildRecord()
+    const { spawn, calls } = createFixerOnlySpawn()
+    const { pool } = fakePool({ size: 1, worktreePaths: [workerRepo], mergeOk: false, conflictFiles: ['x.ts'] })
+    const collector = newCollector()
+    const { logger } = createCapturingTraceLogger()
+    const reporter: ProgressReporter = silentReporter()
+
+    const fixed = await processPendingIssues(
+      { config, runState, ledger, spawn, exec: passingExec, log: reporter, trace: logger, pool, inspect: false },
+      1,
+      collector,
+      [ledger.snapshot.issues['rec-1']],
+    )
+
+    expect(fixed).toBe(0)
+    expect(ledger.snapshot.issues['rec-1'].status).toBe('needs_human')
+    expect(ledger.snapshot.issues['rec-1'].fixAttempts).toBe(0)
+    expect(calls.current).toBe(1)
+    expect(collector.decisions.needs_human).toBe(1)
   })
 })
 

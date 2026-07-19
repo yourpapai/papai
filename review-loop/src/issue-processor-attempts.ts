@@ -5,9 +5,10 @@
 
 import { agentWritePath, runAgent, type AgentRunResult } from './agent-runner.js'
 import { runBuildWithLogging } from './build-checker.js'
+import { runCommitAttempt } from './commit-attempt.js'
 import { runInspectorOrTreatAsRejection } from './issue-inspector.js'
-import { recordFixAttempt, recordNeedsHuman, recordVerify, type LedgerIssueRecord } from './issue-ledger.js'
-import { sanitizeSubject, type IssueProcessorDeps } from './issue-processor.js'
+import { recordNeedsHuman, recordVerify, type LedgerIssueRecord } from './issue-ledger.js'
+import type { IssueProcessorDeps } from './issue-processor.js'
 import { FixerResultSchema, type FixerResult } from './issue-schema.js'
 import {
   emitBuildComplete,
@@ -20,7 +21,7 @@ import {
   type RoundCollector,
 } from './loop-trace.js'
 import { buildFixPrompt, buildRetryFixPrompt, buildRetryFixWithInspectorFeedbackPrompt } from './prompt-templates.js'
-import { execGit } from './worktree.js'
+import type { Worker } from './worker-pool.js'
 
 export interface AttemptPromptDeps {
   config: { checkCommand: string }
@@ -45,13 +46,14 @@ export function shortTitle(record: LedgerIssueRecord): string {
 
 export function runFixerRaw(
   deps: IssueProcessorDeps,
+  worker: Worker,
   prompt: string,
   label: string,
 ): Promise<AgentRunResult<FixerResult>> {
   return runAgent({
     spawn: deps.spawn,
     model: deps.config.fixer.model,
-    cwd: deps.runState.worktreePath,
+    cwd: worker.worktreePath,
     prompt,
     outputPath: deps.runState.resultPath,
     outputSchema: FixerResultSchema,
@@ -61,26 +63,6 @@ export function runFixerRaw(
     extraArgs: deps.config.fixer.extraArgs,
     timeoutMs: deps.config.fixer.timeoutMs ?? deps.config.agentTimeoutMs,
   })
-}
-
-export async function ensureFixerChangesCommitted(
-  deps: IssueProcessorDeps,
-  record: LedgerIssueRecord,
-  commitMessage: string | undefined,
-): Promise<string> {
-  const worktreePath = deps.runState.worktreePath
-  const status = (await execGit(worktreePath, ['status', '--porcelain'])).stdout.trim()
-  if (status.length === 0) {
-    return (await execGit(worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
-  }
-  const provided = commitMessage?.trim()
-  const fallback = `fix(review-loop): ${record.issue.title}`
-  const sanitized = sanitizeSubject(provided !== undefined && provided !== '' ? provided : fallback)
-  const subject = sanitized.length > 0 ? sanitized : sanitizeSubject(fallback)
-  await execGit(worktreePath, ['add', '-A'])
-  await execGit(worktreePath, ['commit', '-m', subject])
-  deps.log.log(`[fix] "${shortTitle(record)}" → auto-committed uncommitted changes`)
-  return (await execGit(worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
 }
 
 export function buildAttemptPrompt(
@@ -111,7 +93,7 @@ type FixerStepResult = { kind: 'proceed'; result: FixerResult } | { kind: 'termi
 
 export async function runFixerAttempt(
   deps: IssueProcessorDeps,
-  worker: IssueWorker,
+  worker: Worker,
   record: LedgerIssueRecord,
   prompt: string,
   baselineSha: string,
@@ -120,7 +102,7 @@ export async function runFixerAttempt(
   collector: RoundCollector,
 ): Promise<FixerStepResult> {
   const fixerStart = Date.now()
-  const fixerAgentResult = await runFixerRaw(deps, prompt, `fixer${attempt > 1 ? `-retry` : ''}`)
+  const fixerAgentResult = await runFixerRaw(deps, worker, prompt, `fixer${attempt > 1 ? `-retry` : ''}`)
   tallyPhaseMs(collector, 'verify', Date.now() - fixerStart)
   tallyUsage(collector, fixerAgentResult.usage)
   const fixerResult = fixerAgentResult.value
@@ -183,7 +165,7 @@ type InspectorStepResult =
 
 export async function runInspectorAttempt(
   deps: IssueProcessorDeps,
-  worker: IssueWorker,
+  worker: Worker,
   record: LedgerIssueRecord,
   fixerResult: FixerResult,
   baselineSha: string,
@@ -217,39 +199,10 @@ export async function runInspectorAttempt(
   return { kind: 'proceed' }
 }
 
-export async function runCommitAttempt(
-  deps: IssueProcessorDeps,
-  record: LedgerIssueRecord,
-  baselineSha: string,
-  fixerResult: FixerResult,
-  attempt: number,
-  round: number,
-  collector: RoundCollector,
-): Promise<{ fixed: boolean }> {
-  const mergeStart = Date.now()
-  const postSha = await ensureFixerChangesCommitted(deps, record, fixerResult.commitMessage)
-  tallyPhaseMs(collector, 'fix', Date.now() - mergeStart)
-  if (postSha === baselineSha) {
-    collector.decisions.no_commit += 1
-    tallyFixerSeverity(collector, fixerResult.severity)
-    emitFixComplete(deps.trace, round, record.id, false, null, attempt)
-    deps.log.log(`[fix] "${shortTitle(record)}" → no change (fixed:true was a false claim)`)
-    return { fixed: false }
-  }
-  recordFixAttempt(deps.ledger, record.id)
-  tallyDecision(collector, fixerResult.verdict, fixerResult.fixed)
-  tallyFixerSeverity(collector, fixerResult.severity)
-  deps.log.log(
-    attempt === 1 ? `[fix] "${shortTitle(record)}" → fixed` : `[fix] "${shortTitle(record)}" → fixed (after retry)`,
-  )
-  emitFixComplete(deps.trace, round, record.id, true, postSha, attempt)
-  return { fixed: true }
-}
-
 export async function processIssueAttempt(
   record: LedgerIssueRecord,
   deps: IssueProcessorDeps,
-  worker: IssueWorker,
+  worker: Worker,
   round: number,
   collector: RoundCollector,
   attempt: number,
@@ -271,24 +224,26 @@ export async function processIssueAttempt(
     return processIssueAttempt(record, deps, worker, round, collector, attempt + 1, buildStep.reason)
   }
 
-  const inspectStep = await runInspectorAttempt(
-    deps,
-    worker,
-    record,
-    fixerStep.result,
-    baselineSha,
-    attempt,
-    round,
-    collector,
-  )
-  if (inspectStep.kind === 'terminal') {
-    await worker.resetToBaseline(baselineSha)
-    return inspectStep.outcome
-  }
-  if (inspectStep.kind === 'retry') {
-    await worker.resetToBaseline(baselineSha)
-    return processIssueAttempt(record, deps, worker, round, collector, attempt + 1, inspectStep.reason)
+  if (deps.inspect !== false) {
+    const inspectStep = await runInspectorAttempt(
+      deps,
+      worker,
+      record,
+      fixerStep.result,
+      baselineSha,
+      attempt,
+      round,
+      collector,
+    )
+    if (inspectStep.kind === 'terminal') {
+      await worker.resetToBaseline(baselineSha)
+      return inspectStep.outcome
+    }
+    if (inspectStep.kind === 'retry') {
+      await worker.resetToBaseline(baselineSha)
+      return processIssueAttempt(record, deps, worker, round, collector, attempt + 1, inspectStep.reason)
+    }
   }
 
-  return runCommitAttempt(deps, record, baselineSha, fixerStep.result, attempt, round, collector)
+  return runCommitAttempt(deps, worker, record, baselineSha, fixerStep.result, attempt, round, collector)
 }

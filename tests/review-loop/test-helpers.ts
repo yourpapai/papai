@@ -12,6 +12,8 @@ import type { ReviewLoopConfig } from '../../review-loop/src/config.js'
 import type { Verdict } from '../../review-loop/src/issue-schema.js'
 import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
 import type { TraceEvent, TraceLogger } from '../../review-loop/src/trace-log.js'
+import type { Worker, WorkerPool } from '../../review-loop/src/worker-pool.js'
+import { execGit } from '../../review-loop/src/worktree.js'
 
 const tempDirs: string[] = []
 
@@ -71,6 +73,88 @@ export function silentTrace(): TraceLogger {
     append(_: TraceEvent): Promise<void> {
       return Promise.resolve()
     },
+  }
+}
+
+export function fakePool(opts: {
+  size: number
+  worktreePath?: string
+  worktreePaths?: string[]
+  mergeOk?: boolean
+  conflictFiles?: string[]
+}): {
+  pool: WorkerPool
+  workers: Worker[]
+  acquireLog: number[]
+  releaseLog: number[]
+} {
+  const useRealGit = opts.worktreePath !== undefined || opts.worktreePaths !== undefined
+  const worktreePaths = opts.worktreePaths ?? Array.from({ length: opts.size }, () => opts.worktreePath!)
+  const workers: Worker[] = []
+  for (let i = 1; i <= opts.size; i++) {
+    const worktreePath = worktreePaths[i - 1] ?? `/tmp/fake-${i}`
+    workers.push({
+      id: i,
+      worktreePath,
+      branch: `fake-${i}`,
+      busy: false,
+      lockedFiles: new Set(),
+      headSha: async () => {
+        if (!useRealGit) return 'sha'
+        const result = await execGit(worktreePath, ['rev-parse', 'HEAD'])
+        return result.stdout.trim()
+      },
+      resetToBaseline: async (sha: string) => {
+        if (!useRealGit) return
+        await execGit(worktreePath, ['reset', '--hard', sha])
+        await execGit(worktreePath, ['clean', '-fdx', '-e', '.review-loop'])
+      },
+    })
+  }
+  const acquireLog: number[] = []
+  const releaseLog: number[] = []
+  const waiters: Array<() => void> = []
+  return {
+    pool: {
+      primaryWorktreePath: '/tmp/fake-primary',
+      primaryBranch: 'fake-primary',
+      async acquire(file) {
+        while (true) {
+          const free = workers.filter((w) => !w.busy)
+          if (free.length > 0) {
+            const w = free[0]!
+            w.busy = true
+            w.lockedFiles = new Set([file])
+            acquireLog.push(Date.now())
+            return w
+          }
+          await new Promise<void>((r) => {
+            waiters.push(r)
+          })
+        }
+      },
+      release(worker) {
+        releaseLog.push(Date.now())
+        worker.busy = false
+        worker.lockedFiles = new Set()
+        const next = waiters.shift()
+        if (next !== undefined) next()
+      },
+      mergeWorkerIntoPrimary() {
+        return Promise.resolve(
+          opts.mergeOk === false ? { ok: false, conflictFiles: opts.conflictFiles ?? ['x.ts'] } : { ok: true },
+        )
+      },
+      primaryHead() {
+        return Promise.resolve('primary-sha')
+      },
+      close() {
+        return Promise.resolve()
+      },
+    },
+    workers,
+    acquireLog,
+    releaseLog,
   }
 }
 

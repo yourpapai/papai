@@ -11,7 +11,7 @@ import type { RoundCollector } from './loop-trace.js'
 import type { ProgressReporter } from './progress-log.js'
 import type { RunState } from './run-state.js'
 import type { TraceLogger } from './trace-log.js'
-import { execGit, resetWorktreeTo } from './worktree.js'
+import type { Worker, WorkerPool } from './worker-pool.js'
 
 export type { IssueWorker, RetryReason }
 
@@ -23,6 +23,8 @@ export interface IssueProcessorDeps {
   exec: ShellExecFn
   log: ProgressReporter
   trace: TraceLogger
+  pool: WorkerPool
+  inspect?: boolean
 }
 
 export function sanitizeSubject(text: string): string {
@@ -30,46 +32,49 @@ export function sanitizeSubject(text: string): string {
   return oneLine.replace(/[`"']/gu, '').trim().slice(0, 100)
 }
 
-function singleWorkerFromState(runState: RunState): IssueWorker {
-  return {
-    worktreePath: runState.worktreePath,
-    headSha: () => execGit(runState.worktreePath, ['rev-parse', 'HEAD']).then((r) => r.stdout.trim()),
-    resetToBaseline: (sha) => resetWorktreeTo(runState.worktreePath, sha),
-  }
-}
-
-function processIssue(
+async function processIssue(
   record: LedgerIssueRecord,
   deps: IssueProcessorDeps,
-  worker: IssueWorker,
+  worker: Worker,
   round: number,
   collector: RoundCollector,
 ): Promise<{ fixed: boolean }> {
-  return processIssueAttempt(record, deps, worker, round, collector, 1, null)
+  try {
+    return await processIssueAttempt(record, deps, worker, round, collector, 1, null)
+  } finally {
+    deps.pool.release(worker)
+  }
 }
 
-async function processPendingIssue(
-  deps: IssueProcessorDeps,
-  worker: IssueWorker,
-  round: number,
-  collector: RoundCollector,
-  pending: readonly LedgerIssueRecord[],
-  index: number,
-  fixed: number,
-): Promise<number> {
-  if (index >= pending.length) return fixed
-  const record = pending[index]!
-  const result = await processIssue(record, deps, worker, round, collector)
-  await saveIssueLedger(deps.ledger)
-  return processPendingIssue(deps, worker, round, collector, pending, index + 1, result.fixed ? fixed + 1 : fixed)
-}
-
-export function processPendingIssues(
+export async function processPendingIssues(
   deps: IssueProcessorDeps,
   round: number,
   collector: RoundCollector,
   pending: readonly LedgerIssueRecord[],
 ): Promise<number> {
-  const worker = singleWorkerFromState(deps.runState)
-  return processPendingIssue(deps, worker, round, collector, pending, 0, 0)
+  let fixed = 0
+  let index = 0
+  const inFlight: Promise<void>[] = []
+
+  const dispatchNext = async (): Promise<void> => {
+    if (index >= pending.length) return
+    const record = pending[index]!
+    index += 1
+    const worker = await deps.pool.acquire(record.issue.file)
+    try {
+      const result = await processIssue(record, deps, worker, round, collector)
+      await saveIssueLedger(deps.ledger)
+      if (result.fixed) fixed += 1
+    } finally {
+      // processIssue already releases the worker; nothing to do here
+    }
+    await dispatchNext()
+  }
+
+  const concurrency = Math.min(deps.config.poolSize, pending.length)
+  for (let i = 0; i < concurrency; i++) {
+    inFlight.push(dispatchNext())
+  }
+  await Promise.all(inFlight)
+  return fixed
 }

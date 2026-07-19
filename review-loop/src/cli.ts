@@ -15,6 +15,7 @@ import { createRunState, loadRunState, type RunState } from './run-state.js'
 import { realSpawn } from './spawn.js'
 import { buildMetricsJson, formatSummary } from './summary.js'
 import { createFileTraceLogger } from './trace-log.js'
+import { createWorkerPool } from './worker-pool.js'
 import {
   createWorktree,
   mergeWorktree,
@@ -179,9 +180,11 @@ export async function runCli(argv: readonly string[]): Promise<void> {
   const log = new LiveRenderer(process.stdout)
   const exec = createShellExec(runState.worktreePath, config.checkCommand, config.buildTimeoutMs)
   const trace = createFileTraceLogger(runState.tracePath)
+  const pool = await createWorkerPool(config, runState)
 
+  let result: ReviewLoopResult
   try {
-    const result = await runReviewLoop({
+    result = await runReviewLoop({
       config,
       runState,
       ledger,
@@ -189,20 +192,23 @@ export async function runCli(argv: readonly string[]): Promise<void> {
       exec,
       log,
       trace,
+      pool,
     })
-
-    await finalizeRun(config, runState, {
-      exec,
-      runBuildCheck,
-      mergeWorktree,
-      removeWorktree,
-    })
-
-    await writeRunArtifacts(runState.runDir, result)
   } catch (error) {
+    await pool.close()
     console.error(`Worktree preserved at ${runState.worktreePath} for inspection.`)
     throw error
   }
+  await pool.close()
+
+  await finalizeRun(config, runState, {
+    exec,
+    runBuildCheck,
+    mergeWorktree,
+    removeWorktree,
+  })
+
+  await writeRunArtifacts(runState.runDir, result)
 }
 
 if (import.meta.main) {

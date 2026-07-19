@@ -19,6 +19,7 @@ import { execGit } from '../../review-loop/src/worktree.js'
 import {
   cleanupTempDirs,
   createReviewLoopConfigFixture,
+  fakePool,
   makeTempDir,
   silentReporter,
   silentTrace,
@@ -248,6 +249,7 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     expect(result.doneReason).toBe('clean')
@@ -282,6 +284,7 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     expect(result.doneReason).toBe('clean')
@@ -313,6 +316,7 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     expect(result.doneReason).toBe('clean')
@@ -340,6 +344,7 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     expect(result.doneReason).toBe('no_progress')
@@ -383,6 +388,7 @@ describe('runReviewLoop', () => {
       },
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     expect(result.doneReason).toBe('clean')
@@ -436,6 +442,7 @@ describe('runReviewLoop', () => {
       },
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     expect(result.doneReason).toBe('clean')
@@ -478,6 +485,7 @@ describe('runReviewLoop', () => {
       exec: createMockExec(false),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     expect(result.doneReason).toBe('no_progress')
@@ -519,6 +527,7 @@ describe('runReviewLoop', () => {
       },
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     const records = Object.values(ledger.snapshot.issues)
@@ -552,6 +561,7 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     const headAfter = (await execGit(runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
@@ -587,6 +597,7 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     expect(result.doneReason).toBe('clean')
@@ -622,6 +633,7 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     const committedFiles = (
@@ -664,6 +676,7 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     const records = Object.values(ledger.snapshot.issues)
@@ -710,6 +723,7 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     expect(matcherPrompts).toHaveLength(3)
@@ -769,6 +783,7 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     const onDisk = IssueLedgerSnapshotSchema.parse(JSON.parse(ledgerOnDiskAtSecondIssue))
@@ -806,6 +821,7 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: logger,
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     const types = events.map((e) => e.event)
@@ -842,6 +858,7 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: logger,
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     const records = Object.values(ledger.snapshot.issues)
@@ -879,6 +896,7 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     const subject = (await execGit(runState.worktreePath, ['log', '-1', '--format=%s'])).stdout.trim()
@@ -909,6 +927,7 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     const subject = (await execGit(runState.worktreePath, ['log', '-1', '--format=%s'])).stdout.trim()
@@ -940,6 +959,7 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     const headAfter = (await execGit(runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
@@ -973,6 +993,7 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     const status = (await execGit(runState.worktreePath, ['status', '--porcelain'])).stdout.trim()
@@ -1017,6 +1038,7 @@ describe('runReviewLoop', () => {
       },
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     const decisions = result.metrics![0]!.decisions
@@ -1051,6 +1073,7 @@ describe('runReviewLoop', () => {
       exec: createMockExec(false),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
     })
 
     const decisions = result.metrics![0]!.decisions
