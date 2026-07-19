@@ -76,3 +76,54 @@ export async function removeWorktree(repoRoot: string, worktreePath: string, run
     // Branch may not exist if already merged and deleted
   }
 }
+
+export async function rebaseOnto(
+  repoRoot: string,
+  ontoRef: string,
+  branch: string,
+): Promise<{ ok: true } | { ok: false; conflictFiles: string[] }> {
+  const { stdout, stderr, error } = await runGit(repoRoot, ['rebase', ontoRef, branch])
+  // git rebase prints conflicts to stdout, errors to stderr
+  const combined = `${stdout}\n${stderr}`
+  if (error !== null) {
+    if (combined.includes('CONFLICT') || combined.includes('could not apply')) {
+      await runGit(repoRoot, ['rebase', '--abort'])
+      const conflictFiles = parseConflictFiles(combined)
+      return { ok: false, conflictFiles }
+    }
+    throw error
+  }
+  return { ok: true }
+}
+
+export async function mergeFastForward(repoRoot: string, branch: string): Promise<string> {
+  await execGit(repoRoot, ['merge', '--ff-only', branch])
+  // The new HEAD SHA is on the line starting with "Updating" or we re-read it
+  const head = await execGit(repoRoot, ['rev-parse', 'HEAD'])
+  return head.stdout.trim()
+}
+
+function parseConflictFiles(output: string): string[] {
+  const files = new Set<string>()
+  for (const line of output.split('\n')) {
+    const m = line.match(/^(?:CONFLICT .*:|both modified:|added by them:|added by us:)\s+(.+)$/u)
+    if (m !== null) files.add(m[1]!.trim())
+  }
+  return [...files]
+}
+
+export async function cleanWorkerWorktrees(repoRoot: string, runId: string): Promise<void> {
+  // Remove stale worker worktrees from a crashed prior run.
+  const { stdout } = await execGit(repoRoot, ['worktree', 'list', '--porcelain'])
+  const lines = stdout.split('\n')
+  const removals: Array<Promise<unknown>> = []
+  for (const line of lines) {
+    if (line.startsWith('worktree ')) {
+      const wtPath = line.slice('worktree '.length)
+      if (wtPath.includes(`${runId}-worker-`)) {
+        removals.push(execGit(repoRoot, ['worktree', 'remove', wtPath, '--force']).catch(() => undefined))
+      }
+    }
+  }
+  await Promise.all(removals)
+}

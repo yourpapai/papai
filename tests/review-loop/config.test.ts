@@ -67,6 +67,27 @@ describe('ReviewLoopConfigSchema', () => {
     expect(parsed.fixer.timeoutMs).toBeUndefined()
     expect(parsed.matcher.timeoutMs).toBeUndefined()
   })
+
+  test('poolSize defaults to 3 when absent', () => {
+    const parsed = ReviewLoopConfigSchema.parse({
+      workDir: '.review-loop',
+      reviewer: { model: 'm' },
+      fixer: { model: 'm' },
+      matcher: { model: 'm' },
+    })
+    expect(parsed.poolSize).toBe(3)
+  })
+
+  test('poolSize respects provided value', () => {
+    const parsed = ReviewLoopConfigSchema.parse({
+      workDir: '.review-loop',
+      poolSize: 5,
+      reviewer: { model: 'm' },
+      fixer: { model: 'm' },
+      matcher: { model: 'm' },
+    })
+    expect(parsed.poolSize).toBe(5)
+  })
 })
 
 function writeConfig(dir: string, config: Record<string, unknown>): string {

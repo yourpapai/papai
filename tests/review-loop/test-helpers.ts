@@ -39,6 +39,7 @@ export function createReviewLoopConfigFixture(
     agentTimeoutMs: 600_000,
     buildTimeoutMs: 600_000,
     checkCommand: 'bun check:full',
+    poolSize: 3,
     reviewer: {
       model: 'ollama-cloud/kimi-k2.6:cloud',
       extraArgs: [],
