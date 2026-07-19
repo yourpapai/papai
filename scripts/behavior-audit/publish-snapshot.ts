@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { copyFile, mkdir, readdir, rm } from 'node:fs/promises'
+import { cp, mkdir, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { STORIES_DIR } from './config.js'
@@ -73,7 +73,9 @@ export async function runPublish(input: PublishDeps): Promise<PublishResult> {
   await mkdir(join(worktreePath, 'stories'), { recursive: true })
 
   await Promise.all(
-    entries.map((entry) => copyFile(join(input.storiesPath, entry), join(worktreePath, 'stories', entry))),
+    entries.map((entry) =>
+      cp(join(input.storiesPath, entry), join(worktreePath, 'stories', entry), { recursive: true }),
+    ),
   )
 
   await input.gitOps.run(['add', 'stories'])
