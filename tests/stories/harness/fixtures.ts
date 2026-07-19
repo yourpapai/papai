@@ -5,6 +5,7 @@
 
 import { z } from 'zod'
 
+import { saveAttachment } from '../../../src/attachments/store.js'
 import { addAuthorizedGroup, setGuestMode } from '../../../src/authorized-groups.js'
 import { addGroupMember } from '../../../src/groups.js'
 import { setIdentityMapping } from '../../../src/identity/mapping.js'
@@ -188,6 +189,9 @@ export type ScenarioFixtures = Readonly<{
     }>,
   ): void
   seedSystemLlmConfig(input?: Readonly<{ apiKey?: string; baseUrl?: string; mainModel?: string }>): void
+  seedRelayAttachment(
+    input: Readonly<{ contextId: string; filename: string; content: string; mimeType?: string }>,
+  ): Promise<{ id: string }>
   issueSettingsAuthCode(input: Readonly<{ platformInstanceId: string; platformUserId: string }>, nowMs: number): string
   approvePlugin(plugin?: DiscoveredPlugin): DiscoveredPlugin
   registerTaskProvider(): void
@@ -275,6 +279,19 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
       setSystemConfig('llm_apikey', input.apiKey ?? 'scenario-api-key', 'scenario-admin')
       setSystemConfig('llm_baseurl', input.baseUrl ?? 'https://llm.invalid/v1', 'scenario-admin')
       setSystemConfig('main_model', input.mainModel ?? 'scenario-main-model', 'scenario-admin')
+    },
+    async seedRelayAttachment(input): Promise<{ id: string }> {
+      const ref = await saveAttachment({
+        contextId: input.contextId,
+        sourceProvider: 'unknown',
+        sourceMessageId: `relay-${input.filename}`,
+        sourceFileId: `file-${input.filename}`,
+        filename: input.filename,
+        ...(input.mimeType === undefined ? {} : { mimeType: input.mimeType }),
+        status: 'available',
+        content: Buffer.from(new TextEncoder().encode(input.content)),
+      })
+      return { id: ref.attachmentId }
     },
     issueSettingsAuthCode(input, nowMs): string {
       return issueAuthCode(input, nowMs)

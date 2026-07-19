@@ -80,6 +80,8 @@ export type CodingSessionHandle = Readonly<{
   readonly [codingSessionHandleBrand]: true
 }>
 
+export type AttachmentHandle = Readonly<{ id: string }>
+
 type ScenarioGiven = Readonly<{
   user(id: string): UserHandle
   guest(id: string): UserHandle
@@ -95,6 +97,10 @@ type ScenarioGiven = Readonly<{
   providerUser(identity: Readonly<{ id: string; login: string; name?: string }>): void
   dm(user: UserHandle): DmHandle
   thread(group: GroupHandle, id: string): ThreadHandle
+  attachment(
+    context: ContextHandle,
+    file: Readonly<{ filename: string; content: string; mimeType?: string }>,
+  ): Promise<AttachmentHandle>
   taskInstance(id?: string, providerType?: string): TaskInstanceHandle
   taskCapabilities(capabilities: readonly TaskCapability[]): void
   assign(context: ContextHandle, taskInstance: TaskInstanceHandle): void
@@ -366,6 +372,10 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
     },
     dm: makeDmHandle,
     thread: makeThreadHandle,
+    attachment(context, file): Promise<AttachmentHandle> {
+      prerequisite('given.attachment')
+      return world.fixtures.seedRelayAttachment({ contextId: contextId(context), ...file })
+    },
     taskInstance(id = world.ids.next('task-instance'), providerType = 'kaneo'): TaskInstanceHandle {
       prerequisite('given.taskInstance')
       world.fixtures.seedTaskInstance({ id, type: providerType })

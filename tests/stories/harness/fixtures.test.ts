@@ -35,6 +35,7 @@ import {
 } from './fixtures.js'
 import { MemoryTaskProvider } from './memory-task-provider.js'
 import { executeScenario } from './scenario.js'
+import { answer, callCapability } from './scripted-llm.js'
 
 describe('scenario fixtures', () => {
   const fixtures = createScenarioFixtures({ taskProvider: new MemoryTaskProvider() })
@@ -232,6 +233,26 @@ describe('scenario fixtures', () => {
       await when.message(carol, team, '/config')
 
       then.replyIn(team).contains('Open a DM with me and run /config')
+    })
+  })
+
+  test('given.attachment seeds the relay and upload_attachment consumes it', async () => {
+    await executeScenario('attachment relay fixture', async ({ given, when, then }) => {
+      const alice = given.user('alice')
+      const dm = given.dm(alice)
+      const instance = given.taskInstance()
+      given.assign(dm, instance)
+      given.taskCapabilities(['attachments.list', 'attachments.upload'])
+      const file = await given.attachment(dm, { filename: 'spec.txt', content: 'hello relay' })
+      given.llm([
+        callCapability('tasks.create', { projectId: 'proj-1', title: 'Documented' }),
+        callCapability('tasks.attachments.upload', { taskId: 'task-1', attachmentId: file.id }),
+        answer('Uploaded “spec.txt”.'),
+      ])
+
+      await when.message(alice, dm, 'Attach spec.txt to a new task')
+
+      then.replyTo(alice).equals('Uploaded “spec.txt”.')
     })
   })
 })
