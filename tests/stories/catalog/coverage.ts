@@ -432,6 +432,94 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
       'tests/stories/context/group-users.story.test.ts#group members share durable config while retaining distinct identities',
     ],
   },
+  'SCN-cmd-help': {
+    verifiedAt: '2026-07-19',
+    storyIds: ['tests/stories/commands/surface.story.test.ts#SCN-cmd-help: shows user help and the admin appendix'],
+  },
+  'SCN-cmd-start': {
+    verifiedAt: '2026-07-19',
+    storyIds: ['tests/stories/commands/surface.story.test.ts#SCN-cmd-start: welcomes an authorized user'],
+  },
+  'SCN-cmd-config-dm': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/commands/surface.story.test.ts#SCN-cmd-config-dm: issues a single-use settings link in DM',
+    ],
+  },
+  'SCN-cmd-config-group': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/commands/surface.story.test.ts#SCN-cmd-config-group: redirects group admins and refuses plain members',
+    ],
+  },
+  'SCN-cmd-context': {
+    verifiedAt: '2026-07-19',
+    storyIds: ['tests/stories/commands/surface.story.test.ts#SCN-cmd-context: renders the memory context snapshot'],
+  },
+  'SCN-cmd-clear-self': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/commands/surface.story.test.ts#SCN-cmd-clear-self: clears own history, memory, and facts',
+    ],
+  },
+  'SCN-cmd-clear-target-user': {
+    verifiedAt: '2026-07-19',
+    storyIds: ['tests/stories/commands/surface.story.test.ts#SCN-cmd-clear-target-user: an admin clears another user'],
+  },
+  'SCN-cmd-clear-all': {
+    verifiedAt: '2026-07-19',
+    storyIds: ['tests/stories/commands/surface.story.test.ts#SCN-cmd-clear-all: a super admin clears every user'],
+  },
+  'SCN-cmd-clear-group-denied': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/commands/surface.story.test.ts#SCN-cmd-clear-group-denied: a plain group member cannot clear',
+    ],
+  },
+  'SCN-cmd-dashboard': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/commands/surface.story.test.ts#SCN-cmd-dashboard: reports the dashboard disabled without DEBUG_SERVER',
+    ],
+  },
+  'SCN-cmd-stop-noop': {
+    verifiedAt: '2026-07-19',
+    storyIds: ['tests/stories/commands/surface.story.test.ts#SCN-cmd-stop-noop: reports nothing running'],
+  },
+  'SCN-cmd-stop-graceful': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/commands/surface.story.test.ts#SCN-cmd-stop-graceful: first stop winds down after the current step',
+    ],
+  },
+  'SCN-cmd-stop-abort': {
+    verifiedAt: '2026-07-19',
+    storyIds: ['tests/stories/commands/surface.story.test.ts#SCN-cmd-stop-abort: second stop aborts immediately'],
+  },
+  'SCN-cmd-acp': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/commands/surface.story.test.ts#SCN-cmd-acp: shows ACP help in an eligible context and refuses a disabled one',
+    ],
+  },
+  'SCN-meta-search-tools': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/meta/disclosure-and-compaction.story.test.ts#SCN-meta-search-tools: ranks tools lexically through the real search_tools tool',
+    ],
+  },
+  'SCN-meta-load-tool': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/meta/disclosure-and-compaction.story.test.ts#SCN-meta-load-tool: loads a non-advertised tool before calling it',
+    ],
+  },
+  'SCN-meta-expand-result': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/meta/disclosure-and-compaction.story.test.ts#SCN-meta-expand-result: expands a compacted tool result by handle',
+    ],
+  },
 }
 
 function auditRecord(readiness: AuditReadiness, family: StoryFamily, rationale: string): AuditRecord {
@@ -447,78 +535,6 @@ const blocked = (family: StoryFamily, rationale: string): AuditRecord =>
 
 export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
   // F1 — tool assembly, disclosure, and command surface (refactor-risk first)
-  'SCN-meta-expand-result': needs(
-    'F1',
-    ['compaction-trigger'],
-    'Result compaction engages only above COMPACTION_THRESHOLD_BYTES; a memory-provider knob must return an oversized payload deterministically.',
-  ),
-  'SCN-meta-search-tools': needs(
-    'F1',
-    ['capability-ids'],
-    'Scripting search_tools needs a capability id; ranking assertions rely on the lexical fallback when embeddings are unavailable.',
-  ),
-  'SCN-meta-load-tool': ready(
-    'F1',
-    'autoLoadTools already emits load_tool for non-advertised capabilities; assertions read the model available-tools inspections.',
-  ),
-  'SCN-cmd-help': ready(
-    'F1',
-    'Behavioral /help flow runs through the real registered handler via scenario chat dispatch; menu registration stays with adapter contract tests.',
-  ),
-  'SCN-cmd-start': ready(
-    'F1',
-    'Real /start onboarding reply via scenario chat dispatch; menu registration stays with adapter contract tests.',
-  ),
-  'SCN-cmd-config-dm': ready(
-    'F1',
-    'DM /config issues a real settings auth code through the registered handler; link semantics are behavioral, menu stays adapter-side.',
-  ),
-  'SCN-cmd-config-group': ready(
-    'F1',
-    'Group /config scopes the issued settings link; behavioral dispatch works, menu registration stays adapter-side.',
-  ),
-  'SCN-cmd-context': ready(
-    'F1',
-    'Real /context reply via scenario chat dispatch; menu registration stays with adapter contract tests.',
-  ),
-  'SCN-cmd-clear-self': ready(
-    'F1',
-    'Clear-own-history authorization and effect run through the real handler; menu registration stays adapter-side.',
-  ),
-  'SCN-cmd-clear-target-user': ready(
-    'F1',
-    'Clear-other authorization and effect run through the real handler; menu registration stays adapter-side.',
-  ),
-  'SCN-cmd-clear-all': ready(
-    'F1',
-    'Clear-all admin authorization and effect run through the real handler; menu registration stays adapter-side.',
-  ),
-  'SCN-cmd-clear-group-denied': ready(
-    'F1',
-    'Denied group clear produces the real refusal reply; menu registration stays adapter-side.',
-  ),
-  'SCN-cmd-dashboard': ready(
-    'F1',
-    'Dashboard sign-in link issuance runs through the real handler; menu registration stays adapter-side.',
-  ),
-  'SCN-cmd-stop-noop': ready(
-    'F1',
-    'Stop with no active turn produces the real no-op reply; no mid-turn seam required.',
-  ),
-  'SCN-cmd-stop-graceful': needs(
-    'F1',
-    ['mid-turn-run-control'],
-    'Stopping mid-turn needs a blocking scripted-LLM decision or a stop between queued generations; the model cannot block today.',
-  ),
-  'SCN-cmd-stop-abort': needs(
-    'F1',
-    ['mid-turn-run-control'],
-    'Aborting mid-turn needs the same mid-turn seam as graceful stop; classify together.',
-  ),
-  'SCN-cmd-acp': ready(
-    'F1',
-    'Overlaps SCN-coding-acp-command coverage; the F1 spec decides a dedicated story versus mapping the existing command story.',
-  ),
   'SCN-cmd-nerv': blocked(
     'F1',
     'No /nerv command exists; nerv has no production implementation. Family F1 reviews it if a /nerv command ever lands.',
