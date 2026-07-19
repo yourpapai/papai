@@ -13,6 +13,20 @@ export const CORE_TOOL_CAPABILITIES = Object.freeze({
   'tasks.list': 'list_tasks',
   'tasks.search': 'search_tasks',
   'meta.expand-result': 'expand_result',
+  'tasks.update': 'update_task',
+  'tasks.delete': 'delete_task',
+  'tasks.count': 'count_tasks',
+  'tasks.history': 'get_task_history',
+  'tasks.comments.list': 'get_comments',
+  'tasks.comments.create': 'add_comment',
+  'tasks.comments.update': 'update_comment',
+  'tasks.comments.delete': 'remove_comment',
+  'tasks.labels.list': 'list_labels',
+  'tasks.labels.create': 'create_label',
+  'tasks.labels.update': 'update_label',
+  'tasks.labels.delete': 'remove_label',
+  'tasks.labels.assign': 'add_task_label',
+  'tasks.labels.unassign': 'remove_task_label',
 } as const)
 
 export function registerOfferedCoreToolCapabilities(tools: ToolSet, catalog: ToolCapabilityCatalog): void {
