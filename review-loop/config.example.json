@@ -3,25 +3,20 @@
   "workDir": ".review-loop",
   "maxRounds": 10,
   "maxNoProgressRounds": 2,
+  "agentTimeoutMs": 600000,
+  "buildTimeoutMs": 600000,
+  "checkCommand": "bun check:full",
   "reviewer": {
-    "command": "opencode",
-    "args": ["acp"],
-    "env": {},
-    "sessionConfig": {
-      "model": "ollama-cloud/kimi-k2.6:cloud"
-    },
-    "invocationPrefix": "/review-code",
-    "requireInvocationPrefix": false
+    "model": "ollama-cloud/kimi-k2.6:cloud",
+    "extraArgs": [],
+    "timeoutMs": 1800000
   },
   "fixer": {
-    "command": "opencode",
-    "args": ["acp"],
-    "env": {},
-    "sessionConfig": {
-      "model": "opencode/claude-sonnet-4-6"
-    },
-    "verifyInvocationPrefix": null,
-    "fixInvocationPrefix": null,
-    "requireVerifyInvocation": false
+    "model": "opencode/claude-sonnet-4-6",
+    "extraArgs": []
+  },
+  "matcher": {
+    "model": "ollama-cloud/kimi-k2.6:cloud",
+    "extraArgs": []
   }
 }

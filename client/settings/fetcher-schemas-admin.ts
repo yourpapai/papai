@@ -41,14 +41,6 @@ export const ProviderTypesResponseSchema = z.object({ providerTypes: z.array(Pro
 export type ProviderType = z.infer<typeof ProviderTypeSchema>
 export type ProviderTypesResponse = z.infer<typeof ProviderTypesResponseSchema>
 
-export const AdminLlmKeyStateSchema = z.object({
-  value: z.string().nullable(),
-  updatedAt: z.number().nullable(),
-  updatedBy: z.string().nullable(),
-})
-export const AdminSystemResponseSchema = z.object({ config: z.record(z.string(), AdminLlmKeyStateSchema) })
-export type AdminSystemResponse = z.infer<typeof AdminSystemResponseSchema>
-
 export const AdminUserRowSchema = z
   .object({
     platform_user_id: z.string(),

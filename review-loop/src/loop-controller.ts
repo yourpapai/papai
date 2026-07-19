@@ -3,228 +3,215 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import pLimit from 'p-limit'
-
-import { resolveInvocationText } from './available-commands.js'
+import { agentWritePath, runAgent, type SpawnFn } from './agent-runner.js'
+import type { ShellExecFn } from './build-checker.js'
 import type { ReviewLoopConfig } from './config.js'
-import { computeIssueFingerprint } from './issue-fingerprint.js'
 import {
-  applyReviewRound,
-  recordFixAttempt,
-  recordVerification,
+  applyMatchedIssues,
+  closeUnreportedFixed,
   saveIssueLedger,
   type IssueLedger,
   type LedgerIssueRecord,
 } from './issue-ledger.js'
-import { parseReviewerIssues, parseVerifierDecision } from './issue-schema.js'
-import type { ProgressLog } from './progress-log.js'
+import { matchIssues } from './issue-matcher.js'
+import { processPendingIssues } from './issue-processor.js'
+import { ReviewerIssuesSchema } from './issue-schema.js'
+import type { ReviewerIssue } from './issue-schema.js'
 import {
-  buildFixPrompt,
-  buildPlanningPrompt,
-  buildReviewPrompt,
-  buildRereviewPrompt,
-  buildVerifyPrompt,
-} from './prompt-templates.js'
+  emitLoopEnd,
+  emitMatchComplete,
+  emitReviewComplete,
+  emitRoundStart,
+  emitRoundSummary,
+  newCollector,
+  tallyReviewerIssues,
+  type RoundCollector,
+} from './loop-trace.js'
+import type { ProgressReporter } from './progress-log.js'
+import { buildReviewPrompt } from './prompt-templates.js'
 import { saveRunState, type RunState } from './run-state.js'
+import type { RoundMetric, TraceLogger } from './trace-log.js'
 
-export interface PromptingSession {
-  availableCommands: string[]
-  promptText(text: string): Promise<{ text: string; stopReason: string }>
-}
+const TERMINAL_STATUSES = new Set<LedgerIssueRecord['status']>(['rejected', 'already_fixed', 'needs_human'])
+
+const MATCHER_RECENT_ROUNDS = 2
 
 export interface ReviewLoopDeps {
   config: ReviewLoopConfig
   runState: RunState
   ledger: IssueLedger
-  reviewer: PromptingSession
-  fixer: PromptingSession
-  log: ProgressLog
+  spawn: SpawnFn
+  exec: ShellExecFn
+  log: ProgressReporter
+  trace: TraceLogger
 }
 
 export interface ReviewLoopResult {
   doneReason: 'clean' | 'max_rounds' | 'no_progress'
   rounds: number
   ledger: IssueLedger['snapshot']
+  metrics?: RoundMetric[]
 }
 
-async function promptReviewerForIssues(
-  promptBody: string,
+function countOpen(deps: ReviewLoopDeps): number {
+  return Object.values(deps.ledger.snapshot.issues).filter((r) => !TERMINAL_STATUSES.has(r.status)).length
+}
+
+function terminalResult(
   deps: ReviewLoopDeps,
-): Promise<ReturnType<typeof parseReviewerIssues>> {
-  const prompt = resolveInvocationText(
-    deps.config.reviewer.invocationPrefix,
-    deps.reviewer.availableCommands,
-    promptBody,
-    deps.config.reviewer.requireInvocationPrefix,
-  )
-  return parseReviewerIssues((await deps.reviewer.promptText(prompt)).text)
+  doneReason: ReviewLoopResult['doneReason'],
+  round: number,
+  metrics: RoundMetric[],
+): ReviewLoopResult {
+  return { doneReason, rounds: round, ledger: deps.ledger.snapshot, metrics }
 }
 
-async function processIssueVerifyFix(
-  record: LedgerIssueRecord,
+function pushRoundMetric(
   deps: ReviewLoopDeps,
-): Promise<{ fixedThisIssue: boolean }> {
-  const verifyPrompt = resolveInvocationText(
-    deps.config.fixer.verifyInvocationPrefix,
-    deps.fixer.availableCommands,
-    buildVerifyPrompt(deps.runState.planPath, record.issue),
-    deps.config.fixer.requireVerifyInvocation,
-  )
-  const verifyDecision = parseVerifierDecision((await deps.fixer.promptText(verifyPrompt)).text)
-  recordVerification(deps.ledger, record.fingerprint, verifyDecision)
-  deps.log.log(
-    `[verify] "${truncate(record.issue.title, 60)}" \u2192 ${verifyDecision.verdict}${verifyDecision.verdict === 'valid' ? `, ${verifyDecision.fixability}` : ''}`,
-  )
-
-  if (verifyDecision.verdict === 'valid' && verifyDecision.fixability === 'auto') {
-    let plan: string | undefined
-
-    if (verifyDecision.needsPlanning) {
-      const planningPrompt = resolveInvocationText(
-        deps.config.fixer.fixInvocationPrefix,
-        deps.fixer.availableCommands,
-        buildPlanningPrompt(record.issue, verifyDecision),
-        false,
-      )
-      plan = (await deps.fixer.promptText(planningPrompt)).text
-    }
-
-    const fixPrompt = resolveInvocationText(
-      deps.config.fixer.fixInvocationPrefix,
-      deps.fixer.availableCommands,
-      buildFixPrompt(record.issue, verifyDecision, plan),
-      false,
-    )
-    await deps.fixer.promptText(fixPrompt)
-    recordFixAttempt(deps.ledger, record.fingerprint)
-    deps.log.log(`[fix] "${truncate(record.issue.title, 60)}" \u2192 fix applied (attempt ${record.fixAttempts})`)
-    return { fixedThisIssue: true }
+  metrics: RoundMetric[],
+  round: number,
+  newCount: number,
+  collector: RoundCollector,
+): void {
+  const metric: RoundMetric = {
+    round,
+    newIssues: newCount,
+    cumulativeOpen: countOpen(deps),
+    noProgressRounds: deps.runState.noProgressRounds,
+    decisions: collector.decisions,
+    reviewerSeverity: collector.reviewerSeverity,
+    fixerSeverity: collector.fixerSeverity,
   }
-  return { fixedThisIssue: false }
+  metrics.push(metric)
+  emitRoundSummary(deps.trace, metric)
 }
 
-async function rereviewRound(round: number, deps: ReviewLoopDeps): Promise<ReturnType<typeof parseReviewerIssues>> {
-  const rereviewResponse = await promptReviewerForIssues(
-    buildRereviewPrompt(deps.runState.planPath, Object.values(deps.ledger.snapshot.issues)),
-    deps,
+function finishRound(
+  deps: ReviewLoopDeps,
+  metrics: RoundMetric[],
+  round: number,
+  newCount: number,
+  collector: RoundCollector,
+  doneReason: ReviewLoopResult['doneReason'],
+): ReviewLoopResult {
+  pushRoundMetric(deps, metrics, round, newCount, collector)
+  emitLoopEnd(deps.trace, round, doneReason, metrics)
+  return terminalResult(deps, doneReason, round, metrics)
+}
+
+function filterActionable(records: readonly LedgerIssueRecord[]): readonly LedgerIssueRecord[] {
+  return records.filter((r) => !TERMINAL_STATUSES.has(r.status))
+}
+
+async function runReviewStep(deps: ReviewLoopDeps): Promise<readonly ReviewerIssue[]> {
+  deps.log.log(`[round ${deps.runState.currentRound}/${deps.config.maxRounds}] Reviewing...`)
+
+  const reviewResult = await runAgent({
+    spawn: deps.spawn,
+    model: deps.config.reviewer.model,
+    cwd: deps.runState.worktreePath,
+    prompt: buildReviewPrompt(deps.runState.planPath, agentWritePath(deps.runState.issuesPath)),
+    outputPath: deps.runState.issuesPath,
+    outputSchema: ReviewerIssuesSchema,
+    label: 'reviewer',
+    reporter: deps.log,
+    logPath: deps.runState.logPath,
+    extraArgs: deps.config.reviewer.extraArgs,
+    timeoutMs: deps.config.reviewer.timeoutMs ?? deps.config.agentTimeoutMs,
+  })
+
+  return reviewResult.issues
+}
+
+async function runMatchAndRecord(
+  deps: ReviewLoopDeps,
+  round: number,
+  newIssues: readonly ReviewerIssue[],
+): Promise<{ records: readonly LedgerIssueRecord[]; newCount: number; matchedCount: number }> {
+  const existingRecords = Object.values(deps.ledger.snapshot.issues).filter((r) => {
+    if (!TERMINAL_STATUSES.has(r.status)) return true
+    return round - r.latestSeenRound <= MATCHER_RECENT_ROUNDS
+  })
+
+  const matches = await matchIssues({
+    spawn: deps.spawn,
+    newIssues,
+    existingRecords,
+    outputPath: deps.runState.matchesPath,
+    logPath: deps.runState.logPath,
+    cwd: deps.runState.worktreePath,
+    model: deps.config.matcher.model,
+    extraArgs: deps.config.matcher.extraArgs,
+    reporter: deps.log,
+    timeoutMs: deps.config.matcher.timeoutMs ?? deps.config.agentTimeoutMs,
+  })
+
+  const newCount = matches.filter((m) => m.existingId === null).length
+  const matchedCount = matches.length - newCount
+
+  const roundRecords = applyMatchedIssues(deps.ledger, round, newIssues, matches)
+  closeUnreportedFixed(
+    deps.ledger,
+    roundRecords.map((r) => r.id),
   )
+  await saveIssueLedger(deps.ledger)
 
-  const unresolvedFingerprints = new Set(rereviewResponse.issues.map((issue) => computeIssueFingerprint(issue)))
-  applyReviewRound(deps.ledger, round, rereviewResponse.issues)
+  return { records: roundRecords, newCount, matchedCount }
+}
 
-  for (const record of Object.values(deps.ledger.snapshot.issues)) {
-    if (record.status === 'fixed_pending_review' && !unresolvedFingerprints.has(record.fingerprint)) {
-      record.status = 'closed'
-    }
+async function runRound(round: number, deps: ReviewLoopDeps, metrics: RoundMetric[]): Promise<ReviewLoopResult> {
+  deps.runState.currentRound = round
+  emitRoundStart(deps.trace, round, deps.config.maxRounds, deps.config.maxNoProgressRounds, deps.config.checkCommand)
+  const collector = newCollector()
+
+  const newIssues = await runReviewStep(deps)
+  tallyReviewerIssues(collector, newIssues)
+  emitReviewComplete(deps.trace, round, newIssues)
+
+  if (newIssues.length === 0 && round === 1) {
+    deps.log.log(`[done] clean — no issues found`)
+    await saveRunState(deps.runState)
+    return finishRound(deps, metrics, round, 0, collector, 'clean')
   }
 
-  return rereviewResponse
-}
+  const matched = await runMatchAndRecord(deps, round, newIssues)
+  emitMatchComplete(deps.trace, round, matched.newCount, matched.matchedCount)
 
-const TERMINAL_STATUSES = new Set<LedgerIssueRecord['status']>(['rejected', 'already_fixed', 'needs_human'])
-
-function truncate(text: string, maxLength: number): string {
-  if (text.length <= maxLength) {
-    return text
+  if (newIssues.length === 0) {
+    deps.log.log(`[done] clean after ${round} round${round === 1 ? '' : 's'}`)
+    await saveRunState(deps.runState)
+    return finishRound(deps, metrics, round, matched.newCount, collector, 'clean')
   }
-  return `${text.slice(0, maxLength - 1)}\u2026`
-}
 
-async function processReviewRecords(records: readonly LedgerIssueRecord[], deps: ReviewLoopDeps): Promise<number> {
-  const limit = pLimit(1)
-  const verifiable = records.filter((r) => !TERMINAL_STATUSES.has(r.status))
-  const results = await Promise.all(verifiable.map((record) => limit(() => processIssueVerifyFix(record, deps))))
-  return results.filter(({ fixedThisIssue }) => fixedThisIssue).length
-}
+  deps.log.log(`[round ${round}] Found ${newIssues.length} issues`)
+  const pending = filterActionable(matched.records)
+  const fixedThisRound = await processPendingIssues(deps, round, collector, pending)
+  deps.log.log(`[round ${round}] Fixed ${fixedThisRound}/${pending.length} issues`)
 
-function formatSeveritySummary(records: readonly LedgerIssueRecord[]): string {
-  const severityCounts = records.reduce<Record<string, number>>((acc, r) => {
-    acc[r.issue.severity] = (acc[r.issue.severity] ?? 0) + 1
-    return acc
-  }, {})
-  return Object.entries(severityCounts)
-    .sort((a, b) => b[1] - a[1])
-    .map(([sev, count]) => `${count} ${sev}`)
-    .join(', ')
-}
+  const newNoProgress = fixedThisRound === 0 ? deps.runState.noProgressRounds + 1 : 0
+  deps.runState.noProgressRounds = newNoProgress
+  await saveRunState(deps.runState)
+  await saveIssueLedger(deps.ledger)
 
-function continueOrFinish(round: number, newNoProgressRounds: number, deps: ReviewLoopDeps): Promise<ReviewLoopResult> {
-  if (newNoProgressRounds >= deps.config.maxNoProgressRounds) {
+  if (newNoProgress >= deps.config.maxNoProgressRounds) {
     deps.log.log(`[done] no_progress`)
-    return Promise.resolve({
-      doneReason: 'no_progress',
-      rounds: round,
-      ledger: deps.ledger.snapshot,
-    })
+    return finishRound(deps, metrics, round, matched.newCount, collector, 'no_progress')
   }
 
   if (round >= deps.config.maxRounds) {
     deps.log.log(`[done] max_rounds`)
-    return Promise.resolve({
-      doneReason: 'max_rounds',
-      rounds: round,
-      ledger: deps.ledger.snapshot,
-    })
+    return finishRound(deps, metrics, round, matched.newCount, collector, 'max_rounds')
   }
 
-  return runRound(round + 1, newNoProgressRounds, deps)
-}
-
-async function runRound(round: number, noProgressRounds: number, deps: ReviewLoopDeps): Promise<ReviewLoopResult> {
-  deps.runState.currentRound = round
-  deps.log.log(`[round ${round}/${deps.config.maxRounds}] Reviewing against plan...`)
-
-  const reviewResponse = await promptReviewerForIssues(
-    buildReviewPrompt(deps.runState.planPath, Object.values(deps.ledger.snapshot.issues)),
-    deps,
-  )
-  const records = [...applyReviewRound(deps.ledger, round, reviewResponse.issues)]
-  await saveIssueLedger(deps.ledger)
-
-  if (records.length > 0) {
-    deps.log.log(`[round ${round}] Found ${records.length} issues (${formatSeveritySummary(records)})`)
-  } else {
-    deps.log.log(`[done] clean after ${round} round${round === 1 ? '' : 's'}`)
-    await saveRunState(deps.runState)
-    return { doneReason: 'clean', rounds: round, ledger: deps.ledger.snapshot }
-  }
-
-  const fixedThisRound = await processReviewRecords(records, deps)
-  deps.log.log(`[round ${round}] Fixed ${fixedThisRound}/${records.length} issues this round`)
-
-  const rereviewResponse = await rereviewRound(round, deps)
-  deps.log.log(`[round ${round}] Re-review: ${rereviewResponse.issues.length} issues remaining`)
-
-  if (rereviewResponse.issues.length === 0) {
-    deps.log.log(`[done] clean after ${round} round${round === 1 ? '' : 's'}`)
-    await saveIssueLedger(deps.ledger)
-    await saveRunState(deps.runState)
-    return { doneReason: 'clean', rounds: round, ledger: deps.ledger.snapshot }
-  }
-
-  const newNoProgressRounds = fixedThisRound === 0 ? noProgressRounds + 1 : 0
-  deps.runState.noProgressRounds = newNoProgressRounds
-  await saveRunState(deps.runState)
-  await saveIssueLedger(deps.ledger)
-
-  if (fixedThisRound === 0) {
-    deps.log.log(
-      `[round ${round}] No issues fixed this round (stall count: ${newNoProgressRounds}/${deps.config.maxNoProgressRounds})`,
-    )
-  }
-
-  return continueOrFinish(round, newNoProgressRounds, deps)
+  pushRoundMetric(deps, metrics, round, matched.newCount, collector)
+  return runRound(round + 1, deps, metrics)
 }
 
 export function runReviewLoop(deps: ReviewLoopDeps): Promise<ReviewLoopResult> {
   const nextRound = deps.runState.currentRound + 1
   if (nextRound > deps.config.maxRounds) {
-    deps.log.log(`[done] max_rounds at round ${deps.runState.currentRound} \u2014 skipping`)
-    return Promise.resolve({
-      doneReason: 'max_rounds',
-      rounds: deps.runState.currentRound,
-      ledger: deps.ledger.snapshot,
-    })
+    emitLoopEnd(deps.trace, deps.runState.currentRound, 'max_rounds', [])
+    return Promise.resolve(terminalResult(deps, 'max_rounds', deps.runState.currentRound, []))
   }
-  return runRound(nextRound, deps.runState.noProgressRounds, deps)
+  return runRound(nextRound, deps, [])
 }

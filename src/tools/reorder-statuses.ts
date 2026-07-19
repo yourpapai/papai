@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -12,7 +12,7 @@ import type { TaskProvider } from '../providers/types.js'
 
 const log = logger.child({ scope: 'tool:reorder-statuses' })
 
-export function makeReorderStatusesTool(provider: TaskProvider): ToolSet[string] {
+export function makeReorderStatusesTool(provider: TaskProvider): Tool {
   return tool({
     description: 'Reorder statuses in a project. Provide the new order of statuses with their positions.',
     inputSchema: z.object({

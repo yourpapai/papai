@@ -21,31 +21,6 @@ const parseBody = (body: BodyInit | null | undefined): unknown => (typeof body =
 const methodOf = (init: RequestInit): string => (init.method ?? 'GET').toUpperCase()
 
 describe('admin-fetchers', () => {
-  test('fetchAdminSystem GETs admin system config', async () => {
-    const { fetchAdminSystem } = await import('../../../client/settings/admin-fetchers.js')
-    setMockFetch(() =>
-      Promise.resolve(
-        json({
-          config: { main_model: { value: 'gpt-4o', updatedAt: null, updatedBy: null } },
-        }),
-      ),
-    )
-    const result = await fetchAdminSystem()
-    expect(result.config).toBeObject()
-  })
-
-  test('submitAdminSystem POSTs with CSRF header', async () => {
-    const { submitAdminSystem } = await import('../../../client/settings/admin-fetchers.js')
-    setCsrfToken('csrf-abc')
-    let seenCsrf = ''
-    setMockFetch((_url, init) => {
-      seenCsrf = csrfHeader(init)
-      return Promise.resolve(json({ ok: true }))
-    })
-    await submitAdminSystem({ key: 'main_model', value: 'gpt-4o' })
-    expect(seenCsrf).toBe('csrf-abc')
-  })
-
   test('fetchAdminPlatformInstances GETs platform instances', async () => {
     const { fetchAdminPlatformInstances } = await import('../../../client/settings/admin-fetchers.js')
     setMockFetch(() =>

@@ -4,8 +4,10 @@
 
 Tools use the Vercel AI SDK `tool()` factory from `ai`, but the exported tool is not the final execution surface. All tool sets are wrapped by `wrapToolExecution()` in `src/tools/index.ts`, which converts thrown failures into structured tool-failure payloads.
 
+A single-tool factory returns `Tool` (not `ToolSet[string]`): under AI SDK v7 the `ToolSet` value type is a union whose `.execute` is not directly callable, so factories declare the single-tool `Tool` type instead.
+
 ```typescript
-export function makeExampleTool(provider: Readonly<TaskProvider>): ToolSet[string] {
+export function makeExampleTool(provider: Readonly<TaskProvider>): Tool {
   return tool({
     description: 'Clear, precise tool description',
     inputSchema: z.object({

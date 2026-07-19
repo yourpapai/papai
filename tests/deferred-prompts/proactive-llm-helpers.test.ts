@@ -151,7 +151,7 @@ describe('proactive-llm-helpers', () => {
       'ctx',
       'cfg',
       'dm',
-      { response: { messages: assistantMessages }, text: 'Done.', toolCalls: [] },
+      { finalStep: { response: { messages: assistantMessages } }, text: 'Done.', toolCalls: [] },
       history,
       'gpt-main',
     )
@@ -169,7 +169,7 @@ describe('finalizeAndLog verification', () => {
   test('empty text + verification → verified text', async () => {
     mockLogger()
     const text = await finalizeAndLog(
-      { text: '', finishReason: 'stop', response: { messages: [] } },
+      { text: '', finishReason: 'stop', finalStep: { response: { messages: [] } } },
       'user-1',
       'full',
       {

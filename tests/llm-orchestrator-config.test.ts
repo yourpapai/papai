@@ -15,12 +15,7 @@ import {
   unregisterContributedTaskProviderType,
 } from '../src/providers/registry.js'
 import { createMockProvider } from './tools/mock-provider.js'
-import {
-  mockLogger,
-  resetSystemConfigCacheForTesting,
-  seedCommonTestPlatformInstances,
-  setupTestDb,
-} from './utils/test-helpers.js'
+import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from './utils/test-helpers.js'
 
 const assignYoutrackContext = (contextId: string): void => {
   insertTaskInstance({
@@ -38,7 +33,6 @@ describe('llm-orchestrator-config', () => {
     process.env['INSTANCE_CONFIG_KEY'] = 'd'.repeat(64)
     await setupTestDb()
     seedCommonTestPlatformInstances()
-    resetSystemConfigCacheForTesting()
   })
 
   describe('checkRequiredProviderConfig', () => {

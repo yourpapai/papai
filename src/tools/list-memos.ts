@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -12,7 +12,7 @@ import { listMemos } from '../memos.js'
 
 const log = logger.child({ scope: 'tool:memo' })
 
-export function makeListMemosTool(userId: string): ToolSet[string] {
+export function makeListMemosTool(userId: string): Tool {
   return tool({
     description: 'List personal notes, newest first. Use to show recent notes or browse archived ones.',
     inputSchema: z.object({

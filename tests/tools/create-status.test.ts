@@ -36,7 +36,7 @@ describe('makeCreateStatusTool', () => {
     assert(tool.execute, 'Tool execute is undefined')
     const result: unknown = await tool.execute(
       { projectId: 'proj-1', name: 'In Progress' },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(result).toMatchObject({ id: 'col-new', name: 'In Progress' })
@@ -58,7 +58,10 @@ describe('makeCreateStatusTool', () => {
 
     const tool = makeCreateStatusTool(provider)
     assert(tool.execute, 'Tool execute is undefined')
-    await tool.execute({ projectId: 'proj-1', name: 'Done', confirm: true }, { toolCallId: '1', messages: [] })
+    await tool.execute(
+      { projectId: 'proj-1', name: 'Done', confirm: true },
+      { toolCallId: '1', messages: [], context: {} },
+    )
 
     expect(createStatus).toHaveBeenCalledWith(
       'proj-1',
@@ -82,7 +85,7 @@ describe('makeCreateStatusTool', () => {
     assert(tool.execute, 'Tool execute is undefined')
     const result: unknown = await tool.execute(
       { projectId: 'proj-1', name: 'In Progress' },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(result).toMatchObject({ status: 'confirmation_required' })
@@ -94,7 +97,10 @@ describe('makeCreateStatusTool', () => {
     })
 
     const tool = makeCreateStatusTool(provider)
-    const promise = getToolExecutor(tool)({ projectId: 'proj-1', name: 'Test' }, { toolCallId: '1', messages: [] })
+    const promise = getToolExecutor(tool)(
+      { projectId: 'proj-1', name: 'Test' },
+      { toolCallId: '1', messages: [], context: {} },
+    )
     await expect(promise).rejects.toThrow('API Error')
     try {
       await promise

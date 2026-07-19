@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { getDrizzleDb as defaultGetDrizzleDb } from '../db/drizzle.js'
@@ -33,7 +33,7 @@ export function makeClearMyIdentityTool(
   provider: TaskProvider,
   chatUserId: string,
   deps: ClearMyIdentityDeps = defaultDeps,
-): ToolSet[string] {
+): Tool {
   return tool({
     description:
       "Clear the user's task tracker identity mapping. Use when user says things like 'I'm not Alice', 'That's not me', 'These aren't my tasks', or 'Unlink my account'.",

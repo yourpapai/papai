@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -12,7 +12,7 @@ import type { TaskProvider } from '../providers/types.js'
 
 const log = logger.child({ scope: 'tool:run-saved-query' })
 
-export function makeRunSavedQueryTool(provider: Readonly<TaskProvider>): ToolSet[string] {
+export function makeRunSavedQueryTool(provider: Readonly<TaskProvider>): Tool {
   return tool({
     description: 'Run one saved YouTrack query and return normalized task search results.',
     inputSchema: z.object({

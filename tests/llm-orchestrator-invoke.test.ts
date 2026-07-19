@@ -63,6 +63,7 @@ function createLiveStatusSpy(): {
       onToolFinish: (): void => {
         finishes += 1
       },
+      placeholder: (): Promise<void> => Promise.resolve(),
       dismiss: (): Promise<void> => Promise.resolve(),
     },
   }

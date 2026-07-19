@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -22,7 +22,7 @@ const defaultDeps: SkipRecurringTaskDeps = {
   skipNextOccurrence: (...args) => defaultSkipNextOccurrence(...args),
 }
 
-export function makeSkipRecurringTaskTool(deps: SkipRecurringTaskDeps = defaultDeps): ToolSet[string] {
+export function makeSkipRecurringTaskTool(deps: SkipRecurringTaskDeps = defaultDeps): Tool {
   return tool({
     description:
       'Skip the next occurrence of a recurring task series. The series continues normally after the skipped occurrence.',

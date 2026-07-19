@@ -10,7 +10,7 @@ import type { ModelMessage } from 'ai'
 import { setCachedConfig } from '../../src/cache.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import type { ChatProvider, DeferredDeliveryTarget } from '../../src/chat/types.js'
-import { setConfig } from '../../src/config.js'
+import { setConfig } from '../../src/config.testing.js'
 import { createAlertPrompt, getAlertPrompt } from '../../src/deferred-prompts/alerts.js'
 import { pollAlertsOnce, pollScheduledOnce, stopPollers } from '../../src/deferred-prompts/poller.js'
 import * as proactiveDeliveryModule from '../../src/deferred-prompts/proactive-delivery.js'
@@ -18,14 +18,14 @@ import * as proactiveLlmModule from '../../src/deferred-prompts/proactive-llm.js
 import { createScheduledPrompt, getScheduledPrompt } from '../../src/deferred-prompts/scheduled.js'
 import { getSnapshotsForUser, updateSnapshots } from '../../src/deferred-prompts/snapshots.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
+import { clearLlmAdminCacheForTesting } from '../../src/llm-providers/store.testing.js'
 import * as proactiveHistoryModule from '../../src/proactive-history.js'
 import type { TaskProvider } from '../../src/providers/types.js'
-import { setSystemConfig } from '../../src/system-config.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import {
   createMockChatWithSentMessages,
   mockLogger,
-  resetSystemConfigCacheForTesting,
+  seedAdminLlmBinding,
   seedCommonTestPlatformInstances,
   seedTestPlatformInstance,
   seedTestTaskInstance,
@@ -39,10 +39,8 @@ function setupUserConfig(userId: string): void {
   seedTestTaskInstance({ id: 'kaneo-default' })
   setConfig(userId, 'timezone', 'UTC')
   setContextSettings({ contextId: userId, taskInstanceId: 'kaneo-default', platformInstanceId: 'mock-default' })
-  resetSystemConfigCacheForTesting()
-  setSystemConfig('llm_apikey', 'test-key', 'env')
-  setSystemConfig('llm_baseurl', 'http://localhost:11434/v1', 'env')
-  setSystemConfig('main_model', 'test-model', 'env')
+
+  seedAdminLlmBinding()
 }
 
 const USER_ID = 'poller-user-1'
@@ -56,7 +54,7 @@ type GenerateTextResult = {
   text: string
   toolCalls: unknown[]
   toolResults: unknown[]
-  response: { messages: ModelMessage[] }
+  finalStep: { response: { messages: ModelMessage[] } }
 }
 
 type RouterLikeChatProvider = ChatProvider & { getInstance: (id: string) => unknown }
@@ -84,7 +82,7 @@ describe('pollScheduledOnce', () => {
         text: 'Task completed.',
         toolCalls: [],
         toolResults: [],
-        response: { messages: [] },
+        finalStep: { response: { messages: [] } },
       })
     void mock.module('ai', () => ({
       generateText: (..._args: unknown[]): Promise<GenerateTextResult> => generateTextImpl(),
@@ -177,7 +175,12 @@ describe('pollScheduledOnce', () => {
     let callCount = 0
     generateTextImpl = (): Promise<GenerateTextResult> => {
       callCount++
-      return Promise.resolve({ text: 'Should not run.', toolCalls: [], toolResults: [], response: { messages: [] } })
+      return Promise.resolve({
+        text: 'Should not run.',
+        toolCalls: [],
+        toolResults: [],
+        finalStep: { response: { messages: [] } },
+      })
     }
     const pastTime = new Date(Date.now() - 60_000).toISOString()
     const created = createScheduledPrompt(unroutedUser, 'Check my overdue tasks', { fireAt: pastTime })
@@ -198,7 +201,12 @@ describe('pollScheduledOnce', () => {
     let callCount = 0
     generateTextImpl = (): Promise<GenerateTextResult> => {
       callCount++
-      return Promise.resolve({ text: 'Should not run.', toolCalls: [], toolResults: [], response: { messages: [] } })
+      return Promise.resolve({
+        text: 'Should not run.',
+        toolCalls: [],
+        toolResults: [],
+        finalStep: { response: { messages: [] } },
+      })
     }
     const pastTime = new Date(Date.now() - 60_000).toISOString()
     const created = createScheduledPrompt(USER_ID, 'Check my overdue tasks', { fireAt: pastTime })
@@ -218,7 +226,12 @@ describe('pollScheduledOnce', () => {
     let callCount = 0
     generateTextImpl = (): Promise<GenerateTextResult> => {
       callCount++
-      return Promise.resolve({ text: 'Should not run.', toolCalls: [], toolResults: [], response: { messages: [] } })
+      return Promise.resolve({
+        text: 'Should not run.',
+        toolCalls: [],
+        toolResults: [],
+        finalStep: { response: { messages: [] } },
+      })
     }
     const pastTime = new Date(Date.now() - 60_000).toISOString()
     const created = createScheduledPrompt(USER_ID, 'Check my overdue tasks', { fireAt: pastTime })
@@ -290,7 +303,7 @@ describe('pollScheduledOnce', () => {
         text: 'All tasks handled.',
         toolCalls: [],
         toolResults: [],
-        response: { messages: [] },
+        finalStep: { response: { messages: [] } },
       })
     }
 
@@ -338,7 +351,7 @@ describe('pollScheduledOnce', () => {
         text: 'Done.',
         toolCalls: [],
         toolResults: [],
-        response: { messages: [] },
+        finalStep: { response: { messages: [] } },
       })
     }
 
@@ -375,9 +388,13 @@ describe('pollScheduledOnce', () => {
   })
 
   test('skips prompt when central LLM config is missing (Phase 1)', async () => {
-    // Reset the system_config cache so getSystemConfig returns null and
-    // the deferred prompt path bails out with the misconfigured message.
-    resetSystemConfigCacheForTesting()
+    // Reset to a pristine DB so no admin LLM binding is present; the per-role
+    // resolver then reports the central config as missing (source: 'global')
+    // and the deferred prompt bails out with the misconfigured message.
+    await setupTestDb()
+    clearLlmAdminCacheForTesting()
+    seedTestPlatformInstance({ id: 'mock-default' })
+    seedTestTaskInstance({ id: 'kaneo-default' })
 
     const unconfiguredUser = 'unconfigured-user'
     setContextSettings({
@@ -406,7 +423,7 @@ describe('pollScheduledOnce — error handling', () => {
         text: 'Task completed.',
         toolCalls: [],
         toolResults: [],
-        response: { messages: [] },
+        finalStep: { response: { messages: [] } },
       })
     void mock.module('ai', () => ({
       generateText: (..._args: unknown[]): Promise<GenerateTextResult> => generateTextImpl(),
@@ -680,7 +697,7 @@ describe('pollAlertsOnce', () => {
         text: 'Alert triggered.',
         toolCalls: [],
         toolResults: [],
-        response: { messages: [] },
+        finalStep: { response: { messages: [] } },
       })
     void mock.module('ai', () => ({
       generateText: (..._args: unknown[]): Promise<GenerateTextResult> => generateTextImpl(),
@@ -807,7 +824,12 @@ describe('pollAlertsOnce', () => {
     let callCount = 0
     generateTextImpl = (): Promise<GenerateTextResult> => {
       callCount++
-      return Promise.resolve({ text: 'Should not run.', toolCalls: [], toolResults: [], response: { messages: [] } })
+      return Promise.resolve({
+        text: 'Should not run.',
+        toolCalls: [],
+        toolResults: [],
+        finalStep: { response: { messages: [] } },
+      })
     }
     const created = createAlertPrompt(unroutedUser, 'Notify on done', {
       field: 'task.status',
@@ -837,7 +859,12 @@ describe('pollAlertsOnce', () => {
     let callCount = 0
     generateTextImpl = (): Promise<GenerateTextResult> => {
       callCount++
-      return Promise.resolve({ text: 'Should not run.', toolCalls: [], toolResults: [], response: { messages: [] } })
+      return Promise.resolve({
+        text: 'Should not run.',
+        toolCalls: [],
+        toolResults: [],
+        finalStep: { response: { messages: [] } },
+      })
     }
     const created = createAlertPrompt(USER_ID, 'Notify on done', {
       field: 'task.status',
@@ -867,7 +894,12 @@ describe('pollAlertsOnce', () => {
     let callCount = 0
     generateTextImpl = (): Promise<GenerateTextResult> => {
       callCount++
-      return Promise.resolve({ text: 'Should not run.', toolCalls: [], toolResults: [], response: { messages: [] } })
+      return Promise.resolve({
+        text: 'Should not run.',
+        toolCalls: [],
+        toolResults: [],
+        finalStep: { response: { messages: [] } },
+      })
     }
     const created = createAlertPrompt(USER_ID, 'Notify on done', {
       field: 'task.status',
@@ -1030,7 +1062,7 @@ describe('pollScheduledOnce Race Condition', () => {
     })
 
     // Resolve LLM
-    resolveLlm({ text: 'Done.', toolCalls: [], toolResults: [], response: { messages: [] } })
+    resolveLlm({ text: 'Done.', toolCalls: [], toolResults: [], finalStep: { response: { messages: [] } } })
 
     await Promise.all([poll1, poll2])
 
@@ -1051,7 +1083,7 @@ describe('delivery target routing', () => {
         text: 'Done.',
         toolCalls: [],
         toolResults: [],
-        response: { messages: [] },
+        finalStep: { response: { messages: [] } },
       })
     void mock.module('ai', () => ({
       generateText: (..._args: unknown[]): Promise<GenerateTextResult> => generateTextImpl(),
@@ -1358,7 +1390,7 @@ describe('delivery target routing', () => {
         text: 'Done.',
         toolCalls: [],
         toolResults: [],
-        response: { messages: [] },
+        finalStep: { response: { messages: [] } },
       })
     }
 
@@ -1392,7 +1424,7 @@ describe('delivery target routing', () => {
         text: 'Done.',
         toolCalls: [],
         toolResults: [],
-        response: { messages: [] },
+        finalStep: { response: { messages: [] } },
       })
     }
 
@@ -1436,7 +1468,7 @@ describe('delivery target routing', () => {
         text: 'Done.',
         toolCalls: [],
         toolResults: [],
-        response: { messages: [] },
+        finalStep: { response: { messages: [] } },
       })
     }
 

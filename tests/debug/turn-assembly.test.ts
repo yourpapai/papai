@@ -14,10 +14,10 @@ import {
   recentNotifications,
   recentToolFailures,
   inFlightTurns,
-  resetTurnBuffers,
   findTurnById,
   handleTurnAssembly,
 } from '../../src/debug/turn-assembly.js'
+import { resetTurnBuffers } from '../../src/debug/turn-assembly.testing.js'
 
 function createMockController(): ReadableStreamDefaultController {
   return {

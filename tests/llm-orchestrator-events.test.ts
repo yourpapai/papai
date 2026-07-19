@@ -95,10 +95,12 @@ describe('llm-orchestrator-events', () => {
               usage: { inputTokens: 10, outputTokens: 5 },
             },
           ],
-          response: {
-            messages: [{ role: 'assistant' as const, content: 'Done!' }],
-            id: 'resp-1',
-            modelId: 'gpt-4',
+          finalStep: {
+            response: {
+              messages: [{ role: 'assistant' as const, content: 'Done!' }],
+              id: 'resp-1',
+              modelId: 'gpt-4',
+            },
           },
           usage: { inputTokens: 10, outputTokens: 5 },
           finishReason: 'stop',
@@ -155,7 +157,7 @@ describe('llm-orchestrator-events', () => {
           toolCalls: [],
           toolResults: [],
           steps: [],
-          response: { messages: [], id: 'resp-2', modelId: 'gpt-4' },
+          finalStep: { response: { messages: [], id: 'resp-2', modelId: 'gpt-4' } },
           usage: { inputTokens: 1, outputTokens: 1 },
           finishReason: 'stop',
         }
@@ -190,7 +192,7 @@ describe('llm-orchestrator-events', () => {
         toolCalls: [{ toolName: 'test', toolCallId: '1', input: {} }],
         toolResults: [{ toolCallId: '1', output: {} }],
         steps: [],
-        response: { messages: [] },
+        finalStep: { response: { messages: [] } },
         usage: { inputTokens: 0, outputTokens: 0 },
         finishReason: 'stop',
       }
@@ -207,7 +209,7 @@ describe('llm-orchestrator-events', () => {
         toolCalls: [],
         toolResults: [],
         steps: [],
-        response: { messages: [] },
+        finalStep: { response: { messages: [] } },
         usage: { inputTokens: 0, outputTokens: 0 },
         finishReason: 'stop',
         warnings: undefined,
@@ -272,7 +274,7 @@ describe('llm-orchestrator-events', () => {
           toolCalls: [],
           toolResults: [],
           steps: [],
-          response: { messages: [], id: 'resp-1', modelId: 'gpt-4' },
+          finalStep: { response: { messages: [], id: 'resp-1', modelId: 'gpt-4' } },
           usage: { inputTokens: 0, outputTokens: 0 },
           finishReason: 'stop',
         }

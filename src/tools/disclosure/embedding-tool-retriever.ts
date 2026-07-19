@@ -6,7 +6,7 @@
 import { cosineSimilarity } from 'ai'
 
 import { type EmbeddingCallContext, tryGetEmbedding } from '../../embeddings.js'
-import { resolveEffectiveLlmConfig } from '../../llm-config-resolver.js'
+import { resolveLlmConfig } from '../../llm-providers/resolver.js'
 import { logger } from '../../logger.js'
 import type { ToolBrief } from './tool-brief.js'
 import { LexicalToolRetriever, type RankedBrief, type ToolRetriever } from './tool-retriever.js'
@@ -71,12 +71,12 @@ export function clearBriefEmbeddingCachesForTesting(): void {
 }
 
 export interface ToolRetrieverFactoryDeps {
-  resolveConfig: typeof resolveEffectiveLlmConfig
+  resolveConfig: typeof resolveLlmConfig
   embedText: typeof tryGetEmbedding
 }
 
 const defaultFactoryDeps: ToolRetrieverFactoryDeps = {
-  resolveConfig: resolveEffectiveLlmConfig,
+  resolveConfig: resolveLlmConfig,
   embedText: tryGetEmbedding,
 }
 
@@ -90,7 +90,7 @@ export function getToolRetriever(
   if (!resolved.ok) return lexical
   // Key per endpoint+model: two endpoints can serve the same model name with
   // incompatible vector spaces of equal dimension.
-  const cacheKey = `${resolved.llmBaseUrl}:${resolved.embeddingModel}`
+  const cacheKey = `${resolved.embedding.baseUrl}:${resolved.embedding.model}`
   let cache = briefEmbeddingCaches.get(cacheKey)
   if (cache === undefined) {
     cache = new Map<string, number[]>()
@@ -98,7 +98,13 @@ export function getToolRetriever(
   }
   return new EmbeddingToolRetriever({
     embed: (text) =>
-      deps.embedText(text, resolved.llmApiKey, resolved.llmBaseUrl, resolved.embeddingModel, callContext),
+      deps.embedText(
+        text,
+        resolved.embedding.apiKey,
+        resolved.embedding.baseUrl,
+        resolved.embedding.model,
+        callContext,
+      ),
     lexical,
     cache,
   })

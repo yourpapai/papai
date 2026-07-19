@@ -22,7 +22,7 @@ describe('makeAddTaskLabelTool direct', () => {
     assert(tool.execute, 'Tool execute is undefined')
     const result: unknown = await tool.execute(
       { taskId: 'task-1', labelName: 'Feature' },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(result).toMatchObject({

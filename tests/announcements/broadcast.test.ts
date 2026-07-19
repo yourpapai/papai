@@ -5,12 +5,8 @@
 
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 
-import {
-  defaultBroadcastDepsForTest,
-  broadcastAnnouncement,
-  groupTarget,
-  type BroadcastDeps,
-} from '../../src/announcements/broadcast.js'
+import { broadcastAnnouncement, groupTarget, type BroadcastDeps } from '../../src/announcements/broadcast.js'
+import { defaultBroadcastDepsForTest } from '../../src/announcements/broadcast.testing.js'
 import { toScopedContextId } from '../../src/chat/scoped-context.js'
 import * as proactiveDeliveryModule from '../../src/deferred-prompts/proactive-delivery.js'
 import * as proactiveHistoryModule from '../../src/proactive-history.js'

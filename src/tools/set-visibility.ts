@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -60,7 +60,7 @@ function toVisibilityParams(input: z.infer<typeof setVisibilityInputSchema>): Se
   throw new Error('Restricted visibility requires at least one userId or groupId')
 }
 
-export function makeSetVisibilityTool(provider: TaskProvider): ToolSet[string] {
+export function makeSetVisibilityTool(provider: TaskProvider): Tool {
   return tool({
     description: 'Set task visibility to public or restrict it to selected users and groups.',
     inputSchema: setVisibilityInputSchema,

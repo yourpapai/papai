@@ -191,6 +191,63 @@ describe('createLiveStatusReporter', () => {
     expect(rec.updates).toEqual([])
   })
 
+  test('placeholder edits the status in place instead of deleting it', async () => {
+    const rec = makeReply()
+    const reporter = createLiveStatusReporter(rec.reply)
+    await reporter.start()
+    reporter.onToolStart({ toolName: 'create_task', input: { title: 'Buy milk' } })
+    await flushMicrotasks()
+    await reporter.placeholder('💬 Preparing response…')
+    // Last update is the placeholder; the message is NOT dismissed yet — it survives until the reply posts.
+    expect(rec.updates.at(-1)).toBe('💬 Preparing response…')
+    expect(rec.dismissed).toBe(0)
+  })
+
+  test('placeholder freezes the status: a pending Thinking revert never overwrites it', async () => {
+    const rec = makeReply()
+    const timers = makeFakeTimers()
+    const reporter = createLiveStatusReporter(rec.reply, { now: timers.now, schedule: timers.schedule })
+    await reporter.start()
+    reporter.onToolStart({ toolName: 'get_current_time', input: {} })
+    reporter.onToolFinish()
+    await flushMicrotasks()
+    // A Thinking revert is scheduled but not yet fired; the placeholder must cancel it.
+    await reporter.placeholder('💬 Preparing response…')
+    timers.advance(1000)
+    await flushMicrotasks()
+    expect(rec.updates).toEqual(['🕒 Checking the time…', '💬 Preparing response…'])
+  })
+
+  test('placeholder freezes the status: a late tool start does not overwrite it', async () => {
+    const rec = makeReply()
+    const reporter = createLiveStatusReporter(rec.reply)
+    await reporter.start()
+    await reporter.placeholder('💬 Preparing response…')
+    reporter.onToolStart({ toolName: 'create_task', input: { title: 'stray' } })
+    await flushMicrotasks()
+    expect(rec.updates).toEqual(['💬 Preparing response…'])
+  })
+
+  test('dismiss after placeholder deletes the (placeholder) status', async () => {
+    const rec = makeReply()
+    const reporter = createLiveStatusReporter(rec.reply)
+    await reporter.start()
+    await reporter.placeholder('💬 Preparing response…')
+    await reporter.dismiss()
+    expect(rec.updates.at(-1)).toBe('💬 Preparing response…')
+    expect(rec.dismissed).toBe(1)
+  })
+
+  test('placeholder is a no-op when the platform has no createStatus', async () => {
+    const rec = makeReply({ createStatus: undefined })
+    const reporter = createLiveStatusReporter(rec.reply)
+    await reporter.start()
+    await reporter.placeholder('💬 Preparing response…')
+    await reporter.dismiss()
+    expect(rec.updates).toEqual([])
+    expect(rec.dismissed).toBe(0)
+  })
+
   test('dismiss deletes the status exactly once', async () => {
     const rec = makeReply()
     const reporter = createLiveStatusReporter(rec.reply)

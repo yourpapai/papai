@@ -81,7 +81,10 @@ describe('set_my_identity tool', () => {
       }),
       testUserId,
     )
-    const result: unknown = await getToolExecutor(tool)({ claim: "I'm jsmith" }, { toolCallId: '1', messages: [] })
+    const result: unknown = await getToolExecutor(tool)(
+      { claim: "I'm jsmith" },
+      { toolCallId: '1', messages: [], context: {} },
+    )
 
     expect(result).toHaveProperty('status', 'success')
     const mapping = getIdentityMapping(testUserId, 'mock')
@@ -97,7 +100,10 @@ describe('set_my_identity tool', () => {
       }),
       testUserId,
     )
-    const result: unknown = await getToolExecutor(tool)({ claim: "I'm nonexistent" }, { toolCallId: '1', messages: [] })
+    const result: unknown = await getToolExecutor(tool)(
+      { claim: "I'm nonexistent" },
+      { toolCallId: '1', messages: [], context: {} },
+    )
 
     expect(result).toHaveProperty('status', 'error')
   })
@@ -108,7 +114,10 @@ describe('set_my_identity tool', () => {
     })
 
     const tool = makeSetMyIdentityTool(providerWithoutResolver, testUserId)
-    const result: unknown = await getToolExecutor(tool)({ claim: "I'm jsmith" }, { toolCallId: '1', messages: [] })
+    const result: unknown = await getToolExecutor(tool)(
+      { claim: "I'm jsmith" },
+      { toolCallId: '1', messages: [], context: {} },
+    )
 
     expect(result).toHaveProperty('status', 'error')
   })
@@ -124,7 +133,7 @@ describe('set_my_identity tool', () => {
     )
     const result: unknown = await getToolExecutor(tool)(
       { claim: 'just some random text' },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(result).toHaveProperty('status', 'error')
@@ -140,7 +149,7 @@ describe('set_my_identity tool', () => {
       }),
       'user-alice',
     )
-    await getToolExecutor(aliceTool)({ claim: "I'm jsmith" }, { toolCallId: '1', messages: [] })
+    await getToolExecutor(aliceTool)({ claim: "I'm jsmith" }, { toolCallId: '1', messages: [], context: {} })
 
     // Verify Alice's identity is stored under her chatUserId
     const aliceMapping = getIdentityMapping('user-alice', 'mock')
@@ -152,7 +161,7 @@ describe('set_my_identity tool', () => {
 
     // Bob sets his identity using his chatUserId
     const bobTool = makeSetMyIdentityTool(bobProvider, 'user-bob')
-    await getToolExecutor(bobTool)({ claim: "I'm bobsmith" }, { toolCallId: '2', messages: [] })
+    await getToolExecutor(bobTool)({ claim: "I'm bobsmith" }, { toolCallId: '2', messages: [], context: {} })
 
     // Verify Bob's identity is stored separately
     const bobMapping = getIdentityMapping('user-bob', 'mock')
@@ -165,7 +174,10 @@ describe('set_my_identity tool', () => {
 
   test('should match user when login is email and claim is username prefix', async () => {
     const tool = makeSetMyIdentityTool(kaneoLikeProvider, testUserId)
-    const result: unknown = await getToolExecutor(tool)({ claim: "I'm jsmith" }, { toolCallId: '1', messages: [] })
+    const result: unknown = await getToolExecutor(tool)(
+      { claim: "I'm jsmith" },
+      { toolCallId: '1', messages: [], context: {} },
+    )
 
     expect(result).toHaveProperty('status', 'success')
     const mapping = getIdentityMapping(testUserId, 'mock')
@@ -177,7 +189,7 @@ describe('set_my_identity tool', () => {
     const tool = makeSetMyIdentityTool(kaneoLikeProviderWithEmail, testUserId)
     const result: unknown = await getToolExecutor(tool)(
       { claim: "I'm jsmith@example.com" },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(result).toHaveProperty('status', 'success')
@@ -211,7 +223,10 @@ describe('set_my_identity tool', () => {
       testUserId,
       deps,
     )
-    const result: unknown = await getToolExecutor(tool)({ claim: "I'm jsmith" }, { toolCallId: '1', messages: [] })
+    const result: unknown = await getToolExecutor(tool)(
+      { claim: "I'm jsmith" },
+      { toolCallId: '1', messages: [], context: {} },
+    )
 
     expect(result).toHaveProperty('status', 'success')
     expect(setMappingCalled).toBe(true)

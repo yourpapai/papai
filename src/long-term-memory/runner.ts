@@ -8,8 +8,9 @@ import { randomUUID } from 'node:crypto'
 import type { LanguageModel, ModelMessage } from 'ai'
 
 import type { ContextType } from '../chat/types.js'
-import { resolveEffectiveLlmConfig, type EffectiveLlmConfig } from '../llm-config-resolver.js'
 import { buildChatModel } from '../llm-model-builder.js'
+import { resolveLlmConfig } from '../llm-providers/resolver.js'
+import type { EffectiveLlmConfig, LlmConfigResult } from '../llm-providers/types.js'
 import { logger } from '../logger.js'
 import { extractMemoryPatch, type MemoryPatch } from './extractor.js'
 import { resolveMemoryScope } from './scope.js'
@@ -24,7 +25,7 @@ import type { MemoryRecord, MemoryScope } from './types.js'
 
 const log = logger.child({ scope: 'long-term-memory:runner' })
 
-type ResolvedConfig = Extract<ReturnType<typeof resolveEffectiveLlmConfig>, EffectiveLlmConfig>
+type ResolvedConfig = EffectiveLlmConfig
 
 export type RunMemoryExtractionInput = Readonly<{
   storageContextId: string
@@ -36,7 +37,7 @@ export type RunMemoryExtractionInput = Readonly<{
 
 export type RunMemoryExtractionDeps = Readonly<{
   extractMemoryPatch: (input: ExtractMemoryPatchRunInput) => Promise<MemoryPatch>
-  resolveLlmConfig: (configContextId: string) => ReturnType<typeof resolveEffectiveLlmConfig>
+  resolveConfig: (configContextId: string) => LlmConfigResult
   buildModel: (config: ResolvedConfig) => LanguageModel
   now: () => string
   randomUUID: () => string
@@ -54,7 +55,7 @@ export type ExtractMemoryPatchRunInput = Readonly<{
 }>
 
 const buildModel = (config: ResolvedConfig): LanguageModel =>
-  buildChatModel(config.llmApiKey, config.llmBaseUrl, config.smallModel)
+  buildChatModel(config.small.apiKey, config.small.baseUrl, config.small.model)
 
 const defaultDeps: RunMemoryExtractionDeps = {
   extractMemoryPatch: (input) => {
@@ -68,7 +69,7 @@ const defaultDeps: RunMemoryExtractionDeps = {
       model: input.model,
     })
   },
-  resolveLlmConfig: (configContextId) => resolveEffectiveLlmConfig(configContextId),
+  resolveConfig: (configContextId) => resolveLlmConfig(configContextId),
   buildModel,
   now: () => new Date().toISOString(),
   randomUUID: () => randomUUID(),
@@ -93,7 +94,7 @@ const canonicalIsoOrNull = (value: string | undefined): string | null => {
 const logConfigFailure = (
   input: RunMemoryExtractionInput,
   scope: MemoryScope,
-  resolved: Exclude<ReturnType<typeof resolveEffectiveLlmConfig>, { readonly ok: true }>,
+  resolved: Exclude<LlmConfigResult, { readonly ok: true }>,
 ): void => {
   log.warn(
     {
@@ -150,7 +151,7 @@ const resolveModel = (
   deps: RunMemoryExtractionDeps,
 ): LanguageModel | null => {
   if (!shouldResolveModel(input)) return null
-  const resolvedConfig = deps.resolveLlmConfig(input.configContextId)
+  const resolvedConfig = deps.resolveConfig(input.configContextId)
   if (!resolvedConfig.ok) {
     logConfigFailure(input, scope, resolvedConfig)
     return null

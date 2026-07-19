@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { resolveChatLink as defaultResolveChatLink } from '../chat/mattermost/link-resolver.js'
@@ -30,7 +30,7 @@ export function makeFetchChatLinkTool(
   platformInstanceId: string,
   requesterUserId: string,
   deps: FetchChatLinkToolDeps = defaultDeps,
-): ToolSet[string] {
+): Tool {
   return tool({
     description:
       'Follow a Mattermost chat permalink the user shared and return the linked message — or its whole thread — as structured messages, for summarizing or creating a task from it. Only works for links in this workspace and only if you (the requesting user) can access that channel.',

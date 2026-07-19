@@ -15,7 +15,7 @@ import {
 } from '../src/auth.js'
 import { addAuthorizedGroup } from '../src/authorized-groups.js'
 import { setupBot, type BotDeps } from '../src/bot.js'
-import { clearGroupAdminLiveCache } from '../src/chat/group-admin-live.js'
+import { clearGroupAdminLiveCache } from '../src/chat/group-admin-live.testing.js'
 import type {
   AuthorizationResult,
   ChatProvider,
@@ -29,7 +29,8 @@ import type {
   ReplyFn,
   ResolveUserContext,
 } from '../src/chat/types.js'
-import { setConfig, setConfigValue } from '../src/config.js'
+import { setConfigValue } from '../src/config.js'
+import { setConfig } from '../src/config.testing.js'
 import { getDrizzleDb } from '../src/db/drizzle.js'
 import { groupAdminObservations, groupUserObservations, knownGroupContexts } from '../src/db/schema.js'
 import { subscribe, unsubscribe, type DebugEvent } from '../src/debug/event-bus.js'
@@ -1928,18 +1929,27 @@ describe('Attachment workspace integration (setupBot)', () => {
   const RELAY_ADMIN = 'relay-admin'
   let capturedStorageId: string | null = null
   let attachmentIdsAtProcessingTime: readonly string[] = []
+  let lastProcessedText: string
   let getMessageHandler: () => ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null
 
   beforeEach(async () => {
     capturedStorageId = null
     attachmentIdsAtProcessingTime = []
+    lastProcessedText = ''
     mockLogger()
     await setupTestDb()
     seedCommonTestPlatformInstances()
 
     const botDeps = withSynchronousQueue({
-      processMessage: (_reply: ReplyFn, storageContextId: string, _chatUserId: string): Promise<void> => {
+      processMessage: (
+        _reply: ReplyFn,
+        storageContextId: string,
+        _chatUserId: string,
+        _username: string | null,
+        userText: string,
+      ): Promise<void> => {
         capturedStorageId = storageContextId
+        lastProcessedText = userText
         attachmentIdsAtProcessingTime = listActiveAttachments(storageContextId).map((ref) => ref.attachmentId)
         return Promise.resolve()
       },
@@ -1985,6 +1995,53 @@ describe('Attachment workspace integration (setupBot)', () => {
     await getMessageHandler()!(msg, reply)
 
     expect(listActiveAttachments('unauth-user')).toEqual([])
+  })
+
+  test('text-only follow-up does not carry prior attachments in the prompt manifest', async () => {
+    addUser('relay-user3', RELAY_ADMIN)
+    setupUserConfig('relay-user3')
+    const { reply } = createMockReply()
+
+    const fileMsg: IncomingMessage = {
+      ...createDmMessage('relay-user3'),
+      files: [makeFile({ filename: 'first.pdf' })],
+    }
+    await getMessageHandler()!(fileMsg, reply)
+    expect(attachmentIdsAtProcessingTime).toHaveLength(1)
+    const firstAttachmentId = attachmentIdsAtProcessingTime[0]!
+    assert.ok(firstAttachmentId !== undefined)
+    expect(lastProcessedText).toContain('Available attachments')
+    expect(lastProcessedText).toContain(firstAttachmentId)
+
+    const textMsg: IncomingMessage = { ...createDmMessage('relay-user3'), text: 'what was that about?' }
+    await getMessageHandler()!(textMsg, reply)
+
+    expect(lastProcessedText).not.toContain('Available attachments')
+    expect(lastProcessedText).not.toContain(firstAttachmentId)
+    expect(lastProcessedText).toBe('what was that about?')
+  })
+
+  test('forwarded attachment stays bound to its own message, not a later text message', async () => {
+    addUser('relay-user4', RELAY_ADMIN)
+    setupUserConfig('relay-user4')
+    const { reply } = createMockReply()
+
+    const forwardedMsg: IncomingMessage = {
+      ...createDmMessage('relay-user4'),
+      files: [makeFile({ filename: 'forwarded.png', mimeType: 'image/png', forwardedFrom: 'Alice' })],
+    }
+    await getMessageHandler()!(forwardedMsg, reply)
+    expect(attachmentIdsAtProcessingTime).toHaveLength(1)
+    const forwardedAttachmentId = attachmentIdsAtProcessingTime[0]!
+    assert.ok(forwardedAttachmentId !== undefined)
+    expect(lastProcessedText).toContain(forwardedAttachmentId)
+
+    const textMsg: IncomingMessage = { ...createDmMessage('relay-user4'), text: 'thanks' }
+    await getMessageHandler()!(textMsg, reply)
+
+    expect(lastProcessedText).not.toContain('Available attachments')
+    expect(lastProcessedText).not.toContain(forwardedAttachmentId)
+    expect(lastProcessedText).toBe('thanks')
   })
 })
 

@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { loadAttachmentRecord } from '../attachments/index.js'
@@ -45,11 +45,7 @@ async function executeUpload(
   return result
 }
 
-export function makeUploadAttachmentTool(
-  provider: TaskProvider,
-  contextId: string,
-  groupContextId?: string,
-): ToolSet[string] {
+export function makeUploadAttachmentTool(provider: TaskProvider, contextId: string, groupContextId?: string): Tool {
   return tool({
     description:
       'Upload a file attachment to a task. The file must already be in the current conversation attachment workspace (sent by the user during this conversation).',

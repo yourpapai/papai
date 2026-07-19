@@ -64,7 +64,7 @@ type ListDirInput = { readonly path: string }
 export type AuditTool<I> = {
   readonly description: string
   readonly inputSchema: z.ZodType<I>
-  execute: (input: I, options?: ToolExecutionOptions) => Promise<string>
+  execute: (input: I, options?: ToolExecutionOptions<unknown>) => Promise<string>
 }
 
 export type AuditTools = {

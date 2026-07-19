@@ -59,7 +59,7 @@ describe('Task Label Tools', () => {
       assertToolExecute(tool)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', labelId: 'label-1' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       assertTaskLabel(result)
 
@@ -73,7 +73,7 @@ describe('Task Label Tools', () => {
 
       const tool = makeAddTaskLabelTool(provider)
       assertToolExecute(tool)
-      await tool.execute({ taskId: 'task-1', labelId: 'label-1' }, { toolCallId: '1', messages: [] })
+      await tool.execute({ taskId: 'task-1', labelId: 'label-1' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(addTaskLabel).toHaveBeenCalledTimes(1)
       expect(addTaskLabel).toHaveBeenCalledWith('task-1', 'label-1')
@@ -86,7 +86,7 @@ describe('Task Label Tools', () => {
 
       const tool = makeAddTaskLabelTool(provider)
       assertToolExecute(tool)
-      await tool.execute({ taskId: 'task-1', labelName: 'blocked' }, { toolCallId: '1', messages: [] })
+      await tool.execute({ taskId: 'task-1', labelName: 'blocked' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(listLabels).toHaveBeenCalledTimes(1)
       expect(addTaskLabel).toHaveBeenCalledWith('task-1', 'label-1')
@@ -99,7 +99,7 @@ describe('Task Label Tools', () => {
       const tool = makeAddTaskLabelTool(provider)
       const promise = getToolExecutor(tool)(
         { taskId: 'task-1', labelName: 'missing' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       await expect(promise).rejects.toThrow('Label not found: missing')
@@ -117,7 +117,7 @@ describe('Task Label Tools', () => {
       const tool = makeAddTaskLabelTool(provider)
       const promise = getToolExecutor(tool)(
         { taskId: 'task-1', labelName: 'blocked' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       await expect(promise).rejects.toThrow('Multiple labels found: blocked')
@@ -135,7 +135,7 @@ describe('Task Label Tools', () => {
       assertToolExecute(tool)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', labelName: 'Feature' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(result).toMatchObject({
@@ -159,7 +159,7 @@ describe('Task Label Tools', () => {
       assertToolExecute(tool)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', labelId: 'workspace-label-1' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(result).toMatchObject({
@@ -183,7 +183,7 @@ describe('Task Label Tools', () => {
       assertToolExecute(tool)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', labelId: 'workspace-label-1' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       assertTaskLabel(result)
@@ -203,7 +203,7 @@ describe('Task Label Tools', () => {
       assertToolExecute(tool)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', labelName: 'Feature' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       assertTaskLabel(result)
@@ -219,7 +219,7 @@ describe('Task Label Tools', () => {
       const tool = makeAddTaskLabelTool(provider)
       const promise = getToolExecutor(tool)(
         { taskId: 'invalid', labelId: 'label-1' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       await expect(promise).rejects.toThrow('Task not found')
       try {
@@ -235,7 +235,10 @@ describe('Task Label Tools', () => {
       })
 
       const tool = makeAddTaskLabelTool(provider)
-      const promise = getToolExecutor(tool)({ taskId: 'task-1', labelId: 'invalid' }, { toolCallId: '1', messages: [] })
+      const promise = getToolExecutor(tool)(
+        { taskId: 'task-1', labelId: 'invalid' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       await expect(promise).rejects.toThrow('Label not found')
       try {
         await promise
@@ -276,7 +279,7 @@ describe('Task Label Tools', () => {
       assertToolExecute(tool)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', labelId: 'label-1' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       assertTaskLabel(result)
 
@@ -302,7 +305,7 @@ describe('Task Label Tools', () => {
       assertToolExecute(tool)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', labelId: 'label-1' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       assertTaskLabel(result)
 
@@ -316,7 +319,7 @@ describe('Task Label Tools', () => {
 
       const tool = makeRemoveTaskLabelTool(provider)
       assertToolExecute(tool)
-      await tool.execute({ taskId: 'task-1', labelId: 'label-1' }, { toolCallId: '1', messages: [] })
+      await tool.execute({ taskId: 'task-1', labelId: 'label-1' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(removeTaskLabel).toHaveBeenCalledTimes(1)
       expect(removeTaskLabel).toHaveBeenCalledWith('task-1', 'label-1')
@@ -329,7 +332,7 @@ describe('Task Label Tools', () => {
 
       const tool = makeRemoveTaskLabelTool(provider)
       assertToolExecute(tool)
-      await tool.execute({ taskId: 'task-1', labelName: 'blocked' }, { toolCallId: '1', messages: [] })
+      await tool.execute({ taskId: 'task-1', labelName: 'blocked' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(listLabels).toHaveBeenCalledTimes(1)
       expect(removeTaskLabel).toHaveBeenCalledWith('task-1', 'label-1')
@@ -342,7 +345,7 @@ describe('Task Label Tools', () => {
       const tool = makeRemoveTaskLabelTool(provider)
       const promise = getToolExecutor(tool)(
         { taskId: 'task-1', labelName: 'missing' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       await expect(promise).rejects.toThrow('Label not found: missing')
@@ -360,7 +363,7 @@ describe('Task Label Tools', () => {
       const tool = makeRemoveTaskLabelTool(provider)
       const promise = getToolExecutor(tool)(
         { taskId: 'task-1', labelName: 'blocked' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       await expect(promise).rejects.toThrow('Multiple labels found: blocked')
@@ -376,7 +379,7 @@ describe('Task Label Tools', () => {
       const tool = makeRemoveTaskLabelTool(provider)
       const result: unknown = await getToolExecutor(tool)(
         { taskId: 'task-1', labelName: 'Feature' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(result).toMatchObject({
@@ -398,7 +401,7 @@ describe('Task Label Tools', () => {
       const tool = makeRemoveTaskLabelTool(provider)
       const result: unknown = await getToolExecutor(tool)(
         { taskId: 'task-1', labelId: 'missing-label-id' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(result).toMatchObject({
@@ -424,7 +427,7 @@ describe('Task Label Tools', () => {
       assertToolExecute(tool)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', labelId: 'workspace-label-1' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       assertTaskLabel(result)
@@ -447,7 +450,7 @@ describe('Task Label Tools', () => {
       const tool = makeRemoveTaskLabelTool(provider)
       const result: unknown = await getToolExecutor(tool)(
         { taskId: 'task-1', labelId: 'workspace-label-1' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(result).toMatchObject({
@@ -472,7 +475,7 @@ describe('Task Label Tools', () => {
       assertToolExecute(tool)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', labelName: 'Feature' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       assertTaskLabel(result)
@@ -488,7 +491,7 @@ describe('Task Label Tools', () => {
       const tool = makeRemoveTaskLabelTool(provider)
       const promise = getToolExecutor(tool)(
         { taskId: 'invalid', labelId: 'label-1' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       await expect(promise).rejects.toThrow('Task not found')
       try {
@@ -504,7 +507,10 @@ describe('Task Label Tools', () => {
       })
 
       const tool = makeRemoveTaskLabelTool(provider)
-      const promise = getToolExecutor(tool)({ taskId: 'task-1', labelId: 'invalid' }, { toolCallId: '1', messages: [] })
+      const promise = getToolExecutor(tool)(
+        { taskId: 'task-1', labelId: 'invalid' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       await expect(promise).rejects.toThrow('Label not found')
       try {
         await promise

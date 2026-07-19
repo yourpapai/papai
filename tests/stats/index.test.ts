@@ -9,7 +9,8 @@ import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scope
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { platformInstances } from '../../src/db/instance-schema.js'
 import { authorizedGroups, groupMembers, llmUsageEvents, userConfig, users } from '../../src/db/schema.js'
-import { clearStatsCacheForTesting, getGlobalStats, getSubjectStats } from '../../src/stats/index.js'
+import { getGlobalStats, getSubjectStats } from '../../src/stats/index.js'
+import { clearStatsCacheForTesting } from '../../src/stats/index.testing.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 describe('getSubjectStats', () => {

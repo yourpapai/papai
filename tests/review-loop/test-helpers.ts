@@ -8,6 +8,8 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import type { ReviewLoopConfig } from '../../review-loop/src/config.js'
+import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
+import type { TraceEvent, TraceLogger } from '../../review-loop/src/trace-log.js'
 
 const tempDirs: string[] = []
 
@@ -32,23 +34,39 @@ export function createReviewLoopConfigFixture(
     workDir: path.join(repoRoot, '.review-loop'),
     maxRounds: 5,
     maxNoProgressRounds: 2,
+    agentTimeoutMs: 600_000,
+    buildTimeoutMs: 600_000,
+    checkCommand: 'bun check:full',
     reviewer: {
-      command: '/usr/local/bin/claude-acp-adapter',
-      args: [],
-      env: {},
-      sessionConfig: {},
-      invocationPrefix: '/review-code',
-      requireInvocationPrefix: false,
+      model: 'ollama-cloud/kimi-k2.6:cloud',
+      extraArgs: [],
     },
     fixer: {
-      command: 'opencode',
-      args: ['acp'],
-      env: {},
-      sessionConfig: {},
-      verifyInvocationPrefix: '/verify-issue',
-      fixInvocationPrefix: null,
-      requireVerifyInvocation: false,
+      model: 'opencode/claude-sonnet-4-6',
+      extraArgs: [],
+    },
+    matcher: {
+      model: 'ollama-cloud/kimi-k2.6:cloud',
+      extraArgs: [],
     },
     ...overrides,
+  }
+}
+
+export function silentReporter(): ProgressReporter {
+  return {
+    dynamic: false,
+    event() {},
+    live() {},
+    clearLive() {},
+    log() {},
+  }
+}
+
+export function silentTrace(): TraceLogger {
+  return {
+    append(_: TraceEvent): Promise<void> {
+      return Promise.resolve()
+    },
   }
 }

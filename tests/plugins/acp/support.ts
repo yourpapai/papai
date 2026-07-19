@@ -160,6 +160,6 @@ export function runtimeCtxWithKv(
   } as PluginToolRuntimeContext
 }
 
-export function options(): ToolExecutionOptions {
-  return { toolCallId: 'c1', messages: [] }
+export function options(): ToolExecutionOptions<unknown> {
+  return { toolCallId: 'c1', messages: [], context: {} }
 }

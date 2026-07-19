@@ -6,7 +6,7 @@
 import { describe, expect, test, beforeEach } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { setConfig } from '../../src/config.js'
+import { setConfig } from '../../src/config.testing.js'
 import type { UpdateRecurringTaskDeps } from '../../src/tools/update-recurring-task.js'
 import { makeUpdateRecurringTaskTool } from '../../src/tools/update-recurring-task.js'
 import type { RecurringTaskRecord } from '../../src/types/recurring.js'
@@ -17,7 +17,7 @@ function getToolExecute(tool: ReturnType<typeof makeUpdateRecurringTaskTool>): N
   return tool.execute
 }
 
-const toolCtx = { toolCallId: '1', messages: [] as never[] }
+const toolCtx = { toolCallId: '1', messages: [] as never[], context: {} }
 
 function makeRecord(overrides: Partial<RecurringTaskRecord> = {}): RecurringTaskRecord {
   return {

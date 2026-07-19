@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`review-loop/` is a standalone Bun workspace for the ACP-based autonomous code-review loop runner. It spawns reviewer and fixer ACP agent subprocesses, collects reviewer issues into a durable ledger, and drives multi-round verify/fix cycles. It is local developer tooling, not a papai runtime dependency.
+`review-loop/` is a standalone Bun workspace for the shell-invoked autonomous code-review loop runner. It spawns reviewer and fixer `opencode run` agent subprocesses via shell calls with file-based JSON exchange, collects reviewer issues into a durable ledger, and drives multi-round verify/fix cycles. It is local developer tooling, not a papai runtime dependency.
 
 ## Storage / Artifacts
 
@@ -27,6 +27,4 @@ The repo TDD resolver treats `review-loop/src/**` as gateable implementation cod
 
 ## Dependencies
 
-- `@agentclientprotocol/sdk` — ACP subprocess protocol (workspace-only).
-- `p-limit` — bounded concurrency (shared with root).
 - `zod` — runtime config/schema validation (shared with root).

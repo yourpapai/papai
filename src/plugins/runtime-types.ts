@@ -95,7 +95,11 @@ export type PluginTool = {
   capabilityId?: string
   description: string
   inputSchema?: z.ZodType
-  execute: (input: unknown, runtimeContext: PluginToolRuntimeContext, options: ToolExecutionOptions) => Promise<unknown>
+  execute: (
+    input: unknown,
+    runtimeContext: PluginToolRuntimeContext,
+    options: ToolExecutionOptions<unknown>,
+  ) => Promise<unknown>
 }
 
 /** A prompt fragment contributed by a plugin. */

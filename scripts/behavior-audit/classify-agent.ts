@@ -121,7 +121,7 @@ async function classifySingle(
   try {
     const result = await deps.generateText({
       model: deps.buildModel(deps.config.BASE_URL, deps.config.MODEL, getEnvOrFallback('OPENAI_API_KEY', 'no-key')),
-      system: SYSTEM_PROMPT,
+      instructions: SYSTEM_PROMPT,
       prompt,
       maxOutputTokens: 8192,
       output: deps.outputObject({ schema: ClassificationResultSchema }),

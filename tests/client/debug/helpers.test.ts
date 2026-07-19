@@ -5,14 +5,8 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import {
-  escapeHtml,
-  formatTime,
-  formatTokens,
-  formatUptime,
-  levelClass,
-  levelName,
-} from '../../../client/shared/helpers.js'
+import { formatTime, formatTokens, formatUptime, levelClass, levelName } from '../../../client/shared/helpers.js'
+import { escapeHtml } from '../../../client/shared/helpers.testing.js'
 
 describe('dashboard-ui helpers', () => {
   describe('escapeHtml', () => {

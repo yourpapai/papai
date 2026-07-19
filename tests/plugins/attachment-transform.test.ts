@@ -14,12 +14,10 @@ import {
   transformNewAttachments,
 } from '../../src/plugins/attachment-transform.js'
 import type { PluginAttachmentRecord } from '../../src/plugins/attachment-types.js'
-import { contributionRegistry, resetContributionCollisionStateForTesting } from '../../src/plugins/contributions.js'
-import {
-  pluginRegistry,
-  resetPluginRegistryForTesting,
-  setPluginEnabledForContext,
-} from '../../src/plugins/registry.js'
+import { contributionRegistry } from '../../src/plugins/contributions.js'
+import { resetContributionCollisionStateForTesting } from '../../src/plugins/contributions.testing.js'
+import { pluginRegistry, setPluginEnabledForContext } from '../../src/plugins/registry.js'
+import { resetPluginRegistryForTesting } from '../../src/plugins/registry.testing.js'
 import type { DiscoveredPlugin, PluginContributions, PluginManifest } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
 import type { PluginToolRuntimeContext } from '../../src/plugins/types.js'

@@ -6,7 +6,8 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { getDrizzleDb } from '../../src/db/drizzle.js'
-import { clearStatsCacheForTesting, getGlobalStats } from '../../src/stats/index.js'
+import { getGlobalStats } from '../../src/stats/index.js'
+import { clearStatsCacheForTesting } from '../../src/stats/index.testing.js'
 import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from '../utils/test-helpers.js'
 
 // Target on a dev laptop is ~500ms. The CI/headroom budget is 1000ms.

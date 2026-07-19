@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import type { ChatParticipantResolver } from '../chat/participants/roster.js'
@@ -12,7 +12,7 @@ import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'tool:resolve-chat-participant' })
 
-export function makeResolveChatParticipantTool(resolver: ChatParticipantResolver, contextId: string): ToolSet[string] {
+export function makeResolveChatParticipantTool(resolver: ChatParticipantResolver, contextId: string): Tool {
   return tool({
     description:
       'Find a chat group participant by name and return their user ID. ' +

@@ -69,6 +69,23 @@ const byokSecretSet = {
       value: '****WvfQ',
     },
   ],
+  providers: [
+    {
+      id: 'prov_personal',
+      label: 'My Provider',
+      providerType: 'openai',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKeyMasked: '****WvfQ',
+      verification: {
+        status: 'verified',
+        error: null,
+        at: 1717000000000,
+        models: ['gpt-4o'],
+        modelsFetchedAt: 1717000000000,
+      },
+    },
+  ],
+  roles: { main: { providerId: 'prov_personal', model: 'gpt-4o' }, small: null, embedding: null },
 }
 const byokMissing = {
   enabled: true,
@@ -85,8 +102,17 @@ const byokMissing = {
     },
     { key: 'LLM_MODEL', label: 'Model', required: false, sensitive: false, hasValue: true, value: 'claude-opus-4-5' },
   ],
+  providers: [],
+  roles: { main: { providerId: '', model: '' }, small: null, embedding: null },
 }
-const byokDisabled = { enabled: false, complete: false, missing: ['ANTHROPIC_API_KEY'], fields: [] }
+const byokDisabled = {
+  enabled: false,
+  complete: false,
+  missing: ['ANTHROPIC_API_KEY'],
+  fields: [],
+  providers: [],
+  roles: { main: { providerId: '', model: '' }, small: null, embedding: null },
+}
 
 const byokFamily = (body: Record<string, unknown>): HandlerFamily['populated'] => [
   http.get('/settings/api/byok', () => HttpResponse.json(body)),

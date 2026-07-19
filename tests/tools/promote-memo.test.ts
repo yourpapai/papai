@@ -35,7 +35,7 @@ describe('promote_memo', () => {
 
     const result = await getToolExecutor(tool)(
       { memoId: memo.id, projectId: 'proj-1' },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(result).toHaveProperty('status', 'promoted')
@@ -49,7 +49,7 @@ describe('promote_memo', () => {
 
     const result = await getToolExecutor(tool)(
       { memoId: 'nonexistent', projectId: 'proj-1' },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(result).toHaveProperty('status', 'error')

@@ -9,10 +9,12 @@ import { getCachedTools, setCachedTools, userCachesForTesting } from '../../src/
 import {
   ensureContextPlatformInstance,
   getContextSettings,
-  listContextsByPlatformInstance,
-  listContextsByTaskInstance,
   setContextSettings,
 } from '../../src/instances/context-store.js'
+import {
+  listContextsByPlatformInstance,
+  listContextsByTaskInstance,
+} from '../../src/instances/context-store.testing.js'
 import {
   mockLogger,
   seedCommonTestPlatformInstances,

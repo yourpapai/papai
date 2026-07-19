@@ -8,7 +8,7 @@ import { describe, test, expect, beforeEach, mock } from 'bun:test'
 import { z } from 'zod'
 
 import { userCachesForTesting } from '../../src/cache.js'
-import { setConfig } from '../../src/config.js'
+import { setConfig } from '../../src/config.testing.js'
 import { saveMemo } from '../../src/memos.js'
 import { makeArchiveMemosTool } from '../../src/tools/archive-memos.js'
 import { makeListMemosTool } from '../../src/tools/list-memos.js'
@@ -27,7 +27,7 @@ async function exec(
   input: Record<string, unknown>,
 ): Promise<unknown> {
   if (!toolInstance.execute) throw new Error('Tool execute is undefined')
-  const result: unknown = await toolInstance.execute(input, { toolCallId: '1', messages: [] })
+  const result: unknown = await toolInstance.execute(input, { toolCallId: '1', messages: [], context: {} })
   return result
 }
 

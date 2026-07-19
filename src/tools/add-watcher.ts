@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { resolveMeReference } from '../identity/resolver.js'
@@ -13,7 +13,7 @@ import type { TaskProvider } from '../providers/types.js'
 
 const log = logger.child({ scope: 'tool:add-watcher' })
 
-export function makeAddWatcherTool(provider: TaskProvider, contextUserId?: string): ToolSet[string] {
+export function makeAddWatcherTool(provider: TaskProvider, contextUserId?: string): Tool {
   return tool({
     description: 'Add a watcher to a task so the specified user is notified about future updates.',
     inputSchema: z.object({

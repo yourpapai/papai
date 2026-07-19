@@ -5,11 +5,8 @@
 
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
-import {
-  clearGroupAdminLiveCache,
-  userManagesAuthorizedGroupLive,
-  type GroupAdminLiveDeps,
-} from '../../src/chat/group-admin-live.js'
+import { userManagesAuthorizedGroupLive, type GroupAdminLiveDeps } from '../../src/chat/group-admin-live.js'
+import { clearGroupAdminLiveCache } from '../../src/chat/group-admin-live.testing.js'
 import { toScopedContextId } from '../../src/chat/scoped-context.js'
 import { mockLogger } from '../utils/test-helpers.js'
 

@@ -3,12 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { generateText, stepCountIs, type LanguageModel, type ModelMessage } from 'ai'
+import { generateText, isStepCount, type LanguageModel, type ModelMessage } from 'ai'
 
 import { getCachedHistory } from '../cache.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
-import { resolveEffectiveLlmConfig } from '../llm-config-resolver.js'
+import { hoistSystemMessages } from '../llm-message-utils.js'
 import { buildChatModel } from '../llm-model-builder.js'
+import { resolveLlmConfig } from '../llm-providers/resolver.js'
 import { logger } from '../logger.js'
 import { makeGetCurrentTimeTool } from '../tools/get-current-time.js'
 import { buildFullMessages, buildFullToolSet } from './proactive-llm-full.js'
@@ -46,13 +47,13 @@ const makeMinimalTools = (userId: string): { get_current_time: ReturnType<typeof
 
 export interface ProactiveLlmDeps {
   generateText: typeof generateText
-  stepCountIs: typeof stepCountIs
+  stepCountIs: typeof isStepCount
   buildModel: (config: { apiKey: string; baseURL: string }, modelId: string) => LanguageModel
 }
 
 const defaultProactiveLlmDeps: ProactiveLlmDeps = {
   generateText: (...args) => generateText(...args),
-  stepCountIs: (...args) => stepCountIs(...args),
+  stepCountIs: (...args) => isStepCount(...args),
   buildModel: (config, modelId) => buildChatModel(config.apiKey, config.baseURL, modelId),
 }
 type LlmConfig = { apiKey: string; baseURL: string; mainModel: string; smallModel: string }
@@ -60,7 +61,7 @@ type DispatchExecutionArgs = ProactiveLlmDispatchArgs<ProactiveLlmDeps, BuildPro
 export type { BuildProviderFn }
 
 function getLlmConfig(configContextId: string): LlmConfig | string {
-  const resolved = resolveEffectiveLlmConfig(configContextId)
+  const resolved = resolveLlmConfig(configContextId)
   if (!resolved.ok) {
     log.warn(
       {
@@ -81,10 +82,10 @@ function getLlmConfig(configContextId: string): LlmConfig | string {
     return 'Deferred prompt skipped: BYOK credentials for this context are unreadable. Use /config to re-enter the BYOK LLM credentials in the settings web UI.'
   }
   return {
-    apiKey: resolved.llmApiKey,
-    baseURL: resolved.llmBaseUrl,
-    mainModel: resolved.mainModel,
-    smallModel: resolved.smallModel,
+    apiKey: resolved.main.apiKey,
+    baseURL: resolved.main.baseUrl,
+    mainModel: resolved.main.model,
+    smallModel: resolved.small.model,
   }
 }
 
@@ -112,20 +113,19 @@ async function invokeLightweight(
   const tools = makeMinimalTools(createdByUserId)
   const result = await deps.generateText({
     model,
-    system: buildMinimalSystemPrompt(type),
-    messages,
+    ...hoistSystemMessages(buildMinimalSystemPrompt(type), messages),
     tools,
     stopWhen: deps.stepCountIs(25),
     timeout: 1_200_000,
   })
 
-  const assistantMessages = result.response.messages
+  const assistantMessages = result.finalStep.response.messages
   persistLightweightResponse(createdByUserId, storageContextId, configContextId, config.mainModel, assistantMessages)
   return finalizeAndLog(
     result,
     createdByUserId,
     'lightweight',
-    buildProactiveVerification(deps, model, tools, [...messages, ...result.response.messages]),
+    buildProactiveVerification(deps, model, tools, [...messages, ...result.finalStep.response.messages]),
   )
 }
 
@@ -154,8 +154,7 @@ async function invokeWithContext(
   const tools = makeMinimalTools(createdByUserId)
   const result = await deps.generateText({
     model,
-    system: buildMinimalSystemPrompt(type),
-    messages,
+    ...hoistSystemMessages(buildMinimalSystemPrompt(type), messages),
     tools,
     stopWhen: deps.stepCountIs(25),
     timeout: 1_200_000,
@@ -167,13 +166,13 @@ async function invokeWithContext(
     deliveryTarget.contextType,
     history,
     config.mainModel,
-    result.response.messages,
+    result.finalStep.response.messages,
   )
   return finalizeAndLog(
     result,
     createdByUserId,
     'context',
-    buildProactiveVerification(deps, model, tools, [...messages, ...result.response.messages]),
+    buildProactiveVerification(deps, model, tools, [...messages, ...result.finalStep.response.messages]),
   )
 }
 
@@ -227,13 +226,13 @@ async function runFullGeneration(
   )
   const result = await deps.generateText({
     model,
-    system: prepared.systemPrompt,
-    messages: prepared.messages,
+    ...hoistSystemMessages(prepared.systemPrompt, prepared.messages),
     tools: prepared.tools,
     stopWhen: deps.stepCountIs(25),
     timeout: 1_200_000,
   })
   const previousHistory = getCachedHistory(prepared.storageContextId)
+  const assistantMessages = result.finalStep.response.messages
   persistProactiveResults(
     createdByUserId,
     prepared.storageContextId,
@@ -247,7 +246,7 @@ async function runFullGeneration(
     result,
     createdByUserId,
     'full',
-    buildProactiveVerification(deps, model, prepared.tools, [...prepared.messages, ...result.response.messages]),
+    buildProactiveVerification(deps, model, prepared.tools, [...prepared.messages, ...assistantMessages]),
   )
 }
 

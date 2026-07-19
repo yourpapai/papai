@@ -3,111 +3,86 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, expect, test } from 'bun:test'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { afterEach, describe, expect, test } from 'bun:test'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 
-import { z } from 'zod'
-
 import { createRunState, loadRunState, saveRunState } from '../../review-loop/src/run-state.js'
-import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir } from './test-helpers.js'
-
-const SessionPointerSchema = z.object({
-  sessionId: z.string().nullable(),
-})
+import { createReviewLoopConfigFixture, cleanupTempDirs, makeTempDir } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
 
-test('run state persists session ids through pointer files', async () => {
-  const repoRoot = makeTempDir('review-loop-state-')
-  const config = createReviewLoopConfigFixture(repoRoot)
+describe('run-state', () => {
+  test('createRunState creates state.json with correct fields', async () => {
+    const repoRoot = makeTempDir('run-state-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
 
-  const state = await createRunState(
-    config,
-    path.join(repoRoot, 'docs/superpowers/plans/2026-04-11-file-attachments-implementation.md'),
-  )
-  const persistedJson = z.record(z.string(), z.unknown()).parse(JSON.parse(readFileSync(state.statePath, 'utf8')))
-  const persisted = z
-    .object({
-      runId: z.string(),
-      repoRoot: z.string(),
-      planPath: z.string(),
-      currentRound: z.number(),
-      noProgressRounds: z.number(),
-    })
-    .strict()
-    .parse(persistedJson)
-  const reviewerSessionPointer = SessionPointerSchema.parse(JSON.parse(readFileSync(state.reviewerSessionPath, 'utf8')))
-  const fixerSessionPointer = SessionPointerSchema.parse(JSON.parse(readFileSync(state.fixerSessionPath, 'utf8')))
+    const state = await createRunState(config, planPath)
 
-  expect(state.runDir.startsWith(path.join(config.workDir, 'runs'))).toBe(true)
-  expect(persisted.planPath).toBe(
-    path.join(repoRoot, 'docs/superpowers/plans/2026-04-11-file-attachments-implementation.md'),
-  )
-  expect('reviewerSessionId' in persistedJson).toBe(false)
-  expect('fixerSessionId' in persistedJson).toBe(false)
-  expect('runDir' in persistedJson).toBe(false)
-  expect('statePath' in persistedJson).toBe(false)
-  expect(reviewerSessionPointer.sessionId).toBeNull()
-  expect(fixerSessionPointer.sessionId).toBeNull()
-  expect(existsSync(state.reviewerSessionPath)).toBe(true)
-  expect(existsSync(state.fixerSessionPath)).toBe(true)
+    expect(state.runId).toBeDefined()
+    expect(state.currentRound).toBe(0)
+    expect(state.noProgressRounds).toBe(0)
+    expect(state.worktreePath).toBe(path.join(config.workDir, 'worktrees', state.runId))
+    expect(state.ledgerPath).toBe(path.join(state.runDir, 'ledger.json'))
+    expect(state.issuesPath).toBe(path.join(state.runDir, 'issues.json'))
+    expect(existsSync(state.statePath)).toBe(true)
+  })
 
-  state.reviewerSessionId = 'reviewer-session-123'
-  state.fixerSessionId = 'fixer-session-456'
-  await saveRunState(state)
+  test('worktreePath is per-run so distinct runs are isolated and resumable', async () => {
+    const repoRoot = makeTempDir('run-state-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
 
-  const minimalPersistedState = {
-    runId: state.runId,
-    repoRoot: state.repoRoot,
-    planPath: state.planPath,
-    currentRound: state.currentRound,
-    noProgressRounds: state.noProgressRounds,
-  }
+    const first = await createRunState(config, planPath)
+    const second = await createRunState(config, planPath)
 
-  writeFileSync(state.statePath, JSON.stringify(minimalPersistedState, null, 2))
-  writeFileSync(state.reviewerSessionPath, JSON.stringify({ sessionId: 'reviewer-session-123' }, null, 2))
-  writeFileSync(state.fixerSessionPath, JSON.stringify({ sessionId: 'fixer-session-456' }, null, 2))
+    expect(first.worktreePath).not.toBe(second.worktreePath)
 
-  const reloaded = await loadRunState(config.workDir, state.runId)
-  const canonicalRunDir = path.join(config.workDir, 'runs', state.runId)
-  const savedReviewerSessionPointer = SessionPointerSchema.parse(
-    JSON.parse(readFileSync(state.reviewerSessionPath, 'utf8')),
-  )
-  const savedFixerSessionPointer = SessionPointerSchema.parse(JSON.parse(readFileSync(state.fixerSessionPath, 'utf8')))
+    const reloadedFirst = await loadRunState(config.workDir, first.runId)
+    expect(reloadedFirst.worktreePath).toBe(first.worktreePath)
+    expect(reloadedFirst.worktreePath).toBe(path.join(config.workDir, 'worktrees', first.runId))
+  })
 
-  expect(reloaded.planPath).toBe(state.planPath)
-  expect(reloaded.runDir).toBe(canonicalRunDir)
-  expect(reloaded.transcriptDir).toBe(path.join(canonicalRunDir, 'transcripts'))
-  expect(reloaded.statePath).toBe(path.join(canonicalRunDir, 'state.json'))
-  expect(reloaded.reviewerSessionPath).toBe(path.join(canonicalRunDir, 'reviewer-session.json'))
-  expect(reloaded.fixerSessionPath).toBe(path.join(canonicalRunDir, 'fixer-session.json'))
-  expect(reloaded.reviewerSessionId).toBe('reviewer-session-123')
-  expect(reloaded.fixerSessionId).toBe('fixer-session-456')
-  expect(savedReviewerSessionPointer.sessionId).toBe('reviewer-session-123')
-  expect(savedFixerSessionPointer.sessionId).toBe('fixer-session-456')
+  test('createRunState resolves relative planPath to absolute', async () => {
+    const repoRoot = makeTempDir('run-state-')
+    const config = createReviewLoopConfigFixture(repoRoot)
 
-  writeFileSync(
-    state.statePath,
-    JSON.stringify(
-      {
-        ...minimalPersistedState,
-        runDir: path.join(repoRoot, 'stale-run-dir'),
-        transcriptDir: path.join(repoRoot, 'stale-transcripts'),
-        statePath: path.join(repoRoot, 'stale-state.json'),
-        reviewerSessionPath: path.join(repoRoot, 'stale-reviewer-session.json'),
-        fixerSessionPath: path.join(repoRoot, 'stale-fixer-session.json'),
-      },
-      null,
-      2,
-    ),
-  )
+    const state = await createRunState(config, 'relative/plan.md')
 
-  const reloadedWithStalePaths = await loadRunState(config.workDir, state.runId)
+    expect(path.isAbsolute(state.planPath)).toBe(true)
+    expect(state.planPath).toBe(path.resolve('relative/plan.md'))
+  })
 
-  expect(reloadedWithStalePaths.runDir).toBe(canonicalRunDir)
-  expect(reloadedWithStalePaths.transcriptDir).toBe(path.join(canonicalRunDir, 'transcripts'))
-  expect(reloadedWithStalePaths.statePath).toBe(path.join(canonicalRunDir, 'state.json'))
-  expect(reloadedWithStalePaths.reviewerSessionPath).toBe(path.join(canonicalRunDir, 'reviewer-session.json'))
-  expect(reloadedWithStalePaths.fixerSessionPath).toBe(path.join(canonicalRunDir, 'fixer-session.json'))
+  test('saveRunState + loadRunState round-trips persisted fields', async () => {
+    const repoRoot = makeTempDir('run-state-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+
+    const state = await createRunState(config, planPath)
+    state.currentRound = 3
+    state.noProgressRounds = 1
+    await saveRunState(state)
+
+    const loaded = await loadRunState(config.workDir, state.runId)
+
+    expect(loaded.currentRound).toBe(3)
+    expect(loaded.noProgressRounds).toBe(1)
+    expect(loaded.repoRoot).toBe(config.repoRoot)
+    expect(loaded.planPath).toBe(planPath)
+    expect(loaded.runDir).toBe(state.runDir)
+    expect(loaded.ledgerPath).toBe(state.ledgerPath)
+  })
+
+  test('synthesizes tracePath from runDir on create and load (additive, no migration)', async () => {
+    const repoRoot = makeTempDir('run-state-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+
+    const state = await createRunState(config, planPath)
+    expect(state.tracePath).toBe(path.join(state.runDir, 'trace.jsonl'))
+
+    const reloaded = await loadRunState(config.workDir, state.runId)
+    expect(reloaded.tracePath).toBe(state.tracePath)
+  })
 })

@@ -29,7 +29,7 @@ describe('Get Current User Tool', () => {
     const getCurrentUser = mock(() => Promise.resolve({ id: 'user-42', login: 'alice', name: 'Alice Smith' }))
     const tool = makeGetCurrentUserTool(createMockProvider({ getCurrentUser }))
 
-    const result: unknown = await getToolExecutor(tool)({}, { toolCallId: '1', messages: [] })
+    const result: unknown = await getToolExecutor(tool)({}, { toolCallId: '1', messages: [], context: {} })
 
     assert(isUserRef(result), 'Invalid result')
     expect(result).toEqual({ id: 'user-42', login: 'alice', name: 'Alice Smith' })
@@ -43,7 +43,7 @@ describe('Get Current User Tool', () => {
       }),
     )
 
-    await expect(getToolExecutor(tool)({}, { toolCallId: '1', messages: [] })).rejects.toThrow(
+    await expect(getToolExecutor(tool)({}, { toolCallId: '1', messages: [], context: {} })).rejects.toThrow(
       'Current user lookup failed',
     )
   })

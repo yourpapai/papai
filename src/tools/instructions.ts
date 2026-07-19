@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { deleteInstruction, listInstructions, saveInstruction } from '../instructions.js'
@@ -12,7 +12,7 @@ import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'tool:instructions' })
 
-export function makeSaveInstructionTool(contextId: string): ToolSet[string] {
+export function makeSaveInstructionTool(contextId: string): Tool {
   return tool({
     description:
       'Save a persistent behavioral preference. Call this when the user expresses how the bot should always behave.',
@@ -30,7 +30,7 @@ export function makeSaveInstructionTool(contextId: string): ToolSet[string] {
   })
 }
 
-export function makeListInstructionsTool(contextId: string): ToolSet[string] {
+export function makeListInstructionsTool(contextId: string): Tool {
   return tool({
     description: 'List all custom instructions for this context.',
     inputSchema: z.object({}),
@@ -44,7 +44,7 @@ export function makeListInstructionsTool(contextId: string): ToolSet[string] {
   })
 }
 
-export function makeDeleteInstructionTool(contextId: string): ToolSet[string] {
+export function makeDeleteInstructionTool(contextId: string): Tool {
   return tool({
     description: 'Delete a custom instruction by ID. Call list_instructions first to find the ID.',
     inputSchema: z.object({

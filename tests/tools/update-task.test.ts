@@ -7,7 +7,8 @@ import { describe, expect, test, mock, beforeEach, afterAll } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
-import { getConfig, setConfig } from '../../src/config.js'
+import { getConfig } from '../../src/config.js'
+import { setConfig } from '../../src/config.testing.js'
 import { setIdentityMapping, clearIdentityMapping } from '../../src/identity/mapping.js'
 import { makeUpdateTaskTool } from '../../src/tools/update-task.js'
 import { mockLogger, schemaValidates, setupTestDb } from '../utils/test-helpers.js'
@@ -56,7 +57,7 @@ describe('update_task identity resolution', () => {
     const tool = makeUpdateTaskTool(provider, undefined, 'test-update-identity')
 
     assert(tool.execute)
-    await tool.execute({ taskId: 'task-1', assignee: 'me' }, { toolCallId: '1', messages: [] })
+    await tool.execute({ taskId: 'task-1', assignee: 'me' }, { toolCallId: '1', messages: [], context: {} })
 
     expect(updateTask).toHaveBeenCalledTimes(1)
     expect(capturedAssignee).toBe('resolved-user-789')
@@ -89,7 +90,7 @@ describe('update_task identity resolution', () => {
     const tool = makeUpdateTaskTool(provider, undefined, 'test-update-identity')
 
     assert(tool.execute)
-    await tool.execute({ taskId: 'task-1', assignee: 'ME' }, { toolCallId: '1', messages: [] })
+    await tool.execute({ taskId: 'task-1', assignee: 'ME' }, { toolCallId: '1', messages: [], context: {} })
 
     expect(capturedAssignee).toBe('resolved-user-789')
   })
@@ -99,7 +100,10 @@ describe('update_task identity resolution', () => {
     const tool = makeUpdateTaskTool(provider, undefined, 'no-mapping-user')
 
     assert(tool.execute)
-    const result: unknown = await tool.execute({ taskId: 'task-1', assignee: 'me' }, { toolCallId: '1', messages: [] })
+    const result: unknown = await tool.execute(
+      { taskId: 'task-1', assignee: 'me' },
+      { toolCallId: '1', messages: [], context: {} },
+    )
 
     expect(result).toHaveProperty('status', 'identity_required')
     expect(result).toHaveProperty('message')
@@ -123,7 +127,7 @@ describe('update_task identity resolution', () => {
     const tool = makeUpdateTaskTool(provider, undefined, 'test-update-identity')
 
     assert(tool.execute)
-    await tool.execute({ taskId: 'task-1', assignee: 'other-user' }, { toolCallId: '1', messages: [] })
+    await tool.execute({ taskId: 'task-1', assignee: 'other-user' }, { toolCallId: '1', messages: [], context: {} })
 
     expect(capturedAssignee).toBe('other-user')
   })
@@ -144,7 +148,7 @@ describe('update_task identity resolution', () => {
     const tool = makeUpdateTaskTool(provider, undefined, 'test-update-identity')
 
     assert(tool.execute)
-    await tool.execute({ taskId: 'task-1', status: 'done' }, { toolCallId: '1', messages: [] })
+    await tool.execute({ taskId: 'task-1', status: 'done' }, { toolCallId: '1', messages: [], context: {} })
 
     expect(capturedAssignee).toBeUndefined()
   })
@@ -166,7 +170,7 @@ describe('update_task identity resolution', () => {
     const tool = makeUpdateTaskTool(provider, undefined, undefined)
 
     assert(tool.execute)
-    await tool.execute({ taskId: 'task-1', assignee: 'me' }, { toolCallId: '1', messages: [] })
+    await tool.execute({ taskId: 'task-1', assignee: 'me' }, { toolCallId: '1', messages: [], context: {} })
 
     expect(capturedAssignee).toBe('me')
   })
@@ -198,7 +202,7 @@ describe('update_task identity resolution', () => {
     const tool = makeUpdateTaskTool(provider, undefined, 'test-update-identity')
 
     assert(tool.execute)
-    await tool.execute({ taskId: 'task-1', assignee: 'me' }, { toolCallId: '1', messages: [] })
+    await tool.execute({ taskId: 'task-1', assignee: 'me' }, { toolCallId: '1', messages: [], context: {} })
 
     expect(updateTask).toHaveBeenCalledTimes(1)
     expect(capturedAssignee).toBe('jsmith')
@@ -221,7 +225,7 @@ describe('update_task identity resolution', () => {
     assert(tool.execute)
     const result: unknown = await tool.execute(
       { taskId: 'task-1', dueDate: { date: '2026-03-25', time: '17:00' } },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(result).toHaveProperty('dueDate', '2026-03-25T17:00:00')
@@ -246,7 +250,7 @@ describe('update_task identity resolution', () => {
     assert(tool.execute)
     const result: unknown = await tool.execute(
       { taskId: 'task-1', dueDate: { date: '2026-03-25' } },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(capturedDueDate).toBe('2026-03-25')
@@ -294,7 +298,7 @@ describe('update_task identity resolution', () => {
           { name: 'Steps', value: 'Click login' },
         ],
       },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(capturedCustomFields).toEqual([
@@ -326,7 +330,7 @@ describe('update_task identity resolution', () => {
           taskId: 'task-1',
           customFields: [{ name: 'Environment', value: 'staging' }],
         },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       ),
     ).rejects.toMatchObject({
       error: {
@@ -363,7 +367,7 @@ describe('update_task identity resolution', () => {
         taskId: 'TEST-1',
         customFields: [{ name: 'Environment', value: 'staging' }],
       },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(updateTask).toHaveBeenCalledTimes(1)
@@ -403,7 +407,7 @@ describe('update_task identity resolution', () => {
       assert(tool.execute)
       await tool.execute(
         { taskId: 'task-1', dueDate: { date: '2024-06-15', time: '09:00' } },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       // 09:00 JST (Asia/Tokyo) = 00:00 UTC
@@ -432,7 +436,7 @@ describe('update_task identity resolution', () => {
       assert(tool.execute)
       await tool.execute(
         { taskId: 'task-1', dueDate: { date: '2024-06-15', time: '14:00' } },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       // With UTC fallback, 14:00 stays 14:00
@@ -466,7 +470,7 @@ describe('update_task identity resolution', () => {
       assert(tool.execute)
       await tool.execute(
         { taskId: 'task-1', dueDate: { date: '2024-06-15', time: '14:00' } },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       // 14:00 JST = 05:00 UTC. A regression that used the thread-scoped id would miss the

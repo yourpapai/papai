@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -12,7 +12,7 @@ import type { TaskProvider } from '../providers/types.js'
 
 const log = logger.child({ scope: 'tool:list-projects' })
 
-export function makeListProjectsTool(provider: TaskProvider): ToolSet[string] {
+export function makeListProjectsTool(provider: TaskProvider): Tool {
   return tool({
     description: 'List all available projects. Call this to get project IDs before creating or searching tasks.',
     inputSchema: z.object({}),

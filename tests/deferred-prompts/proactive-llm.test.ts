@@ -13,19 +13,20 @@ import type { ModelMessage } from 'ai'
 
 import { updateByokLlmConfig } from '../../src/byok-llm/store.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
-import { setConfig } from '../../src/config.js'
+import { setConfig } from '../../src/config.testing.js'
 import { dispatchExecution } from '../../src/deferred-prompts/proactive-llm.js'
 import type { DeferredExecutionContext } from '../../src/deferred-prompts/proactive-llm.js'
 import type { ExecutionMetadata } from '../../src/deferred-prompts/types.js'
 import { appendHistory } from '../../src/history.js'
 import { loadHistory } from '../../src/history.js'
+import { createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers/store.js'
+import { clearLlmAdminCacheForTesting } from '../../src/llm-providers/store.testing.js'
 import { saveMemoryProfile } from '../../src/long-term-memory/store.js'
 import { loadFacts } from '../../src/memory.js'
-import { setSystemConfig } from '../../src/system-config.js'
 import { setToolPrefs } from '../../src/tools/tool-preferences.js'
 import type { MemoryFact } from '../../src/types/memory.js'
 import { createMockProvider } from '../tools/mock-provider.js'
-import { flushMicrotasks, mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from '../utils/test-helpers.js'
+import { flushMicrotasks, mockLogger, seedAdminLlmBinding, setupTestDb } from '../utils/test-helpers.js'
 
 // Track generateText calls
 type GenerateTextResult = {
@@ -34,11 +35,11 @@ type GenerateTextResult = {
   toolCalls: unknown[]
   toolResults: unknown[]
   steps: unknown[] | undefined
-  response: { messages: ModelMessage[] }
+  finalStep: { response: { messages: ModelMessage[] } }
 }
 type GenerateTextCall = {
   model: string
-  system: string
+  instructions: string
   messages: ModelMessage[]
   tools: unknown
   stopWhen?: unknown
@@ -59,6 +60,7 @@ const containsFact = (
   )
 
 const USER_ID = 'exec-mode-user'
+
 function makeExecCtx(): DeferredExecutionContext {
   return {
     createdByUserId: USER_ID,
@@ -93,14 +95,20 @@ type UserConfigOptions = Readonly<{ smallModel: string | null }>
 
 function setupUserConfig(...args: readonly [] | readonly [UserConfigOptions]): void {
   setConfig(USER_ID, 'timezone', 'UTC')
-  resetSystemConfigCacheForTesting()
-  setSystemConfig('llm_apikey', 'test-key', 'env')
-  setSystemConfig('llm_baseurl', 'http://localhost:11434/v1', 'env')
-  setSystemConfig('main_model', 'main-model', 'env')
+  const provider = createLlmProvider(
+    { label: 'admin', providerType: 'openai', baseUrl: 'http://localhost:11434/v1', apiKey: 'test-key' },
+    'admin',
+  )
   const opts = args[0]
-  if (opts !== undefined && opts.smallModel !== null) {
-    setSystemConfig('small_model', opts.smallModel, 'env')
-  }
+  setAdminRoleBindings(
+    {
+      main: { providerId: provider.id, model: 'main-model' },
+      small:
+        opts !== undefined && opts.smallModel !== null ? { providerId: provider.id, model: opts.smallModel } : null,
+      embedding: null,
+    },
+    'admin',
+  )
 }
 
 describe('dispatchExecution', () => {
@@ -114,13 +122,13 @@ describe('dispatchExecution', () => {
       toolCalls: [],
       toolResults: [],
       steps: undefined,
-      response: { messages: [] },
+      finalStep: { response: { messages: [] } },
     })
   }
 
   beforeEach(async () => {
     mockLogger()
-    resetSystemConfigCacheForTesting()
+    clearLlmAdminCacheForTesting()
     generateTextCalls.length = 0
     buildModelCalls.length = 0
     generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
@@ -130,7 +138,7 @@ describe('dispatchExecution', () => {
         toolCalls: [],
         toolResults: [],
         steps: undefined,
-        response: { messages: [] },
+        finalStep: { response: { messages: [] } },
       })
     }
     void mock.module('ai', () => ({
@@ -199,7 +207,7 @@ describe('dispatchExecution', () => {
           toolCalls: [{ toolName: 'get_current_time', input: {} }],
           toolResults: [],
           steps: [{}],
-          response: { messages: [] },
+          finalStep: { response: { messages: [] } },
         },
         // Second call is the verifier — returns a neutral completion summary
         {
@@ -208,7 +216,7 @@ describe('dispatchExecution', () => {
           toolCalls: [],
           toolResults: [],
           steps: undefined,
-          response: { messages: [] },
+          finalStep: { response: { messages: [] } },
         },
       ]
       generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
@@ -222,18 +230,18 @@ describe('dispatchExecution', () => {
     test('uses minimal system prompt', async () => {
       setupUserConfig()
       await dispatchExecution(makeExecCtx(), 'scheduled', 'drink water', metadata, () => null)
-      const system = generateTextCalls[0]!.system
-      expect(system).toContain('[PROACTIVE EXECUTION]')
-      expect(system).not.toContain('DEFERRED PROMPTS')
+      const instructions = generateTextCalls[0]!.instructions
+      expect(instructions).toContain('[PROACTIVE EXECUTION]')
+      expect(instructions).not.toContain('DEFERRED PROMPTS')
     })
 
-    test('includes delivery brief in messages', async () => {
+    test('includes delivery brief in the system prompt', async () => {
       setupUserConfig()
       await dispatchExecution(makeExecCtx(), 'scheduled', 'drink water', metadata, () => null)
-      const messages = generateTextCalls[0]!.messages
-      const systemMsgs = messages.filter((m) => m.role === 'system')
-      expect(messageIncludesText(systemMsgs, '[DELIVERY BRIEF]')).toBe(true)
-      expect(messageIncludesText(systemMsgs, 'Friendly hydration reminder')).toBe(true)
+      // AI SDK v7 hoists system content out of `messages` into the `instructions` option.
+      const instructions = generateTextCalls[0]!.instructions
+      expect(instructions).toContain('[DELIVERY BRIEF]')
+      expect(instructions).toContain('Friendly hydration reminder')
     })
 
     test('wraps prompt in deferred task delimiters', async () => {
@@ -260,16 +268,13 @@ describe('dispatchExecution', () => {
         context_snapshot: 'User discussed migration',
       }
       await dispatchExecution(makeExecCtx(), 'scheduled', 'remind about migration', withSnapshot, () => null)
-      const messages = generateTextCalls[0]!.messages
-      const systemMsgs = messages.filter((m) => m.role === 'system')
-      expect(messageIncludesText(systemMsgs, '[CONTEXT FROM CREATION TIME]')).toBe(true)
+      expect(generateTextCalls[0]!.instructions).toContain('[CONTEXT FROM CREATION TIME]')
     })
 
     test('omits context snapshot message when null', async () => {
       setupUserConfig()
       await dispatchExecution(makeExecCtx(), 'scheduled', 'drink water', metadata, () => null)
-      const messages = generateTextCalls[0]!.messages
-      expect(messageIncludesText(messages, '[CONTEXT FROM CREATION TIME]')).toBe(false)
+      expect(generateTextCalls[0]!.instructions).not.toContain('[CONTEXT FROM CREATION TIME]')
     })
 
     test('persists lightweight history to group thread delivery context instead of creator DM', async () => {
@@ -281,7 +286,7 @@ describe('dispatchExecution', () => {
           toolCalls: [],
           toolResults: [],
           steps: undefined,
-          response: { messages: [{ role: 'assistant', content: 'Thread reminder' }] },
+          finalStep: { response: { messages: [{ role: 'assistant', content: 'Thread reminder' }] } },
         })
       }
 
@@ -329,9 +334,9 @@ describe('dispatchExecution', () => {
 
       await dispatchExecution(makeGroupThreadExecCtx(), 'scheduled', 'standup reminder', metadata, () => null)
 
-      const messages = generateTextCalls[0]!.messages
-      expect(messageIncludesText(messages, 'Group standups happen at 10:00')).toBe(true)
-      expect(messageIncludesText(messages, 'This personal thread scope should not be injected')).toBe(false)
+      const instructions = generateTextCalls[0]!.instructions
+      expect(instructions).toContain('Group standups happen at 10:00')
+      expect(instructions).not.toContain('This personal thread scope should not be injected')
     })
 
     test('includes get_current_time tool only', async () => {
@@ -352,8 +357,8 @@ describe('dispatchExecution', () => {
     test('uses minimal system prompt', async () => {
       setupUserConfig()
       await dispatchExecution(makeExecCtx(), 'scheduled', 'standup reminder', metadata, () => null)
-      const system = generateTextCalls[0]!.system
-      expect(system).toContain('[PROACTIVE EXECUTION]')
+      const instructions = generateTextCalls[0]!.instructions
+      expect(instructions).toContain('[PROACTIVE EXECUTION]')
     })
   })
 
@@ -371,7 +376,8 @@ describe('dispatchExecution', () => {
       expect(generateTextCalls[0]!.model).toContain('main-model')
     })
 
-    test('uses complete BYOK config for full generation without global config', async () => {
+    test('uses complete BYOK config for full generation (overriding admin)', async () => {
+      seedAdminLlmBinding()
       setConfig(USER_ID, 'timezone', 'UTC')
       updateByokLlmConfig(
         USER_ID,
@@ -412,9 +418,9 @@ describe('dispatchExecution', () => {
       setupUserConfig()
       const provider = createMockProvider()
       await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
-      const system = generateTextCalls[0]!.system
+      const instructions = generateTextCalls[0]!.instructions
       // Full system prompt includes provider-specific content
-      expect(system.length).toBeGreaterThan(200)
+      expect(instructions.length).toBeGreaterThan(200)
     })
 
     test('loads conversation history', async () => {
@@ -442,9 +448,9 @@ describe('dispatchExecution', () => {
 
       await dispatchExecution(makeGroupThreadExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
 
-      const messages = generateTextCalls[0]!.messages
-      expect(messageIncludesText(messages, 'Group escalations use the incident queue')).toBe(true)
-      expect(messageIncludesText(messages, 'This personal thread profile should not be injected')).toBe(false)
+      const instructions = generateTextCalls[0]!.instructions
+      expect(instructions).toContain('Group escalations use the incident queue')
+      expect(instructions).not.toContain('This personal thread profile should not be injected')
     })
 
     test('falls back to providerless full execution when provider cannot be built', async () => {
@@ -452,7 +458,7 @@ describe('dispatchExecution', () => {
       const result = await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => null)
       expect(result).toBe('Mock response')
       expect(generateTextCalls).toHaveLength(1)
-      expect(generateTextCalls[0]!.system).toContain('task tracker tools are unavailable')
+      expect(generateTextCalls[0]!.instructions).toContain('task tracker tools are unavailable')
       expect(generateTextCalls[0]!.tools).not.toHaveProperty('create_task')
     })
 
@@ -466,7 +472,7 @@ describe('dispatchExecution', () => {
           toolCalls: [],
           toolResults: [{ toolName: 'create_task', output: { id: 'task-1', title: 'Thread task', number: 17 } }],
           steps: undefined,
-          response: { messages: [] },
+          finalStep: { response: { messages: [] } },
         })
       }
 
@@ -511,7 +517,7 @@ describe('dispatchExecution', () => {
           toolCalls: [],
           toolResults: [{ toolName: 'create_task', output: { id: 'task-1', title: 'Scoped thread task', number: 21 } }],
           steps: undefined,
-          response: { messages: [] },
+          finalStep: { response: { messages: [] } },
         })
       }
 
@@ -545,6 +551,7 @@ describe('dispatchExecution', () => {
     })
 
     test('full mode background trim uses scoped main config context instead of thread storage', async () => {
+      seedAdminLlmBinding()
       setConfig(USER_ID, 'timezone', 'UTC')
       const scopedThreadContextId = toScopedThreadContextId({
         platformInstanceId: 'telegram-secondary',
@@ -575,21 +582,21 @@ describe('dispatchExecution', () => {
           toolCalls: [],
           toolResults: [],
           steps: undefined,
-          response: { messages: [{ role: 'assistant', content: 'new response' }] },
+          finalStep: { response: { messages: [{ role: 'assistant', content: 'new response' }] } },
         }),
         Promise.resolve({
           text: JSON.stringify({ keep_indices: Array.from({ length: 50 }, (_, index) => index), summary: 'trimmed' }),
           toolCalls: [],
           toolResults: [],
           steps: undefined,
-          response: { messages: [] },
+          finalStep: { response: { messages: [] } },
         }),
         Promise.resolve({
           text: JSON.stringify({ profile: null, records: [], updates: [] }),
           toolCalls: [],
           toolResults: [],
           steps: undefined,
-          response: { messages: [] },
+          finalStep: { response: { messages: [] } },
         }),
       ]
       let callIndex = 0
@@ -657,7 +664,7 @@ describe('dispatchExecution', () => {
               ],
             },
           ],
-          response: { messages: [] },
+          finalStep: { response: { messages: [] } },
         })
       }
 
@@ -762,10 +769,10 @@ describe('dispatchExecution', () => {
       )
 
       expect(generateTextCalls).toHaveLength(1)
-      const system = generateTextCalls[0]!.system
+      const instructions = generateTextCalls[0]!.instructions
       // After the fix: prompt uses delivery storageContextId prefs -> "Unavailable tools" line present.
       // With the bug: prompt uses creator userId prefs (empty) -> no unavailable line.
-      expect(system).toContain('Unavailable tools')
+      expect(instructions).toContain('Unavailable tools')
     })
   })
 })

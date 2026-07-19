@@ -29,7 +29,10 @@ describe('Add Vote Tool', () => {
     const addVote = mock((taskId: string) => Promise.resolve({ taskId }))
     const tool = makeAddVoteTool(createMockProvider({ addVote }))
 
-    const result: unknown = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
+    const result: unknown = await getToolExecutor(tool)(
+      { taskId: 'task-1' },
+      { toolCallId: '1', messages: [], context: {} },
+    )
 
     assert(isTaskResult(result), 'Invalid result')
     expect(result.taskId).toBe('task-1')
@@ -43,9 +46,9 @@ describe('Add Vote Tool', () => {
       }),
     )
 
-    await expect(getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })).rejects.toThrow(
-      'Vote failed',
-    )
+    await expect(
+      getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [], context: {} }),
+    ).rejects.toThrow('Vote failed')
   })
 
   test('validates required taskId', () => {

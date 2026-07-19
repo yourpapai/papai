@@ -3,466 +3,303 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { flushSync, mount, unmount } from 'svelte'
 
 import { setCsrfToken } from '../../../client/settings/fetchers.js'
 import ByokSection from '../../../client/settings/sections/ByokSection.svelte'
-import { settingsSession } from '../../../client/settings/session.svelte.js'
-import SettingsApp from '../../../client/settings/SettingsApp.svelte'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
-const json = (payload: unknown): Response =>
-  new Response(JSON.stringify(payload), { status: 200, headers: { 'Content-Type': 'application/json' } })
+const json = (payload: unknown, status = 200): Response =>
+  new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } })
 
 const drain = async (): Promise<void> => {
   for (let i = 0; i < 10; i++) await Promise.resolve()
   flushSync()
 }
 
-const disabledPayload = { enabled: false, complete: false, missing: [], fields: [] }
-
-const enabledPayload = {
-  enabled: true,
+const disabledPayload = {
+  enabled: false,
   complete: false,
-  missing: ['embedding_model'],
-  fields: [
-    { key: 'llm_apikey', label: 'LLM API key', required: true, sensitive: true, hasValue: true, value: '****1234' },
-    {
-      key: 'llm_baseurl',
-      label: 'LLM base URL',
-      required: true,
-      sensitive: false,
-      hasValue: true,
-      value: 'https://llm.invalid/v1',
-    },
-    { key: 'main_model', label: 'Main model', required: true, sensitive: false, hasValue: true, value: 'gpt-main' },
-    { key: 'small_model', label: 'Small model', required: false, sensitive: false, hasValue: false, value: '' },
-    { key: 'embedding_model', label: 'Embedding model', required: false, sensitive: false, hasValue: false, value: '' },
-  ],
+  missing: [],
+  fields: [],
 }
 
-const rawSecretPayload = {
+const enabledWithProviderPayload = {
   enabled: true,
   complete: true,
   missing: [],
-  fields: [
+  fields: [],
+  providers: [
     {
-      key: 'llm_apikey',
-      label: 'LLM API key',
-      required: true,
-      sensitive: true,
-      hasValue: true,
-      value: 'sk-test-raw-secret',
+      id: 'prov_1',
+      label: 'OpenAI',
+      providerType: 'openai',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKeyMasked: '••••••••',
+      verification: {
+        status: 'verified',
+        error: null,
+        at: 1717000000000,
+        models: ['gpt-4o'],
+        modelsFetchedAt: 1717000000000,
+      },
     },
   ],
+  roles: {
+    main: { providerId: 'prov_1', model: 'gpt-4o' },
+    small: null,
+    embedding: null,
+  },
+}
+
+const enabledNoProvidersPayload = {
+  enabled: true,
+  complete: false,
+  missing: [],
+  fields: [],
+  providers: [],
+  roles: { main: { providerId: '', model: '' }, small: null, embedding: null },
 }
 
 const unreadablePayload = {
   enabled: true,
   complete: false,
-  missing: ['llm_apikey', 'llm_baseurl', 'main_model'],
+  missing: [],
   unreadable: true,
   error: 'stored BYOK LLM credentials are unreadable',
   fields: [],
 }
 
-let capturedPatchBody = ''
-
-const resetSession = (): void => {
-  settingsSession.status = 'loading'
-  settingsSession.display = ''
-  settingsSession.isBotAdmin = false
-  settingsSession.isSuperAdmin = false
-  settingsSession.contexts = []
-  settingsSession.activeContextId = ''
+interface MockState {
+  current: unknown
+  afterPatch: unknown
+  patchBodies: string[]
 }
 
-const seedTwoContextSession = (): void => {
-  settingsSession.status = 'ready'
-  settingsSession.display = 'alice'
-  settingsSession.isBotAdmin = false
-  settingsSession.isSuperAdmin = false
-  settingsSession.contexts = [
-    { kind: 'personal', contextId: 'user:a', label: 'Context A' },
-    { kind: 'personal', contextId: 'user:b', label: 'Context B' },
-  ]
-  settingsSession.activeContextId = 'user:a'
-}
-
-const jsonForSettingsEndpoint = (url: string): Response => {
-  const parsed = new URL(url, 'https://settings.invalid')
-  const contextId = parsed.searchParams.get('contextId') ?? 'user:a'
-  if (parsed.pathname.endsWith('/settings/api/config')) return json({ contextId, fields: [] })
-  if (parsed.pathname.endsWith('/settings/api/context/task-instance'))
-    return json({ contextId, taskInstanceId: null, available: [] })
-  if (parsed.pathname.endsWith('/settings/api/tools')) return json({ contextId, domains: [] })
-  if (parsed.pathname.endsWith('/settings/api/identity'))
-    return json({ contextId, providerName: 'provider', mapping: null })
-  if (parsed.pathname.endsWith('/settings/api/mcp')) return json({ contextId, endpoints: [] })
-  if (parsed.pathname.endsWith('/settings/api/plugins')) return json({ contextId, plugins: [] })
-  return json({})
-}
-
-const routeSettingsWithByok =
-  (
-    byok: (contextId: string) => Promise<Response>,
-    onPatch: (body: unknown) => void = () => {},
-  ): ((url: string, init?: RequestInit) => Promise<Response>) =>
-  (url, init): Promise<Response> => {
-    const method = (init?.method ?? 'GET').toUpperCase()
-    if (method === 'PATCH') {
-      onPatch(typeof init?.body === 'string' ? JSON.parse(init.body) : null)
-      return Promise.resolve(json({ ok: true }))
-    }
-    const parsed = new URL(url, 'https://settings.invalid')
-    if (parsed.pathname.endsWith('/settings/api/byok')) return byok(parsed.searchParams.get('contextId') ?? '')
-    return Promise.resolve(jsonForSettingsEndpoint(url))
-  }
-
-interface PendingByokState {
-  requestedContext: string
-  resolveSecondLoad: ((response: Response) => void) | null
-}
-
-const pendingUserBByok =
-  (state: PendingByokState) =>
-  (contextId: string): Promise<Response> => {
-    state.requestedContext = contextId
-    if (contextId === 'user:b') {
-      return new Promise<Response>((resolve) => {
-        state.resolveSecondLoad = resolve
-      })
-    }
-    return Promise.resolve(json(enabledPayload))
-  }
-
-const failUserBByok = (contextId: string): Promise<Response> =>
-  contextId === 'user:b'
-    ? Promise.resolve(new Response('failed to load BYOK', { status: 500 }))
-    : Promise.resolve(json(enabledPayload))
-
-const routeByokMock = (url: string, init?: RequestInit): Promise<Response> => {
-  if (url.includes('/settings/api/byok') && (init?.method ?? 'GET') === 'PATCH') {
-    capturedPatchBody = typeof init?.body === 'string' ? init.body : ''
-    return Promise.resolve(json({ ok: true }))
-  }
-  return Promise.resolve(json(enabledPayload))
-}
-
-interface ToggleMockState {
-  payload: unknown
-}
-
-const makeToggleMock =
-  (state: ToggleMockState, postPatchPayload: unknown) =>
-  (url: string, init?: RequestInit): Promise<Response> => {
-    if (url.includes('/settings/api/byok') && (init?.method ?? 'GET') === 'PATCH') {
-      capturedPatchBody = typeof init?.body === 'string' ? init.body : ''
-      state.payload = postPatchPayload
-      return Promise.resolve(json({ ok: true }))
-    }
-    return Promise.resolve(json(state.payload))
-  }
-
-interface ReloadFailState {
-  getCount: number
-}
-
-const makeReloadFailsByokMock =
-  (state: ReloadFailState) =>
+const byokMock =
+  (state: MockState) =>
   (url: string, init?: RequestInit): Promise<Response> => {
     const method = (init?.method ?? 'GET').toUpperCase()
-    if (url.includes('/settings/api/byok') && method === 'PATCH') return Promise.resolve(json({ ok: true }))
-    state.getCount++
-    if (state.getCount === 1) return Promise.resolve(json(enabledPayload))
-    return Promise.resolve(new Response('reload failed', { status: 500 }))
+    if (url.includes('/settings/api/byok') && method === 'PATCH') {
+      state.patchBodies.push(typeof init?.body === 'string' ? init.body : '')
+      state.current = state.afterPatch ?? state.current
+      return Promise.resolve(json({ ok: true }))
+    }
+    return Promise.resolve(json(state.current))
   }
+
+let target: HTMLElement
+let component: ReturnType<typeof mount> | null = null
+
+beforeEach(() => {
+  target = document.createElement('div')
+  document.body.appendChild(target)
+  component = null
+})
 
 afterEach(() => {
-  capturedPatchBody = ''
-  resetSession()
+  if (component !== null) void unmount(component)
+  target.remove()
   restoreFetch()
   setCsrfToken('')
 })
 
+const mountSection = (contextId = 'user:1'): ReturnType<typeof mount> => {
+  component = mount(ByokSection, { target, props: { contextId } })
+  return component
+}
+
 describe('ByokSection', () => {
-  test('shows a disabled state with no field editor and an enable toggle', async () => {
+  test('renders a disabled state with central-credentials text and an enable toggle', async () => {
     setMockFetch(() => Promise.resolve(json(disabledPayload)))
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
-
+    mountSection()
     await drain()
 
-    expect(target.querySelector('#byok')).not.toBeNull()
-    expect(target.querySelector('[data-testid="byok-toggle"]')).not.toBeNull()
-    expect(target.querySelector('[data-testid="byok-input-llm_apikey"]')).toBeNull()
-    expect(target.textContent).toContain('central')
-    void unmount(component)
+    const toggle = target.querySelector<HTMLButtonElement>('[data-testid="byok-toggle"]')!
+    expect(toggle).not.toBeNull()
+    expect(toggle.textContent).toContain('Use my own credentials')
+    expect(target.textContent).toContain('Using the central LLM credentials')
+    // No provider editor in disabled state.
+    expect(target.querySelector('[data-testid="byok-add-provider"]')).toBeNull()
+    const pill = target.querySelector('[data-testid="byok-state"]')
+    expect(pill).not.toBeNull()
+    expect(pill!.textContent).toContain('Central credentials')
   })
 
-  test('enabling the toggle PATCHes an enable action', async () => {
-    setCsrfToken('c')
-    setMockFetch(makeToggleMock({ payload: disabledPayload }, enabledPayload))
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
-
-    await drain()
-    target.querySelector<HTMLButtonElement>('[data-testid="byok-toggle"]')!.click()
-    // two drains: setEnabled awaits toggleByok then load
-    await drain()
+  test('renders enabled state with provider label, masked key, and verification pill', async () => {
+    setMockFetch(() => Promise.resolve(json(enabledWithProviderPayload)))
+    mountSection()
     await drain()
 
-    expect(capturedPatchBody).toBe(JSON.stringify({ contextId: 'user:1', action: 'enable' }))
-    expect(target.querySelector('[data-testid="byok-input-small_model"]')).not.toBeNull()
-    void unmount(component)
-  })
-
-  test('disabling the toggle PATCHes a disable action', async () => {
-    setCsrfToken('c')
-    setMockFetch(makeToggleMock({ payload: enabledPayload }, disabledPayload))
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
-
-    await drain()
-    target.querySelector<HTMLButtonElement>('[data-testid="byok-toggle"]')!.click()
-    // two drains: setEnabled awaits toggleByok then load
-    await drain()
-    await drain()
-
-    expect(capturedPatchBody).toBe(JSON.stringify({ contextId: 'user:1', action: 'disable' }))
-    expect(target.querySelector('[data-testid="byok-input-small_model"]')).toBeNull()
-    void unmount(component)
-  })
-
-  test('renders enabled fields with a masked API key and no raw secret text', async () => {
-    setMockFetch(() => Promise.resolve(json(rawSecretPayload)))
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
-
-    await drain()
-
-    expect(target.textContent).toContain('LLM API key')
+    expect(target.textContent).toContain('OpenAI')
     expect(target.textContent).toContain('••••••••')
-    expect(target.textContent).toContain('Replace')
+    const pill = target.querySelector('[data-testid="verification-pill"]')
+    expect(pill).not.toBeNull()
+    expect(pill!.textContent).toContain('Verified')
+    expect(target.querySelector('[data-testid="byok-delete-prov_1"]')).not.toBeNull()
+    // Role override blocks render.
+    expect(target.querySelector('[data-testid="byok-role-main"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="byok-role-small"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="byok-role-embedding"]')).not.toBeNull()
+    // The masked value is shown but no raw API key leaks.
     expect(target.textContent).not.toContain('sk-test-raw-secret')
-    expect(target.querySelector('[data-testid="byok-input-llm_apikey"]')).toBeNull()
-    void unmount(component)
+    const statePill = target.querySelector('[data-testid="byok-state"]')
+    expect(statePill!.textContent).toContain('Active')
   })
 
-  test('clears previous context fields during a context switch load', async () => {
-    const pending: PendingByokState = { requestedContext: '', resolveSecondLoad: null }
-    setMockFetch(routeSettingsWithByok(pendingUserBByok(pending)))
-    seedTwoContextSession()
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.querySelector<HTMLElement>('#root')!
-    history.replaceState(null, '', '/settings#byok')
-    const component = mount(SettingsApp, { target })
-
-    await drain()
-    expect(target.querySelector('[data-testid="byok-save-main_model"]')).not.toBeNull()
-    settingsSession.activeContextId = 'user:b'
+  test('renders enabled state without providers with an empty-state message and warn pill', async () => {
+    setMockFetch(() => Promise.resolve(json(enabledNoProvidersPayload)))
+    mountSection()
     await drain()
 
-    const staleSaveVisible = target.querySelector('[data-testid="byok-save-main_model"]') !== null
-    const loadingVisible = target.textContent.includes('Loading…')
-    const resolveLoad = pending.resolveSecondLoad
-    expect(resolveLoad).not.toBeNull()
-    resolveLoad!(json(disabledPayload))
-    await drain()
-    expect(pending.requestedContext).toBe('user:b')
-    expect(staleSaveVisible).toBe(false)
-    expect(loadingVisible).toBe(true)
-    void unmount(component)
+    expect(target.textContent).toContain('No providers configured')
+    expect(target.querySelector('[data-testid="byok-delete-prov_1"]')).toBeNull()
+    const statePill = target.querySelector('[data-testid="byok-state"]')
+    expect(statePill!.textContent).toContain('No providers')
   })
 
-  test('failed context switch does not PATCH the new context with a stale draft', async () => {
+  test('shows the add-provider form when the Add provider button is clicked', async () => {
+    setMockFetch(() => Promise.resolve(json(enabledWithProviderPayload)))
+    mountSection()
+    await drain()
+
+    expect(target.querySelector('[data-testid="byok-add-form"]')).toBeNull()
+    target.querySelector<HTMLButtonElement>('[data-testid="byok-add-provider"]')!.click()
+    await drain()
+
+    expect(target.querySelector('[data-testid="byok-add-form"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="byok-provider-form-type"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="byok-provider-form-label"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="byok-provider-form-api-key"]')).not.toBeNull()
+    // Add button is hidden while the form is open.
+    expect(target.querySelector('[data-testid="byok-add-provider"]')).toBeNull()
+  })
+
+  test('enabling the toggle PATCHes an enable action and reloads the provider list', async () => {
     setCsrfToken('c')
-    let capturedPatch: unknown = null
-    setMockFetch(
-      routeSettingsWithByok(failUserBByok, (body) => {
-        capturedPatch = body
-      }),
-    )
-    seedTwoContextSession()
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.querySelector<HTMLElement>('#root')!
-    history.replaceState(null, '', '/settings#byok')
-    const component = mount(SettingsApp, { target })
-
+    const state: MockState = {
+      current: disabledPayload,
+      afterPatch: enabledWithProviderPayload,
+      patchBodies: [],
+    }
+    setMockFetch(byokMock(state))
+    mountSection()
     await drain()
-    const input = target.querySelector<HTMLInputElement>('[data-testid="byok-input-main_model"]')!
-    input.value = 'stale-main-model'
-    input.dispatchEvent(new Event('input', { bubbles: true }))
+
+    target.querySelector<HTMLButtonElement>('[data-testid="byok-toggle"]')!.click()
+    // Two drains: setEnabled awaits toggleByok then load.
+    await drain()
+    await drain()
+
+    expect(state.patchBodies).toEqual([JSON.stringify({ contextId: 'user:1', action: 'enable' })])
+    // After reload, the enabled provider UI is shown.
+    expect(target.textContent).toContain('OpenAI')
+    const toggle = target.querySelector<HTMLButtonElement>('[data-testid="byok-toggle"]')!
+    expect(toggle.textContent).toContain('Use central credentials')
+  })
+
+  test('disabling the toggle PATCHes a disable action and reloads', async () => {
+    setCsrfToken('c')
+    const state: MockState = {
+      current: enabledWithProviderPayload,
+      afterPatch: disabledPayload,
+      patchBodies: [],
+    }
+    setMockFetch(byokMock(state))
+    mountSection()
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="byok-toggle"]')!.click()
+    await drain()
+    await drain()
+
+    expect(state.patchBodies).toEqual([JSON.stringify({ contextId: 'user:1', action: 'disable' })])
+    expect(target.textContent).toContain('Using the central LLM credentials')
+  })
+
+  test('submitting the add-provider form PATCHes an upsert-provider action', async () => {
+    setCsrfToken('c')
+    const state: MockState = {
+      current: enabledWithProviderPayload,
+      afterPatch: enabledWithProviderPayload,
+      patchBodies: [],
+    }
+    setMockFetch(byokMock(state))
+    mountSection()
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="byok-add-provider"]')!.click()
+    await drain()
+
+    const label = target.querySelector<HTMLInputElement>('[data-testid="byok-provider-form-label"]')!
+    label.value = 'My provider'
+    label.dispatchEvent(new Event('input', { bubbles: true }))
+    const apiKey = target.querySelector<HTMLInputElement>('[data-testid="byok-provider-form-api-key"]')!
+    apiKey.value = 'sk-test'
+    apiKey.dispatchEvent(new Event('input', { bubbles: true }))
     flushSync()
-    settingsSession.activeContextId = 'user:b'
+
+    target.querySelector<HTMLButtonElement>('[data-testid="byok-provider-form-save"]')!.click()
+    // Two drains: onAddProvider awaits upsertByokProviderAction then load.
+    await drain()
     await drain()
 
-    expect(target.textContent).toContain('request failed with status 500')
-    expect(target.querySelector('[data-testid="byok-save-main_model"]')).toBeNull()
-    expect(capturedPatch).toBeNull()
-    void unmount(component)
+    expect(state.patchBodies.length).toBe(1)
+    const raw = state.patchBodies[0]!
+    // The provider id is random, so assert on the stable fields rather than the full body.
+    expect(raw).toContain('"contextId":"user:1"')
+    expect(raw).toContain('"action":"upsert-provider"')
+    expect(raw).toContain('"label":"My provider"')
+    expect(raw).toContain('"apiKey":"sk-test"')
   })
 
-  test('shows missing required fields for incomplete BYOK credentials', async () => {
-    setMockFetch(() => Promise.resolve(json(enabledPayload)))
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
-
-    await drain()
-
-    expect(target.textContent).toContain('Missing required fields')
-    expect(target.textContent).toContain('embedding_model')
-    void unmount(component)
-  })
-
-  test('shows unreadable credential state distinctly', async () => {
+  test('shows a distinct unreadable state with a danger pill', async () => {
     setMockFetch(() => Promise.resolve(json(unreadablePayload)))
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
-
+    mountSection()
     await drain()
 
     expect(target.textContent).toContain('Stored BYOK credentials are unreadable')
     expect(target.textContent).not.toContain('not-base64')
-    void unmount(component)
+    const statePill = target.querySelector('[data-testid="byok-state"]')
+    expect(statePill!.textContent).toContain('Unreadable')
   })
 
-  test('saving a local value PATCHes the single changed key', async () => {
+  test('clicking the refresh-models button PATCHes a refresh-models action and reloads', async () => {
     setCsrfToken('c')
-    setMockFetch(routeByokMock)
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
-
-    await drain()
-    const input = target.querySelector<HTMLInputElement>('[data-testid="byok-input-main_model"]')!
-    input.value = 'gpt-next'
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    flushSync()
-    target.querySelector<HTMLButtonElement>('[data-testid="byok-save-main_model"]')!.click()
+    const state: MockState = {
+      current: enabledWithProviderPayload,
+      afterPatch: enabledWithProviderPayload,
+      patchBodies: [],
+    }
+    setMockFetch(byokMock(state))
+    mountSection()
     await drain()
 
-    expect(capturedPatchBody).toBe(JSON.stringify({ contextId: 'user:1', values: { main_model: 'gpt-next' } }))
-    void unmount(component)
+    target.querySelector<HTMLButtonElement>('[data-testid="byok-refresh-models-prov_1"]')!.click()
+    // Two drains: refreshProviderModels awaits refreshByokModels then load.
+    await drain()
+    await drain()
+
+    expect(state.patchBodies).toEqual([JSON.stringify({ contextId: 'user:1', action: 'refresh-models', id: 'prov_1' })])
   })
 
-  test('shows a mute "Central credentials" state pill when disabled', async () => {
-    setMockFetch(() => Promise.resolve(json(disabledPayload)))
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
+  test('the Save roles button is disabled until the role bindings change', async () => {
+    setMockFetch(() => Promise.resolve(json(enabledWithProviderPayload)))
+    mountSection()
     await drain()
-    const pill = target.querySelector('[data-testid="byok-state"]')
-    expect(pill).not.toBeNull()
-    expect(pill!.textContent).toContain('Central credentials')
-    void unmount(component)
-  })
 
-  test('shows an "Incomplete" state pill when required fields are missing', async () => {
-    setMockFetch(() => Promise.resolve(json(enabledPayload)))
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
-    await drain()
-    expect(target.querySelector('[data-testid="byok-state"]')!.textContent).toContain('Incomplete')
-    void unmount(component)
-  })
-
-  test('shows an "Active" state pill when enabled and complete', async () => {
-    setMockFetch(() => Promise.resolve(json(rawSecretPayload)))
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
-    await drain()
-    expect(target.querySelector('[data-testid="byok-state"]')!.textContent).toContain('Active')
-    void unmount(component)
-  })
-
-  test('a per-field Save is disabled until the value changes', async () => {
-    setMockFetch(() => Promise.resolve(json(enabledPayload)))
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
-    await drain()
-    const save = target.querySelector<HTMLButtonElement>('[data-testid="byok-save-main_model"]')!
+    const save = target.querySelector<HTMLButtonElement>('[data-testid="byok-roles-save"]')!
     expect(save.disabled).toBe(true)
-    const input = target.querySelector<HTMLInputElement>('[data-testid="byok-input-main_model"]')!
-    input.value = 'gpt-next'
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    flushSync()
-    expect(save.disabled).toBe(false)
-    void unmount(component)
-  })
-
-  test('a field input has an accessible name via aria-labelledby pointing at its label', async () => {
-    setMockFetch(() => Promise.resolve(json(enabledPayload)))
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
-    await drain()
-    const input = target.querySelector<HTMLInputElement>('[data-testid="byok-input-main_model"]')!
-    const labelledBy = input.getAttribute('aria-labelledby')
-    expect(labelledBy).not.toBeNull()
-    const labelEl = target.querySelector(`#${labelledBy}`)
-    expect(labelEl).not.toBeNull()
-    expect(labelEl!.textContent).toContain('Main model')
-    void unmount(component)
   })
 
   test('a failed initial load renders ErrorState with a retry control', async () => {
     setMockFetch(() => Promise.resolve(new Response('boom', { status: 500 })))
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
+    mountSection()
     await drain()
+
     expect(target.querySelector('[data-testid="error-retry"]')).not.toBeNull()
     expect(target.querySelector('.ui-error')).not.toBeNull()
-    void unmount(component)
-  })
-
-  test('a save success line is announced via role="status"', async () => {
-    setCsrfToken('c')
-    setMockFetch(routeByokMock)
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
-    await drain()
-    const input = target.querySelector<HTMLInputElement>('[data-testid="byok-input-main_model"]')!
-    input.value = 'gpt-next'
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    flushSync()
-    target.querySelector<HTMLButtonElement>('[data-testid="byok-save-main_model"]')!.click()
-    // two drains: save() awaits patchByok then load()
-    await drain()
-    await drain()
-    expect(target.querySelector('p[role="status"]')).not.toBeNull()
-    void unmount(component)
-  })
-
-  test('a save whose reload fails shows the error and no success line', async () => {
-    setCsrfToken('c')
-    setMockFetch(makeReloadFailsByokMock({ getCount: 0 }))
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
-    await drain()
-    const input = target.querySelector<HTMLInputElement>('[data-testid="byok-input-main_model"]')!
-    input.value = 'gpt-next'
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    flushSync()
-    target.querySelector<HTMLButtonElement>('[data-testid="byok-save-main_model"]')!.click()
-    await drain()
-    await drain()
-    expect(target.querySelector('p[role="status"]')).toBeNull()
-    expect(target.querySelector('p.status-error[role="alert"]')).not.toBeNull()
-    void unmount(component)
   })
 })

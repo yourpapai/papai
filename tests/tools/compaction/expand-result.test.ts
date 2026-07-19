@@ -8,11 +8,11 @@ import assert from 'node:assert/strict'
 
 import { RESULT_STORE_TTL_MS } from '../../../src/tools/compaction/constants.js'
 import { makeExpandResultTool } from '../../../src/tools/compaction/expand-result.js'
+import { putResult } from '../../../src/tools/compaction/result-store.js'
 import {
-  putResult,
   clearResultStoreForTesting,
   setResultStoreClockForTesting,
-} from '../../../src/tools/compaction/result-store.js'
+} from '../../../src/tools/compaction/result-store.testing.js'
 import { getToolExecutor } from '../../utils/test-helpers.js'
 
 function isPageResult(v: unknown): v is { chunk: string; done: boolean } {
@@ -69,7 +69,7 @@ describe('expand_result tool', () => {
 
   it('uses the SDK toolCallId in failure results, not the handle', async () => {
     const exec = getToolExecutor(makeExpandResultTool('ctx-1'))
-    const out: unknown = await exec({ handle: 'res_missing' }, { toolCallId: 'call_42', messages: [] })
+    const out: unknown = await exec({ handle: 'res_missing' }, { toolCallId: 'call_42', messages: [], context: {} })
     assert(isFailureResult(out), 'Expected a structured failure result')
     expect(out.toolCallId).toBe('call_42')
   })

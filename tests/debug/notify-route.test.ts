@@ -14,7 +14,7 @@ import { buildNotifyTarget, handleNotifyRoute } from '../../src/debug/notify-rou
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertPlatformInstance } from '../../src/instances/platform-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
-import { resetNotifyTokenCacheForTesting } from '../../src/notify-token.js'
+import { resetNotifyTokenCacheForTesting } from '../../src/notify-token.testing.js'
 import * as proactiveHistoryModule from '../../src/proactive-history.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 

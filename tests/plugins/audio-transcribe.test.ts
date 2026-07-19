@@ -220,8 +220,8 @@ function createMockRuntimeContext(overrides: RuntimeOverrides = {}): PluginToolR
   }
 }
 
-function createMockOptions(): ToolExecutionOptions {
-  return { toolCallId: 'test-call-id', messages: [] }
+function createMockOptions(): ToolExecutionOptions<unknown> {
+  return { toolCallId: 'test-call-id', messages: [], context: {} }
 }
 
 function assertTransformFailed(

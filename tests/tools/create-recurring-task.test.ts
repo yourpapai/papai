@@ -12,7 +12,7 @@ import { makeCreateRecurringTaskTool } from '../../src/tools/create-recurring-ta
 import type { RecurringTaskInput, RecurringTaskRecord } from '../../src/types/recurring.js'
 import { mockLogger } from '../utils/test-helpers.js'
 
-const toolCtx = { toolCallId: '1', messages: [] as never[] }
+const toolCtx = { toolCallId: '1', messages: [] as never[], context: {} }
 
 function makeRecord(input: RecurringTaskInput): RecurringTaskRecord {
   return {

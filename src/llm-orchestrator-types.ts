@@ -3,14 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { generateText, stepCountIs, LanguageModel, ModelMessage, ToolSet } from 'ai'
+import type { generateText, isStepCount, LanguageModel, ModelMessage, ToolSet } from 'ai'
 
 import type { AiProgressReporter } from './ai-progress-reporter.js'
 import type { StagedFileDownloadFn } from './attachments/types.js'
 import type { ChatParticipantResolver } from './chat/participants/roster.js'
 import type { ReplyFn } from './chat/types.js'
 import type { LiveStatusReporter } from './live-status/reporter.js'
-import type { EffectiveLlmConfig } from './llm-config-resolver.js'
+import type { EffectiveLlmConfig } from './llm-providers/types.js'
 import type { TaskProvider } from './providers/types.js'
 import type { DisclosureSession } from './tools/disclosure/registry.js'
 
@@ -19,7 +19,7 @@ export type LlmOrchestratorDeps = {
   // assignable, and the orchestrator only consumes the result loosely (steps/usage/text),
   // so tests can supply a canned result without type-suppression or assertion escape hatches.
   generateText: (options: Parameters<typeof generateText>[0]) => ReturnType<typeof generateText>
-  stepCountIs: typeof stepCountIs
+  stepCountIs: typeof isStepCount
   buildModel: (config: EffectiveLlmConfig) => LanguageModel
   resolve: (contextId: string) => Promise<TaskProvider | null> | TaskProvider | null
   maybeAutoProvision: (

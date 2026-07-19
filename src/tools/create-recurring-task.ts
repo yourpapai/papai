@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { rruleInputSchema } from '../deferred-prompts/types.js'
@@ -127,10 +127,7 @@ function buildRecurringTaskResult(record: RecurringTaskRecord): {
   }
 }
 
-export function makeCreateRecurringTaskTool(
-  userId: string,
-  deps: CreateRecurringTaskDeps = defaultDeps,
-): ToolSet[string] {
+export function makeCreateRecurringTaskTool(userId: string, deps: CreateRecurringTaskDeps = defaultDeps): Tool {
   return tool({
     description:
       'Set up a recurring task that is automatically created on a schedule (cron) or after completion. Call list_projects first.',
