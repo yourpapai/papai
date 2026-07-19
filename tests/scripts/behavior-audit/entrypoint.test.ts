@@ -144,6 +144,7 @@ function createHarness(
     readonly saveConsolidatedManifest: ConsolidatedManifest[]
     readonly runPhase2cIfNeeded: Array<{
       readonly consolidatedManifest: ConsolidatedManifest
+      readonly selectedFeatureKeys: readonly string[]
       readonly reporter: BehaviorAuditProgressReporter
     }>
     readonly runPhase3IfNeeded: Array<{
@@ -219,6 +220,7 @@ function createHarness(
     saveConsolidatedManifest: [] as ConsolidatedManifest[],
     runPhase2cIfNeeded: [] as Array<{
       readonly consolidatedManifest: ConsolidatedManifest
+      readonly selectedFeatureKeys: readonly string[]
       readonly reporter: BehaviorAuditProgressReporter
     }>,
     runPhase3IfNeeded: [] as Array<{
@@ -295,9 +297,10 @@ function createHarness(
       calls.saveConsolidatedManifest.push(manifest)
       return Promise.resolve()
     },
-    runPhase2cIfNeeded: (phaseConsolidatedManifest, phaseReporter) => {
+    runPhase2cIfNeeded: (phaseConsolidatedManifest, selectedFeatureKeys, phaseReporter) => {
       calls.runPhase2cIfNeeded.push({
         consolidatedManifest: phaseConsolidatedManifest,
+        selectedFeatureKeys: [...selectedFeatureKeys].toSorted(),
         reporter: phaseReporter,
       })
       return Promise.resolve()
@@ -486,6 +489,7 @@ describe('behavior-audit entrypoint incremental selection', () => {
     expect(calls.runPhase2cIfNeeded).toEqual([
       {
         consolidatedManifest: createConsolidatedManifest(),
+        selectedFeatureKeys: [],
         reporter: phase2cCall.reporter,
       },
     ])

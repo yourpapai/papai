@@ -118,6 +118,7 @@ async function verifyFeatureKey(deps: Phase2cDeps, featureKey: string, resolvers
 
 export async function runPhase2c(
   manifest: ConsolidatedManifest,
+  selectedFeatureKeys: ReadonlySet<string>,
   depsInput: Partial<Phase2cDeps> = {},
 ): Promise<ConsolidatedManifest> {
   const deps: Phase2cDeps = { ...defaultDeps, ...depsInput }
@@ -135,7 +136,9 @@ export async function runPhase2c(
 
   const { resolver: codeindex, close: closeCodeindex } = await loadCodeindexResolver(deps)
   const resolvers: HintResolvers = { commands, tools, routes, codeindex }
-  const featureKeys = [...new Set(Object.values(manifest.entries).map((entry) => entry.featureKey))]
+  const allFeatureKeys = [...new Set(Object.values(manifest.entries).map((entry) => entry.featureKey))]
+  const featureKeys =
+    selectedFeatureKeys.size > 0 ? allFeatureKeys.filter((key) => selectedFeatureKeys.has(key)) : allFeatureKeys
   const limit = pLimit(deps.concurrency)
 
   try {

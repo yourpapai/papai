@@ -141,7 +141,7 @@ describe('runPhase2c', () => {
       },
     })
 
-    await runPhase2c(manifest, deps)
+    await runPhase2c(manifest, new Set(), deps)
 
     expect(reads.toSorted()).toEqual(['candidate-a', 'candidate-b'])
     expect(writes).toHaveLength(2)
@@ -158,7 +158,7 @@ describe('runPhase2c', () => {
     const manifest = manifestWith(['missing'])
     const { deps, writes } = createHarness({ behaviorsByFeatureKey: {} })
 
-    await runPhase2c(manifest, deps)
+    await runPhase2c(manifest, new Set(), deps)
 
     expect(writes).toHaveLength(0)
   })
@@ -177,7 +177,7 @@ describe('runPhase2c', () => {
       codeindexDeps: null,
     })
 
-    await runPhase2c(manifest, deps)
+    await runPhase2c(manifest, new Set(), deps)
 
     expect(warnings.some((w) => w.includes('codeindex unavailable'))).toBe(true)
     expect(writes).toHaveLength(1)
@@ -188,10 +188,28 @@ describe('runPhase2c', () => {
     const manifest: ConsolidatedManifest = { version: 1, entries: {} }
     const { deps, reads, writes, logs } = createHarness()
 
-    await runPhase2c(manifest, deps)
+    await runPhase2c(manifest, new Set(), deps)
 
     expect(reads).toEqual([])
     expect(writes).toEqual([])
     expect(logs[0]).toContain('0 feature keys verified')
+  })
+
+  test('when selectedFeatureKeys contains one of three featureKeys, only that one is re-verified', async () => {
+    const manifest = manifestWith(['feature-a', 'feature-b', 'feature-c'])
+    const { deps, writes, reads, logs } = createHarness({
+      behaviorsByFeatureKey: {
+        'feature-a': [createBehavior({ id: 'a1', entryPointHints: [{ kind: 'command', identifier: '/config' }] })],
+        'feature-b': [createBehavior({ id: 'b1', entryPointHints: [{ kind: 'command', identifier: '/config' }] })],
+        'feature-c': [createBehavior({ id: 'c1', entryPointHints: [{ kind: 'command', identifier: '/config' }] })],
+      },
+    })
+
+    await runPhase2c(manifest, new Set(['feature-b']), deps)
+
+    expect(reads).toEqual(['feature-b'])
+    expect(writes).toHaveLength(1)
+    expect(writes[0]?.featureKey).toBe('feature-b')
+    expect(logs[0]).toContain('1 feature keys verified')
   })
 })

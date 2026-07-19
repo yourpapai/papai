@@ -89,9 +89,14 @@ async function runPhase3IfNeeded(
 
 function defaultRunPhase2cIfNeeded(
   manifest: import('./incremental.js').ConsolidatedManifest,
+  selectedFeatureKeys: ReadonlySet<string>,
   _reporter: BehaviorAuditProgressReporter,
 ): Promise<void> {
-  return runPhase2c(manifest).then(() => undefined)
+  if (selectedFeatureKeys.size === 0) {
+    console.log('[Phase 2c] No selected feature keys, skipping.\n')
+    return Promise.resolve()
+  }
+  return runPhase2c(manifest, selectedFeatureKeys).then(() => undefined)
 }
 
 function defaultSelectIncrementalRunWork(input: {
@@ -139,6 +144,7 @@ export interface BehaviorAuditDeps {
   readonly saveConsolidatedManifest: typeof saveConsolidatedManifest
   readonly runPhase2cIfNeeded: (
     manifest: import('./incremental.js').ConsolidatedManifest,
+    selectedFeatureKeys: ReadonlySet<string>,
     reporter: BehaviorAuditProgressReporter,
   ) => Promise<void>
   readonly runPhase3IfNeeded: (
@@ -202,7 +208,7 @@ async function runAuditPhases(input: {
     input.reporter,
   )
   await input.deps.saveConsolidatedManifest(consolidatedManifest)
-  await input.deps.runPhase2cIfNeeded(consolidatedManifest, input.reporter)
+  await input.deps.runPhase2cIfNeeded(consolidatedManifest, phase2bSelectedKeys, input.reporter)
   await input.deps.runPhase3IfNeeded(
     input.progress,
     new Set(input.selection.phase3SelectedConsolidatedIds),
