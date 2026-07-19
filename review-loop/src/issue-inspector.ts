@@ -84,11 +84,15 @@ export async function runInspectorOrTreatAsRejection(
       collector,
     )
   } catch (error) {
-    const reasoning = error instanceof Error ? error.message : String(error)
-    emitInspectComplete(deps.trace, round, record.id, false, 0, reasoning)
+    const originalReasoning = error instanceof Error ? error.message : String(error)
+    deps.log.log(`[inspect] inspector unavailable: ${originalReasoning}`)
+    emitInspectComplete(deps.trace, round, record.id, false, 0, 'inspector unavailable')
+    if (collector !== undefined) {
+      tallyInspector(collector, false)
+    }
     return {
       addresses: false,
-      reasoning,
+      reasoning: 'inspector unavailable',
       confidence: 0,
       usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0 },
     }

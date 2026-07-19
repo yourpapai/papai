@@ -202,6 +202,21 @@ function createInspectorMalformedThenValidSpawn(): SpawnFn {
   }
 }
 
+function createAlwaysFailingInspectorSpawn(): SpawnFn {
+  return (_cmd, args, opts) => {
+    const prompt = args[args.length - 1] ?? ''
+    const outputPath = prompt.match(/(?:to|JSON to):\s*(\S+)/u)?.[1]
+    if (outputPath === undefined) return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+
+    if (prompt.includes('You are an inspector')) {
+      writeFileSync(path.join(opts.cwd, outputPath), 'not-json')
+    } else {
+      writeFixerResult({ cwd: opts.cwd, outputPath, verdict: 'valid', fixed: true })
+    }
+    return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+  }
+}
+
 describe('processPendingIssues', () => {
   test('fixes an issue, emits verify/build/inspect/fix trace events, and tallies a fixed decision', async () => {
     const { fixed, ledger, events, collector } = await runScenario(mockSpawnForFixerAndInspector({}))
@@ -319,8 +334,21 @@ describe('processIssue unified retry budget', () => {
     const { fixed, ledger, collector } = await runScenario(createInspectorMalformedThenValidSpawn())
     expect(fixed).toBe(1)
     expect(recordOf(ledger).status).toBe('fixed_pending_review')
-    expect(collector.inspector.runs).toBe(1)
-    expect(collector.inspector.rejected).toBe(0)
+    expect(collector.inspector.runs).toBe(2)
+    expect(collector.inspector.rejected).toBe(1)
+  })
+
+  test('inspector failure reports "inspector unavailable" and bumps tallies on every invocation', async () => {
+    const { fixed, ledger, events, collector } = await runScenario(createAlwaysFailingInspectorSpawn())
+    expect(fixed).toBe(0)
+    expect(recordOf(ledger).status).toBe('needs_human')
+    const inspectEvents = events.filter((e) => e.event === 'inspect_complete')
+    expect(inspectEvents).toHaveLength(2)
+    for (const e of inspectEvents) {
+      expect(e.reasoning).toBe('inspector unavailable')
+    }
+    expect(collector.inspector.runs).toBe(2)
+    expect(collector.inspector.rejected).toBe(2)
   })
 })
 

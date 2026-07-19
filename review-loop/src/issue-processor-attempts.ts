@@ -7,7 +7,7 @@ import { agentWritePath, runAgent, type AgentRunResult } from './agent-runner.js
 import { runBuildWithLogging } from './build-checker.js'
 import { runInspectorOrTreatAsRejection } from './issue-inspector.js'
 import { recordFixAttempt, recordNeedsHuman, recordVerify, type LedgerIssueRecord } from './issue-ledger.js'
-import type { IssueProcessorDeps } from './issue-processor.js'
+import { sanitizeSubject, type IssueProcessorDeps } from './issue-processor.js'
 import { FixerResultSchema, type FixerResult } from './issue-schema.js'
 import {
   emitBuildComplete,
@@ -61,11 +61,6 @@ export function runFixerRaw(
     extraArgs: deps.config.fixer.extraArgs,
     timeoutMs: deps.config.fixer.timeoutMs ?? deps.config.agentTimeoutMs,
   })
-}
-
-export function sanitizeSubject(text: string): string {
-  const oneLine = text.split(/\r?\n/u)[0] ?? ''
-  return oneLine.replace(/[`"']/gu, '').trim().slice(0, 100)
 }
 
 export async function ensureFixerChangesCommitted(
