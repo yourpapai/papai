@@ -67,22 +67,7 @@ export async function runPublish(input: PublishDeps): Promise<PublishResult> {
   const commitMessage = buildCommitMessage(input.dateStamp)
   const worktreePath = await input.gitOps.worktreePath()
 
-  // Always recreate a fresh orphan branch so the published history contains
-  // only the `stories/` snapshot, never the workflow's checkout lineage.
-  // `git checkout --orphan` keeps the inherited index populated; `git rm -rf .`
-  // clears both the index and the working tree so the only thing we commit is
-  // the freshly written `stories/` directory below.
-  //
-  // CI's fetch step (`git fetch ... audit-output:audit-output`) materialises
-  // `refs/heads/audit-output` locally before we run; `git checkout --orphan`
-  // refuses to overwrite an existing ref, so delete it first. The delete is
-  // best-effort: on a first run (or a worktree where the branch was never
-  // created) the call fails and we swallow it.
-  await input.gitOps.run(['branch', '-D', branch]).catch(() => {
-    // ignore — branch may not exist on first run
-  })
-  await input.gitOps.checkoutOrphan(branch)
-  await input.gitOps.run(['rm', '-rf', '.'])
+  await resetToFreshOrphanBranch(input.gitOps, branch, input.log)
 
   await rm(join(worktreePath, 'stories'), { recursive: true, force: true })
   await mkdir(join(worktreePath, 'stories'), { recursive: true })
@@ -97,6 +82,31 @@ export async function runPublish(input: PublishDeps): Promise<PublishResult> {
 
   input.log.log(`Published ${entries.length} entries to ${branch} (tag ${tag}) at ${input.dateStamp}`)
   return { exitCode: 0, commitMessage }
+}
+
+async function resetToFreshOrphanBranch(
+  gitOps: GitOps,
+  branch: string,
+  log: Pick<Console, 'log' | 'error'>,
+): Promise<void> {
+  // Always recreate a fresh orphan branch so the published history contains
+  // only the `stories/` snapshot, never the workflow's checkout lineage.
+  // `git checkout --orphan` keeps the inherited index populated; `git rm -rf .`
+  // clears both the index and the working tree so the only thing we commit is
+  // the freshly written `stories/` directory written by the caller.
+  //
+  // CI's fetch step (`git fetch ... audit-output:audit-output`) materialises
+  // `refs/heads/audit-output` locally before we run; `git checkout --orphan`
+  // refuses to overwrite an existing ref, so delete it first. The delete is
+  // best-effort: on a first run (or a worktree where the branch was never
+  // created) the call fails; log the stderr breadcrumb so an unrelated failure
+  // mode (e.g. the ref is checked out in another worktree) is not masked by
+  // the downstream `checkout --orphan` "branch already exists" error.
+  await gitOps.run(['branch', '-D', branch]).catch((err: unknown) => {
+    log.log(`branch -D ${branch} skipped: ${err instanceof Error ? err.message : String(err)}`)
+  })
+  await gitOps.checkoutOrphan(branch)
+  await gitOps.run(['rm', '-rf', '.'])
 }
 
 export class RealGitOps implements GitOps {
