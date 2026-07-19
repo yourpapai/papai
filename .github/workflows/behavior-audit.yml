@@ -29,6 +29,10 @@ jobs:
           BEHAVIOR_AUDIT_MODEL: ${{ secrets.BEHAVIOR_AUDIT_MODEL }}
           OPENAI_API_KEY: ${{ secrets.BEHAVIOR_AUDIT_API_KEY }}
         run: bun run scripts/behavior-audit/preflight.ts
+      - name: Fetch prior audit snapshot (for trend)
+        run: |
+          git fetch --depth=1 origin audit-output:audit-output 2>/dev/null || true
+          git fetch --tags --depth=1 origin audit-output-latest 2>/dev/null || true
       - name: Run audit
         env:
           BEHAVIOR_AUDIT_BASE_URL: ${{ secrets.BEHAVIOR_AUDIT_BASE_URL }}
