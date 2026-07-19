@@ -57,7 +57,8 @@ function burndownBlock(metrics: readonly RoundMetric[]): string {
       m.decisions.already_fixed +
       m.decisions.needs_human +
       m.decisions.plan_drift +
-      m.decisions.no_commit
+      m.decisions.no_commit +
+      m.decisions.inspector_rejected
     return [
       String(m.round).padEnd(6),
       String(m.newIssues).padEnd(4),
