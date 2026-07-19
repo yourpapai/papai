@@ -149,6 +149,8 @@ export function toConsolidations(
     sourceTestKeys: item.sourceTestKeys,
     sourceBehaviorIds: item.sourceBehaviorIds,
     supportingInternalRefs: item.supportingInternalRefs,
+    entryPointHints: [],
+    closure: null,
   }))
 }
 

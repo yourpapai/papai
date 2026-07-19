@@ -23,6 +23,8 @@ import {
   loadConsolidatedArtifacts,
   loadEvaluatedArtifacts,
 } from './report-rebuild-helpers.js'
+import type { ClosureResult, EntryPointHint } from './scores-types.js'
+
 export type { DomainSummary, FailedItem } from './report-index-helpers.js'
 
 export interface StoryEvaluation {
@@ -65,7 +67,31 @@ export interface ConsolidatedBehavior {
     readonly behaviorId: string
     readonly summary: string
   }[]
+  readonly entryPointHints: readonly EntryPointHint[]
+  readonly closure: ClosureResult | null
 }
+
+const EntryPointHintSchema = z.object({
+  kind: z.enum(['command', 'tool', 'handler', 'route']),
+  identifier: z.string(),
+})
+
+const EntryPointEntrySchema = z.object({
+  kind: z.enum(['command', 'tool', 'handler', 'route']),
+  identifier: z.string(),
+  resolved: z.boolean(),
+  evidence: z
+    .object({
+      filePath: z.string(),
+      symbol: z.string().optional(),
+    })
+    .nullable(),
+})
+
+const ClosureResultSchema = z.object({
+  closureStatus: z.enum(['resolved', 'partial', 'unresolved', 'unverified']),
+  entryPoints: z.array(EntryPointEntrySchema).readonly(),
+})
 
 const ConsolidatedBehaviorSchema = z.object({
   id: z.string(),
@@ -81,6 +107,8 @@ const ConsolidatedBehaviorSchema = z.object({
     .array(z.object({ behaviorId: z.string(), summary: z.string() }).readonly())
     .default([])
     .readonly(),
+  entryPointHints: z.array(EntryPointHintSchema).default([]).readonly(),
+  closure: ClosureResultSchema.nullable().default(null).readonly(),
 })
 
 const ConsolidatedBehaviorArraySchema = z.array(ConsolidatedBehaviorSchema).readonly()

@@ -1876,6 +1876,8 @@ test('writeReports aggregates story output from canonical feature-key maps', asy
             sourceTestKeys: ['tests/tools/sample.test.ts::suite > create task'],
             sourceBehaviorIds: ['tests/tools/sample.test.ts::suite > create task'],
             supportingInternalRefs: [],
+            entryPointHints: [],
+            closure: null,
           },
         ],
       ],
