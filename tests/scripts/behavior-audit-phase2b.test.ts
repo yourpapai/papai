@@ -246,6 +246,7 @@ test('runPhase2b joins classified and extracted artifacts by behavior id and wri
                   summary: 'Validation guards prevent malformed task creation inputs.',
                 },
               ],
+              entryPointHints: [],
             },
           },
         ]
@@ -397,6 +398,7 @@ test('runPhase2b groups joined artifact inputs by feature key and preserves cros
             readonly sourceTestKeys: string[]
             readonly sourceBehaviorIds: string[]
             readonly supportingInternalRefs: { behaviorId: string; summary: string }[]
+            readonly entryPointHints: { kind: 'command' | 'tool' | 'handler' | 'route'; identifier: string }[]
           }
         }[]
       > | null> => {
@@ -416,6 +418,7 @@ test('runPhase2b groups joined artifact inputs by feature key and preserves cros
                 sourceTestKeys: inputs.map((input) => input.testKey),
                 sourceBehaviorIds: inputs.map((input) => input.behaviorId),
                 supportingInternalRefs: [],
+                entryPointHints: [],
               },
             },
           ],
@@ -554,6 +557,7 @@ test('runPhase2b at CONCURRENCY=4 preserves every feature key delta when consoli
             sourceTestKeys: string[]
             sourceBehaviorIds: string[]
             supportingInternalRefs: { behaviorId: string; summary: string }[]
+            entryPointHints: { kind: 'command' | 'tool' | 'handler' | 'route'; identifier: string }[]
           }
         }[]
       > | null> => {
@@ -572,6 +576,7 @@ test('runPhase2b at CONCURRENCY=4 preserves every feature key delta when consoli
                 sourceTestKeys: [spec.testKey],
                 sourceBehaviorIds: [spec.testKey],
                 supportingInternalRefs: [],
+                entryPointHints: [],
               },
             },
           ],
