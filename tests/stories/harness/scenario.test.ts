@@ -105,6 +105,8 @@ describe('scenario execution', () => {
       const last = world.model.inspections().at(-1)
       expect(last?.availableTools).not.toContain('create_task')
       expect(last?.availableTools).toContain('list_tasks')
+      expect(() => world.runtime.resolveToolCapability('tasks.create')).toThrow('Unknown tool capability id')
+      expect(world.runtime.resolveToolCapability('tasks.list')).toBe('list_tasks')
       await then.task('Nope').absent()
     })
   })
