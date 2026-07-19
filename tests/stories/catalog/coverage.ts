@@ -9,6 +9,40 @@ type CatalogScenarioId = (typeof CATALOG_SCENARIO_IDS)[number]
 
 export type NonEmptyReadonlyTuple<T> = readonly [T, ...T[]]
 
+export const STORY_FAMILIES = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'unqueued'] as const
+export type StoryFamily = (typeof STORY_FAMILIES)[number]
+
+export const STORY_SEAM_IDS = [
+  'capability-ids',
+  'memory-task-provider-expansion',
+  'attachments-relay',
+  'compaction-trigger',
+  'mid-turn-run-control',
+  'fake-mcp-server',
+  'fake-magi-transcript',
+  'dashboard-auth-fixture',
+  'debug-enabled-world-option',
+  'notify-token-fixture',
+  'mattermost-action-fixture',
+  'scheduler-due-seed',
+  'embeddings-endpoint',
+  'memory-extraction-llm',
+  'public-url-assertion',
+  'platform-adapter-fakes',
+] as const
+export type StorySeamId = (typeof STORY_SEAM_IDS)[number]
+
+export type AuditReadiness =
+  | Readonly<{ state: 'executable-as-is' }>
+  | Readonly<{ state: 'needs-seam'; seams: NonEmptyReadonlyTuple<StorySeamId> }>
+  | Readonly<{ state: 'blocked'; blocker: 'missing-implementation' }>
+
+export type AuditRecord = Readonly<{
+  readiness: AuditReadiness
+  family: StoryFamily
+  rationale: PendingReason
+}>
+
 export class PendingReason {
   readonly #value: string
 
@@ -40,8 +74,7 @@ export type CatalogCoverage =
       catalogStatus: CatalogStatus
       kind: 'pending'
       verifiedAt: string
-      reason: PendingReason
-      requiredSeam?: string
+      audit: AuditRecord
     }>
 
 export const CATALOG_SOURCE = 'scenario-catalog snapshot supplied 2026-07-13' as const
@@ -173,6 +206,8 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-http-admin-dashboard',
   'SCN-http-billing-stats-readonly',
   'SCN-http-debug-live-panels',
+  'SCN-context-thread-scope',
+  'SCN-context-group-identity',
 ] as const)
 
 const GAP_SCENARIO_IDS = new Set<CatalogScenarioId>([
@@ -188,19 +223,13 @@ const FORWARD_ONLY_SCENARIO_IDS = new Set<CatalogScenarioId>([
   'SCN-interaction-discord-router-wrapped',
   'SCN-interaction-discord-standalone-fallback',
   'SCN-interaction-telegram-callback',
-  'SCN-interaction-permission-decision',
   'SCN-http-mattermost-action',
 ])
-
-const REQUIRED_SEAMS: Partial<Record<CatalogScenarioId, string>> = {
-  'SCN-settings-admin-mcp-catalog': 'fake-mcp-server',
-  'SCN-settings-admin-mcp-plugin-servers': 'fake-mcp-server',
-}
 
 function catalogStatusFor(scenarioId: CatalogScenarioId): CatalogStatus {
   if (GAP_SCENARIO_IDS.has(scenarioId)) return 'gap'
   if (scenarioId === 'SCN-coding-nerv-forge-event-source') return 'contract-only'
-  if (FORWARD_ONLY_SCENARIO_IDS.has(scenarioId) || scenarioId.startsWith('SCN-cmd-')) return 'forward-only'
+  if (FORWARD_ONLY_SCENARIO_IDS.has(scenarioId)) return 'forward-only'
   return 'confirmed'
 }
 
@@ -391,15 +420,472 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
       'tests/stories/context/guest-readonly.story.test.ts#guest group turns can read tasks but cannot advertise writes',
     ],
   },
+  'SCN-context-thread-scope': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/context/thread-scope.story.test.ts#group threads share config but isolate conversation history',
+    ],
+  },
+  'SCN-context-group-identity': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/context/group-users.story.test.ts#group members share durable config while retaining distinct identities',
+    ],
+  },
 }
 
-function pendingReasonFor(scenarioId: CatalogScenarioId, catalogStatus: CatalogStatus): PendingReason {
-  if (REQUIRED_SEAMS[scenarioId] !== undefined)
-    return toPendingReason('Deferred to the MCP-focused spec: behavioral proof requires a fake-MCP-server seam.')
-  if (catalogStatus === 'gap') return toPendingReason('Catalog gap: awaiting a local executable story.')
-  if (catalogStatus === 'contract-only')
-    return toPendingReason('Contract-only non-trigger: no executable story is expected.')
-  return toPendingReason('Awaiting branch audit before classifying an executable story.')
+function auditRecord(readiness: AuditReadiness, family: StoryFamily, rationale: string): AuditRecord {
+  return Object.freeze({ readiness, family, rationale: toPendingReason(rationale) })
+}
+
+const ready = (family: StoryFamily, rationale: string): AuditRecord =>
+  auditRecord({ state: 'executable-as-is' }, family, rationale)
+const needs = (family: StoryFamily, seams: NonEmptyReadonlyTuple<StorySeamId>, rationale: string): AuditRecord =>
+  auditRecord({ state: 'needs-seam', seams }, family, rationale)
+const blocked = (family: StoryFamily, rationale: string): AuditRecord =>
+  auditRecord({ state: 'blocked', blocker: 'missing-implementation' }, family, rationale)
+
+export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
+  // F1 — tool assembly, disclosure, and command surface (refactor-risk first)
+  'SCN-meta-expand-result': needs(
+    'F1',
+    ['compaction-trigger'],
+    'Result compaction engages only above COMPACTION_THRESHOLD_BYTES; a memory-provider knob must return an oversized payload deterministically.',
+  ),
+  'SCN-meta-search-tools': needs(
+    'F1',
+    ['capability-ids'],
+    'Scripting search_tools needs a capability id; ranking assertions rely on the lexical fallback when embeddings are unavailable.',
+  ),
+  'SCN-meta-load-tool': ready(
+    'F1',
+    'autoLoadTools already emits load_tool for non-advertised capabilities; assertions read the model available-tools inspections.',
+  ),
+  'SCN-cmd-help': ready(
+    'F1',
+    'Behavioral /help flow runs through the real registered handler via scenario chat dispatch; menu registration stays with adapter contract tests.',
+  ),
+  'SCN-cmd-start': ready(
+    'F1',
+    'Real /start onboarding reply via scenario chat dispatch; menu registration stays with adapter contract tests.',
+  ),
+  'SCN-cmd-config-dm': ready(
+    'F1',
+    'DM /config issues a real settings auth code through the registered handler; link semantics are behavioral, menu stays adapter-side.',
+  ),
+  'SCN-cmd-config-group': ready(
+    'F1',
+    'Group /config scopes the issued settings link; behavioral dispatch works, menu registration stays adapter-side.',
+  ),
+  'SCN-cmd-context': ready(
+    'F1',
+    'Real /context reply via scenario chat dispatch; menu registration stays with adapter contract tests.',
+  ),
+  'SCN-cmd-clear-self': ready(
+    'F1',
+    'Clear-own-history authorization and effect run through the real handler; menu registration stays adapter-side.',
+  ),
+  'SCN-cmd-clear-target-user': ready(
+    'F1',
+    'Clear-other authorization and effect run through the real handler; menu registration stays adapter-side.',
+  ),
+  'SCN-cmd-clear-all': ready(
+    'F1',
+    'Clear-all admin authorization and effect run through the real handler; menu registration stays adapter-side.',
+  ),
+  'SCN-cmd-clear-group-denied': ready(
+    'F1',
+    'Denied group clear produces the real refusal reply; menu registration stays adapter-side.',
+  ),
+  'SCN-cmd-dashboard': ready(
+    'F1',
+    'Dashboard sign-in link issuance runs through the real handler; menu registration stays adapter-side.',
+  ),
+  'SCN-cmd-stop-noop': ready(
+    'F1',
+    'Stop with no active turn produces the real no-op reply; no mid-turn seam required.',
+  ),
+  'SCN-cmd-stop-graceful': needs(
+    'F1',
+    ['mid-turn-run-control'],
+    'Stopping mid-turn needs a blocking scripted-LLM decision or a stop between queued generations; the model cannot block today.',
+  ),
+  'SCN-cmd-stop-abort': needs(
+    'F1',
+    ['mid-turn-run-control'],
+    'Aborting mid-turn needs the same mid-turn seam as graceful stop; classify together.',
+  ),
+  'SCN-cmd-acp': ready(
+    'F1',
+    'Overlaps SCN-coding-acp-command coverage; the F1 spec decides a dedicated story versus mapping the existing command story.',
+  ),
+  'SCN-cmd-nerv': blocked(
+    'F1',
+    'No /nerv command exists; nerv has no production implementation. Family F1 reviews it if a /nerv command ever lands.',
+  ),
+  'SCN-cmd-announce': blocked(
+    'F1',
+    'No chat /announce command exists; admin broadcast via the settings route is covered by SCN-settings-admin-roster-announce. Keeps gap status.',
+  ),
+  // F2 — conversational task operations
+  'SCN-task-create-update': needs(
+    'F2',
+    ['capability-ids'],
+    'Partially covered today by tests/stories/chat-task/create-and-read-task.story.test.ts (create and get only — documented partial coverage, not a mapping); scripting update_task needs a capability id.',
+  ),
+  'SCN-task-query': needs(
+    'F2',
+    ['capability-ids', 'memory-task-provider-expansion'],
+    'List/search work today; count variants need countTasks on the memory provider plus capability ids.',
+  ),
+  'SCN-task-delete': needs(
+    'F2',
+    ['capability-ids', 'memory-task-provider-expansion'],
+    'Needs deleteTask on the memory provider and a capability id.',
+  ),
+  'SCN-task-history': needs(
+    'F2',
+    ['capability-ids', 'memory-task-provider-expansion'],
+    'Needs getTaskHistory (activities.read) on the memory provider and a capability id.',
+  ),
+  'SCN-task-comments': needs(
+    'F2',
+    ['capability-ids'],
+    'Memory provider comment surface exists; scripting comment tools needs capability ids.',
+  ),
+  'SCN-task-labels': needs(
+    'F2',
+    ['capability-ids'],
+    'Memory provider label surface exists; scripting label tools needs capability ids.',
+  ),
+  'SCN-task-relations': needs(
+    'F2',
+    ['capability-ids', 'memory-task-provider-expansion'],
+    'Needs addRelation/updateRelation/removeRelation on the memory provider.',
+  ),
+  'SCN-task-statuses': needs(
+    'F2',
+    ['capability-ids', 'memory-task-provider-expansion'],
+    'Needs the statuses surface (list/create/update/delete/reorder) on the memory provider.',
+  ),
+  'SCN-task-projects': needs(
+    'F2',
+    ['capability-ids', 'memory-task-provider-expansion'],
+    'Needs the projects surface on the memory provider.',
+  ),
+  'SCN-task-project-team': needs(
+    'F2',
+    ['capability-ids', 'memory-task-provider-expansion'],
+    'Needs project team and member provisioning on the memory provider.',
+  ),
+  'SCN-task-worklog': needs(
+    'F2',
+    ['capability-ids', 'memory-task-provider-expansion'],
+    'Needs the work-items surface on the memory provider.',
+  ),
+  'SCN-task-sprints': needs(
+    'F2',
+    ['capability-ids', 'memory-task-provider-expansion'],
+    'Needs agiles/sprints on the memory provider.',
+  ),
+  'SCN-task-saved-queries': needs(
+    'F2',
+    ['capability-ids', 'memory-task-provider-expansion'],
+    'Needs saved queries on the memory provider.',
+  ),
+  'SCN-task-collaboration': needs(
+    'F2',
+    ['capability-ids', 'memory-task-provider-expansion'],
+    'Needs watchers/votes/visibility on the memory provider.',
+  ),
+  'SCN-task-identity': needs(
+    'F2',
+    ['capability-ids', 'memory-task-provider-expansion'],
+    'Needs listUsers/getCurrentUser/provisionWorkspaceMember; per-user me-resolution is already covered by SCN-context-group-identity.',
+  ),
+  'SCN-task-attachments': needs(
+    'F2',
+    ['capability-ids', 'memory-task-provider-expansion', 'attachments-relay'],
+    'Needs the attachment surface plus the incoming-file relay workspace.',
+  ),
+  'SCN-task-youtrack-command': needs(
+    'F2',
+    ['capability-ids', 'memory-task-provider-expansion'],
+    'Needs applyCommand with YouTrack traits on the memory provider.',
+  ),
+  'SCN-task-not-configured': ready('F2', 'Refusal path needs no tool call; an unassigned provider is seedable today.'),
+  'SCN-task-ask-confirm': ready(
+    'F2',
+    "tool_prefs 'ask' plus when.interaction permission buttons run in-process today.",
+  ),
+  'SCN-task-deny': ready(
+    'F2',
+    "tool_prefs 'deny' filtering is observable via model available-tools inspections today.",
+  ),
+  // F3 — memory, memos, instructions, history, chat links
+  'SCN-memo-save': needs(
+    'F3',
+    ['capability-ids'],
+    'Builtin memo tools execute against the real DB; scripting them needs capability ids.',
+  ),
+  'SCN-memo-recall': needs(
+    'F3',
+    ['capability-ids', 'embeddings-endpoint'],
+    'Semantic recall needs a declared fake embedding endpoint (or an asserted keyword-fallback path) plus capability ids.',
+  ),
+  'SCN-memo-archive': needs(
+    'F3',
+    ['capability-ids'],
+    'Builtin memo tools execute against the real DB; scripting them needs capability ids.',
+  ),
+  'SCN-memo-promote': needs(
+    'F3',
+    ['capability-ids'],
+    'Memo promotion executes against the real DB; scripting it needs a capability id.',
+  ),
+  'SCN-memory-remember': needs(
+    'F3',
+    ['capability-ids'],
+    'Builtin memory tools execute against the real DB; scripting them needs capability ids.',
+  ),
+  'SCN-memory-recall': needs(
+    'F3',
+    ['capability-ids', 'embeddings-endpoint'],
+    'Semantic recall needs a declared fake embedding endpoint (or an asserted keyword-fallback path) plus capability ids.',
+  ),
+  'SCN-memory-forget': needs(
+    'F3',
+    ['capability-ids'],
+    'Builtin memory tools execute against the real DB; scripting them needs capability ids.',
+  ),
+  'SCN-memory-capture-sweep': needs(
+    'F3',
+    ['capability-ids', 'memory-extraction-llm'],
+    'sweepDirtyContexts(now) is single-pass; the extraction runner needs a model seam or declared HTTP.',
+  ),
+  'SCN-memory-promotion-sweep': needs(
+    'F3',
+    ['capability-ids'],
+    'sweepPromotions is single-pass and DI-ready; scripting the sweep needs capability ids.',
+  ),
+  'SCN-instructions-save': needs(
+    'F3',
+    ['capability-ids'],
+    'Instruction tools are DB-backed; scripting them needs capability ids.',
+  ),
+  'SCN-instructions-list-delete': needs(
+    'F3',
+    ['capability-ids'],
+    'Instruction tools are DB-backed; scripting them needs capability ids.',
+  ),
+  'SCN-history-lookup': needs(
+    'F3',
+    ['capability-ids'],
+    'The message cache is populated by prior seeded turns; scripting lookup_group_history needs a capability id.',
+  ),
+  'SCN-fetch-chat-link': needs(
+    'F3',
+    ['capability-ids', 'public-url-assertion'],
+    'The fetch path performs a real DNS lookup unless assertPublicUrl is injected.',
+  ),
+  // F4 — HTTP surfaces
+  'SCN-http-notify': needs(
+    'F4',
+    ['notify-token-fixture'],
+    'Needs a seedable notify_token fixture; note the process-lifetime token cache in src/notify-token.ts.',
+  ),
+  'SCN-http-transcript-viewer': needs(
+    'F4',
+    ['fake-magi-transcript'],
+    'The transcript proxy targets magi; extend the fake magi to serve transcript bytes. Closes the catalog gap.',
+  ),
+  'SCN-http-mcp-plugin': needs(
+    'F4',
+    ['fake-mcp-server'],
+    'The plugin-MCP route needs a fake MCP server over the strict dispatcher.',
+  ),
+  'SCN-http-auth-claim': ready(
+    'F4',
+    'Real auth-code issue/exchange/session is already proven by the settings family; a dedicated claim story can be authored today.',
+  ),
+  'SCN-http-mattermost-action': needs(
+    'F4',
+    ['mattermost-action-fixture'],
+    'Action callbacks bypass the session gate but need the test secret option wired into the world; wire verification stays forward-only.',
+  ),
+  'SCN-http-admin-dashboard': needs(
+    'F4',
+    ['dashboard-auth-fixture'],
+    'The admin dashboard is a separate trust domain from settings sessions.',
+  ),
+  'SCN-http-billing-stats-readonly': needs(
+    'F4',
+    ['dashboard-auth-fixture'],
+    'Billing/stats share the dashboard trust domain, not the settings session vault.',
+  ),
+  'SCN-http-debug-live-panels': needs(
+    'F4',
+    ['debug-enabled-world-option'],
+    'The world hardcodes debugEnabled:false; debug-only paths 404 until a world option exists.',
+  ),
+  // F5 — reminders and deferred work
+  'SCN-reminder-recurring-create': needs(
+    'F5',
+    ['capability-ids'],
+    'Recurring-task tools are DB-backed; scripting them needs capability ids.',
+  ),
+  'SCN-reminder-recurring-manage': needs(
+    'F5',
+    ['capability-ids'],
+    'Recurring-task tools are DB-backed; scripting them needs capability ids.',
+  ),
+  'SCN-reminder-recurring-fire': needs(
+    'F5',
+    ['capability-ids', 'scheduler-due-seed'],
+    'Seed nextRun in the past and drive the single-pass tick; no production clock seam.',
+  ),
+  'SCN-deferred-schedule-create': needs(
+    'F5',
+    ['capability-ids'],
+    'Deferred-prompt tools are DB-backed; scripting them needs capability ids.',
+  ),
+  'SCN-deferred-alert-create': needs(
+    'F5',
+    ['capability-ids'],
+    'Deferred-prompt tools are DB-backed; scripting them needs capability ids.',
+  ),
+  'SCN-deferred-manage': needs(
+    'F5',
+    ['capability-ids'],
+    'Deferred-prompt tools are DB-backed; scripting them needs capability ids.',
+  ),
+  'SCN-deferred-fire-scheduled': needs(
+    'F5',
+    ['capability-ids', 'scheduler-due-seed'],
+    'Seed fireAt in the past and drive pollScheduledOnce; proactive replies are captured by the scenario chat.',
+  ),
+  'SCN-deferred-fire-alert': needs(
+    'F5',
+    ['capability-ids', 'scheduler-due-seed'],
+    'Seed fireAt in the past and drive pollAlertsOnce against the memory task provider.',
+  ),
+  // F6 — public web fetch
+  'SCN-web-fetch': needs(
+    'F6',
+    ['capability-ids', 'public-url-assertion'],
+    'assertPublicUrl performs a real DNS lookup the I/O guard cannot intercept; success path needs the seam.',
+  ),
+  'SCN-web-fetch-rate-limit-deny': needs(
+    'F6',
+    ['capability-ids', 'public-url-assertion'],
+    'Quota deny is seedable via consumeWebFetchQuota; the URL assertion seam is needed for the attempt to reach the quota check.',
+  ),
+  // F7 — settings MCP administration
+  'SCN-settings-admin-mcp-catalog': needs(
+    'F7',
+    ['fake-mcp-server'],
+    'Admin MCP catalog routes need a fake MCP server over the strict dispatcher.',
+  ),
+  'SCN-settings-admin-mcp-plugin-servers': needs(
+    'F7',
+    ['fake-mcp-server'],
+    'Plugin-MCP server registration needs a fake MCP server over the strict dispatcher.',
+  ),
+  // F8 — platform interactions
+  'SCN-interaction-discord-router-wrapped': needs(
+    'F8',
+    ['platform-adapter-fakes'],
+    'Wire-level discord.js routing needs a fake Discord client; stays forward-only until the refactor touches chat adapters.',
+  ),
+  'SCN-interaction-discord-standalone-fallback': needs(
+    'F8',
+    ['platform-adapter-fakes'],
+    'Wire-level discord.js fallback routing needs a fake Discord client; stays forward-only.',
+  ),
+  'SCN-interaction-telegram-callback': needs(
+    'F8',
+    ['platform-adapter-fakes'],
+    'Wire-level grammY callback wiring needs a fake Telegram API; stays forward-only.',
+  ),
+  'SCN-interaction-permission-decision': ready(
+    'F8',
+    'Permission roundtrips already run via when.interaction in the ACP control stories; promoted from forward-only to confirmed.',
+  ),
+  // Unqueued — no production implementation exists
+  'SCN-coding-nerv-create': blocked(
+    'unqueued',
+    'nerv has no production implementation; revisit when the nerv module lands.',
+  ),
+  'SCN-coding-nerv-create-conflict': blocked(
+    'unqueued',
+    'nerv has no production implementation; revisit when the nerv module lands.',
+  ),
+  'SCN-coding-nerv-create-not-configured': blocked(
+    'unqueued',
+    'nerv has no production implementation; revisit when the nerv module lands.',
+  ),
+  'SCN-coding-nerv-whomayuse-denied': blocked(
+    'unqueued',
+    'nerv has no production implementation; revisit when the nerv module lands.',
+  ),
+  'SCN-coding-nerv-status': blocked(
+    'unqueued',
+    'nerv has no production implementation; revisit when the nerv module lands.',
+  ),
+  'SCN-coding-nerv-list': blocked(
+    'unqueued',
+    'nerv has no production implementation; revisit when the nerv module lands.',
+  ),
+  'SCN-coding-nerv-followup': blocked(
+    'unqueued',
+    'nerv has no production implementation; revisit when the nerv module lands.',
+  ),
+  'SCN-coding-nerv-steer': blocked('unqueued', 'nerv has no production implementation; keeps gap status.'),
+  'SCN-coding-nerv-cancel': blocked(
+    'unqueued',
+    'nerv has no production implementation; revisit when the nerv module lands.',
+  ),
+  'SCN-supervise-reconcile-sweep': blocked(
+    'unqueued',
+    'Supervision has no production implementation; revisit when it lands.',
+  ),
+  'SCN-supervise-magi-notify-reconcile': blocked(
+    'unqueued',
+    'Supervision has no production implementation; revisit when it lands.',
+  ),
+  'SCN-supervise-fleet-health': blocked(
+    'unqueued',
+    'Supervision has no production implementation; revisit when it lands.',
+  ),
+  'SCN-supervise-status-sync': blocked(
+    'unqueued',
+    'Supervision has no production implementation; revisit when it lands.',
+  ),
+  'SCN-supervise-stale-task': blocked(
+    'unqueued',
+    'Supervision has no production implementation; revisit when it lands.',
+  ),
+  'SCN-supervise-stale-review-notify': blocked(
+    'unqueued',
+    'Supervision has no production implementation; revisit when it lands.',
+  ),
+  'SCN-supervise-pipeline-failure': blocked(
+    'unqueued',
+    'Supervision has no production implementation; revisit when it lands.',
+  ),
+  'SCN-supervise-review-comment': blocked(
+    'unqueued',
+    'Supervision has no production implementation; revisit when it lands.',
+  ),
+  'SCN-supervise-mr-merged': blocked(
+    'unqueued',
+    'Supervision has no production implementation; revisit when it lands.',
+  ),
+  'SCN-supervise-self-review': blocked('unqueued', 'Supervision has no production implementation; keeps gap status.'),
+  'SCN-coding-nerv-forge-event-source': blocked(
+    'unqueued',
+    'Contract-only non-trigger; no executable story is expected, and nerv has no production implementation.',
+  ),
 }
 
 export const catalogCoverage: readonly CatalogCoverage[] = Object.freeze(
@@ -415,14 +901,14 @@ export const catalogCoverage: readonly CatalogCoverage[] = Object.freeze(
       })
     }
     const catalogStatus = catalogStatusFor(scenarioId)
-    const requiredSeam = REQUIRED_SEAMS[scenarioId]
+    const pendingAudit = AUDIT_RECORDS[scenarioId]
+    if (pendingAudit === undefined) throw new Error(`Missing audit record for pending catalog scenario: ${scenarioId}`)
     return Object.freeze({
       scenarioId,
       catalogStatus,
       kind: 'pending' as const,
-      verifiedAt: '2026-07-13' as const,
-      reason: pendingReasonFor(scenarioId, catalogStatus),
-      ...(requiredSeam === undefined ? {} : { requiredSeam }),
+      verifiedAt: '2026-07-19' as const,
+      audit: pendingAudit,
     })
   }),
 )
