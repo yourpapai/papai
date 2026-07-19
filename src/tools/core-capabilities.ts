@@ -54,6 +54,18 @@ export const CORE_TOOL_CAPABILITIES = Object.freeze({
   'tasks.sprints.assign': 'assign_task_to_sprint',
   'tasks.queries.saved.list': 'list_saved_queries',
   'tasks.queries.saved.run': 'run_saved_query',
+  'tasks.watchers.list': 'list_watchers',
+  'tasks.watchers.add': 'add_watcher',
+  'tasks.watchers.remove': 'remove_watcher',
+  'tasks.votes.add': 'add_vote',
+  'tasks.votes.remove': 'remove_vote',
+  'tasks.visibility.set': 'set_visibility',
+  'tasks.identity.find': 'find_user',
+  'tasks.identity.current': 'get_current_user',
+  'tasks.attachments.list': 'list_attachments',
+  'tasks.attachments.upload': 'upload_attachment',
+  'tasks.attachments.delete': 'remove_attachment',
+  'tasks.commands.apply': 'apply_youtrack_command',
 } as const)
 
 export function registerOfferedCoreToolCapabilities(tools: ToolSet, catalog: ToolCapabilityCatalog): void {
