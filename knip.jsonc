@@ -237,6 +237,10 @@
     // by downstream Tier 3 tasks (scores generator, closure checker); no static
     // importer exists yet.
     "scripts/behavior-audit/scores-types.ts": ["files", "types"],
+    // parseConsolidationResult is consumed by tests/scripts/behavior-audit/
+    // consolidate-agent-schema.test.ts, but knip's project scope is production-
+    // only, so the test importer is invisible to it.
+    "scripts/behavior-audit/consolidate-agent.ts": ["exports"],
   },
 
   // Report unused exports even in entry files
