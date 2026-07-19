@@ -68,10 +68,13 @@ export async function runPublish(input: PublishDeps): Promise<PublishResult> {
   const commitMessage = buildCommitMessage(input.dateStamp)
   const worktreePath = await input.gitOps.worktreePath()
 
-  const exists = await input.gitOps.branchExists()
-  if (!exists) {
-    await input.gitOps.checkoutOrphan(branch)
-  }
+  // Always recreate a fresh orphan branch so the published history contains
+  // only the `stories/` snapshot, never the workflow's checkout lineage.
+  // `git checkout --orphan` keeps the inherited index populated; `git rm -rf .`
+  // clears both the index and the working tree so the only thing we commit is
+  // the freshly written `stories/` directory below.
+  await input.gitOps.checkoutOrphan(branch)
+  await input.gitOps.run(['rm', '-rf', '.'])
 
   await rm(join(worktreePath, 'stories'), { recursive: true, force: true })
   await mkdir(join(worktreePath, 'stories'), { recursive: true })

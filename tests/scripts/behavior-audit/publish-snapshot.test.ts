@@ -101,15 +101,40 @@ describe('publishSnapshot flow', () => {
     expect(result.exitCode).toBe(0)
     expect(result.commitMessage).toBe('chore(audit): snapshot for 2026-07-19')
     expect(recordedCommands).toContainEqual(['checkout', '--orphan', 'audit-output'])
+    expect(recordedCommands).toContainEqual(['rm', '-rf', '.'])
     expect(recordedCommands).toContainEqual(['add', 'stories'])
     expect(recordedCommands).toContainEqual(['commit', '-m', 'chore(audit): snapshot for 2026-07-19'])
     expect(recordedCommands).toContainEqual(['tag', '-f', 'audit-output-latest', 'HEAD'])
+    const orphanIdx = recordedCommands.findIndex((c) => c.join(' ') === 'checkout --orphan audit-output')
+    const rmIdx = recordedCommands.findIndex((c) => c.join(' ') === 'rm -rf .')
     const addIdx = recordedCommands.findIndex((c) => c[0] === 'add')
     const commitIdx = recordedCommands.findIndex((c) => c[0] === 'commit')
     const tagIdx = recordedCommands.findIndex((c) => c[0] === 'tag')
-    expect(addIdx).toBeGreaterThanOrEqual(0)
+    expect(orphanIdx).toBeGreaterThanOrEqual(0)
+    expect(rmIdx).toBeGreaterThan(orphanIdx)
+    expect(addIdx).toBeGreaterThan(rmIdx)
     expect(addIdx).toBeLessThan(commitIdx)
     expect(commitIdx).toBeLessThan(tagIdx)
+  })
+
+  test('recreates orphan branch and clears inherited index even when branch already exists', async () => {
+    const ops: GitOps = {
+      ...makeFakeGitOps(),
+      branchExists: () => Promise.resolve(true),
+    }
+    const result: PublishResult = await runPublish({
+      storiesPath: tempStories,
+      dateStamp: '2026-07-19',
+      gitOps: ops,
+      log: { log: () => {}, error: () => {} },
+    })
+    expect(result.exitCode).toBe(0)
+    expect(recordedCommands).toContainEqual(['checkout', '--orphan', 'audit-output'])
+    expect(recordedCommands).toContainEqual(['rm', '-rf', '.'])
+    const orphanIdx = recordedCommands.findIndex((c) => c.join(' ') === 'checkout --orphan audit-output')
+    const rmIdx = recordedCommands.findIndex((c) => c.join(' ') === 'rm -rf .')
+    expect(orphanIdx).toBeGreaterThanOrEqual(0)
+    expect(rmIdx).toBeGreaterThan(orphanIdx)
   })
 
   test('exits 1 when stories path is empty', async () => {
