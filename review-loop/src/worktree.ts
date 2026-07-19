@@ -87,8 +87,8 @@ export async function rebaseOnto(
   const combined = `${stdout}\n${stderr}`
   if (error !== null) {
     if (combined.includes('CONFLICT') || combined.includes('could not apply')) {
+      const conflictFiles = await listUnmergedPaths(repoRoot)
       await runGit(repoRoot, ['rebase', '--abort'])
-      const conflictFiles = parseConflictFiles(combined)
       return { ok: false, conflictFiles }
     }
     throw error
@@ -96,20 +96,19 @@ export async function rebaseOnto(
   return { ok: true }
 }
 
+async function listUnmergedPaths(repoRoot: string): Promise<string[]> {
+  const { stdout } = await execGit(repoRoot, ['diff', '--name-only', '--diff-filter=U'])
+  return stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+}
+
 export async function mergeFastForward(repoRoot: string, branch: string): Promise<string> {
   await execGit(repoRoot, ['merge', '--ff-only', branch])
   // The new HEAD SHA is on the line starting with "Updating" or we re-read it
   const head = await execGit(repoRoot, ['rev-parse', 'HEAD'])
   return head.stdout.trim()
-}
-
-function parseConflictFiles(output: string): string[] {
-  const files = new Set<string>()
-  for (const line of output.split('\n')) {
-    const m = line.match(/^(?:CONFLICT .*:|both modified:|added by them:|added by us:)\s+(.+)$/u)
-    if (m !== null) files.add(m[1]!.trim())
-  }
-  return [...files]
 }
 
 export async function cleanWorkerWorktrees(repoRoot: string, runId: string): Promise<void> {

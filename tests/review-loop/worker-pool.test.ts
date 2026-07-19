@@ -176,7 +176,7 @@ describe('WorkerPool', () => {
     await execGit(w2.worktreePath, ['commit', '-m', 'w2'])
     const result = await pool.mergeWorkerIntoPrimary(w2)
     expect(result.ok).toBe(false)
-    expect(getConflictFiles(result).length).toBeGreaterThan(0)
+    expect(getConflictFiles(result)).toEqual(['src/same.txt'])
     pool.release(w2)
     await pool.close()
   })
