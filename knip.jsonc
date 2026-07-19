@@ -241,6 +241,19 @@
     // consolidate-agent-schema.test.ts, but knip's project scope is production-
     // only, so the test importer is invisible to it.
     "scripts/behavior-audit/consolidate-agent.ts": ["exports"],
+    // Entry-point map builders + loaders are consumed by the downstream Tier 3
+    // closure verifier (Task 5) via dynamic import; no static importer exists yet.
+    "scripts/behavior-audit/entry-point-maps.ts": ["files", "exports"],
+    // listToolNames is a forward-compat export consumed by the behavior-audit
+    // closure verifier (Tier 3 Task 5) via dynamic import from
+    // scripts/behavior-audit/entry-point-maps.ts. Tool surface is built per
+    // invocation, so the stub returns empty until a static registry exists.
+    "src/tools/index.ts": ["exports"],
+    // listRoutes is a forward-compat export consumed by the behavior-audit
+    // closure verifier (Tier 3 Task 5) via dynamic import. Re-exported from
+    // src/debug/server.ts; stub returns empty until the route dispatcher is
+    // wired in.
+    "src/debug/server-route-options.ts": ["exports"],
   },
 
   // Report unused exports even in entry files
