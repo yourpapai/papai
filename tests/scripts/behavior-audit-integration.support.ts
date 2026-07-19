@@ -17,6 +17,7 @@ import type { Progress } from '../../scripts/behavior-audit/progress.js'
 import type * as ProgressModule from '../../scripts/behavior-audit/progress.js'
 import type * as ReportWriterModule from '../../scripts/behavior-audit/report-writer.js'
 import type * as ResetModule from '../../scripts/behavior-audit/reset.js'
+import type * as ScoresWriterModule from '../../scripts/behavior-audit/scores-writer.js'
 
 export type IncrementalModuleShape = typeof IncrementalModule
 export type ProgressModuleShape = typeof ProgressModule
@@ -29,6 +30,7 @@ export type ConsolidateKeywordsModuleShape = typeof ConsolidateKeywordsModule
 export type ClassifiedStoreModuleShape = typeof ClassifiedStoreModule
 export type KeywordVocabularyModuleShape = typeof KeywordVocabularyModule
 export type ReportWriterModuleShape = typeof ReportWriterModule
+export type ScoresWriterModuleShape = typeof ScoresWriterModule
 export type ResetModuleShape = typeof ResetModule
 export type ManifestTestEntry = IncrementalManifest['tests'][string]
 export type MockEvaluationResult = Awaited<
@@ -330,6 +332,18 @@ export function loadReportWriterModule(tag: string): Promise<ReportWriterModuleS
     `../../scripts/behavior-audit/report-writer.js?test=${tag}`,
     isReportWriterModule,
     'Unexpected report writer module shape',
+  )
+}
+
+function isScoresWriterModule(value: unknown): value is ScoresWriterModuleShape {
+  return isObject(value) && hasFunctionProperty(value, 'writeScoresJson')
+}
+
+export function loadScoresWriterModule(tag: string): Promise<ScoresWriterModuleShape> {
+  return importWithGuard(
+    `../../scripts/behavior-audit/scores-writer.js?test=${tag}`,
+    isScoresWriterModule,
+    'Unexpected scores writer module shape',
   )
 }
 

@@ -22,8 +22,10 @@ import {
   collectStoryEvaluations,
   loadConsolidatedArtifacts,
   loadEvaluatedArtifacts,
+  loadPriorSnapshot,
 } from './report-rebuild-helpers.js'
 import type { ClosureResult, EntryPointHint } from './scores-types.js'
+import { groupConsolidatedByDomain, writeScoresJson } from './scores-writer.js'
 
 export type { DomainSummary, FailedItem } from './report-index-helpers.js'
 
@@ -237,6 +239,10 @@ export async function rebuildReportsFromStoredResults({ consolidatedManifest }: 
     consolidatedByFeatureKey,
     evaluatedByFeatureKey,
   })
+
+  const consolidatedByDomain = groupConsolidatedByDomain(consolidatedByFeatureKey)
+  const prior = await loadPriorSnapshot()
+  await writeScoresJson(consolidatedByDomain, evaluationsByDomain, prior)
 
   await writeRebuiltStoryFiles(evaluationsByDomain)
 

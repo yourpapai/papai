@@ -7,8 +7,9 @@ import type { EvaluatedFeatureRecord } from './evaluated-store.js'
 import type { Progress } from './progress.js'
 import type { FailedItem } from './report-index-helpers.js'
 import type { DomainSummary } from './report-index-helpers.js'
-import { buildSummary, collectStoryEvaluations } from './report-rebuild-helpers.js'
+import { buildSummary, collectStoryEvaluations, loadPriorSnapshot } from './report-rebuild-helpers.js'
 import { writeIndexFile, writeStoryFile, type ConsolidatedBehavior, type StoryEvaluation } from './report-writer.js'
+import { groupConsolidatedByDomain, writeScoresJson } from './scores-writer.js'
 
 interface WriteReportsInput {
   readonly consolidatedByFeatureKey: ReadonlyMap<string, readonly ConsolidatedBehavior[]>
@@ -49,6 +50,9 @@ export async function writeReports(input: WriteReportsInput): Promise<void> {
     consolidatedByFeatureKey: input.consolidatedByFeatureKey,
     evaluatedByFeatureKey: input.evaluatedByFeatureKey,
   })
+  const consolidatedByDomain = groupConsolidatedByDomain(input.consolidatedByFeatureKey)
+  const prior = await loadPriorSnapshot()
+  await writeScoresJson(consolidatedByDomain, evaluationsByDomain, prior)
   await writeStoryReports(evaluationsByDomain)
   const summaries = buildSummaries(evaluationsByDomain)
 
