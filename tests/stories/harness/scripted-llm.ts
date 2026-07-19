@@ -97,7 +97,7 @@ const promptToolResultTokenFingerprints = (options: LanguageModelV3CallOptions):
     if (typeof message.content === 'string') return []
     return message.content.flatMap((part) => {
       if (part.type !== 'tool-result') return []
-      const serialized = JSON.stringify('output' in part ? part.output : part)
+      const serialized = JSON.stringify('output' in part ? part.output : part) ?? ''
       return (serialized.match(/[\p{L}\p{N}_]+/gu) ?? []).map(promptTextFingerprint)
     })
   })
