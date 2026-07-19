@@ -31,7 +31,7 @@ describe('proactive-llm-persist', () => {
     expect(toolCallCount(null)).toBeUndefined()
   })
 
-  test('full-mode persistence triggers long-term extraction when trimming', () => {
+  test('proactive persistence triggers long-term extraction when trimming', () => {
     const extractionCalls: unknown[][] = []
     track(spyOn(historyModule, 'appendHistory').mockImplementation(() => undefined))
     track(spyOn(conversationModule, 'shouldTriggerTrim').mockReturnValue(true))
