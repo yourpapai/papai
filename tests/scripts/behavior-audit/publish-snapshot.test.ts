@@ -117,9 +117,6 @@ describe('publishSnapshot flow', () => {
         recordedCommands = [...recordedCommands, args]
         return Promise.resolve()
       },
-      branchExists(): Promise<boolean> {
-        return Promise.resolve(false)
-      },
       checkoutOrphan(branch: string): Promise<void> {
         recordedCommands = [...recordedCommands, ['checkout', '--orphan', branch]]
         return Promise.resolve()
@@ -160,7 +157,6 @@ describe('publishSnapshot flow', () => {
   test('recreates orphan branch and clears inherited index even when branch already exists', async () => {
     const ops: GitOps = {
       ...makeFakeGitOps(),
-      branchExists: () => Promise.resolve(true),
     }
     const result: PublishResult = await runPublish({
       storiesPath: tempStories,
@@ -241,7 +237,7 @@ describe('publishSnapshot real-git integration', () => {
   })
 
   test('second runPublish succeeds when audit-output ref already exists locally', async () => {
-    const ops = new RealGitOps(repo, 'audit-output')
+    const ops = new RealGitOps(repo)
 
     const first = await runPublish({
       storiesPath: stories,

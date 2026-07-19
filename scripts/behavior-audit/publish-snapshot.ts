@@ -33,7 +33,6 @@ export function resolveStoriesPath(): string {
 
 export interface GitOps {
   run(args: readonly string[]): Promise<void>
-  branchExists(): Promise<boolean>
   checkoutOrphan(branch: string): Promise<void>
   worktreePath(): Promise<string>
 }
@@ -101,10 +100,7 @@ export async function runPublish(input: PublishDeps): Promise<PublishResult> {
 }
 
 export class RealGitOps implements GitOps {
-  constructor(
-    private readonly worktree: string,
-    private readonly branch: string,
-  ) {}
+  constructor(private readonly worktree: string) {}
 
   async run(args: readonly string[]): Promise<void> {
     const proc = Bun.spawn(['git', ...args], {
@@ -116,20 +112,6 @@ export class RealGitOps implements GitOps {
     if (code !== 0) {
       throw new Error(`git ${args.join(' ')} exited ${code}: ${stderrText.trim()}`)
     }
-  }
-
-  async branchExists(): Promise<boolean> {
-    const proc = Bun.spawn(['git', 'ls-remote', '--heads', 'origin', this.branch], {
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    const out = await new Response(proc.stdout).text()
-    const stderrText = await new Response(proc.stderr).text()
-    const code = await proc.exited
-    if (code !== 0) {
-      throw new Error(`git ls-remote --heads origin ${this.branch} exited ${code}: ${stderrText.trim()}`)
-    }
-    return out.trim().length > 0
   }
 
   async checkoutOrphan(branch: string): Promise<void> {
@@ -145,7 +127,7 @@ async function publishSnapshotMain(): Promise<number> {
   const dateStamp = formatDateStamp(new Date())
   const branch = resolveBranchName()
   const worktree = process.env['BEHAVIOR_AUDIT_WORKTREE_DIR'] ?? '.audit-worktree'
-  const ops = new RealGitOps(worktree, branch)
+  const ops = new RealGitOps(worktree)
   const result = await runPublish({
     storiesPath: resolveStoriesPath(),
     dateStamp,
