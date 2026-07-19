@@ -574,6 +574,40 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
       'tests/stories/tasks/lifecycle-and-policy.story.test.ts#SCN-task-deny: denied tools leave the advertised toolset',
     ],
   },
+  'SCN-task-relations': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/tasks/provider-surface.story.test.ts#SCN-task-relations: links, retypes, and unlinks tasks',
+    ],
+  },
+  'SCN-task-statuses': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/tasks/provider-surface.story.test.ts#SCN-task-statuses: confirms shared status mutations',
+    ],
+  },
+  'SCN-task-projects': {
+    verifiedAt: '2026-07-19',
+    storyIds: ['tests/stories/tasks/provider-surface.story.test.ts#SCN-task-projects: manages the project catalogue'],
+  },
+  'SCN-task-project-team': {
+    verifiedAt: '2026-07-19',
+    storyIds: ['tests/stories/tasks/provider-surface.story.test.ts#SCN-task-project-team: manages project membership'],
+  },
+  'SCN-task-worklog': {
+    verifiedAt: '2026-07-19',
+    storyIds: ['tests/stories/tasks/provider-surface.story.test.ts#SCN-task-worklog: logs and edits work items'],
+  },
+  'SCN-task-sprints': {
+    verifiedAt: '2026-07-19',
+    storyIds: ['tests/stories/tasks/provider-surface.story.test.ts#SCN-task-sprints: plans work on an agile board'],
+  },
+  'SCN-task-saved-queries': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/tasks/provider-surface.story.test.ts#SCN-task-saved-queries: lists and runs saved queries',
+    ],
+  },
 }
 
 function auditRecord(readiness: AuditReadiness, family: StoryFamily, rationale: string): AuditRecord {
@@ -598,41 +632,6 @@ export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
     'No chat /announce command exists; admin broadcast via the settings route is covered by SCN-settings-admin-roster-announce. Keeps gap status.',
   ),
   // F2 — conversational task operations
-  'SCN-task-relations': needs(
-    'F2',
-    ['capability-ids', 'memory-task-provider-expansion'],
-    'Needs addRelation/updateRelation/removeRelation on the memory provider.',
-  ),
-  'SCN-task-statuses': needs(
-    'F2',
-    ['capability-ids', 'memory-task-provider-expansion'],
-    'Needs the statuses surface (list/create/update/delete/reorder) on the memory provider.',
-  ),
-  'SCN-task-projects': needs(
-    'F2',
-    ['capability-ids', 'memory-task-provider-expansion'],
-    'Needs the projects surface on the memory provider.',
-  ),
-  'SCN-task-project-team': needs(
-    'F2',
-    ['capability-ids', 'memory-task-provider-expansion'],
-    'Needs project team and member provisioning on the memory provider.',
-  ),
-  'SCN-task-worklog': needs(
-    'F2',
-    ['capability-ids', 'memory-task-provider-expansion'],
-    'Needs the work-items surface on the memory provider.',
-  ),
-  'SCN-task-sprints': needs(
-    'F2',
-    ['capability-ids', 'memory-task-provider-expansion'],
-    'Needs agiles/sprints on the memory provider.',
-  ),
-  'SCN-task-saved-queries': needs(
-    'F2',
-    ['capability-ids', 'memory-task-provider-expansion'],
-    'Needs saved queries on the memory provider.',
-  ),
   'SCN-task-collaboration': needs(
     'F2',
     ['capability-ids', 'memory-task-provider-expansion'],
