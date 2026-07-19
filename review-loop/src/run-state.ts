@@ -31,7 +31,6 @@ export interface RunState extends PersistedRunState {
   logPath: string
   tracePath: string
   statePath: string
-  inspectPath: string
 }
 
 function makeRunId(): string {
@@ -55,7 +54,6 @@ export async function createRunState(config: ReviewLoopConfig, planPath: string)
     logPath: path.join(runDir, 'agent-output.log'),
     tracePath: path.join(runDir, 'trace.jsonl'),
     statePath: path.join(runDir, 'state.json'),
-    inspectPath: path.join(runDir, 'inspect.json'),
     repoRoot: config.repoRoot,
     planPath: path.resolve(planPath),
     currentRound: 0,
@@ -82,7 +80,6 @@ export async function loadRunState(workDir: string, runId: string): Promise<RunS
     logPath: path.join(runDir, 'agent-output.log'),
     tracePath: path.join(runDir, 'trace.jsonl'),
     statePath,
-    inspectPath: path.join(runDir, 'inspect.json'),
   }
 }
 
@@ -98,9 +95,9 @@ export async function saveRunState(state: RunState): Promise<void> {
  * concurrent `runAgent` calls (one per pool worker) never share a destination.
  * The agent's scratch file (`<worker-cwd>/.review-loop/<filename>`) is already
  * per-worker because each worker has its own worktree cwd; the shared-destination
- * race existed because `runState.resultPath` / `runState.inspectPath` were
- * per-run single files. Per-worker destinations eliminate the copyFile/readFile
- * race window in `runAgent.runAttempt`.
+ * race existed because result/inspect destinations were per-run single files.
+ * Per-worker destinations eliminate the copyFile/readFile race window in
+ * `runAgent.runAttempt`.
  */
 export function workerOutputPath(runDir: string, workerId: number | undefined, filename: string): string {
   const id = workerId ?? 0

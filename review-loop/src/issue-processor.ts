@@ -110,9 +110,16 @@ function makeDispatcher(args: {
       result = await processIssue(record, deps, worker, round, collector)
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
-      recordNeedsHuman(deps.ledger, deps.trace, round, record, `fixer crashed: ${msg}`, fallbackFixerResult(msg))
+      recordNeedsHuman(
+        deps.ledger,
+        deps.trace,
+        round,
+        record,
+        `issue processing failed: ${msg}`,
+        fallbackFixerResult(msg),
+      )
       tallyDecision(collector, 'needs_human', false)
-      deps.log.log(`[fix] "${shortTitle(record)}" → needs_human (fixer crashed: ${msg})`)
+      deps.log.log(`[fix] "${shortTitle(record)}" → needs_human (issue processing failed: ${msg})`)
       emitFixComplete(deps.trace, round, record.id, false, null, 1)
     }
     try {
