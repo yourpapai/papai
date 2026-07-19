@@ -136,7 +136,7 @@ async function invokeFull(
   const { createdByUserId, deliveryTarget } = execCtx
   const storageContextId = getStorageContextId(deliveryTarget)
   const configContextId = getConfigContextId(execCtx)
-  log.debug({ userId: createdByUserId, mode: 'full' }, 'invokeFull called')
+  log.debug({ userId: createdByUserId }, 'invokeFull called')
   const config = getLlmConfig(configContextId)
   if (typeof config === 'string') return config
 

@@ -153,7 +153,7 @@ describe('buildTools', () => {
     await getToolExecutor(tools['create_deferred_prompt'])({
       prompt: 'Check blocked tasks',
       condition: { field: 'task.status', op: 'eq', value: 'blocked' },
-      execution: { mode: 'lightweight', delivery_brief: 'Report blocked tasks' },
+      execution: { delivery_brief: 'Report blocked tasks' },
     })
 
     expect(parentContextId).not.toBe(threadContextId)
