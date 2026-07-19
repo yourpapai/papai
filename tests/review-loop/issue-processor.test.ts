@@ -295,10 +295,13 @@ describe('processIssue unified retry budget', () => {
   })
 
   test('fixer retry + inspector rejects again → terminal needs_human', async () => {
-    const { fixed, ledger, collector } = await runScenario(createSequentialInspectorSpawn([false, false]))
+    const { fixed, ledger, events, collector } = await runScenario(createSequentialInspectorSpawn([false, false]))
     expect(fixed).toBe(0)
     expect(recordOf(ledger).status).toBe('needs_human')
     expect(collector.decisions.inspector_rejected).toBe(1)
+    expect(collector.decisions.needs_human).toBe(0)
+    const verifyEvents = events.filter((e) => e.event === 'verify_complete')
+    expect(verifyEvents.some((e) => e.reasoning.startsWith('Inspector rejected twice:'))).toBe(true)
   })
 
   test('fixer retry returns verdict invalid (agrees with inspector) → terminal rejected', async () => {
@@ -351,6 +354,11 @@ describe('processIssue unified retry budget', () => {
     }
     expect(collector.inspector.runs).toBe(2)
     expect(collector.inspector.rejected).toBe(2)
+    const verifyEvents = events.filter((e) => e.event === 'verify_complete')
+    expect(verifyEvents.some((e) => e.reasoning.startsWith('Inspector unavailable twice:'))).toBe(true)
+    expect(verifyEvents.some((e) => e.reasoning.startsWith('Inspector rejected twice:'))).toBe(false)
+    expect(collector.decisions.inspector_rejected).toBe(0)
+    expect(collector.decisions.needs_human).toBe(1)
   })
 })
 

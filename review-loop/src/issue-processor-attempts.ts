@@ -185,19 +185,24 @@ export async function runInspectorAttempt(
   tallyPhaseMs(collector, 'inspect', Date.now() - inspectStart)
   tallyUsage(collector, inspectorResult.usage)
 
-  if (!inspectorResult.addresses) {
+  const unavailable = inspectorResult.kind === 'unavailable'
+  if (unavailable || !inspectorResult.addresses) {
     if (attempt >= MAX_ATTEMPTS) {
       recordNeedsHuman(
         deps.ledger,
         deps.trace,
         round,
         record,
-        `Inspector rejected twice: ${inspectorResult.reasoning}`,
+        unavailable
+          ? `Inspector unavailable twice: ${inspectorResult.reasoning}`
+          : `Inspector rejected twice: ${inspectorResult.reasoning}`,
         fixerResult,
       )
-      tallyDecision(collector, 'inspector_rejected', false)
+      tallyDecision(collector, unavailable ? 'needs_human' : 'inspector_rejected', false)
       tallyFixerSeverity(collector, fixerResult.severity)
-      deps.log.log(`[fix] "${shortTitle(record)}" → needs_human (inspector rejected)`)
+      deps.log.log(
+        `[fix] "${shortTitle(record)}" → needs_human (${unavailable ? 'inspector unavailable' : 'inspector rejected'})`,
+      )
       emitFixComplete(deps.trace, round, record.id, false, null, attempt)
       return { kind: 'terminal', outcome: { fixed: false } }
     }

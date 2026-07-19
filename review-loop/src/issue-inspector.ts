@@ -30,13 +30,17 @@ export interface RunInspectorDeps {
   label: string
 }
 
+export type InspectorOutcome =
+  | (InspectorResult & { kind: 'inspected'; usage: AgentUsage })
+  | { kind: 'unavailable'; reasoning: string; usage: AgentUsage }
+
 export async function runInspector(
   deps: RunInspectorDeps,
   round: number,
   issueId: string,
   trace: TraceLogger,
   collector?: RoundCollector,
-): Promise<InspectorResult & { usage: AgentUsage }> {
+): Promise<InspectorResult & { kind: 'inspected'; usage: AgentUsage }> {
   const { stdout: diff } = await execGit(deps.cwd, ['diff', `${deps.baselineSha}..HEAD`])
   const result = await runAgent({
     spawn: deps.spawn,
@@ -55,7 +59,7 @@ export async function runInspector(
   if (collector !== undefined) {
     tallyInspector(collector, result.value.addresses)
   }
-  return { ...result.value, usage: result.usage }
+  return { ...result.value, kind: 'inspected', usage: result.usage }
 }
 
 export async function runInspectorOrTreatAsRejection(
@@ -66,7 +70,7 @@ export async function runInspectorOrTreatAsRejection(
   baselineSha: string,
   round: number,
   collector: RoundCollector,
-): Promise<InspectorResult & { usage: AgentUsage }> {
+): Promise<InspectorOutcome> {
   const inspectorConfig = deps.config.inspector ?? deps.config.fixer
   const labelSuffix = worker.id === undefined ? '' : `-w${worker.id}`
   try {
@@ -98,9 +102,8 @@ export async function runInspectorOrTreatAsRejection(
       tallyInspector(collector, false)
     }
     return {
-      addresses: false,
+      kind: 'unavailable',
       reasoning: 'inspector unavailable',
-      confidence: 0,
       usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0 },
     }
   }
