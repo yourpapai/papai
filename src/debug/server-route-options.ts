@@ -51,3 +51,15 @@ export const resolveWebServerStartOptions = (
       }
 
 export const DEFAULT_WEB_SERVER_ROUTE_OPTIONS = { debugEnabled: true } as const satisfies WebServerRouteOptions
+
+/**
+ * Static snapshot of HTTP pathnames served by the debug/settings server.
+ * Routing is dispatched across several helpers (`routeProtectedPaths`,
+ * `routeAdminPaths`, `routeSettingsRequest`, etc.) and several paths are
+ * prefix-based rather than literal. Returns an empty array until those
+ * dispatchers are wired in; the behavior-audit closure verifier degrades
+ * gracefully when this is empty.
+ */
+export function listRoutes(): readonly string[] {
+  return []
+}

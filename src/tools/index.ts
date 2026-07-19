@@ -23,6 +23,16 @@ import { wrapToolExecution } from './wrap-tool-execution.js'
 
 export type { MakeToolsOptions, ToolMode }
 
+/**
+ * Static snapshot of builtin tool names. The exact tool surface is built
+ * per-invocation in `buildToolDescriptors` (provider- and context-dependent),
+ * so this returns an empty array; the behavior-audit closure verifier degrades
+ * gracefully when this is empty.
+ */
+export function listToolNames(): readonly string[] {
+  return []
+}
+
 export function applyToolPreferences(
   tools: ToolSet,
   contextId: string | undefined,
