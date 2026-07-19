@@ -42,6 +42,7 @@ type GenerateTextCall = {
   messages: ModelMessage[]
   tools: unknown
   stopWhen?: unknown
+  prepareStep?: (arg: { stepNumber: number; steps?: readonly unknown[] }) => { activeTools?: string[] }
 }
 type BuildModelCall = { apiKey: string; baseURL: string; modelId: string }
 
@@ -178,7 +179,33 @@ describe('dispatchExecution', () => {
     })
   })
 
-  describe('full mode', () => {
+  describe('progressive disclosure prepareStep gating', () => {
+    test('gates activeTools to core + meta tools before any tool is loaded', async () => {
+      const metadata: ExecutionMetadata = {
+        delivery_brief: 'be brief',
+        context_snapshot: null,
+      }
+      setupUserConfig()
+      const provider = createMockProvider()
+      await dispatchExecution(makeExecCtx(), 'scheduled', 'ping', metadata, () => provider)
+      const call = generateTextCalls[generateTextCalls.length - 1]!
+      expect(call.prepareStep).toBeDefined()
+
+      // Exercise the real createDisclosurePrepareStep closure at a pre-load step boundary
+      // (no steps completed yet, so neither the pre-load stall nor meta-churn fallback opens).
+      const result = call.prepareStep!({ stepNumber: 0, steps: [] })
+
+      expect(result.activeTools).toBeDefined()
+      const activeTools = result.activeTools!
+      expect(activeTools).toContain('get_current_time')
+      expect(activeTools).toContain('search_tools')
+      expect(activeTools).toContain('load_tool')
+      expect(activeTools).not.toContain('create_task')
+      expect(activeTools).not.toContain('search_tasks')
+    })
+  })
+
+  describe('unified proactive run', () => {
     const metadata: ExecutionMetadata = {
       delivery_brief: 'Check overdue tasks grouped by project',
       context_snapshot: null,
@@ -247,7 +274,7 @@ describe('dispatchExecution', () => {
       expect(messageIncludesText(messages, 'full mode history')).toBe(true)
     })
 
-    test('full mode uses group long-term memory for group thread delivery context', async () => {
+    test('uses group long-term memory for group thread delivery context', async () => {
       setupUserConfig()
       const provider = createMockProvider()
       saveMemoryProfile(
@@ -299,7 +326,7 @@ describe('dispatchExecution', () => {
       expect(loadFacts(USER_ID)).toEqual([])
     })
 
-    test('resolves full-mode provider from storage context instead of creator ID', async () => {
+    test('resolves provider from storage context instead of creator ID', async () => {
       setupUserConfig()
       const provider = createMockProvider()
       const resolvedContextIds: string[] = []
@@ -312,7 +339,7 @@ describe('dispatchExecution', () => {
       expect(resolvedContextIds).toEqual(['-1001:42'])
     })
 
-    test('resolves full-mode provider from scoped main context while preserving thread storage', async () => {
+    test('resolves provider from scoped main context while preserving thread storage', async () => {
       setupUserConfig()
       const scopedThreadContextId = toScopedThreadContextId({
         platformInstanceId: 'telegram-secondary',
@@ -365,7 +392,7 @@ describe('dispatchExecution', () => {
       ])
     })
 
-    test('full mode background trim uses scoped main config context instead of thread storage', async () => {
+    test('background trim uses scoped main config context instead of thread storage', async () => {
       seedAdminLlmBinding()
       setConfig(USER_ID, 'timezone', 'UTC')
       const scopedThreadContextId = toScopedThreadContextId({
@@ -493,7 +520,7 @@ describe('dispatchExecution', () => {
   })
 
   describe('fallback behavior', () => {
-    test('treats empty metadata as full mode', async () => {
+    test('treats empty metadata as a full run', async () => {
       setupUserConfig()
       const emptyMetadata: ExecutionMetadata = {
         delivery_brief: '',
@@ -511,7 +538,7 @@ describe('dispatchExecution', () => {
       context_snapshot: null,
     }
 
-    test('full mode uses stored delivery context for tools and history while reading config from creator', async () => {
+    test('uses stored delivery context for tools and history while reading config from creator', async () => {
       setupUserConfig()
       const provider = createMockProvider()
 
@@ -546,7 +573,7 @@ describe('dispatchExecution', () => {
       context_snapshot: null,
     }
 
-    test('full mode builds system prompt from delivery storageContextId, not creator userId', async () => {
+    test('builds system prompt from delivery storageContextId, not creator userId', async () => {
       setupUserConfig()
       const provider = createMockProvider()
       const deliveryStorageContextId = '-1001:thread-7'
