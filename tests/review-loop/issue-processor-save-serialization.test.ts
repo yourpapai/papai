@@ -172,4 +172,79 @@ describe('processPendingIssues ledger save serialization', () => {
     expect(stats.calls).toBe(2)
     expect(stats.max).toBe(1)
   })
+
+  test('transient saveLedger rejection does not abort the round', async () => {
+    const repoRoot = makeTempDir('issue-proc-save-fail-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupRepo(runState.worktreePath)
+
+    const workerRepo1 = makeTempDir('worker-')
+    const workerRepo2 = makeTempDir('worker-')
+    await setupRepo(workerRepo1)
+    await setupRepo(workerRepo2)
+
+    const recordA: LedgerIssueRecord = {
+      id: 'rec-a',
+      issue: { ...baseIssue, title: 'A', file: 'src/a.ts' },
+      status: 'discovered',
+      firstSeenRound: 1,
+      latestSeenRound: 1,
+      fixAttempts: 0,
+      verifierDecision: null,
+    }
+    const recordB: LedgerIssueRecord = {
+      id: 'rec-b',
+      issue: { ...baseIssue, title: 'B', file: 'src/b.ts' },
+      status: 'discovered',
+      firstSeenRound: 1,
+      latestSeenRound: 1,
+      fixAttempts: 0,
+      verifierDecision: null,
+    }
+    ledger.snapshot.issues['rec-a'] = recordA
+    ledger.snapshot.issues['rec-b'] = recordB
+
+    let calls = 0
+    const saves: Array<(l: IssueLedger) => Promise<void>> = [
+      () => Promise.reject(new Error('transient disk error')),
+      async (l) => {
+        await writeFile(l.path, JSON.stringify(l.snapshot, null, 2))
+      },
+    ]
+    const flakySave = async (l: IssueLedger): Promise<void> => {
+      calls += 1
+      const fn = saves.shift()!
+      await fn(l)
+    }
+
+    const { pool } = fakePool({ size: 2, worktreePaths: [workerRepo1, workerRepo2] })
+    const collector = newCollector()
+    const { logger } = createCapturingTraceLogger()
+    const reporter: ProgressReporter = silentReporter()
+
+    const fixed = await processPendingIssues(
+      {
+        config: createReviewLoopConfigFixture(runState.repoRoot),
+        runState,
+        ledger,
+        spawn: createFixerOnlySpawn(),
+        exec: passingExec,
+        log: reporter,
+        trace: logger,
+        pool,
+        inspect: false,
+        saveLedger: flakySave,
+      },
+      1,
+      collector,
+      [recordA, recordB],
+    )
+
+    expect(fixed).toBe(2)
+    expect(calls).toBe(2)
+  })
 })

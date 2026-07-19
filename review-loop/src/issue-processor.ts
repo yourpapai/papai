@@ -115,7 +115,17 @@ function makeDispatcher(args: {
       deps.log.log(`[fix] "${shortTitle(record)}" → needs_human (fixer crashed: ${msg})`)
       emitFixComplete(deps.trace, round, record.id, false, null, 1)
     }
-    await save(deps.ledger)
+    try {
+      await save(deps.ledger)
+    } catch (error) {
+      // Best-effort per-issue persistence: the in-memory ledger holds the
+      // correct state regardless, and the round-end saveIssueLedger in
+      // runRound is the safety net. Letting this escape would abort the
+      // entire round via Promise.all, discarding work done by every
+      // in-flight coroutine — even though processIssue already succeeded.
+      const msg = error instanceof Error ? error.message : String(error)
+      deps.log.log(`[fix] "${shortTitle(record)}" → ledger save failed (will retry at round end): ${msg}`)
+    }
     if (result !== null && result.fixed) onFixed()
     await dispatchNext()
   }
