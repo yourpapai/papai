@@ -7,6 +7,7 @@ import path from 'node:path'
 
 import { spawnStorySandboxedChild, type SpawnedStoryChild } from './child.js'
 import { type ParsedStoryRunnerArguments, parseStoryRunnerArguments, STORY_SEED } from './cli.js'
+import { formatStoryCoverageTotals } from './coverage-totals.js'
 import {
   buildBaselineStoryManifest,
   buildCandidateStoryManifest,
@@ -184,6 +185,7 @@ async function verifyCompatibility(
       sandboxBackend: selectedStorySandboxBackend(dependencies),
     }))
   await dependencies.writeManifest(candidateManifest, path.join(dependencies.cwd, STORY_MANIFEST_REPORT_PATH))
+  console.log(formatStoryCoverageTotals())
   if (!parsed.compat || baselineRef === undefined) return
   const baseline = await dependencies.buildBaselineManifest({
     root: dependencies.cwd,
