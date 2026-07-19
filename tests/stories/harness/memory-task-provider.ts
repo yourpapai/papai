@@ -15,8 +15,10 @@ import type {
   IdentityUser,
   Label,
   Project,
+  ProvisionMemberInput,
   RelationType,
   SavedQuery,
+  SetTaskVisibilityParams,
   Sprint,
   Task,
   TaskCapability,
@@ -25,6 +27,7 @@ import type {
   TaskProvider,
   TaskProviderTrait,
   TaskSearchResult,
+  TaskVisibility,
   ToolDueDateInput,
   UpdateWorkItemParams,
   UserRef,
@@ -76,6 +79,14 @@ const supportedMemoryTaskCapabilities: readonly TaskCapability[] = [
   'sprints.update',
   'sprints.assign',
   'queries.saved',
+  'tasks.watchers',
+  'tasks.votes',
+  'tasks.visibility',
+  'members.provision',
+  'attachments.list',
+  'attachments.upload',
+  'attachments.delete',
+  'tasks.commands',
 ]
 
 export type MemoryTaskProviderOptions = Readonly<{
@@ -169,7 +180,8 @@ const definedStatusUpdate = (
 export class MemoryTaskProvider implements TaskProvider {
   readonly name = 'kaneo'
   readonly supportsCustomFields = true
-  readonly traits: ReadonlySet<TaskProviderTrait> = new Set<TaskProviderTrait>()
+  private readonly traitSet = new Set<TaskProviderTrait>()
+  readonly traits: ReadonlySet<TaskProviderTrait> = this.traitSet
   readonly preferredUserIdentifier = 'id' as const
   readonly identityResolver = {
     searchUsers: (query: string, limit = 10): Promise<IdentityUser[]> => {
@@ -213,6 +225,14 @@ export class MemoryTaskProvider implements TaskProvider {
   private agileSequence = 0
   private sprintSequence = 0
   private querySequence = 0
+  private readonly watchers = new Map<string, UserRef[]>()
+  private readonly votedTasks = new Set<string>()
+  private readonly taskVisibility = new Map<string, TaskVisibility>()
+  private currentUser: UserRef | undefined
+  readonly provisionCalls: Array<{
+    member: ProvisionMemberInput
+    opts?: { existingProviderUserId?: string; existingLogin?: string; existingPassword?: string }
+  }> = []
 
   get capabilities(): ReadonlySet<TaskCapability> {
     return this.capabilitySet
@@ -234,6 +254,10 @@ export class MemoryTaskProvider implements TaskProvider {
     }
     this.capabilitySet.clear()
     for (const capability of capabilities) this.capabilitySet.add(capability)
+  }
+
+  setTraits(traits: readonly TaskProviderTrait[]): void {
+    for (const trait of traits) this.traitSet.add(trait)
   }
 
   addIdentityUser(identity: IdentityUser): void {
@@ -1013,6 +1037,114 @@ export class MemoryTaskProvider implements TaskProvider {
       }
       return this.searchTasks({ query: savedQuery.query })
     })
+  }
+
+  listWatchers(taskId: string): Promise<UserRef[]> {
+    return Promise.resolve().then(() => {
+      this.requireTask(taskId)
+      const result = this.watchers.get(taskId) ?? []
+      this.events?.record('task.watchers.list', { taskId, count: result.length })
+      return clone(result)
+    })
+  }
+
+  addWatcher(taskId: string, userId: string): Promise<{ taskId: string; userId: string }> {
+    return Promise.resolve().then(() => {
+      this.requireTask(taskId)
+      const watchers = this.watchers.get(taskId) ?? []
+      if (watchers.some((watcher) => watcher.id === userId)) throw new Error(`Task watcher already exists: ${userId}`)
+      this.watchers.set(taskId, [...watchers, { id: userId }])
+      this.events?.record('task.watchers.add', { taskId, userId })
+      return { taskId, userId }
+    })
+  }
+
+  removeWatcher(taskId: string, userId: string): Promise<{ taskId: string; userId: string }> {
+    return Promise.resolve().then(() => {
+      this.requireTask(taskId)
+      const watchers = this.watchers.get(taskId) ?? []
+      if (!watchers.some((watcher) => watcher.id === userId)) throw new Error(`Task watcher not found: ${userId}`)
+      this.watchers.set(
+        taskId,
+        watchers.filter((watcher) => watcher.id !== userId),
+      )
+      this.events?.record('task.watchers.remove', { taskId, userId })
+      return { taskId, userId }
+    })
+  }
+
+  addVote(taskId: string): Promise<{ taskId: string }> {
+    return Promise.resolve().then(() => {
+      this.requireTask(taskId)
+      this.votedTasks.add(taskId)
+      this.events?.record('task.vote.add', { taskId })
+      return { taskId }
+    })
+  }
+
+  removeVote(taskId: string): Promise<{ taskId: string }> {
+    return Promise.resolve().then(() => {
+      this.requireTask(taskId)
+      if (!this.votedTasks.delete(taskId)) throw new Error(`Task vote not found: ${taskId}`)
+      this.events?.record('task.vote.remove', { taskId })
+      return { taskId }
+    })
+  }
+
+  setVisibility(
+    taskId: string,
+    params: SetTaskVisibilityParams,
+  ): Promise<{ taskId: string; visibility: TaskVisibility }> {
+    const input = clone(params)
+    return Promise.resolve().then(() => {
+      this.requireTask(taskId)
+      const visibility: TaskVisibility =
+        input.kind === 'public'
+          ? { kind: 'public' }
+          : {
+              kind: 'restricted',
+              ...(input.userIds === undefined ? {} : { users: input.userIds.map((id) => ({ id })) }),
+              ...(input.groupIds === undefined ? {} : { groups: input.groupIds.map((name) => ({ name })) }),
+            }
+      this.taskVisibility.set(taskId, clone(visibility))
+      this.events?.record('task.visibility.set', { taskId, kind: visibility.kind })
+      return { taskId, visibility }
+    })
+  }
+
+  getTaskVisibility(taskId: string): TaskVisibility {
+    this.requireTask(taskId)
+    return clone(this.taskVisibility.get(taskId) ?? { kind: 'public' })
+  }
+
+  listUsers(query?: string, limit = 10): Promise<UserRef[]> {
+    const normalized = (query ?? '').toLowerCase()
+    const matches = [...this.identityUsers.values()]
+      .filter((identity) => identityMatches(identity, normalized))
+      .slice(0, limit)
+      .map((identity) => ({ id: identity.id, login: identity.login, name: identity.name }))
+    return Promise.resolve(clone(matches))
+  }
+
+  getCurrentUser(): Promise<UserRef> {
+    return Promise.resolve().then(() => {
+      if (this.currentUser === undefined) throw new Error('MemoryTaskProvider has no current user')
+      return clone(this.currentUser)
+    })
+  }
+
+  setCurrentUser(user: UserRef): void {
+    this.currentUser = clone(user)
+  }
+
+  provisionWorkspaceMember(
+    member: ProvisionMemberInput,
+    opts?: Readonly<{ existingProviderUserId?: string; existingLogin?: string; existingPassword?: string }>,
+  ): Promise<{ providerUserId: string; login: string; password: string }> {
+    this.provisionCalls.push({ member: clone(member), ...(opts === undefined ? {} : { opts: clone(opts) }) })
+    this.events?.record('member.provision', { login: member.username ?? member.chatUserId })
+    const login = member.username ?? member.chatUserId
+    return Promise.resolve({ providerUserId: `prov-${login}`, login, password: 'memory-password' })
   }
 
   buildTaskUrl(taskId: string): string {

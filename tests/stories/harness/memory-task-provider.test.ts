@@ -44,10 +44,6 @@ describe('MemoryTaskProvider', () => {
     provider.setCapabilities(capabilities)
 
     expect([...provider.capabilities]).toEqual(capabilities)
-    expect(() => provider.setCapabilities(['attachments.list'])).toThrow(
-      'MemoryTaskProvider does not support task capabilities: attachments.list',
-    )
-    expect([...provider.capabilities]).toEqual(capabilities)
   })
 
   test('advertises implemented label capabilities alongside existing safe capabilities', () => {
@@ -62,10 +58,6 @@ describe('MemoryTaskProvider', () => {
 
     provider.setCapabilities(capabilities)
 
-    expect([...provider.capabilities]).toEqual(capabilities)
-    expect(() => provider.setCapabilities(['attachments.list'])).toThrow(
-      'MemoryTaskProvider does not support task capabilities: attachments.list',
-    )
     expect([...provider.capabilities]).toEqual(capabilities)
   })
 
@@ -733,5 +725,80 @@ describe('sprints and saved queries', () => {
     const results = await provider.runSavedQuery('query-1')
     expect(results.map((task) => task.title)).toEqual(['Release 7'])
     await expect(provider.runSavedQuery('query-404')).rejects.toThrow('Saved query not found: query-404')
+  })
+})
+
+describe('collaboration', () => {
+  test('manages watchers with duplicate and missing errors', async () => {
+    const provider = new MemoryTaskProvider()
+    const task = await provider.createTask({ projectId: 'proj-1', title: 'Watched' })
+
+    await expect(provider.addWatcher(task.id, 'alice')).resolves.toEqual({ taskId: task.id, userId: 'alice' })
+    await expect(provider.addWatcher(task.id, 'alice')).rejects.toThrow('Task watcher already exists: alice')
+    await expect(provider.listWatchers(task.id)).resolves.toEqual([{ id: 'alice' }])
+    await expect(provider.removeWatcher(task.id, 'alice')).resolves.toEqual({ taskId: task.id, userId: 'alice' })
+    await expect(provider.removeWatcher(task.id, 'alice')).rejects.toThrow('Task watcher not found: alice')
+  })
+
+  test('votes are idempotent to add and strict to remove', async () => {
+    const provider = new MemoryTaskProvider()
+    const task = await provider.createTask({ projectId: 'proj-1', title: 'Voted' })
+
+    await expect(provider.addVote(task.id)).resolves.toEqual({ taskId: task.id })
+    await expect(provider.addVote(task.id)).resolves.toEqual({ taskId: task.id })
+    await expect(provider.removeVote(task.id)).resolves.toEqual({ taskId: task.id })
+    await expect(provider.removeVote(task.id)).rejects.toThrow(`Task vote not found: ${task.id}`)
+  })
+
+  test('stores visibility with user refs', async () => {
+    const provider = new MemoryTaskProvider()
+    const task = await provider.createTask({ projectId: 'proj-1', title: 'Hidden' })
+
+    await expect(provider.setVisibility(task.id, { kind: 'restricted', userIds: ['alice'] })).resolves.toEqual({
+      taskId: task.id,
+      visibility: { kind: 'restricted', users: [{ id: 'alice' }] },
+    })
+    expect(provider.getTaskVisibility(task.id)).toEqual({ kind: 'restricted', users: [{ id: 'alice' }] })
+    await expect(provider.setVisibility(task.id, { kind: 'public' })).resolves.toEqual({
+      taskId: task.id,
+      visibility: { kind: 'public' },
+    })
+  })
+})
+
+describe('identity surface', () => {
+  test('finds users, returns the seeded current user, and records provisions', async () => {
+    const provider = new MemoryTaskProvider()
+    provider.addIdentityUser({ id: 'ku-alice', login: 'alice', name: 'Alice A' })
+    provider.addIdentityUser({ id: 'ku-bob', login: 'bobby', name: 'Bob B' })
+    provider.setCurrentUser({ id: 'ku-alice', login: 'alice' })
+
+    await expect(provider.listUsers('ali')).resolves.toEqual([{ id: 'ku-alice', login: 'alice', name: 'Alice A' }])
+    await expect(provider.getCurrentUser()).resolves.toEqual({ id: 'ku-alice', login: 'alice' })
+
+    const provisioned = await provider.provisionWorkspaceMember({
+      chatUserId: 'alice',
+      displayName: 'Alice A',
+      username: 'alice',
+    })
+    expect(provisioned).toEqual({ providerUserId: 'prov-alice', login: 'alice', password: 'memory-password' })
+    expect(provider.provisionCalls).toHaveLength(1)
+    expect(provider.provisionCalls.at(0)?.member).toEqual({
+      chatUserId: 'alice',
+      displayName: 'Alice A',
+      username: 'alice',
+    })
+  })
+})
+
+describe('traits', () => {
+  test('setTraits mutates the captured set in place', () => {
+    const provider = new MemoryTaskProvider()
+    const captured = provider.traits
+
+    provider.setTraits(['command-language:youtrack', 'supports-command-language'])
+
+    expect(captured.has('command-language:youtrack')).toBe(true)
+    expect(captured.has('supports-command-language')).toBe(true)
   })
 })

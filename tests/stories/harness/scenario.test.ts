@@ -111,19 +111,6 @@ describe('scenario execution', () => {
     })
   })
 
-  test('task capability prerequisite rejects unsupported provider operations before startup', async () => {
-    const world = await createScenarioWorld('unsupported task capability')
-
-    try {
-      expect(() => world.api.given.taskCapabilities(['attachments.list'])).toThrow(
-        'MemoryTaskProvider does not support task capabilities: attachments.list',
-      )
-      expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
-    } finally {
-      await world.stop()
-    }
-  })
-
   test('task capability prerequisite accepts implemented comment operations before startup', async () => {
     const world = await createScenarioWorld('comment task capabilities')
 
@@ -140,15 +127,12 @@ describe('scenario execution', () => {
 
       expect([...world.tasks.capabilities]).toEqual(capabilities)
       expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
-      expect(() => world.api.given.taskCapabilities(['attachments.list'])).toThrow(
-        'MemoryTaskProvider does not support task capabilities: attachments.list',
-      )
     } finally {
       await world.stop()
     }
   })
 
-  test('task capability prerequisite accepts implemented label operations but rejects unsupported operations', async () => {
+  test('task capability prerequisite accepts implemented label operations', async () => {
     const world = await createScenarioWorld('label task capabilities')
 
     try {
@@ -164,9 +148,6 @@ describe('scenario execution', () => {
 
       expect([...world.tasks.capabilities]).toEqual(capabilities)
       expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
-      expect(() => world.api.given.taskCapabilities(['attachments.list'])).toThrow(
-        'MemoryTaskProvider does not support task capabilities: attachments.list',
-      )
     } finally {
       await world.stop()
     }
