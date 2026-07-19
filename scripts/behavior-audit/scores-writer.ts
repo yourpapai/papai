@@ -18,18 +18,32 @@ export interface PriorSnapshot {
   }[]
 }
 
+export interface DomainGroupedBehaviors {
+  readonly featureKey: string
+  readonly behaviors: readonly ConsolidatedBehavior[]
+}
+
 export function groupConsolidatedByDomain(
   consolidatedByFeatureKey: ReadonlyMap<string, readonly ConsolidatedBehavior[]>,
-): ReadonlyMap<string, readonly ConsolidatedBehavior[]> {
-  const byDomain = new Map<string, ConsolidatedBehavior[]>()
-  for (const behaviors of consolidatedByFeatureKey.values()) {
+): ReadonlyMap<string, readonly DomainGroupedBehaviors[]> {
+  const byDomain = new Map<string, Map<string, ConsolidatedBehavior[]>>()
+  for (const [featureKey, behaviors] of consolidatedByFeatureKey.entries()) {
     for (const behavior of behaviors) {
-      const bucket = byDomain.get(behavior.domain) ?? []
+      const featureMap = byDomain.get(behavior.domain) ?? new Map<string, ConsolidatedBehavior[]>()
+      const bucket = featureMap.get(featureKey) ?? []
       bucket.push(behavior)
-      byDomain.set(behavior.domain, bucket)
+      featureMap.set(featureKey, bucket)
+      byDomain.set(behavior.domain, featureMap)
     }
   }
-  return byDomain
+  const result = new Map<string, DomainGroupedBehaviors[]>()
+  for (const [domain, featureMap] of byDomain.entries()) {
+    result.set(
+      domain,
+      [...featureMap.entries()].map(([featureKey, behaviors]) => ({ featureKey, behaviors })),
+    )
+  }
+  return result
 }
 
 function flattenPriorStories(prior: PriorSnapshot | null): readonly TrendEntry[] {
@@ -61,6 +75,7 @@ function computeComposite(personas: PersonaTriple): number {
 function buildStoryEntry(
   behavior: ConsolidatedBehavior,
   domain: string,
+  featureKey: string,
   evaluation: StoryEvaluation | null,
 ): StoryEntry {
   const maria = evaluation?.maria ?? { discover: 0, use: 0, retain: 0, notes: '' }
@@ -68,7 +83,7 @@ function buildStoryEntry(
   const viktor = evaluation?.viktor ?? { discover: 0, use: 0, retain: 0, notes: '' }
   const composite = computeComposite({ maria, dani, viktor })
   return {
-    featureKey: behavior.id,
+    featureKey,
     consolidatedId: behavior.id,
     domain,
     featureName: behavior.featureName,
@@ -108,21 +123,23 @@ function assignTrendDeltas(entries: readonly StoryEntry[], priorStories: readonl
 }
 
 export async function writeScoresJson(
-  consolidatedByDomain: ReadonlyMap<string, readonly ConsolidatedBehavior[]>,
+  consolidatedByDomain: ReadonlyMap<string, readonly DomainGroupedBehaviors[]>,
   evaluatedByDomain: ReadonlyMap<string, readonly StoryEvaluation[]>,
   prior: PriorSnapshot | null,
 ): Promise<ScoresFile> {
   const priorStories = flattenPriorStories(prior)
   const domains: DomainEntry[] = []
 
-  for (const [domain, behaviors] of consolidatedByDomain) {
+  for (const [domain, groups] of consolidatedByDomain) {
     const evaluations = evaluatedByDomain.get(domain) ?? []
     const evalByFeatureName = new Map(evaluations.map((e) => [e.testName, e]))
 
-    const userFacing = behaviors.filter((b) => b.isUserFacing && b.userStory !== null)
-    const baseEntries = userFacing.map((b) => {
-      const evaluation = evalByFeatureName.get(b.featureName) ?? null
-      return buildStoryEntry(b, domain, evaluation)
+    const baseEntries = groups.flatMap((group) => {
+      const userFacing = group.behaviors.filter((b) => b.isUserFacing && b.userStory !== null)
+      return userFacing.map((b) => {
+        const evaluation = evalByFeatureName.get(b.featureName) ?? null
+        return buildStoryEntry(b, domain, group.featureKey, evaluation)
+      })
     })
 
     const withPercentiles = assignPercentiles(baseEntries)

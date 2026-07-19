@@ -213,6 +213,7 @@ test('rebuildReportsFromStoredResults emits scores.json sidecar with composite, 
   expect(domain.domain).toBe('tools')
   expect(domain.stories).toHaveLength(1)
   const story = domain.stories[0]!
+  expect(story.featureKey).toBe('task-creation')
   expect(story.consolidatedId).toBe('task-creation::feature')
   expect(story.composite).toBeCloseTo((4 + 4 + 3 + 3 + 4 + 3 + 2 + 3 + 2) / 9, 5)
   expect(story.percentile).toBe(100)
@@ -233,47 +234,55 @@ test('writeScoresJson applies prior snapshot to compute trendDelta per story', a
   const consolidatedByDomain = new Map<
     string,
     readonly {
-      readonly id: string
-      readonly domain: string
-      readonly featureName: string
-      readonly isUserFacing: boolean
-      readonly behavior: string
-      readonly userStory: string | null
-      readonly context: string
-      readonly sourceTestKeys: readonly string[]
-      readonly sourceBehaviorIds: readonly string[]
-      readonly supportingInternalRefs: readonly { readonly behaviorId: string; readonly summary: string }[]
-      readonly entryPointHints: readonly {
-        readonly kind: 'command' | 'tool' | 'handler' | 'route'
-        readonly identifier: string
-      }[]
-      readonly closure: {
-        readonly closureStatus: 'resolved' | 'partial' | 'unresolved' | 'unverified'
-        readonly entryPoints: readonly {
+      readonly featureKey: string
+      readonly behaviors: readonly {
+        readonly id: string
+        readonly domain: string
+        readonly featureName: string
+        readonly isUserFacing: boolean
+        readonly behavior: string
+        readonly userStory: string | null
+        readonly context: string
+        readonly sourceTestKeys: readonly string[]
+        readonly sourceBehaviorIds: readonly string[]
+        readonly supportingInternalRefs: { readonly behaviorId: string; readonly summary: string }[]
+        readonly entryPointHints: readonly {
           readonly kind: 'command' | 'tool' | 'handler' | 'route'
           readonly identifier: string
-          readonly resolved: boolean
-          readonly evidence: { readonly filePath: string; readonly symbol?: string } | null
         }[]
-      } | null
+        readonly closure: {
+          readonly closureStatus: 'resolved' | 'partial' | 'unresolved' | 'unverified'
+          readonly entryPoints: readonly {
+            readonly kind: 'command' | 'tool' | 'handler' | 'route'
+            readonly identifier: string
+            readonly resolved: boolean
+            readonly evidence: { readonly filePath: string; readonly symbol?: string } | null
+          }[]
+        } | null
+      }[]
     }[]
   >([
     [
       'tools',
       [
         {
-          id: 'task-creation::feature',
-          domain: 'tools',
-          featureName: 'Task creation',
-          isUserFacing: true,
-          behavior: '',
-          userStory: 'As a user, I can create a task.',
-          context: '',
-          sourceTestKeys: [],
-          sourceBehaviorIds: [],
-          supportingInternalRefs: [],
-          entryPointHints: [],
-          closure: null,
+          featureKey: 'task-creation',
+          behaviors: [
+            {
+              id: 'task-creation::feature',
+              domain: 'tools',
+              featureName: 'Task creation',
+              isUserFacing: true,
+              behavior: '',
+              userStory: 'As a user, I can create a task.',
+              context: '',
+              sourceTestKeys: [],
+              sourceBehaviorIds: [],
+              supportingInternalRefs: [],
+              entryPointHints: [],
+              closure: null,
+            },
+          ],
         },
       ],
     ],
@@ -336,7 +345,159 @@ test('writeScoresJson applies prior snapshot to compute trendDelta per story', a
 
   expect(result.domains).toHaveLength(1)
   const story = result.domains[0]!.stories[0]!
+  expect(story.featureKey).toBe('task-creation')
   expect(story.consolidatedId).toBe('task-creation::feature')
   expect(story.trendDelta).toBeCloseTo(0.6, 5)
   expect(story.closureStatus).toBe('unverified')
+})
+
+test('writeScoresJson threads manifest featureKey through to StoryEntry (regression: featureKey !== consolidatedId)', async () => {
+  const root = makeTempDir()
+  mockAuditBehaviorConfig(root, null)
+
+  const scoresWriter = await loadScoresWriterModule(crypto.randomUUID())
+
+  const consolidatedByDomain = new Map<
+    string,
+    readonly {
+      readonly featureKey: string
+      readonly behaviors: readonly {
+        readonly id: string
+        readonly domain: string
+        readonly featureName: string
+        readonly isUserFacing: boolean
+        readonly behavior: string
+        readonly userStory: string | null
+        readonly context: string
+        readonly sourceTestKeys: readonly string[]
+        readonly sourceBehaviorIds: readonly string[]
+        readonly supportingInternalRefs: readonly { readonly behaviorId: string; readonly summary: string }[]
+        readonly entryPointHints: readonly {
+          readonly kind: 'command' | 'tool' | 'handler' | 'route'
+          readonly identifier: string
+        }[]
+        readonly closure: {
+          readonly closureStatus: 'resolved' | 'partial' | 'unresolved' | 'unverified'
+          readonly entryPoints: readonly {
+            readonly kind: 'command' | 'tool' | 'handler' | 'route'
+            readonly identifier: string
+            readonly resolved: boolean
+            readonly evidence: { readonly filePath: string; readonly symbol?: string } | null
+          }[]
+        } | null
+      }[]
+    }[]
+  >([
+    [
+      'tools',
+      [
+        {
+          featureKey: 'task-creation',
+          behaviors: [
+            {
+              id: 'task-creation::feature',
+              domain: 'tools',
+              featureName: 'Task creation',
+              isUserFacing: true,
+              behavior: '',
+              userStory: 'As a user, I can create a task.',
+              context: '',
+              sourceTestKeys: [],
+              sourceBehaviorIds: [],
+              supportingInternalRefs: [],
+              entryPointHints: [],
+              closure: null,
+            },
+          ],
+        },
+        {
+          featureKey: 'task-edit',
+          behaviors: [
+            {
+              id: 'task-edit::feature',
+              domain: 'tools',
+              featureName: 'Task edit',
+              isUserFacing: true,
+              behavior: '',
+              userStory: 'As a user, I can edit a task.',
+              context: '',
+              sourceTestKeys: [],
+              sourceBehaviorIds: [],
+              supportingInternalRefs: [],
+              entryPointHints: [],
+              closure: null,
+            },
+          ],
+        },
+      ],
+    ],
+  ])
+
+  const evaluatedByDomain = new Map<
+    string,
+    readonly {
+      readonly testName: string
+      readonly behavior: string
+      readonly userStory: string
+      readonly maria: {
+        readonly discover: number
+        readonly use: number
+        readonly retain: number
+        readonly notes: string
+      }
+      readonly dani: {
+        readonly discover: number
+        readonly use: number
+        readonly retain: number
+        readonly notes: string
+      }
+      readonly viktor: {
+        readonly discover: number
+        readonly use: number
+        readonly retain: number
+        readonly notes: string
+      }
+      readonly flaws: readonly string[]
+      readonly improvements: readonly string[]
+    }[]
+  >([
+    [
+      'tools',
+      [
+        {
+          testName: 'Task creation',
+          behavior: '',
+          userStory: '',
+          maria: { discover: 4, use: 4, retain: 4, notes: '' },
+          dani: { discover: 4, use: 4, retain: 4, notes: '' },
+          viktor: { discover: 4, use: 4, retain: 4, notes: '' },
+          flaws: [],
+          improvements: [],
+        },
+        {
+          testName: 'Task edit',
+          behavior: '',
+          userStory: '',
+          maria: { discover: 3, use: 3, retain: 3, notes: '' },
+          dani: { discover: 3, use: 3, retain: 3, notes: '' },
+          viktor: { discover: 3, use: 3, retain: 3, notes: '' },
+          flaws: [],
+          improvements: [],
+        },
+      ],
+    ],
+  ])
+
+  const result = await scoresWriter.writeScoresJson(consolidatedByDomain, evaluatedByDomain, null)
+
+  expect(result.domains).toHaveLength(1)
+  const stories = result.domains[0]!.stories
+  expect(stories).toHaveLength(2)
+  const byFeatureKey = new Map(stories.map((s) => [s.featureKey, s]))
+  const creation = byFeatureKey.get('task-creation')!
+  const edit = byFeatureKey.get('task-edit')!
+  expect(creation.consolidatedId).toBe('task-creation::feature')
+  expect(creation.featureKey).not.toBe(creation.consolidatedId)
+  expect(edit.consolidatedId).toBe('task-edit::feature')
+  expect(edit.featureKey).not.toBe(edit.consolidatedId)
 })
