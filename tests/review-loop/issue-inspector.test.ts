@@ -41,6 +41,24 @@ function mockSpawnInspect(addresses: boolean): SpawnFn {
   }
 }
 
+function createPromptCapturingSpawn(): { spawn: SpawnFn; getPrompt: () => string } {
+  let capturedPrompt = ''
+  const spawn: SpawnFn = (_cmd, args, opts) => {
+    const prompt = args[args.length - 1]!
+    capturedPrompt = prompt
+    const outputPath = prompt.match(/JSON to:\s*(\S+)/u)![1]!
+    writeFileSync(
+      path.join(opts.cwd, outputPath),
+      JSON.stringify({ addresses: true, reasoning: 'mock', confidence: 0.8 }),
+    )
+    return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' } satisfies SpawnResult)
+  }
+  return {
+    spawn,
+    getPrompt: () => capturedPrompt,
+  }
+}
+
 async function setupRepo(repoPath: string): Promise<void> {
   mkdirSync(repoPath, { recursive: true })
   await execGit(repoPath, ['init'])
@@ -64,11 +82,13 @@ describe('runInspector', () => {
         cwd: runState.worktreePath,
         issue,
         baselineSha: 'HEAD',
+        fixerReasoning: 'mock fixer reasoning',
         outputPath: runState.inspectPath,
         logPath: runState.logPath,
         reporter: silentReporter(),
         model: 'm',
         extraArgs: [],
+        label: 'inspector-w1',
       },
       1,
       'rec-1',
@@ -76,5 +96,38 @@ describe('runInspector', () => {
     )
     expect(result.addresses).toBe(true)
     expect(result.usage).toBeDefined()
+  })
+
+  test('inspector prompt contains the fixer reasoning', async () => {
+    const repoRoot = makeTempDir('inspector-prompt-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
+    await setupRepo(runState.worktreePath)
+    const { logger } = createCapturingTraceLogger()
+    const expectedReasoning = 'the fixer claims it added a lock around the queue flush'
+    const { spawn, getPrompt } = createPromptCapturingSpawn()
+
+    const result = await runInspector(
+      {
+        spawn,
+        cwd: runState.worktreePath,
+        issue,
+        baselineSha: 'HEAD',
+        fixerReasoning: expectedReasoning,
+        outputPath: runState.inspectPath,
+        logPath: runState.logPath,
+        reporter: silentReporter(),
+        model: 'm',
+        extraArgs: [],
+        label: 'inspector-w1',
+      },
+      1,
+      'rec-1',
+      logger,
+    )
+    expect(result.addresses).toBe(true)
+    const prompt = getPrompt()
+    expect(prompt).toContain('Fixer reasoning (what the fixer claims it did):')
+    expect(prompt).toContain(expectedReasoning)
   })
 })

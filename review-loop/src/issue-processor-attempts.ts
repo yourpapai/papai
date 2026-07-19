@@ -28,6 +28,7 @@ export interface AttemptPromptDeps {
 }
 
 export interface IssueWorker {
+  readonly id?: number
   readonly worktreePath: string
   headSha(): Promise<string>
   resetToBaseline(sha: string): Promise<void>
@@ -97,7 +98,8 @@ export async function runFixerAttempt(
   collector: RoundCollector,
 ): Promise<FixerStepResult> {
   const fixerStart = Date.now()
-  const fixerAgentResult = await runFixerRaw(deps, worker, prompt, `fixer${attempt > 1 ? `-retry` : ''}`)
+  const workerSuffix = worker.id === undefined ? '' : `-w${worker.id}`
+  const fixerAgentResult = await runFixerRaw(deps, worker, prompt, `fixer${workerSuffix}${attempt > 1 ? `-retry` : ''}`)
   tallyPhaseMs(collector, 'verify', Date.now() - fixerStart)
   tallyUsage(collector, fixerAgentResult.usage)
   const fixerResult = fixerAgentResult.value
@@ -170,7 +172,15 @@ export async function runInspectorAttempt(
   collector: RoundCollector,
 ): Promise<InspectorStepResult> {
   const inspectStart = Date.now()
-  const inspectorResult = await runInspectorOrTreatAsRejection(deps, worker, record, baselineSha, round, collector)
+  const inspectorResult = await runInspectorOrTreatAsRejection(
+    deps,
+    worker,
+    record,
+    fixerResult,
+    baselineSha,
+    round,
+    collector,
+  )
   tallyPhaseMs(collector, 'inspect', Date.now() - inspectStart)
   tallyUsage(collector, inspectorResult.usage)
 

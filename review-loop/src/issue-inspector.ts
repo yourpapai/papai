@@ -6,7 +6,7 @@
 import { agentWritePath, runAgent, type AgentUsage, type SpawnFn } from './agent-runner.js'
 import type { IssueWorker } from './issue-processor-attempts.js'
 import type { IssueProcessorDeps } from './issue-processor.js'
-import { InspectorResultSchema, type InspectorResult, type ReviewerIssue } from './issue-schema.js'
+import { type FixerResult, InspectorResultSchema, type InspectorResult, type ReviewerIssue } from './issue-schema.js'
 import { emitInspectComplete, tallyInspector } from './loop-trace.js'
 import type { RoundCollector } from './loop-trace.js'
 import type { ProgressReporter } from './progress-log.js'
@@ -19,12 +19,14 @@ export interface RunInspectorDeps {
   cwd: string
   issue: ReviewerIssue
   baselineSha: string
+  fixerReasoning: string
   outputPath: string
   logPath: string
   reporter: ProgressReporter
   model: string
   extraArgs: readonly string[]
   timeoutMs?: number
+  label: string
 }
 
 export async function runInspector(
@@ -39,10 +41,10 @@ export async function runInspector(
     spawn: deps.spawn,
     model: deps.model,
     cwd: deps.cwd,
-    prompt: buildInspectPrompt(deps.issue, diff, '', agentWritePath(deps.outputPath)),
+    prompt: buildInspectPrompt(deps.issue, diff, deps.fixerReasoning, agentWritePath(deps.outputPath)),
     outputPath: deps.outputPath,
     outputSchema: InspectorResultSchema,
-    label: 'inspector',
+    label: deps.label,
     reporter: deps.reporter,
     logPath: deps.logPath,
     extraArgs: deps.extraArgs,
@@ -59,11 +61,13 @@ export async function runInspectorOrTreatAsRejection(
   deps: IssueProcessorDeps,
   worker: IssueWorker,
   record: import('./issue-ledger.js').LedgerIssueRecord,
+  fixerResult: FixerResult,
   baselineSha: string,
   round: number,
   collector: RoundCollector,
 ): Promise<InspectorResult & { usage: AgentUsage }> {
   const inspectorConfig = deps.config.inspector ?? deps.config.fixer
+  const labelSuffix = worker.id === undefined ? '' : `-w${worker.id}`
   try {
     return await runInspector(
       {
@@ -71,12 +75,14 @@ export async function runInspectorOrTreatAsRejection(
         cwd: worker.worktreePath,
         issue: record.issue,
         baselineSha,
+        fixerReasoning: fixerResult.reasoning,
         outputPath: deps.runState.inspectPath,
         logPath: deps.runState.logPath,
         reporter: deps.log,
         model: inspectorConfig.model,
         extraArgs: inspectorConfig.extraArgs,
         timeoutMs: inspectorConfig.timeoutMs ?? deps.config.agentTimeoutMs,
+        label: `inspector${labelSuffix}`,
       },
       round,
       record.id,
