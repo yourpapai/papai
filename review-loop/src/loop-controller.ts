@@ -81,6 +81,9 @@ function pushRoundMetric(
     decisions: collector.decisions,
     reviewerSeverity: collector.reviewerSeverity,
     fixerSeverity: collector.fixerSeverity,
+    inspector: collector.inspector,
+    phaseMs: collector.phaseMs,
+    usage: collector.usage,
   }
   metrics.push(metric)
   emitRoundSummary(deps.trace, metric)

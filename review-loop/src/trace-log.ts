@@ -25,16 +25,35 @@ export const DecisionsSchema = z.object({
   needs_human: z.number().int().nonnegative(),
   plan_drift: z.number().int().nonnegative(),
   no_commit: z.number().int().nonnegative(),
+  inspector_rejected: z.number().int().nonnegative(),
 })
 export type Decisions = z.infer<typeof DecisionsSchema>
 
 export function emptyDecisions(): Decisions {
-  return { fixed: 0, invalid: 0, already_fixed: 0, needs_human: 0, plan_drift: 0, no_commit: 0 }
+  return { fixed: 0, invalid: 0, already_fixed: 0, needs_human: 0, plan_drift: 0, no_commit: 0, inspector_rejected: 0 }
 }
 
 export function emptySeverityCounts(): SeverityCounts {
   return { critical: 0, high: 0, medium: 0, low: 0 }
 }
+
+export const PhaseMsSchema = z.object({
+  review: z.number().int().nonnegative(),
+  match: z.number().int().nonnegative(),
+  verify: z.number().int().nonnegative(),
+  build: z.number().int().nonnegative(),
+  inspect: z.number().int().nonnegative(),
+  fix: z.number().int().nonnegative(),
+})
+export type PhaseMs = z.infer<typeof PhaseMsSchema>
+
+export const UsageTotalsSchema = z.object({
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  reasoningTokens: z.number().int().nonnegative(),
+  costUsd: z.number().nonnegative(),
+})
+export type UsageTotals = z.infer<typeof UsageTotalsSchema>
 
 export const RoundMetricSchema = z.object({
   round: z.number().int().positive(),
@@ -44,6 +63,9 @@ export const RoundMetricSchema = z.object({
   decisions: DecisionsSchema,
   reviewerSeverity: SeverityCountsSchema,
   fixerSeverity: SeverityCountsSchema,
+  inspector: z.object({ runs: z.number().int().nonnegative(), rejected: z.number().int().nonnegative() }),
+  phaseMs: PhaseMsSchema,
+  usage: UsageTotalsSchema,
 })
 export type RoundMetric = z.infer<typeof RoundMetricSchema>
 
@@ -98,6 +120,14 @@ export const TraceEventSchema = z.discriminatedUnion('event', [
     passed: z.boolean(),
     attempt: z.number().int().positive(),
     durationMs: z.number().int().nonnegative(),
+  }),
+  z.object({
+    ...base,
+    event: z.literal('inspect_complete'),
+    issueId: z.string(),
+    addresses: z.boolean(),
+    confidence: z.number(),
+    reasoning: z.string(),
   }),
   z.object({
     ...base,

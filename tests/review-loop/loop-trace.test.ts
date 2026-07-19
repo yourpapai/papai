@@ -9,6 +9,7 @@ import type { ReviewerIssue } from '../../review-loop/src/issue-schema.js'
 import {
   emitBuildComplete,
   emitFixComplete,
+  emitInspectComplete,
   emitLoopEnd,
   emitMatchComplete,
   emitReviewComplete,
@@ -18,10 +19,18 @@ import {
   newCollector,
   tallyDecision,
   tallyFixerSeverity,
+  tallyInspector,
+  tallyPhaseMs,
   tallyReviewerIssues,
+  tallyUsage,
   truncate,
 } from '../../review-loop/src/loop-trace.js'
-import { createCapturingTraceLogger } from '../../review-loop/src/trace-log.js'
+import { createCapturingTraceLogger, type TraceEvent } from '../../review-loop/src/trace-log.js'
+
+function requireInspectComplete(evt: TraceEvent): Extract<TraceEvent, { event: 'inspect_complete' }> {
+  if (evt.event !== 'inspect_complete') throw new Error(`expected inspect_complete, got ${evt.event}`)
+  return evt
+}
 
 const issue: ReviewerIssue = {
   title: 'T',
@@ -106,5 +115,50 @@ describe('loop-trace emitters', () => {
     expect(c.reviewerSeverity.high).toBe(1)
     expect(c.reviewerSeverity.low).toBe(1)
     expect(truncate('abcdefghij', 5).length).toBeLessThan(6)
+  })
+})
+
+describe('tallyInspector', () => {
+  test('increments runs on every call; rejected only when addresses=false', () => {
+    const c = newCollector()
+    tallyInspector(c, true)
+    tallyInspector(c, false)
+    expect(c.inspector.runs).toBe(2)
+    expect(c.inspector.rejected).toBe(1)
+  })
+})
+
+describe('tallyPhaseMs', () => {
+  test('accumulates ms per phase bucket', () => {
+    const c = newCollector()
+    tallyPhaseMs(c, 'review', 100)
+    tallyPhaseMs(c, 'review', 50)
+    tallyPhaseMs(c, 'build', 200)
+    expect(c.phaseMs.review).toBe(150)
+    expect(c.phaseMs.build).toBe(200)
+  })
+})
+
+describe('tallyUsage', () => {
+  test('accumulates tokens and cost', () => {
+    const c = newCollector()
+    tallyUsage(c, { inputTokens: 100, outputTokens: 50, reasoningTokens: 10, costUsd: 0.01, wallMs: 1000 })
+    tallyUsage(c, { inputTokens: 200, outputTokens: 25, reasoningTokens: 5, costUsd: 0.02, wallMs: 500 })
+    expect(c.usage.inputTokens).toBe(300)
+    expect(c.usage.outputTokens).toBe(75)
+    expect(c.usage.reasoningTokens).toBe(15)
+    expect(c.usage.costUsd).toBeCloseTo(0.03)
+  })
+})
+
+describe('emitInspectComplete', () => {
+  test('appends an inspect_complete event with truncated reasoning', () => {
+    const { logger, events } = createCapturingTraceLogger()
+    emitInspectComplete(logger, 1, 'rec-1', false, 0.8, 'x'.repeat(300))
+    expect(events).toHaveLength(1)
+    const evt = requireInspectComplete(events[0]!)
+    expect(evt.event).toBe('inspect_complete')
+    expect(evt.addresses).toBe(false)
+    expect(evt.reasoning.length).toBeLessThanOrEqual(200)
   })
 })
