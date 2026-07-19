@@ -10,10 +10,16 @@
   },
   "fixer": {
     "model": "zai-coding-plan/glm-5.2",
-    "extraArgs": []
+    "extraArgs": [],
+    "timeoutMs": 1800000
   },
   "matcher": {
     "model": "zai-coding-plan/glm-5.2",
     "extraArgs": []
+  },
+  "inspector": {
+    "model": "zai-coding-plan/glm-5.2",
+    "extraArgs": [],
+    "timeoutMs": 1800000
   }
 }

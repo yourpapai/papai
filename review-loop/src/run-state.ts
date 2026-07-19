@@ -11,7 +11,7 @@ import { z } from 'zod'
 
 import type { ReviewLoopConfig } from './config.js'
 
-const PersistedRunStateSchema = z.object({
+export const PersistedRunStateSchema = z.object({
   runId: z.string(),
   repoRoot: z.string(),
   planPath: z.string(),

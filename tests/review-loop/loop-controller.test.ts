@@ -12,7 +12,7 @@ import type { ShellExecFn } from '../../review-loop/src/build-checker.js'
 import { createIssueLedger, IssueLedgerSnapshotSchema } from '../../review-loop/src/issue-ledger.js'
 import type { IssueMatch, ReviewerIssue } from '../../review-loop/src/issue-schema.js'
 import { runReviewLoop } from '../../review-loop/src/loop-controller.js'
-import { createRunState } from '../../review-loop/src/run-state.js'
+import { createRunState, PersistedRunStateSchema } from '../../review-loop/src/run-state.js'
 import type { Decisions } from '../../review-loop/src/trace-log.js'
 import { createCapturingTraceLogger } from '../../review-loop/src/trace-log.js'
 import { execGit } from '../../review-loop/src/worktree.js'
@@ -95,6 +95,7 @@ function createMockSpawn(handlers: {
   fixerResults?: Array<{ verdict: string; fixability: string; fixed: boolean; commitMessage?: string }>
   inspectorAddresses?: boolean
   onFixer?: (cwd: string, callIndex: number) => Promise<void> | void
+  onReviewer?: (cwd: string, callIndex: number) => Promise<void> | void
   matchExisting?: boolean
   matchByFile?: boolean
   onMatch?: (prompt: string) => void
@@ -110,6 +111,9 @@ function createMockSpawn(handlers: {
       reviewerCall += 1
       if (outputPath !== null) {
         writeFileSync(path.join(opts.cwd, outputPath), JSON.stringify({ issues }))
+      }
+      if (handlers.onReviewer) {
+        await handlers.onReviewer(opts.cwd, reviewerCall - 1)
       }
     } else if (promptText.includes('You are an inspector')) {
       if (outputPath !== null) {
@@ -807,6 +811,42 @@ describe('runReviewLoop', () => {
     expect(firstRecord).toBeDefined()
     expect(firstRecord!.status).toBe('fixed_pending_review')
     expect(firstRecord!.fixAttempts).toBe(1)
+  })
+
+  test('persists currentRound to state.json at round entry so mid-round crash reports the right round', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+
+    await setupGitRepo(runState.worktreePath)
+
+    const stateSnapshots: string[] = []
+    const spawn = createMockSpawn({
+      reviewerIssues: [[issue], []],
+      fixerResults: [{ verdict: 'valid', fixability: 'auto', fixed: true }],
+      onReviewer: () => {
+        stateSnapshots.push(readFileSync(runState.statePath, 'utf8'))
+      },
+    })
+
+    await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn,
+      exec: createMockExec(true),
+      log: silentReporter(),
+      trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
+    })
+
+    expect(stateSnapshots.length).toBeGreaterThanOrEqual(1)
+    const firstSnapshot = PersistedRunStateSchema.parse(JSON.parse(stateSnapshots[0]!))
+    expect(firstSnapshot.currentRound).toBe(1)
   })
 
   test('emits trace events and returns per-round metrics', async () => {

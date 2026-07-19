@@ -14,7 +14,8 @@
   },
   "fixer": {
     "model": "opencode/claude-sonnet-4-6",
-    "extraArgs": []
+    "extraArgs": [],
+    "timeoutMs": 1800000
   },
   "matcher": {
     "model": "ollama-cloud/kimi-k2.6:cloud",
@@ -22,6 +23,7 @@
   },
   "inspector": {
     "model": "ollama-cloud/kimi-k2.6:cloud",
-    "extraArgs": []
+    "extraArgs": [],
+    "timeoutMs": 1800000
   }
 }

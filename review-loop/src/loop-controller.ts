@@ -200,6 +200,7 @@ function runProcessPendingIssues(
 
 async function runRound(round: number, deps: ReviewLoopDeps, metrics: RoundMetric[]): Promise<ReviewLoopResult> {
   deps.runState.currentRound = round
+  await saveRunState(deps.runState)
   emitRoundStart(deps.trace, round, deps.config.maxRounds, deps.config.maxNoProgressRounds, deps.config.checkCommand)
   const collector = newCollector()
 
