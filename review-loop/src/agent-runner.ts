@@ -41,6 +41,15 @@ export interface AgentRunResult<T> {
   usage: AgentUsage
 }
 
+export class AgentRunError extends Error {
+  readonly usage: AgentUsage
+  constructor(message: string, usage: AgentUsage) {
+    super(message)
+    this.name = 'AgentRunError'
+    this.usage = usage
+  }
+}
+
 export interface RunAgentOptions<T> {
   spawn: SpawnFn
   model: string
@@ -220,21 +229,19 @@ async function runAttempt<T>(options: RunAgentOptions<T>, handler: LineHandler):
 
 export async function runAgent<T>(options: RunAgentOptions<T>): Promise<AgentRunResult<T>> {
   const handler = createLineHandler(options)
-  const finalize = (value: T): AgentRunResult<T> => ({
-    value,
-    usage: {
-      ...handler.ctx.usage,
-      wallMs: handler.ctx.firstStepAt === null ? 0 : Date.now() - handler.ctx.firstStepAt,
-    },
+  const buildUsage = (): AgentUsage => ({
+    ...handler.ctx.usage,
+    wallMs: handler.ctx.firstStepAt === null ? 0 : Date.now() - handler.ctx.firstStepAt,
   })
+  const finalize = (value: T): AgentRunResult<T> => ({ value, usage: buildUsage() })
   try {
     const first = await runAttempt(options, handler)
     if (first.ok) return finalize(first.value)
-    if (first.timedOut) throw first.error
+    if (first.timedOut) throw new AgentRunError(first.error.message, buildUsage())
     options.onRetry?.()
     const second = await runAttempt(options, handler)
     if (second.ok) return finalize(second.value)
-    throw second.error
+    throw new AgentRunError(second.error.message, buildUsage())
   } finally {
     handler.dispose()
   }

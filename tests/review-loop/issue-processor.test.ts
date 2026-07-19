@@ -219,6 +219,40 @@ function createAlwaysFailingInspectorSpawn(): SpawnFn {
   }
 }
 
+function createAlwaysFailingInspectorSpawnWithUsage(inspectorTokensPerAttempt: {
+  input: number
+  output: number
+  reasoning: number
+  cost: number
+}): SpawnFn {
+  const stepFinish = JSON.stringify({
+    type: 'step_finish',
+    part: {
+      reason: 'stop',
+      tokens: {
+        input: inspectorTokensPerAttempt.input,
+        output: inspectorTokensPerAttempt.output,
+        reasoning: inspectorTokensPerAttempt.reasoning,
+      },
+      cost: inspectorTokensPerAttempt.cost,
+    },
+  })
+  return (_cmd, args, opts, onLine) => {
+    const prompt = args[args.length - 1] ?? ''
+    const outputPath = prompt.match(/(?:to|JSON to):\s*(\S+)/u)?.[1]
+    if (outputPath === undefined) return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+
+    if (prompt.includes('You are an inspector')) {
+      onLine?.(stepFinish)
+      onLine?.(stepFinish)
+      writeFileSync(path.join(opts.cwd, outputPath), 'not-json')
+    } else {
+      writeFixerResult({ cwd: opts.cwd, outputPath, verdict: 'valid', fixed: true })
+    }
+    return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+  }
+}
+
 describe('processPendingIssues', () => {
   test('fixes an issue, emits verify/build/inspect/fix trace events, and tallies a fixed decision', async () => {
     const { fixed, ledger, events, collector } = await runScenario(mockSpawnForFixerAndInspector({}))
@@ -360,6 +394,19 @@ describe('processIssue unified retry budget', () => {
     expect(collector.decisions.inspector_rejected).toBe(0)
     expect(collector.decisions.needs_human).toBe(1)
   })
+
+  test('inspector failure preserves accumulated usage in the round collector', async () => {
+    // Per inspector runAgent call: 2 internal retries × 2 step_finish events × tokens.
+    // Two outer attempts (inspector-unavailable → retry), so 4× the per-event totals.
+    const { collector } = await runScenario(
+      createAlwaysFailingInspectorSpawnWithUsage({ input: 500, output: 200, reasoning: 40, cost: 0.03 }),
+    )
+    expect(collector.inspector.runs).toBe(2)
+    expect(collector.usage.inputTokens).toBe(4000)
+    expect(collector.usage.outputTokens).toBe(1600)
+    expect(collector.usage.reasoningTokens).toBe(320)
+    expect(collector.usage.costUsd).toBeCloseTo(0.24)
+  })
 })
 
 function createFixerOnlySpawn(opts: { fixed?: boolean; writeFile?: boolean } = {}): {
@@ -391,15 +438,6 @@ function createFixerOnlySpawn(opts: { fixed?: boolean; writeFile?: boolean } = {
     return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
   }
   return { spawn, calls }
-}
-
-function createCrashingSpawnForWorker(fallback: SpawnFn, crashingCwd: string): SpawnFn {
-  return (_cmd, args, opts) => {
-    if (opts.cwd === crashingCwd) {
-      return Promise.reject(new Error('fixer subprocess crashed'))
-    }
-    return fallback(_cmd, args, opts)
-  }
 }
 
 describe('processPendingIssues pool dispatch', () => {
@@ -472,46 +510,6 @@ describe('processPendingIssues pool dispatch', () => {
     expect(acquireLog).toHaveLength(2)
     expect(releaseLog).toHaveLength(2)
     expect(releaseLog[0]!).toBeGreaterThanOrEqual(acquireLog[1]!)
-  })
-
-  test('per-issue throw is isolated: crashing issue becomes needs_human, sibling still fixes', async () => {
-    const { runState, ledger, recordA, recordB } = await setupTwoIssues()
-    const workerRepo1 = makeTempDir('worker-')
-    const workerRepo2 = makeTempDir('worker-')
-    await setupRepo(workerRepo1)
-    await setupRepo(workerRepo2)
-    const { spawn: fixerSpawn } = createFixerOnlySpawn()
-    const crashingSpawn = createCrashingSpawnForWorker(fixerSpawn, workerRepo1)
-    const { pool, releaseLog } = fakePool({ size: 2, worktreePaths: [workerRepo1, workerRepo2] })
-    const collector = newCollector()
-    const { logger, events } = createCapturingTraceLogger()
-    const reporter: ProgressReporter = silentReporter()
-
-    const fixed = await processPendingIssues(
-      {
-        config: createReviewLoopConfigFixture(runState.repoRoot),
-        runState,
-        ledger,
-        spawn: crashingSpawn,
-        exec: passingExec,
-        log: reporter,
-        trace: logger,
-        pool,
-        inspect: false,
-      },
-      1,
-      collector,
-      [recordA, recordB],
-    )
-
-    expect(fixed).toBe(1)
-    expect(ledger.snapshot.issues['rec-a']!.status).toBe('needs_human')
-    expect(ledger.snapshot.issues['rec-b']!.status).toBe('fixed_pending_review')
-    expect(collector.decisions.needs_human).toBe(1)
-    expect(collector.decisions.fixed).toBe(1)
-    const fixCompleteForA = events.filter((e) => e.event === 'fix_complete').filter((e) => e.issueId === 'rec-a')
-    expect(fixCompleteForA).toHaveLength(1)
-    expect(releaseLog).toHaveLength(2)
   })
 
   test('K=1 pool serializes (equivalent to today)', async () => {

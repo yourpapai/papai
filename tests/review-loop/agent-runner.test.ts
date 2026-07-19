@@ -9,7 +9,7 @@ import path from 'node:path'
 
 import { z } from 'zod'
 
-import { runAgent, type SpawnFn } from '../../review-loop/src/agent-runner.js'
+import { AgentRunError, runAgent, type SpawnFn } from '../../review-loop/src/agent-runner.js'
 import { ReviewerIssuesSchema } from '../../review-loop/src/issue-schema.js'
 import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
 import { cleanupTempDirs, makeTempDir } from './test-helpers.js'
@@ -312,6 +312,13 @@ function mockSpawnWithStepFinish(outputPath: string): SpawnFn {
   }
 }
 
+function asAgentRunError(value: unknown): AgentRunError {
+  if (!(value instanceof AgentRunError)) {
+    throw new Error(`expected AgentRunError, got ${value === null ? 'null' : typeof value}`)
+  }
+  return value
+}
+
 describe('runAgent return type', () => {
   test('returns AgentRunResult with value and usage', async () => {
     const cwd = makeTempDir('agent-result-')
@@ -382,5 +389,91 @@ describe('runAgent return type', () => {
     expect(results[0]!.value.marker).toBe('W1')
     expect(results[1]!.value.marker).toBe('W2')
     expect(results[2]!.value.marker).toBe('W3')
+  })
+
+  test('retry-exhausted throw carries accumulated usage on an AgentRunError', async () => {
+    const cwd = makeTempDir('agent-throw-usage-')
+    const outputPath = path.join(cwd, 'result.json')
+    const stepFinish = JSON.stringify({
+      type: 'step_finish',
+      part: { reason: 'stop', tokens: { input: 100, output: 50, reasoning: 10 }, cost: 0.01 },
+    })
+    function spawnFailing(
+      _cmd: string,
+      _args: readonly string[],
+      opts: { cwd: string },
+      onLine?: (line: string) => void,
+    ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+      mkdirSync(path.join(opts.cwd, '.review-loop'), { recursive: true })
+      onLine?.(stepFinish)
+      onLine?.(stepFinish)
+      return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+    }
+
+    let thrown: unknown
+    try {
+      await runAgent({
+        spawn: spawnFailing,
+        model: 'm',
+        cwd,
+        prompt: 'p',
+        outputPath,
+        outputSchema: z.object({ ok: z.boolean() }),
+        label: 'failing',
+        logPath: path.join(cwd, 'agent.log'),
+        extraArgs: [],
+      })
+      throw new Error('expected runAgent to throw')
+    } catch (error) {
+      thrown = error
+    }
+    expect(thrown).toBeInstanceOf(AgentRunError)
+    const error = asAgentRunError(thrown)
+    expect(error.usage.inputTokens).toBe(400)
+    expect(error.usage.outputTokens).toBe(200)
+    expect(error.usage.reasoningTokens).toBe(40)
+    expect(error.usage.costUsd).toBeCloseTo(0.04)
+  })
+
+  test('timeout throw carries accumulated usage on an AgentRunError', async () => {
+    const cwd = makeTempDir('agent-timeout-usage-')
+    const outputPath = path.join(cwd, 'result.json')
+    const stepFinish = JSON.stringify({
+      type: 'step_finish',
+      part: { reason: 'stop', tokens: { input: 70, output: 30, reasoning: 5 }, cost: 0.005 },
+    })
+    function spawnTimeout(
+      _cmd: string,
+      _args: readonly string[],
+      _opts: { cwd: string },
+      onLine?: (line: string) => void,
+    ): Promise<{ exitCode: number; stdout: string; stderr: string; timedOut?: boolean }> {
+      onLine?.(stepFinish)
+      return Promise.resolve({ exitCode: 1, stdout: '', stderr: 'Process timed out', timedOut: true })
+    }
+
+    let thrown: unknown
+    try {
+      await runAgent({
+        spawn: spawnTimeout,
+        model: 'm',
+        cwd,
+        prompt: 'p',
+        outputPath,
+        outputSchema: z.object({ ok: z.boolean() }),
+        label: 'timing-out',
+        logPath: path.join(cwd, 'agent.log'),
+        extraArgs: [],
+      })
+      throw new Error('expected runAgent to throw')
+    } catch (error) {
+      thrown = error
+    }
+    expect(thrown).toBeInstanceOf(AgentRunError)
+    const error = asAgentRunError(thrown)
+    expect(error.message).toContain('timed out')
+    expect(error.usage.inputTokens).toBe(70)
+    expect(error.usage.outputTokens).toBe(30)
+    expect(error.usage.costUsd).toBeCloseTo(0.005)
   })
 })

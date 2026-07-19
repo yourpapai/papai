@@ -26,6 +26,8 @@ export interface IssueProcessorDeps {
   trace: TraceLogger
   pool: WorkerPool
   inspect?: boolean
+  /** Override the ledger-save function (default: real `saveIssueLedger`). Tests use this to observe concurrency. */
+  saveLedger?: (ledger: IssueLedger) => Promise<void>
 }
 
 export function sanitizeSubject(text: string): string {
@@ -61,20 +63,47 @@ async function processIssue(
   }
 }
 
-export async function processPendingIssues(
-  deps: IssueProcessorDeps,
-  round: number,
-  collector: RoundCollector,
-  pending: readonly LedgerIssueRecord[],
-): Promise<number> {
-  let fixed = 0
-  let index = 0
-  const inFlight: Promise<void>[] = []
+function makeSerializedSave(saveLedger: (ledger: IssueLedger) => Promise<void>): {
+  save: (ledger: IssueLedger) => Promise<void>
+} {
+  // Coroutine-local save serialization. Without this, K parallel workers each
+  // call `saveLedger` after `processIssue` returns, and their non-atomic
+  // `writeFile` calls race: whichever finishes last wins, persisting a stale
+  // stringify that may predate another worker's already-completed mutation.
+  // On crash-resume that lost state resurrects already-fixed issues. The chain
+  // guarantees ordered, non-overlapping saves while still surfacing each save's
+  // own error to its calling coroutine.
+  let saveChain: Promise<void> = Promise.resolve()
+  const save = (ledger: IssueLedger): Promise<void> => {
+    const next = saveChain.then(
+      () => saveLedger(ledger),
+      () => saveLedger(ledger),
+    )
+    // Keep the chain alive even if this save rejects; otherwise a single
+    // failure would poison every subsequent queued save.
+    saveChain = next.then(
+      () => undefined,
+      () => undefined,
+    )
+    return next
+  }
+  return { save }
+}
 
+function makeDispatcher(args: {
+  deps: IssueProcessorDeps
+  round: number
+  collector: RoundCollector
+  pending: readonly LedgerIssueRecord[]
+  save: (ledger: IssueLedger) => Promise<void>
+  onFixed: () => void
+  nextIndex: () => number
+}): () => Promise<void> {
+  const { deps, round, collector, pending, save, onFixed, nextIndex } = args
   const dispatchNext = async (): Promise<void> => {
+    const index = nextIndex()
     if (index >= pending.length) return
     const record = pending[index]!
-    index += 1
     const worker = await deps.pool.acquire(record.issue.file)
     let result: { fixed: boolean } | null = null
     try {
@@ -86,12 +115,36 @@ export async function processPendingIssues(
       deps.log.log(`[fix] "${shortTitle(record)}" → needs_human (fixer crashed: ${msg})`)
       emitFixComplete(deps.trace, round, record.id, false, null, 1)
     }
-    await saveIssueLedger(deps.ledger)
-    if (result !== null && result.fixed) fixed += 1
+    await save(deps.ledger)
+    if (result !== null && result.fixed) onFixed()
     await dispatchNext()
   }
+  return dispatchNext
+}
+
+export async function processPendingIssues(
+  deps: IssueProcessorDeps,
+  round: number,
+  collector: RoundCollector,
+  pending: readonly LedgerIssueRecord[],
+): Promise<number> {
+  let fixed = 0
+  let index = 0
+  const { save } = makeSerializedSave(deps.saveLedger ?? saveIssueLedger)
+  const dispatchNext = makeDispatcher({
+    deps,
+    round,
+    collector,
+    pending,
+    save,
+    onFixed: () => {
+      fixed += 1
+    },
+    nextIndex: () => index++,
+  })
 
   const concurrency = Math.min(deps.config.poolSize, pending.length)
+  const inFlight: Promise<void>[] = []
   for (let i = 0; i < concurrency; i++) {
     inFlight.push(dispatchNext())
   }

@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { agentWritePath, runAgent, type AgentUsage, type SpawnFn } from './agent-runner.js'
+import { agentWritePath, runAgent, AgentRunError, type AgentUsage, type SpawnFn } from './agent-runner.js'
 import type { IssueWorker } from './issue-processor-attempts.js'
 import type { IssueProcessorDeps } from './issue-processor.js'
 import { type FixerResult, InspectorResultSchema, type InspectorResult, type ReviewerIssue } from './issue-schema.js'
@@ -104,7 +104,10 @@ export async function runInspectorOrTreatAsRejection(
     return {
       kind: 'unavailable',
       reasoning: 'inspector unavailable',
-      usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0 },
+      usage:
+        error instanceof AgentRunError
+          ? error.usage
+          : { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0 },
     }
   }
 }
