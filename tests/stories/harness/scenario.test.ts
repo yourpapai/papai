@@ -115,8 +115,8 @@ describe('scenario execution', () => {
     const world = await createScenarioWorld('unsupported task capability')
 
     try {
-      expect(() => world.api.given.taskCapabilities(['projects.read'])).toThrow(
-        'MemoryTaskProvider does not support task capabilities: projects.read',
+      expect(() => world.api.given.taskCapabilities(['attachments.list'])).toThrow(
+        'MemoryTaskProvider does not support task capabilities: attachments.list',
       )
       expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
     } finally {
@@ -140,8 +140,8 @@ describe('scenario execution', () => {
 
       expect([...world.tasks.capabilities]).toEqual(capabilities)
       expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
-      expect(() => world.api.given.taskCapabilities(['projects.read'])).toThrow(
-        'MemoryTaskProvider does not support task capabilities: projects.read',
+      expect(() => world.api.given.taskCapabilities(['attachments.list'])).toThrow(
+        'MemoryTaskProvider does not support task capabilities: attachments.list',
       )
     } finally {
       await world.stop()
@@ -164,8 +164,8 @@ describe('scenario execution', () => {
 
       expect([...world.tasks.capabilities]).toEqual(capabilities)
       expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
-      expect(() => world.api.given.taskCapabilities(['projects.read'])).toThrow(
-        'MemoryTaskProvider does not support task capabilities: projects.read',
+      expect(() => world.api.given.taskCapabilities(['attachments.list'])).toThrow(
+        'MemoryTaskProvider does not support task capabilities: attachments.list',
       )
     } finally {
       await world.stop()
