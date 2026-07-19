@@ -208,6 +208,7 @@ async function runAttempt<T>(options: RunAgentOptions<T>, handler: LineHandler):
   }
   try {
     const agentFile = path.resolve(options.cwd, agentWritePath(options.outputPath))
+    await mkdir(path.dirname(options.outputPath), { recursive: true })
     await copyFile(agentFile, options.outputPath)
     await unlink(agentFile)
     const raw = await readFile(options.outputPath, 'utf8')

@@ -11,6 +11,7 @@ import { emitInspectComplete, tallyInspector } from './loop-trace.js'
 import type { RoundCollector } from './loop-trace.js'
 import type { ProgressReporter } from './progress-log.js'
 import { buildInspectPrompt } from './prompt-templates.js'
+import { workerOutputPath } from './run-state.js'
 import type { TraceLogger } from './trace-log.js'
 import { execGit } from './worktree.js'
 
@@ -76,7 +77,7 @@ export async function runInspectorOrTreatAsRejection(
         issue: record.issue,
         baselineSha,
         fixerReasoning: fixerResult.reasoning,
-        outputPath: deps.runState.inspectPath,
+        outputPath: workerOutputPath(deps.runState.runDir, worker.id, 'inspect.json'),
         logPath: deps.runState.logPath,
         reporter: deps.log,
         model: inspectorConfig.model,

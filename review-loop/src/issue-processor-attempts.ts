@@ -20,6 +20,7 @@ import {
   type RoundCollector,
 } from './loop-trace.js'
 import { buildFixPrompt, buildRetryFixPrompt, buildRetryFixWithInspectorFeedbackPrompt } from './prompt-templates.js'
+import { workerOutputPath } from './run-state.js'
 import type { Worker } from './worker-pool.js'
 
 export interface AttemptPromptDeps {
@@ -51,7 +52,7 @@ export function runFixerRaw(
     model: deps.config.fixer.model,
     cwd: worker.worktreePath,
     prompt,
-    outputPath: deps.runState.resultPath,
+    outputPath: workerOutputPath(deps.runState.runDir, worker.id, 'result.json'),
     outputSchema: FixerResultSchema,
     label,
     reporter: deps.log,

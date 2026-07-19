@@ -333,4 +333,54 @@ describe('runAgent return type', () => {
     expect(result.usage.costUsd).toBeCloseTo(0.02)
     expect(result.usage.wallMs).toBeGreaterThanOrEqual(0)
   })
+
+  test('concurrent runAgent calls with distinct output paths do not race', async () => {
+    // Regression: when output paths are per-worker (e.g. <runDir>/workers/w1/result.json),
+    // concurrent runAgent calls must each read their own scratch file, not each other's.
+    // The pre-fix bug: shared outputPath meant worker A could copyFile→readFile while worker B
+    // interleaved a copyFile, causing A to parse B's result.
+    const root = makeTempDir('agent-race-')
+    const schema = z.object({ marker: z.string() })
+
+    function spawnFor(marker: string): SpawnFn {
+      return (_cmd, _args, opts, _onLine) =>
+        new Promise((resolve) => {
+          // Write the agent's scratch file in the worker's cwd. The path is
+          // `.review-loop/result.json` (the agentWritePath basename), NOT the
+          // outputPath — the agent never sees the destination directly.
+          const scratch = path.join(opts.cwd, '.review-loop', 'result.json')
+          mkdirSync(path.dirname(scratch), { recursive: true })
+          writeFileSync(scratch, JSON.stringify({ marker }))
+          // Small jitter to maximize the chance of overlapping copyFile windows.
+          setTimeout(() => resolve({ exitCode: 0, stdout: '', stderr: '' }), 5)
+        })
+    }
+
+    const workerRoots = ['w1', 'w2', 'w3'].map((id) => {
+      const dir = path.join(root, id)
+      mkdirSync(dir, { recursive: true })
+      return { id, dir, marker: id.toUpperCase() }
+    })
+
+    const results = await Promise.all(
+      workerRoots.map(({ id, dir, marker }) =>
+        runAgent({
+          spawn: spawnFor(marker),
+          model: 'm',
+          cwd: dir,
+          prompt: 'p',
+          // Per-worker destination under the run dir, mirroring workerOutputPath().
+          outputPath: path.join(root, 'workers', `w${id}`, 'result.json'),
+          outputSchema: schema,
+          label: `fixer-w${id}`,
+          logPath: path.join(dir, 'agent.log'),
+          extraArgs: [],
+        }),
+      ),
+    )
+
+    expect(results[0]!.value.marker).toBe('W1')
+    expect(results[1]!.value.marker).toBe('W2')
+    expect(results[2]!.value.marker).toBe('W3')
+  })
 })
