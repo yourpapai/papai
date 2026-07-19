@@ -520,6 +520,60 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
       'tests/stories/meta/disclosure-and-compaction.story.test.ts#SCN-meta-expand-result: expands a compacted tool result by handle',
     ],
   },
+  'SCN-task-create-update': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/tasks/lifecycle-and-policy.story.test.ts#SCN-task-create-update: creates and renames a task through the tool loop',
+    ],
+  },
+  'SCN-task-query': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/tasks/lifecycle-and-policy.story.test.ts#SCN-task-query: counts and lists tasks with project filters',
+    ],
+  },
+  'SCN-task-delete': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/tasks/lifecycle-and-policy.story.test.ts#SCN-task-delete: deletes with confidence and refuses without it',
+    ],
+  },
+  'SCN-task-history': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/tasks/lifecycle-and-policy.story.test.ts#SCN-task-history: reads self-seeded task activities',
+    ],
+  },
+  'SCN-task-comments': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/tasks/lifecycle-and-policy.story.test.ts#SCN-task-comments: adds, edits, and removes a comment',
+    ],
+  },
+  'SCN-task-labels': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/tasks/lifecycle-and-policy.story.test.ts#SCN-task-labels: creates and assigns a label by name',
+    ],
+  },
+  'SCN-task-not-configured': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/tasks/lifecycle-and-policy.story.test.ts#SCN-task-not-configured: refuses task work without an assigned provider',
+    ],
+  },
+  'SCN-task-ask-confirm': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/tasks/lifecycle-and-policy.story.test.ts#SCN-task-ask-confirm: ask permission gates a mutating task tool',
+    ],
+  },
+  'SCN-task-deny': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/tasks/lifecycle-and-policy.story.test.ts#SCN-task-deny: denied tools leave the advertised toolset',
+    ],
+  },
 }
 
 function auditRecord(readiness: AuditReadiness, family: StoryFamily, rationale: string): AuditRecord {
@@ -544,36 +598,6 @@ export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
     'No chat /announce command exists; admin broadcast via the settings route is covered by SCN-settings-admin-roster-announce. Keeps gap status.',
   ),
   // F2 — conversational task operations
-  'SCN-task-create-update': needs(
-    'F2',
-    ['capability-ids'],
-    'Partially covered today by tests/stories/chat-task/create-and-read-task.story.test.ts (create and get only — documented partial coverage, not a mapping); scripting update_task needs a capability id.',
-  ),
-  'SCN-task-query': needs(
-    'F2',
-    ['capability-ids', 'memory-task-provider-expansion'],
-    'List/search work today; count variants need countTasks on the memory provider plus capability ids.',
-  ),
-  'SCN-task-delete': needs(
-    'F2',
-    ['capability-ids', 'memory-task-provider-expansion'],
-    'Needs deleteTask on the memory provider and a capability id.',
-  ),
-  'SCN-task-history': needs(
-    'F2',
-    ['capability-ids', 'memory-task-provider-expansion'],
-    'Needs getTaskHistory (activities.read) on the memory provider and a capability id.',
-  ),
-  'SCN-task-comments': needs(
-    'F2',
-    ['capability-ids'],
-    'Memory provider comment surface exists; scripting comment tools needs capability ids.',
-  ),
-  'SCN-task-labels': needs(
-    'F2',
-    ['capability-ids'],
-    'Memory provider label surface exists; scripting label tools needs capability ids.',
-  ),
   'SCN-task-relations': needs(
     'F2',
     ['capability-ids', 'memory-task-provider-expansion'],
@@ -628,15 +652,6 @@ export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
     'F2',
     ['capability-ids', 'memory-task-provider-expansion'],
     'Needs applyCommand with YouTrack traits on the memory provider.',
-  ),
-  'SCN-task-not-configured': ready('F2', 'Refusal path needs no tool call; an unassigned provider is seedable today.'),
-  'SCN-task-ask-confirm': ready(
-    'F2',
-    "tool_prefs 'ask' plus when.interaction permission buttons run in-process today.",
-  ),
-  'SCN-task-deny': ready(
-    'F2',
-    "tool_prefs 'deny' filtering is observable via model available-tools inspections today.",
   ),
   // F3 — memory, memos, instructions, history, chat links
   'SCN-memo-save': needs(
