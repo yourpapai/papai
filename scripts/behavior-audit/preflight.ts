@@ -12,7 +12,7 @@ interface PreflightConfig {
 }
 
 const ModelsPayloadSchema = z.object({
-  data: z.array(z.object({ id: z.string() })).optional(),
+  data: z.array(z.object({ id: z.unknown() })).optional(),
 })
 
 function readPreflightConfig(): PreflightConfig | undefined {
@@ -46,7 +46,7 @@ function pickOfferedModelIds(payload: unknown): readonly string[] {
   if (!parsed.success) {
     return []
   }
-  return parsed.data.data?.map((entry) => entry.id) ?? []
+  return (parsed.data.data ?? []).map((entry) => entry.id).filter((id): id is string => typeof id === 'string')
 }
 
 export async function runPreflight(): Promise<number> {

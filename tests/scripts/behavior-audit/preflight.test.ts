@@ -113,4 +113,20 @@ describe('preflight', () => {
     expect(handler.mock.calls).toHaveLength(1)
     expect(handler.mock.calls[0]![0]).toBe('https://gateway.example.com/v1/models')
   })
+
+  test('keeps string ids even when sibling entries have non-string ids', async () => {
+    process.env['BEHAVIOR_AUDIT_BASE_URL'] = 'https://gateway.example.com/v1'
+    process.env['BEHAVIOR_AUDIT_MODEL'] = 'claude-3.5'
+    process.env['OPENAI_API_KEY'] = 'k'
+    setMockFetch(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ data: [{ id: 'claude-3.5' }, { id: 123 }] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      ),
+    )
+
+    expect(await runPreflight()).toBe(0)
+  })
 })
