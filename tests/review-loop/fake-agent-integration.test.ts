@@ -40,6 +40,8 @@ if (prompt.includes('Review the current implementation')) {
   scenario._reviewerCall = (scenario._reviewerCall ?? 0) + 1
   writeFileSync(scenarioPath, JSON.stringify(scenario))
   if (outputPath) writeFileSync(outputPath, issues)
+} else if (prompt.includes('You are an inspector')) {
+  if (outputPath) writeFileSync(outputPath, JSON.stringify({ addresses: true, reasoning: 'mock', confidence: 0.9 }))
 } else if (prompt.includes('Verify and fix') || prompt.includes('build error')) {
   const result = scenario.fixerResults[scenario._fixerCall ?? 0] ?? '{}'
   scenario._fixerCall = (scenario._fixerCall ?? 0) + 1

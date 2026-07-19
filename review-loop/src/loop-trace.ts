@@ -57,6 +57,8 @@ export function tallyDecision(collector: RoundCollector, verdict: string, fixed:
     bucket = 'already_fixed'
   } else if (verdict === 'needs_human') {
     bucket = 'needs_human'
+  } else if (verdict === 'inspector_rejected') {
+    bucket = 'inspector_rejected'
   } else {
     bucket = 'plan_drift'
   }

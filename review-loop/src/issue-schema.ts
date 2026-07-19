@@ -54,6 +54,7 @@ export const IssueMatchesSchema = z.object({
 export type ReviewerIssue = z.infer<typeof ReviewerIssueSchema>
 export type ReviewerIssues = z.infer<typeof ReviewerIssuesSchema>
 export type VerifierDecision = z.infer<typeof VerifierDecisionSchema>
+export type Verdict = VerifierDecision['verdict']
 export type FixerResult = z.infer<typeof FixerResultSchema>
 export type InspectorResult = z.infer<typeof InspectorResultSchema>
 export type IssueMatch = z.infer<typeof IssueMatchSchema>

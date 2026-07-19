@@ -10,7 +10,9 @@ import path from 'node:path'
 import { z } from 'zod'
 
 import { ReviewerIssueSchema, VerifierDecisionSchema } from './issue-schema.js'
-import type { IssueMatch, ReviewerIssue, VerifierDecision } from './issue-schema.js'
+import type { FixerResult, IssueMatch, ReviewerIssue, VerifierDecision } from './issue-schema.js'
+import { emitVerifyComplete, truncate } from './loop-trace.js'
+import type { TraceLogger } from './trace-log.js'
 
 export type LedgerIssueStatus =
   | 'discovered'
@@ -155,6 +157,59 @@ export function recordFixAttempt(ledger: IssueLedger, id: string): void {
 
 export async function saveIssueLedger(ledger: IssueLedger): Promise<void> {
   await writeFile(ledger.path, JSON.stringify(ledger.snapshot, null, 2))
+}
+
+export function recordVerify(
+  ledger: IssueLedger,
+  trace: TraceLogger,
+  round: number,
+  record: LedgerIssueRecord,
+  result: FixerResult,
+): void {
+  recordVerification(ledger, record.id, {
+    verdict: result.verdict,
+    fixability: result.fixability,
+    reasoning: result.reasoning,
+    targetFiles: result.targetFiles,
+  })
+  emitVerifyComplete(
+    trace,
+    round,
+    record.id,
+    result.verdict,
+    result.fixability,
+    record.issue.severity,
+    result.severity ?? null,
+    truncate(result.reasoning, 200),
+    result.targetFiles,
+  )
+}
+
+export function recordNeedsHuman(
+  ledger: IssueLedger,
+  trace: TraceLogger,
+  round: number,
+  record: LedgerIssueRecord,
+  reasoning: string,
+  result: FixerResult,
+): void {
+  recordVerification(ledger, record.id, {
+    verdict: 'needs_human',
+    fixability: 'manual',
+    reasoning,
+    targetFiles: result.targetFiles,
+  })
+  emitVerifyComplete(
+    trace,
+    round,
+    record.id,
+    'needs_human',
+    'manual',
+    record.issue.severity,
+    result.severity ?? null,
+    truncate(reasoning, 200),
+    result.targetFiles,
+  )
 }
 
 function mapVerifierDecisionToLedgerStatus(decision: VerifierDecision): LedgerIssueStatus {

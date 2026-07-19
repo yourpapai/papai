@@ -62,6 +62,7 @@ function matchFirstToExisting(prompt: string): IssueMatch[] {
 function createMockSpawn(handlers: {
   reviewerIssues?: ReviewerIssue[][]
   fixerResults?: Array<{ verdict: string; fixability: string; fixed: boolean }>
+  inspectorAddresses?: boolean
   matchFirstOnly?: boolean
   onFixer?: (cwd: string) => Promise<void> | void
 }): SpawnFn {
@@ -76,6 +77,17 @@ function createMockSpawn(handlers: {
       reviewerCall += 1
       if (outputPath !== null) {
         writeFileSync(path.join(opts.cwd, outputPath), JSON.stringify({ issues }))
+      }
+    } else if (promptText.includes('You are an inspector')) {
+      if (outputPath !== null) {
+        writeFileSync(
+          path.join(opts.cwd, outputPath),
+          JSON.stringify({
+            addresses: handlers.inspectorAddresses ?? true,
+            reasoning: 'Mock inspector acceptance.',
+            confidence: 0.9,
+          }),
+        )
       }
     } else if (promptText.includes('Verify and fix') || promptText.includes('build error')) {
       const result = handlers.fixerResults?.[fixerCall] ?? { verdict: 'valid', fixability: 'auto', fixed: true }

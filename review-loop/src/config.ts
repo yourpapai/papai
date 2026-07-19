@@ -26,6 +26,7 @@ export const ReviewLoopConfigSchema = z.object({
   checkCommand: z.string().min(1).default('bun check:full'),
   reviewer: AgentConfigSchema,
   fixer: AgentConfigSchema,
+  inspector: AgentConfigSchema.optional(),
   matcher: AgentConfigSchema,
 })
 

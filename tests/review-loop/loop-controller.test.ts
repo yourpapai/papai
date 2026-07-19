@@ -25,7 +25,7 @@ import {
 } from './test-helpers.js'
 
 function sumDecisions(d: Decisions): number {
-  return d.fixed + d.invalid + d.already_fixed + d.needs_human + d.plan_drift + d.no_commit
+  return d.fixed + d.invalid + d.already_fixed + d.needs_human + d.plan_drift + d.no_commit + d.inspector_rejected
 }
 
 afterEach(cleanupTempDirs)
@@ -92,6 +92,7 @@ function matchExistingByFile(prompt: string): IssueMatch[] {
 function createMockSpawn(handlers: {
   reviewerIssues?: ReviewerIssue[][]
   fixerResults?: Array<{ verdict: string; fixability: string; fixed: boolean; commitMessage?: string }>
+  inspectorAddresses?: boolean
   onFixer?: (cwd: string, callIndex: number) => Promise<void> | void
   matchExisting?: boolean
   matchByFile?: boolean
@@ -108,6 +109,17 @@ function createMockSpawn(handlers: {
       reviewerCall += 1
       if (outputPath !== null) {
         writeFileSync(path.join(opts.cwd, outputPath), JSON.stringify({ issues }))
+      }
+    } else if (promptText.includes('You are an inspector')) {
+      if (outputPath !== null) {
+        writeFileSync(
+          path.join(opts.cwd, outputPath),
+          JSON.stringify({
+            addresses: handlers.inspectorAddresses ?? true,
+            reasoning: 'Mock inspector acceptance.',
+            confidence: 0.9,
+          }),
+        )
       }
     } else if (promptText.includes('Verify and fix') || promptText.includes('build error')) {
       const result = handlers.fixerResults?.[fixerCall] ?? { verdict: 'valid', fixability: 'auto', fixed: true }
@@ -157,16 +169,19 @@ interface AgentTimeouts {
   reviewer: Array<number | undefined>
   matcher: Array<number | undefined>
   fixer: Array<number | undefined>
+  inspector: Array<number | undefined>
 }
 
 function createTimeoutRecordingSpawn(base: SpawnFn): { spawn: SpawnFn; timeouts: AgentTimeouts } {
-  const timeouts: AgentTimeouts = { reviewer: [], matcher: [], fixer: [] }
+  const timeouts: AgentTimeouts = { reviewer: [], matcher: [], fixer: [], inspector: [] }
   const spawn: SpawnFn = (command, args, opts) => {
     const promptText = args[args.length - 1] ?? ''
     if (promptText.includes('Review the current implementation')) {
       timeouts.reviewer.push(opts.timeout)
     } else if (promptText.includes('Match newly found')) {
       timeouts.matcher.push(opts.timeout)
+    } else if (promptText.includes('You are an inspector')) {
+      timeouts.inspector.push(opts.timeout)
     } else {
       timeouts.fixer.push(opts.timeout)
     }
@@ -239,6 +254,7 @@ describe('runReviewLoop', () => {
     expect(timeouts.reviewer).toEqual([111_000, 111_000, 111_000])
     expect(timeouts.matcher).toEqual([222_000])
     expect(timeouts.fixer).toEqual([333_000, 333_000])
+    expect(timeouts.inspector).toEqual([333_000, 333_000])
   })
 
   test('falls back to agentTimeoutMs when no per-agent override is set', async () => {
