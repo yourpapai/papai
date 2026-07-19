@@ -66,6 +66,29 @@ const EvaluatedFeatureRecordSchema = z
 
 const EvaluatedFeatureRecordArraySchema = z.array(EvaluatedFeatureRecordSchema).readonly()
 
+const PriorSnapshotSchema = z
+  .object({
+    domains: z
+      .array(
+        z
+          .object({
+            stories: z
+              .array(
+                z
+                  .object({
+                    consolidatedId: z.string(),
+                    composite: z.number(),
+                  })
+                  .readonly(),
+              )
+              .readonly(),
+          })
+          .readonly(),
+      )
+      .readonly(),
+  })
+  .readonly()
+
 async function readArtifactFile<T>(artifactPath: string, schema: z.ZodType<T>): Promise<T | null> {
   const file = Bun.file(resolve(PROJECT_ROOT, artifactPath))
   if (!(await file.exists())) {
@@ -222,4 +245,47 @@ export async function loadEvaluatedArtifacts(
   )
 
   return new Map(loaded)
+}
+
+export function roundToOneDecimal(value: number): number {
+  return Math.round(value * 10) / 10
+}
+
+export interface TrendEntry {
+  readonly consolidatedId: string
+  readonly composite: number
+}
+
+export function computeTrendDeltas(
+  current: readonly TrendEntry[],
+  prior: readonly TrendEntry[] | null,
+): readonly (number | null)[] {
+  if (prior === null) {
+    return current.map(() => null)
+  }
+  const priorMap = new Map(prior.map((entry) => [entry.consolidatedId, entry.composite]))
+  return current.map((entry) => {
+    const priorScore = priorMap.get(entry.consolidatedId)
+    if (priorScore === undefined) return null
+    return roundToOneDecimal(entry.composite) - roundToOneDecimal(priorScore)
+  })
+}
+
+export async function loadPriorSnapshot(): Promise<{
+  readonly domains: readonly {
+    readonly stories: readonly { readonly consolidatedId: string; readonly composite: number }[]
+  }[]
+} | null> {
+  try {
+    const proc = Bun.spawn(['git', 'show', 'audit-output-latest:stories/scores.json'], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const text = await new Response(proc.stdout).text()
+    await proc.exited
+    if (!text.trim().startsWith('{')) return null
+    return PriorSnapshotSchema.parse(JSON.parse(text))
+  } catch {
+    return null
+  }
 }
