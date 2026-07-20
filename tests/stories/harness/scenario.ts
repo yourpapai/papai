@@ -209,6 +209,7 @@ type ScenarioGiven = Readonly<{
   ): void
   instruction(context: ContextHandle, text: string, id?: string): { id: string }
   notifyToken(token: string): void
+  publicBaseUrl(url: string): void
 }>
 
 type ScenarioWhen = Readonly<{
@@ -682,6 +683,10 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
     notifyToken(token): void {
       prerequisite('given.notifyToken')
       world.fixtures.seedNotifyToken(token)
+    },
+    publicBaseUrl(url): void {
+      prerequisite('given.publicBaseUrl')
+      world.fixtures.setPublicBaseUrl(url)
     },
   }
 }

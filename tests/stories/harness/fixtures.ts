@@ -295,6 +295,7 @@ export type ScenarioFixtures = Readonly<{
     }>,
   ): void
   seedInstruction(input: Readonly<{ contextId: string; text: string; id?: string }>): { id: string }
+  setPublicBaseUrl(url: string): void
   teardown(): void
 }>
 
@@ -303,6 +304,8 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
   const settingsSessions = createSettingsSessionVault()
   const dashboardSessions = createDashboardSessionVault()
   let nextInstructionId = 0
+  let priorPublicBaseUrl: string | undefined
+  let publicBaseUrlOverridden = false
 
   const teardownRegistries = (): void => {
     unregisterContributedTaskProviderType(SCENARIO_PROVIDER_PLUGIN_ID)
@@ -313,6 +316,11 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
     teardownRegistries()
     settingsSessions.revoke()
     dashboardSessions.revoke()
+    if (publicBaseUrlOverridden) {
+      if (priorPublicBaseUrl === undefined) Reflect.deleteProperty(process.env, 'SETTINGS_PUBLIC_BASE_URL')
+      else process.env['SETTINGS_PUBLIC_BASE_URL'] = priorPublicBaseUrl
+      publicBaseUrlOverridden = false
+    }
   }
 
   return {
@@ -460,6 +468,13 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
       const id = input.id ?? `scenario-instruction-${nextInstructionId}`
       seedTestUserInstruction({ id, contextId: input.contextId, text: input.text })
       return { id }
+    },
+    setPublicBaseUrl(url): void {
+      if (!publicBaseUrlOverridden) {
+        priorPublicBaseUrl = process.env['SETTINGS_PUBLIC_BASE_URL']
+        publicBaseUrlOverridden = true
+      }
+      process.env['SETTINGS_PUBLIC_BASE_URL'] = url
     },
     teardown,
   }

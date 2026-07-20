@@ -527,4 +527,13 @@ describe('scenario execution', () => {
       expect(getNotifyToken()).toBeNull()
     })
   })
+
+  test('given.publicBaseUrl sets and restores SETTINGS_PUBLIC_BASE_URL around the scenario', async () => {
+    expect(process.env['SETTINGS_PUBLIC_BASE_URL']).toBeUndefined()
+    await executeScenario('public-base-url', ({ given }) => {
+      given.publicBaseUrl('https://settings.example')
+      expect(process.env['SETTINGS_PUBLIC_BASE_URL']).toBe('https://settings.example')
+    })
+    expect(process.env['SETTINGS_PUBLIC_BASE_URL']).toBeUndefined()
+  })
 })

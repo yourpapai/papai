@@ -63,12 +63,8 @@ scenario('SCN-cmd-start: welcomes an authorized user', async ({ given, when, the
 scenario('SCN-cmd-config-dm: issues a single-use settings link in DM', async ({ given, when, then }) => {
   const alice = given.user('alice')
   const dm = given.dm(alice)
-  process.env['SETTINGS_PUBLIC_BASE_URL'] = SETTINGS_BASE_URL
-  try {
-    await when.message(alice, dm, '/config')
-  } finally {
-    Reflect.deleteProperty(process.env, 'SETTINGS_PUBLIC_BASE_URL')
-  }
+  given.publicBaseUrl(SETTINGS_BASE_URL)
+  await when.message(alice, dm, '/config')
 
   then.replyTo(alice).contains('Open your settings:')
   then.replyTo(alice).contains(SETTINGS_BASE_URL)
