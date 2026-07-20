@@ -12,6 +12,9 @@ import { setIdentityMapping } from '../../../src/identity/mapping.js'
 import { addAdmin, SUPER_ADMIN_PLATFORM_ID } from '../../../src/instances/admin-store.js'
 import { setContextSettings } from '../../../src/instances/context-store.js'
 import type { PlatformInstanceType } from '../../../src/instances/types.js'
+import { saveMemoryRecord } from '../../../src/long-term-memory/store.js'
+import type { MemoryRecord, MemoryRecordInput } from '../../../src/long-term-memory/types.js'
+import { saveMemo, updateMemoEmbedding } from '../../../src/memos.js'
 import { pluginRegistry } from '../../../src/plugins/registry.js'
 import { PLUGIN_API_VERSION, type DiscoveredPlugin } from '../../../src/plugins/types.js'
 import {
@@ -28,8 +31,11 @@ import { setSystemConfig } from '../../../src/system-config.js'
 import { addUser } from '../../../src/users.js'
 import {
   resetSystemConfigCacheForTesting,
+  seedTestConversationHistory,
+  seedTestMemoryExtractionState,
   seedTestPlatformInstance,
   seedTestTaskInstance,
+  seedTestUserInstruction,
   setupTestDb,
 } from '../../utils/test-helpers.js'
 import { MemoryTaskProvider } from './memory-task-provider.js'
@@ -195,12 +201,34 @@ export type ScenarioFixtures = Readonly<{
   issueSettingsAuthCode(input: Readonly<{ platformInstanceId: string; platformUserId: string }>, nowMs: number): string
   approvePlugin(plugin?: DiscoveredPlugin): DiscoveredPlugin
   registerTaskProvider(): void
+  seedMemo(
+    input: Readonly<{
+      userId: string
+      content: string
+      tags?: readonly string[]
+      summary?: string
+      embedding?: readonly number[]
+    }>,
+  ): { id: string }
+  seedMemoryRecord(input: MemoryRecordInput): MemoryRecord
+  seedDirtyContext(
+    input: Readonly<{
+      contextId: string
+      contextType: 'dm' | 'group'
+      configContextId: string
+      messages: readonly Readonly<{ role: 'user' | 'assistant'; content: string }>[]
+      lastActivityAt: string
+      lastExtractedAt?: string
+    }>,
+  ): void
+  seedInstruction(input: Readonly<{ contextId: string; text: string; id?: string }>): { id: string }
   teardown(): void
 }>
 
 export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): ScenarioFixtures {
   const taskProvider = options.taskProvider ?? new MemoryTaskProvider()
   const settingsSessions = createSettingsSessionVault()
+  let nextInstructionId = 0
 
   const teardownRegistries = (): void => {
     unregisterContributedTaskProviderType(SCENARIO_PROVIDER_PLUGIN_ID)
@@ -322,6 +350,35 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
         unregisterContributedTaskProviderType(SCENARIO_PROVIDER_PLUGIN_ID)
         throw new Error("Hermetic task provider registration failed: type 'kaneo' did not resolve the world provider")
       }
+    },
+    seedMemo(input): { id: string } {
+      const memo = saveMemo(input.userId, input.content, input.tags ?? [], input.summary)
+      if (input.embedding !== undefined) {
+        updateMemoEmbedding(input.userId, memo.id, new Float32Array([...input.embedding]))
+      }
+      return { id: memo.id }
+    },
+    seedMemoryRecord(input): MemoryRecord {
+      return saveMemoryRecord(input)
+    },
+    seedDirtyContext(input): void {
+      seedTestConversationHistory({
+        userId: input.contextId,
+        messages: JSON.stringify(input.messages.map((message) => ({ role: message.role, content: message.content }))),
+      })
+      seedTestMemoryExtractionState({
+        contextId: input.contextId,
+        contextType: input.contextType,
+        configContextId: input.configContextId,
+        lastActivityAt: input.lastActivityAt,
+        ...(input.lastExtractedAt === undefined ? {} : { lastExtractedAt: input.lastExtractedAt }),
+      })
+    },
+    seedInstruction(input): { id: string } {
+      nextInstructionId += 1
+      const id = input.id ?? `scenario-instruction-${nextInstructionId}`
+      seedTestUserInstruction({ id, contextId: input.contextId, text: input.text })
+      return { id }
     },
     teardown,
   }

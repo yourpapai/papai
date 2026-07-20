@@ -241,6 +241,57 @@ export function seedTestTaskInstance(input: SeedTestTaskInstanceInput): void {
     .run()
 }
 
+export interface SeedTestMemoryExtractionStateInput {
+  contextId: string
+  contextType: 'dm' | 'group'
+  configContextId: string
+  lastActivityAt: string
+  lastExtractedAt?: string
+  lastHistoryLen?: number
+}
+
+export function seedTestMemoryExtractionState(input: SeedTestMemoryExtractionStateInput): void {
+  getTestDb()
+    .insert(schema.memoryExtractionState)
+    .values({
+      contextId: input.contextId,
+      contextType: input.contextType,
+      configContextId: input.configContextId,
+      lastActivityAt: input.lastActivityAt,
+      lastExtractedAt: input.lastExtractedAt ?? null,
+      lastHistoryLen: input.lastHistoryLen ?? 0,
+    })
+    .onConflictDoNothing({ target: schema.memoryExtractionState.contextId })
+    .run()
+}
+
+export interface SeedTestConversationHistoryInput {
+  userId: string
+  messages: string
+}
+
+export function seedTestConversationHistory(input: SeedTestConversationHistoryInput): void {
+  getTestDb()
+    .insert(schema.conversationHistory)
+    .values({ userId: input.userId, messages: input.messages })
+    .onConflictDoNothing({ target: schema.conversationHistory.userId })
+    .run()
+}
+
+export interface SeedTestUserInstructionInput {
+  id: string
+  contextId: string
+  text: string
+}
+
+export function seedTestUserInstruction(input: SeedTestUserInstructionInput): void {
+  getTestDb()
+    .insert(schema.userInstructions)
+    .values({ id: input.id, contextId: input.contextId, text: input.text })
+    .onConflictDoNothing({ target: schema.userInstructions.id })
+    .run()
+}
+
 export function seedCommonTestPlatformInstances(): void {
   seedTestPlatformInstance({ id: 'legacy-single' })
   seedTestPlatformInstance({ id: 'telegram-default' })

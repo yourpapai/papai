@@ -5,7 +5,10 @@
 
 import { expect, test } from 'bun:test'
 
+import { and, eq } from 'drizzle-orm'
+
 import { getThreadScopedStorageContextId } from '../../../src/auth.js'
+import { getCachedHistory } from '../../../src/cache.js'
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import { setMcpCatalog } from '../../../src/coding-credentials/mcp-catalog.js'
 import { serializeMcpSelections } from '../../../src/coding-credentials/mcp-selections.js'
@@ -17,10 +20,29 @@ import {
   setCodingSessionRecord,
   type SessionRecord,
 } from '../../../src/coding-sessions/store.js'
+import { getDrizzleDb } from '../../../src/db/drizzle.js'
+import { memoryRecords } from '../../../src/db/schema.js'
+import { sweepDirtyContexts, type SweepDeps } from '../../../src/long-term-memory/capture-sweep.js'
+import { runMemoryCapture, type RunMemoryCaptureDeps } from '../../../src/long-term-memory/capture.js'
+import { DEFAULT_IDLE_MS } from '../../../src/long-term-memory/extraction-state.js'
+import type { MemoryPatch } from '../../../src/long-term-memory/extractor.js'
+import { sweepPromotions, type SweepPromotionsDeps } from '../../../src/long-term-memory/promotion-sweep.js'
+import { evaluatePromotion } from '../../../src/long-term-memory/promotion.js'
+import type {
+  MemoryEvidence,
+  MemoryKind,
+  MemoryRecord,
+  MemoryRecordInput,
+  MemoryScope,
+  MemoryScopeType,
+  MemorySource,
+  MemoryStatus,
+} from '../../../src/long-term-memory/types.js'
 import { kvList } from '../../../src/plugins/store.js'
 import type { DiscoveredPlugin } from '../../../src/plugins/types.js'
 import type { TaskCapability } from '../../../src/providers/types.js'
 import { setToolPrefs, type ToolPrefs } from '../../../src/tools/tool-preferences.js'
+import { MATCH_EMBEDDING } from './embeddings.js'
 import { SCENARIO_PLATFORM_INSTANCE_ID, type SettingsSessionHandle } from './fixtures.js'
 import { runWithScenarioIoGuard } from './io-guard.js'
 import type { ScenarioRuntimeExtension } from './runtime-extension.js'
@@ -146,6 +168,43 @@ type ScenarioGiven = Readonly<{
   knownCodingSession(context: ContextHandle, sessionId: string, record: SessionRecord): void
   runtimeExtension(extension: ScenarioRuntimeExtension): void
   llm(decisions: readonly ModelDecision[]): void
+  memo(
+    input: Readonly<{
+      userId: string
+      content: string
+      tags?: readonly string[]
+      summary?: string
+      embedding?: readonly number[]
+    }>,
+  ): { id: string }
+  memoryRecord(
+    input: Readonly<{
+      scope: Readonly<{ scopeId: string; scopeType: MemoryScopeType }>
+      kind: MemoryKind
+      content: string
+      status?: MemoryStatus
+      source?: MemorySource
+      summary?: string | null
+      tags?: readonly string[]
+      confidence?: number
+      threadContextId?: string
+      evidence?: MemoryEvidence
+      id?: string
+      createdAt?: string
+      updatedAt?: string
+      lastSeenAt?: string
+      embedding?: readonly number[]
+    }>,
+  ): MemoryRecord
+  dirtyContext(
+    context: ContextHandle,
+    input: Readonly<{
+      messages: readonly Readonly<{ role: 'user' | 'assistant'; content: string }>[]
+      lastActivityAt: string
+      lastExtractedAt?: string
+    }>,
+  ): void
+  instruction(context: ContextHandle, text: string, id?: string): { id: string }
 }>
 
 type ScenarioWhen = Readonly<{
@@ -160,6 +219,17 @@ type ScenarioWhen = Readonly<{
     init?: RequestInit,
     options?: Readonly<{ csrf?: boolean }>,
   ): Promise<Response>
+  captureSweep(
+    input?: Readonly<{
+      records?: readonly CaptureSweepRecord[]
+      now?: string
+      idleMs?: number
+      getEmbedding?: (text: string, configContextId: string) => Promise<number[] | null>
+    }>,
+  ): Promise<void>
+  promotionSweep(
+    input?: Readonly<{ confirmDurable?: (content: string, configContextId: string) => Promise<boolean>; now?: string }>,
+  ): Promise<void>
 }>
 
 type ReplyAssertion = Readonly<{ equals(expected: string): void; contains(expected: string): void }>
@@ -209,6 +279,29 @@ const scopedStorageContextId = (context: ContextHandle): string =>
 
 const scopedGroupId = (group: GroupHandle): string =>
   toScopedContextId({ platformInstanceId: group.platformInstanceId, nativeContextId: group.id })
+
+/** Fixed reference instant for sweep-trigger primitives; scenarios seed activity timestamps relative to this. */
+export const FIXED_SWEEP_NOW = '2026-07-20T00:00:00.000Z'
+
+/** A candidate captured-memory record for `when.captureSweep`; `source`/timestamps are filled in internally. */
+export type CaptureSweepRecord = Readonly<{
+  kind: MemoryKind
+  content: string
+  summary?: string | null
+  tags?: readonly string[]
+  confidence?: number
+  evidence?: MemoryEvidence
+}>
+
+/** Replica of `promotion-sweep.ts`'s private `defaultListScopes` (not exported by production code). */
+const defaultPromotionScopes = (): readonly MemoryScope[] => {
+  const rows = getDrizzleDb()
+    .selectDistinct({ scopeId: memoryRecords.scopeId, scopeType: memoryRecords.scopeType })
+    .from(memoryRecords)
+    .where(and(eq(memoryRecords.status, 'provisional'), eq(memoryRecords.scopeType, 'group')))
+    .all()
+  return rows.map((row) => ({ scopeId: row.scopeId, scopeType: row.scopeType }))
+}
 
 const makeCodingSessionHandle = (storageContextId: string): CodingSessionHandle =>
   Object.freeze({
@@ -516,6 +609,52 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
       world.events.setPhase('given.llm')
       world.model.enqueue(decisions)
     },
+    memo(input): { id: string } {
+      prerequisite('given.memo')
+      return world.fixtures.seedMemo(input)
+    },
+    memoryRecord(input): MemoryRecord {
+      prerequisite('given.memoryRecord')
+      const now = input.createdAt ?? world.clock.now().toISOString()
+      const record: MemoryRecordInput = {
+        id: input.id ?? world.ids.next('memory-record'),
+        scopeId: input.scope.scopeId,
+        scopeType: input.scope.scopeType,
+        kind: input.kind,
+        content: input.content,
+        summary: input.summary ?? null,
+        tags: input.tags ?? [],
+        confidence: input.confidence ?? 1,
+        status: input.status ?? 'provisional',
+        source: input.source ?? 'background',
+        evidence: input.evidence ?? {},
+        threadContextId: input.threadContextId ?? null,
+        createdAt: now,
+        updatedAt: input.updatedAt ?? now,
+        lastSeenAt: input.lastSeenAt ?? now,
+        ...(input.embedding === undefined ? {} : { embedding: new Float32Array([...input.embedding]) }),
+      }
+      return world.fixtures.seedMemoryRecord(record)
+    },
+    dirtyContext(context, input): void {
+      prerequisite('given.dirtyContext')
+      world.fixtures.seedDirtyContext({
+        contextId: scopedStorageContextId(context),
+        contextType: context.kind === 'dm' ? 'dm' : 'group',
+        configContextId: scopedConfigContextId(context),
+        messages: input.messages,
+        lastActivityAt: input.lastActivityAt,
+        ...(input.lastExtractedAt === undefined ? {} : { lastExtractedAt: input.lastExtractedAt }),
+      })
+    },
+    instruction(context, text, id): { id: string } {
+      prerequisite('given.instruction')
+      return world.fixtures.seedInstruction({
+        contextId: scopedConfigContextId(context),
+        text,
+        ...(id === undefined ? {} : { id }),
+      })
+    },
   }
 }
 
@@ -549,6 +688,54 @@ function createWhen(world: ScenarioWorld): ScenarioWhen {
     settingsRequest(session, path, init, options): Promise<Response> {
       world.events.setPhase('when.settingsRequest')
       return runtimeRequest(world, path, init, { session, withCsrf: options?.csrf ?? true })
+    },
+    async captureSweep(input = {}): Promise<void> {
+      world.events.setPhase('when.captureSweep')
+      const now = input.now ?? FIXED_SWEEP_NOW
+      const patch: MemoryPatch = {
+        profile: null,
+        records: (input.records ?? []).map((record) => ({
+          kind: record.kind,
+          content: record.content,
+          summary: record.summary ?? null,
+          tags: [...(record.tags ?? [])],
+          confidence: record.confidence ?? 1,
+          source: 'background',
+          evidence: record.evidence ?? {},
+        })),
+        updates: [],
+      }
+      const captureDeps: RunMemoryCaptureDeps = {
+        extractMemoryPatch: () => Promise.resolve(patch),
+        // `getEmbeddingForContext` (the production default) resolves through the real AI SDK HTTP
+        // client, which has no fetch-injection seam and therefore cannot be intercepted by
+        // `world.http` under `--contracts` (the io-guard's global-fetch patch is only installed by
+        // `tests/stories/preload.ts`, which sandboxed non-contracts runs preload). Scenarios drive
+        // capture through `RunMemoryCaptureDeps.getEmbedding` directly instead — the same DI seam
+        // production code exposes — mirroring how `extractMemoryPatch` is already scripted above.
+        getEmbedding: input.getEmbedding ?? ((): Promise<number[] | null> => Promise.resolve([...MATCH_EMBEDDING])),
+        now: () => now,
+        randomUUID: () => world.ids.next('memory-record'),
+      }
+      const sweepDeps: SweepDeps = {
+        idleMs: input.idleMs ?? DEFAULT_IDLE_MS,
+        loadHistory: (storageContextId) => getCachedHistory(storageContextId),
+        runCapture: (captureInput) => runMemoryCapture(captureInput, captureDeps),
+      }
+      await sweepDirtyContexts(now, sweepDeps)
+    },
+    async promotionSweep(input = {}): Promise<void> {
+      world.events.setPhase('when.promotionSweep')
+      const now = input.now ?? FIXED_SWEEP_NOW
+      const sweepPromotionsDeps: SweepPromotionsDeps = {
+        listScopes: defaultPromotionScopes,
+        evaluate: (scope, candidate) =>
+          evaluatePromotion(scope, candidate, {
+            confirmDurable: input.confirmDurable ?? ((): Promise<boolean> => Promise.resolve(true)),
+            now: () => now,
+          }),
+      }
+      await sweepPromotions(sweepPromotionsDeps)
     },
   }
 }

@@ -8,6 +8,7 @@ import { expect } from 'bun:test'
 import { getThreadScopedStorageContextId } from '../../../src/auth.js'
 import { setupBot, type BotDeps } from '../../../src/bot.js'
 import { ChatRouter } from '../../../src/chat/router.js'
+import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import type { IncomingInteraction, IncomingMessage } from '../../../src/chat/types.js'
 import { closeDrizzleDb } from '../../../src/db/drizzle.js'
 import { routeRequest } from '../../../src/debug/server.js'
@@ -119,6 +120,12 @@ export type ScenarioWorld = Readonly<{
   registerRuntimeExtension(extension: ScenarioRuntimeExtension): void
   message(user: UserHandle, context: ContextHandle, text: string): IncomingMessage
   repliesForThread(thread: ThreadHandle): readonly ScenarioReply[]
+  /** The thread-aware storage context id production code would compute for this context. */
+  scopedStorageContextId(context: ContextHandle): string
+  /** The group's memory-scope id (`resolveMemoryScope(...).scopeId` for any thread of this group). */
+  groupScopeId(group: GroupHandle): string
+  /** The group's main (non-thread) storage context id, e.g. what `lookup_group_history` keys history by. */
+  mainGroupStorageId(group: GroupHandle): string
   settle(): Promise<void>
   verify(): void
   stop(): Promise<void>
@@ -541,6 +548,9 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     registerRuntimeExtension,
     message: (user, context, text) => messageForContext(world, user, context, text),
     repliesForThread: (thread) => repliesForThread(world, thread),
+    scopedStorageContextId: (context) => scopedStorageContextIdFor(context),
+    groupScopeId: (group) => groupScopeIdFor(group),
+    mainGroupStorageId: (group) => mainGroupStorageIdFor(group),
     settle: async (): Promise<void> => {
       await pending.settle()
       await http.idle()
@@ -554,6 +564,23 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
   }
   return world
 }
+
+const contextNativeId = (context: ContextHandle): string =>
+  context.kind === 'dm' ? context.user.id : context.kind === 'thread' ? context.group.id : context.id
+
+export const scopedStorageContextIdFor = (context: ContextHandle): string =>
+  getThreadScopedStorageContextId(
+    contextNativeId(context),
+    context.kind === 'dm' ? 'dm' : 'group',
+    context.kind === 'thread' ? context.id : undefined,
+    context.platformInstanceId,
+  )
+
+export const groupScopeIdFor = (group: GroupHandle): string =>
+  toScopedContextId({ platformInstanceId: group.platformInstanceId, nativeContextId: group.id })
+
+export const mainGroupStorageIdFor = (group: GroupHandle): string =>
+  getThreadScopedStorageContextId(group.id, 'group', undefined, group.platformInstanceId)
 
 export const repliesForContext = (world: ScenarioWorld, contextId: string): readonly ScenarioReply[] =>
   world.chat
