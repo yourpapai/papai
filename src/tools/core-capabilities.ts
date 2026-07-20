@@ -66,6 +66,19 @@ export const CORE_TOOL_CAPABILITIES = Object.freeze({
   'tasks.attachments.upload': 'upload_attachment',
   'tasks.attachments.delete': 'remove_attachment',
   'tasks.commands.apply': 'apply_youtrack_command',
+  'memos.save': 'save_memo',
+  'memos.search': 'search_memos',
+  'memos.list': 'list_memos',
+  'memos.archive': 'archive_memos',
+  'memos.promote': 'promote_memo',
+  'memory.remember': 'remember_memory',
+  'memory.search': 'search_memory',
+  'memory.forget': 'forget_memory',
+  'memory.list': 'list_memory',
+  'instructions.save': 'save_instruction',
+  'instructions.list': 'list_instructions',
+  'instructions.delete': 'delete_instruction',
+  'history.lookup': 'lookup_group_history',
 } as const)
 
 export function registerOfferedCoreToolCapabilities(tools: ToolSet, catalog: ToolCapabilityCatalog): void {

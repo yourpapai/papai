@@ -24,6 +24,22 @@ describe('core tool capabilities', () => {
     expect(Object.isFrozen(CORE_TOOL_CAPABILITIES)).toBe(true)
   })
 
+  test('registers the F3 builtin capability ids', () => {
+    expect(CORE_TOOL_CAPABILITIES['memos.save']).toBe('save_memo')
+    expect(CORE_TOOL_CAPABILITIES['memos.search']).toBe('search_memos')
+    expect(CORE_TOOL_CAPABILITIES['memos.list']).toBe('list_memos')
+    expect(CORE_TOOL_CAPABILITIES['memos.archive']).toBe('archive_memos')
+    expect(CORE_TOOL_CAPABILITIES['memos.promote']).toBe('promote_memo')
+    expect(CORE_TOOL_CAPABILITIES['memory.remember']).toBe('remember_memory')
+    expect(CORE_TOOL_CAPABILITIES['memory.search']).toBe('search_memory')
+    expect(CORE_TOOL_CAPABILITIES['memory.forget']).toBe('forget_memory')
+    expect(CORE_TOOL_CAPABILITIES['memory.list']).toBe('list_memory')
+    expect(CORE_TOOL_CAPABILITIES['instructions.save']).toBe('save_instruction')
+    expect(CORE_TOOL_CAPABILITIES['instructions.list']).toBe('list_instructions')
+    expect(CORE_TOOL_CAPABILITIES['instructions.delete']).toBe('delete_instruction')
+    expect(CORE_TOOL_CAPABILITIES['history.lookup']).toBe('lookup_group_history')
+  })
+
   test('registers the stable core capabilities when their real wire tools are offered', () => {
     const catalog = createToolCapabilityCatalog()
 
@@ -88,6 +104,19 @@ describe('core tool capabilities', () => {
       ['tasks.attachments.upload', 'upload_attachment'],
       ['tasks.attachments.delete', 'remove_attachment'],
       ['tasks.commands.apply', 'apply_youtrack_command'],
+      ['memos.save', 'save_memo'],
+      ['memos.search', 'search_memos'],
+      ['memos.list', 'list_memos'],
+      ['memos.archive', 'archive_memos'],
+      ['memos.promote', 'promote_memo'],
+      ['memory.remember', 'remember_memory'],
+      ['memory.search', 'search_memory'],
+      ['memory.forget', 'forget_memory'],
+      ['memory.list', 'list_memory'],
+      ['instructions.save', 'save_instruction'],
+      ['instructions.list', 'list_instructions'],
+      ['instructions.delete', 'delete_instruction'],
+      ['history.lookup', 'lookup_group_history'],
     ])
   })
 
