@@ -253,3 +253,62 @@ unchanged), and the runner manifest totals line follows.
 5. **Dashboard fixed principal** — the fixture binds to `ADMIN_USER_ID` (`world.ts:463`);
    the trust-domain-separation assertions rely on that being the only dashboard principal,
    distinct from any settings session's `{platformInstanceId, platformUserId}`.
+
+## Post-implementation deviations (2026-07-20)
+
+The implementation held to the spec's decisions (five harness seams landed and reviewed
+independently, six `SCN-http-*` scenarios, `http-mcp-plugin` reclassified F4→F7, ledger
+81→87 executable / 41 pending, zero production `src/` changes). The refinements below are
+recorded here rather than rewriting each section above.
+
+- **`then.responseJson` takes the already-parsed body, not the `Response`.** The helper is
+  `then.responseJson(body).contains(needle)` / `.equals(expected)`, called as
+  `then.responseJson(await res.json())` — `response.json()` is async, so the parse stays
+  inline and only the (sync) assertion is traced via `tracedAssertion`.
+- **`debugEnabled` is a `scenario(name, run, { debugEnabled })` option.** It threads through
+  `executeScenario`'s default world factory into `createScenarioWorld(name, { debugEnabled })`
+  → `world.ts` `web.route` literal (`debugEnabled: options.debugEnabled ?? false`). Stories
+  that pass no options keep the default `false` (the 404→401→200 debug gate proof). The
+  option reaches `routeRequest` unchanged.
+- **`notify-token-fixture` resets in `setupDatabase`, not a cleanup-coordinator dual reset.**
+  `resetNotifyTokenCacheForTesting()` runs unconditionally per scenario in `setupDatabase`
+  (there is no generic cleanup-registration API), which defeats the process-lifetime module
+  cache for both the seeded and the unconfigured case. Seeding uses a direct
+  `getTestDb().insert(schema.systemConfig)` helper (`seedTestSystemConfig`) because
+  production's `setSystemConfig` cannot write `notify_token` (its `SystemConfigKey` union
+  excludes it); the `systemConfig.key` column is plain `text`, so no type-widening was needed.
+- **`given.publicBaseUrl` restores via `fixtures.teardown`.** It captures the prior
+  `SETTINGS_PUBLIC_BASE_URL` on the first call (idempotent under repeat calls) and restores
+  or deletes it inside the existing `teardown` closure, which runs before the I/O guard's env
+  check — net env mutation is zero. This retired the hand-rolled `try/finally` +
+  `Reflect.deleteProperty` one-off in `tests/stories/commands/surface.story.test.ts` (and the
+  now-accurate note in `tests/CLAUDE.md`).
+- **The dashboard session vault parses the `302` claim cookie.** `given.dashboardSession()`
+  issues a claim for `ADMIN_USER_ID`, POSTs `/auth/claim`, and the vault reads the
+  `dashboard_session` cookie off the `302` redirect (empty body), not a `200` JSON exchange.
+  `given.dashboardSession` deliberately omits the `prerequisite()` unstarted-world guard
+  (mirroring the pre-existing `given.llm` sub-pattern) because story usage calls it after an
+  anonymous `when.request` has already started the runtime; `runtimeRequest`→`ensureStarted`
+  still rejects invalid world states.
+- **Story routes/fields confirmed during diagnosis (all held to the plan, no substitution).**
+  Settings read path `/settings/api/bootstrap` (401 anonymous / 200-with-session, exchange
+  body carries `csrfToken`); `/admin/identity/mappings` echoes the seeded `providerUserLogin`
+  through a real DB round trip; `/stats/global` uses the `window` query param, echoes it in
+  the body, and `parseStatsWindow` returns `400 unknown window` for an unknown value; `/debug`
+  serves HTML with `200` (the 404→401→200 gate flip is the rule-3 proof, no body assertion);
+  the notify route resolves `contextId` to a platform instance via `parseScopedContextId`
+  (no extra mapping seed needed) and the proactive delivery is captured by `then.replyTo`
+  (native user id, `threadId: null`).
+- **The transcript-viewer scenario seeds magi config mid-scenario via the production function
+  directly, not `given.codingSession`.** The harness forbids any `given.*` after the first
+  `when.*` (`assertPrerequisitesOpen`), so the 503-then-configure-then-200 flow cannot use the
+  `given.codingSession` fixture between the two requests. It instead calls
+  `configureCodingSessionCapability` (the exact function `given.codingSession` wraps) with the
+  group's scoped context id via `toScopedContextId` — the established mid-scenario-config
+  precedent (`eligibility.story.test.ts`). Only the fixture's ordering gate is bypassed; the
+  seeding logic and the exact-proxied-payload deep-equal are unchanged. This scenario is
+  story-mode-only (the proxy's fetch is patched to `world.http` only under `bun test:stories`,
+  not `--contracts`).
+- **Seam contract tests drop an unneeded `async`.** Several new `scenario.test.ts` /
+  `fake-magi.ts` callbacks that contain no `await` are written non-`async` to satisfy oxlint's
+  pedantic `require-await`; behavior is identical and no lint-disable was used.
