@@ -3,9 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { expect } from 'bun:test'
+
 import { MATCH_EMBEDDING, expectEmbedding } from '../harness/embeddings.js'
 import { scenario } from '../harness/scenario.js'
-import { answer, callCapability } from '../harness/scripted-llm.js'
+import { answer, callCapability, promptTextFingerprint } from '../harness/scripted-llm.js'
 
 scenario('SCN-memo-save: saves a note and reads it back on a later turn', async ({ given, when, then, world }) => {
   const alice = given.user('alice')
@@ -25,6 +27,8 @@ scenario('SCN-memo-save: saves a note and reads it back on a later turn', async 
   given.llm([callCapability('memos.list', {}), answer('Your notes: Deploy runbook lives in Notion.')])
   await when.message(alice, dm, 'What notes do I have?')
   then.replyTo(alice).contains('Deploy runbook')
+  const last = world.model.inspections().at(-1)
+  expect(last?.promptToolResultTokenFingerprints).toContain(promptTextFingerprint('Notion'))
 })
 
 scenario('SCN-memo-recall: recalls a saved note by semantic search', async ({ given, when, then, world }) => {
@@ -49,6 +53,8 @@ scenario('SCN-memo-recall: recalls a saved note by semantic search', async ({ gi
   ])
   await when.message(alice, dm, 'Where did I put the deploy runbook?')
   then.replyTo(alice).contains('Notion')
+  const last = world.model.inspections().at(-1)
+  expect(last?.promptToolResultTokenFingerprints).toContain(promptTextFingerprint('runbook'))
 })
 
 scenario(
@@ -66,6 +72,9 @@ scenario(
     given.llm([callCapability('memos.list', { status: 'active' }), answer('Active notes: Current sprint goals.')])
     await when.message(alice, dm, 'List my active notes')
     then.replyTo(alice).contains('Current sprint goals')
+    const last = world.model.inspections().at(-1)
+    expect(last?.promptToolResultTokenFingerprints).toContain(promptTextFingerprint('sprint'))
+    expect(last?.promptToolResultTokenFingerprints).not.toContain(promptTextFingerprint('standup'))
   },
 )
 
