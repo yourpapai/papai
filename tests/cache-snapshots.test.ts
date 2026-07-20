@@ -56,9 +56,8 @@ describe('getSessionSnapshots', () => {
         ['model', 'gpt-4'],
         ['history_loaded', 'true'],
       ]),
-      tools: {
-        /* mock tools */
-      },
+      // mock tools
+      tools: {},
       lastAccessed: Date.now(),
     }
 

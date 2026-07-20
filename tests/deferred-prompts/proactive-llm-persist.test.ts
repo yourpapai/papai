@@ -50,7 +50,7 @@ describe('proactive-llm-persist', () => {
       'ctx',
       'cfg',
       'dm',
-      { response: { messages: assistantMessages }, text: 'Done.', toolCalls: [] },
+      { finalStep: { response: { messages: assistantMessages } }, text: 'Done.', toolCalls: [] },
       history,
       'gpt-main',
     )

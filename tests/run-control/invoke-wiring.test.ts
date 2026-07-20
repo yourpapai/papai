@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { generateText, stepCountIs } from 'ai'
-import type { OnToolCallFinishEvent } from 'ai'
+import type { ToolExecutionEndEvent } from 'ai'
 import { MockLanguageModelV3 } from 'ai/test'
 
 import { invokeModel } from '../../src/llm-orchestrator-invoke.js'
@@ -75,19 +75,14 @@ function buildArgs(
   }
 }
 
-function makeFinishEvent(toolName: string): OnToolCallFinishEvent {
+function makeFinishEvent(toolName: string): ToolExecutionEndEvent {
   return {
-    toolCall: { type: 'tool-call', toolName, toolCallId: 'c1', input: {}, dynamic: true },
-    output: {},
-    success: true,
-    durationMs: 0,
-    stepNumber: undefined,
-    model: undefined,
+    callId: 'call-1',
+    toolExecutionMs: 0,
     messages: [],
-    abortSignal: undefined,
-    functionId: undefined,
-    metadata: undefined,
-    experimental_context: undefined,
+    toolCall: { type: 'tool-call', toolName, toolCallId: 'c1', input: {}, dynamic: true },
+    toolContext: undefined,
+    toolOutput: { type: 'tool-result', toolCallId: 'c1', toolName, input: {}, output: {}, dynamic: true },
   }
 }
 
@@ -150,7 +145,12 @@ describe('invokeModel run-control wiring', () => {
       steps: [],
       messages: [{ role: 'user' as const, content: 'a' }],
       model: mockModel,
-      experimental_context: undefined,
+      instructions: undefined,
+      initialInstructions: undefined,
+      initialMessages: [],
+      responseMessages: [],
+      toolsContext: {},
+      runtimeContext: {},
     })
     expect(result?.messages).toEqual([
       { role: 'user', content: 'a' },
@@ -164,8 +164,8 @@ describe('invokeModel run-control wiring', () => {
     const captured: { opts?: CapturedOpts } = {}
     await invokeModel(buildArgs(captured, () => Promise.resolve(okResult)))
 
-    const onFinish = captured.opts?.experimental_onToolCallFinish
-    assert.ok(onFinish !== undefined, 'experimental_onToolCallFinish should be defined')
+    const onFinish = captured.opts?.onToolExecutionEnd
+    assert.ok(onFinish !== undefined, 'onToolExecutionEnd should be defined')
     onFinish(makeFinishEvent('update_task'))
     expect(run.completedEffects).toEqual([{ toolName: 'update_task' }])
   })

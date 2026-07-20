@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -13,7 +13,7 @@ import { checkConfidence, confidenceField } from './confirmation-gate.js'
 
 const log = logger.child({ scope: 'tool:delete-status' })
 
-export function makeDeleteStatusTool(provider: TaskProvider): ToolSet[string] {
+export function makeDeleteStatusTool(provider: TaskProvider): Tool {
   return tool({
     description: 'Delete a status from a project.',
     inputSchema: z.object({

@@ -105,20 +105,23 @@ function createMockSpawn(handlers: {
   return async (_command: string, args: readonly string[], opts: { cwd: string }): Promise<SpawnResult> => {
     const promptText = args[args.length - 1] ?? ''
     const outputPath = extractOutputPath(promptText)
+    const scratchPath = outputPath === null ? null : path.resolve(opts.cwd, outputPath)
 
     if (promptText.includes('Review the current implementation')) {
       const issues = handlers.reviewerIssues?.[reviewerCall] ?? []
       reviewerCall += 1
-      if (outputPath !== null) {
-        writeFileSync(path.resolve(opts.cwd, outputPath), JSON.stringify({ issues }))
+      if (scratchPath !== null) {
+        mkdirSync(path.dirname(scratchPath), { recursive: true })
+        writeFileSync(scratchPath, JSON.stringify({ issues }))
       }
       if (handlers.onReviewer) {
         await handlers.onReviewer(opts.cwd, reviewerCall - 1)
       }
     } else if (promptText.includes('You are an inspector')) {
-      if (outputPath !== null) {
+      if (scratchPath !== null) {
+        mkdirSync(path.dirname(scratchPath), { recursive: true })
         writeFileSync(
-          path.resolve(opts.cwd, outputPath),
+          scratchPath,
           JSON.stringify({
             addresses: handlers.inspectorAddresses ?? true,
             reasoning: 'Mock inspector acceptance.',
@@ -129,9 +132,10 @@ function createMockSpawn(handlers: {
     } else if (promptText.includes('Verify and fix') || promptText.includes('build error')) {
       const result = handlers.fixerResults?.[fixerCall] ?? { verdict: 'valid', fixability: 'auto', fixed: true }
       fixerCall += 1
-      if (outputPath !== null) {
+      if (scratchPath !== null) {
+        mkdirSync(path.dirname(scratchPath), { recursive: true })
         writeFileSync(
-          path.resolve(opts.cwd, outputPath),
+          scratchPath,
           JSON.stringify({
             ...result,
             reasoning: 'Fixed.',
@@ -150,8 +154,9 @@ function createMockSpawn(handlers: {
           : handlers.matchExisting === true
             ? matchAllToFirstExisting(promptText)
             : []
-      if (outputPath !== null) {
-        writeFileSync(path.resolve(opts.cwd, outputPath), JSON.stringify({ matches }))
+      if (scratchPath !== null) {
+        mkdirSync(path.dirname(scratchPath), { recursive: true })
+        writeFileSync(scratchPath, JSON.stringify({ matches }))
       }
       if (handlers.onMatch) {
         handlers.onMatch(promptText)

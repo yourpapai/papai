@@ -60,3 +60,21 @@ export function buildFailedSection(failedItems: readonly FailedItem[]): readonly
     '',
   ]
 }
+
+export function computePercentiles(scores: readonly number[]): readonly number[] {
+  if (scores.length === 0) return []
+  if (scores.length === 1) return [100]
+  const first = scores[0]
+  if (first === undefined || scores.every((s) => s === first)) {
+    return scores.map(() => 100)
+  }
+  const sorted = [...scores].toSorted((a, b) => a - b)
+  return scores.map((score) => {
+    const strictlyLess = sorted.filter((s) => s < score).length
+    return Math.round(((strictlyLess + 1) / (scores.length + 1)) * 100)
+  })
+}
+
+export function isBottomDecile(percentile: number): boolean {
+  return percentile < 10
+}

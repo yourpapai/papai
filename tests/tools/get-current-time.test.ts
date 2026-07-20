@@ -46,7 +46,7 @@ describe('makeGetCurrentTimeTool', () => {
     const tool = makeGetCurrentTimeTool('user-1')
     assert(tool.execute, 'Tool execute is undefined')
 
-    const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [] })
+    const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [], context: {} })
 
     assert(isTimeResult(result), 'Invalid result')
     expect(result).toHaveProperty('datetime')
@@ -57,7 +57,7 @@ describe('makeGetCurrentTimeTool', () => {
     const tool = makeGetCurrentTimeTool('user-2')
     assert(tool.execute, 'Tool execute is undefined')
 
-    const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [] })
+    const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [], context: {} })
 
     assert(isTimeResult(result), 'Invalid result')
     expect(result.timezone).toBe('UTC')
@@ -68,7 +68,7 @@ describe('makeGetCurrentTimeTool', () => {
     const tool = makeGetCurrentTimeTool('user-legacy')
     assert(tool.execute, 'Tool execute is undefined')
 
-    const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [] })
+    const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [], context: {} })
 
     assert(isTimeResult(result), 'Invalid result')
     expect(result.timezone).toBe('Etc/GMT-5')
@@ -78,7 +78,7 @@ describe('makeGetCurrentTimeTool', () => {
     const tool = makeGetCurrentTimeTool('user-1')
     assert(tool.execute, 'Tool execute is undefined')
 
-    const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [] })
+    const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [], context: {} })
 
     assert(isTimeResult(result), 'Invalid result')
     // Local time should NOT have a trailing Z (UTC indicator)
@@ -90,7 +90,7 @@ describe('makeGetCurrentTimeTool', () => {
     const tool = makeGetCurrentTimeTool('user-legacy')
     assert(tool.execute, 'Tool execute is undefined')
 
-    const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [] })
+    const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [], context: {} })
 
     assert(isTimeResult(result), 'Invalid result')
     // Normalized to Etc/GMT-5, so Intl.DateTimeFormat works and returns local time
@@ -101,7 +101,7 @@ describe('makeGetCurrentTimeTool', () => {
     const tool = makeGetCurrentTimeTool('user-1')
     assert(tool.execute, 'Tool execute is undefined')
 
-    const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [] })
+    const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [], context: {} })
 
     assert(isTimeResult(result), 'Invalid result')
     const isoPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/u
@@ -112,7 +112,7 @@ describe('makeGetCurrentTimeTool', () => {
     const tool = makeGetCurrentTimeTool('user-1')
     assert(tool.execute, 'Tool execute is undefined')
 
-    const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [] })
+    const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [], context: {} })
 
     assert(isTimeResult(result), 'Invalid result')
     expect(result).toHaveProperty('formatted')

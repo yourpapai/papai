@@ -24,7 +24,11 @@ export const toolCallCount = (result: unknown): number | undefined => {
   return toolCalls.length
 }
 
-type LlmResult = { response: { messages: ModelMessage[] }; text: string; toolCalls: unknown[] | undefined }
+type LlmResult = {
+  finalStep: { response: { messages: ModelMessage[] } }
+  text: string
+  toolCalls: unknown[] | undefined
+}
 
 export function persistProactiveResults(
   creatorId: string,
@@ -43,7 +47,7 @@ export function persistProactiveResults(
       'Facts persisted from proactive results',
     )
 
-  const msgs = result.response.messages
+  const msgs = result.finalStep.response.messages
   if (msgs.length > 0) {
     appendHistory(storageContextId, msgs)
     const updated = [...history, ...msgs]

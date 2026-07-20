@@ -42,3 +42,11 @@ See LICENSE in the project root for details.
 **`MAGI_TRANSCRIPT_BASE_URL`** — **not** a papai env var. It configures the external **magi** control service with papai's public origin, which magi uses to build the `transcriptUrl` it mints and returns per coding session (see `docs/architecture/coding-sessions.md` § Transcript viewer). papai's `/t/*` viewer routes need **no** new env var of their own — the proxy reads magi's base URL and bearer token from the acp plugin's admin config (`magi_base_url`/`magi_token` via `getPluginAdminConfig`), the same config already used for outbound ACP calls.
 
 **Per-user runtime config keys** (managed in the settings UI): `timezone`; `mcp_endpoints` (JSON array of external MCP endpoints `{ id, url (https only), label?, headers?, enabled, toolFilter? }`, registered in `src/config-keys.ts`); Kaneo `plugin:task-provider-kaneo:provider:{credential,workspaceId}`; YouTrack `plugin:task-provider-youtrack:provider:token`; AI output visibility `ai_tool_visibility` / `ai_reasoning_visibility` (`on`/`off`, default `off`) and `ai_output_detail_level` (`sanitized`/`raw`, default `sanitized`) — surfaced as enum `ConfigField`s (`kind: 'ai-output'`) in the settings UI "AI output" section, read by `getAiOutputSettings` (`src/ai-output-settings.ts`).
+
+**Behavior audit CI secrets** — required only by the nightly GitHub Actions workflow at `.github/workflows/behavior-audit.yml` (runs `bun audit:behavior` on `ubuntu-latest` against an external OpenAI-compatible gateway). Not read at papai runtime. Configure three repository secrets under repo settings → Secrets and variables → Actions:
+
+- `BEHAVIOR_AUDIT_BASE_URL` — gateway base URL (e.g. `https://openrouter.ai/api/v1`); mapped verbatim to the same-named env var.
+- `BEHAVIOR_AUDIT_MODEL` — model id (e.g. `anthropic/claude-3.5-haiku`); mapped verbatim to the same-named env var.
+- `BEHAVIOR_AUDIT_API_KEY` — gateway API key; the workflow maps it to `OPENAI_API_KEY` (the env var the Vercel AI SDK reads), not to a same-named var.
+
+The preflight step (`scripts/behavior-audit/preflight.ts`) fails the run with a clear message when any of `BEHAVIOR_AUDIT_BASE_URL`, `BEHAVIOR_AUDIT_MODEL`, or `OPENAI_API_KEY` is missing.

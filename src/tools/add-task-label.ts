@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -110,7 +110,7 @@ const resolveKaneoAlreadyPresent = async (
   )
 }
 
-export function makeAddTaskLabelTool(provider: Readonly<TaskProvider>): ToolSet[string] {
+export function makeAddTaskLabelTool(provider: Readonly<TaskProvider>): Tool {
   return tool({
     description:
       'Add a label to a task. For Kaneo, labelName resolves against reusable workspace labels and returns already_present when the task already has that visible label.',

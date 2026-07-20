@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { getDrizzleDb as defaultGetDrizzleDb } from '../db/drizzle.js'
@@ -176,7 +176,7 @@ export function makeSetMyIdentityTool(
   provider: TaskProvider,
   chatUserId: string,
   deps: SetMyIdentityDeps = defaultDeps,
-): ToolSet[string] {
+): Tool {
   return tool({
     description:
       "Set or correct the user's task tracker identity. Use when user says things like 'I'm jsmith', 'My login is john.smith', or 'Link me to user jsmith'.",

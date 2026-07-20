@@ -19,7 +19,7 @@ describe('makeCreateLabelTool direct', () => {
 
     const tool = makeCreateLabelTool(provider)
     assert(tool.execute, 'Tool execute is undefined')
-    const result: unknown = await tool.execute({ name: 'Feature' }, { toolCallId: '1', messages: [] })
+    const result: unknown = await tool.execute({ name: 'Feature' }, { toolCallId: '1', messages: [], context: {} })
 
     expect(result).toMatchObject({
       status: 'already_exists',

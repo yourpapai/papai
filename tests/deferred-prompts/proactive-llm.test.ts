@@ -34,11 +34,11 @@ type GenerateTextResult = {
   toolCalls: unknown[]
   toolResults: unknown[]
   steps: unknown[] | undefined
-  response: { messages: ModelMessage[] }
+  finalStep: { response: { messages: ModelMessage[] } }
 }
 type GenerateTextCall = {
   model: string
-  system: string
+  instructions: string
   messages: ModelMessage[]
   tools: unknown
   stopWhen?: unknown
@@ -122,7 +122,7 @@ describe('dispatchExecution', () => {
       toolCalls: [],
       toolResults: [],
       steps: undefined,
-      response: { messages: [] },
+      finalStep: { response: { messages: [] } },
     })
   }
 
@@ -138,13 +138,13 @@ describe('dispatchExecution', () => {
         toolCalls: [],
         toolResults: [],
         steps: undefined,
-        response: { messages: [] },
+        finalStep: { response: { messages: [] } },
       })
     }
     void mock.module('ai', () => ({
       generateText: (args: GenerateTextCall): Promise<GenerateTextResult> => generateTextImpl(args),
       tool: (opts: unknown): unknown => opts,
-      stepCountIs: (n: number): unknown => ({ __stopAfterSteps: n }),
+      isStepCount: (n: number): unknown => ({ __stopAfterSteps: n }),
     }))
     void mock.module('../../src/llm-model-builder.js', () => ({
       buildChatModel: (apiKey: string, baseUrl: string, modelId: string): string => {
@@ -260,9 +260,9 @@ describe('dispatchExecution', () => {
       setupUserConfig()
       const provider = createMockProvider()
       await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
-      const system = generateTextCalls[0]!.system
+      const instructions = generateTextCalls[0]!.instructions
       // Full system prompt includes provider-specific content
-      expect(system.length).toBeGreaterThan(200)
+      expect(instructions.length).toBeGreaterThan(200)
     })
 
     test('loads conversation history', async () => {
@@ -290,9 +290,9 @@ describe('dispatchExecution', () => {
 
       await dispatchExecution(makeGroupThreadExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
 
-      const messages = generateTextCalls[0]!.messages
-      expect(messageIncludesText(messages, 'Group escalations use the incident queue')).toBe(true)
-      expect(messageIncludesText(messages, 'This personal thread profile should not be injected')).toBe(false)
+      const instructions = generateTextCalls[0]!.instructions
+      expect(instructions).toContain('Group escalations use the incident queue')
+      expect(instructions).not.toContain('This personal thread profile should not be injected')
     })
 
     test('falls back to providerless full execution when provider cannot be built', async () => {
@@ -300,7 +300,7 @@ describe('dispatchExecution', () => {
       const result = await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => null)
       expect(result).toBe('Mock response')
       expect(generateTextCalls).toHaveLength(1)
-      expect(generateTextCalls[0]!.system).toContain('task tracker tools are unavailable')
+      expect(generateTextCalls[0]!.instructions).toContain('task tracker tools are unavailable')
       expect(generateTextCalls[0]!.tools).not.toHaveProperty('create_task')
     })
 
@@ -314,7 +314,7 @@ describe('dispatchExecution', () => {
           toolCalls: [],
           toolResults: [{ toolName: 'create_task', output: { id: 'task-1', title: 'Thread task', number: 17 } }],
           steps: undefined,
-          response: { messages: [] },
+          finalStep: { response: { messages: [] } },
         })
       }
 
@@ -359,7 +359,7 @@ describe('dispatchExecution', () => {
           toolCalls: [],
           toolResults: [{ toolName: 'create_task', output: { id: 'task-1', title: 'Scoped thread task', number: 21 } }],
           steps: undefined,
-          response: { messages: [] },
+          finalStep: { response: { messages: [] } },
         })
       }
 
@@ -424,21 +424,21 @@ describe('dispatchExecution', () => {
           toolCalls: [],
           toolResults: [],
           steps: undefined,
-          response: { messages: [{ role: 'assistant', content: 'new response' }] },
+          finalStep: { response: { messages: [{ role: 'assistant', content: 'new response' }] } },
         }),
         Promise.resolve({
           text: JSON.stringify({ keep_indices: Array.from({ length: 50 }, (_, index) => index), summary: 'trimmed' }),
           toolCalls: [],
           toolResults: [],
           steps: undefined,
-          response: { messages: [] },
+          finalStep: { response: { messages: [] } },
         }),
         Promise.resolve({
           text: JSON.stringify({ profile: null, records: [], updates: [] }),
           toolCalls: [],
           toolResults: [],
           steps: undefined,
-          response: { messages: [] },
+          finalStep: { response: { messages: [] } },
         }),
       ]
       let callIndex = 0
@@ -506,7 +506,7 @@ describe('dispatchExecution', () => {
               ],
             },
           ],
-          response: { messages: [] },
+          finalStep: { response: { messages: [] } },
         })
       }
 
@@ -608,10 +608,10 @@ describe('dispatchExecution', () => {
       )
 
       expect(generateTextCalls).toHaveLength(1)
-      const system = generateTextCalls[0]!.system
+      const instructions = generateTextCalls[0]!.instructions
       // After the fix: prompt uses delivery storageContextId prefs -> "Unavailable tools" line present.
       // With the bug: prompt uses creator userId prefs (empty) -> no unavailable line.
-      expect(system).toContain('Unavailable tools')
+      expect(instructions).toContain('Unavailable tools')
     })
   })
 })

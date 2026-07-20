@@ -18,3 +18,33 @@ updates:
           - '*'
     commit-message:
       prefix: ci
+
+  # Keep the Bun/JS dependencies current. Dependabot reads the root `bun.lock`
+  # (Bun's text lockfile); the single root lockfile also covers the
+  # `review-loop` workspace, so one `directory: /` entry is sufficient.
+  - package-ecosystem: bun
+    directory: /
+    schedule:
+      interval: weekly
+    # Same 7-day quarantine as the actions above: hold newly published versions
+    # for a week so a malicious or unstable release has time to be caught before
+    # it lands in a PR.
+    cooldown:
+      default-days: 7
+    # Group every dependency into a single PR per run. Grouping by name pattern
+    # (rather than `dependency-type`) is used because the carved-out `bun`
+    # ecosystem does not reliably honor `dependency-type` grouping.
+    groups:
+      bun-dependencies:
+        patterns:
+          - '*'
+    # oxlint-tsgolint is held at 0.22.x: 0.25's `no-unnecessary-type-assertion`
+    # false-positives on Promise->void casts that `strict-void-return` requires,
+    # so the two rules contradict each other. Remove this ignore once upstream
+    # resolves the regression.
+    ignore:
+      - dependency-name: oxlint-tsgolint
+        versions:
+          - '>=0.23.0'
+    commit-message:
+      prefix: deps

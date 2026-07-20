@@ -107,7 +107,7 @@ export type AssistantTurnMeta = {
 export const recordAssistantTurn = (
   meta: AssistantTurnMeta,
   turn: { baseHistory: readonly ModelMessage[]; historyMessage: ModelMessage },
-  result: { response: { messages: ModelMessage[] }; finishReason?: string },
+  result: { finalStep: { response: { messages: ModelMessage[] } }; finishReason?: string },
 ): void => {
   appendAssistantTurnHistory(
     meta.contextId,
@@ -115,7 +115,7 @@ export const recordAssistantTurn = (
     meta.mainModel,
     turn.baseHistory,
     turn.historyMessage,
-    result.response.messages,
+    result.finalStep.response.messages,
     meta.contextType,
     meta.actorRole,
     result.finishReason === 'tool-calls',

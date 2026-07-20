@@ -153,6 +153,7 @@ describe('behavior-audit interrupted-run baseline', () => {
         runCount,
       ),
       saveConsolidatedManifest: () => Promise.resolve(),
+      runPhase2cIfNeeded: () => Promise.resolve(),
       runPhase3IfNeeded: () => Promise.resolve(),
       stdout: { isTTY: false },
       isTestEnvironment: true,

@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { executeList, type ListInput } from '../deferred-prompts/tool-handlers.js'
@@ -12,7 +12,7 @@ import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'tool:list-deferred-prompts' })
 
-export function makeListDeferredPromptsTool(userId: string): ToolSet[string] {
+export function makeListDeferredPromptsTool(userId: string): Tool {
   return tool({
     description: 'List deferred prompts (scheduled tasks and monitoring alerts). Optionally filter by type or status.',
     inputSchema: z.object({

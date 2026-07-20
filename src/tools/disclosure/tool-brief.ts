@@ -30,7 +30,9 @@ export function buildBriefs(tools: ToolSet): ToolBrief[] {
     if (t === undefined) continue
     briefs.push({
       name,
-      summary: firstSentence(t.description),
+      // AI SDK v7 allows a dynamic (function) description; only static strings
+      // carry a human-readable brief.
+      summary: firstSentence(typeof t.description === 'string' ? t.description : undefined),
       domain: getToolMetadata(name)?.domain ?? 'other',
     })
   }

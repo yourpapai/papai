@@ -73,7 +73,7 @@ describe('wrapToolExecution', () => {
       Promise.resolve({ success: true, data: 'result' })
     const wrapped = wrapToolExecution(execute, 'test_tool')
 
-    const result = await wrapped({}, { toolCallId: 'call-1', messages: [] })
+    const result = await wrapped({}, { toolCallId: 'call-1', messages: [], context: {} })
 
     expect(result).toEqual({ success: true, data: 'result' })
   })
@@ -82,7 +82,7 @@ describe('wrapToolExecution', () => {
     const execute = (): Promise<never> => Promise.reject(new Error('Something went wrong'))
     const wrapped = wrapToolExecution(execute, 'test_tool')
 
-    const result = await wrapped({}, { toolCallId: 'call-1', messages: [] })
+    const result = await wrapped({}, { toolCallId: 'call-1', messages: [], context: {} })
 
     // Use assert to validate and narrow the result type
     assert(isToolErrorResult(result), 'expected a ToolErrorResult')

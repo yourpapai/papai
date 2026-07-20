@@ -26,39 +26,34 @@ const log = pino({
 type GenerateTextInput = Parameters<typeof generateText>[0]
 type GenerateTextOutput = Awaited<ReturnType<typeof generateText>>
 
-type CallbackKeys =
-  | 'experimental_onStart'
-  | 'experimental_onStepStart'
-  | 'experimental_onToolCallStart'
-  | 'experimental_onToolCallFinish'
-  | 'onStepFinish'
-  | 'onFinish'
+type CallbackKeys = 'onStart' | 'onStepStart' | 'onToolExecutionStart' | 'onToolExecutionEnd' | 'onStepEnd' | 'onEnd'
 
 const verboseCallbacks: Pick<GenerateTextInput, CallbackKeys> = {
-  experimental_onStart: ({ model }) => {
-    log.debug({ modelId: model.modelId, provider: model.provider }, 'start')
+  onStart: ({ modelId, provider }) => {
+    log.debug({ modelId, provider }, 'start')
   },
-  experimental_onStepStart: ({ stepNumber }) => {
+  onStepStart: ({ stepNumber }) => {
     log.debug({ stepNumber }, 'step start')
   },
-  experimental_onToolCallStart: ({ toolCall }) => {
+  onToolExecutionStart: ({ toolCall }) => {
     log.debug({ tool: toolCall.toolName, input: JSON.stringify(toolCall.input).slice(0, 200) }, 'tool call start')
   },
-  experimental_onToolCallFinish: ({ toolCall, durationMs, success, error }) => {
-    if (success) {
-      log.debug({ tool: toolCall.toolName, durationMs }, 'tool call finish')
+  onToolExecutionEnd: ({ toolCall, toolExecutionMs, toolOutput }) => {
+    if (toolOutput.type === 'tool-result') {
+      log.debug({ tool: toolCall.toolName, durationMs: toolExecutionMs }, 'tool call finish')
     } else {
+      const { error } = toolOutput
       log.warn(
         {
           tool: toolCall.toolName,
-          durationMs,
+          durationMs: toolExecutionMs,
           error: error instanceof Error ? error.message : String(error),
         },
         'tool call error',
       )
     }
   },
-  onStepFinish: ({ stepNumber, finishReason, usage }) => {
+  onStepEnd: ({ stepNumber, finishReason, usage }) => {
     log.debug(
       {
         stepNumber,
@@ -69,12 +64,12 @@ const verboseCallbacks: Pick<GenerateTextInput, CallbackKeys> = {
       'step finish',
     )
   },
-  onFinish: ({ totalUsage, steps }) => {
+  onEnd: ({ usage, steps }) => {
     log.debug(
       {
         steps: steps.length,
-        totalInputTokens: totalUsage.inputTokens,
-        totalOutputTokens: totalUsage.outputTokens,
+        totalInputTokens: usage.inputTokens,
+        totalOutputTokens: usage.outputTokens,
       },
       'done',
     )

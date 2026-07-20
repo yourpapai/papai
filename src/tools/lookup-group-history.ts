@@ -4,12 +4,13 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { LanguageModel, ModelMessage, ToolSet } from 'ai'
+import type { LanguageModel, ModelMessage, Tool } from 'ai'
 import { generateText } from 'ai'
 import { z } from 'zod'
 
 import { getCachedHistory } from '../cache.js'
 import { getMainContextIdFromThreadContextId } from '../chat/scoped-context.js'
+import { hoistSystemMessages } from '../llm-message-utils.js'
 import { buildChatModel } from '../llm-model-builder.js'
 import { resolveLlmConfig } from '../llm-providers/resolver.js'
 import { logger } from '../logger.js'
@@ -43,7 +44,9 @@ Provide a concise answer based only on the chat history.`
 const defaultDeps: LookupGroupHistoryDeps = {
   getCachedHistory,
   generateText: async (options) => {
-    const result = await generateText(options)
+    // AI SDK v7 disallows system messages in the messages array; hoist them into `instructions`.
+    const { instructions, messages } = hoistSystemMessages('', options.messages)
+    const result = await generateText({ model: options.model, instructions, messages })
     return { text: result.text }
   },
   getSmallModel: (configContextId) => {
@@ -114,7 +117,7 @@ export async function executeLookupGroupHistory(
 /**
  * Factory function for lookup_group_history tool
  */
-export function makeLookupGroupHistoryTool(userId?: string, contextId?: string): ToolSet[string] {
+export function makeLookupGroupHistoryTool(userId?: string, contextId?: string): Tool {
   return tool({
     description:
       'Search the main group chat for specific information using AI. Use this when you need context from ongoing discussions outside the current thread, such as finding decisions, context, or references mentioned in the main chat.',

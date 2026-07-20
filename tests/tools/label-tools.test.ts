@@ -62,7 +62,7 @@ describe('Label Tools', () => {
 
       const tool = makeListLabelsTool(provider)
       assert(tool.execute, 'Tool execute is undefined')
-      const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [], context: {} })
       assert(isLabelArray(result), 'Invalid result')
 
       expect(result).toHaveLength(3)
@@ -77,7 +77,7 @@ describe('Label Tools', () => {
 
       const tool = makeListLabelsTool(provider)
       assert(tool.execute, 'Tool execute is undefined')
-      const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [], context: {} })
       assert(Array.isArray(result), 'Invalid result')
 
       expect(result).toHaveLength(0)
@@ -89,7 +89,7 @@ describe('Label Tools', () => {
 
       const tool = makeListLabelsTool(provider)
       assert(tool.execute, 'Tool execute is undefined')
-      await tool.execute({}, { toolCallId: '1', messages: [] })
+      await tool.execute({}, { toolCallId: '1', messages: [], context: {} })
 
       expect(listLabels).toHaveBeenCalledTimes(1)
     })
@@ -100,7 +100,7 @@ describe('Label Tools', () => {
       })
 
       const tool = makeListLabelsTool(provider)
-      const promise = getToolExecutor(tool)({}, { toolCallId: '1', messages: [] })
+      const promise = getToolExecutor(tool)({}, { toolCallId: '1', messages: [], context: {} })
       await expect(promise).rejects.toThrow('API Error')
       try {
         await promise
@@ -130,7 +130,7 @@ describe('Label Tools', () => {
 
       const tool = makeCreateLabelTool(provider)
       assert(tool.execute, 'Tool execute is undefined')
-      const result: unknown = await tool.execute({ name: 'new-label' }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute({ name: 'new-label' }, { toolCallId: '1', messages: [], context: {} })
       assert(isLabel(result), 'Invalid result')
 
       expect(result['id']).toBe('label-1')
@@ -150,7 +150,7 @@ describe('Label Tools', () => {
 
       const tool = makeCreateLabelTool(provider)
       assert(tool.execute, 'Tool execute is undefined')
-      await tool.execute({ name: 'urgent', color: '#ff0000' }, { toolCallId: '1', messages: [] })
+      await tool.execute({ name: 'urgent', color: '#ff0000' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(createLabel).toHaveBeenCalledWith({ name: 'urgent', color: '#ff0000' })
     })
@@ -166,7 +166,7 @@ describe('Label Tools', () => {
 
       const tool = makeCreateLabelTool(provider)
       assert(tool.execute, 'Tool execute is undefined')
-      await tool.execute({ name: 'test-label' }, { toolCallId: '1', messages: [] })
+      await tool.execute({ name: 'test-label' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(createLabel).toHaveBeenCalledWith({ name: 'test-label', color: undefined })
     })
@@ -180,7 +180,7 @@ describe('Label Tools', () => {
 
       const tool = makeCreateLabelTool(provider)
       assert(tool.execute, 'Tool execute is undefined')
-      const result: unknown = await tool.execute({ name: 'Feature' }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute({ name: 'Feature' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(result).toMatchObject({
         status: 'already_exists',
@@ -206,7 +206,7 @@ describe('Label Tools', () => {
 
       const tool = makeCreateLabelTool(provider)
       assert(tool.execute, 'Tool execute is undefined')
-      const result: unknown = await tool.execute({ name: 'Feature' }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute({ name: 'Feature' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(result).toMatchObject({ id: 'label-1', name: 'Feature', color: undefined })
       expect(createLabel).toHaveBeenCalledWith({ name: 'Feature', color: undefined })
@@ -218,7 +218,7 @@ describe('Label Tools', () => {
       })
 
       const tool = makeCreateLabelTool(provider)
-      const promise = getToolExecutor(tool)({ name: 'Test' }, { toolCallId: '1', messages: [] })
+      const promise = getToolExecutor(tool)({ name: 'Test' }, { toolCallId: '1', messages: [], context: {} })
       await expect(promise).rejects.toThrow('API Error')
       try {
         await promise
@@ -256,7 +256,7 @@ describe('Label Tools', () => {
       assert(tool.execute, 'Tool execute is undefined')
       const result: unknown = await tool.execute(
         { labelId: 'label-1', name: 'Updated Name' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       assert(isLabel(result), 'Invalid result')
 
@@ -276,7 +276,7 @@ describe('Label Tools', () => {
 
       const tool = makeUpdateLabelTool(provider)
       assert(tool.execute, 'Tool execute is undefined')
-      await tool.execute({ labelId: 'label-1', color: '#00ff00' }, { toolCallId: '1', messages: [] })
+      await tool.execute({ labelId: 'label-1', color: '#00ff00' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(updateLabel).toHaveBeenCalledWith('label-1', { name: undefined, color: '#00ff00' })
     })
@@ -293,7 +293,10 @@ describe('Label Tools', () => {
 
       const tool = makeUpdateLabelTool(provider)
       assert(tool.execute, 'Tool execute is undefined')
-      await tool.execute({ labelId: 'label-1', name: 'new-name', color: '#ff0000' }, { toolCallId: '1', messages: [] })
+      await tool.execute(
+        { labelId: 'label-1', name: 'new-name', color: '#ff0000' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
 
       expect(updateLabel).toHaveBeenCalledWith('label-1', { name: 'new-name', color: '#ff0000' })
     })
@@ -327,7 +330,7 @@ describe('Label Tools', () => {
       assert(tool.execute, 'Tool execute is undefined')
       const result: unknown = await tool.execute(
         { labelId: 'label-1', confidence: 0.9 },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(result).toMatchObject({ id: 'label-1' })
@@ -339,7 +342,7 @@ describe('Label Tools', () => {
       assert(tool.execute, 'Tool execute is undefined')
       const result: unknown = await tool.execute(
         { labelId: 'label-1', label: 'urgent', confidence: 0.5 },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(result).toMatchObject({ status: 'confirmation_required' })
@@ -357,7 +360,7 @@ describe('Label Tools', () => {
       assert(tool.execute, 'Tool execute is undefined')
       const result: unknown = await tool.execute(
         { labelId: 'label-1', confidence: 0.85 },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(result).toMatchObject({ id: 'label-1' })
@@ -369,7 +372,10 @@ describe('Label Tools', () => {
       })
 
       const tool = makeRemoveLabelTool(provider)
-      const promise = getToolExecutor(tool)({ labelId: 'invalid', confidence: 0.9 }, { toolCallId: '1', messages: [] })
+      const promise = getToolExecutor(tool)(
+        { labelId: 'invalid', confidence: 0.9 },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       await expect(promise).rejects.toThrow('Label not found')
       try {
         await promise

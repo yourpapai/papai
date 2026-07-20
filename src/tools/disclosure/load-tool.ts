@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { tool, type ToolSet } from 'ai'
+import { tool, type Tool } from 'ai'
 import { z } from 'zod'
 
 import { emitUser } from '../../debug/event-bus.js'
@@ -12,7 +12,7 @@ import type { DisclosureSession } from './registry.js'
 
 const log = logger.child({ scope: 'tool:load_tool' })
 
-export function makeLoadToolTool(session: DisclosureSession, contextId: string): ToolSet[string] {
+export function makeLoadToolTool(session: DisclosureSession, contextId: string): Tool {
   return tool({
     description:
       'Activate one or more tools by name so you can call them. Already-active tools are accepted without error. Pass every tool you expect to need in one call to avoid extra round-trips.',

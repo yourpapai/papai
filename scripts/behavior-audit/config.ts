@@ -78,6 +78,7 @@ export let PHASE3_TIMEOUT_MS = 600_000
 export let MAX_RETRIES = 3
 export const RETRY_BACKOFF_MS = [10_000, 30_000, 90_000] as const
 export let MAX_STEPS = 20
+export let CONCURRENCY = 4
 export let VERBOSE = false
 export let PROGRESS_RENDERER = 'auto'
 
@@ -139,6 +140,8 @@ export function reloadBehaviorAuditConfig(): void {
   PHASE3_TIMEOUT_MS = resolveNumberOverride('BEHAVIOR_AUDIT_PHASE3_TIMEOUT_MS', 600_000)
   MAX_RETRIES = resolveNumberOverride('BEHAVIOR_AUDIT_MAX_RETRIES', 3)
   MAX_STEPS = resolveNumberOverride('BEHAVIOR_AUDIT_MAX_STEPS', 20)
+  const concurrencyRaw = resolveNumberOverride('BEHAVIOR_AUDIT_CONCURRENCY', 4)
+  CONCURRENCY = Number.isFinite(concurrencyRaw) && concurrencyRaw > 0 ? concurrencyRaw : 4
   VERBOSE = resolveStringOverride('BEHAVIOR_AUDIT_VERBOSE', '0') === '1'
   PROGRESS_RENDERER = resolveStringOverride('BEHAVIOR_AUDIT_PROGRESS_RENDERER', 'auto')
   EXCLUDED_PREFIXES = resolveReadonlyStringList('BEHAVIOR_AUDIT_EXCLUDED_PREFIXES', DEFAULT_EXCLUDED_PREFIXES)

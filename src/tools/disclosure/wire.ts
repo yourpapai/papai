@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { tool, type ToolSet } from 'ai'
+import { tool, type Tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 
 import { CORE_TOOL_NAMES } from './core.js'
@@ -13,7 +13,7 @@ import { makeSearchToolsTool } from './search-tools.js'
 import type { ToolRetriever } from './tool-retriever.js'
 
 /** A no-op stub tool used as a placeholder key to pre-register meta-tool names in the session. */
-function makePlaceholder(): ToolSet[string] {
+function makePlaceholder(): Tool {
   return tool({ description: 'placeholder', inputSchema: z.object({}), execute: () => ({}) })
 }
 

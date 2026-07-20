@@ -29,6 +29,7 @@ const toolCtx = {
   toolCallId: 'tc1',
   messages: [] as never[],
   abortSignal: new AbortController().signal,
+  context: {},
 }
 
 function getTools(): ToolSet {

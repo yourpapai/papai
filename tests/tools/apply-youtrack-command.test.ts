@@ -81,7 +81,7 @@ const executeWrappedTool = (tool: unknown, input: unknown): Promise<unknown> => 
     options: { toolCallId: string; messages: unknown[] },
   ) => Promise<unknown>
   const wrappedExecute = wrapToolExecution(execute, 'apply_youtrack_command')
-  return wrappedExecute(input, { toolCallId: 'call-1', messages: [] })
+  return wrappedExecute(input, { toolCallId: 'call-1', messages: [], context: {} })
 }
 
 const getInputFieldDescription = (schema: unknown, fieldName: string): string | undefined => {

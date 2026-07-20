@@ -177,7 +177,7 @@ const failureForError = (error: unknown, attempts: number): ScenarioFailure => (
 const generateScenarioText = (input: GenerateScenarioTextInput): Promise<GenerateScenarioTextResult> =>
   generateText({
     model: input.model,
-    system: systemForMode(input.mode),
+    instructions: systemForMode(input.mode),
     prompt: input.prompt,
     tools: input.tools,
     stopWhen: stepCountIs(8),

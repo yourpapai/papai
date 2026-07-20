@@ -28,7 +28,7 @@ import { mockLogger, schemaValidates } from '../utils/test-helpers.js'
 // Helpers
 // ============================================================================
 
-const toolCtx = { toolCallId: '1', messages: [] as never[] }
+const toolCtx = { toolCallId: '1', messages: [] as never[], context: {} }
 
 function assertArray(value: unknown): unknown[] {
   if (!Array.isArray(value)) throw new TypeError('Expected array')

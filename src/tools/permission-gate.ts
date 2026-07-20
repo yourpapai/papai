@@ -95,7 +95,7 @@ export type AskPermissionFn = (req: {
   args: Record<string, unknown>
 }) => Promise<'allow' | 'deny'>
 
-export type ExecuteFn<O> = (input: unknown, options: ToolExecutionOptions) => Promise<O>
+export type ExecuteFn<O> = (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<O>
 
 function extractReason(input: Record<string, unknown>): string {
   const raw = input[PERMISSION_REASON_FIELD]
@@ -112,7 +112,7 @@ export function gatedExecute<O>(
   toolName: string,
   askPermission: AskPermissionFn | undefined,
 ): ExecuteFn<O | PermissionDeniedResult> {
-  return async (input: unknown, options: ToolExecutionOptions): Promise<O | PermissionDeniedResult> => {
+  return async (input: unknown, options: ToolExecutionOptions<unknown>): Promise<O | PermissionDeniedResult> => {
     if (askPermission === undefined) {
       return buildPermissionDenied(`Tool '${toolName}' requires user permission, but no chat surface is available.`)
     }

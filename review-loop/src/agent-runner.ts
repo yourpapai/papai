@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { existsSync } from 'node:fs'
 import { appendFile, copyFile, mkdir, readFile, unlink } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -196,6 +197,24 @@ export function agentWritePath(cwd: string, outputPath: string): string {
   return path.resolve(cwd, '.review-loop', path.basename(outputPath))
 }
 
+const MISPLACEMENT_SEARCH_DEPTH = 8
+
+export function findMisplacedScratches(expectedPath: string, cwd: string, basename: string): string[] {
+  const expected = path.resolve(expectedPath)
+  const found: string[] = []
+  let current = path.resolve(cwd)
+  for (let i = 0; i < MISPLACEMENT_SEARCH_DEPTH; i += 1) {
+    const candidate = path.resolve(current, '.review-loop', basename)
+    if (candidate !== expected && existsSync(candidate)) {
+      found.push(candidate)
+    }
+    const parent = path.dirname(current)
+    if (parent === current) break
+    current = parent
+  }
+  return found
+}
+
 function attemptRun<T>(options: RunAgentOptions<T>, onLine?: LineSink): Promise<SpawnResult> {
   return options.spawn(
     'opencode',
@@ -235,6 +254,22 @@ async function runAttempt<T>(options: RunAgentOptions<T>, handler: LineHandler):
     const raw = await readFile(options.outputPath, 'utf8')
     return { ok: true, value: options.outputSchema.parse(JSON.parse(raw)) }
   } catch (error) {
+    const isEnoent =
+      error !== null && typeof error === 'object' && 'code' in error && (error as { code?: unknown }).code === 'ENOENT'
+    if (isEnoent) {
+      const misplaced = findMisplacedScratches(
+        agentWritePath(options.cwd, options.outputPath),
+        options.cwd,
+        path.basename(options.outputPath),
+      )
+      const hint = misplaced.length === 0 ? '' : ` Possible misplaced file(s): ${misplaced.join(', ')}.`
+      const agentFile = agentWritePath(options.cwd, options.outputPath)
+      return {
+        ok: false,
+        error: new Error(`${options.label} did not write to the expected scratch path: ${agentFile}.${hint}`),
+        timedOut: false,
+      }
+    }
     return { ok: false, error: error instanceof Error ? error : new Error(String(error)), timedOut: false }
   }
 }

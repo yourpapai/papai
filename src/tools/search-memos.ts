@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool, cosineSimilarity } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { getEmbeddingForContext } from '../embeddings.js'
@@ -37,7 +37,7 @@ function trySemanticSearch(userId: string, queryVec: number[], limit: number): r
     .filter((r): r is Memo & { score: number } => r !== null)
 }
 
-export function makeSearchMemosTool(userId: string): ToolSet[string] {
+export function makeSearchMemosTool(userId: string): Tool {
   return tool({
     description:
       'Search personal notes by keyword or meaning. Use "auto" mode (default) to try semantic search first and fall back to keyword search.',

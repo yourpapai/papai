@@ -38,7 +38,10 @@ describe('List Watchers Tool', () => {
     )
     const tool = makeListWatchersTool(createMockProvider({ listWatchers }))
 
-    const result: unknown = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
+    const result: unknown = await getToolExecutor(tool)(
+      { taskId: 'task-1' },
+      { toolCallId: '1', messages: [], context: {} },
+    )
 
     assert(isWatcherList(result))
     expect(result).toEqual([
@@ -55,9 +58,9 @@ describe('List Watchers Tool', () => {
       }),
     )
 
-    await expect(getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })).rejects.toThrow(
-      'Watcher list failed',
-    )
+    await expect(
+      getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [], context: {} }),
+    ).rejects.toThrow('Watcher list failed')
   })
 
   test('validates taskId is required', () => {

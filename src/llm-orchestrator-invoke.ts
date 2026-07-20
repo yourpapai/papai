@@ -3,12 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { generateText } from 'ai'
-
 import type { ReplyFn } from './chat/types.js'
-import { emitUser } from './debug/event-bus.js'
+import { hoistSystemMessages } from './llm-message-utils.js'
 import { emitLlmEnd, emitLlmStart } from './llm-orchestrator-events.js'
-import { handleToolCallFinish } from './llm-orchestrator-support.js'
+import { buildToolCallFinishHandler, buildToolCallStartHandler } from './llm-orchestrator-tool-events.js'
 import type { GenerateArgs, InvokeModelArgs, LlmOrchestratorDeps, ToolCallContext } from './llm-orchestrator-types.js'
 import { logger } from './logger.js'
 import { withReplyTypingHeartbeat } from './reply-typing-heartbeat.js'
@@ -18,8 +16,15 @@ import { composePrepareSteps, createSteeringPrepareStep } from './run-control/st
 import { createStopRequestedCondition } from './run-control/stop-condition.js'
 import { RunAbortedError } from './run-control/types.js'
 import { buildProviderlessSystemPrompt, buildSystemPrompt } from './system-prompt.js'
-import { buildToolFailureResult, isToolFailureResult } from './tool-failure.js'
 import { createDisclosurePrepareStep } from './tools/disclosure/prepare-step.js'
+
+// Re-exported for existing importers/tests that reach these through this module.
+export {
+  handleToolCallFinishEvent,
+  handleToolCallStart,
+  type ToolCallFinishEvent,
+  type ToolCallStartEvent,
+} from './llm-orchestrator-tool-events.js'
 
 const log = logger.child({ scope: 'llm-orchestrator:invoke' })
 
@@ -30,168 +35,6 @@ const log = logger.child({ scope: 'llm-orchestrator:invoke' })
  * finish in one turn; the no-progress guard stops a stalled turn well before this.
  */
 const AGENT_MAX_STEPS = 50
-
-const safeByteLength = (value: unknown): number | null => {
-  if (value === undefined || value === null) return null
-  try {
-    return Buffer.byteLength(JSON.stringify(value) ?? '', 'utf8')
-  } catch {
-    return null
-  }
-}
-
-const contextEnvelope = (
-  ctx: ToolCallContext,
-): {
-  chatUserId: string
-  contextType: 'dm' | 'group'
-  model: string
-  modelRole: 'main' | 'small'
-} => ({
-  chatUserId: ctx.chatUserId,
-  contextType: ctx.contextType,
-  model: ctx.model,
-  modelRole: ctx.modelRole,
-})
-
-export type ToolCallStartEvent = {
-  toolCall: { toolName: string; toolCallId: string; input: unknown }
-}
-
-export type ToolCallFinishEvent = {
-  toolCall: { toolName: string; toolCallId: string; input: unknown }
-  durationMs: number
-  success: boolean
-} & Partial<Record<'output' | 'error', unknown>>
-
-const reportToolStarted = (ctx: ToolCallContext, event: ToolCallStartEvent): void => {
-  if (ctx.progressReporter === undefined) return
-  try {
-    ctx.progressReporter.toolStarted({
-      toolName: event.toolCall.toolName,
-      toolCallId: event.toolCall.toolCallId,
-      input: event.toolCall.input,
-    })
-  } catch (error) {
-    log.warn(
-      {
-        contextId: ctx.contextId,
-        toolName: event.toolCall.toolName,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      'AI progress reporter failed on tool start',
-    )
-  }
-}
-
-const reportToolFinished = (ctx: ToolCallContext, event: ToolCallFinishEvent): void => {
-  if (ctx.progressReporter === undefined) return
-  try {
-    ctx.progressReporter.toolFinished({
-      toolName: event.toolCall.toolName,
-      toolCallId: event.toolCall.toolCallId,
-      input: event.toolCall.input,
-      durationMs: event.durationMs,
-      success: event.success,
-      output: event.output,
-      error: event.error,
-    })
-  } catch (error) {
-    log.warn(
-      {
-        contextId: ctx.contextId,
-        toolName: event.toolCall.toolName,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      'AI progress reporter failed on tool finish',
-    )
-  }
-}
-
-export const handleToolCallStart = (ctx: ToolCallContext, event: ToolCallStartEvent): void => {
-  emitUser(
-    'tool:request',
-    ctx.contextId,
-    {
-      toolName: event.toolCall.toolName,
-      toolCallId: event.toolCall.toolCallId,
-      argsBytes: safeByteLength(event.toolCall.input),
-      ...contextEnvelope(ctx),
-    },
-    ctx.turnId,
-  )
-  reportToolStarted(ctx, event)
-  ctx.liveStatus?.onToolStart({ toolName: event.toolCall.toolName, input: event.toolCall.input })
-}
-
-export const buildToolCallStartHandler =
-  (ctx: ToolCallContext): Parameters<typeof generateText>[0]['experimental_onToolCallStart'] =>
-  (event) => {
-    handleToolCallStart(ctx, event)
-  }
-
-const emitFailureClassified = (ctx: ToolCallContext, event: ToolCallFinishEvent): void => {
-  if (event.success && isToolFailureResult(event.output)) {
-    const failure = event.output
-    emitUser(
-      'tool:failure_classified',
-      ctx.contextId,
-      {
-        toolName: failure.toolName,
-        toolCallId: failure.toolCallId,
-        errorType: failure.errorType,
-        errorCode: failure.errorCode,
-        retryable: failure.retryable,
-        recovered: failure.recovered ?? false,
-        ...contextEnvelope(ctx),
-      },
-      ctx.turnId,
-    )
-  } else if (!event.success) {
-    const failure = buildToolFailureResult(event.error, event.toolCall.toolName, event.toolCall.toolCallId)
-    emitUser(
-      'tool:failure_classified',
-      ctx.contextId,
-      {
-        toolName: failure.toolName,
-        toolCallId: failure.toolCallId,
-        errorType: failure.errorType,
-        errorCode: failure.errorCode,
-        retryable: failure.retryable,
-        recovered: failure.recovered ?? false,
-        ...contextEnvelope(ctx),
-      },
-      ctx.turnId,
-    )
-  }
-}
-
-export const handleToolCallFinishEvent = (ctx: ToolCallContext, event: ToolCallFinishEvent): void => {
-  emitUser(
-    'tool:execute_end',
-    ctx.contextId,
-    {
-      toolName: event.toolCall.toolName,
-      toolCallId: event.toolCall.toolCallId,
-      success: event.success,
-      durationMs: event.durationMs,
-      argsBytes: safeByteLength(event.toolCall.input),
-      resultBytes: event.success ? safeByteLength(event.output) : null,
-      ...contextEnvelope(ctx),
-    },
-    ctx.turnId,
-  )
-  emitFailureClassified(ctx, event)
-  reportToolFinished(ctx, event)
-  ctx.liveStatus?.onToolFinish()
-  handleToolCallFinish(ctx.contextId, undefined, event)
-}
-
-export const buildToolCallFinishHandler =
-  (ctx: ToolCallContext): Parameters<typeof generateText>[0]['experimental_onToolCallFinish'] =>
-  (event) => {
-    handleToolCallFinishEvent(ctx, event)
-  }
 
 export const resolveSystemPrompt = (
   args: Pick<InvokeModelArgs, 'provider' | 'contextId' | 'enabledToolNames' | 'disclosure' | 'contextType'>,
@@ -219,14 +62,13 @@ const callGenerateText = async (a: GenerateArgs): ReturnType<LlmOrchestratorDeps
   try {
     return await deps.generateText({
       model,
-      system: systemPrompt,
-      messages,
+      ...hoistSystemMessages(systemPrompt, messages),
       tools,
       timeout: 1_200_000,
       stopWhen,
       ...(run === undefined ? {} : { abortSignal: run.abortController.signal }),
-      experimental_onToolCallStart: buildToolCallStartHandler(ctx),
-      experimental_onToolCallFinish: (event) => {
+      onToolExecutionStart: buildToolCallStartHandler(ctx),
+      onToolExecutionEnd: (event) => {
         if (run !== undefined) run.completedEffects.push({ toolName: event.toolCall.toolName })
         finishHandler?.(event)
       },

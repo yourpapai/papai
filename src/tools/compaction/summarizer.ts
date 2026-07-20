@@ -38,7 +38,7 @@ export function buildSummarizerDeps(configContextId: string): SummarizerDeps | n
   const model = buildChatModel(resolved.small.apiKey, resolved.small.baseUrl, resolved.small.model)
   return {
     generate: async (opts) => {
-      const result = await generateText({ model, system: opts.system, prompt: opts.prompt })
+      const result = await generateText({ model, instructions: opts.system, prompt: opts.prompt })
       return { text: result.text }
     },
   }

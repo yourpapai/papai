@@ -34,7 +34,10 @@ describe('List Project Team Tool', () => {
     )
     const tool = makeListProjectTeamTool(createMockProvider({ listProjectTeam }))
 
-    const result: unknown = await getToolExecutor(tool)({ projectId: 'project-1' }, { toolCallId: '1', messages: [] })
+    const result: unknown = await getToolExecutor(tool)(
+      { projectId: 'project-1' },
+      { toolCallId: '1', messages: [], context: {} },
+    )
 
     assert(isUserArray(result))
     expect(result).toHaveLength(2)
@@ -48,9 +51,9 @@ describe('List Project Team Tool', () => {
       }),
     )
 
-    await expect(getToolExecutor(tool)({ projectId: 'project-1' }, { toolCallId: '1', messages: [] })).rejects.toThrow(
-      'List team failed',
-    )
+    await expect(
+      getToolExecutor(tool)({ projectId: 'project-1' }, { toolCallId: '1', messages: [], context: {} }),
+    ).rejects.toThrow('List team failed')
   })
 
   test('validates required projectId', () => {

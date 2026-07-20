@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -54,7 +54,7 @@ const getLocalFormattedString = (date: Date, timezone: string): string => {
   }
 }
 
-export function makeGetCurrentTimeTool(userId?: string): ToolSet[string] {
+export function makeGetCurrentTimeTool(userId?: string): Tool {
   return tool({
     description:
       'Get the current local date and time. Use this tool to answer questions about the current date, time, or to determine relative dates like "tomorrow" or "next Monday".',

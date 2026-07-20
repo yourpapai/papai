@@ -14,7 +14,7 @@ const baseResult = {
   text: undefined as string | undefined,
   finishReason: 'stop' as string | undefined,
   toolCalls: [] as unknown[],
-  response: { messages: [] as ModelMessage[] },
+  finalStep: { response: { messages: [] as ModelMessage[] } },
 }
 
 describe('sendLlmResponse verification wiring', () => {

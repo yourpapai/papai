@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { generateText, stepCountIs, type ModelMessage } from 'ai'
+import { generateText, isStepCount, type ModelMessage } from 'ai'
 
 import { getAiOutputSettings } from './ai-output-settings.js'
 import { createAiProgressReporter, type AiProgressReporter } from './ai-progress-reporter.js'
@@ -45,7 +45,7 @@ export const resolveAiOutputSettingsContextId = (contextId: string): string =>
 
 export const defaultDeps: LlmOrchestratorDeps = {
   generateText: (...args) => generateText(...args),
-  stepCountIs: (...args) => stepCountIs(...args),
+  stepCountIs: (...args) => isStepCount(...args),
   buildModel: (config) => getOpenAICompatibleProvider(config.main.apiKey, config.main.baseUrl)(config.main.model),
   resolve: (contextId: string) => defaultTaskProviderResolver.resolve(contextId),
   maybeAutoProvision: (reply, contextId, chatUserId, username) =>
@@ -144,7 +144,7 @@ type CallLlmArgs = InvocationSource & {
 }
 
 // `finishReason` distinguishes a step-cap truncation ('tool-calls') from a normal stop.
-type CallLlmResult = { response: { messages: ModelMessage[] }; finishReason?: string }
+type CallLlmResult = { finalStep: { response: { messages: ModelMessage[] } }; finishReason?: string }
 
 const callLlm = async (args: CallLlmArgs): Promise<CallLlmResult> => {
   const { reply, contextId, chatUserId, username, contextType, actorRole, deps, configId, resolvedLlm, turnId } = args

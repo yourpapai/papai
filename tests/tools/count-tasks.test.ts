@@ -27,7 +27,7 @@ describe('Count Tasks Tool', () => {
 
     const result = await getToolExecutor(tool)(
       { query: 'State: Open', projectId: '0-1' },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(result).toEqual({ count: 17, query: 'State: Open', projectId: '0-1' })
@@ -37,9 +37,9 @@ describe('Count Tasks Tool', () => {
   test('throws when countTasks is not supported', async () => {
     const tool = makeCountTasksTool(createMockProvider({ countTasks: undefined }))
 
-    await expect(getToolExecutor(tool)({ query: 'State: Open' }, { toolCallId: '1', messages: [] })).rejects.toThrow(
-      'countTasks not supported',
-    )
+    await expect(
+      getToolExecutor(tool)({ query: 'State: Open' }, { toolCallId: '1', messages: [], context: {} }),
+    ).rejects.toThrow('countTasks not supported')
   })
 
   test('validates required query and optional projectId', () => {

@@ -38,6 +38,9 @@ export default {
     'scripts/behavior-audit/tune-embedding.ts!',
     'scripts/behavior-audit/reset.ts!',
     'scripts/behavior-audit/migrate-trust.ts!',
+    // Tier 1 orchestration scripts (nightly CI helpers — not in package.json).
+    'scripts/behavior-audit/preflight.ts!',
+    'scripts/behavior-audit/publish-snapshot.ts!',
     // Stable production/public compatibility boundaries consumed by the
     // plugin-core-separation refactor.
     'src/coding-sessions/configure.ts!',
@@ -110,6 +113,21 @@ export default {
     // strybk.config.ts default export is consumed by the crvy-strybk CLI at
     // runtime via --config; no static importer exists.
     'strybk.config.ts': ['exports'],
+    // publish-snapshot helpers (buildCommitMessage, formatDateStamp, etc.) are
+    // consumed by runPublish + tests; knip's production-only project scope
+    // doesn't see test importers.
+    'scripts/behavior-audit/publish-snapshot.ts': ['exports'],
+    // resetGrepCache and makeAuditToolsForRoot are test-only seams (clear the
+    // grep cache between tests; target a fixture root for hermetic testing).
+    'scripts/behavior-audit/tools.ts': ['exports'],
+    // parseConsolidationResult is consumed by the schema unit test only.
+    'scripts/behavior-audit/consolidate-agent.ts': ['exports'],
+    // listToolNames is consumed by the behavior-audit closure verifier via
+    // dynamic import from scripts/behavior-audit/entry-point-maps.ts.
+    'src/tools/index.ts': ['exports'],
+    // listRoutes is consumed by the behavior-audit closure verifier via
+    // dynamic import; re-exported from src/debug/server.ts.
+    'src/debug/server-route-options.ts': ['exports'],
   },
 
   includeEntryExports: true,

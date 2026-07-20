@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -16,7 +16,7 @@ const isoDatetimeSchema = z.iso
   .datetime({ offset: true })
   .refine((value) => Number.isFinite(Date.parse(value)), 'Expected an ISO datetime with timezone information')
 
-export function makeGetTaskHistoryTool(provider: Readonly<TaskProvider>): ToolSet[string] {
+export function makeGetTaskHistoryTool(provider: Readonly<TaskProvider>): Tool {
   return tool({
     description:
       'Read the activity history for a task, including comments, field changes, links, and visibility changes.',

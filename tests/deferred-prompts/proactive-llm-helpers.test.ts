@@ -78,13 +78,17 @@ describe('proactive-llm-helpers', () => {
 describe('finalizeAndLog verification', () => {
   test('empty text + verification → verified text', async () => {
     mockLogger()
-    const text = await finalizeAndLog({ text: '', finishReason: 'stop', response: { messages: [] } }, 'user-1', {
-      history: [],
-      verifier: {
-        readOnlyToolset: undefined,
-        invokeVerifier: (): Promise<{ text: string | undefined }> => Promise.resolve({ text: 'Reminder delivered.' }),
+    const text = await finalizeAndLog(
+      { text: '', finishReason: 'stop', finalStep: { response: { messages: [] } } },
+      'user-1',
+      {
+        history: [],
+        verifier: {
+          readOnlyToolset: undefined,
+          invokeVerifier: (): Promise<{ text: string | undefined }> => Promise.resolve({ text: 'Reminder delivered.' }),
+        },
       },
-    })
+    )
     expect(text).toBe('Reminder delivered.')
   })
 

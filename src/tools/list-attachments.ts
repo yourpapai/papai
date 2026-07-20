@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -12,7 +12,7 @@ import type { TaskProvider } from '../providers/types.js'
 
 const log = logger.child({ scope: 'tool:list-attachments' })
 
-export function makeListAttachmentsTool(provider: TaskProvider): ToolSet[string] {
+export function makeListAttachmentsTool(provider: TaskProvider): Tool {
   return tool({
     description: 'List all attachments on a task.',
     inputSchema: z.object({

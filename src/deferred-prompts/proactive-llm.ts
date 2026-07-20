@@ -3,10 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { generateText, stepCountIs, type LanguageModel } from 'ai'
+import { generateText, isStepCount, type LanguageModel } from 'ai'
 
 import { getCachedHistory } from '../cache.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
+import { hoistSystemMessages } from '../llm-message-utils.js'
 import { buildChatModel } from '../llm-model-builder.js'
 import { logger } from '../logger.js'
 import { createDisclosurePrepareStep } from '../tools/disclosure/prepare-step.js'
@@ -35,13 +36,13 @@ export type DeferredExecutionContext = {
 
 export interface ProactiveLlmDeps {
   generateText: typeof generateText
-  stepCountIs: typeof stepCountIs
+  stepCountIs: typeof isStepCount
   buildModel: (config: { apiKey: string; baseURL: string }, modelId: string) => LanguageModel
 }
 
 const defaultProactiveLlmDeps: ProactiveLlmDeps = {
   generateText: (...args) => generateText(...args),
-  stepCountIs: (...args) => stepCountIs(...args),
+  stepCountIs: (...args) => isStepCount(...args),
   buildModel: (config, modelId) => buildChatModel(config.apiKey, config.baseURL, modelId),
 }
 type DispatchExecutionArgs = ProactiveLlmDispatchArgs<ProactiveLlmDeps, BuildProviderFn>
@@ -100,14 +101,14 @@ async function runFullGeneration(
   )
   const result = await deps.generateText({
     model,
-    system: prepared.systemPrompt,
-    messages: prepared.messages,
+    ...hoistSystemMessages(prepared.systemPrompt, prepared.messages),
     tools: prepared.tools,
     stopWhen: deps.stepCountIs(25),
     timeout: 1_200_000,
     prepareStep: createDisclosurePrepareStep(prepared.disclosure, prepared.storageContextId, turnId),
   })
   const previousHistory = getCachedHistory(prepared.storageContextId)
+  const assistantMessages = result.finalStep.response.messages
   persistProactiveResults(
     createdByUserId,
     prepared.storageContextId,
@@ -120,7 +121,7 @@ async function runFullGeneration(
   return finalizeAndLog(
     result,
     createdByUserId,
-    buildProactiveVerification(deps, model, prepared.tools, [...prepared.messages, ...result.response.messages]),
+    buildProactiveVerification(deps, model, prepared.tools, [...prepared.messages, ...assistantMessages]),
   )
 }
 
