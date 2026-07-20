@@ -214,7 +214,6 @@ const GAP_SCENARIO_IDS = new Set<CatalogScenarioId>([
   'SCN-coding-nerv-steer',
   'SCN-supervise-self-review',
   'SCN-cmd-announce',
-  'SCN-http-transcript-viewer',
 ])
 
 const FORWARD_ONLY_SCENARIO_IDS = new Set<CatalogScenarioId>([
@@ -694,6 +693,42 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
       'tests/stories/context/history-lookup.story.test.ts#SCN-history-lookup: searches the main group history from a thread',
     ],
   },
+  'SCN-http-auth-claim': {
+    verifiedAt: '2026-07-20',
+    storyIds: [
+      'tests/stories/http/auth-claim.story.test.ts#SCN-http-auth-claim: a single-use code exchanges for a session that authorizes reads',
+    ],
+  },
+  'SCN-http-admin-dashboard': {
+    verifiedAt: '2026-07-20',
+    storyIds: [
+      'tests/stories/http/dashboard.story.test.ts#SCN-http-admin-dashboard: the dashboard session authorizes admin reads that reject anonymous callers',
+    ],
+  },
+  'SCN-http-billing-stats-readonly': {
+    verifiedAt: '2026-07-20',
+    storyIds: [
+      'tests/stories/http/dashboard.story.test.ts#SCN-http-billing-stats-readonly: the dashboard session reads stats that reject anonymous callers',
+    ],
+  },
+  'SCN-http-debug-live-panels': {
+    verifiedAt: '2026-07-20',
+    storyIds: [
+      'tests/stories/http/dashboard.story.test.ts#SCN-http-debug-live-panels: debug panels require both the world flag and the dashboard session',
+    ],
+  },
+  'SCN-http-notify': {
+    verifiedAt: '2026-07-20',
+    storyIds: [
+      'tests/stories/http/notify.story.test.ts#SCN-http-notify: an authorized notify delivers a proactive message',
+    ],
+  },
+  'SCN-http-transcript-viewer': {
+    verifiedAt: '2026-07-20',
+    storyIds: [
+      'tests/stories/http/transcript-viewer.story.test.ts#SCN-http-transcript-viewer: the viewer proxies transcript bytes from magi',
+    ],
+  },
 }
 
 function auditRecord(readiness: AuditReadiness, family: StoryFamily, rationale: string): AuditRecord {
@@ -724,44 +759,10 @@ export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
     'fetch_chat_link resolves Mattermost permalinks through the authenticated Mattermost REST API (resolveChatLink), never assertPublicUrl (that DNS/SSRF guard is web_fetch, family F6). Needs a Mattermost REST resolver fake, not built speculatively.',
   ),
   // F4 — HTTP surfaces
-  'SCN-http-notify': needs(
-    'F4',
-    ['notify-token-fixture'],
-    'Needs a seedable notify_token fixture; note the process-lifetime token cache in src/notify-token.ts.',
-  ),
-  'SCN-http-transcript-viewer': needs(
-    'F4',
-    ['fake-magi-transcript'],
-    'The transcript proxy targets magi; extend the fake magi to serve transcript bytes. Closes the catalog gap.',
-  ),
-  'SCN-http-mcp-plugin': needs(
-    'F4',
-    ['fake-mcp-server'],
-    'The plugin-MCP route needs a fake MCP server over the strict dispatcher.',
-  ),
-  'SCN-http-auth-claim': ready(
-    'F4',
-    'Real auth-code issue/exchange/session is already proven by the settings family; a dedicated claim story can be authored today.',
-  ),
   'SCN-http-mattermost-action': needs(
     'F4',
     ['mattermost-action-fixture'],
     'Action callbacks bypass the session gate but need the test secret option wired into the world; wire verification stays forward-only.',
-  ),
-  'SCN-http-admin-dashboard': needs(
-    'F4',
-    ['dashboard-auth-fixture'],
-    'The admin dashboard is a separate trust domain from settings sessions.',
-  ),
-  'SCN-http-billing-stats-readonly': needs(
-    'F4',
-    ['dashboard-auth-fixture'],
-    'Billing/stats share the dashboard trust domain, not the settings session vault.',
-  ),
-  'SCN-http-debug-live-panels': needs(
-    'F4',
-    ['debug-enabled-world-option'],
-    'The world hardcodes debugEnabled:false; debug-only paths 404 until a world option exists.',
   ),
   // F5 — reminders and deferred work
   'SCN-reminder-recurring-create': needs(
@@ -816,6 +817,11 @@ export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
     'Quota deny is seedable via consumeWebFetchQuota; the URL assertion seam is needed for the attempt to reach the quota check.',
   ),
   // F7 — settings MCP administration
+  'SCN-http-mcp-plugin': needs(
+    'F7',
+    ['fake-mcp-server'],
+    'The /mcp/plugin route makes papai the MCP server (in-process dispatch to a fixture plugin tool), unlike F7 admin-MCP which needs papai as a client to an external fake MCP server; F7 owns all MCP-harness machinery. Reclassified F4 to F7 (rule 6).',
+  ),
   'SCN-settings-admin-mcp-catalog': needs(
     'F7',
     ['fake-mcp-server'],

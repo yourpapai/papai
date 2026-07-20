@@ -82,6 +82,7 @@ const FAMILY_QUEUE_EXPECTATIONS: ReadonlyArray<readonly [string, StoryFamily]> =
   ['SCN-instructions-', 'F3'],
   ['SCN-history-', 'F3'],
   ['SCN-fetch-', 'F3'],
+  ['SCN-http-mcp-plugin', 'F7'],
   ['SCN-http-', 'F4'],
   ['SCN-deferred-', 'F5'],
   ['SCN-reminder-', 'F5'],
@@ -193,7 +194,7 @@ describe('scenario catalog coverage', () => {
   })
 
   test('tracks the executable coverage total', () => {
-    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(81)
+    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(87)
   })
 
   test('promotes command scenarios from blanket forward-only to confirmed', () => {
@@ -229,7 +230,7 @@ describe('scenario catalog coverage', () => {
   test('audit records cover exactly the pending scenarios', () => {
     const pendingIds = pendingCoverage.map(({ scenarioId }) => scenarioId)
 
-    expect(pendingIds).toHaveLength(47)
+    expect(pendingIds).toHaveLength(41)
     expect(sorted(Object.keys(AUDIT_RECORDS))).toEqual(sorted(pendingIds))
   })
 
@@ -258,8 +259,8 @@ describe('scenario catalog coverage', () => {
   test('audit readiness totals match the audit outcome', () => {
     const states = pendingCoverage.map((coverage) => coverage.audit.readiness.state)
 
-    expect(states.filter((state) => state === 'executable-as-is')).toHaveLength(2)
-    expect(states.filter((state) => state === 'needs-seam')).toHaveLength(23)
+    expect(states.filter((state) => state === 'executable-as-is')).toHaveLength(1)
+    expect(states.filter((state) => state === 'needs-seam')).toHaveLength(18)
     expect(states.filter((state) => state === 'blocked')).toHaveLength(22)
   })
 
