@@ -91,6 +91,13 @@ estimates; each family's own spec fixes the final count.
 | F7  | `settings-admin-mcp-*`                                                        | 2              | Settings routes, MCP adapter                                                                       | `fake-mcp-server` seam (already named in the catalog)                                                                                                                                                                                                                                                                                    |
 | F8  | `interaction-*`                                                               | 4              | Interaction routing, permission prompts                                                            | Platform-adapter fakes (grammY API, discord.js client). `interaction-permission-decision` is promotable today via `when.interaction`; the other three stay forward-only unless the refactor touches chat adapters                                                                                                                        |
 
+**Landed / decided (F1–F4)** — the `Est.` column above is the original projection; actuals are below, with full rationale in the "Reclassifications and amendments (F1–F4)" section at the end of this document. F5–F8 remain original estimates.
+
+- **F1** ~19 → **17 executable** + 2 blocked — `cmd-stop-graceful`/`abort` resolved via a realized `mid-turn-run-control` seam (not deferred as the pre-work hedged); the `compaction-trigger` knob was dropped.
+- **F2** 21 → **21 executable** — split into three specs (F2a / F2b1 / F2b2), not two.
+- **F3** ~13 → **12 executable** + 1 reclassified-pending — `fetch-chat-link` corrected from `public-url-assertion` to a Mattermost-resolver `platform-adapter-fakes` seam.
+- **F4** 8 → **6 executable** — `http-mcp-plugin` reclassified F4→F7; `http-mattermost-action` stays forward-only; zero production `src/` changes.
+
 **Not queued:** `nerv-*` (10) and `supervise-*` (10) — the production
 implementation does not exist, so no harness work can close them. They keep
 `blocked:missing-implementation` audit records and are revisited when the code
@@ -149,3 +156,76 @@ Binding on every family spec that follows:
 - **F8** depends on nobody building platform fakes speculatively; they are only
   justified if the refactor touches the chat adapters.
 - **Family specs may invalidate audit estimates**; the ledger totals rule (rule 5) keeps the catalog truthful as they do.
+
+## Reclassifications and amendments (F1–F4)
+
+Appended post-hoc as families landed; append-only. The Deliverable-2 table above is the
+original audit-validated projection — this section records where reality diverged, as
+anticipated by **Dependencies and risks** ("Family specs may invalidate audit estimates;
+the ledger totals rule keeps the catalog truthful"). F1–F3 are live in
+`tests/stories/catalog/coverage.ts`; F4 is decided in its spec and its ledger lands with
+F4's PR (rule 5). Every entry is a rule-6 auditable reclassification whose rationale lives
+in the corresponding audit record or family spec.
+
+### F1 — `meta-*` + `cmd-*` (landed)
+
+- **17 executable + 2 blocked** (`cmd-nerv`, `cmd-announce`) against the ~19 estimate.
+- **`cmd-stop-graceful` / `cmd-stop-abort` resolved, not deferred.** The table's pre-work
+  hedged they "may stay pending — the scripted LLM cannot block mid-turn today." F1
+  realized the `mid-turn-run-control` seam (a `nextGate()` gated-decision handle); both are
+  executable in `EXECUTABLE_STORY_MAPPINGS`.
+- **`compaction-trigger` seam dropped.** The "compaction-trigger knob on MemoryTaskProvider"
+  was not built; `meta-expand-result` triggers real compaction with a >8 KB `create_task`
+  description through the real tool path. The `compaction-trigger` id is now vestigial in
+  `STORY_SEAM_IDS`.
+- **`SETTINGS_PUBLIC_BASE_URL` `given.*` seam** flagged by F1 for F4 (see F4 below).
+
+### F2 — `task-*` (landed)
+
+- **21 executable** — the estimate met exactly.
+- **Three specs, not two.** The table said "split into two specs (lifecycle+policy, then
+  provider-surface)." It became three: F2a (lifecycle+policy), F2b1 (provider-surface), F2b2
+  (integration-surface). The MemoryTaskProvider expansion (~15 method groups) landed across
+  F2b1/F2b2.
+
+### F3 — `memory-*`/`memo-*` + `instructions-*` + `history-lookup` + `fetch-chat-link` (landed)
+
+- **12 executable + 1 reclassified-pending** against the ~13 estimate.
+- **`fetch-chat-link` reclassified (rule 6).** Audited `needs:[capability-ids,
+public-url-assertion]` → corrected to `needs:[capability-ids, platform-adapter-fakes]`,
+  **stays pending**. `fetch_chat_link` resolves Mattermost permalinks through the
+  authenticated Mattermost REST API (`resolveChatLink`), never `assertPublicUrl` (that
+  DNS/SSRF guard belongs to `web_fetch`, F6). Needs a Mattermost REST resolver fake, not
+  built speculatively. Consequence: **`public-url-assertion` is now an F6-only seam.**
+
+### F4 — `http-*` (decided; ledger lands with F4's PR)
+
+- **6 executable**, 1 reclassified-family, 1 stays-forward-only, against the 8 estimate.
+- **`http-mcp-plugin` reclassified F4 → F7 (rule 6).** The `fake-mcp-server` seam name is
+  shared with F7 but hides different machinery: the F4 route makes papai the MCP _server_
+  (in-process dispatch to a fixture plugin's tool), whereas F7 needs papai as a _client_ to
+  an external fake MCP server. F7 owns all MCP-harness machinery. Consequence:
+  **`fake-mcp-server` becomes an F7-only seam.**
+- **`http-mattermost-action` stays forward-only** (roadmap-consistent); the
+  `mattermost-action-fixture` seam is not built.
+- **Zero production `src/` changes** — unlike F1/F2/F3, which each added capability ids.
+  Every F4 seam (`debug-enabled-world-option`, `dashboard-auth-fixture`,
+  `notify-token-fixture`, `fake-magi-transcript`, plus the `SETTINGS_PUBLIC_BASE_URL`
+  `given.*` seam inherited from F1) is harness-only.
+- **`http-transcript-viewer` moves gap → executable.**
+
+### Seam-inventory drift
+
+| Seam                                 | Status after F1–F4                                                        |
+| ------------------------------------ | ------------------------------------------------------------------------- |
+| `compaction-trigger`                 | Vestigial — F1 dropped it (real >8 KB `create_task` payload instead).     |
+| `mid-turn-run-control`               | Realized in F1; backs the executable `cmd-stop-graceful`/`abort` stories. |
+| `public-url-assertion`               | F6-only after F3's `fetch-chat-link` reclassification.                    |
+| `fake-mcp-server`                    | F7-only after F4's `http-mcp-plugin` reclassification.                    |
+| `SETTINGS_PUBLIC_BASE_URL` `given.*` | F1-flagged, F4-owned.                                                     |
+
+### Ledger trajectory
+
+Audit baseline **32 / 96** (executable / pending) → current **81 / 47** (through F3) → F4
+projects **87 / 41**. The Deliverable-2 projection ("~75–95 executable if F1–F7 land")
+remains on track.

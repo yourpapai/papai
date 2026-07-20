@@ -19,6 +19,15 @@ See LICENSE in the project root for details.
 
 **Ledger arithmetic after this plan:** catalog 126 → **128** ids; executable 30 → **32**; pending 97 → **96** (18 `executable-as-is`, 56 `needs-seam`, 22 `blocked:missing-implementation`).
 
+**Snapshot note (post-hoc):** The inline `AUDIT_RECORDS` table (Task 1) and the counts
+above are the audit exactly as it landed (2026-07-19); they are **not** maintained as
+families execute. The authoritative, machine-checked ledger is
+`tests/stories/catalog/coverage.ts` (current: 128 ids / 81 executable / 47 pending). For
+the reclassifications since — F1's resolved `cmd-stop-*` pair and dropped
+`compaction-trigger`, F2's three-way split, F3's `fetch-chat-link` correction, and F4's
+`http-mcp-plugin` → F7 — see "Reclassifications and amendments (F1–F4)" in the roadmap
+spec.
+
 **Frozen-tree note:** `tests/stories/**` and `scripts/story/**` are frozen compat inputs — this plan re-baselines the manifest again; record the branch HEAD as the compat baseline after it lands. The 40-story scenario set itself is untouched.
 
 ---
