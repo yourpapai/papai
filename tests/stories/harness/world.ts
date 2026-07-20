@@ -97,6 +97,7 @@ export type ScenarioWorldOptions = Readonly<{
   runtimeExtensions?: readonly ScenarioRuntimeExtension[]
   testHooks?: ScenarioWorldTestHooks
   tempRoot?: string
+  debugEnabled?: boolean
 }>
 
 export type ScenarioWorld = Readonly<{
@@ -446,7 +447,7 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
         web: {
           route: (request) =>
             routeRequest(request, {
-              debugEnabled: false,
+              debugEnabled: options.debugEnabled ?? false,
               nowMs: clock.now().getTime(),
               pluginProviderRuntimeDeps,
             }),

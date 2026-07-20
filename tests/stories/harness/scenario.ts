@@ -245,6 +245,8 @@ type CodingSessionsAssertion = Readonly<{
   session(sessionId: string): CodingSessionAssertion
 }>
 
+type ResponseJsonAssertion = Readonly<{ contains(needle: string): void; equals(expected: unknown): void }>
+
 type ScenarioThen = Readonly<{
   replyTo(user: UserHandle): ReplyAssertion
   repliesTo(user: UserHandle): ReplyHistoryAssertion
@@ -252,6 +254,7 @@ type ScenarioThen = Readonly<{
   codingSessions(context: ContextHandle): CodingSessionsAssertion
   task(title: string): TaskAssertion
   responseStatus(response: Response, expected: number): void
+  responseJson(body: unknown): ResponseJsonAssertion
 }>
 
 export type ScenarioApi = Readonly<{
@@ -262,6 +265,8 @@ export type ScenarioApi = Readonly<{
 }>
 
 type WorldFactory = (name: string) => Promise<ScenarioWorld>
+
+export type ScenarioOptions = Readonly<{ debugEnabled?: boolean }>
 
 const contextId = (context: ContextHandle): string =>
   context.kind === 'dm' ? context.user.id : context.kind === 'thread' ? context.group.id : context.id
@@ -762,6 +767,12 @@ function createThen(world: ScenarioWorld): ScenarioThen {
     responseStatus(response, expected): void {
       tracedAssertion(world, () => expect(response.status).toBe(expected))
     },
+    responseJson(body): ResponseJsonAssertion {
+      return {
+        contains: (needle) => tracedAssertion(world, () => expect(JSON.stringify(body)).toContain(needle)),
+        equals: (expected) => tracedAssertion(world, () => expect(body).toEqual(expected)),
+      }
+    },
   }
 }
 
@@ -779,12 +790,15 @@ export function executeScenario(
   name: string,
   run: (api: ScenarioApi) => void | Promise<void>,
   createWorld?: WorldFactory,
+  options?: ScenarioOptions,
 ): Promise<void> {
   return runWithScenarioIoGuard(name, async (guard): Promise<void> => {
     const factory =
       createWorld ??
       ((scenarioName): Promise<ScenarioWorld> =>
-        import('./world.js').then((module) => module.createScenarioWorld(scenarioName, { tempRoot: guard?.tempRoot })))
+        import('./world.js').then((module) =>
+          module.createScenarioWorld(scenarioName, { tempRoot: guard?.tempRoot, debugEnabled: options?.debugEnabled }),
+        ))
     const world = await factory(name)
     guard?.bind({ events: world.events, http: world.http })
     let primaryFailure: Error | undefined
@@ -814,6 +828,10 @@ export function executeScenario(
   })
 }
 
-export function scenario(name: string, run: (api: ScenarioApi) => void | Promise<void>): void {
-  test(name, () => executeScenario(name, run))
+export function scenario(
+  name: string,
+  run: (api: ScenarioApi) => void | Promise<void>,
+  options?: ScenarioOptions,
+): void {
+  test(name, () => executeScenario(name, run, undefined, options))
 }

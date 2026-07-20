@@ -484,4 +484,25 @@ describe('scenario execution', () => {
     expect(String(aggregate.errors[1])).toContain('unconsumed HTTP expectations')
     expect(String(aggregate.errors[2])).toContain('unused decision')
   })
+
+  test('debugEnabled world option unlocks the debug-gated 404 → 401 boundary', async () => {
+    await executeScenario('debug-gate-off', async ({ when, then }) => {
+      then.responseStatus(await when.request('/debug'), 404)
+    })
+    await executeScenario(
+      'debug-gate-on',
+      async ({ when, then }) => {
+        then.responseStatus(await when.request('/debug'), 401)
+      },
+      undefined,
+      { debugEnabled: true },
+    )
+  })
+
+  test('then.responseJson traces contains/equals assertions against a parsed body', async () => {
+    await executeScenario('response-json', ({ then }) => {
+      then.responseJson({ principal: { display: 'bob' } }).contains('bob')
+      then.responseJson({ ok: true }).equals({ ok: true })
+    })
+  })
 })
