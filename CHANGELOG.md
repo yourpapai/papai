@@ -5,6 +5,240 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.10.0] - 2026-07-20
+
+### Added
+
+- **review-loop:** Add opencode NDJSON event-stream parser
+- **review-loop:** Add ProgressReporter interface and silent test reporter
+- **review-loop:** Add live progress formatting helpers
+- **review-loop:** Add LiveRenderer terminal state machine
+- **review-loop:** Stream opencode events to live progress reporter
+- **review-loop:** Live progress for build checks
+- **review-loop:** Stream real subprocess output through LiveRenderer
+- **review-loop:** Add trace-log module (events, RoundMetric, file logger)
+- **review-loop:** Synthesize tracePath on RunState (additive)
+- **review-loop:** Plan_drift verdict + valid/manual status mapping (schema + ledger)
+- **review-loop:** ResetWorktreeTo (reset --hard <sha> + clean -fd)
+- **review-loop:** Conservative prompt rewrites (evidence-gating, severity, commitMessage, plan_drift)
+- **review-loop:** Inject TraceLogger, accumulate RoundMetric, emit trace events
+- **review-loop:** Metrics.json + ASCII burndown block in summary
+- **review-loop:** Wire file trace logger + metrics.json; SIGKILL escalation on timeout
+- **deferred:** Wire progressive disclosure into proactive full path
+- **review-loop:** Add inspector schema and prompt templates
+- **review-loop:** Add inspector/phase/usage schemas and tally helpers
+- **review-loop:** Inspector gate with unified retry budget
+- **review-loop:** Worker pool with file-set-aware dispatch
+- **review-loop:** Parallel issue dispatch via worker pool
+- **review-loop:** Observability — inspector stats, per-phase wall-clock, cost
+- **review-loop:** --pool-size and --no-inspect flags; stale worktree cleanup
+- **behavior-audit:** Add gateway preflight script
+- **behavior-audit:** Add publish-snapshot script with pure helpers
+- **behavior-audit:** Add git plumbing to publish-snapshot
+- **behavior-audit:** Add CONCURRENCY config knob
+- **behavior-audit:** Add per-key async mutex helper
+- **behavior-audit:** Add shared types for scores sidecar and closure check
+- **behavior-audit:** Add entryPointHints to Phase 2b schema
+- **behavior-audit:** Add entryPointHints and closure fields to ConsolidatedBehavior
+- **src:** Export listToolNames and listRoutes for closure verifier
+- **behavior-audit:** Add static entry-point map builders
+- **behavior-audit:** Add closure verifier with hint resolution
+- **behavior-audit:** Wire Phase 2c closure verifier into pipeline
+- **behavior-audit:** Add percentile and bottom-decile helpers
+- **behavior-audit:** Add trend delta computation and prior-snapshot loader
+- **behavior-audit:** Emit scores.json sidecar with percentile and trend
+- **behavior-audit:** Surface percentile, trend, closure in markdown reports
+- **src:** Enumerate real builtin tool names and HTTP routes for closure verifier
+
+### Changed
+
+- **review-loop:** Simplify to shell-invoked agents with file-based exchange
+- **review-loop:** Remove repoRoot from config, default --config and --repo
+- **review-loop:** Thread ProgressReporter through agent call sites
+- **review-loop:** Agent writes outputs in-worktree, runner copies to runs dir
+- **knip:** Convert to TS config with svelte component tracing
+- **client:** Move story-only UI components into stories harness
+- **tests:** Route test-only seams through *.testing.ts shims
+- **deferred:** Route all prompts through the unified full run
+- **deferred:** Remove execution mode field and its references
+- **review-loop:** RunAgent returns AgentRunResult with usage data
+- **review-loop:** Remove dead primaryHead() from WorkerPool
+- **behavior-audit:** Raise Phase 2a concurrency with per-key mutex and delta-merge manifest
+- **behavior-audit:** Raise Phase 2b concurrency with delta-merge manifest
+- **behavior-audit:** Raise Phase 3 concurrency with progress mutex
+- **behavior-audit:** Replace grep shell-out with pure-JS implementation
+- **behavior-audit:** Only re-verify selected feature keys in Phase 2c
+- **llm:** Adopt canonical AI SDK v7 names; declare Tool over ToolSet[string]
+- **audit:** Remove dead GitOps.branchExists surface
+
+### Documentation
+
+- Review-loop simplification design spec
+- Review-loop simplification implementation plan
+- **review-loop:** Live progress reporting design
+- **review-loop:** Live progress reporting implementation plan
+- **review-loop:** Design prompt improvements, correctness fixes, and trace logging
+- **review-loop:** Reconcile spec with branch (3 fixes shipped, fixer commit design)
+- **review-loop:** Fold Run 1 validated fixes into spec (clean -fd, valid+manual, matcher bound)
+- **review-loop:** Fold in all-call-sites, plan_drift verdict, SIGKILL escalation
+- **review-loop:** Add per-round decision metrics, dual severity, burndown artifacts
+- **review-loop:** Implementation plan for prompt/trace/metrics/correctness
+- **review-loop:** Add run-1 retrospective
+- Knip ignore-list cleanup design
+- Knip ignore-list cleanup implementation plan
+- Sync knip plan with task-1 findings (svelte dep, bridge root, widened glob)
+- Record alias-const shim form in knip plan
+- Design for removing deferred-prompt execution modes
+- Implementation plan for removing deferred-prompt modes
+- Proactive path now uses progressive disclosure; modes removed
+- **specs:** Review-loop parallel fixes + inspector design
+- **plans:** Review-loop parallel fixes + inspector implementation plan
+- **behavior-audit:** Add Tier 1/2/3 design specs and implementation plans
+- **architecture:** Document behavior-audit CI secrets
+
+### Fixed
+
+- **review-loop:** Add CLI entry point — runCli was defined but never called
+- **review-loop:** Resolve default config path relative to module, not CWD
+- **review-loop:** Default repoRoot to git toplevel so .review-loop lands at repo root
+- **review-loop:** Run opencode with --auto so agents can write outputs
+- **review-loop:** Use per-run worktree path to avoid stale reuse and allow concurrency
+- **review-loop:** Gate merge on final build check and reset to baseline on retry failure
+- **review-loop:** RepoRoot present in a config file is silently ignored, diverging from the plan's config contract
+- **review-loop:** ProgressLog interface is dead code
+- **review-loop:** Build-checker discards the real non-zero exit code, always reporting 1 on failure
+- **review-loop:** --auto flag dropped from opencode invocation — agents cannot write files in production
+- **review-loop:** BuildFixPrompt hardcodes `bun check:full` instead of using configured checkCommand
+- **review-loop:** Orchestrator does not verify fixer commits — uncommitted fixes are silently lost on merge
+- **review-loop:** Agent runner test does not assert the --auto flag — allowed critical regression
+- **review-loop:** WorktreeExists signature changed from async to sync — diverges from plan interface
+- **review-loop:** Config.example.json omits repoRoot — diverges from plan's documented config shape
+- **review-loop:** PlanPath stored without absolute path resolution — may not resolve in worktree
+- **review-loop:** MakeRunId() produces colliding IDs via millisecond-precision timestamps
+- **review-loop:** Matcher LLM agent invoked with zero new issues on clean convergence — wasted call on every successful run
+- **review-loop:** Terminal-status issues excluded from matcher context cause re-discovery as duplicate ledger records
+- **tests:** Stabilize warnIfLegacyDebugToken logger mock under serial test runs
+- **review-loop:** Summary.txt written before final build check — records 'clean' even when merge is skipped
+- **review-loop:** Retry fixer result is not validated against fixed/verdict — build-pass alone marks issue as fixed
+- **review-loop:** Agent JSON outputs land inside the worktree and can be committed by ensureFixerChangesCommitted's `git add -A`
+- **review-loop:** RecordVerification stores a full FixerResult (with extra fixed/commitSha) as verifierDecision
+- **review-loop:** EnsureFixerChangesCommitted silently drops uncommitted retry fixer changes when HEAD has moved
+- **review-loop:** BuildCheckDeps.cwd and BuildCheckDeps.command are dead code — runBuildCheck never reads them
+- **review-loop:** ParseCliArgs --resume-run branch missing continue statement
+- **review-loop:** RealSpawn error handler discards error details on spawn failure
+- **review-loop:** RealSpawn treats signal-killed processes as exit code 0, risking acceptance of partial output
+- **review-loop:** FormatSummary omits non-terminal issue statuses, hiding unresolved issues on max_rounds termination
+- **review-loop:** Resume flow does not validate or clean worktree state from crashed previous runs
+- **review-loop:** BuildRetryFixPrompt does not include checkCommand — retry agent lacks self-verification context
+- **review-loop:** In-flight ledger changes lost on mid-round crash — save only happens at round boundaries
+- **check:** Re-apply 15s test timeout via CLI (bunfig [test] timeout ignored by bun)
+- **review-loop:** Run-state uses per-run worktree paths and a UUID-suffixed runId instead of the plan's shared worktree + ISO runId
+- **review-loop:** TargetFiles information discarded when recording needs_human after retry build failure
+- **review-loop:** Fixer changes not reverted on non-fix verdicts — partial edits leak into subsequent issue commits
+- **review-loop:** No subprocess timeout on realSpawn or createShellExec — hanging processes stall the loop indefinitely
+- **review-loop:** Fixed N/M issues log uses misleading denominator — includes terminal-status records that cannot be fixed
+- **review-loop:** No-commit guard, resetWorktreeTo reverts, matcher bounding, agent commitMessage, dedupe decision tally
+- **review-loop:** Guard empty/whitespace commitMessage fallback
+- **knip:** Move svelte to dependencies; correct kaneo bridge entry root
+- **review-loop:** Surface final build-check output and stabilize the gate
+- **opencode:** Track plugin sources imported by the test suite
+- **tests:** Skip opencode.json portability checks when local config is absent
+- **deferred:** Drop remaining mode references from log + test fixture
+- **review-loop:** Inspector failure reports "inspector unavailable" and bumps tallies
+- **review-loop:** Parse conflict file paths via git diff --name-only
+- **review-loop:** Build check runs in worker worktree; expose ReviewLoopDeps.inspect
+- **review-loop:** Thread fixer reasoning into inspector prompt; per-worker labels
+- **review-loop:** Per-worker output paths eliminate concurrent agent race
+- **review-loop:** Persist currentRound at round entry; bump fixer/inspector timeouts
+- **review-loop:** Preserve worker worktrees on error for post-mortem inspection
+- **review-loop:** Distinguish inspector-unavailable from inspector-rejected in needs_human record an
+- **review-loop:** Isolate per-issue dispatch failures as needs_human instead of aborting the round
+- **review-loop:** Salvage review-loop's own review findings (race + usage + isolation)
+- **review-loop:** Pin confidence to 0-1 range in reviewer + inspector prompts
+- **review-loop:** Pass absolute agent-output path to prevent project-root mis-resolution
+- **review-loop:** Clean all stale worker worktrees on fresh start
+- **review-loop:** Move pool.close() to finally so cleanup doesnt print misleading worktrees preserve
+- **review-loop:** Abort rebase on non-conflict errors to keep worker worktree clean
+- **review-loop:** Tally merge/rebase wall-clock under fix phase in runCommitAttempt
+- **review-loop:** Treat per-issue ledger save as best-effort to prevent transient save errors from a
+- **review-loop:** Include uncommitted fixer edits in inspector diff
+- **review-loop:** Preserve inspector error message in inspect_complete trace event
+- **review-loop:** Use neutral issue processing failed label for dispatcher catch-all
+- **review-loop:** Reset worker to baseline when processIssueAttempt throws
+- **review-loop:** Include inspector_rejected in burndown avgFix denominator
+- **review-loop:** Preserve inspector failure cause in unavailable reasoning
+- **review-loop:** Drop misleading worktrees preserved message on error path
+- **review-loop:** Include untracked files in inspector diff via git add -N
+- **review-loop:** Ensure rebase --abort always runs in conflict branch
+- **review-loop:** Surface merge conflicts as actionable errors with preserved artifacts
+- **behavior-audit:** Surface git failures in publish-snapshot
+- **behavior-audit:** Forward entryPointHints from LLM output to consolidated artifacts
+- **behavior-audit:** Recreate orphan branch each publish to preserve orphan property
+- **behavior-audit:** Drop existing audit-output ref before orphan checkout
+- **behavior-audit:** Thread true featureKey through scores-writer instead of consolidatedId
+- **behavior-audit:** Drain stderr concurrently and ignore stdout in RealGitOps.run to prevent pipe-b
+- **behavior-audit:** Strip trailing slash from BEHAVIOR_AUDIT_BASE_URL in preflight
+- **behavior-audit:** Log git branch -D failures in publish-snapshot instead of swallowing silently
+- **audit:** Use recursive cp in publish-snapshot to handle subdirectories
+- **behavior-audit:** Keep valid model ids when sibling entries are non-string in preflight
+- **audit:** Return friendly error when grep file enumeration fails
+- **review-loop:** Resolve agent scratch path against worktree cwd, not process.cwd()
+- **deps:** Adapt codebase to typescript 7 / vite 8 / vite-plugin-svelte 7 bumps
+
+### Miscellaneous
+
+- **review-loop:** Drop unused workspace deps from lockfile
+- **client:** Delete dead exports and types surfaced by svelte tracing
+- Delete forward-compat llm-provider leftovers and orphan debug types module
+- **coding-sessions:** Mark public seam exports with @public tags
+- **knip:** Narrow plugin client glob to task-provider bridges
+- Remove opencode local config from tracking
+- **knip:** Register publish-snapshot entry and export ignore
+- **knip:** Ignore forward-compat CONCURRENCY export
+- **knip:** Ignore forward-compat async-mutex helper
+- **knip:** Ignore resetGrepCache test-only seam in behavior-audit tools
+- **knip:** Ignore forward-compat scores-types unused until Tier 3 wiring
+- **knip:** Ignore parseConsolidationResult test-only export in consolidate-agent
+- **knip:** Ignore forward-compat entry-point map exports
+- **knip:** Ignore forward-compat percentile/trend helpers
+- **knip:** Remove stale forward-compat ignores after Tier 2/3 wiring
+- **deps:** AI SDK v7 + Storybook 10 + TS 6; hoist system messages out of prompt arrays
+
+### Testing
+
+- **review-loop:** Cover realSpawn line splitting
+- **review-loop:** Cover all 8 trace event variants; warn on trace write failure
+- **review-loop:** Cover matcher bounding; guard empty sanitized commit subject
+- **storybook:** Read knip.config.ts in story discovery contract
+- **deferred-prompts:** Add prepareStep gating test, reword stale full-mode names
+- **deferred-prompts:** Fix stale file-path header in proactive-llm.test.ts
+- **deferred-prompts:** Reword stale Full mode inline comment to match unified proactive describe bl
+- **deferred-prompts:** Rename stale full-mode persistence test to proactive persistence
+- **review-loop:** End-to-end pool + inspector integration tests
+- **review-loop:** Assert --no-inspect blocks the per-worker inspect.json path
+- **behavior-audit:** Cover preflight failure paths
+- **behavior-audit:** Add grep-sample fixture tree
+- **audit:** Seed local git identity in publish-snapshot real-git integration for hermetic isolation
+- **behavior-audit:** Register BEHAVIOR_AUDIT_CONCURRENCY in env restore helper
+
+### Ci
+
+- **behavior-audit:** Add nightly workflow with preflight and publish
+- **behavior-audit:** Fetch prior snapshot tag for trend computation
+- Bump github/codeql-action/upload-sarif in the github-actions group
+- **behavior-audit:** Drop unused GH_TOKEN env from Publish snapshot step
+
+### Deps
+
+- Bump the bun-dependencies group with 3 updates
+
+### Gitignore
+
+- Add opencode local config
+
+### Revert
+
+- **docs:** Undo oxfmt 0.59 markdown table mangling; exclude docs/ from oxfmt
 ## [6.9.0] - 2026-07-15
 
 ### Added
