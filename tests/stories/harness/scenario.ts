@@ -20,6 +20,7 @@ import {
   setCodingSessionRecord,
   type SessionRecord,
 } from '../../../src/coding-sessions/store.js'
+import { issueClaim } from '../../../src/dashboard-auth/index.js'
 import { getDrizzleDb } from '../../../src/db/drizzle.js'
 import { memoryRecords } from '../../../src/db/schema.js'
 import { sweepDirtyContexts, type SweepDeps } from '../../../src/long-term-memory/capture-sweep.js'
@@ -43,11 +44,12 @@ import type { DiscoveredPlugin } from '../../../src/plugins/types.js'
 import type { TaskCapability } from '../../../src/providers/types.js'
 import { setToolPrefs, type ToolPrefs } from '../../../src/tools/tool-preferences.js'
 import { MATCH_EMBEDDING } from './embeddings.js'
-import { SCENARIO_PLATFORM_INSTANCE_ID, type SettingsSessionHandle } from './fixtures.js'
+import { SCENARIO_PLATFORM_INSTANCE_ID, type DashboardSessionHandle, type SettingsSessionHandle } from './fixtures.js'
 import { runWithScenarioIoGuard } from './io-guard.js'
 import type { ScenarioRuntimeExtension } from './runtime-extension.js'
 import type { ModelDecision } from './scripted-llm.js'
 import {
+  ADMIN_USER_ID,
   type ContextHandle,
   type DmHandle,
   type GroupHandle,
@@ -129,6 +131,7 @@ type ScenarioGiven = Readonly<{
   assign(context: ContextHandle, taskInstance: TaskInstanceHandle): void
   toolPrefs(context: ContextHandle, prefs: ToolPrefs): void
   settingsSession(user: UserHandle): Promise<SettingsSessionHandle>
+  dashboardSession(): Promise<DashboardSessionHandle>
   admin(user: UserHandle, options?: Readonly<{ superAdmin?: boolean }>): void
   settingsAdminSession(user: UserHandle, options?: Readonly<{ superAdmin?: boolean }>): Promise<SettingsSessionHandle>
   plugin(plugin: DiscoveredPlugin): PluginHandle
@@ -213,6 +216,7 @@ type ScenarioWhen = Readonly<{
   interaction(user: UserHandle, context: ContextHandle, callbackData: string): Promise<void>
   settingsSession(user: UserHandle): Promise<SettingsSessionHandle>
   request(path: string, init?: RequestInit): Promise<Response>
+  dashboardRequest(session: DashboardSessionHandle, path: string, init?: RequestInit): Promise<Response>
   settingsRequest(
     session: SettingsSessionHandle,
     path: string,
@@ -370,6 +374,16 @@ async function createSettingsSession(world: ScenarioWorld, user: UserHandle): Pr
   return world.fixtures.settingsSessions.parseExchange(principal, response)
 }
 
+async function createDashboardSession(world: ScenarioWorld): Promise<DashboardSessionHandle> {
+  const claim = issueClaim(ADMIN_USER_ID, SCENARIO_PLATFORM_INSTANCE_ID)
+  const response = await runtimeRequest(world, '/auth/claim', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ n: claim.nonce }).toString(),
+  })
+  return world.fixtures.dashboardSessions.parseClaim(response)
+}
+
 function tracedAssertion(world: ScenarioWorld, assertion: () => void): void {
   try {
     assertion()
@@ -503,6 +517,10 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
     settingsSession(user): Promise<SettingsSessionHandle> {
       prerequisite('given.settingsSession')
       return createSettingsSession(world, user)
+    },
+    dashboardSession(): Promise<DashboardSessionHandle> {
+      world.events.setPhase('given.dashboardSession')
+      return createDashboardSession(world)
     },
     toolPrefs(context, prefs): void {
       prerequisite('given.toolPrefs')
@@ -689,6 +707,11 @@ function createWhen(world: ScenarioWorld): ScenarioWhen {
     request(path, init): Promise<Response> {
       world.events.setPhase('when.request')
       return runtimeRequest(world, path, init)
+    },
+    dashboardRequest(session, path, init): Promise<Response> {
+      world.events.setPhase('when.dashboardRequest')
+      const headers = world.fixtures.dashboardSessions.buildHeaders(session, init?.headers)
+      return runtimeRequest(world, path, { ...init, headers })
     },
     settingsRequest(session, path, init, options): Promise<Response> {
       world.events.setPhase('when.settingsRequest')

@@ -7,6 +7,7 @@ import { z } from 'zod'
 
 import { saveAttachment } from '../../../src/attachments/store.js'
 import { addAuthorizedGroup, setGuestMode } from '../../../src/authorized-groups.js'
+import { SESSION_COOKIE_NAME as DASHBOARD_SESSION_COOKIE_NAME } from '../../../src/dashboard-auth/cookie.js'
 import { addGroupMember } from '../../../src/groups.js'
 import { setIdentityMapping } from '../../../src/identity/mapping.js'
 import { addAdmin, SUPER_ADMIN_PLATFORM_ID } from '../../../src/instances/admin-store.js'
@@ -129,6 +130,74 @@ export function createSettingsSessionVault(): SettingsSessionVault {
   }
 }
 
+const dashboardSessionOwner: unique symbol = Symbol('scenario-dashboard-session-owner')
+
+export type DashboardSessionHandle = Readonly<{
+  kind: 'dashboard-session'
+  readonly [dashboardSessionOwner]: object
+}>
+
+export type DashboardSessionVault = Readonly<{
+  parseClaim(response: Response): Promise<DashboardSessionHandle>
+  buildHeaders(session: DashboardSessionHandle, initial?: HeadersInit): Headers
+  reset(): void
+  revoke(): void
+}>
+
+function extractDashboardCookie(setCookie: string | null): string {
+  if (setCookie === null) throw new Error('Dashboard claim response had no Set-Cookie header')
+  const match = new RegExp(`${DASHBOARD_SESSION_COOKIE_NAME}=([^;]+)`, 'u').exec(setCookie)
+  if (match?.[1] === undefined) throw new Error('Dashboard claim response did not set a dashboard_session cookie')
+  return match[1]
+}
+
+export function createDashboardSessionVault(): DashboardSessionVault {
+  const owner = Object.freeze({})
+  const cookies = new Map<DashboardSessionHandle, string>()
+  let active = true
+
+  const resolve = (session: DashboardSessionHandle): string => {
+    if (!active) throw new Error('Scenario dashboard sessions are no longer active')
+    if (typeof session !== 'object' || session === null || !Object.hasOwn(session, dashboardSessionOwner)) {
+      throw new Error('Unknown dashboard session handle')
+    }
+    if (session[dashboardSessionOwner] !== owner) {
+      throw new Error('Dashboard session handle belongs to a different scenario world')
+    }
+    const stored = cookies.get(session)
+    if (stored === undefined) throw new Error('Unknown dashboard session handle')
+    return stored
+  }
+
+  return {
+    parseClaim(response): Promise<DashboardSessionHandle> {
+      if (!active) throw new Error('Scenario dashboard sessions are no longer active')
+      if (response.status !== 302) throw new Error(`Dashboard claim failed with status ${response.status}`)
+      const cookie = extractDashboardCookie(response.headers.get('Set-Cookie'))
+      const handle: DashboardSessionHandle = Object.freeze({
+        kind: 'dashboard-session',
+        [dashboardSessionOwner]: owner,
+      })
+      cookies.set(handle, cookie)
+      return Promise.resolve(handle)
+    },
+    buildHeaders(session, initial): Headers {
+      const cookie = resolve(session)
+      const headers = new Headers(initial)
+      headers.set('Cookie', `${DASHBOARD_SESSION_COOKIE_NAME}=${cookie}`)
+      return headers
+    },
+    reset(): void {
+      cookies.clear()
+      active = true
+    },
+    revoke(): void {
+      cookies.clear()
+      active = false
+    },
+  }
+}
+
 const SCENARIO_PLUGIN: DiscoveredPlugin = {
   manifest: {
     id: 'scenario-approved-plugin',
@@ -175,6 +244,7 @@ export type ScenarioFixturesOptions = Readonly<{
 export type ScenarioFixtures = Readonly<{
   taskProvider: TaskProvider
   settingsSessions: SettingsSessionVault
+  dashboardSessions: DashboardSessionVault
   setupDatabase(): Promise<void>
   seedPlatformInstance(input?: Readonly<{ id?: string; type?: PlatformInstanceType }>): void
   seedTaskInstance(input?: Readonly<{ id?: string; type?: string }>): void
@@ -228,6 +298,7 @@ export type ScenarioFixtures = Readonly<{
 export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): ScenarioFixtures {
   const taskProvider = options.taskProvider ?? new MemoryTaskProvider()
   const settingsSessions = createSettingsSessionVault()
+  const dashboardSessions = createDashboardSessionVault()
   let nextInstructionId = 0
 
   const teardownRegistries = (): void => {
@@ -238,14 +309,17 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
   const teardown = (): void => {
     teardownRegistries()
     settingsSessions.revoke()
+    dashboardSessions.revoke()
   }
 
   return {
     taskProvider,
     settingsSessions,
+    dashboardSessions,
     async setupDatabase(): Promise<void> {
       teardownRegistries()
       settingsSessions.reset()
+      dashboardSessions.reset()
       await setupTestDb()
       resetSystemConfigCacheForTesting()
     },

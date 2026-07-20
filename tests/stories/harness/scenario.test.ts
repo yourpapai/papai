@@ -505,4 +505,14 @@ describe('scenario execution', () => {
       then.responseJson({ ok: true }).equals({ ok: true })
     })
   })
+
+  test('given.dashboardSession authorizes a dashboard-gated route that rejects anonymous callers', async () => {
+    await executeScenario('dashboard-session', async ({ given, when, then }) => {
+      const anon = await when.request('/admin/identity/mappings')
+      then.responseStatus(anon, 401)
+      const session = await given.dashboardSession()
+      const authorized = await when.dashboardRequest(session, '/admin/identity/mappings')
+      then.responseStatus(authorized, 200)
+    })
+  })
 })

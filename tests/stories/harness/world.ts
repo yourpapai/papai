@@ -34,7 +34,7 @@ import { createScriptedModel, type ScriptedModel } from './scripted-llm.js'
 import { createStrictHttpDispatcher, type StrictHttpDispatcher } from './strict-http.js'
 
 const FIXED_NOW = '2026-01-01T00:00:00.000Z'
-const ADMIN_USER_ID = 'scenario-admin'
+export const ADMIN_USER_ID = 'scenario-admin'
 
 export type ScenarioClock = Readonly<{ now(): Date; advance(milliseconds: number): void }>
 export type ScenarioIds = Readonly<{ next(namespace: string): string }>
