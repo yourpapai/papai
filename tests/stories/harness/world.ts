@@ -541,7 +541,10 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     registerRuntimeExtension,
     message: (user, context, text) => messageForContext(world, user, context, text),
     repliesForThread: (thread) => repliesForThread(world, thread),
-    settle: pending.settle,
+    settle: async (): Promise<void> => {
+      await pending.settle()
+      await http.idle()
+    },
     verify,
     stop,
     get api(): ScenarioApi {
