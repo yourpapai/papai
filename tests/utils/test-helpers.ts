@@ -215,6 +215,14 @@ export interface SeedTestTaskInstanceInput {
   status?: InstanceStatus
 }
 
+export function seedTestSystemConfig(input: { key: string; value: string }): void {
+  getTestDb()
+    .insert(schema.systemConfig)
+    .values({ key: input.key, value: input.value, updatedAt: Date.now(), updatedBy: 'scenario' })
+    .onConflictDoUpdate({ target: schema.systemConfig.key, set: { value: input.value, updatedAt: Date.now() } })
+    .run()
+}
+
 export function seedTestPlatformInstance(input: SeedTestPlatformInstanceInput): void {
   getTestDb()
     .insert(schema.platformInstances)

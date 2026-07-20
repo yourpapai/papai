@@ -208,6 +208,7 @@ type ScenarioGiven = Readonly<{
     }>,
   ): void
   instruction(context: ContextHandle, text: string, id?: string): { id: string }
+  notifyToken(token: string): void
 }>
 
 type ScenarioWhen = Readonly<{
@@ -677,6 +678,10 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
         text,
         ...(id === undefined ? {} : { id }),
       })
+    },
+    notifyToken(token): void {
+      prerequisite('given.notifyToken')
+      world.fixtures.seedNotifyToken(token)
     },
   }
 }

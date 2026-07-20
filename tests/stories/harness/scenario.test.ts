@@ -9,6 +9,7 @@ import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import { resolveMcpServers } from '../../../src/coding-credentials/resolve-mcp-servers.js'
 import { getRepoByName } from '../../../src/coding-repos/store.js'
 import { isAdmin, isSuperAdmin } from '../../../src/instances/admin-store.js'
+import { getNotifyToken } from '../../../src/notify-token.js'
 import { getActivatedPluginIds } from '../../../src/plugins/loader.js'
 import type { TaskCapability } from '../../../src/providers/types.js'
 import { SESSION_TTL_MS } from '../../../src/settings/session-store.js'
@@ -513,6 +514,17 @@ describe('scenario execution', () => {
       const session = await given.dashboardSession()
       const authorized = await when.dashboardRequest(session, '/admin/identity/mappings')
       then.responseStatus(authorized, 200)
+    })
+  })
+
+  test('given.notifyToken seeds a token isolated per scenario despite the module cache', async () => {
+    await executeScenario('notify-token-a', ({ given }) => {
+      given.notifyToken('token-alpha')
+      expect(getNotifyToken()).toBe('token-alpha')
+    })
+    // A later scenario in the same worker must not see the previous cached token.
+    await executeScenario('notify-token-b', () => {
+      expect(getNotifyToken()).toBeNull()
     })
   })
 })

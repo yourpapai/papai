@@ -16,6 +16,7 @@ import type { PlatformInstanceType } from '../../../src/instances/types.js'
 import { saveMemoryRecord } from '../../../src/long-term-memory/store.js'
 import type { MemoryRecord, MemoryRecordInput } from '../../../src/long-term-memory/types.js'
 import { saveMemo, updateMemoEmbedding } from '../../../src/memos.js'
+import { resetNotifyTokenCacheForTesting } from '../../../src/notify-token.js'
 import { pluginRegistry } from '../../../src/plugins/registry.js'
 import { PLUGIN_API_VERSION, type DiscoveredPlugin } from '../../../src/plugins/types.js'
 import {
@@ -35,6 +36,7 @@ import {
   seedTestConversationHistory,
   seedTestMemoryExtractionState,
   seedTestPlatformInstance,
+  seedTestSystemConfig,
   seedTestTaskInstance,
   seedTestUserInstruction,
   setupTestDb,
@@ -265,6 +267,7 @@ export type ScenarioFixtures = Readonly<{
     }>,
   ): void
   seedSystemLlmConfig(input?: Readonly<{ apiKey?: string; baseUrl?: string; mainModel?: string }>): void
+  seedNotifyToken(token: string): void
   seedRelayAttachment(
     input: Readonly<{ contextId: string; filename: string; content: string; mimeType?: string }>,
   ): Promise<{ id: string }>
@@ -322,6 +325,7 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
       dashboardSessions.reset()
       await setupTestDb()
       resetSystemConfigCacheForTesting()
+      resetNotifyTokenCacheForTesting()
     },
     seedPlatformInstance(input = {}): void {
       seedTestPlatformInstance({ id: input.id ?? SCENARIO_PLATFORM_INSTANCE_ID, type: input.type ?? 'telegram' })
@@ -381,6 +385,9 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
       setSystemConfig('llm_apikey', input.apiKey ?? 'scenario-api-key', 'scenario-admin')
       setSystemConfig('llm_baseurl', input.baseUrl ?? 'https://llm.invalid/v1', 'scenario-admin')
       setSystemConfig('main_model', input.mainModel ?? 'scenario-main-model', 'scenario-admin')
+    },
+    seedNotifyToken(token): void {
+      seedTestSystemConfig({ key: 'notify_token', value: token })
     },
     async seedRelayAttachment(input): Promise<{ id: string }> {
       const ref = await saveAttachment({
