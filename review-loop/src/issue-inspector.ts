@@ -41,7 +41,17 @@ export async function runInspector(
   trace: TraceLogger,
   collector?: RoundCollector,
 ): Promise<InspectorResult & { kind: 'inspected'; usage: AgentUsage }> {
-  const { stdout: diff } = await execGit(deps.cwd, ['diff', `${deps.baselineSha}..HEAD`])
+  // The fixer is instructed not to commit; the orchestrator commits only in
+  // runCommitAttempt, which runs AFTER this step. At inspector time HEAD still
+  // equals baselineSha, so `diff baselineSha..HEAD` would always be empty.
+  // Diffing the working tree against baseline captures the fixer's uncommitted
+  // edits (and also handles the retry case, where the worker was reset).
+  // `git diff <commit>` only shows tracked files, so mark untracked files as
+  // intent-to-add first; otherwise a fix that creates a new file would be
+  // invisible to the inspector and always rejected. The marker is overwritten
+  // by the subsequent `git add -A` in ensureFixerChangesCommitted.
+  await execGit(deps.cwd, ['add', '-N', '.'])
+  const { stdout: diff } = await execGit(deps.cwd, ['diff', deps.baselineSha])
   const result = await runAgent({
     spawn: deps.spawn,
     model: deps.model,
@@ -97,13 +107,13 @@ export async function runInspectorOrTreatAsRejection(
   } catch (error) {
     const originalReasoning = error instanceof Error ? error.message : String(error)
     deps.log.log(`[inspect] inspector unavailable: ${originalReasoning}`)
-    emitInspectComplete(deps.trace, round, record.id, false, 0, 'inspector unavailable')
+    emitInspectComplete(deps.trace, round, record.id, false, 0, `inspector unavailable: ${originalReasoning}`)
     if (collector !== undefined) {
       tallyInspector(collector, false)
     }
     return {
       kind: 'unavailable',
-      reasoning: 'inspector unavailable',
+      reasoning: `inspector unavailable: ${originalReasoning}`,
       usage:
         error instanceof AgentRunError
           ? error.usage

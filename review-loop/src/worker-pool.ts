@@ -23,7 +23,6 @@ export interface WorkerPool {
   acquire(primaryFile: string): Promise<Worker>
   release(worker: Worker): void
   mergeWorkerIntoPrimary(worker: Worker): Promise<{ ok: true } | { ok: false; conflictFiles: string[] }>
-  primaryHead(): Promise<string>
   primaryWorktreePath: string
   primaryBranch: string
   /** Returns the worktree paths of all pool workers (for diagnostics and cleanup-on-error). */
@@ -98,12 +97,6 @@ function mergeWorkerIntoPrimary(
   })
 }
 
-function primaryHead(internals: PoolInternals, primaryWorktreePath: string): Promise<string> {
-  return withPrimaryLock(internals, () =>
-    execGit(primaryWorktreePath, ['rev-parse', 'HEAD']).then((r) => r.stdout.trim()),
-  )
-}
-
 async function closePool(repoRoot: string, internals: PoolInternals): Promise<void> {
   await Promise.all(
     internals.workers.map((w) => removeWorktree(repoRoot, w.worktreePath, w.branch.replace('review-loop/', ''))),
@@ -170,8 +163,6 @@ export async function createWorkerPool(config: ReviewLoopConfig, runState: RunSt
 
     mergeWorkerIntoPrimary: (worker: Worker) =>
       mergeWorkerIntoPrimary(internals, primaryWorktreePath, primaryBranch, worker),
-
-    primaryHead: () => primaryHead(internals, primaryWorktreePath),
 
     workerPaths: () => internals.workers.map((w) => w.worktreePath),
 

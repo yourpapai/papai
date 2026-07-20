@@ -384,7 +384,8 @@ describe('processIssue unified retry budget', () => {
     const inspectEvents = events.filter((e) => e.event === 'inspect_complete')
     expect(inspectEvents).toHaveLength(2)
     for (const e of inspectEvents) {
-      expect(e.reasoning).toBe('inspector unavailable')
+      expect(e.reasoning.startsWith('inspector unavailable:')).toBe(true)
+      expect(e.reasoning).not.toBe('inspector unavailable')
     }
     expect(collector.inspector.runs).toBe(2)
     expect(collector.inspector.rejected).toBe(2)
@@ -608,6 +609,39 @@ describe('processPendingIssues pool dispatch', () => {
 
     expect(fixed).toBe(1)
     expect(execCwdLog).toEqual([workerRepo])
+  })
+
+  test('worker working tree is reset when processIssueAttempt throws unexpectedly', async () => {
+    const repoRoot = makeTempDir('issue-proc-crash-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupRepo(runState.worktreePath)
+    const workerRepo = makeTempDir('worker-')
+    await setupRepo(workerRepo)
+    ledger.snapshot.issues['rec-1'] = buildRecord()
+    const baselineSha = (await execGit(workerRepo, ['rev-parse', 'HEAD'])).stdout.trim()
+    const { spawn } = createFixerOnlySpawn()
+    const crashingExec: ShellExecFn = () => Promise.reject(new Error('unexpected crash'))
+    const { pool } = fakePool({ size: 1, worktreePaths: [workerRepo] })
+    const collector = newCollector()
+    const { logger } = createCapturingTraceLogger()
+    const reporter: ProgressReporter = silentReporter()
+
+    await processPendingIssues(
+      { config, runState, ledger, spawn, exec: crashingExec, log: reporter, trace: logger, pool, inspect: false },
+      1,
+      collector,
+      [ledger.snapshot.issues['rec-1']],
+    )
+
+    expect(ledger.snapshot.issues['rec-1'].status).toBe('needs_human')
+    const status = (await execGit(workerRepo, ['status', '--porcelain'])).stdout.trim()
+    expect(status).toBe('')
+    const headAfter = (await execGit(workerRepo, ['rev-parse', 'HEAD'])).stdout.trim()
+    expect(headAfter).toBe(baselineSha)
   })
 })
 

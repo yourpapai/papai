@@ -86,7 +86,7 @@ describe('runInspector', () => {
         issue,
         baselineSha: 'HEAD',
         fixerReasoning: 'mock fixer reasoning',
-        outputPath: runState.inspectPath,
+        outputPath: path.join(runState.runDir, 'inspect.json'),
         logPath: runState.logPath,
         reporter: silentReporter(),
         model: 'm',
@@ -117,7 +117,7 @@ describe('runInspector', () => {
         issue,
         baselineSha: 'HEAD',
         fixerReasoning: expectedReasoning,
-        outputPath: runState.inspectPath,
+        outputPath: path.join(runState.runDir, 'inspect.json'),
         logPath: runState.logPath,
         reporter: silentReporter(),
         model: 'm',
@@ -151,7 +151,7 @@ describe('runInspector', () => {
         issue,
         baselineSha: 'HEAD',
         fixerReasoning: 'mock',
-        outputPath: runState.inspectPath,
+        outputPath: path.join(runState.runDir, 'inspect.json'),
         logPath: runState.logPath,
         reporter: silentReporter(),
         model: 'm',
@@ -166,5 +166,79 @@ describe('runInspector', () => {
     const prompt = getPrompt()
     const expected = path.join(runState.worktreePath, '.review-loop', 'inspect.json')
     expect(prompt).toContain(expected)
+  })
+
+  test('inspector diff includes uncommitted fixer edits (HEAD === baseline)', async () => {
+    // Reproduces the empty-diff bug: the fixer is told not to commit, so at
+    // inspector time HEAD still equals baselineSha. A commit-to-commit diff
+    // would be empty; the diff must include the working-tree changes.
+    const repoRoot = makeTempDir('inspector-diff-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
+    await setupRepo(runState.worktreePath)
+    const baselineSha = (await execGit(runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
+    // Simulate the fixer's uncommitted edit (no add, no commit).
+    writeFileSync(path.join(runState.worktreePath, 'README.md'), 'fix applied\n')
+    const { logger } = createCapturingTraceLogger()
+    const { spawn, getPrompt } = createPromptCapturingSpawn()
+
+    await runInspector(
+      {
+        spawn,
+        cwd: runState.worktreePath,
+        issue,
+        baselineSha,
+        fixerReasoning: 'mock',
+        outputPath: path.join(runState.runDir, 'inspect.json'),
+        logPath: runState.logPath,
+        reporter: silentReporter(),
+        model: 'm',
+        extraArgs: [],
+        label: 'inspector-w1',
+      },
+      1,
+      'rec-1',
+      logger,
+    )
+    const prompt = getPrompt()
+    expect(prompt).toContain('fix applied')
+    expect(prompt).toContain('-hi')
+  })
+
+  test('inspector diff includes newly created (untracked) fixer files', async () => {
+    // Reproduces the untracked-file bug: `git diff <baseline>` only shows
+    // changes to tracked files, so a fixer that creates a new file would have
+    // that file invisible to the inspector — guaranteeing rejection.
+    const repoRoot = makeTempDir('inspector-untracked-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
+    await setupRepo(runState.worktreePath)
+    const baselineSha = (await execGit(runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
+    // Simulate the fixer creating a brand-new file (no add, no commit).
+    writeFileSync(path.join(runState.worktreePath, 'new-module.ts'), 'export const FIX = 42\n')
+    const { logger } = createCapturingTraceLogger()
+    const { spawn, getPrompt } = createPromptCapturingSpawn()
+
+    await runInspector(
+      {
+        spawn,
+        cwd: runState.worktreePath,
+        issue,
+        baselineSha,
+        fixerReasoning: 'created new-module.ts',
+        outputPath: path.join(runState.runDir, 'inspect.json'),
+        logPath: runState.logPath,
+        reporter: silentReporter(),
+        model: 'm',
+        extraArgs: [],
+        label: 'inspector-w1',
+      },
+      1,
+      'rec-1',
+      logger,
+    )
+    const prompt = getPrompt()
+    expect(prompt).toContain('new-module.ts')
+    expect(prompt).toContain('export const FIX = 42')
   })
 })

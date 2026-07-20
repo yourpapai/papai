@@ -87,10 +87,21 @@ export async function rebaseOnto(
   const combined = `${stdout}\n${stderr}`
   if (error !== null) {
     if (combined.includes('CONFLICT') || combined.includes('could not apply')) {
-      const conflictFiles = await listUnmergedPaths(repoRoot)
-      await runGit(repoRoot, ['rebase', '--abort'])
-      return { ok: false, conflictFiles }
+      // try/finally ensures `rebase --abort` runs even if listUnmergedPaths
+      // throws (e.g. corrupted index). Without this, a thrown diff leaves the
+      // worker stuck mid-rebase, poisoning every subsequent issue assignment.
+      try {
+        const conflictFiles = await listUnmergedPaths(repoRoot)
+        return { ok: false, conflictFiles }
+      } finally {
+        await runGit(repoRoot, ['rebase', '--abort'])
+      }
     }
+    // Defensive cleanup: git may have started replaying commits before failing
+    // for a non-conflict reason (e.g. transient FS error). Mirror the conflict
+    // branch so we never leave the worktree mid-rebase. runGit never throws,
+    // so the original error below still propagates.
+    await runGit(repoRoot, ['rebase', '--abort'])
     throw error
   }
   return { ok: true }
@@ -111,15 +122,22 @@ export async function mergeFastForward(repoRoot: string, branch: string): Promis
   return head.stdout.trim()
 }
 
-export async function cleanWorkerWorktrees(repoRoot: string, runId: string): Promise<void> {
-  // Remove stale worker worktrees (and their branches) from a crashed prior run.
+export async function cleanWorkerWorktrees(repoRoot: string, runId?: string): Promise<void> {
+  // Remove stale worker worktrees (and their branches) left over from prior crashed runs.
+  // With a runId (resume), only workers tagged with that run are removed, so concurrent
+  // runs sharing a repo are not disturbed. Without a runId (fresh start), every worktree
+  // whose basename contains "-worker-" is swept — any such worktree existing before the
+  // pool is constructed is stale. The basename check avoids matching a parent directory
+  // whose path happens to contain "worker".
   const { stdout } = await execGit(repoRoot, ['worktree', 'list', '--porcelain'])
   const lines = stdout.split('\n')
   const removals: Array<Promise<unknown>> = []
   for (const line of lines) {
     if (line.startsWith('worktree ')) {
       const wtPath = line.slice('worktree '.length)
-      if (wtPath.includes(`${runId}-worker-`)) {
+      const isStaleWorker =
+        runId === undefined ? path.basename(wtPath).includes('-worker-') : wtPath.includes(`${runId}-worker-`)
+      if (isStaleWorker) {
         const workerName = path.basename(wtPath)
         removals.push(removeWorktree(repoRoot, wtPath, workerName).catch(() => undefined))
       }

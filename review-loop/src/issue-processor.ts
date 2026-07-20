@@ -56,8 +56,19 @@ async function processIssue(
   round: number,
   collector: RoundCollector,
 ): Promise<{ fixed: boolean }> {
+  let baselineSha: string | null = null
   try {
+    baselineSha = await worker.headSha()
     return await processIssueAttempt(record, deps, worker, round, collector, 1, null)
+  } catch (error) {
+    if (baselineSha !== null) {
+      try {
+        await worker.resetToBaseline(baselineSha)
+      } catch {
+        // Best-effort cleanup; do not mask the original error.
+      }
+    }
+    throw error
   } finally {
     deps.pool.release(worker)
   }
@@ -110,12 +121,29 @@ function makeDispatcher(args: {
       result = await processIssue(record, deps, worker, round, collector)
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
-      recordNeedsHuman(deps.ledger, deps.trace, round, record, `fixer crashed: ${msg}`, fallbackFixerResult(msg))
+      recordNeedsHuman(
+        deps.ledger,
+        deps.trace,
+        round,
+        record,
+        `issue processing failed: ${msg}`,
+        fallbackFixerResult(msg),
+      )
       tallyDecision(collector, 'needs_human', false)
-      deps.log.log(`[fix] "${shortTitle(record)}" → needs_human (fixer crashed: ${msg})`)
+      deps.log.log(`[fix] "${shortTitle(record)}" → needs_human (issue processing failed: ${msg})`)
       emitFixComplete(deps.trace, round, record.id, false, null, 1)
     }
-    await save(deps.ledger)
+    try {
+      await save(deps.ledger)
+    } catch (error) {
+      // Best-effort per-issue persistence: the in-memory ledger holds the
+      // correct state regardless, and the round-end saveIssueLedger in
+      // runRound is the safety net. Letting this escape would abort the
+      // entire round via Promise.all, discarding work done by every
+      // in-flight coroutine — even though processIssue already succeeded.
+      const msg = error instanceof Error ? error.message : String(error)
+      deps.log.log(`[fix] "${shortTitle(record)}" → ledger save failed (will retry at round end): ${msg}`)
+    }
     if (result !== null && result.fixed) onFixed()
     await dispatchNext()
   }

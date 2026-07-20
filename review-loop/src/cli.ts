@@ -241,20 +241,13 @@ export async function runCli(argv: readonly string[]): Promise<void> {
   const log = new LiveRenderer(process.stdout)
   const exec = createShellExec(runState.worktreePath, config.checkCommand, config.buildTimeoutMs)
   const trace = createFileTraceLogger(runState.tracePath)
-  await cleanWorkerWorktrees(runState.worktreePath, runState.runId)
+  await cleanWorkerWorktrees(runState.worktreePath, args.resumeRunId)
   const pool = await createWorkerPool(config, runState)
 
   try {
     await executeReviewLoop(config, runState, ledger, exec, log, trace, pool, !args.noInspect)
+  } finally {
     await pool.close()
-  } catch (error) {
-    const workerPaths = pool.workerPaths()
-    console.error(`Worktrees preserved for inspection (cleaned on next run start):`)
-    console.error(`  primary: ${runState.worktreePath}`)
-    for (const p of workerPaths) {
-      console.error(`  worker:  ${p}`)
-    }
-    throw error
   }
 }
 
