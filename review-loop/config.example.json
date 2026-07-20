@@ -5,6 +5,7 @@
   "maxNoProgressRounds": 2,
   "agentTimeoutMs": 600000,
   "buildTimeoutMs": 600000,
+  "poolSize": 3,
   "checkCommand": "bun check:full",
   "reviewer": {
     "model": "ollama-cloud/kimi-k2.6:cloud",
@@ -13,10 +14,16 @@
   },
   "fixer": {
     "model": "opencode/claude-sonnet-4-6",
-    "extraArgs": []
+    "extraArgs": [],
+    "timeoutMs": 1800000
   },
   "matcher": {
     "model": "ollama-cloud/kimi-k2.6:cloud",
     "extraArgs": []
+  },
+  "inspector": {
+    "model": "ollama-cloud/kimi-k2.6:cloud",
+    "extraArgs": [],
+    "timeoutMs": 1800000
   }
 }

@@ -9,7 +9,7 @@ import { createShellExec, runBuildCheck, type ShellExecFn } from '../../review-l
 
 function createMockExec(results: Array<{ exitCode: number; stdout: string; stderr: string }>): ShellExecFn {
   let index = 0
-  return () => {
+  return (_cwd?: string) => {
     const result = results[index] ?? results[results.length - 1]!
     index += 1
     return Promise.resolve(result)

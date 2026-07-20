@@ -8,20 +8,32 @@ import {
   emptyDecisions,
   emptySeverityCounts,
   type Decisions,
+  type PhaseMs,
   type RoundMetric,
   type Severity,
   type SeverityCounts,
   type TraceLogger,
+  type UsageTotals,
 } from './trace-log.js'
 
 export interface RoundCollector {
   decisions: Decisions
   reviewerSeverity: SeverityCounts
   fixerSeverity: SeverityCounts
+  inspector: { runs: number; rejected: number }
+  phaseMs: PhaseMs
+  usage: UsageTotals
 }
 
 export function newCollector(): RoundCollector {
-  return { decisions: emptyDecisions(), reviewerSeverity: emptySeverityCounts(), fixerSeverity: emptySeverityCounts() }
+  return {
+    decisions: emptyDecisions(),
+    reviewerSeverity: emptySeverityCounts(),
+    fixerSeverity: emptySeverityCounts(),
+    inspector: { runs: 0, rejected: 0 },
+    phaseMs: { review: 0, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 },
+    usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 },
+  }
 }
 
 function nowIso(): string {
@@ -45,6 +57,8 @@ export function tallyDecision(collector: RoundCollector, verdict: string, fixed:
     bucket = 'already_fixed'
   } else if (verdict === 'needs_human') {
     bucket = 'needs_human'
+  } else if (verdict === 'inspector_rejected') {
+    bucket = 'inspector_rejected'
   } else {
     bucket = 'plan_drift'
   }
@@ -61,6 +75,45 @@ export function tallyReviewerIssues(collector: RoundCollector, newIssues: readon
   for (const issue of newIssues) {
     collector.reviewerSeverity[issue.severity] += 1
   }
+}
+
+export function tallyInspector(collector: RoundCollector, addresses: boolean): void {
+  collector.inspector.runs += 1
+  if (!addresses) collector.inspector.rejected += 1
+}
+
+export function tallyPhaseMs(collector: RoundCollector, phase: keyof PhaseMs, ms: number): void {
+  collector.phaseMs[phase] += ms
+}
+
+export function tallyUsage(
+  collector: RoundCollector,
+  usage: { inputTokens: number; outputTokens: number; reasoningTokens: number; costUsd: number; wallMs: number },
+): void {
+  collector.usage.inputTokens += usage.inputTokens
+  collector.usage.outputTokens += usage.outputTokens
+  collector.usage.reasoningTokens += usage.reasoningTokens
+  collector.usage.costUsd += usage.costUsd
+}
+
+export function emitInspectComplete(
+  trace: TraceLogger,
+  round: number,
+  issueId: string,
+  addresses: boolean,
+  confidence: number,
+  reasoning: string,
+): void {
+  void trace.append({
+    ts: nowIso(),
+    round,
+    phase: 'inspect',
+    event: 'inspect_complete',
+    issueId,
+    addresses,
+    confidence,
+    reasoning: truncate(reasoning, 200),
+  })
 }
 
 export function emitRoundStart(

@@ -443,7 +443,7 @@ describe('execution metadata', () => {
       {
         prompt: 'Drink water',
         schedule: { fire_at: futureFireAt() },
-        execution: { mode: 'lightweight', delivery_brief: 'Simple hydration reminder' },
+        execution: { delivery_brief: 'Simple hydration reminder' },
       },
       toolCtx,
     )
@@ -469,7 +469,6 @@ describe('execution metadata', () => {
         prompt: 'Check tasks',
         schedule: { fire_at: futureFireAt() },
         execution: {
-          mode: 'context',
           delivery_brief: 'Remind about standup',
           context_snapshot: 'Sprint discussion',
         },
@@ -479,7 +478,6 @@ describe('execution metadata', () => {
     const id = extractId(created)
     const detail: unknown = await get.execute({ id }, toolCtx)
 
-    expect(detail).toHaveProperty('executionMetadata.mode', 'context')
     expect(detail).toHaveProperty('executionMetadata.delivery_brief', 'Remind about standup')
     expect(detail).toHaveProperty('executionMetadata.context_snapshot', 'Sprint discussion')
   })
@@ -495,17 +493,17 @@ describe('execution metadata', () => {
       {
         prompt: 'Check overdue',
         condition: { field: 'task.dueDate', op: 'overdue' },
-        execution: { mode: 'full', delivery_brief: 'Check overdue tasks' },
+        execution: { delivery_brief: 'Check overdue tasks' },
       },
       toolCtx,
     )
     const id = extractId(created)
     const detail: unknown = await get.execute({ id }, toolCtx)
 
-    expect(detail).toHaveProperty('executionMetadata.mode', 'full')
+    expect(detail).toHaveProperty('executionMetadata.delivery_brief', 'Check overdue tasks')
   })
 
-  test('defaults to full mode when no execution provided', async () => {
+  test('defaults to empty delivery brief when no execution provided', async () => {
     const tools = getTools()
     const create = tools['create_deferred_prompt']!
     const get = tools['get_deferred_prompt']!
@@ -516,7 +514,7 @@ describe('execution metadata', () => {
     const id = extractId(created)
     const detail: unknown = await get.execute({ id }, toolCtx)
 
-    expect(detail).toHaveProperty('executionMetadata.mode', 'full')
+    expect(detail).toHaveProperty('executionMetadata.delivery_brief', '')
   })
 
   test('updates execution metadata on scheduled prompt', async () => {
@@ -531,14 +529,10 @@ describe('execution metadata', () => {
     const created: unknown = await create.execute({ prompt: 'Test', schedule: { fire_at: futureFireAt() } }, toolCtx)
     const id = extractId(created)
 
-    const result: unknown = await update.execute(
-      { id, execution: { mode: 'lightweight', delivery_brief: 'Updated brief' } },
-      toolCtx,
-    )
+    const result: unknown = await update.execute({ id, execution: { delivery_brief: 'Updated brief' } }, toolCtx)
     expect(result).toHaveProperty('status', 'updated')
 
     const detail: unknown = await get.execute({ id }, toolCtx)
-    expect(detail).toHaveProperty('executionMetadata.mode', 'lightweight')
     expect(detail).toHaveProperty('executionMetadata.delivery_brief', 'Updated brief')
   })
 })
@@ -561,7 +555,6 @@ describe('delivery classification persistence', () => {
           mention_user_ids: [USER_ID],
         },
         execution: {
-          mode: 'context',
           delivery_brief: 'Personal reminder in the same group thread',
           context_snapshot: 'Discussed weekly reporting in this thread.',
         },
@@ -893,7 +886,6 @@ describe('delivery classification persistence', () => {
           mention_user_ids: [],
         },
         execution: {
-          mode: 'full',
           delivery_brief: 'Shared group alert for the whole channel',
           context_snapshot: 'Group operations alert for overdue work.',
         },
@@ -920,7 +912,6 @@ describe('delivery classification persistence', () => {
           mention_user_ids: [USER_ID, 'teammate-user-id'],
         },
         execution: {
-          mode: 'full',
           delivery_brief: 'Group alert pinging the on-call pair',
           context_snapshot: 'Group operations alert for overdue work.',
         },

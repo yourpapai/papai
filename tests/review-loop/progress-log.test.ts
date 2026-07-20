@@ -15,7 +15,7 @@ import { runReviewLoop } from '../../review-loop/src/loop-controller.js'
 import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
 import { createRunState } from '../../review-loop/src/run-state.js'
 import { execGit } from '../../review-loop/src/worktree.js'
-import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir, silentTrace } from './test-helpers.js'
+import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir, fakePool, silentTrace } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
 
@@ -62,6 +62,7 @@ function matchFirstToExisting(prompt: string): IssueMatch[] {
 function createMockSpawn(handlers: {
   reviewerIssues?: ReviewerIssue[][]
   fixerResults?: Array<{ verdict: string; fixability: string; fixed: boolean }>
+  inspectorAddresses?: boolean
   matchFirstOnly?: boolean
   onFixer?: (cwd: string) => Promise<void> | void
 }): SpawnFn {
@@ -78,6 +79,18 @@ function createMockSpawn(handlers: {
       if (scratchPath !== null) {
         mkdirSync(path.dirname(scratchPath), { recursive: true })
         writeFileSync(scratchPath, JSON.stringify({ issues }))
+      }
+    } else if (promptText.includes('You are an inspector')) {
+      if (scratchPath !== null) {
+        mkdirSync(path.dirname(scratchPath), { recursive: true })
+        writeFileSync(
+          scratchPath,
+          JSON.stringify({
+            addresses: handlers.inspectorAddresses ?? true,
+            reasoning: 'Mock inspector acceptance.',
+            confidence: 0.9,
+          }),
+        )
       }
     } else if (promptText.includes('Verify and fix') || promptText.includes('build error')) {
       const result = handlers.fixerResults?.[fixerCall] ?? { verdict: 'valid', fixability: 'auto', fixed: true }
@@ -108,7 +121,7 @@ function createMockSpawn(handlers: {
   }
 }
 
-const passingExec: ShellExecFn = (): Promise<{ exitCode: number; stdout: string; stderr: string }> =>
+const passingExec: ShellExecFn = (_cwd?: string): Promise<{ exitCode: number; stdout: string; stderr: string }> =>
   Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
 
 function makeReporter(messages: string[]): ProgressReporter {
@@ -117,7 +130,11 @@ function makeReporter(messages: string[]): ProgressReporter {
     event: (message: string): void => {
       messages.push(message)
     },
-    live() {},
+    live: (lines: readonly string[]): void => {
+      for (const line of lines) {
+        messages.push(line)
+      }
+    },
     clearLive() {},
     log: (message: string): void => {
       messages.push(message)
@@ -162,6 +179,8 @@ describe('progress logging', () => {
       exec: passingExec,
       log: makeReporter(messages),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(result.doneReason).toBe('clean')
@@ -201,6 +220,8 @@ describe('progress logging', () => {
       exec: passingExec,
       log: makeReporter(messages),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(result.doneReason).toBe('no_progress')
@@ -232,6 +253,8 @@ describe('progress logging', () => {
       exec: passingExec,
       log: makeReporter(messages),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const fixMessage = messages.find((m) => m.startsWith('[fix]'))
@@ -272,6 +295,8 @@ describe('progress logging', () => {
       exec: passingExec,
       log: makeReporter(messages),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(messages).toContain('[round 2] Fixed 1/1 issues')

@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-// tests/deferred-prompts/execution-modes.test.ts
+// tests/deferred-prompts/proactive-llm.test.ts
 //
 // Mocked modules: ai, @ai-sdk/openai-compatible, ../src/logger.js
 // (Uses mockLogger + setupTestDb helpers; mocks ai + openai-compatible in beforeEach)
@@ -18,7 +18,6 @@ import { dispatchExecution } from '../../src/deferred-prompts/proactive-llm.js'
 import type { DeferredExecutionContext } from '../../src/deferred-prompts/proactive-llm.js'
 import type { ExecutionMetadata } from '../../src/deferred-prompts/types.js'
 import { appendHistory } from '../../src/history.js'
-import { loadHistory } from '../../src/history.js'
 import { createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers/store.js'
 import { clearLlmAdminCacheForTesting } from '../../src/llm-providers/store.testing.js'
 import { saveMemoryProfile } from '../../src/long-term-memory/store.js'
@@ -43,12 +42,17 @@ type GenerateTextCall = {
   messages: ModelMessage[]
   tools: unknown
   stopWhen?: unknown
+  prepareStep?: (arg: { stepNumber: number; steps?: readonly unknown[] }) => { activeTools?: string[] }
 }
 type BuildModelCall = { apiKey: string; baseURL: string; modelId: string }
 
 // Helper defined outside test blocks — no-conditional-in-test requires predicate helpers at module scope
 function messageIncludesText(msgs: readonly ModelMessage[], text: string): boolean {
   return msgs.some((m) => typeof m.content === 'string' && m.content.includes(text))
+}
+
+function toolNamesOf(tools: unknown): string[] {
+  return typeof tools === 'object' && tools !== null ? Object.keys(tools) : []
 }
 
 const containsFact = (
@@ -91,20 +95,16 @@ function makeGroupThreadExecCtx(): DeferredExecutionContext {
   }
 }
 
-type UserConfigOptions = Readonly<{ smallModel: string | null }>
-
-function setupUserConfig(...args: readonly [] | readonly [UserConfigOptions]): void {
+function setupUserConfig(): void {
   setConfig(USER_ID, 'timezone', 'UTC')
   const provider = createLlmProvider(
     { label: 'admin', providerType: 'openai', baseUrl: 'http://localhost:11434/v1', apiKey: 'test-key' },
     'admin',
   )
-  const opts = args[0]
   setAdminRoleBindings(
     {
       main: { providerId: provider.id, model: 'main-model' },
-      small:
-        opts !== undefined && opts.smallModel !== null ? { providerId: provider.id, model: opts.smallModel } : null,
+      small: null,
       embedding: null,
     },
     'admin',
@@ -144,7 +144,7 @@ describe('dispatchExecution', () => {
     void mock.module('ai', () => ({
       generateText: (args: GenerateTextCall): Promise<GenerateTextResult> => generateTextImpl(args),
       tool: (opts: unknown): unknown => opts,
-      stepCountIs: (n: number): unknown => ({ __stopAfterSteps: n }),
+      isStepCount: (n: number): unknown => ({ __stopAfterSteps: n }),
     }))
     void mock.module('../../src/llm-model-builder.js', () => ({
       buildChatModel: (apiKey: string, baseUrl: string, modelId: string): string => {
@@ -162,209 +162,51 @@ describe('dispatchExecution', () => {
     await setupTestDb()
   })
 
-  describe('lightweight mode', () => {
-    const metadata: ExecutionMetadata = {
-      mode: 'lightweight',
-      delivery_brief: 'Friendly hydration reminder',
-      context_snapshot: null,
-    }
-
-    test('uses small_model when configured', async () => {
-      setupUserConfig({ smallModel: 'small-model' })
-      await dispatchExecution(makeExecCtx(), 'scheduled', 'drink water', metadata, () => null)
-      expect(generateTextCalls).toHaveLength(1)
-      expect(generateTextCalls[0]!.model).toContain('small-model')
-    })
-
-    test('falls back to main_model when small_model not set', async () => {
-      setupUserConfig()
-      await dispatchExecution(makeExecCtx(), 'scheduled', 'drink water', metadata, () => null)
-      expect(generateTextCalls).toHaveLength(1)
-      expect(generateTextCalls[0]!.model).toContain('main-model')
-    })
-
-    test('includes get_current_time tool only', async () => {
-      setupUserConfig()
-      await dispatchExecution(makeExecCtx(), 'scheduled', 'drink water', metadata, () => null)
-      expect(generateTextCalls[0]!.tools).toBeDefined()
-      expect(generateTextCalls[0]!.tools).toHaveProperty('get_current_time')
-      // Should not have task-related tools in lightweight mode
-      expect(generateTextCalls[0]!.tools).not.toHaveProperty('create_task')
-    })
-
-    test('passes a multi-step stopWhen so a get_current_time call is not truncated', async () => {
-      setupUserConfig()
-      await dispatchExecution(makeExecCtx(), 'scheduled', 'drink water', metadata, () => null)
-      expect(generateTextCalls[0]!.stopWhen).toBeDefined()
-    })
-
-    test('does not deliver the assistant preamble when the turn ends on a pending tool call', async () => {
-      setupUserConfig()
-      const responseQueue: GenerateTextResult[] = [
-        {
-          text: 'Let me first check the current date and time to give you an accurate reminder.',
-          finishReason: 'tool-calls',
-          toolCalls: [{ toolName: 'get_current_time', input: {} }],
-          toolResults: [],
-          steps: [{}],
-          finalStep: { response: { messages: [] } },
-        },
-        // Second call is the verifier — returns a neutral completion summary
-        {
-          text: 'The action reached the step limit before completing.',
-          finishReason: 'stop',
-          toolCalls: [],
-          toolResults: [],
-          steps: undefined,
-          finalStep: { response: { messages: [] } },
-        },
-      ]
-      generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
-        generateTextCalls.push(args)
-        return Promise.resolve(responseQueue.shift()!)
+  describe('unified execution', () => {
+    test('dispatchExecution always builds the full toolset regardless of stored metadata', async () => {
+      // metadata that used to select the "lightweight" branch must now still expose task tools
+      const metadata: ExecutionMetadata = {
+        delivery_brief: 'be brief',
+        context_snapshot: null,
       }
-      const delivered = await dispatchExecution(makeExecCtx(), 'scheduled', 'drink water', metadata, () => null)
-      expect(delivered).not.toContain('check the current date and time')
-    })
-
-    test('uses minimal system prompt', async () => {
       setupUserConfig()
-      await dispatchExecution(makeExecCtx(), 'scheduled', 'drink water', metadata, () => null)
-      const instructions = generateTextCalls[0]!.instructions
-      expect(instructions).toContain('[PROACTIVE EXECUTION]')
-      expect(instructions).not.toContain('DEFERRED PROMPTS')
-    })
-
-    test('includes delivery brief in the system prompt', async () => {
-      setupUserConfig()
-      await dispatchExecution(makeExecCtx(), 'scheduled', 'drink water', metadata, () => null)
-      // AI SDK v7 hoists system content out of `messages` into the `instructions` option.
-      const instructions = generateTextCalls[0]!.instructions
-      expect(instructions).toContain('[DELIVERY BRIEF]')
-      expect(instructions).toContain('Friendly hydration reminder')
-    })
-
-    test('wraps prompt in deferred task delimiters', async () => {
-      setupUserConfig()
-      await dispatchExecution(makeExecCtx(), 'scheduled', 'drink water', metadata, () => null)
-      const messages = generateTextCalls[0]!.messages
-      const userMsgs = messages.filter((m) => m.role === 'user')
-      expect(messageIncludesText(userMsgs, '===DEFERRED_TASK===')).toBe(true)
-      expect(messageIncludesText(userMsgs, 'drink water')).toBe(true)
-    })
-
-    test('does not load conversation history', async () => {
-      setupUserConfig()
-      appendHistory(USER_ID, [{ role: 'user', content: 'old message' }])
-      await dispatchExecution(makeExecCtx(), 'scheduled', 'drink water', metadata, () => null)
-      const messages = generateTextCalls[0]!.messages
-      expect(messageIncludesText(messages, 'old message')).toBe(false)
-    })
-
-    test('includes context snapshot when present', async () => {
-      setupUserConfig()
-      const withSnapshot: ExecutionMetadata = {
-        ...metadata,
-        context_snapshot: 'User discussed migration',
-      }
-      await dispatchExecution(makeExecCtx(), 'scheduled', 'remind about migration', withSnapshot, () => null)
-      expect(generateTextCalls[0]!.instructions).toContain('[CONTEXT FROM CREATION TIME]')
-    })
-
-    test('omits context snapshot message when null', async () => {
-      setupUserConfig()
-      await dispatchExecution(makeExecCtx(), 'scheduled', 'drink water', metadata, () => null)
-      expect(generateTextCalls[0]!.instructions).not.toContain('[CONTEXT FROM CREATION TIME]')
-    })
-
-    test('persists lightweight history to group thread delivery context instead of creator DM', async () => {
-      setupUserConfig()
-      generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
-        generateTextCalls.push(args)
-        return Promise.resolve({
-          text: 'Thread reminder',
-          toolCalls: [],
-          toolResults: [],
-          steps: undefined,
-          finalStep: { response: { messages: [{ role: 'assistant', content: 'Thread reminder' }] } },
-        })
-      }
-
-      await dispatchExecution(makeGroupThreadExecCtx(), 'scheduled', 'drink water', metadata, () => null)
-
-      expect(loadHistory('-1001:42')).toEqual([{ role: 'assistant', content: 'Thread reminder' }])
-      expect(loadHistory(USER_ID)).toEqual([])
+      const provider = createMockProvider()
+      await dispatchExecution(makeExecCtx(), 'scheduled', 'ping', metadata, () => provider)
+      const call = generateTextCalls[generateTextCalls.length - 1]!
+      const toolNames = toolNamesOf(call.tools)
+      expect(toolNames).toContain('search_tools')
+      expect(toolNames).toContain('load_tool')
     })
   })
 
-  describe('context mode', () => {
-    const metadata: ExecutionMetadata = {
-      mode: 'context',
-      delivery_brief: 'Remind about the standup discussion',
-      context_snapshot: 'Discussed Q2 sprint priorities',
-    }
-
-    test('uses main_model even when small_model is configured', async () => {
-      setupUserConfig({ smallModel: 'small-model' })
-      await dispatchExecution(makeExecCtx(), 'scheduled', 'standup reminder', metadata, () => null)
-      expect(generateTextCalls[0]!.model).toContain('main-model')
-      expect(generateTextCalls[0]!.model).not.toContain('small-model')
-    })
-
-    test('loads conversation history', async () => {
+  describe('progressive disclosure prepareStep gating', () => {
+    test('gates activeTools to core + meta tools before any tool is loaded', async () => {
+      const metadata: ExecutionMetadata = {
+        delivery_brief: 'be brief',
+        context_snapshot: null,
+      }
       setupUserConfig()
-      appendHistory(USER_ID, [{ role: 'user', content: 'history message' }])
-      await dispatchExecution(makeExecCtx(), 'scheduled', 'standup reminder', metadata, () => null)
-      const messages = generateTextCalls[0]!.messages
-      expect(messageIncludesText(messages, 'history message')).toBe(true)
-    })
+      const provider = createMockProvider()
+      await dispatchExecution(makeExecCtx(), 'scheduled', 'ping', metadata, () => provider)
+      const call = generateTextCalls[generateTextCalls.length - 1]!
+      expect(call.prepareStep).toBeDefined()
 
-    test('uses group long-term memory for group thread delivery context', async () => {
-      setupUserConfig()
-      saveMemoryProfile(
-        { scopeId: '-1001', scopeType: 'group' },
-        '## Group memory\n- Group standups happen at 10:00',
-        '2026-06-12T00:00:00.000Z',
-      )
-      saveMemoryProfile(
-        { scopeId: '-1001:42', scopeType: 'personal' },
-        '## Personal memory\n- This personal thread scope should not be injected',
-        '2026-06-12T00:00:00.000Z',
-      )
+      // Exercise the real createDisclosurePrepareStep closure at a pre-load step boundary
+      // (no steps completed yet, so neither the pre-load stall nor meta-churn fallback opens).
+      const result = call.prepareStep!({ stepNumber: 0, steps: [] })
 
-      await dispatchExecution(makeGroupThreadExecCtx(), 'scheduled', 'standup reminder', metadata, () => null)
-
-      const instructions = generateTextCalls[0]!.instructions
-      expect(instructions).toContain('Group standups happen at 10:00')
-      expect(instructions).not.toContain('This personal thread scope should not be injected')
-    })
-
-    test('includes get_current_time tool only', async () => {
-      setupUserConfig()
-      await dispatchExecution(makeExecCtx(), 'scheduled', 'standup reminder', metadata, () => null)
-      expect(generateTextCalls[0]!.tools).toBeDefined()
-      expect(generateTextCalls[0]!.tools).toHaveProperty('get_current_time')
-      // Should not have task-related tools in context mode
-      expect(generateTextCalls[0]!.tools).not.toHaveProperty('create_task')
-    })
-
-    test('passes a multi-step stopWhen so a get_current_time call is not truncated', async () => {
-      setupUserConfig()
-      await dispatchExecution(makeExecCtx(), 'scheduled', 'standup reminder', metadata, () => null)
-      expect(generateTextCalls[0]!.stopWhen).toBeDefined()
-    })
-
-    test('uses minimal system prompt', async () => {
-      setupUserConfig()
-      await dispatchExecution(makeExecCtx(), 'scheduled', 'standup reminder', metadata, () => null)
-      const instructions = generateTextCalls[0]!.instructions
-      expect(instructions).toContain('[PROACTIVE EXECUTION]')
+      expect(result.activeTools).toBeDefined()
+      const activeTools = result.activeTools!
+      expect(activeTools).toContain('get_current_time')
+      expect(activeTools).toContain('search_tools')
+      expect(activeTools).toContain('load_tool')
+      expect(activeTools).not.toContain('create_task')
+      expect(activeTools).not.toContain('search_tasks')
     })
   })
 
-  describe('full mode', () => {
+  describe('unified proactive run', () => {
     const metadata: ExecutionMetadata = {
-      mode: 'full',
       delivery_brief: 'Check overdue tasks grouped by project',
       context_snapshot: null,
     }
@@ -407,7 +249,7 @@ describe('dispatchExecution', () => {
       const provider = createMockProvider()
       await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
       expect(generateTextCalls[0]!.tools).toBeDefined()
-      // Full mode with proactive delivery should exclude deferred prompt tools
+      // Proactive delivery excludes deferred-prompt tools
       expect(generateTextCalls[0]!.tools).not.toHaveProperty('create_deferred_prompt')
       expect(generateTextCalls[0]!.tools).toHaveProperty('create_task')
       expect(generateTextCalls[0]!.tools).toHaveProperty('search_tasks')
@@ -432,7 +274,7 @@ describe('dispatchExecution', () => {
       expect(messageIncludesText(messages, 'full mode history')).toBe(true)
     })
 
-    test('full mode uses group long-term memory for group thread delivery context', async () => {
+    test('uses group long-term memory for group thread delivery context', async () => {
       setupUserConfig()
       const provider = createMockProvider()
       saveMemoryProfile(
@@ -484,7 +326,7 @@ describe('dispatchExecution', () => {
       expect(loadFacts(USER_ID)).toEqual([])
     })
 
-    test('resolves full-mode provider from storage context instead of creator ID', async () => {
+    test('resolves provider from storage context instead of creator ID', async () => {
       setupUserConfig()
       const provider = createMockProvider()
       const resolvedContextIds: string[] = []
@@ -497,7 +339,7 @@ describe('dispatchExecution', () => {
       expect(resolvedContextIds).toEqual(['-1001:42'])
     })
 
-    test('resolves full-mode provider from scoped main context while preserving thread storage', async () => {
+    test('resolves provider from scoped main context while preserving thread storage', async () => {
       setupUserConfig()
       const scopedThreadContextId = toScopedThreadContextId({
         platformInstanceId: 'telegram-secondary',
@@ -550,7 +392,7 @@ describe('dispatchExecution', () => {
       ])
     })
 
-    test('full mode background trim uses scoped main config context instead of thread storage', async () => {
+    test('background trim uses scoped main config context instead of thread storage', async () => {
       seedAdminLlmBinding()
       setConfig(USER_ID, 'timezone', 'UTC')
       const scopedThreadContextId = toScopedThreadContextId({
@@ -678,10 +520,9 @@ describe('dispatchExecution', () => {
   })
 
   describe('fallback behavior', () => {
-    test('treats empty metadata as full mode', async () => {
+    test('treats empty metadata as a full run', async () => {
       setupUserConfig()
       const emptyMetadata: ExecutionMetadata = {
-        mode: 'full',
         delivery_brief: '',
         context_snapshot: null,
       }
@@ -693,12 +534,11 @@ describe('dispatchExecution', () => {
 
   describe('stored delivery context', () => {
     const metadata: ExecutionMetadata = {
-      mode: 'full',
       delivery_brief: 'Check overdue tasks grouped by project',
       context_snapshot: null,
     }
 
-    test('full mode uses stored delivery context for tools and history while reading config from creator', async () => {
+    test('uses stored delivery context for tools and history while reading config from creator', async () => {
       setupUserConfig()
       const provider = createMockProvider()
 
@@ -729,12 +569,11 @@ describe('dispatchExecution', () => {
 
   describe('system prompt context scoping', () => {
     const fullMetadata: ExecutionMetadata = {
-      mode: 'full',
       delivery_brief: 'Check overdue tasks',
       context_snapshot: null,
     }
 
-    test('full mode builds system prompt from delivery storageContextId, not creator userId', async () => {
+    test('builds system prompt from delivery storageContextId, not creator userId', async () => {
       setupUserConfig()
       const provider = createMockProvider()
       const deliveryStorageContextId = '-1001:thread-7'

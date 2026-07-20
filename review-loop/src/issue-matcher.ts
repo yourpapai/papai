@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { agentWritePath, runAgent, type SpawnFn } from './agent-runner.js'
+import { agentWritePath, runAgent, type AgentUsage, type SpawnFn } from './agent-runner.js'
 import type { LedgerIssueRecord } from './issue-ledger.js'
 import { IssueMatchesSchema } from './issue-schema.js'
 import type { IssueMatch, ReviewerIssue } from './issue-schema.js'
@@ -51,18 +51,21 @@ function buildMatcherPrompt(
   ].join('\n')
 }
 
-export async function matchIssues(deps: MatchIssuesDeps): Promise<IssueMatch[]> {
+export async function matchIssues(deps: MatchIssuesDeps): Promise<{ matches: IssueMatch[]; usage: AgentUsage }> {
   if (deps.newIssues.length === 0) {
-    return []
+    return { matches: [], usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0 } }
   }
 
   if (deps.existingRecords.length === 0) {
-    return deps.newIssues.map((_, index) => ({ newIssueIndex: index, existingId: null }))
+    return {
+      matches: deps.newIssues.map((_, index) => ({ newIssueIndex: index, existingId: null })),
+      usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0 },
+    }
   }
 
-  const prompt = buildMatcherPrompt(deps.newIssues, deps.existingRecords, agentWritePath(deps.outputPath, deps.cwd))
+  const prompt = buildMatcherPrompt(deps.newIssues, deps.existingRecords, agentWritePath(deps.cwd, deps.outputPath))
 
-  const result = await runAgent({
+  const agentResult = await runAgent({
     spawn: deps.spawn,
     model: deps.model,
     cwd: deps.cwd,
@@ -76,5 +79,5 @@ export async function matchIssues(deps: MatchIssuesDeps): Promise<IssueMatch[]> 
     timeoutMs: deps.timeoutMs,
   })
 
-  return result.matches
+  return { matches: agentResult.value.matches, usage: agentResult.usage }
 }

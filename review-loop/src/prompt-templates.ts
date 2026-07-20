@@ -22,6 +22,7 @@ export function buildReviewPrompt(planPath: string, outputPath: string): string 
     '',
     'Use this exact schema:',
     '{"issues": [{"title": string, "severity": "critical" | "high" | "medium" | "low", "summary": string, "whyItMatters": string, "evidence": string, "file": string, "lineStart": number, "lineEnd": number, "suggestedFix": string, "confidence": number}]}',
+    '`confidence` is a probability between 0 and 1 (e.g. 0.85), NOT a 1-5 rating.',
     'If there are no issues, write: {"issues": []}',
   ].join('\n\n')
 }
@@ -64,6 +65,62 @@ export function buildRetryFixPrompt(
     buildError,
     '',
     'Original issue:',
+    JSON.stringify(issue, null, 2),
+  ].join('\n\n')
+}
+
+export function buildInspectPrompt(
+  issue: ReviewerIssue,
+  diff: string,
+  fixerReasoning: string,
+  outputPath: string,
+): string {
+  return [
+    'You are an inspector. Your ONLY job: decide whether the diff below actually addresses the issue described.',
+    'Do not flag unrelated problems. Do not assess code quality. Do not run checks.',
+    'A build check has already passed — assume the code compiles and tests pass.',
+    '',
+    'Return addresses=true ONLY if you can point to specific lines in the diff that resolve the specific complaint in the issue.',
+    'Return addresses=false if the diff is cosmetic, addresses a different problem, or leaves the core complaint untouched.',
+    'When addresses=false, your reasoning MUST be actionable: explain what the fixer should have done differently.',
+    '',
+    `Write your result as JSON to: ${outputPath}`,
+    'Use this exact schema:',
+    '{"addresses": boolean, "reasoning": string, "confidence": number}',
+    '`confidence` is a probability between 0 and 1 (e.g. 0.85), NOT a 1-5 rating.',
+    '',
+    'Issue:',
+    JSON.stringify(issue, null, 2),
+    '',
+    'Fixer reasoning (what the fixer claims it did):',
+    fixerReasoning,
+    '',
+    'Diff (baseline..HEAD):',
+    diff,
+  ].join('\n\n')
+}
+
+export function buildRetryFixWithInspectorFeedbackPrompt(
+  issue: ReviewerIssue,
+  inspectorReasoning: string,
+  outputPath: string,
+  checkCommand: string,
+): string {
+  return [
+    'Your previous fix was rejected by an inspector.',
+    'The inspector said:',
+    inspectorReasoning,
+    '',
+    'You have two options:',
+    '1. If the inspector is RIGHT and the issue cannot be auto-fixed cleanly, return verdict "invalid", "needs_human", or "plan_drift" with reasoning. Do not edit anything.',
+    '2. If the inspector is WRONG or you can fix differently, produce a corrected fix. Edit only what is necessary; run the check command to confirm.',
+    `After fixing, run \`${checkCommand}\` to verify the build passes.`,
+    'This is your final attempt. If you cannot make it work, return verdict "needs_human" — do not leave a broken tree.',
+    `Write your result as JSON to: ${outputPath}`,
+    'Use this exact schema:',
+    '{"verdict": "valid" | "invalid" | "already_fixed" | "needs_human" | "plan_drift", "fixability": "auto" | "manual", "reasoning": string, "targetFiles": string[], "fixed": boolean, "commitSha": string | null, "commitMessage": string, "severity": "critical" | "high" | "medium" | "low"}',
+    '',
+    'Issue:',
     JSON.stringify(issue, null, 2),
   ].join('\n\n')
 }

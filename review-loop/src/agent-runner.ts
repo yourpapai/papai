@@ -29,6 +29,28 @@ export type SpawnFn = (
   onLine?: LineSink,
 ) => Promise<SpawnResult>
 
+export interface AgentUsage {
+  inputTokens: number
+  outputTokens: number
+  reasoningTokens: number
+  costUsd: number
+  wallMs: number
+}
+
+export interface AgentRunResult<T> {
+  value: T
+  usage: AgentUsage
+}
+
+export class AgentRunError extends Error {
+  readonly usage: AgentUsage
+  constructor(message: string, usage: AgentUsage) {
+    super(message)
+    this.name = 'AgentRunError'
+    this.usage = usage
+  }
+}
+
 export interface RunAgentOptions<T> {
   spawn: SpawnFn
   model: string
@@ -58,6 +80,7 @@ interface AttemptError {
 type Attempt<T> = AttemptResult<T> | AttemptError
 
 export interface LineHandler {
+  readonly ctx: LiveCtx
   onLine: LineSink
   dispose: () => void
 }
@@ -72,6 +95,8 @@ interface LiveCtx {
   arg: string
   readonly seenCalls: Set<string>
   timer: ReturnType<typeof setInterval> | null
+  usage: AgentUsage
+  firstStepAt: number | null
 }
 
 function renderLive(ctx: LiveCtx): void {
@@ -80,19 +105,17 @@ function renderLive(ctx: LiveCtx): void {
     return
   }
   const elapsed = ctx.startedAt === 0 ? 0 : Date.now() - ctx.startedAt
-  reporter.live(formatLiveLine(ctx.label, ctx.tool, ctx.arg, elapsed, ctx.toolCount))
+  reporter.live([formatLiveLine(ctx.label, ctx.tool, ctx.arg, elapsed, ctx.toolCount)])
 }
 
 function applyEvent(evt: OpencodeEvent, ctx: LiveCtx): void {
   const reporter = ctx.reporter
-  if (reporter === undefined) {
-    return
-  }
   switch (evt.type) {
     case 'step_start':
+      ctx.firstStepAt ??= Date.now()
       if (ctx.startedAt === 0) {
         ctx.startedAt = Date.now()
-        if (reporter.dynamic) {
+        if (reporter?.dynamic === true) {
           ctx.timer = setInterval(() => {
             renderLive(ctx)
           }, 1000)
@@ -109,10 +132,16 @@ function applyEvent(evt: OpencodeEvent, ctx: LiveCtx): void {
       renderLive(ctx)
       break
     case 'step_finish':
-      reporter.clearLive()
-      reporter.event(
-        formatStepFooter(ctx.label, ctx.startedAt === 0 ? 0 : Date.now() - ctx.startedAt, ctx.toolCount, evt.tokens),
-      )
+      ctx.usage.inputTokens += evt.tokens.input
+      ctx.usage.outputTokens += evt.tokens.output
+      ctx.usage.reasoningTokens += evt.tokens.reasoning
+      ctx.usage.costUsd += evt.cost
+      if (reporter !== undefined) {
+        reporter.clearLive()
+        reporter.event(
+          formatStepFooter(ctx.label, ctx.startedAt === 0 ? 0 : Date.now() - ctx.startedAt, ctx.toolCount, evt.tokens),
+        )
+      }
       break
     case 'text':
       break
@@ -130,6 +159,8 @@ function createLineHandler<T>(options: RunAgentOptions<T>): LineHandler {
     arg: '',
     seenCalls: new Set<string>(),
     timer: null,
+    usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0 },
+    firstStepAt: null,
   }
   const onLine: LineSink = (line: string): void => {
     void appendFile(ctx.logPath, `${line}\n`)
@@ -147,10 +178,22 @@ function createLineHandler<T>(options: RunAgentOptions<T>): LineHandler {
       reporter.clearLive()
     }
   }
-  return { onLine, dispose }
+  return { ctx, onLine, dispose }
 }
 
-export function agentWritePath(outputPath: string, cwd: string): string {
+/**
+ * Absolute path the agent should write its output to.
+ *
+ * The path is absolute (not relative) so the agent cannot mis-resolve it
+ * against an unrelated project root. The worktree cwd itself often lives at
+ * `<repoRoot>/.review-loop/worktrees/<runId>/`, and a relative path like
+ * `.review-loop/matches.json` is ambiguous: the agent may resolve it against
+ * the worktree cwd (correct) or against the project root two levels up
+ * (`<repoRoot>/.review-loop/matches.json` — wrong). The runner always reads
+ * from `<cwd>/.review-loop/<basename(outputPath)>`, so the prompt must direct
+ * the agent there unambiguously.
+ */
+export function agentWritePath(cwd: string, outputPath: string): string {
   return path.resolve(cwd, '.review-loop', path.basename(outputPath))
 }
 
@@ -192,64 +235,61 @@ function attemptRun<T>(options: RunAgentOptions<T>, onLine?: LineSink): Promise<
   )
 }
 
-async function runAttempt<T>(options: RunAgentOptions<T>): Promise<Attempt<T>> {
-  const handler = createLineHandler(options)
+async function runAttempt<T>(options: RunAgentOptions<T>, handler: LineHandler): Promise<Attempt<T>> {
+  await mkdir(path.resolve(options.cwd, '.review-loop'), { recursive: true })
+  const result = await attemptRun(options, handler.onLine)
+  if (result.exitCode !== 0) {
+    await appendFile(options.logPath, `[${options.label}] stderr: ${result.stderr}\n`)
+    return {
+      ok: false,
+      error: new Error(`${options.label} exited with code ${result.exitCode}: ${result.stderr}`),
+      timedOut: result.timedOut === true,
+    }
+  }
   try {
-    const agentFile = agentWritePath(options.outputPath, options.cwd)
-    await mkdir(path.dirname(agentFile), { recursive: true })
-    const result = await attemptRun(options, handler.onLine)
-    if (result.exitCode !== 0) {
-      await appendFile(options.logPath, `[${options.label}] stderr: ${result.stderr}\n`)
+    const agentFile = agentWritePath(options.cwd, options.outputPath)
+    await mkdir(path.dirname(options.outputPath), { recursive: true })
+    await copyFile(agentFile, options.outputPath)
+    await unlink(agentFile)
+    const raw = await readFile(options.outputPath, 'utf8')
+    return { ok: true, value: options.outputSchema.parse(JSON.parse(raw)) }
+  } catch (error) {
+    const isEnoent =
+      error !== null && typeof error === 'object' && 'code' in error && (error as { code?: unknown }).code === 'ENOENT'
+    if (isEnoent) {
+      const misplaced = findMisplacedScratches(
+        agentWritePath(options.cwd, options.outputPath),
+        options.cwd,
+        path.basename(options.outputPath),
+      )
+      const hint = misplaced.length === 0 ? '' : ` Possible misplaced file(s): ${misplaced.join(', ')}.`
+      const agentFile = agentWritePath(options.cwd, options.outputPath)
       return {
         ok: false,
-        error: new Error(`${options.label} exited with code ${result.exitCode}: ${result.stderr}`),
-        timedOut: result.timedOut === true,
+        error: new Error(`${options.label} did not write to the expected scratch path: ${agentFile}.${hint}`),
+        timedOut: false,
       }
     }
-    try {
-      await copyFile(agentFile, options.outputPath)
-      await unlink(agentFile)
-      const raw = await readFile(options.outputPath, 'utf8')
-      return { ok: true, value: options.outputSchema.parse(JSON.parse(raw)) }
-    } catch (error) {
-      const isEnoent =
-        error !== null &&
-        typeof error === 'object' &&
-        'code' in error &&
-        (error as { code?: unknown }).code === 'ENOENT'
-      if (isEnoent) {
-        const misplaced = findMisplacedScratches(agentFile, options.cwd, path.basename(options.outputPath))
-        const hint = misplaced.length === 0 ? '' : ` Possible misplaced file(s): ${misplaced.join(', ')}.`
-        return {
-          ok: false,
-          error: new Error(`${options.label} did not write to the expected scratch path: ${agentFile}.${hint}`),
-          timedOut: false,
-        }
-      }
-      return { ok: false, error: error instanceof Error ? error : new Error(String(error)), timedOut: false }
-    }
-  } finally {
-    handler.dispose()
+    return { ok: false, error: error instanceof Error ? error : new Error(String(error)), timedOut: false }
   }
 }
 
-export async function runAgent<T>(options: RunAgentOptions<T>): Promise<T> {
-  const first = await runAttempt(options)
-  if (first.ok) {
-    return first.value
+export async function runAgent<T>(options: RunAgentOptions<T>): Promise<AgentRunResult<T>> {
+  const handler = createLineHandler(options)
+  const buildUsage = (): AgentUsage => ({
+    ...handler.ctx.usage,
+    wallMs: handler.ctx.firstStepAt === null ? 0 : Date.now() - handler.ctx.firstStepAt,
+  })
+  const finalize = (value: T): AgentRunResult<T> => ({ value, usage: buildUsage() })
+  try {
+    const first = await runAttempt(options, handler)
+    if (first.ok) return finalize(first.value)
+    if (first.timedOut) throw new AgentRunError(first.error.message, buildUsage())
+    options.onRetry?.()
+    const second = await runAttempt(options, handler)
+    if (second.ok) return finalize(second.value)
+    throw new AgentRunError(second.error.message, buildUsage())
+  } finally {
+    handler.dispose()
   }
-
-  if (first.timedOut) {
-    throw first.error
-  }
-
-  if (options.onRetry !== undefined) {
-    options.onRetry()
-  }
-  const second = await runAttempt(options)
-  if (second.ok) {
-    return second.value
-  }
-
-  throw second.error
 }

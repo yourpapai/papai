@@ -12,20 +12,21 @@ import type { ShellExecFn } from '../../review-loop/src/build-checker.js'
 import { createIssueLedger, IssueLedgerSnapshotSchema } from '../../review-loop/src/issue-ledger.js'
 import type { IssueMatch, ReviewerIssue } from '../../review-loop/src/issue-schema.js'
 import { runReviewLoop } from '../../review-loop/src/loop-controller.js'
-import { createRunState } from '../../review-loop/src/run-state.js'
+import { createRunState, PersistedRunStateSchema } from '../../review-loop/src/run-state.js'
 import type { Decisions } from '../../review-loop/src/trace-log.js'
 import { createCapturingTraceLogger } from '../../review-loop/src/trace-log.js'
 import { execGit } from '../../review-loop/src/worktree.js'
 import {
   cleanupTempDirs,
   createReviewLoopConfigFixture,
+  fakePool,
   makeTempDir,
   silentReporter,
   silentTrace,
 } from './test-helpers.js'
 
 function sumDecisions(d: Decisions): number {
-  return d.fixed + d.invalid + d.already_fixed + d.needs_human + d.plan_drift + d.no_commit
+  return d.fixed + d.invalid + d.already_fixed + d.needs_human + d.plan_drift + d.no_commit + d.inspector_rejected
 }
 
 afterEach(cleanupTempDirs)
@@ -92,7 +93,9 @@ function matchExistingByFile(prompt: string): IssueMatch[] {
 function createMockSpawn(handlers: {
   reviewerIssues?: ReviewerIssue[][]
   fixerResults?: Array<{ verdict: string; fixability: string; fixed: boolean; commitMessage?: string }>
+  inspectorAddresses?: boolean
   onFixer?: (cwd: string, callIndex: number) => Promise<void> | void
+  onReviewer?: (cwd: string, callIndex: number) => Promise<void> | void
   matchExisting?: boolean
   matchByFile?: boolean
   onMatch?: (prompt: string) => void
@@ -110,6 +113,21 @@ function createMockSpawn(handlers: {
       if (scratchPath !== null) {
         mkdirSync(path.dirname(scratchPath), { recursive: true })
         writeFileSync(scratchPath, JSON.stringify({ issues }))
+      }
+      if (handlers.onReviewer) {
+        await handlers.onReviewer(opts.cwd, reviewerCall - 1)
+      }
+    } else if (promptText.includes('You are an inspector')) {
+      if (scratchPath !== null) {
+        mkdirSync(path.dirname(scratchPath), { recursive: true })
+        writeFileSync(
+          scratchPath,
+          JSON.stringify({
+            addresses: handlers.inspectorAddresses ?? true,
+            reasoning: 'Mock inspector acceptance.',
+            confidence: 0.9,
+          }),
+        )
       }
     } else if (promptText.includes('Verify and fix') || promptText.includes('build error')) {
       const result = handlers.fixerResults?.[fixerCall] ?? { verdict: 'valid', fixability: 'auto', fixed: true }
@@ -149,7 +167,7 @@ function createMockSpawn(handlers: {
 }
 
 function createMockExec(passed: boolean): ShellExecFn {
-  return (): Promise<{ exitCode: number; stdout: string; stderr: string }> =>
+  return (_cwd?: string): Promise<{ exitCode: number; stdout: string; stderr: string }> =>
     Promise.resolve({
       exitCode: passed ? 0 : 1,
       stdout: '',
@@ -161,16 +179,19 @@ interface AgentTimeouts {
   reviewer: Array<number | undefined>
   matcher: Array<number | undefined>
   fixer: Array<number | undefined>
+  inspector: Array<number | undefined>
 }
 
 function createTimeoutRecordingSpawn(base: SpawnFn): { spawn: SpawnFn; timeouts: AgentTimeouts } {
-  const timeouts: AgentTimeouts = { reviewer: [], matcher: [], fixer: [] }
+  const timeouts: AgentTimeouts = { reviewer: [], matcher: [], fixer: [], inspector: [] }
   const spawn: SpawnFn = (command, args, opts) => {
     const promptText = args[args.length - 1] ?? ''
     if (promptText.includes('Review the current implementation')) {
       timeouts.reviewer.push(opts.timeout)
     } else if (promptText.includes('Match newly found')) {
       timeouts.matcher.push(opts.timeout)
+    } else if (promptText.includes('You are an inspector')) {
+      timeouts.inspector.push(opts.timeout)
     } else {
       timeouts.fixer.push(opts.timeout)
     }
@@ -237,12 +258,15 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(result.doneReason).toBe('clean')
     expect(timeouts.reviewer).toEqual([111_000, 111_000, 111_000])
     expect(timeouts.matcher).toEqual([222_000])
     expect(timeouts.fixer).toEqual([333_000, 333_000])
+    expect(timeouts.inspector).toEqual([333_000, 333_000])
   })
 
   test('falls back to agentTimeoutMs when no per-agent override is set', async () => {
@@ -270,6 +294,8 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(result.doneReason).toBe('clean')
@@ -301,6 +327,8 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(result.doneReason).toBe('clean')
@@ -328,6 +356,8 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(result.doneReason).toBe('no_progress')
@@ -364,13 +394,15 @@ describe('runReviewLoop', () => {
           return Promise.resolve()
         },
       }),
-      exec: (): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
+      exec: (_cwd?: string): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
         const r = execResults[execIndex]!
         execIndex += 1
         return Promise.resolve(r)
       },
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(result.doneReason).toBe('clean')
@@ -417,13 +449,15 @@ describe('runReviewLoop', () => {
         ],
         onFixer: (cwd, callIndex) => fixerActions[callIndex]!(cwd),
       }),
-      exec: (): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
+      exec: (_cwd?: string): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
         const r = execResults[execIndex]!
         execIndex += 1
         return Promise.resolve(r)
       },
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(result.doneReason).toBe('clean')
@@ -466,6 +500,8 @@ describe('runReviewLoop', () => {
       exec: createMockExec(false),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(result.doneReason).toBe('no_progress')
@@ -500,13 +536,15 @@ describe('runReviewLoop', () => {
           { verdict: 'needs_human', fixability: 'manual', fixed: false },
         ],
       }),
-      exec: (): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
+      exec: (_cwd?: string): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
         const r = execResults[execIndex]!
         execIndex += 1
         return Promise.resolve(r)
       },
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const records = Object.values(ledger.snapshot.issues)
@@ -540,6 +578,8 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const headAfter = (await execGit(runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
@@ -575,6 +615,8 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(result.doneReason).toBe('clean')
@@ -610,6 +652,8 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const committedFiles = (
@@ -652,6 +696,8 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const records = Object.values(ledger.snapshot.issues)
@@ -698,6 +744,8 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(matcherPrompts).toHaveLength(3)
@@ -757,6 +805,8 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const onDisk = IssueLedgerSnapshotSchema.parse(JSON.parse(ledgerOnDiskAtSecondIssue))
@@ -766,6 +816,42 @@ describe('runReviewLoop', () => {
     expect(firstRecord).toBeDefined()
     expect(firstRecord!.status).toBe('fixed_pending_review')
     expect(firstRecord!.fixAttempts).toBe(1)
+  })
+
+  test('persists currentRound to state.json at round entry so mid-round crash reports the right round', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+
+    await setupGitRepo(runState.worktreePath)
+
+    const stateSnapshots: string[] = []
+    const spawn = createMockSpawn({
+      reviewerIssues: [[issue], []],
+      fixerResults: [{ verdict: 'valid', fixability: 'auto', fixed: true }],
+      onReviewer: () => {
+        stateSnapshots.push(readFileSync(runState.statePath, 'utf8'))
+      },
+    })
+
+    await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn,
+      exec: createMockExec(true),
+      log: silentReporter(),
+      trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
+    })
+
+    expect(stateSnapshots.length).toBeGreaterThanOrEqual(1)
+    const firstSnapshot = PersistedRunStateSchema.parse(JSON.parse(stateSnapshots[0]!))
+    expect(firstSnapshot.currentRound).toBe(1)
   })
 
   test('emits trace events and returns per-round metrics', async () => {
@@ -794,6 +880,8 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: logger,
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const types = events.map((e) => e.event)
@@ -830,6 +918,8 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: logger,
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const records = Object.values(ledger.snapshot.issues)
@@ -867,6 +957,8 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const subject = (await execGit(runState.worktreePath, ['log', '-1', '--format=%s'])).stdout.trim()
@@ -897,6 +989,8 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const subject = (await execGit(runState.worktreePath, ['log', '-1', '--format=%s'])).stdout.trim()
@@ -928,6 +1022,8 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const headAfter = (await execGit(runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
@@ -961,6 +1057,8 @@ describe('runReviewLoop', () => {
       exec: createMockExec(true),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const status = (await execGit(runState.worktreePath, ['status', '--porcelain'])).stdout.trim()
@@ -998,13 +1096,15 @@ describe('runReviewLoop', () => {
           return Promise.resolve()
         },
       }),
-      exec: (): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
+      exec: (_cwd?: string): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
         const r = execResults[execIndex]!
         execIndex += 1
         return Promise.resolve(r)
       },
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const decisions = result.metrics![0]!.decisions
@@ -1039,6 +1139,8 @@ describe('runReviewLoop', () => {
       exec: createMockExec(false),
       log: silentReporter(),
       trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const decisions = result.metrics![0]!.decisions

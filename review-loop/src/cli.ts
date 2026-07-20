@@ -6,18 +6,23 @@
 import { access, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { createShellExec, runBuildCheck, type BuildCheckResult, type ShellExecFn } from './build-checker.js'
+import { createShellExec, runBuildCheck, type ShellExecFn } from './build-checker.js'
+import { MergeConflictError, formatBuildFailureMessage } from './cli-errors.js'
 import { loadReviewLoopConfig, type ReviewLoopConfig } from './config.js'
 import { createIssueLedger, loadIssueLedger, type IssueLedger } from './issue-ledger.js'
 import { LiveRenderer } from './live-renderer.js'
 import { runReviewLoop, type ReviewLoopResult } from './loop-controller.js'
+import type { ProgressReporter } from './progress-log.js'
 import { createRunState, loadRunState, type RunState } from './run-state.js'
 import { realSpawn } from './spawn.js'
-import { buildMetricsJson, formatSummary } from './summary.js'
-import { createFileTraceLogger } from './trace-log.js'
+import { buildMetricsJson, buildSummary } from './summary.js'
+import { createFileTraceLogger, type TraceLogger } from './trace-log.js'
+import { createWorkerPool, type WorkerPool } from './worker-pool.js'
 import {
+  cleanWorkerWorktrees,
   createWorktree,
   mergeWorktree,
+  type MergeResult,
   removeWorktree,
   resetWorktree,
   worktreeExists,
@@ -30,6 +35,8 @@ export interface CliArgs {
   repoRoot?: string
   resumeRunId?: string
   resetWorktree: boolean
+  poolSize?: number
+  noInspect: boolean
 }
 
 const DEFAULT_CONFIG_PATH = path.join(import.meta.dir, '..', 'config.json')
@@ -42,87 +49,93 @@ function readValueArg(argv: readonly string[], index: number, name: string): str
   return value
 }
 
-export function parseCliArgs(argv: readonly string[]): CliArgs {
-  let configPath = DEFAULT_CONFIG_PATH
-  let planPath: string | undefined
-  let repoRoot: string | undefined
-  let resumeRunId: string | undefined
-  let shouldResetWorktree = false
+interface ParsedFlags {
+  configPath: string
+  planPath?: string
+  repoRoot?: string
+  resumeRunId?: string
+  resetWorktree: boolean
+  poolSize?: number
+  noInspect: boolean
+}
 
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index]
-    if (arg === '--config') {
-      configPath = readValueArg(argv, index, '--config')
-      index += 1
-      continue
+function parseFlag(argv: readonly string[], index: number, flags: ParsedFlags): number {
+  const arg = argv[index]
+  if (arg === undefined) return index
+  switch (arg) {
+    case '--config':
+      flags.configPath = readValueArg(argv, index, '--config')
+      return index + 1
+    case '--plan':
+      flags.planPath = readValueArg(argv, index, '--plan')
+      return index + 1
+    case '--repo':
+      flags.repoRoot = readValueArg(argv, index, '--repo')
+      return index + 1
+    case '--resume-run':
+      flags.resumeRunId = readValueArg(argv, index, '--resume-run')
+      return index + 1
+    case '--reset-worktree':
+      flags.resetWorktree = true
+      return index
+    case '--pool-size': {
+      const value = Number(readValueArg(argv, index, '--pool-size'))
+      if (!Number.isInteger(value) || value < 1) {
+        throw new Error('--pool-size must be a positive integer')
+      }
+      flags.poolSize = value
+      return index + 1
     }
-    if (arg === '--plan') {
-      planPath = readValueArg(argv, index, '--plan')
-      index += 1
-      continue
-    }
-    if (arg === '--repo') {
-      repoRoot = readValueArg(argv, index, '--repo')
-      index += 1
-      continue
-    }
-    if (arg === '--resume-run') {
-      resumeRunId = readValueArg(argv, index, '--resume-run')
-      index += 1
-      continue
-    }
-    if (arg === '--reset-worktree') {
-      shouldResetWorktree = true
-      continue
-    }
+    case '--no-inspect':
+      flags.noInspect = true
+      return index
+    default:
+      return index
   }
+}
 
-  if (planPath === undefined) {
+export function parseCliArgs(argv: readonly string[]): CliArgs {
+  const flags: ParsedFlags = {
+    configPath: DEFAULT_CONFIG_PATH,
+    resetWorktree: false,
+    noInspect: false,
+  }
+  for (let index = 0; index < argv.length; index += 1) {
+    index = parseFlag(argv, index, flags)
+  }
+  if (flags.planPath === undefined) {
     throw new Error('Missing required --plan')
   }
-
-  return { configPath, planPath, repoRoot, resumeRunId, resetWorktree: shouldResetWorktree }
+  return {
+    configPath: flags.configPath,
+    planPath: flags.planPath,
+    repoRoot: flags.repoRoot,
+    resumeRunId: flags.resumeRunId,
+    resetWorktree: flags.resetWorktree,
+    poolSize: flags.poolSize,
+    noInspect: flags.noInspect,
+  }
 }
 
 export interface FinalizeDeps {
   exec: ShellExecFn
   runBuildCheck: typeof runBuildCheck
-  mergeWorktree: (repoRoot: string, branchName: string) => Promise<void>
+  mergeWorktree: (repoRoot: string, branchName: string) => Promise<MergeResult>
   removeWorktree: (repoRoot: string, worktreePath: string, runId: string) => Promise<void>
-}
-
-const BUILD_OUTPUT_TAIL_LINES = 40
-
-function tailLines(text: string, maxLines: number): string {
-  if (text.length === 0) return ''
-  const lines = text.split('\n')
-  if (lines.length <= maxLines) return text
-  const skipped = lines.length - maxLines
-  return `…(${skipped} earlier lines truncated; full output in build-check.log)…\n${lines.slice(-maxLines).join('\n')}`
-}
-
-function formatBuildFailureMessage(runState: RunState, build: BuildCheckResult): string {
-  const combined = tailLines(
-    [build.stdout, build.stderr].filter((part) => part.length > 0).join('\n'),
-    BUILD_OUTPUT_TAIL_LINES,
-  )
-  const logPath = path.join(runState.runDir, 'build-check.log')
-  return (
-    `Final build check failed; worktree preserved at ${runState.worktreePath} for inspection, merge skipped.\n` +
-    `Full build output written to ${logPath}.\n` +
-    `----- build output (tail) -----\n${combined}\n-------------------------------`
-  )
 }
 
 export async function finalizeRun(config: ReviewLoopConfig, runState: RunState, deps: FinalizeDeps): Promise<void> {
   const build = await deps.runBuildCheck({ exec: deps.exec })
-  if (build.passed) {
-    await deps.mergeWorktree(config.repoRoot, `review-loop/${runState.runId}`)
-    await deps.removeWorktree(config.repoRoot, runState.worktreePath, runState.runId)
-    return
+  if (!build.passed) {
+    await writeFile(path.join(runState.runDir, 'build-check.log'), `${build.stdout}\n--- stderr ---\n${build.stderr}\n`)
+    throw new Error(formatBuildFailureMessage(runState, build))
   }
-  await writeFile(path.join(runState.runDir, 'build-check.log'), `${build.stdout}\n--- stderr ---\n${build.stderr}\n`)
-  throw new Error(formatBuildFailureMessage(runState, build))
+  const branchName = `review-loop/${runState.runId}`
+  const result = await deps.mergeWorktree(config.repoRoot, branchName)
+  if (!result.ok) {
+    throw new MergeConflictError(branchName, result.conflictFiles, runState)
+  }
+  await deps.removeWorktree(config.repoRoot, runState.worktreePath, runState.runId)
 }
 
 export async function resolvePlanPath(planPath: string, repoRoot: string): Promise<string> {
@@ -148,23 +161,56 @@ export async function prepareWorktree(config: ReviewLoopConfig, runState: RunSta
   }
 }
 
-export async function writeRunArtifacts(runDir: string, result: ReviewLoopResult): Promise<void> {
-  const summary = formatSummary(result)
+export async function writeRunArtifacts(
+  runDir: string,
+  result: ReviewLoopResult,
+  options: { poolSize: number; inspect: boolean },
+): Promise<void> {
+  const closed = Object.values(result.ledger.issues).filter((r) => r.status === 'closed').length
+  const summary = buildSummary(result.doneReason, result.rounds, closed, result.metrics ?? [], options)
   await writeFile(path.join(runDir, 'summary.txt'), `${summary}\n`)
   try {
-    await writeFile(path.join(runDir, 'metrics.json'), `${JSON.stringify(buildMetricsJson(result), null, 2)}\n`)
+    await writeFile(
+      path.join(runDir, 'metrics.json'),
+      `${JSON.stringify(buildMetricsJson(result.doneReason, result.rounds, closed, result.metrics ?? [], options), null, 2)}\n`,
+    )
   } catch (error) {
     console.warn(`[review-loop] metrics.json write failed: ${error instanceof Error ? error.message : String(error)}`)
   }
   console.log(summary)
 }
 
+async function executeReviewLoop(
+  config: ReviewLoopConfig,
+  runState: RunState,
+  ledger: IssueLedger,
+  exec: ShellExecFn,
+  log: ProgressReporter,
+  trace: TraceLogger,
+  pool: WorkerPool,
+  inspect: boolean,
+): Promise<void> {
+  const result = await runReviewLoop({
+    config,
+    runState,
+    ledger,
+    spawn: realSpawn,
+    exec,
+    log,
+    trace,
+    pool,
+    inspect,
+  })
+  // Write summary/metrics/trace BEFORE finalizeRun so they always exist for
+  // post-mortem, even if the final build check or merge throws.
+  await writeRunArtifacts(runState.runDir, result, { poolSize: config.poolSize, inspect })
+  await finalizeRun(config, runState, { exec, runBuildCheck, mergeWorktree, removeWorktree })
+}
+
 export async function runCli(argv: readonly string[]): Promise<void> {
   const args = parseCliArgs(argv)
-  const config = await loadReviewLoopConfig({
-    configPath: args.configPath,
-    repoRoot: args.repoRoot,
-  })
+  const config = await loadReviewLoopConfig({ configPath: args.configPath, repoRoot: args.repoRoot })
+  if (args.poolSize !== undefined) config.poolSize = args.poolSize
 
   const runState: RunState =
     args.resumeRunId === undefined
@@ -179,29 +225,13 @@ export async function runCli(argv: readonly string[]): Promise<void> {
   const log = new LiveRenderer(process.stdout)
   const exec = createShellExec(runState.worktreePath, config.checkCommand, config.buildTimeoutMs)
   const trace = createFileTraceLogger(runState.tracePath)
+  await cleanWorkerWorktrees(runState.worktreePath, args.resumeRunId)
+  const pool = await createWorkerPool(config, runState)
 
   try {
-    const result = await runReviewLoop({
-      config,
-      runState,
-      ledger,
-      spawn: realSpawn,
-      exec,
-      log,
-      trace,
-    })
-
-    await finalizeRun(config, runState, {
-      exec,
-      runBuildCheck,
-      mergeWorktree,
-      removeWorktree,
-    })
-
-    await writeRunArtifacts(runState.runDir, result)
-  } catch (error) {
-    console.error(`Worktree preserved at ${runState.worktreePath} for inspection.`)
-    throw error
+    await executeReviewLoop(config, runState, ledger, exec, log, trace, pool, !args.noInspect)
+  } finally {
+    await pool.close()
   }
 }
 

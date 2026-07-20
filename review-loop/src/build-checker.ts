@@ -5,7 +5,10 @@
 
 import { execFile } from 'node:child_process'
 
-export type ShellExecFn = () => Promise<{ exitCode: number; stdout: string; stderr: string }>
+import { formatDuration, withLivePhase } from './live-renderer.js'
+import type { ProgressReporter } from './progress-log.js'
+
+export type ShellExecFn = (cwd?: string) => Promise<{ exitCode: number; stdout: string; stderr: string }>
 
 export interface BuildCheckDeps {
   exec: ShellExecFn
@@ -59,6 +62,16 @@ export async function runBuildCheck(deps: BuildCheckDeps): Promise<BuildCheckRes
 }
 
 export function createShellExec(cwd: string, command: string, timeoutMs?: number): ShellExecFn {
-  return (): Promise<RawExecResult> =>
-    runExec('sh', ['-c', command], { cwd, maxBuffer: 10 * 1024 * 1024, timeout: timeoutMs })
+  return (overrideCwd?: string): Promise<RawExecResult> =>
+    runExec('sh', ['-c', command], { cwd: overrideCwd ?? cwd, maxBuffer: 10 * 1024 * 1024, timeout: timeoutMs })
+}
+
+export async function runBuildWithLogging(
+  exec: ShellExecFn,
+  reporter: ProgressReporter,
+  cwd?: string,
+): Promise<BuildCheckResult> {
+  const phase = await withLivePhase(reporter, 'build', () => runBuildCheck({ exec: () => exec(cwd) }))
+  reporter.event(`[build] ${phase.result.passed ? 'passed' : 'FAILED'} · ${formatDuration(phase.durationMs)}`)
+  return phase.result
 }

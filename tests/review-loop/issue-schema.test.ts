@@ -7,6 +7,7 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   FixerResultSchema,
+  InspectorResultSchema,
   IssueMatchesSchema,
   ReviewerIssueSchema,
   ReviewerIssuesSchema,
@@ -108,5 +109,24 @@ describe('issue-schema', () => {
         targetFiles: [],
       }).success,
     ).toBe(true)
+  })
+})
+
+describe('InspectorResultSchema', () => {
+  test('accepts a valid inspector result', () => {
+    const parsed = InspectorResultSchema.parse({
+      addresses: true,
+      reasoning: 'The diff at line 12 fixes the race by adding the lock.',
+      confidence: 0.9,
+    })
+    expect(parsed.addresses).toBe(true)
+  })
+
+  test('rejects missing reasoning', () => {
+    expect(() => InspectorResultSchema.parse({ addresses: false, confidence: 0.5 })).toThrow()
+  })
+
+  test('rejects confidence out of range', () => {
+    expect(() => InspectorResultSchema.parse({ addresses: true, reasoning: 'ok', confidence: 1.5 })).toThrow()
   })
 })

@@ -110,7 +110,7 @@ export async function withLivePhase<T>(
   let timer: ReturnType<typeof setInterval> | null = null
   if (reporter.dynamic) {
     timer = setInterval(() => {
-      reporter.live(`[${label}] ${formatDuration(Date.now() - start)}...`)
+      reporter.live([`[${label}] ${formatDuration(Date.now() - start)}...`])
     }, 1000)
   }
   try {
@@ -143,13 +143,16 @@ export class LiveRenderer implements ProgressReporter {
     this.event(message)
   }
 
-  live(line: string): void {
+  live(lines: readonly string[]): void {
     if (!this.dynamic) {
-      this.stream.write(`${line}\n`)
+      for (const line of lines) {
+        this.stream.write(`${line}\n`)
+      }
       return
     }
-    this.stream.write(`${CLEAR_LINE}${this.fit(line)}`)
-    this.liveActive = true
+    const output = lines.map((line) => this.fit(line)).join('\n')
+    this.stream.write(`${CLEAR_LINE}${output}`)
+    this.liveActive = lines.length > 0
   }
 
   clearLive(): void {

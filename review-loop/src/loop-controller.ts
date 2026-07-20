@@ -24,13 +24,16 @@ import {
   emitRoundStart,
   emitRoundSummary,
   newCollector,
+  tallyPhaseMs,
   tallyReviewerIssues,
+  tallyUsage,
   type RoundCollector,
 } from './loop-trace.js'
 import type { ProgressReporter } from './progress-log.js'
 import { buildReviewPrompt } from './prompt-templates.js'
 import { saveRunState, type RunState } from './run-state.js'
 import type { RoundMetric, TraceLogger } from './trace-log.js'
+import type { WorkerPool } from './worker-pool.js'
 
 const TERMINAL_STATUSES = new Set<LedgerIssueRecord['status']>(['rejected', 'already_fixed', 'needs_human'])
 
@@ -44,6 +47,8 @@ export interface ReviewLoopDeps {
   exec: ShellExecFn
   log: ProgressReporter
   trace: TraceLogger
+  pool: WorkerPool
+  inspect: boolean
 }
 
 export interface ReviewLoopResult {
@@ -81,6 +86,9 @@ function pushRoundMetric(
     decisions: collector.decisions,
     reviewerSeverity: collector.reviewerSeverity,
     fixerSeverity: collector.fixerSeverity,
+    inspector: collector.inspector,
+    phaseMs: collector.phaseMs,
+    usage: collector.usage,
   }
   metrics.push(metric)
   emitRoundSummary(deps.trace, metric)
@@ -103,16 +111,17 @@ function filterActionable(records: readonly LedgerIssueRecord[]): readonly Ledge
   return records.filter((r) => !TERMINAL_STATUSES.has(r.status))
 }
 
-async function runReviewStep(deps: ReviewLoopDeps): Promise<readonly ReviewerIssue[]> {
+async function runReviewStep(deps: ReviewLoopDeps, collector: RoundCollector): Promise<readonly ReviewerIssue[]> {
   deps.log.log(`[round ${deps.runState.currentRound}/${deps.config.maxRounds}] Reviewing...`)
 
+  const reviewStart = Date.now()
   const reviewResult = await runAgent({
     spawn: deps.spawn,
     model: deps.config.reviewer.model,
     cwd: deps.runState.worktreePath,
     prompt: buildReviewPrompt(
       deps.runState.planPath,
-      agentWritePath(deps.runState.issuesPath, deps.runState.worktreePath),
+      agentWritePath(deps.runState.worktreePath, deps.runState.issuesPath),
     ),
     outputPath: deps.runState.issuesPath,
     outputSchema: ReviewerIssuesSchema,
@@ -122,21 +131,25 @@ async function runReviewStep(deps: ReviewLoopDeps): Promise<readonly ReviewerIss
     extraArgs: deps.config.reviewer.extraArgs,
     timeoutMs: deps.config.reviewer.timeoutMs ?? deps.config.agentTimeoutMs,
   })
+  tallyPhaseMs(collector, 'review', Date.now() - reviewStart)
+  tallyUsage(collector, reviewResult.usage)
 
-  return reviewResult.issues
+  return reviewResult.value.issues
 }
 
 async function runMatchAndRecord(
   deps: ReviewLoopDeps,
   round: number,
   newIssues: readonly ReviewerIssue[],
+  collector: RoundCollector,
 ): Promise<{ records: readonly LedgerIssueRecord[]; newCount: number; matchedCount: number }> {
   const existingRecords = Object.values(deps.ledger.snapshot.issues).filter((r) => {
     if (!TERMINAL_STATUSES.has(r.status)) return true
     return round - r.latestSeenRound <= MATCHER_RECENT_ROUNDS
   })
 
-  const matches = await matchIssues({
+  const matchStart = Date.now()
+  const { matches, usage } = await matchIssues({
     spawn: deps.spawn,
     newIssues,
     existingRecords,
@@ -148,6 +161,8 @@ async function runMatchAndRecord(
     reporter: deps.log,
     timeoutMs: deps.config.matcher.timeoutMs ?? deps.config.agentTimeoutMs,
   })
+  tallyPhaseMs(collector, 'match', Date.now() - matchStart)
+  tallyUsage(collector, usage)
 
   const newCount = matches.filter((m) => m.existingId === null).length
   const matchedCount = matches.length - newCount
@@ -162,12 +177,37 @@ async function runMatchAndRecord(
   return { records: roundRecords, newCount, matchedCount }
 }
 
+function runProcessPendingIssues(
+  deps: ReviewLoopDeps,
+  round: number,
+  collector: RoundCollector,
+  pending: readonly LedgerIssueRecord[],
+): Promise<number> {
+  return processPendingIssues(
+    {
+      config: deps.config,
+      runState: deps.runState,
+      ledger: deps.ledger,
+      spawn: deps.spawn,
+      exec: deps.exec,
+      log: deps.log,
+      trace: deps.trace,
+      pool: deps.pool,
+      inspect: deps.inspect,
+    },
+    round,
+    collector,
+    pending,
+  )
+}
+
 async function runRound(round: number, deps: ReviewLoopDeps, metrics: RoundMetric[]): Promise<ReviewLoopResult> {
   deps.runState.currentRound = round
+  await saveRunState(deps.runState)
   emitRoundStart(deps.trace, round, deps.config.maxRounds, deps.config.maxNoProgressRounds, deps.config.checkCommand)
   const collector = newCollector()
 
-  const newIssues = await runReviewStep(deps)
+  const newIssues = await runReviewStep(deps, collector)
   tallyReviewerIssues(collector, newIssues)
   emitReviewComplete(deps.trace, round, newIssues)
 
@@ -177,7 +217,7 @@ async function runRound(round: number, deps: ReviewLoopDeps, metrics: RoundMetri
     return finishRound(deps, metrics, round, 0, collector, 'clean')
   }
 
-  const matched = await runMatchAndRecord(deps, round, newIssues)
+  const matched = await runMatchAndRecord(deps, round, newIssues, collector)
   emitMatchComplete(deps.trace, round, matched.newCount, matched.matchedCount)
 
   if (newIssues.length === 0) {
@@ -188,7 +228,7 @@ async function runRound(round: number, deps: ReviewLoopDeps, metrics: RoundMetri
 
   deps.log.log(`[round ${round}] Found ${newIssues.length} issues`)
   const pending = filterActionable(matched.records)
-  const fixedThisRound = await processPendingIssues(deps, round, collector, pending)
+  const fixedThisRound = await runProcessPendingIssues(deps, round, collector, pending)
   deps.log.log(`[round ${round}] Fixed ${fixedThisRound}/${pending.length} issues`)
 
   const newNoProgress = fixedThisRound === 0 ? deps.runState.noProgressRounds + 1 : 0

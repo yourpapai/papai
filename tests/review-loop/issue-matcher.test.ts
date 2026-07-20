@@ -85,8 +85,8 @@ describe('issue-matcher', () => {
       reporter: silentReporter(),
     })
 
-    expect(result).toHaveLength(1)
-    expect(result[0]?.existingId).toBeNull()
+    expect(result.matches).toHaveLength(1)
+    expect(result.matches[0]?.existingId).toBeNull()
   })
 
   test('returns LLM-provided matches when ledger has entries', async () => {
@@ -108,8 +108,8 @@ describe('issue-matcher', () => {
       reporter: silentReporter(),
     })
 
-    expect(result).toHaveLength(1)
-    expect(result[0]?.existingId).toBe('existing-001')
+    expect(result.matches).toHaveLength(1)
+    expect(result.matches[0]?.existingId).toBe('existing-001')
   })
 
   test('short-circuits without invoking matcher when there are no new issues', async () => {
@@ -131,7 +131,7 @@ describe('issue-matcher', () => {
       reporter: silentReporter(),
     })
 
-    expect(result).toEqual([])
+    expect(result.matches).toEqual([])
     expect(spawn).not.toHaveBeenCalled()
   })
 

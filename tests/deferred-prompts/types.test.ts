@@ -11,6 +11,7 @@ import {
   CONDITION_FIELDS,
   deliveryPolicySchema,
   FIELD_OPERATORS,
+  parseExecutionMetadata,
   rruleInputSchema,
   scheduleSchema,
 } from '../../src/deferred-prompts/types.js'
@@ -281,6 +282,14 @@ describe('rruleInputSchema', () => {
   test('rejects empty byMinute array', () => {
     const result = rruleInputSchema.safeParse({ freq: 'DAILY', byMinute: [] })
     expect(result.success).toBe(false)
+  })
+})
+
+describe('parseExecutionMetadata', () => {
+  test('drops a legacy mode key from old rows', () => {
+    const parsed = parseExecutionMetadata('{"mode":"context","delivery_brief":"hi","context_snapshot":null}')
+    expect(parsed).toEqual({ delivery_brief: 'hi', context_snapshot: null })
+    expect('mode' in parsed).toBe(false)
   })
 })
 

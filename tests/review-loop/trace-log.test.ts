@@ -10,6 +10,7 @@ import path from 'node:path'
 import {
   TraceEventSchema,
   RoundMetricSchema,
+  DecisionsSchema,
   createFileTraceLogger,
   createCapturingTraceLogger,
   emptyDecisions,
@@ -92,9 +93,20 @@ describe('trace-log', () => {
         newIssues: 1,
         cumulativeOpen: 1,
         noProgressRounds: 0,
-        decisions: { fixed: 1, invalid: 0, already_fixed: 0, needs_human: 0, plan_drift: 0, no_commit: 0 },
+        decisions: {
+          fixed: 1,
+          invalid: 0,
+          already_fixed: 0,
+          needs_human: 0,
+          plan_drift: 0,
+          no_commit: 0,
+          inspector_rejected: 0,
+        },
         reviewerSeverity: { critical: 0, high: 1, medium: 0, low: 0 },
         fixerSeverity: { critical: 0, high: 0, medium: 0, low: 0 },
+        inspector: { runs: 0, rejected: 0 },
+        phaseMs: { review: 0, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 },
+        usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 },
       },
       { ts: 'x', round: 1, phase: 'r', event: 'loop_end', doneReason: 'clean', rounds: 1, burndown: [] },
     ] as const
@@ -112,6 +124,9 @@ describe('trace-log', () => {
       decisions: emptyDecisions(),
       reviewerSeverity: { ...emptySeverityCounts(), high: 2, low: 1 },
       fixerSeverity: { ...emptySeverityCounts(), high: 1 },
+      inspector: { runs: 0, rejected: 0 },
+      phaseMs: { review: 0, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 },
+      usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 },
     }
     expect(RoundMetricSchema.safeParse(metric).success).toBe(true)
   })
@@ -122,5 +137,60 @@ describe('trace-log', () => {
     await logger.append({ ts: 'b', round: 1, phase: 'r', event: 'match_complete', newCount: 0, matchedCount: 1 })
     expect(events).toHaveLength(2)
     expect(events[0]!.ts).toBe('a')
+  })
+})
+
+describe('extended schemas', () => {
+  test('DecisionsSchema includes inspector_rejected', () => {
+    const parsed = DecisionsSchema.parse({
+      fixed: 0,
+      invalid: 0,
+      already_fixed: 0,
+      needs_human: 0,
+      plan_drift: 0,
+      no_commit: 0,
+      inspector_rejected: 2,
+    })
+    expect(parsed.inspector_rejected).toBe(2)
+  })
+
+  test('RoundMetricSchema includes inspector, phaseMs, usage', () => {
+    const parsed = RoundMetricSchema.parse({
+      round: 1,
+      newIssues: 1,
+      cumulativeOpen: 1,
+      noProgressRounds: 0,
+      decisions: {
+        fixed: 0,
+        invalid: 0,
+        already_fixed: 0,
+        needs_human: 0,
+        plan_drift: 0,
+        no_commit: 0,
+        inspector_rejected: 0,
+      },
+      reviewerSeverity: { critical: 0, high: 0, medium: 0, low: 0 },
+      fixerSeverity: { critical: 0, high: 0, medium: 0, low: 0 },
+      inspector: { runs: 0, rejected: 0 },
+      phaseMs: { review: 0, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 },
+      usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 },
+    })
+    expect(parsed.inspector.runs).toBe(0)
+    expect(parsed.phaseMs.review).toBe(0)
+    expect(parsed.usage.costUsd).toBe(0)
+  })
+
+  test('TraceEventSchema accepts inspect_complete', () => {
+    const parsed = TraceEventSchema.parse({
+      ts: '2026-07-19T00:00:00.000Z',
+      round: 1,
+      phase: 'inspect',
+      event: 'inspect_complete',
+      issueId: 'rec-1',
+      addresses: true,
+      confidence: 0.9,
+      reasoning: 'ok',
+    })
+    expect(parsed.event).toBe('inspect_complete')
   })
 })

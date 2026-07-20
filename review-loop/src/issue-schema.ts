@@ -36,6 +36,12 @@ export const FixerResultSchema = VerifierDecisionSchema.extend({
   severity: z.enum(['critical', 'high', 'medium', 'low']).optional(),
 })
 
+export const InspectorResultSchema = z.object({
+  addresses: z.boolean(),
+  reasoning: z.string().min(1),
+  confidence: z.number().min(0).max(1),
+})
+
 export const IssueMatchSchema = z.object({
   newIssueIndex: z.number().int().nonnegative(),
   existingId: z.string().nullable(),
@@ -48,6 +54,8 @@ export const IssueMatchesSchema = z.object({
 export type ReviewerIssue = z.infer<typeof ReviewerIssueSchema>
 export type ReviewerIssues = z.infer<typeof ReviewerIssuesSchema>
 export type VerifierDecision = z.infer<typeof VerifierDecisionSchema>
+export type Verdict = VerifierDecision['verdict']
 export type FixerResult = z.infer<typeof FixerResultSchema>
+export type InspectorResult = z.infer<typeof InspectorResultSchema>
 export type IssueMatch = z.infer<typeof IssueMatchSchema>
 export type IssueMatches = z.infer<typeof IssueMatchesSchema>

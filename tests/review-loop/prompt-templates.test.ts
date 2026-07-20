@@ -6,7 +6,13 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { ReviewerIssue } from '../../review-loop/src/issue-schema.js'
-import { buildFixPrompt, buildReviewPrompt, buildRetryFixPrompt } from '../../review-loop/src/prompt-templates.js'
+import {
+  buildFixPrompt,
+  buildInspectPrompt,
+  buildRetryFixPrompt,
+  buildRetryFixWithInspectorFeedbackPrompt,
+  buildReviewPrompt,
+} from '../../review-loop/src/prompt-templates.js'
 
 const issue: ReviewerIssue = {
   title: 'Race condition in queue flush path',
@@ -62,6 +68,12 @@ describe('prompt-templates', () => {
     expect(p).toContain('fixer')
   })
 
+  test('pins confidence to a 0-1 probability range (regression: reviewer emitted 1-5 scale)', () => {
+    const p = buildReviewPrompt('/plan.md', '/issues.json')
+    expect(p).toContain('between 0 and 1')
+    expect(p).toContain('NOT a 1-5 rating')
+  })
+
   test('fixer prompt keeps sentinel, drops commit instruction, asks for commitMessage + severity', () => {
     const p = buildFixPrompt(issue, '/result.json', 'bun check:full')
     expect(p).toContain('Verify and fix')
@@ -77,5 +89,66 @@ describe('prompt-templates', () => {
     expect(p).toContain('"verdict"')
     expect(p).not.toContain('same schema as before')
     expect(p).toContain('final attempt')
+  })
+})
+
+describe('buildInspectPrompt', () => {
+  const inspectorIssue: ReviewerIssue = {
+    title: 'Race in queue',
+    severity: 'high',
+    summary: 's',
+    whyItMatters: 'w',
+    evidence: 'src/q.ts 1-2',
+    file: 'src/q.ts',
+    lineStart: 1,
+    lineEnd: 2,
+    suggestedFix: 'lock',
+    confidence: 0.9,
+  }
+
+  test('includes issue JSON, diff, fixer reasoning, output path, and schema', () => {
+    const prompt = buildInspectPrompt(inspectorIssue, 'diff content here', 'fixer reasoning', 'out.json')
+    expect(prompt).toContain('You are an inspector')
+    expect(prompt).toContain('Race in queue')
+    expect(prompt).toContain('diff content here')
+    expect(prompt).toContain('fixer reasoning')
+    expect(prompt).toContain('out.json')
+    expect(prompt).toContain('"addresses": boolean')
+    expect(prompt).toContain('Do not flag unrelated problems')
+  })
+
+  test('pins confidence to a 0-1 probability range (regression: reviewer emitted 1-5 scale)', () => {
+    const prompt = buildInspectPrompt(inspectorIssue, 'd', 'r', 'o.json')
+    expect(prompt).toContain('between 0 and 1')
+    expect(prompt).toContain('NOT a 1-5 rating')
+  })
+})
+
+describe('buildRetryFixWithInspectorFeedbackPrompt', () => {
+  const inspectorIssue: ReviewerIssue = {
+    title: 'Race in queue',
+    severity: 'high',
+    summary: 's',
+    whyItMatters: 'w',
+    evidence: 'src/q.ts 1-2',
+    file: 'src/q.ts',
+    lineStart: 1,
+    lineEnd: 2,
+    suggestedFix: 'lock',
+    confidence: 0.9,
+  }
+
+  test('includes inspector reasoning and the agree-with-inspector branch', () => {
+    const prompt = buildRetryFixWithInspectorFeedbackPrompt(
+      inspectorIssue,
+      'inspector said: this is wrong',
+      'out.json',
+      'bun check:full',
+    )
+    expect(prompt).toContain('rejected by an inspector')
+    expect(prompt).toContain('inspector said: this is wrong')
+    expect(prompt).toContain('verdict "invalid", "needs_human", or "plan_drift"')
+    expect(prompt).toContain('bun check:full')
+    expect(prompt).toContain('final attempt')
   })
 })
