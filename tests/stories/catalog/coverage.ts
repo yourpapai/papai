@@ -632,6 +632,68 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
       'tests/stories/tasks/integration-surface.story.test.ts#SCN-task-youtrack-command: applies a YouTrack command to one task only',
     ],
   },
+  'SCN-memo-save': {
+    verifiedAt: '2026-07-20',
+    storyIds: [
+      'tests/stories/memory/memos.story.test.ts#SCN-memo-save: saves a note and reads it back on a later turn',
+    ],
+  },
+  'SCN-memo-recall': {
+    verifiedAt: '2026-07-20',
+    storyIds: ['tests/stories/memory/memos.story.test.ts#SCN-memo-recall: recalls a saved note by semantic search'],
+  },
+  'SCN-memo-archive': {
+    verifiedAt: '2026-07-20',
+    storyIds: [
+      'tests/stories/memory/memos.story.test.ts#SCN-memo-archive: archives notes by id and excludes them from active list',
+    ],
+  },
+  'SCN-memo-promote': {
+    verifiedAt: '2026-07-20',
+    storyIds: ['tests/stories/memory/memos.story.test.ts#SCN-memo-promote: promotes a note into a task'],
+  },
+  'SCN-memory-remember': {
+    verifiedAt: '2026-07-20',
+    storyIds: ['tests/stories/memory/memory.story.test.ts#SCN-memory-remember: stores a durable memory and lists it'],
+  },
+  'SCN-memory-recall': {
+    verifiedAt: '2026-07-20',
+    storyIds: ['tests/stories/memory/memory.story.test.ts#SCN-memory-recall: recalls a stored memory by keyword'],
+  },
+  'SCN-memory-forget': {
+    verifiedAt: '2026-07-20',
+    storyIds: ['tests/stories/memory/memory.story.test.ts#SCN-memory-forget: forgets a stored memory by query'],
+  },
+  'SCN-memory-capture-sweep': {
+    verifiedAt: '2026-07-20',
+    storyIds: [
+      'tests/stories/memory/memory.story.test.ts#SCN-memory-capture-sweep: captures a memory from an idle group thread',
+    ],
+  },
+  'SCN-memory-promotion-sweep': {
+    verifiedAt: '2026-07-20',
+    storyIds: [
+      'tests/stories/memory/memory.story.test.ts#SCN-memory-promotion-sweep: promotes a cross-thread provisional cluster to durable',
+    ],
+  },
+  'SCN-instructions-save': {
+    verifiedAt: '2026-07-20',
+    storyIds: [
+      'tests/stories/memory/instructions.story.test.ts#SCN-instructions-save: saves a custom instruction and lists it',
+    ],
+  },
+  'SCN-instructions-list-delete': {
+    verifiedAt: '2026-07-20',
+    storyIds: [
+      'tests/stories/memory/instructions.story.test.ts#SCN-instructions-list-delete: deletes an instruction and confirms it is gone from a later list',
+    ],
+  },
+  'SCN-history-lookup': {
+    verifiedAt: '2026-07-20',
+    storyIds: [
+      'tests/stories/context/history-lookup.story.test.ts#SCN-history-lookup: searches the main group history from a thread',
+    ],
+  },
 }
 
 function auditRecord(readiness: AuditReadiness, family: StoryFamily, rationale: string): AuditRecord {
@@ -656,70 +718,10 @@ export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
     'No chat /announce command exists; admin broadcast via the settings route is covered by SCN-settings-admin-roster-announce. Keeps gap status.',
   ),
   // F3 — memory, memos, instructions, history, chat links
-  'SCN-memo-save': needs(
-    'F3',
-    ['capability-ids'],
-    'Builtin memo tools execute against the real DB; scripting them needs capability ids.',
-  ),
-  'SCN-memo-recall': needs(
-    'F3',
-    ['capability-ids', 'embeddings-endpoint'],
-    'Semantic recall needs a declared fake embedding endpoint (or an asserted keyword-fallback path) plus capability ids.',
-  ),
-  'SCN-memo-archive': needs(
-    'F3',
-    ['capability-ids'],
-    'Builtin memo tools execute against the real DB; scripting them needs capability ids.',
-  ),
-  'SCN-memo-promote': needs(
-    'F3',
-    ['capability-ids'],
-    'Memo promotion executes against the real DB; scripting it needs a capability id.',
-  ),
-  'SCN-memory-remember': needs(
-    'F3',
-    ['capability-ids'],
-    'Builtin memory tools execute against the real DB; scripting them needs capability ids.',
-  ),
-  'SCN-memory-recall': needs(
-    'F3',
-    ['capability-ids', 'embeddings-endpoint'],
-    'Semantic recall needs a declared fake embedding endpoint (or an asserted keyword-fallback path) plus capability ids.',
-  ),
-  'SCN-memory-forget': needs(
-    'F3',
-    ['capability-ids'],
-    'Builtin memory tools execute against the real DB; scripting them needs capability ids.',
-  ),
-  'SCN-memory-capture-sweep': needs(
-    'F3',
-    ['capability-ids', 'memory-extraction-llm'],
-    'sweepDirtyContexts(now) is single-pass; the extraction runner needs a model seam or declared HTTP.',
-  ),
-  'SCN-memory-promotion-sweep': needs(
-    'F3',
-    ['capability-ids'],
-    'sweepPromotions is single-pass and DI-ready; scripting the sweep needs capability ids.',
-  ),
-  'SCN-instructions-save': needs(
-    'F3',
-    ['capability-ids'],
-    'Instruction tools are DB-backed; scripting them needs capability ids.',
-  ),
-  'SCN-instructions-list-delete': needs(
-    'F3',
-    ['capability-ids'],
-    'Instruction tools are DB-backed; scripting them needs capability ids.',
-  ),
-  'SCN-history-lookup': needs(
-    'F3',
-    ['capability-ids'],
-    'The message cache is populated by prior seeded turns; scripting lookup_group_history needs a capability id.',
-  ),
   'SCN-fetch-chat-link': needs(
     'F3',
-    ['capability-ids', 'public-url-assertion'],
-    'The fetch path performs a real DNS lookup unless assertPublicUrl is injected.',
+    ['capability-ids', 'platform-adapter-fakes'],
+    'fetch_chat_link resolves Mattermost permalinks through the authenticated Mattermost REST API (resolveChatLink), never assertPublicUrl (that DNS/SSRF guard is web_fetch, family F6). Needs a Mattermost REST resolver fake, not built speculatively.',
   ),
   // F4 — HTTP surfaces
   'SCN-http-notify': needs(
