@@ -76,12 +76,12 @@ function createMockSpawn(handlers: {
       const issues = handlers.reviewerIssues?.[reviewerCall] ?? []
       reviewerCall += 1
       if (outputPath !== null) {
-        writeFileSync(path.join(opts.cwd, outputPath), JSON.stringify({ issues }))
+        writeFileSync(path.resolve(opts.cwd, outputPath), JSON.stringify({ issues }))
       }
     } else if (promptText.includes('You are an inspector')) {
       if (outputPath !== null) {
         writeFileSync(
-          path.join(opts.cwd, outputPath),
+          path.resolve(opts.cwd, outputPath),
           JSON.stringify({
             addresses: handlers.inspectorAddresses ?? true,
             reasoning: 'Mock inspector acceptance.',
@@ -94,7 +94,7 @@ function createMockSpawn(handlers: {
       fixerCall += 1
       if (outputPath !== null) {
         writeFileSync(
-          path.join(opts.cwd, outputPath),
+          path.resolve(opts.cwd, outputPath),
           JSON.stringify({
             ...result,
             reasoning: 'Fixed.',
@@ -109,7 +109,7 @@ function createMockSpawn(handlers: {
     } else if (promptText.includes('Match newly found')) {
       const matches = handlers.matchFirstOnly === true ? matchFirstToExisting(promptText) : []
       if (outputPath !== null) {
-        writeFileSync(path.join(opts.cwd, outputPath), JSON.stringify({ matches }))
+        writeFileSync(path.resolve(opts.cwd, outputPath), JSON.stringify({ matches }))
       }
     }
     return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })

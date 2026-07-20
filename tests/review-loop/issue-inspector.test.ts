@@ -35,7 +35,10 @@ function mockSpawnInspect(addresses: boolean): SpawnFn {
     const prompt = args[args.length - 1] ?? ''
     const outputPath = prompt.match(/JSON to:\s*(\S+)/u)?.[1]
     if (prompt.includes('You are an inspector') && outputPath !== undefined) {
-      writeFileSync(path.join(opts.cwd, outputPath), JSON.stringify({ addresses, reasoning: 'mock', confidence: 0.8 }))
+      writeFileSync(
+        path.resolve(opts.cwd, outputPath),
+        JSON.stringify({ addresses, reasoning: 'mock', confidence: 0.8 }),
+      )
     }
     return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' } satisfies SpawnResult)
   }
@@ -48,7 +51,7 @@ function createPromptCapturingSpawn(): { spawn: SpawnFn; getPrompt: () => string
     capturedPrompt = prompt
     const outputPath = prompt.match(/JSON to:\s*(\S+)/u)![1]!
     writeFileSync(
-      path.join(opts.cwd, outputPath),
+      path.resolve(opts.cwd, outputPath),
       JSON.stringify({ addresses: true, reasoning: 'mock', confidence: 0.8 }),
     )
     return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' } satisfies SpawnResult)
@@ -129,5 +132,39 @@ describe('runInspector', () => {
     const prompt = getPrompt()
     expect(prompt).toContain('Fixer reasoning (what the fixer claims it did):')
     expect(prompt).toContain(expectedReasoning)
+  })
+
+  test('inspector prompt writes to an absolute path under the worktree cwd', async () => {
+    // Regression: see agentWritePath. The prompt must embed an absolute path so
+    // the agent cannot mis-resolve it against an unrelated project root.
+    const repoRoot = makeTempDir('inspector-abspath-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
+    await setupRepo(runState.worktreePath)
+    const { logger } = createCapturingTraceLogger()
+    const { spawn, getPrompt } = createPromptCapturingSpawn()
+
+    await runInspector(
+      {
+        spawn,
+        cwd: runState.worktreePath,
+        issue,
+        baselineSha: 'HEAD',
+        fixerReasoning: 'mock',
+        outputPath: runState.inspectPath,
+        logPath: runState.logPath,
+        reporter: silentReporter(),
+        model: 'm',
+        extraArgs: [],
+        label: 'inspector-w1',
+      },
+      1,
+      'rec-1',
+      logger,
+    )
+
+    const prompt = getPrompt()
+    const expected = path.join(runState.worktreePath, '.review-loop', 'inspect.json')
+    expect(prompt).toContain(expected)
   })
 })

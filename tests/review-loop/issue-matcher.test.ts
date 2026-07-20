@@ -157,4 +157,34 @@ describe('issue-matcher', () => {
     expect(prompt).toContain('underlying problem')
     expect(prompt).toContain('"matches"')
   })
+
+  test('matcher prompt writes to an absolute path under the worktree cwd', async () => {
+    // Regression: the matcher prompt previously embedded a relative
+    // `.review-loop/matches.json`, which the agent sometimes resolved against
+    // the project root (two levels up from the worktree cwd) instead of the
+    // worktree itself. The runner's copyFile then failed with ENOENT because
+    // the file landed at <repoRoot>/.review-loop/matches.json instead of
+    // <worktreeCwd>/.review-loop/matches.json. The fix is to embed an absolute
+    // path in the prompt.
+    const dir = makeTempDir('matcher-abs-')
+    const outputPath = path.join(dir, 'matches.json')
+    const { spawn, lastPrompt } = createCapturingSpawn(outputPath)
+
+    await matchIssues({
+      spawn,
+      newIssues: [newIssue],
+      existingRecords: [existingRecord],
+      outputPath,
+      logPath: path.join(dir, 'log.txt'),
+      cwd: dir,
+      model: 'test-model',
+      extraArgs: [],
+      reporter: silentReporter(),
+    })
+
+    const prompt = lastPrompt()
+    const expected = path.join(dir, '.review-loop', 'matches.json')
+    expect(prompt).toContain(expected)
+    expect(prompt).not.toContain(`\n.review-loop/matches.json\n`)
+  })
 })

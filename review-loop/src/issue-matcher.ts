@@ -63,7 +63,7 @@ export async function matchIssues(deps: MatchIssuesDeps): Promise<{ matches: Iss
     }
   }
 
-  const prompt = buildMatcherPrompt(deps.newIssues, deps.existingRecords, agentWritePath(deps.outputPath))
+  const prompt = buildMatcherPrompt(deps.newIssues, deps.existingRecords, agentWritePath(deps.cwd, deps.outputPath))
 
   const agentResult = await runAgent({
     spawn: deps.spawn,

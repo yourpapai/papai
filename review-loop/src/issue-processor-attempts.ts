@@ -25,7 +25,10 @@ import type { Worker } from './worker-pool.js'
 
 export interface AttemptPromptDeps {
   config: { checkCommand: string }
-  runState: { resultPath: string }
+  /** Worker cwd the fixer runs in. Used to compute the absolute agent-output path. */
+  cwd: string
+  /** Final destination of the fixer result; the agent writes to `<cwd>/.review-loop/<basename>`. */
+  resultPath: string
 }
 
 export interface IssueWorker {
@@ -67,21 +70,17 @@ export function buildAttemptPrompt(
   record: LedgerIssueRecord,
   retryReason: RetryReason | null,
 ): string {
+  const agentPath = agentWritePath(deps.cwd, deps.resultPath)
   if (retryReason === null) {
-    return buildFixPrompt(record.issue, agentWritePath(deps.runState.resultPath), deps.config.checkCommand)
+    return buildFixPrompt(record.issue, agentPath, deps.config.checkCommand)
   }
   if (retryReason.kind === 'build_failure') {
-    return buildRetryFixPrompt(
-      record.issue,
-      agentWritePath(deps.runState.resultPath),
-      retryReason.buildError,
-      deps.config.checkCommand,
-    )
+    return buildRetryFixPrompt(record.issue, agentPath, retryReason.buildError, deps.config.checkCommand)
   }
   return buildRetryFixWithInspectorFeedbackPrompt(
     record.issue,
     retryReason.inspectorReasoning,
-    agentWritePath(deps.runState.resultPath),
+    agentPath,
     deps.config.checkCommand,
   )
 }
@@ -211,6 +210,10 @@ export async function runInspectorAttempt(
   return { kind: 'proceed' }
 }
 
+export function attemptDepsFromWorker(deps: IssueProcessorDeps, worker: IssueWorker): AttemptPromptDeps {
+  return { config: deps.config, cwd: worker.worktreePath, resultPath: deps.runState.resultPath }
+}
+
 export async function processIssueAttempt(
   record: LedgerIssueRecord,
   deps: IssueProcessorDeps,
@@ -221,7 +224,7 @@ export async function processIssueAttempt(
   retryReason: RetryReason | null,
 ): Promise<{ fixed: boolean }> {
   const baselineSha = await worker.headSha()
-  const prompt = buildAttemptPrompt(deps, record, retryReason)
+  const prompt = buildAttemptPrompt(attemptDepsFromWorker(deps, worker), record, retryReason)
 
   const fixerStep = await runFixerAttempt(deps, worker, record, prompt, baselineSha, attempt, round, collector)
   if (fixerStep.kind === 'terminal') return fixerStep.outcome

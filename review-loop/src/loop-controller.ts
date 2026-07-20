@@ -119,7 +119,10 @@ async function runReviewStep(deps: ReviewLoopDeps, collector: RoundCollector): P
     spawn: deps.spawn,
     model: deps.config.reviewer.model,
     cwd: deps.runState.worktreePath,
-    prompt: buildReviewPrompt(deps.runState.planPath, agentWritePath(deps.runState.issuesPath)),
+    prompt: buildReviewPrompt(
+      deps.runState.planPath,
+      agentWritePath(deps.runState.worktreePath, deps.runState.issuesPath),
+    ),
     outputPath: deps.runState.issuesPath,
     outputSchema: ReviewerIssuesSchema,
     label: 'reviewer',

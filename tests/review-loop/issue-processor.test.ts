@@ -122,7 +122,7 @@ function createAlwaysFailingExec(): ShellExecFn {
 
 function writeFixerResult(opts: { cwd: string; outputPath: string; verdict: Verdict; fixed: boolean }): void {
   writeFileSync(
-    path.join(opts.cwd, opts.outputPath),
+    path.resolve(opts.cwd, opts.outputPath),
     JSON.stringify({
       verdict: opts.verdict,
       fixability: 'auto',
@@ -148,7 +148,7 @@ function createSequentialInspectorSpawn(addressesByCall: readonly boolean[]): Sp
       const addresses = addressesByCall[inspectorCall] ?? true
       inspectorCall += 1
       writeFileSync(
-        path.join(opts.cwd, outputPath),
+        path.resolve(opts.cwd, outputPath),
         JSON.stringify({ addresses, reasoning: 'mock inspector reasoning', confidence: 0.8 }),
       )
     } else {
@@ -167,7 +167,7 @@ function createFixerValidThenInvalidSpawn(): SpawnFn {
 
     if (prompt.includes('You are an inspector')) {
       writeFileSync(
-        path.join(opts.cwd, outputPath),
+        path.resolve(opts.cwd, outputPath),
         JSON.stringify({ addresses: false, reasoning: 'wrong fix', confidence: 0.8 }),
       )
     } else {
@@ -190,10 +190,10 @@ function createInspectorMalformedThenValidSpawn(): SpawnFn {
     if (prompt.includes('You are an inspector')) {
       inspectorRunAttempts += 1
       if (inspectorRunAttempts <= 2) {
-        writeFileSync(path.join(opts.cwd, outputPath), 'not-json')
+        writeFileSync(path.resolve(opts.cwd, outputPath), 'not-json')
       } else {
         writeFileSync(
-          path.join(opts.cwd, outputPath),
+          path.resolve(opts.cwd, outputPath),
           JSON.stringify({ addresses: true, reasoning: 'mock', confidence: 0.8 }),
         )
       }
@@ -211,7 +211,7 @@ function createAlwaysFailingInspectorSpawn(): SpawnFn {
     if (outputPath === undefined) return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
 
     if (prompt.includes('You are an inspector')) {
-      writeFileSync(path.join(opts.cwd, outputPath), 'not-json')
+      writeFileSync(path.resolve(opts.cwd, outputPath), 'not-json')
     } else {
       writeFixerResult({ cwd: opts.cwd, outputPath, verdict: 'valid', fixed: true })
     }
@@ -245,7 +245,7 @@ function createAlwaysFailingInspectorSpawnWithUsage(inspectorTokensPerAttempt: {
     if (prompt.includes('You are an inspector')) {
       onLine?.(stepFinish)
       onLine?.(stepFinish)
-      writeFileSync(path.join(opts.cwd, outputPath), 'not-json')
+      writeFileSync(path.resolve(opts.cwd, outputPath), 'not-json')
     } else {
       writeFixerResult({ cwd: opts.cwd, outputPath, verdict: 'valid', fixed: true })
     }
@@ -420,7 +420,7 @@ function createFixerOnlySpawn(opts: { fixed?: boolean; writeFile?: boolean } = {
     if (outputPath === undefined) return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
     calls.current += 1
     writeFileSync(
-      path.join(spawnOpts.cwd, outputPath),
+      path.resolve(spawnOpts.cwd, outputPath),
       JSON.stringify({
         verdict: 'valid',
         fixability: 'auto',

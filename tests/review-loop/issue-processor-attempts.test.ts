@@ -25,7 +25,8 @@ describe('buildAttemptPrompt', () => {
     }
     const deps: AttemptPromptDeps = {
       config: { checkCommand: 'bun check:full' },
-      runState: { resultPath: '/tmp/result.json' },
+      cwd: '/tmp/worktree',
+      resultPath: '/tmp/result.json',
     }
     const record: LedgerIssueRecord = {
       id: 'rec-1',
@@ -44,5 +45,39 @@ describe('buildAttemptPrompt', () => {
 
     expect(prompt).toContain('rejected by an inspector')
     expect(prompt).toContain('does not address the bug')
+  })
+
+  test('initial fixer prompt writes to an absolute path under the worker cwd', () => {
+    // Regression: see agentWritePath. The fixer prompt must embed an absolute
+    // path so the agent cannot mis-resolve it against an unrelated project root.
+    const deps: AttemptPromptDeps = {
+      config: { checkCommand: 'bun check:full' },
+      cwd: '/tmp/worktree',
+      resultPath: '/tmp/result.json',
+    }
+    const record: LedgerIssueRecord = {
+      id: 'rec-1',
+      issue: {
+        title: 'x',
+        severity: 'low',
+        summary: 's',
+        whyItMatters: 'w',
+        evidence: 'e',
+        file: 'src/q.ts',
+        lineStart: 1,
+        lineEnd: 2,
+        suggestedFix: 'f',
+        confidence: 0.9,
+      },
+      status: 'discovered',
+      firstSeenRound: 1,
+      latestSeenRound: 1,
+      fixAttempts: 0,
+      verifierDecision: null,
+    }
+
+    const prompt = buildAttemptPrompt(deps, record, null)
+
+    expect(prompt).toContain('/tmp/worktree/.review-loop/result.json')
   })
 })

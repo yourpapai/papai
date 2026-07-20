@@ -110,7 +110,7 @@ function createMockSpawn(handlers: {
       const issues = handlers.reviewerIssues?.[reviewerCall] ?? []
       reviewerCall += 1
       if (outputPath !== null) {
-        writeFileSync(path.join(opts.cwd, outputPath), JSON.stringify({ issues }))
+        writeFileSync(path.resolve(opts.cwd, outputPath), JSON.stringify({ issues }))
       }
       if (handlers.onReviewer) {
         await handlers.onReviewer(opts.cwd, reviewerCall - 1)
@@ -118,7 +118,7 @@ function createMockSpawn(handlers: {
     } else if (promptText.includes('You are an inspector')) {
       if (outputPath !== null) {
         writeFileSync(
-          path.join(opts.cwd, outputPath),
+          path.resolve(opts.cwd, outputPath),
           JSON.stringify({
             addresses: handlers.inspectorAddresses ?? true,
             reasoning: 'Mock inspector acceptance.',
@@ -131,7 +131,7 @@ function createMockSpawn(handlers: {
       fixerCall += 1
       if (outputPath !== null) {
         writeFileSync(
-          path.join(opts.cwd, outputPath),
+          path.resolve(opts.cwd, outputPath),
           JSON.stringify({
             ...result,
             reasoning: 'Fixed.',
@@ -151,7 +151,7 @@ function createMockSpawn(handlers: {
             ? matchAllToFirstExisting(promptText)
             : []
       if (outputPath !== null) {
-        writeFileSync(path.join(opts.cwd, outputPath), JSON.stringify({ matches }))
+        writeFileSync(path.resolve(opts.cwd, outputPath), JSON.stringify({ matches }))
       }
       if (handlers.onMatch) {
         handlers.onMatch(promptText)

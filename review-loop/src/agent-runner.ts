@@ -180,8 +180,20 @@ function createLineHandler<T>(options: RunAgentOptions<T>): LineHandler {
   return { ctx, onLine, dispose }
 }
 
-export function agentWritePath(outputPath: string): string {
-  return path.join('.review-loop', path.basename(outputPath))
+/**
+ * Absolute path the agent should write its output to.
+ *
+ * The path is absolute (not relative) so the agent cannot mis-resolve it
+ * against an unrelated project root. The worktree cwd itself often lives at
+ * `<repoRoot>/.review-loop/worktrees/<runId>/`, and a relative path like
+ * `.review-loop/matches.json` is ambiguous: the agent may resolve it against
+ * the worktree cwd (correct) or against the project root two levels up
+ * (`<repoRoot>/.review-loop/matches.json` — wrong). The runner always reads
+ * from `<cwd>/.review-loop/<basename(outputPath)>`, so the prompt must direct
+ * the agent there unambiguously.
+ */
+export function agentWritePath(cwd: string, outputPath: string): string {
+  return path.resolve(cwd, '.review-loop', path.basename(outputPath))
 }
 
 function attemptRun<T>(options: RunAgentOptions<T>, onLine?: LineSink): Promise<SpawnResult> {
@@ -216,7 +228,7 @@ async function runAttempt<T>(options: RunAgentOptions<T>, handler: LineHandler):
     }
   }
   try {
-    const agentFile = path.resolve(options.cwd, agentWritePath(options.outputPath))
+    const agentFile = agentWritePath(options.cwd, options.outputPath)
     await mkdir(path.dirname(options.outputPath), { recursive: true })
     await copyFile(agentFile, options.outputPath)
     await unlink(agentFile)

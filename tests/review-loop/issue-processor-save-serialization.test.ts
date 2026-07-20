@@ -73,7 +73,7 @@ function createFixerOnlySpawn(): SpawnFn {
     if (outputPath === undefined) return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
     calls += 1
     writeFileSync(
-      path.join(opts.cwd, outputPath),
+      path.resolve(opts.cwd, outputPath),
       JSON.stringify({
         verdict: 'valid',
         fixability: 'auto',

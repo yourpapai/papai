@@ -9,7 +9,7 @@ import path from 'node:path'
 
 import { z } from 'zod'
 
-import { AgentRunError, runAgent, type SpawnFn } from '../../review-loop/src/agent-runner.js'
+import { AgentRunError, agentWritePath, runAgent, type SpawnFn } from '../../review-loop/src/agent-runner.js'
 import { ReviewerIssuesSchema } from '../../review-loop/src/issue-schema.js'
 import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
 import { cleanupTempDirs, makeTempDir } from './test-helpers.js'
@@ -36,6 +36,19 @@ function createMockSpawn(results: MockSpawnResult[]): {
 }
 
 describe('agent-runner', () => {
+  test('agentWritePath returns absolute path under <cwd>/.review-loop/<basename>', () => {
+    // Regression: agentWritePath previously returned a relative `.review-loop/<basename>`,
+    // which the agent sometimes resolved against the project root instead of the
+    // worktree cwd. The worktree cwd itself lives at
+    // <repoRoot>/.review-loop/worktrees/<runId>/, so a "project-root-relative"
+    // interpretation landed at <repoRoot>/.review-loop/<basename> — and the
+    // runner's copyFile failed with ENOENT.
+    const cwd = '/tmp/worktree-x'
+    const result = agentWritePath(cwd, '/run/dir/matches.json')
+    expect(path.isAbsolute(result)).toBe(true)
+    expect(result).toBe(path.resolve(cwd, '.review-loop', 'matches.json'))
+  })
+
   test('runs opencode and reads validated output file', async () => {
     const dir = makeTempDir('agent-runner-')
     const outputPath = path.join(dir, 'issues.json')

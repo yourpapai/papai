@@ -46,7 +46,7 @@ export async function runInspector(
     spawn: deps.spawn,
     model: deps.model,
     cwd: deps.cwd,
-    prompt: buildInspectPrompt(deps.issue, diff, deps.fixerReasoning, agentWritePath(deps.outputPath)),
+    prompt: buildInspectPrompt(deps.issue, diff, deps.fixerReasoning, agentWritePath(deps.cwd, deps.outputPath)),
     outputPath: deps.outputPath,
     outputSchema: InspectorResultSchema,
     label: deps.label,

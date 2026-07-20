@@ -178,7 +178,7 @@ export function mockSpawnForFixerAndInspector(opts: {
         opts.inspectorCallCount.current += 1
       }
       writeFileSync(
-        path.join(spawnOpts.cwd, outputPath),
+        path.resolve(spawnOpts.cwd, outputPath),
         JSON.stringify({
           addresses: opts.inspectorAddresses ?? true,
           reasoning: 'mock inspector reasoning',
@@ -191,7 +191,7 @@ export function mockSpawnForFixerAndInspector(opts: {
         opts.fixerCallCount.current += 1
       }
       writeFileSync(
-        path.join(spawnOpts.cwd, outputPath),
+        path.resolve(spawnOpts.cwd, outputPath),
         JSON.stringify({
           verdict: opts.fixerVerdict ?? 'valid',
           fixability: 'auto',
