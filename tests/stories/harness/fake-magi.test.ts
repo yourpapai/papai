@@ -611,4 +611,18 @@ describe('fake magi', () => {
     leftover.magi.expectSession('session-2', { id: 'session-2', status: 'done' })
     expect(() => leftover.magi.verifyConsumed()).toThrow('unconsumed HTTP expectations')
   })
+
+  test('expectTranscriptHistory serves declared bytes to an authorized transcript proxy', async () => {
+    const events = createScenarioEvents('transcript')
+    const http = createStrictHttpDispatcher(events)
+    const magi = createFakeMagi({ http, events, baseUrl: 'https://magi.invalid', token: 'magi-secret' })
+    magi.expectTranscriptHistory('viewer-token', { turns: [{ role: 'assistant', text: 'build is green' }] })
+
+    const response = await http.fetch('https://magi.invalid/t/viewer-token/transcript', {
+      headers: { Authorization: 'Bearer magi-secret', Accept: 'application/json' },
+    })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ turns: [{ role: 'assistant', text: 'build is green' }] })
+    expect(() => magi.verifyConsumed()).not.toThrow()
+  })
 })

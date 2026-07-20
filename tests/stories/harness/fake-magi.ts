@@ -133,6 +133,7 @@ export type FakeMagi = Readonly<{
   expectFinish(sessionId: string, body: FakeMagiFinishBody, result?: unknown, status?: number): void
   expectCancel(sessionId: string, result?: unknown, status?: number): void
   expectFollowUp(sessionId: string, body: FakeMagiFollowUpBody, result?: unknown, status?: number): void
+  expectTranscriptHistory(token: string, body: unknown, response?: FakeMagiResponse): void
   verifyConsumed(): void
 }>
 
@@ -374,6 +375,14 @@ export function createFakeMagi(options: FakeMagiOptions): FakeMagi {
         )
         recordEvent(options.events, 'magi.session.follow_up', { sessionId, status })
         return jsonResponse(result, status)
+      })
+    },
+    expectTranscriptHistory(token, body, expectedResponse): void {
+      options.http.expect({ method: 'GET', url: `${baseUrl}/t/${encodeURIComponent(token)}/transcript` }, (request) => {
+        authorized(request)
+        const response = resolveResponse(expectedResponse, body, 200)
+        recordEvent(options.events, 'magi.transcript', { token, status: response.status })
+        return jsonResponse(response.body, response.status)
       })
     },
     verifyConsumed: options.http.verifyConsumed,
