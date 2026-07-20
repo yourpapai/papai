@@ -62,8 +62,40 @@ export async function resetWorktreeTo(worktreePath: string, sha: string): Promis
   await execGit(worktreePath, ['clean', '-fd'])
 }
 
-export async function mergeWorktree(repoRoot: string, branchName: string): Promise<void> {
-  await execGit(repoRoot, ['merge', branchName, '--no-edit'])
+export type MergeResult = { ok: true } | { ok: false; conflictFiles: string[] }
+
+/**
+ * Merges `branchName` into the current branch of `repoRoot`.
+ *
+ * On conflict, aborts the merge so the caller's worktree is left clean and
+ * returns the list of conflicted paths. Mirrors the contract of `rebaseOnto`.
+ * The caller can then surface an actionable error with file names and recovery
+ * commands instead of crashing with raw git stderr and leaving the user's repo
+ * half-merged.
+ */
+export async function mergeWorktree(repoRoot: string, branchName: string): Promise<MergeResult> {
+  const { stdout, stderr, error } = await runGit(repoRoot, ['merge', branchName, '--no-edit'])
+  if (error !== null) {
+    const combined = `${stdout}\n${stderr}`
+    if (combined.includes('CONFLICT')) {
+      // try/finally ensures `merge --abort` runs even if listUnmergedPaths
+      // throws (e.g. corrupted index). Without this, a thrown diff leaves the
+      // user's repo mid-merge with conflict markers in the working tree.
+      try {
+        const conflictFiles = await listUnmergedPaths(repoRoot)
+        return { ok: false, conflictFiles }
+      } finally {
+        await runGit(repoRoot, ['merge', '--abort'])
+      }
+    }
+    // Defensive cleanup: git may have started merging before failing for a
+    // non-conflict reason (e.g. local dirty index). Mirror the conflict branch
+    // so we never leave the worktree mid-merge. runGit never throws, so the
+    // original error below still propagates.
+    await runGit(repoRoot, ['merge', '--abort'])
+    throw error
+  }
+  return { ok: true }
 }
 
 export async function removeWorktree(repoRoot: string, worktreePath: string, runId: string): Promise<void> {

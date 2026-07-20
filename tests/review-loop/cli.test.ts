@@ -8,6 +8,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileS
 import path from 'node:path'
 
 import { runBuildCheck } from '../../review-loop/src/build-checker.js'
+import { MergeConflictError } from '../../review-loop/src/cli-errors.js'
 import { finalizeRun, parseCliArgs, resolvePlanPath, runCli, type FinalizeDeps } from '../../review-loop/src/cli.js'
 import type { ReviewLoopConfig } from '../../review-loop/src/config.js'
 import { createIssueLedger, saveIssueLedger, type IssueLedger } from '../../review-loop/src/issue-ledger.js'
@@ -131,7 +132,7 @@ describe('finalizeRun', () => {
       runBuildCheck,
       mergeWorktree: () => {
         merged += 1
-        return Promise.resolve()
+        return Promise.resolve({ ok: true as const })
       },
       removeWorktree: () => {
         removed += 1
@@ -153,7 +154,7 @@ describe('finalizeRun', () => {
     const deps: FinalizeDeps = {
       exec: (_cwd?: string) => Promise.resolve({ exitCode: 1, stdout, stderr: '' }),
       runBuildCheck,
-      mergeWorktree: () => Promise.resolve(),
+      mergeWorktree: () => Promise.resolve({ ok: true as const }),
       removeWorktree: () => Promise.resolve(),
     }
 
@@ -181,7 +182,7 @@ describe('finalizeRun', () => {
       runBuildCheck,
       mergeWorktree: () => {
         merged += 1
-        return Promise.resolve()
+        return Promise.resolve({ ok: true as const })
       },
       removeWorktree: () => {
         removed += 1
@@ -193,6 +194,38 @@ describe('finalizeRun', () => {
 
     expect(merged).toBe(1)
     expect(removed).toBe(1)
+  })
+
+  test('throws MergeConflictError and skips removeWorktree when merge conflicts', async () => {
+    // Regression: previously a merge conflict propagated raw git stderr and left
+    // the user's repo mid-merge with no recovery hint. finalizeRun must detect
+    // the { ok: false } result, throw a MergeConflictError with an actionable
+    // message (conflict files + branch name + recovery commands), and skip
+    // removeWorktree so the loop's branch is preserved for retry.
+    const { config, runState } = await setupFinalizeFixtures()
+    let removed = 0
+    const deps: FinalizeDeps = {
+      exec: (_cwd?: string) => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+      runBuildCheck,
+      mergeWorktree: () =>
+        Promise.resolve({
+          ok: false as const,
+          conflictFiles: ['tests/review-loop/issue-inspector.test.ts', 'review-loop/src/worktree.ts'],
+        }),
+      removeWorktree: () => {
+        removed += 1
+        return Promise.resolve()
+      },
+    }
+
+    const promise = finalizeRun(config, runState, deps)
+    await expect(promise).rejects.toBeInstanceOf(MergeConflictError)
+    await expect(promise).rejects.toThrow(/Merge conflict/u)
+    await expect(promise).rejects.toThrow(`review-loop/${runState.runId}`)
+    await expect(promise).rejects.toThrow('tests/review-loop/issue-inspector.test.ts')
+    await expect(promise).rejects.toThrow('review-loop/src/worktree.ts')
+    await expect(promise).rejects.toThrow('git merge')
+    expect(removed).toBe(0)
   })
 })
 
@@ -252,7 +285,13 @@ interface RunCliFixture {
   getRunDir: () => string
 }
 
-async function setupRunCliFixtures(opts: { poolSize?: number; inspector?: boolean } = {}): Promise<RunCliFixture> {
+async function setupRunCliFixtures(
+  opts: {
+    poolSize?: number
+    inspector?: boolean
+    checkCommand?: string
+  } = {},
+): Promise<RunCliFixture> {
   const dir = makeTempDir('cli-integration-')
   const binDir = path.join(dir, 'bin')
   const scenarioPath = path.join(dir, 'scenario.json')
@@ -268,7 +307,7 @@ async function setupRunCliFixtures(opts: { poolSize?: number; inspector?: boolea
     workDir,
     maxRounds: 5,
     maxNoProgressRounds: 2,
-    checkCommand: 'true',
+    checkCommand: opts.checkCommand ?? 'true',
     poolSize: opts.poolSize ?? 3,
     reviewer: { model: 'test-reviewer', extraArgs: [] },
     fixer: { model: 'test-fixer', extraArgs: [] },
@@ -497,5 +536,26 @@ describe('runCli', () => {
     const worker2Path = path.join(fixture.workDir, 'worktrees', `${state.runId}-worker-2`)
     expect(existsSync(worker1Path)).toBe(false)
     expect(existsSync(worker2Path)).toBe(false)
+  })
+
+  test('writes summary.txt before finalizeRun so it exists when finalizeRun throws', async () => {
+    // Regression: previously executeReviewLoop called finalizeRun BEFORE
+    // writeRunArtifacts, so any throw (build failure, merge conflict) skipped
+    // the summary/metrics/trace write — leaving the user with no post-mortem
+    // for a multi-hour run. writeRunArtifacts must run first.
+    const fixture = await setupRunCliFixtures({ poolSize: 1, checkCommand: 'false' })
+
+    const scenario = {
+      reviewerIssues: [JSON.stringify({ issues: [] })],
+      fixerResults: [],
+    }
+    writeFileSync(path.join(path.dirname(fixture.configPath), 'scenario.json'), JSON.stringify(scenario))
+
+    await expect(fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath])).rejects.toThrow(
+      /Final build check failed/u,
+    )
+
+    const runDir = fixture.getRunDir()
+    expect(existsSync(path.join(runDir, 'summary.txt'))).toBe(true)
   })
 })

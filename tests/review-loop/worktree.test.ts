@@ -81,9 +81,49 @@ describe('worktree', () => {
     await execGit(wtPath, ['add', '.'])
     await execGit(wtPath, ['commit', '-m', 'fix(review-loop): test fix'])
 
-    await mergeWorktree(repoRoot, 'review-loop/test-run')
+    const result = await mergeWorktree(repoRoot, 'review-loop/test-run')
 
+    expect(result).toEqual({ ok: true })
     expect(existsSync(path.join(repoRoot, 'fix.txt'))).toBe(true)
+  })
+
+  test('mergeWorktree returns conflictFiles and aborts on conflict', async () => {
+    // Regression: previously mergeWorktree threw raw on conflict, leaving the
+    // user's repo in a half-merged state with no structured recovery info.
+    // The new contract mirrors rebaseOnto: detect conflict, abort, return the
+    // list of conflicted paths so the caller can surface an actionable message.
+    const repoRoot = makeTempDir('worktree-conflict-')
+    await execGit(repoRoot, ['init'])
+    await execGit(repoRoot, ['config', 'user.email', 't@t.com'])
+    await execGit(repoRoot, ['config', 'user.name', 'T'])
+    await execGit(repoRoot, ['checkout', '-b', 'main'])
+    writeFileSync(path.join(repoRoot, 'file.txt'), 'base\n')
+    await execGit(repoRoot, ['add', '.'])
+    await execGit(repoRoot, ['commit', '-m', 'init'])
+
+    const wtPath = path.join(repoRoot, '.review-loop', 'worktree')
+    await createWorktree(repoRoot, wtPath, 'test-run')
+
+    // Diverge: edit same line on main and on the loop branch.
+    writeFileSync(path.join(repoRoot, 'file.txt'), 'main edit\n')
+    await execGit(repoRoot, ['add', 'file.txt'])
+    await execGit(repoRoot, ['commit', '-m', 'main edit'])
+
+    writeFileSync(path.join(wtPath, 'file.txt'), 'loop edit\n')
+    await execGit(wtPath, ['add', 'file.txt'])
+    await execGit(wtPath, ['commit', '-m', 'loop edit'])
+
+    const result = await mergeWorktree(repoRoot, 'review-loop/test-run')
+
+    expect(result).toEqual({ ok: false, conflictFiles: ['file.txt'] })
+    // Merge must have been aborted — no conflict markers in file.txt, and no
+    // unmerged paths in the index. (.review-loop/ may show as untracked because
+    // the worktree lives there; that's expected and unrelated to the abort.)
+    const fileContent = readFileSync(path.join(repoRoot, 'file.txt'), 'utf8')
+    expect(fileContent).toBe('main edit\n')
+    const status = (await execGit(repoRoot, ['status', '--porcelain'])).stdout
+    expect(status).not.toMatch(/^UU /mu)
+    expect(status).not.toMatch(/^file\.txt /mu)
   })
 
   test('detectGitRoot returns the repository toplevel', async () => {

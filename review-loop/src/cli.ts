@@ -6,7 +6,8 @@
 import { access, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { createShellExec, runBuildCheck, type BuildCheckResult, type ShellExecFn } from './build-checker.js'
+import { createShellExec, runBuildCheck, type ShellExecFn } from './build-checker.js'
+import { MergeConflictError, formatBuildFailureMessage } from './cli-errors.js'
 import { loadReviewLoopConfig, type ReviewLoopConfig } from './config.js'
 import { createIssueLedger, loadIssueLedger, type IssueLedger } from './issue-ledger.js'
 import { LiveRenderer } from './live-renderer.js'
@@ -21,6 +22,7 @@ import {
   cleanWorkerWorktrees,
   createWorktree,
   mergeWorktree,
+  type MergeResult,
   removeWorktree,
   resetWorktree,
   worktreeExists,
@@ -118,42 +120,22 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 export interface FinalizeDeps {
   exec: ShellExecFn
   runBuildCheck: typeof runBuildCheck
-  mergeWorktree: (repoRoot: string, branchName: string) => Promise<void>
+  mergeWorktree: (repoRoot: string, branchName: string) => Promise<MergeResult>
   removeWorktree: (repoRoot: string, worktreePath: string, runId: string) => Promise<void>
-}
-
-const BUILD_OUTPUT_TAIL_LINES = 40
-
-function tailLines(text: string, maxLines: number): string {
-  if (text.length === 0) return ''
-  const lines = text.split('\n')
-  if (lines.length <= maxLines) return text
-  const skipped = lines.length - maxLines
-  return `…(${skipped} earlier lines truncated; full output in build-check.log)…\n${lines.slice(-maxLines).join('\n')}`
-}
-
-function formatBuildFailureMessage(runState: RunState, build: BuildCheckResult): string {
-  const combined = tailLines(
-    [build.stdout, build.stderr].filter((part) => part.length > 0).join('\n'),
-    BUILD_OUTPUT_TAIL_LINES,
-  )
-  const logPath = path.join(runState.runDir, 'build-check.log')
-  return (
-    `Final build check failed; worktree preserved at ${runState.worktreePath} for inspection, merge skipped.\n` +
-    `Full build output written to ${logPath}.\n` +
-    `----- build output (tail) -----\n${combined}\n-------------------------------`
-  )
 }
 
 export async function finalizeRun(config: ReviewLoopConfig, runState: RunState, deps: FinalizeDeps): Promise<void> {
   const build = await deps.runBuildCheck({ exec: deps.exec })
-  if (build.passed) {
-    await deps.mergeWorktree(config.repoRoot, `review-loop/${runState.runId}`)
-    await deps.removeWorktree(config.repoRoot, runState.worktreePath, runState.runId)
-    return
+  if (!build.passed) {
+    await writeFile(path.join(runState.runDir, 'build-check.log'), `${build.stdout}\n--- stderr ---\n${build.stderr}\n`)
+    throw new Error(formatBuildFailureMessage(runState, build))
   }
-  await writeFile(path.join(runState.runDir, 'build-check.log'), `${build.stdout}\n--- stderr ---\n${build.stderr}\n`)
-  throw new Error(formatBuildFailureMessage(runState, build))
+  const branchName = `review-loop/${runState.runId}`
+  const result = await deps.mergeWorktree(config.repoRoot, branchName)
+  if (!result.ok) {
+    throw new MergeConflictError(branchName, result.conflictFiles, runState)
+  }
+  await deps.removeWorktree(config.repoRoot, runState.worktreePath, runState.runId)
 }
 
 export async function resolvePlanPath(planPath: string, repoRoot: string): Promise<string> {
@@ -219,8 +201,10 @@ async function executeReviewLoop(
     pool,
     inspect,
   })
-  await finalizeRun(config, runState, { exec, runBuildCheck, mergeWorktree, removeWorktree })
+  // Write summary/metrics/trace BEFORE finalizeRun so they always exist for
+  // post-mortem, even if the final build check or merge throws.
   await writeRunArtifacts(runState.runDir, result, { poolSize: config.poolSize, inspect })
+  await finalizeRun(config, runState, { exec, runBuildCheck, mergeWorktree, removeWorktree })
 }
 
 export async function runCli(argv: readonly string[]): Promise<void> {
