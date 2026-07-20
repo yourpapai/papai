@@ -145,9 +145,6 @@ export function fakePool(opts: {
           opts.mergeOk === false ? { ok: false, conflictFiles: opts.conflictFiles ?? ['x.ts'] } : { ok: true },
         )
       },
-      primaryHead() {
-        return Promise.resolve('primary-sha')
-      },
       workerPaths() {
         return workers.map((w) => w.worktreePath)
       },
