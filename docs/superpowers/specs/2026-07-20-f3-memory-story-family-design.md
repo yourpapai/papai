@@ -239,3 +239,52 @@ corrected seam and rationale. Contract-test totals update to **128 ids / 81 exec
    `MEMORY_PROMOTION_MIN_THREADS`, so the durable confirmation actually fires and is scripted.
 5. **Sweep deps-injection stability** — the sweep export signatures already exist on master;
    the harness consumes them without changing production, so the compat proof is unaffected.
+
+## Post-implementation deviations (2026-07-20)
+
+The implementation held to the spec's decisions (fake-embedding semantic path, keyword
+`memory-recall`, `fetch-chat-link` reclassified, 12 scenarios, ledger 69→81) but refined
+several mechanisms. Recorded here rather than rewriting each section above.
+
+- **Rule-3 observation mechanism.** Scripted `answer(text)` is emitted unconditionally, so
+  asserting reply text alone does not observe real behavior. Every read/list/recall scenario
+  instead asserts on the real tool result via
+  `world.model.inspections().at(-1)?.promptToolResultTokenFingerprints` containing
+  `promptTextFingerprint('<distinctive token>')` (the established
+  `lifecycle-and-policy.story.test.ts` pattern), and mutations assert a token appearing or
+  disappearing (`.not.toContain`) on a following real list turn. `memo-promote` observes via
+  `then.task().exists()`.
+- **Embeddings fixture is one-shot, not orthonormal-basis.** The harness seam is
+  `expectEmbedding(world.http, embedding = MATCH_EMBEDDING)` returning a fixed vector per
+  declared call (`MATCH_EMBEDDING=[1,0,0,0]` / `MISMATCH_EMBEDDING=[0,1,0,0]`, cosine 1.0 vs
+  0.0). Risk 2/3 above are subsumed by this: one expectation per embed call, no
+  near-threshold tuning.
+- **`memo-recall` seeds an embedded memo + one live query embed** (not the two-turn
+  save-then-recall of the Story-files table), sidestepping `save_memo`'s fire-and-forget
+  embed for the ranking under test. `memo-save` still exercises that floating embed, drained
+  by the `world.settle()` strict-http `idle()` guarantee added in the harness (Risk 1's real
+  fix — a settle drain, not a two-turn shape).
+- **Which scenarios exercise the embeddings endpoint.** `memo-save` (floating), `memo-recall`
+  (query), `memory-recall` (query, then keyword layer wins), and `memory-capture-sweep`'s
+  follow-up `search_memory` query. **`memory-capture-sweep` itself does NOT hit the endpoint**
+  — its record embed is supplied deterministically through the production
+  `RunMemoryCaptureDeps.getEmbedding` DI seam (`MATCH_EMBEDDING`), because `--contracts`-mode
+  harness tests skip the fetch-patching preload; story-mode (`bun test:stories`) does patch
+  fetch, so the tool-path embeds above are intercepted normally. `memory-forget` makes **no**
+  embed call — `forget_memory` resolves via direct FTS.
+- **Sweep model calls are deterministic injected results, not a live scripted model.**
+  `when.captureSweep({ records })` injects a canned `MemoryPatch` (and `getEmbedding`);
+  `when.promotionSweep()` injects `evaluate` binding `confirmDurable → true`. Dirty-detection,
+  idle-gating, scope resolution, DB writes, and the 3-thread promotion gate all run against
+  the real, unmodified production code.
+- **`history-lookup`'s internal small-model call.** `lookup_group_history` runs its own
+  `getSmallModel`/`generateText` summarization (not the scripted main model), which in story
+  mode is a real `POST https://llm.invalid/v1/chat/completions`. The story declares that route
+  via `world.http.expect` with a canned chat completion; non-circular because an unreached
+  (empty) history never fires the call and the strict dispatcher then fails on the unconsumed
+  expectation.
+- **New harness accessors** used by the memory/history stories: `world.scopedStorageContextId`,
+  `world.groupScopeId`, `world.mainGroupStorageId`. Group-thread scenarios assert with
+  `then.replyIn(thread)` (not `then.replyTo(user)`), which does not match thread replies.
+- **Seeding is keyed by the config/scope id**, not the chat user id: `given.memo`'s `userId` is
+  `world.scopedStorageContextId(dm)`.
