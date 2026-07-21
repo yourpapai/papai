@@ -14,6 +14,9 @@ scenario(
     const alice = given.user('alice')
     const dm = given.dm(alice)
     given.assign(dm, given.taskInstance())
+    // A pre-existing recurrence seeded straight to the DB — its title reaches the
+    // fingerprints ONLY if recurring.list actually enumerates persisted state.
+    given.recurringTask(dm, { title: 'Quarterly audit reminder', nextRun: '2099-01-01T09:00:00.000Z' })
     given.llm([
       callCapability('recurring.create', {
         title: 'Standup reminder',
@@ -26,7 +29,11 @@ scenario(
     ])
     await when.message(alice, dm, 'Remind me about standup every day at 9')
     const last = world.model.inspections().at(-1)
+    // The created recurrence is present...
     expect(last?.promptToolResultTokenFingerprints).toContain(promptTextFingerprint('Standup'))
+    // ...and the list genuinely enumerated persisted state (this token exists in NO
+    // create result — it can only come from list_recurring_tasks).
+    expect(last?.promptToolResultTokenFingerprints).toContain(promptTextFingerprint('Quarterly'))
   },
 )
 
