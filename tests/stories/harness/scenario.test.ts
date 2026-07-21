@@ -13,6 +13,7 @@ import { getNotifyToken } from '../../../src/notify-token.js'
 import { getActivatedPluginIds } from '../../../src/plugins/loader.js'
 import type { TaskCapability } from '../../../src/providers/types.js'
 import { SESSION_TTL_MS } from '../../../src/settings/session-store.js'
+import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 import type { ScenarioRuntimeExtension } from './runtime-extension.js'
 import { executeScenario } from './scenario.js'
 import { answer, callCapability } from './scripted-llm.js'
@@ -551,6 +552,46 @@ describe('scenario execution', () => {
       await when.recurringTick()
       await then.task('Water the plants').exists()
       then.replyTo(alice).contains('Water the plants')
+    })
+  })
+
+  test('given.scheduledPrompt + when.scheduledPoll fires a due prompt and delivers a proactive message', async () => {
+    await executeScenario('scheduled-fire-seam', async ({ given, when, then, world }) => {
+      const alice = given.user('alice')
+      const dm = given.dm(alice)
+      // The scenario world already seeds system LLM config during startup
+      // (see world.ts's `fixtures.seedSystemLlmConfig()` call); there is no
+      // `given.seedSystemLlmConfig` DSL member to call here.
+      world.http.expect({ method: 'POST', url: 'https://llm.invalid/v1/chat/completions' }, () =>
+        Response.json({
+          id: 'chatcmpl-sched-1',
+          choices: [
+            {
+              message: { role: 'assistant', content: 'Stand-up starts now.' },
+              finish_reason: 'stop',
+            },
+          ],
+        }),
+      )
+      given.scheduledPrompt(dm, {
+        prompt: 'Remind me: stand-up',
+        fireAt: '2020-01-01T09:00:00.000Z',
+      })
+      // Contract tests (`--contracts`) run without `tests/stories/preload.ts` (see
+      // scripts/story/child.ts), so the story I/O guard's global `fetch` patch that
+      // normally reroutes outbound calls through `world.http` is never installed.
+      // The deferred-prompt poller drives a real AI SDK `generateText` call for the
+      // lightweight scheduled-prompt execution, which goes through `globalThis.fetch`
+      // directly. Bridge it to the scenario's strict HTTP dispatcher — which still
+      // enforces the declared expectation and its single-consumption contract
+      // regardless of the guard — for the duration of the poll only.
+      setMockFetch((url, init) => world.http.fetch(url, init))
+      try {
+        await when.scheduledPoll()
+      } finally {
+        restoreFetch()
+      }
+      then.replyTo(alice).contains('Stand-up')
     })
   })
 })

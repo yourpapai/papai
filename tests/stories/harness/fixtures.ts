@@ -33,15 +33,19 @@ import { setSystemConfig } from '../../../src/system-config.js'
 import { addUser } from '../../../src/users.js'
 import {
   resetSystemConfigCacheForTesting,
+  seedTestAlertPrompt,
   seedTestConversationHistory,
   seedTestMemoryExtractionState,
   seedTestPlatformInstance,
   seedTestRecurringTask,
+  seedTestScheduledPrompt,
   seedTestSystemConfig,
   seedTestTaskInstance,
   seedTestUserInstruction,
   setupTestDb,
+  type AlertPromptSeed,
   type RecurringTaskSeed,
+  type ScheduledPromptSeed,
 } from '../../utils/test-helpers.js'
 import { MemoryTaskProvider } from './memory-task-provider.js'
 
@@ -253,6 +257,8 @@ export type ScenarioFixtures = Readonly<{
   seedPlatformInstance(input?: Readonly<{ id?: string; type?: PlatformInstanceType }>): void
   seedTaskInstance(input?: Readonly<{ id?: string; type?: string }>): void
   seedRecurringTask(input: RecurringTaskSeed): void
+  seedScheduledPrompt(input: ScheduledPromptSeed): void
+  seedAlertPrompt(input: AlertPromptSeed): void
   assignContext(input?: Readonly<{ contextId?: string; platformInstanceId?: string; taskInstanceId?: string }>): void
   authorizeUser(input?: Readonly<{ userId?: string; platformInstanceId?: string; username?: string }>): void
   seedAdmin(input?: Readonly<{ userId?: string; platformInstanceId?: string; superAdmin?: boolean }>): void
@@ -346,6 +352,12 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
     },
     seedRecurringTask(input): void {
       seedTestRecurringTask(input)
+    },
+    seedScheduledPrompt(input): void {
+      seedTestScheduledPrompt(input)
+    },
+    seedAlertPrompt(input): void {
+      seedTestAlertPrompt(input)
     },
     assignContext(input = {}): void {
       setContextSettings({

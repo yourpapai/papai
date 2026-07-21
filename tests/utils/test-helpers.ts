@@ -278,6 +278,78 @@ export function seedTestRecurringTask(input: RecurringTaskSeed): void {
     .run()
 }
 
+export type ScheduledPromptSeed = {
+  id: string
+  createdByUserId: string
+  deliveryContextId: string
+  deliveryContextType: string
+  prompt: string
+  fireAt: string
+  rrule?: string | null
+  status?: string
+  executionMetadata?: string
+}
+
+export function seedTestScheduledPrompt(input: ScheduledPromptSeed): void {
+  getTestDb()
+    .insert(schema.scheduledPrompts)
+    .values({
+      id: input.id,
+      createdByUserId: input.createdByUserId,
+      deliveryContextId: input.deliveryContextId,
+      deliveryContextType: input.deliveryContextType,
+      prompt: input.prompt,
+      fireAt: input.fireAt,
+      rrule: input.rrule ?? null,
+      status: input.status ?? 'active',
+      executionMetadata:
+        input.executionMetadata ??
+        JSON.stringify({
+          mode: 'lightweight',
+          delivery_brief: '',
+          context_snapshot: null,
+        }),
+    })
+    .run()
+}
+
+export type AlertPromptSeed = {
+  id: string
+  createdByUserId: string
+  deliveryContextId: string
+  deliveryContextType: string
+  prompt: string
+  condition: string
+  status?: string
+  cooldownMinutes?: number
+  lastTriggeredAt?: string | null
+  executionMetadata?: string
+}
+
+export function seedTestAlertPrompt(input: AlertPromptSeed): void {
+  getTestDb()
+    .insert(schema.alertPrompts)
+    .values({
+      id: input.id,
+      createdByUserId: input.createdByUserId,
+      deliveryContextId: input.deliveryContextId,
+      deliveryContextType: input.deliveryContextType,
+      prompt: input.prompt,
+      condition: input.condition,
+      status: input.status ?? 'active',
+      cooldownMinutes: input.cooldownMinutes ?? 60,
+      lastTriggeredAt: input.lastTriggeredAt ?? null,
+      executionMetadata:
+        input.executionMetadata ??
+        JSON.stringify({
+          mode: 'lightweight',
+          delivery_brief: '',
+          context_snapshot: null,
+        }),
+    })
+    .run()
+}
+
 export interface SeedTestMemoryExtractionStateInput {
   contextId: string
   contextType: 'dm' | 'group'

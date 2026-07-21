@@ -23,6 +23,7 @@ import {
 import { issueClaim } from '../../../src/dashboard-auth/index.js'
 import { getDrizzleDb } from '../../../src/db/drizzle.js'
 import { memoryRecords } from '../../../src/db/schema.js'
+import { pollAlertsOnce, pollScheduledOnce } from '../../../src/deferred-prompts/poller.js'
 import { sweepDirtyContexts, type SweepDeps } from '../../../src/long-term-memory/capture-sweep.js'
 import { runMemoryCapture, type RunMemoryCaptureDeps } from '../../../src/long-term-memory/capture.js'
 import { DEFAULT_IDLE_MS } from '../../../src/long-term-memory/extraction-state.js'
@@ -223,6 +224,14 @@ type ScenarioGiven = Readonly<{
       enabled?: '0' | '1'
     }>,
   ): { id: string; userId: string }
+  scheduledPrompt(
+    context: ContextHandle,
+    input: Readonly<{ prompt: string; fireAt: string; id?: string; executionMetadata?: string }>,
+  ): { id: string }
+  alertPrompt(
+    context: ContextHandle,
+    input: Readonly<{ prompt: string; condition: unknown; id?: string }>,
+  ): { id: string }
 }>
 
 type ScenarioWhen = Readonly<{
@@ -247,6 +256,8 @@ type ScenarioWhen = Readonly<{
     }>,
   ): Promise<void>
   recurringTick(): Promise<void>
+  scheduledPoll(): Promise<void>
+  alertPoll(): Promise<void>
   promotionSweep(
     input?: Readonly<{ confirmDurable?: (content: string, configContextId: string) => Promise<boolean>; now?: string }>,
   ): Promise<void>
@@ -721,6 +732,33 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
       })
       return { id, userId }
     },
+    scheduledPrompt(context, input): { id: string } {
+      prerequisite('given.scheduledPrompt')
+      const id = input.id ?? world.ids.next('scheduled-prompt')
+      world.fixtures.seedScheduledPrompt({
+        id,
+        createdByUserId: scopedStorageContextId(context),
+        deliveryContextId: scopedStorageContextId(context),
+        deliveryContextType: context.kind === 'dm' ? 'dm' : 'group',
+        prompt: input.prompt,
+        fireAt: input.fireAt,
+        ...(input.executionMetadata === undefined ? {} : { executionMetadata: input.executionMetadata }),
+      })
+      return { id }
+    },
+    alertPrompt(context, input): { id: string } {
+      prerequisite('given.alertPrompt')
+      const id = input.id ?? world.ids.next('alert-prompt')
+      world.fixtures.seedAlertPrompt({
+        id,
+        createdByUserId: scopedStorageContextId(context),
+        deliveryContextId: scopedStorageContextId(context),
+        deliveryContextType: context.kind === 'dm' ? 'dm' : 'group',
+        prompt: input.prompt,
+        condition: JSON.stringify(input.condition),
+      })
+      return { id }
+    },
   }
 }
 
@@ -812,6 +850,16 @@ function createWhen(world: ScenarioWorld): ScenarioWhen {
       world.events.setPhase('when.recurringTick')
       await world.ensureStarted()
       await tick({ resolve: () => world.fixtures.taskProvider, chat: world.chat })
+    },
+    async scheduledPoll(): Promise<void> {
+      world.events.setPhase('when.scheduledPoll')
+      await world.ensureStarted()
+      await pollScheduledOnce(world.chat, () => world.fixtures.taskProvider)
+    },
+    async alertPoll(): Promise<void> {
+      world.events.setPhase('when.alertPoll')
+      await world.ensureStarted()
+      await pollAlertsOnce(world.chat, () => world.fixtures.taskProvider)
     },
   }
 }
