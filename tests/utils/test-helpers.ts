@@ -249,6 +249,35 @@ export function seedTestTaskInstance(input: SeedTestTaskInstanceInput): void {
     .run()
 }
 
+export type RecurringTaskSeed = {
+  id: string
+  userId: string
+  projectId: string
+  title: string
+  nextRun: string
+  rrule?: string | null
+  dtstartUtc?: string | null
+  enabled?: string
+  triggerType?: string
+}
+
+export function seedTestRecurringTask(input: RecurringTaskSeed): void {
+  getTestDb()
+    .insert(schema.recurringTasks)
+    .values({
+      id: input.id,
+      userId: input.userId,
+      projectId: input.projectId,
+      title: input.title,
+      triggerType: input.triggerType ?? 'cron',
+      rrule: input.rrule ?? null,
+      dtstartUtc: input.dtstartUtc ?? null,
+      enabled: input.enabled ?? '1',
+      nextRun: input.nextRun,
+    })
+    .run()
+}
+
 export interface SeedTestMemoryExtractionStateInput {
   contextId: string
   contextType: 'dm' | 'group'

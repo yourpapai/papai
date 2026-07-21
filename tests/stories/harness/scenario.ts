@@ -42,6 +42,7 @@ import type {
 import { kvList } from '../../../src/plugins/store.js'
 import type { DiscoveredPlugin } from '../../../src/plugins/types.js'
 import type { TaskCapability } from '../../../src/providers/types.js'
+import { tick } from '../../../src/scheduler.js'
 import { setToolPrefs, type ToolPrefs } from '../../../src/tools/tool-preferences.js'
 import { MATCH_EMBEDDING } from './embeddings.js'
 import { SCENARIO_PLATFORM_INSTANCE_ID, type DashboardSessionHandle, type SettingsSessionHandle } from './fixtures.js'
@@ -210,6 +211,18 @@ type ScenarioGiven = Readonly<{
   instruction(context: ContextHandle, text: string, id?: string): { id: string }
   notifyToken(token: string): void
   publicBaseUrl(url: string): void
+  recurringTask(
+    context: ContextHandle,
+    input: Readonly<{
+      title: string
+      projectId?: string
+      nextRun: string
+      id?: string
+      rrule?: string
+      dtstartUtc?: string
+      enabled?: '0' | '1'
+    }>,
+  ): { id: string; userId: string }
 }>
 
 type ScenarioWhen = Readonly<{
@@ -233,6 +246,7 @@ type ScenarioWhen = Readonly<{
       getEmbedding?: (text: string, configContextId: string) => Promise<number[] | null>
     }>,
   ): Promise<void>
+  recurringTick(): Promise<void>
   promotionSweep(
     input?: Readonly<{ confirmDurable?: (content: string, configContextId: string) => Promise<boolean>; now?: string }>,
   ): Promise<void>
@@ -688,6 +702,25 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
       prerequisite('given.publicBaseUrl')
       world.fixtures.setPublicBaseUrl(url)
     },
+    recurringTask(context, input): { id: string; userId: string } {
+      prerequisite('given.recurringTask')
+      const id = input.id ?? world.ids.next('recurring-task')
+      const userId = toScopedContextId({
+        platformInstanceId: context.platformInstanceId,
+        nativeContextId: contextId(context),
+      })
+      world.fixtures.seedRecurringTask({
+        id,
+        userId,
+        projectId: input.projectId ?? 'project-1',
+        title: input.title,
+        nextRun: input.nextRun,
+        rrule: input.rrule ?? 'FREQ=DAILY',
+        dtstartUtc: input.dtstartUtc ?? '2020-01-01T09:00:00.000Z',
+        enabled: input.enabled ?? '1',
+      })
+      return { id, userId }
+    },
   }
 }
 
@@ -774,6 +807,11 @@ function createWhen(world: ScenarioWorld): ScenarioWhen {
           }),
       }
       await sweepPromotions(sweepPromotionsDeps)
+    },
+    async recurringTick(): Promise<void> {
+      world.events.setPhase('when.recurringTick')
+      await world.ensureStarted()
+      await tick({ resolve: () => world.fixtures.taskProvider, chat: world.chat })
     },
   }
 }

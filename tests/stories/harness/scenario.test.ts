@@ -536,4 +536,21 @@ describe('scenario execution', () => {
     })
     expect(process.env['SETTINGS_PUBLIC_BASE_URL']).toBeUndefined()
   })
+
+  test('given.recurringTask + when.recurringTick fires a due recurrence into the world provider and notifies', async () => {
+    await executeScenario('recurring-fire-seam', async ({ given, when, then }) => {
+      const alice = given.user('alice')
+      const dm = given.dm(alice)
+      given.assign(dm, given.taskInstance())
+      given.recurringTask(dm, {
+        title: 'Water the plants',
+        nextRun: '2020-01-01T09:00:00.000Z',
+        rrule: 'FREQ=DAILY',
+        dtstartUtc: '2020-01-01T09:00:00.000Z',
+      })
+      await when.recurringTick()
+      await then.task('Water the plants').exists()
+      then.replyTo(alice).contains('Water the plants')
+    })
+  })
 })

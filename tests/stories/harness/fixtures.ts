@@ -36,10 +36,12 @@ import {
   seedTestConversationHistory,
   seedTestMemoryExtractionState,
   seedTestPlatformInstance,
+  seedTestRecurringTask,
   seedTestSystemConfig,
   seedTestTaskInstance,
   seedTestUserInstruction,
   setupTestDb,
+  type RecurringTaskSeed,
 } from '../../utils/test-helpers.js'
 import { MemoryTaskProvider } from './memory-task-provider.js'
 
@@ -250,6 +252,7 @@ export type ScenarioFixtures = Readonly<{
   setupDatabase(): Promise<void>
   seedPlatformInstance(input?: Readonly<{ id?: string; type?: PlatformInstanceType }>): void
   seedTaskInstance(input?: Readonly<{ id?: string; type?: string }>): void
+  seedRecurringTask(input: RecurringTaskSeed): void
   assignContext(input?: Readonly<{ contextId?: string; platformInstanceId?: string; taskInstanceId?: string }>): void
   authorizeUser(input?: Readonly<{ userId?: string; platformInstanceId?: string; username?: string }>): void
   seedAdmin(input?: Readonly<{ userId?: string; platformInstanceId?: string; superAdmin?: boolean }>): void
@@ -340,6 +343,9 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
     },
     seedTaskInstance(input = {}): void {
       seedTestTaskInstance({ id: input.id ?? SCENARIO_TASK_INSTANCE_ID, type: input.type ?? 'kaneo', config: {} })
+    },
+    seedRecurringTask(input): void {
+      seedTestRecurringTask(input)
     },
     assignContext(input = {}): void {
       setContextSettings({
