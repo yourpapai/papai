@@ -11,15 +11,15 @@ describe('storyCoverageTotals', () => {
   test('tallies the catalog ledger', () => {
     expect(storyCoverageTotals()).toEqual({
       total: 128,
-      executable: 87,
-      pending: 41,
-      readiness: { 'executable-as-is': 1, 'needs-seam': 18, blocked: 22 },
+      executable: 95,
+      pending: 33,
+      readiness: { 'executable-as-is': 1, 'needs-seam': 10, blocked: 22 },
     })
   })
 
   test('formats a single summary line', () => {
     expect(formatStoryCoverageTotals()).toBe(
-      'story catalog: 87/128 executable; pending 41 (1 executable-as-is, 18 needs-seam, 22 blocked)',
+      'story catalog: 95/128 executable; pending 33 (1 executable-as-is, 10 needs-seam, 22 blocked)',
     )
   })
 })

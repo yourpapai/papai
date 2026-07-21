@@ -194,7 +194,7 @@ describe('scenario catalog coverage', () => {
   })
 
   test('tracks the executable coverage total', () => {
-    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(87)
+    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(95)
   })
 
   test('promotes command scenarios from blanket forward-only to confirmed', () => {
@@ -230,7 +230,7 @@ describe('scenario catalog coverage', () => {
   test('audit records cover exactly the pending scenarios', () => {
     const pendingIds = pendingCoverage.map(({ scenarioId }) => scenarioId)
 
-    expect(pendingIds).toHaveLength(41)
+    expect(pendingIds).toHaveLength(33)
     expect(sorted(Object.keys(AUDIT_RECORDS))).toEqual(sorted(pendingIds))
   })
 
@@ -260,7 +260,7 @@ describe('scenario catalog coverage', () => {
     const states = pendingCoverage.map((coverage) => coverage.audit.readiness.state)
 
     expect(states.filter((state) => state === 'executable-as-is')).toHaveLength(1)
-    expect(states.filter((state) => state === 'needs-seam')).toHaveLength(18)
+    expect(states.filter((state) => state === 'needs-seam')).toHaveLength(10)
     expect(states.filter((state) => state === 'blocked')).toHaveLength(22)
   })
 

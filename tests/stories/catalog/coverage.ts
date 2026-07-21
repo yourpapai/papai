@@ -25,6 +25,7 @@ export const STORY_SEAM_IDS = [
   'notify-token-fixture',
   'mattermost-action-fixture',
   'scheduler-due-seed',
+  'scheduler-chat-di',
   'embeddings-endpoint',
   'memory-extraction-llm',
   'public-url-assertion',
@@ -729,6 +730,54 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
       'tests/stories/http/transcript-viewer.story.test.ts#SCN-http-transcript-viewer: the viewer proxies transcript bytes from magi',
     ],
   },
+  'SCN-reminder-recurring-create': {
+    verifiedAt: '2026-07-21',
+    storyIds: [
+      'tests/stories/scheduling/recurring.story.test.ts#SCN-reminder-recurring-create: creating a recurrence persists it for a following list',
+    ],
+  },
+  'SCN-reminder-recurring-manage': {
+    verifiedAt: '2026-07-21',
+    storyIds: [
+      'tests/stories/scheduling/recurring.story.test.ts#SCN-reminder-recurring-manage: pausing a recurrence is observable on a following list',
+    ],
+  },
+  'SCN-reminder-recurring-fire': {
+    verifiedAt: '2026-07-21',
+    storyIds: [
+      'tests/stories/scheduling/recurring.story.test.ts#SCN-reminder-recurring-fire: a due recurrence creates a task and notifies the user',
+    ],
+  },
+  'SCN-deferred-schedule-create': {
+    verifiedAt: '2026-07-21',
+    storyIds: [
+      'tests/stories/scheduling/deferred.story.test.ts#SCN-deferred-schedule-create: scheduling a prompt persists it for a following list',
+    ],
+  },
+  'SCN-deferred-alert-create': {
+    verifiedAt: '2026-07-21',
+    storyIds: [
+      'tests/stories/scheduling/deferred.story.test.ts#SCN-deferred-alert-create: creating a task-condition alert persists it for a following list',
+    ],
+  },
+  'SCN-deferred-manage': {
+    verifiedAt: '2026-07-21',
+    storyIds: [
+      'tests/stories/scheduling/deferred.story.test.ts#SCN-deferred-manage: cancelling a scheduled prompt is observable on a following list',
+    ],
+  },
+  'SCN-deferred-fire-scheduled': {
+    verifiedAt: '2026-07-21',
+    storyIds: [
+      'tests/stories/scheduling/deferred.story.test.ts#SCN-deferred-fire-scheduled: a due scheduled prompt delivers a proactive message',
+    ],
+  },
+  'SCN-deferred-fire-alert': {
+    verifiedAt: '2026-07-21',
+    storyIds: [
+      'tests/stories/scheduling/deferred.story.test.ts#SCN-deferred-fire-alert: an overdue task fires a proactive alert',
+    ],
+  },
 }
 
 function auditRecord(readiness: AuditReadiness, family: StoryFamily, rationale: string): AuditRecord {
@@ -763,47 +812,6 @@ export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
     'F4',
     ['mattermost-action-fixture'],
     'Action callbacks bypass the session gate but need the test secret option wired into the world; wire verification stays forward-only.',
-  ),
-  // F5 — reminders and deferred work
-  'SCN-reminder-recurring-create': needs(
-    'F5',
-    ['capability-ids'],
-    'Recurring-task tools are DB-backed; scripting them needs capability ids.',
-  ),
-  'SCN-reminder-recurring-manage': needs(
-    'F5',
-    ['capability-ids'],
-    'Recurring-task tools are DB-backed; scripting them needs capability ids.',
-  ),
-  'SCN-reminder-recurring-fire': needs(
-    'F5',
-    ['capability-ids', 'scheduler-due-seed'],
-    'Seed nextRun in the past and drive the single-pass tick; no production clock seam.',
-  ),
-  'SCN-deferred-schedule-create': needs(
-    'F5',
-    ['capability-ids'],
-    'Deferred-prompt tools are DB-backed; scripting them needs capability ids.',
-  ),
-  'SCN-deferred-alert-create': needs(
-    'F5',
-    ['capability-ids'],
-    'Deferred-prompt tools are DB-backed; scripting them needs capability ids.',
-  ),
-  'SCN-deferred-manage': needs(
-    'F5',
-    ['capability-ids'],
-    'Deferred-prompt tools are DB-backed; scripting them needs capability ids.',
-  ),
-  'SCN-deferred-fire-scheduled': needs(
-    'F5',
-    ['capability-ids', 'scheduler-due-seed'],
-    'Seed fireAt in the past and drive pollScheduledOnce; proactive replies are captured by the scenario chat.',
-  ),
-  'SCN-deferred-fire-alert': needs(
-    'F5',
-    ['capability-ids', 'scheduler-due-seed'],
-    'Seed fireAt in the past and drive pollAlertsOnce against the memory task provider.',
   ),
   // F6 — public web fetch
   'SCN-web-fetch': needs(
