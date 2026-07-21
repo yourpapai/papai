@@ -41,7 +41,7 @@ class SafeFetchClassifiedError extends Error {
 }
 
 export interface SafeFetchDeps {
-  fetch: typeof fetch
+  fetch: (input: string | URL | Request, init?: RequestInit) => Promise<Response>
   assertPublicUrl: (url: URL) => Promise<void>
 }
 
@@ -52,7 +52,7 @@ export const setAssertPublicUrlForTesting = (fn?: (url: URL) => Promise<void>): 
 }
 
 const defaultDeps: SafeFetchDeps = {
-  fetch,
+  fetch: (input, init) => globalThis.fetch(input, init),
   assertPublicUrl: (url) => (assertPublicUrlOverride ?? assertPublicUrl)(url),
 }
 

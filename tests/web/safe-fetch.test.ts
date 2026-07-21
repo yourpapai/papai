@@ -13,7 +13,7 @@ import {
   setAssertPublicUrlForTesting,
   type SafeFetchDeps,
 } from '../../src/web/safe-fetch.js'
-import { expectAppError, mockLogger } from '../utils/test-helpers.js'
+import { expectAppError, mockLogger, restoreFetch, setMockFetch } from '../utils/test-helpers.js'
 
 function createFetchMock(impl: (...args: Parameters<typeof fetch>) => Promise<Response>): typeof fetch {
   return Object.assign(impl, { preconnect: fetch.preconnect })
@@ -227,6 +227,33 @@ describe('safeFetchContent', () => {
         appError: webFetchError.upstreamError(),
       })
     }
+  })
+})
+
+describe('defaultDeps.fetch (live global lookup)', () => {
+  afterEach(() => {
+    restoreFetch()
+    setAssertPublicUrlForTesting(undefined)
+  })
+
+  test('reads globalThis.fetch at call time, not at module-eval time', async () => {
+    // Bypass the DNS guard so control reaches deps.fetch.
+    setAssertPublicUrlForTesting(() => Promise.resolve())
+    let called = 0
+    setMockFetch((_url, _init) => {
+      called += 1
+      return Promise.resolve(
+        new Response('<html><body>ok</body></html>', {
+          status: 200,
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+        }),
+      )
+    })
+
+    // No deps arg → defaultDeps.fetch. If it had captured the original fetch at module-eval, the
+    // freshly-installed mock would NOT be hit; a live global read means it is.
+    await safeFetchContent('http://example.com/live', { abortSignal: AbortSignal.timeout(1000) })
+    expect(called).toBe(1)
   })
 })
 
