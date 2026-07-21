@@ -79,6 +79,18 @@ export const CORE_TOOL_CAPABILITIES = Object.freeze({
   'instructions.list': 'list_instructions',
   'instructions.delete': 'delete_instruction',
   'history.lookup': 'lookup_group_history',
+  'recurring.create': 'create_recurring_task',
+  'recurring.list': 'list_recurring_tasks',
+  'recurring.update': 'update_recurring_task',
+  'recurring.pause': 'pause_recurring_task',
+  'recurring.resume': 'resume_recurring_task',
+  'recurring.skip': 'skip_recurring_task',
+  'recurring.delete': 'delete_recurring_task',
+  'deferred.create': 'create_deferred_prompt',
+  'deferred.list': 'list_deferred_prompts',
+  'deferred.get': 'get_deferred_prompt',
+  'deferred.update': 'update_deferred_prompt',
+  'deferred.cancel': 'cancel_deferred_prompt',
 } as const)
 
 export function registerOfferedCoreToolCapabilities(tools: ToolSet, catalog: ToolCapabilityCatalog): void {
