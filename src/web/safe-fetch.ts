@@ -45,9 +45,15 @@ export interface SafeFetchDeps {
   assertPublicUrl: (url: URL) => Promise<void>
 }
 
+let assertPublicUrlOverride: ((url: URL) => Promise<void>) | undefined
+
+export const setAssertPublicUrlForTesting = (fn?: (url: URL) => Promise<void>): void => {
+  assertPublicUrlOverride = fn
+}
+
 const defaultDeps: SafeFetchDeps = {
   fetch,
-  assertPublicUrl,
+  assertPublicUrl: (url) => (assertPublicUrlOverride ?? assertPublicUrl)(url),
 }
 
 function throwWebFetchError(appError: WebFetchError, message: string): never {
