@@ -117,6 +117,19 @@ describe('core tool capabilities', () => {
       ['instructions.list', 'list_instructions'],
       ['instructions.delete', 'delete_instruction'],
       ['history.lookup', 'lookup_group_history'],
+      ['recurring.create', 'create_recurring_task'],
+      ['recurring.list', 'list_recurring_tasks'],
+      ['recurring.update', 'update_recurring_task'],
+      ['recurring.pause', 'pause_recurring_task'],
+      ['recurring.resume', 'resume_recurring_task'],
+      ['recurring.skip', 'skip_recurring_task'],
+      ['recurring.delete', 'delete_recurring_task'],
+      ['deferred.create', 'create_deferred_prompt'],
+      ['deferred.list', 'list_deferred_prompts'],
+      ['deferred.get', 'get_deferred_prompt'],
+      ['deferred.update', 'update_deferred_prompt'],
+      ['deferred.cancel', 'cancel_deferred_prompt'],
+      ['web.fetch', 'web_fetch'],
     ])
   })
 
@@ -142,6 +155,18 @@ describe('core tool capabilities', () => {
     const nextTurnTools = applyToolPreferences(offered('create_task', 'get_task'), 'ctx-denied-core', undefined)
 
     expect(Object.hasOwn(nextTurnTools, catalog.resolve('tasks.create'))).toBe(false)
+  })
+
+  test('maps and conditionally registers the web.fetch capability', () => {
+    expect(CORE_TOOL_CAPABILITIES['web.fetch']).toBe('web_fetch')
+
+    const catalog = createToolCapabilityCatalog()
+    registerOfferedCoreToolCapabilities(offered('web_fetch'), catalog)
+    expect(catalog.resolve('web.fetch')).toBe('web_fetch')
+
+    const absent = createToolCapabilityCatalog()
+    registerOfferedCoreToolCapabilities(offered('get_task'), absent)
+    expect(() => absent.resolve('web.fetch')).toThrow("Unknown tool capability id 'web.fetch'")
   })
 
   test('derives every turn independently without carrying stale wire names', () => {

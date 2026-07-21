@@ -91,6 +91,7 @@ export const CORE_TOOL_CAPABILITIES = Object.freeze({
   'deferred.get': 'get_deferred_prompt',
   'deferred.update': 'update_deferred_prompt',
   'deferred.cancel': 'cancel_deferred_prompt',
+  'web.fetch': 'web_fetch',
 } as const)
 
 export function registerOfferedCoreToolCapabilities(tools: ToolSet, catalog: ToolCapabilityCatalog): void {
