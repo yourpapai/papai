@@ -561,12 +561,13 @@ describe('scenario execution', () => {
   })
 
   test('given.exhaustedWebFetchQuota seeds a full bucket so the next web-fetch consume is denied', async () => {
-    await executeScenario('exhausted-web-fetch-quota', ({ given, world }) => {
+    await executeScenario('exhausted-web-fetch-quota', ({ given }) => {
       const alice = given.user('alice')
       const dm = given.dm(alice)
       given.exhaustedWebFetchQuota(dm)
       // web_fetch's actor for this DM is the raw chat user id (== contextId(dm) == 'alice').
-      const denied = consumeWebFetchQuota('alice', world.clock.now().getTime())
+      // The real quota path uses Date.now(), so seed + check must both use the real clock.
+      const denied = consumeWebFetchQuota('alice', Date.now())
       expect(denied.allowed).toBe(false)
     })
   })

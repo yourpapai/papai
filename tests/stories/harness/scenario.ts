@@ -723,7 +723,7 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
       prerequisite('given.exhaustedWebFetchQuota')
       world.fixtures.exhaustWebFetchQuota({
         actorId: contextId(context),
-        nowMs: world.clock.now().getTime(),
+        nowMs: Date.now(),
       })
     },
     recurringTask(context, input): { id: string; userId: string } {
