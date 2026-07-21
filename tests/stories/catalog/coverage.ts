@@ -778,6 +778,22 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
       'tests/stories/scheduling/deferred.story.test.ts#SCN-deferred-fire-alert: an overdue task fires a proactive alert',
     ],
   },
+  // F6 — public web fetch
+  'SCN-web-fetch': {
+    verifiedAt: '2026-07-21',
+    storyIds: [
+      'tests/stories/web/web-fetch.story.test.ts#SCN-web-fetch: fetching a public page surfaces its content and serves a second turn from cache',
+    ],
+  },
+  // Corrected mechanism (rule 6): quota is enforced in fetch-extract.ts (enforceQuota) BEFORE
+  // safeFetchContent, so the deny path never reaches assertPublicUrl — it needs only capability-ids
+  // plus the given.exhaustedWebFetchQuota seed, not public-url-assertion.
+  'SCN-web-fetch-rate-limit-deny': {
+    verifiedAt: '2026-07-21',
+    storyIds: [
+      'tests/stories/web/web-fetch.story.test.ts#SCN-web-fetch-rate-limit-deny: an exhausted quota denies the fetch with no outbound request',
+    ],
+  },
 }
 
 function auditRecord(readiness: AuditReadiness, family: StoryFamily, rationale: string): AuditRecord {
@@ -812,17 +828,6 @@ export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
     'F4',
     ['mattermost-action-fixture'],
     'Action callbacks bypass the session gate but need the test secret option wired into the world; wire verification stays forward-only.',
-  ),
-  // F6 — public web fetch
-  'SCN-web-fetch': needs(
-    'F6',
-    ['capability-ids', 'public-url-assertion'],
-    'assertPublicUrl performs a real DNS lookup the I/O guard cannot intercept; success path needs the seam.',
-  ),
-  'SCN-web-fetch-rate-limit-deny': needs(
-    'F6',
-    ['capability-ids', 'public-url-assertion'],
-    'Quota deny is seedable via consumeWebFetchQuota; the URL assertion seam is needed for the attempt to reach the quota check.',
   ),
   // F7 — settings MCP administration
   'SCN-http-mcp-plugin': needs(
