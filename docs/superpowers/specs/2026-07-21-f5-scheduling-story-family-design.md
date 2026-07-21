@@ -272,3 +272,74 @@ manifest totals line follows.
 5. **Create-tool future-date validation** — the create scenarios must use valid future times so
    the tool accepts them; the fire scenarios seed past-due rows directly, keeping the two paths
    independent.
+
+## Post-implementation deviations (2026-07-21)
+
+The implementation held to the spec's decisions (two production seams and one harness seam
+landed and reviewed independently, three `SCN-reminder-*` + five `SCN-deferred-*` scenarios,
+ledger 87→95 executable / 41→33 pending with `needs-seam` 18→10, no clock seam — every fire
+seeds a past-due row and drives a single-pass function). The refinements below are recorded
+here rather than rewriting each section above.
+
+- **`canRouteRecurringNotification` returns `true` on a null chat ref, so `scheduler-chat-di`
+  proves the _notification_ specifically — task creation was never gated on it.** With the
+  module `chatProviderRef` null, `executeRecurringTask` still creates the fired task (the route
+  guard short-circuits permissive), and only `notifyUser` is skipped. So the seam's contract
+  test asserts an injected `chat` receives the recurring notification `sendMessage` with the
+  task title — the created task alone would pass even without the seam. The Risk 4 phrasing
+  ("the unset case stays silent") is accurate but the load-bearing proof is the delivered
+  notification, not task creation.
+- **`SchedulerDeps.chat?: ChatProvider | null` chosen over a module-ref setter.** A DI field
+  read as `const chat = deps.chat ?? chatProviderRef` (a single value used by both the route
+  guard and the finalize call) keeps zero cross-scenario state and preserves production
+  behavior byte-for-byte: `defaultSchedulerDeps` sets no `chat`, and `startScheduler`/
+  `stopScheduler` still own `chatProviderRef`. No module-level setter/teardown was introduced.
+- **The recurring-notification round-trip seed values are `rrule: 'FREQ=DAILY'`,
+  `dtstartUtc: '2020-01-01T09:00:00.000Z'`.** `notifyUser` runs _after_ `markExecuted`
+  (`computeNextRun`), so a seed whose `rrule` fails to parse would silently suppress the
+  notification. These values round-trip cleanly; no adjustment beyond the plan's suggested
+  defaults was needed. The recurring _fire_ notification is a pure string template built from
+  the created task's title (no LLM call), so `SCN-reminder-recurring-fire` declares no
+  `world.http.expect` chat route — only the two deferred fire scenarios do.
+- **Manage-scenario mutation shapes chosen after diagnosis.**
+  - Recurring: `recurring.pause` is **unobservable** through `list_recurring_tasks`, which
+    filters only by `userId` and never by `enabled` — a paused recurrence still lists by its
+    title, giving no token diff. `SCN-reminder-recurring-manage` therefore performs a
+    `recurring.update` **rename** ('Weekly report' → 'Monthly report') and asserts the new
+    token present + the old token absent. The scenario title still reads "pausing …" (kept
+    byte-for-byte so the ledger storyId matches); the body renames — an inline comment records
+    the substitution. The tool's id field is `recurringTaskId`, not `id`.
+  - Deferred: `SCN-deferred-manage` cancels a seeded scheduled prompt, but the unfiltered
+    `list_deferred_prompts` still returns cancelled rows' prompt text, so the planned
+    `not.toContain('Submit')` was unfalsifiable. The assertion instead pairs
+    `toContain('cancelled')` with `not.toContain('active')`: the scenario lists only _after_
+    cancelling, so a no-op cancel would leave the row `active` and fail the pair. The
+    `not.toContain('active')` half carries the discriminating power (via the genuine DB-read
+    list); the `'cancelled'` half is corroborating (the tool returns a hardcoded
+    `status:'cancelled'` when the row is found).
+- **`MemoryTaskProvider` drops `dueDate` on the search-fallback fetch path.**
+  `SCN-deferred-fire-alert`'s `overdue` op reads `task.dueDate` off the **list item**
+  (`condition-eval.ts`, `new Date(dueDate) < now`), but a bare `createTask` routes through
+  `fetchViaSearch`, which omits `dueDate`. The scenario seeds a real project via
+  `given.taskCapabilities(['projects.list'])` + `world.tasks.createProject(...)` before
+  `createTask`, forcing the `dueDate`-preserving `fetchViaProjects` path (gated on the
+  `projects.list` capability). This is the provider-surface dependency flagged in Risk 3; the
+  memory provider needed no code change, only capability + project seeding.
+- **Create-tool inputs held to the plan's shapes with no schema surgery.** `recurring.create`
+  accepts `{ title, projectId, triggerType: 'cron', schedule: { freq: 'DAILY', byHour: [9],
+byMinute: [0] } }` unchanged (neither the tool nor the memory provider's `createTask`
+  validates `projectId`, so no project seeding was needed for create). `deferred.create` accepts
+  the scheduled `{ schedule: { fire_at: { date, time } }, execution: { mode, delivery_brief } }`
+  and the alert `{ condition: { field: 'task.dueDate', op: 'overdue' }, execution }` shapes as
+  written; the alert branch needs a provider in scope (`given.assign(dm, given.taskInstance())`)
+  for its condition to be accepted.
+- **`given.seedSystemLlmConfig()` is not a DSL member — LLM config is seeded by default.**
+  `world.ts` calls `fixtures.seedSystemLlmConfig()` unconditionally during world setup (base URL
+  `https://llm.invalid/v1`), so the deferred fire scenarios call no `given.seedSystemLlmConfig`
+  and simply declare `world.http.expect` against that URL. Under `bun test:stories` the
+  global-fetch patch is installed, so no manual fetch bridge is needed; the harness _contract_
+  test (which runs under `--contracts`, where the patch is absent) bridges `globalThis.fetch`
+  via the sanctioned `setMockFetch`/`restoreFetch` in a `try/finally` scoped to that single
+  test — never baked into the reusable `when.scheduledPoll`/`when.alertPoll` DSL. Each fire
+  declares exactly one non-risky canned completion (non-empty `content`, `finish_reason:'stop'`,
+  no tool calls), so `invokeLightweight` makes exactly one outbound call.
