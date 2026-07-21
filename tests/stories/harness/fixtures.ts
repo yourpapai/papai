@@ -36,6 +36,7 @@ import {
   resetSystemConfigCacheForTesting,
   seedTestAlertPrompt,
   seedTestConversationHistory,
+  seedTestExhaustedWebFetchQuota,
   seedTestMemoryExtractionState,
   seedTestPlatformInstance,
   seedTestRecurringTask,
@@ -258,6 +259,7 @@ export type ScenarioFixtures = Readonly<{
   seedPlatformInstance(input?: Readonly<{ id?: string; type?: PlatformInstanceType }>): void
   seedTaskInstance(input?: Readonly<{ id?: string; type?: string }>): void
   seedRecurringTask(input: RecurringTaskSeed): void
+  exhaustWebFetchQuota(input: Readonly<{ actorId: string; nowMs: number }>): void
   seedScheduledPrompt(input: ScheduledPromptSeed): void
   seedAlertPrompt(input: AlertPromptSeed): void
   assignContext(input?: Readonly<{ contextId?: string; platformInstanceId?: string; taskInstanceId?: string }>): void
@@ -355,6 +357,9 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
     },
     seedRecurringTask(input): void {
       seedTestRecurringTask(input)
+    },
+    exhaustWebFetchQuota(input): void {
+      seedTestExhaustedWebFetchQuota(input)
     },
     seedScheduledPrompt(input): void {
       seedTestScheduledPrompt(input)

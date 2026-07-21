@@ -213,6 +213,7 @@ type ScenarioGiven = Readonly<{
   notifyToken(token: string): void
   publicBaseUrl(url: string): void
   allowPublicUrl(): void
+  exhaustedWebFetchQuota(context: ContextHandle): void
   recurringTask(
     context: ContextHandle,
     input: Readonly<{
@@ -717,6 +718,13 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
     allowPublicUrl(): void {
       prerequisite('given.allowPublicUrl')
       world.fixtures.allowPublicUrl()
+    },
+    exhaustedWebFetchQuota(context): void {
+      prerequisite('given.exhaustedWebFetchQuota')
+      world.fixtures.exhaustWebFetchQuota({
+        actorId: contextId(context),
+        nowMs: world.clock.now().getTime(),
+      })
     },
     recurringTask(context, input): { id: string; userId: string } {
       prerequisite('given.recurringTask')

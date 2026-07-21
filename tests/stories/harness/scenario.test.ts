@@ -14,6 +14,7 @@ import { getNotifyToken } from '../../../src/notify-token.js'
 import { getActivatedPluginIds } from '../../../src/plugins/loader.js'
 import type { TaskCapability } from '../../../src/providers/types.js'
 import { SESSION_TTL_MS } from '../../../src/settings/session-store.js'
+import { consumeWebFetchQuota } from '../../../src/web/rate-limit.js'
 import { safeFetchContent } from '../../../src/web/safe-fetch.js'
 import { expectAppError, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 import type { ScenarioRuntimeExtension } from './runtime-extension.js'
@@ -557,6 +558,17 @@ describe('scenario execution', () => {
       abortSignal: AbortSignal.timeout(1000),
     }).catch((error: unknown) => error)
     expectAppError(restored, getUserMessage(webFetchError.blockedHost()))
+  })
+
+  test('given.exhaustedWebFetchQuota seeds a full bucket so the next web-fetch consume is denied', async () => {
+    await executeScenario('exhausted-web-fetch-quota', ({ given, world }) => {
+      const alice = given.user('alice')
+      const dm = given.dm(alice)
+      given.exhaustedWebFetchQuota(dm)
+      // web_fetch's actor for this DM is the raw chat user id (== contextId(dm) == 'alice').
+      const denied = consumeWebFetchQuota('alice', world.clock.now().getTime())
+      expect(denied.allowed).toBe(false)
+    })
   })
 
   test('given.recurringTask + when.recurringTick fires a due recurrence into the world provider and notifies', async () => {

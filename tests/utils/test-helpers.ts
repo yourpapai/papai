@@ -278,6 +278,22 @@ export function seedTestRecurringTask(input: RecurringTaskSeed): void {
     .run()
 }
 
+export type ExhaustedWebFetchQuotaSeed = { actorId: string; nowMs: number }
+
+// Mirrors src/web/rate-limit.ts (LIMIT = 20, WINDOW_MS = 5 * 60 * 1000, both unexported). A full
+// bucket makes the guarded `UPDATE ... WHERE count < 20` affect zero rows, so the next
+// consumeWebFetchQuota returns { allowed: false }.
+const WEB_FETCH_QUOTA_LIMIT = 20
+const WEB_FETCH_QUOTA_WINDOW_MS = 5 * 60 * 1000
+
+export function seedTestExhaustedWebFetchQuota(input: ExhaustedWebFetchQuotaSeed): void {
+  const windowStart = Math.floor(input.nowMs / WEB_FETCH_QUOTA_WINDOW_MS) * WEB_FETCH_QUOTA_WINDOW_MS
+  getTestDb()
+    .insert(schema.webRateLimit)
+    .values({ actorId: input.actorId, windowStart, count: WEB_FETCH_QUOTA_LIMIT })
+    .run()
+}
+
 export type ScheduledPromptSeed = {
   id: string
   createdByUserId: string
