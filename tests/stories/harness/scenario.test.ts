@@ -8,12 +8,14 @@ import { describe, expect, test } from 'bun:test'
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import { resolveMcpServers } from '../../../src/coding-credentials/resolve-mcp-servers.js'
 import { getRepoByName } from '../../../src/coding-repos/store.js'
+import { getUserMessage, webFetchError } from '../../../src/errors.js'
 import { isAdmin, isSuperAdmin } from '../../../src/instances/admin-store.js'
 import { getNotifyToken } from '../../../src/notify-token.js'
 import { getActivatedPluginIds } from '../../../src/plugins/loader.js'
 import type { TaskCapability } from '../../../src/providers/types.js'
 import { SESSION_TTL_MS } from '../../../src/settings/session-store.js'
-import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
+import { safeFetchContent } from '../../../src/web/safe-fetch.js'
+import { expectAppError, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 import type { ScenarioRuntimeExtension } from './runtime-extension.js'
 import { executeScenario } from './scenario.js'
 import { answer, callCapability } from './scripted-llm.js'
@@ -536,6 +538,25 @@ describe('scenario execution', () => {
       expect(process.env['SETTINGS_PUBLIC_BASE_URL']).toBe('https://settings.example')
     })
     expect(process.env['SETTINGS_PUBLIC_BASE_URL']).toBeUndefined()
+  })
+
+  test('given.allowPublicUrl bypasses the public-URL guard inside the scenario and restores it after', async () => {
+    await executeScenario('allow-public-url', async ({ given }) => {
+      given.allowPublicUrl()
+      // Guard bypassed: a loopback literal the real guard would reject now passes
+      // assertPublicUrl and reaches fetch, which the pre-aborted signal rejects before
+      // any connection — so the classified error is a timeout/abort, NOT blocked-host.
+      const active = await safeFetchContent('http://[::ffff:127.0.0.1]/', {
+        abortSignal: AbortSignal.abort(),
+      }).catch((error: unknown) => error)
+      expectAppError(active, getUserMessage(webFetchError.timeout()))
+    })
+    // After teardown the real guard is restored: the same loopback literal is rejected
+    // with blocked-host (synchronously, no DNS, no network).
+    const restored = await safeFetchContent('http://[::ffff:127.0.0.1]/', {
+      abortSignal: AbortSignal.timeout(1000),
+    }).catch((error: unknown) => error)
+    expectAppError(restored, getUserMessage(webFetchError.blockedHost()))
   })
 
   test('given.recurringTask + when.recurringTick fires a due recurrence into the world provider and notifies', async () => {

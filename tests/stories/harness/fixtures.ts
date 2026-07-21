@@ -31,6 +31,7 @@ import { SESSION_COOKIE_NAME } from '../../../src/settings/cookies.js'
 import { CSRF_HEADER } from '../../../src/settings/request-auth.js'
 import { setSystemConfig } from '../../../src/system-config.js'
 import { addUser } from '../../../src/users.js'
+import { setAssertPublicUrlForTesting } from '../../../src/web/safe-fetch.js'
 import {
   resetSystemConfigCacheForTesting,
   seedTestAlertPrompt,
@@ -305,6 +306,7 @@ export type ScenarioFixtures = Readonly<{
   ): void
   seedInstruction(input: Readonly<{ contextId: string; text: string; id?: string }>): { id: string }
   setPublicBaseUrl(url: string): void
+  allowPublicUrl(): void
   teardown(): void
 }>
 
@@ -330,6 +332,7 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
       else process.env['SETTINGS_PUBLIC_BASE_URL'] = priorPublicBaseUrl
       publicBaseUrlOverridden = false
     }
+    setAssertPublicUrlForTesting(undefined)
   }
 
   return {
@@ -414,6 +417,9 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
     },
     seedNotifyToken(token): void {
       seedTestSystemConfig({ key: 'notify_token', value: token })
+    },
+    allowPublicUrl(): void {
+      setAssertPublicUrlForTesting(() => Promise.resolve())
     },
     async seedRelayAttachment(input): Promise<{ id: string }> {
       const ref = await saveAttachment({

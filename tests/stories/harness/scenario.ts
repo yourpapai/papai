@@ -212,6 +212,7 @@ type ScenarioGiven = Readonly<{
   instruction(context: ContextHandle, text: string, id?: string): { id: string }
   notifyToken(token: string): void
   publicBaseUrl(url: string): void
+  allowPublicUrl(): void
   recurringTask(
     context: ContextHandle,
     input: Readonly<{
@@ -712,6 +713,10 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
     publicBaseUrl(url): void {
       prerequisite('given.publicBaseUrl')
       world.fixtures.setPublicBaseUrl(url)
+    },
+    allowPublicUrl(): void {
+      prerequisite('given.allowPublicUrl')
+      world.fixtures.allowPublicUrl()
     },
     recurringTask(context, input): { id: string; userId: string } {
       prerequisite('given.recurringTask')
