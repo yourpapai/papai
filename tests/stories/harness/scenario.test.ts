@@ -6,6 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
+import { resolveMcpPluginServerConfigs } from '../../../src/coding-credentials/mcp-plugin-servers.js'
 import { resolveMcpServers } from '../../../src/coding-credentials/resolve-mcp-servers.js'
 import { getRepoByName } from '../../../src/coding-repos/store.js'
 import { getUserMessage, webFetchError } from '../../../src/errors.js'
@@ -529,6 +530,22 @@ describe('scenario execution', () => {
     // A later scenario in the same worker must not see the previous cached token.
     await executeScenario('notify-token-b', () => {
       expect(getNotifyToken()).toBeNull()
+    })
+  })
+
+  test('given.mcpPluginServer operator-enables an internal plugin MCP server for a platform instance', async () => {
+    await executeScenario('mcp-plugin-server', ({ given }) => {
+      const alice = given.user('alice')
+      given.mcpPluginServer(alice.platformInstanceId, 'synthetic-web-search')
+
+      const configs = resolveMcpPluginServerConfigs(alice.platformInstanceId)
+
+      expect(configs).toHaveLength(1)
+      expect(configs[0]).toMatchObject({
+        plugin_id: 'synthetic-web-search',
+        enabled: true,
+        default_tool_policy: 'allow',
+      })
     })
   })
 

@@ -7,6 +7,7 @@ import { z } from 'zod'
 
 import { saveAttachment } from '../../../src/attachments/store.js'
 import { addAuthorizedGroup, setGuestMode } from '../../../src/authorized-groups.js'
+import { setMcpPluginServerConfigs } from '../../../src/coding-credentials/mcp-plugin-servers.js'
 import { SESSION_COOKIE_NAME as DASHBOARD_SESSION_COOKIE_NAME } from '../../../src/dashboard-auth/cookie.js'
 import { addGroupMember } from '../../../src/groups.js'
 import { setIdentityMapping } from '../../../src/identity/mapping.js'
@@ -281,6 +282,7 @@ export type ScenarioFixtures = Readonly<{
   ): void
   seedSystemLlmConfig(input?: Readonly<{ apiKey?: string; baseUrl?: string; mainModel?: string }>): void
   seedNotifyToken(token: string): void
+  enableMcpPluginServer(platformInstanceId: string, pluginId: string): void
   seedRelayAttachment(
     input: Readonly<{ contextId: string; filename: string; content: string; mimeType?: string }>,
   ): Promise<{ id: string }>
@@ -424,6 +426,11 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
     },
     seedNotifyToken(token): void {
       seedTestSystemConfig({ key: 'notify_token', value: token })
+    },
+    enableMcpPluginServer(platformInstanceId, pluginId): void {
+      setMcpPluginServerConfigs(platformInstanceId, [
+        { plugin_id: pluginId, enabled: true, default_tool_policy: 'allow' },
+      ])
     },
     allowPublicUrl(): void {
       setAssertPublicUrlForTesting(() => Promise.resolve())

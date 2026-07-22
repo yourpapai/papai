@@ -211,6 +211,7 @@ type ScenarioGiven = Readonly<{
   ): void
   instruction(context: ContextHandle, text: string, id?: string): { id: string }
   notifyToken(token: string): void
+  mcpPluginServer(platformInstanceId: string, pluginId: string): void
   publicBaseUrl(url: string): void
   allowPublicUrl(): void
   exhaustedWebFetchQuota(context: ContextHandle): void
@@ -710,6 +711,10 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
     notifyToken(token): void {
       prerequisite('given.notifyToken')
       world.fixtures.seedNotifyToken(token)
+    },
+    mcpPluginServer(platformInstanceId, pluginId): void {
+      prerequisite('given.mcpPluginServer')
+      world.fixtures.enableMcpPluginServer(platformInstanceId, pluginId)
     },
     publicBaseUrl(url): void {
       prerequisite('given.publicBaseUrl')
