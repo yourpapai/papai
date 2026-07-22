@@ -402,6 +402,12 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
       'tests/stories/settings/admin-surfaces.story.test.ts#SCN-settings-admin-guardrails: a guardrail saved through settings changes the advertised toolset',
     ],
   },
+  'SCN-settings-admin-mcp-catalog': {
+    verifiedAt: '2026-07-22',
+    storyIds: [
+      'tests/stories/integrations/mcp/admin-mcp-catalog.story.test.ts#SCN-settings-admin-mcp-catalog: a configured MCP endpoint surfaces a remote tool the model invokes',
+    ],
+  },
   'SCN-settings-admin-system-access': {
     verifiedAt: '2026-07-18',
     storyIds: [
@@ -834,11 +840,6 @@ export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
     'F7',
     ['fake-mcp-server'],
     'The /mcp/plugin route makes papai the MCP server (in-process dispatch to a fixture plugin tool), unlike F7 admin-MCP which needs papai as a client to an external fake MCP server; F7 owns all MCP-harness machinery. Reclassified F4 to F7 (rule 6).',
-  ),
-  'SCN-settings-admin-mcp-catalog': needs(
-    'F7',
-    ['fake-mcp-server'],
-    'Admin MCP catalog routes need a fake MCP server over the strict dispatcher.',
   ),
   'SCN-settings-admin-mcp-plugin-servers': needs(
     'F7',
