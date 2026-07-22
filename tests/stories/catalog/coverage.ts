@@ -800,6 +800,13 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
       'tests/stories/web/web-fetch.story.test.ts#SCN-web-fetch-rate-limit-deny: an exhausted quota denies the fetch with no outbound request',
     ],
   },
+  // F7 — MCP story family
+  'SCN-http-mcp-plugin': {
+    verifiedAt: '2026-07-22',
+    storyIds: [
+      'tests/stories/integrations/mcp/mcp-plugin-route.story.test.ts#SCN-http-mcp-plugin: a signed token calls a hosted plugin tool; bad tokens are rejected',
+    ],
+  },
 }
 
 function auditRecord(readiness: AuditReadiness, family: StoryFamily, rationale: string): AuditRecord {
@@ -836,11 +843,6 @@ export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
     'Action callbacks bypass the session gate but need the test secret option wired into the world; wire verification stays forward-only.',
   ),
   // F7 — settings MCP administration
-  'SCN-http-mcp-plugin': needs(
-    'F7',
-    ['fake-mcp-server'],
-    'The /mcp/plugin route makes papai the MCP server (in-process dispatch to a fixture plugin tool), unlike F7 admin-MCP which needs papai as a client to an external fake MCP server; F7 owns all MCP-harness machinery. Reclassified F4 to F7 (rule 6).',
-  ),
   'SCN-settings-admin-mcp-plugin-servers': needs(
     'F7',
     ['fake-mcp-server'],
