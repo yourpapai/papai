@@ -176,9 +176,13 @@ describe('scenario catalog coverage', () => {
     const settingsCoverage = catalogCoverage
       .filter((coverage) => coverage.kind === 'executable')
       .filter((coverage) => coverage.scenarioId.startsWith('SCN-settings-'))
+    const mcpScenarioIds = new Set(['SCN-settings-admin-mcp-catalog', 'SCN-settings-admin-mcp-plugin-servers'])
+    const mcpCoverage = settingsCoverage.filter((coverage) => mcpScenarioIds.has(coverage.scenarioId))
+    const otherCoverage = settingsCoverage.filter((coverage) => !mcpScenarioIds.has(coverage.scenarioId))
 
-    expect(settingsCoverage).toHaveLength(11)
-    for (const coverage of settingsCoverage) expect(coverage.verifiedAt).toBe('2026-07-18')
+    expect(settingsCoverage).toHaveLength(13)
+    for (const coverage of mcpCoverage) expect(coverage.verifiedAt).toBe('2026-07-22')
+    for (const coverage of otherCoverage) expect(coverage.verifiedAt).toBe('2026-07-18')
   })
 
   test('maps the guest-readonly catalog record to its executable story', () => {
@@ -194,7 +198,7 @@ describe('scenario catalog coverage', () => {
   })
 
   test('tracks the executable coverage total', () => {
-    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(97)
+    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(100)
   })
 
   test('promotes command scenarios from blanket forward-only to confirmed', () => {
@@ -230,7 +234,7 @@ describe('scenario catalog coverage', () => {
   test('audit records cover exactly the pending scenarios', () => {
     const pendingIds = pendingCoverage.map(({ scenarioId }) => scenarioId)
 
-    expect(pendingIds).toHaveLength(31)
+    expect(pendingIds).toHaveLength(28)
     expect(sorted(Object.keys(AUDIT_RECORDS))).toEqual(sorted(pendingIds))
   })
 
@@ -260,7 +264,7 @@ describe('scenario catalog coverage', () => {
     const states = pendingCoverage.map((coverage) => coverage.audit.readiness.state)
 
     expect(states.filter((state) => state === 'executable-as-is')).toHaveLength(1)
-    expect(states.filter((state) => state === 'needs-seam')).toHaveLength(8)
+    expect(states.filter((state) => state === 'needs-seam')).toHaveLength(5)
     expect(states.filter((state) => state === 'blocked')).toHaveLength(22)
   })
 
