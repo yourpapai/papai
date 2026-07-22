@@ -312,7 +312,7 @@ export type ScenarioFixtures = Readonly<{
   seedInstruction(input: Readonly<{ contextId: string; text: string; id?: string }>): { id: string }
   setPublicBaseUrl(url: string): void
   allowPublicUrl(): void
-  teardown(): void
+  teardown(): Promise<void>
 }>
 
 export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): ScenarioFixtures {
@@ -328,8 +328,8 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
     pluginRegistry.clearForTesting()
   }
 
-  const teardown = (): void => {
-    void mcpPool.shutdown()
+  const teardown = async (): Promise<void> => {
+    await mcpPool.shutdown()
     teardownRegistries()
     settingsSessions.revoke()
     dashboardSessions.revoke()

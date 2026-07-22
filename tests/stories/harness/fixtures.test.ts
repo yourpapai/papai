@@ -44,8 +44,8 @@ import { createStrictHttpDispatcher } from './strict-http.js'
 describe('scenario fixtures', () => {
   const fixtures = createScenarioFixtures({ taskProvider: new MemoryTaskProvider() })
 
-  afterEach(() => {
-    fixtures.teardown()
+  afterEach(async () => {
+    await fixtures.teardown()
   })
 
   test('seeds platform and task instances retrievable through production stores', async () => {
@@ -92,7 +92,7 @@ describe('scenario fixtures', () => {
 
       expect([...descriptor!.capabilities]).toEqual(['comments.read'])
     } finally {
-      configuredFixtures.teardown()
+      await configuredFixtures.teardown()
     }
   })
 
@@ -100,8 +100,8 @@ describe('scenario fixtures', () => {
     await fixtures.setupDatabase()
     fixtures.registerTaskProvider()
     expect(getTaskProviderDescriptor('kaneo')?.source).toEqual({ plugin: 'scenario-memory-provider' })
-    fixtures.teardown()
-    fixtures.teardown()
+    await fixtures.teardown()
+    await fixtures.teardown()
     expect(getTaskProviderDescriptor('kaneo')).toBeUndefined()
     fixtures.registerTaskProvider()
     expect(getTaskProviderDescriptor('kaneo')).toBeDefined()
@@ -127,7 +127,7 @@ describe('scenario fixtures', () => {
       expect(getTaskProviderDescriptor('kaneo')?.source).toEqual({ plugin: 'other-owner' })
       expect(createProvider('kaneo', {})).toBe(foreignProvider)
 
-      fixtures.teardown()
+      await fixtures.teardown()
       expect(getTaskProviderDescriptor('kaneo')?.source).toEqual({ plugin: 'other-owner' })
       expect(createProvider('kaneo', {})).toBe(foreignProvider)
     } finally {
@@ -272,11 +272,7 @@ describe('scenario fixtures', () => {
       expect(mcpPool.getServerInfos().length).toBeGreaterThan(0)
 
       const scenarioFixtures = createScenarioFixtures()
-      scenarioFixtures.teardown()
-      // Allow the async client close to settle if teardown is fire-and-forget.
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 0)
-      })
+      await scenarioFixtures.teardown()
       expect(mcpPool.getServerInfos().length).toBe(0)
     } finally {
       Reflect.set(globalThis, 'fetch', originalFetch)
