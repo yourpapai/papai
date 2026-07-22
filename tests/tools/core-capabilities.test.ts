@@ -9,7 +9,11 @@ import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 
 import { createToolCapabilityCatalog } from '../../src/runtime/capability-catalog.js'
-import { CORE_TOOL_CAPABILITIES, registerOfferedCoreToolCapabilities } from '../../src/tools/core-capabilities.js'
+import {
+  CORE_TOOL_CAPABILITIES,
+  registerMcpToolCapabilities,
+  registerOfferedCoreToolCapabilities,
+} from '../../src/tools/core-capabilities.js'
 import { applyToolPreferences } from '../../src/tools/index.js'
 import { setToolPrefs } from '../../src/tools/tool-preferences.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -178,5 +182,27 @@ describe('core tool capabilities', () => {
     expect(first.resolve('tasks.create')).toBe('create_task')
     expect(() => second.resolve('tasks.create')).toThrow("Unknown tool capability id 'tasks.create'")
     expect(second.resolve('tasks.get')).toBe('get_task')
+  })
+})
+
+describe('registerMcpToolCapabilities', () => {
+  test('registers mcp_-prefixed wire names as identity capabilities', () => {
+    const catalog = createToolCapabilityCatalog()
+    registerMcpToolCapabilities(offered('mcp_fake__echo', 'create_task'), catalog)
+    expect(catalog.resolve('mcp_fake__echo')).toBe('mcp_fake__echo')
+  })
+
+  test('does not register non-mcp tools', () => {
+    const catalog = createToolCapabilityCatalog()
+    registerMcpToolCapabilities(offered('create_task'), catalog)
+    expect(() => catalog.resolve('create_task')).toThrow("Unknown tool capability id 'create_task'")
+  })
+
+  test('is idempotent across repeated registration', () => {
+    const catalog = createToolCapabilityCatalog()
+    const tools = offered('mcp_fake__echo')
+    registerMcpToolCapabilities(tools, catalog)
+    expect(() => registerMcpToolCapabilities(tools, catalog)).not.toThrow()
+    expect(catalog.resolve('mcp_fake__echo')).toBe('mcp_fake__echo')
   })
 })

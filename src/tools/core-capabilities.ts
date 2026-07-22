@@ -99,3 +99,15 @@ export function registerOfferedCoreToolCapabilities(tools: ToolSet, catalog: Too
     if (tools[wireName] !== undefined) catalog.register(capabilityId, wireName)
   }
 }
+
+/**
+ * Registers MCP-sourced tools (user endpoints, wire prefix `mcp_`) as identity capabilities so
+ * the scripted story model can address them by `callCapability(wireName, input)`. MCP wire names
+ * are dynamic per configured server, so — unlike the static core map — the id is the wire name
+ * itself. Idempotent: the catalog rejects only a duplicate id mapping to a different wire name.
+ */
+export function registerMcpToolCapabilities(tools: ToolSet, catalog: ToolCapabilityCatalog): void {
+  for (const wireName of Object.keys(tools)) {
+    if (wireName.startsWith('mcp_')) catalog.register(wireName, wireName)
+  }
+}
