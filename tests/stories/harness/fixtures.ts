@@ -15,6 +15,7 @@ import { setContextSettings } from '../../../src/instances/context-store.js'
 import type { PlatformInstanceType } from '../../../src/instances/types.js'
 import { saveMemoryRecord } from '../../../src/long-term-memory/store.js'
 import type { MemoryRecord, MemoryRecordInput } from '../../../src/long-term-memory/types.js'
+import { mcpPool } from '../../../src/mcp/client-pool.js'
 import { saveMemo, updateMemoEmbedding } from '../../../src/memos.js'
 import { resetNotifyTokenCacheForTesting } from '../../../src/notify-token.js'
 import { pluginRegistry } from '../../../src/plugins/registry.js'
@@ -326,6 +327,7 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
   }
 
   const teardown = (): void => {
+    void mcpPool.shutdown()
     teardownRegistries()
     settingsSessions.revoke()
     dashboardSessions.revoke()

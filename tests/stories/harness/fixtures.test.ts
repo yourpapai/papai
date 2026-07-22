@@ -11,6 +11,7 @@ import { isAdmin, isSuperAdmin } from '../../../src/instances/admin-store.js'
 import { getContextSettings } from '../../../src/instances/context-store.js'
 import { getPlatformInstance } from '../../../src/instances/platform-store.js'
 import { getTaskInstance } from '../../../src/instances/task-store.js'
+import { mcpPool } from '../../../src/mcp/client-pool.js'
 import { pluginRegistry } from '../../../src/plugins/registry.js'
 import { getPluginAdminState } from '../../../src/plugins/store.js'
 import {
@@ -24,6 +25,8 @@ import { SESSION_COOKIE_NAME } from '../../../src/settings/cookies.js'
 import { CSRF_HEADER } from '../../../src/settings/request-auth.js'
 import { getSystemConfig, isSystemConfigComplete } from '../../../src/system-config.js'
 import { isAuthorized } from '../../../src/users.js'
+import { createScenarioEvents } from './events.js'
+import { createFakeMcpServer } from './fake-mcp-server.js'
 import {
   SCENARIO_CONTEXT_ID,
   SCENARIO_GROUP_ID,
@@ -36,6 +39,7 @@ import {
 import { MemoryTaskProvider } from './memory-task-provider.js'
 import { executeScenario } from './scenario.js'
 import { answer, callCapability } from './scripted-llm.js'
+import { createStrictHttpDispatcher } from './strict-http.js'
 
 describe('scenario fixtures', () => {
   const fixtures = createScenarioFixtures({ taskProvider: new MemoryTaskProvider() })
@@ -254,5 +258,28 @@ describe('scenario fixtures', () => {
 
       then.replyTo(alice).equals('Uploaded “spec.txt”.')
     })
+  })
+
+  test('teardown shuts the MCP pool down so no idle timer leaks', async () => {
+    const events = createScenarioEvents('pool-isolation')
+    const http = createStrictHttpDispatcher(events)
+    const server = createFakeMcpServer({ http, events, url: 'https://mcp.invalid/rpc' })
+    server.expectConnect()
+    const originalFetch = globalThis.fetch
+    Reflect.set(globalThis, 'fetch', http.fetch)
+    try {
+      await mcpPool.getOrCreateFromUser({ id: 's1', url: 'https://mcp.invalid/rpc', enabled: true })
+      expect(mcpPool.getServerInfos().length).toBeGreaterThan(0)
+
+      const scenarioFixtures = createScenarioFixtures()
+      scenarioFixtures.teardown()
+      // Allow the async client close to settle if teardown is fire-and-forget.
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0)
+      })
+      expect(mcpPool.getServerInfos().length).toBe(0)
+    } finally {
+      Reflect.set(globalThis, 'fetch', originalFetch)
+    }
   })
 })
