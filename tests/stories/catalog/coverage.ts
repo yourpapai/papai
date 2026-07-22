@@ -807,6 +807,12 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
       'tests/stories/integrations/mcp/mcp-plugin-route.story.test.ts#SCN-http-mcp-plugin: a signed token calls a hosted plugin tool; bad tokens are rejected',
     ],
   },
+  'SCN-settings-admin-mcp-plugin-servers': {
+    verifiedAt: '2026-07-22',
+    storyIds: [
+      'tests/stories/integrations/mcp/mcp-plugin-servers.story.test.ts#SCN-settings-admin-mcp-plugin-servers: operator config governs the hosted plugin-MCP route',
+    ],
+  },
 }
 
 function auditRecord(readiness: AuditReadiness, family: StoryFamily, rationale: string): AuditRecord {
@@ -841,12 +847,6 @@ export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
     'F4',
     ['mattermost-action-fixture'],
     'Action callbacks bypass the session gate but need the test secret option wired into the world; wire verification stays forward-only.',
-  ),
-  // F7 — settings MCP administration
-  'SCN-settings-admin-mcp-plugin-servers': needs(
-    'F7',
-    ['fake-mcp-server'],
-    'Plugin-MCP server registration needs a fake MCP server over the strict dispatcher.',
   ),
   // F8 — platform interactions
   'SCN-interaction-discord-router-wrapped': needs(
