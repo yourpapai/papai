@@ -3,18 +3,18 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { and, desc, eq, isNull, ne, or, type SQL } from 'drizzle-orm'
+import { and, desc, eq, type SQL } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
 import { memoryRecords } from '../db/schema.js'
-import { recordScopeCondition } from './record-conditions.js'
+import { recordScopeCondition, recordValidityCondition, threadScopeCondition } from './record-conditions.js'
 import { parseEvidence, rowToRecord } from './serialization.js'
 import type { MemoryEvidence, MemoryRecord, MemoryScope } from './types.js'
 
 const DEFAULT_LIST_LIMIT = 50
 
 export type ListProvisionalFilter = MemoryScope &
-  Readonly<{ threadContextId?: string; excludeThreadContextId?: string; limit?: number }>
+  Readonly<{ threadContextId?: string; excludeThreadContextId?: string; limit?: number; now?: string }>
 
 /** @public -- consumed by the Plan 2 recall cascade + promotion engine (cross-thread memory bridge). */
 export function listProvisionalRecords(filter: ListProvisionalFilter): readonly MemoryRecord[] {
@@ -22,17 +22,11 @@ export function listProvisionalRecords(filter: ListProvisionalFilter): readonly 
     eq(memoryRecords.scopeId, filter.scopeId),
     eq(memoryRecords.scopeType, filter.scopeType),
     eq(memoryRecords.status, 'provisional'),
+    recordValidityCondition(filter.now ?? new Date().toISOString()),
   ]
-  if (filter.threadContextId !== undefined) {
-    conditions.push(eq(memoryRecords.threadContextId, filter.threadContextId))
-  }
-  if (filter.excludeThreadContextId !== undefined) {
-    const cond: SQL | undefined = or(
-      ne(memoryRecords.threadContextId, filter.excludeThreadContextId),
-      isNull(memoryRecords.threadContextId),
-    )
-    if (cond !== undefined) conditions.push(cond)
-  }
+  const thread = threadScopeCondition(filter)
+  if (thread !== undefined) conditions.push(thread)
+
   return getDrizzleDb()
     .select()
     .from(memoryRecords)

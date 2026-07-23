@@ -128,7 +128,10 @@ describe('runMemoryExtractionInBackground', () => {
       },
     })
 
-    const [record] = listMemoryRecords({ scopeId: 'ctx-1', scopeType: 'personal' })
+    // Query at the same clock the extraction ran with (deps.now above), so the record's
+    // expiresAt of 2026-06-13 -- one day out -- is still inside the validity window;
+    // the real wall-clock default would already be past it.
+    const [record] = listMemoryRecords({ scopeId: 'ctx-1', scopeType: 'personal', now: '2026-06-12T00:00:00.000Z' })
     expect(record?.source).toBe('background')
     expect(record?.expiresAt).toBe('2026-06-13T00:00:00.000Z')
     expect(record?.validFrom).toBeNull()

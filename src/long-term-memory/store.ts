@@ -7,7 +7,7 @@ import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
 import { memoryProfiles, memoryRecords } from '../db/schema.js'
-import { recordScopeCondition } from './record-conditions.js'
+import { recordScopeCondition, recordValidityCondition } from './record-conditions.js'
 import { rowToProfile, rowToRecord, sanitizeFtsQuery, serializeEmbedding } from './serialization.js'
 import type { MemoryKind, MemoryProfile, MemoryRecord, MemoryRecordInput, MemoryScope, MemoryStatus } from './types.js'
 
@@ -16,6 +16,7 @@ export type ListMemoryRecordsFilter = Readonly<{
   statuses?: readonly MemoryStatus[]
   kind?: MemoryKind
   limit?: number
+  now?: string
 }> &
   MemoryScope
 
@@ -24,6 +25,7 @@ export type SearchMemoryRecordsFilter = Readonly<{
   includeStale?: boolean
   kind?: MemoryKind
   limit?: number
+  now?: string
 }> &
   MemoryScope
 
@@ -137,7 +139,11 @@ export function saveMemoryRecord(input: MemoryRecordInput): MemoryRecord {
 }
 
 export function listMemoryRecords(filter: ListMemoryRecordsFilter): readonly MemoryRecord[] {
-  const conditions: SQL[] = [eq(memoryRecords.scopeId, filter.scopeId), eq(memoryRecords.scopeType, filter.scopeType)]
+  const conditions: SQL[] = [
+    eq(memoryRecords.scopeId, filter.scopeId),
+    eq(memoryRecords.scopeType, filter.scopeType),
+    recordValidityCondition(filter.now ?? new Date().toISOString()),
+  ]
   if (filter.statuses !== undefined && filter.statuses.length > 0) {
     conditions.push(inArray(memoryRecords.status, [...filter.statuses]))
   } else if (filter.status !== undefined) {
@@ -165,6 +171,7 @@ export function searchMemoryRecords(filter: SearchMemoryRecordsFilter): readonly
     eq(memoryRecords.scopeId, filter.scopeId),
     eq(memoryRecords.scopeType, filter.scopeType),
     statusFilter,
+    recordValidityCondition(filter.now ?? new Date().toISOString()),
     sql`${memoryRecords.id} IN (
       SELECT m.id
       FROM memory_records m
