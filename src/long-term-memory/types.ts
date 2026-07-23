@@ -67,6 +67,10 @@ export type MemoryRecord = MemoryScope &
     validUntil?: string | null
     expiresAt?: string | null
     embedding?: Float32Array | null
+    embeddingModel?: string | null
+    embeddingDimension?: number | null
+    embeddingVersion?: string | null
+    embeddedAt?: string | null
   }>
 
 export type MemoryRecordInput = Omit<MemoryRecord, 'embedding'> & Readonly<{ embedding?: Float32Array | null }>

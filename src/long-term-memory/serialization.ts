@@ -74,4 +74,8 @@ export const rowToRecord = (row: MemoryRecordRow): MemoryRecord => ({
   validUntil: row.validUntil,
   expiresAt: row.expiresAt,
   embedding: deserializeEmbedding(row.embedding),
+  embeddingModel: row.embeddingModel,
+  embeddingDimension: row.embeddingDimension,
+  embeddingVersion: row.embeddingVersion,
+  embeddedAt: row.embeddedAt,
 })

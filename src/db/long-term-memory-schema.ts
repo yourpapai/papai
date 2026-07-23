@@ -55,6 +55,10 @@ export const memoryRecords = sqliteTable(
     validUntil: text('valid_until'),
     expiresAt: text('expires_at'),
     embedding: blob('embedding'),
+    embeddingModel: text('embedding_model'),
+    embeddingDimension: integer('embedding_dimension'),
+    embeddingVersion: text('embedding_version'),
+    embeddedAt: text('embedded_at'),
   },
   (table) => [
     index('idx_memory_records_scope_status_seen').on(table.scopeId, table.status, desc(table.lastSeenAt)),

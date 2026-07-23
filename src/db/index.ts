@@ -78,6 +78,7 @@ import { migration064CodingSessionRepos } from './migrations/064_coding_session_
 import { migration065CodingIdentity } from './migrations/065_coding_identity.js'
 import { migration066CodingReposEgress } from './migrations/066_coding_repos_egress.js'
 import { migration067MultiLlmProviders } from './migrations/067_multi_llm_providers.js'
+import { migration068MemoryEmbeddingIdentity } from './migrations/068_memory_embedding_identity.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -180,6 +181,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration065CodingIdentity,
   migration066CodingReposEgress,
   migration067MultiLlmProviders,
+  migration068MemoryEmbeddingIdentity,
 ]
 
 export const initDb = (): void => {

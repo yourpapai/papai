@@ -60,6 +60,10 @@ const inputToRecordValues = (input: MemoryRecordInput): MemoryRecordValues => ({
   validUntil: input.validUntil ?? null,
   expiresAt: input.expiresAt ?? null,
   embedding: serializeEmbedding(input.embedding),
+  embeddingModel: input.embeddingModel ?? null,
+  embeddingDimension: input.embeddingDimension ?? null,
+  embeddingVersion: input.embeddingVersion ?? null,
+  embeddedAt: input.embeddedAt ?? null,
 })
 
 const profileScopeCondition = (scope: MemoryScope): SQL | undefined =>
