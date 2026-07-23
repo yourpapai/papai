@@ -69,3 +69,12 @@ export function listDirtyContexts(now: string, idleMs: number = DEFAULT_IDLE_MS)
     )
     .all()
 }
+
+/**
+ * Every known chat-context to config-context binding. The backfill needs it
+ * because memory records store a memory scope, not a config context.
+ * @public -- consumed by the embedding backfill.
+ */
+export function listContextConfigBindings(): readonly MemoryExtractionStateRow[] {
+  return getDrizzleDb().select().from(memoryExtractionState).all()
+}

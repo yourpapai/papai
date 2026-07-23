@@ -128,13 +128,6 @@ export default {
     // listRoutes is consumed by the behavior-audit closure verifier via
     // dynamic import; re-exported from src/debug/server.ts.
     'src/debug/server-route-options.ts': ['exports'],
-    // UNKNOWN_EMBEDDING_VERSION has no production consumer yet: it is the
-    // predicate the embedding backfill (hybrid-retrieval plan Task 9,
-    // docs/superpowers/plans/2026-07-23-memory-hybrid-retrieval.md) uses to find
-    // pre-identity vectors, not built yet. embeddingVersionOf/resolveEmbeddingModel
-    // in the same file are already wired into recall-cascade.ts (Task 7) and stay
-    // checked. REMOVE this entry once Task 9 wires embedding-backfill.ts.
-    'src/long-term-memory/embedding-identity.ts': ['exports'],
   },
 
   includeEntryExports: true,

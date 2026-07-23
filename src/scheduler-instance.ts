@@ -12,6 +12,7 @@ import { purgeExpiredStagedFiles } from './attachments/staged.js'
 import { cleanupExpiredCaches } from './cache.js'
 import { logger } from './logger.js'
 import { sweepDirtyContexts } from './long-term-memory/capture-sweep.js'
+import { runEmbeddingBackfill } from './long-term-memory/embedding-backfill.js'
 import { runMemoryMaintenance } from './long-term-memory/maintenance.js'
 import { sweepPromotions } from './long-term-memory/promotion-sweep.js'
 import { sweepExpiredMessages } from './message-cache/cache.js'
@@ -37,6 +38,7 @@ export const DEFAULT_SCHEDULER_TASK_NAMES = [
   'long-term-memory-maintenance',
   'memory-capture-sweep',
   'memory-promotion-sweep',
+  'memory-embedding-backfill',
 ] as const
 
 function registerImmediateDefaultTasks(): void {
@@ -71,6 +73,13 @@ function registerImmediateDefaultTasks(): void {
     interval: 60 * 60 * 1000,
     handler: () => {
       runMemoryMaintenance()
+    },
+    options: { immediate: true },
+  })
+  scheduler.register('memory-embedding-backfill', {
+    interval: 60 * 60 * 1000,
+    handler: () => {
+      void runEmbeddingBackfill()
     },
     options: { immediate: true },
   })
