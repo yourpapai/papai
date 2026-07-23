@@ -57,8 +57,8 @@ const getLocalFormattedString = (date: Date, timezone: string): string => {
 export function makeGetCurrentTimeTool(userId?: string): Tool {
   return tool({
     description:
-      'Get the current local date and time. Use this tool to answer questions about the current date, time, or to determine relative dates like "tomorrow" or "next Monday".',
-    inputSchema: z.object({}).describe('No arguments required.'),
+      'Fallback for the current local date and time in the user\'s timezone. Each user message normally begins with an authoritative <current_time> line — prefer that when present. Call this only when it is absent, e.g. to resolve relative dates like "tomorrow" or "next Monday".',
+    inputSchema: z.object({}),
     execute: () => {
       const timezone = userId === undefined ? 'UTC' : getUserTimezoneOrDefault(userId)
       const now = new Date()
