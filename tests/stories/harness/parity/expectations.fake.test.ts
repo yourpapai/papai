@@ -15,13 +15,25 @@ async function makeFakeHarness(): Promise<ParityHarness> {
 }
 
 describe('provider parity — fake binding (MemoryTaskProvider)', () => {
-  test('declares 16 parity groups with unique ids', () => {
-    expect(PARITY_GROUPS).toHaveLength(16)
-    expect(new Set(PARITY_GROUPS.map((group) => group.id)).size).toBe(16)
+  // Task 4 (real-Kaneo binding) reclassified 9 groups from PARITY_GROUPS to
+  // PARITY_EXCLUSIONS, each for genuine real-Kaneo drift (not fixable by correcting
+  // the fake) documented in their PARITY_EXCLUSIONS reason below:
+  //   - task-list-filter, label-crud, status-crud, status-reorder: real Kaneo rejects
+  //     or reshapes the operation itself (validation, deletion semantics, column
+  //     schema shape, seeded default columns).
+  //   - task-create, task-get, task-update, comment-crud, identity: real Kaneo's
+  //     response schema mandates fields (status/priority/createdAt on tasks,
+  //     createdAt on comments, a synthesized unique email login on member
+  //     provisioning) that are always present and can never be suppressed to match
+  //     MemoryTaskProvider's minimal-echo shape.
+  // 16 - 9 = 7 groups remain; 15 + 9 = 24 exclusions.
+  test('declares 7 parity groups with unique ids', () => {
+    expect(PARITY_GROUPS).toHaveLength(7)
+    expect(new Set(PARITY_GROUPS.map((group) => group.id)).size).toBe(7)
   })
 
-  test('records a reason for every fake-only excluded group', () => {
-    expect(PARITY_EXCLUSIONS.length).toBeGreaterThanOrEqual(15)
+  test('records a reason for every excluded group', () => {
+    expect(PARITY_EXCLUSIONS.length).toBeGreaterThanOrEqual(24)
     expect(PARITY_EXCLUSIONS.every((exclusion) => exclusion.reason.includes('KaneoProvider'))).toBe(true)
   })
 

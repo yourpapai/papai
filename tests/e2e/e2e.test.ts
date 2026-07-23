@@ -23,6 +23,7 @@ setDefaultTimeout(60000)
 import './column-management.test.js'
 import './error-handling.test.js'
 import './label-operations.test.js'
+import './parity/provider-parity.test.js'
 import './project-lifecycle.test.js'
 import './project-management.test.js'
 import './task-comments.test.js'
