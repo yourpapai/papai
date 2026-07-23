@@ -121,6 +121,9 @@ describe('scenario catalog coverage', () => {
       'forward-only',
       'confirmed',
     ])
+    expect(
+      interactionCoverage.find(({ scenarioId }) => scenarioId === 'SCN-interaction-permission-decision')?.kind,
+    ).toBe('executable')
   })
 
   test('maps the ACP command catalog record to its eligible and ineligible command story', () => {
@@ -198,7 +201,7 @@ describe('scenario catalog coverage', () => {
   })
 
   test('tracks the executable coverage total', () => {
-    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(100)
+    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(101)
   })
 
   test('promotes command scenarios from blanket forward-only to confirmed', () => {
@@ -234,7 +237,7 @@ describe('scenario catalog coverage', () => {
   test('audit records cover exactly the pending scenarios', () => {
     const pendingIds = pendingCoverage.map(({ scenarioId }) => scenarioId)
 
-    expect(pendingIds).toHaveLength(28)
+    expect(pendingIds).toHaveLength(27)
     expect(sorted(Object.keys(AUDIT_RECORDS))).toEqual(sorted(pendingIds))
   })
 
@@ -263,7 +266,7 @@ describe('scenario catalog coverage', () => {
   test('audit readiness totals match the audit outcome', () => {
     const states = pendingCoverage.map((coverage) => coverage.audit.readiness.state)
 
-    expect(states.filter((state) => state === 'executable-as-is')).toHaveLength(1)
+    expect(states.filter((state) => state === 'executable-as-is')).toHaveLength(0)
     expect(states.filter((state) => state === 'needs-seam')).toHaveLength(5)
     expect(states.filter((state) => state === 'blocked')).toHaveLength(22)
   })

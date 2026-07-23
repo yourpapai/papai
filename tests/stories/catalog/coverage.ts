@@ -438,6 +438,12 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
       'tests/stories/context/group-users.story.test.ts#group members share durable config while retaining distinct identities',
     ],
   },
+  'SCN-interaction-permission-decision': {
+    verifiedAt: '2026-07-23',
+    storyIds: [
+      'tests/stories/interactions/permission-decision.story.test.ts#SCN-interaction-permission-decision: routes an ask-gate callback and self-finalizes the prompt',
+    ],
+  },
   'SCN-cmd-help': {
     verifiedAt: '2026-07-19',
     storyIds: ['tests/stories/commands/surface.story.test.ts#SCN-cmd-help: shows user help and the admin appendix'],
@@ -819,8 +825,6 @@ function auditRecord(readiness: AuditReadiness, family: StoryFamily, rationale: 
   return Object.freeze({ readiness, family, rationale: toPendingReason(rationale) })
 }
 
-const ready = (family: StoryFamily, rationale: string): AuditRecord =>
-  auditRecord({ state: 'executable-as-is' }, family, rationale)
 const needs = (family: StoryFamily, seams: NonEmptyReadonlyTuple<StorySeamId>, rationale: string): AuditRecord =>
   auditRecord({ state: 'needs-seam', seams }, family, rationale)
 const blocked = (family: StoryFamily, rationale: string): AuditRecord =>
@@ -852,21 +856,17 @@ export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
   'SCN-interaction-discord-router-wrapped': needs(
     'F8',
     ['platform-adapter-fakes'],
-    'Wire-level discord.js routing needs a fake Discord client; stays forward-only until the refactor touches chat adapters.',
+    'The harness enters at runtime.dispatchInteraction, below the platform adapter; this scenario verifies the discord.js wire above it (a raw callback decoded and routed into dispatch), which is Tier-3 platform-integrated territory, out of the roadmap scope. Needs a fake Discord client, not built speculatively.',
   ),
   'SCN-interaction-discord-standalone-fallback': needs(
     'F8',
     ['platform-adapter-fakes'],
-    'Wire-level discord.js fallback routing needs a fake Discord client; stays forward-only.',
+    'The harness enters at runtime.dispatchInteraction, below the platform adapter; this scenario verifies the discord.js standalone fallback wire above it, which is Tier-3 platform-integrated territory, out of the roadmap scope. Needs a fake Discord client, not built speculatively.',
   ),
   'SCN-interaction-telegram-callback': needs(
     'F8',
     ['platform-adapter-fakes'],
-    'Wire-level grammY callback wiring needs a fake Telegram API; stays forward-only.',
-  ),
-  'SCN-interaction-permission-decision': ready(
-    'F8',
-    'Permission roundtrips already run via when.interaction in the ACP control stories; promoted from forward-only to confirmed.',
+    'The harness enters at runtime.dispatchInteraction, below the platform adapter; this scenario verifies the grammY callback wire above it, which is Tier-3 platform-integrated territory, out of the roadmap scope. Needs a fake Telegram API, not built speculatively.',
   ),
   // Unqueued — no production implementation exists
   'SCN-coding-nerv-create': blocked(
