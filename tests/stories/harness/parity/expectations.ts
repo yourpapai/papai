@@ -117,17 +117,16 @@ export const PARITY_GROUPS: readonly ParityGroup[] = [
   },
   {
     id: 'SCN-parity-task-list-sort',
-    title: 'SCN-parity-task-list-sort: listTasks returns tasks in a stable declared order',
+    title: 'SCN-parity-task-list-sort: listTasks honors sortBy/sortOrder across providers',
     async run({ provider, projectId }) {
-      await provider.createTask({ projectId, title: 'Sort A' })
+      // Seed in a deliberately non-sorted creation order so the assertion below can
+      // only pass if `sortBy`/`sortOrder` actually reordered the results.
       await provider.createTask({ projectId, title: 'Sort B' })
       await provider.createTask({ projectId, title: 'Sort C' })
-      const listed = await provider.listTasks(projectId, {})
+      await provider.createTask({ projectId, title: 'Sort A' })
+      const listed = await provider.listTasks(projectId, { sortBy: 'title', sortOrder: 'asc' })
       const titles = listed.map((task) => task.title)
-      // Order-sensitive: both providers must return newest-or-declared order identically.
-      // Assert the SET is exactly the three seeded titles and the ORDER is internally
-      // consistent (canonicalized list has length 3, no volatile leakage in titles).
-      expect(new Set(titles)).toEqual(new Set(['Sort A', 'Sort B', 'Sort C']))
+      expect(titles).toEqual(['Sort A', 'Sort B', 'Sort C'])
       expect(canonicalize(listed, VOLATILE_KEYS)).toHaveLength(3)
     },
   },
@@ -302,8 +301,16 @@ export const PARITY_GROUPS: readonly ParityGroup[] = [
         'provisionWorkspaceMember result',
       )
       expect(Object.keys(provisioned).sort()).toEqual(['login', 'password', 'providerUserId'])
-      expect(canonicalize(provisioned, VOLATILE_KEYS)).toMatchObject({ login: 'parity.alice' })
-      const users = (await provider.listUsers?.('parity', 10)) ?? []
+      // `password`/`providerUserId` are provider-opaque (not in VOLATILE_KEYS): each
+      // provider mints them differently, so pin `login` exactly and only require the
+      // other two to be non-empty strings rather than a fixed sentinel or literal.
+      expect(provisioned.login).toBe('parity.alice')
+      expect(provisioned.password.length).toBeGreaterThan(0)
+      expect(provisioned.providerUserId.length).toBeGreaterThan(0)
+      // The fake's provisionWorkspaceMember doesn't populate the store listUsers reads
+      // from, so element-shape parity can't be asserted hermetically here; the strong
+      // cross-provider identity signal is the provisionWorkspaceMember assertion above.
+      const users = required(await provider.listUsers?.('parity', 10), 'listUsers result')
       expect(Array.isArray(users)).toBe(true)
     },
   },
