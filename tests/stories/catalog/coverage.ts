@@ -5,6 +5,16 @@
 
 export type CatalogStatus = 'confirmed' | 'forward-only' | 'gap' | 'contract-only'
 
+export const STORY_TIERS = ['0', '1', '2', '3', '4'] as const
+export type StoryTier = (typeof STORY_TIERS)[number]
+
+/**
+ * Tiers with a runnable lane today. A tier joins this list in its own spec's PR,
+ * never speculatively: an executable record may only claim a live tier, so a
+ * planned tier can never be mistaken for coverage that exists.
+ */
+export const LIVE_STORY_TIERS: readonly StoryTier[] = Object.freeze(['0'])
+
 type CatalogScenarioId = (typeof CATALOG_SCENARIO_IDS)[number]
 
 export type NonEmptyReadonlyTuple<T> = readonly [T, ...T[]]
@@ -67,6 +77,7 @@ export type CatalogCoverage =
       scenarioId: CatalogScenarioId
       catalogStatus: CatalogStatus
       kind: 'executable'
+      provingTier: StoryTier
       verifiedAt: string
       storyIds: NonEmptyReadonlyTuple<string>
     }>
@@ -237,7 +248,12 @@ export function toPendingReason(value: string): PendingReason {
   return PendingReason.from(value)
 }
 
-type ExecutableStoryMapping = Readonly<{ verifiedAt: string; storyIds: NonEmptyReadonlyTuple<string> }>
+type ExecutableStoryMapping = Readonly<{
+  verifiedAt: string
+  /** Omitted means Tier 0: the hermetic in-process lane that proved every record to date. */
+  provingTier?: StoryTier
+  storyIds: NonEmptyReadonlyTuple<string>
+}>
 
 const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableStoryMapping>> = {
   'SCN-coding-acp-command': {
@@ -953,6 +969,7 @@ export const catalogCoverage: readonly CatalogCoverage[] = Object.freeze(
         scenarioId,
         catalogStatus: catalogStatusFor(scenarioId),
         kind: 'executable' as const,
+        provingTier: mapping.provingTier ?? '0',
         verifiedAt: mapping.verifiedAt,
         storyIds: mapping.storyIds,
       })

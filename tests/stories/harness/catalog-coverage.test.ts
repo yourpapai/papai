@@ -12,6 +12,7 @@ import {
   AUDIT_RECORDS,
   CATALOG_SCENARIO_IDS,
   catalogCoverage,
+  LIVE_STORY_TIERS,
   STORY_FAMILIES,
   STORY_SEAM_IDS,
   toPendingReason,
@@ -131,6 +132,7 @@ describe('scenario catalog coverage', () => {
       scenarioId: 'SCN-coding-acp-command',
       catalogStatus: 'confirmed',
       kind: 'executable',
+      provingTier: '0',
       verifiedAt: '2026-07-13',
       storyIds: [ACP_COMMAND_STORY_ID],
     })
@@ -193,6 +195,7 @@ describe('scenario catalog coverage', () => {
       scenarioId: 'SCN-task-guest-readonly',
       catalogStatus: 'confirmed',
       kind: 'executable',
+      provingTier: '0',
       verifiedAt: '2026-07-19',
       storyIds: [
         'tests/stories/context/guest-readonly.story.test.ts#guest group turns can read tasks but cannot advertise writes',
@@ -202,6 +205,17 @@ describe('scenario catalog coverage', () => {
 
   test('tracks the executable coverage total', () => {
     expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(101)
+  })
+
+  test('stamps every executable record with a live proving tier', () => {
+    const executable = catalogCoverage.filter((coverage) => coverage.kind === 'executable')
+    const offLaneTiers = executable
+      .filter((coverage) => !LIVE_STORY_TIERS.includes(coverage.provingTier))
+      .map(({ scenarioId, provingTier }) => `${scenarioId} -> T${provingTier}`)
+
+    expect(executable).toHaveLength(101)
+    expect(offLaneTiers).toEqual([])
+    expect(new Set(executable.map((coverage) => coverage.provingTier))).toEqual(new Set(['0']))
   })
 
   test('promotes command scenarios from blanket forward-only to confirmed', () => {
@@ -218,6 +232,7 @@ describe('scenario catalog coverage', () => {
       scenarioId: 'SCN-context-thread-scope',
       catalogStatus: 'confirmed',
       kind: 'executable',
+      provingTier: '0',
       verifiedAt: '2026-07-19',
       storyIds: [
         'tests/stories/context/thread-scope.story.test.ts#group threads share config but isolate conversation history',
@@ -227,6 +242,7 @@ describe('scenario catalog coverage', () => {
       scenarioId: 'SCN-context-group-identity',
       catalogStatus: 'confirmed',
       kind: 'executable',
+      provingTier: '0',
       verifiedAt: '2026-07-19',
       storyIds: [
         'tests/stories/context/group-users.story.test.ts#group members share durable config while retaining distinct identities',
