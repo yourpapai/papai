@@ -3,18 +3,24 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, type SQL } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
 import { memoryRecords } from '../db/schema.js'
-import { deserializeEmbedding } from './serialization.js'
-import { rowToRecord } from './store.js'
-import type { MemoryRecord, MemoryScope, MemoryStatus } from './types.js'
+import { recordValidityCondition, threadScopeCondition } from './record-conditions.js'
+import { deserializeEmbedding, rowToRecord } from './serialization.js'
+import type { MemoryKind, MemoryRecord, MemoryScope, MemoryStatus } from './types.js'
 
 export type SimilarityOptions = Readonly<{
   threshold?: number
   limit?: number
   statuses?: readonly MemoryStatus[]
+  kind?: MemoryKind
+  threadContextId?: string
+  excludeThreadContextId?: string
+  /** Identity of the querying config context. A null or absent value yields no dense hits. */
+  embeddingVersion?: string | null
+  now?: string
 }>
 
 const DEFAULT_THRESHOLD = 0.65
@@ -37,35 +43,50 @@ export const cosineSimilarity = (a: readonly number[], b: Float32Array): number 
   return dot / (Math.sqrt(normA) * Math.sqrt(normB))
 }
 
-/** @public -- consumed by the Plan 2 recall cascade + promotion engine. */
+const denseConditions = (scope: MemoryScope, options: SimilarityOptions, version: string): SQL[] => {
+  const conditions: SQL[] = [
+    eq(memoryRecords.scopeId, scope.scopeId),
+    eq(memoryRecords.scopeType, scope.scopeType),
+    inArray(memoryRecords.status, [...(options.statuses ?? ['active'])]),
+    eq(memoryRecords.embeddingVersion, version),
+    recordValidityCondition(options.now ?? new Date().toISOString()),
+  ]
+  if (options.kind !== undefined) conditions.push(eq(memoryRecords.kind, options.kind))
+  const thread = threadScopeCondition(options)
+  if (thread !== undefined) conditions.push(thread)
+  return conditions
+}
+
+/**
+ * Dense retrieval channel. Only records whose stored embedding identity matches
+ * the querying config context's identity are eligible — comparing vectors across
+ * models produces meaningless cosine scores. Ineligible records drop out of this
+ * channel only; they stay reachable lexically.
+ * @public -- consumed by the hybrid search orchestrator and the promotion engine.
+ */
 export function rankRecordsBySimilarity(
   scope: MemoryScope,
   queryEmbedding: readonly number[],
   options: SimilarityOptions,
 ): readonly MemoryRecord[] {
+  const version = options.embeddingVersion
+  if (version === undefined || version === null) return []
+
   const threshold = options.threshold ?? DEFAULT_THRESHOLD
   const limit = options.limit ?? DEFAULT_LIMIT
-  const statuses = options.statuses ?? ['active']
 
   const rows = getDrizzleDb()
     .select()
     .from(memoryRecords)
-    .where(
-      and(
-        eq(memoryRecords.scopeId, scope.scopeId),
-        eq(memoryRecords.scopeType, scope.scopeType),
-        inArray(memoryRecords.status, [...statuses]),
-      ),
-    )
+    .where(and(...denseConditions(scope, options, version)))
     .all()
 
-  const scored = rows
+  return rows
     .map((row) => ({ row, vec: deserializeEmbedding(row.embedding) }))
     .filter((entry): entry is { row: (typeof rows)[number]; vec: Float32Array } => entry.vec !== null)
     .map((entry) => ({ row: entry.row, score: cosineSimilarity(queryEmbedding, entry.vec) }))
     .filter((entry) => entry.score >= threshold)
     .sort((left, right) => right.score - left.score)
     .slice(0, limit)
-
-  return scored.map((s) => rowToRecord(s.row))
+    .map((entry) => rowToRecord(entry.row))
 }

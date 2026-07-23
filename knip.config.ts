@@ -140,7 +140,7 @@ export default {
   // TEMPORARY (hybrid-retrieval plan, docs/superpowers/plans/2026-07-23-memory-hybrid-retrieval.md):
   // the lexical retrieval-channel modules below are built bottom-up ahead of
   // their consumer. They become reachable from production when Task 7 wires
-  // searchLexical/hybridSearch into recall-cascade.ts. REMOVE these three
+  // searchLexical/hybridSearch into recall-cascade.ts. REMOVE these
   // entries in Task 7 (they will then be genuine dead code if still unreachable).
   ignore: [
     'src/db/migrations/**',
@@ -149,5 +149,6 @@ export default {
     'src/long-term-memory/lexical-query.ts',
     'src/long-term-memory/lexical-search.ts',
     'src/long-term-memory/fusion.ts',
+    'src/long-term-memory/embedding-identity.ts',
   ],
 }
