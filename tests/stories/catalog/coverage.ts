@@ -15,6 +15,19 @@ export type StoryTier = (typeof STORY_TIERS)[number]
  */
 export const LIVE_STORY_TIERS: readonly StoryTier[] = Object.freeze(['0'])
 
+/**
+ * Repository-relative suite root each tier's stories live under. A record's story
+ * ids must start with its tier's root, so a story can never be filed under a tier
+ * whose lane does not run it.
+ */
+export const TIER_SUITE_ROOTS: Readonly<Record<StoryTier, string>> = Object.freeze({
+  '0': 'tests/stories/',
+  '1': 'tests/e2e/',
+  '2': 'tests/smoke/',
+  '3': 'tests/platform/',
+  '4': 'tests/operational/',
+})
+
 type CatalogScenarioId = (typeof CATALOG_SCENARIO_IDS)[number]
 
 export type NonEmptyReadonlyTuple<T> = readonly [T, ...T[]]

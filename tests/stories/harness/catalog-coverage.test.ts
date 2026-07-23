@@ -15,6 +15,8 @@ import {
   LIVE_STORY_TIERS,
   STORY_FAMILIES,
   STORY_SEAM_IDS,
+  STORY_TIERS,
+  TIER_SUITE_ROOTS,
   toPendingReason,
   type StoryFamily,
   type StorySeamId,
@@ -216,6 +218,28 @@ describe('scenario catalog coverage', () => {
     expect(executable).toHaveLength(101)
     expect(offLaneTiers).toEqual([])
     expect(new Set(executable.map((coverage) => coverage.provingTier))).toEqual(new Set(['0']))
+  })
+
+  test('gives every tier a distinct suite root', () => {
+    const roots = STORY_TIERS.map((tier) => TIER_SUITE_ROOTS[tier])
+
+    expect(new Set(roots).size).toBe(STORY_TIERS.length)
+    expect(TIER_SUITE_ROOTS['0']).toBe('tests/stories/')
+    expect(TIER_SUITE_ROOTS['1']).toBe('tests/e2e/')
+  })
+
+  test('keeps every executable story under its own tier suite root', () => {
+    const executableCoverage = catalogCoverage.filter(
+      (coverage): coverage is Extract<(typeof catalogCoverage)[number], { kind: 'executable' }> =>
+        coverage.kind === 'executable',
+    )
+    const misplaced = executableCoverage.flatMap((coverage) =>
+      coverage.storyIds
+        .filter((storyId) => !storyId.startsWith(TIER_SUITE_ROOTS[coverage.provingTier]))
+        .map((storyId) => `T${coverage.provingTier} ${coverage.scenarioId} -> ${storyId}`),
+    )
+
+    expect(misplaced).toEqual([])
   })
 
   test('promotes command scenarios from blanket forward-only to confirmed', () => {
