@@ -148,5 +148,6 @@ export default {
     'tests/visual/**',
     'src/long-term-memory/lexical-query.ts',
     'src/long-term-memory/lexical-search.ts',
+    'src/long-term-memory/fusion.ts',
   ],
 }
