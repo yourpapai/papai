@@ -229,3 +229,61 @@ public-url-assertion]` → corrected to `needs:[capability-ids, platform-adapter
 Audit baseline **32 / 96** (executable / pending) → current **81 / 47** (through F3) → F4
 projects **87 / 41**. The Deliverable-2 projection ("~75–95 executable if F1–F7 land")
 remains on track.
+
+## Reclassifications and amendments (F5–F8)
+
+Append-only continuation of the F1–F4 section, recording the tail families. F8 is the terminal
+family and reconciles the program ledger to its final number.
+
+### F5 — `deferred-*`/`reminder-*` (landed)
+
+- **8 executable** — the estimate met exactly. Realized the single-pass
+  `tick`/`pollScheduledOnce`/`pollAlertsOnce` drivers over seeded due rows; no production clock
+  seam (virtual-time injection stays deferred to tiering phase 5). Ledger 87 → 95.
+
+### F6 — `web-fetch` (landed)
+
+- **2 executable** — the estimate met exactly. Realized the `assertPublicUrl` DI seam (the one
+  small production change in the tail families) with DB-backed quota seeding. Ledger 95 → 97;
+  `public-url-assertion` exhausted.
+
+### F7 — `settings-admin-mcp-*` + reclassified-in `http-mcp-plugin` (landed)
+
+- **3 executable** against a 2 estimate — `http-mcp-plugin` was reclassified in from F4. Covered
+  both MCP directions (papai-as-client user endpoint, papai-as-server route + operator gate); one
+  additive production change (user-MCP capability registration). Ledger 97 → 100;
+  `fake-mcp-server` realized and exhausted.
+
+### F8 — `interaction-*` (landed, terminal)
+
+- **1 executable + 3 forward-only** against a 4 estimate. `SCN-interaction-permission-decision`
+  promoted via `when.interaction` (its distinctive proof is the ADR-0182 self-finalization on the
+  raw reply log, which `SCN-task-ask-confirm` never asserts); zero production change. The three
+  wire-level scenarios stay forward-only with rationale sharpened to name the dispatch-layer
+  boundary: the harness enters at `runtime.dispatchInteraction`, below the platform adapter, so the
+  discord.js/grammY wire above it is Tier-3 platform-integrated territory, out of scope.
+  `platform-adapter-fakes` left deliberately unrealized. Ledger 100 → 101.
+
+### Seam-inventory drift (F5–F8)
+
+| Seam                        | Status after F5–F8                                                          |
+| --------------------------- | --------------------------------------------------------------------------- |
+| `assertPublicUrl`           | Realized in F6 (a real DNS lookup the I/O guard cannot intercept).          |
+| `fake-mcp-server`           | Realized and exhausted by F7 across both MCP directions.                    |
+| `platform-adapter-fakes`    | Deliberately unrealized — the program's single parked seam (4 F3+F8 pends). |
+| `mattermost-action-fixture` | Deliberately unrealized — the distinct F4 sibling seam (1 pend).            |
+
+### Ledger trajectory (final)
+
+Audit baseline **32 / 96** → F1–F3 **81 / 47** → F4 **87 / 41** → F5 **95** → F6 **97** → F7 **100**
+→ **F8 101 / 27**. The Deliverable-2 projection ("~75–95 executable if F1–F7 land") is met and
+exceeded.
+
+## Program complete
+
+With F8 landed, the coverage-expansion program is complete. All 128 catalog ids carry either an
+executable mapping (101) or a named, justified pend (27: 0 executable-as-is, 5 needs-seam,
+22 blocked) — zero generic "awaiting branch audit" reasons remain. The two unrealized seams
+(`platform-adapter-fakes`, `mattermost-action-fixture`) are parked by design, justified only if a
+future refactor touches the chat adapters. The frozen-harness compatibility proof now covers every
+seam `plugin-core-separation` can rewire that is reachable at Tier 0.
