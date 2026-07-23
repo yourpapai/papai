@@ -28,7 +28,13 @@ export function makeSearchToolsTool(
       'Find tools by intent. Most tools are NOT loaded; call this with a short natural-language query, then load_tool the names you need before using them.',
     inputSchema: z.object({
       query: z.string().min(1).describe('What you are trying to do, e.g. "list overdue tasks"'),
-      limit: z.number().int().min(1).max(20).default(8).describe('Maximum tools to return'),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(20)
+        .default(8)
+        .describe('Maximum tools to return (default 8). Raise it when a first search returns nothing relevant.'),
     }),
     execute: async ({ query, limit }, opts) => {
       try {
@@ -42,7 +48,12 @@ export function makeSearchToolsTool(
         }))
         emitUser('disclosure:search', contextId, { queryLength: query.length, resultCount: results.length })
         log.debug({ contextId, queryLength: query.length, resultCount: results.length }, 'search_tools served')
-        return { results }
+        if (results.length > 0) return { results }
+        const domains = [...new Set(discoverable.map((b) => b.domain))].sort()
+        return {
+          results,
+          hint: `No tool matched. Retry with different wording or a domain keyword: ${domains.join(', ')}.`,
+        }
       } catch (error) {
         const failure = buildToolFailureResult(error, 'search_tools', opts?.toolCallId ?? '')
         log.error({ contextId, tool: 'search_tools', error: failure.error }, 'search_tools execution failed')

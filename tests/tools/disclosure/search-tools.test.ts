@@ -33,6 +33,7 @@ interface SearchResult {
 
 interface SearchOut {
   results: SearchResult[]
+  hint?: string
 }
 
 function isSearchOut(val: unknown): val is SearchOut {
@@ -80,6 +81,40 @@ describe('search_tools', () => {
     const out: unknown = await exec({ query: 'time', limit: 5 })
     assert.ok(isSearchOut(out))
     expect(out.results).toEqual([])
+  })
+
+  it('returns a hint listing available domains when nothing matches', async () => {
+    const tools: ToolSet = {
+      get_current_time: d('Get the time.'),
+      search_tools: d('search'),
+      load_tool: d('load'),
+      list_tasks: d('List tasks in a project.'),
+      web_fetch: d('Fetch a web page.'),
+    }
+    const session = createDisclosureSession(tools, CORE_TOOL_NAMES)
+    const exec = getToolExecutor(makeSearchToolsTool(session, new LexicalToolRetriever(), 'ctx-1', tools))
+    const out: unknown = await exec({ query: 'zzzznomatchzzz', limit: 5 })
+    assert.ok(isSearchOut(out))
+    expect(out.results).toEqual([])
+    expect(out.hint).toBeDefined()
+    // Domains come from the discoverable tools (task, web) — never from always-on tools.
+    expect(out.hint).toContain('task')
+    expect(out.hint).toContain('web')
+  })
+
+  it('omits the hint when there are matching results', async () => {
+    const tools: ToolSet = {
+      get_current_time: d('Get the time.'),
+      search_tools: d('search'),
+      load_tool: d('load'),
+      list_tasks: d('List tasks in a project.'),
+    }
+    const session = createDisclosureSession(tools, CORE_TOOL_NAMES)
+    const exec = getToolExecutor(makeSearchToolsTool(session, new LexicalToolRetriever(), 'ctx-1', tools))
+    const out: unknown = await exec({ query: 'list tasks', limit: 5 })
+    assert.ok(isSearchOut(out))
+    expect(out.results.length).toBeGreaterThan(0)
+    expect(out.hint).toBeUndefined()
   })
 
   it('returns a structured failure result when the retriever throws', async () => {
