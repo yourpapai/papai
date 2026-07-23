@@ -69,4 +69,37 @@ describe('migration 068 embedding identity', () => {
     expect(row?.embeddingDimension).toBeNull()
     expect(row?.embeddedAt).toBeNull()
   })
+
+  test('stamps pre-existing embeddings as "unknown" but leaves embedding-less rows null', async () => {
+    await setupTestDb()
+
+    // rec-3 simulates a row embedded before this migration existed: an embedding
+    // blob with no identity metadata at all (the pre-068 state).
+    getDrizzleDb()
+      .insert(memoryRecords)
+      .values({
+        ...baseRow,
+        id: 'rec-3',
+        embedding: Buffer.from(new Float32Array([0.3, 0.4]).buffer),
+      })
+      .run()
+
+    // rec-4 has no embedding, so the UPDATE's WHERE guard must skip it.
+    getDrizzleDb()
+      .insert(memoryRecords)
+      .values({ ...baseRow, id: 'rec-4' })
+      .run()
+
+    // The ALTER TABLE calls are guarded by columnExists and no-op on a database
+    // that already has the columns (as setupTestDb's does), so re-invoking `up`
+    // here only re-runs the UPDATE ... WHERE embedding IS NOT NULL AND
+    // embedding_version IS NULL backfill, exercising the branch under test.
+    migration068MemoryEmbeddingIdentity.up(getDrizzleDb().$client)
+
+    const withEmbedding = getDrizzleDb().select().from(memoryRecords).where(eq(memoryRecords.id, 'rec-3')).get()
+    expect(withEmbedding?.embeddingVersion).toBe('unknown')
+
+    const withoutEmbedding = getDrizzleDb().select().from(memoryRecords).where(eq(memoryRecords.id, 'rec-4')).get()
+    expect(withoutEmbedding?.embeddingVersion).toBeNull()
+  })
 })
