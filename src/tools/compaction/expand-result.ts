@@ -8,7 +8,7 @@ import { z } from 'zod'
 
 import { logger } from '../../logger.js'
 import type { ToolFailureResult } from '../../tool-failure.js'
-import { EXPAND_DEFAULT_LIMIT_BYTES } from './constants.js'
+import { EXPAND_DEFAULT_LIMIT_CHARS } from './constants.js'
 import { getResultPage } from './result-store.js'
 
 const log = logger.child({ scope: 'tool:expand-result' })
@@ -25,13 +25,13 @@ export function makeExpandResultTool(contextId: string): Tool {
         .int()
         .min(1)
         .max(16_000)
-        .default(EXPAND_DEFAULT_LIMIT_BYTES)
+        .default(EXPAND_DEFAULT_LIMIT_CHARS)
         .describe('Maximum characters to return'),
     }),
     execute: ({ handle, offset, limit }, opts) => {
       // getToolExecutor and some SDK paths bypass schema parsing, so defaults are applied here too
       const resolvedOffset = offset ?? 0
-      const resolvedLimit = limit ?? EXPAND_DEFAULT_LIMIT_BYTES
+      const resolvedLimit = limit ?? EXPAND_DEFAULT_LIMIT_CHARS
       const page = getResultPage(contextId, handle, resolvedOffset, resolvedLimit)
       if (!page.found) {
         log.warn({ contextId, handle }, 'expand_result handle not found (expired or evicted)')
