@@ -147,10 +147,18 @@ roadmap's ledger-extension discipline.
 
 ## CI and budget
 
-- T1 is a **PR gate**, budgeted (roadmap rule 5). The budget is **measured, not
-  guessed**: the plan's first task measures the current `tests/e2e` wall-clock
-  and declares the ceiling from that number. A lane that exceeds its ceiling
-  moves to nightly rather than slowing the inner loop.
+- T1 is a **PR gate**, budgeted (roadmap rule 5). Measured baseline: the
+  current `tests/e2e` suite (`IMAGE=papai:e2e bun test:e2e`, 77 tests, both
+  Kaneo and `papai:e2e` images already cached locally — no build/pull needed)
+  ran in **42s** wall-clock (container bring-up **~37s**, measured directly as
+  `docker compose up -d kaneo` plus the `/api/health` poll, + tests **~5s**),
+  measured on 2026-07-23 on a shared, contended dev host (not isolated CI).
+  Caveat: repeat back-to-back runs on that host ranged **20s–111s** across
+  four attempts (load average ~35 on 12 cores from unrelated concurrent
+  processes), so this number should be re-confirmed on an isolated CI runner
+  before the ceiling below is treated as tight. The parity lane's declared
+  ceiling is **baseline + 90s = 132s**; a lane that exceeds it moves to
+  nightly rather than slowing the inner loop.
 - **No retries** (rule 4). A parity scenario that cannot hold green is
   quarantined to nightly in the same PR that observes it, with a ledger note
   recording why.
