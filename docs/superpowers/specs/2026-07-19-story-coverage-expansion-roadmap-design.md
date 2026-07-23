@@ -91,7 +91,7 @@ estimates; each family's own spec fixes the final count.
 | F7  | `settings-admin-mcp-*`                                                        | 2              | Settings routes, MCP adapter                                                                       | `fake-mcp-server` seam (already named in the catalog)                                                                                                                                                                                                                                                                                    |
 | F8  | `interaction-*`                                                               | 4              | Interaction routing, permission prompts                                                            | Platform-adapter fakes (grammY API, discord.js client). `interaction-permission-decision` is promotable today via `when.interaction`; the other three stay forward-only unless the refactor touches chat adapters                                                                                                                        |
 
-**Landed / decided (F1–F4)** — the `Est.` column above is the original projection; actuals are below, with full rationale in the "Reclassifications and amendments (F1–F4)" section at the end of this document. F5–F8 remain original estimates.
+**Landed / decided (F1–F4)** — the `Est.` column above is the original projection; actuals are below, with full rationale in the "Reclassifications and amendments (F1–F4)" section at the end of this document. All families have since landed; the F5–F8 actuals are in the "Reclassifications and amendments (F5–F8)" section at the end.
 
 - **F1** ~19 → **17 executable** + 2 blocked — `cmd-stop-graceful`/`abort` resolved via a realized `mid-turn-run-control` seam (not deferred as the pre-work hedged); the `compaction-trigger` knob was dropped.
 - **F2** 21 → **21 executable** — split into three specs (F2a / F2b1 / F2b2), not two.
@@ -105,6 +105,8 @@ lands. The single `contract-only` id needs no story by definition.
 
 Projected outcome if F1–F7 land: ~75–95 executable scenarios (from 29), with
 every remaining pend carrying a named, justified reason instead of a placeholder.
+(Actual, with F1–F8 all landed: **101 executable / 27 pending** — see the
+"Reclassifications and amendments (F5–F8)" section.)
 
 ## Execution rules
 
