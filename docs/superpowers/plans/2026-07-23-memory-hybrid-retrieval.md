@@ -466,18 +466,29 @@ export const recordValidityCondition = (now: string): SQL =>
    AND (${memoryRecords.validUntil} IS NULL OR ${memoryRecords.validUntil} > ${now})
    AND (${memoryRecords.expiresAt} IS NULL OR ${memoryRecords.expiresAt} > ${now})`
 
-/** Include-one-thread / exclude-one-thread filtering, shared by the provisional store and the retrieval channels. */
+/**
+ * Include-one-thread / exclude-one-thread filtering, shared by the provisional store and the
+ * retrieval channels. Both fields are independent: when both are set they are AND'd, preserving
+ * the semantics of the inline logic this replaces.
+ */
 export const threadScopeCondition = (
   filter: Readonly<{ threadContextId?: string; excludeThreadContextId?: string }>,
 ): SQL | undefined => {
-  if (filter.threadContextId !== undefined) return eq(memoryRecords.threadContextId, filter.threadContextId)
+  const conds: SQL[] = []
+  if (filter.threadContextId !== undefined) {
+    conds.push(eq(memoryRecords.threadContextId, filter.threadContextId))
+  }
   if (filter.excludeThreadContextId !== undefined) {
-    return or(
+    const excl = or(
       ne(memoryRecords.threadContextId, filter.excludeThreadContextId),
       isNull(memoryRecords.threadContextId),
     )
+    if (excl !== undefined) conds.push(excl)
   }
-  return undefined
+  const [first, ...rest] = conds
+  if (first === undefined) return undefined
+  if (rest.length === 0) return first
+  return and(first, ...rest)
 }
 ```
 
