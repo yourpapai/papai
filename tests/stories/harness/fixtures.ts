@@ -31,11 +31,10 @@ import type { TaskProvider } from '../../../src/providers/types.js'
 import { issueAuthCode } from '../../../src/settings/auth-code-store.js'
 import { SESSION_COOKIE_NAME } from '../../../src/settings/cookies.js'
 import { CSRF_HEADER } from '../../../src/settings/request-auth.js'
-import { setSystemConfig } from '../../../src/system-config.js'
 import { addUser } from '../../../src/users.js'
 import { setAssertPublicUrlForTesting } from '../../../src/web/safe-fetch.js'
 import {
-  resetSystemConfigCacheForTesting,
+  seedAdminLlmBinding,
   seedTestAlertPrompt,
   seedTestConversationHistory,
   seedTestExhaustedWebFetchQuota,
@@ -280,7 +279,7 @@ export type ScenarioFixtures = Readonly<{
       displayName: string
     }>,
   ): void
-  seedSystemLlmConfig(input?: Readonly<{ apiKey?: string; baseUrl?: string; mainModel?: string }>): void
+  seedSystemLlmConfig(input?: Readonly<{ mainModel?: string }>): void
   seedNotifyToken(token: string): void
   enableMcpPluginServer(platformInstanceId: string, pluginId: string): void
   seedRelayAttachment(
@@ -350,7 +349,6 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
       settingsSessions.reset()
       dashboardSessions.reset()
       await setupTestDb()
-      resetSystemConfigCacheForTesting()
       resetNotifyTokenCacheForTesting()
     },
     seedPlatformInstance(input = {}): void {
@@ -420,9 +418,7 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
       })
     },
     seedSystemLlmConfig(input = {}): void {
-      setSystemConfig('llm_apikey', input.apiKey ?? 'scenario-api-key', 'scenario-admin')
-      setSystemConfig('llm_baseurl', input.baseUrl ?? 'https://llm.invalid/v1', 'scenario-admin')
-      setSystemConfig('main_model', input.mainModel ?? 'scenario-main-model', 'scenario-admin')
+      seedAdminLlmBinding(input.mainModel ?? 'scenario-main-model')
     },
     seedNotifyToken(token): void {
       seedTestSystemConfig({ key: 'notify_token', value: token })

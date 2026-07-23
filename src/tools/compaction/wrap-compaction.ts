@@ -90,7 +90,7 @@ export function applyResultCompaction(tools: ToolSet, ctx: CompactionContext, de
     const inner = t.execute.bind(t)
     out[name] = {
       ...t,
-      execute: (input: unknown, options: ToolExecutionOptions): Promise<unknown> =>
+      execute: (input: unknown, options: ToolExecutionOptions<unknown>): Promise<unknown> =>
         Promise.resolve(inner(input, options)).then((result) => compact(result, name, ctx, resolvedDeps)),
     }
   }

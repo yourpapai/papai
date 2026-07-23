@@ -11,11 +11,10 @@ import { MockLanguageModelV3 } from 'ai/test'
 import type { LlmOrchestratorDeps } from '../../src/llm-orchestrator-types.js'
 import { processMessage } from '../../src/llm-orchestrator.js'
 import { runRegistry } from '../../src/run-control/registry.js'
-import { setSystemConfig } from '../../src/system-config.js'
 import {
   createMockReply,
   mockLogger,
-  resetSystemConfigCacheForTesting,
+  seedAdminLlmBinding,
   seedCommonTestPlatformInstances,
   setupTestDb,
 } from '../utils/test-helpers.js'
@@ -39,19 +38,12 @@ const mockModel = new MockLanguageModelV3({
 type GenerateResult = Awaited<ReturnType<LlmOrchestratorDeps['generateText']>>
 const okResult: GenerateResult = await generateText({ model: mockModel, prompt: 'hi' })
 
-const seedSystemLlmConfig = (): void => {
-  setSystemConfig('llm_apikey', 'test-key', 'env')
-  setSystemConfig('llm_baseurl', 'http://localhost:11434', 'env')
-  setSystemConfig('main_model', 'test-model', 'env')
-}
-
 describe('processMessage run lifecycle', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
     seedCommonTestPlatformInstances()
-    resetSystemConfigCacheForTesting()
-    seedSystemLlmConfig()
+    seedAdminLlmBinding()
     runRegistry.clear()
   })
   afterEach(() => runRegistry.clear())

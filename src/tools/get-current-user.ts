@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -12,7 +12,7 @@ import type { TaskProvider } from '../providers/types.js'
 
 const log = logger.child({ scope: 'tool:get-current-user' })
 
-export function makeGetCurrentUserTool(provider: Readonly<TaskProvider>): ToolSet[string] {
+export function makeGetCurrentUserTool(provider: Readonly<TaskProvider>): Tool {
   return tool({
     description: 'Get the current authenticated user from the task provider as a normalized provider user.',
     inputSchema: z.object({}),

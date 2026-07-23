@@ -5,139 +5,128 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { parseReviewerIssues, parseVerifierDecision } from '../../review-loop/src/issue-schema.js'
+import {
+  FixerResultSchema,
+  InspectorResultSchema,
+  IssueMatchesSchema,
+  ReviewerIssueSchema,
+  ReviewerIssuesSchema,
+  VerifierDecisionSchema,
+} from '../../review-loop/src/issue-schema.js'
 
-describe('issue schema parsing', () => {
-  test('parseReviewerIssues accepts structured critical/high issues', () => {
-    const parsed = parseReviewerIssues(
-      JSON.stringify({
-        round: 1,
-        issues: [
-          {
-            title: 'Race condition in queue flush path',
-            severity: 'high',
-            summary: 'Two concurrent messages can bypass the intended lock.',
-            whyItMatters: 'This can produce stale assistant replies.',
-            evidence: 'src/message-queue/queue.ts lines 84-107',
-            file: 'src/message-queue/queue.ts',
-            lineStart: 84,
-            lineEnd: 107,
-            suggestedFix: 'Take the processing lock earlier.',
-            confidence: 0.92,
-          },
-        ],
-      }),
-    )
+const validIssue = {
+  title: 'Race condition in queue flush path',
+  severity: 'high',
+  summary: 'Two concurrent messages can bypass the intended lock.',
+  whyItMatters: 'This can produce stale assistant replies.',
+  evidence: 'src/message-queue/queue.ts lines 84-107',
+  file: 'src/message-queue/queue.ts',
+  lineStart: 84,
+  lineEnd: 107,
+  suggestedFix: 'Take the processing lock earlier.',
+  confidence: 0.92,
+}
 
-    expect(parsed.issues).toHaveLength(1)
-    expect(parsed.issues[0]?.severity).toBe('high')
+describe('issue-schema', () => {
+  test('ReviewerIssueSchema accepts all severity levels', () => {
+    for (const severity of ['critical', 'high', 'medium', 'low']) {
+      expect(() => ReviewerIssueSchema.parse({ ...validIssue, severity })).not.toThrow()
+    }
   })
 
-  test('parseReviewerIssues accepts fenced JSON with surrounding text', () => {
-    const parsed = parseReviewerIssues(
-      [
-        'Here is the structured review output:',
-        '',
-        '```json',
-        '{"round":2,"issues":[]}',
-        '```',
-        '',
-        'That is the full result.',
-      ].join('\n'),
-    )
-
-    expect(parsed.round).toBe(2)
-    expect(parsed.issues).toHaveLength(0)
+  test('ReviewerIssuesSchema accepts issues array without round', () => {
+    expect(() => ReviewerIssuesSchema.parse({ issues: [validIssue] })).not.toThrow()
   })
 
-  test('parseVerifierDecision accepts lightly wrapped JSON', () => {
-    const parsed = parseVerifierDecision(
-      `Verifier result follows.
-
-{"verdict":"valid","fixability":"auto","reasoning":"Looks good.","targetFiles":["src/app.ts"],"needsPlanning":false}
-
-End result.`,
-    )
-
-    expect(parsed.verdict).toBe('valid')
-    expect(parsed.targetFiles).toEqual(['src/app.ts'])
-    expect(parsed.needsPlanning).toBe(false)
+  test('VerifierDecisionSchema does not include needsPlanning', () => {
+    const decision = {
+      verdict: 'valid',
+      fixability: 'auto',
+      reasoning: 'The control flow is unsafe.',
+      targetFiles: ['src/message-queue/queue.ts'],
+    }
+    expect(() => VerifierDecisionSchema.parse(decision)).not.toThrow()
+    expect(VerifierDecisionSchema.parse(decision)).not.toHaveProperty('needsPlanning')
   })
 
-  test('parseReviewerIssues rejects ambiguous multi-json responses', () => {
-    expect(() =>
-      parseReviewerIssues(`{"round":1,"issues":[]}
-{"round":2,"issues":[]}`),
-    ).toThrow()
+  test('FixerResultSchema extends VerifierDecision with fixed and commitSha', () => {
+    const result = {
+      verdict: 'valid',
+      fixability: 'auto',
+      reasoning: 'Fixed.',
+      targetFiles: ['src/message-queue/queue.ts'],
+      fixed: true,
+      commitSha: 'abc123',
+    }
+    expect(() => FixerResultSchema.parse(result)).not.toThrow()
   })
 
-  test('parseReviewerIssues accepts medium severity', () => {
-    const parsed = parseReviewerIssues(
-      JSON.stringify({
-        round: 1,
-        issues: [
-          {
-            title: 'Minor naming inconsistency',
-            severity: 'medium',
-            summary: 'Variable names do not follow convention.',
-            whyItMatters: 'Reduces readability for new contributors.',
-            evidence: 'src/utils.ts line 42',
-            file: 'src/utils.ts',
-            lineStart: 42,
-            lineEnd: 44,
-            suggestedFix: 'Rename to camelCase.',
-            confidence: 0.7,
-          },
-        ],
-      }),
-    )
-
-    expect(parsed.issues).toHaveLength(1)
-    expect(parsed.issues[0]?.severity).toBe('medium')
+  test('FixerResultSchema accepts result without commitSha', () => {
+    const result = {
+      verdict: 'invalid',
+      fixability: 'manual',
+      reasoning: 'False positive.',
+      targetFiles: [],
+      fixed: false,
+    }
+    expect(() => FixerResultSchema.parse(result)).not.toThrow()
   })
 
-  test('parseReviewerIssues accepts low severity', () => {
-    const parsed = parseReviewerIssues(
-      JSON.stringify({
-        round: 1,
-        issues: [
-          {
-            title: 'Extra blank line',
-            severity: 'low',
-            summary: 'Double blank line between functions.',
-            whyItMatters: 'Minor style issue.',
-            evidence: 'src/utils.ts line 50',
-            file: 'src/utils.ts',
-            lineStart: 50,
-            lineEnd: 51,
-            suggestedFix: 'Remove extra blank line.',
-            confidence: 0.6,
-          },
-        ],
-      }),
-    )
-
-    expect(parsed.issues).toHaveLength(1)
-    expect(parsed.issues[0]?.severity).toBe('low')
+  test('IssueMatchesSchema accepts array of matches', () => {
+    const data = {
+      matches: [
+        { newIssueIndex: 0, existingId: 'issue-001' },
+        { newIssueIndex: 1, existingId: null },
+      ],
+    }
+    expect(() => IssueMatchesSchema.parse(data)).not.toThrow()
   })
 
-  test('parseVerifierDecision accepts needsPlanning boolean', () => {
-    const parsed = parseVerifierDecision(
-      JSON.stringify({
-        verdict: 'valid',
-        fixability: 'auto',
-        reasoning: 'Complex multi-file change needed.',
-        targetFiles: ['src/a.ts', 'src/b.ts'],
-        needsPlanning: true,
-      }),
-    )
-
-    expect(parsed.needsPlanning).toBe(true)
+  test('FixerResultSchema accepts optional commitMessage and severity', () => {
+    const base = {
+      verdict: 'valid',
+      fixability: 'auto',
+      reasoning: 'r',
+      targetFiles: [],
+      fixed: true,
+    } as const
+    expect(FixerResultSchema.safeParse(base).success).toBe(true)
+    const parsed = FixerResultSchema.parse({
+      ...base,
+      commitMessage: 'fix(review-loop): tighten guard',
+      severity: 'low',
+    })
+    expect(parsed.commitMessage).toBe('fix(review-loop): tighten guard')
+    expect(parsed.severity).toBe('low')
   })
 
-  test('parseVerifierDecision rejects freeform prose', () => {
-    expect(() => parseVerifierDecision('looks valid to me')).toThrow(
-      'Expected exactly one JSON object for verifier decision',
-    )
+  test('VerifierDecisionSchema accepts plan_drift verdict (additive)', () => {
+    expect(
+      VerifierDecisionSchema.safeParse({
+        verdict: 'plan_drift',
+        fixability: 'manual',
+        reasoning: 'code diverged from plan',
+        targetFiles: [],
+      }).success,
+    ).toBe(true)
+  })
+})
+
+describe('InspectorResultSchema', () => {
+  test('accepts a valid inspector result', () => {
+    const parsed = InspectorResultSchema.parse({
+      addresses: true,
+      reasoning: 'The diff at line 12 fixes the race by adding the lock.',
+      confidence: 0.9,
+    })
+    expect(parsed.addresses).toBe(true)
+  })
+
+  test('rejects missing reasoning', () => {
+    expect(() => InspectorResultSchema.parse({ addresses: false, confidence: 0.5 })).toThrow()
+  })
+
+  test('rejects confidence out of range', () => {
+    expect(() => InspectorResultSchema.parse({ addresses: true, reasoning: 'ok', confidence: 1.5 })).toThrow()
   })
 })

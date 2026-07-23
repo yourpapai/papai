@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -13,7 +13,7 @@ import { listVisibleWorkspaceLabels, usesSeparateLabelReadApi } from './kaneo-la
 
 const log = logger.child({ scope: 'tool:create-label' })
 
-export function makeCreateLabelTool(provider: TaskProvider): ToolSet[string] {
+export function makeCreateLabelTool(provider: TaskProvider): Tool {
   return tool({
     description:
       'Create a new label in the workspace. In Kaneo, this creates a reusable workspace label and returns already_exists instead of creating a duplicate reusable label.',

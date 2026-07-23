@@ -1,0 +1,52 @@
+name: Behavior Audit
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: behavior-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Nightly Behavior Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.13
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Preflight
+        env:
+          BEHAVIOR_AUDIT_BASE_URL: ${{ secrets.BEHAVIOR_AUDIT_BASE_URL }}
+          BEHAVIOR_AUDIT_MODEL: ${{ secrets.BEHAVIOR_AUDIT_MODEL }}
+          OPENAI_API_KEY: ${{ secrets.BEHAVIOR_AUDIT_API_KEY }}
+        run: bun run scripts/behavior-audit/preflight.ts
+      - name: Fetch prior audit snapshot (for trend)
+        run: |
+          git fetch --depth=1 origin audit-output:audit-output 2>/dev/null || true
+          git fetch --tags --depth=1 origin audit-output-latest 2>/dev/null || true
+      - name: Run audit
+        env:
+          BEHAVIOR_AUDIT_BASE_URL: ${{ secrets.BEHAVIOR_AUDIT_BASE_URL }}
+          BEHAVIOR_AUDIT_MODEL: ${{ secrets.BEHAVIOR_AUDIT_MODEL }}
+          OPENAI_API_KEY: ${{ secrets.BEHAVIOR_AUDIT_API_KEY }}
+        run: bun audit:behavior
+      - name: Configure git
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+      - name: Publish snapshot
+        env:
+          BEHAVIOR_AUDIT_WORKTREE_DIR: ${{ runner.temp }}/audit-worktree
+        run: |
+          mkdir -p "$BEHAVIOR_AUDIT_WORKTREE_DIR"
+          git worktree add "$BEHAVIOR_AUDIT_WORKTREE_DIR" --detach
+          bun run scripts/behavior-audit/publish-snapshot.ts

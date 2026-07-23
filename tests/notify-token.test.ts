@@ -5,7 +5,8 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { getNotifyToken, resetNotifyTokenCacheForTesting } from '../src/notify-token.js'
+import { getNotifyToken } from '../src/notify-token.js'
+import { resetNotifyTokenCacheForTesting } from '../src/notify-token.testing.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
 describe('notify-token', () => {

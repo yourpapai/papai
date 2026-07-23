@@ -181,10 +181,6 @@ export function setCachedTools(userId: string, tools: unknown): void {
   getOrCreateCache(userId).tools = tools
 }
 
-export function clearCachedTools(userId: string): void {
-  getOrCreateCache(userId).tools = null
-}
-
 /**
  * Returns all tool-descriptor cache key prefixes for a contextId, covering all
  * combinations of provider scope, staged-download scope, and resolver scope

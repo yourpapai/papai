@@ -8,19 +8,16 @@ import type { ModelMessage } from 'ai'
 
 import type { AiProgressReporter } from './ai-progress-reporter.js'
 import type { ReplyFn } from './chat/types.js'
-import {
-  buildVerifiedCompletion,
-  detectToolFailure,
-  selectReadOnlyTools,
-  VERIFIER_MAX_STEPS,
-} from './completion/verified-completion.js'
+import { selectReadOnlyTools, VERIFIER_MAX_STEPS } from './completion/verified-completion.js'
 import type { VerifierDeps, VerifierPrompt } from './completion/verified-completion.js'
 import { emitUser } from './debug/event-bus.js'
 import { extractAppError, getAppErrorDetails, getUserMessage } from './errors.js'
 import { saveHistory } from './history.js'
-import { createLiveStatusReporter } from './live-status/reporter.js'
+import { createLiveStatusReporter, PREPARING_RESPONSE } from './live-status/reporter.js'
+import { hoistSystemMessages } from './llm-message-utils.js'
 import { invokeModelWithTyping } from './llm-orchestrator-invoke.js'
 import { emitLlmError, logProcessMessage } from './llm-orchestrator-logging.js'
+import { sendLlmResponse } from './llm-orchestrator-send.js'
 import type { InvokeModelArgs } from './llm-orchestrator-types.js'
 import { logger } from './logger.js'
 import { extractFactToolCalls, extractFactToolResults } from './memory-tool-steps.js'
@@ -205,53 +202,6 @@ export const persistFactsFromResults = (contextId: string, result: unknown): voi
   )
 }
 
-export const sendLlmResponse = async (
-  reply: ReplyFn,
-  contextId: string,
-  result: {
-    text: string | undefined
-    finishReason?: string
-    toolCalls: unknown[] | undefined
-    response: { messages: ModelMessage[] }
-  },
-  progressReporter: AiProgressReporter | undefined,
-  verification?: { verifier: VerifierDeps; history: readonly ModelMessage[] },
-): Promise<void> => {
-  const hadToolFailure = detectToolFailure(result.response.messages)
-  const isRisky =
-    result.text === undefined || result.text === '' || result.finishReason === 'tool-calls' || hadToolFailure
-
-  let textToFormat: string
-  if (isRisky && verification !== undefined) {
-    const verified = await buildVerifiedCompletion(
-      { history: verification.history, finishReason: result.finishReason, hadToolFailure },
-      verification.verifier,
-    )
-    textToFormat = verified.text
-  } else {
-    textToFormat = result.text !== undefined && result.text !== '' ? result.text : 'Done.'
-  }
-
-  const responseLength = result.text === undefined ? 0 : result.text.length
-  const toolCallCount = result.toolCalls === undefined ? 0 : result.toolCalls.length
-  const meta = { contextId, responseLength, toolCalls: toolCallCount, finishReason: result.finishReason }
-  if (result.finishReason === 'tool-calls') {
-    log.warn(meta, 'LLM turn ended on a pending tool call (step cap reached); reply may be incomplete')
-  }
-  await reply.formatted(textToFormat)
-  if (progressReporter !== undefined) {
-    try {
-      await progressReporter.flush()
-    } catch (error) {
-      log.warn(
-        { contextId, error: error instanceof Error ? error.message : String(error) },
-        'AI progress details flush failed after final response',
-      )
-    }
-  }
-  log.info(meta, 'Response sent successfully')
-}
-
 type InvokeWithLiveStatusArgs = {
   reply: ReplyFn
   invokeArgs: InvokeModelArgs & { turnId: string }
@@ -262,7 +212,7 @@ type InvokeWithLiveStatusArgs = {
 
 export const invokeWithLiveStatus = async (
   args: InvokeWithLiveStatusArgs,
-): Promise<{ response: { messages: ModelMessage[] } }> => {
+): Promise<{ finalStep: { response: { messages: ModelMessage[] } }; finishReason?: string }> => {
   const { reply, invokeArgs, progressReporter, liveStatusEnabled } = args
   const liveStatus = createLiveStatusReporter(reply, { enabled: liveStatusEnabled })
   await liveStatus.start()
@@ -273,17 +223,18 @@ export const invokeWithLiveStatus = async (
       { contextId: invokeArgs.contextId, toolCalls: toolCallCount, usage: result.usage },
       'LLM response received',
     )
-    progressReporter.reasoning(result.reasoningText, result.reasoning)
+    progressReporter.reasoning(result.finalStep.reasoningText, result.finalStep.reasoning)
     persistFactsFromResults(invokeArgs.contextId, result)
-    await liveStatus.dismiss()
+    // Keep the status alive as a placeholder through any verification round-trip; sendLlmResponse dismisses
+    // it right before the first reply posts, so there is no empty gap between the tool status and the answer.
+    await liveStatus.placeholder(PREPARING_RESPONSE)
     const readOnlyToolset = selectReadOnlyTools(invokeArgs.tools)
     const verifier: VerifierDeps = {
       readOnlyToolset,
       invokeVerifier: async ({ system, messages }: VerifierPrompt) => {
         const res = await invokeArgs.deps.generateText({
           model: invokeArgs.model,
-          system,
-          messages,
+          ...hoistSystemMessages(system, messages),
           tools: readOnlyToolset ?? {},
           stopWhen: invokeArgs.deps.stepCountIs(VERIFIER_MAX_STEPS),
           timeout: 1_200_000,
@@ -291,8 +242,10 @@ export const invokeWithLiveStatus = async (
         return { text: res.text, finishReason: res.finishReason }
       },
     }
-    const history: ModelMessage[] = [...invokeArgs.messages, ...result.response.messages]
-    await sendLlmResponse(reply, invokeArgs.contextId, result, progressReporter, { verifier, history })
+    const history: ModelMessage[] = [...invokeArgs.messages, ...result.finalStep.response.messages]
+    await sendLlmResponse(reply, invokeArgs.contextId, result, progressReporter, { verifier, history }, () =>
+      liveStatus.dismiss(),
+    )
     return result
   } finally {
     await liveStatus.dismiss()

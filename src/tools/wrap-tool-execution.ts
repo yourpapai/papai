@@ -11,10 +11,10 @@ import { buildToolFailureResult } from '../tool-failure.js'
 const log = logger.child({ scope: 'tool-wrapper' })
 
 export function wrapToolExecution(
-  execute: (input: unknown, options: ToolExecutionOptions) => Promise<unknown>,
+  execute: (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>,
   toolName: string,
-): (input: unknown, options: ToolExecutionOptions) => Promise<unknown> {
-  return async (input: unknown, options: ToolExecutionOptions) => {
+): (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown> {
+  return async (input: unknown, options: ToolExecutionOptions<unknown>) => {
     try {
       return await execute(input, options)
     } catch (error) {

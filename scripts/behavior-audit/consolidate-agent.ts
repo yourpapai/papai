@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { fetchWithoutTimeout, verboseGenerateText } from './agent-helpers.js'
 import { BASE_URL, MAX_RETRIES, MAX_STEPS, MODEL, PHASE2_TIMEOUT_MS, RETRY_BACKOFF_MS } from './config.js'
 import { addAgentUsage, type AgentResult, type AgentUsage } from './phase-stats.js'
+import type { EntryPointHint } from './scores-types.js'
 import { makeAuditTools } from './tools.js'
 
 function getEnvOrFallback(name: string, fallback: string): string {
@@ -40,7 +41,14 @@ You must:
 5. generate user stories only for user-facing consolidated features
 6. keep internal-only consolidations separate and use userStory: null for them
 
-Every user story must be feature-level, user-observable, complete in actor/action/benefit, and free of test names, function names, and implementation jargon.`
+Every user story must be feature-level, user-observable, complete in actor/action/benefit, and free of test names, function names, and implementation jargon.
+
+For each user-facing story, list the entry points a user would actually trigger. Use kind "command" for slash commands (identifier is the command text, e.g. "/config"). Use kind "tool" for LLM-callable tools (identifier is the tool name, e.g. "createTask"). Use kind "handler" for chat-platform message handlers (identifier is a symbol name or route description, e.g. "telegram:onTextMessage"). Use kind "route" for HTTP routes (identifier is the path, e.g. "/api/settings"). Omit entryPointHints for internal-only consolidations.`
+
+const EntryPointHintSchema = z.object({
+  kind: z.enum(['command', 'tool', 'handler', 'route']),
+  identifier: z.string(),
+})
 
 const ConsolidationItemSchema = z.object({
   featureName: z.string(),
@@ -51,6 +59,7 @@ const ConsolidationItemSchema = z.object({
   sourceBehaviorIds: z.array(z.string()),
   sourceTestKeys: z.array(z.string()),
   supportingInternalRefs: z.array(z.object({ behaviorId: z.string(), summary: z.string() })),
+  entryPointHints: z.array(EntryPointHintSchema).default([]),
 })
 
 const ConsolidationResultSchema = z.object({
@@ -58,6 +67,12 @@ const ConsolidationResultSchema = z.object({
 })
 
 export type ConsolidationResult = z.infer<typeof ConsolidationResultSchema>
+
+export function parseConsolidationResult(input: unknown): ConsolidationResult {
+  return ConsolidationResultSchema.parse(input)
+}
+
+export type { EntryPointHint }
 
 export interface ConsolidateBehaviorInput {
   readonly behaviorId: string
@@ -118,8 +133,8 @@ async function consolidateSingle(
       stopWhen: stepCountIs(MAX_STEPS + 1),
       abortSignal: AbortSignal.timeout(timeout),
     })
-    usage.inputTokens = result.totalUsage.inputTokens ?? 0
-    usage.outputTokens = result.totalUsage.outputTokens ?? 0
+    usage.inputTokens = result.usage.inputTokens ?? 0
+    usage.outputTokens = result.usage.outputTokens ?? 0
     for (const step of result.steps) {
       for (const tc of step.toolCalls) {
         usage.toolCalls += 1

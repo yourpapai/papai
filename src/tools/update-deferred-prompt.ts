@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { executeUpdate, type UpdateInput } from '../deferred-prompts/tool-handlers.js'
@@ -18,7 +18,7 @@ import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'tool:update-deferred-prompt' })
 
-export function makeUpdateDeferredPromptTool(userId: string): ToolSet[string] {
+export function makeUpdateDeferredPromptTool(userId: string): Tool {
   return tool({
     description:
       'Update a deferred prompt. For scheduled prompts, update prompt text or schedule. For alerts, update prompt text, condition, or cooldown.',

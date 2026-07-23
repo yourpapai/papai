@@ -71,7 +71,6 @@ const GlobalStatsSchema = z.object({
 })
 
 export type GlobalStats = z.infer<typeof GlobalStatsSchema>
-export type SubjectGrowthPoint = z.infer<typeof SubjectGrowthPointSchema>
 
 export const adminGlobals = $state({
   window: '30d' as StatsWindow,

@@ -4,8 +4,10 @@
 
 Tools use the Vercel AI SDK `tool()` factory from `ai`, but the exported tool is not the final execution surface. All tool sets are wrapped by `wrapToolExecution()` in `src/tools/index.ts`, which converts thrown failures into structured tool-failure payloads.
 
+A single-tool factory returns `Tool` (not `ToolSet[string]`): under AI SDK v7 the `ToolSet` value type is a union whose `.execute` is not directly callable, so factories declare the single-tool `Tool` type instead.
+
 ```typescript
-export function makeExampleTool(provider: Readonly<TaskProvider>): ToolSet[string] {
+export function makeExampleTool(provider: Readonly<TaskProvider>): Tool {
   return tool({
     description: 'Clear, precise tool description',
     inputSchema: z.object({
@@ -66,6 +68,15 @@ export function makeExampleTool(provider: Readonly<TaskProvider>): ToolSet[strin
   already applied, so a loaded tool keeps its `ask` wrapper. Debug events
   (`disclosure:search`/`disclosure:load`/`disclosure:fallback`) carry counts/lengths only —
   never query text or tool schemas.
+- **The deferred/proactive path wires disclosure independently.** It has its own
+  `buildFullToolSet` (`src/deferred-prompts/proactive-llm-full.ts`), which calls
+  `maybeApplyDisclosure` directly, and its own direct `generateText` call
+  (`runFullGeneration` in `src/deferred-prompts/proactive-llm.ts`) attaches a standalone
+  `createDisclosurePrepareStep` — the normal chat path composes that prepareStep with
+  steering via `invokeModel`, but the proactive path has no steering, so it attaches the
+  prepareStep alone. The three deferred-prompt execution modes (`lightweight`/`context`/`full`)
+  that used to select how much context a fire-time run loaded have been removed: every
+  deferred prompt now runs the same unified full-generation path on the main model.
 
 `MakeToolsOptions` controls tool exposure:
 

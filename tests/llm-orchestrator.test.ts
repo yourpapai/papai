@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { mock, describe, expect, test, beforeEach, afterEach, afterAll } from 'bun:test'
+import { mock, describe, expect, test, beforeEach, afterEach, afterAll, spyOn } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { APICallError } from '@ai-sdk/provider'
@@ -18,16 +18,18 @@ import {
 import type { ReplyFn } from '../src/chat/types.js'
 import { byokLlmCredentials } from '../src/db/byok-llm-schema.js'
 import { getDrizzleDb } from '../src/db/drizzle.js'
+import { llmAdminRoles } from '../src/db/schema.js'
 import type { DebugEvent } from '../src/debug/event-bus.js'
 import type { LlmOrchestratorDeps } from '../src/llm-orchestrator-types.js'
 import { defaultDeps, processMessage, resolveAiOutputSettingsContextId } from '../src/llm-orchestrator.js'
+import { clearLlmAdminCacheForTesting } from '../src/llm-providers/store.testing.js'
 import type { TaskProvider } from '../src/providers/types.js'
 import type { MemoryFact } from '../src/types/memory.js'
 import { createMockProvider } from './tools/mock-provider.js'
 import {
   createMockReply,
   mockLogger,
-  resetSystemConfigCacheForTesting,
+  seedAdminLlmBinding,
   seedCommonTestPlatformInstances,
   setupTestDb,
   flushMicrotasks,
@@ -92,10 +94,11 @@ type ToolCallStartHandler = (event: ToolCallStartEvent) => void
 type GenerateTextArgs = Partial<{
   messages: unknown[]
   tools: Record<string, unknown>
-  experimental_onToolCallStart: ToolCallStartHandler | undefined
-  experimental_onToolCallFinish: ToolCallFinishHandler | undefined
+  onToolExecutionStart: ToolCallStartHandler | undefined
+  onToolExecutionEnd: ToolCallFinishHandler | undefined
 }>
 
+// Legacy-friendly shape accepted by callToolFinish; converted to the v7 event below.
 type ToolCallFinishEvent = {
   toolCall: { toolName: string; toolCallId: string; input: unknown }
   durationMs: number
@@ -105,27 +108,48 @@ type ToolCallFinishEvent = {
   error: unknown
 }>
 
-type ToolCallFinishHandler = (event: ToolCallFinishEvent) => void
+// AI SDK v7 ToolExecutionEndEvent shape delivered to onToolExecutionEnd.
+type ToolExecutionEndEventV7 = {
+  callId: string
+  toolExecutionMs: number
+  messages: unknown[]
+  toolCall: { type: 'tool-call'; toolName: string; toolCallId: string; input: unknown; dynamic: true }
+  toolContext: unknown
+  toolOutput:
+    | { type: 'tool-result'; toolCallId: string; toolName: string; input: unknown; output: unknown; dynamic: true }
+    | { type: 'tool-error'; toolCallId: string; toolName: string; input: unknown; error: unknown; dynamic: true }
+}
+
+type ToolCallFinishHandler = (event: ToolExecutionEndEventV7) => void
 
 type GenerateTextResult = {
   text: string
   toolCalls: Array<{ toolName: string; toolCallId: string; input: unknown }>
   toolResults: Array<{ toolName: string; toolCallId: string; output: unknown }>
   steps: unknown[]
-  response: { messages: ModelMessage[] } & ResponseMetadata
+  finalStep: { response: { messages: ModelMessage[] } & ResponseMetadata } & Partial<
+    Readonly<{ reasoningText: string; reasoning: unknown }>
+  >
   usage: Record<string, unknown>
   finishReason: string
   warnings: unknown[] | undefined
   request: unknown
   providerMetadata: unknown
-} & Partial<Readonly<{ reasoningText: string; reasoning: unknown }>>
+}
 
-const callToolFinish = (
-  handler: GenerateTextArgs['experimental_onToolCallFinish'],
-  event: ToolCallFinishEvent,
-): void => {
+const callToolFinish = (handler: GenerateTextArgs['onToolExecutionEnd'], event: ToolCallFinishEvent): void => {
   assert.ok(handler !== undefined, 'expected tool-call finish handler')
-  handler(event)
+  const { toolName, toolCallId, input } = event.toolCall
+  handler({
+    callId: 'call',
+    toolExecutionMs: event.durationMs,
+    messages: [],
+    toolCall: { type: 'tool-call', toolName, toolCallId, input, dynamic: true },
+    toolContext: undefined,
+    toolOutput: event.success
+      ? { type: 'tool-result', toolCallId, toolName, input, output: event.output, dynamic: true }
+      : { type: 'tool-error', toolCallId, toolName, input, error: event.error, dynamic: true },
+  })
 }
 
 const defaultGenerateTextResult = (): Promise<GenerateTextResult> =>
@@ -134,7 +158,7 @@ const defaultGenerateTextResult = (): Promise<GenerateTextResult> =>
     toolCalls: [],
     toolResults: [],
     steps: [],
-    response: { messages: [{ role: 'assistant' as const, content: 'Hello!' }] },
+    finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Hello!' }] } },
     usage: {},
     finishReason: 'stop',
     warnings: undefined,
@@ -142,10 +166,12 @@ const defaultGenerateTextResult = (): Promise<GenerateTextResult> =>
     providerMetadata: undefined,
   })
 
-const buildMockModel: LlmOrchestratorDeps['buildModel'] = ({ llmApiKey, llmBaseUrl, mainModel }) =>
-  realOpenAICompatible.createOpenAICompatible({ name: 'mock-openai', apiKey: llmApiKey, baseURL: llmBaseUrl })(
-    mainModel,
-  )
+const buildMockModel: LlmOrchestratorDeps['buildModel'] = (config) =>
+  realOpenAICompatible.createOpenAICompatible({
+    name: 'mock-openai',
+    apiKey: config.main.apiKey,
+    baseURL: config.main.baseUrl,
+  })(config.main.model)
 
 import { KaneoClassifiedError } from '../plugins/task-provider-kaneo/classify-error.js'
 import {
@@ -156,6 +182,7 @@ import {
 import { setCachedConfig } from '../src/cache.js'
 import { getCachedFacts, getCachedHistory, userCachesForTesting } from '../src/cache.js'
 import { setConfigValue } from '../src/config.js'
+import * as conversationModule from '../src/conversation.js'
 import { appendHistory } from '../src/history.js'
 import { getIdentityMapping, clearIdentityMapping } from '../src/identity/mapping.js'
 import { setContextSettings } from '../src/instances/context-store.js'
@@ -166,7 +193,6 @@ import {
   registerContributedTaskProviderType,
   unregisterContributedTaskProviderType,
 } from '../src/providers/registry.js'
-import { setSystemConfig } from '../src/system-config.js'
 import { buildToolFailureResult } from '../src/tool-failure.js'
 import type { MakeToolsOptions } from '../src/tools/index.js'
 import { KANEO_PLUGIN_WORKSPACE_KEY } from '../src/types/config.js'
@@ -185,11 +211,10 @@ test('AI output settings context resolves thread to parent group', () => {
   )
 })
 
-/** Seed the central LLM config used by every orchestrator call. */
-const seedSystemLlmConfig = (): void => {
-  setSystemConfig('llm_apikey', 'test-key', 'env')
-  setSystemConfig('llm_baseurl', 'http://localhost:11434', 'env')
-  setSystemConfig('main_model', 'test-model', 'env')
+/** Remove the admin LLM role binding so the resolver reports the bot as unconfigured. */
+const clearAdminLlmBinding = (): void => {
+  getDrizzleDb().delete(llmAdminRoles).run()
+  clearLlmAdminCacheForTesting()
 }
 
 const assignKaneoContext = (contextId: string): void => {
@@ -349,10 +374,10 @@ describe('processMessage', () => {
 
     // Clear caches to ensure clean state
     userCachesForTesting.clear()
-    resetSystemConfigCacheForTesting()
+    clearLlmAdminCacheForTesting()
     resetBotMisconfiguredNotifiedForTesting()
 
-    seedSystemLlmConfig()
+    seedAdminLlmBinding()
     seedConfig()
 
     delete process.env['ADMIN_USER_ID']
@@ -397,8 +422,8 @@ describe('processMessage', () => {
       expect(textCalls).toContain('Hello!')
     })
 
-    test('replies with bot-misconfigured when system_config is incomplete', async () => {
-      resetSystemConfigCacheForTesting()
+    test('replies with bot-misconfigured when admin LLM binding is missing', async () => {
+      clearAdminLlmBinding()
 
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, CTX_ID, 'user-1', null, 'hello', 'dm')
@@ -409,7 +434,7 @@ describe('processMessage', () => {
     })
 
     test('bot-misconfigured path does not send typing', async () => {
-      resetSystemConfigCacheForTesting()
+      clearAdminLlmBinding()
 
       const { reply, textCalls, typingCalls } = createReplyWithTypingSpy()
       await processMessage(reply, CTX_ID, 'user-1', null, 'hello', 'dm')
@@ -420,6 +445,7 @@ describe('processMessage', () => {
     })
 
     test('uses complete BYOK config to build the model for the resolved config context', async () => {
+      seedAdminLlmBinding()
       const configContextId = 'cfg-byok'
       seedConfigForContext(configContextId)
       updateByokLlmConfig(
@@ -436,7 +462,7 @@ describe('processMessage', () => {
         },
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildModel: (config) => {
-          buildCalls.push({ apiKey: config.llmApiKey, baseURL: config.llmBaseUrl, model: config.mainModel })
+          buildCalls.push({ apiKey: config.main.apiKey, baseURL: config.main.baseUrl, model: config.main.model })
           return buildMockModel(config)
         },
         resolve: () => null,
@@ -452,6 +478,7 @@ describe('processMessage', () => {
     })
 
     test('passes resolved config context to normal conversation background trim', async () => {
+      seedAdminLlmBinding()
       const storageContextId = toScopedThreadContextId({
         platformInstanceId: 'telegram-secondary',
         nativeContextId: '-1001',
@@ -492,7 +519,7 @@ describe('processMessage', () => {
           toolCalls: [],
           toolResults: [],
           steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Hello!' }] },
+          finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Hello!' }] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -504,7 +531,7 @@ describe('processMessage', () => {
           toolCalls: [],
           toolResults: [],
           steps: [],
-          response: { messages: [] },
+          finalStep: { response: { messages: [] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -541,7 +568,8 @@ describe('processMessage', () => {
       })
     })
 
-    test('blocks incomplete BYOK setup before model invocation', async () => {
+    test('gracefully falls back to admin when BYOK is enabled but incomplete', async () => {
+      seedAdminLlmBinding()
       const configContextId = 'cfg-byok-incomplete'
       seedConfigForContext(configContextId)
       enableByokForContext(configContextId, 'admin-1')
@@ -560,12 +588,13 @@ describe('processMessage', () => {
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, CTX_ID, 'user-1', null, 'hello', 'dm', configContextId, deps)
 
-      expect(textCalls[0]).toContain('BYOK is enabled for this context')
-      expect(generateCalls).toBe(0)
-      expect(getCachedHistory(CTX_ID)).toHaveLength(0)
+      // Graceful fallback: incomplete BYOK no longer hard-errors; admin config serves the turn.
+      expect(generateCalls).toBe(1)
+      expect(textCalls).toContain('Hello!')
     })
 
     test('blocks unreadable BYOK setup before model invocation', async () => {
+      seedAdminLlmBinding()
       const configContextId = 'cfg-byok-unreadable'
       seedConfigForContext(configContextId)
       insertUnreadableByokConfig(configContextId)
@@ -866,7 +895,7 @@ describe('processMessage', () => {
               usage: { inputTokens: 10, outputTokens: 5 },
             },
           ],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -927,7 +956,7 @@ describe('processMessage', () => {
               usage: { inputTokens: 10, outputTokens: 5 },
             },
           ],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -965,7 +994,7 @@ describe('processMessage', () => {
       void mock.module('ai', () => ({
         ...realAi,
         generateText: (args: GenerateTextArgs): Promise<GenerateTextResult> => {
-          capturedOnToolCallFinish = args.experimental_onToolCallFinish
+          capturedOnToolCallFinish = args.onToolExecutionEnd
           return generateTextImpl(args)
         },
         stepCountIs: (): (() => boolean) => () => false,
@@ -976,7 +1005,7 @@ describe('processMessage', () => {
       seedConfigForContext('tool-fail-ctx')
 
       generateTextImpl = (args): Promise<GenerateTextResult> => {
-        callToolFinish(args.experimental_onToolCallFinish, {
+        callToolFinish(args.onToolExecutionEnd, {
           toolCall: { toolName: 'create_task', toolCallId: 'call-1', input: { title: 'Test' } },
           durationMs: 100,
           success: false,
@@ -987,7 +1016,7 @@ describe('processMessage', () => {
           toolCalls: [{ toolName: 'create_task', toolCallId: 'call-1', input: { title: 'Test' } }],
           toolResults: [{ toolName: 'create_task', toolCallId: 'call-1', output: { error: 'failed' } }],
           steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1009,7 +1038,7 @@ describe('processMessage', () => {
       setCachedConfig('tool-details-ctx', AI_TOOL_VISIBILITY_KEY, 'on')
 
       generateTextImpl = (args): Promise<GenerateTextResult> => {
-        callToolFinish(args.experimental_onToolCallFinish, {
+        callToolFinish(args.onToolExecutionEnd, {
           toolCall: { toolName: 'create_task', toolCallId: 'call-1', input: { title: 'Test' } },
           durationMs: 100,
           success: false,
@@ -1020,7 +1049,7 @@ describe('processMessage', () => {
           toolCalls: [{ toolName: 'create_task', toolCallId: 'call-1', input: { title: 'Test' } }],
           toolResults: [{ toolName: 'create_task', toolCallId: 'call-1', output: { error: 'failed' } }],
           steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1041,7 +1070,7 @@ describe('processMessage', () => {
       seedConfigForContext('tool-fail-string-ctx')
 
       generateTextImpl = (args): Promise<GenerateTextResult> => {
-        callToolFinish(args.experimental_onToolCallFinish, {
+        callToolFinish(args.onToolExecutionEnd, {
           toolCall: { toolName: 'search_tasks', toolCallId: 'call-2', input: { q: 'test' } },
           durationMs: 50,
           success: false,
@@ -1052,7 +1081,7 @@ describe('processMessage', () => {
           toolCalls: [],
           toolResults: [],
           steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1073,7 +1102,7 @@ describe('processMessage', () => {
       seedConfigForContext('tool-fail-structured-ctx')
 
       generateTextImpl = (args): Promise<GenerateTextResult> => {
-        callToolFinish(args.experimental_onToolCallFinish, {
+        callToolFinish(args.onToolExecutionEnd, {
           toolCall: { toolName: 'create_task', toolCallId: 'call-3', input: { title: 'Test' } },
           durationMs: 75,
           success: true,
@@ -1084,7 +1113,7 @@ describe('processMessage', () => {
           toolCalls: [],
           toolResults: [],
           steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1107,12 +1136,14 @@ describe('processMessage', () => {
       generateTextImpl = (): Promise<GenerateTextResult> =>
         Promise.resolve({
           text: 'Done!',
-          reasoningText: 'hidden chain of thought',
-          reasoning: [{ type: 'reasoning', text: 'hidden chain of thought' }],
           toolCalls: [],
           toolResults: [],
           steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: {
+            response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+            reasoningText: 'hidden chain of thought',
+            reasoning: [{ type: 'reasoning', text: 'hidden chain of thought' }],
+          },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1134,12 +1165,14 @@ describe('processMessage', () => {
       generateTextImpl = (): Promise<GenerateTextResult> =>
         Promise.resolve({
           text: 'Done!',
-          reasoningText: 'visible reasoning summary',
-          reasoning: [{ type: 'reasoning', text: 'visible reasoning summary' }],
           toolCalls: [],
           toolResults: [],
           steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: {
+            response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+            reasoningText: 'visible reasoning summary',
+            reasoning: [{ type: 'reasoning', text: 'visible reasoning summary' }],
+          },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1165,12 +1198,14 @@ describe('processMessage', () => {
       generateTextImpl = (): Promise<GenerateTextResult> =>
         Promise.resolve({
           text: 'Done!',
-          reasoningText: 'Provider reasoning text',
-          reasoning: [{ type: 'reasoning', text: 'raw reasoning payload' }],
           toolCalls: [],
           toolResults: [],
           steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: {
+            response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+            reasoningText: 'Provider reasoning text',
+            reasoning: [{ type: 'reasoning', text: 'raw reasoning payload' }],
+          },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1197,12 +1232,14 @@ describe('processMessage', () => {
       generateTextImpl = (): Promise<GenerateTextResult> =>
         Promise.resolve({
           text: 'Done!',
-          reasoningText: 'thread scoped reasoning',
-          reasoning: [{ type: 'reasoning', text: 'thread scoped reasoning' }],
           toolCalls: [],
           toolResults: [],
           steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: {
+            response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+            reasoningText: 'thread scoped reasoning',
+            reasoning: [{ type: 'reasoning', text: 'thread scoped reasoning' }],
+          },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1228,12 +1265,14 @@ describe('processMessage', () => {
       generateTextImpl = (): Promise<GenerateTextResult> =>
         Promise.resolve({
           text: 'Done!',
-          reasoningText: 'details that fail to send',
-          reasoning: [{ type: 'reasoning', text: 'details that fail to send' }],
           toolCalls: [],
           toolResults: [],
           steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: {
+            response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+            reasoningText: 'details that fail to send',
+            reasoning: [{ type: 'reasoning', text: 'details that fail to send' }],
+          },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1273,7 +1312,7 @@ describe('processMessage', () => {
           toolCalls: [],
           toolResults: [],
           steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Hi!' }] },
+          finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Hi!' }] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1294,6 +1333,81 @@ describe('processMessage', () => {
       expect(userContent).toMatch(/^<current_time>.*<\/current_time>\nhello$/u)
       expect(history[1]!.role).toBe('assistant')
       expect(history[1]!.content).toBe('Hi!')
+    })
+
+    test('a step-cap truncated turn defers the background trim (preserves resume context)', async () => {
+      const ctxId = 'truncated-defers-trim-ctx'
+      seedConfigForContext(ctxId)
+      // Seed history past the hard trim cap so a completed turn would normally trim.
+      appendHistory(
+        ctxId,
+        Array.from({ length: 100 }, (_, i): ModelMessage => ({ role: 'assistant', content: `old ${i}` })),
+      )
+      const trimSpy = spyOn(conversationModule, 'runTrimInBackground').mockResolvedValue(undefined)
+      // The turn stops at the tool-step cap: finishReason 'tool-calls'.
+      generateTextImpl = (): Promise<GenerateTextResult> =>
+        Promise.resolve({
+          text: '',
+          toolCalls: [{ toolName: 'search_tasks', toolCallId: 'c-1', input: { q: 'x' } }],
+          toolResults: [{ toolName: 'search_tasks', toolCallId: 'c-1', output: { hits: 1 } }],
+          steps: [],
+          finalStep: {
+            response: {
+              messages: [
+                {
+                  role: 'assistant' as const,
+                  content: [{ type: 'tool-call', toolCallId: 'c-1', toolName: 'search_tasks', input: { q: 'x' } }],
+                },
+                {
+                  role: 'tool' as const,
+                  content: [
+                    {
+                      type: 'tool-result',
+                      toolCallId: 'c-1',
+                      toolName: 'search_tasks',
+                      output: { type: 'json', value: { hits: 1 } },
+                    },
+                  ],
+                },
+              ] as ModelMessage[],
+            },
+          },
+          usage: {},
+          finishReason: 'tool-calls',
+          warnings: undefined,
+          request: {},
+          providerMetadata: undefined,
+        })
+      const { reply } = createMockReply()
+
+      await processMessage(reply, ctxId, 'user-1', null, 'do the thing', 'dm')
+      await flushMicrotasks()
+
+      // The in-progress tool trace is persisted so "continue" can resume from it...
+      const history = getCachedHistory(ctxId)
+      expect(history.some((m) => m.role === 'tool')).toBe(true)
+      // ...but the trim that could collapse it before the resume must be deferred.
+      expect(trimSpy).not.toHaveBeenCalled()
+      trimSpy.mockRestore()
+    })
+
+    test('a completed turn over the cap still triggers the background trim', async () => {
+      const ctxId = 'completed-triggers-trim-ctx'
+      seedConfigForContext(ctxId)
+      appendHistory(
+        ctxId,
+        Array.from({ length: 100 }, (_, i): ModelMessage => ({ role: 'assistant', content: `old ${i}` })),
+      )
+      const trimSpy = spyOn(conversationModule, 'runTrimInBackground').mockResolvedValue(undefined)
+      // Same over-cap history, but the turn completes normally (finishReason 'stop').
+      generateTextImpl = defaultGenerateTextResult
+      const { reply } = createMockReply()
+
+      await processMessage(reply, ctxId, 'user-1', null, 'hello', 'dm')
+      await flushMicrotasks()
+
+      expect(trimSpy).toHaveBeenCalledTimes(1)
+      trimSpy.mockRestore()
     })
 
     test('tool results include tool names for fact extraction', async () => {
@@ -1322,7 +1436,7 @@ describe('processMessage', () => {
               ],
             },
           ],
-          response: { messages: [{ role: 'assistant' as const, content: 'Task created!' }] },
+          finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Task created!' }] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1352,7 +1466,7 @@ describe('processMessage', () => {
               toolResults: [{ toolCallId: 'call-2', output: { result: 'data' } }],
             },
           ],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1407,7 +1521,7 @@ describe('processMessage', () => {
               ],
             },
           ],
-          response: { messages: [{ role: 'assistant' as const, content: 'Created both tasks' }] },
+          finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Created both tasks' }] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1613,7 +1727,7 @@ describe('processMessage', () => {
       const { persistIncomingAttachments } = await import('../src/attachments/index.js')
       const attachmentCtx = 'attachment-ctx-multimodal'
       seedConfigForContext(attachmentCtx)
-      setSystemConfig('main_model', 'gpt-4o', 'env')
+      seedAdminLlmBinding('gpt-4o')
 
       const refs = await persistIncomingAttachments({
         contextId: attachmentCtx,
@@ -1667,7 +1781,7 @@ describe('processMessage', () => {
       const { persistIncomingAttachments } = await import('../src/attachments/index.js')
       const ctx = 'attachment-ctx-textmodel'
       seedConfigForContext(ctx)
-      setSystemConfig('main_model', 'llama-3.1-instruct', 'env')
+      seedAdminLlmBinding('llama-3.1-instruct')
 
       const refs = await persistIncomingAttachments({
         contextId: ctx,
@@ -1763,16 +1877,22 @@ describe('processMessage', () => {
   test('callLlm creates a live status, updates it on a tool call, and dismisses it', async () => {
     await setupTestDb()
     seedCommonTestPlatformInstances()
-    resetSystemConfigCacheForTesting()
-    seedSystemLlmConfig()
+    clearLlmAdminCacheForTesting()
+    seedAdminLlmBinding()
     seedConfig()
 
     const created: string[] = []
     const updates: string[] = []
+    const order: string[] = []
     let dismissed = 0
     const { reply: base } = createMockReply()
+    const baseFormatted = base.formatted
     const reply: ReplyFn = {
       ...base,
+      formatted: (content: string): Promise<void> => {
+        order.push('reply')
+        return baseFormatted(content)
+      },
       createStatus: (initialText: string) => {
         created.push(initialText)
         return Promise.resolve({
@@ -1782,6 +1902,7 @@ describe('processMessage', () => {
           },
           dismiss: () => {
             dismissed += 1
+            order.push('dismiss')
             return Promise.resolve()
           },
         })
@@ -1789,10 +1910,10 @@ describe('processMessage', () => {
     }
 
     generateTextImpl = (args: GenerateTextArgs): Promise<GenerateTextResult> => {
-      args.experimental_onToolCallStart?.({
+      args.onToolExecutionStart?.({
         toolCall: { toolName: 'create_task', toolCallId: 'c1', input: { title: 'X' } },
       })
-      callToolFinish(args.experimental_onToolCallFinish, {
+      callToolFinish(args.onToolExecutionEnd, {
         toolCall: { toolName: 'create_task', toolCallId: 'c1', input: { title: 'X' } },
         durationMs: 1,
         success: true,
@@ -1811,6 +1932,10 @@ describe('processMessage', () => {
 
     expect(created).toEqual(['💭 Thinking…'])
     expect(updates).toContain('📝 Creating task: "X"…')
+    // Status is transitioned to a placeholder (not deleted) after the tool phase…
+    expect(updates).toContain('💬 Preparing response…')
     expect(dismissed).toBeGreaterThanOrEqual(1)
+    // …and only dismissed once the real answer is about to post — no gap.
+    expect(order.indexOf('dismiss')).toBeLessThan(order.indexOf('reply'))
   })
 })

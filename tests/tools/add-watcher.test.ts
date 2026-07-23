@@ -41,7 +41,7 @@ describe('Add Watcher Tool', () => {
 
     const result: unknown = await getToolExecutor(tool)(
       { taskId: 'task-1', userId: 'user-2' },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     assert(isTaskUserResult(result))
@@ -57,7 +57,7 @@ describe('Add Watcher Tool', () => {
     )
 
     await expect(
-      getToolExecutor(tool)({ taskId: 'task-1', userId: 'user-2' }, { toolCallId: '1', messages: [] }),
+      getToolExecutor(tool)({ taskId: 'task-1', userId: 'user-2' }, { toolCallId: '1', messages: [], context: {} }),
     ).rejects.toThrow('Watcher add failed')
   })
 
@@ -89,7 +89,7 @@ describe('Add Watcher Tool', () => {
 
       const result: unknown = await getToolExecutor(tool)(
         { taskId: 'task-123', userId: 'me' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       assert(isTaskUserResult(result))
@@ -104,7 +104,7 @@ describe('Add Watcher Tool', () => {
 
       const result: unknown = await getToolExecutor(tool)(
         { taskId: 'task-123', userId: 'me' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(result).toEqual({
@@ -119,7 +119,7 @@ describe('Add Watcher Tool', () => {
 
       const result: unknown = await getToolExecutor(tool)(
         { taskId: 'task-123', userId: 'other-user' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       assert(isTaskUserResult(result))
@@ -133,7 +133,7 @@ describe('Add Watcher Tool', () => {
 
       const result: unknown = await getToolExecutor(tool)(
         { taskId: 'task-123', userId: 'me' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       assert(isTaskUserResult(result))
@@ -153,7 +153,7 @@ describe('Add Watcher Tool', () => {
 
       const result: unknown = await getToolExecutor(tool)(
         { taskId: 'task-123', userId: 'user-1' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(result).toEqual({

@@ -9,7 +9,7 @@ import type { ToolSet } from 'ai'
 
 import { userCachesForTesting } from '../../src/cache.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
-import { setConfig } from '../../src/config.js'
+import { setConfig } from '../../src/config.testing.js'
 import { saveMemoryProfile } from '../../src/long-term-memory/store.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -79,6 +79,17 @@ describe('buildFullToolSet async', () => {
   })
 })
 
+describe('buildFullToolSet disclosure wiring', () => {
+  test('injects search_tools and load_tool and returns a disclosure session', async () => {
+    const provider = createMockProvider()
+    const { tools, disclosure } = await buildFullToolSet(provider, 'user-1', 'ctx-1', 'dm', 'remind me')
+    expect(Object.keys(tools)).toContain('search_tools')
+    expect(Object.keys(tools)).toContain('load_tool')
+    expect(disclosure).toBeDefined()
+    expect(typeof disclosure.activeToolNames).toBe('function')
+  })
+})
+
 describe('buildFullMessages', () => {
   test('uses group long-term memory for group thread contexts', () => {
     saveMemoryProfile(
@@ -98,7 +109,7 @@ describe('buildFullMessages', () => {
       'scheduled',
       'Summarize releases',
       undefined,
-      { mode: 'full', delivery_brief: 'Release digest', context_snapshot: null },
+      { delivery_brief: 'Release digest', context_snapshot: null },
       'group',
     )
 
@@ -123,7 +134,7 @@ describe('buildFullMessages', () => {
       'scheduled',
       'Summarize releases',
       undefined,
-      { mode: 'full', delivery_brief: 'Release digest', context_snapshot: null },
+      { delivery_brief: 'Release digest', context_snapshot: null },
       'group',
     )
 

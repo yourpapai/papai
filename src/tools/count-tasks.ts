@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -12,7 +12,7 @@ import type { TaskProvider } from '../providers/types.js'
 
 const log = logger.child({ scope: 'tool:count-tasks' })
 
-export function makeCountTasksTool(provider: TaskProvider): ToolSet[string] {
+export function makeCountTasksTool(provider: TaskProvider): Tool {
   return tool({
     description: 'Count tasks matching a query. Returns the total number of matching tasks.',
     inputSchema: z.object({

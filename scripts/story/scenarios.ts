@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import ts from 'typescript'
+import ts from '@typescript/typescript6'
 
 export type ExtractedStoryScenario = Readonly<{ id: string; checkpoints: readonly string[] }>
 

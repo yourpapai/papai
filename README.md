@@ -117,7 +117,7 @@ ADMIN_USER_ID=123456789         # Your platform user ID
 CHAT_PROVIDER=telegram          # or: mattermost, discord, kontur-talk
 # INSTANCE_CONFIG_KEY=64_hex_chars_for_production_config_encryption
 
-# Central LLM credentials (seeded once into system_config on first start)
+# Central LLM credentials (seeded once into the provider registry on first start)
 LLM_API_KEY=sk-...
 LLM_BASE_URL=https://api.openai.com/v1
 MAIN_MODEL=gpt-4o-mini
@@ -146,7 +146,7 @@ Then configure runtime settings:
 3. In the web UI Task provider section, bind the context to an active task instance, then enter its credentials (the credential fields appear only after a task instance is bound) and set your timezone
 4. For group settings, open `/config` in DM and select the group context in the web UI
 
-> LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and live in the `system_config` SQLite table. They are seeded from env vars on first start and can be rotated later via `/admin#system` without restarting the bot.
+> LLM credentials are admin-owned and live in the `llm_providers` + `llm_admin_roles` SQLite tables. They are seeded from env vars on the first start that finds no provider configured, and can be managed later via the settings admin Providers + LLM Roles sections without restarting the bot.
 
 > `CHAT_PROVIDER` seeds the first platform instance only when the platform instance table is empty. Task instances are never env-bootstrapped — create them via `/admin#instances` and approve the relevant task-provider plugin. After bootstrap, platform instances, task instances, and admins are managed from SQLite and the admin Instances surface (`/admin#instances`).
 
@@ -215,17 +215,17 @@ flowchart TD
 <details>
 <summary><b>Central LLM Credentials</b></summary>
 
-LLM credentials are admin-owned and live in the `system_config` SQLite table. They are seeded from the env vars below on the first start that finds the corresponding `system_config` row missing. After seeding, the bot reads them from the database on every startup; rotation happens either by editing the env and restarting, or by using `/admin#system` (no restart needed).
+LLM credentials are admin-owned and live in the `llm_providers` + `llm_admin_roles` SQLite tables. On the first start that finds no provider configured, a default provider is created from the env vars below and bound to the `main` role (and `small`/`embedding` if their env vars are present). After seeding, the bot reads them from the database on every startup; management happens in the settings admin Providers + LLM Roles sections (no restart needed for changes made there).
 
 | Variable          | Required | Description                                                                               |
 | ----------------- | -------- | ----------------------------------------------------------------------------------------- |
-| `LLM_API_KEY`     | Yes      | API key for the OpenAI-compatible provider (seeds `system_config.llm_apikey`)             |
-| `LLM_BASE_URL`    | Yes      | OpenAI-compatible base URL (seeds `system_config.llm_baseurl`)                            |
-| `MAIN_MODEL`      | Yes      | Main model used for orchestration (seeds `system_config.main_model`)                      |
+| `LLM_API_KEY`     | Yes      | API key for the OpenAI-compatible provider                                                |
+| `LLM_BASE_URL`    | Yes      | OpenAI-compatible base URL                                                                |
+| `MAIN_MODEL`      | Yes      | Main model used for orchestration                                                         |
 | `SMALL_MODEL`     | No       | Smaller helper model; callsites fall back to `main_model` when unset                      |
 | `EMBEDDING_MODEL` | No       | Embedding model for semantic memo search; when unset memo search degrades to keyword-only |
 
-If `system_config` is missing any of the three required entries at runtime, the bot logs a startup warning and replies "the bot is not fully configured" to incoming messages until an admin sets them (via env + restart, or via `/admin#system`).
+If no admin role binding exists after startup, the bot logs a startup warning and replies "the bot is not fully configured" to incoming messages until an admin configures a provider in the settings web UI.
 
 </details>
 
@@ -324,10 +324,9 @@ When the debug server is enabled, the local surfaces are split by audience:
 
 Admin sections include:
 
-- **System** at `/admin#system` — environment summary plus the credentials form (`GET`/`POST /admin/llm`) that rotates LLM keys at runtime without a restart. Sensitive values are masked in the form.
 - **Billing** at `/admin#billing` — per-subject LLM usage from `llm_usage_events` (24h / 7d / 30d / all windows) and drill-down by request.
 - **Stats** at `/admin#stats` — bot-wide anonymous structural counts and per-subject sub-panel backed by `GET /stats/global` and `GET /stats/subject/:id`. Both routes return counts, byte sizes, timestamps, enum distributions, and keyed-hashed identifiers only - never message text, memo bodies, observation text, attachment filenames, usernames, or other free-form content.
-- **Instances** at `/admin#instances` — platform instances, task instances, and admin assignments backed by `/api/platform-instances`, `/api/task-instances`, and `/api/admins`. Instance config values are masked on read and encrypted at rest. If a persisted instance row cannot be decrypted or decoded, list routes return readable rows plus an `unreadable` diagnostics array instead of failing the whole response.
+- **Instances** at `/admin#instances` — platform instances, task instances, and admin assignments backed by `/api/platform-instances`, `/api/task-instances`, and `/api/admins`. Instance config values are masked on read and encrypted at rest. If a persisted instance row cannot be decrypted or decoded, list routes return readable rows plus an `unreadable` diagnostics array instead of failing the whole response. LLM providers and role bindings are managed in the settings admin Providers + LLM Roles sections.
 
 The dashboard is gated by a chat-issued session cookie rather than a static token. DM `/dashboard` to the bot to receive a single-use sign-in link (valid 5 min). Opening the link renders a confirmation page; pressing **Sign in** there consumes the link and sets an `HttpOnly; Secure; SameSite=Strict` session cookie (8h default). The two-step page (consume on `POST`, not `GET`) keeps messaging-platform link-preview crawlers from burning the single-use link before you open it. `ADMIN_USER_ID` must match the chat user who runs `/dashboard`, and for HTTPS the reverse proxy must forward `X-Forwarded-Proto: https`. Never expose the dashboard on a public interface without one of the patterns in [`docs/deployment/dashboard-access.md`](docs/deployment/dashboard-access.md).
 
@@ -371,7 +370,7 @@ Settings managed in the web UI include:
 | `timezone`                                        | User timezone for local date/time interpretation                                                 |
 | `mcp_endpoints`                                   | JSON array of external MCP server endpoints whose tools are merged into the context (HTTPS only) |
 
-LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and managed via env vars or `/admin#system` - not through the user settings web UI.
+LLM providers and role bindings are admin-owned and managed via env vars (first-start seed) or the settings admin Providers + LLM Roles sections - not through the user settings web UI.
 
 Platform and task-provider base configuration is instance-owned. First-run env bootstrap creates a single `<provider>-default` platform instance row from `CHAT_PROVIDER` and the platform-specific env vars only when the platform instance table is empty. Task instances are never env-bootstrapped: create them through `/admin#instances` (or the admin section of the settings web UI) and approve the matching task-provider plugin. After that, manage instance lifecycle and admin assignment through `/admin#instances`; per-context credentials and preferences are managed in the settings web UI (reached via `/config`).
 

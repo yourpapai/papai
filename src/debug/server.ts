@@ -119,6 +119,7 @@ function handleLogStats(url: URL): Response {
 }
 
 export type { WebServerRouteOptions } from './server-route-options.js'
+export { listRoutes } from './server-route-options.js'
 
 let server: ReturnType<typeof Bun.serve> | null = null
 

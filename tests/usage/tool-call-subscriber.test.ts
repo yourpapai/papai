@@ -8,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { toolCallEvents } from '../../src/db/schema.js'
 import { emitUser } from '../../src/debug/event-bus.js'
-import { initUsageRecorder, resetUsageRecorderForTesting } from '../../src/usage/index.js'
+import { initUsageRecorder } from '../../src/usage/index.js'
+import { resetUsageRecorderForTesting } from '../../src/usage/index.testing.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const execEndPayload = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({

@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 
 import { SESSION_COOKIE_NAME } from '../../src/dashboard-auth/cookie.js'
 import { mintSession } from '../../src/dashboard-auth/index.js'
-import { setStoreDb } from '../../src/dashboard-auth/store.js'
+import { setStoreDb } from '../../src/dashboard-auth/store.testing.js'
 import { logBuffer } from '../../src/debug/log-buffer.js'
 import { startDebugServer, stopDebugServer } from '../../src/debug/server.js'
 import { getTestDb, mockLogger, setupTestDb } from '../utils/test-helpers.js'

@@ -19,12 +19,7 @@ import {
 const log = logger.child({ scope: 'deferred:schedule-update-helpers' })
 
 export function parseExecution(
-  input:
-    | ({
-        mode: 'lightweight' | 'context' | 'full'
-        delivery_brief: string
-      } & Partial<Readonly<{ context_snapshot: string }>>)
-    | undefined,
+  input: ({ delivery_brief: string } & Partial<Readonly<{ context_snapshot: string }>>) | undefined,
 ): ExecutionMetadata {
   if (input === undefined) return DEFAULT_EXECUTION_METADATA
   const parseResult = executionMetadataSchema.safeParse(input)

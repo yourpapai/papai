@@ -372,6 +372,8 @@ test('report-writer round-trips supporting internal refs as readonly consolidate
           summary: 'Validates the task payload before submission.',
         },
       ],
+      entryPointHints: [],
+      closure: null,
     },
   ])
 
@@ -1195,6 +1197,8 @@ test('markBehaviorDone clears stale failure state after a successful retry and r
             sourceTestKeys: ['tests/tools/sample.test.ts::suite > create task'],
             sourceBehaviorIds: ['tests/tools/sample.test.ts::suite > create task'],
             supportingInternalRefs: [],
+            entryPointHints: [],
+            closure: null,
           },
         ],
       ],

@@ -6,7 +6,8 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { fetchAdminByok } from '../../../client/settings/admin-fetchers.js'
-import { fetchByok, patchByok, setCsrfToken, toggleByok } from '../../../client/settings/fetchers.js'
+import { fetchByok, setCsrfToken, toggleByok } from '../../../client/settings/fetchers.js'
+import { patchByok } from '../../../client/settings/fetchers.testing.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 type CapturedFetchCall = Readonly<{ url: string; init: RequestInit }>

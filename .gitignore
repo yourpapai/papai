@@ -63,3 +63,7 @@ crvy-rprtr-*.json
 codeindex/.codeindex/
 papai-local.tar
 client/assets
+
+# opencode local config
+.opencode/
+opencode.json

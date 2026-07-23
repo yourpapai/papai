@@ -12,7 +12,7 @@ import { z } from 'zod'
 import {
   clearResultStoreForTesting,
   setResultStoreClockForTesting,
-} from '../../../src/tools/compaction/result-store.js'
+} from '../../../src/tools/compaction/result-store.testing.js'
 import { isCompactedEnvelope } from '../../../src/tools/compaction/types.js'
 import { applyResultCompaction } from '../../../src/tools/compaction/wrap-compaction.js'
 import { getToolExecutor } from '../../utils/test-helpers.js'

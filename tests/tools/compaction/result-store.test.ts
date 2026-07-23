@@ -6,12 +6,11 @@
 import { describe, expect, it, beforeEach } from 'bun:test'
 
 import { RESULT_STORE_MAX_ENTRIES } from '../../../src/tools/compaction/constants.js'
+import { putResult, getResultPage } from '../../../src/tools/compaction/result-store.js'
 import {
-  putResult,
-  getResultPage,
   clearResultStoreForTesting,
   setResultStoreClockForTesting,
-} from '../../../src/tools/compaction/result-store.js'
+} from '../../../src/tools/compaction/result-store.testing.js'
 
 describe('result-store', () => {
   let now = 1_000

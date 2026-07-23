@@ -11,8 +11,8 @@ import {
   formatDecisionConfirmation,
   formatPrompt,
   resolvePermissionRequest,
-  resetPermissionPromptForTesting,
 } from '../../src/chat/permission-prompt.js'
+import { resetPermissionPromptForTesting } from '../../src/chat/permission-prompt.testing.js'
 import type { ButtonReplyOptions, ChatButton, PromptHandle, ReplyFn } from '../../src/chat/types.js'
 
 type CapturedButtonCall = { body: string; options: ButtonReplyOptions }

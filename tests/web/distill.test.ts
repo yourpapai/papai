@@ -8,8 +8,9 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import { updateByokLlmConfig } from '../../src/byok-llm/store.js'
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { llmUsageEvents } from '../../src/db/schema.js'
-import { setSystemConfig } from '../../src/system-config.js'
-import { mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from '../utils/test-helpers.js'
+import { createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers/store.js'
+import { clearLlmAdminCacheForTesting } from '../../src/llm-providers/store.testing.js'
+import { mockLogger, seedAdminLlmBinding, setupTestDb } from '../utils/test-helpers.js'
 
 const MAX_EXCERPT_CHARS = 8_000
 
@@ -43,7 +44,7 @@ const getDistillWebContent = (value: unknown): DistillWebContent => {
   return value
 }
 
-const seedSystemLlm = (
+const seedAdminLlm = (
   overrides: Partial<{
     apiKey: string
     baseUrl: string
@@ -51,13 +52,18 @@ const seedSystemLlm = (
     smallModel: string
   }> = {},
 ): void => {
-  resetSystemConfigCacheForTesting()
-  setSystemConfig('llm_apikey', overrides.apiKey ?? 'test-key', 'env')
-  setSystemConfig('llm_baseurl', overrides.baseUrl ?? 'https://llm.example', 'env')
-  setSystemConfig('main_model', overrides.mainModel ?? 'main-model', 'env')
-  if (overrides.smallModel !== undefined) {
-    setSystemConfig('small_model', overrides.smallModel, 'env')
-  }
+  const apiKey = overrides.apiKey ?? 'test-key'
+  const baseUrl = overrides.baseUrl ?? 'https://llm.example'
+  const mainModel = overrides.mainModel ?? 'main-model'
+  const provider = createLlmProvider({ label: 'admin', providerType: 'openai', baseUrl, apiKey }, 'admin')
+  setAdminRoleBindings(
+    {
+      main: { providerId: provider.id, model: mainModel },
+      small: overrides.smallModel === undefined ? null : { providerId: provider.id, model: overrides.smallModel },
+      embedding: null,
+    },
+    'admin',
+  )
 }
 
 describe('distillWebContent', () => {
@@ -65,7 +71,7 @@ describe('distillWebContent', () => {
 
   beforeEach(async () => {
     mockLogger()
-    resetSystemConfigCacheForTesting()
+    clearLlmAdminCacheForTesting()
     await setupTestDb()
     ;({ distillWebContent } = await import('../../src/web/distill.js'))
   })
@@ -73,7 +79,7 @@ describe('distillWebContent', () => {
   test('bypasses the model for small content', async () => {
     const runDistill = getDistillWebContent(distillWebContent)
 
-    seedSystemLlm({ smallModel: 'small-model' })
+    seedAdminLlm({ smallModel: 'small-model' })
 
     let generateTextCalls = 0
 
@@ -103,7 +109,7 @@ describe('distillWebContent', () => {
   test('falls back to main_model when small_model is missing', async () => {
     const runDistill = getDistillWebContent(distillWebContent)
 
-    seedSystemLlm()
+    seedAdminLlm()
 
     const builtModels: Array<{ apiKey: string; baseUrl: string; modelId: string }> = []
     const capturedModels: unknown[] = []
@@ -141,7 +147,8 @@ describe('distillWebContent', () => {
     expect(result.excerpt).toBe('B'.repeat(MAX_EXCERPT_CHARS))
   })
 
-  test('uses BYOK small model for context distillation without global config', async () => {
+  test('uses BYOK small model for context distillation (overriding admin)', async () => {
+    seedAdminLlmBinding()
     const runDistill = getDistillWebContent(distillWebContent)
     updateByokLlmConfig(
       'ctx-distill-byok',
@@ -185,7 +192,7 @@ describe('distillWebContent', () => {
   test('uses a single-paragraph model response as both summary and excerpt', async () => {
     const runDistill = getDistillWebContent(distillWebContent)
 
-    seedSystemLlm()
+    seedAdminLlm()
 
     const result = await runDistill(
       {
@@ -209,7 +216,7 @@ describe('distillWebContent', () => {
   test('records a usage row with modelRole="small" when context fields are provided', async () => {
     const runDistill = getDistillWebContent(distillWebContent)
 
-    seedSystemLlm({ smallModel: 'small-model' })
+    seedAdminLlm({ smallModel: 'small-model' })
 
     await runDistill(
       {
@@ -248,7 +255,7 @@ describe('distillWebContent', () => {
   test('records an error row when generateText throws', async () => {
     const runDistill = getDistillWebContent(distillWebContent)
 
-    seedSystemLlm({ smallModel: 'small-model' })
+    seedAdminLlm({ smallModel: 'small-model' })
 
     await expect(
       runDistill(
@@ -281,7 +288,7 @@ describe('distillWebContent', () => {
   test('omits the row when context fields are absent', async () => {
     const runDistill = getDistillWebContent(distillWebContent)
 
-    seedSystemLlm({ smallModel: 'small-model' })
+    seedAdminLlm({ smallModel: 'small-model' })
 
     await runDistill(
       {
@@ -303,7 +310,7 @@ describe('distillWebContent', () => {
 describe('distillWebContent default buildModel dep', () => {
   beforeEach(async () => {
     mockLogger()
-    resetSystemConfigCacheForTesting()
+    clearLlmAdminCacheForTesting()
     await setupTestDb()
   })
 
@@ -327,7 +334,7 @@ describe('distillWebContent default buildModel dep', () => {
     }))
 
     const { distillWebContent } = await import('../../src/web/distill.js')
-    seedSystemLlm({ smallModel: 'small-distill' })
+    seedAdminLlm({ smallModel: 'small-distill' })
 
     await distillWebContent({
       storageContextId: 'ctx-default-dep',

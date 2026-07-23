@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { getConfig } from '../config.js'
@@ -14,7 +14,7 @@ import type { TaskProvider } from '../providers/types.js'
 
 const log = logger.child({ scope: 'tool:memo' })
 
-export function makePromoteMemoTool(provider: Readonly<TaskProvider>, userId: string): ToolSet[string] {
+export function makePromoteMemoTool(provider: Readonly<TaskProvider>, userId: string): Tool {
   return tool({
     description: 'Promote a personal note to a tracked task. Call list_memos or search_memos first to get the memo_id.',
     inputSchema: z.object({

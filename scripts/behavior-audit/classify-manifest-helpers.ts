@@ -9,8 +9,13 @@ import { classifiedArtifactPathForTestFile } from './artifact-paths.js'
 import type { ClassifiedBehavior } from './classified-store.js'
 import type { SelectedBehaviorEntry } from './classify-phase2a-helpers.js'
 import { PROJECT_ROOT } from './config.js'
-import { buildPhase2Fingerprint } from './incremental.js'
-import type { IncrementalManifest } from './incremental.js'
+import type { ExtractedBehaviorRecord } from './extracted-store.js'
+import { buildPhase2Fingerprint, type IncrementalManifest, type ManifestTestEntry } from './incremental.js'
+
+export interface ManifestDelta {
+  readonly testKey: string
+  readonly entry: ManifestTestEntry
+}
 
 export function toManifestEntry(input: {
   readonly previousEntry: IncrementalManifest['tests'][string] | undefined
@@ -49,23 +54,31 @@ export function toManifestEntry(input: {
   }
 }
 
-export function updateManifestForClassification(
+export function buildManifestEntry(
   manifest: IncrementalManifest,
   classified: ClassifiedBehavior,
-  behavior: SelectedBehaviorEntry['behavior'],
-): IncrementalManifest {
+  behavior: ExtractedBehaviorRecord,
+): ManifestDelta {
   const previousEntry = manifest.tests[classified.testKey]
-  const nextEntry = toManifestEntry({
+  const entry = toManifestEntry({
     previousEntry,
     classified,
     behavior,
     phase2Version: manifest.phaseVersions.phase2,
   })
-  return {
-    ...manifest,
-    tests: {
-      ...manifest.tests,
-      [classified.testKey]: nextEntry,
-    },
+  return { testKey: classified.testKey, entry }
+}
+
+export function mergeManifestDeltas(
+  manifest: IncrementalManifest,
+  deltas: readonly ManifestDelta[],
+): IncrementalManifest {
+  if (deltas.length === 0) {
+    return manifest
   }
+  const mergedTests: Record<string, ManifestTestEntry> = { ...manifest.tests }
+  for (const delta of deltas) {
+    mergedTests[delta.testKey] = delta.entry
+  }
+  return { ...manifest, tests: mergedTests }
 }

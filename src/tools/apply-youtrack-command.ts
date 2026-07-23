@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -111,7 +111,7 @@ async function executeApplyYouTrackCommand(
   }
 }
 
-export function makeApplyYouTrackCommandTool(provider: Readonly<TaskProvider>): ToolSet[string] {
+export function makeApplyYouTrackCommandTool(provider: Readonly<TaskProvider>): Tool {
   return tool({
     description:
       'Apply a YouTrack command to a single YouTrack issue. Use this only for YouTrack-native command workflows that do not fit the structured tools.',

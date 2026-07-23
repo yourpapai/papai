@@ -5,7 +5,8 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { emitGlobal, subscribeCountForTest } from '../../../src/debug/event-bus.js'
+import { emitGlobal } from '../../../src/debug/event-bus.js'
+import { subscribeCountForTest } from '../../../src/debug/event-bus.testing.js'
 import { mockLogger, setupTestDb, waitFor } from '../../utils/test-helpers.js'
 
 describe('membership subscriber', () => {

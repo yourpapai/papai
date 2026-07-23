@@ -1,0 +1,295 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { existsSync } from 'node:fs'
+import { appendFile, copyFile, mkdir, readFile, unlink } from 'node:fs/promises'
+import path from 'node:path'
+
+import type { z } from 'zod'
+
+import { type OpencodeEvent, parseEventLine } from './event-stream.js'
+import { formatLiveLine, formatStepFooter, formatToolArg } from './live-renderer.js'
+import type { ProgressReporter } from './progress-log.js'
+
+export interface SpawnResult {
+  exitCode: number
+  stdout: string
+  stderr: string
+  timedOut?: boolean
+}
+
+export type LineSink = (line: string) => void
+
+export type SpawnFn = (
+  command: string,
+  args: readonly string[],
+  options: { cwd: string; timeout?: number; killGraceMs?: number },
+  onLine?: LineSink,
+) => Promise<SpawnResult>
+
+export interface AgentUsage {
+  inputTokens: number
+  outputTokens: number
+  reasoningTokens: number
+  costUsd: number
+  wallMs: number
+}
+
+export interface AgentRunResult<T> {
+  value: T
+  usage: AgentUsage
+}
+
+export class AgentRunError extends Error {
+  readonly usage: AgentUsage
+  constructor(message: string, usage: AgentUsage) {
+    super(message)
+    this.name = 'AgentRunError'
+    this.usage = usage
+  }
+}
+
+export interface RunAgentOptions<T> {
+  spawn: SpawnFn
+  model: string
+  cwd: string
+  prompt: string
+  outputPath: string
+  outputSchema: z.ZodType<T>
+  label: string
+  logPath: string
+  extraArgs: readonly string[]
+  reporter?: ProgressReporter
+  onRetry?: () => void
+  timeoutMs?: number
+}
+
+interface AttemptResult<T> {
+  ok: true
+  value: T
+}
+
+interface AttemptError {
+  ok: false
+  error: Error
+  timedOut: boolean
+}
+
+type Attempt<T> = AttemptResult<T> | AttemptError
+
+export interface LineHandler {
+  readonly ctx: LiveCtx
+  onLine: LineSink
+  dispose: () => void
+}
+
+interface LiveCtx {
+  readonly label: string
+  readonly logPath: string
+  readonly reporter: ProgressReporter | undefined
+  startedAt: number
+  toolCount: number
+  tool: string
+  arg: string
+  readonly seenCalls: Set<string>
+  timer: ReturnType<typeof setInterval> | null
+  usage: AgentUsage
+  firstStepAt: number | null
+}
+
+function renderLive(ctx: LiveCtx): void {
+  const reporter = ctx.reporter
+  if (reporter === undefined) {
+    return
+  }
+  const elapsed = ctx.startedAt === 0 ? 0 : Date.now() - ctx.startedAt
+  reporter.live([formatLiveLine(ctx.label, ctx.tool, ctx.arg, elapsed, ctx.toolCount)])
+}
+
+function applyEvent(evt: OpencodeEvent, ctx: LiveCtx): void {
+  const reporter = ctx.reporter
+  switch (evt.type) {
+    case 'step_start':
+      ctx.firstStepAt ??= Date.now()
+      if (ctx.startedAt === 0) {
+        ctx.startedAt = Date.now()
+        if (reporter?.dynamic === true) {
+          ctx.timer = setInterval(() => {
+            renderLive(ctx)
+          }, 1000)
+        }
+      }
+      break
+    case 'tool_use':
+      if (!ctx.seenCalls.has(evt.callId)) {
+        ctx.seenCalls.add(evt.callId)
+        ctx.toolCount += 1
+      }
+      ctx.tool = evt.tool
+      ctx.arg = formatToolArg(evt.tool, evt.input)
+      renderLive(ctx)
+      break
+    case 'step_finish':
+      ctx.usage.inputTokens += evt.tokens.input
+      ctx.usage.outputTokens += evt.tokens.output
+      ctx.usage.reasoningTokens += evt.tokens.reasoning
+      ctx.usage.costUsd += evt.cost
+      if (reporter !== undefined) {
+        reporter.clearLive()
+        reporter.event(
+          formatStepFooter(ctx.label, ctx.startedAt === 0 ? 0 : Date.now() - ctx.startedAt, ctx.toolCount, evt.tokens),
+        )
+      }
+      break
+    case 'text':
+      break
+  }
+}
+
+function createLineHandler<T>(options: RunAgentOptions<T>): LineHandler {
+  const ctx: LiveCtx = {
+    label: options.label,
+    logPath: options.logPath,
+    reporter: options.reporter,
+    startedAt: 0,
+    toolCount: 0,
+    tool: '',
+    arg: '',
+    seenCalls: new Set<string>(),
+    timer: null,
+    usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0 },
+    firstStepAt: null,
+  }
+  const onLine: LineSink = (line: string): void => {
+    void appendFile(ctx.logPath, `${line}\n`)
+    const evt = parseEventLine(line)
+    if (evt !== null) {
+      applyEvent(evt, ctx)
+    }
+  }
+  const dispose = (): void => {
+    if (ctx.timer !== null) {
+      clearInterval(ctx.timer)
+    }
+    const reporter = ctx.reporter
+    if (reporter !== undefined) {
+      reporter.clearLive()
+    }
+  }
+  return { ctx, onLine, dispose }
+}
+
+/**
+ * Absolute path the agent should write its output to.
+ *
+ * The path is absolute (not relative) so the agent cannot mis-resolve it
+ * against an unrelated project root. The worktree cwd itself often lives at
+ * `<repoRoot>/.review-loop/worktrees/<runId>/`, and a relative path like
+ * `.review-loop/matches.json` is ambiguous: the agent may resolve it against
+ * the worktree cwd (correct) or against the project root two levels up
+ * (`<repoRoot>/.review-loop/matches.json` — wrong). The runner always reads
+ * from `<cwd>/.review-loop/<basename(outputPath)>`, so the prompt must direct
+ * the agent there unambiguously.
+ */
+export function agentWritePath(cwd: string, outputPath: string): string {
+  return path.resolve(cwd, '.review-loop', path.basename(outputPath))
+}
+
+const MISPLACEMENT_SEARCH_DEPTH = 8
+
+export function findMisplacedScratches(expectedPath: string, cwd: string, basename: string): string[] {
+  const expected = path.resolve(expectedPath)
+  const found: string[] = []
+  let current = path.resolve(cwd)
+  for (let i = 0; i < MISPLACEMENT_SEARCH_DEPTH; i += 1) {
+    const candidate = path.resolve(current, '.review-loop', basename)
+    if (candidate !== expected && existsSync(candidate)) {
+      found.push(candidate)
+    }
+    const parent = path.dirname(current)
+    if (parent === current) break
+    current = parent
+  }
+  return found
+}
+
+function attemptRun<T>(options: RunAgentOptions<T>, onLine?: LineSink): Promise<SpawnResult> {
+  return options.spawn(
+    'opencode',
+    [
+      'run',
+      '--auto',
+      '--format',
+      'json',
+      '--model',
+      options.model,
+      '--dir',
+      options.cwd,
+      ...options.extraArgs,
+      options.prompt,
+    ],
+    { cwd: options.cwd, timeout: options.timeoutMs },
+    onLine,
+  )
+}
+
+async function runAttempt<T>(options: RunAgentOptions<T>, handler: LineHandler): Promise<Attempt<T>> {
+  await mkdir(path.resolve(options.cwd, '.review-loop'), { recursive: true })
+  const result = await attemptRun(options, handler.onLine)
+  if (result.exitCode !== 0) {
+    await appendFile(options.logPath, `[${options.label}] stderr: ${result.stderr}\n`)
+    return {
+      ok: false,
+      error: new Error(`${options.label} exited with code ${result.exitCode}: ${result.stderr}`),
+      timedOut: result.timedOut === true,
+    }
+  }
+  try {
+    const agentFile = agentWritePath(options.cwd, options.outputPath)
+    await mkdir(path.dirname(options.outputPath), { recursive: true })
+    await copyFile(agentFile, options.outputPath)
+    await unlink(agentFile)
+    const raw = await readFile(options.outputPath, 'utf8')
+    return { ok: true, value: options.outputSchema.parse(JSON.parse(raw)) }
+  } catch (error) {
+    const isEnoent =
+      error !== null && typeof error === 'object' && 'code' in error && (error as { code?: unknown }).code === 'ENOENT'
+    if (isEnoent) {
+      const misplaced = findMisplacedScratches(
+        agentWritePath(options.cwd, options.outputPath),
+        options.cwd,
+        path.basename(options.outputPath),
+      )
+      const hint = misplaced.length === 0 ? '' : ` Possible misplaced file(s): ${misplaced.join(', ')}.`
+      const agentFile = agentWritePath(options.cwd, options.outputPath)
+      return {
+        ok: false,
+        error: new Error(`${options.label} did not write to the expected scratch path: ${agentFile}.${hint}`),
+        timedOut: false,
+      }
+    }
+    return { ok: false, error: error instanceof Error ? error : new Error(String(error)), timedOut: false }
+  }
+}
+
+export async function runAgent<T>(options: RunAgentOptions<T>): Promise<AgentRunResult<T>> {
+  const handler = createLineHandler(options)
+  const buildUsage = (): AgentUsage => ({
+    ...handler.ctx.usage,
+    wallMs: handler.ctx.firstStepAt === null ? 0 : Date.now() - handler.ctx.firstStepAt,
+  })
+  const finalize = (value: T): AgentRunResult<T> => ({ value, usage: buildUsage() })
+  try {
+    const first = await runAttempt(options, handler)
+    if (first.ok) return finalize(first.value)
+    if (first.timedOut) throw new AgentRunError(first.error.message, buildUsage())
+    options.onRetry?.()
+    const second = await runAttempt(options, handler)
+    if (second.ok) return finalize(second.value)
+    throw new AgentRunError(second.error.message, buildUsage())
+  } finally {
+    handler.dispose()
+  }
+}

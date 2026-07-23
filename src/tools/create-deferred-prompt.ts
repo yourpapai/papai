@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import type { ContextType } from '../chat/types.js'
@@ -48,7 +48,7 @@ function buildInputSchema(allowTaskConditions: boolean): z.ZodType<CreateInput> 
 
 function buildToolDescription(allowTaskConditions: boolean): string {
   return allowTaskConditions
-    ? 'Create a scheduled task or monitoring alert. Provide either a schedule (for time-based) or a condition (for event-based), not both. Always classify the execution mode based on what the prompt needs at fire time.'
+    ? 'Create a scheduled task or monitoring alert. Provide either a schedule (for time-based) or a condition (for event-based), not both.'
     : 'Create a scheduled prompt. Use this only for time-based reminders or recurring scheduled follow-ups.'
 }
 
@@ -64,7 +64,7 @@ export function makeCreateDeferredPromptTool(
   username?: string | null,
   actorUserIdArg?: string,
   options: CreateDeferredPromptToolOptions = {},
-): ToolSet[string] {
+): Tool {
   const actorUserId = resolveActorUserId(userId, actorUserIdArg)
   const allowTaskConditions = options.allowTaskConditions ?? true
   const inputSchema = buildInputSchema(allowTaskConditions)

@@ -43,6 +43,48 @@ describe('BYOK fetcher schemas', () => {
     expect(parsed.error).toBe('stored BYOK LLM credentials are unreadable')
   })
 
+  test('parses BYOK response with v2 providers and roles', () => {
+    const parsed = ByokResponseSchema.parse({
+      enabled: true,
+      complete: true,
+      missing: [],
+      fields: [],
+      providers: [
+        {
+          id: 'prov_1',
+          label: 'My Ollama',
+          providerType: 'ollama',
+          baseUrl: 'http://localhost:11434/v1',
+          apiKeyMasked: '****key',
+          verification: { status: 'verified', error: null, at: null, models: ['llama3'], modelsFetchedAt: null },
+        },
+      ],
+      roles: {
+        main: { providerId: 'prov_1', model: 'llama3' },
+        small: null,
+        embedding: null,
+      },
+    })
+
+    expect(parsed.providers).toHaveLength(1)
+    expect(parsed.providers[0]?.label).toBe('My Ollama')
+    expect(parsed.roles.main.model).toBe('llama3')
+  })
+
+  test('applies v2 defaults when server omits providers and roles', () => {
+    const parsed = ByokResponseSchema.parse({
+      enabled: true,
+      complete: true,
+      missing: [],
+      fields: [],
+    })
+
+    expect(parsed.providers).toEqual([])
+    expect(parsed.roles.main).toEqual({ providerId: '', model: '' })
+    expect(parsed.roles.small).toBeNull()
+    expect(parsed.roles.embedding).toBeNull()
+  })
+
   test('parses admin BYOK summaries', () => {
     const parsed = AdminByokResponseSchema.parse({
       contexts: [

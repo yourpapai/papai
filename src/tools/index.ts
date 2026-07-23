@@ -14,6 +14,7 @@ import { filterProviderlessPluginIds } from '../plugins/providerless.js'
 import { getPluginsForContext } from '../plugins/registry.js'
 import type { TaskProvider } from '../providers/types.js'
 import { maybeSeedAdminToolDefaults } from './admin-tool-defaults.js'
+import { BUILTIN_TOOL_NAMES } from './builtin-names.js'
 import { extendSchemaForAsk, gatedExecute, type AskPermissionFn } from './permission-gate.js'
 import { getToolMetadata } from './tool-metadata.js'
 import { getToolPrefs, resolveToolPermission } from './tool-preferences.js'
@@ -22,6 +23,16 @@ import type { MakeToolsOptions, ToolMode } from './types.js'
 import { wrapToolExecution } from './wrap-tool-execution.js'
 
 export type { MakeToolsOptions, ToolMode }
+
+/**
+ * Static snapshot of builtin tool names the behavior-audit closure verifier
+ * should recognize in entry-point hints. Derived from `BUILTIN_TOOL_NAMES`
+ * (the keys of `TOOL_METADATA`), so it stays in sync with the canonical
+ * per-tool classification table. Plugin/MCP tools are dynamic and excluded.
+ */
+export function listToolNames(): readonly string[] {
+  return BUILTIN_TOOL_NAMES
+}
 
 export function applyToolPreferences(
   tools: ToolSet,

@@ -7,7 +7,8 @@ import { describe, expect, test, mock, beforeEach, afterAll } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
-import { getConfig, setConfig } from '../../src/config.js'
+import { getConfig } from '../../src/config.js'
+import { setConfig } from '../../src/config.testing.js'
 import { setIdentityMapping, clearIdentityMapping } from '../../src/identity/mapping.js'
 import { makeListTasksTool } from '../../src/tools/list-tasks.js'
 import { getToolExecutor, mockLogger, schemaValidates, setupTestDb } from '../utils/test-helpers.js'
@@ -91,7 +92,7 @@ describe('list_tasks identity resolution', () => {
     const tool = makeListTasksTool(provider, testUserId)
 
     assert(tool.execute !== undefined)
-    await tool.execute({ projectId: 'proj-1', assigneeId: 'me' }, { toolCallId: '1', messages: [] })
+    await tool.execute({ projectId: 'proj-1', assigneeId: 'me' }, { toolCallId: '1', messages: [], context: {} })
 
     expect(listTasks).toHaveBeenCalledTimes(1)
     expect(capturedAssigneeId).toBe('resolved-user-789')
@@ -125,7 +126,7 @@ describe('list_tasks identity resolution', () => {
     const tool = makeListTasksTool(provider, testUserId)
 
     assert(tool.execute !== undefined)
-    await tool.execute({ projectId: 'proj-1', assigneeId: 'ME' }, { toolCallId: '1', messages: [] })
+    await tool.execute({ projectId: 'proj-1', assigneeId: 'ME' }, { toolCallId: '1', messages: [], context: {} })
 
     expect(listTasks).toHaveBeenCalledTimes(1)
     expect(capturedAssigneeId).toBe('resolved-user-789')
@@ -138,7 +139,7 @@ describe('list_tasks identity resolution', () => {
     assert(tool.execute !== undefined)
     const result: unknown = await tool.execute(
       { projectId: 'proj-1', assigneeId: 'me' },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(result).toHaveProperty('status', 'identity_required')
@@ -165,7 +166,7 @@ describe('list_tasks identity resolution', () => {
     assert(tool.execute !== undefined)
     const result: unknown = await tool.execute(
       { projectId: 'proj-1', assigneeId: 'me' },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(result).toHaveProperty('status', 'identity_required')
@@ -192,7 +193,10 @@ describe('list_tasks identity resolution', () => {
     const tool = makeListTasksTool(provider, testUserId)
 
     assert(tool.execute !== undefined)
-    await tool.execute({ projectId: 'proj-1', assigneeId: 'other-user' }, { toolCallId: '1', messages: [] })
+    await tool.execute(
+      { projectId: 'proj-1', assigneeId: 'other-user' },
+      { toolCallId: '1', messages: [], context: {} },
+    )
 
     expect(capturedAssigneeId).toBe('other-user')
   })
@@ -209,7 +213,7 @@ describe('list_tasks identity resolution', () => {
 
     await getToolExecutor(tool)(
       { projectId: 'proj-1', dueAfter: '2026-03-25T23:45:00+02:00', dueBefore: '2026-03-31' },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(capturedParams).toEqual({ dueAfter: '2026-03-25', dueBefore: '2026-03-31' })
@@ -227,7 +231,7 @@ describe('list_tasks identity resolution', () => {
 
     await getToolExecutor(tool)(
       { projectId: 'proj-1', dueAfter: '2026-03-25T23:45:00+02:00', dueBefore: '2026-03-31' },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(capturedParams).toEqual({
@@ -254,7 +258,7 @@ describe('list_tasks identity resolution', () => {
     const tool = makeListTasksTool(provider, testUserId)
 
     assert(tool.execute !== undefined)
-    await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+    await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [], context: {} })
 
     expect(capturedParams?.assigneeId).toBeUndefined()
   })
@@ -287,7 +291,7 @@ describe('list_tasks identity resolution', () => {
     const tool = makeListTasksTool(provider, testUserId)
 
     assert(tool.execute !== undefined)
-    await tool.execute({ projectId: 'proj-1', assigneeId: 'me' }, { toolCallId: '1', messages: [] })
+    await tool.execute({ projectId: 'proj-1', assigneeId: 'me' }, { toolCallId: '1', messages: [], context: {} })
 
     expect(listTasks).toHaveBeenCalledTimes(1)
     expect(capturedAssigneeId).toBe('jsmith')
@@ -317,7 +321,10 @@ describe('list_tasks identity resolution', () => {
       const tool = makeListTasksTool(provider, chatUserId, storageContextId)
 
       assert(tool.execute !== undefined)
-      const result: unknown = await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute(
+        { projectId: 'proj-1' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
 
       assert(Array.isArray(result))
       assert(hasDueDate(result[0]))
@@ -344,7 +351,10 @@ describe('list_tasks identity resolution', () => {
       const tool = makeListTasksTool(provider, chatUserId, storageContextId)
 
       assert(tool.execute !== undefined)
-      const result: unknown = await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute(
+        { projectId: 'proj-1' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
 
       assert(Array.isArray(result))
       assert(hasDueDate(result[0]))
@@ -372,7 +382,10 @@ describe('list_tasks identity resolution', () => {
       const tool = makeListTasksTool(provider, chatUserId, storageContextId)
 
       assert(tool.execute !== undefined)
-      const result: unknown = await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute(
+        { projectId: 'proj-1' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
 
       assert(Array.isArray(result))
       assert(hasDueDate(result[0]))
@@ -405,7 +418,10 @@ describe('list_tasks identity resolution', () => {
       const tool = makeListTasksTool(provider, chatUserId, threadContextId)
 
       assert(tool.execute !== undefined)
-      const result: unknown = await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute(
+        { projectId: 'proj-1' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
 
       // 12:00 UTC rendered in Europe/London (BST, +1) = 13:00. A regression using the
       // thread-scoped id would miss the config and render 12:00 (UTC).

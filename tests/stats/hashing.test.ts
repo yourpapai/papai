@@ -9,12 +9,8 @@ import { sql } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { systemConfig } from '../../src/db/schema.js'
-import {
-  STATS_ANONYMITY_SALT_KEY,
-  getStatsAnonymitySalt,
-  keyedHash,
-  resetStatsSaltCacheForTesting,
-} from '../../src/stats/hashing.js'
+import { STATS_ANONYMITY_SALT_KEY, getStatsAnonymitySalt, keyedHash } from '../../src/stats/hashing.js'
+import { resetStatsSaltCacheForTesting } from '../../src/stats/hashing.testing.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 describe('stats hashing', () => {

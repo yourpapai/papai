@@ -68,7 +68,7 @@ describe('Comment Tools', () => {
       assert(tool.execute)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', comment: 'New comment' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       assert(isAddResult(result))
 
@@ -84,7 +84,10 @@ describe('Comment Tools', () => {
 
       const tool = makeAddCommentTool(provider)
       assert(tool.execute)
-      const result: unknown = await tool.execute({ taskId: 'task-1', comment: '' }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute(
+        { taskId: 'task-1', comment: '' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       assert(isAddResult(result))
 
       expect(result.body).toBe('')
@@ -106,7 +109,7 @@ describe('Comment Tools', () => {
       assert(tool.execute)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', comment: longComment },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       assert(isAddResult(result))
 
@@ -119,7 +122,10 @@ describe('Comment Tools', () => {
       })
 
       const tool = makeAddCommentTool(provider)
-      const promise = getToolExecutor(tool)({ taskId: 'invalid', comment: 'Test' }, { toolCallId: '1', messages: [] })
+      const promise = getToolExecutor(tool)(
+        { taskId: 'invalid', comment: 'Test' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       await expect(promise).rejects.toThrow('Task not found')
       try {
         await promise
@@ -169,7 +175,7 @@ describe('Comment Tools', () => {
 
       const tool = makeGetCommentsTool(provider)
       assert(tool.execute)
-      const result: unknown = await tool.execute({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute({ taskId: 'task-1' }, { toolCallId: '1', messages: [], context: {} })
       assert(Array.isArray(result))
 
       expect(result).toHaveLength(2)
@@ -180,7 +186,10 @@ describe('Comment Tools', () => {
       const provider = createMockProvider({ getComments })
       const tool = makeGetCommentsTool(provider)
 
-      await getToolExecutor(tool)({ taskId: 'task-1', limit: 20, offset: 40 }, { toolCallId: '1', messages: [] })
+      await getToolExecutor(tool)(
+        { taskId: 'task-1', limit: 20, offset: 40 },
+        { toolCallId: '1', messages: [], context: {} },
+      )
 
       expect(getComments).toHaveBeenCalledWith('task-1', { limit: 20, offset: 40 })
     })
@@ -190,8 +199,8 @@ describe('Comment Tools', () => {
       const provider = createMockProvider({ getComments })
       const tool = makeGetCommentsTool(provider)
 
-      await getToolExecutor(tool)({ taskId: 'task-1', offset: 40 }, { toolCallId: '1', messages: [] })
-      await getToolExecutor(tool)({ taskId: 'task-1', limit: 20 }, { toolCallId: '2', messages: [] })
+      await getToolExecutor(tool)({ taskId: 'task-1', offset: 40 }, { toolCallId: '1', messages: [], context: {} })
+      await getToolExecutor(tool)({ taskId: 'task-1', limit: 20 }, { toolCallId: '2', messages: [], context: {} })
 
       expect(getComments).toHaveBeenNthCalledWith(1, 'task-1', { limit: undefined, offset: 40 })
       expect(getComments).toHaveBeenNthCalledWith(2, 'task-1', { limit: 20, offset: undefined })
@@ -206,7 +215,7 @@ describe('Comment Tools', () => {
 
       const tool = makeGetCommentsTool(provider)
       assert(tool.execute)
-      const result: unknown = await tool.execute({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute({ taskId: 'task-1' }, { toolCallId: '1', messages: [], context: {} })
       assert(Array.isArray(result))
 
       expect(result).toHaveLength(1)
@@ -218,7 +227,7 @@ describe('Comment Tools', () => {
       })
 
       const tool = makeGetCommentsTool(provider)
-      const promise = getToolExecutor(tool)({ taskId: 'invalid' }, { toolCallId: '1', messages: [] })
+      const promise = getToolExecutor(tool)({ taskId: 'invalid' }, { toolCallId: '1', messages: [], context: {} })
       await expect(promise).rejects.toThrow('Task not found')
       try {
         await promise
@@ -254,7 +263,7 @@ describe('Comment Tools', () => {
       assert(tool.execute)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', activityId: 'comment-1', comment: 'Updated comment' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       assert(isUpdateResult(result))
 
@@ -275,7 +284,7 @@ describe('Comment Tools', () => {
       const tool = makeUpdateCommentTool(provider)
       const promise = getToolExecutor(tool)(
         { taskId: 'task-1', activityId: 'invalid', comment: 'Test' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       await expect(promise).rejects.toThrow('Comment not found')
       try {
@@ -325,7 +334,7 @@ describe('Comment Tools', () => {
       assert(tool.execute)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', commentId: 'comment-1' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       assert(isSuccessResult(result))
 
@@ -344,7 +353,7 @@ describe('Comment Tools', () => {
       const tool = makeRemoveCommentTool(provider)
       const promise = getToolExecutor(tool)(
         { taskId: 'task-1', commentId: 'invalid' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       await expect(promise).rejects.toThrow('Comment not found')
       try {

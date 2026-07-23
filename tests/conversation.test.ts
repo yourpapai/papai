@@ -11,12 +11,12 @@ import { enableByokForContext, updateByokLlmConfig } from '../src/byok-llm/store
 import * as cacheModule from '../src/cache.js'
 import { toScopedContextId, toScopedThreadContextId } from '../src/chat/scoped-context.js'
 import { shouldTriggerTrim, buildMessagesWithMemory, runTrimInBackground } from '../src/conversation.js'
+import { clearLlmAdminCacheForTesting } from '../src/llm-providers/store.testing.js'
 import { logger } from '../src/logger.js'
 import * as longTermMemoryStore from '../src/long-term-memory/store.js'
 import { saveMemoryProfile, saveMemoryRecord } from '../src/long-term-memory/store.js'
 import type { MemoryRecordInput } from '../src/long-term-memory/types.js'
-import * as systemConfigModule from '../src/system-config.js'
-import { flushMicrotasks, resetSystemConfigCacheForTesting, setupTestDb } from './utils/test-helpers.js'
+import { flushMicrotasks, seedAdminLlmBinding, setupTestDb } from './utils/test-helpers.js'
 
 // Helper type for spy instances that need cleanup
 type SpyInstance = { mockRestore: () => void }
@@ -30,13 +30,6 @@ function mockConfigLookup(
 
 function mockHistoryLookup(mockHistories: Map<string, ModelMessage[]>): (userId: string) => ModelMessage[] {
   return (userId: string): ModelMessage[] => mockHistories.get(userId) ?? []
-}
-
-function makeSystemConfigLookup(
-  configs: Map<string, Map<string, string | null>>,
-  userKey: string,
-): (key: string) => string | null {
-  return (key: string): string | null => configs.get(userKey)?.get(key) ?? null
 }
 
 // Define local type and mutable implementation BEFORE mocking
@@ -339,12 +332,6 @@ describe('runTrimInBackground', () => {
   const modelBuildCalls: Array<{ apiKey: string; baseUrl: string; modelName: string }> = []
   const spies: SpyInstance[] = []
 
-  const spySystemConfigFromMockConfigs = (): void => {
-    const spy = spyOn(systemConfigModule, 'getSystemConfig').mockImplementation(
-      makeSystemConfigLookup(mockConfigs, 'user1'),
-    )
-    spies.push(spy)
-  }
   let generateTextImpl = defaultGenerateTextImpl
 
   function trackSpy<T extends SpyInstance>(spy: T): T {
@@ -354,7 +341,7 @@ describe('runTrimInBackground', () => {
 
   beforeEach(async () => {
     await setupTestDb()
-    resetSystemConfigCacheForTesting()
+    clearLlmAdminCacheForTesting()
     generateTextImpl = defaultGenerateTextImpl
     mockSummaries.clear()
     mockHistories.clear()
@@ -386,6 +373,7 @@ describe('runTrimInBackground', () => {
   })
 
   test('success path: calls trimWithMemoryModel, saves summary, and updates history', async () => {
+    seedAdminLlmBinding()
     const history: ModelMessage[] = [
       { role: 'user', content: 'Hello' },
       { role: 'assistant', content: 'Hi' },
@@ -403,7 +391,6 @@ describe('runTrimInBackground', () => {
     )
 
     trackSpy(spyOn(cacheModule, 'getCachedConfig').mockImplementation(mockConfigLookup(mockConfigs)))
-    spySystemConfigFromMockConfigs()
     trackSpy(spyOn(cacheModule, 'getCachedHistory').mockImplementation(mockHistoryLookup(mockHistories)))
     trackSpy(
       spyOn(cacheModule, 'setCachedHistory').mockImplementation((userId: string, messages: readonly ModelMessage[]) => {
@@ -423,7 +410,8 @@ describe('runTrimInBackground', () => {
     expect(mockSummaries.get('user1')).toBe('Updated summary text')
   })
 
-  test('uses BYOK small model for supplied config context', async () => {
+  test('uses BYOK small model for supplied config context (overriding admin)', async () => {
+    seedAdminLlmBinding()
     const history: ModelMessage[] = [
       { role: 'user', content: 'Hello' },
       { role: 'assistant', content: 'Hi' },
@@ -467,15 +455,11 @@ describe('runTrimInBackground', () => {
     expect(mockSummaries.get('user1')).toBe('Updated summary text')
   })
 
-  test('skips incomplete BYOK without falling back to global config or mutating history', async () => {
+  test('falls back to admin config when BYOK is enabled but incomplete (graceful fallback)', async () => {
+    seedAdminLlmBinding()
     const history: ModelMessage[] = [{ role: 'user', content: 'Hello' }]
     mockHistories.set('user1', [...history])
     enableByokForContext('ctx-byok-incomplete-trim', 'admin-1')
-    resetSystemConfigCacheForTesting()
-    systemConfigModule.setSystemConfig('llm_apikey', 'sk-global-trim', 'env')
-    systemConfigModule.setSystemConfig('llm_baseurl', 'https://global-trim.invalid/v1', 'env')
-    systemConfigModule.setSystemConfig('main_model', 'global-main-trim', 'env')
-    systemConfigModule.setSystemConfig('small_model', 'global-small-trim', 'env')
     let historyWrites = 0
 
     trackSpy(spyOn(cacheModule, 'getCachedHistory').mockImplementation(mockHistoryLookup(mockHistories)))
@@ -490,12 +474,15 @@ describe('runTrimInBackground', () => {
     await runTrimInBackground('user1', history, undefined, 'ctx-byok-incomplete-trim')
     await flushMicrotasks()
 
-    expect(modelBuildCalls).toHaveLength(0)
-    expect(historyWrites).toBe(0)
-    expect(mockHistories.get('user1')).toEqual(history)
+    // Graceful fallback: admin config is used, so a trim does run (not blocked).
+    expect(modelBuildCalls).toEqual([
+      { apiKey: 'sk-admin', baseUrl: 'https://admin.invalid/v1', modelName: 'admin-main' },
+    ])
+    expect(historyWrites).toBe(1)
   })
 
   test('preserves new messages added during async trim', async () => {
+    seedAdminLlmBinding()
     const history: ModelMessage[] = [
       { role: 'user', content: 'Hello' },
       { role: 'assistant', content: 'Hi' },
@@ -517,7 +504,6 @@ describe('runTrimInBackground', () => {
       Promise.resolve({ text: JSON.stringify({ keep_indices: [0], summary: 'Trimmed' }) })
 
     trackSpy(spyOn(cacheModule, 'getCachedConfig').mockImplementation(mockConfigLookup(mockConfigs)))
-    spySystemConfigFromMockConfigs()
     trackSpy(spyOn(cacheModule, 'getCachedHistory').mockImplementation(mockHistoryLookup(mockHistories)))
     trackSpy(
       spyOn(cacheModule, 'setCachedHistory').mockImplementation((userId: string, messages: readonly ModelMessage[]) => {
@@ -532,6 +518,7 @@ describe('runTrimInBackground', () => {
 
     const finalHistory = mockHistories.get('user1')
     expect(finalHistory).toBeDefined()
+    expect(modelBuildCalls).toHaveLength(1)
     expect(finalHistory!.length).toBeGreaterThanOrEqual(1)
   })
 
@@ -540,7 +527,6 @@ describe('runTrimInBackground', () => {
     mockHistories.set('user1', [...history])
 
     trackSpy(spyOn(cacheModule, 'getCachedConfig').mockReturnValue(null))
-    trackSpy(spyOn(systemConfigModule, 'getSystemConfig').mockReturnValue(null))
     trackSpy(spyOn(logger, 'warn').mockImplementation(() => {}))
 
     await runTrimInBackground('user1', history)
@@ -548,6 +534,7 @@ describe('runTrimInBackground', () => {
   })
 
   test('handles trimWithMemoryModel failure gracefully', async () => {
+    seedAdminLlmBinding()
     const history: ModelMessage[] = [
       { role: 'user', content: 'Hello' },
       { role: 'assistant', content: 'Hi' },
@@ -566,7 +553,6 @@ describe('runTrimInBackground', () => {
     generateTextImpl = (): Promise<GenerateTextResult> => Promise.reject(new Error('LLM API error'))
 
     trackSpy(spyOn(cacheModule, 'getCachedConfig').mockImplementation(mockConfigLookup(mockConfigs)))
-    spySystemConfigFromMockConfigs()
     trackSpy(spyOn(cacheModule, 'getCachedHistory').mockImplementation(mockHistoryLookup(mockHistories)))
     trackSpy(spyOn(cacheModule, 'setCachedHistory').mockImplementation(() => {}))
     trackSpy(spyOn(cacheModule, 'getCachedSummary').mockReturnValue(null))
@@ -575,10 +561,12 @@ describe('runTrimInBackground', () => {
     await runTrimInBackground('user1', history)
     await flushMicrotasks()
 
+    expect(modelBuildCalls).toHaveLength(1)
     expect(mockHistories.get('user1')).toEqual(history)
   })
 
   test('concurrent calls for same user — both complete without corruption', async () => {
+    seedAdminLlmBinding()
     const history1: ModelMessage[] = [
       { role: 'user', content: 'First conversation' },
       { role: 'assistant', content: 'Response 1' },
@@ -607,11 +595,6 @@ describe('runTrimInBackground', () => {
       })
 
     trackSpy(spyOn(cacheModule, 'getCachedConfig').mockImplementation(mockConfigLookup(concurrentConfigs)))
-    trackSpy(
-      spyOn(systemConfigModule, 'getSystemConfig').mockImplementation(
-        makeSystemConfigLookup(concurrentConfigs, 'user1'),
-      ),
-    )
     trackSpy(spyOn(cacheModule, 'getCachedHistory').mockImplementation(mockHistoryLookup(concurrentHistories)))
     trackSpy(
       spyOn(cacheModule, 'setCachedHistory').mockImplementation((userId: string, messages: readonly ModelMessage[]) => {
@@ -629,9 +612,11 @@ describe('runTrimInBackground', () => {
     const finalHistory = concurrentHistories.get('user1')
     expect(finalHistory).toBeDefined()
     expect(Array.isArray(finalHistory)).toBe(true)
+    expect(modelBuildCalls.length).toBeGreaterThan(0)
   })
 
   test('concurrency guard: skips a second trim while one is in flight, then releases', async () => {
+    seedAdminLlmBinding()
     const history: ModelMessage[] = [
       { role: 'user', content: 'Hello' },
       { role: 'assistant', content: 'Hi' },
@@ -659,7 +644,6 @@ describe('runTrimInBackground', () => {
     generateTextImpl = (): Promise<GenerateTextResult> => queued.shift()!
 
     trackSpy(spyOn(cacheModule, 'getCachedConfig').mockImplementation(mockConfigLookup(configs)))
-    trackSpy(spyOn(systemConfigModule, 'getSystemConfig').mockImplementation(makeSystemConfigLookup(configs, 'user1')))
     trackSpy(spyOn(cacheModule, 'getCachedHistory').mockImplementation(mockHistoryLookup(histories)))
     trackSpy(
       spyOn(cacheModule, 'setCachedHistory').mockImplementation((userId: string, messages: readonly ModelMessage[]) => {

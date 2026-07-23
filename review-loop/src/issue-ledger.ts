@@ -3,14 +3,16 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { randomUUID } from 'node:crypto'
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { z } from 'zod'
 
-import { computeIssueFingerprint } from './issue-fingerprint.js'
 import { ReviewerIssueSchema, VerifierDecisionSchema } from './issue-schema.js'
-import type { ReviewerIssue, VerifierDecision } from './issue-schema.js'
+import type { FixerResult, IssueMatch, ReviewerIssue, VerifierDecision } from './issue-schema.js'
+import { emitVerifyComplete, truncate } from './loop-trace.js'
+import type { TraceLogger } from './trace-log.js'
 
 export type LedgerIssueStatus =
   | 'discovered'
@@ -23,7 +25,7 @@ export type LedgerIssueStatus =
   | 'reopened'
 
 export const LedgerIssueRecordSchema = z.object({
-  fingerprint: z.string(),
+  id: z.string(),
   issue: ReviewerIssueSchema,
   status: z.enum([
     'discovered',
@@ -46,7 +48,7 @@ export const IssueLedgerSnapshotSchema = z.object({
 })
 
 export interface LedgerIssueRecord {
-  fingerprint: string
+  id: string
   issue: ReviewerIssue
   status: LedgerIssueStatus
   firstSeenRound: number
@@ -82,65 +84,73 @@ export async function loadIssueLedger(runDir: string): Promise<IssueLedger> {
   }
 }
 
-export function applyReviewRound(
+function reopenExisting(record: LedgerIssueRecord, issue: ReviewerIssue, round: number): LedgerIssueRecord {
+  return {
+    ...record,
+    issue,
+    latestSeenRound: round,
+    status: record.status === 'closed' || record.status === 'fixed_pending_review' ? 'reopened' : record.status,
+  }
+}
+
+function createNewRecord(issue: ReviewerIssue, round: number): LedgerIssueRecord {
+  return {
+    id: randomUUID(),
+    issue,
+    status: 'discovered',
+    firstSeenRound: round,
+    latestSeenRound: round,
+    fixAttempts: 0,
+    verifierDecision: null,
+  }
+}
+
+export function applyMatchedIssues(
   ledger: IssueLedger,
   round: number,
   issues: readonly ReviewerIssue[],
+  matches: readonly IssueMatch[],
 ): readonly LedgerIssueRecord[] {
-  const seenFingerprints = new Set<string>()
   const roundRecords: LedgerIssueRecord[] = []
 
-  for (const issue of issues) {
-    const fingerprint = computeIssueFingerprint(issue)
-    if (seenFingerprints.has(fingerprint)) {
-      continue
-    }
-    seenFingerprints.add(fingerprint)
+  for (let index = 0; index < issues.length; index += 1) {
+    const issue = issues[index]!
+    const match = matches.find((m) => m.newIssueIndex === index)
+    const existingId = match?.existingId ?? null
+    const existing = existingId === null ? undefined : ledger.snapshot.issues[existingId]
 
-    const existing = ledger.snapshot.issues[fingerprint]
+    const record = existing === undefined ? createNewRecord(issue, round) : reopenExisting(existing, issue, round)
 
-    const next: LedgerIssueRecord =
-      existing === undefined
-        ? {
-            fingerprint,
-            issue,
-            status: 'discovered',
-            firstSeenRound: round,
-            latestSeenRound: round,
-            fixAttempts: 0,
-            verifierDecision: null,
-          }
-        : {
-            ...existing,
-            issue,
-            latestSeenRound: round,
-            status:
-              existing.status === 'closed' || existing.status === 'fixed_pending_review' ? 'reopened' : existing.status,
-          }
-
-    ledger.snapshot.issues[fingerprint] = next
-    roundRecords.push(next)
+    ledger.snapshot.issues[record.id] = record
+    roundRecords.push(record)
   }
 
   return roundRecords
 }
 
-export function recordVerification(ledger: IssueLedger, fingerprint: string, decision: VerifierDecision): void {
-  const record = ledger.snapshot.issues[fingerprint]
-  if (record === undefined) {
-    throw new Error(`Unknown issue fingerprint ${fingerprint}`)
+export function closeUnreportedFixed(ledger: IssueLedger, reportedIds: readonly string[]): void {
+  const reported = new Set(reportedIds)
+  for (const record of Object.values(ledger.snapshot.issues)) {
+    if (record.status === 'fixed_pending_review' && !reported.has(record.id)) {
+      record.status = 'closed'
+    }
   }
-
-  record.verifierDecision = decision
-  record.status = mapVerifierDecisionToLedgerStatus(decision.verdict)
 }
 
-export function recordFixAttempt(ledger: IssueLedger, fingerprint: string): void {
-  const record = ledger.snapshot.issues[fingerprint]
+export function recordVerification(ledger: IssueLedger, id: string, decision: VerifierDecision): void {
+  const record = ledger.snapshot.issues[id]
   if (record === undefined) {
-    throw new Error(`Unknown issue fingerprint ${fingerprint}`)
+    throw new Error(`Unknown issue id ${id}`)
   }
+  record.verifierDecision = decision
+  record.status = mapVerifierDecisionToLedgerStatus(decision)
+}
 
+export function recordFixAttempt(ledger: IssueLedger, id: string): void {
+  const record = ledger.snapshot.issues[id]
+  if (record === undefined) {
+    throw new Error(`Unknown issue id ${id}`)
+  }
   record.fixAttempts += 1
   record.status = 'fixed_pending_review'
 }
@@ -149,13 +159,68 @@ export async function saveIssueLedger(ledger: IssueLedger): Promise<void> {
   await writeFile(ledger.path, JSON.stringify(ledger.snapshot, null, 2))
 }
 
-function mapVerifierDecisionToLedgerStatus(verdict: VerifierDecision['verdict']): LedgerIssueStatus {
-  switch (verdict) {
+export function recordVerify(
+  ledger: IssueLedger,
+  trace: TraceLogger,
+  round: number,
+  record: LedgerIssueRecord,
+  result: FixerResult,
+): void {
+  recordVerification(ledger, record.id, {
+    verdict: result.verdict,
+    fixability: result.fixability,
+    reasoning: result.reasoning,
+    targetFiles: result.targetFiles,
+  })
+  emitVerifyComplete(
+    trace,
+    round,
+    record.id,
+    result.verdict,
+    result.fixability,
+    record.issue.severity,
+    result.severity ?? null,
+    truncate(result.reasoning, 200),
+    result.targetFiles,
+  )
+}
+
+export function recordNeedsHuman(
+  ledger: IssueLedger,
+  trace: TraceLogger,
+  round: number,
+  record: LedgerIssueRecord,
+  reasoning: string,
+  result: FixerResult,
+): void {
+  recordVerification(ledger, record.id, {
+    verdict: 'needs_human',
+    fixability: 'manual',
+    reasoning,
+    targetFiles: result.targetFiles,
+  })
+  emitVerifyComplete(
+    trace,
+    round,
+    record.id,
+    'needs_human',
+    'manual',
+    record.issue.severity,
+    result.severity ?? null,
+    truncate(reasoning, 200),
+    result.targetFiles,
+  )
+}
+
+function mapVerifierDecisionToLedgerStatus(decision: VerifierDecision): LedgerIssueStatus {
+  switch (decision.verdict) {
     case 'valid':
-      return 'verified'
+      return decision.fixability === 'manual' ? 'needs_human' : 'verified'
     case 'already_fixed':
       return 'already_fixed'
     case 'needs_human':
+      return 'needs_human'
+    case 'plan_drift':
       return 'needs_human'
     case 'invalid':
       return 'rejected'

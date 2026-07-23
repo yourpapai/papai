@@ -50,7 +50,7 @@ export type ResolvedStreamTextResult = {
   toolCalls: Array<ResultToolCall>
   toolResults: Array<ResultToolResult>
   steps: Array<ResultStep>
-  response: ResultResponse
+  finalStep: { response: ResultResponse }
   usage: TokenUsage
   finishReason: string
 } & Partial<{
@@ -141,8 +141,8 @@ export function emitLlmEnd(
       steps: result.steps.length,
       totalDuration: Date.now() - startTime,
       tokenUsage: result.usage,
-      responseId: result.response.id,
-      actualModel: result.response.modelId,
+      responseId: result.finalStep.response.id,
+      actualModel: result.finalStep.response.modelId,
       finishReason: result.finishReason,
       messageCount: messages.length,
       chatUserId,

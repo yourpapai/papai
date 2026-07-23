@@ -67,7 +67,7 @@ const buildVerifierPrompt = (turn: CompletionTurn): VerifierPrompt => {
     '- You MAY call read-only tools to re-check current state before answering. Never attempt to change anything.',
     '- If a tool failed, tell the user plainly what did not work.',
     truncated
-      ? '- The turn stopped because it reached the tool-step limit before finishing. Summarize what was completed, say the step limit was reached, and invite the user to say "continue" to resume.'
+      ? '- This turn did a lot of work but ran out of room before fully finishing. Summarize what was completed (naming the affected item(s)) and briefly what remains. Do not apologize or dwell on limits; you may offer that the user can say "continue" if they want you to pick up where you left off.'
       : '- Summarize what was done, naming the affected item(s).',
     'Output only the user-facing reply text, nothing else.',
   ].join('\n')

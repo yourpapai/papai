@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { generateText, stepCountIs } from 'ai'
-import type { OnToolCallFinishEvent } from 'ai'
+import type { ToolExecutionEndEvent } from 'ai'
 import { MockLanguageModelV3 } from 'ai/test'
 
 import { invokeModel } from '../../src/llm-orchestrator-invoke.js'
@@ -75,19 +75,14 @@ function buildArgs(
   }
 }
 
-function makeFinishEvent(toolName: string): OnToolCallFinishEvent {
+function makeFinishEvent(toolName: string): ToolExecutionEndEvent {
   return {
-    toolCall: { type: 'tool-call', toolName, toolCallId: 'c1', input: {}, dynamic: true },
-    output: {},
-    success: true,
-    durationMs: 0,
-    stepNumber: undefined,
-    model: undefined,
+    callId: 'call-1',
+    toolExecutionMs: 0,
     messages: [],
-    abortSignal: undefined,
-    functionId: undefined,
-    metadata: undefined,
-    experimental_context: undefined,
+    toolCall: { type: 'tool-call', toolName, toolCallId: 'c1', input: {}, dynamic: true },
+    toolContext: undefined,
+    toolOutput: { type: 'tool-result', toolCallId: 'c1', toolName, input: {}, output: {}, dynamic: true },
   }
 }
 
@@ -102,16 +97,22 @@ describe('invokeModel run-control wiring', () => {
     runRegistry.clear()
   })
 
-  test('no active run: stopWhen is the bare stepCount, no abortSignal, no steering prepareStep', async () => {
+  test('no active run: stopWhen is an array with step cap + no-progress guard, no abortSignal, no steering prepareStep', async () => {
     const captured: { opts?: CapturedOpts } = {}
     await invokeModel(buildArgs(captured, () => Promise.resolve(okResult)))
-    expect(Array.isArray(captured.opts?.stopWhen)).toBe(false)
-    expect(stepCountArgs).toEqual([25])
+    const sw = captured.opts?.stopWhen
+    assert.ok(Array.isArray(sw), 'stopWhen should be an array')
+    expect(sw).toHaveLength(2)
+    expect(stepCountArgs).toEqual([50])
+    // stopWhen[1] is the no-progress guard (behavior covered by no-progress-condition.test.ts).
+    assert.ok(typeof sw[1] === 'function', 'stopWhen[1] should be the no-progress condition')
+    // A start-of-turn call (empty steps) must never stop the loop.
+    expect(sw[1]({ steps: [] })).toBe(false)
     expect(captured.opts?.abortSignal).toBeUndefined()
     expect(captured.opts?.prepareStep).toBeUndefined()
   })
 
-  test('active run: stopWhen is an array including a live stop condition; abortSignal present', async () => {
+  test('active run: stopWhen includes step cap, no-progress guard, and a live stop condition; abortSignal present', async () => {
     const { reply } = createMockReply()
     const run = runRegistry.begin('ctx-1', { turnId: 't1', reply })
     const captured: { opts?: CapturedOpts } = {}
@@ -119,10 +120,10 @@ describe('invokeModel run-control wiring', () => {
 
     const sw = captured.opts?.stopWhen
     assert.ok(Array.isArray(sw), 'stopWhen should be an array')
-    expect(sw).toHaveLength(2)
-    expect(stepCountArgs).toEqual([25])
-    const liveCondition = sw[1]
-    assert.ok(liveCondition !== undefined, 'stopWhen[1] should be the live stop condition')
+    expect(sw).toHaveLength(3)
+    expect(stepCountArgs).toEqual([50])
+    const liveCondition = sw[2]
+    assert.ok(liveCondition !== undefined, 'stopWhen[2] should be the live stop condition')
     expect(liveCondition({ steps: [] })).toBe(false)
     run.stopRequested = true
     expect(liveCondition({ steps: [] })).toBe(true)
@@ -144,7 +145,12 @@ describe('invokeModel run-control wiring', () => {
       steps: [],
       messages: [{ role: 'user' as const, content: 'a' }],
       model: mockModel,
-      experimental_context: undefined,
+      instructions: undefined,
+      initialInstructions: undefined,
+      initialMessages: [],
+      responseMessages: [],
+      toolsContext: {},
+      runtimeContext: {},
     })
     expect(result?.messages).toEqual([
       { role: 'user', content: 'a' },
@@ -158,8 +164,8 @@ describe('invokeModel run-control wiring', () => {
     const captured: { opts?: CapturedOpts } = {}
     await invokeModel(buildArgs(captured, () => Promise.resolve(okResult)))
 
-    const onFinish = captured.opts?.experimental_onToolCallFinish
-    assert.ok(onFinish !== undefined, 'experimental_onToolCallFinish should be defined')
+    const onFinish = captured.opts?.onToolExecutionEnd
+    assert.ok(onFinish !== undefined, 'onToolExecutionEnd should be defined')
     onFinish(makeFinishEvent('update_task'))
     expect(run.completedEffects).toEqual([{ toolName: 'update_task' }])
   })

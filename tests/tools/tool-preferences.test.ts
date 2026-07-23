@@ -9,13 +9,10 @@ import { getToolMetadata } from '../../src/tools/tool-metadata.js'
 import {
   applyPreset,
   clearToolPrefs,
-  cycleDomain,
-  cycleTool,
   detectActivePreset,
   getDomainSummary,
   hasStoredToolPrefs,
   parseToolPrefs,
-  partitionToolNames,
   PRESET_KEYS,
   PRESET_RISK_DEFAULTS,
   resolveToolPermission,
@@ -23,6 +20,7 @@ import {
   setToolPrefs,
   type ToolPrefs,
 } from '../../src/tools/tool-preferences.js'
+import { cycleDomain, cycleTool, partitionToolNames } from '../../src/tools/tool-preferences.testing.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const empty: ToolPrefs = { riskDefaults: {}, domainDefaults: {}, toolOverrides: {} }

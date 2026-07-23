@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -19,7 +19,7 @@ function buildDescription(tag?: string, beforeDate?: string, memoIds?: string[])
   return `Archive ${memoIds?.length ?? 0} note(s)`
 }
 
-export function makeArchiveMemosTool(userId: string): ToolSet[string] {
+export function makeArchiveMemosTool(userId: string): Tool {
   return tool({
     description: 'Archive personal notes by tag, date, or specific IDs. Exactly one filter must be provided.',
     inputSchema: z.object({

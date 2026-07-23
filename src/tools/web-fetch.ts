@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -99,7 +99,7 @@ export function makeWebFetchTool(
   actorUserId?: string,
   contextType?: 'dm' | 'group',
   deps: WebFetchToolDeps = defaultDeps,
-): ToolSet[string] {
+): Tool {
   return tool({
     description:
       'Fetch a public URL and return a bounded summary and excerpt for answering questions or for later memo/task creation when the user explicitly asks.',

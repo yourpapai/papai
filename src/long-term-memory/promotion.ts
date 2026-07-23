@@ -5,8 +5,8 @@
 
 import { generateText } from 'ai'
 
-import { resolveEffectiveLlmConfig } from '../llm-config-resolver.js'
 import { buildChatModel } from '../llm-model-builder.js'
+import { resolveLlmConfig } from '../llm-providers/resolver.js'
 import { logger } from '../logger.js'
 import { cosineSimilarity } from './semantic-search.js'
 import {
@@ -58,9 +58,9 @@ const CONFIRM_PROMPT = (content: string): string =>
   `A fact has been observed independently in several separate group conversations. Decide whether it is a DURABLE, GENERAL fact about this group worth remembering long-term, versus thread-specific or transient noise. Answer with exactly "yes" or "no".\n\nFact: ${content}`
 
 const defaultConfirm = async (content: string, configContextId: string): Promise<boolean> => {
-  const resolved = resolveEffectiveLlmConfig(configContextId)
+  const resolved = resolveLlmConfig(configContextId)
   if (!resolved.ok) return false
-  const model = buildChatModel(resolved.llmApiKey, resolved.llmBaseUrl, resolved.smallModel)
+  const model = buildChatModel(resolved.small.apiKey, resolved.small.baseUrl, resolved.small.model)
   const { text } = await generateText({ model, prompt: CONFIRM_PROMPT(content) })
   return text.trim().toLowerCase().startsWith('yes')
 }

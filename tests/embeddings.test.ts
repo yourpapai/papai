@@ -9,8 +9,8 @@ import { enableByokForContext, updateByokLlmConfig } from '../src/byok-llm/store
 import { getDrizzleDb } from '../src/db/drizzle.js'
 import { llmUsageEvents } from '../src/db/schema.js'
 import { getEmbedding, getEmbeddingForContext, tryGetEmbedding } from '../src/embeddings.js'
-import { setSystemConfig } from '../src/system-config.js'
-import { mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from './utils/test-helpers.js'
+import { clearLlmAdminCacheForTesting } from '../src/llm-providers/store.testing.js'
+import { mockLogger, seedAdminLlmBinding, setupTestDb } from './utils/test-helpers.js'
 
 type EmbedResult = { embedding: number[]; usage?: { tokens: number } }
 type MockProvider = { embeddingModel: (name: string) => string }
@@ -145,6 +145,7 @@ describe('getEmbeddingForContext', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    clearLlmAdminCacheForTesting()
     embedImpl = (): Promise<EmbedResult> => Promise.resolve({ embedding: [0.1, 0.2, 0.3] })
     providerCalls = []
     embedModels = []
@@ -164,7 +165,8 @@ describe('getEmbeddingForContext', () => {
     }))
   })
 
-  test('uses BYOK embedding model for the enabled context without global config', async () => {
+  test('uses BYOK embedding model for the enabled context (overriding admin)', async () => {
+    seedAdminLlmBinding()
     updateByokLlmConfig(
       'ctx-byok-embedding',
       {
@@ -184,17 +186,14 @@ describe('getEmbeddingForContext', () => {
     expect(embedModels).toEqual(['byok-embed-model'])
   })
 
-  test('returns null for incomplete BYOK without falling back to global config', async () => {
+  test('falls back to admin config when BYOK is enabled but incomplete (graceful fallback)', async () => {
+    seedAdminLlmBinding()
     enableByokForContext('ctx-byok-embedding-incomplete', 'admin-1')
-    resetSystemConfigCacheForTesting()
-    setSystemConfig('llm_apikey', 'sk-global-embedding', 'env')
-    setSystemConfig('llm_baseurl', 'https://global-embedding.invalid/v1', 'env')
-    setSystemConfig('main_model', 'global-main-embedding', 'env')
-    setSystemConfig('embedding_model', 'global-embed-model', 'env')
+    embedImpl = (): Promise<EmbedResult> => Promise.resolve({ embedding: [0.9, 0.8] })
 
     const result = await getEmbeddingForContext('hello', 'ctx-byok-embedding-incomplete')
 
-    expect(result).toBeNull()
-    expect(providerCalls).toHaveLength(0)
+    expect(result).toEqual([0.9, 0.8])
+    expect(providerCalls).toEqual([{ apiKey: 'sk-admin', baseUrl: 'https://admin.invalid/v1' }])
   })
 })

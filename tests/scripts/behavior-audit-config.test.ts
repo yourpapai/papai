@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import * as behaviorAuditConfig from '../../scripts/behavior-audit/config.js'
@@ -141,4 +141,50 @@ test('applyBehaviorAuditEnv applies clustering overrides through shared config h
   expect(behaviorAuditConfig.CONSOLIDATION_LINKAGE).toBe('average')
   expect(behaviorAuditConfig.CONSOLIDATION_MAX_CLUSTER_SIZE).toBe(7)
   expect(behaviorAuditConfig.CONSOLIDATION_GAP_THRESHOLD).toBe(0.2)
+})
+
+describe('CONCURRENCY config', () => {
+  afterEach(() => {
+    delete process.env['BEHAVIOR_AUDIT_CONCURRENCY']
+  })
+
+  test('CONCURRENCY defaults to 4', async () => {
+    const loadedConfig: unknown = await import(`../../scripts/behavior-audit/config.js?test=${crypto.randomUUID()}`)
+    assert(isReloadableConfigModule(loadedConfig), 'Unexpected config module shape')
+
+    delete process.env['BEHAVIOR_AUDIT_CONCURRENCY']
+    loadedConfig.reloadBehaviorAuditConfig()
+
+    expect((loadedConfig as Record<string, unknown>)['CONCURRENCY']).toBe(4)
+  })
+
+  test('CONCURRENCY respects BEHAVIOR_AUDIT_CONCURRENCY', async () => {
+    const loadedConfig: unknown = await import(`../../scripts/behavior-audit/config.js?test=${crypto.randomUUID()}`)
+    assert(isReloadableConfigModule(loadedConfig), 'Unexpected config module shape')
+
+    process.env['BEHAVIOR_AUDIT_CONCURRENCY'] = '8'
+    loadedConfig.reloadBehaviorAuditConfig()
+
+    expect((loadedConfig as Record<string, unknown>)['CONCURRENCY']).toBe(8)
+  })
+
+  test('CONCURRENCY falls back to 4 on non-finite value', async () => {
+    const loadedConfig: unknown = await import(`../../scripts/behavior-audit/config.js?test=${crypto.randomUUID()}`)
+    assert(isReloadableConfigModule(loadedConfig), 'Unexpected config module shape')
+
+    process.env['BEHAVIOR_AUDIT_CONCURRENCY'] = 'not-a-number'
+    loadedConfig.reloadBehaviorAuditConfig()
+
+    expect((loadedConfig as Record<string, unknown>)['CONCURRENCY']).toBe(4)
+  })
+
+  test('CONCURRENCY falls back to 4 on non-positive value', async () => {
+    const loadedConfig: unknown = await import(`../../scripts/behavior-audit/config.js?test=${crypto.randomUUID()}`)
+    assert(isReloadableConfigModule(loadedConfig), 'Unexpected config module shape')
+
+    process.env['BEHAVIOR_AUDIT_CONCURRENCY'] = '0'
+    loadedConfig.reloadBehaviorAuditConfig()
+
+    expect((loadedConfig as Record<string, unknown>)['CONCURRENCY']).toBe(4)
+  })
 })

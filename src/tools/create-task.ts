@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
@@ -137,11 +137,7 @@ const createTaskInputSchema = z.object({
     ),
 })
 
-export function makeCreateTaskTool(
-  provider: TaskProvider,
-  userId?: string,
-  storageContextId?: string,
-): ToolSet[string] {
+export function makeCreateTaskTool(provider: TaskProvider, userId?: string, storageContextId?: string): Tool {
   return tool({
     description:
       'Create a new task. Call list_projects first to get a valid projectId. For YouTrack, if the project has required custom fields call describe_project first to learn the field names and valid values (e.g. State names, which may be localized).',

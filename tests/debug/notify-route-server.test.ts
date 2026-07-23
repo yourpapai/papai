@@ -8,11 +8,11 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { ChatRouter } from '../../src/chat/router.js'
 import type { DeferredDeliveryTarget } from '../../src/chat/types.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../src/debug/chat-router-runtime.js'
-import { routeRequestForTest } from '../../src/debug/server.js'
+import { routeRequestForTest } from '../../src/debug/server.testing.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertPlatformInstance } from '../../src/instances/platform-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
-import { resetNotifyTokenCacheForTesting } from '../../src/notify-token.js'
+import { resetNotifyTokenCacheForTesting } from '../../src/notify-token.testing.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 class OkRouter extends ChatRouter {

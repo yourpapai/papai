@@ -28,6 +28,7 @@ safe_name() { echo "${1//:/_}"; }
 is_license_header_file() {
   local file="$1"
   case "$file" in
+    tests/scripts/behavior-audit/fixtures/grep-sample/*) return 1 ;;
     *.md)
       case "$file" in
         docs/*.md) return 0 ;;
@@ -327,15 +328,20 @@ else
         # CI runners (4 vCPU, all checks already running concurrently) get
         # destabilized by worker-per-file --parallel: the VM is OOM-killed and
         # the runner shuts down mid-job. Run the suite serially there.
+        # --timeout 15000 re-applies the per-test ceiling documented in
+        # bunfig.toml: bun 1.3.x silently ignores [test] timeout, so without
+        # this flag every test falls back to the 5000ms default and git-heavy
+        # integration tests (e.g. review-loop worktree tests) time out under
+        # --parallel worker contention.
         if [ "${CI:-}" = "true" ]; then
-          bun test >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+          bun test --timeout 15000 >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
         else
-          bun test --parallel >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+          bun test --parallel --timeout 15000 >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
         fi
       elif [ "$check" = "test:client" ]; then
         bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/ >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
       elif [ "$check" = "review-loop:test" ]; then
-        bun test tests/review-loop >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+        bun test tests/review-loop --timeout 15000 >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
       else
         bun run "$check" >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
       fi

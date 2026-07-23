@@ -57,7 +57,7 @@ describe('makeListStatusesTool', () => {
 
     const tool = makeListStatusesTool(provider)
     assert(tool.execute, 'Tool execute is undefined')
-    const result: unknown = await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+    const result: unknown = await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [], context: {} })
     assert(isStatusArray(result), 'Invalid result')
 
     expect(result).toHaveLength(3)
@@ -73,7 +73,10 @@ describe('makeListStatusesTool', () => {
 
     const tool = makeListStatusesTool(provider)
     assert(tool.execute, 'Tool execute is undefined')
-    const result: unknown = await tool.execute({ projectId: 'empty-proj' }, { toolCallId: '1', messages: [] })
+    const result: unknown = await tool.execute(
+      { projectId: 'empty-proj' },
+      { toolCallId: '1', messages: [], context: {} },
+    )
     assert(Array.isArray(result), 'Invalid result')
 
     expect(result).toHaveLength(0)
@@ -85,7 +88,7 @@ describe('makeListStatusesTool', () => {
 
     const tool = makeListStatusesTool(provider)
     assert(tool.execute, 'Tool execute is undefined')
-    await tool.execute({ projectId: 'proj-123' }, { toolCallId: '1', messages: [] })
+    await tool.execute({ projectId: 'proj-123' }, { toolCallId: '1', messages: [], context: {} })
 
     expect(listStatuses).toHaveBeenCalledWith('proj-123')
   })
@@ -96,7 +99,10 @@ describe('makeListStatusesTool', () => {
     })
 
     const tool = makeListStatusesTool(provider)
-    const promise: Promise<unknown> = getToolExecutor(tool)({ projectId: 'invalid' }, { toolCallId: '1', messages: [] })
+    const promise: Promise<unknown> = getToolExecutor(tool)(
+      { projectId: 'invalid' },
+      { toolCallId: '1', messages: [], context: {} },
+    )
     await expect(promise).rejects.toThrow('Project not found')
     try {
       await promise
@@ -111,7 +117,10 @@ describe('makeListStatusesTool', () => {
     })
 
     const tool = makeListStatusesTool(provider)
-    const promise: Promise<unknown> = getToolExecutor(tool)({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+    const promise: Promise<unknown> = getToolExecutor(tool)(
+      { projectId: 'proj-1' },
+      { toolCallId: '1', messages: [], context: {} },
+    )
     await expect(promise).rejects.toThrow('API Error')
     try {
       await promise
@@ -140,7 +149,7 @@ describe('makeListStatusesTool', () => {
 
     const tool = makeListStatusesTool(provider)
     assert(tool.execute, 'Tool execute is undefined')
-    const result: unknown = await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+    const result: unknown = await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [], context: {} })
     assert(isStatusArray(result), 'Invalid result')
 
     expect(result).toHaveLength(4)

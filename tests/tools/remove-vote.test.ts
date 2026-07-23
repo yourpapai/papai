@@ -29,7 +29,10 @@ describe('Remove Vote Tool', () => {
     const removeVote = mock((taskId: string) => Promise.resolve({ taskId }))
     const tool = makeRemoveVoteTool(createMockProvider({ removeVote }))
 
-    const result: unknown = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
+    const result: unknown = await getToolExecutor(tool)(
+      { taskId: 'task-1' },
+      { toolCallId: '1', messages: [], context: {} },
+    )
 
     assert(isTaskResult(result), 'Invalid result')
     expect(result.taskId).toBe('task-1')
@@ -43,9 +46,9 @@ describe('Remove Vote Tool', () => {
       }),
     )
 
-    await expect(getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })).rejects.toThrow(
-      'Remove vote failed',
-    )
+    await expect(
+      getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [], context: {} }),
+    ).rejects.toThrow('Remove vote failed')
   })
 
   test('validates required taskId', () => {

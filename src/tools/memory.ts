@@ -5,7 +5,7 @@
 
 import { randomUUID } from 'node:crypto'
 
-import { tool, type ToolSet } from 'ai'
+import { tool, type Tool } from 'ai'
 import { z } from 'zod'
 
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
@@ -80,7 +80,7 @@ const nowIso = (): string => new Date().toISOString()
 const sameText = (left: string, right: string): boolean =>
   left.trim().toLocaleLowerCase() === right.trim().toLocaleLowerCase()
 
-export function makeRememberMemoryTool(input: MemoryToolContext): ToolSet[string] {
+export function makeRememberMemoryTool(input: MemoryToolContext): Tool {
   return tool({
     description:
       'Store explicit long-term memory for the current user or group. Use only when the user asks to remember durable information.',
@@ -118,7 +118,7 @@ export function makeRememberMemoryTool(input: MemoryToolContext): ToolSet[string
   })
 }
 
-export function makeSearchMemoryTool(input: MemoryToolContext): ToolSet[string] {
+export function makeSearchMemoryTool(input: MemoryToolContext): Tool {
   return tool({
     description:
       'Search everything known in this conversation, the shared group memory, and other conversations (priority-ordered), by keyword or meaning. Optionally filter by kind or include stale memories.',
@@ -148,7 +148,7 @@ export function makeSearchMemoryTool(input: MemoryToolContext): ToolSet[string] 
   })
 }
 
-export function makeListMemoryTool(input: MemoryToolContext): ToolSet[string] {
+export function makeListMemoryTool(input: MemoryToolContext): Tool {
   return tool({
     description: 'List long-term memory records in the current user or group scope.',
     inputSchema: z.object({
@@ -176,7 +176,7 @@ export function makeListMemoryTool(input: MemoryToolContext): ToolSet[string] {
   })
 }
 
-export function makeForgetMemoryTool(input: MemoryToolContext): ToolSet[string] {
+export function makeForgetMemoryTool(input: MemoryToolContext): Tool {
   return tool({
     description: 'Archive one long-term memory in the current user or group scope by memory ID or keyword query.',
     inputSchema: z.object({

@@ -5,18 +5,21 @@
 
 import pLimit from 'p-limit'
 
+import { createAsyncMutex, type AsyncMutex } from './async-mutex.js'
 import { readClassifiedFile } from './classified-store.js'
-import { MAX_RETRIES } from './config.js'
+import { CONCURRENCY, MAX_RETRIES } from './config.js'
 import type { ConsolidateBehaviorInput } from './consolidate-agent.js'
 import {
-  loadGroupedInputs,
-  toConsolidations,
-  updateManifestEntries,
+  buildConsolidatedManifestEntries,
   type ConsolidateWithRetry,
+  type ConsolidatedManifestDelta,
+  loadGroupedInputs,
+  mergeConsolidatedManifestDeltas,
+  toConsolidations,
 } from './consolidate-helpers.js'
-import { reportConsolidationResult } from './consolidate-reporting.js'
+import { reportConsolidationResult, type ConsolidationResultForReporting } from './consolidate-reporting.js'
 import { readExtractedFile } from './extracted-store.js'
-import type { ConsolidatedManifest, IncrementalManifest } from './incremental.js'
+import { saveConsolidatedManifest, type ConsolidatedManifest, type IncrementalManifest } from './incremental.js'
 import {
   type PhaseStats,
   createPhaseStats,
@@ -25,7 +28,6 @@ import {
   recordItemFailed,
   recordItemSkipped,
 } from './phase-stats.js'
-import type { AgentUsage } from './phase-stats.js'
 import { saveProgress } from './progress-io.js'
 import type { BehaviorAuditProgressReporter } from './progress-reporter.js'
 import { invalidatePhase3ForReevaluation } from './progress-resets.js'
@@ -33,14 +35,9 @@ import { getFailedFeatureKeyAttempts, markFeatureKeyDone, markFeatureKeyFailed }
 import type { Progress } from './progress.js'
 import { writeConsolidatedFile } from './report-writer.js'
 
-type ConsolidationProcessResult =
-  | {
-      readonly kind: 'consolidated'
-      readonly manifest: ConsolidatedManifest
-      readonly usage: AgentUsage
-    }
-  | { readonly kind: 'failed'; readonly manifest: ConsolidatedManifest }
-  | { readonly kind: 'skipped'; readonly manifest: ConsolidatedManifest }
+type ConsolidationProcessResult = {
+  readonly delta: ConsolidatedManifestDelta | null
+} & ConsolidationResultForReporting
 
 export interface Phase2bDeps {
   readonly consolidateWithRetry: ConsolidateWithRetry
@@ -48,6 +45,7 @@ export interface Phase2bDeps {
   readonly readExtractedFile: typeof readExtractedFile
   readonly readClassifiedFile: typeof readClassifiedFile
   readonly saveProgress: typeof saveProgress
+  readonly saveConsolidatedManifest: typeof saveConsolidatedManifest
   readonly log: Pick<typeof console, 'log'>
   readonly reporter: BehaviorAuditProgressReporter | undefined
   readonly stats: PhaseStats
@@ -64,48 +62,45 @@ const defaultPhase2bDeps: Omit<Phase2bDeps, 'stats'> = {
   readExtractedFile,
   readClassifiedFile,
   saveProgress,
+  saveConsolidatedManifest,
   log: console,
   reporter: undefined,
 }
 
 async function consolidateFeatureKey(input: {
   readonly progress: Progress
-  readonly consolidatedManifest: ConsolidatedManifest
   readonly phase2Version: string
   readonly featureKey: string
   readonly inputs: readonly ConsolidateBehaviorInput[]
   readonly deps: Phase2bDeps
+  readonly mutex: AsyncMutex
 }): Promise<ConsolidationProcessResult> {
   const failedAttempts = getFailedFeatureKeyAttempts(input.progress, input.featureKey)
   if (failedAttempts >= MAX_RETRIES) {
-    return { kind: 'skipped', manifest: input.consolidatedManifest }
+    return { kind: 'skipped', delta: null }
   }
 
   const agentResult = await input.deps.consolidateWithRetry(input.featureKey, input.inputs, failedAttempts)
   if (agentResult === null) {
     markFeatureKeyFailed(input.progress, input.featureKey, 'consolidation failed after retries', failedAttempts + 1)
-    await input.deps.saveProgress(input.progress)
-    return { kind: 'failed', manifest: input.consolidatedManifest }
+    await input.mutex('progress', () => input.deps.saveProgress(input.progress))
+    return { kind: 'failed', delta: null }
   }
 
   const consolidations = toConsolidations(agentResult.result, input.inputs)
-  const updatedManifest: ConsolidatedManifest = {
-    ...input.consolidatedManifest,
-    entries: updateManifestEntries({
-      currentEntries: input.consolidatedManifest.entries,
-      featureKey: input.featureKey,
-      inputs: input.inputs,
-      consolidations,
-      phase2Version: input.phase2Version,
-    }),
-  }
+  const entries = buildConsolidatedManifestEntries({
+    featureKey: input.featureKey,
+    inputs: input.inputs,
+    consolidations,
+    phase2Version: input.phase2Version,
+  })
   await input.deps.writeConsolidatedFile(input.featureKey, consolidations)
   markFeatureKeyDone(input.progress, input.featureKey, consolidations)
-  await input.deps.saveProgress(input.progress)
+  await input.mutex('progress', () => input.deps.saveProgress(input.progress))
 
   return {
     kind: 'consolidated',
-    manifest: updatedManifest,
+    delta: { featureKey: input.featureKey, entries },
     usage: agentResult.usage,
   }
 }
@@ -116,9 +111,9 @@ async function processFeatureKeyGroup(
   displayIndex: number,
   displayTotal: number,
   progress: Progress,
-  currentManifest: ConsolidatedManifest,
   phase2Version: string,
   deps: Phase2bDeps,
+  mutex: AsyncMutex,
 ): Promise<ConsolidationProcessResult> {
   if (deps.reporter !== undefined) {
     deps.reporter.emit({
@@ -134,11 +129,11 @@ async function processFeatureKeyGroup(
   const startMs = performance.now()
   const result = await consolidateFeatureKey({
     progress,
-    consolidatedManifest: currentManifest,
     phase2Version,
     featureKey,
     inputs,
     deps,
+    mutex,
   })
   const elapsedMs = performance.now() - startMs
   reportConsolidationResult({
@@ -216,8 +211,9 @@ export async function runPhase2b(
   const stats = resolvedDeps.stats
   const groups = await initializePhase2b(progress, manifest, selectedFeatureKeys, resolvedDeps)
 
-  const limit = pLimit(1)
-  let currentManifest = consolidatedManifest
+  const mutex = createAsyncMutex()
+  const limit = pLimit(CONCURRENCY)
+  const deltas: ConsolidatedManifestDelta[] = []
   await Promise.all(
     groups.map(([featureKey, inputs], index) =>
       limit(async () => {
@@ -227,15 +223,19 @@ export async function runPhase2b(
           index + 1,
           groups.length,
           progress,
-          currentManifest,
           phase2Version,
           resolvedDeps,
+          mutex,
         )
-        currentManifest = result.manifest
+        if (result.delta !== null) {
+          deltas.push(result.delta)
+        }
       }),
     ),
   )
 
-  await finalizePhase2b(progress, currentManifest, stats, resolvedDeps)
-  return currentManifest
+  const finalManifest = mergeConsolidatedManifestDeltas(consolidatedManifest, deltas)
+  await resolvedDeps.saveConsolidatedManifest(finalManifest)
+  await finalizePhase2b(progress, finalManifest, stats, resolvedDeps)
+  return finalManifest
 }

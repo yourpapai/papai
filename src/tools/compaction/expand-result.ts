@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { tool, type ToolSet } from 'ai'
+import { tool, type Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../../logger.js'
@@ -13,7 +13,7 @@ import { getResultPage } from './result-store.js'
 
 const log = logger.child({ scope: 'tool:expand-result' })
 
-export function makeExpandResultTool(contextId: string): ToolSet[string] {
+export function makeExpandResultTool(contextId: string): Tool {
   return tool({
     description:
       'Page through the full raw content of a previously compacted tool result. Pass the handle from a _compacted result. Use offset/limit to read in windows.',
