@@ -97,7 +97,7 @@ jobs:
   stories:
     name: Hermetic Full-Stack Stories
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -110,9 +110,23 @@ jobs:
         with:
           name: build-output
           path: public/
+      - name: Verify Linux story sandbox
+        run: |
+          docker version
+          image="$(cat scripts/story/sandbox-image.txt)"
+          docker pull "$image"
+          docker run --rm --network none "$image" --version
+      - name: Prove process sandbox boundary
+        env:
+          PAPAI_REQUIRE_STORY_SANDBOX: '1'
+        run: bun test --path-ignore-patterns '' tests/stories/sandbox/process-boundary.test.ts
       - name: Run hermetic harness contracts
+        env:
+          PAPAI_REQUIRE_STORY_SANDBOX: '1'
         run: bun test:stories:contracts --reporter=junit --reporter-outfile=reports/stories/contracts-junit.xml
       - name: Run hermetic full-stack stories
+        env:
+          PAPAI_REQUIRE_STORY_SANDBOX: '1'
         run: bun test:stories
       - name: Upload story reports
         if: always()

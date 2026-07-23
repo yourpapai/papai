@@ -6,9 +6,22 @@
 import { describe, expect, test } from 'bun:test'
 import nodePath from 'node:path'
 
-import { loadCandidateStoryFiles } from '../../../scripts/story-manifest-candidate.js'
-import { extractStoryScenarios } from '../../../scripts/story-manifest-scenarios.js'
-import { CATALOG_SCENARIO_IDS, catalogCoverage, toPendingReason } from '../catalog/coverage.js'
+import { loadCandidateStoryFiles } from '../../../scripts/story/inputs.js'
+import { extractStoryScenarios } from '../../../scripts/story/scenarios.js'
+import {
+  AUDIT_RECORDS,
+  CATALOG_SCENARIO_IDS,
+  catalogCoverage,
+  LIVE_STORY_TIERS,
+  STORY_FAMILIES,
+  STORY_SEAM_IDS,
+  STORY_TIERS,
+  TIER_SUITE_ROOTS,
+  toPendingReason,
+  type AuditReadiness,
+  type StoryFamily,
+  type StorySeamId,
+} from '../catalog/coverage.js'
 
 function sorted(values: readonly string[]): readonly string[] {
   return [...values].sort()
@@ -59,6 +72,36 @@ const ACP_CATALOG_STORY_IDS = {
   'SCN-coding-acp-command': ACP_COMMAND_STORY_ID,
 } as const
 
+const pendingCoverage = catalogCoverage.filter((coverage) => coverage.kind === 'pending')
+
+const auditSeams = (coverage: (typeof catalogCoverage)[number]): readonly StorySeamId[] =>
+  coverage.kind === 'pending' && coverage.audit.readiness.state === 'needs-seam' ? coverage.audit.readiness.seams : []
+
+const FAMILY_QUEUE_EXPECTATIONS: ReadonlyArray<readonly [string, StoryFamily]> = [
+  ['SCN-meta-', 'F1'],
+  ['SCN-cmd-', 'F1'],
+  ['SCN-task-', 'F2'],
+  ['SCN-memory-', 'F3'],
+  ['SCN-memo-', 'F3'],
+  ['SCN-instructions-', 'F3'],
+  ['SCN-history-', 'F3'],
+  ['SCN-fetch-', 'F3'],
+  ['SCN-http-mcp-plugin', 'F7'],
+  ['SCN-http-', 'F4'],
+  ['SCN-deferred-', 'F5'],
+  ['SCN-reminder-', 'F5'],
+  ['SCN-web-fetch', 'F6'],
+  ['SCN-settings-admin-mcp-', 'F7'],
+  ['SCN-interaction-', 'F8'],
+  ['SCN-coding-nerv-', 'unqueued'],
+  ['SCN-supervise-', 'unqueued'],
+]
+
+const familyQueueMismatches = pendingCoverage.flatMap((coverage) => {
+  const expectation = FAMILY_QUEUE_EXPECTATIONS.find(([prefix]) => coverage.scenarioId.startsWith(prefix))
+  return expectation === undefined || coverage.audit.family !== expectation[1] ? [coverage.scenarioId] : []
+})
+
 describe('scenario catalog coverage', () => {
   test('resolves the repository root from a nested harness snapshot path', () => {
     expect(resolveStoryContractRoot('/tmp/story-snapshot/tests/stories/harness')).toBe('/tmp/story-snapshot')
@@ -67,12 +110,12 @@ describe('scenario catalog coverage', () => {
   test('classifies every catalog scenario exactly once', () => {
     const ledgerIds = catalogCoverage.map(({ scenarioId }) => scenarioId)
 
-    expect(CATALOG_SCENARIO_IDS).toHaveLength(126)
-    expect(new Set(CATALOG_SCENARIO_IDS).size).toBe(126)
+    expect(CATALOG_SCENARIO_IDS).toHaveLength(128)
+    expect(new Set(CATALOG_SCENARIO_IDS).size).toBe(128)
     expect(sorted(ledgerIds)).toEqual(sorted(CATALOG_SCENARIO_IDS))
   })
 
-  test('marks interaction scenarios as forward-only', () => {
+  test('marks only platform-adapter interaction scenarios as forward-only', () => {
     const interactionCoverage = catalogCoverage.filter(({ scenarioId }) => scenarioId.startsWith('SCN-interaction-'))
 
     expect(interactionCoverage).toHaveLength(4)
@@ -80,8 +123,11 @@ describe('scenario catalog coverage', () => {
       'forward-only',
       'forward-only',
       'forward-only',
-      'forward-only',
+      'confirmed',
     ])
+    expect(
+      interactionCoverage.find(({ scenarioId }) => scenarioId === 'SCN-interaction-permission-decision')?.kind,
+    ).toBe('executable')
   })
 
   test('maps the ACP command catalog record to its eligible and ineligible command story', () => {
@@ -89,6 +135,7 @@ describe('scenario catalog coverage', () => {
       scenarioId: 'SCN-coding-acp-command',
       catalogStatus: 'confirmed',
       kind: 'executable',
+      provingTier: '0',
       verifiedAt: '2026-07-13',
       storyIds: [ACP_COMMAND_STORY_ID],
     })
@@ -118,10 +165,9 @@ describe('scenario catalog coverage', () => {
     const extractedStoryIds = new Set(
       candidateFiles.flatMap(({ path, bytes }) => extractStoryScenarios(path, bytes).map(({ id }) => id)),
     )
-    const pendingCoverage = catalogCoverage.filter((coverage) => coverage.kind === 'pending')
     const executableCoverage = catalogCoverage.filter((coverage) => coverage.kind === 'executable')
 
-    for (const coverage of pendingCoverage) expect(coverage.reason.toString().trim().length).toBeGreaterThan(0)
+    for (const coverage of pendingCoverage) expect(coverage.audit.rationale.toString().trim().length).toBeGreaterThan(0)
 
     const executableReferences = executableCoverage.flatMap((coverage) => {
       expect(coverage.storyIds.length).toBeGreaterThanOrEqual(1)
@@ -132,5 +178,160 @@ describe('scenario catalog coverage', () => {
     })
 
     expect(new Set(executableReferences).size).toBe(executableReferences.length)
+  })
+
+  test('stamps settings catalog records with their verification date', () => {
+    const settingsCoverage = catalogCoverage
+      .filter((coverage) => coverage.kind === 'executable')
+      .filter((coverage) => coverage.scenarioId.startsWith('SCN-settings-'))
+    const mcpScenarioIds = new Set(['SCN-settings-admin-mcp-catalog', 'SCN-settings-admin-mcp-plugin-servers'])
+    const mcpCoverage = settingsCoverage.filter((coverage) => mcpScenarioIds.has(coverage.scenarioId))
+    const otherCoverage = settingsCoverage.filter((coverage) => !mcpScenarioIds.has(coverage.scenarioId))
+
+    expect(settingsCoverage).toHaveLength(13)
+    for (const coverage of mcpCoverage) expect(coverage.verifiedAt).toBe('2026-07-22')
+    for (const coverage of otherCoverage) expect(coverage.verifiedAt).toBe('2026-07-18')
+  })
+
+  test('maps the guest-readonly catalog record to its executable story', () => {
+    expect(catalogCoverage.find(({ scenarioId }) => scenarioId === 'SCN-task-guest-readonly')).toEqual({
+      scenarioId: 'SCN-task-guest-readonly',
+      catalogStatus: 'confirmed',
+      kind: 'executable',
+      provingTier: '0',
+      verifiedAt: '2026-07-19',
+      storyIds: [
+        'tests/stories/context/guest-readonly.story.test.ts#guest group turns can read tasks but cannot advertise writes',
+      ],
+    })
+  })
+
+  test('tracks the executable coverage total', () => {
+    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(101)
+  })
+
+  test('stamps every executable record with a live proving tier', () => {
+    const executable = catalogCoverage.filter((coverage) => coverage.kind === 'executable')
+    const offLaneTiers = executable
+      .filter((coverage) => !LIVE_STORY_TIERS.includes(coverage.provingTier))
+      .map(({ scenarioId, provingTier }) => `${scenarioId} -> T${provingTier}`)
+
+    expect(executable).toHaveLength(101)
+    expect(offLaneTiers).toEqual([])
+    expect(new Set(executable.map((coverage) => coverage.provingTier))).toEqual(new Set(['0']))
+  })
+
+  test('gives every tier a distinct suite root', () => {
+    const roots = STORY_TIERS.map((tier) => TIER_SUITE_ROOTS[tier])
+
+    expect(new Set(roots).size).toBe(STORY_TIERS.length)
+    expect(TIER_SUITE_ROOTS['0']).toBe('tests/stories/')
+    expect(TIER_SUITE_ROOTS['1']).toBe('tests/e2e/')
+  })
+
+  test('keeps every executable story under its own tier suite root', () => {
+    const executableCoverage = catalogCoverage.filter(
+      (coverage): coverage is Extract<(typeof catalogCoverage)[number], { kind: 'executable' }> =>
+        coverage.kind === 'executable',
+    )
+    const misplaced = executableCoverage.flatMap((coverage) =>
+      coverage.storyIds
+        .filter((storyId) => !storyId.startsWith(TIER_SUITE_ROOTS[coverage.provingTier]))
+        .map((storyId) => `T${coverage.provingTier} ${coverage.scenarioId} -> ${storyId}`),
+    )
+
+    expect(misplaced).toEqual([])
+  })
+
+  test('promotes command scenarios from blanket forward-only to confirmed', () => {
+    const commandCoverage = catalogCoverage.filter(({ scenarioId }) => scenarioId.startsWith('SCN-cmd-'))
+
+    expect(commandCoverage).toHaveLength(16)
+    const statuses = commandCoverage.map(({ catalogStatus }) => catalogStatus)
+    expect(statuses.filter((status) => status === 'confirmed')).toHaveLength(15)
+    expect(commandCoverage.find(({ scenarioId }) => scenarioId === 'SCN-cmd-announce')?.catalogStatus).toBe('gap')
+  })
+
+  test('maps the context core stories to their catalog records', () => {
+    expect(catalogCoverage.find(({ scenarioId }) => scenarioId === 'SCN-context-thread-scope')).toEqual({
+      scenarioId: 'SCN-context-thread-scope',
+      catalogStatus: 'confirmed',
+      kind: 'executable',
+      provingTier: '0',
+      verifiedAt: '2026-07-19',
+      storyIds: [
+        'tests/stories/context/thread-scope.story.test.ts#group threads share config but isolate conversation history',
+      ],
+    })
+    expect(catalogCoverage.find(({ scenarioId }) => scenarioId === 'SCN-context-group-identity')).toEqual({
+      scenarioId: 'SCN-context-group-identity',
+      catalogStatus: 'confirmed',
+      kind: 'executable',
+      provingTier: '0',
+      verifiedAt: '2026-07-19',
+      storyIds: [
+        'tests/stories/context/group-users.story.test.ts#group members share durable config while retaining distinct identities',
+      ],
+    })
+  })
+
+  test('audit records cover exactly the pending scenarios', () => {
+    const pendingIds = pendingCoverage.map(({ scenarioId }) => scenarioId)
+
+    expect(pendingIds).toHaveLength(27)
+    expect(sorted(Object.keys(AUDIT_RECORDS))).toEqual(sorted(pendingIds))
+  })
+
+  test('records a non-blank rationale and a known family for every pending scenario', () => {
+    const blankRationales = pendingCoverage
+      .filter((coverage) => coverage.audit.rationale.toString().trim().length === 0)
+      .map(({ scenarioId }) => scenarioId)
+    const unknownFamilies = pendingCoverage
+      .filter((coverage) => !STORY_FAMILIES.includes(coverage.audit.family))
+      .map(({ scenarioId }) => scenarioId)
+
+    expect(blankRationales).toEqual([])
+    expect(unknownFamilies).toEqual([])
+  })
+
+  test('references only known seams', () => {
+    const unknownSeams = pendingCoverage.flatMap((coverage) =>
+      auditSeams(coverage)
+        .filter((seam) => !STORY_SEAM_IDS.includes(seam))
+        .map((seam) => `${coverage.scenarioId} -> ${seam}`),
+    )
+
+    expect(unknownSeams).toEqual([])
+  })
+
+  test('names the tier that unblocks every seam-pending scenario', () => {
+    const seamPending = pendingCoverage.filter((coverage) => coverage.audit.readiness.state === 'needs-seam')
+    const seamReadiness = seamPending
+      .map((coverage) => coverage.audit.readiness)
+      .filter(
+        (readiness): readiness is Extract<AuditReadiness, { state: 'needs-seam' }> => readiness.state === 'needs-seam',
+      )
+    const unblockingTiers = seamReadiness.map((readiness) => readiness.unblockedByTier)
+
+    expect(sorted(seamPending.map(({ scenarioId }) => scenarioId))).toEqual([
+      'SCN-fetch-chat-link',
+      'SCN-http-mattermost-action',
+      'SCN-interaction-discord-router-wrapped',
+      'SCN-interaction-discord-standalone-fallback',
+      'SCN-interaction-telegram-callback',
+    ])
+    expect(unblockingTiers).toEqual(['3', '3', '3', '3', '3'])
+  })
+
+  test('audit readiness totals match the audit outcome', () => {
+    const states = pendingCoverage.map((coverage) => coverage.audit.readiness.state)
+
+    expect(states.filter((state) => state === 'executable-as-is')).toHaveLength(0)
+    expect(states.filter((state) => state === 'needs-seam')).toHaveLength(5)
+    expect(states.filter((state) => state === 'blocked')).toHaveLength(22)
+  })
+
+  test('assigns every pending scenario to its family queue', () => {
+    expect(familyQueueMismatches).toEqual([])
   })
 })

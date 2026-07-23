@@ -6,11 +6,18 @@
 import { describe, expect, test } from 'bun:test'
 
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
+import { resolveMcpPluginServerConfigs } from '../../../src/coding-credentials/mcp-plugin-servers.js'
 import { resolveMcpServers } from '../../../src/coding-credentials/resolve-mcp-servers.js'
 import { getRepoByName } from '../../../src/coding-repos/store.js'
+import { getUserMessage, webFetchError } from '../../../src/errors.js'
+import { isAdmin, isSuperAdmin } from '../../../src/instances/admin-store.js'
+import { getNotifyToken } from '../../../src/notify-token.js'
 import { getActivatedPluginIds } from '../../../src/plugins/loader.js'
 import type { TaskCapability } from '../../../src/providers/types.js'
 import { SESSION_TTL_MS } from '../../../src/settings/session-store.js'
+import { consumeWebFetchQuota } from '../../../src/web/rate-limit.js'
+import { safeFetchContent } from '../../../src/web/safe-fetch.js'
+import { expectAppError, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 import type { ScenarioRuntimeExtension } from './runtime-extension.js'
 import { executeScenario } from './scenario.js'
 import { answer, callCapability } from './scripted-llm.js'
@@ -89,17 +96,25 @@ describe('scenario execution', () => {
     })
   })
 
-  test('task capability prerequisite rejects unsupported provider operations before startup', async () => {
-    const world = await createScenarioWorld('unsupported task capability')
+  test('given.toolPrefs gates the advertised toolset and then.task.absent passes for missing tasks', async () => {
+    await executeScenario('tool prefs fixture', async ({ given, when, then, world }) => {
+      const alice = given.user('alice')
+      const dm = given.dm(alice)
+      const instance = given.taskInstance()
+      given.assign(dm, instance)
+      given.toolPrefs(dm, { riskDefaults: {}, domainDefaults: {}, toolOverrides: { create_task: 'deny' } })
+      given.llm([callCapability('tasks.list', {}), answer('cannot create')])
 
-    try {
-      expect(() => world.api.given.taskCapabilities(['tasks.delete'])).toThrow(
-        'MemoryTaskProvider does not support task capabilities: tasks.delete',
-      )
-      expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
-    } finally {
-      await world.stop()
-    }
+      await when.message(alice, dm, 'Create task Nope')
+
+      then.replyTo(alice).equals('cannot create')
+      const last = world.model.inspections().at(-1)
+      expect(last?.availableTools).not.toContain('create_task')
+      expect(last?.availableTools).toContain('list_tasks')
+      expect(() => world.runtime.resolveToolCapability('tasks.create')).toThrow('Unknown tool capability id')
+      expect(world.runtime.resolveToolCapability('tasks.list')).toBe('list_tasks')
+      await then.task('Nope').absent()
+    })
   })
 
   test('task capability prerequisite accepts implemented comment operations before startup', async () => {
@@ -118,15 +133,12 @@ describe('scenario execution', () => {
 
       expect([...world.tasks.capabilities]).toEqual(capabilities)
       expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
-      expect(() => world.api.given.taskCapabilities(['projects.read'])).toThrow(
-        'MemoryTaskProvider does not support task capabilities: projects.read',
-      )
     } finally {
       await world.stop()
     }
   })
 
-  test('task capability prerequisite accepts implemented label operations but rejects task deletion', async () => {
+  test('task capability prerequisite accepts implemented label operations', async () => {
     const world = await createScenarioWorld('label task capabilities')
 
     try {
@@ -142,9 +154,6 @@ describe('scenario execution', () => {
 
       expect([...world.tasks.capabilities]).toEqual(capabilities)
       expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
-      expect(() => world.api.given.taskCapabilities(['tasks.delete'])).toThrow(
-        'MemoryTaskProvider does not support task capabilities: tasks.delete',
-      )
     } finally {
       await world.stop()
     }
@@ -299,6 +308,29 @@ describe('scenario execution', () => {
     })
   })
 
+  test('admin prerequisite seeds the admin role without starting the runtime', async () => {
+    const world = await createScenarioWorld('admin prerequisite')
+
+    try {
+      const carol = world.api.given.user('carol')
+      const root = world.api.given.user('root')
+
+      world.api.given.admin(carol)
+      world.api.given.admin(root, { superAdmin: true })
+
+      expect(isAdmin(carol.id, carol.platformInstanceId)).toBe(true)
+      expect(isSuperAdmin(carol.id)).toBe(false)
+      expect(isAdmin(root.id, root.platformInstanceId)).toBe(true)
+      expect(isSuperAdmin(root.id)).toBe(true)
+      expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
+
+      await world.ensureStarted()
+      expect(() => world.api.given.admin(carol)).toThrow('given.admin requires an unstarted scenario world')
+    } finally {
+      await world.stop()
+    }
+  })
+
   test('reply history assertion preserves all replies from a multi-turn conversation', async () => {
     await executeScenario('reply history assertion', async ({ given, when, then }) => {
       const alice = given.user('alice')
@@ -309,6 +341,20 @@ describe('scenario execution', () => {
       await when.message(alice, dm, 'Second turn')
 
       then.repliesTo(alice).equal(['First reply.', 'Second reply.'])
+    })
+  })
+
+  test('replyTo.contains asserts a substring of the latest reply', async () => {
+    await executeScenario('contains matcher', async ({ given, when, then }) => {
+      const alice = given.user('alice')
+      const dm = given.dm(alice)
+      given.llm([answer('the code is xyzzy — do not share it')])
+
+      await when.message(alice, dm, 'give me a secret')
+
+      then.replyTo(alice).contains('the code is')
+      then.replyTo(alice).contains('do not share it')
+      expect(() => then.replyTo(alice).contains('not present')).toThrow()
     })
   })
 
@@ -443,5 +489,160 @@ describe('scenario execution', () => {
     expect(aggregate.errors[0]).toBe(primary)
     expect(String(aggregate.errors[1])).toContain('unconsumed HTTP expectations')
     expect(String(aggregate.errors[2])).toContain('unused decision')
+  })
+
+  test('debugEnabled world option unlocks the debug-gated 404 → 401 boundary', async () => {
+    await executeScenario('debug-gate-off', async ({ when, then }) => {
+      then.responseStatus(await when.request('/debug'), 404)
+    })
+    await executeScenario(
+      'debug-gate-on',
+      async ({ when, then }) => {
+        then.responseStatus(await when.request('/debug'), 401)
+      },
+      undefined,
+      { debugEnabled: true },
+    )
+  })
+
+  test('then.responseJson traces contains/equals assertions against a parsed body', async () => {
+    await executeScenario('response-json', ({ then }) => {
+      then.responseJson({ principal: { display: 'bob' } }).contains('bob')
+      then.responseJson({ ok: true }).equals({ ok: true })
+    })
+  })
+
+  test('given.dashboardSession authorizes a dashboard-gated route that rejects anonymous callers', async () => {
+    await executeScenario('dashboard-session', async ({ given, when, then }) => {
+      const anon = await when.request('/admin/identity/mappings')
+      then.responseStatus(anon, 401)
+      const session = await given.dashboardSession()
+      const authorized = await when.dashboardRequest(session, '/admin/identity/mappings')
+      then.responseStatus(authorized, 200)
+    })
+  })
+
+  test('given.notifyToken seeds a token isolated per scenario despite the module cache', async () => {
+    await executeScenario('notify-token-a', ({ given }) => {
+      given.notifyToken('token-alpha')
+      expect(getNotifyToken()).toBe('token-alpha')
+    })
+    // A later scenario in the same worker must not see the previous cached token.
+    await executeScenario('notify-token-b', () => {
+      expect(getNotifyToken()).toBeNull()
+    })
+  })
+
+  test('given.mcpPluginServer operator-enables an internal plugin MCP server for a platform instance', async () => {
+    await executeScenario('mcp-plugin-server', ({ given }) => {
+      const alice = given.user('alice')
+      given.mcpPluginServer(alice.platformInstanceId, 'synthetic-web-search')
+
+      const configs = resolveMcpPluginServerConfigs(alice.platformInstanceId)
+
+      expect(configs).toHaveLength(1)
+      expect(configs[0]).toMatchObject({
+        plugin_id: 'synthetic-web-search',
+        enabled: true,
+        default_tool_policy: 'allow',
+      })
+    })
+  })
+
+  test('given.publicBaseUrl sets and restores SETTINGS_PUBLIC_BASE_URL around the scenario', async () => {
+    expect(process.env['SETTINGS_PUBLIC_BASE_URL']).toBeUndefined()
+    await executeScenario('public-base-url', ({ given }) => {
+      given.publicBaseUrl('https://settings.example')
+      expect(process.env['SETTINGS_PUBLIC_BASE_URL']).toBe('https://settings.example')
+    })
+    expect(process.env['SETTINGS_PUBLIC_BASE_URL']).toBeUndefined()
+  })
+
+  test('given.allowPublicUrl bypasses the public-URL guard inside the scenario and restores it after', async () => {
+    await executeScenario('allow-public-url', async ({ given }) => {
+      given.allowPublicUrl()
+      // Guard bypassed: a loopback literal the real guard would reject now passes
+      // assertPublicUrl and reaches fetch, which the pre-aborted signal rejects before
+      // any connection — so the classified error is a timeout/abort, NOT blocked-host.
+      const active = await safeFetchContent('http://[::ffff:127.0.0.1]/', {
+        abortSignal: AbortSignal.abort(),
+      }).catch((error: unknown) => error)
+      expectAppError(active, getUserMessage(webFetchError.timeout()))
+    })
+    // After teardown the real guard is restored: the same loopback literal is rejected
+    // with blocked-host (synchronously, no DNS, no network).
+    const restored = await safeFetchContent('http://[::ffff:127.0.0.1]/', {
+      abortSignal: AbortSignal.timeout(1000),
+    }).catch((error: unknown) => error)
+    expectAppError(restored, getUserMessage(webFetchError.blockedHost()))
+  })
+
+  test('given.exhaustedWebFetchQuota seeds a full bucket so the next web-fetch consume is denied', async () => {
+    await executeScenario('exhausted-web-fetch-quota', ({ given }) => {
+      const alice = given.user('alice')
+      const dm = given.dm(alice)
+      given.exhaustedWebFetchQuota(dm)
+      // web_fetch's actor for this DM is the raw chat user id (== contextId(dm) == 'alice').
+      // The real quota path uses Date.now(), so seed + check must both use the real clock.
+      const denied = consumeWebFetchQuota('alice', Date.now())
+      expect(denied.allowed).toBe(false)
+    })
+  })
+
+  test('given.recurringTask + when.recurringTick fires a due recurrence into the world provider and notifies', async () => {
+    await executeScenario('recurring-fire-seam', async ({ given, when, then }) => {
+      const alice = given.user('alice')
+      const dm = given.dm(alice)
+      given.assign(dm, given.taskInstance())
+      given.recurringTask(dm, {
+        title: 'Water the plants',
+        nextRun: '2020-01-01T09:00:00.000Z',
+        rrule: 'FREQ=DAILY',
+        dtstartUtc: '2020-01-01T09:00:00.000Z',
+      })
+      await when.recurringTick()
+      await then.task('Water the plants').exists()
+      then.replyTo(alice).contains('Water the plants')
+    })
+  })
+
+  test('given.scheduledPrompt + when.scheduledPoll fires a due prompt and delivers a proactive message', async () => {
+    await executeScenario('scheduled-fire-seam', async ({ given, when, then, world }) => {
+      const alice = given.user('alice')
+      const dm = given.dm(alice)
+      // The scenario world already seeds system LLM config during startup
+      // (see world.ts's `fixtures.seedSystemLlmConfig()` call); there is no
+      // `given.seedSystemLlmConfig` DSL member to call here.
+      world.http.expect({ method: 'POST', url: 'https://llm.invalid/v1/chat/completions' }, () =>
+        Response.json({
+          id: 'chatcmpl-sched-1',
+          choices: [
+            {
+              message: { role: 'assistant', content: 'Stand-up starts now.' },
+              finish_reason: 'stop',
+            },
+          ],
+        }),
+      )
+      given.scheduledPrompt(dm, {
+        prompt: 'Remind me: stand-up',
+        fireAt: '2020-01-01T09:00:00.000Z',
+      })
+      // Contract tests (`--contracts`) run without `tests/stories/preload.ts` (see
+      // scripts/story/child.ts), so the story I/O guard's global `fetch` patch that
+      // normally reroutes outbound calls through `world.http` is never installed.
+      // The deferred-prompt poller drives a real AI SDK `generateText` call for the
+      // lightweight scheduled-prompt execution, which goes through `globalThis.fetch`
+      // directly. Bridge it to the scenario's strict HTTP dispatcher — which still
+      // enforces the declared expectation and its single-consumption contract
+      // regardless of the guard — for the duration of the poll only.
+      setMockFetch((url, init) => world.http.fetch(url, init))
+      try {
+        await when.scheduledPoll()
+      } finally {
+        restoreFetch()
+      }
+      then.replyTo(alice).contains('Stand-up')
+    })
   })
 })

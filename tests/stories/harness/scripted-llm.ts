@@ -10,7 +10,12 @@ import { MockLanguageModelV3 } from 'ai/test'
 
 import type { ScenarioEvents } from './events.js'
 
-export type ModelDecision = { kind: 'tool'; capabilityId: string; input: unknown } | { kind: 'answer'; text: string }
+export type ModelDecision =
+  | { kind: 'tool'; capabilityId: string; input: unknown }
+  | { kind: 'tool-gate'; capabilityId: string; input: unknown }
+  | { kind: 'answer'; text: string }
+
+export type GatedToolCall = Readonly<{ release(): void }>
 
 export type ScriptedModelInspection = Readonly<{
   generation: number
@@ -18,11 +23,13 @@ export type ScriptedModelInspection = Readonly<{
   hasToolResult: boolean
   promptTextFingerprints: readonly string[]
   promptTokenFingerprints: readonly string[]
+  promptToolResultTokenFingerprints: readonly string[]
 }>
 
 export type ScriptedModel = Readonly<{
   model: MockLanguageModelV3
   enqueue(decisions: readonly ModelDecision[]): void
+  nextGate(): Promise<GatedToolCall>
   verifyConsumed(): void
   inspections(): readonly ScriptedModelInspection[]
 }>
@@ -61,6 +68,12 @@ export const callCapability = (capabilityId: string, input: unknown): ModelDecis
 
 export const answer = (text: string): ModelDecision => ({ kind: 'answer', text })
 
+export const gateCall = (capabilityId: string, input: unknown): ModelDecision => ({
+  kind: 'tool-gate',
+  capabilityId,
+  input,
+})
+
 export const promptTextFingerprint = (text: string): string =>
   createHash('sha256').update(text).digest('hex').slice(0, 16)
 
@@ -78,6 +91,16 @@ const promptTextFingerprints = (options: LanguageModelV3CallOptions): readonly s
 
 const promptTokenFingerprints = (options: LanguageModelV3CallOptions): readonly string[] =>
   promptTexts(options).flatMap((text) => (text.match(/[\p{L}\p{N}_]+/gu) ?? []).map(promptTextFingerprint))
+
+const promptToolResultTokenFingerprints = (options: LanguageModelV3CallOptions): readonly string[] =>
+  options.prompt.flatMap((message) => {
+    if (typeof message.content === 'string') return []
+    return message.content.flatMap((part) => {
+      if (part.type !== 'tool-result') return []
+      const serialized = JSON.stringify('output' in part ? part.output : part) ?? ''
+      return (serialized.match(/[\p{L}\p{N}_]+/gu) ?? []).map(promptTextFingerprint)
+    })
+  })
 
 const summarizePrompt = (options: LanguageModelV3CallOptions): readonly PromptPartSummary[] =>
   options.prompt.map((message): PromptPartSummary => {
@@ -136,7 +159,48 @@ function resolveWireName(
   }
 }
 
-function serializeToolInput(decision: Extract<ModelDecision, { kind: 'tool' }>, generation: number): string {
+export const COMPACTION_LATEST = '$compaction:latest'
+
+const findCompactionHandle = (value: unknown): string | undefined => {
+  if (typeof value !== 'object' || value === null) return undefined
+  if ('_compacted' in value && value['_compacted'] === true && 'handle' in value && typeof value.handle === 'string') {
+    return value.handle
+  }
+  for (const nested of Object.values(value)) {
+    const handle = findCompactionHandle(nested)
+    if (handle !== undefined) return handle
+  }
+  return undefined
+}
+
+const latestCompactionHandle = (options: LanguageModelV3CallOptions): string | undefined => {
+  let handle: string | undefined
+  for (const message of options.prompt) {
+    if (typeof message.content === 'string') continue
+    for (const part of message.content) {
+      if (part.type !== 'tool-result') continue
+      handle = findCompactionHandle(part) ?? handle
+    }
+  }
+  return handle
+}
+
+const resolveCompactionInput = (input: unknown, callOptions: LanguageModelV3CallOptions): unknown => {
+  let serialized: string | undefined
+  try {
+    serialized = JSON.stringify(input)
+  } catch {
+    return input
+  }
+  if (serialized === undefined || !serialized.includes(COMPACTION_LATEST)) return input
+  const handle = latestCompactionHandle(callOptions)
+  if (handle === undefined) {
+    throw new Error(`'${COMPACTION_LATEST}' was used before any compacted tool result was observed`)
+  }
+  return JSON.parse(serialized.split(JSON.stringify(COMPACTION_LATEST)).join(JSON.stringify(handle)))
+}
+
+function serializeToolInput(decision: Exclude<ModelDecision, { kind: 'answer' }>, generation: number): string {
   let serialized: string | undefined
   try {
     serialized = JSON.stringify(decision.input)
@@ -159,6 +223,8 @@ function serializeToolInput(decision: Extract<ModelDecision, { kind: 'tool' }>, 
 export function createScriptedModel(options: ScriptedModelOptions): ScriptedModel {
   let decisions: readonly ModelDecision[] = []
   let pendingToolCall: PendingToolCall | undefined
+  let parkedGate: GatedToolCall | undefined
+  const gateWaiters: Array<(gate: GatedToolCall) => void> = []
   let generation = 0
   let localId = 0
   let recordedInspections: readonly ScriptedModelInspection[] = []
@@ -175,6 +241,7 @@ export function createScriptedModel(options: ScriptedModelOptions): ScriptedMode
       hasToolResult,
       promptTextFingerprints: promptTextFingerprints(callOptions),
       promptTokenFingerprints: promptTokenFingerprints(callOptions),
+      promptToolResultTokenFingerprints: promptToolResultTokenFingerprints(callOptions),
     } as const
     recordedInspections = [...recordedInspections, inspection]
     options.events?.record('llm.generate', {
@@ -199,6 +266,7 @@ export function createScriptedModel(options: ScriptedModelOptions): ScriptedMode
       return generationResult([{ type: 'text', text: decision.text }], 'stop')
     }
 
+    const decisionInput = resolveCompactionInput(decision.input, callOptions)
     const toolName = resolveWireName(decision.capabilityId, options.resolveCapability, tools)
     if (!tools.includes(toolName)) {
       if (options.autoLoadTools === true && tools.includes('load_tool') && !attemptedLoads.has(decision.capabilityId)) {
@@ -215,15 +283,37 @@ export function createScriptedModel(options: ScriptedModelOptions): ScriptedMode
         `Capability '${decision.capabilityId}' resolved to '${toolName}', but it was not advertised; available tools: ${listedTools}`,
       )
     }
-    const input = serializeToolInput(decision, generation)
+    const input = serializeToolInput({ ...decision, input: decisionInput }, generation)
     const toolCallId = nextId()
     attemptedLoads.delete(decision.capabilityId)
     pendingToolCall = { capabilityId: decision.capabilityId, toolCallId, toolName }
     decisions = decisions.slice(1)
     return generationResult([{ type: 'tool-call', toolCallId, toolName, input }], 'tool-calls')
   }
-  const doGenerate = (callOptions: LanguageModelV3CallOptions): Promise<LanguageModelV3GenerateResult> =>
-    Promise.resolve(runDecision(callOptions))
+  const doGenerate = (callOptions: LanguageModelV3CallOptions): Promise<LanguageModelV3GenerateResult> => {
+    const gated = decisions[0]?.kind === 'tool-gate'
+    const result = runDecision(callOptions)
+    if (!gated) return Promise.resolve(result)
+    return new Promise<LanguageModelV3GenerateResult>((resolve, reject) => {
+      const signal = callOptions.abortSignal
+      const onAbort = (): void => {
+        pendingToolCall = undefined
+        parkedGate = undefined
+        const reason: unknown = signal?.reason
+        reject(reason instanceof Error ? reason : new Error('Generation aborted'))
+      }
+      const gate: GatedToolCall = {
+        release: () => {
+          signal?.removeEventListener('abort', onAbort)
+          if (parkedGate === gate) parkedGate = undefined
+          resolve(result)
+        },
+      }
+      parkedGate = gate
+      for (const waiter of gateWaiters.splice(0)) waiter(gate)
+      signal?.addEventListener('abort', onAbort, { once: true })
+    })
+  }
 
   const model = new MockLanguageModelV3({ doGenerate })
 
@@ -232,7 +322,20 @@ export function createScriptedModel(options: ScriptedModelOptions): ScriptedMode
     enqueue(nextDecisions): void {
       decisions = [...decisions, ...nextDecisions]
     },
+    nextGate(): Promise<GatedToolCall> {
+      if (parkedGate !== undefined) return Promise.resolve(parkedGate)
+      return new Promise((resolve) => {
+        gateWaiters.push(resolve)
+      })
+    },
     verifyConsumed(): void {
+      if (parkedGate !== undefined) {
+        const gate = parkedGate
+        parkedGate = undefined
+        pendingToolCall = undefined
+        gate.release()
+        throw new Error('Scripted model gate was never released')
+      }
       if (pendingToolCall !== undefined) {
         const queued =
           decisions.length === 0
@@ -254,6 +357,7 @@ export function createScriptedModel(options: ScriptedModelOptions): ScriptedMode
         availableTools: [...inspection.availableTools],
         promptTextFingerprints: [...inspection.promptTextFingerprints],
         promptTokenFingerprints: [...inspection.promptTokenFingerprints],
+        promptToolResultTokenFingerprints: [...inspection.promptToolResultTokenFingerprints],
       }))
     },
   }

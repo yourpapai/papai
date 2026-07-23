@@ -150,4 +150,28 @@ describe('strict http dispatcher', () => {
     expect(response.status).toBe(304)
     expect(response.headers.get('location')).toBe('https://other.test/')
   })
+
+  test('idle() resolves after an in-flight responder settles', async () => {
+    const http = createStrictHttpDispatcher(createScenarioEvents('idle drain'))
+    let release = (): void => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    http.expect({ method: 'POST', url: 'https://api.test/slow' }, async () => {
+      await gate
+      return new Response(null, { status: 204 })
+    })
+
+    const inFlight = http.fetch('https://api.test/slow', { method: 'POST' })
+    let idleResolved = false
+    const idle = http.idle().then(() => {
+      idleResolved = true
+    })
+    expect(idleResolved).toBe(false)
+    release()
+    await inFlight
+    await idle
+    expect(idleResolved).toBe(true)
+    expect(() => http.verifyConsumed()).not.toThrow()
+  })
 })

@@ -5,12 +5,12 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import type { LanguageModelV3Prompt } from '@ai-sdk/provider'
+import type { JSONValue, LanguageModelV3CallOptions, LanguageModelV3Prompt } from '@ai-sdk/provider'
 import { generateText, stepCountIs, tool } from 'ai'
 import { z } from 'zod'
 
 import { createScenarioEvents } from './events.js'
-import { answer, callCapability, createScriptedModel, promptTextFingerprint } from './scripted-llm.js'
+import { answer, callCapability, createScriptedModel, gateCall, promptTextFingerprint } from './scripted-llm.js'
 
 const resolveCapability = (capabilityId: string): string => {
   if (capabilityId === 'tasks.create') return 'provider_tasks__create_task'
@@ -39,6 +39,42 @@ const promptWithToolResult = (toolCallId: string, toolName = 'provider_tasks__cr
     ],
   },
 ]
+
+const expandResultTool = {
+  type: 'function' as const,
+  name: 'expand_result',
+  inputSchema: { type: 'object' as const },
+}
+
+const promptWithToolResultPayload = (
+  toolCallId: string,
+  toolName: string,
+  payload: JSONValue,
+): LanguageModelV3CallOptions => {
+  const prompt: LanguageModelV3Prompt = [
+    ...promptWithoutToolResult,
+    {
+      role: 'tool' as const,
+      content: [
+        {
+          type: 'tool-result' as const,
+          toolCallId,
+          toolName,
+          output: { type: 'json' as const, value: payload },
+        },
+      ],
+    },
+  ]
+  return { prompt, tools: [expandResultTool] }
+}
+
+const gatedTool = {
+  type: 'function' as const,
+  name: 'create_task',
+  inputSchema: { type: 'object' as const },
+}
+
+const baseCallOptions = { prompt: promptWithoutToolResult, tools: [gatedTool] }
 
 const captureError = (operation: PromiseLike<unknown>): Promise<Error> =>
   Promise.resolve(operation).then(
@@ -213,6 +249,50 @@ describe('scripted language model', () => {
     )
   })
 
+  test('gate decision parks doGenerate until released', async () => {
+    const model = createScriptedModel({ resolveCapability: () => 'create_task' })
+    model.enqueue([gateCall('tasks.create', { title: 'x' })])
+    const gatePromise = model.nextGate()
+
+    let settled = false
+    const generation = model.model.doGenerate(baseCallOptions).then((result) => {
+      settled = true
+      return result
+    })
+    const gate = await gatePromise
+
+    expect(settled).toBe(false)
+    gate.release()
+    const result = await generation
+    expect(settled).toBe(true)
+    expect(result.content[0]).toMatchObject({ type: 'tool-call', toolName: 'create_task' })
+  })
+
+  test('gate rejects on abort and clears the pending tool call', async () => {
+    const model = createScriptedModel({ resolveCapability: () => 'create_task' })
+    model.enqueue([gateCall('tasks.create', { title: 'x' })])
+    const controller = new AbortController()
+    const gatePromise = model.nextGate()
+
+    const generation = model.model.doGenerate({ ...baseCallOptions, abortSignal: controller.signal })
+    await gatePromise
+    controller.abort(new Error('stop'))
+
+    await expect(generation).rejects.toThrow('stop')
+    expect(() => model.verifyConsumed()).not.toThrow()
+  })
+
+  test('verifyConsumed fails an unreleased gate and releases it for teardown', async () => {
+    const model = createScriptedModel({ resolveCapability: () => 'create_task' })
+    model.enqueue([gateCall('tasks.create', { title: 'x' })])
+    const gatePromise = model.nextGate()
+    void Promise.resolve(model.model.doGenerate(baseCallOptions)).catch(() => undefined)
+    await gatePromise
+
+    expect(() => model.verifyConsumed()).toThrow('gate was never released')
+    expect(() => model.verifyConsumed()).not.toThrow()
+  })
+
   test('includes capability context when resolution fails', async () => {
     const script = createScriptedModel({ resolveCapability })
     script.enqueue([callCapability('unknown.capability', {})])
@@ -353,5 +433,48 @@ describe('scripted language model', () => {
     expect(script.inspections()).toHaveLength(2)
     expect(script.inspections()[1]?.hasToolResult).toBe(true)
     expect(() => script.verifyConsumed()).not.toThrow()
+  })
+
+  test('resolves $compaction:latest from the latest compacted tool result', async () => {
+    const model = createScriptedModel({ resolveCapability: () => 'expand_result' })
+    model.enqueue([callCapability('meta.expand-result', { handle: '$compaction:latest', limit: 100 })])
+    const compactedPrompt = promptWithToolResultPayload('call-1', 'list_tasks', {
+      _compacted: true,
+      handle: 'res_3',
+      summary: 'compacted',
+      totalBytes: 9000,
+    })
+
+    const result = await model.model.doGenerate(compactedPrompt)
+
+    expect(result.content[0]).toMatchObject({
+      type: 'tool-call',
+      toolName: 'expand_result',
+      input: JSON.stringify({ handle: 'res_3', limit: 100 }),
+    })
+  })
+
+  test('fingerprints tool-result content tokens separately from text parts', async () => {
+    const model = createScriptedModel({ resolveCapability: () => 'expand_result' })
+    model.enqueue([answer('done')])
+
+    await model.model.doGenerate(
+      promptWithToolResultPayload('call-1', 'list_tasks', { _compacted: true, handle: 'res_1' }),
+    )
+
+    const inspection = model.inspections().at(0)
+    expect(inspection?.promptToolResultTokenFingerprints).toContain(promptTextFingerprint('_compacted'))
+    expect(inspection?.promptToolResultTokenFingerprints).toContain(promptTextFingerprint('res_1'))
+    expect(inspection?.promptToolResultTokenFingerprints).not.toContain(promptTextFingerprint('create'))
+    expect(inspection?.promptToolResultTokenFingerprints).not.toContain(promptTextFingerprint('it'))
+  })
+
+  test('fails when $compaction:latest has no compacted tool result to resolve', async () => {
+    const model = createScriptedModel({ resolveCapability: () => 'expand_result' })
+    model.enqueue([callCapability('meta.expand-result', { handle: '$compaction:latest' })])
+
+    await expect(model.model.doGenerate(baseCallOptions)).rejects.toThrow(
+      `'$compaction:latest' was used before any compacted tool result was observed`,
+    )
   })
 })

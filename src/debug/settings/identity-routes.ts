@@ -36,10 +36,11 @@ function handleGet(req: Request, url: URL): Response {
   if (!scope.ok) return scope.response
   const provider = providerNameFor(scope.scope.contextId)
   if (provider === null) return settingsJson(422, { error: 'no task instance configured for this context' })
+  // Envelope contextId is the resolved scope; the mapping itself is keyed by the raw platform user id.
   return settingsJson(200, {
     contextId: scope.scope.contextId,
     providerName: provider,
-    mapping: getIdentityMapping(scope.scope.contextId, provider),
+    mapping: getIdentityMapping(auth.authed.principal.platformUserId, provider),
   })
 }
 
@@ -75,7 +76,7 @@ async function handlePut(req: Request): Promise<Response> {
   if (!resolved.ok) return resolved.response
 
   setIdentityMapping({
-    contextId: resolved.scope.contextId,
+    contextId: auth.authed.principal.platformUserId,
     providerName: resolved.provider,
     providerUserId: body.data.providerUserId,
     providerUserLogin: body.data.providerUserLogin ?? null,
@@ -83,7 +84,14 @@ async function handlePut(req: Request): Promise<Response> {
     matchMethod: 'manual_nl',
     confidence: 1,
   })
-  log.info({ contextId: resolved.scope.contextId, providerName: resolved.provider }, 'Settings identity mapping set')
+  log.info(
+    {
+      contextId: auth.authed.principal.platformUserId,
+      scopedContextId: resolved.scope.contextId,
+      providerName: resolved.provider,
+    },
+    'Settings identity mapping set',
+  )
   return settingsJson(200, { ok: true, contextId: resolved.scope.contextId })
 }
 
@@ -94,9 +102,13 @@ function handleDelete(req: Request, url: URL): Response {
   if (csrf !== null) return csrf
   const resolved = resolveProviderScope(auth.authed, url.searchParams.get('contextId') ?? undefined)
   if (!resolved.ok) return resolved.response
-  clearIdentityMapping(resolved.scope.contextId, resolved.provider)
+  clearIdentityMapping(auth.authed.principal.platformUserId, resolved.provider)
   log.info(
-    { contextId: resolved.scope.contextId, providerName: resolved.provider },
+    {
+      contextId: auth.authed.principal.platformUserId,
+      scopedContextId: resolved.scope.contextId,
+      providerName: resolved.provider,
+    },
     'Settings identity mapping cleared',
   )
   return settingsJson(200, { ok: true, contextId: resolved.scope.contextId })

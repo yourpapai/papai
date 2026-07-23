@@ -17,6 +17,7 @@ import { createLiveStatusReporter, PREPARING_RESPONSE } from './live-status/repo
 import { hoistSystemMessages } from './llm-message-utils.js'
 import { invokeModelWithTyping } from './llm-orchestrator-invoke.js'
 import { emitLlmError, logProcessMessage } from './llm-orchestrator-logging.js'
+import { collectTurnMessages } from './llm-orchestrator-messages.js'
 import { sendLlmResponse } from './llm-orchestrator-send.js'
 import type { InvokeModelArgs } from './llm-orchestrator-types.js'
 import { logger } from './logger.js'
@@ -242,7 +243,7 @@ export const invokeWithLiveStatus = async (
         return { text: res.text, finishReason: res.finishReason }
       },
     }
-    const history: ModelMessage[] = [...invokeArgs.messages, ...result.finalStep.response.messages]
+    const history: ModelMessage[] = [...invokeArgs.messages, ...collectTurnMessages(result)]
     await sendLlmResponse(reply, invokeArgs.contextId, result, progressReporter, { verifier, history }, () =>
       liveStatus.dismiss(),
     )

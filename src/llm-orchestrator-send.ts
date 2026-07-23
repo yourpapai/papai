@@ -9,15 +9,15 @@ import type { AiProgressReporter } from './ai-progress-reporter.js'
 import type { ReplyFn } from './chat/types.js'
 import { buildVerifiedCompletion, detectToolFailure } from './completion/verified-completion.js'
 import type { VerifierDeps } from './completion/verified-completion.js'
+import { collectTurnMessages, type TurnMessagesResult } from './llm-orchestrator-messages.js'
 import { logger } from './logger.js'
 
 const log = logger.child({ scope: 'llm-orchestrator:send' })
 
-type SendResult = {
+type SendResult = TurnMessagesResult & {
   text: string | undefined
   finishReason?: string
   toolCalls: unknown[] | undefined
-  finalStep: { response: { messages: ModelMessage[] } }
 }
 type Verification = { verifier: VerifierDeps; history: readonly ModelMessage[] }
 
@@ -63,7 +63,7 @@ export const sendLlmResponse = async (
   /** Runs once right before the first reply posts (after verification), to dismiss the live-status placeholder. */
   beforeFirstMessage?: () => Promise<void>,
 ): Promise<void> => {
-  const hadToolFailure = detectToolFailure(result.finalStep.response.messages)
+  const hadToolFailure = detectToolFailure(collectTurnMessages(result))
   const textToFormat = await resolveFinalText(result, hadToolFailure, verification)
 
   const responseLength = result.text === undefined ? 0 : result.text.length

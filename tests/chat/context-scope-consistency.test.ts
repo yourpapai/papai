@@ -29,6 +29,15 @@ const missingFromRegistry = CONTEXT_OWNED_COLUMNS.flatMap((c) =>
   declaredKeys.has(key(c.table, c.column)) ? [] : [key(c.table, c.column)],
 )
 
+const GRANDFATHERED_USER_SCOPED_OWNED = new Set(['user_identity_mappings.context_id', 'web_rate_limit.actor_id'])
+
+const userScopedOwnedEntries = CONTEXT_OWNED_COLUMNS.flatMap((column) => {
+  const scope = ENTITY_SCOPES.find((entry) => entry.table === column.table && entry.column === column.column)?.scope
+  return scope === 'user' && !GRANDFATHERED_USER_SCOPED_OWNED.has(key(column.table, column.column))
+    ? [key(column.table, column.column)]
+    : []
+})
+
 describe('ENTITY_SCOPES reconciliation', () => {
   test('rawThreadScoped matches CONTEXT_OWNED_COLUMNS.threadScoped for every shared (table,column)', () => {
     expect(rawThreadScopedMismatches).toEqual([])
@@ -40,5 +49,9 @@ describe('ENTITY_SCOPES reconciliation', () => {
 
   test('every CONTEXT_OWNED_COLUMNS entry is declared in the registry', () => {
     expect(missingFromRegistry).toEqual([])
+  })
+
+  test('no user-scoped table beyond the grandfathered entries is context-owned', () => {
+    expect(userScopedOwnedEntries).toEqual([])
   })
 })
