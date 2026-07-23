@@ -8,6 +8,7 @@ import type { ModelMessage } from 'ai'
 import type { ActorRole } from './chat/types.js'
 import { runTrimInBackground, shouldTriggerTrim } from './conversation.js'
 import { appendHistory } from './history.js'
+import { collectTurnMessages, type TurnMessagesResult } from './llm-orchestrator-messages.js'
 import { logger } from './logger.js'
 import { armMemoryCapture } from './long-term-memory/capture-debounce.js'
 import { runMemoryExtractionInBackground } from './long-term-memory/runner.js'
@@ -107,7 +108,7 @@ export type AssistantTurnMeta = {
 export const recordAssistantTurn = (
   meta: AssistantTurnMeta,
   turn: { baseHistory: readonly ModelMessage[]; historyMessage: ModelMessage },
-  result: { finalStep: { response: { messages: ModelMessage[] } }; finishReason?: string },
+  result: TurnMessagesResult & { finishReason?: string },
 ): void => {
   appendAssistantTurnHistory(
     meta.contextId,
@@ -115,7 +116,7 @@ export const recordAssistantTurn = (
     meta.mainModel,
     turn.baseHistory,
     turn.historyMessage,
-    result.finalStep.response.messages,
+    collectTurnMessages(result),
     meta.contextType,
     meta.actorRole,
     result.finishReason === 'tool-calls',

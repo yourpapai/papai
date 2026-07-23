@@ -613,7 +613,7 @@ describe('scenario execution', () => {
       // The scenario world already seeds system LLM config during startup
       // (see world.ts's `fixtures.seedSystemLlmConfig()` call); there is no
       // `given.seedSystemLlmConfig` DSL member to call here.
-      world.http.expect({ method: 'POST', url: 'https://admin.invalid/v1/chat/completions' }, () =>
+      world.http.expect({ method: 'POST', url: 'https://llm.invalid/v1/chat/completions' }, () =>
         Response.json({
           id: 'chatcmpl-sched-1',
           choices: [

@@ -14,6 +14,7 @@ import { setIdentityMapping } from '../../../src/identity/mapping.js'
 import { addAdmin, SUPER_ADMIN_PLATFORM_ID } from '../../../src/instances/admin-store.js'
 import { setContextSettings } from '../../../src/instances/context-store.js'
 import type { PlatformInstanceType } from '../../../src/instances/types.js'
+import { createLlmProvider, setAdminRoleBindings } from '../../../src/llm-providers/store.js'
 import { saveMemoryRecord } from '../../../src/long-term-memory/store.js'
 import type { MemoryRecord, MemoryRecordInput } from '../../../src/long-term-memory/types.js'
 import { mcpPool } from '../../../src/mcp/client-pool.js'
@@ -34,7 +35,6 @@ import { CSRF_HEADER } from '../../../src/settings/request-auth.js'
 import { addUser } from '../../../src/users.js'
 import { setAssertPublicUrlForTesting } from '../../../src/web/safe-fetch.js'
 import {
-  seedAdminLlmBinding,
   seedTestAlertPrompt,
   seedTestConversationHistory,
   seedTestExhaustedWebFetchQuota,
@@ -418,7 +418,22 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
       })
     },
     seedSystemLlmConfig(input = {}): void {
-      seedAdminLlmBinding(input.mainModel ?? 'scenario-main-model')
+      // Seed a single provider at the scenario LLM host. The small/embedding
+      // roles are left null so the resolver falls back to `main`, which keeps
+      // every real-HTTP LLM path (secondary chat + embeddings) pointed at
+      // https://llm.invalid/v1 — the host the story corpus declares.
+      const provider = createLlmProvider(
+        { label: 'scenario', providerType: 'openai', baseUrl: 'https://llm.invalid/v1', apiKey: 'scenario-api-key' },
+        'scenario-admin',
+      )
+      setAdminRoleBindings(
+        {
+          main: { providerId: provider.id, model: input.mainModel ?? 'scenario-main-model' },
+          small: null,
+          embedding: null,
+        },
+        'scenario-admin',
+      )
     },
     seedNotifyToken(token): void {
       seedTestSystemConfig({ key: 'notify_token', value: token })

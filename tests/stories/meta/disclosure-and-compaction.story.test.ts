@@ -59,7 +59,7 @@ scenario('SCN-meta-expand-result: expands a compacted tool result by handle', as
   then.replyTo(alice).equals('Created the big task.')
 
   given.llm([
-    callCapability('tasks.list', {}),
+    callCapability('tasks.list', { projectId: 'project-1' }),
     callCapability('meta.expand-result', { handle: '$compaction:latest', limit: 4000 }),
     answer('The description starts with payload-payload.'),
   ])
