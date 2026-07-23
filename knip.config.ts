@@ -128,6 +128,13 @@ export default {
     // listRoutes is consumed by the behavior-audit closure verifier via
     // dynamic import; re-exported from src/debug/server.ts.
     'src/debug/server-route-options.ts': ['exports'],
+    // UNKNOWN_EMBEDDING_VERSION has no production consumer yet: it is the
+    // predicate the embedding backfill (hybrid-retrieval plan Task 9,
+    // docs/superpowers/plans/2026-07-23-memory-hybrid-retrieval.md) uses to find
+    // pre-identity vectors, not built yet. embeddingVersionOf/resolveEmbeddingModel
+    // in the same file are already wired into recall-cascade.ts (Task 7) and stay
+    // checked. REMOVE this entry once Task 9 wires embedding-backfill.ts.
+    'src/long-term-memory/embedding-identity.ts': ['exports'],
   },
 
   includeEntryExports: true,
@@ -136,19 +143,5 @@ export default {
 
   // Migrations are runtime-only SQL; client/stories/** is the dev-only
   // Storybook harness; tests/visual/** is the Playwright screenshot suite.
-  //
-  // TEMPORARY (hybrid-retrieval plan, docs/superpowers/plans/2026-07-23-memory-hybrid-retrieval.md):
-  // the lexical retrieval-channel modules below are built bottom-up ahead of
-  // their consumer. They become reachable from production when Task 7 wires
-  // searchLexical/hybridSearch into recall-cascade.ts. REMOVE these
-  // entries in Task 7 (they will then be genuine dead code if still unreachable).
-  ignore: [
-    'src/db/migrations/**',
-    'client/stories/**',
-    'tests/visual/**',
-    'src/long-term-memory/lexical-query.ts',
-    'src/long-term-memory/lexical-search.ts',
-    'src/long-term-memory/fusion.ts',
-    'src/long-term-memory/embedding-identity.ts',
-  ],
+  ignore: ['src/db/migrations/**', 'client/stories/**', 'tests/visual/**'],
 }

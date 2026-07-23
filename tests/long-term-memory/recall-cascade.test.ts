@@ -47,7 +47,11 @@ describe('runRecallCascade (keyword mode, no embeddings)', () => {
         query: 'friday deploy schedule',
         limit: 8,
       },
-      { getEmbedding: () => Promise.resolve(null), schedulePromotion: () => undefined },
+      {
+        getEmbedding: () => Promise.resolve(null),
+        resolveEmbeddingModel: () => 'model-a',
+        schedulePromotion: () => undefined,
+      },
     )
     expect(out.records.map((r) => ({ id: r.id, p: r.provenance }))).toContainEqual({ id: 'a', p: 'group' })
   })
@@ -67,6 +71,7 @@ describe('runRecallCascade (keyword mode, no embeddings)', () => {
       },
       {
         getEmbedding: () => Promise.resolve(null),
+        resolveEmbeddingModel: () => 'model-a',
         schedulePromotion: (r) => {
           scheduled.push(r.id)
         },
@@ -104,6 +109,7 @@ describe('runRecallCascade (keyword mode, no embeddings)', () => {
       },
       {
         getEmbedding: () => Promise.resolve(null),
+        resolveEmbeddingModel: () => 'model-a',
         schedulePromotion: (r) => {
           scheduled.push(r.id)
         },
@@ -126,7 +132,11 @@ describe('runRecallCascade (keyword mode, no embeddings)', () => {
         limit: 8,
         kind: 'preference',
       },
-      { getEmbedding: () => Promise.resolve(null), schedulePromotion: () => undefined },
+      {
+        getEmbedding: () => Promise.resolve(null),
+        resolveEmbeddingModel: () => 'model-a',
+        schedulePromotion: () => undefined,
+      },
     )
     const ids = out.records.map((r) => r.id)
     expect(ids).toContain('k-pref')
@@ -143,7 +153,11 @@ describe('runRecallCascade (keyword mode, no embeddings)', () => {
         query: 'friday deploy schedule',
         limit: 8,
       },
-      { getEmbedding: () => Promise.resolve(null), schedulePromotion: () => undefined },
+      {
+        getEmbedding: () => Promise.resolve(null),
+        resolveEmbeddingModel: () => 'model-a',
+        schedulePromotion: () => undefined,
+      },
     )
     expect(without.records.map((r) => r.id)).not.toContain('s-stale')
     const withStale = await runRecallCascade(
@@ -155,7 +169,11 @@ describe('runRecallCascade (keyword mode, no embeddings)', () => {
         limit: 8,
         includeStale: true,
       },
-      { getEmbedding: () => Promise.resolve(null), schedulePromotion: () => undefined },
+      {
+        getEmbedding: () => Promise.resolve(null),
+        resolveEmbeddingModel: () => 'model-a',
+        schedulePromotion: () => undefined,
+      },
     )
     expect(withStale.records.map((r) => r.id)).toContain('s-stale')
   })

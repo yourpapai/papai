@@ -5,11 +5,10 @@
 
 import type { ContextType } from '../chat/types.js'
 import { getEmbeddingForContext } from '../embeddings.js'
+import { embeddingVersionOf, resolveEmbeddingModel } from './embedding-identity.js'
+import { searchHybrid } from './hybrid-search.js'
 import { evaluatePromotion } from './promotion.js'
-import { rankCandidatesByQuery } from './recall-ranking.js'
 import { resolveMemoryScope } from './scope.js'
-import { rankRecordsBySimilarity } from './semantic-search.js'
-import { listMemoryRecords, listProvisionalRecords } from './store.js'
 import type { MemoryKind, MemoryRecord, MemoryScope, MemoryStatus } from './types.js'
 
 export const RECALL_DEFAULT_LIMIT = 8
@@ -29,6 +28,7 @@ export type RunRecallCascadeInput = Readonly<{
 
 export type RunRecallCascadeDeps = Readonly<{
   getEmbedding: (query: string, configContextId: string) => Promise<readonly number[] | null>
+  resolveEmbeddingModel: (configContextId: string) => string | null
   schedulePromotion: (record: MemoryRecord, scope: MemoryScope) => void
 }>
 
@@ -39,6 +39,7 @@ const defaultDeps: RunRecallCascadeDeps = {
       contextType: 'group',
       chatUserId: configContextId,
     }),
+  resolveEmbeddingModel,
   schedulePromotion: (record, scope) => {
     void evaluatePromotion(scope, record)
   },
@@ -59,44 +60,40 @@ const dedupe = (hits: readonly RecallHit[], limit: number): readonly RecallHit[]
 const tag = (records: readonly MemoryRecord[], provenance: RecallProvenance): RecallHit[] =>
   records.map((record) => ({ ...record, provenance }))
 
-const byKind = (records: readonly MemoryRecord[], kind: MemoryKind | undefined): readonly MemoryRecord[] =>
-  kind === undefined ? records : records.filter((record) => record.kind === kind)
+type ChannelContext = Readonly<{
+  scope: MemoryScope
+  query: string
+  queryEmbedding: readonly number[] | null
+  embeddingVersion: string | null
+  kind: MemoryKind | undefined
+  limit: number
+}>
 
-const searchActiveHybrid = (
-  scope: MemoryScope,
-  query: string,
-  queryEmbedding: readonly number[] | null,
-  limit: number,
+const search = (
+  context: ChannelContext,
   statuses: readonly MemoryStatus[],
-  kind: MemoryKind | undefined,
-): readonly MemoryRecord[] => {
-  const keyword = (): readonly MemoryRecord[] => {
-    const active = listMemoryRecords({ scopeId: scope.scopeId, scopeType: scope.scopeType, statuses, limit: 500 })
-    return rankCandidatesByQuery(byKind(active, kind), query, null, { limit })
-  }
-  if (queryEmbedding === null) return keyword()
-  const semantic = byKind(rankRecordsBySimilarity(scope, queryEmbedding, { statuses, limit }), kind)
-  if (semantic.length > 0) return semantic
-  return keyword()
-}
+  threads: Readonly<{ threadContextId?: string; excludeThreadContextId?: string }> = {},
+): readonly MemoryRecord[] =>
+  searchHybrid({
+    ...context.scope,
+    query: context.query,
+    queryEmbedding: context.queryEmbedding,
+    embeddingVersion: context.embeddingVersion,
+    statuses,
+    kind: context.kind,
+    limit: context.limit,
+    ...threads,
+  })
 
-const scheduleLayerThree = (
-  scope: MemoryScope,
-  query: string,
+/** The version identity of the config context issuing this query, or null when it cannot embed. */
+const queryEmbeddingVersion = (
   queryEmbedding: readonly number[] | null,
-  storageContextId: string,
-  limit: number,
-  kind: MemoryKind | undefined,
+  configContextId: string,
   deps: RunRecallCascadeDeps,
-): readonly RecallHit[] => {
-  const siblings = rankCandidatesByQuery(
-    byKind(listProvisionalRecords({ ...scope, excludeThreadContextId: storageContextId, limit: 200 }), kind),
-    query,
-    queryEmbedding,
-    { limit },
-  )
-  for (const record of siblings) deps.schedulePromotion(record, scope)
-  return tag(siblings, 'other-thread')
+): string | null => {
+  if (queryEmbedding === null) return null
+  const model = deps.resolveEmbeddingModel(configContextId)
+  return model === null ? null : embeddingVersionOf(model, queryEmbedding.length)
 }
 
 /** @public -- consumed by the recall tool (Plan 2 T5). */
@@ -108,25 +105,27 @@ export async function runRecallCascade(
   const scope = resolveMemoryScope({ storageContextId: input.storageContextId, contextType: input.contextType })
   const queryEmbedding = await deps.getEmbedding(input.query, input.configContextId)
   const statuses: readonly MemoryStatus[] = input.includeStale === true ? ['active', 'stale'] : ['active']
-
-  if (input.contextType === 'dm') {
-    const active = searchActiveHybrid(scope, input.query, queryEmbedding, limit, statuses, input.kind)
-    return { records: dedupe(tag(active, 'group'), limit) }
+  const context: ChannelContext = {
+    scope,
+    query: input.query,
+    queryEmbedding,
+    embeddingVersion: queryEmbeddingVersion(queryEmbedding, input.configContextId, deps),
+    kind: input.kind,
+    limit,
   }
 
-  const layer1 = rankCandidatesByQuery(
-    byKind(listProvisionalRecords({ ...scope, threadContextId: input.storageContextId, limit: 100 }), input.kind),
-    input.query,
-    queryEmbedding,
-    { limit },
-  )
-  const layer2 = searchActiveHybrid(scope, input.query, queryEmbedding, limit, statuses, input.kind)
+  if (input.contextType === 'dm') {
+    return { records: dedupe(tag(search(context, statuses), 'group'), limit) }
+  }
+
+  const layer1 = search(context, ['provisional'], { threadContextId: input.storageContextId })
+  const layer2 = search(context, statuses)
   const combined: RecallHit[] = [...tag(layer1, 'current'), ...tag(layer2, 'group')]
 
   if (dedupe(combined, limit).length < limit) {
-    combined.push(
-      ...scheduleLayerThree(scope, input.query, queryEmbedding, input.storageContextId, limit, input.kind, deps),
-    )
+    const siblings = search(context, ['provisional'], { excludeThreadContextId: input.storageContextId })
+    for (const record of siblings) deps.schedulePromotion(record, scope)
+    combined.push(...tag(siblings, 'other-thread'))
   }
 
   return { records: dedupe(combined, limit) }
