@@ -58,7 +58,7 @@ export type StorySeamId = (typeof STORY_SEAM_IDS)[number]
 
 export type AuditReadiness =
   | Readonly<{ state: 'executable-as-is' }>
-  | Readonly<{ state: 'needs-seam'; seams: NonEmptyReadonlyTuple<StorySeamId> }>
+  | Readonly<{ state: 'needs-seam'; seams: NonEmptyReadonlyTuple<StorySeamId>; unblockedByTier: StoryTier }>
   | Readonly<{ state: 'blocked'; blocker: 'missing-implementation' }>
 
 export type AuditRecord = Readonly<{
@@ -854,8 +854,12 @@ function auditRecord(readiness: AuditReadiness, family: StoryFamily, rationale: 
   return Object.freeze({ readiness, family, rationale: toPendingReason(rationale) })
 }
 
-const needs = (family: StoryFamily, seams: NonEmptyReadonlyTuple<StorySeamId>, rationale: string): AuditRecord =>
-  auditRecord({ state: 'needs-seam', seams }, family, rationale)
+const needs = (
+  family: StoryFamily,
+  seams: NonEmptyReadonlyTuple<StorySeamId>,
+  unblockedByTier: StoryTier,
+  rationale: string,
+): AuditRecord => auditRecord({ state: 'needs-seam', seams, unblockedByTier }, family, rationale)
 const blocked = (family: StoryFamily, rationale: string): AuditRecord =>
   auditRecord({ state: 'blocked', blocker: 'missing-implementation' }, family, rationale)
 
@@ -873,28 +877,33 @@ export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
   'SCN-fetch-chat-link': needs(
     'F3',
     ['capability-ids', 'platform-adapter-fakes'],
+    '3',
     'fetch_chat_link resolves Mattermost permalinks through the authenticated Mattermost REST API (resolveChatLink), never assertPublicUrl (that DNS/SSRF guard is web_fetch, family F6). Needs a Mattermost REST resolver fake, not built speculatively.',
   ),
   // F4 — HTTP surfaces
   'SCN-http-mattermost-action': needs(
     'F4',
     ['mattermost-action-fixture'],
+    '3',
     'Action callbacks bypass the session gate but need the test secret option wired into the world; wire verification stays forward-only.',
   ),
   // F8 — platform interactions
   'SCN-interaction-discord-router-wrapped': needs(
     'F8',
     ['platform-adapter-fakes'],
+    '3',
     'The harness enters at runtime.dispatchInteraction, below the platform adapter; this scenario verifies the discord.js wire above it (a raw callback decoded and routed into dispatch), which is Tier-3 platform-integrated territory, out of the roadmap scope. Needs a fake Discord client, not built speculatively.',
   ),
   'SCN-interaction-discord-standalone-fallback': needs(
     'F8',
     ['platform-adapter-fakes'],
+    '3',
     'The harness enters at runtime.dispatchInteraction, below the platform adapter; this scenario verifies the discord.js standalone fallback wire above it, which is Tier-3 platform-integrated territory, out of the roadmap scope. Needs a fake Discord client, not built speculatively.',
   ),
   'SCN-interaction-telegram-callback': needs(
     'F8',
     ['platform-adapter-fakes'],
+    '3',
     'The harness enters at runtime.dispatchInteraction, below the platform adapter; this scenario verifies the grammY callback wire above it, which is Tier-3 platform-integrated territory, out of the roadmap scope. Needs a fake Telegram API, not built speculatively.',
   ),
   // Unqueued — no production implementation exists

@@ -18,6 +18,7 @@ import {
   STORY_TIERS,
   TIER_SUITE_ROOTS,
   toPendingReason,
+  type AuditReadiness,
   type StoryFamily,
   type StorySeamId,
 } from '../catalog/coverage.js'
@@ -301,6 +302,25 @@ describe('scenario catalog coverage', () => {
     )
 
     expect(unknownSeams).toEqual([])
+  })
+
+  test('names the tier that unblocks every seam-pending scenario', () => {
+    const seamPending = pendingCoverage.filter((coverage) => coverage.audit.readiness.state === 'needs-seam')
+    const seamReadiness = seamPending
+      .map((coverage) => coverage.audit.readiness)
+      .filter(
+        (readiness): readiness is Extract<AuditReadiness, { state: 'needs-seam' }> => readiness.state === 'needs-seam',
+      )
+    const unblockingTiers = seamReadiness.map((readiness) => readiness.unblockedByTier)
+
+    expect(sorted(seamPending.map(({ scenarioId }) => scenarioId))).toEqual([
+      'SCN-fetch-chat-link',
+      'SCN-http-mattermost-action',
+      'SCN-interaction-discord-router-wrapped',
+      'SCN-interaction-discord-standalone-fallback',
+      'SCN-interaction-telegram-callback',
+    ])
+    expect(unblockingTiers).toEqual(['3', '3', '3', '3', '3'])
   })
 
   test('audit readiness totals match the audit outcome', () => {
