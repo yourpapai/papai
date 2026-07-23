@@ -54,6 +54,7 @@ describe('saveMemoryRecordWithEmbedding', () => {
   test('still saves the row when embedding is unavailable', async () => {
     const saved = await saveMemoryRecordWithEmbedding(input(), 'cfg-1', {
       getEmbedding: () => Promise.resolve(null),
+      resolveEmbeddingModel: () => 'model-a',
     })
     expect(saved.id).toBe('mem-1')
     const [row] = listMemoryRecords({ scopeId: 'group-1', scopeType: 'group', limit: 10 })
