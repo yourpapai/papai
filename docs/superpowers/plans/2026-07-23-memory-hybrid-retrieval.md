@@ -1049,12 +1049,14 @@ describe('fuseByRank', () => {
   })
 
   test('tie-break by id applies when scores are exactly equal', () => {
-    const fused = fuseByRank([rec('b'), rec('a')], [rec('a'), rec('b')], 10)
+    // Lexical rank 61 scores 2/(60+62) = 1/61; dense rank 0 scores 1/(60+1) = 1/61.
+    // Construct that exact collision and check the lower id wins.
+    const lexical = Array.from({ length: 62 }, (_, i) => rec(`lex-${String(i).padStart(2, '0')}`))
+    lexical[61] = rec('zzz-tied')
+    const fused = fuseByRank(lexical, [rec('aaa-tied')], 100)
 
-    // Both have 2/61 + 1/62 and 2/62 + 1/61 respectively — not equal — so check
-    // the genuinely-equal case: identical single-channel ranks.
-    expect(ids(fuseByRank([rec('b')], [], 10).concat(fuseByRank([rec('a')], [], 10)))).toEqual(['b', 'a'])
-    expect(fused).toHaveLength(2)
+    const tiedPositions = [fused.findIndex((r) => r.id === 'aaa-tied'), fused.findIndex((r) => r.id === 'zzz-tied')]
+    expect(tiedPositions[0]).toBeLessThan(tiedPositions[1] as number)
   })
 
   test('truncates to the limit', () => {
