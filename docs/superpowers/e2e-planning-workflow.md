@@ -39,12 +39,30 @@ Use this guide when you are:
 
 ## Realism Tiers
 
-| Tier                            | Meaning                                                                            | Typical papai use                                                            |
-| ------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Tier 1: Provider-Real E2E       | Real task provider, controlled outer layers                                        | Kaneo or YouTrack provider operations and normalized task behavior           |
-| Tier 2: Runtime E2E             | Real papai runtime with controlled chat injection and deterministic model boundary | setup, auth, wizard, routing, tool capability behavior                       |
-| Tier 3: Platform-Integrated E2E | Real chat platform plus runtime                                                    | Telegram, Mattermost, or Discord command, mention, button, and file behavior |
-| Tier 4: Operational E2E         | Runtime plus schedulers or background delivery surfaces                            | recurring tasks, deferred prompts, proactive delivery, debug instrumentation |
+Canonical definition: `docs/superpowers/specs/2026-07-23-tier-expansion-roadmap-design.md`.
+This table mirrors it; the spec wins on any disagreement.
+
+| Tier         | Meaning                                                                                                                                       | Still fakes                             |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| 0.1 / 0 / 0Q | Hermetic in-process stories, harness contracts, frozen-harness compatibility proof                                                            | process, provider, platform, clock, LLM |
+| 1            | Provider-real: real Kaneo/YouTrack behind the normalized provider interface                                                                   | process, platform, clock, LLM           |
+| 2            | Process-real smoke: the built artifact boots and serves — migrations, env validation, plugin discovery and lifecycle, route binding, shutdown | platform, clock, LLM                    |
+| 3            | Platform-integrated: real grammY / discord.js / Mattermost client code against fake platform servers                                          | clock, LLM                              |
+| 4            | Operational: virtual clock, schedulers, recurrence, proactive delivery, restart recovery                                                      | LLM                                     |
+
+Tier 2 was formerly defined as "Runtime E2E — real papai runtime with controlled
+chat injection and deterministic model boundary". Tier 0 does that today,
+in-process and hermetically, so Tier 2 is re-chartered around the process
+boundary and that former charter is retired rather than moved.
+
+**0Q is a Tier 0 instrument only.** The frozen-harness compatibility proof depends
+on byte-identical harness hashes, which Docker-, provider-, and platform-backed
+tiers cannot supply. Tiers 1–4 are regression lanes, never qualification gates.
+
+Each tier's stories live under its own suite root, declared in
+`TIER_SUITE_ROOTS` in `tests/stories/catalog/coverage.ts` and enforced by the
+Tier 0.1 contracts. Only tiers listed in `LIVE_STORY_TIERS` may back an
+executable ledger record; the rest are planned and counted separately.
 
 ## papai Priority Order
 
