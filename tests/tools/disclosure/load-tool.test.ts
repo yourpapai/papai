@@ -26,6 +26,7 @@ interface LoadOut {
   loaded: string[]
   unknown: string[]
   nowActive: number
+  warning?: string
 }
 
 function isLoadOut(val: unknown): val is LoadOut {
@@ -74,5 +75,24 @@ describe('load_tool', () => {
     expect(out.loaded).toEqual([])
     expect(out.unknown).toEqual(['nope1', 'nope2'])
     expect(out.nowActive).toBe(baseline)
+  })
+
+  it('adds a warning naming the unrecognized tools', async () => {
+    const tools: ToolSet = { get_current_time: d(), search_tools: d(), load_tool: d(), list_tasks: d() }
+    const session = createDisclosureSession(tools, CORE_TOOL_NAMES)
+    const exec = getToolExecutor(makeLoadToolTool(session, 'ctx-1'))
+    const out: unknown = await exec({ names: ['list_tasks', 'bogus'] })
+    assert.ok(isLoadOut(out))
+    expect(out.warning).toBeDefined()
+    expect(out.warning).toContain('bogus')
+  })
+
+  it('omits the warning when every name is recognized', async () => {
+    const tools: ToolSet = { get_current_time: d(), search_tools: d(), load_tool: d(), list_tasks: d() }
+    const session = createDisclosureSession(tools, CORE_TOOL_NAMES)
+    const exec = getToolExecutor(makeLoadToolTool(session, 'ctx-1'))
+    const out: unknown = await exec({ names: ['list_tasks'] })
+    assert.ok(isLoadOut(out))
+    expect(out.warning).toBeUndefined()
   })
 })
