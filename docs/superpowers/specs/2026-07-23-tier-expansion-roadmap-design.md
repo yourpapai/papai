@@ -166,7 +166,10 @@ Binding on every tier spec that follows.
 
 - Taxonomy: two conflicting tables → one; `e2e-planning-workflow.md` demoted to a
   pointer.
-- Every catalog record carries a proving tier; the manifest prints five totals.
+- Every reachable catalog record carries a proving tier — executables name the
+  tier that proves them, seam-pends the tier that unblocks them, and
+  `blocked:missing-implementation` records name none, per 1b; the manifest prints
+  five totals.
 - Closable pends: 5 → 0. Remaining pends are 22, all
   `blocked:missing-implementation`.
 - Fake fidelity: every `MemoryTaskProvider` method group asserted by a `task-*`
