@@ -19,9 +19,9 @@ describe('provider parity — fake binding (MemoryTaskProvider)', () => {
   // The two count assertions below track its length and PARITY_EXCLUSIONS; bump them
   // whenever a group or exclusion is added. See
   // docs/superpowers/plans/2026-07-24-tier1b-e2e-parity-retrofit.md for the retrofit.
-  test('declares 24 parity groups with unique ids', () => {
-    expect(PARITY_GROUPS).toHaveLength(24)
-    expect(new Set(PARITY_GROUPS.map((group) => group.id)).size).toBe(24)
+  test('declares 28 parity groups with unique ids', () => {
+    expect(PARITY_GROUPS).toHaveLength(28)
+    expect(new Set(PARITY_GROUPS.map((group) => group.id)).size).toBe(28)
   })
 
   test('records a reason for every excluded group', () => {

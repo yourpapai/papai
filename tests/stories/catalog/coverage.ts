@@ -262,6 +262,11 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-parity-comment-id-stability',
   'SCN-parity-comment-long',
   'SCN-parity-comment-special-chars',
+  // @1 — error-parity consolidated by domain (tier1b-e2e-parity-retrofit wave 4)
+  'SCN-parity-task-errors',
+  'SCN-parity-comment-errors',
+  'SCN-parity-relation-errors',
+  'SCN-parity-project-label-errors',
 ] as const)
 
 const GAP_SCENARIO_IDS = new Set<CatalogScenarioId>([
@@ -1038,6 +1043,34 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     provingTier: '1',
     storyIds: [
       'tests/e2e/parity/provider-parity.test.ts#SCN-parity-comment-special-chars: addComment round-trips special characters',
+    ],
+  },
+  'SCN-parity-task-errors': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-task-errors: get, update, and delete reject for a missing task',
+    ],
+  },
+  'SCN-parity-comment-errors': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-comment-errors: commenting on a missing task rejects',
+    ],
+  },
+  'SCN-parity-relation-errors': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-relation-errors: relating a task to a missing task rejects',
+    ],
+  },
+  'SCN-parity-project-label-errors': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-project-label-errors: updating a missing project and removing a missing label reject',
     ],
   },
 }
