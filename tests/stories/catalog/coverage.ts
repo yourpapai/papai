@@ -258,6 +258,10 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-parity-search-all-projects',
   'SCN-parity-search-empty',
   'SCN-parity-search-projectid-limit',
+  // @1 — comment-depth and content-edge parity (tier1b-e2e-parity-retrofit wave 3)
+  'SCN-parity-comment-id-stability',
+  'SCN-parity-comment-long',
+  'SCN-parity-comment-special-chars',
 ] as const)
 
 const GAP_SCENARIO_IDS = new Set<CatalogScenarioId>([
@@ -1015,6 +1019,25 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     provingTier: '1',
     storyIds: [
       'tests/e2e/parity/provider-parity.test.ts#SCN-parity-search-projectid-limit: searchTasks honors projectId and limit together',
+    ],
+  },
+  'SCN-parity-comment-id-stability': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-comment-id-stability: a comment keeps its id across update',
+    ],
+  },
+  'SCN-parity-comment-long': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: ['tests/e2e/parity/provider-parity.test.ts#SCN-parity-comment-long: addComment round-trips a long body'],
+  },
+  'SCN-parity-comment-special-chars': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-comment-special-chars: addComment round-trips special characters',
     ],
   },
 }

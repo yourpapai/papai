@@ -25,4 +25,37 @@ export const commentGroups: readonly ParityGroup[] = [
       expect(canonicalize(removed, VOLATILE_KEYS)).toEqual({ id: VOLATILE })
     },
   },
+  {
+    id: 'SCN-parity-comment-id-stability',
+    title: 'SCN-parity-comment-id-stability: a comment keeps its id across update',
+    async run({ provider, projectId }) {
+      const task = await provider.createTask({ projectId, title: 'Comment Id Host' })
+      const added = await provider.addComment?.(task.id, 'original')
+      const addedId = required(added, 'addComment result').id
+      const updated = await provider.updateComment?.({ taskId: task.id, commentId: addedId, body: 'edited' })
+      expect(required(updated, 'updateComment result').id).toBe(addedId)
+      const listed = (await provider.getComments?.(task.id, {})) ?? []
+      expect(listed.map((comment) => comment.body)).toEqual(['edited'])
+    },
+  },
+  {
+    id: 'SCN-parity-comment-long',
+    title: 'SCN-parity-comment-long: addComment round-trips a long body',
+    async run({ provider, projectId }) {
+      const task = await provider.createTask({ projectId, title: 'Long Comment Host' })
+      const body = `note ${'y'.repeat(500)}`
+      const added = await provider.addComment?.(task.id, body)
+      expect(required(added, 'addComment result').body).toBe(body)
+    },
+  },
+  {
+    id: 'SCN-parity-comment-special-chars',
+    title: 'SCN-parity-comment-special-chars: addComment round-trips special characters',
+    async run({ provider, projectId }) {
+      const task = await provider.createTask({ projectId, title: 'Special Comment Host' })
+      const body = 'reply & <tag> "quote" — 日本語 100%'
+      const added = await provider.addComment?.(task.id, body)
+      expect(required(added, 'addComment result').body).toBe(body)
+    },
+  },
 ] as const
