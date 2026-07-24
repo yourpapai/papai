@@ -125,8 +125,15 @@ export const taskGroups: readonly ParityGroup[] = [
       })
       const fetched = await provider.getTask(created.id)
       expect(canonicalize(fetched, VOLATILE_KEYS)).toMatchObject({ id: VOLATILE, title: 'Parity Dates' })
-      expect(fetched.startDate).toBe('2026-08-01')
-      expect(fetched.dueDate).toBe('2026-08-15')
+      // Real Kaneo normalizes a date-only input to a full ISO datetime
+      // ('2026-08-01' -> '2026-08-01T00:00:00.000Z') while MemoryTaskProvider echoes it
+      // verbatim. Both agree on the calendar-date prefix, so assert that — stronger than
+      // mere presence, tolerant of the wire-format divergence (mirrors how
+      // SCN-parity-task-update documents Kaneo's status normalization).
+      expect(fetched.startDate).toBeTypeOf('string')
+      expect(fetched.startDate).toMatch(/^2026-08-01/u)
+      expect(fetched.dueDate).toBeTypeOf('string')
+      expect(fetched.dueDate).toMatch(/^2026-08-15/u)
     },
   },
   {
@@ -153,7 +160,10 @@ export const taskGroups: readonly ParityGroup[] = [
       await provider.updateTask(created.id, { title: 'Parity Preserve Renamed' })
       const fetched = await provider.getTask(created.id)
       expect(fetched.title).toBe('Parity Preserve Renamed')
-      expect(fetched.startDate).toBe('2026-09-01')
+      // Kaneo normalizes the date-only startDate to a full ISO datetime; assert the shared
+      // calendar-date prefix (see SCN-parity-task-dates for the divergence rationale).
+      expect(fetched.startDate).toBeTypeOf('string')
+      expect(fetched.startDate).toMatch(/^2026-09-01/u)
     },
   },
   {
