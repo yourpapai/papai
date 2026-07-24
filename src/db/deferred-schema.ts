@@ -55,6 +55,7 @@ export const alertPrompts = sqliteTable(
     lastTriggeredAt: text('last_triggered_at'),
     cooldownMinutes: integer('cooldown_minutes').notNull().default(60),
     executionMetadata: text('execution_metadata').notNull().default('{}'),
+    matchedTaskIds: text('matched_task_ids').notNull().default('[]'),
   },
   (table) => [
     index('idx_alert_prompts_creator').on(table.createdByUserId),

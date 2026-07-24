@@ -23,8 +23,8 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('051_legacy_context_id_backfill')
   })
 
-  test('067_multi_llm_providers is the last migration', () => {
+  test('068_alert_matched_task_ids is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('067_multi_llm_providers')
+    expect(lastMigration.id).toBe('068_alert_matched_task_ids')
   })
 })

@@ -13,6 +13,7 @@ import {
   alertConditionSchema,
   DEFAULT_EXECUTION_METADATA,
   parseExecutionMetadata,
+  parseMatchedTaskIds,
   type AlertCondition,
   type AlertPrompt,
   type DeferredPromptDeliveryInput,
@@ -36,6 +37,7 @@ const toAlertPrompt = (row: AlertPromptRow): AlertPrompt => ({
   lastTriggeredAt: row.lastTriggeredAt,
   cooldownMinutes: row.cooldownMinutes,
   executionMetadata: parseExecutionMetadata(row.executionMetadata),
+  matchedTaskIds: parseMatchedTaskIds(row.matchedTaskIds),
 })
 
 // --- CRUD ---
