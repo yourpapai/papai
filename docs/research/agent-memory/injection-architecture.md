@@ -315,6 +315,11 @@ reader-eval harness** (so the inject-vs-pull decision is scored on *answers*, no
 
 ### 9.1 Collect real data (production instrumentation)
 
+> **Specified as P1:**
+> [`../../superpowers/specs/2026-07-24-memory-recall-shadow-logging-design.md`](../../superpowers/specs/2026-07-24-memory-recall-shadow-logging-design.md)
+> — the sampled, off-hot-path, content-free shadow-logging instrument, its under-trigger funnel,
+> and the pre-registered go/no-go that decides whether the §9.2 harness (P2) is built at all.
+
 Build a replay set from real traffic, respecting the `/stats/*` anonymity contract and the
 logging rules (never persist tokens, keys, or raw sensitive content). Per turn, log to a
 dedicated eval channel:

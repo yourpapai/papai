@@ -12,6 +12,8 @@ See LICENSE in the project root for details.
 **Related:**
 [`docs/research/agent-memory/injection-architecture.md`](../../research/agent-memory/injection-architecture.md)
 §9 (the gate this spec operationalizes),
+[`docs/superpowers/specs/2026-07-24-memory-recall-shadow-logging-design.md`](2026-07-24-memory-recall-shadow-logging-design.md)
+(P1 — the prerequisite whose go/no-go decides whether this harness is built),
 [`docs/superpowers/specs/2026-07-24-memory-injection-feature-flag-design.md`](2026-07-24-memory-injection-feature-flag-design.md)
 (thread A — the shipped opt-in flag),
 [`docs/research/agent-memory/03-benchmark-and-corpus.md`](../../research/agent-memory/03-benchmark-and-corpus.md)
@@ -87,6 +89,9 @@ the cache axis.
 ## Non-goals
 
 - The full multi-arm reader-eval harness and production shadow-logging (broader; thread B §9.1–§9.2).
+  Shadow-logging (P1) is specified separately in
+  [`2026-07-24-memory-recall-shadow-logging-design.md`](2026-07-24-memory-recall-shadow-logging-design.md)
+  and is the **prerequisite** to this harness: build this only if P1's gate shows a real gap.
 - Answer-quality measurement on answerable questions, except as the over-abstention control.
 - The placement decision (orthogonal — this test fixes placement at the tail).
 - Choosing or tuning the reader model (the reader is a *reported variable*, not a target here).
