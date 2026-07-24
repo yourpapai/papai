@@ -150,7 +150,7 @@ describe('memory tools', () => {
     saveMemoryRecord(memoryRecordInput({ id: 'mem-target', scopeId: 'user-1' }))
     const tool = makeForgetMemoryTool({ storageContextId: 'user-1', contextType: 'dm' })
 
-    const result = await getToolExecutor(tool)({ memory_id: 'mem-target' })
+    const result = await getToolExecutor(tool)({ memory_id: 'mem-target', confidence: 1 })
 
     expect(result).toEqual({ status: 'forgotten', id: 'mem-target' })
     expect(listMemoryRecords({ scopeId: 'user-1', scopeType: 'personal', status: 'active' })).toEqual([])
@@ -162,8 +162,8 @@ describe('memory tools', () => {
   test('forget_memory rejects oversized memory ids', () => {
     const tool = makeForgetMemoryTool({ storageContextId: 'user-1', contextType: 'dm' })
 
-    expect(schemaValidates(tool, { memory_id: 'a'.repeat(128) })).toBe(true)
-    expect(schemaValidates(tool, { memory_id: 'a'.repeat(129) })).toBe(false)
+    expect(schemaValidates(tool, { memory_id: 'a'.repeat(128), confidence: 1 })).toBe(true)
+    expect(schemaValidates(tool, { memory_id: 'a'.repeat(129), confidence: 1 })).toBe(false)
   })
 
   test('forget_memory purges a query match only in the current scope', async () => {
@@ -171,13 +171,53 @@ describe('memory tools', () => {
     saveMemoryRecord(memoryRecordInput({ id: 'mem-group', scopeId: 'shared', scopeType: 'group' }))
     const tool = makeForgetMemoryTool({ storageContextId: 'shared', contextType: 'dm' })
 
-    const result = await getToolExecutor(tool)({ query: 'release checklist' })
+    const result = await getToolExecutor(tool)({ query: 'release checklist', confidence: 1 })
 
     expect(result).toEqual({ status: 'forgotten', id: 'mem-personal' })
     expect(listMemoryRecords({ scopeId: 'shared', scopeType: 'personal', status: 'active' })).toEqual([])
     expect(listMemoryRecords({ scopeId: 'shared', scopeType: 'group', status: 'active' }).map((r) => r.id)).toEqual([
       'mem-group',
     ])
+  })
+
+  test('forget_memory blocks a by-id purge below the confidence threshold', async () => {
+    saveMemoryRecord(memoryRecordInput({ id: 'mem-target', scopeId: 'user-1' }))
+    const tool = makeForgetMemoryTool({ storageContextId: 'user-1', contextType: 'dm' })
+
+    const result = await getToolExecutor(tool)({ memory_id: 'mem-target', confidence: 0.5 })
+
+    expect(result).toEqual({
+      status: 'confirmation_required',
+      message: 'Permanently delete this memory? This action is irreversible — please confirm.',
+    })
+    expect(listMemoryRecords({ scopeId: 'user-1', scopeType: 'personal', status: 'active' }).map((r) => r.id)).toEqual([
+      'mem-target',
+    ])
+    expect(isContentTombstoned({ scopeId: 'user-1', scopeType: 'personal' }, memoryRecordInput({}).content)).toBe(false)
+  })
+
+  test('forget_memory blocks a by-query purge below the confidence threshold', async () => {
+    saveMemoryRecord(memoryRecordInput({ id: 'mem-target', scopeId: 'user-1' }))
+    const tool = makeForgetMemoryTool({ storageContextId: 'user-1', contextType: 'dm' })
+
+    const result = await getToolExecutor(tool)({ query: 'release checklist' })
+
+    expect(result).toMatchObject({ status: 'confirmation_required' })
+    expect(listMemoryRecords({ scopeId: 'user-1', scopeType: 'personal', status: 'active' }).map((r) => r.id)).toEqual([
+      'mem-target',
+    ])
+  })
+
+  test('forget_memory purges by id and tombstones the content once confidence is sufficient', async () => {
+    saveMemoryRecord(memoryRecordInput({ id: 'mem-target', scopeId: 'user-1' }))
+    const scope = { scopeId: 'user-1', scopeType: 'personal' as const }
+    const tool = makeForgetMemoryTool({ storageContextId: 'user-1', contextType: 'dm' })
+
+    const result = await getToolExecutor(tool)({ memory_id: 'mem-target', confidence: 0.95 })
+
+    expect(result).toEqual({ status: 'forgotten', id: 'mem-target' })
+    expect(listMemoryRecords({ ...scope, status: 'active' })).toEqual([])
+    expect(isContentTombstoned(scope, memoryRecordInput({}).content)).toBe(true)
   })
 
   test('group thread context writes and searches parent group memory scope', async () => {

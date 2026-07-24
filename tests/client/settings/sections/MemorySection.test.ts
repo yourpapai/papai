@@ -173,6 +173,15 @@ const routeClearFailure =
     return Promise.resolve(json({ ok: true }))
   }
 
+const routeArchiveFailure =
+  (): ((url: string, init: RequestInit) => Promise<Response>) =>
+  (url): Promise<Response> => {
+    if (url === '/settings/api/memory/records/rec%2Falpha')
+      return Promise.resolve(new Response('archive failed', { status: 500 }))
+    if (url.startsWith('/settings/api/memory?')) return Promise.resolve(json(memoryPayload))
+    return Promise.resolve(json({ ok: true }))
+  }
+
 afterEach(() => {
   restoreFetch()
   setCsrfToken('')
@@ -322,7 +331,7 @@ describe('MemorySection', () => {
     void unmount(component)
   })
 
-  test('archive record sends DELETE to encoded record path with body contextId and reloads', async () => {
+  test('archive record requires confirmation before DELETE and reloads after confirmation', async () => {
     setCsrfToken('c')
     const calls: CapturedCall[] = []
     setMockFetch((url, init) => {
@@ -337,10 +346,64 @@ describe('MemorySection', () => {
     target.querySelector<HTMLButtonElement>('[data-testid="memory-archive-rec/alpha"]')!.click()
     await drain()
 
+    expect(calls.find((call) => call.url === '/settings/api/memory/records/rec%2Falpha')).toBeUndefined()
+    expect(target.textContent).toContain('Delete this memory permanently')
+    expect(target.textContent).toContain("Permanently delete this memory? This can't be undone")
+
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
+    await drain()
+
     const write = calls.find((call) => call.url === '/settings/api/memory/records/rec%2Falpha')
     expect(write?.method).toBe('DELETE')
     expect(write?.body).toEqual({ contextId: 'user:1' })
     expect(calls.filter((call) => call.url.startsWith('/settings/api/memory?')).length).toBe(2)
+    expect(target.querySelector('.modal')).toBeNull()
+    void unmount(component)
+  })
+
+  test('archive record cancel closes the dialog without deleting', async () => {
+    setCsrfToken('c')
+    const calls: CapturedCall[] = []
+    setMockFetch((url, init) => {
+      captureCall(calls, url, init)
+      return Promise.resolve(json(memoryPayload))
+    })
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MemorySection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="memory-archive-rec/alpha"]')!.click()
+    await drain()
+    expect(target.querySelector('.modal')).not.toBeNull()
+
+    const cancelButtons = Array.from(target.querySelectorAll<HTMLButtonElement>('.modal button')).filter((button) =>
+      button.textContent?.includes('Cancel'),
+    )
+    cancelButtons.at(-1)!.click()
+    await drain()
+
+    expect(target.querySelector('.modal')).toBeNull()
+    expect(calls.find((call) => call.url === '/settings/api/memory/records/rec%2Falpha')).toBeUndefined()
+    void unmount(component)
+  })
+
+  test('archive record dialog stays open with inline error when the delete request fails', async () => {
+    setCsrfToken('c')
+    setMockFetch(routeArchiveFailure())
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MemorySection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="memory-archive-rec/alpha"]')!.click()
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
+    await drain()
+
+    expect(target.querySelector('.modal')).not.toBeNull()
+    expect(target.querySelector('.modal .status-error')).not.toBeNull()
     void unmount(component)
   })
 

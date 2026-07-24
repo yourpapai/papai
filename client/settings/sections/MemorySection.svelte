@@ -39,6 +39,7 @@
   let savingProfile = $state(false)
   let togglingCapture = $state(false)
   let archivingId: string | null = $state(null)
+  let pendingArchiveId: string | null = $state(null)
   let loadedContextId: string | null = $state(null)
   let pendingClear = $state(false)
   let clearing = $state(false)
@@ -154,6 +155,7 @@
     archivingId = id
     try {
       await archiveMemoryRecord(contextId, id)
+      pendingArchiveId = null
       await load(contextId)
     } catch (err) {
       error = messageFrom(err)
@@ -255,7 +257,10 @@
             busy={archivingId === record.id}
             disabled={archivingId !== null}
             testid={`memory-archive-${record.id}`}
-            onClick={() => void archiveRecord(record.id)}>
+            onClick={() => {
+              pendingArchiveId = record.id
+              error = null
+            }}>
             {#snippet children()}Delete permanently{/snippet}
           </Btn>
         </li>
@@ -326,6 +331,22 @@
     {#snippet body()}
       <p>Clear the memory profile and all memory records for this context? This cannot be undone.</p>
       {#if clearError !== null}<p class="status-error">{clearError}</p>{/if}
+    {/snippet}
+  </Confirm>
+
+  <Confirm
+    open={pendingArchiveId !== null}
+    title="Delete this memory permanently"
+    danger
+    busy={archivingId !== null}
+    confirmLabel="Delete permanently"
+    onCancel={() => (pendingArchiveId = null)}
+    onConfirm={() => {
+      if (pendingArchiveId !== null) void archiveRecord(pendingArchiveId)
+    }}>
+    {#snippet body()}
+      <p>Permanently delete this memory? This can't be undone and it won't be re-learned.</p>
+      {#if error !== null}<p class="status-error">{error}</p>{/if}
     {/snippet}
   </Confirm>
 </section>

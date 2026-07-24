@@ -21,6 +21,7 @@ import {
 } from '../long-term-memory/store.js'
 import { deleteMatchingTombstone } from '../long-term-memory/tombstone.js'
 import { MemoryKindSchema, MemoryStatusSchema, type MemoryRecord, type MemoryScope } from '../long-term-memory/types.js'
+import { checkConfidence, confidenceField } from './confirmation-gate.js'
 
 const log = logger.child({ scope: 'tool:memory' })
 
@@ -185,8 +186,15 @@ export function makeForgetMemoryTool(input: MemoryToolContext): Tool {
     inputSchema: z.object({
       memory_id: z.string().max(128).optional().describe('Exact memory record ID to permanently delete'),
       query: z.string().min(1).max(500).optional().describe('Keyword query used when memory_id is not available'),
+      confidence: confidenceField,
     }),
-    execute: ({ memory_id: memoryId, query }) => {
+    execute: ({ memory_id: memoryId, query, confidence }) => {
+      const gate = checkConfidence(confidence, 'Permanently delete this memory')
+      if (gate !== null) {
+        log.warn({ memoryId, confidence }, 'forget_memory blocked — confirmation required')
+        return gate
+      }
+
       const scope = memoryScope(input)
       const now = nowIso()
       if (memoryId !== undefined) {
