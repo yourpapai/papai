@@ -178,9 +178,10 @@ export function makeListMemoryTool(input: MemoryToolContext): Tool {
 
 export function makeForgetMemoryTool(input: MemoryToolContext): Tool {
   return tool({
-    description: 'Archive one long-term memory in the current user or group scope by memory ID or keyword query.',
+    description:
+      'Permanently delete one long-term memory in the current user or group scope, by memory ID or keyword query. This is irreversible: the memory is erased and will not be re-learned.',
     inputSchema: z.object({
-      memory_id: z.string().max(128).optional().describe('Exact memory record ID to archive'),
+      memory_id: z.string().max(128).optional().describe('Exact memory record ID to permanently delete'),
       query: z.string().min(1).max(500).optional().describe('Keyword query used when memory_id is not available'),
     }),
     execute: ({ memory_id: memoryId, query }) => {
@@ -199,7 +200,7 @@ export function makeForgetMemoryTool(input: MemoryToolContext): Tool {
       const matches = searchMemoryRecords({ ...scope, query, includeStale: true })
       const match = matches.find((record) => sameText(record.content, query)) ?? matches[0]
       if (match === undefined) {
-        log.info({ scopeId: scope.scopeId, scopeType: scope.scopeType }, 'Memory archive by query found no match')
+        log.info({ scopeId: scope.scopeId, scopeType: scope.scopeType }, 'Memory purge by query found no match')
         return { status: 'not_found' }
       }
 
