@@ -58,6 +58,10 @@ export default {
     // Analytics identity modules (keyring, install-id, pseudonym, scope) are the
     // Stage A public seam consumed by later normalization tasks.
     'src/analytics/identity/*.ts!',
+    // Analytics governance modules (policy/preference/collection/grant/generation
+    // stores and the pure eligibility matrix) are the Stage A governance seam
+    // consumed by later runtime/delivery tasks.
+    'src/analytics/governance/*.ts!',
     // First-party plugin entry points are loaded dynamically by the plugin
     // loader, so they have no static importer.
     'plugins/*/index.ts!',
@@ -148,6 +152,10 @@ export default {
     // consumed by upcoming normalization/pipeline tasks and by analytics tests
     // outside knip's production project scope.
     'src/analytics/identity/*.ts': ['exports', 'types'],
+    // Analytics governance modules are the Stage A governance seam; their exports
+    // are consumed by upcoming runtime/delivery tasks and by analytics tests
+    // outside knip's production project scope.
+    'src/analytics/governance/*.ts': ['exports', 'types'],
   },
 
   includeEntryExports: true,

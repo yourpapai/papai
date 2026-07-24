@@ -210,6 +210,7 @@ export {
   type AnalyticsNormalizationRejectionRow,
   type AnalyticsProcessEpochRow,
 } from './analytics-schema.js'
+export * from './analytics-governance-schema.js'
 export const userIdentityMappings = sqliteTable(
   'user_identity_mappings',
   {

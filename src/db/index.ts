@@ -83,6 +83,7 @@ import { migration069AlertMatchedTaskIds } from './migrations/069_alert_matched_
 import { migration070MessageMetadataHistorySearch } from './migrations/070_message_metadata_history_search.js'
 import { migration071MessageEmbeddings } from './migrations/071_message_embeddings.js'
 import { migration072AnalyticsFoundation } from './migrations/072_analytics_foundation.js'
+import { migration073AnalyticsGovernance } from './migrations/073_analytics_governance.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -190,6 +191,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration070MessageMetadataHistorySearch,
   migration071MessageEmbeddings,
   migration072AnalyticsFoundation,
+  migration073AnalyticsGovernance,
 ]
 
 export const initDb = (): void => {
