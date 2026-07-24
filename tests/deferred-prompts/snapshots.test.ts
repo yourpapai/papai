@@ -114,4 +114,28 @@ describe('snapshots', () => {
 
     expect(getSnapshotsForUser('user-1').size).toBe(0)
   })
+
+  test('captures labels as sorted comma-joined names', () => {
+    const tasks = [
+      makeTask({
+        id: 'task-3',
+        status: 'todo',
+        labels: [
+          { id: 'l2', name: 'urgent' },
+          { id: 'l1', name: 'bug' },
+        ],
+      }),
+    ]
+
+    updateSnapshots('user-1', tasks)
+
+    const snapshots = getSnapshotsForUser('user-1')
+    expect(snapshots.get('task-3:labels')).toBe('bug,urgent')
+  })
+
+  test('skips labels snapshot when task has no labels', () => {
+    updateSnapshots('user-1', [makeTask({ id: 'task-4', status: 'todo', labels: [] })])
+
+    expect(getSnapshotsForUser('user-1').has('task-4:labels')).toBe(false)
+  })
 })
