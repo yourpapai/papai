@@ -12,12 +12,19 @@ import type { Task } from '../providers/types.js'
 
 const log = logger.child({ scope: 'deferred:snapshots' })
 
-const SNAPSHOT_FIELDS: Array<{ field: string; extract: (task: Task) => string | null }> = [
+export const SNAPSHOT_FIELDS: Array<{ field: string; extract: (task: Task) => string | null }> = [
   { field: 'status', extract: (t) => t.status ?? null },
   { field: 'priority', extract: (t) => t.priority ?? null },
   { field: 'assignee', extract: (t) => t.assignee ?? null },
   { field: 'dueDate', extract: (t) => t.dueDate ?? null },
   { field: 'project', extract: (t) => t.projectId ?? null },
+  {
+    field: 'labels',
+    extract: (t) => {
+      const names = (t.labels ?? []).map((l) => l.name).sort()
+      return names.length > 0 ? names.join(',') : null
+    },
+  },
 ]
 
 /** Get all snapshots for a user as a Map<string, string>. Key format: "${taskId}:${fieldName}". */

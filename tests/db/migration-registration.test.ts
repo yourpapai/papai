@@ -23,8 +23,8 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('051_legacy_context_id_backfill')
   })
 
-  test('068_identity_scoped_key_cleanup is the last migration', () => {
+  test('069_alert_matched_task_ids is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('068_identity_scoped_key_cleanup')
+    expect(lastMigration.id).toBe('069_alert_matched_task_ids')
   })
 })

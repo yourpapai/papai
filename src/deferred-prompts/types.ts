@@ -130,6 +130,16 @@ export function parseExecutionMetadata(raw: string): ExecutionMetadata {
   }
 }
 
+export function parseMatchedTaskIds(raw: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((id): id is string => typeof id === 'string')
+  } catch {
+    return []
+  }
+}
+
 // --- Tool input schemas ---
 
 export type FireAtInput = { date: string; time: string }
@@ -250,6 +260,7 @@ export type AlertPrompt = {
   lastTriggeredAt: string | null
   cooldownMinutes: number
   executionMetadata: ExecutionMetadata
+  matchedTaskIds: string[]
 }
 
 // --- Tool result types ---
