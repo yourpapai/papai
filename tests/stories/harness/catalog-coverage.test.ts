@@ -22,6 +22,7 @@ import {
   type StoryFamily,
   type StorySeamId,
 } from '../catalog/coverage.js'
+import { PARITY_GROUPS } from './parity/expectations.js'
 
 function sorted(values: readonly string[]): readonly string[] {
   return [...values].sort()
@@ -110,8 +111,8 @@ describe('scenario catalog coverage', () => {
   test('classifies every catalog scenario exactly once', () => {
     const ledgerIds = catalogCoverage.map(({ scenarioId }) => scenarioId)
 
-    expect(CATALOG_SCENARIO_IDS).toHaveLength(128)
-    expect(new Set(CATALOG_SCENARIO_IDS).size).toBe(128)
+    expect(CATALOG_SCENARIO_IDS).toHaveLength(157)
+    expect(new Set(CATALOG_SCENARIO_IDS).size).toBe(157)
     expect(sorted(ledgerIds)).toEqual(sorted(CATALOG_SCENARIO_IDS))
   })
 
@@ -165,7 +166,12 @@ describe('scenario catalog coverage', () => {
     const extractedStoryIds = new Set(
       candidateFiles.flatMap(({ path, bytes }) => extractStoryScenarios(path, bytes).map(({ id }) => id)),
     )
-    const executableCoverage = catalogCoverage.filter((coverage) => coverage.kind === 'executable')
+    // `loadCandidateStoryFiles` only walks the frozen `tests/stories/` tree (Tier 0's suite
+    // root), so this literal-story check is scoped to Tier 0 executable records; other live
+    // tiers (e.g. Tier 1's `tests/e2e/`) prove their storyIds in their own suite, not here.
+    const executableCoverage = catalogCoverage
+      .filter((coverage) => coverage.kind === 'executable')
+      .filter((coverage) => coverage.provingTier === '0')
 
     for (const coverage of pendingCoverage) expect(coverage.audit.rationale.toString().trim().length).toBeGreaterThan(0)
 
@@ -207,7 +213,7 @@ describe('scenario catalog coverage', () => {
   })
 
   test('tracks the executable coverage total', () => {
-    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(101)
+    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(130)
   })
 
   test('stamps every executable record with a live proving tier', () => {
@@ -216,9 +222,27 @@ describe('scenario catalog coverage', () => {
       .filter((coverage) => !LIVE_STORY_TIERS.includes(coverage.provingTier))
       .map(({ scenarioId, provingTier }) => `${scenarioId} -> T${provingTier}`)
 
-    expect(executable).toHaveLength(101)
+    expect(executable).toHaveLength(130)
     expect(offLaneTiers).toEqual([])
-    expect(new Set(executable.map((coverage) => coverage.provingTier))).toEqual(new Set(['0']))
+    expect(new Set(executable.map((coverage) => coverage.provingTier))).toEqual(new Set(['0', '1']))
+  })
+
+  test('maps every @1 parity record to its exact parity story title', () => {
+    // Both the catalog storyIds and the parity e2e test names derive from
+    // PARITY_GROUPS[].title, but the catalog strings are hand-transcribed — this
+    // is the only automated guard that a @1 storyId title matches its real test
+    // (the local-literal-stories check above is Tier-0-only; the Docker lane never
+    // reads the catalog). Two chained filters: inferred type predicates need them.
+    const parityRecords = catalogCoverage
+      .filter((coverage) => coverage.kind === 'executable')
+      .filter((coverage) => coverage.provingTier === '1')
+    expect(parityRecords).toHaveLength(PARITY_GROUPS.length)
+    const storyIdsByScenario = new Map<string, readonly string[]>(
+      parityRecords.map((coverage) => [coverage.scenarioId, coverage.storyIds]),
+    )
+    for (const group of PARITY_GROUPS) {
+      expect(storyIdsByScenario.get(group.id)).toEqual([`tests/e2e/parity/provider-parity.test.ts#${group.title}`])
+    }
   })
 
   test('gives every tier a distinct suite root', () => {

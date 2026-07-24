@@ -12,7 +12,6 @@ setDefaultTimeout(30000)
 import { addComment } from '../../plugins/task-provider-kaneo/add-comment.js'
 import type { KaneoConfig } from '../../plugins/task-provider-kaneo/client.js'
 import { createTask } from '../../plugins/task-provider-kaneo/create-task.js'
-import { getComments } from '../../plugins/task-provider-kaneo/get-comments.js'
 import { cleanupE2E } from './global-setup.js'
 import { kaneoApiJsonParsed } from './kaneo-api-helpers.js'
 import { createTestClient, type KaneoTestClient } from './kaneo-test-client.js'
@@ -141,133 +140,6 @@ describe('E2E: Task Comments', () => {
     await testClient.cleanup()
   })
 
-  test('adds a comment to a task', async () => {
-    const suffix = generateUniqueSuffix()
-    const task = await createTask({ config: kaneoConfig, projectId, title: `Task ${suffix}` })
-    testClient.trackTask(task.id)
-
-    const comment = await addComment({
-      config: kaneoConfig,
-      taskId: task.id,
-      comment: 'This is a test comment',
-    })
-
-    expect(comment.id).toBeTruthy()
-    expect(comment.comment).toBe('This is a test comment')
-    expect(typeof comment.createdAt).toBe('string')
-  })
-
-  test('retrieves comments for a task', async () => {
-    const suffix = generateUniqueSuffix()
-    const task = await createTask({ config: kaneoConfig, projectId, title: `Task ${suffix}` })
-    testClient.trackTask(task.id)
-
-    await addComment({ config: kaneoConfig, taskId: task.id, comment: 'First comment' })
-    await addComment({ config: kaneoConfig, taskId: task.id, comment: 'Second comment' })
-
-    // Comments should now be retrievable (fixed content field access)
-    const comments = await getComments({ config: kaneoConfig, taskId: task.id })
-
-    expect(comments.length).toBe(2)
-    expect(comments.map((entry) => entry.comment).sort()).toEqual(['First comment', 'Second comment'])
-  })
-
-  test('updates a comment', async () => {
-    const suffix = generateUniqueSuffix()
-    const task = await createTask({ config: kaneoConfig, projectId, title: `Task ${suffix}` })
-    testClient.trackTask(task.id)
-
-    const comment = await addComment({
-      config: kaneoConfig,
-      taskId: task.id,
-      comment: 'Original text',
-    })
-
-    expect(comment.id).toBeTruthy()
-
-    const { updateComment } = await import('../../plugins/task-provider-kaneo/update-comment.js')
-    const updated = await updateComment({
-      config: kaneoConfig,
-      taskId: task.id,
-      activityId: comment.id,
-      comment: 'Updated text',
-    })
-
-    expect(updated.comment).toBe('Updated text')
-
-    // Verify via re-fetch
-    const comments = await getComments({ config: kaneoConfig, taskId: task.id })
-    const updatedComment = comments.find((c) => c.id === comment.id)
-    expect(updatedComment?.comment).toBe('Updated text')
-  })
-
-  test('keeps comment IDs stable through provider update and delete flows', async () => {
-    const suffix = generateUniqueSuffix()
-    const task = await createTask({ config: kaneoConfig, projectId, title: `Task ${suffix}` })
-    testClient.trackTask(task.id)
-
-    const comment = await addComment({
-      config: kaneoConfig,
-      taskId: task.id,
-      comment: 'Original text',
-    })
-
-    const { updateComment } = await import('../../plugins/task-provider-kaneo/update-comment.js')
-    const updated = await updateComment({
-      config: kaneoConfig,
-      taskId: task.id,
-      activityId: comment.id,
-      comment: 'Updated text',
-    })
-
-    expect(updated.id).toBe(comment.id)
-    expect(updated.comment).toBe('Updated text')
-
-    const commentsAfterUpdate = await getComments({ config: kaneoConfig, taskId: task.id })
-    const updatedComment = commentsAfterUpdate.find((entry) => entry.id === comment.id)
-    expect(updatedComment?.id).toBe(comment.id)
-    expect(updatedComment?.comment).toBe('Updated text')
-
-    const { removeComment } = await import('../../plugins/task-provider-kaneo/remove-comment.js')
-    const removed = await removeComment({
-      config: kaneoConfig,
-      activityId: comment.id,
-    })
-
-    expect(removed.id).toBe(comment.id)
-    expect(removed.success).toBe(true)
-
-    const remainingComments = await getComments({ config: kaneoConfig, taskId: task.id })
-    expect(remainingComments.find((entry) => entry.id === comment.id)).toBeUndefined()
-  })
-
-  test('removes a comment', async () => {
-    const suffix = generateUniqueSuffix()
-    const task = await createTask({ config: kaneoConfig, projectId, title: `Task ${suffix}` })
-    testClient.trackTask(task.id)
-
-    const comment = await addComment({
-      config: kaneoConfig,
-      taskId: task.id,
-      comment: 'To be deleted',
-    })
-
-    expect(comment.id).toBeTruthy()
-
-    const { removeComment } = await import('../../plugins/task-provider-kaneo/remove-comment.js')
-    const removed = await removeComment({
-      config: kaneoConfig,
-      activityId: comment.id,
-    })
-
-    expect(removed.success).toBe(true)
-
-    // Verify via re-fetch: removed comment should not be in the list
-    const remainingComments = await getComments({ config: kaneoConfig, taskId: task.id })
-    const deletedComment = remainingComments.find((c) => c.id === comment.id)
-    expect(deletedComment).toBeUndefined()
-  })
-
   test('raw dedicated comment endpoints return the documented update and delete fields', async () => {
     const suffix = generateUniqueSuffix()
     const task = await createTask({ config: kaneoConfig, projectId, title: `Task ${suffix}` })
@@ -303,44 +175,5 @@ describe('E2E: Task Comments', () => {
     expect(removed.content).toBeString()
     expect(removed.createdAt).toBeString()
     expect(removed.updatedAt).toBeString()
-  })
-
-  test('throws error when adding comment to non-existent task', async () => {
-    const promise = addComment({
-      config: kaneoConfig,
-      taskId: 'non-existent-id',
-      comment: 'This should fail',
-    })
-    await expect(promise).rejects.toThrow()
-  })
-
-  test('handles long comments', async () => {
-    const suffix = generateUniqueSuffix()
-    const task = await createTask({ config: kaneoConfig, projectId, title: `Task ${suffix}` })
-    testClient.trackTask(task.id)
-
-    const longComment = 'A'.repeat(1000)
-    const comment = await addComment({
-      config: kaneoConfig,
-      taskId: task.id,
-      comment: longComment,
-    })
-
-    expect(comment.comment).toBe(longComment)
-  })
-
-  test('handles special characters in comments', async () => {
-    const suffix = generateUniqueSuffix()
-    const task = await createTask({ config: kaneoConfig, projectId, title: `Task ${suffix}` })
-    testClient.trackTask(task.id)
-
-    const specialComment = 'Comment with émojis 🎉 and <html> & "quotes"'
-    const comment = await addComment({
-      config: kaneoConfig,
-      taskId: task.id,
-      comment: specialComment,
-    })
-
-    expect(comment.comment).toBe(specialComment)
   })
 })

@@ -44,15 +44,6 @@ function requireRawSearchTask(results: readonly RawSearchTask[], taskId: string)
   return result
 }
 
-function requireSingleTask<T>(tasks: readonly T[]): T {
-  const [task] = tasks
-  if (task === undefined) {
-    throw new Error('Expected exactly one task result')
-  }
-
-  return task
-}
-
 function createRawSearchPath({
   query,
   workspaceId,
@@ -99,64 +90,6 @@ describe('E2E: Task Search and Filter', () => {
     await testClient.cleanup()
   })
 
-  test('searches tasks by title keyword', async () => {
-    const uniqueKeyword = `searchable${Date.now()}`
-    const task1 = await createTask({
-      config: kaneoConfig,
-      projectId,
-      title: `Task with ${uniqueKeyword}`,
-    })
-    const task2 = await createTask({
-      config: kaneoConfig,
-      projectId,
-      title: 'Regular task',
-    })
-    testClient.trackTask(task1.id)
-    testClient.trackTask(task2.id)
-
-    const results = await searchTasks({
-      config: kaneoConfig,
-      query: uniqueKeyword,
-      workspaceId,
-      projectId,
-    })
-
-    expect(results.tasks.length).toBeGreaterThan(0)
-    const found = results.tasks.find((t) => t.id === task1.id)
-    expect(found?.id).toBe(task1.id)
-  })
-
-  test('searches across all projects', async () => {
-    const uniqueKeyword = `crossproject${Date.now()}`
-    const task = await createTask({
-      config: kaneoConfig,
-      projectId,
-      title: `Cross project ${uniqueKeyword}`,
-    })
-    testClient.trackTask(task.id)
-
-    const results = await searchTasks({
-      config: kaneoConfig,
-      query: uniqueKeyword,
-      workspaceId,
-    })
-
-    expect(results.tasks.length).toBeGreaterThan(0)
-    const found = results.tasks.find((t) => t.id === task.id)
-    expect(found?.id).toBe(task.id)
-  })
-
-  test('returns empty results for non-matching search', async () => {
-    const results = await searchTasks({
-      config: kaneoConfig,
-      query: `nonexistent${Date.now()}`,
-      workspaceId,
-      projectId,
-    })
-
-    expect(results.tasks.length).toBe(0)
-  })
-
   test('adapts the live search envelope and still finds tasks with null dates', async () => {
     const uniqueKeyword = `nulldates${Date.now()}`
     const task = await createTask({
@@ -193,43 +126,6 @@ describe('E2E: Task Search and Filter', () => {
     })
 
     expect(results.tasks.some((result) => result.id === task.id)).toBe(true)
-  })
-
-  test('respects projectId and limit together', async () => {
-    const uniqueKeyword = `projectlimit${Date.now()}`
-    const otherProject = await testClient.createTestProject(`Other Search Project ${Date.now()}`)
-    const targetTaskOne = await createTask({
-      config: kaneoConfig,
-      projectId,
-      title: `Project limit one ${uniqueKeyword}`,
-    })
-    const targetTaskTwo = await createTask({
-      config: kaneoConfig,
-      projectId,
-      title: `Project limit two ${uniqueKeyword}`,
-    })
-    const otherProjectTask = await createTask({
-      config: kaneoConfig,
-      projectId: otherProject.id,
-      title: `Project limit other ${uniqueKeyword}`,
-    })
-    testClient.trackTask(targetTaskOne.id)
-    testClient.trackTask(targetTaskTwo.id)
-    testClient.trackTask(otherProjectTask.id)
-
-    const results = await searchTasks({
-      config: kaneoConfig,
-      query: uniqueKeyword,
-      workspaceId,
-      projectId,
-      limit: 1,
-    })
-
-    expect(results.tasks).toHaveLength(1)
-    const listedTask = requireSingleTask(results.tasks)
-    expect(listedTask.projectId).toBe(projectId)
-    expect([targetTaskOne.id, targetTaskTwo.id]).toContain(listedTask.id)
-    expect(listedTask.id).not.toBe(otherProjectTask.id)
   })
 
   test('filters locally by assigneeId without dropping the assigned task', async () => {

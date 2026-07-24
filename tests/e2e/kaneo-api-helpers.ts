@@ -18,8 +18,15 @@ const SessionSchema = z
 const WorkspaceMembersSchema = z.array(
   z.object({
     id: z.string(),
+    email: z.string(),
+    role: z.string(),
   }),
 )
+
+// Confirmed against a live Kaneo `/workspace/{id}/members` payload: the workspace owner
+// (provisioned in tests/e2e/global-setup.ts via provisionAndConfigure) carries role "owner";
+// invited/provisioned members carry role "member" (plugins/task-provider-kaneo/operations/members.ts).
+const OWNER_ROLE = 'owner'
 
 function buildApiUrl(path: string): string {
   const { baseUrl } = getE2EConfigSync()
@@ -84,16 +91,14 @@ export async function getCurrentKaneoUserId(): Promise<string> {
 
   const { workspaceId } = getE2EConfigSync()
   const members = WorkspaceMembersSchema.parse(await kaneoApiJson(`/workspace/${workspaceId}/members`))
-  if (members.length !== 1) {
+  const owners = members.filter((member) => member.role === OWNER_ROLE)
+  const [owner] = owners
+  if (owner === undefined || owners.length !== 1) {
     throw new Error(
-      `Expected exactly one workspace member for ${workspaceId} when session lookup is unavailable, got ${members.length}`,
+      `Expected exactly one owner member for ${workspaceId} when session lookup is unavailable, ` +
+        `got ${owners.length} owner(s) of ${members.length} member(s)`,
     )
   }
 
-  const [member] = members
-  if (member === undefined) {
-    throw new Error(`Expected workspace member for ${workspaceId}`)
-  }
-
-  return member.id
+  return owner.id
 }

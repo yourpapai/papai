@@ -13,7 +13,7 @@ export type StoryTier = (typeof STORY_TIERS)[number]
  * never speculatively: an executable record may only claim a live tier, so a
  * planned tier can never be mistaken for coverage that exists.
  */
-export const LIVE_STORY_TIERS: readonly StoryTier[] = Object.freeze(['0'])
+export const LIVE_STORY_TIERS: readonly StoryTier[] = Object.freeze(['0', '1'])
 
 /**
  * Repository-relative suite root each tier's stories live under. A record's story
@@ -102,7 +102,8 @@ export type CatalogCoverage =
       audit: AuditRecord
     }>
 
-export const CATALOG_SOURCE = 'scenario-catalog snapshot supplied 2026-07-13' as const
+export const CATALOG_SOURCE =
+  'scenario-catalog snapshot supplied 2026-07-13; extended 2026-07-23 with 12 SCN-parity-* provider-real (@1) ids (tier1-provider-real-parity); extended 2026-07-24 with 17 SCN-parity-* domain-retrofit (@1) ids (tier1b-e2e-parity-retrofit)' as const
 
 export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-task-create-update',
@@ -233,6 +234,41 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-http-debug-live-panels',
   'SCN-context-thread-scope',
   'SCN-context-group-identity',
+  // @1 — provider-real parity lane (tier1-provider-real-parity)
+  'SCN-parity-task-create',
+  'SCN-parity-task-get',
+  'SCN-parity-task-update',
+  'SCN-parity-task-delete',
+  'SCN-parity-task-list-sort',
+  'SCN-parity-task-list-paging',
+  'SCN-parity-task-search',
+  'SCN-parity-comment-crud',
+  'SCN-parity-task-label',
+  'SCN-parity-project-crud',
+  'SCN-parity-relation',
+  'SCN-parity-identity',
+  // @1 — domain-retrofit parity (tier1b-e2e-parity-retrofit)
+  'SCN-parity-task-dates',
+  'SCN-parity-task-full-property',
+  'SCN-parity-task-preserve-startdate',
+  'SCN-parity-task-null-dates',
+  'SCN-parity-task-special-chars',
+  'SCN-parity-task-long-title',
+  // @1 — search-variant parity (tier1b-e2e-parity-retrofit wave 2)
+  'SCN-parity-search-all-projects',
+  'SCN-parity-search-empty',
+  'SCN-parity-search-projectid-limit',
+  // @1 — comment-depth and content-edge parity (tier1b-e2e-parity-retrofit wave 3)
+  'SCN-parity-comment-id-stability',
+  'SCN-parity-comment-long',
+  'SCN-parity-comment-special-chars',
+  // @1 — error-parity consolidated by domain (tier1b-e2e-parity-retrofit wave 4)
+  'SCN-parity-task-errors',
+  'SCN-parity-comment-errors',
+  'SCN-parity-relation-errors',
+  'SCN-parity-project-label-errors',
+  // @1 — relation-basic and directionality-exclusion parity (tier1b-e2e-parity-retrofit wave 5)
+  'SCN-parity-relation-multiple',
 ] as const)
 
 const GAP_SCENARIO_IDS = new Set<CatalogScenarioId>([
@@ -846,6 +882,204 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     verifiedAt: '2026-07-22',
     storyIds: [
       'tests/stories/integrations/mcp/mcp-plugin-servers.story.test.ts#SCN-settings-admin-mcp-plugin-servers: operator config governs the hosted plugin-MCP route',
+    ],
+  },
+  // @1 — provider-real parity lane (tier1-provider-real-parity)
+  'SCN-parity-task-create': {
+    verifiedAt: '2026-07-23',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-task-create: createTask returns a normalized task shape',
+    ],
+  },
+  'SCN-parity-task-get': {
+    verifiedAt: '2026-07-23',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-task-get: getTask returns the same normalized shape as createTask',
+    ],
+  },
+  'SCN-parity-task-update': {
+    verifiedAt: '2026-07-23',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-task-update: updateTask applies a title and status change',
+    ],
+  },
+  'SCN-parity-task-delete': {
+    verifiedAt: '2026-07-23',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-task-delete: deleteTask removes the task and getTask then rejects',
+    ],
+  },
+  'SCN-parity-task-list-sort': {
+    verifiedAt: '2026-07-23',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-task-list-sort: listTasks honors sortBy/sortOrder across providers',
+    ],
+  },
+  'SCN-parity-task-list-paging': {
+    verifiedAt: '2026-07-23',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-task-list-paging: listTasks pages seeded tasks with limit and page',
+    ],
+  },
+  'SCN-parity-task-search': {
+    verifiedAt: '2026-07-23',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-task-search: searchTasks matches seeded tasks by query',
+    ],
+  },
+  'SCN-parity-comment-crud': {
+    verifiedAt: '2026-07-23',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-comment-crud: add, list, update, and remove a comment',
+    ],
+  },
+  'SCN-parity-task-label': {
+    verifiedAt: '2026-07-23',
+    provingTier: '1',
+    storyIds: ['tests/e2e/parity/provider-parity.test.ts#SCN-parity-task-label: attach and detach a label from a task'],
+  },
+  'SCN-parity-project-crud': {
+    verifiedAt: '2026-07-23',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-project-crud: create, list, update, and delete a project',
+    ],
+  },
+  'SCN-parity-relation': {
+    verifiedAt: '2026-07-23',
+    provingTier: '1',
+    storyIds: ['tests/e2e/parity/provider-parity.test.ts#SCN-parity-relation: add, update, and remove a task relation'],
+  },
+  'SCN-parity-identity': {
+    verifiedAt: '2026-07-23',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-identity: provisionWorkspaceMember and listUsers resolve normalized shapes',
+    ],
+  },
+  'SCN-parity-task-dates': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-task-dates: createTask round-trips startDate and dueDate',
+    ],
+  },
+  'SCN-parity-task-full-property': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-task-full-property: createTask round-trips description and priority',
+    ],
+  },
+  'SCN-parity-task-preserve-startdate': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-task-preserve-startdate: updateTask title preserves an existing startDate',
+    ],
+  },
+  'SCN-parity-task-null-dates': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-task-null-dates: createTask without dates leaves startDate and dueDate unset',
+    ],
+  },
+  'SCN-parity-task-special-chars': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-task-special-chars: createTask round-trips special characters in the title',
+    ],
+  },
+  'SCN-parity-task-long-title': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-task-long-title: createTask round-trips a long title',
+    ],
+  },
+  'SCN-parity-search-all-projects': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-search-all-projects: searchTasks without projectId matches across projects',
+    ],
+  },
+  'SCN-parity-search-empty': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-search-empty: searchTasks returns an empty array for a non-matching query',
+    ],
+  },
+  'SCN-parity-search-projectid-limit': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-search-projectid-limit: searchTasks honors projectId and limit together',
+    ],
+  },
+  'SCN-parity-comment-id-stability': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-comment-id-stability: a comment keeps its id across update',
+    ],
+  },
+  'SCN-parity-comment-long': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: ['tests/e2e/parity/provider-parity.test.ts#SCN-parity-comment-long: addComment round-trips a long body'],
+  },
+  'SCN-parity-comment-special-chars': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-comment-special-chars: addComment round-trips special characters',
+    ],
+  },
+  'SCN-parity-task-errors': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-task-errors: get, update, and delete reject for a missing task',
+    ],
+  },
+  'SCN-parity-comment-errors': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-comment-errors: commenting on a missing task rejects',
+    ],
+  },
+  'SCN-parity-relation-errors': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-relation-errors: relating a task to a missing task rejects',
+    ],
+  },
+  'SCN-parity-project-label-errors': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-project-label-errors: updating a missing project and removing a missing label reject',
+    ],
+  },
+  'SCN-parity-relation-multiple': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-relation-multiple: a task carries multiple distinct relations',
     ],
   },
 }
