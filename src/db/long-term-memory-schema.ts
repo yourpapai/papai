@@ -13,6 +13,7 @@ export const memoryProfiles = sqliteTable(
     scopeType: text('scope_type', { enum: ['personal', 'group'] }).notNull(),
     profile: text('profile').notNull().default(''),
     enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+    injectRecords: integer('inject_records', { mode: 'boolean' }).notNull().default(false),
     version: integer('version').notNull().default(1),
     updatedAt: text('updated_at').notNull(),
   },

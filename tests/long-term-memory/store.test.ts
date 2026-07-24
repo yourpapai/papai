@@ -65,9 +65,17 @@ describe('long-term memory store', () => {
       scopeType: 'personal',
       profile: '## Communication\n- Concise replies',
       enabled: true,
+      injectRecords: false,
       version: 1,
       updatedAt: '2026-06-11T00:00:00.000Z',
     })
+  })
+
+  test('a freshly saved profile defaults injectRecords to false', () => {
+    const scope = { scopeId: 'ctx-inject-default', scopeType: 'personal' as const }
+    saveMemoryProfile(scope, 'hello', '2026-07-24T00:00:00.000Z')
+    const profile = getMemoryProfile(scope)
+    expect(profile?.injectRecords).toBe(false)
   })
 
   test('keeps memory profiles isolated by full scope identity', () => {

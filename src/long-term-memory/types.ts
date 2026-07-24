@@ -35,6 +35,7 @@ export type MemoryProfile = MemoryScope &
   Readonly<{
     profile: string
     enabled: boolean
+    injectRecords: boolean
     version: number
     updatedAt: string
   }>

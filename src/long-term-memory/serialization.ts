@@ -50,6 +50,7 @@ export const rowToProfile = (row: MemoryProfileRow): MemoryProfile => ({
   scopeType: row.scopeType,
   profile: row.profile,
   enabled: row.enabled,
+  injectRecords: row.injectRecords,
   version: row.version,
   updatedAt: row.updatedAt,
 })
