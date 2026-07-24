@@ -22,6 +22,7 @@ import {
   type StoryFamily,
   type StorySeamId,
 } from '../catalog/coverage.js'
+import { PARITY_GROUPS } from './parity/expectations.js'
 
 function sorted(values: readonly string[]): readonly string[] {
   return [...values].sort()
@@ -224,6 +225,24 @@ describe('scenario catalog coverage', () => {
     expect(executable).toHaveLength(113)
     expect(offLaneTiers).toEqual([])
     expect(new Set(executable.map((coverage) => coverage.provingTier))).toEqual(new Set(['0', '1']))
+  })
+
+  test('maps every @1 parity record to its exact parity story title', () => {
+    // Both the catalog storyIds and the parity e2e test names derive from
+    // PARITY_GROUPS[].title, but the catalog strings are hand-transcribed — this
+    // is the only automated guard that a @1 storyId title matches its real test
+    // (the local-literal-stories check above is Tier-0-only; the Docker lane never
+    // reads the catalog). Two chained filters: inferred type predicates need them.
+    const parityRecords = catalogCoverage
+      .filter((coverage) => coverage.kind === 'executable')
+      .filter((coverage) => coverage.provingTier === '1')
+    expect(parityRecords).toHaveLength(PARITY_GROUPS.length)
+    const storyIdsByScenario = new Map<string, readonly string[]>(
+      parityRecords.map((coverage) => [coverage.scenarioId, coverage.storyIds]),
+    )
+    for (const group of PARITY_GROUPS) {
+      expect(storyIdsByScenario.get(group.id)).toEqual([`tests/e2e/parity/provider-parity.test.ts#${group.title}`])
+    }
   })
 
   test('gives every tier a distinct suite root', () => {
