@@ -25,6 +25,7 @@ describe('container lifecycle helpers', () => {
     expect(env['DEBUG_HOSTNAME']).toBe('0.0.0.0')
     expect(env['SETTINGS_PUBLIC_BASE_URL']).toBe('http://localhost:9100')
     expect(env['INSTANCE_CONFIG_KEY']).toHaveLength(64)
+    expect(env['DB_PATH']).toBe('/data/papai.db')
     expect(env['DEBUG_SERVER']).toBeUndefined()
   })
 

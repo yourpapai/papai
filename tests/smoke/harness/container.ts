@@ -38,6 +38,10 @@ export function buildContainerEnv(
     MAIN_MODEL: 'smoke-model',
     DEBUG_HOSTNAME: '0.0.0.0',
     SETTINGS_PUBLIC_BASE_URL: 'http://localhost:9100',
+    // The image's `final` stage only chowns /data to the `bun` user (Dockerfile); the
+    // app's default DB_PATH ('papai.db', relative to /app) is root-owned and unwritable.
+    // Matches the precedent in docker-compose.yml and scripts/ci/docker-smoke-test.sh.
+    DB_PATH: '/data/papai.db',
   }
   if (over.debugServer === true) env['DEBUG_SERVER'] = 'true'
   return env
