@@ -267,6 +267,8 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-parity-comment-errors',
   'SCN-parity-relation-errors',
   'SCN-parity-project-label-errors',
+  // @1 — relation-basic and directionality-exclusion parity (tier1b-e2e-parity-retrofit wave 5)
+  'SCN-parity-relation-multiple',
 ] as const)
 
 const GAP_SCENARIO_IDS = new Set<CatalogScenarioId>([
@@ -1071,6 +1073,13 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     provingTier: '1',
     storyIds: [
       'tests/e2e/parity/provider-parity.test.ts#SCN-parity-project-label-errors: updating a missing project and removing a missing label reject',
+    ],
+  },
+  'SCN-parity-relation-multiple': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-relation-multiple: a task carries multiple distinct relations',
     ],
   },
 }

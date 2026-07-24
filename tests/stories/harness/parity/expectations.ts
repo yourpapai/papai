@@ -133,4 +133,9 @@ export const PARITY_EXCLUSIONS: readonly Readonly<{ group: string; reason: strin
     reason:
       'KaneoProvider.searchTasks (plugins/task-provider-kaneo/provider.ts) scopes every search to a real Kaneo workspace and rejects an unknown workspace id; MemoryTaskProvider has no workspace concept and cannot reproduce the rejection, so invalid-workspace search stays a Kaneo-only residue check.',
   },
+  {
+    group: 'relation-directionality',
+    reason:
+      'KaneoProvider (plugins/task-provider-kaneo/provider.ts) materializes inverse relations — a blocks edge surfaces as blocked_by on the target, and subtask/parent edges surface on both endpoints. MemoryTaskProvider stores a flat directed Map<taskId, Map<relatedTaskId, type>> with no inverse, so directional round-trips cannot reach parity; only symmetric same-shape add results are portable.',
+  },
 ] as const

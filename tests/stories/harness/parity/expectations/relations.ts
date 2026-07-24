@@ -27,4 +27,17 @@ export const relationGroups: readonly ParityGroup[] = [
       expect(canonicalize(removed, VOLATILE_KEYS)).toEqual({ taskId: VOLATILE, relatedTaskId: VOLATILE })
     },
   },
+  {
+    id: 'SCN-parity-relation-multiple',
+    title: 'SCN-parity-relation-multiple: a task carries multiple distinct relations',
+    async run({ provider, projectId }) {
+      const hub = await provider.createTask({ projectId, title: 'Relation Hub' })
+      const first = await provider.createTask({ projectId, title: 'Relation Spoke One' })
+      const second = await provider.createTask({ projectId, title: 'Relation Spoke Two' })
+      const a = await provider.addRelation?.(hub.id, first.id, 'related')
+      const b = await provider.addRelation?.(hub.id, second.id, 'related')
+      expect(canonicalize(a, VOLATILE_KEYS)).toEqual({ taskId: VOLATILE, relatedTaskId: VOLATILE, type: 'related' })
+      expect(canonicalize(b, VOLATILE_KEYS)).toEqual({ taskId: VOLATILE, relatedTaskId: VOLATILE, type: 'related' })
+    },
+  },
 ] as const
