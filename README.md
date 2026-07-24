@@ -179,7 +179,9 @@ flowchart TD
 | Path                                               | Responsibility                                                                                        |
 | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `src/index.ts`                                     | Entry point, env validation, startup, scheduler and optional debug server wiring                      |
-| `src/bot.ts`                                       | Platform-agnostic message handling, queueing, and interaction routing                                 |
+| `src/bot.ts`                                       | Bot setup: message ingress + auth, interaction routing, command wiring entry                          |
+| `src/bot-command-wiring.ts`                        | Command registration and the observed command wrapper (post-auth analytics facts, reply tracking)     |
+| `src/bot-message-handler.ts`                       | Authorized message handling, mid-run steering, queueing, and the queued-turn lifecycle                |
 | `src/chat/`                                        | Telegram, Mattermost, Discord, and Kontur Talk adapters plus capability metadata and the `ChatRouter` |
 | `src/llm-orchestrator.ts`                          | LLM tool-calling orchestration                                                                        |
 | `src/tools/`                                       | Context-aware, capability-gated tool assembly                                                         |

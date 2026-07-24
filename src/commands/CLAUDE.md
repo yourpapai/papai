@@ -26,7 +26,7 @@ export function registerXCommand(chat: Readonly<ChatProvider>): void {
 
 ## Current Command Behavior
 
-- Commands are registered in `src/bot.ts` via `setupBot(chat, adminUserId)`.
+- Commands are registered in `src/bot-command-wiring.ts` (`registerCommands`), invoked by `setupBot(chat, adminUserId)` in `src/bot.ts`.
 - Current core command surface: `/help`, `/start`, `/config`, `/context`, `/clear`, `/dashboard`, `/stop`. Active plugins also register `plugin_<sanitized-plugin-id>_<command-name>` commands at startup via `registerPluginCommands`.
 - `/config` is launcher-only. In DM it issues a single-use settings link (outcome: `ok` / `rate_limited` / `not_configured`). In group contexts it sends one of two messages: a DM redirect for group admins, or an access-denied explanation for non-admins. `SETTINGS_PUBLIC_BASE_URL` must be set; when it is not, `/config` replies asking the admin to configure that variable. All configuration (personal, group, admin, plugins, identity, instances, system LLM, announce) happens in the settings web UI.
 - `/context` builds a tokenized `ContextSnapshot` and sends a platform-native view through `chat.renderContext()`.
