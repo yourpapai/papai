@@ -122,6 +122,9 @@ export default {
     'scripts/behavior-audit/tools.ts': ['exports'],
     // parseConsolidationResult is consumed by the schema unit test only.
     'scripts/behavior-audit/consolidate-agent.ts': ['exports'],
+    // updateAlertMatchedTaskIds and updateAlertMatchState are produced for the
+    // alert poller introduced in Task 6; temporary unused-export gap until then.
+    'src/deferred-prompts/alerts.ts': ['exports'],
     // listToolNames is consumed by the behavior-audit closure verifier via
     // dynamic import from scripts/behavior-audit/entry-point-maps.ts.
     'src/tools/index.ts': ['exports'],
