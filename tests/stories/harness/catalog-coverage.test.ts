@@ -110,8 +110,8 @@ describe('scenario catalog coverage', () => {
   test('classifies every catalog scenario exactly once', () => {
     const ledgerIds = catalogCoverage.map(({ scenarioId }) => scenarioId)
 
-    expect(CATALOG_SCENARIO_IDS).toHaveLength(128)
-    expect(new Set(CATALOG_SCENARIO_IDS).size).toBe(128)
+    expect(CATALOG_SCENARIO_IDS).toHaveLength(140)
+    expect(new Set(CATALOG_SCENARIO_IDS).size).toBe(140)
     expect(sorted(ledgerIds)).toEqual(sorted(CATALOG_SCENARIO_IDS))
   })
 
@@ -165,7 +165,12 @@ describe('scenario catalog coverage', () => {
     const extractedStoryIds = new Set(
       candidateFiles.flatMap(({ path, bytes }) => extractStoryScenarios(path, bytes).map(({ id }) => id)),
     )
-    const executableCoverage = catalogCoverage.filter((coverage) => coverage.kind === 'executable')
+    // `loadCandidateStoryFiles` only walks the frozen `tests/stories/` tree (Tier 0's suite
+    // root), so this literal-story check is scoped to Tier 0 executable records; other live
+    // tiers (e.g. Tier 1's `tests/e2e/`) prove their storyIds in their own suite, not here.
+    const executableCoverage = catalogCoverage
+      .filter((coverage) => coverage.kind === 'executable')
+      .filter((coverage) => coverage.provingTier === '0')
 
     for (const coverage of pendingCoverage) expect(coverage.audit.rationale.toString().trim().length).toBeGreaterThan(0)
 
@@ -207,7 +212,7 @@ describe('scenario catalog coverage', () => {
   })
 
   test('tracks the executable coverage total', () => {
-    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(101)
+    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(113)
   })
 
   test('stamps every executable record with a live proving tier', () => {
@@ -216,9 +221,9 @@ describe('scenario catalog coverage', () => {
       .filter((coverage) => !LIVE_STORY_TIERS.includes(coverage.provingTier))
       .map(({ scenarioId, provingTier }) => `${scenarioId} -> T${provingTier}`)
 
-    expect(executable).toHaveLength(101)
+    expect(executable).toHaveLength(113)
     expect(offLaneTiers).toEqual([])
-    expect(new Set(executable.map((coverage) => coverage.provingTier))).toEqual(new Set(['0']))
+    expect(new Set(executable.map((coverage) => coverage.provingTier))).toEqual(new Set(['0', '1']))
   })
 
   test('gives every tier a distinct suite root', () => {
