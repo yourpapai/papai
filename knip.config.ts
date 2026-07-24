@@ -46,7 +46,6 @@ export default {
     'src/coding-sessions/configure.ts!',
     'src/coding-sessions/session-record.ts!',
     'src/coding-sessions/store.ts!',
-    'src/deferred-prompts/change-gate.ts!',
     'playwright.config.ts!',
     'strybk.config.ts!',
     // First-party plugin entry points are loaded dynamically by the plugin

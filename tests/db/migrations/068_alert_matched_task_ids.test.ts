@@ -14,13 +14,13 @@ import { createAlertPrompt } from '../../../src/deferred-prompts/alerts.js'
 import { mockLogger, setupTestDb } from '../../utils/test-helpers.js'
 
 describe('migration 068: alert matched task ids', () => {
-  test('migration id is 068_alert_matched_task_ids', () => {
-    expect(migration068AlertMatchedTaskIds.id).toBe('068_alert_matched_task_ids')
-  })
-
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+  })
+
+  test('migration id is 068_alert_matched_task_ids', () => {
+    expect(migration068AlertMatchedTaskIds.id).toBe('068_alert_matched_task_ids')
   })
 
   test('matched_task_ids column defaults to empty JSON array', () => {

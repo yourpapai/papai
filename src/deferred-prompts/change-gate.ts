@@ -17,7 +17,8 @@ const extractors = new Map(SNAPSHOT_FIELDS.map((f) => [f.field, f.extract]))
 const snapshotTaskIds = (snapshots: Map<string, string>): Set<string> => {
   const ids = new Set<string>()
   for (const key of snapshots.keys()) {
-    ids.add(key.slice(0, key.indexOf(':')))
+    const colon = key.lastIndexOf(':')
+    ids.add(colon === -1 ? key : key.slice(0, colon))
   }
   return ids
 }

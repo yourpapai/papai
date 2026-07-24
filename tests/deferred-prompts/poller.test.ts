@@ -1757,4 +1757,26 @@ describe('pollAlertsOnce — change gate and fetch sharing', () => {
     expect(dispatchCalls).toHaveLength(1)
     expect(sentMessages).toHaveLength(1)
   })
+
+  test('enrichment failure aborts the instance cycle with nothing written', async () => {
+    const created = createAlertPrompt(
+      USER_ID,
+      'Notify on alice assignment',
+      { field: 'task.assignee', op: 'eq', value: 'alice' },
+      0,
+    )
+    const provider = createMockProvider({
+      listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
+      listTasks: mock(() => Promise.resolve([{ id: 'task-1', title: 'Task A', status: 'todo', url: 'http://test/1' }])),
+      getTask: mock(() => Promise.reject(new Error('getTask boom'))),
+    })
+
+    await pollAlertsOnce(chat, () => provider)
+
+    expect(dispatchCalls).toHaveLength(0)
+    expect(sentMessages).toHaveLength(0)
+    expect(getAlertPrompt(created.id, USER_ID)!.matchedTaskIds).toEqual([])
+    expect(getAlertPrompt(created.id, USER_ID)!.lastTriggeredAt).toBeNull()
+    expect(getSnapshotsForUser(USER_ID).size).toBe(0)
+  })
 })

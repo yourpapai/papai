@@ -139,6 +139,7 @@ export const updateAlertPrompt = (
   if (updates.condition !== undefined) {
     alertConditionSchema.parse(updates.condition)
     set.condition = JSON.stringify(updates.condition)
+    set.matchedTaskIds = '[]'
   }
   if (updates.cooldownMinutes !== undefined) set.cooldownMinutes = updates.cooldownMinutes
   if (updates.executionMetadata !== undefined) set.executionMetadata = JSON.stringify(updates.executionMetadata)

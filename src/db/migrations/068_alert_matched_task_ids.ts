@@ -19,8 +19,8 @@ const columnExists = (db: Database, table: string, column: string): boolean =>
 const up = (db: Database): void => {
   if (!columnExists(db, 'alert_prompts', 'matched_task_ids')) {
     db.run(`ALTER TABLE alert_prompts ADD COLUMN matched_task_ids TEXT NOT NULL DEFAULT '[]'`)
+    log.info('migration 068: matched_task_ids added to alert_prompts')
   }
-  log.info('migration 068: matched_task_ids added to alert_prompts')
 }
 
 export const migration068AlertMatchedTaskIds: Migration = { id: '068_alert_matched_task_ids', up }

@@ -151,6 +151,29 @@ describe('alert prompt CRUD', () => {
     expect(() => updateAlertPrompt(created.id, 'user1', { condition: badCondition })).toThrow()
   })
 
+  test('updateAlertPrompt resets matched task ids when condition changes', () => {
+    const oldCondition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+    const created = createAlertPrompt('user1', 'Alert', oldCondition)
+    updateAlertMatchState(created.id, 'user1', new Date().toISOString(), ['task-1', 'task-2'])
+
+    const newCondition: AlertCondition = { field: 'task.priority', op: 'eq', value: 'urgent' }
+    const updated = updateAlertPrompt(created.id, 'user1', { condition: newCondition })
+    expect(updated).not.toBeNull()
+    expect(updated!.condition).toEqual(newCondition)
+    expect(updated!.matchedTaskIds).toEqual([])
+  })
+
+  test('updateAlertPrompt preserves matched task ids when only prompt text changes', () => {
+    const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+    const created = createAlertPrompt('user1', 'Alert', condition)
+    updateAlertMatchState(created.id, 'user1', new Date().toISOString(), ['task-1', 'task-2'])
+
+    const updated = updateAlertPrompt(created.id, 'user1', { prompt: 'Updated prompt' })
+    expect(updated).not.toBeNull()
+    expect(updated!.prompt).toBe('Updated prompt')
+    expect(updated!.matchedTaskIds).toEqual(['task-1', 'task-2'])
+  })
+
   test('cancelAlertPrompt sets status to cancelled', () => {
     const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
     const created = createAlertPrompt('user1', 'Alert', condition)

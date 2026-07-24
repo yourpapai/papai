@@ -101,4 +101,19 @@ describe('hasTaskChanges', () => {
     const unchanged = makeTask({ id: 'task-1', status: 'done', assignee: 'alice', labels: [{ id: 'l1', name: 'bug' }] })
     expect(hasTaskChanges([unchanged], base, RICH_SNAPSHOT_FIELDS)).toBe(false)
   })
+
+  test('handles task ids that contain a colon', () => {
+    const task = makeTask({ id: 'proj:task-1', status: 'done', priority: 'high' })
+    const snapshots = new Map([
+      ['proj:task-1:status', 'done'],
+      ['proj:task-1:priority', 'high'],
+    ])
+    expect(hasTaskChanges([task], snapshots, LIGHTWEIGHT_SNAPSHOT_FIELDS)).toBe(false)
+  })
+
+  test('detects changes for task ids that contain a colon', () => {
+    const task = makeTask({ id: 'proj:task-1', status: 'done' })
+    const snapshots = new Map([['proj:task-1:status', 'todo']])
+    expect(hasTaskChanges([task], snapshots, LIGHTWEIGHT_SNAPSHOT_FIELDS)).toBe(true)
+  })
 })
