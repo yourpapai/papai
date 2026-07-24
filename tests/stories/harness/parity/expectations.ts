@@ -248,6 +248,18 @@ export const PARITY_GROUPS: readonly ParityGroup[] = [
       // cross-provider identity signal is the provisionWorkspaceMember assertion above.
       const users = required(await provider.listUsers?.('parity', 10), 'listUsers result')
       expect(Array.isArray(users)).toBe(true)
+      // When a provider does surface the just-provisioned member (real Kaneo matches it
+      // by the 'parity' substring on name/email; the fake returns [] so this is a no-op
+      // there), assert the normalized UserRef shape. A for...of over the filtered matches
+      // keeps the check tolerant of the empty fake result without a conditional expect.
+      const provisionedMembers = users.filter((user) => user.login === provisioned.login)
+      for (const member of provisionedMembers) {
+        expect(member.id).toBeTypeOf('string')
+        expect(member.id.length).toBeGreaterThan(0)
+        const memberName = required(member.name, 'listUsers member.name')
+        expect(memberName).toBeTypeOf('string')
+        expect(memberName.length).toBeGreaterThan(0)
+      }
     },
   },
 ] as const

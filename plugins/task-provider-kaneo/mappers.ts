@@ -111,7 +111,12 @@ export const mapTaskSearchResult = (t: TaskSearchMappingInput, url: string): Tas
  *  minimal shape MemoryTaskProvider produces (see tests/stories/harness/parity/
  *  expectations.ts SCN-parity-project-crud). Kaneo returns `null` for "no description"
  *  from the create endpoint but `""` from the update endpoint when description isn't
- *  part of the patch (verified against Kaneo 2.7.2) — both are treated as absent. */
+ *  part of the patch (verified against Kaneo 2.7.2) — both are treated as absent.
+ *  Asymmetry note: a caller that explicitly sets `description: ''` (clearing it) sees
+ *  the field omitted here but present-and-empty from MemoryTaskProvider, which only
+ *  omits on `undefined`. No parity group exercises an explicit empty-string
+ *  description, so the divergence is unobservable today; flagged for whoever extends
+ *  SCN-parity-project-crud to a clear-description case. */
 export const mapProject = (p: { id: string; name: string; description?: string | null }, url: string): Project => ({
   id: p.id,
   name: p.name,
