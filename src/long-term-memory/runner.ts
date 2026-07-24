@@ -112,37 +112,48 @@ const logConfigFailure = (
   )
 }
 
-const insertRecords = (scope: MemoryScope, patch: MemoryPatch, deps: RunMemoryExtractionDeps): number => {
+type SuppressibleCount = Readonly<{ count: number; suppressed: number }>
+
+const insertRecords = (scope: MemoryScope, patch: MemoryPatch, deps: RunMemoryExtractionDeps): SuppressibleCount => {
   const now = deps.now()
-  return patch.records.reduce((count, record) => {
-    if (isContentTombstoned(scope, record.content)) return count
-    saveMemoryRecord({
-      id: deps.randomUUID(),
-      ...scope,
-      kind: record.kind,
-      content: record.content,
-      summary: record.summary,
-      tags: record.tags,
-      confidence: record.confidence,
-      status: 'active',
-      source: 'background',
-      evidence: record.evidence,
-      createdAt: now,
-      updatedAt: now,
-      lastSeenAt: now,
-      validFrom: canonicalIsoOrNull(record.validFrom),
-      validUntil: canonicalIsoOrNull(record.validUntil),
-      expiresAt: canonicalIsoOrNull(record.expiresAt),
-    })
-    return count + 1
-  }, 0)
+  return patch.records.reduce<SuppressibleCount>(
+    (acc, record) => {
+      if (isContentTombstoned(scope, record.content)) return { ...acc, suppressed: acc.suppressed + 1 }
+      saveMemoryRecord({
+        id: deps.randomUUID(),
+        ...scope,
+        kind: record.kind,
+        content: record.content,
+        summary: record.summary,
+        tags: record.tags,
+        confidence: record.confidence,
+        status: 'active',
+        source: 'background',
+        evidence: record.evidence,
+        createdAt: now,
+        updatedAt: now,
+        lastSeenAt: now,
+        validFrom: canonicalIsoOrNull(record.validFrom),
+        validUntil: canonicalIsoOrNull(record.validUntil),
+        expiresAt: canonicalIsoOrNull(record.expiresAt),
+      })
+      return { ...acc, count: acc.count + 1 }
+    },
+    { count: 0, suppressed: 0 },
+  )
 }
 
-const applyUpdates = (scope: MemoryScope, patch: MemoryPatch, now: string): number =>
-  patch.updates.reduce((count, update) => {
-    const updated = updateMemoryRecord(scope, update.id, update, now)
-    return updated === null ? count : count + 1
-  }, 0)
+const applyUpdates = (scope: MemoryScope, patch: MemoryPatch, now: string): SuppressibleCount =>
+  patch.updates.reduce<SuppressibleCount>(
+    (acc, update) => {
+      if (update.content !== undefined && isContentTombstoned(scope, update.content)) {
+        return { ...acc, suppressed: acc.suppressed + 1 }
+      }
+      const updated = updateMemoryRecord(scope, update.id, update, now)
+      return updated === null ? acc : { ...acc, count: acc.count + 1 }
+    },
+    { count: 0, suppressed: 0 },
+  )
 
 const shouldResolveModel = (input: RunMemoryExtractionInput): boolean =>
   input.deps?.extractMemoryPatch === undefined || input.deps.buildModel !== undefined
@@ -193,8 +204,9 @@ const performExtraction = async (
   if (patch.profile !== null) {
     saveMemoryProfile(scope, patch.profile, now)
   }
-  const inserted = insertRecords(scope, patch, deps)
-  const updated = applyUpdates(scope, patch, now)
+  const insertResult = insertRecords(scope, patch, deps)
+  const updateResult = applyUpdates(scope, patch, now)
+  const suppressed = insertResult.suppressed + updateResult.suppressed
 
   log.info(
     {
@@ -202,8 +214,9 @@ const performExtraction = async (
       configContextId: input.configContextId,
       scopeId: scope.scopeId,
       scopeType: scope.scopeType,
-      inserted,
-      updated,
+      inserted: insertResult.count,
+      updated: updateResult.count,
+      suppressed,
       profileUpdated: patch.profile !== null,
     },
     'Long-term memory extraction complete',

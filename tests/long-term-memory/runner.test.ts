@@ -236,6 +236,37 @@ describe('runMemoryExtractionInBackground', () => {
     expect(listMemoryRecords({ scopeId: 'ctx-tomb', scopeType: 'personal' })).toEqual([])
   })
 
+  test('background update skips reintroducing tombstoned content', async () => {
+    saveMemoryRecord(memoryRecordInput({ id: 'mem-existing', scopeId: 'ctx-tomb-update', scopeType: 'personal' }))
+    insertTombstone(
+      { scopeId: 'ctx-tomb-update', scopeType: 'personal' },
+      'Budget approved for Q3',
+      '2026-07-24T00:00:00.000Z',
+    )
+
+    const updatePatch: MemoryPatch = {
+      profile: null,
+      records: [],
+      updates: [{ id: 'mem-existing', content: 'budget  APPROVED for q3' }],
+    }
+
+    await runMemoryExtractionInBackground({
+      storageContextId: 'ctx-tomb-update',
+      configContextId: 'cfg-1',
+      contextType: 'dm',
+      history,
+      deps: {
+        extractMemoryPatch: () => Promise.resolve(updatePatch),
+        now: () => '2026-07-24T01:00:00.000Z',
+      },
+    })
+
+    const updated = listMemoryRecords({ scopeId: 'ctx-tomb-update', scopeType: 'personal' }).find(
+      (record) => record.id === 'mem-existing',
+    )
+    expect(updated?.content).toBe('Old release note process.')
+  })
+
   test('group thread context resolves to parent group scope', async () => {
     const parent = toScopedContextId({ platformInstanceId: 'telegram-main', nativeContextId: '-1001' })
     const thread = toScopedThreadContextId({
