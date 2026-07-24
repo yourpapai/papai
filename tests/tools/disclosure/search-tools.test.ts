@@ -102,6 +102,18 @@ describe('search_tools', () => {
     expect(out.hint).toContain('web')
   })
 
+  it('returns a clean hint without a dangling domain list when no tools are discoverable', async () => {
+    const tools: ToolSet = { get_current_time: d('Get the time now.'), search_tools: d('search'), load_tool: d('load') }
+    const session = createDisclosureSession(tools, CORE_TOOL_NAMES)
+    const exec = getToolExecutor(makeSearchToolsTool(session, new LexicalToolRetriever(), 'ctx-1', tools))
+    const out: unknown = await exec({ query: 'zzzznomatchzzz', limit: 5 })
+    assert.ok(isSearchOut(out))
+    expect(out.results).toEqual([])
+    expect(out.hint).toBeDefined()
+    expect(out.hint).not.toContain(': .')
+    expect(out.hint).not.toContain('keyword: ')
+  })
+
   it('omits the hint when there are matching results', async () => {
     const tools: ToolSet = {
       get_current_time: d('Get the time.'),

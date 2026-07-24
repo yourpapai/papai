@@ -50,10 +50,11 @@ export function makeSearchToolsTool(
         log.debug({ contextId, queryLength: query.length, resultCount: results.length }, 'search_tools served')
         if (results.length > 0) return { results }
         const domains = [...new Set(discoverable.map((b) => b.domain))].sort()
-        return {
-          results,
-          hint: `No tool matched. Retry with different wording or a domain keyword: ${domains.join(', ')}.`,
-        }
+        const hint =
+          domains.length > 0
+            ? `No tool matched. Retry with different wording or a domain keyword: ${domains.join(', ')}.`
+            : 'No tool matched, and no additional tools are available to load in this context.'
+        return { results, hint }
       } catch (error) {
         const failure = buildToolFailureResult(error, 'search_tools', opts?.toolCallId ?? '')
         log.error({ contextId, tool: 'search_tools', error: failure.error }, 'search_tools execution failed')
