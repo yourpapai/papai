@@ -14,7 +14,7 @@ import { shouldTriggerTrim, buildMessagesWithMemory, runTrimInBackground } from 
 import { clearLlmAdminCacheForTesting } from '../src/llm-providers/store.testing.js'
 import { logger } from '../src/logger.js'
 import * as longTermMemoryStore from '../src/long-term-memory/store.js'
-import { saveMemoryProfile, saveMemoryRecord } from '../src/long-term-memory/store.js'
+import { saveMemoryProfile, saveMemoryRecord, setMemoryRecordInjectionEnabled } from '../src/long-term-memory/store.js'
 import type { MemoryRecordInput } from '../src/long-term-memory/types.js'
 import { flushMicrotasks, seedAdminLlmBinding, setupTestDb } from './utils/test-helpers.js'
 
@@ -266,6 +266,7 @@ describe('buildMessagesWithMemory', () => {
   })
 
   test('loads at most three active long-term memory records', () => {
+    setMemoryRecordInjectionEnabled({ scopeId: 'user-1', scopeType: 'personal' }, true, '2026-06-12T00:00:00.000Z')
     const listMemoryRecordsSpy = spyOn(longTermMemoryStore, 'listMemoryRecords')
 
     try {
@@ -304,6 +305,7 @@ describe('buildMessagesWithMemory', () => {
         summary: 'Friday release notes',
       }),
     )
+    setMemoryRecordInjectionEnabled({ scopeId: parent, scopeType: 'group' }, true, '2026-06-12T00:00:01.000Z')
 
     const result = buildMessagesWithMemory(thread, [], 'group')
 
@@ -322,6 +324,48 @@ describe('buildMessagesWithMemory', () => {
 
     expect(history).toHaveLength(originalLength)
     expect(history[0]).toEqual({ role: 'user', content: 'Hello' })
+  })
+
+  test('does not inject records when injectRecords flag is off (default)', () => {
+    const scope = { scopeId: 'user-inject-off', scopeType: 'personal' as const }
+    saveMemoryProfile(scope, 'Prefers dark mode', '2026-07-24T00:00:00.000Z')
+    saveMemoryRecord(
+      memoryRecordInput({
+        id: 'mem-inject-off',
+        ...scope,
+        content: 'Likes espresso',
+        summary: null,
+        tags: [],
+        source: 'tool_result',
+      }),
+    )
+
+    const listSpy = spyOn(longTermMemoryStore, 'listMemoryRecords')
+    const result = buildMessagesWithMemory('user-inject-off', [])
+    expect(result.memoryMsg?.content).not.toContain('Likes espresso')
+    // profile is still injected even when record injection is off
+    expect(result.memoryMsg?.content).toContain('Prefers dark mode')
+    expect(listSpy).not.toHaveBeenCalled()
+    listSpy.mockRestore()
+  })
+
+  test('injects records when injectRecords flag is on', () => {
+    const scope = { scopeId: 'user-inject-on', scopeType: 'personal' as const }
+    saveMemoryProfile(scope, 'Prefers dark mode', '2026-07-24T00:00:00.000Z')
+    saveMemoryRecord(
+      memoryRecordInput({
+        id: 'mem-inject-on',
+        ...scope,
+        content: 'Likes espresso',
+        summary: null,
+        tags: [],
+        source: 'tool_result',
+      }),
+    )
+    setMemoryRecordInjectionEnabled(scope, true, '2026-07-24T00:00:01.000Z')
+
+    const result = buildMessagesWithMemory('user-inject-on', [])
+    expect(result.memoryMsg?.content).toContain('Likes espresso')
   })
 })
 

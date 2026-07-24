@@ -67,8 +67,10 @@ export const buildMessagesWithMemory = (
   const facts = loadFacts(userId)
   const compactedMemoryMsg = buildMemoryContextMessage(summary, facts)
   const scope = resolveMemoryScope({ storageContextId: userId, contextType })
-  const profile = getMemoryProfile(scope)?.profile ?? null
-  const records = listMemoryRecords({ ...scope, status: 'active', limit: 3 })
+  const memoryProfile = getMemoryProfile(scope)
+  const profile = memoryProfile?.profile ?? null
+  const records =
+    memoryProfile?.injectRecords === true ? listMemoryRecords({ ...scope, status: 'active', limit: 3 }) : []
   const longTermMemoryMsg = buildLongTermMemoryContextMessage({ profile, records })
   const memoryMessages = [compactedMemoryMsg, longTermMemoryMsg].filter(
     (message): message is { role: 'system'; content: string } => message !== null,
