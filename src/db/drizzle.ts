@@ -20,6 +20,7 @@ export const getDrizzleDb = (): ReturnType<typeof drizzle<typeof schema>> => {
     // WAL mode and foreign keys are set in existing getDb, keep for compatibility
     sqlite.run('PRAGMA journal_mode=WAL')
     sqlite.run('PRAGMA foreign_keys=ON')
+    sqlite.run('PRAGMA secure_delete=ON')
     sqliteInstance = sqlite
     dbInstance = drizzle(sqlite, { schema })
   }

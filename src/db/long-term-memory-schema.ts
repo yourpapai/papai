@@ -66,8 +66,23 @@ export const memoryRecords = sqliteTable(
   ],
 )
 
+export const memoryTombstones = sqliteTable(
+  'memory_tombstones',
+  {
+    scopeId: text('scope_id').notNull(),
+    scopeType: text('scope_type', { enum: ['personal', 'group'] }).notNull(),
+    contentHash: text('content_hash').notNull(),
+    forgottenAt: text('forgotten_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.scopeType, table.scopeId, table.contentHash] }),
+    index('idx_memory_tombstones_scope').on(table.scopeType, table.scopeId),
+  ],
+)
+
 export type MemoryProfileRow = typeof memoryProfiles.$inferSelect
 export type MemoryRecordRow = typeof memoryRecords.$inferSelect
+export type MemoryTombstoneRow = typeof memoryTombstones.$inferSelect
 
 export const memoryExtractionState = sqliteTable('memory_extraction_state', {
   contextId: text('context_id').primaryKey(),
