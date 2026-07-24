@@ -14,7 +14,7 @@ const up = (db: Database): void => {
   db.run(`
     CREATE TABLE IF NOT EXISTS memory_tombstones (
       scope_id     TEXT NOT NULL,
-      scope_type   TEXT NOT NULL,
+      scope_type   TEXT NOT NULL CHECK (scope_type IN ('personal', 'group')),
       content_hash TEXT NOT NULL,
       forgotten_at TEXT NOT NULL,
       PRIMARY KEY (scope_type, scope_id, content_hash)

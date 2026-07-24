@@ -68,4 +68,22 @@ describe('migration 069 memory tombstones', () => {
         .run(),
     ).toThrow()
   })
+
+  test('rejects an invalid scope_type via CHECK constraint', async () => {
+    await setupTestDb()
+
+    const db = getDrizzleDb()
+    // Drizzle's typed insert restricts scopeType to the 'personal' | 'group' enum, so an
+    // invalid value is inserted via raw SQL to exercise the DB-level CHECK constraint itself.
+    const insertRaw = (scopeType: string, contentHash: string): void => {
+      db.$client
+        .query('INSERT INTO memory_tombstones (scope_id, scope_type, content_hash, forgotten_at) VALUES (?, ?, ?, ?)')
+        .run('user-1', scopeType, contentHash, '2026-07-24T00:00:00.000Z')
+    }
+
+    expect(() => insertRaw('bogus', 'hash-3')).toThrow()
+
+    expect(() => insertRaw('personal', 'hash-valid-personal')).not.toThrow()
+    expect(() => insertRaw('group', 'hash-valid-group')).not.toThrow()
+  })
 })
