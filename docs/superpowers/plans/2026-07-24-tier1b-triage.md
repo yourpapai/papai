@@ -26,6 +26,37 @@ row needs an 18th id, so the ledger (12 → 29 groups, 140 → 157 catalog ids) 
 Two of the 17 target ids have **zero** backing NEW rows in the existing 77-test corpus; see
 Finding 1.
 
+## Controller adjudication (governs where it differs from the tables below)
+
+Resolved 2026-07-24 by the executing controller; this block **overrides** the raw table
+classifications for the rows it names.
+
+- **Finding 1 — ACCEPT.** `SCN-parity-task-dates` and `SCN-parity-task-long-title` are intended
+  net-new coverage (the retrofit plan's Task 2 mints them with full code). No ledger shift.
+- **Finding 2 — RECLASSIFY the 3 folded rows NEW → RESIDUE (keep them; do NOT retire).** The
+  drafted parity groups do not literally cover these behaviors, and broadening the groups was
+  declined to keep the plan's verbatim group code and avoid divergence-gate risk. These 3 tests
+  stay in their slimmed suites, uncatalogued; they are removed from the Retirement list:
+  - `task-lifecycle.test.ts` — "overrides startDate when updating it explicitly" (distinct from
+    `SCN-parity-task-preserve-startdate`, which tests preservation only).
+  - `label-operations.test.ts` — "throws error when updating non-existent label" and "throws
+    error when removing non-existent label" (workspace-label CRUD on a missing id; distinct from
+    `SCN-parity-project-label-errors`'s `removeTaskLabel` detach-missing case).
+  The target ids remain backed: `SCN-parity-task-preserve-startdate` by "preserves startDate when
+  updating only the title"; `SCN-parity-project-label-errors` by project-lifecycle "throws error
+  when updating non-existent project" + its drafted `removeTaskLabel`-missing case. **No ledger
+  change** (distinct-id count unchanged).
+- **Findings 3 & 4 — ADD 2 `PARITY_EXCLUSIONS` entries in Task 7** (`assignee`,
+  `create-task-invalid-project`), each with a `KaneoProvider`-naming reason. Final exclusion count
+  becomes **21 + 2 = 23** (19 existing + `search-invalid-workspace` + `relation-directionality` +
+  these 2). The EXCLUDE domain tests they document stay in their suites (Task 7 deletes only
+  CORE/NEW). Sanctioned by the retrofit plan's reconciliation rule ("counts you write are computed
+  from what actually landed").
+- **Findings 5–7 — ACCEPT** as sound judgment calls.
+
+**Net effect on Task 7:** retire 41 − 3 = **38** explicit CORE/NEW tests + all 5 `user-workflows`
+= **43** tests removed (not 46); keep the 3 reclassified RESIDUE tests; add 2 exclusion entries.
+
 ## Findings for the controller (read before Task 2/5/7)
 
 1. **`SCN-parity-task-dates` and `SCN-parity-task-long-title` are unbacked.** No domain test in
