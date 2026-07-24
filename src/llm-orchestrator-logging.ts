@@ -4,9 +4,18 @@
 // See LICENSE in the project root for details.
 
 import { emitUser } from './debug/event-bus.js'
+import type { LlmAttemptAnalytics } from './llm-orchestrator-events.js'
 import { logger } from './logger.js'
 
 const log = logger.child({ scope: 'llm-orchestrator:support' })
+
+/** Controlled failure classification carried alongside an llm:error debug event. */
+export type LlmFailureAnalytics = LlmAttemptAnalytics &
+  Readonly<{
+    phase: 'resolution' | 'request' | 'stream'
+    errorClass: string
+    retryable: boolean | null
+  }>
 
 export const emitLlmError = (
   contextId: string,
@@ -17,6 +26,7 @@ export const emitLlmError = (
   messageCount: number,
   error: unknown,
   turnId?: string,
+  analytics?: LlmFailureAnalytics,
 ): void => {
   emitUser(
     'llm:error',
@@ -28,6 +38,16 @@ export const emitLlmError = (
       contextType,
       durationMs: Date.now() - startTime,
       messageCount,
+      ...(analytics === undefined
+        ? {}
+        : {
+            attemptOrdinal: analytics.attemptOrdinal,
+            modelRole: analytics.modelRole,
+            ...(analytics.providerBinding === undefined ? {} : { providerBinding: analytics.providerBinding }),
+            phase: analytics.phase,
+            errorClass: analytics.errorClass,
+            retryable: analytics.retryable,
+          }),
     },
     turnId,
   )

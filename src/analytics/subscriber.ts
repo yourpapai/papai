@@ -3,14 +3,24 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { z } from 'zod'
-
 import { subscribe as busSubscribe, unsubscribe as busUnsubscribe } from '../debug/event-bus.js'
 import type { DebugEvent } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
-import { ErrorClassSchema, StatusClassSchema } from './controlled-types.js'
 import type { AnalyticsObserver } from './runtime.js'
 import type { AnalyticsSourceContext, AnalyticsSourceFact } from './source-facts.js'
+import {
+  attemptIdentityOf,
+  baseOf,
+  DisclosureFallbackDataSchema,
+  LlmEndDataSchema,
+  LlmErrorDataSchema,
+  LlmStartDataSchema,
+  llmBaseOf,
+  ToolCompletedDataSchema,
+  ToolIdentitySchema,
+  toolBaseOf,
+} from './subscriber-schemas.js'
+import { classifyAnalyticsTool } from './tool-classification.js'
 import type { AuthorizedTurnContextRegistry } from './turn-context.js'
 
 const log = logger.child({ scope: 'analytics:subscriber' })
@@ -24,61 +34,6 @@ const APPROVED_EVENT_TYPES: ReadonlySet<string> = new Set([
   'disclosure:fallback',
 ])
 
-const NonNegativeInt = z.number().int().nonnegative()
-const ModelRoleSchema = z.enum(['main', 'small'])
-
-const LlmStartDataSchema = z.looseObject({
-  model: z.string().min(1),
-  messageCount: NonNegativeInt,
-  toolCount: NonNegativeInt,
-})
-
-const FINISH_REASONS = ['stop', 'length', 'tool_calls', 'content_filter', 'error', 'other', 'unknown'] as const
-
-const LlmEndDataSchema = z.looseObject({
-  model: z.string().min(1),
-  actualModel: z.string().optional(),
-  steps: NonNegativeInt,
-  totalDuration: z.number().nonnegative(),
-  finishReason: z.enum(FINISH_REASONS).catch('unknown'),
-  tokenUsage: z
-    .looseObject({ inputTokens: z.number().optional(), outputTokens: z.number().optional() })
-    .nullable()
-    .optional(),
-})
-
-const LlmErrorDataSchema = z.looseObject({
-  model: z.string().min(1),
-  durationMs: z.number().nonnegative(),
-})
-
-const ToolIdentitySchema = z.looseObject({
-  toolName: z.string().min(1).max(128),
-  toolCallId: z.string().min(1),
-  argsBytes: NonNegativeInt,
-  modelRole: ModelRoleSchema.optional(),
-  origin: z.enum(['core', 'first_party_plugin', 'external_plugin', 'user_mcp']).optional(),
-  domain: z
-    .enum(['task', 'memo', 'schedule', 'attachment', 'web', 'identity', 'coding', 'config', 'meta', 'other'])
-    .optional(),
-  risk: z.enum(['read', 'write', 'destructive', 'open_world']).optional(),
-})
-
-const ToolCompletedDataSchema = ToolIdentitySchema.extend({
-  durationMs: z.number().nonnegative(),
-  executionOutcome: z.enum(['semantic_success', 'structured_failure', 'thrown_failure', 'permission_denied']),
-  resultBytes: NonNegativeInt,
-  errorClass: ErrorClassSchema.nullable(),
-  statusClass: StatusClassSchema,
-  retryable: z.boolean().nullable(),
-  recoveredSameTurn: z.boolean(),
-})
-
-const DisclosureFallbackDataSchema = z.looseObject({
-  stepNumber: NonNegativeInt,
-  reason: z.enum(['no_real_load', 'meta_tool_churn']).optional(),
-})
-
 export type AnalyticsSubscriberDeps = Readonly<{
   observer: AnalyticsObserver
   registry: AuthorizedTurnContextRegistry
@@ -86,31 +41,20 @@ export type AnalyticsSubscriberDeps = Readonly<{
   unsubscribe?: (fn: (event: DebugEvent) => void) => void
 }>
 
-type FactBase = Readonly<{
-  version: 1
-  sourceEventId: string
-  occurredAtMs: number
-  source: AnalyticsSourceContext
-}>
-
-const baseOf = (event: DebugEvent, source: AnalyticsSourceContext, suffix?: string): FactBase => ({
-  version: 1,
-  sourceEventId: `${event.turnId ?? 'unknown'}:${event.type}${suffix === undefined ? '' : `:${suffix}`}`,
-  occurredAtMs: event.timestamp,
-  source,
-})
-
 const mapEvent = (event: DebugEvent, source: AnalyticsSourceContext): AnalyticsSourceFact | null => {
   if (event.type === 'llm:start') {
     const data = LlmStartDataSchema.safeParse(event.data)
     if (!data.success) return null
+    const turnId = event.turnId
+    if (turnId === undefined) return null
+    const attempt = attemptIdentityOf(turnId, data.data)
     return {
-      ...baseOf(event, source),
+      ...llmBaseOf(event, source, attempt.rawAttemptId),
       type: 'llm_started',
-      rawAttemptId: event.turnId ?? 'unknown',
+      rawAttemptId: attempt.rawAttemptId,
       modelId: data.data.model,
-      providerBinding: 'unmapped',
-      modelRole: 'main',
+      providerBinding: attempt.providerBinding,
+      modelRole: attempt.modelRole,
       phase: 'generation',
       messageCount: data.data.messageCount,
       availableToolCount: data.data.toolCount,
@@ -123,15 +67,18 @@ const mapTerminalEvent = (event: DebugEvent, source: AnalyticsSourceContext): An
   if (event.type === 'llm:end') {
     const data = LlmEndDataSchema.safeParse(event.data)
     if (!data.success) return null
+    const turnId = event.turnId
+    if (turnId === undefined) return null
+    const attempt = attemptIdentityOf(turnId, data.data)
     return {
-      ...baseOf(event, source),
+      ...llmBaseOf(event, source, attempt.rawAttemptId),
       type: 'llm_completed',
-      rawAttemptId: event.turnId ?? 'unknown',
+      rawAttemptId: attempt.rawAttemptId,
       modelId: data.data.actualModel ?? data.data.model,
-      providerBinding: 'unmapped',
-      modelRole: 'main',
+      providerBinding: attempt.providerBinding,
+      modelRole: attempt.modelRole,
       durationMs: data.data.totalDuration,
-      timeToFirstTokenMs: null,
+      timeToFirstTokenMs: data.data.timeToFirstTokenMs ?? null,
       inputTokens: data.data.tokenUsage?.inputTokens ?? null,
       outputTokens: data.data.tokenUsage?.outputTokens ?? null,
       stepCount: data.data.steps,
@@ -141,16 +88,19 @@ const mapTerminalEvent = (event: DebugEvent, source: AnalyticsSourceContext): An
   if (event.type === 'llm:error') {
     const data = LlmErrorDataSchema.safeParse(event.data)
     if (!data.success) return null
+    const turnId = event.turnId
+    if (turnId === undefined) return null
+    const attempt = attemptIdentityOf(turnId, data.data)
     return {
-      ...baseOf(event, source),
+      ...llmBaseOf(event, source, attempt.rawAttemptId),
       type: 'llm_failed',
-      rawAttemptId: event.turnId ?? 'unknown',
+      rawAttemptId: attempt.rawAttemptId,
       modelId: data.data.model,
-      providerBinding: 'unmapped',
-      modelRole: 'main',
-      phase: 'request',
-      errorClass: 'llm_provider',
-      retryable: null,
+      providerBinding: attempt.providerBinding,
+      modelRole: attempt.modelRole,
+      phase: data.data.phase ?? 'request',
+      errorClass: data.data.errorClass ?? 'llm_provider',
+      retryable: data.data.retryable ?? null,
       durationMs: data.data.durationMs,
     }
   }
@@ -161,13 +111,14 @@ const mapToolEvent = (event: DebugEvent, source: AnalyticsSourceContext): Analyt
   if (event.type === 'tool:request') {
     const data = ToolIdentitySchema.safeParse(event.data)
     if (!data.success) return null
+    const tool = classifyAnalyticsTool(data.data.toolName)
     return {
-      ...baseOf(event, source, data.data.toolCallId),
+      ...toolBaseOf(event, source, data.data.analyticsSourceId),
       type: 'tool_started',
-      toolSlug: data.data.toolName,
-      toolOrigin: data.data.origin ?? 'core',
-      toolDomain: data.data.domain ?? 'other',
-      risk: data.data.risk ?? 'read',
+      toolSlug: tool.toolSlug,
+      toolOrigin: tool.toolOrigin,
+      toolDomain: tool.toolDomain,
+      risk: tool.risk,
       modelRole: data.data.modelRole ?? 'main',
       argsBytes: data.data.argsBytes,
     }
@@ -175,13 +126,14 @@ const mapToolEvent = (event: DebugEvent, source: AnalyticsSourceContext): Analyt
   if (event.type === 'tool:analytics_completed') {
     const data = ToolCompletedDataSchema.safeParse(event.data)
     if (!data.success) return null
+    const tool = classifyAnalyticsTool(data.data.toolName)
     return {
-      ...baseOf(event, source, data.data.toolCallId),
+      ...toolBaseOf(event, source, data.data.analyticsSourceId),
       type: 'tool_completed',
-      toolSlug: data.data.toolName,
-      toolOrigin: data.data.origin ?? 'core',
-      toolDomain: data.data.domain ?? 'other',
-      risk: data.data.risk ?? 'read',
+      toolSlug: tool.toolSlug,
+      toolOrigin: tool.toolOrigin,
+      toolDomain: tool.toolDomain,
+      risk: tool.risk,
       modelRole: data.data.modelRole ?? 'main',
       argsBytes: data.data.argsBytes,
       durationMs: data.data.durationMs,

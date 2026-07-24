@@ -1,0 +1,99 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { describe, expect, test } from 'bun:test'
+
+import { createStatusEngine, THINKING } from '../../src/live-status/status-engine.js'
+import type { StatusEngineDeps } from '../../src/live-status/status-engine.js'
+
+type EngineHarness = {
+  emitted: string[]
+  deps: StatusEngineDeps
+  advance: (ms: number) => void
+}
+
+const makeHarness = (options?: { active?: boolean; minLabelMs?: number }): EngineHarness => {
+  const emitted: string[] = []
+  let current = 0
+  let pending: Array<{ at: number; fn: () => void; cancelled: boolean }> = []
+  const deps: StatusEngineDeps = {
+    emit: (text) => {
+      emitted.push(text)
+    },
+    isActive: () => options?.active !== false,
+    minLabelMs: options?.minLabelMs ?? 1000,
+    now: () => current,
+    schedule: (fn, ms) => {
+      const entry = { at: current + ms, fn, cancelled: false }
+      pending.push(entry)
+      return () => {
+        entry.cancelled = true
+      }
+    },
+  }
+  return {
+    emitted,
+    deps,
+    advance: (ms) => {
+      current += ms
+      const due = pending.filter((entry) => !entry.cancelled && entry.at <= current)
+      pending = pending.filter((entry) => !entry.cancelled && entry.at > current)
+      for (const entry of due) entry.fn()
+    },
+  }
+}
+
+describe('createStatusEngine', () => {
+  test('a tool start emits its label after reset baselines Thinking', () => {
+    const harness = makeHarness()
+    const engine = createStatusEngine(harness.deps)
+    engine.reset()
+    engine.onToolStart('🔨 create_task')
+    expect(harness.emitted).toEqual(['🔨 create_task'])
+  })
+
+  test('duplicate text is never re-emitted', () => {
+    const harness = makeHarness({ minLabelMs: 0 })
+    const engine = createStatusEngine(harness.deps)
+    engine.reset()
+    engine.onToolStart('🔨 create_task')
+    engine.onToolFinish()
+    engine.onToolStart('🔨 create_task')
+    expect(harness.emitted).toEqual(['🔨 create_task', THINKING, '🔨 create_task'])
+  })
+
+  test('the Thinking revert waits out the minimum label hold', () => {
+    const harness = makeHarness({ minLabelMs: 1000 })
+    const engine = createStatusEngine(harness.deps)
+    engine.reset()
+    engine.onToolStart('🔨 create_task')
+    harness.advance(400)
+    engine.onToolFinish()
+    expect(harness.emitted).toEqual(['🔨 create_task'])
+    harness.advance(700)
+    expect(harness.emitted).toEqual(['🔨 create_task', THINKING])
+  })
+
+  test('stop cancels a pending Thinking revert', () => {
+    const harness = makeHarness({ minLabelMs: 1000 })
+    const engine = createStatusEngine(harness.deps)
+    engine.reset()
+    engine.onToolStart('🔨 create_task')
+    harness.advance(400)
+    engine.onToolFinish()
+    engine.stop()
+    harness.advance(2000)
+    expect(harness.emitted).toEqual(['🔨 create_task'])
+  })
+
+  test('nothing is emitted while the status surface is inactive', () => {
+    const harness = makeHarness({ active: false })
+    const engine = createStatusEngine(harness.deps)
+    engine.reset()
+    engine.onToolStart('🔨 create_task')
+    engine.onToolFinish()
+    expect(harness.emitted).toEqual([])
+  })
+})

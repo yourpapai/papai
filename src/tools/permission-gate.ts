@@ -20,6 +20,18 @@ export function buildPermissionDenied(message: string): PermissionDeniedResult {
   return { status: 'permission_denied', message }
 }
 
+/** Type guard for the structured denial returned by an ask-gated tool execution. */
+export function isPermissionDeniedResult(value: unknown): value is PermissionDeniedResult {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'status' in value &&
+    value.status === 'permission_denied' &&
+    'message' in value &&
+    typeof value.message === 'string'
+  )
+}
+
 const PERMISSION_REASON_DESCRIPTION =
   'Brief, user-facing reason this tool call is needed. ' +
   'Shown verbatim in the permission prompt. ' +

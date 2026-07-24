@@ -8,7 +8,26 @@ import { describe, expect, test } from 'bun:test'
 import { jsonSchema } from 'ai'
 import { z } from 'zod'
 
-import { buildPermissionDenied, PERMISSION_REASON_FIELD, extendSchemaForAsk } from '../../src/tools/permission-gate.js'
+import {
+  buildPermissionDenied,
+  isPermissionDeniedResult,
+  PERMISSION_REASON_FIELD,
+  extendSchemaForAsk,
+} from '../../src/tools/permission-gate.js'
+
+describe('isPermissionDeniedResult', () => {
+  test('recognizes the structured denial shape', () => {
+    expect(isPermissionDeniedResult(buildPermissionDenied('no'))).toBe(true)
+  })
+
+  test('rejects non-denial values', () => {
+    expect(isPermissionDeniedResult(undefined)).toBe(false)
+    expect(isPermissionDeniedResult(null)).toBe(false)
+    expect(isPermissionDeniedResult({ status: 'ok' })).toBe(false)
+    expect(isPermissionDeniedResult({ status: 'permission_denied' })).toBe(false)
+    expect(isPermissionDeniedResult('permission_denied')).toBe(false)
+  })
+})
 
 describe('buildPermissionDenied', () => {
   test('returns structured permission_denied shape', () => {

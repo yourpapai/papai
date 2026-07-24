@@ -1,0 +1,92 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+/**
+ * Analytics tool classification: maps a registered tool name to its bounded
+ * fact classification (slug, origin, domain, risk). User MCP and external
+ * plugin tools collapse to `external_other`; classification never carries raw
+ * external names.
+ */
+
+import { META_TOOL_NAMES } from '../tools/disclosure/core.js'
+import { getToolMetadata } from '../tools/tool-metadata.js'
+import type { ToolDomain, ToolRisk } from '../tools/tool-metadata.js'
+import { KNOWN_TOOL_SLUG_SET } from './generated/tool-slugs.js'
+import { resolveAnalyticsToolSlug } from './tool-slug-generation.js'
+
+export type AnalyticsToolOrigin = 'core' | 'first_party_plugin' | 'external_plugin' | 'user_mcp'
+export type AnalyticsToolDomain =
+  | 'task'
+  | 'memo'
+  | 'schedule'
+  | 'attachment'
+  | 'web'
+  | 'identity'
+  | 'coding'
+  | 'config'
+  | 'meta'
+  | 'other'
+export type AnalyticsToolRisk = 'read' | 'write' | 'destructive' | 'open_world'
+
+export type AnalyticsToolClassification = Readonly<{
+  toolSlug: string
+  toolOrigin: AnalyticsToolOrigin
+  toolDomain: AnalyticsToolDomain
+  risk: AnalyticsToolRisk
+}>
+
+const ACP_PLUGIN_PREFIX = 'plugin_acp__'
+
+const originOf = (toolName: string, slug: string): AnalyticsToolOrigin => {
+  if (toolName.startsWith('mcp_')) return 'user_mcp'
+  if (toolName.startsWith('plugin_')) return slug === 'external_other' ? 'external_plugin' : 'first_party_plugin'
+  return slug === 'external_other' ? 'external_plugin' : 'core'
+}
+
+const DOMAIN_MAP: Readonly<Record<ToolDomain, AnalyticsToolDomain>> = {
+  task: 'task',
+  project: 'task',
+  comment: 'task',
+  label: 'task',
+  status: 'task',
+  work: 'task',
+  sprint: 'task',
+  query: 'task',
+  history: 'task',
+  memo: 'memo',
+  instruction: 'memo',
+  memory: 'memo',
+  recurring: 'schedule',
+  deferred: 'schedule',
+  attachment: 'attachment',
+  web: 'web',
+  identity: 'identity',
+  collaboration: 'identity',
+  time: 'other',
+  mcp: 'other',
+  plugin: 'other',
+}
+
+const riskOf = (risk: ToolRisk): AnalyticsToolRisk => (risk === 'open-world' ? 'open_world' : risk)
+
+export const classifyAnalyticsTool = (toolName: string): AnalyticsToolClassification => {
+  const toolSlug = resolveAnalyticsToolSlug(toolName, KNOWN_TOOL_SLUG_SET)
+  if (META_TOOL_NAMES.has(toolName)) {
+    return { toolSlug, toolOrigin: 'core', toolDomain: 'meta', risk: 'read' }
+  }
+  if (toolName.startsWith(ACP_PLUGIN_PREFIX)) {
+    return { toolSlug, toolOrigin: 'first_party_plugin', toolDomain: 'coding', risk: 'open_world' }
+  }
+  const metadata = getToolMetadata(toolName)
+  if (metadata === undefined) {
+    return { toolSlug, toolOrigin: originOf(toolName, toolSlug), toolDomain: 'other', risk: 'open_world' }
+  }
+  return {
+    toolSlug,
+    toolOrigin: originOf(toolName, toolSlug),
+    toolDomain: DOMAIN_MAP[metadata.domain],
+    risk: riskOf(metadata.risk),
+  }
+}

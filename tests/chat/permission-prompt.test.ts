@@ -137,6 +137,170 @@ describe('askPermissionViaChat', () => {
   })
 })
 
+type RequestedEvent = { timeoutMs: number }
+type ResolvedEvent = { decision: string; decisionLatencyMs: number }
+
+function makeLifecycleRecorder(): {
+  analytics: { onRequested: (event: RequestedEvent) => void; onResolved: (event: ResolvedEvent) => void }
+  requested: RequestedEvent[]
+  resolved: ResolvedEvent[]
+} {
+  const requested: RequestedEvent[] = []
+  const resolved: ResolvedEvent[] = []
+  return {
+    analytics: {
+      onRequested: (event) => {
+        requested.push(event)
+      },
+      onResolved: (event) => {
+        resolved.push(event)
+      },
+    },
+    requested,
+    resolved,
+  }
+}
+
+describe('analytics confirmation lifecycle', () => {
+  beforeEach(() => resetPermissionPromptForTesting())
+  afterEach(() => resetPermissionPromptForTesting())
+
+  test('allow: requested fires after the prompt send resolves, then granted with latency', async () => {
+    const { reply, getButtonCall } = makeReply()
+    const { analytics, requested, resolved } = makeLifecycleRecorder()
+    let clock = 1000
+    const promise = askPermissionViaChat(
+      reply,
+      'ctx-1',
+      { toolName: 'delete_task', reason: 'r', args: {} },
+      { analytics, now: () => clock },
+    )
+
+    expect(requested).toHaveLength(0)
+    await tickAsync()
+    expect(requested).toEqual([{ timeoutMs: 300_000 }])
+    expect(resolved).toHaveLength(0)
+
+    const id = extractButtons(getButtonCall()!)[0]!.callbackData.replace('perm:a:', '')
+    clock = 1600
+    resolvePermissionRequest(id, 'allow')
+    await expect(promise).resolves.toBe('allow')
+    expect(resolved).toEqual([{ decision: 'granted', decisionLatencyMs: 600 }])
+  })
+
+  test('deny resolves with the denied decision', async () => {
+    const { reply, getButtonCall } = makeReply()
+    const { analytics, requested, resolved } = makeLifecycleRecorder()
+    let clock = 2000
+    const promise = askPermissionViaChat(
+      reply,
+      'ctx-1',
+      { toolName: 'delete_task', reason: 'r', args: {} },
+      { analytics, now: () => clock },
+    )
+    await tickAsync()
+    expect(requested).toHaveLength(1)
+
+    const id = extractButtons(getButtonCall()!)[0]!.callbackData.replace('perm:a:', '')
+    clock = 2100
+    resolvePermissionRequest(id, 'deny')
+    await expect(promise).resolves.toBe('deny')
+    expect(resolved).toEqual([{ decision: 'denied', decisionLatencyMs: 100 }])
+  })
+
+  test('timeout resolves as ignored exactly once; a late interaction is a no-op', async () => {
+    const { reply, getButtonCall } = makeReply()
+    const { analytics, requested, resolved } = makeLifecycleRecorder()
+    const promise = askPermissionViaChat(
+      reply,
+      'ctx-1',
+      { toolName: 'delete_task', reason: 'r', args: {} },
+      { analytics, timeoutMs: 25 },
+    )
+    await tickAsync()
+    const id = extractButtons(getButtonCall()!)[0]!.callbackData.replace('perm:a:', '')
+
+    await expect(promise).resolves.toBe('deny')
+    expect(requested).toHaveLength(1)
+    expect(requested[0]!.timeoutMs).toBe(25)
+    expect(resolved).toHaveLength(1)
+    expect(resolved[0]!.decision).toBe('ignored')
+
+    expect(resolvePermissionRequest(id, 'allow').resolved).toBe(false)
+    await tickAsync()
+    expect(resolved).toHaveLength(1)
+  })
+
+  test('a prompt-send failure resolves as prompt_failed without a requested event', async () => {
+    const { reply } = makeReply()
+    reply.buttons = (): Promise<undefined> => Promise.reject(new Error('send blew up'))
+    const { analytics, requested, resolved } = makeLifecycleRecorder()
+    const promise = askPermissionViaChat(
+      reply,
+      'ctx-1',
+      { toolName: 'delete_task', reason: 'r', args: {} },
+      { analytics },
+    )
+
+    await expect(promise).resolves.toBe('deny')
+    expect(requested).toHaveLength(0)
+    expect(resolved).toHaveLength(1)
+    expect(resolved[0]!.decision).toBe('prompt_failed')
+  })
+
+  test('a stale interaction for an unknown id emits nothing', () => {
+    const { analytics, requested, resolved } = makeLifecycleRecorder()
+    expect(resolvePermissionRequest('unknown-id', 'allow').resolved).toBe(false)
+    void analytics
+    expect(requested).toHaveLength(0)
+    expect(resolved).toHaveLength(0)
+  })
+
+  test('a throwing observer never breaks the permission flow', async () => {
+    const { reply, getButtonCall } = makeReply()
+    const promise = askPermissionViaChat(
+      reply,
+      'ctx-1',
+      { toolName: 'delete_task', reason: 'r', args: {} },
+      {
+        analytics: {
+          onRequested: () => {
+            throw new Error('observer boom')
+          },
+          onResolved: () => {
+            throw new Error('observer boom')
+          },
+        },
+      },
+    )
+    await tickAsync()
+    const id = extractButtons(getButtonCall()!)[0]!.callbackData.replace('perm:a:', '')
+    resolvePermissionRequest(id, 'allow')
+    await expect(promise).resolves.toBe('allow')
+  })
+
+  test('observer payloads never carry reason, args, callback id, or the raw tool name', async () => {
+    const { reply, getButtonCall } = makeReply()
+    const { analytics, requested, resolved } = makeLifecycleRecorder()
+    const promise = askPermissionViaChat(
+      reply,
+      'ctx-1',
+      { toolName: 'delete_task', reason: 'secret-reason-text', args: { target: 'T-123' } },
+      { analytics },
+    )
+    await tickAsync()
+    const id = extractButtons(getButtonCall()!)[0]!.callbackData.replace('perm:a:', '')
+    resolvePermissionRequest(id, 'allow')
+    await promise
+
+    const payload = JSON.stringify({ requested, resolved })
+    expect(payload).not.toContain('delete_task')
+    expect(payload).not.toContain('secret-reason-text')
+    expect(payload).not.toContain('T-123')
+    expect(payload).not.toContain(id)
+  })
+})
+
 describe('formatDecisionConfirmation', () => {
   test('includes the tool name for allow', () => {
     expect(formatDecisionConfirmation('delete_task', 'allow')).toBe('Allowed delete_task ✅')
