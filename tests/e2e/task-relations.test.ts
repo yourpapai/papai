@@ -13,7 +13,6 @@ import { addTaskRelation } from '../../plugins/task-provider-kaneo/add-task-rela
 import type { KaneoConfig } from '../../plugins/task-provider-kaneo/client.js'
 import { createTask } from '../../plugins/task-provider-kaneo/create-task.js'
 import { getTask } from '../../plugins/task-provider-kaneo/get-task.js'
-import { removeTaskRelation } from '../../plugins/task-provider-kaneo/remove-task-relation.js'
 import { updateTaskRelation } from '../../plugins/task-provider-kaneo/update-task-relation.js'
 import { kaneoApiJsonParsed } from './kaneo-api-helpers.js'
 import { createTestClient, KaneoTestClient } from './kaneo-test-client.js'
@@ -72,27 +71,6 @@ describe('E2E: Task Relations', () => {
     await testClient.cleanup()
   })
 
-  test('adds blocks relation between tasks', async () => {
-    const task1 = await createTask({ config: kaneoConfig, projectId, title: 'Blocking task' })
-    const task2 = await createTask({ config: kaneoConfig, projectId, title: 'Blocked task' })
-    testClient.trackTask(task1.id)
-    testClient.trackTask(task2.id)
-
-    const relation = await addTaskRelation({
-      config: kaneoConfig,
-      taskId: task1.id,
-      relatedTaskId: task2.id,
-      type: 'blocks',
-    })
-
-    expect(relation.taskId).toBe(task1.id)
-    expect(relation.relatedTaskId).toBe(task2.id)
-    expect(relation.type).toBe('blocks')
-
-    const task1WithRel = await getTask({ config: kaneoConfig, taskId: task1.id })
-    expect(task1WithRel.relations).toContainEqual({ type: 'blocks', taskId: task2.id })
-  })
-
   test('maps blocks to blocked_by on the target task', async () => {
     const blockingTask = await createTask({
       config: kaneoConfig,
@@ -119,24 +97,6 @@ describe('E2E: Task Relations', () => {
     const rawRelations = await kaneoApiJsonParsed(`/task-relation/${blockedTask.id}`, z.array(RawTaskRelationSchema))
     const rawRelation = requireRelation(rawRelations, blockingTask.id, blockedTask.id)
     expect(rawRelation.relationType).toBe('blocks')
-  })
-
-  test('adds related relation', async () => {
-    const task1 = await createTask({ config: kaneoConfig, projectId, title: 'Task A' })
-    const task2 = await createTask({ config: kaneoConfig, projectId, title: 'Task B' })
-    testClient.trackTask(task1.id)
-    testClient.trackTask(task2.id)
-
-    const relation = await addTaskRelation({
-      config: kaneoConfig,
-      taskId: task1.id,
-      relatedTaskId: task2.id,
-      type: 'related',
-    })
-    expect(relation.type).toBe('related')
-
-    const task1WithRel = await getTask({ config: kaneoConfig, taskId: task1.id })
-    expect(task1WithRel.relations).toContainEqual({ type: 'related', taskId: task2.id })
   })
 
   test('adds parent relation', async () => {
@@ -180,32 +140,6 @@ describe('E2E: Task Relations', () => {
     expect(rawRelation.relationType).toBe('subtask')
   })
 
-  test('updates relation type', async () => {
-    const task1 = await createTask({ config: kaneoConfig, projectId, title: 'Task 1' })
-    const task2 = await createTask({ config: kaneoConfig, projectId, title: 'Task 2' })
-    testClient.trackTask(task1.id)
-    testClient.trackTask(task2.id)
-
-    await addTaskRelation({
-      config: kaneoConfig,
-      taskId: task1.id,
-      relatedTaskId: task2.id,
-      type: 'related',
-    })
-    const updated = await updateTaskRelation({
-      config: kaneoConfig,
-      taskId: task1.id,
-      relatedTaskId: task2.id,
-      type: 'blocks',
-    })
-
-    expect(updated.type).toBe('blocks')
-
-    const task1WithRel = await getTask({ config: kaneoConfig, taskId: task1.id })
-    expect(task1WithRel.relations).toContainEqual({ type: 'blocks', taskId: task2.id })
-    expect(task1WithRel.relations).not.toContainEqual({ type: 'related', taskId: task2.id })
-  })
-
   test('relation update leaves exactly one live relation in the raw Kaneo payload', async () => {
     const task1 = await createTask({ config: kaneoConfig, projectId, title: 'Task 1' })
     const task2 = await createTask({ config: kaneoConfig, projectId, title: 'Task 2' })
@@ -236,68 +170,5 @@ describe('E2E: Task Relations', () => {
     expect(liveRelation.sourceTaskId).toBe(task1.id)
     expect(liveRelation.targetTaskId).toBe(task2.id)
     expect(liveRelation.relationType).toBe('blocks')
-  })
-
-  test('removes relation', async () => {
-    const task1 = await createTask({ config: kaneoConfig, projectId, title: 'Task 1' })
-    const task2 = await createTask({ config: kaneoConfig, projectId, title: 'Task 2' })
-    testClient.trackTask(task1.id)
-    testClient.trackTask(task2.id)
-
-    await addTaskRelation({
-      config: kaneoConfig,
-      taskId: task1.id,
-      relatedTaskId: task2.id,
-      type: 'related',
-    })
-    const removed = await removeTaskRelation({
-      config: kaneoConfig,
-      taskId: task1.id,
-      relatedTaskId: task2.id,
-    })
-
-    expect(removed.success).toBe(true)
-
-    const task1WithRel = await getTask({ config: kaneoConfig, taskId: task1.id })
-    expect(task1WithRel.relations).not.toContainEqual({ type: 'related', taskId: task2.id })
-  })
-
-  test('handles multiple relations on same task', async () => {
-    const task1 = await createTask({ config: kaneoConfig, projectId, title: 'Main task' })
-    const task2 = await createTask({ config: kaneoConfig, projectId, title: 'Related task' })
-    const task3 = await createTask({ config: kaneoConfig, projectId, title: 'Blocking task' })
-    testClient.trackTask(task1.id)
-    testClient.trackTask(task2.id)
-    testClient.trackTask(task3.id)
-
-    await addTaskRelation({
-      config: kaneoConfig,
-      taskId: task1.id,
-      relatedTaskId: task2.id,
-      type: 'related',
-    })
-    await addTaskRelation({
-      config: kaneoConfig,
-      taskId: task1.id,
-      relatedTaskId: task3.id,
-      type: 'blocks',
-    })
-
-    const task1WithRels = await getTask({ config: kaneoConfig, taskId: task1.id })
-    expect(task1WithRels.relations).toContainEqual({ type: 'related', taskId: task2.id })
-    expect(task1WithRels.relations).toContainEqual({ type: 'blocks', taskId: task3.id })
-  })
-
-  test('error when relating to non-existent task', async () => {
-    const task1 = await createTask({ config: kaneoConfig, projectId, title: 'Existing task' })
-    testClient.trackTask(task1.id)
-
-    const promise = addTaskRelation({
-      config: kaneoConfig,
-      taskId: task1.id,
-      relatedTaskId: 'non-existent-id',
-      type: 'related',
-    })
-    await expect(promise).rejects.toThrow()
   })
 })

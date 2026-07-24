@@ -138,4 +138,14 @@ export const PARITY_EXCLUSIONS: readonly Readonly<{ group: string; reason: strin
     reason:
       'KaneoProvider (plugins/task-provider-kaneo/provider.ts) materializes inverse relations — a blocks edge surfaces as blocked_by on the target, and subtask/parent edges surface on both endpoints. MemoryTaskProvider stores a flat directed Map<taskId, Map<relatedTaskId, type>> with no inverse, so directional round-trips cannot reach parity; only symmetric same-shape add results are portable.',
   },
+  {
+    group: 'assignee',
+    reason:
+      'KaneoProvider (plugins/task-provider-kaneo/provider.ts) requires an assignee to reference a real workspace user and echoes back the resolved member, while MemoryTaskProvider stores the raw assigneeId string verbatim with no user lookup — so assignee round-trips and assignee-filtered lists cannot reach normalized parity.',
+  },
+  {
+    group: 'create-task-invalid-project',
+    reason:
+      'KaneoProvider (plugins/task-provider-kaneo/provider.ts) rejects createTask against a non-existent projectId (Kaneo returns 4xx), while MemoryTaskProvider.createTask never validates projectId and creates the task unconditionally — so invalid-project creation diverges and cannot be a shared parity group.',
+  },
 ] as const

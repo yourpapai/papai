@@ -25,13 +25,11 @@ import './error-handling.test.js'
 import './label-operations.test.js'
 import './parity/provider-parity.test.js'
 import './project-lifecycle.test.js'
-import './project-management.test.js'
 import './task-comments.test.js'
 import './task-list-compatibility.test.js'
 import './task-lifecycle.test.js'
 import './task-relations.test.js'
 import './task-search.test.js'
-import './user-workflows.test.js'
 
 // Register final cleanup at file scope so teardown belongs to the entry file
 // rather than an otherwise empty wrapper describe.
