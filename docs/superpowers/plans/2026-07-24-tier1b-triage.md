@@ -54,8 +54,8 @@ classifications for the rows it names.
   from what actually landed").
 - **Findings 5–7 — ACCEPT** as sound judgment calls.
 
-**Net effect on Task 7:** retire 41 − 3 = **38** explicit CORE/NEW tests + all 5 `user-workflows`
-= **43** tests removed (not 46); keep the 3 reclassified RESIDUE tests; add 2 exclusion entries.
+**Net effect on Task 7:** retire 38 − 3 = **35** explicit CORE/NEW tests + all 5 `user-workflows`
+= **40** tests removed (not 43); keep the 3 reclassified RESIDUE tests; add 2 exclusion entries.
 
 ## Findings for the controller (read before Task 2/5/7)
 
@@ -281,7 +281,7 @@ All 5 are deleted in Task 7 regardless of bucket, per the brief's explicit overr
   id: `-relation-multiple`) — 17 ids total, 15 backed by ≥1 NEW row in this triage, 2 unbacked
   (Finding 1).
 
-## Retirement list (Task 7 deletes exactly these 41 tests, plus all 5 of `user-workflows`)
+## Retirement list (Task 7 deletes exactly these 38 tests, plus all 5 of `user-workflows`)
 
 **`tests/e2e/project-lifecycle.test.ts`** (3): creates and lists projects; updates a project;
 throws error when updating non-existent project.
@@ -317,8 +317,9 @@ throws error when removing non-existent label.
 rows since neither surfaces a unique atom): full task lifecycle workflow; project setup workflow;
 task dependencies workflow; bulk operations workflow; task handoff workflow.
 
-Total explicit CORE/NEW rows: 41 (3+3+8+8+6+4+4+2), plus the 5 `user-workflows` rows deleted under
-the brief's override = 46 tests removed from `tests/e2e/` by Task 7.
+Total explicit CORE/NEW rows: 38 (3+3+8+8+6+4+4+2), minus the 3 reclassified RESIDUE tests kept,
+plus the 5 `user-workflows` rows deleted under the brief's override = 40 tests removed from
+`tests/e2e/` by Task 7.
 
 **Untouched by Task 7** (zero CORE/NEW rows, confirmed against the plan's own file list — Finding
 6): `tests/e2e/column-management.test.ts`, `tests/e2e/task-list-compatibility.test.ts`.

@@ -5,7 +5,7 @@
 
 import { expect } from 'bun:test'
 
-import type { ParityGroup } from '../group.js'
+import { type ParityGroup, required } from '../group.js'
 
 export const searchGroups: readonly ParityGroup[] = [
   {
@@ -45,11 +45,17 @@ export const searchGroups: readonly ParityGroup[] = [
       await provider.createTask({ projectId, title: 'Limited Alpha' })
       await provider.createTask({ projectId, title: 'Limited Beta' })
       await provider.createTask({ projectId, title: 'Limited Gamma' })
+      const otherProject = required(
+        await provider.createProject?.({ name: 'Parity Search Isolation' }),
+        'createProject result',
+      )
+      await provider.createTask({ projectId: otherProject.id, title: 'Limited Outsider' })
       const results = await provider.searchTasks({ query: 'Limited', projectId, limit: 2 })
       expect(results.length).toBeLessThanOrEqual(2)
       expect(results.length).toBeGreaterThan(0)
       for (const result of results) {
         expect(result.title.startsWith('Limited')).toBe(true)
+        expect(result.title).not.toBe('Limited Outsider')
       }
     },
   },

@@ -125,10 +125,8 @@ export const taskGroups: readonly ParityGroup[] = [
       })
       const fetched = await provider.getTask(created.id)
       expect(canonicalize(fetched, VOLATILE_KEYS)).toMatchObject({ id: VOLATILE, title: 'Parity Dates' })
-      expect(fetched.startDate).toBeTypeOf('string')
-      expect(fetched.startDate).not.toBe('')
-      expect(fetched.dueDate).toBeTypeOf('string')
-      expect(fetched.dueDate).not.toBe('')
+      expect(fetched.startDate).toBe('2026-08-01')
+      expect(fetched.dueDate).toBe('2026-08-15')
     },
   },
   {
@@ -143,10 +141,8 @@ export const taskGroups: readonly ParityGroup[] = [
       })
       const fetched = await provider.getTask(created.id)
       expect(canonicalize(fetched, VOLATILE_KEYS)).toMatchObject({ id: VOLATILE, title: 'Parity Full Property' })
-      expect(fetched.description).toBeTypeOf('string')
-      expect(fetched.description).not.toBe('')
-      expect(fetched.priority).toBeTypeOf('string')
-      expect(fetched.priority).not.toBe('')
+      expect(fetched.description).toBe('A described task')
+      expect(fetched.priority).toBe('high')
     },
   },
   {
@@ -157,8 +153,7 @@ export const taskGroups: readonly ParityGroup[] = [
       await provider.updateTask(created.id, { title: 'Parity Preserve Renamed' })
       const fetched = await provider.getTask(created.id)
       expect(fetched.title).toBe('Parity Preserve Renamed')
-      expect(fetched.startDate).toBeTypeOf('string')
-      expect(fetched.startDate).not.toBe('')
+      expect(fetched.startDate).toBe('2026-09-01')
     },
   },
   {
