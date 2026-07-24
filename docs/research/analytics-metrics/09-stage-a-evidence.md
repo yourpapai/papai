@@ -25,13 +25,13 @@ aggregate publication.
 
 | # | Control | Status | Evidence (task / test / date) |
 |---|---|---|---|
-| 1 | Registry closure | pending | |
-| 2 | Strict schema fuzz | pending | |
+| 1 | Registry closure | green | tests/analytics/registry-closure.test.ts; 080198417; 2026-07-24 |
+| 2 | Strict schema fuzz | partial | strict envelope + rejection coverage in contracts/event-props-behavior tests (080198417); formal privacy-contract suite lands in Task 18 |
 | 3 | C3 canaries | pending | |
-| 4 | Identity matrix | pending | |
+| 4 | Identity matrix | partial | frozen vectors + namespace/session/Discord/guest matrix in tests/analytics/pseudonym.test.ts + scope.test.ts (748a57bbf); cached-descriptor clause lands in Task 8 |
 | 5 | Raw-ID absence | pending | |
 | 6 | Semantic outcome | pending | |
-| 7 | Consent matrix | pending | |
+| 7 | Consent matrix | partial | 38,880-cell exact-decision Cartesian matrix in tests/analytics/governance/eligibility.test.ts (ab504fd5e); store/send/delete result coverage completes with Tasks 5/15/16 |
 | 8 | Withdrawal race | pending | |
 | 9 | Outbox/sink | pending | |
 | 10 | Session fixtures | pending | |
@@ -47,10 +47,10 @@ aggregate publication.
 
 | Task | Named gate result | typecheck/lint | Commit | Date |
 |---|---|---|---|---|
-| 1 — contracts/registry | | | | |
+| 1 — contracts/registry | 28 pass / 0 fail (contracts, registry-closure, event-props-behavior) | clean / clean (knip clean) | 080198417 | 2026-07-24 |
 | 2 — storage + mig 070 | 37 pass / 0 fail (070 migration, registration, storage) | clean / clean (knip clean) | aba0fd10c | 2026-07-24 |
-| 3 — identity keys | | | | |
-| 4 — governance/eligibility | | | | |
+| 3 — identity keys | 49 pass / 0 fail (keyring, install-id, pseudonym, scope) | clean / clean (knip clean) | 748a57bbf | 2026-07-24 |
+| 4 — governance/eligibility | 73 pass / 0 fail (071 migration, stores, 38,880-cell matrix) | clean / clean (knip clean) | ab504fd5e | 2026-07-24 |
 | 5 — normalizer/runtime | | | | |
 | 6 — turn lifecycle instrumentation | | | | |
 | 7 — llm/tool/perf instrumentation | | | | |
@@ -108,4 +108,21 @@ aggregate publication.
 
 ## Follow-ups parked during the build
 
-(None yet — mid-build ideas are parked here, not implemented.)
+- Task 1: `superRefine` in contracts emits a generic message instead of
+  forwarding underlying Zod issues (Minor; triage at final whole-branch
+  review).
+- Task 1: third test file `tests/analytics/event-props-behavior.test.ts`
+  exceeds 06's literal add list; accepted under the plan's line-limit split
+  permission (split keeps every file ≤300 lines).
+- Task 3 (parked Minors): pin one digest per purpose domain; install-id
+  concurrency/malformed-stored-value handling; `buildPseudonym` null-swallow
+  without log.
+- Task 4 → **Task 13 review focus**: rekey abort/pause lifecycle semantics
+  (plan-phase `aborted` permits new plan; post-dual-write failures are
+  `paused` and resumable) need store-API + tests in the rekey-execution task.
+- Task 4 → **Task 18 file list**: document `ANALYTICS_KILL_SWITCH` in
+  `.env.example` and `docs/architecture/environment.md` (introduced in
+  policy-store.ts by Task 4).
+- Task 4 (parked Minors): `updatePolicy` check-then-act not atomic;
+  generation advisory cache is DB-agnostic; `findStagedRow` full-table scan;
+  rekey staging run validation outside its transaction (benign single-writer).
