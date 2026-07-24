@@ -3,12 +3,17 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { getUserMessage, webFetchError } from '../../src/errors.js'
-import { assertPublicUrl, safeFetchContent, type SafeFetchDeps } from '../../src/web/safe-fetch.js'
-import { expectAppError, mockLogger } from '../utils/test-helpers.js'
+import {
+  assertPublicUrl,
+  safeFetchContent,
+  setAssertPublicUrlForTesting,
+  type SafeFetchDeps,
+} from '../../src/web/safe-fetch.js'
+import { expectAppError, mockLogger, restoreFetch, setMockFetch } from '../utils/test-helpers.js'
 
 function createFetchMock(impl: (...args: Parameters<typeof fetch>) => Promise<Response>): typeof fetch {
   return Object.assign(impl, { preconnect: fetch.preconnect })
@@ -221,6 +226,68 @@ describe('safeFetchContent', () => {
         code: 'upstream-error',
         appError: webFetchError.upstreamError(),
       })
+    }
+  })
+})
+
+describe('defaultDeps.fetch (live global lookup)', () => {
+  afterEach(() => {
+    restoreFetch()
+    setAssertPublicUrlForTesting(undefined)
+  })
+
+  test('reads globalThis.fetch at call time, not at module-eval time', async () => {
+    // Bypass the DNS guard so control reaches deps.fetch.
+    setAssertPublicUrlForTesting(() => Promise.resolve())
+    let called = 0
+    setMockFetch((_url, _init) => {
+      called += 1
+      return Promise.resolve(
+        new Response('<html><body>ok</body></html>', {
+          status: 200,
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+        }),
+      )
+    })
+
+    // No deps arg → defaultDeps.fetch. If it had captured the original fetch at module-eval, the
+    // freshly-installed mock would NOT be hit; a live global read means it is.
+    await safeFetchContent('http://example.com/live', { abortSignal: AbortSignal.timeout(1000) })
+    expect(called).toBe(1)
+  })
+})
+
+describe('setAssertPublicUrlForTesting (module override)', () => {
+  beforeEach(() => {
+    mockLogger()
+  })
+  afterEach(() => {
+    setAssertPublicUrlForTesting(undefined)
+  })
+
+  test('defaultDeps.assertPublicUrl delegates to the override when one is set', async () => {
+    const override = mock((_url: URL): Promise<void> => Promise.reject(new Error('override-active')))
+    setAssertPublicUrlForTesting(override)
+
+    // No deps arg → safeFetchContent uses defaultDeps, whose assertPublicUrl must route to override.
+    // The override rejects before any fetch, so no network is touched.
+    await expect(
+      safeFetchContent('http://[::ffff:127.0.0.1]/', { abortSignal: AbortSignal.timeout(1000) }),
+    ).rejects.toBeInstanceOf(Error)
+    expect(override).toHaveBeenCalledTimes(1)
+  })
+
+  test('clearing the override restores the real public-URL guard', async () => {
+    setAssertPublicUrlForTesting(() => Promise.resolve())
+    setAssertPublicUrlForTesting(undefined)
+
+    // Real guard runs again (no deps arg) and rejects the loopback literal with blocked-host —
+    // proving no scenario can leak a bypassed guard after teardown.
+    try {
+      await safeFetchContent('http://[::ffff:127.0.0.1]/', { abortSignal: AbortSignal.timeout(1000) })
+      throw new Error('Expected safeFetchContent to reject')
+    } catch (error) {
+      expectAppError(error, getUserMessage(webFetchError.blockedHost()))
     }
   })
 })

@@ -98,9 +98,14 @@ function mergeWorkerIntoPrimary(
 }
 
 async function closePool(repoRoot: string, internals: PoolInternals): Promise<void> {
-  await Promise.all(
-    internals.workers.map((w) => removeWorktree(repoRoot, w.worktreePath, w.branch.replace('review-loop/', ''))),
-  )
+  // Remove worktrees one at a time: `git worktree remove` and `git branch -D` both take
+  // repo-wide locks (`.git/worktrees`, ref locks), so running them concurrently races and
+  // intermittently fails ("unable to lock") under load. Mirror buildWorkers' sequential chain.
+  let chain: Promise<unknown> = Promise.resolve()
+  for (const w of internals.workers) {
+    chain = chain.then(() => removeWorktree(repoRoot, w.worktreePath, w.branch.replace('review-loop/', '')))
+  }
+  await chain
   internals.workers.length = 0
 }
 

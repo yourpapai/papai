@@ -7,27 +7,27 @@ import { describe, expect, it } from 'bun:test'
 
 import {
   COMPACTION_THRESHOLD_BYTES,
-  COMPACTION_PREVIEW_BYTES,
+  COMPACTION_PREVIEW_CHARS,
   RESULT_STORE_MAX_ENTRIES,
   RESULT_STORE_TTL_MS,
-  EXPAND_DEFAULT_LIMIT_BYTES,
+  EXPAND_DEFAULT_LIMIT_CHARS,
 } from '../../../src/tools/compaction/constants.js'
 
 describe('compaction constants', () => {
   it('exports positive numeric constants', () => {
     expect(COMPACTION_THRESHOLD_BYTES).toBeGreaterThan(0)
-    expect(COMPACTION_PREVIEW_BYTES).toBeGreaterThan(0)
+    expect(COMPACTION_PREVIEW_CHARS).toBeGreaterThan(0)
     expect(RESULT_STORE_MAX_ENTRIES).toBeGreaterThan(0)
     expect(RESULT_STORE_TTL_MS).toBeGreaterThan(0)
-    expect(EXPAND_DEFAULT_LIMIT_BYTES).toBeGreaterThan(0)
+    expect(EXPAND_DEFAULT_LIMIT_CHARS).toBeGreaterThan(0)
     expect(Number.isInteger(RESULT_STORE_MAX_ENTRIES)).toBe(true)
   })
 
-  it('has preview bytes smaller than threshold bytes', () => {
-    expect(COMPACTION_PREVIEW_BYTES).toBeLessThan(COMPACTION_THRESHOLD_BYTES)
+  it('has preview chars smaller than threshold bytes', () => {
+    expect(COMPACTION_PREVIEW_CHARS).toBeLessThan(COMPACTION_THRESHOLD_BYTES)
   })
 
   it('has expand default limit smaller than threshold bytes', () => {
-    expect(EXPAND_DEFAULT_LIMIT_BYTES).toBeLessThan(COMPACTION_THRESHOLD_BYTES)
+    expect(EXPAND_DEFAULT_LIMIT_CHARS).toBeLessThan(COMPACTION_THRESHOLD_BYTES)
   })
 })

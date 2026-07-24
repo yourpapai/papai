@@ -9,6 +9,7 @@ import { getCachedHistory } from '../cache.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
 import { hoistSystemMessages } from '../llm-message-utils.js'
 import { buildChatModel } from '../llm-model-builder.js'
+import { collectTurnMessages } from '../llm-orchestrator-messages.js'
 import { logger } from '../logger.js'
 import { createDisclosurePrepareStep } from '../tools/disclosure/prepare-step.js'
 import { getLlmConfig, type LlmConfig } from './proactive-llm-config.js'
@@ -108,7 +109,7 @@ async function runFullGeneration(
     prepareStep: createDisclosurePrepareStep(prepared.disclosure, prepared.storageContextId, turnId),
   })
   const previousHistory = getCachedHistory(prepared.storageContextId)
-  const assistantMessages = result.finalStep.response.messages
+  const assistantMessages = collectTurnMessages(result)
   persistProactiveResults(
     createdByUserId,
     prepared.storageContextId,

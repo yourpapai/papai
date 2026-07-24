@@ -117,4 +117,11 @@ describe('makeGetCurrentTimeTool', () => {
     assert(isTimeResult(result), 'Invalid result')
     expect(result).toHaveProperty('formatted')
   })
+
+  test('describes itself as a fallback to the injected current_time line', () => {
+    const tool = makeGetCurrentTimeTool('user-1')
+    assert(typeof tool.description === 'string', 'description should be a string')
+    expect(tool.description).toContain('<current_time>')
+    expect(tool.description.toLowerCase()).toContain('fallback')
+  })
 })

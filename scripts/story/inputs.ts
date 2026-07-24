@@ -7,7 +7,6 @@ import { constants } from 'node:fs'
 import { lstat, open, readdir } from 'node:fs/promises'
 import path from 'node:path'
 
-const STORIES_PREFIX = 'tests/stories'
 const FROZEN_TEST_SUPPORT = new Set([
   'bunfig.toml',
   'tests/mock-reset.ts',
@@ -16,28 +15,27 @@ const FROZEN_TEST_SUPPORT = new Set([
   'tests/utils/test-helpers.ts',
 ])
 
-export type LoadedStoryFile = Readonly<{ path: string; bytes: Uint8Array }>
-export type CandidateCaptureDependencies = Readonly<{
-  afterDirectoryRead?(directory: string): Promise<void>
-}>
-
 export function isFrozenEnforcementPath(filePath: string): boolean {
-  return (
-    filePath === 'scripts/test-stories.ts' ||
-    filePath === 'scripts/story-reports.ts' ||
-    /^scripts\/story-(?:manifest|runner).*\.ts$/u.test(filePath)
-  )
+  return /^scripts\/story\/(?:[^/]+\.ts|sandbox-image\.txt)$/u.test(filePath)
 }
 
 export function isFrozenTestSupportPath(filePath: string): boolean {
   return FROZEN_TEST_SUPPORT.has(filePath)
 }
 
-function errorCode(error: unknown): unknown {
+const STORIES_PREFIX = 'tests/stories'
+const ENFORCEMENT_PREFIX = 'scripts/story'
+
+export type LoadedStoryFile = Readonly<{ path: string; bytes: Uint8Array }>
+export type CandidateCaptureDependencies = Readonly<{
+  afterDirectoryRead?(directory: string): Promise<void>
+}>
+
+export function errorCode(error: unknown): unknown {
   return typeof error === 'object' && error !== null ? Reflect.get(error, 'code') : undefined
 }
 
-async function readCandidateFile(absolute: string, relative: string): Promise<Uint8Array> {
+export async function readCandidateFile(absolute: string, relative: string): Promise<Uint8Array> {
   const before = await lstat(absolute)
   if (!before.isFile()) {
     const kind = before.isSymbolicLink() ? 'symbolic link' : 'special file'
@@ -59,21 +57,25 @@ async function readCandidateFile(absolute: string, relative: string): Promise<Ui
   }
 }
 
-function toPosix(relativePath: string): string {
+export function toPosix(relativePath: string): string {
   return relativePath.split(path.sep).join('/')
 }
 
-function compareText(left: string, right: string): number {
+export function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
 
-type DirectoryIdentity = Readonly<{ dev: number | bigint; ino: number | bigint }>
+export type DirectoryIdentity = Readonly<{ dev: number | bigint; ino: number | bigint }>
 
-function directoryIdentity(stats: Awaited<ReturnType<typeof lstat>>): DirectoryIdentity {
+export function directoryIdentity(stats: Awaited<ReturnType<typeof lstat>>): DirectoryIdentity {
   return { dev: stats.dev, ino: stats.ino }
 }
 
-async function assertDirectoryIdentity(root: string, directory: string, expected: DirectoryIdentity): Promise<void> {
+export async function assertDirectoryIdentity(
+  root: string,
+  directory: string,
+  expected: DirectoryIdentity,
+): Promise<void> {
   const relative = toPosix(path.relative(root, directory))
   const current = await lstat(directory).catch(() => undefined)
   if (
@@ -87,7 +89,7 @@ async function assertDirectoryIdentity(root: string, directory: string, expected
   }
 }
 
-async function visitStories(
+async function visitDirectory(
   root: string,
   directory: string,
   expected: DirectoryIdentity,
@@ -106,7 +108,7 @@ async function visitStories(
       const absolute = path.join(directory, entry.name)
       const relative = toPosix(path.relative(root, absolute))
       if (stats.isDirectory()) {
-        await visitStories(root, absolute, directoryIdentity(stats), files, dependencies)
+        await visitDirectory(root, absolute, directoryIdentity(stats), files, dependencies)
       } else if (stats.isFile()) files.push({ path: relative, bytes: await readCandidateFile(absolute, relative) })
       else {
         const kind = stats.isSymbolicLink() ? 'symbolic link' : 'special file'
@@ -162,10 +164,10 @@ export async function loadCandidateStoryFiles(
   }
   if (!rootEntry.isDirectory()) throw new Error(`Unsupported story manifest root: ${STORIES_PREFIX} (not a directory)`)
   const files: LoadedStoryFile[] = []
-  await visitStories(root, storiesRoot, directoryIdentity(rootEntry), files, dependencies)
+  await visitDirectory(root, storiesRoot, directoryIdentity(rootEntry), files, dependencies)
   const selected = await Promise.all([
     loadSelectedDirectoryFiles(root, '', isFrozenTestSupportPath, dependencies),
-    loadSelectedDirectoryFiles(root, 'scripts', isFrozenEnforcementPath, dependencies),
+    loadSelectedDirectoryFiles(root, ENFORCEMENT_PREFIX, isFrozenEnforcementPath, dependencies),
     loadSelectedDirectoryFiles(root, 'tests', isFrozenTestSupportPath, dependencies),
     loadSelectedDirectoryFiles(root, 'tests/utils', isFrozenTestSupportPath, dependencies),
   ])

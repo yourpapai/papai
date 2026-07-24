@@ -221,6 +221,14 @@ export interface SeedTestTaskInstanceInput {
   status?: InstanceStatus
 }
 
+export function seedTestSystemConfig(input: { key: string; value: string }): void {
+  getTestDb()
+    .insert(schema.systemConfig)
+    .values({ key: input.key, value: input.value, updatedAt: Date.now(), updatedBy: 'scenario' })
+    .onConflictDoUpdate({ target: schema.systemConfig.key, set: { value: input.value, updatedAt: Date.now() } })
+    .run()
+}
+
 export function seedTestPlatformInstance(input: SeedTestPlatformInstanceInput): void {
   getTestDb()
     .insert(schema.platformInstances)
@@ -244,6 +252,174 @@ export function seedTestTaskInstance(input: SeedTestTaskInstanceInput): void {
       status: input.status ?? 'active',
     })
     .onConflictDoNothing({ target: schema.taskInstances.id })
+    .run()
+}
+
+export type RecurringTaskSeed = {
+  id: string
+  userId: string
+  projectId: string
+  title: string
+  nextRun: string
+  rrule?: string | null
+  dtstartUtc?: string | null
+  enabled?: string
+  triggerType?: string
+}
+
+export function seedTestRecurringTask(input: RecurringTaskSeed): void {
+  getTestDb()
+    .insert(schema.recurringTasks)
+    .values({
+      id: input.id,
+      userId: input.userId,
+      projectId: input.projectId,
+      title: input.title,
+      triggerType: input.triggerType ?? 'cron',
+      rrule: input.rrule ?? null,
+      dtstartUtc: input.dtstartUtc ?? null,
+      enabled: input.enabled ?? '1',
+      nextRun: input.nextRun,
+    })
+    .run()
+}
+
+export type ExhaustedWebFetchQuotaSeed = { actorId: string; nowMs: number }
+
+// Mirrors src/web/rate-limit.ts (LIMIT = 20, WINDOW_MS = 5 * 60 * 1000, both unexported). A full
+// bucket makes the guarded `UPDATE ... WHERE count < 20` affect zero rows, so the next
+// consumeWebFetchQuota returns { allowed: false }.
+const WEB_FETCH_QUOTA_LIMIT = 20
+const WEB_FETCH_QUOTA_WINDOW_MS = 5 * 60 * 1000
+
+export function seedTestExhaustedWebFetchQuota(input: ExhaustedWebFetchQuotaSeed): void {
+  const windowStart = Math.floor(input.nowMs / WEB_FETCH_QUOTA_WINDOW_MS) * WEB_FETCH_QUOTA_WINDOW_MS
+  getTestDb()
+    .insert(schema.webRateLimit)
+    .values({ actorId: input.actorId, windowStart, count: WEB_FETCH_QUOTA_LIMIT })
+    .run()
+}
+
+export type ScheduledPromptSeed = {
+  id: string
+  createdByUserId: string
+  deliveryContextId: string
+  deliveryContextType: string
+  prompt: string
+  fireAt: string
+  rrule?: string | null
+  status?: string
+  executionMetadata?: string
+}
+
+export function seedTestScheduledPrompt(input: ScheduledPromptSeed): void {
+  getTestDb()
+    .insert(schema.scheduledPrompts)
+    .values({
+      id: input.id,
+      createdByUserId: input.createdByUserId,
+      deliveryContextId: input.deliveryContextId,
+      deliveryContextType: input.deliveryContextType,
+      prompt: input.prompt,
+      fireAt: input.fireAt,
+      rrule: input.rrule ?? null,
+      status: input.status ?? 'active',
+      executionMetadata:
+        input.executionMetadata ??
+        JSON.stringify({
+          mode: 'lightweight',
+          delivery_brief: '',
+          context_snapshot: null,
+        }),
+    })
+    .run()
+}
+
+export type AlertPromptSeed = {
+  id: string
+  createdByUserId: string
+  deliveryContextId: string
+  deliveryContextType: string
+  prompt: string
+  condition: string
+  status?: string
+  cooldownMinutes?: number
+  lastTriggeredAt?: string | null
+  executionMetadata?: string
+}
+
+export function seedTestAlertPrompt(input: AlertPromptSeed): void {
+  getTestDb()
+    .insert(schema.alertPrompts)
+    .values({
+      id: input.id,
+      createdByUserId: input.createdByUserId,
+      deliveryContextId: input.deliveryContextId,
+      deliveryContextType: input.deliveryContextType,
+      prompt: input.prompt,
+      condition: input.condition,
+      status: input.status ?? 'active',
+      cooldownMinutes: input.cooldownMinutes ?? 60,
+      lastTriggeredAt: input.lastTriggeredAt ?? null,
+      executionMetadata:
+        input.executionMetadata ??
+        JSON.stringify({
+          mode: 'lightweight',
+          delivery_brief: '',
+          context_snapshot: null,
+        }),
+    })
+    .run()
+}
+
+export interface SeedTestMemoryExtractionStateInput {
+  contextId: string
+  contextType: 'dm' | 'group'
+  configContextId: string
+  lastActivityAt: string
+  lastExtractedAt?: string
+  lastHistoryLen?: number
+}
+
+export function seedTestMemoryExtractionState(input: SeedTestMemoryExtractionStateInput): void {
+  getTestDb()
+    .insert(schema.memoryExtractionState)
+    .values({
+      contextId: input.contextId,
+      contextType: input.contextType,
+      configContextId: input.configContextId,
+      lastActivityAt: input.lastActivityAt,
+      lastExtractedAt: input.lastExtractedAt ?? null,
+      lastHistoryLen: input.lastHistoryLen ?? 0,
+    })
+    .onConflictDoNothing({ target: schema.memoryExtractionState.contextId })
+    .run()
+}
+
+export interface SeedTestConversationHistoryInput {
+  userId: string
+  messages: string
+}
+
+export function seedTestConversationHistory(input: SeedTestConversationHistoryInput): void {
+  getTestDb()
+    .insert(schema.conversationHistory)
+    .values({ userId: input.userId, messages: input.messages })
+    .onConflictDoNothing({ target: schema.conversationHistory.userId })
+    .run()
+}
+
+export interface SeedTestUserInstructionInput {
+  id: string
+  contextId: string
+  text: string
+}
+
+export function seedTestUserInstruction(input: SeedTestUserInstructionInput): void {
+  getTestDb()
+    .insert(schema.userInstructions)
+    .values({ id: input.id, contextId: input.contextId, text: input.text })
+    .onConflictDoNothing({ target: schema.userInstructions.id })
     .run()
 }
 

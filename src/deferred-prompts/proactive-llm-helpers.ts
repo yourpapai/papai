@@ -15,6 +15,7 @@ import {
 } from '../completion/verified-completion.js'
 import type { VerifierDeps, VerifierPrompt } from '../completion/verified-completion.js'
 import { hoistSystemMessages } from '../llm-message-utils.js'
+import { collectTurnMessages, type TurnMessagesResult } from '../llm-orchestrator-messages.js'
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
 import { buildProviderlessSystemPrompt, buildSystemPrompt } from '../system-prompt.js'
@@ -107,7 +108,7 @@ export const finalizeDeliveryText = (result: DeliveryResultLike): string => {
  * tool call, or a tool failure), runs a verify-and-report pass before returning.
  */
 export const finalizeAndLog = async (
-  result: DeliveryResultLike & { finalStep?: { response: { messages: readonly ModelMessage[] } } },
+  result: DeliveryResultLike & TurnMessagesResult,
   userId: string,
   verification?: { verifier: VerifierDeps; history: readonly ModelMessage[] },
 ): Promise<string> => {
@@ -120,8 +121,7 @@ export const finalizeAndLog = async (
   }
 
   if (verification !== undefined) {
-    const messages = result.finalStep?.response.messages ?? []
-    const hadToolFailure = detectToolFailure(messages)
+    const hadToolFailure = detectToolFailure(collectTurnMessages(result))
     const isRisky =
       result.text === undefined || result.text === '' || result.finishReason === 'tool-calls' || hadToolFailure
     if (isRisky) {

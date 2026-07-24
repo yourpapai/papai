@@ -5,28 +5,24 @@
 
 import path from 'node:path'
 
+import { spawnStorySandboxedChild, type SpawnedStoryChild } from './child.js'
+import { type ParsedStoryRunnerArguments, parseStoryRunnerArguments, STORY_SEED } from './cli.js'
+import { formatStoryCoverageTotals } from './coverage-totals.js'
 import {
   buildBaselineStoryManifest,
   buildCandidateStoryManifest,
   compareStoryManifests,
   type StoryManifest,
   writeStoryManifest,
-} from './story-manifest.js'
-import { removeStoryReport, STORY_JUNIT_REPORT_PATH, STORY_MANIFEST_REPORT_PATH } from './story-reports.js'
-import { type ParsedStoryRunnerArguments, parseStoryRunnerArguments, STORY_SEED } from './story-runner-arguments.js'
-import { sanitizedStoryEnvironment } from './story-runner-environment.js'
-import {
-  type CandidateStorySnapshot,
-  createCandidateStorySnapshot,
-  StorySnapshotInterruptedError,
-} from './story-runner-snapshot.js'
+} from './manifest.js'
+import { removeStoryReport, STORY_JUNIT_REPORT_PATH, STORY_MANIFEST_REPORT_PATH } from './reports.js'
+import { assertLinuxStorySandboxBackend, selectStorySandboxBackend, type StorySandboxRequest } from './sandbox.js'
+import { createStoryRunnerSession, type StoryRunnerSession } from './session.js'
+import { StorySnapshotInterruptedError } from './snapshot.js'
 
 export { parseStoryRunnerArguments, STORY_SEED }
 
-type SpawnedChild = Readonly<{
-  exited: Promise<number>
-  kill(signal: NodeJS.Signals): void
-}>
+type SpawnedChild = SpawnedStoryChild
 
 type RunnerDependencies = Readonly<{
   cwd: string
@@ -34,8 +30,21 @@ type RunnerDependencies = Readonly<{
   spawn(command: readonly string[], options: Parameters<typeof Bun.spawn>[1]): SpawnedChild
   discoverStories(): Promise<readonly string[]>
   discoverContracts(): Promise<readonly string[]>
-  buildCandidateSnapshot?(options: Readonly<{ root: string; seed: number }>): Promise<CandidateStorySnapshot>
-  buildCandidateManifest(options: Readonly<{ root: string; seed: number }>): Promise<StoryManifest>
+  createStoryRunnerSession?(
+    options: Readonly<{
+      root: string
+      seed: number
+      sandboxBackend: ReturnType<typeof selectStorySandboxBackend>
+      reporterArguments: readonly string[]
+    }>,
+  ): Promise<StoryRunnerSession>
+  buildSandboxCommand?(request: StorySandboxRequest): readonly string[]
+  platform?: NodeJS.Platform
+  assertLinuxSandboxBackend?(): void
+  bunExecutable?: string
+  buildCandidateManifest(
+    options: Readonly<{ root: string; seed: number; sandboxBackend: ReturnType<typeof selectStorySandboxBackend> }>,
+  ): Promise<StoryManifest>
   buildBaselineManifest(options: Readonly<{ root: string; ref: string; seed: number }>): Promise<StoryManifest>
   writeManifest(manifest: StoryManifest, outputPath: string): Promise<void>
   removeReport(reportPath: string): Promise<void>
@@ -64,8 +73,8 @@ type SnapshotLifecycle = Readonly<{
   interruptedExitCode(): number | undefined
 }>
 
-async function withSnapshotLifecycle(
-  snapshot: CandidateStorySnapshot,
+async function withSessionLifecycle(
+  session: StoryRunnerSession,
   run: (lifecycle: SnapshotLifecycle) => Promise<number>,
 ): Promise<number> {
   let signal: 'SIGINT' | 'SIGTERM' | undefined
@@ -95,7 +104,7 @@ async function withSnapshotLifecycle(
   } finally {
     process.off('SIGINT', onInterrupt)
     process.off('SIGTERM', onTerminate)
-    await snapshot.cleanup()
+    await session.cleanup()
   }
 }
 
@@ -107,7 +116,11 @@ function defaultDependencies(): RunnerDependencies {
     spawn: (command, options) => Bun.spawn([...command], options),
     discoverStories: () => discoverStories(cwd),
     discoverContracts: () => discoverContracts(cwd),
-    buildCandidateSnapshot: createCandidateStorySnapshot,
+    createStoryRunnerSession,
+    buildSandboxCommand: undefined,
+    platform: process.platform,
+    assertLinuxSandboxBackend: assertLinuxStorySandboxBackend,
+    bunExecutable: process.execPath,
     buildCandidateManifest: buildCandidateStoryManifest,
     buildBaselineManifest: buildBaselineStoryManifest,
     writeManifest: writeStoryManifest,
@@ -154,6 +167,10 @@ function explicitBaselineRef(parsed: ParsedStoryRunnerArguments, dependencies: R
   return baselineRef
 }
 
+function selectedStorySandboxBackend(dependencies: RunnerDependencies): ReturnType<typeof selectStorySandboxBackend> {
+  return selectStorySandboxBackend(dependencies.platform ?? process.platform)
+}
+
 async function verifyCompatibility(
   parsed: ParsedStoryRunnerArguments,
   dependencies: RunnerDependencies,
@@ -161,8 +178,14 @@ async function verifyCompatibility(
 ): Promise<void> {
   const baselineRef = explicitBaselineRef(parsed, dependencies)
   const candidateManifest =
-    candidate ?? (await dependencies.buildCandidateManifest({ root: dependencies.cwd, seed: parsed.seed }))
+    candidate ??
+    (await dependencies.buildCandidateManifest({
+      root: dependencies.cwd,
+      seed: parsed.seed,
+      sandboxBackend: selectedStorySandboxBackend(dependencies),
+    }))
   await dependencies.writeManifest(candidateManifest, path.join(dependencies.cwd, STORY_MANIFEST_REPORT_PATH))
+  console.log(formatStoryCoverageTotals())
   if (!parsed.compat || baselineRef === undefined) return
   const baseline = await dependencies.buildBaselineManifest({
     root: dependencies.cwd,
@@ -175,12 +198,12 @@ async function verifyCompatibility(
 async function storyFiles(
   parsed: ParsedStoryRunnerArguments,
   dependencies: RunnerDependencies,
-  snapshot?: CandidateStorySnapshot,
+  session?: StoryRunnerSession,
 ): Promise<readonly string[]> {
-  if (snapshot !== undefined) {
+  if (session !== undefined) {
     const selected =
       parsed.fixture === undefined
-        ? snapshot.manifest.files
+        ? session.manifest.files
             .map((file) => file.path)
             .filter((file) =>
               parsed.contracts
@@ -188,11 +211,11 @@ async function storyFiles(
                 : file.startsWith('tests/stories/') && file.endsWith('.story.test.ts'),
             )
         : [path.relative(dependencies.cwd, path.resolve(dependencies.cwd, parsed.fixture)).split(path.sep).join('/')]
-    const frozen = new Set(snapshot.manifest.files.map((file) => file.path))
+    const frozen = new Set(session.manifest.files.map((file) => file.path))
     const unsupported = selected.find((file) => !frozen.has(file))
     if (unsupported !== undefined) throw new Error(`Story fixture is not a frozen snapshot input: ${unsupported}`)
     if (selected.length === 0) throw new Error('No story tests found')
-    return selected.map((file) => path.join(snapshot.root, file))
+    return selected.map((file) => path.join(session.appRoot, file))
   }
   const files =
     parsed.fixture === undefined
@@ -210,71 +233,38 @@ async function executeStoryTests(
     await verifyCompatibility(parsed, dependencies)
     return 0
   }
-  const snapshot = await dependencies.buildCandidateSnapshot?.({ root: dependencies.cwd, seed: parsed.seed })
-  if (snapshot !== undefined) {
-    return withSnapshotLifecycle(snapshot, async (lifecycle): Promise<number> => {
-      await verifyCompatibility(parsed, dependencies, snapshot.manifest)
-      const interrupted = lifecycle.interruptedExitCode()
-      if (interrupted !== undefined) return interrupted
-      const files = await storyFiles(parsed, dependencies, snapshot)
-      const interruptedAfterDiscovery = lifecycle.interruptedExitCode()
-      if (interruptedAfterDiscovery !== undefined) return interruptedAfterDiscovery
-      await snapshot.verifyIntegrity()
-      const interruptedAfterIntegrity = lifecycle.interruptedExitCode()
-      if (interruptedAfterIntegrity !== undefined) return interruptedAfterIntegrity
-      const child = spawnStoryChild(parsed, dependencies, files, snapshot)
-      lifecycle.attachChild(child)
-      const exitCode = await waitForChild(child)
-      await snapshot.verifyIntegrity()
-      return exitCode
-    })
-  }
-  await verifyCompatibility(parsed, dependencies)
-  const files = await storyFiles(parsed, dependencies)
-  const child = spawnStoryChild(parsed, dependencies, files)
-  return waitForChild(child)
+  preflightStorySandbox(dependencies)
+  const sandboxBackend = selectedStorySandboxBackend(dependencies)
+  const createSession = dependencies.createStoryRunnerSession ?? createStoryRunnerSession
+  const session = await createSession({
+    root: dependencies.cwd,
+    seed: parsed.seed,
+    sandboxBackend,
+    reporterArguments: parsed.forwarded,
+  })
+  return withSessionLifecycle(session, async (lifecycle): Promise<number> => {
+    await verifyCompatibility(parsed, dependencies, session.manifest)
+    const interrupted = lifecycle.interruptedExitCode()
+    if (interrupted !== undefined) return interrupted
+    const files = await storyFiles(parsed, dependencies, session)
+    const interruptedAfterDiscovery = lifecycle.interruptedExitCode()
+    if (interruptedAfterDiscovery !== undefined) return interruptedAfterDiscovery
+    await session.verifyIntegrity()
+    const interruptedAfterIntegrity = lifecycle.interruptedExitCode()
+    if (interruptedAfterIntegrity !== undefined) return interruptedAfterIntegrity
+    const child = spawnStorySandboxedChild(parsed, dependencies, files, session)
+    lifecycle.attachChild(child)
+    const exitCode = await waitForChild(child)
+    await session.verifyIntegrity()
+    await session.copyReports()
+    return exitCode
+  })
 }
 
-function spawnStoryChild(
-  parsed: ParsedStoryRunnerArguments,
-  dependencies: RunnerDependencies,
-  files: readonly string[],
-  snapshot?: CandidateStorySnapshot,
-): SpawnedChild {
-  return dependencies.spawn(
-    [
-      'bun',
-      '--no-env-file',
-      `--config=${snapshot === undefined ? '/dev/null' : path.join(snapshot.root, 'scripts/snapshot-bunfig.toml')}`,
-      'test',
-      '--path-ignore-patterns',
-      '',
-      ...(snapshot === undefined
-        ? parsed.contracts
-          ? []
-          : ['--preload', './tests/stories/preload.ts']
-        : [
-            '--preload',
-            path.join(snapshot.root, 'tests/setup.ts'),
-            '--preload',
-            path.join(snapshot.root, 'tests/mock-reset.ts'),
-            ...(parsed.contracts ? [] : ['--preload', path.join(snapshot.root, 'tests/stories/preload.ts')]),
-          ]),
-      ...parsed.forwarded,
-      ...files,
-    ],
-    {
-      cwd: dependencies.cwd,
-      env: sanitizedStoryEnvironment(dependencies.env),
-      stdin: 'inherit',
-      stdout: 'inherit',
-      stderr: 'inherit',
-      ipc(message) {
-        if (message === 'PAPAI_STORY_CHILD_READY') console.log('CHILD_READY')
-        if (message === 'PAPAI_STORY_CHILD_SIGTERM') console.log('CHILD_SIGTERM')
-      },
-    },
-  )
+function preflightStorySandbox(dependencies: RunnerDependencies): void {
+  selectStorySandboxBackend(dependencies.platform ?? process.platform)
+  const assertBackend = dependencies.assertLinuxSandboxBackend ?? assertLinuxStorySandboxBackend
+  assertBackend()
 }
 
 if (import.meta.main) process.exitCode = await runStoryTests(process.argv.slice(2))

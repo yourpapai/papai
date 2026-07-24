@@ -22,6 +22,7 @@ const log = logger.child({ scope: 'scheduler' })
 
 export interface SchedulerDeps {
   resolve: (contextId: string) => Promise<TaskProvider | null> | TaskProvider | null
+  chat?: ChatProvider | null
 }
 
 const defaultSchedulerDeps: SchedulerDeps = {
@@ -39,7 +40,8 @@ const HEARTBEAT_INTERVAL = 60
 const executeRecurringTask = async (task: RecurringTaskRecord, deps: SchedulerDeps): Promise<void> => {
   log.debug({ taskId: task.id, title: task.title, userId: task.userId }, 'Executing recurring task')
 
-  if (!canRouteRecurringNotification(chatProviderRef, task.userId)) {
+  const chat = deps.chat ?? chatProviderRef
+  if (!canRouteRecurringNotification(chat, task.userId)) {
     log.warn({ taskId: task.id, contextId: task.userId }, 'Skipping recurring task: notification route unavailable')
     return
   }
@@ -52,7 +54,7 @@ const executeRecurringTask = async (task: RecurringTaskRecord, deps: SchedulerDe
 
   try {
     const created = await provider.createTask(buildRecurringTaskInput(task))
-    await finalizeCreatedRecurringTask(task, provider, created, chatProviderRef)
+    await finalizeCreatedRecurringTask(task, provider, created, chat)
   } catch (error) {
     log.error(
       { taskId: task.id, error: error instanceof Error ? error.message : String(error) },

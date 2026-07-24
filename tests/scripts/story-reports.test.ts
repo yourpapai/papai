@@ -8,7 +8,7 @@ import { mkdtempSync, mkdirSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { removeStoryReport } from '../../scripts/story-reports.js'
+import { removeStoryReport } from '../../scripts/story/reports.js'
 
 test('removeStoryReport ignores a missing report', async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'papai-story-report-remove-'))

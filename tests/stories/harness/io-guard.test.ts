@@ -9,7 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 const ROOT = path.resolve(import.meta.dir, '../../..')
-const RUNNER = `${ROOT}/scripts/test-stories.ts`
+const RUNNER = `${ROOT}/scripts/story/test-stories.ts`
 const PROBE = 'tests/stories/harness/io-guard-probe.ts'
 
 type ChildResult = Readonly<{ exitCode: number; output: string }>
@@ -32,29 +32,58 @@ async function run(
   return { exitCode, output: `${stdout}\n${stderr}` }
 }
 
-const runProbe = (name: string): Promise<ChildResult> => run(['--fixture', PROBE, '--test-name-pattern', `^${name}$`])
-const runTopLevelFixture = (file: string): Promise<ChildResult> => run(['--fixture', `tests/stories/fixtures/${file}`])
-
-function captureReadyOutput(stream: ReadableStream<Uint8Array>): Readonly<{
-  ready: Promise<void>
-  completed: Promise<void>
-  output(): string
-}> {
-  let markReady: (() => void) | undefined
-  const ready = new Promise<void>((resolve) => {
-    markReady = resolve
-  })
-  let captured = ''
-  const completed = (async (): Promise<void> => {
-    const decoder = new TextDecoder()
-    for await (const chunk of stream) {
-      captured += decoder.decode(chunk, { stream: true })
-      if (captured.includes('CHILD_READY')) markReady?.()
-    }
-    captured += decoder.decode()
-  })()
-  return { ready, completed, output: () => captured }
+function sanitizedEnvironment(source: Record<string, string | undefined>): Record<string, string> {
+  const allowed = ['PATH', 'CI', 'HOME'] as const
+  const environment = Object.fromEntries(
+    allowed.flatMap((key) => (source[key] === undefined ? [] : [[key, source[key]] as const])),
+  )
+  environment['TMPDIR'] = source['TMPDIR'] ?? os.tmpdir()
+  environment['TZ'] = 'UTC'
+  environment['PAPAI_STORY_RUNNER'] = '1'
+  environment['PAPAI_STORY_EXECUTION_ROOT'] = ROOT
+  return environment
 }
+
+// guard fixtures run directly to exercise diagnostics; process isolation is covered by the sandbox boundary suite.
+async function runFixture(
+  file: string,
+  args: readonly string[] = [],
+  env: Record<string, string | undefined> = process.env,
+): Promise<ChildResult> {
+  const child = Bun.spawn(
+    [
+      'bun',
+      '--no-env-file',
+      '--config=/dev/null',
+      'test',
+      '--path-ignore-patterns',
+      '',
+      '--preload',
+      path.join(ROOT, 'tests/setup.ts'),
+      '--preload',
+      path.join(ROOT, 'tests/mock-reset.ts'),
+      '--preload',
+      path.join(ROOT, 'tests/stories/preload.ts'),
+      ...args,
+      path.join(ROOT, file),
+    ],
+    {
+      cwd: ROOT,
+      env: sanitizedEnvironment(env),
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  )
+  const [exitCode, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ])
+  return { exitCode, output: `${stdout}\n${stderr}` }
+}
+
+const runProbe = (name: string): Promise<ChildResult> => runFixture(PROBE, ['--test-name-pattern', `^${name}$`])
+const runTopLevelFixture = (file: string): Promise<ChildResult> => runFixture(`tests/stories/fixtures/${file}`)
 
 describe('hermetic story runner', () => {
   test('repository discovery excludes the entire hermetic story tree', () => {
@@ -83,6 +112,33 @@ describe('hermetic story runner', () => {
     ['rejects Bun.write unsupported target', 'Bun.write'],
     ['rejects Bun.file writer outside root', 'Bun.file.writer'],
     ['rejects Bun.file delete outside root', 'Bun.file.delete'],
+    ['rejects Bun.file content reads outside root', 'Bun.file.text'],
+    ['rejects Bun.file streams outside root', 'Bun.file.stream'],
+    ['rejects Bun.file slices outside root', 'Bun.file.slice'],
+    ['rejects fs sync reads outside root', 'fs.readFileSync'],
+    ['rejects fs callback reads outside root', 'fs.readFile'],
+    ['rejects fs promise reads outside root', 'fs.promises.readFile'],
+    ['rejects fs metadata reads outside root', 'fs.statSync'],
+    ['rejects fs statfs reads outside root', 'fs.statfsSync'],
+    ['rejects fs promise statfs reads outside root', 'fs.promises.statfs'],
+    ['rejects fs callback statfs reads from HOME', 'fs.statfs'],
+    ['rejects fs read streams outside root', 'fs.createReadStream'],
+    ['rejects fs glob traversal outside root', 'fs.globSync'],
+    ['rejects fs glob dynamic symlink traversal', 'fs.globSync'],
+    ['rejects fs glob bracketed symlink traversal', 'fs.globSync'],
+    ['rejects fs glob terminal recursive symlink traversal', 'fs.globSync'],
+    ['rejects fs glob external cwd', 'fs.globSync'],
+    ['rejects fs callback glob external cwd', 'fs.glob'],
+    ['rejects fs promise glob external cwd', 'fs.promises.glob'],
+    ['rejects fs watch outside root', 'fs.watch'],
+    ['rejects fs watchFile from HOME', 'fs.watchFile'],
+    ['rejects fs promise watch outside root', 'fs.promises.watch'],
+    ['rejects read-only fs open outside root', 'fs.openSync'],
+    ['rejects default fs open outside root', 'fs.openSync'],
+    ['rejects default fs callback open outside root', 'fs.open'],
+    ['rejects default fs promise open outside root', 'fs.promises.open'],
+    ['rejects reads from the execution-root parent', 'fs.readFileSync'],
+    ['rejects reads from HOME', 'fs.lstatSync'],
     ['rejects fs write outside root', 'fs.writeFileSync'],
     ['rejects fs promises write outside root', 'fs.promises.writeFile'],
     ['rejects fs callback write outside root', 'fs.writeFile'],
@@ -120,7 +176,7 @@ describe('hermetic story runner', () => {
     'allows FileHandle write inside root',
     'allows Bun.write URL inside root',
     'allows Bun.file writer inside root',
-    'allows Bun.file outside-root reads',
+    'allows snapshot and scoped-temp reads',
     'allows fs metadata inside root',
     'allows tracked raw fd write inside root',
     'allows removed process listener',
@@ -142,7 +198,7 @@ describe('hermetic story runner', () => {
   })
 
   test('does not inherit arbitrary environment or load .env', async () => {
-    const result = await run(['--fixture', PROBE, '--test-name-pattern', '^uses sanitized environment$'], {
+    const result = await runFixture(PROBE, ['--test-name-pattern', '^uses sanitized environment$'], {
       ...process.env,
       PAPAI_IO_SENTINEL: 'must-not-leak',
       PAPAI_DOTENV_SENTINEL: 'must-not-load',
@@ -175,7 +231,7 @@ describe('hermetic story runner', () => {
     const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'papai-story-worker-'))
     const marker = path.join(tempRoot, 'worker-started')
     try {
-      const result = await run(['--fixture', 'tests/stories/fixtures/io-guard-top-level-node-worker.fixture.test.ts'], {
+      const result = await runFixture('tests/stories/fixtures/io-guard-top-level-node-worker.fixture.test.ts', [], {
         ...process.env,
         TMPDIR: tempRoot,
       })
@@ -223,20 +279,6 @@ describe('hermetic story runner', () => {
     } finally {
       rmSync(tempRoot, { recursive: true, force: true })
     }
-  })
-
-  test('forwards SIGTERM to the story child and exits conventionally', async () => {
-    const child = Bun.spawn(
-      ['bun', RUNNER, '--fixture', PROBE, '--test-name-pattern', '^waits for launcher signal forwarding$'],
-      { cwd: ROOT, env: process.env, stdout: 'pipe', stderr: 'pipe' },
-    )
-    const captured = captureReadyOutput(child.stdout)
-    await captured.ready
-    child.kill('SIGTERM')
-
-    expect(await child.exited).toBe(143)
-    await captured.completed
-    expect(captured.output()).toContain('CHILD_SIGTERM')
   })
 
   test('preload refuses direct use without the story launcher marker', async () => {

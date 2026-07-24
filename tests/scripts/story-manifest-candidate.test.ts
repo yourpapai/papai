@@ -8,7 +8,7 @@ import { mkdtempSync, mkdirSync, renameSync, rmSync, symlinkSync, writeFileSync 
 import os from 'node:os'
 import path from 'node:path'
 
-import { loadCandidateStoryFiles } from '../../scripts/story-manifest-candidate.js'
+import { loadCandidateStoryFiles } from '../../scripts/story/inputs.js'
 
 const roots: string[] = []
 
@@ -25,7 +25,7 @@ describe('candidate story capture', () => {
     const external = path.join(root, 'external')
     mkdirSync(stories, { recursive: true })
     mkdirSync(external)
-    mkdirSync(path.join(root, 'scripts'))
+    mkdirSync(path.join(root, 'scripts/story'), { recursive: true })
     writeFileSync(path.join(stories, 'example.story.test.ts'), 'captured')
     writeFileSync(path.join(external, 'example.story.test.ts'), 'attacker')
     const actions = new Map<string, () => void>([

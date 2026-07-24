@@ -29,6 +29,6 @@ export const standardContextSnapshot: ContextSnapshot = {
       ],
     },
     { label: 'Conversation history', tokens: 2_400, detail: '34 messages' },
-    { label: 'Tools', tokens: 3_200, detail: '18 active, gated by kaneo' },
+    { label: 'Tools', tokens: 3_200, detail: '4 active · 18 available (progressive disclosure)' },
   ],
 }

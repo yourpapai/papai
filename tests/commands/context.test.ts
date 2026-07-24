@@ -12,6 +12,7 @@ import type { ChatProvider, CommandHandler, ContextRendered, ContextSnapshot } f
 import {
   resolveActiveToolDefinitions,
   resolveContextToolSurface,
+  resolveDisclosedToolDefinitions,
   safeBuildProvider,
 } from '../../src/commands/context-tool-resolution.js'
 import type { ContextCommandDeps } from '../../src/commands/context.js'
@@ -69,6 +70,7 @@ function snapshotDeps(overrides: Partial<ContextCommandDeps> | null): ContextCom
       })
     },
     resolveActiveToolDefinitions,
+    resolveDisclosedToolDefinitions,
     resolveToolSurface: resolveContextToolSurface,
     ...resolveOverrides(overrides),
   }

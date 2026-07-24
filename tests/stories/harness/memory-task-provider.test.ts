@@ -44,13 +44,9 @@ describe('MemoryTaskProvider', () => {
     provider.setCapabilities(capabilities)
 
     expect([...provider.capabilities]).toEqual(capabilities)
-    expect(() => provider.setCapabilities(['tasks.delete'])).toThrow(
-      'MemoryTaskProvider does not support task capabilities: tasks.delete',
-    )
-    expect([...provider.capabilities]).toEqual(capabilities)
   })
 
-  test('advertises implemented label capabilities without accepting task deletion', () => {
+  test('advertises implemented label capabilities alongside existing safe capabilities', () => {
     const provider = new MemoryTaskProvider()
     const capabilities: TaskCapability[] = [
       'labels.list',
@@ -62,10 +58,6 @@ describe('MemoryTaskProvider', () => {
 
     provider.setCapabilities(capabilities)
 
-    expect([...provider.capabilities]).toEqual(capabilities)
-    expect(() => provider.setCapabilities(['tasks.delete'])).toThrow(
-      'MemoryTaskProvider does not support task capabilities: tasks.delete',
-    )
     expect([...provider.capabilities]).toEqual(capabilities)
   })
 
@@ -486,5 +478,372 @@ describe('MemoryTaskProvider', () => {
       limit: 5,
       matchedUserIds: ['tracker-alice'],
     })
+  })
+
+  describe('deleteTask', () => {
+    test('removes the task with its comments, labels, and history', async () => {
+      const provider = new MemoryTaskProvider()
+      const task = await provider.createTask({ projectId: 'proj-1', title: 'Doomed' })
+      await provider.addComment(task.id, 'note')
+      const label = await provider.createLabel({ name: 'urgent' })
+      await provider.addTaskLabel(task.id, label.id)
+
+      await expect(provider.deleteTask(task.id)).resolves.toEqual({ id: task.id })
+      await expect(provider.getTask(task.id)).rejects.toThrow(`Task not found: ${task.id}`)
+      await expect(provider.getComments(task.id)).rejects.toThrow(`Task not found: ${task.id}`)
+      await expect(provider.listTaskLabels(task.id)).rejects.toThrow(`Task not found: ${task.id}`)
+      await expect(provider.getTaskHistory(task.id)).rejects.toThrow(`Task not found: ${task.id}`)
+    })
+
+    test('rejects a missing task', async () => {
+      const provider = new MemoryTaskProvider()
+
+      await expect(provider.deleteTask('task-404')).rejects.toThrow('Task not found: task-404')
+    })
+  })
+
+  describe('countTasks', () => {
+    test('counts search matches with query and project filters', async () => {
+      const provider = new MemoryTaskProvider()
+      await provider.createTask({ projectId: 'proj-1', title: 'Release 7' })
+      await provider.createTask({ projectId: 'proj-1', title: 'Release 8' })
+      await provider.createTask({ projectId: 'proj-2', title: 'Release 9' })
+      await provider.createTask({ projectId: 'proj-1', title: 'Backlog grooming' })
+
+      await expect(provider.countTasks({ query: 'release' })).resolves.toBe(3)
+      await expect(provider.countTasks({ query: 'release', projectId: 'proj-1' })).resolves.toBe(2)
+      await expect(provider.countTasks({ query: 'grooming' })).resolves.toBe(1)
+    })
+  })
+
+  describe('getTaskHistory', () => {
+    test('self-seeds activities from mutating operations with filtering and ordering', async () => {
+      const provider = new MemoryTaskProvider()
+      const task = await provider.createTask({ projectId: 'proj-1', title: 'Tracked' })
+      await provider.updateTask(task.id, { title: 'Tracked harder' })
+      await provider.addComment(task.id, 'first')
+
+      const history = await provider.getTaskHistory(task.id)
+      expect(history.map((entry) => entry.category)).toEqual(['task.created', 'task.updated', 'comment.created'])
+      expect(history[1]).toMatchObject({ field: 'title', added: 'Tracked harder' })
+
+      await expect(provider.getTaskHistory(task.id, { categories: ['task.updated'] })).resolves.toHaveLength(1)
+      const reversed = await provider.getTaskHistory(task.id, { reverse: true })
+      expect(reversed.map((entry) => entry.category)).toEqual(['comment.created', 'task.updated', 'task.created'])
+      await expect(provider.getTaskHistory(task.id, { limit: 1, offset: 1 })).resolves.toHaveLength(1)
+    })
+
+    test('rejects start/end filtering loudly', async () => {
+      const provider = new MemoryTaskProvider()
+      const task = await provider.createTask({ projectId: 'proj-1', title: 'Tracked' })
+
+      await expect(provider.getTaskHistory(task.id, { start: '2026-01-01' })).rejects.toThrow(
+        'MemoryTaskProvider does not support start/end history filtering',
+      )
+    })
+
+    test('serializes non-string field values in update activities', async () => {
+      const provider = new MemoryTaskProvider()
+      const task = await provider.createTask({ projectId: 'proj-1', title: 'Dated' })
+      await provider.updateTask(task.id, { customFields: [{ name: 'team', value: 'core' }] })
+
+      const history = await provider.getTaskHistory(task.id, { categories: ['task.updated'] })
+      expect(history.at(0)?.added).toBe('[{"name":"team","value":"core"}]')
+    })
+  })
+
+  describe('capabilities', () => {
+    test('accepts the lifecycle capabilities', () => {
+      const provider = new MemoryTaskProvider()
+
+      expect(() => provider.setCapabilities(['tasks.delete', 'tasks.count', 'activities.read'])).not.toThrow()
+    })
+  })
+})
+
+describe('projects', () => {
+  test('creates, reads, updates, lists, and deletes projects with duplicate-name rejection', async () => {
+    const provider = new MemoryTaskProvider()
+    const project = await provider.createProject({ name: 'Core', description: 'core work' })
+    expect(project).toMatchObject({ id: 'project-1', name: 'Core', url: 'memory://projects/project-1' })
+    await expect(provider.createProject({ name: 'Core' })).rejects.toThrow('Project already exists: Core')
+
+    await expect(provider.getProject('project-1')).resolves.toMatchObject({ name: 'Core' })
+    await expect(provider.updateProject('project-1', { name: 'Core 2' })).resolves.toMatchObject({ name: 'Core 2' })
+    await expect(provider.listProjects()).resolves.toHaveLength(1)
+    await expect(provider.deleteProject('project-1')).resolves.toEqual({ id: 'project-1' })
+    await expect(provider.listProjects()).resolves.toHaveLength(0)
+    await expect(provider.getProject('project-1')).rejects.toThrow('Project not found: project-1')
+  })
+})
+
+describe('statuses', () => {
+  test('requires confirmation for mutations and orders by position', async () => {
+    const provider = new MemoryTaskProvider()
+    await provider.createProject({ name: 'Core' })
+
+    const refused = await provider.createStatus('project-1', { name: 'In Review' })
+    expect(refused).toMatchObject({ status: 'confirmation_required' })
+    await expect(provider.listStatuses('project-1')).resolves.toHaveLength(0)
+
+    const created = await provider.createStatus('project-1', { name: 'In Review' }, true)
+    expect(created).toMatchObject({ id: 'status-1', name: 'In Review', order: 0 })
+    await provider.createStatus('project-1', { name: 'Done', isFinal: true }, true)
+    await provider.reorderStatuses(
+      'project-1',
+      [
+        { id: 'status-2', position: 0 },
+        { id: 'status-1', position: 1 },
+      ],
+      true,
+    )
+    const ordered = await provider.listStatuses('project-1')
+    expect(ordered.map((column) => column.name)).toEqual(['Done', 'In Review'])
+
+    await expect(provider.deleteStatus('project-1', 'status-1')).resolves.toMatchObject({
+      status: 'confirmation_required',
+    })
+    await expect(provider.deleteStatus('project-1', 'status-1', true)).resolves.toEqual({ id: 'status-1' })
+    await expect(provider.listStatuses('project-1')).resolves.toHaveLength(1)
+  })
+})
+
+describe('project team', () => {
+  test('adds, lists, and removes members with duplicate and missing errors', async () => {
+    const provider = new MemoryTaskProvider()
+    await provider.createProject({ name: 'Core' })
+
+    await expect(provider.addProjectMember('project-1', 'alice')).resolves.toEqual({
+      projectId: 'project-1',
+      userId: 'alice',
+    })
+    await expect(provider.addProjectMember('project-1', 'alice')).rejects.toThrow(
+      'Project member already exists: alice',
+    )
+    await expect(provider.listProjectTeam('project-1')).resolves.toEqual([{ id: 'alice' }])
+    await expect(provider.removeProjectMember('project-1', 'alice')).resolves.toEqual({
+      projectId: 'project-1',
+      userId: 'alice',
+    })
+    await expect(provider.removeProjectMember('project-1', 'alice')).rejects.toThrow('Project member not found: alice')
+    await expect(provider.listProjectTeam('project-1')).resolves.toEqual([])
+  })
+})
+
+describe('relations', () => {
+  test('adds, updates, and removes relations with duplicate and missing errors', async () => {
+    const provider = new MemoryTaskProvider()
+    const first = await provider.createTask({ projectId: 'proj-1', title: 'First' })
+    const second = await provider.createTask({ projectId: 'proj-1', title: 'Second' })
+
+    await expect(provider.addRelation(first.id, second.id, 'blocks')).resolves.toEqual({
+      taskId: first.id,
+      relatedTaskId: second.id,
+      type: 'blocks',
+    })
+    await expect(provider.addRelation(first.id, second.id, 'related')).rejects.toThrow(
+      `Task relation already exists: ${first.id} ${second.id}`,
+    )
+    await expect(provider.updateRelation(first.id, second.id, 'related')).resolves.toEqual({
+      taskId: first.id,
+      relatedTaskId: second.id,
+      type: 'related',
+    })
+    await expect(provider.removeRelation(first.id, second.id)).resolves.toEqual({
+      taskId: first.id,
+      relatedTaskId: second.id,
+    })
+    await expect(provider.removeRelation(first.id, second.id)).rejects.toThrow(
+      `Task relation not found: ${first.id} ${second.id}`,
+    )
+    await expect(provider.updateRelation(first.id, second.id, 'blocks')).rejects.toThrow(
+      `Task relation not found: ${first.id} ${second.id}`,
+    )
+  })
+
+  test('requires both tasks to exist', async () => {
+    const provider = new MemoryTaskProvider()
+    const task = await provider.createTask({ projectId: 'proj-1', title: 'First' })
+
+    await expect(provider.addRelation(task.id, 'task-404', 'blocks')).rejects.toThrow('Task not found: task-404')
+  })
+})
+
+describe('worklog', () => {
+  test('logs, lists, updates, and deletes work items with defaults', async () => {
+    const provider = new MemoryTaskProvider()
+    const task = await provider.createTask({ projectId: 'proj-1', title: 'Worked' })
+
+    const item = await provider.createWorkItem(task.id, { duration: 'PT1H30M', description: 'deep work' })
+    expect(item).toMatchObject({
+      id: 'work-1',
+      taskId: task.id,
+      duration: 'PT1H30M',
+      author: 'unknown',
+      date: '2026-01-01',
+    })
+    await expect(provider.listWorkItems(task.id)).resolves.toHaveLength(1)
+    await expect(provider.updateWorkItem(task.id, 'work-1', { duration: 'PT2H' })).resolves.toMatchObject({
+      duration: 'PT2H',
+    })
+    await expect(provider.deleteWorkItem(task.id, 'work-1')).resolves.toEqual({ id: 'work-1' })
+    await expect(provider.deleteWorkItem(task.id, 'work-1')).rejects.toThrow('Work item not found: work-1')
+  })
+})
+
+describe('sprints and saved queries', () => {
+  test('manages agiles, sprints, and task assignment', async () => {
+    const provider = new MemoryTaskProvider()
+    const agile = provider.addAgile({ name: 'Main Board' })
+    expect(agile).toEqual({ id: 'agile-1', name: 'Main Board' })
+    await expect(provider.listAgiles()).resolves.toEqual([{ id: 'agile-1', name: 'Main Board' }])
+
+    const sprint = await provider.createSprint('agile-1', { name: 'Sprint 1', goal: 'ship' })
+    expect(sprint).toMatchObject({ id: 'sprint-1', agileId: 'agile-1', archived: false, goal: 'ship' })
+    await expect(provider.listSprints('agile-1')).resolves.toHaveLength(1)
+    await expect(provider.updateSprint('agile-1', 'sprint-1', { goal: 'ship harder' })).resolves.toMatchObject({
+      goal: 'ship harder',
+    })
+    await expect(provider.listSprints('agile-404')).rejects.toThrow('Agile not found: agile-404')
+
+    const task = await provider.createTask({ projectId: 'proj-1', title: 'Planned' })
+    await expect(provider.assignTaskToSprint(task.id, 'sprint-1')).resolves.toEqual({
+      taskId: task.id,
+      sprintId: 'sprint-1',
+    })
+    expect(provider.taskSprintId(task.id)).toBe('sprint-1')
+  })
+
+  test('runs saved queries through search semantics', async () => {
+    const provider = new MemoryTaskProvider()
+    await provider.createTask({ projectId: 'proj-1', title: 'Release 7' })
+    await provider.createTask({ projectId: 'proj-1', title: 'Backlog grooming' })
+    const query = provider.addSavedQuery({ name: 'Releases', query: 'release' })
+
+    expect(query).toEqual({ id: 'query-1', name: 'Releases', query: 'release' })
+    await expect(provider.listSavedQueries()).resolves.toEqual([{ id: 'query-1', name: 'Releases', query: 'release' }])
+    const results = await provider.runSavedQuery('query-1')
+    expect(results.map((task) => task.title)).toEqual(['Release 7'])
+    await expect(provider.runSavedQuery('query-404')).rejects.toThrow('Saved query not found: query-404')
+  })
+})
+
+describe('collaboration', () => {
+  test('manages watchers with duplicate and missing errors', async () => {
+    const provider = new MemoryTaskProvider()
+    const task = await provider.createTask({ projectId: 'proj-1', title: 'Watched' })
+
+    await expect(provider.addWatcher(task.id, 'alice')).resolves.toEqual({ taskId: task.id, userId: 'alice' })
+    await expect(provider.addWatcher(task.id, 'alice')).rejects.toThrow('Task watcher already exists: alice')
+    await expect(provider.listWatchers(task.id)).resolves.toEqual([{ id: 'alice' }])
+    await expect(provider.removeWatcher(task.id, 'alice')).resolves.toEqual({ taskId: task.id, userId: 'alice' })
+    await expect(provider.removeWatcher(task.id, 'alice')).rejects.toThrow('Task watcher not found: alice')
+  })
+
+  test('votes are idempotent to add and strict to remove', async () => {
+    const provider = new MemoryTaskProvider()
+    const task = await provider.createTask({ projectId: 'proj-1', title: 'Voted' })
+
+    await expect(provider.addVote(task.id)).resolves.toEqual({ taskId: task.id })
+    await expect(provider.addVote(task.id)).resolves.toEqual({ taskId: task.id })
+    await expect(provider.removeVote(task.id)).resolves.toEqual({ taskId: task.id })
+    await expect(provider.removeVote(task.id)).rejects.toThrow(`Task vote not found: ${task.id}`)
+  })
+
+  test('stores visibility with user refs', async () => {
+    const provider = new MemoryTaskProvider()
+    const task = await provider.createTask({ projectId: 'proj-1', title: 'Hidden' })
+
+    await expect(provider.setVisibility(task.id, { kind: 'restricted', userIds: ['alice'] })).resolves.toEqual({
+      taskId: task.id,
+      visibility: { kind: 'restricted', users: [{ id: 'alice' }] },
+    })
+    expect(provider.getTaskVisibility(task.id)).toEqual({ kind: 'restricted', users: [{ id: 'alice' }] })
+    await expect(provider.setVisibility(task.id, { kind: 'public' })).resolves.toEqual({
+      taskId: task.id,
+      visibility: { kind: 'public' },
+    })
+  })
+
+  test('stores visibility with group refs', async () => {
+    const provider = new MemoryTaskProvider()
+    const task = await provider.createTask({ projectId: 'proj-1', title: 'Hidden from group' })
+
+    await expect(provider.setVisibility(task.id, { kind: 'restricted', groupIds: ['g1'] })).resolves.toEqual({
+      taskId: task.id,
+      visibility: { kind: 'restricted', groups: [{ id: 'g1', name: 'g1' }] },
+    })
+    expect(provider.getTaskVisibility(task.id)).toEqual({ kind: 'restricted', groups: [{ id: 'g1', name: 'g1' }] })
+  })
+})
+
+describe('identity surface', () => {
+  test('finds users, returns the seeded current user, and records provisions', async () => {
+    const provider = new MemoryTaskProvider()
+    provider.addIdentityUser({ id: 'ku-alice', login: 'alice', name: 'Alice A' })
+    provider.addIdentityUser({ id: 'ku-bob', login: 'bobby', name: 'Bob B' })
+    provider.setCurrentUser({ id: 'ku-alice', login: 'alice' })
+
+    await expect(provider.listUsers('ali')).resolves.toEqual([{ id: 'ku-alice', login: 'alice', name: 'Alice A' }])
+    await expect(provider.getCurrentUser()).resolves.toEqual({ id: 'ku-alice', login: 'alice' })
+
+    const provisioned = await provider.provisionWorkspaceMember({
+      chatUserId: 'alice',
+      displayName: 'Alice A',
+      username: 'alice',
+    })
+    expect(provisioned).toEqual({ providerUserId: 'prov-alice', login: 'alice', password: 'memory-password' })
+    expect(provider.provisionCalls).toHaveLength(1)
+    expect(provider.provisionCalls.at(0)?.member).toEqual({
+      chatUserId: 'alice',
+      displayName: 'Alice A',
+      username: 'alice',
+    })
+  })
+})
+
+describe('traits', () => {
+  test('setTraits mutates the captured set in place', () => {
+    const provider = new MemoryTaskProvider()
+    const captured = provider.traits
+
+    provider.setTraits(['command-language:youtrack', 'supports-command-language'])
+
+    expect(captured.has('command-language:youtrack')).toBe(true)
+    expect(captured.has('supports-command-language')).toBe(true)
+  })
+})
+
+describe('attachments', () => {
+  test('uploads, lists, and deletes attachment metadata', async () => {
+    const provider = new MemoryTaskProvider()
+    const task = await provider.createTask({ projectId: 'proj-1', title: 'Documented' })
+    const content = new TextEncoder().encode('hello')
+
+    const uploaded = await provider.uploadAttachment(task.id, { name: 'spec.txt', content, mimeType: 'text/plain' })
+    expect(uploaded).toMatchObject({
+      id: 'attachment-1',
+      name: 'spec.txt',
+      size: 5,
+      url: 'memory://attachments/attachment-1',
+    })
+    await expect(provider.listAttachments(task.id)).resolves.toHaveLength(1)
+    await expect(provider.deleteAttachment(task.id, 'attachment-1')).resolves.toEqual({ id: 'attachment-1' })
+    await expect(provider.deleteAttachment(task.id, 'attachment-1')).rejects.toThrow(
+      'Attachment not found: attachment-1',
+    )
+  })
+})
+
+describe('applyCommand', () => {
+  test('records and echoes the command payload', async () => {
+    const provider = new MemoryTaskProvider()
+
+    await expect(
+      provider.applyCommand({ query: 'state Fixed', taskIds: ['task-1'], comment: 'done', silent: true }),
+    ).resolves.toEqual({ query: 'state Fixed', taskIds: ['task-1'], comment: 'done', silent: true })
+    expect(provider.commandCalls).toEqual([
+      { query: 'state Fixed', taskIds: ['task-1'], comment: 'done', silent: true },
+    ])
   })
 })

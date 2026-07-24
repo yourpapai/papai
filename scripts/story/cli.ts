@@ -3,8 +3,25 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { STORY_JUNIT_REPORT_PATH } from './story-reports.js'
-import { parseBunInteger } from './story-runner-integers.js'
+import { STORY_JUNIT_REPORT_PATH } from './reports.js'
+
+const BUN_INTEGER_TOKEN = /^\+?\d+$/u
+
+type BunIntegerOptions = Readonly<{
+  flag: string
+  minimum: number
+  maximum?: number
+  expectation?: string
+}>
+
+export function parseBunInteger(token: string, options: BunIntegerOptions): number {
+  const error = (): Error => new Error(`${options.flag} requires ${options.expectation ?? 'an integer'}`)
+  if (!BUN_INTEGER_TOKEN.test(token)) throw error()
+  const value = Number(token)
+  if (!Number.isSafeInteger(value) || value < options.minimum) throw error()
+  if (options.maximum !== undefined && value > options.maximum) throw error()
+  return value
+}
 
 export const STORY_SEED = 41021
 const VALUE_FLAGS = new Set([
