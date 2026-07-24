@@ -26,14 +26,21 @@ describe.skipIf(!DOCKER)('T2 container D — debug surface gated on', () => {
     await ensurePapaiE2eImage()
     const llm = startFakeLlmServer()
     const mm = startFakeMattermostServer({ botUserId: 'bot-user-1', botUsername: 'smokebot' })
-    const container = await startPapaiContainer({
-      env: buildContainerEnv(
-        { llmBaseUrl: llm.containerBaseUrl, mattermostUrl: mm.containerBaseUrl },
-        { debugServer: true },
-      ),
-      readyTimeoutMs: 90_000,
-    })
-    handle = { container, llm, mm }
+    // If the container never boots, stop the already-listening fakes so a boot failure doesn't leak servers.
+    try {
+      const container = await startPapaiContainer({
+        env: buildContainerEnv(
+          { llmBaseUrl: llm.containerBaseUrl, mattermostUrl: mm.containerBaseUrl },
+          { debugServer: true },
+        ),
+        readyTimeoutMs: 90_000,
+      })
+      handle = { container, llm, mm }
+    } catch (error) {
+      await mm.stop()
+      await llm.stop()
+      throw error
+    }
   }, 180_000)
 
   afterAll(async () => {

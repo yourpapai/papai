@@ -41,11 +41,19 @@ describe.skipIf(!DOCKER)('T2 container P — process-real smoke', () => {
     await ensurePapaiE2eImage()
     const llm = startFakeLlmServer()
     const mm = startFakeMattermostServer({ botUserId: 'bot-user-1', botUsername: 'smokebot' })
-    const container = await startPapaiContainer({
-      env: buildContainerEnv({ llmBaseUrl: llm.containerBaseUrl, mattermostUrl: mm.containerBaseUrl }),
-      readyTimeoutMs: 90_000,
-    })
-    handle = { container, llm, mm, stopped: false }
+    // If the container never boots (the regression this lane exists to catch), the fakes were
+    // already listening — stop them here so a boot failure doesn't leak servers into the D/E stages.
+    try {
+      const container = await startPapaiContainer({
+        env: buildContainerEnv({ llmBaseUrl: llm.containerBaseUrl, mattermostUrl: mm.containerBaseUrl }),
+        readyTimeoutMs: 90_000,
+      })
+      handle = { container, llm, mm, stopped: false }
+    } catch (error) {
+      await mm.stop()
+      await llm.stop()
+      throw error
+    }
   }, 180_000)
 
   afterAll(async () => {
