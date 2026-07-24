@@ -39,6 +39,57 @@ function required<T>(value: T | undefined, label: string): T {
 
 export const PARITY_GROUPS: readonly ParityGroup[] = [
   {
+    id: 'SCN-parity-task-create',
+    title: 'SCN-parity-task-create: createTask returns a normalized task shape',
+    async run({ provider, projectId }) {
+      const task = await provider.createTask({ projectId, title: 'Parity Create' })
+      expect(canonicalize(task, VOLATILE_KEYS)).toMatchObject({
+        id: VOLATILE,
+        projectId: VOLATILE,
+        title: 'Parity Create',
+      })
+    },
+  },
+  {
+    id: 'SCN-parity-task-get',
+    title: 'SCN-parity-task-get: getTask returns the same normalized shape as createTask',
+    async run({ provider, projectId }) {
+      const created = await provider.createTask({ projectId, title: 'Parity Get' })
+      const fetched = await provider.getTask(created.id)
+      expect(canonicalize(fetched, VOLATILE_KEYS)).toMatchObject({
+        id: VOLATILE,
+        projectId: VOLATILE,
+        title: 'Parity Get',
+      })
+    },
+  },
+  {
+    id: 'SCN-parity-task-update',
+    title: 'SCN-parity-task-update: updateTask applies a title and status change',
+    async run({ provider, projectId }) {
+      const created = await provider.createTask({ projectId, title: 'Parity Update' })
+      const updated = await provider.updateTask(created.id, { title: 'Parity Updated', status: 'In Progress' })
+      // `status` is not pinned to the literal column name here: real Kaneo echoes a
+      // normalized/slugged form (e.g. "in-progress") rather than "In Progress", while
+      // the fake echoes the input verbatim — both are non-empty strings, so require
+      // only presence and type, not a fixed value.
+      expect(canonicalize(updated, VOLATILE_KEYS)).toMatchObject({
+        id: VOLATILE,
+        projectId: VOLATILE,
+        title: 'Parity Updated',
+      })
+      const updatedStatus = required(updated.status, 'updated.status')
+      expect(updatedStatus).toBeTypeOf('string')
+      expect(updatedStatus.length).toBeGreaterThan(0)
+      const fetched = await provider.getTask(created.id)
+      expect(canonicalize(fetched, VOLATILE_KEYS)).toMatchObject({
+        id: VOLATILE,
+        projectId: VOLATILE,
+        title: 'Parity Updated',
+      })
+    },
+  },
+  {
     id: 'SCN-parity-task-delete',
     title: 'SCN-parity-task-delete: deleteTask removes the task and getTask then rejects',
     async run({ provider, projectId }) {
@@ -86,6 +137,22 @@ export const PARITY_GROUPS: readonly ParityGroup[] = [
       const results = await provider.searchTasks({ query: 'Searchable', projectId })
       const titles = results.map((result) => result.title).sort()
       expect(titles).toEqual(['Searchable Falcon', 'Searchable Osprey'])
+    },
+  },
+  {
+    id: 'SCN-parity-comment-crud',
+    title: 'SCN-parity-comment-crud: add, list, update, and remove a comment',
+    async run({ provider, projectId }) {
+      const task = await provider.createTask({ projectId, title: 'Comment Host' })
+      const added = await provider.addComment?.(task.id, 'first note')
+      expect(canonicalize(added, VOLATILE_KEYS)).toMatchObject({ id: VOLATILE, body: 'first note' })
+      const listed = (await provider.getComments?.(task.id, {})) ?? []
+      expect(listed.map((comment) => comment.body).sort()).toEqual(['first note'])
+      const addedId = required(added, 'addComment result').id
+      const updated = await provider.updateComment?.({ taskId: task.id, commentId: addedId, body: 'edited note' })
+      expect(canonicalize(updated, VOLATILE_KEYS)).toMatchObject({ id: VOLATILE, body: 'edited note' })
+      const removed = await provider.removeComment?.({ taskId: task.id, commentId: addedId })
+      expect(canonicalize(removed, VOLATILE_KEYS)).toEqual({ id: VOLATILE })
     },
   },
   {
@@ -138,6 +205,34 @@ export const PARITY_GROUPS: readonly ParityGroup[] = [
       })
       const removed = await provider.removeRelation?.(first.id, second.id)
       expect(canonicalize(removed, VOLATILE_KEYS)).toEqual({ taskId: VOLATILE, relatedTaskId: VOLATILE })
+    },
+  },
+  {
+    id: 'SCN-parity-identity',
+    title: 'SCN-parity-identity: provisionWorkspaceMember and listUsers resolve normalized shapes',
+    async run({ provider }) {
+      const provisioned = required(
+        await provider.provisionWorkspaceMember?.({
+          chatUserId: 'parity-alice',
+          displayName: 'Parity Alice',
+          username: 'parity.alice',
+        }),
+        'provisionWorkspaceMember result',
+      )
+      expect(Object.keys(provisioned).sort()).toEqual(['login', 'password', 'providerUserId'])
+      // `login`/`password`/`providerUserId` are provider-opaque (not in VOLATILE_KEYS):
+      // each provider mints them differently — Kaneo synthesizes a unique email login
+      // rather than echoing the requested username — so require only presence and type,
+      // not a fixed sentinel or literal.
+      expect(provisioned.login).toBeTypeOf('string')
+      expect(provisioned.login.length).toBeGreaterThan(0)
+      expect(provisioned.password.length).toBeGreaterThan(0)
+      expect(provisioned.providerUserId.length).toBeGreaterThan(0)
+      // The fake's provisionWorkspaceMember doesn't populate the store listUsers reads
+      // from, so element-shape parity can't be asserted hermetically here; the strong
+      // cross-provider identity signal is the provisionWorkspaceMember assertion above.
+      const users = required(await provider.listUsers?.('parity', 10), 'listUsers result')
+      expect(Array.isArray(users)).toBe(true)
     },
   },
 ] as const
@@ -237,30 +332,5 @@ export const PARITY_EXCLUSIONS: readonly Readonly<{ group: string; reason: strin
     group: 'status-reorder',
     reason:
       'Reclassified during Task 4 (real-Kaneo drift, not a fake-only surface): KaneoProvider seeds every project with 4 default board columns (To Do, In Progress, In Review, Done) at creation; MemoryTaskProvider starts a fresh project with zero statuses. The group creates exactly 2 statuses and reorders them to absolute positions 0/1, expecting listStatuses to yield exactly those 2 names in that order — against real Kaneo the 2 new columns interleave with the 4 pre-existing defaults instead of displacing them, so the exact 2-element order assertion cannot hold for a real board.',
-  },
-  {
-    group: 'task-create',
-    reason:
-      "Reclassified during Task 4 (real-Kaneo drift, not a fake-only surface): KaneoProvider's task response schema (plugins/task-provider-kaneo/schemas/create-task.ts TaskSchema) makes status (string), priority (non-nullable TaskPriorityEnum), and createdAt (non-nullable datetime) mandatory always-present fields, and mapCreateTaskResponse (plugins/task-provider-kaneo/mappers.ts) unconditionally copies description/status/priority/assignee/startDate/dueDate/createdAt onto the mapped Task. MemoryTaskProvider echoes back only the fields the caller supplied, so a task created with just {projectId, title} yields the exact 4-key shape {id, projectId, title, url} on the fake but a 11-key shape (adding assignee, createdAt, description, dueDate, priority, startDate, status) on real Kaneo. Kaneo cannot suppress its mandatory schema fields to match the fake's minimal echo.",
-  },
-  {
-    group: 'task-get',
-    reason:
-      "Reclassified during Task 4 (real-Kaneo drift, not a fake-only surface): same root cause as task-create — KaneoProvider.getTask maps through mapTaskDetails (plugins/task-provider-kaneo/mappers.ts), which unconditionally includes the same mandatory status/priority/createdAt fields (plus relations) alongside description/assignee/startDate/dueDate. The exact-key-shape assertion that holds for MemoryTaskProvider's minimal echo cannot hold against a real Kaneo task response.",
-  },
-  {
-    group: 'task-update',
-    reason:
-      "Reclassified during Task 4 (real-Kaneo drift, not a fake-only surface): same root cause as task-create/task-get — KaneoProvider.updateTask returns a full mapped Task via the same mappers, always carrying the mandatory status/priority/createdAt fields (plus description/assignee/startDate/dueDate) that MemoryTaskProvider omits when unset. The group's exact-key-shape assertion after a partial {title, status} update cannot hold against real Kaneo.",
-  },
-  {
-    group: 'comment-crud',
-    reason:
-      "Reclassified during Task 4 (real-Kaneo drift, not a fake-only surface): KaneoProvider's comment mapper (plugins/task-provider-kaneo/mappers.ts mapComment) always includes createdAt, and Kaneo's comment/activity schemas (plugins/task-provider-kaneo/schemas/global-search.ts SearchCommentSchema) make createdAt a mandatory, non-nullable datetime the server always sets on creation. MemoryTaskProvider's addComment/updateComment/removeComment results carry only {id, body}, so the group's exact-shape assertion ({id: VOLATILE, body: ...}, no createdAt) cannot hold against real Kaneo, which always stamps a creation timestamp it cannot omit.",
-  },
-  {
-    group: 'identity',
-    reason:
-      "Reclassified during Task 4 (real-Kaneo drift, not a fake-only surface): KaneoProvider.provisionWorkspaceMember (plugins/task-provider-kaneo/operations/members.ts) always synthesizes a unique login as `${sanitizedUsername}-${uniqueSuffix}@pap.ai` because Kaneo's Better Auth backend requires a valid, unique email address for signup and cannot accept a bare username like \"parity.alice\" as a login. MemoryTaskProvider echoes the requested username verbatim as `login`. The group's `expect(provisioned.login).toBe('parity.alice')` pins the literal input username, which real Kaneo can never return.",
   },
 ] as const
