@@ -24,7 +24,12 @@ export function makeLoadToolTool(session: DisclosureSession, contextId: string):
       const nowActive = session.activeToolNames().length
       emitUser('disclosure:load', contextId, { loadedCount: loaded.length, unknownCount: unknown.length, nowActive })
       log.debug({ contextId, loadedCount: loaded.length, unknownCount: unknown.length, nowActive }, 'load_tool served')
-      return { loaded, unknown, nowActive }
+      const result = { loaded, unknown, nowActive }
+      if (unknown.length === 0) return result
+      return {
+        ...result,
+        warning: `Not activated (unrecognized): ${unknown.join(', ')}. Use search_tools for exact names.`,
+      }
     },
   })
 }
