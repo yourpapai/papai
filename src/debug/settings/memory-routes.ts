@@ -13,16 +13,12 @@ import {
   purgeMemoryRecord,
   saveMemoryProfile,
   setMemoryCaptureEnabled,
+  setMemoryRecordInjectionEnabled,
 } from '../../long-term-memory/store.js'
-import type { MemoryRecord, MemoryScope } from '../../long-term-memory/types.js'
-import {
-  authenticate,
-  parseJsonBody,
-  requireCsrf,
-  resolveContextScope,
-  settingsJson,
-  type ParsedBody,
-} from './respond.js'
+import type { MemoryRecord } from '../../long-term-memory/types.js'
+import { toMemoryScope } from './memory-scope.js'
+import { authenticateForWrite, resolveWriteBody } from './memory-write-gate.js'
+import { authenticate, parseJsonBody, resolveContextScope, settingsJson, type ParsedBody } from './respond.js'
 
 const log = logger.child({ scope: 'debug-server:settings-memory' })
 const MAX_PROFILE_LENGTH = 20_000
@@ -38,13 +34,13 @@ const CapturePatchBodySchema = z.object({
   enabled: z.boolean(),
 })
 
-const ContextBodySchema = z.object({
+const RecordInjectionPatchBodySchema = z.object({
   contextId: z.string().optional(),
+  enabled: z.boolean(),
 })
 
-const toMemoryScope = (scope: { readonly contextId: string; readonly kind: 'personal' | 'group' }): MemoryScope => ({
-  scopeId: scope.contextId,
-  scopeType: scope.kind,
+const ContextBodySchema = z.object({
+  contextId: z.string().optional(),
 })
 
 const recordView = (record: MemoryRecord): Omit<MemoryRecord, 'embedding'> => ({
@@ -99,27 +95,21 @@ function handleGet(req: Request, url: URL): Response {
     contextId: memoryScope.scopeId,
     scopeType: memoryScope.scopeType,
     enabled: profile?.enabled ?? true,
+    injectRecords: profile?.injectRecords ?? false,
     profile: profile?.profile ?? '',
     records,
   })
 }
 
 async function handleProfilePatch(req: Request): Promise<Response> {
-  const auth = authenticate(req)
-  if (!auth.ok) return auth.response
-  const csrf = requireCsrf(req, auth.authed)
-  if (csrf !== null) return csrf
+  const gate = authenticateForWrite(req)
+  if (!gate.ok) return gate.response
 
-  const parsed = await parseJsonBody(req)
-  if (!parsed.ok) return parsed.response
-  const body = ProfilePatchBodySchema.safeParse(parsed.value)
-  if (!body.success) return settingsJson(422, { error: 'invalid request' })
+  const resolved = await resolveWriteBody(req, gate.authed, ProfilePatchBodySchema)
+  if (!resolved.ok) return resolved.response
+  const { memoryScope, data } = resolved
 
-  const scope = resolveContextScope(auth.authed.principal, 'write', body.data.contextId)
-  if (!scope.ok) return scope.response
-
-  const memoryScope = toMemoryScope(scope.scope)
-  const profile = saveMemoryProfile(memoryScope, body.data.profile, new Date().toISOString())
+  const profile = saveMemoryProfile(memoryScope, data.profile, new Date().toISOString())
   log.info(
     { scopeId: memoryScope.scopeId, scopeType: memoryScope.scopeType, action: 'profile.update' },
     'Settings memory profile updated',
@@ -133,21 +123,14 @@ async function handleProfilePatch(req: Request): Promise<Response> {
 }
 
 async function handleCapturePatch(req: Request): Promise<Response> {
-  const auth = authenticate(req)
-  if (!auth.ok) return auth.response
-  const csrf = requireCsrf(req, auth.authed)
-  if (csrf !== null) return csrf
+  const gate = authenticateForWrite(req)
+  if (!gate.ok) return gate.response
 
-  const parsed = await parseJsonBody(req)
-  if (!parsed.ok) return parsed.response
-  const body = CapturePatchBodySchema.safeParse(parsed.value)
-  if (!body.success) return settingsJson(422, { error: 'invalid request' })
+  const resolved = await resolveWriteBody(req, gate.authed, CapturePatchBodySchema)
+  if (!resolved.ok) return resolved.response
+  const { memoryScope, data } = resolved
 
-  const scope = resolveContextScope(auth.authed.principal, 'write', body.data.contextId)
-  if (!scope.ok) return scope.response
-
-  const memoryScope = toMemoryScope(scope.scope)
-  const profile = setMemoryCaptureEnabled(memoryScope, body.data.enabled, new Date().toISOString())
+  const profile = setMemoryCaptureEnabled(memoryScope, data.enabled, new Date().toISOString())
   log.info(
     {
       scopeId: memoryScope.scopeId,
@@ -165,24 +148,43 @@ async function handleCapturePatch(req: Request): Promise<Response> {
   })
 }
 
+async function handleRecordInjectionPatch(req: Request): Promise<Response> {
+  const gate = authenticateForWrite(req)
+  if (!gate.ok) return gate.response
+
+  const resolved = await resolveWriteBody(req, gate.authed, RecordInjectionPatchBodySchema)
+  if (!resolved.ok) return resolved.response
+  const { memoryScope, data } = resolved
+
+  const profile = setMemoryRecordInjectionEnabled(memoryScope, data.enabled, new Date().toISOString())
+  log.info(
+    {
+      scopeId: memoryScope.scopeId,
+      scopeType: memoryScope.scopeType,
+      action: 'record-injection.update',
+      injectRecords: profile.injectRecords,
+    },
+    'Settings memory record injection updated',
+  )
+  return settingsJson(200, {
+    ok: true,
+    contextId: memoryScope.scopeId,
+    scopeType: memoryScope.scopeType,
+    injectRecords: profile.injectRecords,
+  })
+}
+
 async function handleRecordDelete(req: Request, recordId: string): Promise<Response> {
-  const auth = authenticate(req)
-  if (!auth.ok) return auth.response
-  const csrf = requireCsrf(req, auth.authed)
-  if (csrf !== null) return csrf
+  const gate = authenticateForWrite(req)
+  if (!gate.ok) return gate.response
 
   const decodedRecordId = decodeRecordId(recordId)
   if (decodedRecordId === null) return settingsJson(400, { error: 'invalid record id' })
 
-  const parsed = await parseOptionalJsonBody(req)
-  if (!parsed.ok) return parsed.response
-  const body = ContextBodySchema.safeParse(parsed.value)
-  if (!body.success) return settingsJson(422, { error: 'invalid request' })
+  const resolved = await resolveWriteBody(req, gate.authed, ContextBodySchema, parseOptionalJsonBody)
+  if (!resolved.ok) return resolved.response
+  const { memoryScope } = resolved
 
-  const scope = resolveContextScope(auth.authed.principal, 'write', body.data.contextId)
-  if (!scope.ok) return scope.response
-
-  const memoryScope = toMemoryScope(scope.scope)
   const purged = purgeMemoryRecord(memoryScope, decodedRecordId, new Date().toISOString())
   const status = purged ? 'forgotten' : 'not_found'
   log.info(
@@ -193,20 +195,13 @@ async function handleRecordDelete(req: Request, recordId: string): Promise<Respo
 }
 
 async function handleClear(req: Request): Promise<Response> {
-  const auth = authenticate(req)
-  if (!auth.ok) return auth.response
-  const csrf = requireCsrf(req, auth.authed)
-  if (csrf !== null) return csrf
+  const gate = authenticateForWrite(req)
+  if (!gate.ok) return gate.response
 
-  const parsed = await parseJsonBody(req)
-  if (!parsed.ok) return parsed.response
-  const body = ContextBodySchema.safeParse(parsed.value)
-  if (!body.success) return settingsJson(422, { error: 'invalid request' })
+  const resolved = await resolveWriteBody(req, gate.authed, ContextBodySchema)
+  if (!resolved.ok) return resolved.response
+  const { memoryScope } = resolved
 
-  const scope = resolveContextScope(auth.authed.principal, 'write', body.data.contextId)
-  if (!scope.ok) return scope.response
-
-  const memoryScope = toMemoryScope(scope.scope)
   const counts = clearMemoryScope(memoryScope)
   log.info(
     {
@@ -244,6 +239,10 @@ export function handleMemoryRoutes(req: Request, url: URL): Promise<Response> {
   }
   if (url.pathname === '/settings/api/memory/capture') {
     if (req.method === 'PATCH') return handleCapturePatch(req)
+    return Promise.resolve(settingsJson(405, { error: 'method not allowed' }))
+  }
+  if (url.pathname === '/settings/api/memory/record-injection') {
+    if (req.method === 'PATCH') return handleRecordInjectionPatch(req)
     return Promise.resolve(settingsJson(405, { error: 'method not allowed' }))
   }
   if (url.pathname === '/settings/api/memory/clear') {

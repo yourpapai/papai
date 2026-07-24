@@ -34,6 +34,7 @@ const GetMemoryResponseSchema = z.object({
   contextId: z.string(),
   scopeType: z.enum(['personal', 'group']),
   enabled: z.boolean(),
+  injectRecords: z.boolean(),
   profile: z.string(),
   records: z.array(MemoryRecordViewSchema),
 })
@@ -50,6 +51,13 @@ const CapturePatchResponseSchema = z.object({
   contextId: z.string(),
   scopeType: z.enum(['personal', 'group']),
   enabled: z.boolean(),
+})
+
+const RecordInjectionPatchResponseSchema = z.object({
+  ok: z.literal(true),
+  contextId: z.string(),
+  scopeType: z.enum(['personal', 'group']),
+  injectRecords: z.boolean(),
 })
 
 const DeleteRecordResponseSchema = z.object({
@@ -234,6 +242,30 @@ describe('settings memory routes', () => {
     expect(body.contextId).toBe(personalContextId)
     expect(body.enabled).toBe(false)
     expect(getMemoryProfile(personalScope)?.enabled).toBe(false)
+  })
+
+  test('PATCH /memory/record-injection toggles inject flag and GET reflects it', async () => {
+    const patch = await handleMemoryRoutes(
+      request('/settings/api/memory/record-injection', session, {
+        method: 'PATCH',
+        csrf: true,
+        body: { enabled: true },
+      }),
+      new URL('https://x/settings/api/memory/record-injection'),
+    )
+
+    expect(patch.status).toBe(200)
+    const patchBody = RecordInjectionPatchResponseSchema.parse(await patch.json())
+    expect(patchBody.contextId).toBe(personalContextId)
+    expect(patchBody.injectRecords).toBe(true)
+    expect(getMemoryProfile(personalScope)?.injectRecords).toBe(true)
+
+    const get = await handleMemoryRoutes(
+      request('/settings/api/memory', session),
+      new URL('https://x/settings/api/memory'),
+    )
+    const getBody = GetMemoryResponseSchema.parse(await get.json())
+    expect(getBody.injectRecords).toBe(true)
   })
 
   test('DELETE purges only records in authorized full scope', async () => {
