@@ -254,6 +254,10 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-parity-task-null-dates',
   'SCN-parity-task-special-chars',
   'SCN-parity-task-long-title',
+  // @1 — search-variant parity (tier1b-e2e-parity-retrofit wave 2)
+  'SCN-parity-search-all-projects',
+  'SCN-parity-search-empty',
+  'SCN-parity-search-projectid-limit',
 ] as const)
 
 const GAP_SCENARIO_IDS = new Set<CatalogScenarioId>([
@@ -990,6 +994,27 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     provingTier: '1',
     storyIds: [
       'tests/e2e/parity/provider-parity.test.ts#SCN-parity-task-long-title: createTask round-trips a long title',
+    ],
+  },
+  'SCN-parity-search-all-projects': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-search-all-projects: searchTasks without projectId matches across projects',
+    ],
+  },
+  'SCN-parity-search-empty': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-search-empty: searchTasks returns an empty array for a non-matching query',
+    ],
+  },
+  'SCN-parity-search-projectid-limit': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-search-projectid-limit: searchTasks honors projectId and limit together',
     ],
   },
 }

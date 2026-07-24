@@ -128,4 +128,9 @@ export const PARITY_EXCLUSIONS: readonly Readonly<{ group: string; reason: strin
     reason:
       'Reclassified during Task 4 (real-Kaneo drift, not a fake-only surface): KaneoProvider seeds every project with 4 default board columns (To Do, In Progress, In Review, Done) at creation; MemoryTaskProvider starts a fresh project with zero statuses. The group creates exactly 2 statuses and reorders them to absolute positions 0/1, expecting listStatuses to yield exactly those 2 names in that order — against real Kaneo the 2 new columns interleave with the 4 pre-existing defaults instead of displacing them, so the exact 2-element order assertion cannot hold for a real board.',
   },
+  {
+    group: 'search-invalid-workspace',
+    reason:
+      'KaneoProvider.searchTasks (plugins/task-provider-kaneo/provider.ts) scopes every search to a real Kaneo workspace and rejects an unknown workspace id; MemoryTaskProvider has no workspace concept and cannot reproduce the rejection, so invalid-workspace search stays a Kaneo-only residue check.',
+  },
 ] as const

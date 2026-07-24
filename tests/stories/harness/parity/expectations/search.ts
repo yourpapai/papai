@@ -20,4 +20,37 @@ export const searchGroups: readonly ParityGroup[] = [
       expect(titles).toEqual(['Searchable Falcon', 'Searchable Osprey'])
     },
   },
+  {
+    id: 'SCN-parity-search-all-projects',
+    title: 'SCN-parity-search-all-projects: searchTasks without projectId matches across projects',
+    async run({ provider, projectId }) {
+      await provider.createTask({ projectId, title: 'Cross Project Kestrel' })
+      const results = await provider.searchTasks({ query: 'Kestrel' })
+      expect(results.map((result) => result.title)).toContain('Cross Project Kestrel')
+    },
+  },
+  {
+    id: 'SCN-parity-search-empty',
+    title: 'SCN-parity-search-empty: searchTasks returns an empty array for a non-matching query',
+    async run({ provider, projectId }) {
+      await provider.createTask({ projectId, title: 'Present Task' })
+      const results = await provider.searchTasks({ query: 'zzz-no-such-token-qxqx', projectId })
+      expect(results).toEqual([])
+    },
+  },
+  {
+    id: 'SCN-parity-search-projectid-limit',
+    title: 'SCN-parity-search-projectid-limit: searchTasks honors projectId and limit together',
+    async run({ provider, projectId }) {
+      await provider.createTask({ projectId, title: 'Limited Alpha' })
+      await provider.createTask({ projectId, title: 'Limited Beta' })
+      await provider.createTask({ projectId, title: 'Limited Gamma' })
+      const results = await provider.searchTasks({ query: 'Limited', projectId, limit: 2 })
+      expect(results.length).toBeLessThanOrEqual(2)
+      expect(results.length).toBeGreaterThan(0)
+      for (const result of results) {
+        expect(result.title.startsWith('Limited')).toBe(true)
+      }
+    },
+  },
 ] as const
