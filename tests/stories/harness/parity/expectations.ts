@@ -48,6 +48,9 @@ export const PARITY_GROUPS: readonly ParityGroup[] = [
         projectId: VOLATILE,
         title: 'Parity Create',
       })
+      const createdUrl = required(task.url, 'task.url')
+      expect(createdUrl).toBeTypeOf('string')
+      expect(createdUrl.length).toBeGreaterThan(0)
     },
   },
   {
@@ -61,6 +64,9 @@ export const PARITY_GROUPS: readonly ParityGroup[] = [
         projectId: VOLATILE,
         title: 'Parity Get',
       })
+      const fetchedUrl = required(fetched.url, 'fetched.url')
+      expect(fetchedUrl).toBeTypeOf('string')
+      expect(fetchedUrl.length).toBeGreaterThan(0)
     },
   },
   {
@@ -81,12 +87,21 @@ export const PARITY_GROUPS: readonly ParityGroup[] = [
       const updatedStatus = required(updated.status, 'updated.status')
       expect(updatedStatus).toBeTypeOf('string')
       expect(updatedStatus.length).toBeGreaterThan(0)
+      const updatedUrl = required(updated.url, 'updated.url')
+      expect(updatedUrl).toBeTypeOf('string')
+      expect(updatedUrl.length).toBeGreaterThan(0)
       const fetched = await provider.getTask(created.id)
       expect(canonicalize(fetched, VOLATILE_KEYS)).toMatchObject({
         id: VOLATILE,
         projectId: VOLATILE,
         title: 'Parity Updated',
       })
+      const fetchedUrl = required(fetched.url, 'fetched.url')
+      expect(fetchedUrl).toBeTypeOf('string')
+      expect(fetchedUrl.length).toBeGreaterThan(0)
+      const fetchedStatus = required(fetched.status, 'fetched.status')
+      expect(fetchedStatus).toBeTypeOf('string')
+      expect(fetchedStatus).toBe(updatedStatus)
     },
   },
   {
