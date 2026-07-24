@@ -48,6 +48,12 @@
   let clearError: string | null = $state(null)
 
   const currentMemory = $derived(loadedContextId === contextId ? memory : null)
+  // One "mutation in flight" signal shared by every header action, so they all disable together
+  // while any write — or the reload that follows it — is pending. Keeps the guards from drifting
+  // apart (a new toggle only has to join this predicate) and stops a second mutation racing the first.
+  const mutating = $derived(
+    loading || savingProfile || togglingCapture || togglingInjection || clearing || archivingId !== null,
+  )
   const scopeSub = $derived(
     currentMemory?.scopeType === 'group'
       ? "Durable facts learned from this group's chats, shared across all threads."
@@ -199,7 +205,7 @@
         <Btn
           variant="danger"
           size="sm"
-          disabled={currentMemory === null || togglingCapture || clearing || archivingId !== null}
+          disabled={currentMemory === null || mutating}
           testid="memory-clear"
           onClick={() => {
             pendingClear = true
@@ -210,7 +216,7 @@
         <Btn
           variant={currentMemory?.enabled ? 'outline' : 'primary'}
           size="sm"
-          disabled={currentMemory === null || loading || togglingCapture}
+          disabled={currentMemory === null || mutating}
           testid="memory-capture-toggle"
           onClick={() => void toggleCapture()}>
           {#snippet children()}{currentMemory?.enabled ? 'Disable capture' : 'Enable capture'}{/snippet}
@@ -218,7 +224,7 @@
         <Btn
           variant={currentMemory?.injectRecords ? 'outline' : 'primary'}
           size="sm"
-          disabled={currentMemory === null || loading || togglingInjection}
+          disabled={currentMemory === null || mutating}
           testid="memory-record-injection-toggle"
           onClick={() => void toggleRecordInjection()}>
           {#snippet children()}{currentMemory?.injectRecords
@@ -307,7 +313,7 @@
                 <Btn
                   variant="primary"
                   size="sm"
-                  disabled={currentMemory === null || loading || togglingCapture}
+                  disabled={currentMemory === null || mutating}
                   testid="memory-empty-enable"
                   onClick={() => void toggleCapture()}>
                   {#snippet children()}Enable capture{/snippet}

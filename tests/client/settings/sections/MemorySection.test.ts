@@ -175,6 +175,21 @@ const routeClearFailure =
     return Promise.resolve(json({ ok: true }))
   }
 
+interface PendingInjectionState {
+  resolve: ((response: Response) => void) | null
+}
+
+const routePendingRecordInjection =
+  (state: PendingInjectionState): ((url: string, init: RequestInit) => Promise<Response>) =>
+  (url): Promise<Response> => {
+    if (url === '/settings/api/memory/record-injection') {
+      return new Promise<Response>((resolve) => {
+        state.resolve = resolve
+      })
+    }
+    return Promise.resolve(json(memoryPayload))
+  }
+
 const routeArchiveFailure =
   (): ((url: string, init: RequestInit) => Promise<Response>) =>
   (url): Promise<Response> => {
@@ -312,6 +327,35 @@ describe('MemorySection', () => {
     expect(write?.method).toBe('PATCH')
     expect(write?.body).toEqual({ contextId: 'user:1', enabled: true })
     expect(calls.filter((call) => call.url.startsWith('/settings/api/memory?')).length).toBe(2)
+    void unmount(component)
+  })
+
+  test('header actions disable together while a record-injection toggle is in flight', async () => {
+    setCsrfToken('c')
+    const pending: PendingInjectionState = { resolve: null }
+    setMockFetch(routePendingRecordInjection(pending))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MemorySection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    const clear = target.querySelector<HTMLButtonElement>('[data-testid="memory-clear"]')!
+    const capture = target.querySelector<HTMLButtonElement>('[data-testid="memory-capture-toggle"]')!
+    expect(clear.disabled).toBe(false)
+
+    target.querySelector<HTMLButtonElement>('[data-testid="memory-record-injection-toggle"]')!.click()
+    await drain()
+
+    // The write is pending: every header action — not just the injection toggle — is disabled.
+    expect(clear.disabled).toBe(true)
+    expect(capture.disabled).toBe(true)
+
+    pending.resolve!(json(memoryPayload))
+    await drain()
+    await drain()
+
+    expect(clear.disabled).toBe(false)
+    expect(capture.disabled).toBe(false)
     void unmount(component)
   })
 
