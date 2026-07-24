@@ -37,6 +37,20 @@ The foundation is deliberately separated from benchmark results:
 - [Source manifest](source-manifest.json) freezes canonical source identifiers,
   versions or access dates, licenses, and code/data availability.
 
+Living companions (**not** part of the sealed `00`–`06` evidence record):
+
+- [Implementation status since sealing](implementation-status.md) records, from HEAD
+  source only, which audit gaps have been closed in code since the record was frozen
+  (fusion, Unicode lexical, embedding-version gating, query-time validity, record-injection
+  opt-in) and what remains open. Read this before taking the audit as current.
+- [Injection architecture (thread B)](injection-architecture.md) compares how
+  long-term memory should reach the conversation — position-0 injection vs.
+  cache-friendly placement vs. tool-pull vs. agentic multi-call — recommends a
+  tiered delivery model, and specifies a reader-level eval harness and
+  production data-collection plan to decide `deriveInjectionQuery` on evidence.
+  It cites external systems and benchmarks as research inputs only; no published
+  score is transferred to papai.
+
 Protocol v4's deterministic papai component and storage tracks were reproduced
 locally on 2026-07-23. Protocol-v3 artifacts are preserved as a superseded
 historical validity run and are not pooled with v4. They are retained

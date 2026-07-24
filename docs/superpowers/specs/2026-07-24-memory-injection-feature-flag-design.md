@@ -154,3 +154,7 @@ vs. agentic multi-call selection, grounded in `07-memory-context.md` + external 
 in a recommended architecture and a concrete measurement/data-collection plan (including the
 offline reader-eval harness). This flag is the safety valve that makes the default stable
 while that research runs.
+
+**Delivered:** [`docs/research/agent-memory/injection-architecture.md`](../../research/agent-memory/injection-architecture.md).
+It recommends a tiered model (pinned profile + tool-pull default, with query-aware injection
+gated behind a reader-eval harness) and reuses this flag as the Tier-3 opt-in toggle.
