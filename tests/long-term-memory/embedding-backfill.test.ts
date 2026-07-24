@@ -121,8 +121,8 @@ describe('runEmbeddingBackfill', () => {
   })
 
   test('checkpoints per row: a mid-sweep failure leaves earlier rows embedded', async () => {
-    saveMemoryRecord(record({ id: 'rec-a' }))
-    saveMemoryRecord(record({ id: 'rec-b' }))
+    saveMemoryRecord(record({ id: 'rec-boom', content: 'boom' }))
+    saveMemoryRecord(record({ id: 'rec-ok' }))
 
     const result = await runEmbeddingBackfill({
       ...workingDeps,
@@ -130,7 +130,18 @@ describe('runEmbeddingBackfill', () => {
       getEmbedding: rejectOnBoom,
     })
 
-    expect(result.embedded).toBe(2)
+    expect(result.embedded).toBe(1)
+    expect(result.skipped).toBe(1)
+
+    const okRow = rowById('rec-ok')
+    expect(okRow?.embeddingVersion).toBe('model-a:3')
+    expect(okRow?.embeddedAt).toBe('2026-07-15T12:00:00.000Z')
+    expect(okRow?.embedding).not.toBeNull()
+
+    const boomRow = rowById('rec-boom')
+    expect(boomRow?.embeddingVersion).toBeNull()
+    expect(boomRow?.embeddedAt).toBeNull()
+    expect(boomRow?.embedding).toBeNull()
   })
 
   test('is resumable: a second run finds nothing left to do', async () => {
