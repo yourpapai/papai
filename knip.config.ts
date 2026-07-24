@@ -55,6 +55,9 @@ export default {
     // Analytics storage modules implement the Stage A write path; later pipeline
     // tasks import them explicitly.
     'src/analytics/storage/*.ts!',
+    // Analytics identity modules (keyring, install-id, pseudonym, scope) are the
+    // Stage A public seam consumed by later normalization tasks.
+    'src/analytics/identity/*.ts!',
     // First-party plugin entry points are loaded dynamically by the plugin
     // loader, so they have no static importer.
     'plugins/*/index.ts!',
@@ -141,6 +144,10 @@ export default {
     // Analytics storage modules implement the Stage A write path; their exports
     // are consumed by the upcoming pipeline/backfill tasks.
     'src/analytics/storage/*.ts': ['exports', 'types'],
+    // Analytics identity modules are the Stage A public seam; their exports are
+    // consumed by upcoming normalization/pipeline tasks and by analytics tests
+    // outside knip's production project scope.
+    'src/analytics/identity/*.ts': ['exports', 'types'],
   },
 
   includeEntryExports: true,
