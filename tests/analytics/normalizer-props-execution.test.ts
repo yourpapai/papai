@@ -39,6 +39,7 @@ describe('normalizer-props-execution', () => {
       toolOrigin: 'core',
       risk: 'destructive',
       timeoutMs: 60_000,
+      toolNameKey: null,
     }
     expect(buildExecutionFamilyProps(fact, keys)).toEqual({ ok: false, reason: 'invalid_value' })
   })

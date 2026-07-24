@@ -13,6 +13,7 @@ import { MockLanguageModelV4 } from 'ai/test'
 import { deriveAttemptHealth } from '../../src/analytics/attempt-health.js'
 import { KeyVersionSchema, VersionStringSchema } from '../../src/analytics/controlled-types.js'
 import type { EligibilityDecision } from '../../src/analytics/governance/eligibility.js'
+import { createFactKeyDeriver } from '../../src/analytics/normalizer-shared.js'
 import type { NormalizerEnv } from '../../src/analytics/normalizer.js'
 import { createAnalyticsObserver } from '../../src/analytics/runtime.js'
 import type { AnalyticsObserver } from '../../src/analytics/runtime.js'
@@ -605,5 +606,141 @@ describe('analytics tool event mapping', () => {
     expect(fallbacks).toHaveLength(2)
     expect(fallbacks.map((fact) => fact.reason).sort()).toEqual(['meta_tool_churn', 'no_real_load'])
     expect(JSON.stringify(facts)).not.toContain('model_got_bored')
+  })
+})
+
+type KeyedHarness = Harness & Readonly<{ keys: ReturnType<typeof createFactKeyDeriver> }>
+
+const setupKeyedHarness = (): KeyedHarness => {
+  const recording = createRecordingSinks()
+  const health = createRecordingHealth()
+  const normalizerEnv = createIntegrationNormalizerEnv()
+  const observer = createAnalyticsObserver({
+    decide: decideAlwaysPseudonymous,
+    normalizerEnv: () => normalizerEnv,
+    health,
+    log: { warn: () => {} },
+    sinks: recording.sinks,
+  })
+  const registry = createTurnContextRegistry({ nowMs: () => T0 })
+  const keys = createFactKeyDeriver({ key: normalizerEnv.hmacKey, keyVersion: normalizerEnv.keyVersion })
+  initAnalyticsRuntime({
+    observer,
+    registry,
+    deriveToolNameKey: (origin, rawToolName) => keys.toolKey(origin, rawToolName),
+  })
+  return { observer, recording, registry, keys }
+}
+
+const toolKeysOf = (events: readonly RecordedEvent[]): unknown[] =>
+  eventsNamed(events, 'tool_started').map((item) => llmProps(item)['tool_key'])
+
+describe('analytics external tool keying', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    stopAnalyticsRuntime()
+  })
+
+  afterEach(() => {
+    stopAnalyticsRuntime()
+  })
+
+  test('two different user MCP tools produce two different tool_key values', async () => {
+    const { observer, recording, registry, keys } = setupKeyedHarness()
+    registry.register({ turnId: 'turn-mcp', source: memberSource })
+    const ctx = toolCtx('turn-mcp')
+    handleToolCallStart(ctx, { toolCall: { toolName: 'mcp_alpha__search', toolCallId: 'call-a', input: {} } })
+    handleToolCallStart(ctx, { toolCall: { toolName: 'mcp_beta__search', toolCallId: 'call-b', input: {} } })
+    await observer.flush()
+
+    const started = eventsNamed(recording.events, 'tool_started')
+    expect(started).toHaveLength(2)
+    const toolKeys = toolKeysOf(recording.events)
+    expect(new Set(toolKeys).size).toBe(2)
+    expect(toolKeys).toContain(keys.toolKey('user_mcp', 'mcp_alpha__search'))
+    expect(toolKeys).toContain(keys.toolKey('user_mcp', 'mcp_beta__search'))
+    for (const item of started) {
+      expect(llmProps(item)['tool_slug']).toBe('external_other')
+      expect(llmProps(item)['origin']).toBe('user_mcp')
+    }
+  })
+
+  test('two different external plugin tools produce two different tool_key values', async () => {
+    const { observer, recording, registry, keys } = setupKeyedHarness()
+    registry.register({ turnId: 'turn-plug', source: memberSource })
+    const ctx = toolCtx('turn-plug')
+    handleToolCallStart(ctx, { toolCall: { toolName: 'plugin_alpha__run', toolCallId: 'call-a', input: {} } })
+    handleToolCallStart(ctx, { toolCall: { toolName: 'plugin_beta__run', toolCallId: 'call-b', input: {} } })
+    await observer.flush()
+
+    const toolKeys = toolKeysOf(recording.events)
+    expect(toolKeys).toHaveLength(2)
+    expect(new Set(toolKeys).size).toBe(2)
+    expect(toolKeys).toContain(keys.toolKey('external_plugin', 'plugin_alpha__run'))
+    expect(toolKeys).toContain(keys.toolKey('external_plugin', 'plugin_beta__run'))
+  })
+
+  test('origin separation: an MCP tool and an external plugin never share a tool_key', async () => {
+    const { observer, recording, registry, keys } = setupKeyedHarness()
+    expect(keys.toolKey('user_mcp', 'shared__run')).not.toBe(keys.toolKey('external_plugin', 'shared__run'))
+    registry.register({ turnId: 'turn-origin', source: memberSource })
+    const ctx = toolCtx('turn-origin')
+    handleToolCallStart(ctx, { toolCall: { toolName: 'mcp_same__run', toolCallId: 'call-m', input: {} } })
+    handleToolCallStart(ctx, { toolCall: { toolName: 'plugin_same__run', toolCallId: 'call-p', input: {} } })
+    await observer.flush()
+
+    const toolKeys = toolKeysOf(recording.events)
+    expect(new Set(toolKeys).size).toBe(2)
+    expect(toolKeys).toContain(keys.toolKey('user_mcp', 'mcp_same__run'))
+    expect(toolKeys).toContain(keys.toolKey('external_plugin', 'plugin_same__run'))
+  })
+
+  test('raw external tool names never appear in serialized canonical events', async () => {
+    const { observer, recording, registry } = setupKeyedHarness()
+    registry.register({ turnId: 'turn-leak', source: memberSource })
+    const ctx = toolCtx('turn-leak')
+    handleToolCallStart(ctx, { toolCall: { toolName: 'mcp_secret_vendor__do_thing', toolCallId: 'call-l', input: {} } })
+    handleToolCallFinishEvent(ctx, {
+      toolCall: { toolName: 'mcp_secret_vendor__do_thing', toolCallId: 'call-l', input: {} },
+      durationMs: 9,
+      success: true,
+      output: { ok: true },
+    })
+    await observer.flush()
+
+    expect(recording.events.length).toBeGreaterThan(0)
+    const serialized = JSON.stringify(recording.events)
+    expect(serialized).not.toContain('mcp_secret_vendor')
+    expect(serialized).not.toContain('do_thing')
+  })
+
+  test('first-party slugs keep their slug-based tool_key and null name key', async () => {
+    const { observer, recording, registry, keys } = setupKeyedHarness()
+    registry.register({ turnId: 'turn-first', source: memberSource })
+    const ctx = toolCtx('turn-first')
+    handleToolCallStart(ctx, { toolCall: { toolName: 'create_task', toolCallId: 'call-f', input: { title: 'x' } } })
+    await observer.flush()
+
+    const started = eventsNamed(recording.events, 'tool_started')
+    expect(started).toHaveLength(1)
+    expect(llmProps(started[0]!)['tool_key']).toBe(keys.toolKey('core', 'create_task'))
+  })
+
+  test('the same external raw name yields a stable tool_key across turns', async () => {
+    const { observer, recording, registry } = setupKeyedHarness()
+    registry.register({ turnId: 'turn-stab-1', source: memberSource })
+    registry.register({ turnId: 'turn-stab-2', source: memberSource })
+    handleToolCallStart(toolCtx('turn-stab-1'), {
+      toolCall: { toolName: 'mcp_alpha__search', toolCallId: 'call-1', input: {} },
+    })
+    handleToolCallStart(toolCtx('turn-stab-2'), {
+      toolCall: { toolName: 'mcp_alpha__search', toolCallId: 'call-2', input: {} },
+    })
+    await observer.flush()
+
+    const toolKeys = toolKeysOf(recording.events)
+    expect(toolKeys).toHaveLength(2)
+    expect(toolKeys[0]).toBe(toolKeys[1])
   })
 })

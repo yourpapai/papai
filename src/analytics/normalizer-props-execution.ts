@@ -6,6 +6,8 @@
 import type { z } from 'zod'
 
 import type { AnalyticsEventV1 } from './contracts.js'
+import { PseudonymSchema } from './controlled-types.js'
+import type { Pseudonym } from './controlled-types.js'
 import { propsByEventName } from './event-props.js'
 import {
   byteBucket,
@@ -129,6 +131,20 @@ const buildLlmFailed = (fact: ValidatedFactRecord, keys: FactKeyDeriver): Result
 
 type ToolStartedProps = z.infer<(typeof propsByEventName)['tool_started']>
 
+// External tools carry a pre-derived `tool:v1` pseudonym of their raw name so
+// distinct external tools key distinctly; first-party tools keep slug-based keys.
+const readToolKey = (
+  fact: ValidatedFactRecord,
+  keys: FactKeyDeriver,
+  rawOrigin: string,
+  rawSlug: string,
+): Pseudonym | null => {
+  const nameKey = fact['toolNameKey']
+  if (nameKey === undefined || nameKey === null) return keys.toolKey(rawOrigin, rawSlug)
+  const parsed = PseudonymSchema.safeParse(nameKey)
+  return parsed.success ? parsed.data : null
+}
+
 const buildToolIdentity = (
   fact: ValidatedFactRecord,
   keys: FactKeyDeriver,
@@ -145,11 +161,13 @@ const buildToolIdentity = (
   if (toolSlug === null || origin === null || domain === null || risk === null || modelRole === null) {
     return propsRejected('unknown_enum')
   }
+  const toolKey = readToolKey(fact, keys, rawOrigin, rawSlug)
+  if (toolKey === null) return propsRejected('invalid_value')
   const argsBytes = byteBucket(fact['argsBytes'])
   if (argsBytes === null) return propsRejected('invalid_value')
   return propsOk({
     tool_slug: toolSlug,
-    tool_key: keys.toolKey(rawOrigin, rawSlug),
+    tool_key: toolKey,
     origin,
     domain,
     risk,
@@ -196,7 +214,9 @@ const readConfirmationIdentity = <S extends z.ZodType>(
   const toolSlug = parseEnum(toolSlugSchema, fact['toolSlug'])
   if (rawSlug === null || rawOrigin === null) return propsRejected('invalid_value')
   if (toolSlug === null) return propsRejected('unknown_enum')
-  return propsOk({ toolSlug, toolKey: keys.toolKey(rawOrigin, rawSlug) })
+  const toolKey = readToolKey(fact, keys, rawOrigin, rawSlug)
+  if (toolKey === null) return propsRejected('invalid_value')
+  return propsOk({ toolSlug, toolKey })
 }
 
 const buildConfirmationRequested = (fact: ValidatedFactRecord, keys: FactKeyDeriver): Result => {

@@ -29,7 +29,7 @@ import { createAnalyticsObserver } from './runtime.js'
 import type { AnalyticsObserver, QueuedAggregateIncrement, RuntimeSinks } from './runtime.js'
 import type { AnalyticsSourceFact } from './source-facts.js'
 import { incrementCounter, mergeHistogram } from './storage/aggregate-store.js'
-import { initAnalyticsRuntime, stopAnalyticsRuntime } from './subscriber.js'
+import { createToolNameKeyDeriver, initAnalyticsRuntime, stopAnalyticsRuntime } from './subscriber.js'
 import { createTurnContextRegistry } from './turn-context.js'
 import type { AuthorizedTurnContextRegistry } from './turn-context.js'
 
@@ -279,7 +279,7 @@ export const startAnalytics = (): void => {
     }),
   })
   observerRef = observer
-  initAnalyticsRuntime({ observer, registry })
+  initAnalyticsRuntime({ observer, registry, deriveToolNameKey: createToolNameKeyDeriver(analyticsKeyring) })
   active = { observer, stopCoordinator: coordinator.close, registry }
   log.info({ epochId: coordinator.epochId }, 'analytics runtime started')
 }

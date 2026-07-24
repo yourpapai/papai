@@ -6,6 +6,8 @@
 import { subscribe as busSubscribe, unsubscribe as busUnsubscribe } from '../debug/event-bus.js'
 import type { DebugEvent } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
+import type { KeyringState } from './identity/keyring.js'
+import { createFactKeyDeriver } from './normalizer-shared.js'
 import type { AnalyticsObserver } from './runtime.js'
 import type { AnalyticsSourceContext, AnalyticsSourceFact } from './source-facts.js'
 import {
@@ -21,6 +23,7 @@ import {
   toolBaseOf,
 } from './subscriber-schemas.js'
 import { classifyAnalyticsTool } from './tool-classification.js'
+import type { ExternalToolNameKeyDeriver } from './tool-classification.js'
 import type { AuthorizedTurnContextRegistry } from './turn-context.js'
 
 const log = logger.child({ scope: 'analytics:subscriber' })
@@ -37,11 +40,27 @@ const APPROVED_EVENT_TYPES: ReadonlySet<string> = new Set([
 export type AnalyticsSubscriberDeps = Readonly<{
   observer: AnalyticsObserver
   registry: AuthorizedTurnContextRegistry
+  deriveToolNameKey?: ExternalToolNameKeyDeriver
   subscribe?: (fn: (event: DebugEvent) => void) => void
   unsubscribe?: (fn: (event: DebugEvent) => void) => void
 }>
 
-const mapEvent = (event: DebugEvent, source: AnalyticsSourceContext): AnalyticsSourceFact | null => {
+/**
+ * Builds the external tool name-key deriver from the active analytics keyring
+ * via the shared `tool:v1` fact-key deriver; undefined when no key is
+ * available (facts are dropped upstream in that case anyway).
+ */
+export const createToolNameKeyDeriver = (keyring: KeyringState): ExternalToolNameKeyDeriver | undefined => {
+  if (keyring.kind !== 'available') return undefined
+  const keys = createFactKeyDeriver({ key: keyring.activeKey, keyVersion: keyring.activeVersion })
+  return (origin, rawToolName) => keys.toolKey(origin, rawToolName)
+}
+
+const mapEvent = (
+  event: DebugEvent,
+  source: AnalyticsSourceContext,
+  deriveToolNameKey?: ExternalToolNameKeyDeriver,
+): AnalyticsSourceFact | null => {
   if (event.type === 'llm:start') {
     const data = LlmStartDataSchema.safeParse(event.data)
     if (!data.success) return null
@@ -60,10 +79,14 @@ const mapEvent = (event: DebugEvent, source: AnalyticsSourceContext): AnalyticsS
       availableToolCount: data.data.toolCount,
     }
   }
-  return mapTerminalEvent(event, source)
+  return mapTerminalEvent(event, source, deriveToolNameKey)
 }
 
-const mapTerminalEvent = (event: DebugEvent, source: AnalyticsSourceContext): AnalyticsSourceFact | null => {
+const mapTerminalEvent = (
+  event: DebugEvent,
+  source: AnalyticsSourceContext,
+  deriveToolNameKey?: ExternalToolNameKeyDeriver,
+): AnalyticsSourceFact | null => {
   if (event.type === 'llm:end') {
     const data = LlmEndDataSchema.safeParse(event.data)
     if (!data.success) return null
@@ -104,38 +127,54 @@ const mapTerminalEvent = (event: DebugEvent, source: AnalyticsSourceContext): An
       durationMs: data.data.durationMs,
     }
   }
-  return mapToolEvent(event, source)
+  return mapToolEvent(event, source, deriveToolNameKey)
 }
 
-const mapToolEvent = (event: DebugEvent, source: AnalyticsSourceContext): AnalyticsSourceFact | null => {
+const toolIdentityProps = (
+  tool: ReturnType<typeof classifyAnalyticsTool>,
+  modelRole: string | undefined,
+  argsBytes: number,
+): Readonly<{
+  toolSlug: string
+  toolOrigin: string
+  toolDomain: string
+  risk: string
+  modelRole: string
+  argsBytes: number
+  toolNameKey: string | null
+}> => ({
+  toolSlug: tool.toolSlug,
+  toolOrigin: tool.toolOrigin,
+  toolDomain: tool.toolDomain,
+  risk: tool.risk,
+  modelRole: modelRole ?? 'main',
+  argsBytes,
+  toolNameKey: tool.toolNameKey,
+})
+
+const mapToolEvent = (
+  event: DebugEvent,
+  source: AnalyticsSourceContext,
+  deriveToolNameKey?: ExternalToolNameKeyDeriver,
+): AnalyticsSourceFact | null => {
   if (event.type === 'tool:request') {
     const data = ToolIdentitySchema.safeParse(event.data)
     if (!data.success) return null
-    const tool = classifyAnalyticsTool(data.data.toolName)
+    const tool = classifyAnalyticsTool(data.data.toolName, deriveToolNameKey)
     return {
       ...toolBaseOf(event, source, data.data.analyticsSourceId),
       type: 'tool_started',
-      toolSlug: tool.toolSlug,
-      toolOrigin: tool.toolOrigin,
-      toolDomain: tool.toolDomain,
-      risk: tool.risk,
-      modelRole: data.data.modelRole ?? 'main',
-      argsBytes: data.data.argsBytes,
+      ...toolIdentityProps(tool, data.data.modelRole, data.data.argsBytes),
     }
   }
   if (event.type === 'tool:analytics_completed') {
     const data = ToolCompletedDataSchema.safeParse(event.data)
     if (!data.success) return null
-    const tool = classifyAnalyticsTool(data.data.toolName)
+    const tool = classifyAnalyticsTool(data.data.toolName, deriveToolNameKey)
     return {
       ...toolBaseOf(event, source, data.data.analyticsSourceId),
       type: 'tool_completed',
-      toolSlug: tool.toolSlug,
-      toolOrigin: tool.toolOrigin,
-      toolDomain: tool.toolDomain,
-      risk: tool.risk,
-      modelRole: data.data.modelRole ?? 'main',
-      argsBytes: data.data.argsBytes,
+      ...toolIdentityProps(tool, data.data.modelRole, data.data.argsBytes),
       durationMs: data.data.durationMs,
       executionOutcome: data.data.executionOutcome,
       resultBytes: data.data.resultBytes,
@@ -158,12 +197,17 @@ const mapToolEvent = (event: DebugEvent, source: AnalyticsSourceContext): Analyt
   return null
 }
 
-const routeEvent = (observer: AnalyticsObserver, registry: AuthorizedTurnContextRegistry, event: DebugEvent): void => {
+const routeEvent = (
+  observer: AnalyticsObserver,
+  registry: AuthorizedTurnContextRegistry,
+  event: DebugEvent,
+  deriveToolNameKey?: ExternalToolNameKeyDeriver,
+): void => {
   if (!APPROVED_EVENT_TYPES.has(event.type)) return
   if (event.turnId === undefined) return
   const source = registry.resolve(event.turnId)
   if (source === null) return
-  const fact = mapEvent(event, source)
+  const fact = mapEvent(event, source, deriveToolNameKey)
   if (fact === null) return
   observer.observe(fact)
 }
@@ -181,7 +225,7 @@ export const initAnalyticsRuntime = (deps: AnalyticsSubscriberDeps): void => {
   const unsubscribeFn = deps.unsubscribe ?? busUnsubscribe
   const listener = (event: DebugEvent): void => {
     try {
-      routeEvent(deps.observer, deps.registry, event)
+      routeEvent(deps.observer, deps.registry, event, deps.deriveToolNameKey)
     } catch (error) {
       log.warn(
         { eventType: event.type, errorClass: error instanceof Error ? error.constructor.name : 'non_error' },

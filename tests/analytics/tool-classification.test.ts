@@ -5,7 +5,13 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { createFactKeyDeriver } from '../../src/analytics/normalizer-shared.js'
 import { classifyAnalyticsTool } from '../../src/analytics/tool-classification.js'
+import type { AnalyticsToolOrigin } from '../../src/analytics/tool-classification.js'
+
+const nameKeys = createFactKeyDeriver({ key: Buffer.alloc(32, 7), keyVersion: 'v1' })
+const deriveNameKey = (origin: AnalyticsToolOrigin, rawToolName: string): ReturnType<typeof nameKeys.toolKey> =>
+  nameKeys.toolKey(origin, rawToolName)
 
 describe('classifyAnalyticsTool', () => {
   test('a core builtin resolves to its raw slug with metadata classification', () => {
@@ -14,6 +20,7 @@ describe('classifyAnalyticsTool', () => {
       toolOrigin: 'core',
       toolDomain: 'task',
       risk: 'write',
+      toolNameKey: null,
     })
   })
 
@@ -23,6 +30,7 @@ describe('classifyAnalyticsTool', () => {
       toolOrigin: 'core',
       toolDomain: 'web',
       risk: 'open_world',
+      toolNameKey: null,
     })
   })
 
@@ -51,6 +59,7 @@ describe('classifyAnalyticsTool', () => {
         toolOrigin: 'core',
         toolDomain: 'meta',
         risk: 'read',
+        toolNameKey: null,
       })
     }
   })
@@ -61,6 +70,7 @@ describe('classifyAnalyticsTool', () => {
       toolOrigin: 'first_party_plugin',
       toolDomain: 'coding',
       risk: 'open_world',
+      toolNameKey: null,
     })
     expect(classifyAnalyticsTool('plugin_synthetic_web_search__search').toolOrigin).toBe('first_party_plugin')
     expect(classifyAnalyticsTool('plugin_synthetic_web_search__search').toolDomain).toBe('other')
@@ -72,6 +82,7 @@ describe('classifyAnalyticsTool', () => {
       toolOrigin: 'user_mcp',
       toolDomain: 'other',
       risk: 'open_world',
+      toolNameKey: null,
     })
   })
 
@@ -81,12 +92,68 @@ describe('classifyAnalyticsTool', () => {
       toolOrigin: 'external_plugin',
       toolDomain: 'other',
       risk: 'open_world',
+      toolNameKey: null,
     })
     expect(classifyAnalyticsTool('totally_unknown')).toEqual({
       toolSlug: 'external_other',
       toolOrigin: 'external_plugin',
       toolDomain: 'other',
       risk: 'open_world',
+      toolNameKey: null,
     })
+  })
+})
+
+describe('classifyAnalyticsTool external name keys', () => {
+  test('two different user MCP tools derive distinct tool:v1 name keys', () => {
+    const first = classifyAnalyticsTool('mcp_github__create_issue', deriveNameKey)
+    const second = classifyAnalyticsTool('mcp_gitlab__create_issue', deriveNameKey)
+    expect(first.toolNameKey).not.toBeNull()
+    expect(second.toolNameKey).not.toBeNull()
+    expect(first.toolNameKey).not.toBe(second.toolNameKey)
+    expect(first.toolNameKey).toBe(nameKeys.toolKey('user_mcp', 'mcp_github__create_issue'))
+    expect(second.toolNameKey).toBe(nameKeys.toolKey('user_mcp', 'mcp_gitlab__create_issue'))
+  })
+
+  test('two different external plugin tools derive distinct name keys', () => {
+    const first = classifyAnalyticsTool('plugin_alpha__run', deriveNameKey)
+    const second = classifyAnalyticsTool('plugin_beta__run', deriveNameKey)
+    expect(first.toolNameKey).not.toBeNull()
+    expect(second.toolNameKey).not.toBeNull()
+    expect(first.toolNameKey).not.toBe(second.toolNameKey)
+    expect(first.toolNameKey).toBe(nameKeys.toolKey('external_plugin', 'plugin_alpha__run'))
+  })
+
+  test('the origin component separates identical raw external names', () => {
+    expect(nameKeys.toolKey('user_mcp', 'shared__tool')).not.toBe(nameKeys.toolKey('external_plugin', 'shared__tool'))
+    const mcp = classifyAnalyticsTool('mcp_same__run', deriveNameKey)
+    const plugin = classifyAnalyticsTool('plugin_same__run', deriveNameKey)
+    expect(mcp.toolNameKey).not.toBeNull()
+    expect(plugin.toolNameKey).not.toBeNull()
+    expect(mcp.toolNameKey).not.toBe(plugin.toolNameKey)
+  })
+
+  test('name keys are deterministic across calls', () => {
+    const first = classifyAnalyticsTool('mcp_github__create_issue', deriveNameKey)
+    const second = classifyAnalyticsTool('mcp_github__create_issue', deriveNameKey)
+    expect(first.toolNameKey).toBe(second.toolNameKey)
+  })
+
+  test('first-party slugs keep a null name key even when a deriver is supplied', () => {
+    const classified = classifyAnalyticsTool('create_task', deriveNameKey)
+    expect(classified).toEqual({
+      toolSlug: 'create_task',
+      toolOrigin: 'core',
+      toolDomain: 'task',
+      risk: 'write',
+      toolNameKey: null,
+    })
+    expect(classifyAnalyticsTool('plugin_acp__start_session', deriveNameKey).toolNameKey).toBeNull()
+  })
+
+  test('a raw external name never surfaces in the classification result', () => {
+    const serialized = JSON.stringify(classifyAnalyticsTool('mcp_github__create_issue', deriveNameKey))
+    expect(serialized).not.toContain('mcp_github')
+    expect(serialized).not.toContain('create_issue')
   })
 })

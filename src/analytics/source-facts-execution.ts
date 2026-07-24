@@ -54,6 +54,7 @@ export type ToolStartedFact = FactBase &
     risk: string
     modelRole: string
     argsBytes: number
+    toolNameKey: string | null
   }>
 
 export type ToolCompletedFact = FactBase &
@@ -72,6 +73,7 @@ export type ToolCompletedFact = FactBase &
     statusClass: string
     retryable: boolean | null
     recoveredSameTurn: boolean
+    toolNameKey: string | null
   }>
 
 export type ConfirmationRequestedFact = FactBase &
@@ -81,6 +83,7 @@ export type ConfirmationRequestedFact = FactBase &
     toolOrigin: string
     risk: string
     timeoutMs: number
+    toolNameKey: string | null
   }>
 
 export type ConfirmationResolvedFact = FactBase &
@@ -90,4 +93,5 @@ export type ConfirmationResolvedFact = FactBase &
     toolOrigin: string
     decision: string
     decisionLatencyMs: number
+    toolNameKey: string | null
   }>
