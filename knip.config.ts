@@ -52,6 +52,9 @@ export default {
     // build; later tasks consume their exports, so unused-export/type findings are
     // expected until those tasks land.
     'src/analytics/*.ts!',
+    // Analytics storage modules implement the Stage A write path; later pipeline
+    // tasks import them explicitly.
+    'src/analytics/storage/*.ts!',
     // First-party plugin entry points are loaded dynamically by the plugin
     // loader, so they have no static importer.
     'plugins/*/index.ts!',
@@ -135,6 +138,9 @@ export default {
     // by later tasks and by the analytics tests that knip's production graph does
     // not count.
     'src/analytics/*.ts': ['exports', 'types'],
+    // Analytics storage modules implement the Stage A write path; their exports
+    // are consumed by the upcoming pipeline/backfill tasks.
+    'src/analytics/storage/*.ts': ['exports', 'types'],
   },
 
   includeEntryExports: true,

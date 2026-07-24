@@ -188,6 +188,28 @@ export const messageMetadata = sqliteTable(
 
 export { memos, memoLinks } from './memos-schema.js'
 export { messageEmbeddings } from './message-embeddings-schema.js'
+export {
+  analyticsAggregateEpochContributions,
+  analyticsBackfillAggregateContributions,
+  analyticsBackfillEventMap,
+  analyticsBackfillRuns,
+  analyticsDailyCounters,
+  analyticsDailyHistograms,
+  analyticsEpochSourceCounters,
+  analyticsEvents,
+  analyticsNormalizationRejections,
+  analyticsProcessEpochs,
+  type AnalyticsAggregateEpochContributionRow,
+  type AnalyticsBackfillAggregateContributionRow,
+  type AnalyticsBackfillEventMapRow,
+  type AnalyticsBackfillRunRow,
+  type AnalyticsDailyCounterRow,
+  type AnalyticsDailyHistogramRow,
+  type AnalyticsEpochSourceCounterRow,
+  type AnalyticsEventRow,
+  type AnalyticsNormalizationRejectionRow,
+  type AnalyticsProcessEpochRow,
+} from './analytics-schema.js'
 export const userIdentityMappings = sqliteTable(
   'user_identity_mappings',
   {
