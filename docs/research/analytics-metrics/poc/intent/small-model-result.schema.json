@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "papai.intent.small-model.result.v1",
+  "$comment": "SPDX-License-Identifier: BUSL-1.1; Copyright (c) 2026 Dmitriy Lazarev; see LICENSE.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "taxonomy", "primary", "goals", "confidence", "abstained"],
+  "properties": {
+    "schema": { "const": "papai.intent.small_model.result.v1" },
+    "taxonomy": { "const": "intent.v1" },
+    "primary": { "$ref": "#/$defs/intentLabel" },
+    "goals": {
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 3,
+      "items": { "$ref": "#/$defs/intentGoal" }
+    },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "abstained": { "type": "boolean" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "primary": { "const": "unknown" } } },
+      "then": {
+        "properties": {
+          "goals": { "maxItems": 0 },
+          "abstained": { "const": true }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "primary": { "const": "no_action" } } },
+      "then": {
+        "properties": {
+          "goals": { "const": ["no_action"] }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "primary": { "const": "multi_goal" } } },
+      "then": {
+        "properties": {
+          "goals": {
+            "minItems": 2,
+            "maxItems": 3,
+            "items": { "$ref": "#/$defs/coreIntent" }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "primary": { "not": { "const": "unknown" } } } },
+      "then": {
+        "properties": {
+          "confidence": { "minimum": 0.85 },
+          "abstained": { "const": false }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "coreIntent": {
+      "enum": [
+        "task.create",
+        "task.find_list",
+        "task.read_detail",
+        "task.update_fields",
+        "task.change_state",
+        "task.collaborate",
+        "task.delete",
+        "project_schema.manage",
+        "recurring.manage",
+        "deferred.manage",
+        "memory_memo.write",
+        "memory_memo.find",
+        "attachment.manage",
+        "web.retrieve",
+        "identity_participant.manage",
+        "coding.start_review",
+        "coding.monitor_control",
+        "coding.continue_publish",
+        "configuration_permissions",
+        "help_context"
+      ]
+    },
+    "intentGoal": {
+      "anyOf": [{ "$ref": "#/$defs/coreIntent" }, { "const": "no_action" }]
+    },
+    "intentLabel": {
+      "anyOf": [{ "$ref": "#/$defs/coreIntent" }, { "enum": ["no_action", "unknown", "multi_goal"] }]
+    }
+  }
+}

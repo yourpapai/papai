@@ -1,0 +1,59 @@
+{
+  "schema": "papai.openpanel.poc.reconciliation.v1",
+  "synthetic_only": true,
+  "source": {
+    "fixture_sha256": "cd2701862d5ceb02a130cd26899ecfd710da867d739569ffd980a924fc78cb2e",
+    "event_rows": 17183,
+    "unique_event_ids": 17183
+  },
+  "delivery_ledger": {
+    "sink_id": "openpanel-local-full-v1",
+    "total": 17183,
+    "delivered": 17182,
+    "ambiguous": 1,
+    "pending": 0,
+    "dead": 0,
+    "attempts": 17183
+  },
+  "protected_event_events_api": {
+    "route": "/api/trpc/event.events",
+    "pages": 336,
+    "rows_returned": 16573,
+    "shortfall_vs_source": 610,
+    "deterministic_reconciliation_capable": false,
+    "observed_failure": "timestamp_only_cursor_skips_rows_when_page_boundary_timestamps_tie"
+  },
+  "clickhouse_aggregate": {
+    "event_rows": 17183,
+    "unique_diagnostic_event_ids": 17183,
+    "source_event_ids_missing": 0,
+    "duplicate_diagnostic_event_id_rows": 0,
+    "matches_source": true
+  },
+  "profile_export_probe": {
+    "route": "/api/export/events",
+    "one_synthetic_profile": true,
+    "metadata_total_count": 88,
+    "metadata_pages": 1,
+    "metadata_current_page": 1,
+    "records_returned": 20,
+    "unique_diagnostic_event_ids_returned": 20,
+    "complete": false,
+    "deterministic_reconciliation_capable": false
+  },
+  "profile_erasure_probe": {
+    "route": "DELETE /api/profile",
+    "http_status": 404,
+    "supported_complete_per_profile_erasure": false,
+    "observed_profile_router_methods": ["POST update", "POST increment", "POST decrement"]
+  },
+  "conclusions": [
+    "queue_acceptance_and_destination_visibility_reconciled",
+    "simulated_ambiguous_event_is_present_remotely_but_remains_terminal_in_local_ledger",
+    "protected_event_export_is_not_a_deterministic_reconciliation_surface",
+    "diagnostic_event_id_does_not_establish_destination_idempotency",
+    "profile_export_is_incomplete_and_not_a_reconciliation_surface",
+    "complete_per_profile_erasure_is_not_supported_by_the_pinned_api",
+    "pseudonymous_production_gate_remains_failed"
+  ]
+}

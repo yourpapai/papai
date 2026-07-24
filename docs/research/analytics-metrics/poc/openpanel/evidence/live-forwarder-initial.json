@@ -1,0 +1,46 @@
+{
+  "delivery": {
+    "ledger": {
+      "total": 17183,
+      "pending": 0,
+      "delivered": 17182,
+      "ambiguous": 1,
+      "dead": 0,
+      "attempts": 17183
+    },
+    "sink_id": "openpanel-local-full-v1",
+    "this_run": {
+      "ambiguousThisRun": 1,
+      "attempted": 17183,
+      "deliveredThisRun": 17182,
+      "enqueued": 17183,
+      "permanentThisRun": 0,
+      "retryableThisRun": 0
+    }
+  },
+  "limitations": [
+    "diagnostic_event_id_is_not_destination_idempotency",
+    "ambiguous_rows_are_not_automatically_retried",
+    "queue_ack_is_not_durable_query_visibility",
+    "native_session_fidelity_failed_observed",
+    "complete_per_profile_deletion_not_proven",
+    "pseudonymous_production_gate_remains_failed",
+    "dashboard_api_is_internal_and_version_specific",
+    "browser_and_native_dashboard_export_unavailable"
+  ],
+  "schema": "papai.openpanel.poc.run.v1",
+  "source": {
+    "anonymous_events": 202,
+    "fixture_sha256": "cd2701862d5ceb02a130cd26899ecfd710da867d739569ffd980a924fc78cb2e",
+    "profile_events": 16981,
+    "selected_events": 17183,
+    "source_events": 17183
+  },
+  "synthetic_only": true,
+  "transport": {
+    "acknowledged_statuses": [200, 202],
+    "base_url": "http://127.0.0.1:4400",
+    "endpoint": "/api/track",
+    "simulated_ambiguous_successes": 1
+  }
+}

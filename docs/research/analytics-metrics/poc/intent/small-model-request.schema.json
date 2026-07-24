@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "papai.intent.small-model.request.v1",
+  "$comment": "SPDX-License-Identifier: BUSL-1.1; Copyright (c) 2026 Dmitriy Lazarev; see LICENSE.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "taxonomy", "eligible", "message", "metadata"],
+  "properties": {
+    "schema": { "const": "papai.intent.small_model.request.v1" },
+    "taxonomy": { "const": "intent.v1" },
+    "eligible": { "const": true },
+    "message": { "type": "string", "minLength": 1, "maxLength": 8192 },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "language_hint",
+        "context_type",
+        "actor_role",
+        "task_provider",
+        "tool_goals",
+        "finish_reason",
+        "command_family",
+        "feature_events"
+      ],
+      "properties": {
+        "language_hint": { "enum": ["en", "ru", "mixed", "unknown"] },
+        "context_type": { "enum": ["dm", "group"] },
+        "actor_role": { "enum": ["admin", "member"] },
+        "task_provider": { "enum": ["kaneo", "youtrack", "none", "other"] },
+        "tool_goals": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/coreIntent" }
+        },
+        "finish_reason": {
+          "enum": ["stop", "length", "tool_calls", "content_filter", "error", "other", "unknown"]
+        },
+        "command_family": {
+          "enum": ["none", "start", "config", "help", "context", "dashboard", "clear", "stop", "acp", "other"]
+        },
+        "feature_events": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 16,
+          "items": {
+            "enum": [
+              "recurring",
+              "deferred",
+              "memory_write",
+              "memory_search",
+              "attachment",
+              "coding",
+              "mcp",
+              "byok",
+              "guest_mode",
+              "web_fetch",
+              "live_status"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "coreIntent": {
+      "enum": [
+        "task.create",
+        "task.find_list",
+        "task.read_detail",
+        "task.update_fields",
+        "task.change_state",
+        "task.collaborate",
+        "task.delete",
+        "project_schema.manage",
+        "recurring.manage",
+        "deferred.manage",
+        "memory_memo.write",
+        "memory_memo.find",
+        "attachment.manage",
+        "web.retrieve",
+        "identity_participant.manage",
+        "coding.start_review",
+        "coding.monitor_control",
+        "coding.continue_publish",
+        "configuration_permissions",
+        "help_context"
+      ]
+    }
+  }
+}

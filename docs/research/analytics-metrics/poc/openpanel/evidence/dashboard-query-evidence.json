@@ -1,0 +1,59 @@
+{
+  "schema": "papai.openpanel.poc.dashboard-query.v1",
+  "synthetic_only": true,
+  "evaluated_dashboard": {
+    "id": "synthetic-only-papai-product-analytics-poc",
+    "name": "[SYNTHETIC ONLY] papai analytics PoC",
+    "reports": [
+      {
+        "id": "14e84be4-3ffd-4288-a125-f261004c0131",
+        "name": "[SYNTHETIC ONLY] Activation funnel — native approximation",
+        "chart_type": "funnel",
+        "range": "12m",
+        "layout": { "x": 0, "y": 0, "w": 6, "h": 5 },
+        "result": {
+          "top_level_keys": ["current", "previous"],
+          "total_sessions": 1,
+          "all_steps_count": 1,
+          "all_steps_conversion_percent": 100
+        }
+      },
+      {
+        "id": "6c2be803-6d81-4353-9532-b14778e777e4",
+        "name": "[SYNTHETIC ONLY] Event retention — native approximation",
+        "chart_type": "retention",
+        "range": "12m",
+        "layout": { "x": 6, "y": 0, "w": 6, "h": 5 },
+        "result": { "shape": "chart.cohort", "rows": 47 }
+      },
+      {
+        "id": "a16b2eae-70ac-4c98-a57c-3a05dc121e7c",
+        "name": "[SYNTHETIC ONLY] Top classified intents",
+        "chart_type": "bar",
+        "range": "12m",
+        "layout": { "x": 0, "y": 5, "w": 6, "h": 5 },
+        "result": { "shape": "chart.aggregate", "series": 23 }
+      },
+      {
+        "id": "61f0c9a4-39c3-4f63-84c7-8d152d0c60ef",
+        "name": "[SYNTHETIC ONLY] Controlled error signals",
+        "chart_type": "bar",
+        "range": "12m",
+        "layout": { "x": 6, "y": 5, "w": 6, "h": 5 },
+        "result": { "shape": "chart.aggregate", "series": 6 }
+      }
+    ]
+  },
+  "share": {
+    "id": "w7Sp8r",
+    "url": "http://127.0.0.1:4400/share/dashboard/w7Sp8r",
+    "route_http_status": 200,
+    "dashboard_reports": 4
+  },
+  "observations": [
+    "all_four_report_endpoints_executed",
+    "historical_server_funnel_collapsed_to_one_native_session_and_full_conversion",
+    "native_funnel_cannot_represent_papai_activation_or_sessionization",
+    "no_browser_or_native_export_was_available_for_a_screenshot"
+  ]
+}

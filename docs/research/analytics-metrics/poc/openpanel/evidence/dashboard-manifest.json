@@ -1,0 +1,64 @@
+{
+  "api_contract": "internal_trpc_tag_2",
+  "dashboard": {
+    "id": "synthetic-only-papai-product-analytics-poc",
+    "name": "[SYNTHETIC ONLY] papai analytics PoC",
+    "reports": [
+      {
+        "chart_type": "funnel",
+        "id": "14e84be4-3ffd-4288-a125-f261004c0131",
+        "key": "activation",
+        "name": "[SYNTHETIC ONLY] Activation funnel — native approximation"
+      },
+      {
+        "chart_type": "retention",
+        "id": "6c2be803-6d81-4353-9532-b14778e777e4",
+        "key": "retention",
+        "name": "[SYNTHETIC ONLY] Event retention — native approximation"
+      },
+      {
+        "chart_type": "bar",
+        "id": "a16b2eae-70ac-4c98-a57c-3a05dc121e7c",
+        "key": "top_intents",
+        "name": "[SYNTHETIC ONLY] Top classified intents"
+      },
+      {
+        "chart_type": "bar",
+        "id": "61f0c9a4-39c3-4f63-84c7-8d152d0c60ef",
+        "key": "errors",
+        "name": "[SYNTHETIC ONLY] Controlled error signals"
+      }
+    ]
+  },
+  "image_digests": {
+    "api": "sha256:9353647f96dcfcceecd0ba2efd4c05e77ace3ea3f5d56b2cef55c1c3b550be7c",
+    "caddy": "sha256:fce4f15aad23222c0ac78a1220adf63bae7b94355d5ea28eee53910624acedfa",
+    "clickhouse": "sha256:e019438e1e0539b0d1ce8380b628f1c06c5a0e641f368fc746acf4a8cf48d2f2",
+    "dashboard": "sha256:f6934fb35dabba990ca9e73253179494d2e0247fc4b96c8202adbbaa0f06833c",
+    "postgres": "sha256:f1341c01408dc7278e9d365ed4f860cd3f87dd16b4464ac326fc0f422083a579",
+    "redis": "sha256:6aaf3f5e6bc8a592fbfe2cccf19eb36d27c39d12dab4f4b01556b7449e7b1f44",
+    "worker": "sha256:3f996a4f819a84a6ea90272a992fc025c4ad52d70b7612d65d666fafb2f83668"
+  },
+  "limitations": [
+    "internal_trpc_contract_may_drift",
+    "pinned_version_coerces_legacy_6m_range_to_30d_so_reports_use_12m",
+    "report_chart_values_not_sql_model_equivalence",
+    "native_dashboard_export_unavailable",
+    "browser_unavailable_no_screenshot",
+    "native_session_fidelity_failed_observed"
+  ],
+  "project_id": "papai-analytics-poc",
+  "schema": "papai.openpanel.poc.dashboard.v1",
+  "share": {
+    "id": "w7Sp8r",
+    "public": true,
+    "route_http_status": 200,
+    "url": "http://127.0.0.1:4400/share/dashboard/w7Sp8r"
+  },
+  "synthetic_only": true,
+  "verification": {
+    "dashboard_query": true,
+    "report_count": 4,
+    "share_query": true
+  }
+}
