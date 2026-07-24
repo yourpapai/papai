@@ -9,7 +9,7 @@ import { eq } from 'drizzle-orm'
 
 import { createProcessEpochCoordinator } from '../../src/analytics/process-epoch.js'
 import type { ProcessEpochCoordinatorDeps } from '../../src/analytics/process-epoch.js'
-import { getEpochState, openEpoch } from '../../src/analytics/storage/epoch-store.js'
+import { closeEpoch, getEpochState, openEpoch } from '../../src/analytics/storage/epoch-store.js'
 import * as schema from '../../src/db/schema.js'
 import { setupTestDb } from '../utils/test-helpers.js'
 
@@ -19,7 +19,6 @@ const DAY1 = '2023-11-14'
 const DAY2 = '2023-11-15'
 const DAY1_LATE = Date.UTC(2023, 10, 14, 23, 0, 0, 0)
 const DAY2_EARLY = Date.UTC(2023, 10, 15, 1, 0, 0, 0)
-const STALE_THRESHOLD = 5 * 60 * 1000
 
 const seedCounterRow = (db: Db, utcDay: string, contributorCount: number | null): void => {
   db.insert(schema.analyticsDailyCounters)
@@ -49,7 +48,11 @@ const seedCounterRow = (db: Db, utcDay: string, contributorCount: number | null)
 const counterRowFor = (
   db: Db,
   utcDay: string,
-): { reconciliationStatus: string; restartGapDetected: boolean; contributorCount: number | null } => {
+): {
+  reconciliationStatus: string
+  restartGapDetected: boolean
+  contributorCount: number | null
+} => {
   const row = db
     .select({
       reconciliationStatus: schema.analyticsDailyCounters.reconciliationStatus,
@@ -71,7 +74,6 @@ const makeCoordinator = (
     getDrizzleDb: () => db,
     nowMs: () => DAY2_EARLY,
     newEpochId: () => 'epoch-new-1',
-    staleThresholdMs: STALE_THRESHOLD,
     ...overrides,
   })
 
@@ -99,7 +101,9 @@ describe('process epoch coordinator', () => {
 
   test('clean shutdown drains while the epoch is still open, then closes it', async () => {
     const probe: string[] = []
-    const coordinator = makeCoordinator(db, { drain: makeStateProbeDrain(db, 'epoch-new-1', probe) })
+    const coordinator = makeCoordinator(db, {
+      drain: makeStateProbeDrain(db, 'epoch-new-1', probe),
+    })
     coordinator.open()
     const result = await coordinator.close()
     expect(result.closed).toBe(true)
@@ -153,12 +157,83 @@ describe('process epoch coordinator', () => {
     expect(getEpochState({ epochId: 'epoch-new-1' }, { getDrizzleDb: () => db })).toEqual({ state: 'open' })
   })
 
-  test('recovery is a no-op when no stale epochs exist', () => {
+  test('recovery is a no-op when the previous epoch closed cleanly', () => {
     seedCounterRow(db, DAY2, 3)
-    openEpoch({ epochId: 'epoch-fresh', startedAtMs: DAY2_EARLY }, { getDrizzleDb: () => db })
+    openEpoch({ epochId: 'epoch-clean', startedAtMs: DAY2_EARLY - 60 * 1000 }, { getDrizzleDb: () => db })
+    closeEpoch({ epochId: 'epoch-clean', closedAtMs: DAY2_EARLY - 30 * 1000 }, { getDrizzleDb: () => db })
     const coordinator = makeCoordinator(db)
     coordinator.recoverStaleEpochs()
-    expect(getEpochState({ epochId: 'epoch-fresh' }, { getDrizzleDb: () => db })).toEqual({ state: 'open' })
+    expect(getEpochState({ epochId: 'epoch-clean' }, { getDrizzleDb: () => db })).toEqual({ state: 'closed' })
     expect(counterRowFor(db, DAY2).reconciliationStatus).toBe('complete_epoch')
+  })
+
+  test('a restart within five minutes of the crash still overturns the crashed epoch', () => {
+    seedCounterRow(db, DAY2, 5)
+    openEpoch({ epochId: 'epoch-crashed', startedAtMs: DAY2_EARLY - 2 * 60 * 1000 }, { getDrizzleDb: () => db })
+    const coordinator = makeCoordinator(db)
+    coordinator.recoverStaleEpochs()
+    expect(getEpochState({ epochId: 'epoch-crashed' }, { getDrizzleDb: () => db })).toEqual({ state: 'stale_open' })
+    expect(counterRowFor(db, DAY2)).toEqual({
+      reconciliationStatus: 'unreconciled_restart_gap',
+      restartGapDetected: true,
+      contributorCount: null,
+    })
+  })
+
+  test('a source-counter contribution recorded outside the interval overturns that bucket', () => {
+    seedCounterRow(db, DAY1, 2)
+    openEpoch({ epochId: 'epoch-crashed', startedAtMs: DAY2_EARLY - 30 * 60 * 1000 }, { getDrizzleDb: () => db })
+    db.insert(schema.analyticsEpochSourceCounters)
+      .values({
+        epochId: 'epoch-crashed',
+        utcDay: DAY1,
+        sourceFamily: 'chat',
+        disposition: 'canonical',
+        value: 1,
+      })
+      .run()
+    const coordinator = makeCoordinator(db)
+    coordinator.recoverStaleEpochs()
+    expect(counterRowFor(db, DAY1).reconciliationStatus).toBe('unreconciled_restart_gap')
+  })
+
+  test('an aggregate contribution recorded on a day outside the interval overturns that bucket', () => {
+    seedCounterRow(db, DAY1, 2)
+    openEpoch({ epochId: 'epoch-crashed', startedAtMs: DAY2_EARLY - 30 * 60 * 1000 }, { getDrizzleDb: () => db })
+    db.insert(schema.analyticsAggregateEpochContributions)
+      .values({
+        epochId: 'epoch-crashed',
+        aggregateCellKey: `${DAY1}|{"platform":"telegram"}|auth_granted`,
+        measureKind: 'counter',
+        counterDelta: 1,
+        sampleCountDelta: 0,
+        sumDelta: 0,
+        fixedBucketCountsDeltaJson: '[]',
+      })
+      .run()
+    const coordinator = makeCoordinator(db)
+    coordinator.recoverStaleEpochs()
+    expect(counterRowFor(db, DAY1).reconciliationStatus).toBe('unreconciled_restart_gap')
+  })
+
+  test('recovery is atomic: an injected mid-recovery failure leaves no partial marks', () => {
+    seedCounterRow(db, DAY1, 2)
+    openEpoch({ epochId: 'epoch-a', startedAtMs: DAY1_LATE }, { getDrizzleDb: () => db })
+    openEpoch({ epochId: 'epoch-b', startedAtMs: DAY1_LATE }, { getDrizzleDb: () => db })
+    const coordinator = makeCoordinator(db, {
+      onEpochRecovered: () => {
+        throw new Error('injected recovery failure')
+      },
+    })
+    expect(() => {
+      coordinator.recoverStaleEpochs()
+    }).toThrow('injected recovery failure')
+    expect(getEpochState({ epochId: 'epoch-a' }, { getDrizzleDb: () => db })).toEqual({ state: 'open' })
+    expect(getEpochState({ epochId: 'epoch-b' }, { getDrizzleDb: () => db })).toEqual({ state: 'open' })
+    expect(counterRowFor(db, DAY1)).toEqual({
+      reconciliationStatus: 'complete_epoch',
+      restartGapDetected: false,
+      contributorCount: 2,
+    })
   })
 })

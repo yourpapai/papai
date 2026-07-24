@@ -103,6 +103,13 @@ export type InsertEligibleCanonicalEventResult =
   | Readonly<{ status: 'already_present'; eventId: string }>
   | Readonly<{ status: 'not_eligible' }>
 
+export class MissingCollectionRefError extends Error {
+  constructor() {
+    super('canonical insertion refused: a collection eligibility ref is required')
+    this.name = 'MissingCollectionRefError'
+  }
+}
+
 const recheckAllow = (tx: Tx, ref: CollectionEligibilityRef): boolean => {
   const row = tx
     .select({ refKey: analyticsCollectionEligibility.refKey })
@@ -193,6 +200,11 @@ export const insertEligibleCanonicalEvent = (
   input: InsertEligibleCanonicalEventInput,
   deps: CollectionSerializationDeps = { getDrizzleDb: defaultGetDrizzleDb },
 ): InsertEligibleCanonicalEventResult => {
+  const ref: CollectionEligibilityRef | null | undefined = input.collectionRef
+  if (ref === null || ref === undefined) {
+    log.warn({ epochId: input.processEpochId }, 'canonical insert refused: missing collection ref')
+    throw new MissingCollectionRefError()
+  }
   const db = deps.getDrizzleDb()
   const result = db.transaction((tx) => {
     requireOpenEpochTx(tx, input.processEpochId)

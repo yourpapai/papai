@@ -7,6 +7,8 @@ import packageJson from '../../package.json' with { type: 'json' }
 import { getDrizzleDb } from '../db/drizzle.js'
 import { logger } from '../logger.js'
 import { FIXED_HISTOGRAM_BUCKETS_MS } from './aggregate-contract.js'
+import { createContributorTracker } from './aggregate-contributors.js'
+import type { ContributorTracker } from './aggregate-contributors.js'
 import { contributorBasisForMetric, histogramBucketIndex } from './aggregate.js'
 import { ANALYTICS_GOVERNANCE_HMAC_KEYRING_ENV, ANALYTICS_HMAC_KEYRING_ENV } from './config.js'
 import { KeyVersionSchema, VersionStringSchema } from './controlled-types.js'
@@ -52,7 +54,10 @@ const pickCandidateLane = (lanes: EffectiveLanes): AnalyticsLane => {
 const readPreferences = (
   fact: AnalyticsSourceFact,
   governanceKeyring: KeyringState,
-): Readonly<{ local: 'unknown' | 'allow' | 'deny'; external: 'unknown' | 'allow' | 'deny' }> => {
+): Readonly<{
+  local: 'unknown' | 'allow' | 'deny'
+  external: 'unknown' | 'allow' | 'deny'
+}> => {
   if (governanceKeyring.kind !== 'available' || fact.source.chatUserId === null) {
     return { local: 'unknown', external: 'unknown' }
   }
@@ -91,7 +96,11 @@ const buildDecide =
     try {
       const policy = getPolicy()
       const lanes = resolveEffectiveLanes({ policy })
-      const readiness = assessGovernanceReadiness({ policy, analyticsKeyring, governanceKeyring })
+      const readiness = assessGovernanceReadiness({
+        policy,
+        analyticsKeyring,
+        governanceKeyring,
+      })
       const lane = pickCandidateLane(lanes)
       const pseudonymous = lane === 'local_pseudonymous' || lane === 'external_pseudonymous'
       const preferences = readPreferences(fact, governanceKeyring)
@@ -118,7 +127,10 @@ const buildDecide =
       })
     } catch (error) {
       log.warn(
-        { factType: fact.type, errorClass: error instanceof Error ? error.constructor.name : 'non_error' },
+        {
+          factType: fact.type,
+          errorClass: error instanceof Error ? error.constructor.name : 'non_error',
+        },
         'eligibility evaluation failed closed',
       )
       return { allowed: false, reason: 'governance_incomplete' }
@@ -146,11 +158,28 @@ const buildNormalizerEnv = (analyticsKeyring: KeyringState): NormalizerEnv | nul
 const aggregateCellKeyOf = (item: QueuedAggregateIncrement): string =>
   `${item.utcDay}|${JSON.stringify(item.dimensions)}|${item.increment.metric}`
 
-const writeAggregateItem = (item: QueuedAggregateIncrement, epochId: string): void => {
+const recordContributor = (
+  tracker: ContributorTracker,
+  item: QueuedAggregateIncrement,
+  cellKey: string,
+): number | null => {
+  if (item.contributorKey === null) return null
+  tracker.record(item.utcDay, cellKey, item.contributorKey)
+  return tracker.count(item.utcDay, cellKey)
+}
+
+export type ProductionSinkDeps = Readonly<{
+  epochId: string
+  tracker: ContributorTracker
+  getDrizzleDb: typeof getDrizzleDb
+}>
+
+const writeAggregateItem = (item: QueuedAggregateIncrement, deps: ProductionSinkDeps): void => {
+  const cellKey = aggregateCellKeyOf(item)
   const quality = {
     disclosureScope: 'local_only',
     contributorBasis: contributorBasisForMetric(item.increment.metric),
-    contributorCount: null,
+    contributorCount: recordContributor(deps.tracker, item, cellKey),
   }
   const base = {
     utcDay: item.utcDay,
@@ -160,36 +189,55 @@ const writeAggregateItem = (item: QueuedAggregateIncrement, epochId: string): vo
     actorRole: item.dimensions.actor_role,
     taskProvider: item.dimensions.task_provider,
     appVersion: item.dimensions.app_version,
-    aggregateCellKey: aggregateCellKeyOf(item),
-    epochId,
+    aggregateCellKey: cellKey,
+    epochId: deps.epochId,
   }
+  const storeDeps = { getDrizzleDb: deps.getDrizzleDb }
   if (item.increment.kind === 'counter') {
-    incrementCounter({ ...base, metric: item.increment.metric, delta: item.increment.delta, ...quality })
+    incrementCounter(
+      {
+        ...base,
+        metric: item.increment.metric,
+        delta: item.increment.delta,
+        ...quality,
+      },
+      storeDeps,
+    )
     return
   }
   const counts = FIXED_HISTOGRAM_BUCKETS_MS.map(() => 0)
   const bucketIndex = histogramBucketIndex(item.increment.valueMs)
   counts[bucketIndex] = 1
-  mergeHistogram({
-    ...base,
-    metric: item.increment.metric,
-    fixedBuckets: FIXED_HISTOGRAM_BUCKETS_MS,
-    counts,
-    sum: item.increment.valueMs,
-    sampleCount: 1,
-    ...quality,
-  })
+  mergeHistogram(
+    {
+      ...base,
+      metric: item.increment.metric,
+      fixedBuckets: FIXED_HISTOGRAM_BUCKETS_MS,
+      counts,
+      sum: item.increment.valueMs,
+      sampleCount: 1,
+      ...quality,
+    },
+    storeDeps,
+  )
 }
 
-const buildSinks = (epochId: string): RuntimeSinks => ({
+export const createProductionSinks = (deps: ProductionSinkDeps): RuntimeSinks => ({
   writeEvents: (items): void => {
     items.forEach((item) => {
-      insertEligibleCanonicalEvent({ event: item.event, processEpochId: epochId, collectionRef: item.collectionRef })
+      insertEligibleCanonicalEvent(
+        {
+          event: item.event,
+          processEpochId: deps.epochId,
+          collectionRef: item.collectionRef,
+        },
+        { getDrizzleDb: deps.getDrizzleDb },
+      )
     })
   },
   writeAggregates: (items): void => {
     items.forEach((item) => {
-      writeAggregateItem(item, epochId)
+      writeAggregateItem(item, deps)
     })
   },
 })
@@ -218,7 +266,11 @@ export const startAnalytics = (): void => {
       },
     },
     log,
-    sinks: buildSinks(coordinator.epochId),
+    sinks: createProductionSinks({
+      epochId: coordinator.epochId,
+      tracker: createContributorTracker(),
+      getDrizzleDb,
+    }),
   })
   observerRef = observer
   initAnalyticsRuntime({ observer, registry })

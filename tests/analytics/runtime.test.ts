@@ -9,7 +9,7 @@ import { KeyVersionSchema, VersionStringSchema } from '../../src/analytics/contr
 import type { EligibilityDecision } from '../../src/analytics/governance/eligibility.js'
 import type { NormalizerEnv } from '../../src/analytics/normalizer.js'
 import { createAnalyticsObserver } from '../../src/analytics/runtime.js'
-import type { AnalyticsRuntimeDeps } from '../../src/analytics/runtime.js'
+import type { AnalyticsRuntimeDeps, RuntimeSinks } from '../../src/analytics/runtime.js'
 import { createRecordingHealth, createRecordingSinks } from '../../src/analytics/runtime.testing.js'
 import type {
   AnalyticsSourceContext,
@@ -32,8 +32,14 @@ const memberSource: AnalyticsSourceContext = {
   platformInstanceId: 'pi-1',
   chatUserId: 'user-42',
   nativeContextId: 'user-42',
-  storageContextId: toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'user-42' }),
-  configContextId: toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'user-42' }),
+  storageContextId: toScopedContextId({
+    platformInstanceId: 'pi-1',
+    nativeContextId: 'user-42',
+  }),
+  configContextId: toScopedContextId({
+    platformInstanceId: 'pi-1',
+    nativeContextId: 'user-42',
+  }),
   contextType: 'dm',
   actorRole: 'member',
   taskInstanceId: null,
@@ -82,7 +88,10 @@ const aggregateDecision: EligibilityDecision = {
   deliveryGrant: null,
 }
 
-const deniedDecision: EligibilityDecision = { allowed: false, reason: 'mode_off' }
+const deniedDecision: EligibilityDecision = {
+  allowed: false,
+  reason: 'mode_off',
+}
 
 const warnings: { meta: Record<string, unknown>; message: string }[] = []
 const log = {
@@ -97,7 +106,11 @@ type RuntimeHarness = Readonly<{
   health: ReturnType<typeof createRecordingHealth>
 }>
 
-const makeRuntime = (decide: AnalyticsRuntimeDeps['decide'], queueCapacity?: number): RuntimeHarness => {
+const makeRuntime = (
+  decide: AnalyticsRuntimeDeps['decide'],
+  queueCapacity?: number,
+  runtimeSinks?: RuntimeSinks,
+): RuntimeHarness => {
   const sinks = createRecordingSinks()
   const health = createRecordingHealth()
   const deps: AnalyticsRuntimeDeps = {
@@ -105,7 +118,7 @@ const makeRuntime = (decide: AnalyticsRuntimeDeps['decide'], queueCapacity?: num
     normalizerEnv: () => env,
     health,
     log,
-    sinks: sinks.sinks,
+    sinks: runtimeSinks ?? sinks.sinks,
     ...(queueCapacity === undefined ? {} : { queueCapacity }),
   }
   return { observer: createAnalyticsObserver(deps), sinks, health }
@@ -137,7 +150,11 @@ describe('analytics runtime', () => {
     expect(sinks.aggregates).toHaveLength(1)
     expect(health.counts.queue_full).toBe(1)
     const item = firstOf(sinks.aggregates)
-    expect(item.increment).toEqual({ kind: 'counter', metric: 'message_accepted', delta: 1 })
+    expect(item.increment).toEqual({
+      kind: 'counter',
+      metric: 'message_accepted',
+      delta: 1,
+    })
     expect(item.utcDay).toBe('2023-11-14')
     expect(JSON.stringify(item)).not.toContain('user-42')
   })
@@ -148,7 +165,11 @@ describe('analytics runtime', () => {
     await observer.flush()
     expect(sinks.events).toHaveLength(1)
     const item = firstOf(sinks.events)
-    expect(item.collectionRef).toEqual({ refKey: 'ref-1', keyVersion: 'v1', generation: 1 })
+    expect(item.collectionRef).toEqual({
+      refKey: 'ref-1',
+      keyVersion: 'v1',
+      generation: 1,
+    })
     expect(item.event.event.name).toBe('chat_message_accepted')
     expect(JSON.stringify(item.event)).not.toContain('ref-1')
     expect(sinks.aggregates).toHaveLength(1)
@@ -164,7 +185,10 @@ describe('analytics runtime', () => {
   })
 
   test('a pseudonymous decision missing its collection ref fails closed', async () => {
-    const broken: EligibilityDecision = { ...pseudonymousDecision, collectionEligibility: null }
+    const broken: EligibilityDecision = {
+      ...pseudonymousDecision,
+      collectionEligibility: null,
+    }
     const { observer, sinks, health } = makeRuntime(() => broken)
     observer.observe(messageFact(1))
     await observer.flush()
@@ -200,5 +224,70 @@ describe('analytics runtime', () => {
     observer.observe(messageFact(3))
     await observer.flush()
     expect(sinks.events).toHaveLength(2)
+  })
+
+  test('observe returns synchronously and flush stays pending behind a gated slow writer', async () => {
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let writeStarted = false
+    const slowSinks: RuntimeSinks = {
+      writeEvents: () => {
+        writeStarted = true
+        return gate
+      },
+      writeAggregates: () => {},
+    }
+    const { observer } = makeRuntime(() => pseudonymousDecision, undefined, slowSinks)
+    observer.observe(messageFact(1))
+    expect(writeStarted).toBe(false)
+    let flushSettled = false
+    const flushPromise = observer.flush().then(() => {
+      flushSettled = true
+    })
+    for (let i = 0; i < 5; i += 1) {
+      await Promise.resolve()
+    }
+    expect(writeStarted).toBe(true)
+    expect(flushSettled).toBe(false)
+    release()
+    await flushPromise
+    expect(flushSettled).toBe(true)
+  })
+
+  test('a throwing sink is caught: the call resolves and no raw error text reaches logs', async () => {
+    const throwingSinks: RuntimeSinks = {
+      writeEvents: () => {
+        throw new Error('disk full near user-42')
+      },
+      writeAggregates: () => {},
+    }
+    const { observer, health } = makeRuntime(() => pseudonymousDecision, undefined, throwingSinks)
+    observer.observe(messageFact(1))
+    await expect(observer.flush()).resolves.toBeUndefined()
+    await expect(observer.stop()).resolves.toBeUndefined()
+    expect(health.counts.observer_failure).toBe(1)
+    const warning = firstOf(warnings.slice(-1))
+    const serialized = JSON.stringify(warning.meta)
+    expect(serialized).not.toContain('disk full')
+    expect(serialized).not.toContain('user-42')
+    expect(warning.meta['errorClass']).toBe('Error')
+  })
+
+  test('a rejecting async sink is caught the same way', async () => {
+    const rejectingSinks: RuntimeSinks = {
+      writeEvents: () => Promise.reject(new Error('socket reset by user-42 peer')),
+      writeAggregates: () => {},
+    }
+    const { observer, health } = makeRuntime(() => pseudonymousDecision, undefined, rejectingSinks)
+    observer.observe(messageFact(1))
+    await expect(observer.flush()).resolves.toBeUndefined()
+    expect(health.counts.observer_failure).toBe(1)
+    const warning = firstOf(warnings.slice(-1))
+    const serialized = JSON.stringify(warning.meta)
+    expect(serialized).not.toContain('socket reset')
+    expect(serialized).not.toContain('user-42')
+    expect(warning.meta['errorClass']).toBe('Error')
   })
 })
