@@ -76,8 +76,12 @@ describe('durable erasure golden set', () => {
     test(`${lang.name}: purged record is unreachable by every channel`, async () => {
       saveMemoryRecord(record({ id: lang.id, content: lang.content }))
 
-      // sanity: reachable before forget
+      // sanity: reachable before forget (fused cascade)
       expect(await recallIds(lang.term)).toContain(lang.id)
+      // sanity: reachable before forget (lexical channel alone, proving FTS tokenization)
+      expect(
+        searchLexical({ ...scope, query: lang.term, statuses: ALL_STATUSES, limit: 8 }).map((r) => r.id),
+      ).toContain(lang.id)
 
       const purged = purgeMemoryRecord(scope, lang.id, '2026-07-24T00:00:00.000Z')
       expect(purged).toBe(true)
