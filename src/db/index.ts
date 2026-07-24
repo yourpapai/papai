@@ -81,6 +81,7 @@ import { migration067MultiLlmProviders } from './migrations/067_multi_llm_provid
 import { migration068MemoryEmbeddingIdentity } from './migrations/068_memory_embedding_identity.js'
 import { migration069MemoryTombstones } from './migrations/069_memory_tombstones.js'
 import { migration070MemoryRecordInjection } from './migrations/070_memory_record_injection.js'
+import { migration071MemoryRecallShadowLog } from './migrations/071_memory_recall_shadow_log.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -186,6 +187,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration068MemoryEmbeddingIdentity,
   migration069MemoryTombstones,
   migration070MemoryRecordInjection,
+  migration071MemoryRecallShadowLog,
 ]
 
 export const initDb = (): void => {

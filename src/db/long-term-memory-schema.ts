@@ -81,9 +81,36 @@ export const memoryTombstones = sqliteTable(
   ],
 )
 
+export const memoryRecallShadowLog = sqliteTable(
+  'memory_recall_shadow_log',
+  {
+    id: text('id').primaryKey(),
+    createdAt: integer('created_at').notNull(),
+    scopeHash: text('scope_hash').notNull(),
+    contextHash: text('context_hash').notNull(),
+    turnRef: text('turn_ref').notNull(),
+    readerModelId: text('reader_model_id').notNull(),
+    activeRecordCount: integer('active_record_count').notNull(),
+    shadowQueryHash: text('shadow_query_hash').notNull(),
+    shadowQueryLenBucket: text('shadow_query_len_bucket', { enum: ['short', 'medium', 'long'] }).notNull(),
+    shadowHitCount: integer('shadow_hit_count').notNull(),
+    shadowTopScore: real('shadow_top_score'),
+    shadowTopProvenance: text('shadow_top_provenance', { enum: ['current', 'group', 'other-thread'] }),
+    shadowTopRecordHash: text('shadow_top_record_hash'),
+    modelPulled: integer('model_pulled', { mode: 'boolean' }).notNull(),
+    pullCount: integer('pull_count').notNull(),
+    pullQueryHash: text('pull_query_hash'),
+    pullResultCount: integer('pull_result_count').notNull(),
+    shadowPullOverlap: integer('shadow_pull_overlap').notNull(),
+    skippedReason: text('skipped_reason', { enum: ['no-active-records'] }),
+  },
+  (table) => [index('idx_memory_recall_shadow_log_reader_model_created').on(table.readerModelId, table.createdAt)],
+)
+
 export type MemoryProfileRow = typeof memoryProfiles.$inferSelect
 export type MemoryRecordRow = typeof memoryRecords.$inferSelect
 export type MemoryTombstoneRow = typeof memoryTombstones.$inferSelect
+export type MemoryRecallShadowLogRow = typeof memoryRecallShadowLog.$inferSelect
 
 export const memoryExtractionState = sqliteTable('memory_extraction_state', {
   contextId: text('context_id').primaryKey(),

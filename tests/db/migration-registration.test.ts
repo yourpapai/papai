@@ -23,8 +23,8 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('051_legacy_context_id_backfill')
   })
 
-  test('070_memory_record_injection is the last migration', () => {
+  test('071_memory_recall_shadow_log is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('070_memory_record_injection')
+    expect(lastMigration.id).toBe('071_memory_recall_shadow_log')
   })
 })
