@@ -113,4 +113,86 @@ export const taskGroups: readonly ParityGroup[] = [
       expect(secondPage.map((task) => task.title)).toEqual(['Page C'])
     },
   },
+  {
+    id: 'SCN-parity-task-dates',
+    title: 'SCN-parity-task-dates: createTask round-trips startDate and dueDate',
+    async run({ provider, projectId }) {
+      const created = await provider.createTask({
+        projectId,
+        title: 'Parity Dates',
+        startDate: '2026-08-01',
+        dueDate: '2026-08-15',
+      })
+      const fetched = await provider.getTask(created.id)
+      expect(canonicalize(fetched, VOLATILE_KEYS)).toMatchObject({ id: VOLATILE, title: 'Parity Dates' })
+      expect(fetched.startDate).toBeTypeOf('string')
+      expect(fetched.startDate).not.toBe('')
+      expect(fetched.dueDate).toBeTypeOf('string')
+      expect(fetched.dueDate).not.toBe('')
+    },
+  },
+  {
+    id: 'SCN-parity-task-full-property',
+    title: 'SCN-parity-task-full-property: createTask round-trips description and priority',
+    async run({ provider, projectId }) {
+      const created = await provider.createTask({
+        projectId,
+        title: 'Parity Full Property',
+        description: 'A described task',
+        priority: 'high',
+      })
+      const fetched = await provider.getTask(created.id)
+      expect(canonicalize(fetched, VOLATILE_KEYS)).toMatchObject({ id: VOLATILE, title: 'Parity Full Property' })
+      expect(fetched.description).toBeTypeOf('string')
+      expect(fetched.description).not.toBe('')
+      expect(fetched.priority).toBeTypeOf('string')
+      expect(fetched.priority).not.toBe('')
+    },
+  },
+  {
+    id: 'SCN-parity-task-preserve-startdate',
+    title: 'SCN-parity-task-preserve-startdate: updateTask title preserves an existing startDate',
+    async run({ provider, projectId }) {
+      const created = await provider.createTask({ projectId, title: 'Parity Preserve', startDate: '2026-09-01' })
+      await provider.updateTask(created.id, { title: 'Parity Preserve Renamed' })
+      const fetched = await provider.getTask(created.id)
+      expect(fetched.title).toBe('Parity Preserve Renamed')
+      expect(fetched.startDate).toBeTypeOf('string')
+      expect(fetched.startDate).not.toBe('')
+    },
+  },
+  {
+    id: 'SCN-parity-task-null-dates',
+    title: 'SCN-parity-task-null-dates: createTask without dates leaves startDate and dueDate unset',
+    async run({ provider, projectId }) {
+      const created = await provider.createTask({ projectId, title: 'Parity No Dates' })
+      const fetched = await provider.getTask(created.id)
+      // Neither binding must invent a date: the fake omits the keys; real Kaneo may
+      // return null. A for...of over both values keeps the check conditional-free.
+      for (const value of [fetched.startDate, fetched.dueDate]) {
+        const unset = value === null || value === undefined || value === ''
+        expect(unset).toBe(true)
+      }
+    },
+  },
+  {
+    id: 'SCN-parity-task-special-chars',
+    title: 'SCN-parity-task-special-chars: createTask round-trips special characters in the title',
+    async run({ provider, projectId }) {
+      const title = 'Ünïcode & <special> "chars" — 日本語 100%'
+      const created = await provider.createTask({ projectId, title })
+      const fetched = await provider.getTask(created.id)
+      expect(fetched.title).toBe(title)
+    },
+  },
+  {
+    id: 'SCN-parity-task-long-title',
+    title: 'SCN-parity-task-long-title: createTask round-trips a long title',
+    async run({ provider, projectId }) {
+      const title = `Parity Long ${'x'.repeat(500)}`
+      const created = await provider.createTask({ projectId, title })
+      const fetched = await provider.getTask(created.id)
+      expect(fetched.title).toBe(title)
+    },
+  },
 ] as const

@@ -247,6 +247,13 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-parity-project-crud',
   'SCN-parity-relation',
   'SCN-parity-identity',
+  // @1 — domain-retrofit parity (tier1b-e2e-parity-retrofit)
+  'SCN-parity-task-dates',
+  'SCN-parity-task-full-property',
+  'SCN-parity-task-preserve-startdate',
+  'SCN-parity-task-null-dates',
+  'SCN-parity-task-special-chars',
+  'SCN-parity-task-long-title',
 ] as const)
 
 const GAP_SCENARIO_IDS = new Set<CatalogScenarioId>([
@@ -941,6 +948,48 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     provingTier: '1',
     storyIds: [
       'tests/e2e/parity/provider-parity.test.ts#SCN-parity-identity: provisionWorkspaceMember and listUsers resolve normalized shapes',
+    ],
+  },
+  'SCN-parity-task-dates': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-task-dates: createTask round-trips startDate and dueDate',
+    ],
+  },
+  'SCN-parity-task-full-property': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-task-full-property: createTask round-trips description and priority',
+    ],
+  },
+  'SCN-parity-task-preserve-startdate': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-task-preserve-startdate: updateTask title preserves an existing startDate',
+    ],
+  },
+  'SCN-parity-task-null-dates': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-task-null-dates: createTask without dates leaves startDate and dueDate unset',
+    ],
+  },
+  'SCN-parity-task-special-chars': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-task-special-chars: createTask round-trips special characters in the title',
+    ],
+  },
+  'SCN-parity-task-long-title': {
+    verifiedAt: '2026-07-24',
+    provingTier: '1',
+    storyIds: [
+      'tests/e2e/parity/provider-parity.test.ts#SCN-parity-task-long-title: createTask round-trips a long title',
     ],
   },
 }
