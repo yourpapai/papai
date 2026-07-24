@@ -53,7 +53,7 @@ aggregate publication.
 | 4 — governance/eligibility | 73 pass / 0 fail (071 migration, stores, 38,880-cell matrix) | clean / clean (knip clean) | ab504fd5e | 2026-07-24 |
 | 5 — normalizer/runtime | 97 pass / 0 fail (normalizer, aggregate, runtime, process-epoch, collection-writer-race, subscriber); feat c4079feb8 + fix d22a81eca | clean / clean (knip clean) | d22a81eca | 2026-07-24 |
 | 6 — turn lifecycle instrumentation | 144 pass / 0 fail (bot, reply-tracking, steering, queue, guest-role, steering-step, production-deps-analytics, message-turn-integration) | clean / clean (knip clean) | a284dda66 | 2026-07-24 |
-| 7 — llm/tool/perf instrumentation | 150 pass / 0 fail (orchestrator events/logging/tool-events, permission gate + prompt, live-status reporter, typing heartbeat, llm-tool integration, performance clocks, tool-slug generation, clarification) | clean / clean (knip clean) | 6d429b5c4 (+ knip admission 2a6d72ae5) | 2026-07-25 |
+| 7 — llm/tool/perf instrumentation | 150 pass / 0 fail (orchestrator events/logging/tool-events, permission gate + prompt, live-status reporter, typing heartbeat, llm-tool integration, performance clocks, tool-slug generation, clarification) | clean / clean (knip clean) | 6d429b5c4 (+ knip 2a6d72ae5, fix f74047b35) | 2026-07-25 |
 | 8 — provider/feature boundaries | | | | |
 | 9 — delivery ledger | | | | |
 | 10 — intent + rephrase | | | | |
@@ -143,3 +143,14 @@ aggregate publication.
   plan-mandated; final review confirms against 02. `buildAuthCheckedFact` and
   command-path reply analytics mint fresh UUIDs per fact instead of
   seed-anchored derivation (harmless; HMACed before storage).
+- Task 7 → **Task 8 review focus**: production callers don't yet pass attempt
+  fields — `providerBinding` stays `unmapped` and `emitLlmError` legacy paths
+  default ordinal 0 (mismatch with started attempts N>0) until Task 8 wires
+  the invoke/error boundaries; clarification signal feeding unwired (Task 8).
+- Task 7 → **Task 13 note**: subscriber derives `toolNameKey` with the
+  keyring active at `startAnalytics` time — after key rotation the normalizer
+  could reject old-version name keys until restart (fail-closed, bounded).
+- Task 7 (parked Minors): `decisionLatencyMs` includes prompt-send latency;
+  permission resolve-before-send-settles can leave requested/resolved
+  unbalanced; `wrapModelForTtft` throws on non-V4 models (new hard failure on
+  a tolerant path); live-status update ordinals follow settle order.
