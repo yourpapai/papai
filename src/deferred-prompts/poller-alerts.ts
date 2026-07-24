@@ -30,6 +30,7 @@ import type { AlertPrompt } from './types.js'
 const log = logger.child({ scope: 'deferred:poller:alerts' })
 
 export const MAX_CONCURRENT_USERS = 10
+export const MAX_CONCURRENT_LLM_CALLS = 5
 
 export function logSettledErrors(results: PromiseSettledResult<unknown>[], context: string): void {
   for (const r of results) {
@@ -194,9 +195,12 @@ async function executeAlertsForInstance(
     }
   }
 
+  const contextLimit = pLimit(MAX_CONCURRENT_LLM_CALLS)
   await Promise.all(
     [...routable.entries()].map(([storageContextId, alerts]) =>
-      executeAlertsForContext(storageContextId, alerts, lightTasks, enrichedTasks, chat, buildProviderFn, evalNow),
+      contextLimit(() =>
+        executeAlertsForContext(storageContextId, alerts, lightTasks, enrichedTasks, chat, buildProviderFn, evalNow),
+      ),
     ),
   )
 }
@@ -228,5 +232,5 @@ export async function pollAlertsOnce(chat: ChatProvider, buildProviderFn: BuildP
       ),
     ),
   )
-  logSettledErrors(results, 'Error polling alerts for user')
+  logSettledErrors(results, 'Error polling alerts for instance')
 }

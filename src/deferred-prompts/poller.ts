@@ -12,7 +12,7 @@ import { logger } from '../logger.js'
 import { recordProactiveInHistory } from '../proactive-history.js'
 import { scheduler } from '../scheduler-instance.js'
 import { getUserTimezoneOrDefault } from '../utils/config-timezone.js'
-import { logSettledErrors, MAX_CONCURRENT_USERS, pollAlertsOnce } from './poller-alerts.js'
+import { logSettledErrors, MAX_CONCURRENT_LLM_CALLS, MAX_CONCURRENT_USERS, pollAlertsOnce } from './poller-alerts.js'
 import { groupScheduledPromptsByDelivery } from './poller-groups.js'
 import { stopRegisteredPollerTask } from './poller-lifecycle.js'
 import { finalizeAllPrompts, mergeExecutionMetadata } from './poller-scheduled.js'
@@ -26,7 +26,6 @@ export { pollAlertsOnce } from './poller-alerts.js'
 
 const log = logger.child({ scope: 'deferred:poller' })
 const ALERT_POLL_MS = 5 * 60_000,
-  MAX_CONCURRENT_LLM_CALLS = 5,
   SCHEDULED_POLL_MS = 60_000
 let isRunning = false
 const inFlightPrompts = new Set<string>()
