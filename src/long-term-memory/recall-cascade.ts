@@ -32,7 +32,8 @@ export type RunRecallCascadeDeps = Readonly<{
   schedulePromotion: (record: MemoryRecord, scope: MemoryScope) => void
 }>
 
-const defaultDeps: RunRecallCascadeDeps = {
+/** @public -- reused by the shadow recall instrument (Plan 2 T3) for its embedding deps. */
+export const defaultDeps: RunRecallCascadeDeps = {
   getEmbedding: (query, configContextId) =>
     getEmbeddingForContext(query, configContextId, {
       storageContextId: configContextId,
