@@ -228,6 +228,7 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0223](0223-turns-lookup-scope-enforcement.md)                                                       | `/turns/:id` Scope Enforcement                                                                                | 2026-06-28 | Implemented                                                 |                                                   |
 | [0224](0224-remove-debug-log-redaction.md)                                                           | Remove Debug Log Redaction                                                                                    | 2026-06-29 | Implemented                                                 |                                                   |
 | [0225](0225-hermetic-story-execution-docker-sandbox.md)                                              | Hermetic Story Execution — Docker-Only OS Sandbox                                                             | 2026-07-17 | Implemented                                                 |                                                   |
+| [0226](0226-analytics-governance-and-delivery-lanes.md)                                               | Analytics Governance and Delivery Lanes                                                                         | 2026-07-24 | Accepted                                                    | -                                                 |
 
 ## ADR Status Legend
 

@@ -48,6 +48,10 @@ export default {
     'src/coding-sessions/store.ts!',
     'playwright.config.ts!',
     'strybk.config.ts!',
+    // Analytics modules are the canonical seam surface for the Stage A metrics
+    // build; later tasks consume their exports, so unused-export/type findings are
+    // expected until those tasks land.
+    'src/analytics/*.ts!',
     // First-party plugin entry points are loaded dynamically by the plugin
     // loader, so they have no static importer.
     'plugins/*/index.ts!',
@@ -125,8 +129,12 @@ export default {
     // dynamic import from scripts/behavior-audit/entry-point-maps.ts.
     'src/tools/index.ts': ['exports'],
     // listRoutes is consumed by the behavior-audit closure verifier via
-    // dynamic import; re-exported from src/debug/server.ts.
+    // dynamic import; re-exported from src/debug/server-route-options.ts.
     'src/debug/server-route-options.ts': ['exports'],
+    // Analytics modules are the Stage A public seam; their exports are consumed
+    // by later tasks and by the analytics tests that knip's production graph does
+    // not count.
+    'src/analytics/*.ts': ['exports', 'types'],
   },
 
   includeEntryExports: true,
