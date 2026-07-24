@@ -8,12 +8,20 @@ import assert from 'node:assert/strict'
 
 import { and, eq } from 'drizzle-orm'
 
+import { KeyVersionSchema, VersionStringSchema } from '../src/analytics/controlled-types.js'
+import type { EligibilityDecision } from '../src/analytics/governance/eligibility.js'
+import type { NormalizerEnv } from '../src/analytics/normalizer.js'
+import { createAnalyticsObserver } from '../src/analytics/runtime.js'
+import type { AnalyticsObserver } from '../src/analytics/runtime.js'
+import { createRecordingHealth, createRecordingSinks } from '../src/analytics/runtime.testing.js'
+import type { AnalyticsSourceFact } from '../src/analytics/source-facts.js'
+import { createTurnContextRegistry } from '../src/analytics/turn-context.js'
 import { listActiveAttachments } from '../src/attachments/index.js'
 import {
   checkAuthorizationExtended as checkAuthorizationExtendedScoped,
   getThreadScopedStorageContextId,
 } from '../src/auth.js'
-import { addAuthorizedGroup } from '../src/authorized-groups.js'
+import { addAuthorizedGroup, setGuestMode } from '../src/authorized-groups.js'
 import { setupBot, type BotDeps } from '../src/bot.js'
 import { clearGroupAdminLiveCache } from '../src/chat/group-admin-live.testing.js'
 import type {
@@ -43,9 +51,11 @@ import { setOpenDmAccess } from '../src/instances/platform-store.js'
 import { getTaskInstance, insertTaskInstance } from '../src/instances/task-store.js'
 import { contributionRegistry } from '../src/plugins/contributions.js'
 import { PLUGIN_API_VERSION, type PluginManifest } from '../src/plugins/types.js'
+import { runRegistry } from '../src/run-control/registry.js'
 import { KANEO_PLUGIN_CREDENTIAL_KEY } from '../src/types/config.js'
 import {
   addUser as addScopedUser,
+  blockUser,
   isAuthorized as isAuthorizedScoped,
   removeUser as removeScopedUser,
 } from '../src/users.js'
@@ -62,6 +72,7 @@ import {
   seedCommonTestPlatformInstances,
   seedTestPlatformInstance,
   setupTestDb,
+  waitFor,
 } from './utils/test-helpers.js'
 
 const TEST_PLATFORM_ID = 'test-instance'
@@ -148,6 +159,7 @@ const enqueueMessageSynchronously: NonNullable<BotDeps['enqueueMessage']> = (ite
     messageIds: item.messageId === undefined ? [] : [item.messageId],
     segments:
       item.messageId === undefined ? [] : [{ messageId: item.messageId, text: item.text, username: item.username }],
+    analyticsTurnSeed: item.analyticsTurnSeed,
   }).catch(() => {})
 }
 
@@ -459,7 +471,10 @@ function makeFile(overrides: Partial<IncomingFile> | undefined): IncomingFile {
 
 const ADMIN_ID = 'admin-bot-auth'
 
-function makePluginCommandManifest(pluginId: string): PluginManifest {
+function makePluginCommandManifest(
+  pluginId: string,
+  contributedCommands: readonly string[] = ['sync'],
+): PluginManifest {
   return {
     id: pluginId,
     name: 'Bot Test Plugin',
@@ -470,7 +485,7 @@ function makePluginCommandManifest(pluginId: string): PluginManifest {
     contributes: {
       tools: [],
       promptFragments: [],
-      commands: ['sync'],
+      commands: [...contributedCommands],
       jobs: [],
       configKeys: [],
       taskProviderTypes: [],
@@ -2064,5 +2079,443 @@ describe('getThreadScopedStorageContextId', () => {
   test('should return groupId:threadId for thread', () => {
     const result = getThreadScopedStorageContextId('group456', 'group', 'thread789')
     expect(result).toBe('group456:thread789')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Analytics observation of the authorized message/turn lifecycle
+// ---------------------------------------------------------------------------
+
+type RecordedFacts = { observer: AnalyticsObserver; facts: AnalyticsSourceFact[] }
+
+function createFactRecorder(): RecordedFacts {
+  const facts: AnalyticsSourceFact[] = []
+  return {
+    facts,
+    observer: {
+      observe: (fact: AnalyticsSourceFact): void => {
+        facts.push(fact)
+      },
+      flush: (): Promise<void> => Promise.resolve(),
+      stop: (): Promise<void> => Promise.resolve(),
+    },
+  }
+}
+
+function factsOfType<T extends AnalyticsSourceFact['type']>(
+  facts: readonly AnalyticsSourceFact[],
+  type: T,
+): Extract<AnalyticsSourceFact, { type: T }>[] {
+  return facts.filter((fact): fact is Extract<AnalyticsSourceFact, { type: T }> => fact.type === type)
+}
+
+function acceptedFacts(
+  facts: readonly AnalyticsSourceFact[],
+): Extract<AnalyticsSourceFact, { type: 'chat_message_accepted' }>[] {
+  return factsOfType(facts, 'chat_message_accepted')
+}
+
+function firstFactOfType<T extends AnalyticsSourceFact['type']>(
+  facts: readonly AnalyticsSourceFact[],
+  type: T,
+): Extract<AnalyticsSourceFact, { type: T }> {
+  const matches = factsOfType(facts, type)
+  assert.ok(matches.length > 0, `expected at least one ${type} fact, got: ${facts.map((f) => f.type).join(',')}`)
+  const first = matches[0]
+  assert.ok(first !== undefined)
+  return first
+}
+
+function decideGuestLocalAggregateOnly(fact: AnalyticsSourceFact): EligibilityDecision {
+  if (fact.source.actorRole !== 'guest') return { allowed: false, reason: 'mode_off' }
+  return { allowed: true, lane: 'local_aggregate', policyVersion: 0, collectionEligibility: null, deliveryGrant: null }
+}
+
+function analyticsBotDeps(observer: AnalyticsObserver, processMessage?: BotDeps['processMessage']): BotDeps {
+  return withSynchronousQueue({
+    processMessage: processMessage ?? ((): Promise<void> => Promise.resolve()),
+    analyticsObserver: observer,
+  })
+}
+
+function setupObservedCommandBot(observer: AnalyticsObserver): {
+  commandHandlers: Map<string, CommandHandler>
+} {
+  const commandHandlers = new Map<string, CommandHandler>()
+  const mockChat = createMockChat({ commandHandlers })
+  setupBot(mockChat, ADMIN_ID, analyticsBotDeps(observer))
+  return { commandHandlers }
+}
+
+describe('Analytics observation (setupBot)', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    seedCommonTestPlatformInstances()
+    runRegistry.clear()
+  })
+
+  afterEach(() => {
+    runRegistry.clear()
+  })
+
+  test('denied, blocked, unauthorized-group, ignored chatter, and pre-auth receipt emit no chat_message_accepted', async () => {
+    const { observer, facts } = createFactRecorder()
+    const { provider: mockChat, getMessageHandler } = createMockChatForBot()
+    setupBot(mockChat, ADMIN_ID, analyticsBotDeps(observer))
+    const messageHandler = getMessageHandler()
+    assert.ok(messageHandler !== null)
+
+    addUser('blocked-user', ADMIN_ID)
+    blockUser('blocked-user', TEST_PLATFORM_ID)
+    addAuthorizedGroupForPlatform('group-ignored', ADMIN_ID)
+    addGroupMemberForPlatform('group-ignored', 'chatter-user', ADMIN_ID)
+
+    const receivedEvents: DebugEvent[] = []
+    const listener = (event: DebugEvent): void => {
+      receivedEvents.push(event)
+    }
+    subscribe(listener)
+    try {
+      // Denied DM (unknown user)
+      await messageHandler({ ...createDmMessage('denied-user'), text: 'hello' }, createMockReply().reply)
+      // Blocked user
+      await messageHandler({ ...createDmMessage('blocked-user'), text: 'hello' }, createMockReply().reply)
+      // Unauthorized group (mentioned, gets denial reply)
+      await messageHandler(
+        createGroupMessage('stranger-user', '@bot hello', false, 'group-unauthorized'),
+        createMockReply().reply,
+      )
+      // Ignored group chatter (authorized member, no mention)
+      await messageHandler(
+        { ...createGroupMessage('chatter-user', 'random chatter', false, 'group-ignored'), commandMatch: '' },
+        createMockReply().reply,
+      )
+    } finally {
+      unsubscribe(listener)
+    }
+
+    expect(acceptedFacts(facts)).toHaveLength(0)
+    // Positive controls: the observer was wired (bounded auth_checked emitted for each
+    // post-auth decision) and the pre-auth debug receipt still fired for debug clients.
+    expect(factsOfType(facts, 'auth_checked').length).toBe(4)
+    expect(receivedEvents.filter((event) => event.type === 'message:received').length).toBe(4)
+  })
+
+  test('emits bounded auth_checked outcomes and reasons', async () => {
+    const { observer, facts } = createFactRecorder()
+    const { provider: mockChat, getMessageHandler } = createMockChatForBot()
+    setupBot(mockChat, ADMIN_ID, analyticsBotDeps(observer))
+    const messageHandler = getMessageHandler()
+    assert.ok(messageHandler !== null)
+
+    addUser('member-user', ADMIN_ID)
+    addUser('blocked-user-2', ADMIN_ID)
+    blockUser('blocked-user-2', TEST_PLATFORM_ID)
+
+    await messageHandler({ ...createDmMessage('member-user'), text: 'hi' }, createMockReply().reply)
+    await messageHandler({ ...createDmMessage('blocked-user-2'), text: 'hi' }, createMockReply().reply)
+    await messageHandler({ ...createDmMessage('unknown-user-2'), text: 'hi' }, createMockReply().reply)
+    await messageHandler(createGroupMessage('stranger-2', '@bot hi', false, 'group-nowhere'), createMockReply().reply)
+
+    const authFacts = factsOfType(facts, 'auth_checked')
+    expect(authFacts.map((fact) => `${fact.outcome}:${fact.reason}`)).toEqual([
+      'granted:member',
+      'denied:blocked',
+      'denied:unknown_user',
+      'denied:group_unauthorized',
+    ])
+  })
+
+  describe('observed command analytics', () => {
+    test('authorized first DM /start emits one chat_message_accepted with invocation_mode command', async () => {
+      addUser('start-user', ADMIN_ID)
+      const { observer, facts } = createFactRecorder()
+      const { commandHandlers } = setupObservedCommandBot(observer)
+      const startHandler = commandHandlers.get('start')
+      assert.ok(startHandler !== undefined)
+
+      await startHandler(createDmMessage('start-user', 'start'), createMockReply().reply, createAuth('start-user'))
+
+      const accepted = acceptedFacts(facts)
+      expect(accepted).toHaveLength(1)
+      const fact = accepted[0]!
+      expect(fact.source.invocationMode).toBe('command')
+      expect(fact.isCommand).toBe(true)
+      expect(fact.command).toBe('start')
+      expect(fact.source.contextType).toBe('dm')
+      expect(fact.source.actorRole).toBe('member')
+      expect(fact.source.platformInstanceId).toBe(TEST_PLATFORM_ID)
+    })
+
+    test('/config emits one chat_message_accepted with command config', async () => {
+      addUser('config-user', ADMIN_ID)
+      const { observer, facts } = createFactRecorder()
+      const { commandHandlers } = setupObservedCommandBot(observer)
+      const configHandler = commandHandlers.get('config')
+      assert.ok(configHandler !== undefined)
+
+      await configHandler(createDmMessage('config-user', 'config'), createMockReply().reply, createAuth('config-user'))
+
+      const accepted = acceptedFacts(facts)
+      expect(accepted).toHaveLength(1)
+      expect(accepted[0]!.command).toBe('config')
+      expect(accepted[0]!.source.invocationMode).toBe('command')
+    })
+
+    test('coding-session command emits one chat_message_accepted with command acp', async () => {
+      addUser('acp-user', ADMIN_ID)
+      const pluginId = 'acp'
+      contributionRegistry.deregister(pluginId)
+      contributionRegistry.register(
+        pluginId,
+        {
+          tools: [],
+          promptFragments: [],
+          commands: [{ name: 'acp', description: 'Coding sessions', execute: (): Promise<void> => Promise.resolve() }],
+          jobs: [],
+        },
+        makePluginCommandManifest(pluginId, ['acp']),
+      )
+      try {
+        const { observer, facts } = createFactRecorder()
+        const { commandHandlers } = setupObservedCommandBot(observer)
+        const acpHandler = commandHandlers.get('plugin_acp_acp')
+        assert.ok(acpHandler !== undefined)
+
+        await acpHandler(createDmMessage('acp-user', 'plugin_acp_acp'), createMockReply().reply, createAuth('acp-user'))
+
+        const accepted = acceptedFacts(facts)
+        expect(accepted).toHaveLength(1)
+        expect(accepted[0]!.command).toBe('acp')
+        expect(accepted[0]!.source.invocationMode).toBe('command')
+      } finally {
+        contributionRegistry.deregister(pluginId)
+      }
+    })
+
+    test('denied command emits no chat_message_accepted', async () => {
+      const { observer, facts } = createFactRecorder()
+      const { commandHandlers } = setupObservedCommandBot(observer)
+      const helpHandler = commandHandlers.get('help')
+      assert.ok(helpHandler !== undefined)
+
+      await helpHandler(createDmMessage('stranger-cmd', 'help'), createMockReply().reply, createAuth('stranger-cmd'))
+
+      expect(acceptedFacts(facts)).toHaveLength(0)
+      expect(factsOfType(facts, 'auth_checked')).toHaveLength(1)
+    })
+
+    test('command replies emit reply_sent with a null turn key', async () => {
+      addUser('help-user', ADMIN_ID)
+      const { observer, facts } = createFactRecorder()
+      const { commandHandlers } = setupObservedCommandBot(observer)
+      const helpHandler = commandHandlers.get('help')
+      assert.ok(helpHandler !== undefined)
+
+      await helpHandler(createDmMessage('help-user', 'help'), createMockReply().reply, createAuth('help-user'))
+
+      const replyFacts = factsOfType(facts, 'reply_sent')
+      expect(replyFacts).toHaveLength(1)
+      expect(replyFacts[0]!.source.rawTurnId).toBeNull()
+      expect(replyFacts[0]!.delivery).toBe('success')
+    })
+  })
+
+  test('allowed DM emits one accepted fact with authoritative scope, role, and invocation mode', async () => {
+    addUser('dm-accepted', ADMIN_ID)
+    const { observer, facts } = createFactRecorder()
+    const { provider: mockChat, getMessageHandler } = createMockChatForBot()
+    setupBot(mockChat, ADMIN_ID, analyticsBotDeps(observer))
+
+    await getMessageHandler()!({ ...createDmMessage('dm-accepted'), text: 'hello' }, createMockReply().reply)
+
+    const accepted = acceptedFacts(facts)
+    expect(accepted).toHaveLength(1)
+    const fact = accepted[0]!
+    expect(fact.source.platform).toBe('telegram')
+    expect(fact.source.platformInstanceId).toBe(TEST_PLATFORM_ID)
+    expect(fact.source.storageContextId).toBe(scopedDm('dm-accepted'))
+    expect(fact.source.configContextId).toBe(scopedDm('dm-accepted'))
+    expect(fact.source.nativeContextId).toBe('dm-accepted')
+    expect(fact.source.contextType).toBe('dm')
+    expect(fact.source.actorRole).toBe('member')
+    expect(fact.source.invocationMode).toBe('normal')
+    expect(fact.isCommand).toBe(false)
+    expect(fact.command).toBe('none')
+    expect(fact.inputCount).toBe(1)
+    expect(fact.inputLengthChars).toBe(5)
+    expect(fact.attachmentCount).toBe(0)
+  })
+
+  test('allowed mentioned group message emits one accepted fact with group scope', async () => {
+    addAuthorizedGroupForPlatform('group-accepted', ADMIN_ID)
+    addGroupMemberForPlatform('group-accepted', 'group-member-a', ADMIN_ID)
+    const { observer, facts } = createFactRecorder()
+    const { provider: mockChat, getMessageHandler } = createMockChatForBot()
+    setupBot(mockChat, ADMIN_ID, analyticsBotDeps(observer))
+
+    await getMessageHandler()!(
+      createGroupMessage('group-member-a', '@bot hello', false, 'group-accepted'),
+      createMockReply().reply,
+    )
+
+    const accepted = acceptedFacts(facts)
+    expect(accepted).toHaveLength(1)
+    const fact = accepted[0]!
+    expect(fact.source.contextType).toBe('group')
+    expect(fact.source.storageContextId).toBe(scopedGroup('group-accepted'))
+    expect(fact.source.configContextId).toBe(scopedGroup('group-accepted'))
+    expect(fact.source.nativeContextId).toBe('group-accepted')
+    expect(fact.source.actorRole).toBe('member')
+    expect(fact.source.invocationMode).toBe('normal')
+  })
+
+  test('bot admin messages map to analytics role admin', async () => {
+    addUser('bot-admin-user', ADMIN_ID)
+    addAdmin('bot-admin-user', TEST_PLATFORM_ID)
+    const { observer, facts } = createFactRecorder()
+    const { provider: mockChat, getMessageHandler } = createMockChatForBot()
+    setupBot(mockChat, ADMIN_ID, analyticsBotDeps(observer))
+
+    await getMessageHandler()!({ ...createDmMessage('bot-admin-user'), text: 'hi' }, createMockReply().reply)
+
+    const accepted = acceptedFacts(facts)
+    expect(accepted).toHaveLength(1)
+    expect(accepted[0]!.source.actorRole).toBe('admin')
+  })
+
+  test('group admin messages map to analytics role admin', async () => {
+    addAuthorizedGroupForPlatform('group-admin-scope', ADMIN_ID)
+    const { observer, facts } = createFactRecorder()
+    const { provider: mockChat, getMessageHandler } = createMockChatForBot()
+    setupBot(mockChat, ADMIN_ID, analyticsBotDeps(observer))
+
+    await getMessageHandler()!(
+      createGroupMessage('platform-admin-user', '@bot hi', true, 'group-admin-scope'),
+      createMockReply().reply,
+    )
+
+    const accepted = acceptedFacts(facts)
+    expect(accepted).toHaveLength(1)
+    expect(accepted[0]!.source.actorRole).toBe('admin')
+  })
+
+  test('queued turn emits turn_started, turn_completed, and reply_sent bound to the raw turn id', async () => {
+    addUser('turn-user', ADMIN_ID)
+    const { observer, facts } = createFactRecorder()
+    const registry = createTurnContextRegistry()
+    const { provider: mockChat, getMessageHandler } = createMockChatForBot()
+    setupBot(mockChat, ADMIN_ID, {
+      ...analyticsBotDeps(observer, async (reply: ReplyFn): Promise<void> => {
+        await reply.text('turn reply')
+      }),
+      analyticsTurnRegistry: registry,
+    })
+
+    await getMessageHandler()!({ ...createDmMessage('turn-user'), text: 'hello' }, createMockReply().reply)
+    await waitFor(() => factsOfType(facts, 'turn_completed').length === 1)
+
+    const started = firstFactOfType(facts, 'turn_started')
+    expect(started.incomingMessageCount).toBe(1)
+    expect(started.queueWaitMs).toBeGreaterThanOrEqual(0)
+    expect(started.source.rawTurnId).toBe('test-turn-id')
+
+    const completed = firstFactOfType(facts, 'turn_completed')
+    expect(completed.outcome).toBe('ok')
+    expect(completed.durationMs).toBeGreaterThanOrEqual(0)
+    expect(completed.replyCount).toBe(1)
+    expect(completed.source.rawTurnId).toBe('test-turn-id')
+
+    const replied = firstFactOfType(facts, 'reply_sent')
+    expect(replied.delivery).toBe('success')
+    expect(replied.partCount).toBe(1)
+    expect(replied.source.rawTurnId).toBe('test-turn-id')
+
+    expect(registry.resolve('test-turn-id')?.rawTurnId).toBe('test-turn-id')
+  })
+
+  test('turn failure emits turn_completed llm_error with duration but no raw exception message', async () => {
+    addUser('failing-turn-user', ADMIN_ID)
+    const { observer, facts } = createFactRecorder()
+    const { provider: mockChat, getMessageHandler } = createMockChatForBot()
+    setupBot(
+      mockChat,
+      ADMIN_ID,
+      analyticsBotDeps(observer, (): Promise<void> => Promise.reject(new Error('raw-sensitive-llm-boom'))),
+    )
+
+    await getMessageHandler()!({ ...createDmMessage('failing-turn-user'), text: 'hello' }, createMockReply().reply)
+    await waitFor(() => factsOfType(facts, 'turn_completed').length === 1)
+
+    const completed = firstFactOfType(facts, 'turn_completed')
+    expect(completed.outcome).toBe('llm_error')
+    expect(completed.durationMs).toBeGreaterThanOrEqual(0)
+    expect(JSON.stringify(facts)).not.toContain('raw-sensitive-llm-boom')
+  })
+
+  test('allowed guest produces only aggregate auth_granted, message_accepted, and guest_turn increments', async () => {
+    addAuthorizedGroupForPlatform('group-guest', ADMIN_ID)
+    setGuestMode(scopedGroup('group-guest'), true)
+
+    const recording = createRecordingSinks()
+    const health = createRecordingHealth()
+    const normalizerEnv: NormalizerEnv = {
+      hmacKey: Buffer.alloc(32, 9),
+      keyVersion: KeyVersionSchema.parse('v1'),
+      installId: 'install-test',
+      appVersion: VersionStringSchema.parse('1.0.0'),
+      policyVersion: 0,
+      ingestedAtMs: Date.now(),
+    }
+    const observer = createAnalyticsObserver({
+      decide: decideGuestLocalAggregateOnly,
+      normalizerEnv: () => normalizerEnv,
+      health,
+      log: { warn: () => {} },
+      sinks: recording.sinks,
+    })
+
+    let turnPromise: Promise<void> | null = null
+    const { provider: mockChat, getMessageHandler } = createMockChatForBot()
+    setupBot(mockChat, ADMIN_ID, {
+      processMessage: async (reply: ReplyFn): Promise<void> => {
+        await reply.text('guest reply')
+      },
+      enqueueMessage: (item, reply, handler): void => {
+        turnPromise = handler({
+          text: item.text,
+          userId: item.userId,
+          username: item.username,
+          storageContextId: item.storageContextId,
+          configContextId: item.configContextId,
+          contextType: item.contextType,
+          newAttachmentIds: item.newAttachmentIds,
+          voiceStagedIds: item.voiceStagedIds,
+          reply,
+          turnId: 'guest-turn-id',
+          analyticsTurnSeed: item.analyticsTurnSeed,
+        })
+      },
+      analyticsObserver: observer,
+    })
+
+    await getMessageHandler()!(
+      createGroupMessage('guest-user-1', '@bot hello', false, 'group-guest'),
+      createMockReply().reply,
+    )
+    assert.ok(turnPromise !== null)
+    await turnPromise
+    await observer.flush()
+
+    const counterMetrics = recording.aggregates
+      .map((item) => item.increment)
+      .filter((increment) => increment.kind === 'counter')
+      .map((increment) => increment.metric)
+      .sort()
+    expect(counterMetrics).toEqual(['auth_granted', 'guest_turn', 'message_accepted'])
+    expect(recording.aggregates.filter((item) => item.increment.kind === 'histogram')).toEqual([])
+    expect(recording.events).toEqual([])
+    expect(health.counts.observer_failure).toBe(0)
   })
 })

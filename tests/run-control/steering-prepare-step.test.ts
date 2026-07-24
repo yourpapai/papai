@@ -35,6 +35,16 @@ describe('createSteeringPrepareStep', () => {
     // Second call after drain: nothing queued, so no injection.
     expect(step({ stepNumber: 2, steps: [], messages: base })).toBeUndefined()
   })
+
+  test('delivers the raw steer text verbatim to the LLM messages', () => {
+    const run = makeRun()
+    const secret = 'steer text with sensitive detail 12345'
+    run.steerQueue.push({ text: secret })
+    const step = createSteeringPrepareStep(run)
+    const result = step({ stepNumber: 1, steps: [], messages: [{ role: 'user' as const, content: 'base' }] })
+    expect(JSON.stringify(result?.messages)).toContain(secret)
+    expect(run.steerQueue).toEqual([])
+  })
 })
 
 describe('composePrepareSteps', () => {

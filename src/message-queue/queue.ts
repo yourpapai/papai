@@ -5,6 +5,7 @@
 
 import { randomUUID } from 'node:crypto'
 
+import { mergeAnalyticsTurnSeeds } from '../analytics/turn-observer.js'
 import type { ReplyFn } from '../chat/types.js'
 import { emitGroup, emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
@@ -212,6 +213,7 @@ export class MessageQueue {
       actorRole: lastMessage.item.actorRole,
       messageIds,
       segments,
+      analyticsTurnSeed: mergeAnalyticsTurnSeeds(this.messages.map((msg) => msg.item)),
     }
 
     this.messages = []

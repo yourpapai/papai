@@ -43,6 +43,12 @@ type ActiveRuntime = Readonly<{
 
 let active: ActiveRuntime | null = null
 
+/** Current runtime-owned analytics handles, or null when analytics is not started. */
+export const getActiveAnalyticsRuntime = (): Readonly<{
+  observer: AnalyticsObserver
+  registry: AuthorizedTurnContextRegistry
+} | null> => (active === null ? null : { observer: active.observer, registry: active.registry })
+
 const pickCandidateLane = (lanes: EffectiveLanes): AnalyticsLane => {
   if (lanes.localMode === 'local_pseudonymous') return 'local_pseudonymous'
   if (lanes.localMode === 'local_aggregate') return 'local_aggregate'

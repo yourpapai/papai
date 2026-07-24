@@ -4,7 +4,10 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
+import type { AnalyticsObserver } from '../src/analytics/runtime.js'
+import type { AnalyticsSourceFact } from '../src/analytics/source-facts.js'
 import { getThreadScopedStorageContextId } from '../src/auth.js'
 import { setupBot } from '../src/bot.js'
 import type { BotDeps } from '../src/bot.js'
@@ -120,5 +123,72 @@ describe('mid-run steering routing', () => {
     expect(run.steerQueue).toEqual([{ text: 'only project X' }])
     expect(textCalls.some((c) => c.includes('folding'))).toBe(true)
     expect(enqueueCallCount).toBe(0)
+  })
+})
+
+describe('mid-run steering analytics', () => {
+  let facts: AnalyticsSourceFact[]
+  let getMessageHandler: () => ((msg: ReturnType<typeof createDmMessage>, reply: ReplyFn) => Promise<void>) | null
+
+  function steeredFacts(): Extract<AnalyticsSourceFact, { type: 'turn_steered' }>[] {
+    return facts.filter(
+      (fact): fact is Extract<AnalyticsSourceFact, { type: 'turn_steered' }> => fact.type === 'turn_steered',
+    )
+  }
+
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    seedCommonTestPlatformInstances()
+    runRegistry.clear()
+    facts = []
+
+    const observer: AnalyticsObserver = {
+      observe: (fact: AnalyticsSourceFact): void => {
+        facts.push(fact)
+      },
+      flush: (): Promise<void> => Promise.resolve(),
+      stop: (): Promise<void> => Promise.resolve(),
+    }
+    const { provider: mockChat, getMessageHandler: getHandler } = createMockChatForBot()
+    getMessageHandler = getHandler as typeof getMessageHandler
+
+    const botDeps: BotDeps = {
+      processMessage: (): Promise<void> => Promise.resolve(),
+      enqueueMessage: (): void => {},
+      analyticsObserver: observer,
+    }
+
+    setupBot(mockChat, ADMIN_ID, botDeps)
+  })
+
+  afterEach(() => {
+    runRegistry.clear()
+  })
+
+  test('emits turn_steered with ordinal, bounded length, and ack result but never the steer text', async () => {
+    const userId = 'steer-user-analytics'
+    addUser(userId, ADMIN_ID)
+    const storageContextId = scopedDm(userId)
+    const { reply: runReply } = createMockReply()
+    runRegistry.begin(storageContextId, { turnId: 't-steer-1', reply: runReply })
+
+    const messageHandler = getMessageHandler()
+    assert.ok(messageHandler !== null)
+    const { reply, textCalls } = createMockReply()
+    await messageHandler({ ...createDmMessage(userId), text: 'only project X' }, reply)
+    await messageHandler({ ...createDmMessage(userId), text: 'and also Y' }, reply)
+
+    expect(textCalls.filter((c) => c.includes('folding'))).toHaveLength(2)
+    const steered = steeredFacts()
+    expect(steered).toHaveLength(2)
+    expect(steered.map((fact) => fact.ordinal)).toEqual([1, 2])
+    expect(steered.map((fact) => fact.steerLengthChars)).toEqual([14, 10])
+    expect(steered.map((fact) => fact.ackSent)).toEqual([true, true])
+    expect(steered.map((fact) => fact.source.rawTurnId)).toEqual(['t-steer-1', 't-steer-1'])
+    expect(steered.map((fact) => fact.source.invocationMode)).toEqual(['normal', 'normal'])
+    expect(JSON.stringify(facts)).not.toContain('only project X')
+    expect(JSON.stringify(facts)).not.toContain('and also Y')
+    expect(facts.filter((fact) => fact.type === 'turn_started')).toHaveLength(0)
   })
 })

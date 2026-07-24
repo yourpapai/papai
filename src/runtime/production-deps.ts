@@ -3,7 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { startAnalytics, stopAnalytics } from '../analytics/start-analytics.js'
+import type { AnalyticsObserver } from '../analytics/runtime.js'
+import { getActiveAnalyticsRuntime, startAnalytics, stopAnalytics } from '../analytics/start-analytics.js'
+import type { AuthorizedTurnContextRegistry } from '../analytics/turn-context.js'
 import { announceNewVersion } from '../announcements.js'
 import { isS3Configured } from '../attachments/index.js'
 import { createStagedDownloader } from '../attachments/staged-download.js'
@@ -41,12 +43,18 @@ import type { PapaiRuntimeDeps, PartialRuntimeDeps } from './types.js'
 const log = logger.child({ scope: 'main' })
 const INGRESS_ERROR = 'Programmatic ingress is available only when configured'
 
+type ProductionAnalyticsRuntime = Readonly<{
+  observer: AnalyticsObserver
+  registry: AuthorizedTurnContextRegistry
+}>
+
 type ProductionState = ProductionExtensionState & {
   background: ProductionBackgroundHandle | null
   disposeMembershipSubscriber: (() => void) | null
+  analytics: ProductionAnalyticsRuntime | null
 }
 
-function startDatabase(): void {
+function startDatabase(state: ProductionState): void {
   try {
     initDb()
   } catch (error) {
@@ -64,6 +72,7 @@ function startDatabase(): void {
   initUsageRecorder()
   try {
     startAnalytics()
+    state.analytics ??= getActiveAnalyticsRuntime()
   } catch (error) {
     log.error({ error: error instanceof Error ? error.message : String(error) }, 'Analytics runtime start failed')
   }
@@ -114,7 +123,7 @@ function createProductionRouter(): ChatRouter {
   return new ChatRouter((id, type, config) => createChatProviderFromConfig(id, type, config))
 }
 
-function setupProductionBot(router: ChatRouter, adminUserId: string): void {
+function setupProductionBot(state: ProductionState, router: ChatRouter, adminUserId: string): void {
   log.info(
     {
       adminUserConfigured: Boolean(adminUserId),
@@ -134,13 +143,21 @@ function setupProductionBot(router: ChatRouter, adminUserId: string): void {
       (userId) => router.resolveUserLabel(userId, { contextId, contextType: 'group' }),
       limit,
     )
-  setupBot(router, adminUserId, { processMessage, stagedDownloadFn, chatParticipantResolver })
+  setupBot(router, adminUserId, {
+    processMessage,
+    stagedDownloadFn,
+    chatParticipantResolver,
+    analyticsObserver: state.analytics?.observer,
+    analyticsTurnRegistry: state.analytics?.registry,
+  })
 }
 
 function createApplicationDeps(state: ProductionState): PapaiRuntimeDeps['application'] {
   return {
     initializeStores: () => undefined,
-    setupBot: setupProductionBot,
+    setupBot: (router, adminUserId) => {
+      setupProductionBot(state, router, adminUserId)
+    },
     registerCommandMenu: async (router, adminUserId) => {
       await registerCommandMenuIfSupported(router, adminUserId)
     },
@@ -172,11 +189,19 @@ function createBackgroundDeps(state: ProductionState): PapaiRuntimeDeps['backgro
   }
 }
 
-export type ProductionRuntimeOptions = Readonly<{ pluginProviderRuntimeDeps?: ProviderRuntimeDeps }>
+export type ProductionRuntimeOptions = Readonly<{
+  pluginProviderRuntimeDeps?: ProviderRuntimeDeps
+  analytics?: ProductionAnalyticsRuntime
+}>
 
 function createDefaultDeps(state: ProductionState, options: ProductionRuntimeOptions): PapaiRuntimeDeps {
   return {
-    database: { start: startDatabase, stop: stopDatabase },
+    database: {
+      start: (): void => {
+        startDatabase(state)
+      },
+      stop: stopDatabase,
+    },
     chat: {
       createRouter: createProductionRouter,
       ingress: {
@@ -227,6 +252,7 @@ export function createProductionRuntimeDeps(
       activePlatforms: [],
       background: null,
       disposeMembershipSubscriber: null,
+      analytics: options.analytics ?? null,
       populateRouterFromInstances: overrides.chat?.createRouter === undefined,
     },
     options,
