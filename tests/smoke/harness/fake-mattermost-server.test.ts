@@ -46,7 +46,9 @@ describe('fake Mattermost server', () => {
       expect(frames.some((f) => f['event'] === 'hello')).toBe(true)
 
       mm.deliverMessage({ channelId: 'dm-1', message: 'hello there', userId: 'admin-user-1' })
-      await Bun.sleep(25)
+      // Same client-side frame-receipt race as the `hello` frame above: poll for arrival
+      // instead of a fixed sleep (see tests/CLAUDE.md).
+      await waitFor(() => frames.some((f) => f['event'] === 'posted'))
       const posted = frames.find((f) => f['event'] === 'posted')
       expect(posted).toBeDefined()
       const postedFrame = postedFrameSchema.parse(posted)
