@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { and, eq, like, or, type SQL } from 'drizzle-orm'
+import { and, eq, or, sql, type SQL } from 'drizzle-orm'
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core'
 
 import { evictUser } from '../cache.js'
@@ -23,11 +23,18 @@ import type { MemoryScope } from './types.js'
 /** The transaction handle passed to `db.transaction((tx) => ...)`, for helpers extracted outside that closure. */
 type MemoryTx = Parameters<Parameters<ReturnType<typeof getDrizzleDb>['transaction']>[0]>[0]
 
-const escapeLike = (value: string): string => value.replace(/[\\%_]/gu, (ch) => `\\${ch}`)
+const LIKE_ESCAPE = '\\'
+
+const escapeLike = (value: string): string =>
+  value
+    .replaceAll(LIKE_ESCAPE, `${LIKE_ESCAPE}${LIKE_ESCAPE}`)
+    .replaceAll('%', `${LIKE_ESCAPE}%`)
+    .replaceAll('_', `${LIKE_ESCAPE}_`)
 
 /** Matches a working-memory key belonging to `scope`: the scope id itself, or one of its `:thread:*` sub-keys. */
 const workingMemoryKeyMatch = (column: SQLiteColumn, scope: MemoryScope): SQL => {
-  const condition = or(eq(column, scope.scopeId), like(column, `${escapeLike(scope.scopeId)}:thread:%`))
+  const pattern = `${escapeLike(scope.scopeId)}:thread:%`
+  const condition = or(eq(column, scope.scopeId), sql`${column} LIKE ${pattern} ESCAPE ${LIKE_ESCAPE}`)
   if (condition === undefined) throw new Error('workingMemoryKeyMatch: or() produced no condition')
   return condition
 }

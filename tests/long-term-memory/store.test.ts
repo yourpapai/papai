@@ -309,5 +309,39 @@ describe('long-term memory store', () => {
         db.select().from(conversationHistory).where(eq(conversationHistory.userId, 'pi:inst:ctx:grpX')).get(),
       ).toBeDefined()
     })
+
+    test('escapes underscores in scopeId so thread-key LIKE match neither over- nor under-matches', () => {
+      const db = getDrizzleDb()
+      const scopeId = 'pi:inst:ctx:my_grp'
+      const threadKey = 'pi:inst:ctx:my_grp:thread:t1'
+      // A sibling scope where the literal `_` of `my_grp` is replaced by another char. If the LIKE pattern's
+      // `_` were left unescaped (a SQL single-char wildcard), this row would wrongly match too.
+      const siblingThreadKey = 'pi:inst:ctx:myXgrp:thread:t1'
+
+      db.insert(conversationHistory).values({ userId: threadKey, messages: '[]' }).run()
+      db.insert(conversationHistory).values({ userId: siblingThreadKey, messages: '[]' }).run()
+      db.insert(memoryExtractionState)
+        .values({
+          contextId: threadKey,
+          contextType: 'group',
+          configContextId: scopeId,
+          lastActivityAt: '2026-07-24T00:00:00.000Z',
+          lastHistoryLen: 0,
+        })
+        .run()
+
+      const counts = clearMemoryScope({ scopeId, scopeType: 'group' })
+
+      expect(counts.workingMemoryKeysCleared).toBeGreaterThanOrEqual(1)
+      expect(counts.extractionStateDeleted).toBe(1)
+      // The underscore-containing scope's own thread key must be wiped.
+      expect(
+        db.select().from(conversationHistory).where(eq(conversationHistory.userId, threadKey)).get(),
+      ).toBeUndefined()
+      // The sibling scope (differing only where `_` sat) must be untouched.
+      expect(
+        db.select().from(conversationHistory).where(eq(conversationHistory.userId, siblingThreadKey)).get(),
+      ).toBeDefined()
+    })
   })
 })
