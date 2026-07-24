@@ -27,12 +27,12 @@ aggregate publication.
 |---|---|---|---|
 | 1 | Registry closure | green | tests/analytics/registry-closure.test.ts; 080198417; 2026-07-24 |
 | 2 | Strict schema fuzz | partial | strict envelope + rejection coverage in contracts/event-props-behavior tests (080198417); formal privacy-contract suite lands in Task 18 |
-| 3 | C3 canaries | pending | |
+| 3 | C3 canaries | green | text/username/prompt/args/result/error/URL/hostname/filename/project/status/tag/RRULE/token/raw-ID canary scans over normalized JSON in tests/analytics/normalizer.test.ts (c4079feb8); 2026-07-24 |
 | 4 | Identity matrix | partial | frozen vectors + namespace/session/Discord/guest matrix in tests/analytics/pseudonym.test.ts + scope.test.ts (748a57bbf); cached-descriptor clause lands in Task 8 |
 | 5 | Raw-ID absence | pending | |
 | 6 | Semantic outcome | pending | |
-| 7 | Consent matrix | partial | 38,880-cell exact-decision Cartesian matrix in tests/analytics/governance/eligibility.test.ts (ab504fd5e); store/send/delete result coverage completes with Tasks 5/15/16 |
-| 8 | Withdrawal race | pending | |
+| 7 | Consent matrix | partial | 38,880-cell exact-decision Cartesian matrix in tests/analytics/governance/eligibility.test.ts (ab504fd5e); Task 5 wires decideEligibility into the live observer fail-closed incl. preference/ref reads (c4079feb8); store/send/delete result coverage completes with Tasks 15/16 |
+| 8 | Withdrawal race | partial | local collection-ref races proven in tests/analytics/collection-writer-race.test.ts: deny-before-write yields no canonical/association rows; write-before-deny is found via analytics_event_collection_refs and deleted; repeated across retained key versions (c4079feb8); external delivery-grant race lands with the outbox tasks |
 | 9 | Outbox/sink | pending | |
 | 10 | Session fixtures | pending | |
 | 11 | Cohort/censor fixtures | pending | |
@@ -51,7 +51,7 @@ aggregate publication.
 | 2 — storage + mig 070 | 37 pass / 0 fail (070 migration, registration, storage) | clean / clean (knip clean) | aba0fd10c | 2026-07-24 |
 | 3 — identity keys | 49 pass / 0 fail (keyring, install-id, pseudonym, scope) | clean / clean (knip clean) | 748a57bbf | 2026-07-24 |
 | 4 — governance/eligibility | 73 pass / 0 fail (071 migration, stores, 38,880-cell matrix) | clean / clean (knip clean) | ab504fd5e | 2026-07-24 |
-| 5 — normalizer/runtime | | | | |
+| 5 — normalizer/runtime | 90 pass / 0 fail (normalizer, aggregate, runtime, process-epoch, collection-writer-race, subscriber) | clean / clean (knip clean) | c4079feb8 | 2026-07-24 |
 | 6 — turn lifecycle instrumentation | | | | |
 | 7 — llm/tool/perf instrumentation | | | | |
 | 8 — provider/feature boundaries | | | | |
