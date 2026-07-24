@@ -8,12 +8,13 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../../src/db/drizzle.js'
-import { memoryRecords } from '../../src/db/schema.js'
+import { memoryRecords, memoryTombstones } from '../../src/db/schema.js'
 import {
   archiveMemoryRecord,
   clearMemoryScope,
   getMemoryProfile,
   listMemoryRecords,
+  purgeMemoryRecord,
   saveMemoryProfile,
   saveMemoryRecord,
   searchMemoryRecords,
@@ -207,5 +208,47 @@ describe('long-term memory store', () => {
 
     expect(records[0]?.tags).toEqual([])
     expect(records[0]?.evidence).toEqual({})
+  })
+
+  describe('purgeMemoryRecord', () => {
+    test('deletes the row, its FTS entry, and writes a tombstone', () => {
+      saveMemoryRecord(memoryRecordInput({ id: 'mem-p1', content: 'User lives in Berlin' }))
+
+      const purged = purgeMemoryRecord(
+        { scopeId: 'user-1', scopeType: 'personal' },
+        'mem-p1',
+        '2026-07-24T00:00:00.000Z',
+      )
+      expect(purged).toBe(true)
+
+      const db = getDrizzleDb()
+      // canonical row gone
+      expect(db.select().from(memoryRecords).where(eq(memoryRecords.id, 'mem-p1')).get()).toBeUndefined()
+      // FTS entry gone (raw MATCH probe)
+      const ftsHits = db.$client
+        .query("SELECT rowid FROM memory_records_fts WHERE memory_records_fts MATCH 'Berlin'")
+        .all()
+      expect(ftsHits.length).toBe(0)
+      // tombstone written
+      const tomb = db.select().from(memoryTombstones).where(eq(memoryTombstones.scopeId, 'user-1')).all()
+      expect(tomb.length).toBe(1)
+    })
+
+    test('scope-guarded: wrong scope does not purge', () => {
+      saveMemoryRecord(memoryRecordInput({ id: 'mem-p2', content: 'scoped' }))
+      const purged = purgeMemoryRecord(
+        { scopeId: 'other', scopeType: 'personal' },
+        'mem-p2',
+        '2026-07-24T00:00:00.000Z',
+      )
+      expect(purged).toBe(false)
+      expect(getDrizzleDb().select().from(memoryRecords).where(eq(memoryRecords.id, 'mem-p2')).get()).toBeDefined()
+    })
+
+    test('unknown id returns false and writes no tombstone', () => {
+      const purged = purgeMemoryRecord({ scopeId: 'user-1', scopeType: 'personal' }, 'nope', '2026-07-24T00:00:00.000Z')
+      expect(purged).toBe(false)
+      expect(getDrizzleDb().select().from(memoryTombstones).all().length).toBe(0)
+    })
   })
 })

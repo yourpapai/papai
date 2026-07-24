@@ -14,8 +14,8 @@ import { logger } from '../logger.js'
 import { runRecallCascade, type RecallHit } from '../long-term-memory/recall-cascade.js'
 import { resolveMemoryScope } from '../long-term-memory/scope.js'
 import {
-  archiveMemoryRecord,
   listMemoryRecords,
+  purgeMemoryRecord,
   saveMemoryRecord,
   searchMemoryRecords,
 } from '../long-term-memory/store.js'
@@ -187,12 +187,12 @@ export function makeForgetMemoryTool(input: MemoryToolContext): Tool {
       const scope = memoryScope(input)
       const now = nowIso()
       if (memoryId !== undefined) {
-        const archived = archiveMemoryRecord(scope, memoryId, now)
+        const purged = purgeMemoryRecord(scope, memoryId, now)
         log.info(
-          { scopeId: scope.scopeId, scopeType: scope.scopeType, memoryId, archived },
-          'Memory archive by ID requested via tool',
+          { scopeId: scope.scopeId, scopeType: scope.scopeType, memoryId, purged },
+          'Memory purge by ID requested via tool',
         )
-        return archived ? { status: 'forgotten', id: memoryId } : { status: 'not_found' }
+        return purged ? { status: 'forgotten', id: memoryId } : { status: 'not_found' }
       }
       if (query === undefined) return { status: 'not_found' }
 
@@ -203,12 +203,12 @@ export function makeForgetMemoryTool(input: MemoryToolContext): Tool {
         return { status: 'not_found' }
       }
 
-      const archived = archiveMemoryRecord(scope, match.id, now)
+      const purged = purgeMemoryRecord(scope, match.id, now)
       log.info(
-        { scopeId: scope.scopeId, scopeType: scope.scopeType, memoryId: match.id, archived },
-        'Memory archive by query requested via tool',
+        { scopeId: scope.scopeId, scopeType: scope.scopeType, memoryId: match.id, purged },
+        'Memory purge by query requested via tool',
       )
-      return archived ? { status: 'forgotten', id: match.id } : { status: 'not_found' }
+      return purged ? { status: 'forgotten', id: match.id } : { status: 'not_found' }
     },
   })
 }

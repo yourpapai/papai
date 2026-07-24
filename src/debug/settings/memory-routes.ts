@@ -7,10 +7,10 @@ import { z } from 'zod'
 
 import { logger } from '../../logger.js'
 import {
-  archiveMemoryRecord,
   clearMemoryScope,
   getMemoryProfile,
   listMemoryRecords,
+  purgeMemoryRecord,
   saveMemoryProfile,
   setMemoryCaptureEnabled,
 } from '../../long-term-memory/store.js'
@@ -183,11 +183,11 @@ async function handleRecordDelete(req: Request, recordId: string): Promise<Respo
   if (!scope.ok) return scope.response
 
   const memoryScope = toMemoryScope(scope.scope)
-  const archived = archiveMemoryRecord(memoryScope, decodedRecordId, new Date().toISOString())
-  const status = archived ? 'archived' : 'not_found'
+  const purged = purgeMemoryRecord(memoryScope, decodedRecordId, new Date().toISOString())
+  const status = purged ? 'forgotten' : 'not_found'
   log.info(
-    { scopeId: memoryScope.scopeId, scopeType: memoryScope.scopeType, action: 'record.archive', status },
-    'Settings memory record archive requested',
+    { scopeId: memoryScope.scopeId, scopeType: memoryScope.scopeType, action: 'record.purge', status },
+    'Settings memory record purge requested',
   )
   return settingsJson(200, { ok: true, status })
 }

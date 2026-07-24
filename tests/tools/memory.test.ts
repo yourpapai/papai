@@ -134,7 +134,7 @@ describe('memory tools', () => {
     expect(result.records.map((record) => record.id)).toEqual(['mem-active'])
   })
 
-  test('forget_memory archives a memory by id in the current scope', async () => {
+  test('forget_memory purges a memory by id in the current scope', async () => {
     saveMemoryRecord(memoryRecordInput({ id: 'mem-target', scopeId: 'user-1' }))
     const tool = makeForgetMemoryTool({ storageContextId: 'user-1', contextType: 'dm' })
 
@@ -144,7 +144,7 @@ describe('memory tools', () => {
     expect(listMemoryRecords({ scopeId: 'user-1', scopeType: 'personal', status: 'active' })).toEqual([])
     expect(
       listMemoryRecords({ scopeId: 'user-1', scopeType: 'personal', status: 'archived' }).map((r) => r.id),
-    ).toEqual(['mem-target'])
+    ).toEqual([])
   })
 
   test('forget_memory rejects oversized memory ids', () => {
@@ -154,7 +154,7 @@ describe('memory tools', () => {
     expect(schemaValidates(tool, { memory_id: 'a'.repeat(129) })).toBe(false)
   })
 
-  test('forget_memory archives a query match only in the current scope', async () => {
+  test('forget_memory purges a query match only in the current scope', async () => {
     saveMemoryRecord(memoryRecordInput({ id: 'mem-personal', scopeId: 'shared', scopeType: 'personal' }))
     saveMemoryRecord(memoryRecordInput({ id: 'mem-group', scopeId: 'shared', scopeType: 'group' }))
     const tool = makeForgetMemoryTool({ storageContextId: 'shared', contextType: 'dm' })

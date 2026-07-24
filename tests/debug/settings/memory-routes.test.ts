@@ -54,7 +54,7 @@ const CapturePatchResponseSchema = z.object({
 
 const DeleteRecordResponseSchema = z.object({
   ok: z.literal(true),
-  status: z.enum(['archived', 'not_found']),
+  status: z.enum(['forgotten', 'not_found']),
 })
 
 const ClearResponseSchema = z.object({
@@ -233,7 +233,7 @@ describe('settings memory routes', () => {
     expect(getMemoryProfile(personalScope)?.enabled).toBe(false)
   })
 
-  test('DELETE archives only records in authorized full scope', async () => {
+  test('DELETE purges only records in authorized full scope', async () => {
     saveMemoryRecord(memoryRecordInput({ id: 'personal-record', scopeId: personalContextId, scopeType: 'personal' }))
     saveMemoryRecord(
       memoryRecordInput({ id: 'group-record', scopeId: personalContextId, scopeType: 'group', kind: 'decision' }),
@@ -249,7 +249,7 @@ describe('settings memory routes', () => {
     )
 
     expect(res.status).toBe(200)
-    expect(DeleteRecordResponseSchema.parse(await res.json()).status).toBe('archived')
+    expect(DeleteRecordResponseSchema.parse(await res.json()).status).toBe('forgotten')
     expect(listMemoryRecords({ scopeId: personalContextId, scopeType: 'personal', status: 'active' })).toEqual([])
     expect(
       listMemoryRecords({ scopeId: personalContextId, scopeType: 'group', status: 'active' }).map((r) => r.id),
