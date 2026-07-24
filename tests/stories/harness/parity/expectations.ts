@@ -109,6 +109,16 @@ export const PARITY_EXCLUSIONS: readonly Readonly<{ group: string; reason: strin
       'KaneoProvider (plugins/task-provider-kaneo/provider.ts) implements no project-team counterpart; fake-only surface with no real behavior to check parity against.',
   },
   {
+    group: 'get-current-user',
+    reason:
+      'KaneoProvider (plugins/task-provider-kaneo/provider.ts) implements no getCurrentUser counterpart, so the identity.current path (SCN-task-identity, src/tools/get-current-user.ts) resolves against MemoryTaskProvider.getCurrentUser only; fake-only surface with no real behavior to check parity against.',
+  },
+  {
+    group: 'get-label-by-name',
+    reason:
+      'KaneoProvider (plugins/task-provider-kaneo/provider.ts) implements no getLabelByName counterpart — real Kaneo resolves a label name through its list endpoint, not a dedicated lookup — so the add-label-by-name path (SCN-task-labels, src/tools/kaneo-label-helpers.ts) exercises MemoryTaskProvider.getLabelByName only; fake-only surface with no real behavior to check parity against.',
+  },
+  {
     group: 'task-list-filter',
     reason:
       'Reclassified during Task 4 (real-Kaneo drift, not a fake-only surface): KaneoProvider (plugins/task-provider-kaneo/task-status.ts validateStatus) rejects any status value that is not the exact name of an existing board column for the project — free-text tokens like "open"/"done" throw KaneoClassifiedError("status-not-found"). MemoryTaskProvider accepts any string as a status with no validation, so this group can only run against the fake; there is no status value the group could seed that both bindings would accept without changing the group itself (out of scope for Task 4).',

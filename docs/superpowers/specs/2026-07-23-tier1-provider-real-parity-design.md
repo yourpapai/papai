@@ -159,6 +159,16 @@ roadmap's ledger-extension discipline.
   before the ceiling below is treated as tight. The parity lane's declared
   ceiling is **baseline + 90s = 132s**; a lane that exceeds it moves to
   nightly rather than slowing the inner loop.
+  - **Re-confirmed on isolated CI (2026-07-24, after the T1b retrofit grew the
+    parity lane from 12 to 29 groups):** the `E2E Tests` job on GitHub's
+    `ubuntu-latest` runner completed the full lane (install + Docker + Kaneo
+    bring-up + 66 tests) in **~62s** wall-clock — comfortably inside the 132s
+    ceiling even at ~2.4x the original group count. The budget is now enforced,
+    not just measured: `.github/workflows/ci.yml`'s `e2e` job carries a
+    `timeout-minutes: 6` guard on the test step (with a 12m job-level backstop),
+    so a genuine blow-up past ~3x the ceiling fails the PR gate instead of
+    silently regressing. This discharges the "measured, not guessed" half of
+    Rule 5 that the baseline measurement above deferred.
 - **No retries** (rule 4). A parity scenario that cannot hold green is
   quarantined to nightly in the same PR that observes it, with a ledger note
   recording why.

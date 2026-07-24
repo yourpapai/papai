@@ -140,6 +140,10 @@ jobs:
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
+    # Backstop for a hung Kaneo container or a runaway provider-real lane. The whole
+    # job (install + Docker + Kaneo bring-up + 66 tests) has been observed at ~62s on
+    # an isolated runner; 12m is a generous runaway guard, not a tight budget.
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -155,6 +159,11 @@ jobs:
           echo "KANEO_AUTH_SECRET=test-auth-secret-for-ci-environment" >> .env
           echo "KANEO_CLIENT_URL=http://localhost:11337" >> .env
       - name: Run E2E tests
+        # Enforces Tier 1's declared wall-clock budget (Rule 5): the provider-real lane
+        # has a 132s ceiling (baseline ~42s; ~62s observed on this runner). 6m bounds the
+        # lane at well under 3x the ceiling so a genuine blow-up fails CI instead of
+        # silently regressing, while leaving ample headroom for runner jitter and image pulls.
+        timeout-minutes: 6
         run: bun test:e2e
         env:
           E2E_KANEO_URL: http://localhost:11337
