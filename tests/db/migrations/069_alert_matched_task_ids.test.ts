@@ -8,19 +8,19 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../../../src/db/drizzle.js'
-import { migration068AlertMatchedTaskIds } from '../../../src/db/migrations/068_alert_matched_task_ids.js'
+import { migration069AlertMatchedTaskIds } from '../../../src/db/migrations/069_alert_matched_task_ids.js'
 import { alertPrompts } from '../../../src/db/schema.js'
 import { createAlertPrompt } from '../../../src/deferred-prompts/alerts.js'
 import { mockLogger, setupTestDb } from '../../utils/test-helpers.js'
 
-describe('migration 068: alert matched task ids', () => {
+describe('migration 069: alert matched task ids', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
   })
 
-  test('migration id is 068_alert_matched_task_ids', () => {
-    expect(migration068AlertMatchedTaskIds.id).toBe('068_alert_matched_task_ids')
+  test('migration id is 069_alert_matched_task_ids', () => {
+    expect(migration069AlertMatchedTaskIds.id).toBe('069_alert_matched_task_ids')
   })
 
   test('matched_task_ids column defaults to empty JSON array', () => {

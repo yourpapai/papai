@@ -8,7 +8,7 @@ import type { Database } from 'bun:sqlite'
 import { logger } from '../../logger.js'
 import type { Migration } from '../migrate.js'
 
-const log = logger.child({ scope: 'migration:068' })
+const log = logger.child({ scope: 'migration:069' })
 
 const columnExists = (db: Database, table: string, column: string): boolean =>
   db
@@ -19,10 +19,10 @@ const columnExists = (db: Database, table: string, column: string): boolean =>
 const up = (db: Database): void => {
   if (!columnExists(db, 'alert_prompts', 'matched_task_ids')) {
     db.run(`ALTER TABLE alert_prompts ADD COLUMN matched_task_ids TEXT NOT NULL DEFAULT '[]'`)
-    log.info('migration 068: matched_task_ids added to alert_prompts')
+    log.info('migration 069: matched_task_ids added to alert_prompts')
   }
 }
 
-export const migration068AlertMatchedTaskIds: Migration = { id: '068_alert_matched_task_ids', up }
+export const migration069AlertMatchedTaskIds: Migration = { id: '069_alert_matched_task_ids', up }
 
-export default migration068AlertMatchedTaskIds
+export default migration069AlertMatchedTaskIds
