@@ -8,7 +8,14 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../../src/db/drizzle.js'
-import { memoryRecords, memoryTombstones } from '../../src/db/schema.js'
+import {
+  conversationHistory,
+  memoryExtractionState,
+  memoryFacts,
+  memoryRecords,
+  memorySummary,
+  memoryTombstones,
+} from '../../src/db/schema.js'
 import {
   archiveMemoryRecord,
   clearMemoryScope,
@@ -19,6 +26,7 @@ import {
   saveMemoryRecord,
   searchMemoryRecords,
 } from '../../src/long-term-memory/store.js'
+import { insertTombstone } from '../../src/long-term-memory/tombstone.testing.js'
 import type { MemoryRecordInput } from '../../src/long-term-memory/types.js'
 import { setupTestDb } from '../utils/test-helpers.js'
 
@@ -154,6 +162,9 @@ describe('long-term memory store', () => {
     expect(clearMemoryScope({ scopeId: 'user-1', scopeType: 'personal' })).toEqual({
       recordsDeleted: 1,
       profileDeleted: 0,
+      workingMemoryKeysCleared: 0,
+      extractionStateDeleted: 0,
+      tombstonesDeleted: 0,
     })
   })
 
@@ -249,6 +260,54 @@ describe('long-term memory store', () => {
       const purged = purgeMemoryRecord({ scopeId: 'user-1', scopeType: 'personal' }, 'nope', '2026-07-24T00:00:00.000Z')
       expect(purged).toBe(false)
       expect(getDrizzleDb().select().from(memoryTombstones).all().length).toBe(0)
+    })
+  })
+
+  describe('clearMemoryScope completeness', () => {
+    test('group clear wipes long-term, working memory (incl. thread keys), watermark, tombstones', () => {
+      const db = getDrizzleDb()
+      const scopeId = 'pi:inst:ctx:grp'
+      const threadKey = 'pi:inst:ctx:grp:thread:t1'
+
+      saveMemoryRecord(memoryRecordInput({ id: 'g1', scopeId, scopeType: 'group', content: 'group fact' }))
+      insertTombstone({ scopeId, scopeType: 'group' }, 'old forgotten', '2026-07-24T00:00:00.000Z')
+      db.insert(conversationHistory).values({ userId: threadKey, messages: '[]' }).run()
+      db.insert(memorySummary).values({ userId: threadKey, summary: 's', updatedAt: '2026-07-24T00:00:00.000Z' }).run()
+      db.insert(memoryFacts)
+        .values({ userId: threadKey, identifier: 'f1', title: 't', url: '', lastSeen: '2026-07-24T00:00:00.000Z' })
+        .run()
+      db.insert(memoryExtractionState)
+        .values({
+          contextId: threadKey,
+          contextType: 'group',
+          configContextId: scopeId,
+          lastActivityAt: '2026-07-24T00:00:00.000Z',
+          lastHistoryLen: 0,
+        })
+        .run()
+
+      const counts = clearMemoryScope({ scopeId, scopeType: 'group' })
+
+      expect(counts.recordsDeleted).toBe(1)
+      expect(counts.tombstonesDeleted).toBe(1)
+      expect(counts.extractionStateDeleted).toBe(1)
+      expect(counts.workingMemoryKeysCleared).toBeGreaterThanOrEqual(1)
+      expect(
+        db.select().from(conversationHistory).where(eq(conversationHistory.userId, threadKey)).get(),
+      ).toBeUndefined()
+      expect(db.select().from(memorySummary).where(eq(memorySummary.userId, threadKey)).get()).toBeUndefined()
+      expect(db.select().from(memoryFacts).where(eq(memoryFacts.userId, threadKey)).all().length).toBe(0)
+      expect(db.select().from(memoryExtractionState).all().length).toBe(0)
+      expect(db.select().from(memoryTombstones).all().length).toBe(0)
+    })
+
+    test('does not touch another scope sharing a key prefix', () => {
+      const db = getDrizzleDb()
+      db.insert(conversationHistory).values({ userId: 'pi:inst:ctx:grpX', messages: '[]' }).run()
+      clearMemoryScope({ scopeId: 'pi:inst:ctx:grp', scopeType: 'group' })
+      expect(
+        db.select().from(conversationHistory).where(eq(conversationHistory.userId, 'pi:inst:ctx:grpX')).get(),
+      ).toBeDefined()
     })
   })
 })

@@ -215,6 +215,9 @@ async function handleClear(req: Request): Promise<Response> {
       action: 'scope.clear',
       profileDeleted: counts.profileDeleted,
       recordsDeleted: counts.recordsDeleted,
+      workingMemoryKeysCleared: counts.workingMemoryKeysCleared,
+      extractionStateDeleted: counts.extractionStateDeleted,
+      tombstonesDeleted: counts.tombstonesDeleted,
     },
     'Settings memory scope cleared',
   )
@@ -224,6 +227,9 @@ async function handleClear(req: Request): Promise<Response> {
     scopeType: memoryScope.scopeType,
     profileDeleted: counts.profileDeleted,
     recordsDeleted: counts.recordsDeleted,
+    workingMemoryKeysCleared: counts.workingMemoryKeysCleared,
+    extractionStateDeleted: counts.extractionStateDeleted,
+    tombstonesDeleted: counts.tombstonesDeleted,
   })
 }
 

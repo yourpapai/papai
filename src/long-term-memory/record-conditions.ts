@@ -5,7 +5,7 @@
 
 import { and, eq, isNull, ne, or, sql, type SQL } from 'drizzle-orm'
 
-import { memoryRecords } from '../db/schema.js'
+import { memoryProfiles, memoryRecords } from '../db/schema.js'
 import type { MemoryScope } from './types.js'
 
 /** Matches a single memory record by id within a given scope. Shared by the record store and provisional store. */
@@ -15,6 +15,10 @@ export const recordScopeCondition = (scope: MemoryScope, recordId: string): SQL 
     eq(memoryRecords.scopeType, scope.scopeType),
     eq(memoryRecords.id, recordId),
   )
+
+/** Matches a memory profile row by full scope identity. Shared by the record store and the scope-clear module. */
+export const profileScopeCondition = (scope: MemoryScope): SQL | undefined =>
+  and(eq(memoryProfiles.scopeId, scope.scopeId), eq(memoryProfiles.scopeType, scope.scopeType))
 
 /**
  * Half-open validity plus expiry, enforced at query time on every read path.

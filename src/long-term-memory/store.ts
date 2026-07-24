@@ -7,7 +7,7 @@ import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
 import { memoryProfiles, memoryRecords, memoryTombstones } from '../db/schema.js'
-import { recordScopeCondition, recordValidityCondition } from './record-conditions.js'
+import { profileScopeCondition, recordScopeCondition, recordValidityCondition } from './record-conditions.js'
 import { rowToProfile, rowToRecord, sanitizeFtsQuery, serializeEmbedding } from './serialization.js'
 import { tombstoneValues } from './tombstone.js'
 import type { MemoryKind, MemoryProfile, MemoryRecord, MemoryRecordInput, MemoryScope, MemoryStatus } from './types.js'
@@ -42,6 +42,7 @@ export {
   promoteProvisionalToActive,
   type ListProvisionalFilter,
 } from './provisional-store.js'
+export { clearMemoryScope } from './scope-clear.js'
 
 const inputToRecordValues = (input: MemoryRecordInput): MemoryRecordValues => ({
   id: input.id,
@@ -68,9 +69,6 @@ const inputToRecordValues = (input: MemoryRecordInput): MemoryRecordValues => ({
   embeddingVersion: input.embeddingVersion ?? null,
   embeddedAt: input.embeddedAt ?? null,
 })
-
-const profileScopeCondition = (scope: MemoryScope): SQL | undefined =>
-  and(eq(memoryProfiles.scopeId, scope.scopeId), eq(memoryProfiles.scopeType, scope.scopeType))
 
 const loadProfile = (scope: MemoryScope): MemoryProfile => {
   const row = getDrizzleDb().select().from(memoryProfiles).where(profileScopeCondition(scope)).get()
@@ -241,19 +239,4 @@ export function updateMemoryRecord(
     .returning()
     .all()
   return rows[0] === undefined ? null : rowToRecord(rows[0])
-}
-
-export function clearMemoryScope(scope: MemoryScope): { profileDeleted: number; recordsDeleted: number } {
-  const db = getDrizzleDb()
-  const deletedRecords = db
-    .delete(memoryRecords)
-    .where(and(eq(memoryRecords.scopeId, scope.scopeId), eq(memoryRecords.scopeType, scope.scopeType)))
-    .returning({ id: memoryRecords.id })
-    .all()
-  const deletedProfiles = db
-    .delete(memoryProfiles)
-    .where(profileScopeCondition(scope))
-    .returning({ scopeId: memoryProfiles.scopeId })
-    .all()
-  return { profileDeleted: deletedProfiles.length, recordsDeleted: deletedRecords.length }
 }

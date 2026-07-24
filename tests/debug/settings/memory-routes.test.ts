@@ -63,6 +63,9 @@ const ClearResponseSchema = z.object({
   scopeType: z.enum(['personal', 'group']),
   profileDeleted: z.number(),
   recordsDeleted: z.number(),
+  workingMemoryKeysCleared: z.number(),
+  extractionStateDeleted: z.number(),
+  tombstonesDeleted: z.number(),
 })
 
 const PLATFORM_INSTANCE_ID = 'pi-1'
@@ -300,6 +303,9 @@ describe('settings memory routes', () => {
     const body = ClearResponseSchema.parse(await res.json())
     expect(body.profileDeleted).toBe(1)
     expect(body.recordsDeleted).toBe(1)
+    expect(body.workingMemoryKeysCleared).toBe(0)
+    expect(body.extractionStateDeleted).toBe(0)
+    expect(body.tombstonesDeleted).toBe(0)
     expect(getMemoryProfile(personalScope)).toBeNull()
     expect(getMemoryProfile({ scopeId: personalContextId, scopeType: 'group' })?.profile).toBe('Group profile')
     expect(
