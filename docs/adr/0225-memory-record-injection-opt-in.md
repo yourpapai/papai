@@ -5,11 +5,15 @@ Use of this software is governed by the Business Source License 1.1.
 See LICENSE in the project root for details.
 -->
 
-# 0225 — Long-term memory record injection is opt-in
+# ADR-0225: Long-term Memory Record Injection Is Opt-In
 
 ## Status
 
-Accepted (2026-07-24)
+Accepted
+
+## Date
+
+2026-07-24
 
 ## Context
 
