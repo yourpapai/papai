@@ -25,6 +25,7 @@ import {
   buildInvocationToolSet,
   resolveActiveToolDefinitions,
   resolveContextToolSurface,
+  resolveDisclosedToolDefinitions,
   safeBuildProvider,
   type BuildLiveToolSet,
   type ResolvedContextToolSurface,
@@ -37,6 +38,7 @@ export interface ContextCommandDeps {
   buildProvider: (contextId: string) => Promise<TaskProvider | null> | TaskProvider | null
   buildLiveToolSet: BuildLiveToolSet
   resolveActiveToolDefinitions: (resolvedToolSurface: ResolvedContextToolSurface) => Record<string, unknown>
+  resolveDisclosedToolDefinitions: (resolvedToolSurface: ResolvedContextToolSurface) => Record<string, unknown>
   resolveToolSurface: (
     storageContextId: string,
     actorUserId: string,
@@ -52,6 +54,7 @@ const defaultDeps: ContextCommandDeps = {
   buildProvider: safeBuildProvider,
   buildLiveToolSet: buildInvocationToolSet,
   resolveActiveToolDefinitions,
+  resolveDisclosedToolDefinitions,
   resolveToolSurface: resolveContextToolSurface,
 }
 function resolveModelName(modelName: string | null | undefined): string {
@@ -88,7 +91,6 @@ async function buildCollectorDeps(
   const resolvedModelName = resolveModelName(modelName)
   const encoding = resolveEncodingName(resolvedModelName)
   const resolvedEncoding = resolveEncoding(encoding)
-  const providerName = provider === null ? 'none' : provider.name
 
   await prepareDefaultCountTokens(resolvedEncoding)
 
@@ -109,7 +111,8 @@ async function buildCollectorDeps(
     getSummary: () => loadSummary(storageContextId),
     getFacts: () => loadFacts(storageContextId),
     getActiveToolDefinitions: (): Record<string, unknown> => deps.resolveActiveToolDefinitions(resolvedToolSurface),
-    getProviderName: () => providerName,
+    getDisclosedToolDefinitions: (): Record<string, unknown> =>
+      deps.resolveDisclosedToolDefinitions(resolvedToolSurface),
     countTokens: (text: string): number => defaultCountTokens(text, resolvedEncoding),
   }
 }
