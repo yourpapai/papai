@@ -41,6 +41,9 @@ import {
   codingMcpInternalSelectedHandlers,
   codingMcpNoCatalogHandlers,
   configHandlers,
+  memoryEmptyCaptureOnHandlers,
+  memoryHandlers,
+  memoryProvisionalHandlers,
   releaseSubscriptionHandlers,
   releaseSubscriptionMutatingHandlers,
   releaseSubscriptionMutationErrorHandlers,
@@ -50,9 +53,6 @@ import {
   identityGatedHandlers,
   identityHandlers,
   mcpHandlers,
-  memoryEmptyCaptureOnHandlers,
-  memoryHandlers,
-  memoryProvisionalHandlers,
   pluginsHandlers,
 } from './settings-handlers-personal.js'
 import {

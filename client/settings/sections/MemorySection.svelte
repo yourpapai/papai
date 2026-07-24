@@ -22,6 +22,7 @@
     clearMemory,
     fetchMemory,
     setMemoryCapture,
+    setMemoryRecordInjection,
     updateMemoryProfile,
   } from '../fetchers.js'
 
@@ -38,6 +39,7 @@
   let loading = $state(false)
   let savingProfile = $state(false)
   let togglingCapture = $state(false)
+  let togglingInjection = $state(false)
   let archivingId: string | null = $state(null)
   let pendingArchiveId: string | null = $state(null)
   let loadedContextId: string | null = $state(null)
@@ -112,6 +114,21 @@
       error = messageFrom(err)
     } finally {
       togglingCapture = false
+    }
+  }
+
+  async function toggleRecordInjection(): Promise<void> {
+    if (currentMemory === null) return
+    error = null
+    status = null
+    togglingInjection = true
+    try {
+      await setMemoryRecordInjection({ contextId, enabled: !currentMemory.injectRecords })
+      await load(contextId)
+    } catch (err) {
+      error = messageFrom(err)
+    } finally {
+      togglingInjection = false
     }
   }
 
@@ -197,6 +214,16 @@
           testid="memory-capture-toggle"
           onClick={() => void toggleCapture()}>
           {#snippet children()}{currentMemory?.enabled ? 'Disable capture' : 'Enable capture'}{/snippet}
+        </Btn>
+        <Btn
+          variant={currentMemory?.injectRecords ? 'outline' : 'primary'}
+          size="sm"
+          disabled={currentMemory === null || loading || togglingInjection}
+          testid="memory-record-injection-toggle"
+          onClick={() => void toggleRecordInjection()}>
+          {#snippet children()}{currentMemory?.injectRecords
+              ? 'Stop injecting records'
+              : 'Inject records each turn'}{/snippet}
         </Btn>
       </div>
     {/snippet}

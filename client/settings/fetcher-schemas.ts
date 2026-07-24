@@ -116,6 +116,7 @@ export const MemoryResponseSchema = z.object({
   contextId: z.string(),
   scopeType: z.enum(['personal', 'group']),
   enabled: z.boolean(),
+  injectRecords: z.boolean(),
   profile: z.string(),
   records: z.array(MemoryRecordSchema),
 })

@@ -40,6 +40,7 @@ const memoryPayload = {
   contextId: 'user:1',
   scopeType: 'personal',
   enabled: true,
+  injectRecords: false,
   profile: 'Pinned profile facts for this context.',
   records: [
     {
@@ -75,6 +76,7 @@ const emptyMemoryPayload = {
   contextId: 'user:1',
   scopeType: 'personal',
   enabled: false,
+  injectRecords: false,
   profile: '',
   records: [],
 }
@@ -284,6 +286,31 @@ describe('MemorySection', () => {
     const write = calls.find((call) => call.url === '/settings/api/memory/capture')
     expect(write?.method).toBe('PATCH')
     expect(write?.body).toEqual({ contextId: 'user:1', enabled: false })
+    expect(calls.filter((call) => call.url.startsWith('/settings/api/memory?')).length).toBe(2)
+    void unmount(component)
+  })
+
+  test('record injection toggle sends the next enabled state and reloads', async () => {
+    setCsrfToken('c')
+    const calls: CapturedCall[] = []
+    setMockFetch((url, init) => {
+      captureCall(calls, url, init)
+      return Promise.resolve(json(memoryPayload))
+    })
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MemorySection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    expect(target.querySelector('[data-testid="memory-record-injection-toggle"]')?.textContent).toContain(
+      'Inject records each turn',
+    )
+    target.querySelector<HTMLButtonElement>('[data-testid="memory-record-injection-toggle"]')!.click()
+    await drain()
+
+    const write = calls.find((call) => call.url === '/settings/api/memory/record-injection')
+    expect(write?.method).toBe('PATCH')
+    expect(write?.body).toEqual({ contextId: 'user:1', enabled: true })
     expect(calls.filter((call) => call.url.startsWith('/settings/api/memory?')).length).toBe(2)
     void unmount(component)
   })
