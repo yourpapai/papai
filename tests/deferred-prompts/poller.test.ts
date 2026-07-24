@@ -1326,7 +1326,7 @@ describe('delivery target routing', () => {
     setupUserConfig(otherUserId)
     updateSnapshots(groupContextId, [{ id: 'shared-task', title: 'Shared Task', status: 'todo', url: 'http://test/1' }])
 
-    createAlertPrompt(
+    const firstAlert = createAlertPrompt(
       USER_ID,
       'Notify first creator',
       { field: 'task.status', op: 'changed_to', value: 'done' },
@@ -1342,7 +1342,7 @@ describe('delivery target routing', () => {
         createdByUsername: null,
       },
     )
-    createAlertPrompt(
+    const secondAlert = createAlertPrompt(
       otherUserId,
       'Notify second creator',
       { field: 'task.status', op: 'changed_to', value: 'done' },
@@ -1377,10 +1377,12 @@ describe('delivery target routing', () => {
 
     await pollAlertsOnce(chat, resolveProvider)
 
-    expect(sentMessages).toHaveLength(2)
-    // One resolution for the shared task-fetch/snapshot cycle, plus one per alert's own
-    // full-toolset generation (every deferred prompt now runs the unified full path) — all for
-    // the same shared delivery context, never a distinct context per creator.
+    expect(sentMessages).toHaveLength(1)
+    expect(getAlertPrompt(firstAlert.id, USER_ID)!.lastTriggeredAt).not.toBeNull()
+    expect(getAlertPrompt(secondAlert.id, otherUserId)!.lastTriggeredAt).not.toBeNull()
+    // One resolution for the shared task-fetch/snapshot cycle, plus one shared
+    // batched full-toolset generation for all alerts in the same delivery context —
+    // never a distinct context per creator.
     expect(resolvedContextIds.every((id) => id === groupContextId)).toBe(true)
     expect(resolvedContextIds.length).toBeGreaterThanOrEqual(1)
     expect(getSnapshotsForUser(groupContextId).get('shared-task:status')).toBe('done')
@@ -1506,5 +1508,124 @@ describe('delivery target routing', () => {
     expect(callCount).toBe(1)
     expect(sentMessages).toHaveLength(1)
     expect(sentMessages[0]!.target.audience).toBe('shared')
+  })
+})
+
+describe('pollAlertsOnce — edge-triggered batched firing', () => {
+  let sentMessages: Array<{ platformInstanceId: string; target: DeferredDeliveryTarget; text: string }>
+  let chat: ChatProvider
+  let dispatchCalls: unknown[][]
+  const spies: Array<{ mockRestore: () => void }> = []
+
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    const result = createMockChatWithSentMessages()
+    chat = result.provider
+    sentMessages = result.sentMessages
+    setupUserConfig(USER_ID)
+    dispatchCalls = []
+    const mockDispatch: typeof proactiveLlmModule.dispatchExecution = (...args) => {
+      dispatchCalls.push([...args])
+      return Promise.resolve('Alert triggered.')
+    }
+    spies.push(spyOn(proactiveLlmModule, 'dispatchExecution').mockImplementation(mockDispatch))
+  })
+
+  afterEach(() => {
+    for (const spy of spies) spy.mockRestore()
+    spies.length = 0
+  })
+
+  const doneTaskProvider = (tasks: Array<{ id: string; title: string; status: string }>): TaskProvider =>
+    createMockProvider({
+      listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
+      listTasks: mock(() => Promise.resolve(tasks.map((t) => ({ ...t, url: `http://test/${t.id}` })))),
+    })
+
+  test('fires once for a persistent match and stays silent while the match persists', async () => {
+    createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' }, 0)
+    const provider = doneTaskProvider([{ id: 'task-1', title: 'Task A', status: 'done' }])
+
+    await pollAlertsOnce(chat, () => provider)
+    expect(sentMessages).toHaveLength(1)
+    expect(dispatchCalls).toHaveLength(1)
+
+    await pollAlertsOnce(chat, () => provider)
+    expect(sentMessages).toHaveLength(1)
+    expect(dispatchCalls).toHaveLength(1)
+  })
+
+  test('re-fires when a new task enters the match, summary lists only new tasks', async () => {
+    createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' }, 0)
+    const taskA = { id: 'task-a', title: 'Task A', status: 'done' }
+    const taskB = { id: 'task-b', title: 'Task B', status: 'done' }
+
+    await pollAlertsOnce(chat, () => doneTaskProvider([taskA]))
+    expect(dispatchCalls).toHaveLength(1)
+
+    await pollAlertsOnce(chat, () => doneTaskProvider([taskA, taskB]))
+    expect(dispatchCalls).toHaveLength(2)
+    const summary = String(dispatchCalls[1]![5])
+    expect(summary).toContain('Task B')
+    expect(summary).not.toContain('Task A')
+  })
+
+  test('re-fires when a task leaves and re-enters the match', async () => {
+    createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' }, 0)
+    const done = [{ id: 'task-1', title: 'Task A', status: 'done' }]
+    const todo = [{ id: 'task-1', title: 'Task A', status: 'todo' }]
+
+    await pollAlertsOnce(chat, () => doneTaskProvider(done))
+    await pollAlertsOnce(chat, () => doneTaskProvider(done))
+    expect(dispatchCalls).toHaveLength(1)
+
+    await pollAlertsOnce(chat, () => doneTaskProvider(todo))
+    await pollAlertsOnce(chat, () => doneTaskProvider(done))
+    expect(dispatchCalls).toHaveLength(2)
+    expect(sentMessages).toHaveLength(2)
+  })
+
+  test('batches multiple firing alerts in one context into a single LLM call and message', async () => {
+    const first = createAlertPrompt(USER_ID, 'Alert one', { field: 'task.status', op: 'eq', value: 'done' })
+    const second = createAlertPrompt(USER_ID, 'Alert two', { field: 'task.priority', op: 'eq', value: 'high' })
+    const provider = createMockProvider({
+      listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
+      listTasks: mock(() =>
+        Promise.resolve([{ id: 'task-1', title: 'Task A', status: 'done', priority: 'high', url: 'http://test/1' }]),
+      ),
+    })
+
+    await pollAlertsOnce(chat, () => provider)
+
+    expect(dispatchCalls).toHaveLength(1)
+    expect(sentMessages).toHaveLength(1)
+    const mergedPrompt = String(dispatchCalls[0]![2])
+    expect(mergedPrompt).toContain('"Alert one"')
+    expect(mergedPrompt).toContain('"Alert two"')
+    expect(getAlertPrompt(first.id, USER_ID)!.lastTriggeredAt).not.toBeNull()
+    expect(getAlertPrompt(second.id, USER_ID)!.lastTriggeredAt).not.toBeNull()
+  })
+
+  test('does not update match state when delivery fails; next poll retries the same diff', async () => {
+    const created = createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' }, 0)
+    const failOnceThenRecord = mock(
+      (platformInstanceId: string, _target: DeferredDeliveryTarget, text: string): Promise<void> => {
+        sentMessages.push({ platformInstanceId, target: _target, text })
+        return Promise.resolve()
+      },
+    )
+    failOnceThenRecord.mockImplementationOnce(() => Promise.reject(new Error('delivery failed')))
+    chat = { ...chat, sendMessage: failOnceThenRecord }
+    const provider = doneTaskProvider([{ id: 'task-1', title: 'Task A', status: 'done' }])
+
+    await pollAlertsOnce(chat, () => provider)
+    expect(sentMessages).toHaveLength(0)
+    expect(getAlertPrompt(created.id, USER_ID)!.lastTriggeredAt).toBeNull()
+    expect(getAlertPrompt(created.id, USER_ID)!.matchedTaskIds).toEqual([])
+
+    await pollAlertsOnce(chat, () => provider)
+    expect(sentMessages).toHaveLength(1)
+    expect(getAlertPrompt(created.id, USER_ID)!.matchedTaskIds).toEqual(['task-1'])
   })
 })

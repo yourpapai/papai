@@ -123,9 +123,6 @@ export default {
     'scripts/behavior-audit/tools.ts': ['exports'],
     // parseConsolidationResult is consumed by the schema unit test only.
     'scripts/behavior-audit/consolidate-agent.ts': ['exports'],
-    // updateAlertMatchedTaskIds and updateAlertMatchState are produced for the
-    // alert poller introduced in Task 6; temporary unused-export gap until then.
-    'src/deferred-prompts/alerts.ts': ['exports'],
     // hasTaskChanges, LIGHTWEIGHT_SNAPSHOT_FIELDS and RICH_SNAPSHOT_FIELDS are
     // produced for the alert poller wiring introduced in Task 7; temporary
     // unused-export gap until then.
