@@ -33,6 +33,7 @@ export type InsertCanonicalEventResult = Readonly<{
 }>
 
 type Db = ReturnType<typeof defaultGetDrizzleDb>
+type Tx = Parameters<Db['transaction']>[0] extends (tx: infer T) => unknown ? T : never
 
 const derivePhysicalEventId = (input: {
   storageGeneration: string
@@ -88,7 +89,7 @@ const buildEventRow = (input: InsertCanonicalEventInput): typeof analyticsEvents
   }
 }
 
-const findEventRow = (db: Db, input: InsertCanonicalEventInput): InsertCanonicalEventResult | undefined => {
+const findEventRow = (db: Db | Tx, input: InsertCanonicalEventInput): InsertCanonicalEventResult | undefined => {
   const row = db
     .select({ eventId: analyticsEvents.eventId, processEpochId: analyticsEvents.processEpochId })
     .from(analyticsEvents)
@@ -105,8 +106,19 @@ const findEventRow = (db: Db, input: InsertCanonicalEventInput): InsertCanonical
   return { status: 'already_present', eventId: row.eventId, processEpochId: row.processEpochId }
 }
 
-const insertEvent = (db: Db, input: InsertCanonicalEventInput): void => {
+const insertEvent = (db: Db | Tx, input: InsertCanonicalEventInput): void => {
   db.insert(analyticsEvents).values(buildEventRow(input)).run()
+}
+
+export const insertCanonicalEventRow = (db: Db | Tx, input: InsertCanonicalEventInput): InsertCanonicalEventResult => {
+  const existing = findEventRow(db, input)
+  if (existing !== undefined) return existing
+  insertEvent(db, input)
+  const result = findEventRow(db, input)
+  if (result === undefined) {
+    throw new Error('Failed to read event row after insert')
+  }
+  return { status: 'created', eventId: result.eventId, processEpochId: result.processEpochId }
 }
 
 const insertBackfillMap = (db: Db, input: { runId: string; eventId: string; sourceRefKey: string }): void => {

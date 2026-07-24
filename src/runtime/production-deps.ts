@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { startAnalytics, stopAnalytics } from '../analytics/start-analytics.js'
 import { announceNewVersion } from '../announcements.js'
 import { isS3Configured } from '../attachments/index.js'
 import { createStagedDownloader } from '../attachments/staged-download.js'
@@ -61,9 +62,15 @@ function startDatabase(): void {
     log.warn('admin LLM role bindings are not configured; the bot will reply "misconfigured" until a provider is set')
   }
   initUsageRecorder()
+  try {
+    startAnalytics()
+  } catch (error) {
+    log.error({ error: error instanceof Error ? error.message : String(error) }, 'Analytics runtime start failed')
+  }
 }
 
-function stopDatabase(): void {
+async function stopDatabase(): Promise<void> {
+  await stopAnalytics()
   closeDrizzleDb()
   closeMigrationDbInstance()
 }
