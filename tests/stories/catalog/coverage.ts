@@ -13,7 +13,7 @@ export type StoryTier = (typeof STORY_TIERS)[number]
  * never speculatively: an executable record may only claim a live tier, so a
  * planned tier can never be mistaken for coverage that exists.
  */
-export const LIVE_STORY_TIERS: readonly StoryTier[] = Object.freeze(['0', '1'])
+export const LIVE_STORY_TIERS: readonly StoryTier[] = Object.freeze(['0', '1', '2'])
 
 /**
  * Repository-relative suite root each tier's stories live under. A record's story
@@ -103,7 +103,7 @@ export type CatalogCoverage =
     }>
 
 export const CATALOG_SOURCE =
-  'scenario-catalog snapshot supplied 2026-07-13; extended 2026-07-23 with 12 SCN-parity-* provider-real (@1) ids (tier1-provider-real-parity); extended 2026-07-24 with 17 SCN-parity-* domain-retrofit (@1) ids (tier1b-e2e-parity-retrofit)' as const
+  'scenario-catalog snapshot supplied 2026-07-13; extended 2026-07-23 with 12 SCN-parity-* provider-real (@1) ids (tier1-provider-real-parity); extended 2026-07-24 with 17 SCN-parity-* domain-retrofit (@1) ids (tier1b-e2e-parity-retrofit); extended 2026-07-24 with 8 SCN-* process-real smoke (@2) ids (tier2-process-smoke)' as const
 
 export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-task-create-update',
@@ -269,6 +269,15 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-parity-project-label-errors',
   // @1 — relation-basic and directionality-exclusion parity (tier1b-e2e-parity-retrofit wave 5)
   'SCN-parity-relation-multiple',
+  // @2 — process-real smoke lane (tier2-process-smoke)
+  'SCN-boot-serve-empty-db',
+  'SCN-required-env-admin',
+  'SCN-debug-surface-gated-off',
+  'SCN-debug-surface-gated-on',
+  'SCN-protected-surfaces-bind',
+  'SCN-plugin-registry-served',
+  'SCN-chat-turn-tool-loop',
+  'SCN-graceful-shutdown',
 ] as const)
 
 const GAP_SCENARIO_IDS = new Set<CatalogScenarioId>([
@@ -1081,6 +1090,57 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     storyIds: [
       'tests/e2e/parity/provider-parity.test.ts#SCN-parity-relation-multiple: a task carries multiple distinct relations',
     ],
+  },
+  // @2 — process-real smoke lane (tier2-process-smoke); storyIds are byte-identical to SMOKE_STORY_IDS.
+  'SCN-boot-serve-empty-db': {
+    verifiedAt: '2026-07-24',
+    provingTier: '2',
+    storyIds: [
+      'tests/smoke/scenarios/container-p.smoke.ts#boots, migrates an empty DB, and serves GET /settings with 200',
+    ],
+  },
+  'SCN-required-env-admin': {
+    verifiedAt: '2026-07-24',
+    provingTier: '2',
+    storyIds: [
+      'tests/smoke/scenarios/container-e.smoke.ts#exits 1 and logs the missing-required-env message when ADMIN_USER_ID is blank',
+    ],
+  },
+  'SCN-debug-surface-gated-off': {
+    verifiedAt: '2026-07-24',
+    provingTier: '2',
+    storyIds: ['tests/smoke/scenarios/container-p.smoke.ts#returns 404 for GET /debug when DEBUG_SERVER is unset'],
+  },
+  'SCN-debug-surface-gated-on': {
+    verifiedAt: '2026-07-24',
+    provingTier: '2',
+    storyIds: ['tests/smoke/scenarios/container-d.smoke.ts#returns 401 for GET /debug when DEBUG_SERVER is true'],
+  },
+  'SCN-protected-surfaces-bind': {
+    verifiedAt: '2026-07-24',
+    provingTier: '2',
+    storyIds: [
+      'tests/smoke/scenarios/container-p.smoke.ts#serves 401 for unauthenticated mcp, admin, and recurring surfaces',
+    ],
+  },
+  'SCN-plugin-registry-served': {
+    verifiedAt: '2026-07-24',
+    provingTier: '2',
+    storyIds: [
+      'tests/smoke/scenarios/container-p.smoke.ts#serves the shipped plugin set to an authenticated settings session',
+    ],
+  },
+  'SCN-chat-turn-tool-loop': {
+    verifiedAt: '2026-07-24',
+    provingTier: '2',
+    storyIds: [
+      'tests/smoke/scenarios/container-p.smoke.ts#runs one full chat turn through the disclosure tool loop and posts a reply',
+    ],
+  },
+  'SCN-graceful-shutdown': {
+    verifiedAt: '2026-07-24',
+    provingTier: '2',
+    storyIds: ['tests/smoke/scenarios/container-p.smoke.ts#drains and exits 0 on SIGTERM'],
   },
 }
 
