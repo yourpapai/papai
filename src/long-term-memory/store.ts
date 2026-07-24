@@ -123,6 +123,29 @@ export function setMemoryCaptureEnabled(scope: MemoryScope, enabled: boolean, no
   return loadProfile(scope)
 }
 
+export function setMemoryRecordInjectionEnabled(scope: MemoryScope, enabled: boolean, now: string): MemoryProfile {
+  getDrizzleDb()
+    .insert(memoryProfiles)
+    .values({
+      scopeId: scope.scopeId,
+      scopeType: scope.scopeType,
+      profile: '',
+      injectRecords: enabled,
+      version: 1,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [memoryProfiles.scopeType, memoryProfiles.scopeId],
+      set: {
+        injectRecords: enabled,
+        version: sql`${memoryProfiles.version} + 1`,
+        updatedAt: now,
+      },
+    })
+    .run()
+  return loadProfile(scope)
+}
+
 export function saveMemoryRecord(input: MemoryRecordInput): MemoryRecord {
   const values = inputToRecordValues(input)
 

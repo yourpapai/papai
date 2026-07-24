@@ -25,6 +25,7 @@ import {
   saveMemoryProfile,
   saveMemoryRecord,
   searchMemoryRecords,
+  setMemoryRecordInjectionEnabled,
 } from '../../src/long-term-memory/store.js'
 import { insertTombstone } from '../../src/long-term-memory/tombstone.testing.js'
 import type { MemoryRecordInput } from '../../src/long-term-memory/types.js'
@@ -76,6 +77,18 @@ describe('long-term memory store', () => {
     saveMemoryProfile(scope, 'hello', '2026-07-24T00:00:00.000Z')
     const profile = getMemoryProfile(scope)
     expect(profile?.injectRecords).toBe(false)
+  })
+
+  test('setMemoryRecordInjectionEnabled toggles inject flag without disturbing capture', () => {
+    const scope = { scopeId: 'ctx-inject-set', scopeType: 'personal' as const }
+    const enabled = setMemoryRecordInjectionEnabled(scope, true, '2026-07-24T00:00:00.000Z')
+    expect(enabled.injectRecords).toBe(true)
+    // capture default preserved on fresh insert
+    expect(enabled.enabled).toBe(true)
+
+    const disabled = setMemoryRecordInjectionEnabled(scope, false, '2026-07-24T00:01:00.000Z')
+    expect(disabled.injectRecords).toBe(false)
+    expect(disabled.version).toBe(enabled.version + 1)
   })
 
   test('keeps memory profiles isolated by full scope identity', () => {
