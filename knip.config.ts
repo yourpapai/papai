@@ -46,6 +46,7 @@ export default {
     'src/coding-sessions/configure.ts!',
     'src/coding-sessions/session-record.ts!',
     'src/coding-sessions/store.ts!',
+    'src/deferred-prompts/change-gate.ts!',
     'playwright.config.ts!',
     'strybk.config.ts!',
     // First-party plugin entry points are loaded dynamically by the plugin
@@ -125,6 +126,10 @@ export default {
     // updateAlertMatchedTaskIds and updateAlertMatchState are produced for the
     // alert poller introduced in Task 6; temporary unused-export gap until then.
     'src/deferred-prompts/alerts.ts': ['exports'],
+    // hasTaskChanges, LIGHTWEIGHT_SNAPSHOT_FIELDS and RICH_SNAPSHOT_FIELDS are
+    // produced for the alert poller wiring introduced in Task 7; temporary
+    // unused-export gap until then.
+    'src/deferred-prompts/change-gate.ts': ['exports'],
     // listToolNames is consumed by the behavior-audit closure verifier via
     // dynamic import from scripts/behavior-audit/entry-point-maps.ts.
     'src/tools/index.ts': ['exports'],
