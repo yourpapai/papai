@@ -30,7 +30,7 @@ aggregate publication.
 | 3 | C3 canaries | green | text/username/prompt/args/result/error/URL/hostname/filename/project/status/tag/RRULE/token/raw-ID canary scans over normalized JSON in tests/analytics/normalizer.test.ts (c4079feb8); 2026-07-24 |
 | 4 | Identity matrix | partial | frozen vectors + namespace/session/Discord/guest matrix in tests/analytics/pseudonym.test.ts + scope.test.ts (748a57bbf); cached-descriptor clause lands in Task 8 |
 | 5 | Raw-ID absence | partial | raw-ID canary scans prove only purpose-keyed pseudonyms survive in canonical JSON (tests/analytics/normalizer.test.ts, c4079feb8); captured-egress part lands in Task 15 |
-| 6 | Semantic outcome | pending | |
+| 6 | Semantic outcome | green | exactly-one terminal classification in tests/llm-orchestrator-tool-events.test.ts ('analytics terminal ordering') + tests/llm-orchestrator-tool-terminal.test.ts; SDK-success structured failure never maps to semantic success in tests/analytics/llm-tool-integration.test.ts (6d429b5c4); 2026-07-25 |
 | 7 | Consent matrix | partial | 38,880-cell exact-decision Cartesian matrix in tests/analytics/governance/eligibility.test.ts (ab504fd5e); Task 5 wires decideEligibility into the live observer fail-closed incl. preference/ref reads (c4079feb8); store/send/delete result coverage completes with Tasks 15/16 |
 | 8 | Withdrawal race | partial | local collection-ref races proven in tests/analytics/collection-writer-race.test.ts: deny-before-write yields no canonical/association rows; write-before-deny is found via analytics_event_collection_refs and deleted; repeated across retained key versions (c4079feb8); external delivery-grant race lands with the outbox tasks |
 | 9 | Outbox/sink | pending | |
@@ -53,7 +53,7 @@ aggregate publication.
 | 4 — governance/eligibility | 73 pass / 0 fail (071 migration, stores, 38,880-cell matrix) | clean / clean (knip clean) | ab504fd5e | 2026-07-24 |
 | 5 — normalizer/runtime | 97 pass / 0 fail (normalizer, aggregate, runtime, process-epoch, collection-writer-race, subscriber); feat c4079feb8 + fix d22a81eca | clean / clean (knip clean) | d22a81eca | 2026-07-24 |
 | 6 — turn lifecycle instrumentation | 144 pass / 0 fail (bot, reply-tracking, steering, queue, guest-role, steering-step, production-deps-analytics, message-turn-integration) | clean / clean (knip clean) | a284dda66 | 2026-07-24 |
-| 7 — llm/tool/perf instrumentation | | | | |
+| 7 — llm/tool/perf instrumentation | 150 pass / 0 fail (orchestrator events/logging/tool-events, permission gate + prompt, live-status reporter, typing heartbeat, llm-tool integration, performance clocks, tool-slug generation, clarification) | clean / clean (knip clean) | 6d429b5c4 (+ knip admission 2a6d72ae5) | 2026-07-25 |
 | 8 — provider/feature boundaries | | | | |
 | 9 — delivery ledger | | | | |
 | 10 — intent + rephrase | | | | |
