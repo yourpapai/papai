@@ -52,7 +52,7 @@ aggregate publication.
 | 3 — identity keys | 49 pass / 0 fail (keyring, install-id, pseudonym, scope) | clean / clean (knip clean) | 748a57bbf | 2026-07-24 |
 | 4 — governance/eligibility | 73 pass / 0 fail (071 migration, stores, 38,880-cell matrix) | clean / clean (knip clean) | ab504fd5e | 2026-07-24 |
 | 5 — normalizer/runtime | 97 pass / 0 fail (normalizer, aggregate, runtime, process-epoch, collection-writer-race, subscriber); feat c4079feb8 + fix d22a81eca | clean / clean (knip clean) | d22a81eca | 2026-07-24 |
-| 6 — turn lifecycle instrumentation | | | | |
+| 6 — turn lifecycle instrumentation | 144 pass / 0 fail (bot, reply-tracking, steering, queue, guest-role, steering-step, production-deps-analytics, message-turn-integration) | clean / clean (knip clean) | a284dda66 | 2026-07-24 |
 | 7 — llm/tool/perf instrumentation | | | | |
 | 8 — provider/feature boundaries | | | | |
 | 9 — delivery ledger | | | | |
@@ -138,3 +138,8 @@ aggregate publication.
   recovery transaction (move post-commit or document).
 - Task 5 (parked Minors): `resolveActive` reads via outer db handle inside
   the fenced tx (harmless on better-sqlite3 single connection).
+- Task 6 (parked Minors): `turn_steered.steerLengthChars` records exact
+  length while the plan text says "length bucket" — schema name is
+  plan-mandated; final review confirms against 02. `buildAuthCheckedFact` and
+  command-path reply analytics mint fresh UUIDs per fact instead of
+  seed-anchored derivation (harmless; HMACed before storage).
