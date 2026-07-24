@@ -13,6 +13,8 @@ import {
   getAlertPrompt,
   getEligibleAlertPrompts,
   listAlertPrompts,
+  updateAlertMatchState,
+  updateAlertMatchedTaskIds,
   updateAlertPrompt,
   updateAlertTriggerTime,
 } from '../../src/deferred-prompts/alerts.js'
@@ -174,6 +176,31 @@ describe('alert prompt CRUD', () => {
     const found = getAlertPrompt(created.id, 'user1')
     expect(found).not.toBeNull()
     expect(found!.lastTriggeredAt).toBe(triggerTime)
+  })
+
+  test('updateAlertMatchedTaskIds updates match set without touching trigger time', () => {
+    const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+    const created = createAlertPrompt('user1', 'Alert', condition)
+
+    updateAlertMatchedTaskIds(created.id, 'user1', ['task-1', 'task-2'])
+
+    const found = getAlertPrompt(created.id, 'user1')
+    expect(found).not.toBeNull()
+    expect(found!.matchedTaskIds).toEqual(['task-1', 'task-2'])
+    expect(found!.lastTriggeredAt).toBeNull()
+  })
+
+  test('updateAlertMatchState updates trigger time and match set together', () => {
+    const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+    const created = createAlertPrompt('user1', 'Alert', condition)
+    const now = new Date().toISOString()
+
+    updateAlertMatchState(created.id, 'user1', now, ['task-1'])
+
+    const found = getAlertPrompt(created.id, 'user1')
+    expect(found).not.toBeNull()
+    expect(found!.lastTriggeredAt).toBe(now)
+    expect(found!.matchedTaskIds).toEqual(['task-1'])
   })
 
   test('getEligibleAlertPrompts returns alerts with no trigger history', () => {

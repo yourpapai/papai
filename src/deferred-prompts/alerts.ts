@@ -183,6 +183,31 @@ export const updateAlertTriggerTime = (id: string, userId: string, lastTriggered
   log.info({ id, userId }, 'Alert trigger time updated')
 }
 
+export const updateAlertMatchedTaskIds = (id: string, userId: string, matchedTaskIds: string[]): void => {
+  log.debug({ id, userId, count: matchedTaskIds.length }, 'updateAlertMatchedTaskIds called')
+  const db = getDrizzleDb()
+  db.update(alertPrompts)
+    .set({ matchedTaskIds: JSON.stringify(matchedTaskIds) })
+    .where(and(eq(alertPrompts.id, id), eq(alertPrompts.createdByUserId, userId)))
+    .run()
+  log.info({ id, userId }, 'Alert matched task ids updated')
+}
+
+export const updateAlertMatchState = (
+  id: string,
+  userId: string,
+  lastTriggeredAt: string,
+  matchedTaskIds: string[],
+): void => {
+  log.debug({ id, userId, lastTriggeredAt, count: matchedTaskIds.length }, 'updateAlertMatchState called')
+  const db = getDrizzleDb()
+  db.update(alertPrompts)
+    .set({ lastTriggeredAt, matchedTaskIds: JSON.stringify(matchedTaskIds) })
+    .where(and(eq(alertPrompts.id, id), eq(alertPrompts.createdByUserId, userId)))
+    .run()
+  log.info({ id, userId }, 'Alert match state updated')
+}
+
 export const getEligibleAlertPrompts = (): AlertPrompt[] => {
   log.debug('getEligibleAlertPrompts called')
   const db = getDrizzleDb()
