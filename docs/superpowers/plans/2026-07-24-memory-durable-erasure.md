@@ -871,9 +871,11 @@ Add a scope-key predicate helper and rewrite `clearMemoryScope`:
 ```typescript
 const escapeLike = (value: string): string => value.replace(/[\\%_]/gu, (ch) => `\\${ch}`)
 
-const workingMemoryKeyMatch = (column: SQLiteColumn, scope: MemoryScope): SQL =>
-  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- or() with 2 args never returns undefined
-  or(eq(column, scope.scopeId), like(column, `${escapeLike(scope.scopeId)}:thread:%`))!
+const workingMemoryKeyMatch = (column: SQLiteColumn, scope: MemoryScope): SQL => {
+  const condition = or(eq(column, scope.scopeId), like(column, `${escapeLike(scope.scopeId)}:thread:%`))
+  if (condition === undefined) throw new Error('workingMemoryKeyMatch: or() produced no condition')
+  return condition
+}
 
 export function clearMemoryScope(scope: MemoryScope): {
   profileDeleted: number
@@ -952,7 +954,7 @@ Add the `SQLiteColumn` type import at the top:
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core'
 ```
 
-> If the `no-non-null-assertion` lint fires and a disable is not permitted, replace the `!` line with an explicit guard: build the `or(...)` into a `const cond = or(...); if (cond === undefined) throw new Error('unreachable')` and return `cond`.
+> `workingMemoryKeyMatch` returns via an explicit `undefined` guard rather than a non-null assertion (`!`), because lint-disable comments are hook-blocked in this repo and a bare `!` trips `no-non-null-assertion`. Do not reintroduce either.
 
 - [ ] **Step 4: Run it to confirm it passes**
 
