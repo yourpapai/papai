@@ -8,8 +8,10 @@ See LICENSE in the project root for details.
 # Product and UX analytics research — executed report
 
 **Research date:** 2026-07-23  
-**Status:** research artifacts complete; formal governance/product sign-off and
-the OpenPanel visual criterion remain pending; implementation not started  
+**Status:** research artifacts complete; design sign-off recorded in
+[`08-governance-signoff.md`](./08-governance-signoff.md) (2026-07-24,
+combined-role with an independent-review condition for external egress); the
+OpenPanel visual criterion remains pending; implementation not started  
 **Source plan:** [`../analytics-metrics-research-plan.md`](../analytics-metrics-research-plan.md)  
 **Scope:** a content-free product/UX measurement system for papai, including
 the current-event audit, canonical metrics, privacy and consent design, intent
@@ -91,6 +93,7 @@ The decisions are:
 | 05 | [`05-provider-scorecard-and-poc.md`](./05-provider-scorecard-and-poc.md) | Current provider facts, weighted scorecard, architecture choice, rendered visual evidence, and limitations |
 | 06 | [`06-implementation-plan.md`](./06-implementation-plan.md) | Test-first staged build plan, rollout, backfill, kill switch, and file-level touchpoints |
 | 07 | [`07-validation-and-review-ritual.md`](./07-validation-and-review-ritual.md) | Reconciliation, golden journeys, dashboard correctness, and recurring product/UX review |
+| 08 | [`08-governance-signoff.md`](./08-governance-signoff.md) | Named product and privacy/security sign-off on 02/03, conditions, and reopening rules |
 | 10 | [`10-references.md`](./10-references.md) | Primary sources and evidence provenance |
 
 Executable PoC artifacts live in [`poc/`](./poc/). Generated databases,
@@ -172,10 +175,14 @@ ADR convention records architectural decisions after implementation validates
 their exact shape. Implementation should create proposed ADRs only where the
 build reveals a significant choice not already resolved by this report.
 
-The privacy design still requires named operator/product/privacy sign-off: no
+The privacy design sign-off is recorded in
+[`08-governance-signoff.md`](./08-governance-signoff.md): the project owner
+signed both the product and privacy/security attestations on 2026-07-24 under
+a combined-role note, with an independent privacy/security re-sign required
+before any Stage D/E external egress evaluation. Collection remains gated: no
 pseudonymous collection, classifier text processing, real-data validation, or
-sink enablement proceeds until its release-blocking contract is implemented
-and reviewed.
+sink enablement proceeds until the release-blocking contract is implemented
+and reviewed per 03 §14 and the stage evidence in 06.
 
 The implementation plan was independently reviewed after drafting. Its
 release-blocking findings—including snapshot byte leakage, consent rechecks,
