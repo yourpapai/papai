@@ -7,7 +7,9 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { runMemoryCapture } from '../../src/long-term-memory/capture.js'
 import type { MemoryPatch } from '../../src/long-term-memory/extractor.js'
+import { resolveMemoryScope } from '../../src/long-term-memory/scope.js'
 import { listProvisionalRecords } from '../../src/long-term-memory/store.js'
+import { insertTombstone } from '../../src/long-term-memory/tombstone.testing.js'
 import { setupTestDb } from '../utils/test-helpers.js'
 
 const patch: MemoryPatch = {
@@ -87,5 +89,39 @@ describe('runMemoryCapture', () => {
       },
     )
     expect(listProvisionalRecords({ scopeId: 'group-1', scopeType: 'group' })).toHaveLength(0)
+  })
+
+  test('does not re-capture a tombstoned fact', async () => {
+    const storageContextId = 'group-recap:thread:t1'
+    const scope = resolveMemoryScope({ storageContextId, contextType: 'group' })
+    insertTombstone(scope, 'The team ships on Fridays', '2026-07-24T00:00:00.000Z')
+
+    await runMemoryCapture(
+      { storageContextId, configContextId: 'group-recap', contextType: 'group', history: [] },
+      {
+        extractMemoryPatch: () =>
+          Promise.resolve({
+            profile: null,
+            records: [
+              {
+                kind: 'fact',
+                content: 'the team  SHIPS on fridays',
+                summary: null,
+                tags: [],
+                confidence: 1,
+                source: 'background',
+                evidence: {},
+              },
+            ],
+            updates: [],
+          }),
+        getEmbedding: () => Promise.resolve([1, 0, 0]),
+        now: () => '2026-07-24T01:00:00.000Z',
+        randomUUID: () => 'mem-recap',
+      },
+    )
+
+    const records = listProvisionalRecords({ scopeId: scope.scopeId, scopeType: scope.scopeType })
+    expect(records.find((r) => r.id === 'mem-recap')).toBeUndefined()
   })
 })

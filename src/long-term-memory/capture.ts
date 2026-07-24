@@ -18,6 +18,7 @@ import { markExtracted } from './extraction-state.js'
 import { extractMemoryPatch, type MemoryPatch } from './extractor.js'
 import { resolveMemoryScope } from './scope.js'
 import { getMemoryProfile } from './store.js'
+import { isContentTombstoned } from './tombstone.js'
 import type { MemoryRecordInput } from './types.js'
 
 const log = logger.child({ scope: 'memory:capture' })
@@ -122,7 +123,9 @@ export async function runMemoryCapture(
   }
 
   const now = deps.now()
-  const records = patch.records.map((candidate) =>
+  const candidates = patch.records.filter((candidate) => !isContentTombstoned(scope, candidate.content))
+  const suppressed = patch.records.length - candidates.length
+  const records = candidates.map((candidate) =>
     buildRecord({ candidate, scope, storageContextId: input.storageContextId, now, id: deps.randomUUID() }),
   )
   await Promise.all(
@@ -132,5 +135,5 @@ export async function runMemoryCapture(
   )
 
   markExtracted(input.storageContextId, input.history.length, now)
-  log.debug({ contextId: input.storageContextId, captured: patch.records.length }, 'Memory capture complete')
+  log.debug({ contextId: input.storageContextId, captured: records.length, suppressed }, 'Memory capture complete')
 }

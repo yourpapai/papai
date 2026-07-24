@@ -19,6 +19,7 @@ import {
   saveMemoryRecord,
   searchMemoryRecords,
 } from '../long-term-memory/store.js'
+import { deleteMatchingTombstone } from '../long-term-memory/tombstone.js'
 import { MemoryKindSchema, MemoryStatusSchema, type MemoryRecord, type MemoryScope } from '../long-term-memory/types.js'
 
 const log = logger.child({ scope: 'tool:memory' })
@@ -109,6 +110,7 @@ export function makeRememberMemoryTool(input: MemoryToolContext): Tool {
         lastSeenAt: now,
         expiresAt: expiresAt ?? null,
       })
+      deleteMatchingTombstone(scope, content)
       log.info(
         { scopeId: scope.scopeId, scopeType: scope.scopeType, memoryId: record.id, kind },
         'Memory saved via tool',

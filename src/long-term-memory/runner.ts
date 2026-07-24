@@ -21,6 +21,7 @@ import {
   saveMemoryRecord,
   updateMemoryRecord,
 } from './store.js'
+import { isContentTombstoned } from './tombstone.js'
 import type { MemoryRecord, MemoryScope } from './types.js'
 
 const log = logger.child({ scope: 'long-term-memory:runner' })
@@ -114,6 +115,7 @@ const logConfigFailure = (
 const insertRecords = (scope: MemoryScope, patch: MemoryPatch, deps: RunMemoryExtractionDeps): number => {
   const now = deps.now()
   return patch.records.reduce((count, record) => {
+    if (isContentTombstoned(scope, record.content)) return count
     saveMemoryRecord({
       id: deps.randomUUID(),
       ...scope,

@@ -16,6 +16,7 @@ import {
   saveMemoryRecord,
   setMemoryCaptureEnabled,
 } from '../../src/long-term-memory/store.js'
+import { insertTombstone } from '../../src/long-term-memory/tombstone.testing.js'
 import type { MemoryRecordInput } from '../../src/long-term-memory/types.js'
 import { setupTestDb } from '../utils/test-helpers.js'
 
@@ -195,6 +196,44 @@ describe('runMemoryExtractionInBackground', () => {
     expect(calls).toBe(1)
     releaseFirst({ profile: null, records: [], updates: [] })
     await first
+  })
+
+  test('background extraction skips tombstoned content', async () => {
+    insertTombstone(
+      { scopeId: 'ctx-tomb', scopeType: 'personal' },
+      'Budget approved for Q3',
+      '2026-07-24T00:00:00.000Z',
+    )
+
+    const tombstonedPatch: MemoryPatch = {
+      profile: null,
+      records: [
+        {
+          kind: 'fact',
+          content: 'budget  APPROVED for q3',
+          summary: null,
+          tags: [],
+          confidence: 0.9,
+          source: 'background',
+          evidence: {},
+        },
+      ],
+      updates: [],
+    }
+
+    await runMemoryExtractionInBackground({
+      storageContextId: 'ctx-tomb',
+      configContextId: 'cfg-1',
+      contextType: 'dm',
+      history,
+      deps: {
+        extractMemoryPatch: () => Promise.resolve(tombstonedPatch),
+        now: () => '2026-07-24T01:00:00.000Z',
+        randomUUID: () => 'mem-tomb',
+      },
+    })
+
+    expect(listMemoryRecords({ scopeId: 'ctx-tomb', scopeType: 'personal' })).toEqual([])
   })
 
   test('group thread context resolves to parent group scope', async () => {

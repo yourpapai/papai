@@ -36,14 +36,6 @@ const scopeHashCondition = (scope: MemoryScope, hash: string): SQL | undefined =
     eq(memoryTombstones.contentHash, hash),
   )
 
-export function insertTombstone(scope: MemoryScope, content: string, now: string): void {
-  getDrizzleDb()
-    .insert(memoryTombstones)
-    .values(tombstoneValues(scope, content, now))
-    .onConflictDoNothing()
-    .run()
-}
-
 export function isContentTombstoned(scope: MemoryScope, content: string): boolean {
   const row = getDrizzleDb()
     .select({ hash: memoryTombstones.contentHash })

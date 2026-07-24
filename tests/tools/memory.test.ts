@@ -8,6 +8,8 @@ import assert from 'node:assert/strict'
 
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { listMemoryRecords, saveMemoryRecord } from '../../src/long-term-memory/store.js'
+import { isContentTombstoned } from '../../src/long-term-memory/tombstone.js'
+import { insertTombstone } from '../../src/long-term-memory/tombstone.testing.js'
 import type { MemoryRecordInput } from '../../src/long-term-memory/types.js'
 import {
   makeForgetMemoryTool,
@@ -84,6 +86,16 @@ describe('memory tools', () => {
       source: 'explicit',
       status: 'active',
     })
+  })
+
+  test('explicit remember clears a matching tombstone', async () => {
+    const scope = { scopeId: 'user-1', scopeType: 'personal' as const }
+    insertTombstone(scope, 'Call me Alex', '2026-07-24T00:00:00.000Z')
+    const tool = makeRememberMemoryTool({ storageContextId: 'user-1', contextType: 'dm' })
+
+    await getToolExecutor(tool)({ content: 'Call me Alex', kind: 'preference' })
+
+    expect(isContentTombstoned(scope, 'Call me Alex')).toBe(false)
   })
 
   test('remember_memory rejects too many tags and oversized tag strings', () => {
