@@ -256,7 +256,7 @@
             disabled={archivingId !== null}
             testid={`memory-archive-${record.id}`}
             onClick={() => void archiveRecord(record.id)}>
-            {#snippet children()}Archive{/snippet}
+            {#snippet children()}Delete permanently{/snippet}
           </Btn>
         </li>
       {/snippet}
@@ -300,7 +300,8 @@
           <h3 class="settings-memory__pending-title">Pending (provisional)</h3>
           <p class="settings-memory__pending-hint">
             Captured from individual threads. Facts seen across several threads are promoted to
-            shared group memory automatically — no action needed. Archive to discard.
+            shared group memory automatically — no action needed. Delete permanently to discard;
+            this can't be undone and the fact won't be re-learned from later chats.
           </p>
           <ul class="settings-memory__records">
             {#each pendingRecords as record (record.id)}
