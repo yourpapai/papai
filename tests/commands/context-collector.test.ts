@@ -38,7 +38,7 @@ function makeDeps(overrides: Partial<ContextCollectorDeps> | null): ContextColle
       last_seen: string
     }[] => [],
     getActiveToolDefinitions: (): Record<string, unknown> => ({}),
-    getProviderName: (): string => 'kaneo',
+    getDisclosedToolDefinitions: (): Record<string, unknown> => ({}),
     countTokens: (text: string): number => Math.ceil(text.length / 4),
     ...resolveCollectorOverrides(overrides),
   }
@@ -133,24 +133,26 @@ describe('collectContext', () => {
     expect(convo.detail).toBe('3 messages')
   })
 
-  test('Tools detail shows count and provider name', () => {
+  test('Tools detail reports disclosed active count and full catalog available count', () => {
     const deps = makeDeps({
       getActiveToolDefinitions: () => ({ a: {}, b: {}, c: {} }),
-      getProviderName: () => 'kaneo',
+      getDisclosedToolDefinitions: () => ({ search_tools: {}, load_tool: {} }),
     })
     const snapshot = collectContext('user1', deps)
     const tools = requireSection(snapshot.sections, 'Tools')
-    expect(tools.detail).toBe('3 active, gated by kaneo')
+    expect(tools.detail).toBe('2 active · 3 available (progressive disclosure)')
   })
 
-  test('Tools detail stays provider-focused without routing info', () => {
+  test('Tools tokens count only the disclosed surface, not the full catalog', () => {
     const deps = makeDeps({
-      getActiveToolDefinitions: () => ({ save_memo: {}, search_memos: {} }),
-      getProviderName: () => 'kaneo',
+      countTokens: (text: string) => text.length,
+      getActiveToolDefinitions: () => ({ heavy: { description: 'X'.repeat(1000) } }),
+      getDisclosedToolDefinitions: () => ({ search_tools: { description: 'find tools' } }),
     })
     const snapshot = collectContext('user1', deps)
     const tools = requireSection(snapshot.sections, 'Tools')
-    expect(tools.detail).toBe('2 active, gated by kaneo')
+    expect(tools.tokens).toBeGreaterThan(0)
+    expect(tools.tokens).toBeLessThan(200)
   })
 
   test('returns maxTokens=null for unknown model', () => {
@@ -309,7 +311,7 @@ describe('encoding-sensitive collection', () => {
     })
 
     const deps = makeDeps({
-      getActiveToolDefinitions: () => ({ x: cyclicTool }),
+      getDisclosedToolDefinitions: () => ({ x: cyclicTool }),
       countTokens: (text: string) => text.length,
     })
     const snapshot = collectContext('user1', deps)
