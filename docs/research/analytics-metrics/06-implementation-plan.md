@@ -52,10 +52,11 @@ See LICENSE in the project root for details.
   stats, tool, model, and coding purposes remain domain-separated.
   `src/stats/hashing.ts` and `stats_anonymity_salt` are never reused.
 - Current migration registration ends at
-  `migration068IdentityScopedKeyCleanup` in `src/db/index.ts`. The steps below
-  reserve `069`–`072`. Before editing, verify that baseline; if the branch has
-  advanced, renumber the four new migrations as one consecutive block without
-  changing their order.
+  `migration069AlertMatchedTaskIds` in `src/db/index.ts` (master added
+  `069_alert_matched_task_ids` after this plan was written; verified on
+  rebase 2026-07-24). The steps below reserve `070`–`073`. Before editing,
+  verify that baseline; if the branch has advanced further, renumber the four
+  new migrations as one consecutive block without changing their order.
 - All new imports use `.js` extensions. Logging is pino metadata-first and
   never includes keys, raw identifiers, content, endpoints, tokens, request or
   response bodies, or raw errors.
@@ -103,10 +104,10 @@ See LICENSE in the project root for details.
 | `src/db/analytics-schema.ts`                          | Events/aggregates plus process epochs, bounded source counters, epoch associations, rejects, and backfill maps                 |
 | `src/db/analytics-governance-schema.ts`               | Operational policy/preferences, collection fences/event refs, delivery grants, rekey state, and snapshot publication           |
 | `src/db/analytics-delivery-schema.ts`                 | Versioned soft-disabled sinks, grant-referenced event delivery, aggregate release, and deletion receipts                       |
-| `src/db/migrations/069_analytics_foundation.ts`       | Canonical/aggregate/process-epoch/reconciliation/rejection/backfill tables and indexes                                         |
-| `src/db/migrations/070_analytics_governance.ts`       | Policy/preferences, collection fences/event refs, delivery grants, deletion, rekey, and snapshot-publication tables            |
-| `src/db/migrations/071_analytics_delivery.ts`         | Per-sink-version event/aggregate ledgers including `ambiguous` and restricted evidence deletion                                |
-| `src/db/migrations/072_analytics_materializations.ts` | Versioned session, goal-outcome, friction, and feature-opportunity materializations                                            |
+| `src/db/migrations/070_analytics_foundation.ts`       | Canonical/aggregate/process-epoch/reconciliation/rejection/backfill tables and indexes                                         |
+| `src/db/migrations/071_analytics_governance.ts`       | Policy/preferences, collection fences/event refs, delivery grants, deletion, rekey, and snapshot-publication tables            |
+| `src/db/migrations/072_analytics_delivery.ts`         | Per-sink-version event/aggregate ledgers including `ambiguous` and restricted evidence deletion                                |
+| `src/db/migrations/073_analytics_materializations.ts` | Versioned session, goal-outcome, friction, and feature-opportunity materializations                                            |
 
 ### Governance, jobs, and BI
 
@@ -326,7 +327,7 @@ operational enqueue boundary, and normalization discards it.
 **Files:**
 
 - Create: `src/db/analytics-schema.ts`
-- Create: `src/db/migrations/069_analytics_foundation.ts`
+- Create: `src/db/migrations/070_analytics_foundation.ts`
 - Create: `src/analytics/storage/event-store.ts`
 - Create: `src/analytics/storage/aggregate-store.ts`
 - Create: `src/analytics/storage/rejection-store.ts`
@@ -334,7 +335,7 @@ operational enqueue boundary, and normalization discards it.
 - Create: `src/analytics/storage/epoch-store.ts`
 - Modify: `src/db/schema.ts`
 - Modify: `src/db/index.ts`
-- Create: `tests/db/migrations/069_analytics_foundation.test.ts`
+- Create: `tests/db/migrations/070_analytics_foundation.test.ts`
 - Modify: `tests/db/migration-registration.test.ts`
 - Create: `tests/analytics/storage.test.ts`
 
@@ -437,11 +438,11 @@ validated against the registry's fixed layout and is not a generic metadata
 bag. No table has a generic metadata JSON column.
 
 - [ ] Write the migration test asserting all ten foundation tables and five
-      canonical indexes are absent before `migration069AnalyticsFoundation.up`.
+      canonical indexes are absent before `migration070AnalyticsFoundation.up`.
 - [ ] Run
-      `bun test tests/db/migrations/069_analytics_foundation.test.ts`; expect an
+      `bun test tests/db/migrations/070_analytics_foundation.test.ts`; expect an
       import failure.
-- [ ] Create migration 069 with `analytics_process_epochs` followed by
+- [ ] Create migration 070 with `analytics_process_epochs` followed by
       `analytics_events`; rerun and expect the assertions for the remaining
       tables/indexes to fail.
 - [ ] Add the five storage-generation-leading indexes, generation-scoped source
@@ -471,9 +472,9 @@ bag. No table has a generic metadata JSON column.
       with unique source mappings and FKs; neither stores raw row IDs.
 - [ ] Create matching Drizzle declarations and inferred row types in
       `src/db/analytics-schema.ts`; export them from `src/db/schema.ts`.
-- [ ] Register `migration069AnalyticsFoundation` after migration 068 in both
+- [ ] Register `migration070AnalyticsFoundation` after migration 069 in both
       the imports and `MIGRATIONS` array in `src/db/index.ts`.
-- [ ] Update `tests/db/migration-registration.test.ts` to assert 069 is last,
+- [ ] Update `tests/db/migration-registration.test.ts` to assert 070 is last,
       unique, and ordered; run that test green.
 - [ ] Write a storage test that inserts a strict canonical event twice and
       asserts one row plus an `already_present` result and the same durable
@@ -503,10 +504,10 @@ bag. No table has a generic metadata JSON column.
 - [ ] Write and implement rejection-counter tests proving the source type and
       bounded reason persist but a supplied canary payload does not.
 - [ ] Run
-      `bun test tests/db/migrations/069_analytics_foundation.test.ts tests/db/migration-registration.test.ts tests/analytics/storage.test.ts`.
+      `bun test tests/db/migrations/070_analytics_foundation.test.ts tests/db/migration-registration.test.ts tests/analytics/storage.test.ts`.
 - [ ] Run `bun run typecheck`; expect no Drizzle type error.
 - [ ] Commit with
-      `git add src/db/analytics-schema.ts src/db/migrations/069_analytics_foundation.ts src/db/schema.ts src/db/index.ts src/analytics/storage/event-store.ts src/analytics/storage/aggregate-store.ts src/analytics/storage/rejection-store.ts src/analytics/storage/backfill-provenance-store.ts src/analytics/storage/epoch-store.ts tests/db/migrations/069_analytics_foundation.test.ts tests/db/migration-registration.test.ts tests/analytics/storage.test.ts && git commit -m "feat(analytics): add canonical and aggregate storage"`.
+      `git add src/db/analytics-schema.ts src/db/migrations/070_analytics_foundation.ts src/db/schema.ts src/db/index.ts src/analytics/storage/event-store.ts src/analytics/storage/aggregate-store.ts src/analytics/storage/rejection-store.ts src/analytics/storage/backfill-provenance-store.ts src/analytics/storage/epoch-store.ts tests/db/migrations/070_analytics_foundation.test.ts tests/db/migration-registration.test.ts tests/analytics/storage.test.ts && git commit -m "feat(analytics): add canonical and aggregate storage"`.
 
 ## Task 3: Implement purpose-separated keys and identity/scope normalization
 
@@ -611,7 +612,7 @@ four-byte big-endian lengths, and there is no trailing NUL.
 **Files:**
 
 - Create: `src/db/analytics-governance-schema.ts`
-- Create: `src/db/migrations/070_analytics_governance.ts`
+- Create: `src/db/migrations/071_analytics_governance.ts`
 - Modify: `src/db/schema.ts`
 - Modify: `src/db/index.ts`
 - Create: `src/analytics/governance/policy-store.ts`
@@ -620,7 +621,7 @@ four-byte big-endian lengths, and there is no trailing NUL.
 - Create: `src/analytics/governance/grant-store.ts`
 - Create: `src/analytics/governance/generation-store.ts`
 - Create: `src/analytics/governance/eligibility.ts`
-- Create: `tests/db/migrations/070_analytics_governance.test.ts`
+- Create: `tests/db/migrations/071_analytics_governance.test.ts`
 - Modify: `tests/db/migration-registration.test.ts`
 - Create: `tests/analytics/governance-store.test.ts`
 - Create: `tests/analytics/collection-store.test.ts`
@@ -633,7 +634,7 @@ booleans, policy/notice/controller/purpose fields, lawful-basis mode,
 retention maxima, review date, acknowledgement time, and current configuration
 version. `analytics_preferences` and `analytics_policy_audit` match the
 privacy specification. Store a governance HMAC, never a native actor ID.
-Migration 070 also creates operational collection eligibility/event
+Migration 071 also creates operational collection eligibility/event
 associations, delivery grants, encrypted deletion target bundles, durable rekey
 run/mapping state, and published-snapshot pointers; none is exported to BI.
 
@@ -674,7 +675,7 @@ analytics_snapshot_publications(
 
 The rekey ciphertext contains the old→new pair; plaintext mappings never enter
 logs or BI. `phase/subphase` and counters are updated in the same transaction as
-each bounded copy step. Migration 070 inserts exactly one
+each bounded copy step. Migration 071 inserts exactly one
 `analytics_active_generation` row and prevents both a second row and deletion
 of the singleton. No reader may persist or infer another “current generation”
 pointer. `analytics_policy.subject_rights_lookup_horizon_days` is an auditable
@@ -694,7 +695,7 @@ lookup horizon.
       `analytics_deletion_target_bundles`, `analytics_active_generation`,
       `analytics_rekey_runs`, `analytics_rekey_mappings`, and
       `analytics_snapshot_publications`.
-- [ ] Implement migration 070 with closed-value `CHECK` constraints, timestamps
+- [ ] Implement migration 071 with closed-value `CHECK` constraints, timestamps
       as epoch milliseconds, and no foreign key to canonical analytics except
       the deliberate `analytics_event_collection_refs.event_id` operational
       deletion association.
@@ -723,7 +724,7 @@ lookup horizon.
       run's target generation; the ordinary staging API requires it to be null.
       Restart reuses that run's one staged row idempotently rather than
       accumulating candidates.
-- [ ] Register migration 070 after 069 and update the migration registration
+- [ ] Register migration 071 after 070 and update the migration registration
       assertion in `tests/db/migration-registration.test.ts`; run both migration
       tests green.
 - [ ] Write a policy-store test that an incomplete policy cannot enable
@@ -788,10 +789,10 @@ lookup horizon.
 - [ ] Add a test proving preference/audit rows are unreachable through exports
       from `src/db/analytics-schema.ts`.
 - [ ] Run
-      `bun test tests/db/migrations/070_analytics_governance.test.ts tests/db/migration-registration.test.ts tests/analytics/governance-store.test.ts tests/analytics/collection-store.test.ts tests/analytics/grant-store.test.ts tests/analytics/generation-store.test.ts tests/analytics/eligibility-matrix.test.ts`.
+      `bun test tests/db/migrations/071_analytics_governance.test.ts tests/db/migration-registration.test.ts tests/analytics/governance-store.test.ts tests/analytics/collection-store.test.ts tests/analytics/grant-store.test.ts tests/analytics/generation-store.test.ts tests/analytics/eligibility-matrix.test.ts`.
 - [ ] Run `bun run typecheck` and `bun run lint`.
 - [ ] Commit with
-      `git add src/db/analytics-governance-schema.ts src/db/migrations/070_analytics_governance.ts src/db/schema.ts src/db/index.ts src/analytics/governance/policy-store.ts src/analytics/governance/preference-store.ts src/analytics/governance/collection-store.ts src/analytics/governance/grant-store.ts src/analytics/governance/generation-store.ts src/analytics/governance/eligibility.ts tests/db/migrations/070_analytics_governance.test.ts tests/db/migration-registration.test.ts tests/analytics/governance-store.test.ts tests/analytics/collection-store.test.ts tests/analytics/grant-store.test.ts tests/analytics/generation-store.test.ts tests/analytics/eligibility-matrix.test.ts && git commit -m "feat(analytics): enforce governance eligibility"`.
+      `git add src/db/analytics-governance-schema.ts src/db/migrations/071_analytics_governance.ts src/db/schema.ts src/db/index.ts src/analytics/governance/policy-store.ts src/analytics/governance/preference-store.ts src/analytics/governance/collection-store.ts src/analytics/governance/grant-store.ts src/analytics/governance/generation-store.ts src/analytics/governance/eligibility.ts tests/db/migrations/071_analytics_governance.test.ts tests/db/migration-registration.test.ts tests/analytics/governance-store.test.ts tests/analytics/collection-store.test.ts tests/analytics/grant-store.test.ts tests/analytics/generation-store.test.ts tests/analytics/eligibility-matrix.test.ts && git commit -m "feat(analytics): enforce governance eligibility"`.
 
 ## Task 5: Build the fail-closed normalizer and non-blocking runtime
 
@@ -1635,14 +1636,14 @@ type ProviderRequestScope =
 **Files:**
 
 - Create: `src/db/analytics-delivery-schema.ts`
-- Create: `src/db/migrations/071_analytics_delivery.ts`
+- Create: `src/db/migrations/072_analytics_delivery.ts`
 - Modify: `src/db/schema.ts`
 - Modify: `src/db/index.ts`
 - Create: `src/analytics/delivery/sink.ts`
 - Create: `src/analytics/delivery/sink-service.ts`
 - Create: `src/analytics/delivery/store.ts`
 - Modify: `src/analytics/governance/grant-store.ts`
-- Create: `tests/db/migrations/071_analytics_delivery.test.ts`
+- Create: `tests/db/migrations/072_analytics_delivery.test.ts`
 - Modify: `tests/db/migration-registration.test.ts`
 - Create: `tests/analytics/delivery-store.test.ts`
 - Create: `tests/analytics/sink-gate.test.ts`
@@ -1716,7 +1717,7 @@ verification timestamps.
 
 - [ ] Write migration assertions for sink, event-delivery, aggregate-release,
       aggregate-delivery, and deletion-receipt tables; run the test red.
-- [ ] Implement migration 071 with delivery states
+- [ ] Implement migration 072 with delivery states
       `pending|leased|sending|delivered|ambiguous|dead|delete_pending|deleted|cancelled`,
       versioned sink state/mode/kind constraints, grant references, and
       `ON DELETE RESTRICT` sink-version evidence FKs.
@@ -1726,7 +1727,7 @@ verification timestamps.
       evidence still references it.
 - [ ] Add a unique partial index allowing at most one enabled external sink in
       v1.
-- [ ] Register migration 071 after 070 and update the migration order test.
+- [ ] Register migration 072 after 071 and update the migration order test.
 - [ ] Write store tests for one event enqueued independently to two disabled
       sink versions; assert unique `(event_id,sink_version_id)` rows and that a
       referenced version cannot be deleted.
@@ -1782,10 +1783,10 @@ verification timestamps.
       verifier/transport, soft-disable predecessors, and never log or return
       secret material.
 - [ ] Run
-      `bun test tests/db/migrations/071_analytics_delivery.test.ts tests/db/migration-registration.test.ts tests/analytics/delivery-store.test.ts tests/analytics/sink-gate.test.ts tests/analytics/sink-lifecycle.test.ts`.
+      `bun test tests/db/migrations/072_analytics_delivery.test.ts tests/db/migration-registration.test.ts tests/analytics/delivery-store.test.ts tests/analytics/sink-gate.test.ts tests/analytics/sink-lifecycle.test.ts`.
 - [ ] Run `bun run typecheck`, `bun run lint`, and `bun security`.
 - [ ] Commit with
-      `git add src/db/analytics-delivery-schema.ts src/db/migrations/071_analytics_delivery.ts src/db/schema.ts src/db/index.ts src/analytics/delivery/sink.ts src/analytics/delivery/sink-service.ts src/analytics/delivery/store.ts src/analytics/governance/grant-store.ts tests/db/migrations/071_analytics_delivery.test.ts tests/db/migration-registration.test.ts tests/analytics/delivery-store.test.ts tests/analytics/sink-gate.test.ts tests/analytics/sink-lifecycle.test.ts && git commit -m "feat(analytics): add independent delivery ledger"`.
+      `git add src/db/analytics-delivery-schema.ts src/db/migrations/072_analytics_delivery.ts src/db/schema.ts src/db/index.ts src/analytics/delivery/sink.ts src/analytics/delivery/sink-service.ts src/analytics/delivery/store.ts src/analytics/governance/grant-store.ts tests/db/migrations/072_analytics_delivery.test.ts tests/db/migration-registration.test.ts tests/analytics/delivery-store.test.ts tests/analytics/sink-gate.test.ts tests/analytics/sink-lifecycle.test.ts && git commit -m "feat(analytics): add independent delivery ledger"`.
 
 ## Task 10: Promote deterministic intent and add transient rephrase detection
 
@@ -1936,7 +1937,7 @@ verification timestamps.
 
 **Files:**
 
-- Create: `src/db/migrations/072_analytics_materializations.ts`
+- Create: `src/db/migrations/073_analytics_materializations.ts`
 - Modify: `src/db/analytics-schema.ts`
 - Modify: `src/db/index.ts`
 - Create: `src/analytics/derive/sessionizer.ts`
@@ -1944,7 +1945,7 @@ verification timestamps.
 - Create: `src/analytics/derive/features.ts`
 - Create: `src/analytics/derive/friction.ts`
 - Create: `src/analytics/jobs/derive.ts`
-- Create: `tests/db/migrations/072_analytics_materializations.test.ts`
+- Create: `tests/db/migrations/073_analytics_materializations.test.ts`
 - Modify: `tests/db/migration-registration.test.ts`
 - Create: `tests/analytics/sessionizer.test.ts`
 - Create: `tests/analytics/outcomes.test.ts`
@@ -1957,9 +1958,9 @@ and cascade on actor-event deletion.
 
 - [ ] Write migration assertions for session, session-event, goal-attempt,
       feature-opportunity/use, friction, and censor-interval tables; run red.
-- [ ] Implement migration 072 with unique source/version keys and indexes by
+- [ ] Implement migration 073 with unique source/version keys and indexes by
       actor/time, conversation/time, maturity time, and definition version.
-- [ ] Register migration 072 after 071 and update the registration test.
+- [ ] Register migration 073 after 072 and update the registration test.
 - [ ] Write session fixtures for gaps `29:59`, `30:00`, and `30:00.001`; run
       `bun test tests/analytics/sessionizer.test.ts` red.
 - [ ] Implement `conversation_key = thread_key ?? context_key`, partition by
@@ -2009,10 +2010,10 @@ and cascade on actor-event deletion.
       opportunities, and friction rows are removed/recomputed after source-event
       deletion.
 - [ ] Run
-      `bun test tests/db/migrations/072_analytics_materializations.test.ts tests/db/migration-registration.test.ts tests/analytics/sessionizer.test.ts tests/analytics/outcomes.test.ts tests/analytics/feature-materialization.test.ts tests/analytics/friction.test.ts`.
+      `bun test tests/db/migrations/073_analytics_materializations.test.ts tests/db/migration-registration.test.ts tests/analytics/sessionizer.test.ts tests/analytics/outcomes.test.ts tests/analytics/feature-materialization.test.ts tests/analytics/friction.test.ts`.
 - [ ] Run `bun run typecheck` and `bun run lint`.
 - [ ] Commit with
-      `git add src/db/migrations/072_analytics_materializations.ts src/db/analytics-schema.ts src/db/index.ts src/analytics/derive/sessionizer.ts src/analytics/derive/outcomes.ts src/analytics/derive/features.ts src/analytics/derive/friction.ts src/analytics/jobs/derive.ts tests/db/migrations/072_analytics_materializations.test.ts tests/db/migration-registration.test.ts tests/analytics/sessionizer.test.ts tests/analytics/outcomes.test.ts tests/analytics/feature-materialization.test.ts tests/analytics/friction.test.ts && git commit -m "feat(analytics): materialize sessions outcomes and friction"`.
+      `git add src/db/migrations/073_analytics_materializations.ts src/db/analytics-schema.ts src/db/index.ts src/analytics/derive/sessionizer.ts src/analytics/derive/outcomes.ts src/analytics/derive/features.ts src/analytics/derive/friction.ts src/analytics/jobs/derive.ts tests/db/migrations/073_analytics_materializations.test.ts tests/db/migration-registration.test.ts tests/analytics/sessionizer.test.ts tests/analytics/outcomes.test.ts tests/analytics/feature-materialization.test.ts tests/analytics/friction.test.ts && git commit -m "feat(analytics): materialize sessions outcomes and friction"`.
 
 ## Task 12: Backfill operational usage with provenance and exact reconciliation
 
@@ -3047,7 +3048,7 @@ reconciles to zero; fresh allowlisted snapshot bytes verify; deletion/rekey
 drills complete; privacy/security owner signs Stage A evidence.
 
 **Rollback:** Keep the kill switch set. Revert runtime/UI commits if necessary;
-leave additive 069–072 tables dormant. No down migration or table deletion.
+leave additive 070–073 tables dormant. No down migration or table deletion.
 
 ### Stage B — aggregate-local
 
@@ -3217,7 +3218,7 @@ The implementation is complete only when the pull request contains:
   explicit suppression of every restart-gap window; delivery and snapshot
   reconciliation each have zero delta;
 - synthetic C3/raw-ID captured-request scan with zero matches;
-- migration 069–072 registration and upgrade tests;
+- migration 070–073 registration and upgrade tests;
 - two consecutive clean aggregate UTC weeks with no restart-gap evidence before
   any local pseudonymous pilot;
 - governance, key backup/restore, authenticated export, withdrawal, deletion,

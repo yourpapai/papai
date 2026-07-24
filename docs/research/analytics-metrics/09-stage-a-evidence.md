@@ -48,7 +48,7 @@ aggregate publication.
 | Task | Named gate result | typecheck/lint | Commit | Date |
 |---|---|---|---|---|
 | 1 — contracts/registry | | | | |
-| 2 — storage + mig 069 | 37 pass / 0 fail (069 migration, registration, storage) | clean / clean (knip clean) | 25b76cf74 | 2026-07-24 |
+| 2 — storage + mig 070 | 37 pass / 0 fail (070 migration, registration, storage) | clean / clean (knip clean) | aba0fd10c | 2026-07-24 |
 | 3 — identity keys | | | | |
 | 4 — governance/eligibility | | | | |
 | 5 — normalizer/runtime | | | | |
@@ -70,7 +70,7 @@ aggregate publication.
 
 | After task | Rebase commit | Date | Conflicts / resolution |
 |---|---|---|---|
-| 2 | | | |
+| 2 | rebased onto origin/master 0e5cfcc9e | 2026-07-24 | master added `069_alert_matched_task_ids`; analytics migration block renumbered to 070–073 per 06's own renumber rule (plan-sync commit follows) |
 | 8 | | | |
 | 13 | | | |
 
