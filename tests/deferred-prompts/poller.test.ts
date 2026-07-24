@@ -1629,3 +1629,132 @@ describe('pollAlertsOnce — edge-triggered batched firing', () => {
     expect(getAlertPrompt(created.id, USER_ID)!.matchedTaskIds).toEqual(['task-1'])
   })
 })
+
+describe('pollAlertsOnce — change gate and fetch sharing', () => {
+  let sentMessages: Array<{ platformInstanceId: string; target: DeferredDeliveryTarget; text: string }>
+  let chat: ChatProvider
+  let dispatchCalls: unknown[][]
+  const spies: Array<{ mockRestore: () => void }> = []
+
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    const result = createMockChatWithSentMessages()
+    chat = result.provider
+    sentMessages = result.sentMessages
+    setupUserConfig(USER_ID)
+    dispatchCalls = []
+    const mockDispatch: typeof proactiveLlmModule.dispatchExecution = (...args) => {
+      dispatchCalls.push([...args])
+      return Promise.resolve('Alert triggered.')
+    }
+    spies.push(spyOn(proactiveLlmModule, 'dispatchExecution').mockImplementation(mockDispatch))
+  })
+
+  afterEach(() => {
+    for (const spy of spies) spy.mockRestore()
+    spies.length = 0
+  })
+
+  test('quiet cycle performs no LLM work', async () => {
+    createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' }, 0)
+    const provider = createMockProvider({
+      listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
+      listTasks: mock(() => Promise.resolve([{ id: 'task-1', title: 'Task A', status: 'done', url: 'http://test/1' }])),
+    })
+
+    await pollAlertsOnce(chat, () => provider)
+    expect(dispatchCalls).toHaveLength(1)
+
+    await pollAlertsOnce(chat, () => provider)
+    await pollAlertsOnce(chat, () => provider)
+    expect(dispatchCalls).toHaveLength(1)
+    expect(sentMessages).toHaveLength(1)
+  })
+
+  test('shares one task fetch across delivery contexts on the same task instance', async () => {
+    const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
+    const scopedMainContextId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: '-1001' })
+    const thread42 = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: '-1001',
+      threadId: '42',
+    })
+    const thread43 = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: '-1001',
+      threadId: '43',
+    })
+    setConfig(scopedUserId, 'timezone', 'UTC')
+    setContextSettings({
+      contextId: scopedMainContextId,
+      taskInstanceId: 'kaneo-default',
+      platformInstanceId: 'telegram-default',
+    })
+    const delivery = (threadId: string, storageContextId: string): Parameters<typeof createAlertPrompt>[5] => ({
+      contextId: '-1001',
+      storageContextId,
+      contextType: 'group',
+      threadId,
+      audience: 'personal',
+      mentionUserIds: [USER_ID],
+      createdByUserId: USER_ID,
+      createdByUsername: null,
+    })
+    createAlertPrompt(
+      USER_ID,
+      'Notify thread 42',
+      { field: 'task.status', op: 'eq', value: 'done' },
+      60,
+      undefined,
+      delivery('42', thread42),
+    )
+    createAlertPrompt(
+      USER_ID,
+      'Notify thread 43',
+      { field: 'task.status', op: 'eq', value: 'done' },
+      60,
+      undefined,
+      delivery('43', thread43),
+    )
+
+    const listProjectsMock = mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }]))
+    const provider = createMockProvider({
+      listProjects: listProjectsMock,
+      listTasks: mock(() =>
+        Promise.resolve([{ id: 'task-1', title: 'Done Task', status: 'done', url: 'http://test/1' }]),
+      ),
+    })
+
+    await pollAlertsOnce(chat, () => provider)
+
+    expect(listProjectsMock.mock.calls).toHaveLength(1)
+    expect(sentMessages).toHaveLength(2)
+  })
+
+  test('label-only change wakes a rich-field context, then goes quiet again', async () => {
+    createAlertPrompt(USER_ID, 'Notify on bug label', { field: 'task.labels', op: 'contains', value: 'bug' }, 0)
+    let labels: Array<{ id: string; name: string }> = []
+    const provider = createMockProvider({
+      listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
+      listTasks: mock(() => Promise.resolve([{ id: 'task-1', title: 'Task A', status: 'todo', url: 'http://test/1' }])),
+      getTask: mock(() =>
+        Promise.resolve({ id: 'task-1', title: 'Task A', status: 'todo', url: 'http://test/1', labels }),
+      ),
+    })
+
+    // Cycle 1: no labels yet — silent, but snapshots get written
+    await pollAlertsOnce(chat, () => provider)
+    expect(dispatchCalls).toHaveLength(0)
+
+    // Cycle 2: task gains the label (lightweight list is identical) — fires
+    labels = [{ id: 'l1', name: 'bug' }]
+    await pollAlertsOnce(chat, () => provider)
+    expect(dispatchCalls).toHaveLength(1)
+
+    // Cycle 3: nothing changed — quiet again
+    await pollAlertsOnce(chat, () => provider)
+    expect(dispatchCalls).toHaveLength(1)
+    expect(sentMessages).toHaveLength(1)
+  })
+})

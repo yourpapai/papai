@@ -18,6 +18,7 @@ import {
   updateAlertMatchedTaskIds,
   updateAlertMatchState,
 } from './alerts.js'
+import { hasTaskChanges, LIGHTWEIGHT_SNAPSHOT_FIELDS, RICH_SNAPSHOT_FIELDS } from './change-gate.js'
 import { alertsNeedFullTasks, enrichTasks, fetchAllTasks } from './fetch-tasks.js'
 import { mergeExecutionMetadata } from './poller-scheduled.js'
 import { resolveProactivePlatformInstanceId, sendProactiveMessage } from './proactive-delivery.js'
@@ -119,14 +120,22 @@ async function fireAlertBatch(
 }
 
 async function executeAlertsForContext(
+  storageContextId: string,
   alerts: AlertPrompt[],
-  tasks: Task[],
+  lightTasks: Task[],
+  enrichedTasks: Task[] | null,
   chat: ChatProvider,
   buildProviderFn: BuildProviderFn,
   evalNow: Date,
 ): Promise<void> {
-  const storageContextId = getStorageContextId(alerts[0]!.deliveryTarget)
+  const needsRich = alertsNeedFullTasks(alerts)
+  const tasks = needsRich && enrichedTasks !== null ? enrichedTasks : lightTasks
   const snapshots = getSnapshotsForUser(storageContextId)
+  const fields = needsRich ? RICH_SNAPSHOT_FIELDS : LIGHTWEIGHT_SNAPSHOT_FIELDS
+  if (!hasTaskChanges(tasks, snapshots, fields)) {
+    log.debug({ storageContextId }, 'No task changes detected; skipping alert evaluation')
+    return
+  }
 
   const firing: AlertEvaluation[] = []
   for (const alert of alerts) {
@@ -145,29 +154,51 @@ async function executeAlertsForContext(
   if (delivered) updateSnapshots(storageContextId, tasks)
 }
 
-async function executeAlertsForUser(
-  userId: string,
-  alerts: AlertPrompt[],
+async function executeAlertsForInstance(
+  configContextId: string,
+  contextGroups: Map<string, AlertPrompt[]>,
   chat: ChatProvider,
   buildProviderFn: BuildProviderFn,
   evalNow: Date,
 ): Promise<void> {
-  const storageContextId = getStorageContextId(alerts[0]!.deliveryTarget)
-  const configContextId = configContextIdForDelivery(alerts[0]!.deliveryTarget)
-  if (resolveProactivePlatformInstanceId(chat, alerts[0]!.deliveryTarget) === null) return
+  const routable = new Map<string, AlertPrompt[]>()
+  for (const [storageContextId, alerts] of contextGroups) {
+    if (resolveProactivePlatformInstanceId(chat, alerts[0]!.deliveryTarget) !== null) {
+      routable.set(storageContextId, alerts)
+    }
+  }
+  if (routable.size === 0) return
+
   const provider = await buildProviderFn(configContextId)
   if (provider === null) {
-    log.warn({ userId, storageContextId, configContextId }, 'Could not build task provider for alert polling')
+    log.warn({ configContextId }, 'Could not build task provider for alert polling')
     return
   }
 
-  let tasks = await fetchAllTasks(provider)
-  if (tasks.length > 0 && alertsNeedFullTasks(alerts)) {
-    log.debug({ userId, taskCount: tasks.length }, 'Enriching tasks with full details for alert conditions')
-    tasks = await enrichTasks(provider, tasks)
+  const lightTasks = await fetchAllTasks(provider)
+  const needsEnrichment = [...routable.values()].some((alerts) => alertsNeedFullTasks(alerts))
+  let enrichedTasks: Task[] | null = null
+  if (needsEnrichment && lightTasks.length > 0) {
+    try {
+      log.debug(
+        { configContextId, taskCount: lightTasks.length },
+        'Enriching tasks with full details for alert conditions',
+      )
+      enrichedTasks = await enrichTasks(provider, lightTasks)
+    } catch (error) {
+      log.warn(
+        { configContextId, error: error instanceof Error ? error.message : String(error) },
+        'Task enrichment failed; skipping alert cycle for instance',
+      )
+      return
+    }
   }
 
-  await executeAlertsForContext(alerts, tasks, chat, buildProviderFn, evalNow)
+  await Promise.all(
+    [...routable.entries()].map(([storageContextId, alerts]) =>
+      executeAlertsForContext(storageContextId, alerts, lightTasks, enrichedTasks, chat, buildProviderFn, evalNow),
+    ),
+  )
 }
 
 export async function pollAlertsOnce(chat: ChatProvider, buildProviderFn: BuildProviderFn): Promise<void> {
@@ -176,18 +207,24 @@ export async function pollAlertsOnce(chat: ChatProvider, buildProviderFn: BuildP
   emitGlobal('poller:alerts', { eligibleCount: eligibleAlerts.length })
   if (eligibleAlerts.length === 0) return
   const now = new Date()
-  const byDeliveryContext = new Map<string, AlertPrompt[]>()
+  const byInstance = new Map<string, Map<string, AlertPrompt[]>>()
   for (const alert of eligibleAlerts) {
-    const key = alertDeliveryContextKey(alert)
-    const existing = byDeliveryContext.get(key)
-    if (existing === undefined) byDeliveryContext.set(key, [alert])
-    else existing.push(alert)
+    const storageContextId = alertDeliveryContextKey(alert)
+    const configContextId = configContextIdForDelivery(alert.deliveryTarget)
+    let contextGroups = byInstance.get(configContextId)
+    if (contextGroups === undefined) {
+      contextGroups = new Map()
+      byInstance.set(configContextId, contextGroups)
+    }
+    const group = contextGroups.get(storageContextId)
+    if (group === undefined) contextGroups.set(storageContextId, [alert])
+    else group.push(alert)
   }
   const userLimit = pLimit(MAX_CONCURRENT_USERS)
   const results = await Promise.allSettled(
-    [...byDeliveryContext.values()].map((alerts) =>
+    [...byInstance.entries()].map(([configContextId, contextGroups]) =>
       userLimit(
-        (): Promise<void> => executeAlertsForUser(alerts[0]!.createdByUserId, alerts, chat, buildProviderFn, now),
+        (): Promise<void> => executeAlertsForInstance(configContextId, contextGroups, chat, buildProviderFn, now),
       ),
     ),
   )
