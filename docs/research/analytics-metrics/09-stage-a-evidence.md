@@ -48,7 +48,7 @@ aggregate publication.
 | Task | Named gate result | typecheck/lint | Commit | Date |
 |---|---|---|---|---|
 | 1 — contracts/registry | | | | |
-| 2 — storage + mig 069 | | | | |
+| 2 — storage + mig 069 | 37 pass / 0 fail (069 migration, registration, storage) | clean / clean (knip clean) | 25b76cf74 | 2026-07-24 |
 | 3 — identity keys | | | | |
 | 4 — governance/eligibility | | | | |
 | 5 — normalizer/runtime | | | | |
