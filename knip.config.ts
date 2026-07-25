@@ -33,6 +33,9 @@ export default {
     'client/debug/index.ts!',
     'client/settings/index.ts!',
     'client/transcript/index.ts!',
+    // Operator script for the memory-recall shadow-logging study; run manually
+    // (`bun run memory:shadow-funnel`), not part of the src/**/client/** graph.
+    'scripts/memory-shadow-funnel.ts!',
     'scripts/behavior-audit/index.ts!',
     'scripts/behavior-audit/profile-clustering.ts!',
     'scripts/behavior-audit/tune-embedding.ts!',

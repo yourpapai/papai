@@ -32,6 +32,7 @@
     "research:memory": "bun scripts/memory-research/index.ts",
     "research:memory:publish": "bun scripts/memory-research/publish-index.ts",
     "research:memory:storage": "bun scripts/memory-research/storage-index.ts",
+    "memory:shadow-funnel": "bun scripts/memory-shadow-funnel.ts",
     "knip": "knip-bun --strict --no-gitignore",
     "typecheck": "tsgo --noEmit",
     "lint": "oxlint --config .oxlintrc.json --ignore-path .oxlintignore .",
