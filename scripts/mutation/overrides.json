@@ -44,6 +44,8 @@
   "src/tools/remove-label.ts": ["tests/tools/label-tools.test.ts"],
   "src/tools/update-label.ts": ["tests/tools/label-tools.test.ts"],
   "plugins/task-provider-kaneo/label-resource.ts": ["tests/plugins/task-provider-kaneo/label-resource.test.ts"],
+  "plugins/task-provider-kaneo/update-label.ts": ["tests/plugins/task-provider-kaneo/update-label.test.ts"],
+  "plugins/task-provider-kaneo/update-project.ts": ["tests/plugins/task-provider-kaneo/update-project.test.ts"],
   "plugins/task-provider-youtrack/operations/agiles.ts": [
     "tests/plugins/task-provider-youtrack/operations/agiles.test.ts"
   ]
