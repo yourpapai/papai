@@ -182,14 +182,17 @@ export function makeListMemoryTool(input: MemoryToolContext): Tool {
 export function makeForgetMemoryTool(input: MemoryToolContext): Tool {
   return tool({
     description:
-      'Permanently delete one long-term memory in the current user or group scope, by memory ID or keyword query. This is irreversible: the memory is erased and will not be re-learned.',
+      'Permanently delete one long-term memory in the current user or group scope, by memory ID or keyword query. ' +
+      'This is irreversible: the memory is erased from long-term storage, its search indexes, the derived user ' +
+      'profile, and the running session summary, and it will not be re-learned. It does not edit the recent ' +
+      'conversation itself — tell the user to clear the conversation if they also want the original messages gone.',
     inputSchema: z.object({
       memory_id: z.string().max(128).optional().describe('Exact memory record ID to permanently delete'),
       query: z.string().min(1).max(500).optional().describe('Keyword query used when memory_id is not available'),
       confidence: confidenceField,
     }),
     execute: ({ memory_id: memoryId, query, confidence }) => {
-      const gate = checkConfidence(confidence, 'Permanently delete this memory')
+      const gate = checkConfidence(confidence, 'Permanently delete this memory (recent chat messages are not edited)')
       if (gate !== null) {
         log.warn({ memoryId, confidence }, 'forget_memory blocked — confirmation required')
         return gate

@@ -188,12 +188,26 @@ describe('memory tools', () => {
 
     expect(result).toEqual({
       status: 'confirmation_required',
-      message: 'Permanently delete this memory? This action is irreversible — please confirm.',
+      message:
+        'Permanently delete this memory (recent chat messages are not edited)? This action is irreversible — please confirm.',
     })
     expect(listMemoryRecords({ scopeId: 'user-1', scopeType: 'personal', status: 'active' }).map((r) => r.id)).toEqual([
       'mem-target',
     ])
     expect(isContentTombstoned({ scopeId: 'user-1', scopeType: 'personal' }, memoryRecordInput({}).content)).toBe(false)
+  })
+
+  const forgetDescription = (): string => {
+    const { description } = makeForgetMemoryTool({ storageContextId: 'user-1', contextType: 'dm' })
+    return typeof description === 'string' ? description : ''
+  }
+
+  test('forget_memory states what it erases and what it does not', () => {
+    const description = forgetDescription()
+
+    expect(description).toContain('profile')
+    expect(description).toContain('summary')
+    expect(description).toContain('does not edit')
   })
 
   test('forget_memory blocks a by-query purge below the confidence threshold', async () => {
