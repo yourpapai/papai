@@ -28,7 +28,7 @@ aggregate publication.
 | 1 | Registry closure | green | tests/analytics/registry-closure.test.ts; 080198417; 2026-07-24 |
 | 2 | Strict schema fuzz | partial | strict envelope + rejection coverage in contracts/event-props-behavior tests (080198417); formal privacy-contract suite lands in Task 18 |
 | 3 | C3 canaries | green | text/username/prompt/args/result/error/URL/hostname/filename/project/status/tag/RRULE/token/raw-ID canary scans over normalized JSON in tests/analytics/normalizer.test.ts (c4079feb8); 2026-07-24 |
-| 4 | Identity matrix | partial | frozen vectors + namespace/session/Discord/guest matrix in tests/analytics/pseudonym.test.ts + scope.test.ts (748a57bbf); cached-descriptor clause lands in Task 8 |
+| 4 | Identity matrix | green | frozen vectors + namespace/session/Discord/guest matrix (748a57bbf) + two-actor cached-descriptor/shared-pool attribution proof in tests/llm-orchestrator-tools.test.ts (1f68f3caf); 2026-07-25 |
 | 5 | Raw-ID absence | partial | raw-ID canary scans prove only purpose-keyed pseudonyms survive in canonical JSON (tests/analytics/normalizer.test.ts, c4079feb8); captured-egress part lands in Task 15 |
 | 6 | Semantic outcome | green | exactly-one terminal classification in tests/llm-orchestrator-tool-events.test.ts ('analytics terminal ordering') + tests/llm-orchestrator-tool-terminal.test.ts; SDK-success structured failure never maps to semantic success in tests/analytics/llm-tool-integration.test.ts (6d429b5c4); 2026-07-25 |
 | 7 | Consent matrix | partial | 38,880-cell exact-decision Cartesian matrix in tests/analytics/governance/eligibility.test.ts (ab504fd5e); Task 5 wires decideEligibility into the live observer fail-closed incl. preference/ref reads (c4079feb8); store/send/delete result coverage completes with Tasks 15/16 |
@@ -54,7 +54,7 @@ aggregate publication.
 | 5 — normalizer/runtime | 97 pass / 0 fail (normalizer, aggregate, runtime, process-epoch, collection-writer-race, subscriber); feat c4079feb8 + fix d22a81eca | clean / clean (knip clean) | d22a81eca | 2026-07-24 |
 | 6 — turn lifecycle instrumentation | 144 pass / 0 fail (bot, reply-tracking, steering, queue, guest-role, steering-step, production-deps-analytics, message-turn-integration) | clean / clean (knip clean) | a284dda66 | 2026-07-24 |
 | 7 — llm/tool/perf instrumentation | 150 pass / 0 fail (orchestrator events/logging/tool-events, permission gate + prompt, live-status reporter, typing heartbeat, llm-tool integration, performance clocks, tool-slug generation, clarification) | clean / clean (knip clean) | 6d429b5c4 (+ knip 2a6d72ae5, fix f74047b35) | 2026-07-25 |
-| 8 — provider/feature boundaries | | | | |
+| 8 — provider/feature boundaries | 8A: 270 pass / 0 fail (provider-observer, provider-request-scope, wrapper, builders, orchestrator, deferred-prompts, disclosure, compaction, tool-failure); fallback-open coverage 2249f2f60 | clean / clean (knip clean) | 8A: 1f68f3caf | 2026-07-25 |
 | 9 — delivery ledger | | | | |
 | 10 — intent + rephrase | | | | |
 | 11 — materializations | | | | |
@@ -154,3 +154,12 @@ aggregate publication.
   permission resolve-before-send-settles can leave requested/resolved
   unbalanced; `wrapModelForTtft` throws on non-V4 models (new hard failure on
   a tolerant path); live-status update ordinals follow settle order.
+- Task 7 → fixed during 8A: non-V4 TTFT regression in
+  tests/run-control/invoke-wiring.test.ts (6 failures) fixed by tolerant
+  pass-through (24344ae23).
+- Task 8 split note: Task 8 executed as 8A (scope plumbing, commit 1f68f3caf)
+  + 8B (boundary instrumentation, plan's exact commit message), deviation
+  from one-commit-per-task recorded; 8A minors parked: non-executable
+  descriptors dropped by finalize pass (matches legacy wrapToolSet),
+  per-instance alert-poll attribution (first routable owner), dead
+  `frame.lease === null` check.
