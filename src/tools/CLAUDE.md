@@ -45,6 +45,12 @@ export function makeExampleTool(provider: Readonly<TaskProvider>): Tool {
   settings-UI presets (`applyPreset`/`detectActivePreset`, keyed by `ToolRisk` from
   `tool-metadata.ts`); pruning of redundant overrides is computed against the same
   override→domain→risk→allow baseline so it stays symmetric with resolution.
+  An `ask` denial returns the structured `{ status: 'permission_denied', message }` shape
+  (`isPermissionDeniedResult` in `permission-gate.ts`), which the analytics terminal
+  classifies as its own `permission_denied` outcome rather than a failure. The analytics
+  layer maps `tool-metadata.ts` domains/risks onto its bounded fact enums in
+  `src/analytics/tool-classification.ts` (`open-world` → `open_world`, richer domains
+  collapse onto `task|memo|schedule|attachment|web|identity|coding|config|meta|other`).
 - **Result compaction is not part of `makeTools()`.** It is a per-turn wrap applied
   unconditionally in `prepareLlmInvocation` (`src/llm-orchestrator-tools.ts`) after
   `applyToolPreferences`. `applyResultCompaction` (`src/tools/compaction/wrap-compaction.ts`)

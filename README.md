@@ -194,6 +194,7 @@ flowchart TD
 | `src/web/`                                         | Safe fetch, extraction, distillation, caching, and rate limiting for `web_fetch`                      |
 | `src/plugins/`                                     | Trusted local plugin system: discovery, manifest validation, approval, lifecycle, KV                  |
 | `src/mcp/`                                         | External MCP server adapter: connection pooling, tool namespacing, user + plugin endpoints            |
+| `src/analytics/`                                   | Privacy-gated analytics: fact contracts, normalizer/runtime, turn + LLM/tool/feedback instrumentation |
 | `src/debug/`, `client/debug/`, and `client/admin/` | Optional local debug server plus split `/debug` and `/admin` UIs                                      |
 
 ---
