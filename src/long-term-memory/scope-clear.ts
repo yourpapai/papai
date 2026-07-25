@@ -32,7 +32,7 @@ const escapeLike = (value: string): string =>
     .replaceAll('_', `${LIKE_ESCAPE}_`)
 
 /** Matches a working-memory key belonging to `scope`: the scope id itself, or one of its `:thread:*` sub-keys. */
-const workingMemoryKeyMatch = (column: SQLiteColumn, scope: MemoryScope): SQL => {
+export const workingMemoryKeyMatch = (column: SQLiteColumn, scope: MemoryScope): SQL => {
   const pattern = `${escapeLike(scope.scopeId)}:thread:%`
   const condition = or(eq(column, scope.scopeId), sql`${column} LIKE ${pattern} ESCAPE ${LIKE_ESCAPE}`)
   if (condition === undefined) throw new Error('workingMemoryKeyMatch: or() produced no condition')

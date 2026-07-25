@@ -8,11 +8,10 @@ import { randomUUID } from 'node:crypto'
 import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
-import { memoryProfiles, memoryRecallShadowLog, memoryRecords, memoryTombstones } from '../db/schema.js'
+import { memoryProfiles, memoryRecallShadowLog, memoryRecords } from '../db/schema.js'
 import { profileScopeCondition, recordScopeCondition, recordValidityCondition } from './record-conditions.js'
 import { rowToProfile, rowToRecord, sanitizeFtsQuery, serializeEmbedding } from './serialization.js'
 import type { ShadowLogRow } from './shadow-log-row.js'
-import { tombstoneValues } from './tombstone.js'
 import type { MemoryKind, MemoryProfile, MemoryRecord, MemoryRecordInput, MemoryScope, MemoryStatus } from './types.js'
 
 export type ListMemoryRecordsFilter = Readonly<{
@@ -46,6 +45,7 @@ export {
   type ListProvisionalFilter,
 } from './provisional-store.js'
 export { clearMemoryScope } from './scope-clear.js'
+export { purgeMemoryRecord } from './purge.js'
 
 const inputToRecordValues = (input: MemoryRecordInput): MemoryRecordValues => ({
   id: input.id,
@@ -226,24 +226,6 @@ export function archiveMemoryRecord(scope: MemoryScope, recordId: string, now: s
     .returning({ id: memoryRecords.id })
     .all()
   return rows.length > 0
-}
-
-export function purgeMemoryRecord(scope: MemoryScope, recordId: string, now: string): boolean {
-  const db = getDrizzleDb()
-  return db.transaction((tx) => {
-    const deleted = tx
-      .delete(memoryRecords)
-      .where(recordScopeCondition(scope, recordId))
-      .returning({ content: memoryRecords.content })
-      .all()
-    const row = deleted[0]
-    if (row === undefined) return false
-    tx.insert(memoryTombstones)
-      .values(tombstoneValues(scope, row.content, now))
-      .onConflictDoNothing()
-      .run()
-    return true
-  })
 }
 
 export function updateMemoryRecord(
