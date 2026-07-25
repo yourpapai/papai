@@ -51,11 +51,15 @@ export type ShadowFunnelEntry = Readonly<{
    */
   overPullTurns: number
   /**
-   * `count(distinct scope_hash)` -- this is the **M** in the frozen decision gate's
-   * "N = 1000 sampled memory-bearing turns across M >= 50 distinct scopes, per reader
-   * model" precondition (see the shadow-logging design doc). It exists so an operator can
-   * check that precondition before trusting this reader model's `underTriggerRate`; it is
-   * part of the frozen gate itself, not a supplementary or repo-invented signal.
+   * Distinct `scope_hash` values **among memory-bearing turns only** -- this is the **M**
+   * in the frozen decision gate's "N = 1000 sampled memory-bearing turns across M >= 50
+   * distinct scopes, per reader model" precondition (see the shadow-logging design doc).
+   * The gate reads "across", so a scope that only ever produced zero-active-record turns
+   * contributes nothing to N and must not inflate M -- counting it would weaken the very
+   * "no single chatty scope decides the outcome" safeguard M exists to provide. It exists
+   * so an operator can check that precondition before trusting this reader model's
+   * `underTriggerRate`; it is part of the frozen gate itself, not a supplementary or
+   * repo-invented signal.
    */
   distinctScopes: number
 }>
@@ -111,7 +115,9 @@ export function computeShadowFunnel(opts: ComputeShadowFunnelOptions = {}): Read
       overPullTurns: sql<number>`sum(
         case when ${table.modelPulled} = 1 and ${table.shadowPullOverlap} = 0 then 1 else 0 end
       )`.as('over_pull_turns'),
-      distinctScopes: sql<number>`count(distinct ${table.scopeHash})`.as('distinct_scopes'),
+      distinctScopes: sql<number>`count(distinct
+        case when ${table.activeRecordCount} >= 1 then ${table.scopeHash} end
+      )`.as('distinct_scopes'),
     })
     .from(table)
 

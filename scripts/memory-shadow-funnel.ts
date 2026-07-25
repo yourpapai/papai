@@ -67,7 +67,8 @@ function printFunnel(): void {
   console.log(
     'Note: distinct scopes (M) IS part of the frozen go/no-go gate -- the gate requires N = 1000 sampled' +
       ' memory-bearing turns across M >= 50 distinct scopes, per reader model, before trusting the' +
-      ' under-trigger rate above. Compare this count against 50 before acting on that rate.',
+      ' under-trigger rate above. Compare this count against 50 before acting on that rate. M counts' +
+      ' only scopes that produced at least one memory-bearing turn.',
   )
 }
 

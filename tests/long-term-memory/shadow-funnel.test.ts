@@ -167,4 +167,17 @@ describe('computeShadowFunnel', () => {
   test('distinctScopes is 0 when there are no rows', () => {
     expect(computeShadowFunnel()).toEqual([])
   })
+
+  // The gate reads "N sampled memory-bearing turns ACROSS M >= 50 distinct scopes", so a scope
+  // that only ever produced zero-active-record turns contributes nothing to N and must not
+  // inflate M -- otherwise the "no single chatty scope decides the outcome" safeguard weakens.
+  test('distinctScopes counts only scopes with a memory-bearing turn', () => {
+    insertShadowLogRow(row({ readerModelId: 'model-a', scopeHash: 'scope-1', turnRef: 'turn-1', activeRecordCount: 3 }))
+    insertShadowLogRow(row({ readerModelId: 'model-a', scopeHash: 'scope-2', turnRef: 'turn-2', activeRecordCount: 0 }))
+
+    const [entry] = computeShadowFunnel()
+
+    expect(entry?.memoryBearingTurns).toBe(1)
+    expect(entry?.distinctScopes).toBe(1)
+  })
 })

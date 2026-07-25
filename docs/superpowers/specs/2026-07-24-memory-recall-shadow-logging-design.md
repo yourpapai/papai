@@ -220,9 +220,11 @@ are fixed now and must not move once collection starts (no post-hoc goalpost-mov
 
 - **Collection target: N = 1000, M ≥ 50.** Collect until **1000** sampled memory-bearing turns
   across **at least 50 distinct scopes** (so no single chatty user/group decides the outcome), **per
-  reader model**. `computeShadowFunnel` reports this M as `distinctScopes` per reader model (`count(distinct
-  scope_hash)`, same query as the other aggregates), so the precondition is checkable directly from
-  `bun run memory:shadow-funnel` rather than left implicit.
+  reader model**. `computeShadowFunnel` reports this M as `distinctScopes` per reader model (distinct
+  `scope_hash` **among memory-bearing turns only**, same query as the other aggregates), so the
+  precondition is checkable directly from `bun run memory:shadow-funnel` rather than left implicit.
+  Scopes that produced only zero-active-record turns contribute nothing to N and so do not count
+  toward M — otherwise M would inflate without the added scope diversity it is meant to guarantee.
 - **Bucket-3 stop threshold: < 5%.** If bucket 3 (`shadow_hit && !model_pulled`, the under-trigger
   rate) is **below 5%** of memory-bearing turns: the model's own pulling covers the ground. Shelve
   `deriveInjectionQuery`, **do not build P2 or Tier 3.** Tier 2 stands.
