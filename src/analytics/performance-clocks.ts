@@ -60,11 +60,14 @@ const isV4Model = (model: LanguageModel): model is LanguageModelV4 =>
 /**
  * Wrap a language model so the first streamed `text-delta` trips the TTFT clock.
  * Non-streaming (`doGenerate`) calls never record a delta — TTFT stays null.
- * Runtime models are always provider objects (never string ids), so the
- * LanguageModel union narrows to the V4 surface the orchestrator drives.
+ * A non-V4 model (older spec or a string id) is passed through unwrapped: TTFT
+ * is not applicable there, matching the clock's null-for-not-applicable
+ * semantics, so instrumentation never breaks the product path.
  */
-export const wrapModelForTtft = (model: LanguageModel, clock: TtftClock): LanguageModelV4 => {
-  if (!isV4Model(model)) throw new Error('wrapModelForTtft requires a LanguageModelV4 instance')
+export function wrapModelForTtft(model: LanguageModelV4, clock: TtftClock): LanguageModelV4
+export function wrapModelForTtft(model: LanguageModel, clock: TtftClock): LanguageModel
+export function wrapModelForTtft(model: LanguageModel, clock: TtftClock): LanguageModel {
+  if (!isV4Model(model)) return model
   const middleware: LanguageModelMiddleware = {
     wrapStream: async ({ doStream }) => {
       const result = await doStream()

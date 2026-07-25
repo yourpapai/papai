@@ -6,6 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { LanguageModelV4, LanguageModelV4StreamPart } from '@ai-sdk/provider'
+import { MockLanguageModelV3 } from 'ai/test'
 
 import {
   createTtftClock,
@@ -102,6 +103,22 @@ describe('TTFT clock', () => {
     const model = wrapModelForTtft(makeModel([]), ttft)
     await model.doGenerate(callOptions)
     expect(ttft.read()).toBeNull()
+  })
+
+  test('passes a non-V4 model through unwrapped with null TTFT', () => {
+    const ttft = createTtftClock()
+    ttft.start()
+    const v3Model = new MockLanguageModelV3()
+    const model = wrapModelForTtft(v3Model, ttft)
+    expect(model).toBe(v3Model)
+    expect(ttft.read()).toBeNull()
+  })
+
+  test('the pass-through does not double-wrap on repeated calls', () => {
+    const ttft = createTtftClock()
+    const v3Model = new MockLanguageModelV3()
+    const once = wrapModelForTtft(v3Model, ttft)
+    expect(wrapModelForTtft(once, ttft)).toBe(v3Model)
   })
 
   test('rejects a negative elapsed clock', () => {
