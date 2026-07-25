@@ -7,11 +7,11 @@ import { generateText, isStepCount, type ModelMessage } from 'ai'
 
 import { getAiOutputSettings } from './ai-output-settings.js'
 import { createAiProgressReporter, type AiProgressReporter } from './ai-progress-reporter.js'
+import { resolveNormalTurnProviderScope } from './analytics/provider-scope-factory.js'
 import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
 import type { ReplyFn } from './chat/types.js'
 import { appendHistory } from './history.js'
-import { getIdentityMapping } from './identity/mapping.js'
-import { attemptAutoLink } from './identity/resolver.js'
+import { maybeAutoLinkIdentity } from './identity/resolver.js'
 import { recordAssistantTurn } from './llm-history.js'
 import { getOpenAICompatibleProvider } from './llm-model-builder.js'
 import { checkRequiredProviderConfig, resolveConfigId } from './llm-orchestrator-config.js'
@@ -58,23 +58,6 @@ const maybeEnsureGroupMembership = (configId: string, chatUserId: string, userna
   })
 }
 
-const maybeAutoLinkIdentity = async (
-  chatUserId: string,
-  username: string | null,
-  provider: TaskProvider,
-): Promise<void> => {
-  if (username === null || provider.identityResolver === undefined) return
-  const existingMapping = getIdentityMapping(chatUserId, provider.name)
-  if (existingMapping !== null) return
-  log.debug({ chatUserId, username }, 'Attempting auto-link for first group interaction')
-  const autoLinkResult = await attemptAutoLink(chatUserId, username, provider)
-  if (autoLinkResult.type === 'found') {
-    log.info({ chatUserId, login: autoLinkResult.identity.login }, 'Auto-linked user on first interaction')
-  } else {
-    log.debug({ chatUserId, username, result: autoLinkResult.type }, 'Auto-link did not find match')
-  }
-}
-
 const ensureRequiredConfig = async (reply: ReplyFn, contextId: string, configId: string): Promise<void> => {
   const missing = checkRequiredProviderConfig(configId)
   if (missing.length === 0) return
@@ -102,8 +85,8 @@ type CallLlmResult = {
   finishReason?: string
 }
 
-const callLlm = async (args: CallLlmArgs): Promise<CallLlmResult> => {
-  const { reply, contextId, chatUserId, username, contextType, actorRole, deps, configId, resolvedLlm, turnId } = args
+const prepareTurnProvider = async (args: CallLlmArgs): Promise<TaskProvider | null> => {
+  const { reply, contextId, chatUserId, username, contextType, actorRole, deps, configId } = args
   if (contextType === 'dm') {
     try {
       await deps.maybeAutoProvision(reply, configId, chatUserId, username)
@@ -111,8 +94,6 @@ const callLlm = async (args: CallLlmArgs): Promise<CallLlmResult> => {
       // Auto-provision is opportunistic; missing or broken hooks should fall through to normal setup guidance.
     }
   }
-  const mainModel = resolvedLlm.main.model
-  const model = deps.buildModel(resolvedLlm)
   const provider = await deps.resolve(configId)
   if (provider === null) {
     log.warn({ contextId, configId }, 'Task provider unavailable for LLM turn; using providerless fallback')
@@ -122,7 +103,18 @@ const callLlm = async (args: CallLlmArgs): Promise<CallLlmResult> => {
     if (shouldBackstopGroupMembership(contextType, actorRole))
       maybeEnsureGroupMembership(configId, chatUserId, username)
   }
-  const invocationOpts = buildLlmInvocationOpts(args, configId, provider, deps.stagedDownloadFn)
+  return provider
+}
+
+const callLlm = async (args: CallLlmArgs): Promise<CallLlmResult> => {
+  const { reply, contextId, chatUserId, contextType, deps, configId, resolvedLlm, turnId } = args
+  const mainModel = resolvedLlm.main.model
+  const model = deps.buildModel(resolvedLlm)
+  const provider = await prepareTurnProvider(args)
+  // One immutable actor scope per turn, resolved from the authorized-turn
+  // registry (falls back to the explicit NO_ANALYTICS_SCOPE sentinel).
+  const providerRequestScope = resolveNormalTurnProviderScope(turnId)
+  const invocationOpts = buildLlmInvocationOpts(args, configId, provider, deps.stagedDownloadFn, providerRequestScope)
   const invocationOptsWithResolver = {
     ...invocationOpts,
     chatParticipantResolver: deps.chatParticipantResolver,
@@ -148,6 +140,8 @@ const callLlm = async (args: CallLlmArgs): Promise<CallLlmResult> => {
       progressReporter,
       disclosure,
       turnId,
+      providerRequestScope,
+      analytics: { providerBinding: resolvedLlm.source },
     },
     progressReporter,
   })

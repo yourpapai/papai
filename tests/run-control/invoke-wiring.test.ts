@@ -10,6 +10,7 @@ import { generateText, stepCountIs } from 'ai'
 import type { ToolExecutionEndEvent } from 'ai'
 import { MockLanguageModelV3 } from 'ai/test'
 
+import { NO_ANALYTICS_SCOPE } from '../../src/analytics/provider-request-scope.js'
 import { invokeModel } from '../../src/llm-orchestrator-invoke.js'
 import type { InvokeModelArgs, LlmOrchestratorDeps } from '../../src/llm-orchestrator-types.js'
 import { defaultDeps } from '../../src/llm-orchestrator.js'
@@ -60,6 +61,7 @@ function buildArgs(
     tools: {},
     enabledToolNames: new Set<string>(),
     messages: [{ role: 'user' as const, content: 'hi' }],
+    providerRequestScope: NO_ANALYTICS_SCOPE,
     deps: {
       ...defaultDeps,
       generateText: (opts) => {

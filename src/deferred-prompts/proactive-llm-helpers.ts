@@ -5,6 +5,7 @@
 
 import type { generateText, isStepCount, LanguageModel, ModelMessage, ToolSet } from 'ai'
 
+import type { ProviderRequestScope } from '../analytics/provider-request-scope.js'
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
 import {
@@ -20,6 +21,7 @@ import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
 import { buildProviderlessSystemPrompt, buildSystemPrompt } from '../system-prompt.js'
 import type { DisclosureSession } from '../tools/disclosure/registry.js'
+import { buildToolsContextRecord } from '../tools/wrap-tool-execution.js'
 import type { ExecutionMetadata } from './types.js'
 
 const log = logger.child({ scope: 'deferred:proactive-llm-helpers' })
@@ -29,18 +31,22 @@ export const buildProactiveVerification = (
   model: LanguageModel,
   tools: ToolSet,
   history: readonly ModelMessage[],
+  scope: ProviderRequestScope,
 ): { verifier: VerifierDeps; history: readonly ModelMessage[] } => {
   const readOnlyToolset = selectReadOnlyTools(tools)
+  // Independently built keyed toolsContext for the proactive verifier call.
+  const verifierToolsContext = buildToolsContextRecord(readOnlyToolset ?? {}, scope)
   const verifier: VerifierDeps = {
     readOnlyToolset,
     invokeVerifier: async ({ system, messages }: VerifierPrompt) => {
-      const res = await deps.generateText({
+      const baseOptions: Parameters<typeof generateText>[0] = {
         model,
         ...hoistSystemMessages(system, messages),
         tools: readOnlyToolset ?? {},
         stopWhen: deps.stepCountIs(VERIFIER_MAX_STEPS),
         timeout: 1_200_000,
-      })
+      }
+      const res = await deps.generateText(Object.assign({}, baseOptions, { toolsContext: verifierToolsContext }))
       return { text: res.text, finishReason: res.finishReason }
     },
   }

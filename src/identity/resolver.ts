@@ -237,3 +237,21 @@ export async function attemptAutoLink(
     }
   }
 }
+
+/** Opportunistic auto-link on a user's first interaction; no-op when linked or unsupported. */
+export const maybeAutoLinkIdentity = async (
+  chatUserId: string,
+  username: string | null,
+  provider: TaskProvider,
+): Promise<void> => {
+  if (username === null || provider.identityResolver === undefined) return
+  const existingMapping = defaultGetIdentityMapping(chatUserId, provider.name)
+  if (existingMapping !== null) return
+  log.debug({ chatUserId, username }, 'Attempting auto-link for first group interaction')
+  const autoLinkResult = await attemptAutoLink(chatUserId, username, provider)
+  if (autoLinkResult.type === 'found') {
+    log.info({ chatUserId, login: autoLinkResult.identity.login }, 'Auto-linked user on first interaction')
+  } else {
+    log.debug({ chatUserId, username, result: autoLinkResult.type }, 'Auto-link did not find match')
+  }
+}

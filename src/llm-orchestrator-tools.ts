@@ -5,6 +5,8 @@
 
 import type { ModelMessage, ToolSet } from 'ai'
 
+import { runWithProviderRequestScope } from './analytics/provider-request-scope.js'
+import type { ProviderRequestScope } from './analytics/provider-request-scope.js'
 import type { StagedFileDownloadFn } from './attachments/types.js'
 import { getCachedTools, setCachedTools } from './cache.js'
 import type { ChatParticipantResolver } from './chat/participants/roster.js'
@@ -30,6 +32,7 @@ import {
   buildToolDescriptors,
 } from './tools/index.js'
 import type { AskPermissionFn } from './tools/permission-gate.js'
+import { finalizeProviderScopedTools } from './tools/wrap-tool-execution.js'
 
 const log = logger.child({ scope: 'llm-orchestrator:tools' })
 
@@ -124,6 +127,7 @@ export type LlmInvocationOptions = {
   userText: string
   stagedDownloadFn: StagedFileDownloadFn | undefined
   askPermission: AskPermissionFn | undefined
+  providerRequestScope: ProviderRequestScope
   actorRole?: ActorRole
   chatParticipantResolver?: ChatParticipantResolver
 }
@@ -146,6 +150,7 @@ export function buildLlmInvocationOpts(
   configId: string,
   provider: TaskProvider | null,
   stagedDownloadFn: StagedFileDownloadFn | undefined,
+  providerRequestScope: ProviderRequestScope,
 ): LlmInvocationOptions {
   const askPermission: AskPermissionFn = (req) => askPermissionViaChat(src.reply, src.contextId, req)
   return {
@@ -159,6 +164,7 @@ export function buildLlmInvocationOpts(
     userText: src.userText,
     stagedDownloadFn,
     askPermission,
+    providerRequestScope,
     actorRole: src.actorRole,
   }
 }
@@ -186,39 +192,39 @@ const applyCompactionAndDisclosure = (
   return { tools: disclosedTools, disclosure }
 }
 
-const buildFullToolSet = async (
-  opts: LlmInvocationOptions,
-  deps: PrepareLlmInvocationDeps,
-): Promise<{ tools: ToolSet; enabledToolNames: Set<string>; disclosure: DisclosureSession | undefined }> => {
-  const {
-    contextId,
-    chatUserId,
-    username,
-    contextType,
-    provider,
-    userText,
-    stagedDownloadFn,
-    askPermission,
-    actorRole,
-    chatParticipantResolver,
-  } = opts
-  const descriptors = await getOrCreateDescriptors(
-    contextId,
-    chatUserId,
-    username,
-    provider,
-    contextType,
-    stagedDownloadFn,
-    chatParticipantResolver,
-    deps,
-  )
+const applyGateFilters = (descriptors: ToolSet, opts: LlmInvocationOptions): ToolSet => {
+  const { contextId, chatUserId, askPermission, actorRole } = opts
   const prefTools =
     actorRole === 'guest'
       ? applyGuestReadOnlyFilter(descriptors)
       : applyToolPreferences(descriptors, contextId, askPermission)
   const pi = parseScopedContextId(contextId)?.platformInstanceId
-  const gatedTools =
-    pi === undefined ? prefTools : applyWhoMayUseFilter(prefTools, resolveCodingGuardrails(pi).whoMayUse, chatUserId)
+  return pi === undefined
+    ? prefTools
+    : applyWhoMayUseFilter(prefTools, resolveCodingGuardrails(pi).whoMayUse, chatUserId)
+}
+
+const buildFullToolSet = async (
+  opts: LlmInvocationOptions,
+  deps: PrepareLlmInvocationDeps,
+): Promise<{ tools: ToolSet; enabledToolNames: Set<string>; disclosure: DisclosureSession | undefined }> => {
+  const { contextId, chatUserId, contextType, userText, providerRequestScope } = opts
+  // The scope wraps the whole descriptor-cache lookup (not just the miss
+  // branch): an MCP connect/listTools on a miss sees the current ephemeral
+  // scope, while cached descriptors retain no actor state.
+  const descriptors = await runWithProviderRequestScope(providerRequestScope, () =>
+    getOrCreateDescriptors(
+      opts.contextId,
+      opts.chatUserId,
+      opts.username,
+      opts.provider,
+      opts.contextType,
+      opts.stagedDownloadFn,
+      opts.chatParticipantResolver,
+      deps,
+    ),
+  )
+  const gatedTools = applyGateFilters(descriptors, opts)
   registerOfferedCoreToolCapabilities(gatedTools, toolCapabilityCatalog)
   registerMcpToolCapabilities(gatedTools, toolCapabilityCatalog)
   const { tools: disclosedTools, disclosure } = applyCompactionAndDisclosure(
@@ -230,11 +236,15 @@ const buildFullToolSet = async (
     deps,
   )
   toolCapabilityCatalog.register('meta.search-tools', 'search_tools')
+  // Single final pass: attach the strict ProviderRequestScope contextSchema and
+  // outer execution wrapper to every executable descriptor (including the real
+  // search_tools/load_tool). No later step may create or replace a tool.
+  const tools = finalizeProviderScopedTools(disclosedTools)
   log.debug(
-    { contextId, toolCount: Object.keys(disclosedTools).length, gated: gatedTools !== prefTools },
+    { contextId, toolCount: Object.keys(tools).length, gated: gatedTools !== descriptors },
     'Prepared tool set for LLM invocation',
   )
-  return { tools: disclosedTools, enabledToolNames: new Set(Object.keys(disclosedTools)), disclosure }
+  return { tools, enabledToolNames: new Set(Object.keys(tools)), disclosure }
 }
 
 export const prepareLlmInvocation = async (

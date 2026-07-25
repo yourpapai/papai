@@ -7,14 +7,16 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import type { LanguageModelV4StreamPart } from '@ai-sdk/provider'
-import { generateText, stepCountIs } from 'ai'
+import { generateText, stepCountIs, tool } from 'ai'
 import { MockLanguageModelV4 } from 'ai/test'
+import { z } from 'zod'
 
 import { deriveAttemptHealth } from '../../src/analytics/attempt-health.js'
 import { KeyVersionSchema, VersionStringSchema } from '../../src/analytics/controlled-types.js'
 import type { EligibilityDecision } from '../../src/analytics/governance/eligibility.js'
 import { createFactKeyDeriver } from '../../src/analytics/normalizer-shared.js'
 import type { NormalizerEnv } from '../../src/analytics/normalizer.js'
+import { NO_ANALYTICS_SCOPE } from '../../src/analytics/provider-request-scope.js'
 import { createAnalyticsObserver } from '../../src/analytics/runtime.js'
 import type { AnalyticsObserver } from '../../src/analytics/runtime.js'
 import { createRecordingHealth, createRecordingSinks } from '../../src/analytics/runtime.testing.js'
@@ -178,6 +180,7 @@ const invokeMainModel = (
     tools: {},
     enabledToolNames: new Set<string>(),
     messages: [{ role: 'user', content: 'hi' }],
+    providerRequestScope: NO_ANALYTICS_SCOPE,
     deps: fakeDeps(),
     turnId,
     reply: undefined,
@@ -221,6 +224,45 @@ describe('analytics llm/tool integration', () => {
 
   afterEach(() => {
     stopAnalyticsRuntime()
+  })
+
+  test('invokeModel passes a toolsContext record keyed by every tool name referencing the turn scope', async () => {
+    const { registry } = setupHarness()
+    registry.register({ turnId: 'turn-tc', source: memberSource })
+    const scope = NO_ANALYTICS_SCOPE
+    const tools = {
+      probe_tool: tool({
+        description: 'probe',
+        inputSchema: z.object({}),
+        execute: () => Promise.resolve('ok'),
+      }),
+    }
+    let capturedContext: unknown
+    const deps: LlmOrchestratorDeps = {
+      ...fakeDeps(),
+      generateText: (options): ReturnType<LlmOrchestratorDeps['generateText']> => {
+        capturedContext = Reflect.get(options, 'toolsContext')
+        return Promise.resolve(okResult)
+      },
+    }
+
+    await invokeModel({
+      contextId: memberSource.storageContextId,
+      chatUserId: 'user-42',
+      contextType: 'dm',
+      mainModel: 'gpt-x-2026-01-01',
+      model: cannedModel(),
+      provider: null,
+      tools,
+      enabledToolNames: new Set<string>(['probe_tool']),
+      messages: [{ role: 'user', content: 'hi' }],
+      providerRequestScope: scope,
+      deps,
+      turnId: 'turn-tc',
+      reply: undefined,
+    })
+
+    expect(capturedContext).toEqual({ probe_tool: scope })
   })
 
   test('one invoke produces one llm_started and exactly one terminal llm_completed sharing the attempt_key', async () => {
@@ -379,6 +421,7 @@ describe('analytics llm/tool integration', () => {
       tools: {},
       enabledToolNames: new Set<string>(),
       messages: [{ role: 'user', content: 'hi' }],
+      providerRequestScope: NO_ANALYTICS_SCOPE,
       deps: streamDrivingDeps(),
       turnId: 'turn-ttft',
       reply: undefined,

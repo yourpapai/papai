@@ -14,23 +14,25 @@ import { makeListWatchersTool } from './list-watchers.js'
 import { makeRemoveVoteTool } from './remove-vote.js'
 import { makeRemoveWatcherTool } from './remove-watcher.js'
 import { makeSetVisibilityTool } from './set-visibility.js'
+import { registerProviderBackedTool } from './tool-registration.js'
 
 export function maybeAddCollaborationTaskTools(
   tools: ToolSet,
   provider: TaskProvider,
   chatUserId: string | undefined,
 ): void {
-  if (provider.listUsers !== undefined) tools['find_user'] = makeFindUserTool(provider)
+  if (provider.listUsers !== undefined) registerProviderBackedTool(tools, 'find_user', makeFindUserTool(provider))
   if (provider.identityResolver !== undefined && provider.getCurrentUser !== undefined)
-    tools['get_current_user'] = makeGetCurrentUserTool(provider)
+    registerProviderBackedTool(tools, 'get_current_user', makeGetCurrentUserTool(provider))
   if (provider.capabilities.has('tasks.watchers')) {
-    tools['list_watchers'] = makeListWatchersTool(provider)
-    tools['add_watcher'] = makeAddWatcherTool(provider, chatUserId)
-    tools['remove_watcher'] = makeRemoveWatcherTool(provider, chatUserId)
+    registerProviderBackedTool(tools, 'list_watchers', makeListWatchersTool(provider))
+    registerProviderBackedTool(tools, 'add_watcher', makeAddWatcherTool(provider, chatUserId))
+    registerProviderBackedTool(tools, 'remove_watcher', makeRemoveWatcherTool(provider, chatUserId))
   }
   if (provider.capabilities.has('tasks.votes')) {
-    tools['add_vote'] = makeAddVoteTool(provider)
-    tools['remove_vote'] = makeRemoveVoteTool(provider)
+    registerProviderBackedTool(tools, 'add_vote', makeAddVoteTool(provider))
+    registerProviderBackedTool(tools, 'remove_vote', makeRemoveVoteTool(provider))
   }
-  if (provider.capabilities.has('tasks.visibility')) tools['set_visibility'] = makeSetVisibilityTool(provider)
+  if (provider.capabilities.has('tasks.visibility'))
+    registerProviderBackedTool(tools, 'set_visibility', makeSetVisibilityTool(provider))
 }

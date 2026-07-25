@@ -19,6 +19,7 @@ import { createStopRequestedCondition } from './run-control/stop-condition.js'
 import { RunAbortedError } from './run-control/types.js'
 import { buildProviderlessSystemPrompt, buildSystemPrompt } from './system-prompt.js'
 import { createDisclosurePrepareStep } from './tools/disclosure/prepare-step.js'
+import { buildToolsContextRecord } from './tools/wrap-tool-execution.js'
 
 // Re-exported for existing importers/tests that reach these through this module.
 export {
@@ -58,6 +59,13 @@ const nextAttemptOrdinal = (turnId: string): number => {
   return ordinal
 }
 
+/**
+ * Reads the current attempt ordinal for a turn without consuming the next one,
+ * so terminal failure reporting can reference the attempt that actually ran.
+ * Returns null when no attempt has started yet (failure during resolution).
+ */
+export const peekAttemptOrdinal = (turnId: string): number | null => attemptOrdinals.get(turnId) ?? null
+
 /** Controlled analytics inputs the invoke boundary accepts from its caller. */
 export type LlmInvokeAnalytics = Readonly<{
   providerBinding?: 'global' | 'byok' | 'mixed'
@@ -76,7 +84,7 @@ export const resolveSystemPrompt = (
 }
 
 const callGenerateText = async (a: GenerateArgs): ReturnType<LlmOrchestratorDeps['generateText']> => {
-  const { contextId, turnId, model, systemPrompt, messages, tools, deps, disclosure, ctx } = a
+  const { contextId, turnId, model, systemPrompt, messages, tools, toolsContext, deps, disclosure, ctx } = a
   const run = runRegistry.get(contextId)
   const disclosureStep =
     disclosure === undefined ? undefined : createDisclosurePrepareStep(disclosure, contextId, turnId)
@@ -89,7 +97,12 @@ const callGenerateText = async (a: GenerateArgs): ReturnType<LlmOrchestratorDeps
       : [deps.stepCountIs(AGENT_MAX_STEPS), createNoProgressCondition(), createStopRequestedCondition(run)]
   const finishHandler = buildToolCallFinishHandler(ctx)
   try {
-    return await deps.generateText({
+    // `toolsContext` is keyed by every name in the final ToolSet. The generic
+    // `ToolSet` options type declares `toolsContext?: undefined`; typing the
+    // base options as the full union first lets Object.assign produce an
+    // intersection whose `toolsContext` collapses to `never` — assignable with
+    // no type assertion.
+    const baseOptions: Parameters<LlmOrchestratorDeps['generateText']>[0] = {
       model,
       ...hoistSystemMessages(systemPrompt, messages),
       tools,
@@ -102,7 +115,8 @@ const callGenerateText = async (a: GenerateArgs): ReturnType<LlmOrchestratorDeps
         finishHandler?.(event)
       },
       ...(prepareStep === undefined ? {} : { prepareStep }),
-    })
+    }
+    return await deps.generateText(Object.assign({}, baseOptions, { toolsContext }))
   } catch (error) {
     if (run !== undefined && run.abortController.signal.aborted) {
       log.info({ contextId, turnId }, 'Run force-aborted by user')
@@ -157,6 +171,7 @@ export const invokeModel = async (args: InvokeArgs): ReturnType<LlmOrchestratorD
     systemPrompt,
     messages,
     tools,
+    toolsContext: buildToolsContextRecord(tools, args.providerRequestScope),
     deps,
     disclosure,
     ctx,

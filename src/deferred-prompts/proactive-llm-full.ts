@@ -14,6 +14,7 @@ import { getToolRetriever } from '../tools/disclosure/embedding-tool-retriever.j
 import type { DisclosureSession } from '../tools/disclosure/registry.js'
 import { maybeApplyDisclosure } from '../tools/disclosure/wire.js'
 import { applyToolPreferences, buildProviderlessToolDescriptors, makeTools } from '../tools/index.js'
+import { finalizeProviderScopedTools } from '../tools/wrap-tool-execution.js'
 import { buildMetadataMessages, timezoneOrUtc } from './proactive-llm-helpers.js'
 import { buildProactiveTrigger } from './proactive-trigger.js'
 import type { ExecutionMetadata } from './types.js'
@@ -45,7 +46,11 @@ export async function buildFullToolSet(
     chatUserId: createdByUserId,
   })
   const { tools, disclosure } = maybeApplyDisclosure(fullTools, storageContextId, retriever)
-  return { tools, enabledToolNames: new Set(Object.keys(tools)), disclosure }
+  // Single final pass over the actual ToolSet (after preferences + disclosure):
+  // attaches the strict ProviderRequestScope contextSchema and outer wrapper to
+  // every executable descriptor. No later step may create or replace a tool.
+  const finalized = finalizeProviderScopedTools(tools)
+  return { tools: finalized, enabledToolNames: new Set(Object.keys(finalized)), disclosure }
 }
 
 export function buildFullMessages(
