@@ -17,3 +17,11 @@ timeout = 15000
 
 # Preload global setup (server-side tests only)
 preload = ["./tests/setup.ts", "./tests/mock-reset.ts"]
+
+# Coverage floor (enforced only when --coverage is passed — see scripts/check.sh
+# CI branch). Not `coverage = true`: coverage stays opt-in so the stories/e2e/
+# smoke/client runs and local `--parallel` checks are unaffected. Raise the floor
+# from a green run with `bun coverage:ratchet --update`.
+coverageThreshold = { lines = 0.90, functions = 0.90 }
+coverageReporter = ["text", "lcov"]
+coverageDir = "reports/coverage"

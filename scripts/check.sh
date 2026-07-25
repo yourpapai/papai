@@ -334,7 +334,7 @@ else
         # integration tests (e.g. review-loop worktree tests) time out under
         # --parallel worker contention.
         if [ "${CI:-}" = "true" ]; then
-          bun test --timeout 15000 >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+          bun test --coverage --timeout 15000 >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
         else
           bun test --parallel --timeout 15000 >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
         fi
