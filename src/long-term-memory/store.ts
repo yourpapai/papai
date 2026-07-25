@@ -97,11 +97,22 @@ export function getMemoryProfile(scope: MemoryScope): MemoryProfile | null {
 export function saveMemoryProfile(scope: MemoryScope, profile: string, now: string): MemoryProfile {
   getDrizzleDb()
     .insert(memoryProfiles)
-    .values({ scopeId: scope.scopeId, scopeType: scope.scopeType, profile, enabled: true, version: 1, updatedAt: now })
+    .values({
+      scopeId: scope.scopeId,
+      scopeType: scope.scopeType,
+      profile,
+      enabled: true,
+      contaminatedAt: null,
+      version: 1,
+      updatedAt: now,
+    })
     .onConflictDoUpdate({
       target: [memoryProfiles.scopeType, memoryProfiles.scopeId],
       set: {
         profile,
+        // The replacement was written without the contaminated prose in scope, so it
+        // is trustworthy again.
+        contaminatedAt: null,
         version: sql`${memoryProfiles.version} + 1`,
         updatedAt: now,
       },

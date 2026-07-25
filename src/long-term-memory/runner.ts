@@ -13,6 +13,7 @@ import { resolveLlmConfig } from '../llm-providers/resolver.js'
 import type { EffectiveLlmConfig, LlmConfigResult } from '../llm-providers/types.js'
 import { logger } from '../logger.js'
 import { extractMemoryPatch, type MemoryPatch } from './extractor.js'
+import { visibleProfileText } from './profile-visibility.js'
 import { resolveMemoryScope } from './scope.js'
 import {
   getMemoryProfile,
@@ -172,6 +173,28 @@ const resolveModel = (
   return deps.buildModel(resolvedConfig)
 }
 
+const logExtractionComplete = (
+  input: RunMemoryExtractionInput,
+  scope: MemoryScope,
+  patch: MemoryPatch,
+  insertResult: SuppressibleCount,
+  updateResult: SuppressibleCount,
+): void => {
+  log.info(
+    {
+      storageContextId: input.storageContextId,
+      configContextId: input.configContextId,
+      scopeId: scope.scopeId,
+      scopeType: scope.scopeType,
+      inserted: insertResult.count,
+      updated: updateResult.count,
+      suppressed: insertResult.suppressed + updateResult.suppressed,
+      profileUpdated: patch.profile !== null,
+    },
+    'Long-term memory extraction complete',
+  )
+}
+
 const performExtraction = async (
   input: RunMemoryExtractionInput,
   scope: MemoryScope,
@@ -195,7 +218,9 @@ const performExtraction = async (
     contextType: input.contextType,
     scope,
     history: input.history,
-    profile: profile?.profile ?? null,
+    // Never feed contaminated prose back into extraction: the LLM would copy the
+    // erased fact into the replacement profile and make it durable again.
+    profile: visibleProfileText(profile),
     records,
     model,
   })
@@ -206,21 +231,7 @@ const performExtraction = async (
   }
   const insertResult = insertRecords(scope, patch, deps)
   const updateResult = applyUpdates(scope, patch, now)
-  const suppressed = insertResult.suppressed + updateResult.suppressed
-
-  log.info(
-    {
-      storageContextId: input.storageContextId,
-      configContextId: input.configContextId,
-      scopeId: scope.scopeId,
-      scopeType: scope.scopeType,
-      inserted: insertResult.count,
-      updated: updateResult.count,
-      suppressed,
-      profileUpdated: patch.profile !== null,
-    },
-    'Long-term memory extraction complete',
-  )
+  logExtractionComplete(input, scope, patch, insertResult, updateResult)
 }
 
 export async function runMemoryExtractionInBackground(input: RunMemoryExtractionInput): Promise<void> {
