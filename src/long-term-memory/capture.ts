@@ -16,6 +16,7 @@ import { logger } from '../logger.js'
 import { saveMemoryRecordWithEmbedding } from './embedding-writer.js'
 import { markExtracted } from './extraction-state.js'
 import { extractMemoryPatch, type MemoryPatch } from './extractor.js'
+import { visibleProfileText } from './profile-visibility.js'
 import { resolveMemoryScope } from './scope.js'
 import { getMemoryProfile } from './store.js'
 import { isContentTombstoned } from './tombstone.js'
@@ -111,7 +112,9 @@ export async function runMemoryCapture(
   try {
     patch = await deps.extractMemoryPatch({
       history: input.history,
-      profile: profile?.profile ?? '',
+      // Never feed contaminated prose back into extraction: the LLM would copy the
+      // erased fact into the replacement profile and make it durable again.
+      profile: visibleProfileText(profile) ?? '',
       configContextId: input.configContextId,
     })
   } catch (error) {

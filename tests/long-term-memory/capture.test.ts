@@ -7,9 +7,11 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { runMemoryCapture } from '../../src/long-term-memory/capture.js'
 import type { MemoryPatch } from '../../src/long-term-memory/extractor.js'
+import { purgeMemoryRecord } from '../../src/long-term-memory/purge.js'
 import { resolveMemoryScope } from '../../src/long-term-memory/scope.js'
-import { listProvisionalRecords } from '../../src/long-term-memory/store.js'
+import { listProvisionalRecords, saveMemoryProfile, saveMemoryRecord } from '../../src/long-term-memory/store.js'
 import { insertTombstone } from '../../src/long-term-memory/tombstone.testing.js'
+import type { MemoryRecordInput, MemoryScope } from '../../src/long-term-memory/types.js'
 import { setupTestDb } from '../utils/test-helpers.js'
 
 const patch: MemoryPatch = {
@@ -123,5 +125,72 @@ describe('runMemoryCapture', () => {
 
     const records = listProvisionalRecords({ scopeId: scope.scopeId, scopeType: scope.scopeType })
     expect(records.find((r) => r.id === 'mem-recap')).toBeUndefined()
+  })
+})
+
+describe('runMemoryCapture profile contamination gate', () => {
+  const STORAGE_CONTEXT_ID = 'group-gate:thread:t1'
+  const scope: MemoryScope = { scopeId: 'group-gate', scopeType: 'group' }
+  const PURGED_AT = '2026-07-25T12:00:00.000Z'
+
+  const record = (id: string, content: string): MemoryRecordInput => ({
+    id,
+    scopeId: scope.scopeId,
+    scopeType: scope.scopeType,
+    kind: 'fact',
+    content,
+    summary: null,
+    tags: [],
+    confidence: 1,
+    status: 'active',
+    source: 'explicit',
+    evidence: {},
+    createdAt: '2026-07-01T00:00:00.000Z',
+    updatedAt: '2026-07-01T00:00:00.000Z',
+    lastSeenAt: '2026-07-01T00:00:00.000Z',
+  })
+
+  const captureWithSpy = async (seen: string[]): Promise<void> => {
+    await runMemoryCapture(
+      {
+        storageContextId: STORAGE_CONTEXT_ID,
+        configContextId: 'group-gate',
+        contextType: 'group',
+        history: [{ role: 'user', content: 'hi' }],
+      },
+      {
+        extractMemoryPatch: (input) => {
+          seen.push(input.profile)
+          return Promise.resolve({ profile: null, records: [], updates: [] })
+        },
+        getEmbedding: () => Promise.resolve(null),
+        now: () => '2026-07-25T13:00:00.000Z',
+        randomUUID: () => 'mem-gate',
+      },
+    )
+  }
+
+  beforeEach(async () => {
+    await setupTestDb()
+  })
+
+  test('hands the extractor an empty profile after a purge contaminates it', async () => {
+    saveMemoryProfile(scope, 'User lives in Berlin', '2026-07-01T00:00:00.000Z')
+    saveMemoryRecord(record('mem-1', 'User lives in Berlin'))
+    purgeMemoryRecord(scope, 'mem-1', PURGED_AT)
+
+    const seen: string[] = []
+    await captureWithSpy(seen)
+
+    expect(seen).toEqual([''])
+  })
+
+  test('passes an uncontaminated profile through unchanged', async () => {
+    saveMemoryProfile(scope, 'User lives in Berlin', '2026-07-01T00:00:00.000Z')
+
+    const seen: string[] = []
+    await captureWithSpy(seen)
+
+    expect(seen).toEqual(['User lives in Berlin'])
   })
 })
