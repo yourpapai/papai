@@ -8,6 +8,7 @@ import { and, eq, sql } from 'drizzle-orm'
 import type { ContextType } from '../chat/types.js'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { memoryRecords } from '../db/schema.js'
+import { RANK_FUSION_OFFSET } from './fusion.js'
 import {
   defaultDeps,
   RECALL_DEFAULT_LIMIT,
@@ -29,6 +30,26 @@ export type RunShadowRecallInput = Readonly<{
 
 export type ShadowRecallHit = Readonly<{
   id: string
+  /**
+   * A rank-derived position score, NOT a relevance magnitude: `1 / (RANK_FUSION_OFFSET
+   * + index + 1)` over the hit's zero-based index in the cascade's returned list, using
+   * the same reciprocal-rank form `fusion.ts` uses internally (its actual fused RRF
+   * score is discarded before `runRecallCascade` returns and is intentionally not
+   * plumbed through here — see
+   * `docs/superpowers/specs/2026-07-24-memory-recall-shadow-logging-design.md` for why).
+   *
+   * Known confound: `runRecallCascade` does not return one globally relevance-ranked
+   * list. It runs up to three independent `search()` calls (each with its own internal
+   * `fuseByRank`) and concatenates them by provenance layer before dedup — `current`,
+   * then `group`, then `other-thread`. List position therefore encodes provenance layer
+   * first and relevance second: every `current` hit outranks every `group` hit
+   * regardless of true relevance. Scores are consequently **not comparable across
+   * different `provenance` values** and must not be read as a relevance score.
+   *
+   * Downstream analysis must treat this as a rank cutoff (top-k position within a
+   * hit's own provenance layer), split by `provenance`, rather than thresholding it as
+   * a cross-provenance relevance score.
+   */
   score: number
   provenance: RecallProvenance
 }>
@@ -92,7 +113,11 @@ export async function runShadowRecall(
   )
 
   return {
-    hits: records.map((record) => ({ id: record.id, score: record.confidence, provenance: record.provenance })),
+    hits: records.map((record, index) => ({
+      id: record.id,
+      score: 1 / (RANK_FUSION_OFFSET + index + 1),
+      provenance: record.provenance,
+    })),
     activeRecordCount,
   }
 }

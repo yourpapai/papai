@@ -5,6 +5,7 @@
 
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
+import { RANK_FUSION_OFFSET } from '../../src/long-term-memory/fusion.js'
 import { runShadowRecall } from '../../src/long-term-memory/shadow-recall.js'
 import { saveMemoryRecord } from '../../src/long-term-memory/store.js'
 import type { MemoryRecordInput } from '../../src/long-term-memory/types.js'
@@ -96,5 +97,56 @@ describe('runShadowRecall', () => {
     )
 
     expect(schedulePromotion).not.toHaveBeenCalled()
+  })
+
+  test("score is the first hit's rank position, matching the fusion reciprocal-rank form", async () => {
+    saveMemoryRecord(base({ id: 'only-hit', status: 'active', threadContextId: null, confidence: 0.5 }))
+
+    const out = await runShadowRecall(
+      {
+        storageContextId: 'g:thread:z',
+        configContextId: 'g',
+        contextType: 'group',
+        query: 'friday deploy schedule',
+      },
+      {
+        getEmbedding: () => Promise.resolve(null),
+        resolveEmbeddingModel: () => 'model-a',
+        schedulePromotion: () => undefined,
+      },
+    )
+
+    expect(out.hits).toHaveLength(1)
+    expect(out.hits[0]?.score).toBeCloseTo(1 / (RANK_FUSION_OFFSET + 1))
+  })
+
+  test('same list position scores identically regardless of differing capture-time confidence', async () => {
+    const runWithSingleRecord = async (
+      id: string,
+      confidence: number,
+    ): Promise<Awaited<ReturnType<typeof runShadowRecall>>> => {
+      await setupTestDb()
+      saveMemoryRecord(base({ id, status: 'active', threadContextId: null, confidence }))
+      return runShadowRecall(
+        {
+          storageContextId: 'g:thread:z',
+          configContextId: 'g',
+          contextType: 'group',
+          query: 'friday deploy schedule',
+        },
+        {
+          getEmbedding: () => Promise.resolve(null),
+          resolveEmbeddingModel: () => 'model-a',
+          schedulePromotion: () => undefined,
+        },
+      )
+    }
+
+    const highConfidence = await runWithSingleRecord('high-conf', 0.99)
+    const lowConfidence = await runWithSingleRecord('low-conf', 0.01)
+
+    expect(highConfidence.hits[0]?.score).toBe(lowConfidence.hits[0]?.score)
+    expect(highConfidence.hits[0]?.score).not.toBe(0.99)
+    expect(lowConfidence.hits[0]?.score).not.toBe(0.01)
   })
 })
