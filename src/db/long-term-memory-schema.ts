@@ -14,6 +14,7 @@ export const memoryProfiles = sqliteTable(
     profile: text('profile').notNull().default(''),
     enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
     injectRecords: integer('inject_records', { mode: 'boolean' }).notNull().default(false),
+    contaminatedAt: text('contaminated_at'),
     version: integer('version').notNull().default(1),
     updatedAt: text('updated_at').notNull(),
   },

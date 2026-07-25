@@ -36,6 +36,8 @@ export type MemoryProfile = MemoryScope &
     profile: string
     enabled: boolean
     injectRecords: boolean
+    /** ISO timestamp of the purge that invalidated this prose, or `null` when the profile is trustworthy. */
+    contaminatedAt: string | null
     version: number
     updatedAt: string
   }>

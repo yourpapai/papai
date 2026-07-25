@@ -70,6 +70,7 @@ describe('long-term memory store', () => {
       profile: '## Communication\n- Concise replies',
       enabled: true,
       injectRecords: false,
+      contaminatedAt: null,
       version: 1,
       updatedAt: '2026-06-11T00:00:00.000Z',
     })

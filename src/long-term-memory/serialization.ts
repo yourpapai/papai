@@ -51,6 +51,7 @@ export const rowToProfile = (row: MemoryProfileRow): MemoryProfile => ({
   profile: row.profile,
   enabled: row.enabled,
   injectRecords: row.injectRecords,
+  contaminatedAt: row.contaminatedAt,
   version: row.version,
   updatedAt: row.updatedAt,
 })
