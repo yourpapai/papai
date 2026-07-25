@@ -37,7 +37,18 @@ export type ShadowFunnelEntry = Readonly<{
   underTriggerRate: number
   /** `model_pulled = true && shadow_pull_overlap > 0` -- the model found what the shadow did. */
   overlapWhenPulled: number
-  /** `model_pulled = true && shadow_pull_overlap = 0` -- the model looked and found none of it. */
+  /**
+   * `model_pulled = true && shadow_pull_overlap = 0` -- the model looked and found none of
+   * what the shadow would have surfaced.
+   *
+   * NOT a pre-registered or spec-numeric threshold: the design doc only describes this
+   * companion signal qualitatively ("`model_pulled` with low `pull_result_count` / low
+   * overlap"), with no numeric cutoff. Zero-overlap is this repo's own operationalization
+   * of that qualitative "low overlap" reading, chosen for definiteness, not derived from
+   * the doc. It sits outside the frozen go/no-go gate, which depends only on
+   * `underTriggerTurns` / `underTriggerRate` and the doc-verbatim `shadowHitTurns` overlap
+   * signal -- do not fold this field into that gate.
+   */
   overPullTurns: number
 }>
 

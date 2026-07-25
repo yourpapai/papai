@@ -7,6 +7,8 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import type { ModelMessage } from 'ai'
 
+import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { memoryRecallShadowLog } from '../../src/db/schema.js'
 import type { ResolvedStreamTextResult } from '../../src/llm-orchestrator-events.js'
 import type { ShadowLogRow } from '../../src/long-term-memory/shadow-log-row.js'
 import {
@@ -15,6 +17,7 @@ import {
   type ScheduleShadowRecallLogDeps,
 } from '../../src/long-term-memory/shadow-log.js'
 import type { RunShadowRecallResult } from '../../src/long-term-memory/shadow-recall.js'
+import { insertShadowLogRow } from '../../src/long-term-memory/store.js'
 import { keyedHash } from '../../src/stats/hashing.js'
 import { createTrackedLoggerMock, type TrackedLoggerMock } from '../utils/logger-mock.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -273,6 +276,51 @@ describe('scheduleShadowRecallLog', () => {
       expect(insertedRows[0]?.shadowPullOverlap).toBe(1)
       expect(insertedRows[0]?.shadowHitCount).toBe(2)
       expect(insertedRows[0]?.activeRecordCount).toBe(7)
+    })
+  })
+
+  describe('skippedReason threading (real buildShadowLogRow + real insertShadowLogRow against a real DB)', () => {
+    let realDeps: ScheduleShadowRecallLogDeps
+
+    beforeEach(async () => {
+      await setupTestDb()
+      const { buildShadowLogRow } = await import('../../src/long-term-memory/shadow-log-row.js')
+      const { extractSearchMemoryPulls } = await import('../../src/long-term-memory/shadow-pull-extract.js')
+      realDeps = {
+        isShadowLoggingEnabled: (): boolean => true,
+        shadowSampleRate: (): number => 1,
+        shouldSampleTurn: (): boolean => true,
+        runShadowRecall: (): Promise<RunShadowRecallResult> => Promise.resolve(shadowRecallResult),
+        extractSearchMemoryPulls,
+        buildShadowLogRow,
+        insertShadowLogRow,
+      }
+    })
+
+    test('a zero-active-record turn persists skipped_reason = no-active-records end to end', async () => {
+      const zeroActiveResult: RunShadowRecallResult = {
+        hits: [],
+        activeRecordCount: 0,
+        skippedReason: 'no-active-records',
+      }
+      scheduleShadowRecallLog(baseArgs, {
+        ...realDeps,
+        runShadowRecall: (): Promise<RunShadowRecallResult> => Promise.resolve(zeroActiveResult),
+      })
+      await flushMicrotasks()
+
+      const persisted = getDrizzleDb().select().from(memoryRecallShadowLog).all()
+      expect(persisted).toHaveLength(1)
+      expect(persisted[0]?.skippedReason).toBe('no-active-records')
+    })
+
+    test('a normal (non-skipped) turn persists skipped_reason = null end to end', async () => {
+      scheduleShadowRecallLog(baseArgs, realDeps)
+      await flushMicrotasks()
+
+      const persisted = getDrizzleDb().select().from(memoryRecallShadowLog).all()
+      expect(persisted).toHaveLength(1)
+      expect(persisted[0]?.skippedReason).toBeNull()
     })
   })
 })

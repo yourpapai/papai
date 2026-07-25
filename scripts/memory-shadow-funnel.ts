@@ -58,6 +58,11 @@ function printFunnel(): void {
     'Note: shadow_hit is a rank cutoff (top-k position within the shadow cascade), not a relevance-score' +
       ' threshold -- see the doc comment on ShadowRecallHit.score in src/long-term-memory/shadow-recall.ts.',
   )
+  console.log(
+    'Note: over-pull turns (shadow_pull_overlap = 0) is NOT a pre-registered or spec-numeric threshold -- the' +
+      ' design doc only describes this companion signal qualitatively ("low overlap"). It is this repo\'s own' +
+      ' operationalization and sits outside the frozen go/no-go gate.',
+  )
 }
 
 printFunnel()

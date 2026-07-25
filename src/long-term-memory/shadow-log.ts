@@ -113,6 +113,7 @@ async function runShadowRecallLog(args: ScheduleShadowRecallLogArgs, deps: Sched
     shadowQuery,
     shadowHits: result.hits,
     pull,
+    skippedReason: result.skippedReason,
   })
   deps.insertShadowLogRow(row)
 }

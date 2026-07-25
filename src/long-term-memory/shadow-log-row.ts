@@ -38,6 +38,8 @@ export type ShadowOutcome = Readonly<{
   shadowQuery: string
   shadowHits: ReadonlyArray<ShadowHit>
   pull: ShadowPull
+  /** Threaded verbatim from `RunShadowRecallResult.skippedReason`; `undefined` on a normal turn. */
+  skippedReason?: 'no-active-records'
 }>
 
 /**
@@ -98,6 +100,6 @@ export function buildShadowLogRow(outcome: ShadowOutcome): ShadowLogRow {
     pullQueryHash: firstPullQuery === undefined ? null : keyedHash(firstPullQuery),
     pullResultCount: outcome.pull.resultIds.length,
     shadowPullOverlap: countIdOverlap(outcome.shadowHits, outcome.pull.resultIds),
-    skippedReason: null,
+    skippedReason: outcome.skippedReason ?? null,
   }
 }
