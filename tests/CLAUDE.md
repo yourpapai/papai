@@ -132,6 +132,17 @@ When DI is not available and module evaluation order matters:
 - The suite is in transition: many files already rely on shared preload/setup, but some older E2E files still use local `beforeAll`/`afterAll` hooks or manual cleanup. Follow the local pattern unless you are intentionally modernizing that suite.
 - Before proposing new E2E coverage, read `docs/superpowers/e2e-planning-workflow.md` and start from `docs/superpowers/templates/e2e-test-plan-template.md`.
 
+### Coverage floor
+
+The in-process suite's production-code coverage (`src/` + `plugins/`) is gated in
+CI. The floor lives in `bunfig.toml` (`coverageThreshold = { lines, functions }`)
+and is enforced by bun when `--coverage` is passed — which happens only on the
+CI-serial `test` run inside `scripts/check.sh`. Local `check:full` (`--parallel`)
+does not collect coverage. When coverage improves, raise the floor from a green
+run with `bun coverage:ratchet --update` and commit the `bunfig.toml` change; the
+script never lowers the floor. Running `bun test --coverage <subset>` locally
+enforces the same floor against that subset (expected to "fail" on partial runs).
+
 ## Mutation testing
 
 For accurate mutation scores that bypass the runner's static-bucket artifact,
