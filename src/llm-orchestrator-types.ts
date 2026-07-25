@@ -68,7 +68,11 @@ export type InvokeModelArgs = {
   deps: LlmOrchestratorDeps
 } & Partial<Record<'progressReporter', AiProgressReporter>> &
   Partial<Record<'disclosure', DisclosureSession>> &
-  Partial<Record<'liveStatus', LiveStatusReporter>>
+  Partial<Record<'liveStatus', LiveStatusReporter>> &
+  // Config context id for the shadow-recall study's embedding creds (Plan 2 T6). Optional
+  // so existing call sites/fixtures built before this field need no change; falls back to
+  // `contextId`, mirroring `resolveConfigId`'s own fallback.
+  Partial<Record<'configId', string>>
 
 export type StepOutput = {
   stepNumber: number

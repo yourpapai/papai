@@ -3,12 +3,15 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { randomUUID } from 'node:crypto'
+
 import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
-import { memoryProfiles, memoryRecords, memoryTombstones } from '../db/schema.js'
+import { memoryProfiles, memoryRecallShadowLog, memoryRecords, memoryTombstones } from '../db/schema.js'
 import { profileScopeCondition, recordScopeCondition, recordValidityCondition } from './record-conditions.js'
 import { rowToProfile, rowToRecord, sanitizeFtsQuery, serializeEmbedding } from './serialization.js'
+import type { ShadowLogRow } from './shadow-log-row.js'
 import { tombstoneValues } from './tombstone.js'
 import type { MemoryKind, MemoryProfile, MemoryRecord, MemoryRecordInput, MemoryScope, MemoryStatus } from './types.js'
 
@@ -262,4 +265,16 @@ export function updateMemoryRecord(
     .returning()
     .all()
   return rows[0] === undefined ? null : rowToRecord(rows[0])
+}
+
+/**
+ * Appends a shadow-log row to `memory_recall_shadow_log`. Accepts only `ShadowLogRow`
+ * (hashes/counts/enums) — never the raw `ShadowOutcome` — so raw memory content is
+ * structurally unable to reach this table. `id`/`createdAt` are assigned here.
+ */
+export function insertShadowLogRow(row: ShadowLogRow): void {
+  getDrizzleDb()
+    .insert(memoryRecallShadowLog)
+    .values({ id: randomUUID(), createdAt: Date.now(), ...row })
+    .run()
 }
