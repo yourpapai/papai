@@ -50,6 +50,14 @@ export type ShadowFunnelEntry = Readonly<{
    * signal -- do not fold this field into that gate.
    */
   overPullTurns: number
+  /**
+   * `count(distinct scope_hash)` -- this is the **M** in the frozen decision gate's
+   * "N = 1000 sampled memory-bearing turns across M >= 50 distinct scopes, per reader
+   * model" precondition (see the shadow-logging design doc). It exists so an operator can
+   * check that precondition before trusting this reader model's `underTriggerRate`; it is
+   * part of the frozen gate itself, not a supplementary or repo-invented signal.
+   */
+  distinctScopes: number
 }>
 
 type ShadowFunnelSqlRow = Readonly<{
@@ -59,6 +67,7 @@ type ShadowFunnelSqlRow = Readonly<{
   underTriggerTurns: number
   overlapWhenPulled: number
   overPullTurns: number
+  distinctScopes: number
 }>
 
 function toEntry(row: ShadowFunnelSqlRow): ShadowFunnelEntry {
@@ -71,6 +80,7 @@ function toEntry(row: ShadowFunnelSqlRow): ShadowFunnelEntry {
     underTriggerRate,
     overlapWhenPulled: row.overlapWhenPulled,
     overPullTurns: row.overPullTurns,
+    distinctScopes: row.distinctScopes,
   }
 }
 
@@ -101,6 +111,7 @@ export function computeShadowFunnel(opts: ComputeShadowFunnelOptions = {}): Read
       overPullTurns: sql<number>`sum(
         case when ${table.modelPulled} = 1 and ${table.shadowPullOverlap} = 0 then 1 else 0 end
       )`.as('over_pull_turns'),
+      distinctScopes: sql<number>`count(distinct ${table.scopeHash})`.as('distinct_scopes'),
     })
     .from(table)
 

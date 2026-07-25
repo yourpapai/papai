@@ -51,6 +51,7 @@ function printFunnel(): void {
     console.log(`  under-trigger rate:        ${formatRate(entry.underTriggerRate)}`)
     console.log(`  overlap-when-pulled turns: ${entry.overlapWhenPulled}`)
     console.log(`  over-pull turns:           ${entry.overPullTurns}`)
+    console.log(`  distinct scopes (M):       ${entry.distinctScopes}`)
     console.log('')
   }
 
@@ -62,6 +63,11 @@ function printFunnel(): void {
     'Note: over-pull turns (shadow_pull_overlap = 0) is NOT a pre-registered or spec-numeric threshold -- the' +
       ' design doc only describes this companion signal qualitatively ("low overlap"). It is this repo\'s own' +
       ' operationalization and sits outside the frozen go/no-go gate.',
+  )
+  console.log(
+    'Note: distinct scopes (M) IS part of the frozen go/no-go gate -- the gate requires N = 1000 sampled' +
+      ' memory-bearing turns across M >= 50 distinct scopes, per reader model, before trusting the' +
+      ' under-trigger rate above. Compare this count against 50 before acting on that rate.',
   )
 }
 

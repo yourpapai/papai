@@ -140,4 +140,31 @@ describe('computeShadowFunnel', () => {
     expect(entry?.memoryBearingTurns).toBe(0)
     expect(entry?.underTriggerRate).toBe(0)
   })
+
+  test('distinctScopes counts multiple rows sharing one scope_hash only once', () => {
+    insertShadowLogRow(row({ readerModelId: 'model-a', scopeHash: 'scope-1', turnRef: 'turn-1' }))
+    insertShadowLogRow(row({ readerModelId: 'model-a', scopeHash: 'scope-1', turnRef: 'turn-2' }))
+    insertShadowLogRow(row({ readerModelId: 'model-a', scopeHash: 'scope-2', turnRef: 'turn-3' }))
+
+    const [entry] = computeShadowFunnel()
+
+    expect(entry?.distinctScopes).toBe(2)
+  })
+
+  test('distinctScopes is independently correct per reader model -- no cross-model pooling', () => {
+    insertShadowLogRow(row({ readerModelId: 'model-a', scopeHash: 'scope-1', turnRef: 'turn-1' }))
+    insertShadowLogRow(row({ readerModelId: 'model-a', scopeHash: 'scope-2', turnRef: 'turn-2' }))
+    insertShadowLogRow(row({ readerModelId: 'model-b', scopeHash: 'scope-1', turnRef: 'turn-3' }))
+
+    const result = computeShadowFunnel()
+    const modelA = result.find((entry) => entry.readerModelId === 'model-a')
+    const modelB = result.find((entry) => entry.readerModelId === 'model-b')
+
+    expect(modelA?.distinctScopes).toBe(2)
+    expect(modelB?.distinctScopes).toBe(1)
+  })
+
+  test('distinctScopes is 0 when there are no rows', () => {
+    expect(computeShadowFunnel()).toEqual([])
+  })
 })
