@@ -139,7 +139,7 @@ the existing `stats_anonymity_salt`; **no** free-form content is stored. Fields:
 | `active_record_count`     | int                      | scope size (bounded signal)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `shadow_query_hash`       | keyed hash               | distinct-query counting; compare vs the model's pull query                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `shadow_query_len_bucket` | enum bucket              | coarse length, never the text                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `shadow_hit_count`        | int                      | records above the rank cutoff                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `shadow_hit_count`        | int                      | number of records the shadow recall returned for the turn (`outcome.shadowHits.length`, `shadow-log-row.ts`) — unfiltered, bounded only by the cascade's return limit (`RECALL_DEFAULT_LIMIT`, `recall-cascade.ts`)                                                                                                                                                                                                                                                                                                                                       |
 | `shadow_top_score`        | float                    | rank-position-derived, **not** a true fused score: `1 / (RANK_FUSION_OFFSET + index + 1)` over the hit's index in the cascade's returned list (`fuseByRank` discards its real fused score before returning). Comparable only **within** the same `shadow_top_provenance` value — `runRecallCascade` concatenates three independently-fused channels in provenance order (`current`, then `group`, then `other-thread`), so index position encodes provenance layer first and relevance second. Never threshold or average across `shadow_top_provenance`. |
 | `shadow_top_provenance`   | enum                     | current-thread / group / other-thread (recall-cascade layer)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `shadow_top_record_hash`  | keyed hash               | detect the _same_ record repeatedly missed across turns                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
@@ -159,10 +159,15 @@ P1's output is a funnel over sampled memory-bearing turns, keyed **per reader mo
 averaged across models — that hides the exact variance that decides the call):
 
 1. **Sampled memory-bearing turns** — denominator.
-2. **`shadow_hit`** — `shadow_hit_count ≥ 1` within the pre-registered **rank cutoff** (a top-k
-   position within the hit's own `shadow_top_provenance` channel — **never** a score/relevance
-   threshold; see the `shadow_top_score` field note above for why a magnitude threshold would be
-   meaningless across provenance channels): the shadow surfaced a plausibly-relevant record.
+2. **`shadow_hit`** — `shadow_hit_count ≥ 1`: the shadow cascade returned at least one record for
+   the turn. This **is** a rank cutoff — the cascade returns at most `RECALL_DEFAULT_LIMIT` records
+   (`recall-cascade.ts`), so `shadow_hit_count ≥ 1` means "at least one record surfaced within the
+   cascade's top-`RECALL_DEFAULT_LIMIT` window" — but no finer, per-channel rank filter is applied
+   on top of it: `shadow_top_score` is rank-position-derived from a **global** index across the
+   concatenated `current`/`group`/`other-thread` channels and is not comparable across
+   `shadow_top_provenance` values (see the field note above), so it cannot be used to express a
+   per-channel rank cutoff, and the persisted row does not retain the per-channel list sizes needed
+   to recover one retroactively.
 3. **Under-trigger candidates** = **`shadow_hit && !model_pulled`** — the shadow had something and
    the model never looked. **This bucket's rate is the P1 headline.**
 4. _(deferred to P2 / offline judging — not computed in production)_ of bucket 3, the fraction
@@ -188,14 +193,31 @@ are fixed now and must not move once collection starts (no post-hoc goalpost-mov
   are the same number by design. A deployment that overrides `MEMORY_SHADOW_LOG_SAMPLE_RATE` away
   from `0.1` is departing from the pre-registered protocol and must record that departure
   explicitly alongside any funnel result it collects.
-- **`shadow_hit` rank cutoff: top 3.** A shadow hit counts when the record lands in the **top 3
-  rank positions within its own `shadow_top_provenance` channel** (`shadow_top_score` index < 3
-  inside that channel's own list, per hit). This is a **rank cutoff, not a score threshold** —
-  `shadow_top_score` is rank-position-derived and not comparable across provenance channels (see
-  the field table above and the `ShadowRecallHit.score` doc comment in `shadow-recall.ts`), so any
-  numeric magnitude cutoff would silently compare apples to oranges across `current`/`group`/
-  `other-thread`. A rank-within-channel cutoff is the only sound way to express "the shadow
-  surfaced something plausibly relevant."
+- **`shadow_hit` rank cutoff: `shadow_hit_count ≥ 1`, i.e. top-`RECALL_DEFAULT_LIMIT` (8).** A
+  shadow hit counts when the shadow cascade returned **any** record for the turn
+  (`computeShadowFunnel`'s `shadowHitTurns`, `shadow-funnel.ts`: unfiltered `shadow_hit_count >= 1`,
+  no rank-position or per-channel logic). This is still a rank cutoff, not a score threshold — the
+  cascade returns at most `RECALL_DEFAULT_LIMIT` (8, `recall-cascade.ts`) records, so the criterion
+  is "did anything surface within the cascade's own top-8 window" — but **no finer per-channel rank
+  filter is applied on top of it**. A per-channel cutoff (e.g. top 3 within `current`/`group`/
+  `other-thread` individually) is not something the shipped code computes or can recover after the
+  fact: `shadow_top_score` is rank-position-derived from the hit's **global** index in the
+  concatenated `current`→`group`→`other-thread` list (`shadow-recall.ts`), so it is comparable only
+  **within** the same `shadow_top_provenance` value and not across channels (see the field table
+  above and the `ShadowRecallHit.score` doc comment in `shadow-recall.ts`) — and the persisted row
+  (`long-term-memory-schema.ts`) keeps only the single global-top hit (`shadow_top_score` /
+  `shadow_top_provenance`, selected by `pickTopHit` in `shadow-log-row.ts`) with no record of the
+  preceding channels' sizes, so a top hit's channel-local rank cannot be reconstructed
+  retroactively for any provenance other than `current` (offset 0). The frozen criterion is
+  therefore the one the instrument actually measures: `shadow_hit_count ≥ 1`.
+
+  **Consequence for validity:** this is a **looser** criterion than a top-3-per-channel filter
+  would have been, so it makes bucket 3 (the under-trigger headline) **more inclusive** — more
+  turns qualify as a "hit" than a stricter rank filter would allow. This is consistent with the
+  doc's existing framing that P1 measures a conservative floor: an at/above-threshold bucket-3
+  result remains a lower bound on the real gap, now for two independent reasons (the floor query,
+  and this looser hit criterion) rather than one.
+
 - **Collection target: N = 1000, M ≥ 50.** Collect until **1000** sampled memory-bearing turns
   across **at least 50 distinct scopes** (so no single chatty user/group decides the outcome), **per
   reader model**.
@@ -207,8 +229,10 @@ are fixed now and must not move once collection starts (no post-hoc goalpost-mov
   the abstention harness (P2) to test whether **auto-injecting** them is _safe_ before any Tier 3
   ship. P1 proves the gap; P2 proves closing it does not fabricate.
 
-Because the shadow query is the raw-turn floor, a below-threshold bucket 3 is a strong stop signal
-(the real gap is ≤ the measured floor); an at/above bucket 3 is a _lower bound_ worth escalating.
+Because the shadow query is the raw-turn floor **and** `shadow_hit` is the looser
+`shadow_hit_count ≥ 1` criterion (not a stricter per-channel rank filter), a below-threshold
+bucket 3 is a strong stop signal (the real gap is ≤ the measured floor); an at/above bucket 3 is a
+_lower bound_ worth escalating.
 
 **`overPullTurns` is not part of this frozen gate.** `computeShadowFunnel`
 (`src/long-term-memory/shadow-funnel.ts`) also reports `overPullTurns` (`model_pulled` with zero
@@ -221,6 +245,10 @@ no numeric cutoff — and it is explicitly excluded from the go/no-go decision, 
 
 - **Floor underestimate.** Raw-turn shadow < derived-query shadow. Conservative by design; noted so
   an at-threshold result is read as a lower bound.
+- **Looser hit criterion.** `shadow_hit` is `shadow_hit_count ≥ 1` (any record within the cascade's
+  top-`RECALL_DEFAULT_LIMIT` window), not a per-channel rank filter — see the decision-gate note
+  above. This makes bucket 3 more inclusive than a stricter filter would, reinforcing (not
+  undermining) the floor/lower-bound reading above.
 - **Profile already covers it.** The model may skip `search_memory` because layer A/B (summary /
   profile) already answered — a _non_-gap that inflates bucket 3. Cannot be separated from
   content-free logs; the offline judged stage (P2 corpus) removes it. Reported as a known
