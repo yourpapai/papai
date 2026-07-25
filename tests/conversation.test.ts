@@ -13,6 +13,7 @@ import { toScopedContextId, toScopedThreadContextId } from '../src/chat/scoped-c
 import { shouldTriggerTrim, buildMessagesWithMemory, runTrimInBackground } from '../src/conversation.js'
 import { clearLlmAdminCacheForTesting } from '../src/llm-providers/store.testing.js'
 import { logger } from '../src/logger.js'
+import { purgeMemoryRecord } from '../src/long-term-memory/purge.js'
 import * as longTermMemoryStore from '../src/long-term-memory/store.js'
 import { saveMemoryProfile, saveMemoryRecord, setMemoryRecordInjectionEnabled } from '../src/long-term-memory/store.js'
 import type { MemoryRecordInput } from '../src/long-term-memory/types.js'
@@ -782,5 +783,44 @@ describe('Story 5: Summary injected into context', () => {
     const systemMsg = result.messages[0]!
     expect(systemMsg.content).toContain('Fix login bug')
     expect(systemMsg.content).toContain('#42')
+  })
+})
+
+describe('buildMessagesWithMemory — contaminated profile', () => {
+  beforeEach(async () => {
+    await setupTestDb()
+  })
+
+  const memoryMsgContent = (result: { memoryMsg: { content: string } | null }): string =>
+    result.memoryMsg?.content ?? ''
+
+  const seedRecord = (): MemoryRecordInput => ({
+    id: 'mem-1',
+    scopeId: 'dm-9',
+    scopeType: 'personal',
+    kind: 'fact',
+    content: 'User lives in Berlin',
+    summary: null,
+    tags: [],
+    confidence: 1,
+    status: 'active',
+    source: 'explicit',
+    evidence: {},
+    createdAt: '2026-07-01T00:00:00.000Z',
+    updatedAt: '2026-07-01T00:00:00.000Z',
+    lastSeenAt: '2026-07-01T00:00:00.000Z',
+  })
+
+  test('omits profile prose after a purge, with no worker run', () => {
+    saveMemoryProfile({ scopeId: 'dm-9', scopeType: 'personal' }, 'User lives in Berlin', '2026-07-01T00:00:00.000Z')
+    saveMemoryRecord(seedRecord())
+
+    const before = buildMessagesWithMemory('dm-9', [], 'dm')
+    expect(memoryMsgContent(before)).toContain('Berlin')
+
+    purgeMemoryRecord({ scopeId: 'dm-9', scopeType: 'personal' }, 'mem-1', '2026-07-25T12:00:00.000Z')
+
+    const after = buildMessagesWithMemory('dm-9', [], 'dm')
+    expect(memoryMsgContent(after)).not.toContain('Berlin')
   })
 })

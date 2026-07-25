@@ -12,6 +12,7 @@ import { resolveLlmConfig } from './llm-providers/resolver.js'
 import type { LlmConfigResult } from './llm-providers/types.js'
 import { logger } from './logger.js'
 import { buildLongTermMemoryContextMessage } from './long-term-memory/context.js'
+import { visibleProfileText } from './long-term-memory/profile-visibility.js'
 import { resolveMemoryScope } from './long-term-memory/scope.js'
 import { getMemoryProfile, listMemoryRecords } from './long-term-memory/store.js'
 import { buildMemoryContextMessage, loadFacts, loadSummary, saveSummary, trimWithMemoryModel } from './memory.js'
@@ -68,7 +69,7 @@ export const buildMessagesWithMemory = (
   const compactedMemoryMsg = buildMemoryContextMessage(summary, facts)
   const scope = resolveMemoryScope({ storageContextId: userId, contextType })
   const memoryProfile = getMemoryProfile(scope)
-  const profile = memoryProfile?.profile ?? null
+  const profile = visibleProfileText(memoryProfile)
   const records =
     memoryProfile?.injectRecords === true ? listMemoryRecords({ ...scope, status: 'active', limit: 3 }) : []
   const longTermMemoryMsg = buildLongTermMemoryContextMessage({ profile, records })
