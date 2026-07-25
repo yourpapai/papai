@@ -344,6 +344,14 @@ describe('updateYouTrackSprint', () => {
 
     expect(fetchMock.current?.mock.calls).toHaveLength(0)
   })
+
+  test('links previous sprint when previousSprintId is a non-null id', async () => {
+    mockFetchResponse(fetchMock, makeSprintResponse({ id: 'sprint-2' }))
+
+    await updateYouTrackSprint(config, 'agile-1', 'sprint-2', { previousSprintId: 'sprint-1' })
+
+    expect(getFetchBodyAt(fetchMock.current, 0)['previousSprint']).toEqual({ id: 'sprint-1' })
+  })
 })
 
 describe('assignYouTrackTaskToSprint', () => {
@@ -432,4 +440,66 @@ describe('assignYouTrackTaskToSprint', () => {
 
     expect(fetchMock.current?.mock.calls).toHaveLength(2)
   })
+})
+
+// parseSprintTimestamp is module-private and reached only via createYouTrackSprint.
+// Valid timestamps must parse to the same epoch as the JS reference (new Date);
+// invalid ones must reject before any fetch. Log/error-message/JSON-equivalent
+// survivors are intentionally not chased — see
+// docs/superpowers/specs/2026-07-25-plugin-test-quality-design.md.
+describe('parseSprintTimestamp boundary validation (via createYouTrackSprint)', () => {
+  for (const start of [
+    // leap year, %4 rule
+    '2024-02-29T00:00:00.000Z',
+    // leap year, %400 rule
+    '2000-02-29T00:00:00.000Z',
+    // upper calendar / hms bounds
+    '2024-12-31T23:59:59.999Z',
+    // last day of a 30-day month
+    '2024-04-30T00:00:00.000Z',
+    // seconds omitted -> 0
+    '2024-01-15T00:00Z',
+    // milliseconds omitted -> 0
+    '2024-01-15T00:00:00Z',
+    // 1-digit millisecond, zero-padded -> 500
+    '2024-01-15T00:00:00.5Z',
+    // positive timezone offset
+    '2024-01-15T00:00:00+03:00',
+    // negative timezone offset
+    '2024-06-15T12:30:00-05:00',
+  ] as const) {
+    test(`accepts and converts ${start}`, async () => {
+      mockFetchResponse(fetchMock, makeSprintResponse())
+
+      await createYouTrackSprint(config, 'agile-1', { name: 'Sprint', start })
+
+      expect(getFetchBodyAt(fetchMock.current, 0)['start']).toBe(new Date(start).getTime())
+    })
+  }
+
+  for (const [label, start] of [
+    ['Feb 29 in a common year', '2023-02-29T00:00:00.000Z'],
+    ['Feb 29 in a century non-leap year', '1900-02-29T00:00:00.000Z'],
+    ['month 13', '2024-13-01T00:00:00.000Z'],
+    ['day 32', '2024-01-32T00:00:00.000Z'],
+    ['day 31 in a 30-day month', '2024-04-31T00:00:00.000Z'],
+    ['hour 24', '2024-01-01T24:00:00.000Z'],
+    ['minute 60', '2024-01-01T00:60:00.000Z'],
+    ['second 60', '2024-01-01T00:00:60.000Z'],
+    ['timezone hour 24', '2024-01-15T00:00:00+24:00'],
+    ['timezone minute 60', '2024-01-15T00:00:00+00:60'],
+    ['prefixed garbage', 'x2024-01-15T00:00:00.000Z'],
+    ['trailing garbage', '2024-01-15T00:00:00.000Zx'],
+    ['space separator', '2024-01-15 00:00:00.000Z'],
+  ] as const) {
+    test(`rejects ${label} before sending the request`, async () => {
+      mockFetchResponse(fetchMock, makeSprintResponse())
+
+      await expect(createYouTrackSprint(config, 'agile-1', { name: 'Sprint', start })).rejects.toBeInstanceOf(
+        YouTrackClassifiedError,
+      )
+
+      expect(fetchMock.current?.mock.calls).toHaveLength(0)
+    })
+  }
 })
