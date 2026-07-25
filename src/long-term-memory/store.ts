@@ -45,7 +45,7 @@ export {
   type ListProvisionalFilter,
 } from './provisional-store.js'
 export { clearMemoryScope } from './scope-clear.js'
-export { purgeMemoryRecord } from './purge.js'
+export { deleteMemoryRecord, purgeMemoryRecord } from './purge.js'
 
 const inputToRecordValues = (input: MemoryRecordInput): MemoryRecordValues => ({
   id: input.id,
@@ -227,16 +227,6 @@ export function searchMemoryRecords(filter: SearchMemoryRecordsFilter): readonly
     .limit(filter.limit ?? DEFAULT_SEARCH_LIMIT)
     .all()
     .map(rowToRecord)
-}
-
-export function archiveMemoryRecord(scope: MemoryScope, recordId: string, now: string): boolean {
-  const rows = getDrizzleDb()
-    .update(memoryRecords)
-    .set({ status: 'archived', updatedAt: now })
-    .where(recordScopeCondition(scope, recordId))
-    .returning({ id: memoryRecords.id })
-    .all()
-  return rows.length > 0
 }
 
 export function updateMemoryRecord(

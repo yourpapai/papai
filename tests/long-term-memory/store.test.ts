@@ -19,7 +19,7 @@ import {
 } from '../../src/db/schema.js'
 import type { ShadowLogRow } from '../../src/long-term-memory/shadow-log-row.js'
 import {
-  archiveMemoryRecord,
+  deleteMemoryRecord,
   clearMemoryScope,
   getMemoryProfile,
   insertShadowLogRow,
@@ -160,7 +160,7 @@ describe('long-term memory store', () => {
     ).toEqual(['mem-2'])
   })
 
-  test('archives a record and clears a scope', () => {
+  test('clears a scope', () => {
     saveMemoryRecord(
       memoryRecordInput({
         id: 'mem-3',
@@ -180,10 +180,6 @@ describe('long-term memory store', () => {
       }),
     )
 
-    expect(archiveMemoryRecord({ scopeId: 'user-1', scopeType: 'personal' }, 'mem-3', '2026-06-12T00:00:00.000Z')).toBe(
-      true,
-    )
-    expect(listMemoryRecords({ scopeId: 'user-1', scopeType: 'personal', status: 'active' })).toEqual([])
     expect(clearMemoryScope({ scopeId: 'user-1', scopeType: 'personal' })).toEqual({
       recordsDeleted: 1,
       profileDeleted: 0,
@@ -218,13 +214,11 @@ describe('long-term memory store', () => {
     )
   })
 
-  test('archives records only in the requested scope type', () => {
+  test('deletes records only in the requested scope type', () => {
     saveMemoryRecord(memoryRecordInput({ id: 'mem-personal', scopeId: 'shared-2', scopeType: 'personal' }))
     saveMemoryRecord(memoryRecordInput({ id: 'mem-group', scopeId: 'shared-2', scopeType: 'group' }))
 
-    expect(
-      archiveMemoryRecord({ scopeId: 'shared-2', scopeType: 'personal' }, 'mem-personal', '2026-06-12T00:00:00.000Z'),
-    ).toBe(true)
+    expect(deleteMemoryRecord({ scopeId: 'shared-2', scopeType: 'personal' }, 'mem-personal')).toBe(true)
 
     expect(listMemoryRecords({ scopeId: 'shared-2', scopeType: 'personal', status: 'active' })).toEqual([])
     expect(listMemoryRecords({ scopeId: 'shared-2', scopeType: 'group', status: 'active' }).map((r) => r.id)).toEqual([

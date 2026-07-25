@@ -19,6 +19,26 @@ type PurgeOutcome = Readonly<{ purged: boolean; contaminatedProfile: boolean; cl
 const NOT_PURGED: PurgeOutcome = { purged: false, contaminatedProfile: false, clearedSummaryKeys: [] }
 
 /**
+ * Destroys one memory record outright, taking its FTS entry and embedding with it.
+ *
+ * Deliberately weaker than `purgeMemoryRecord`: it writes no tombstone and leaves the
+ * profile and summary alone. This is the dedup path, where the deleted row is a
+ * duplicate of a record the scope still keeps — the user never asked to forget the
+ * fact, so suppressing its re-capture or invalidating the scope's derived prose would
+ * be wrong.
+ *
+ * Returns false when no record matched.
+ */
+export function deleteMemoryRecord(scope: MemoryScope, recordId: string): boolean {
+  const deleted = getDrizzleDb()
+    .delete(memoryRecords)
+    .where(recordScopeCondition(scope, recordId))
+    .returning({ id: memoryRecords.id })
+    .all()
+  return deleted.length > 0
+}
+
+/**
  * Permanently destroys one memory record, tombstones its content so background
  * extraction cannot re-learn it, and invalidates the derived prose that may have
  * absorbed the same fact.

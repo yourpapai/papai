@@ -10,7 +10,7 @@ import { resolveLlmConfig } from '../llm-providers/resolver.js'
 import { logger } from '../logger.js'
 import { cosineSimilarity } from './semantic-search.js'
 import {
-  archiveMemoryRecord,
+  deleteMemoryRecord,
   listProvisionalRecords,
   markPromotionRejected,
   promoteProvisionalToActive,
@@ -70,9 +70,10 @@ const defaultDeps: EvaluatePromotionDeps = {
   now: () => new Date().toISOString(),
 }
 
-const archiveDuplicates = (scope: MemoryScope, cluster: readonly MemoryRecord[], keepId: string, now: string): void => {
+/** Destroys the losers of a dedup cluster. Archiving them would leave full, un-erasable copies behind. */
+const deleteDuplicates = (scope: MemoryScope, cluster: readonly MemoryRecord[], keepId: string): void => {
   for (const member of cluster) {
-    if (member.id !== keepId) archiveMemoryRecord(scope, member.id, now)
+    if (member.id !== keepId) deleteMemoryRecord(scope, member.id)
   }
 }
 
@@ -111,7 +112,7 @@ export async function evaluatePromotion(
   }
 
   promoteProvisionalToActive(scope, candidate.id, [...threads], now)
-  archiveDuplicates(scope, cluster, candidate.id, now)
+  deleteDuplicates(scope, cluster, candidate.id)
   log.info({ recordId: candidate.id, threadCount: threads.size }, 'Promoted provisional record to active')
   return true
 }
