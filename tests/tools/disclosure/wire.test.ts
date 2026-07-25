@@ -11,9 +11,12 @@ import { z } from 'zod'
 
 import {
   createActorProviderRequestScope,
+  requireProviderRequestScope,
   type ProviderRequestScope,
 } from '../../../src/analytics/provider-request-scope.js'
 import { isToolFailureResult } from '../../../src/tool-failure.js'
+import { DISCLOSURE_STALL_STEPS } from '../../../src/tools/disclosure/core.js'
+import { createDisclosurePrepareStep } from '../../../src/tools/disclosure/prepare-step.js'
 import { LexicalToolRetriever } from '../../../src/tools/disclosure/tool-retriever.js'
 import { maybeApplyDisclosure } from '../../../src/tools/disclosure/wire.js'
 import {
@@ -98,5 +101,38 @@ describe('maybeApplyDisclosure', () => {
     const failure: unknown = await finalized['list_tasks']!.execute!({}, execOptions({ kind: 'bogus' }))
     assert.ok(isToolFailureResult(failure))
     expect(failure.errorCode).toBe('provider_scope_missing')
+  })
+
+  it('a descriptor inactive at step 0 exposed via the stall fallback executes inside the actor scope', async () => {
+    let recorded: ProviderRequestScope | undefined
+    const tools: ToolSet = {
+      get_current_time: d(),
+      list_tasks: tool({
+        description: 'list',
+        inputSchema: z.object({}),
+        execute: () => {
+          recorded = requireProviderRequestScope()
+          return Promise.resolve('listed')
+        },
+      }),
+    }
+    const { tools: disclosed, disclosure } = maybeApplyDisclosure(tools, 'ctx-1', new LexicalToolRetriever())
+    const prep = createDisclosurePrepareStep(disclosure, 'ctx-1')
+    const finalized = finalizeProviderScopedTools(disclosed)
+
+    // Inactive before the stall boundary: the prepareStep narrows to active names only.
+    expect(disclosure.activeToolNames()).not.toContain('list_tasks')
+    expect(prep({ stepNumber: 0 }).activeTools).not.toContain('list_tasks')
+
+    // Stalling with no loads latches open ({} = all tools) without marking a load.
+    expect(prep({ stepNumber: DISCLOSURE_STALL_STEPS })).toEqual({})
+    expect(disclosure.activeToolNames()).not.toContain('list_tasks')
+
+    // The fallback-opened tool executes inside runWithProviderRequestScope:
+    // requireProviderRequestScope() resolves the turn's actor scope at the boundary.
+    const scope = makeScope()
+    const listed: unknown = await finalized['list_tasks']!.execute!({}, execOptions(scope))
+    expect(listed).toBe('listed')
+    expect(recorded).toBe(scope)
   })
 })
