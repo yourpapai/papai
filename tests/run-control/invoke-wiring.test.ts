@@ -52,6 +52,7 @@ function buildArgs(
 ): InvokeModelArgs & { reply: undefined; turnId: string } {
   return {
     contextId: 'ctx-1',
+    configId: 'ctx-1',
     chatUserId: 'user-1',
     contextType: 'dm',
     mainModel: 'main',

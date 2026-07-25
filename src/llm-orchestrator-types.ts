@@ -66,13 +66,15 @@ export type InvokeModelArgs = {
   enabledToolNames: ReadonlySet<string>
   messages: ModelMessage[]
   deps: LlmOrchestratorDeps
+  // Config context id for the shadow-recall study's embedding creds (Plan 2 T6). Required:
+  // the sole production call site (`src/llm-orchestrator.ts`) always supplies it, and an
+  // omitted value would silently run the shadow recall against the wrong config context
+  // (wrong BYOK/embedding creds) with no observable signal — so the type forbids that
+  // rather than falling back and hoping a future caller notices.
+  configId: string
 } & Partial<Record<'progressReporter', AiProgressReporter>> &
   Partial<Record<'disclosure', DisclosureSession>> &
-  Partial<Record<'liveStatus', LiveStatusReporter>> &
-  // Config context id for the shadow-recall study's embedding creds (Plan 2 T6). Optional
-  // so existing call sites/fixtures built before this field need no change; falls back to
-  // `contextId`, mirroring `resolveConfigId`'s own fallback.
-  Partial<Record<'configId', string>>
+  Partial<Record<'liveStatus', LiveStatusReporter>>
 
 export type StepOutput = {
   stepNumber: number

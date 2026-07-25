@@ -16,7 +16,18 @@ import {
 } from '../../src/long-term-memory/shadow-log.js'
 import type { RunShadowRecallResult } from '../../src/long-term-memory/shadow-recall.js'
 import { keyedHash } from '../../src/stats/hashing.js'
+import { createTrackedLoggerMock, type TrackedLoggerMock } from '../utils/logger-mock.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+
+type ShadowLogModule = typeof import('../../src/long-term-memory/shadow-log.js')
+
+/** `shadow-log.ts` binds `const log = logger.child(...)` at module load (mirrors the
+ * `tests/coding-credentials/redaction-log.test.ts` note), so asserting on the logger
+ * requires installing the mock *before* importing a fresh copy of the module through a
+ * cachebuster query — the already-statically-imported `scheduleShadowRecallLog` above
+ * stays bound to whichever logger was live at file-load time. */
+const importShadowLogFresh = (): Promise<ShadowLogModule> =>
+  import(`../../src/long-term-memory/shadow-log.js?test=${crypto.randomUUID()}`)
 
 /** Yields the microtask queue repeatedly so any promise-chain scheduled inside a
  * `queueMicrotask` callback (including further awaited promises) has a chance to settle,
@@ -168,6 +179,49 @@ describe('scheduleShadowRecallLog', () => {
     await flushMicrotasks()
 
     expect(calls).not.toContain('insertShadowLogRow')
+  })
+
+  describe('swallowed failures are observable via a warn log (not just non-throwing)', () => {
+    const tracked: TrackedLoggerMock = createTrackedLoggerMock()
+
+    beforeEach(() => {
+      tracked.clearCalls()
+      void mock.module('../../src/logger.js', () => ({
+        getLogLevel: (): string => 'info',
+        logger: tracked.logger,
+      }))
+    })
+
+    test('an async rejection from runShadowRecall is logged at warn', async () => {
+      const { scheduleShadowRecallLog: freshSchedule } = await importShadowLogFresh()
+      const { deps } = buildSpyDeps({
+        runShadowRecall: mock(() => Promise.reject(new Error('boom'))),
+      })
+
+      freshSchedule(baseArgs, deps)
+      await flushMicrotasks()
+
+      const warnCalls = tracked.getCallsByLevel('warn')
+      expect(warnCalls.length).toBeGreaterThan(0)
+    })
+
+    test('a synchronous throw from insertShadowLogRow is swallowed and logged at warn', async () => {
+      const { scheduleShadowRecallLog: freshSchedule } = await importShadowLogFresh()
+      const insertCalls: string[] = []
+      const { deps } = buildSpyDeps({
+        insertShadowLogRow: mock(() => {
+          insertCalls.push('insertShadowLogRow')
+          throw new Error('sync-boom')
+        }),
+      })
+
+      expect(() => freshSchedule(baseArgs, deps)).not.toThrow()
+      await flushMicrotasks()
+
+      expect(insertCalls).toContain('insertShadowLogRow')
+      const warnCalls = tracked.getCallsByLevel('warn')
+      expect(warnCalls.length).toBeGreaterThan(0)
+    })
   })
 
   describe('full sampled turn (real leaf modules for hashing/overlap)', () => {

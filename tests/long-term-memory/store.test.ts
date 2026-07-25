@@ -12,14 +12,17 @@ import {
   conversationHistory,
   memoryExtractionState,
   memoryFacts,
+  memoryRecallShadowLog,
   memoryRecords,
   memorySummary,
   memoryTombstones,
 } from '../../src/db/schema.js'
+import type { ShadowLogRow } from '../../src/long-term-memory/shadow-log-row.js'
 import {
   archiveMemoryRecord,
   clearMemoryScope,
   getMemoryProfile,
+  insertShadowLogRow,
   listMemoryRecords,
   purgeMemoryRecord,
   saveMemoryProfile,
@@ -363,6 +366,72 @@ describe('long-term memory store', () => {
       expect(
         db.select().from(conversationHistory).where(eq(conversationHistory.userId, siblingThreadKey)).get(),
       ).toBeDefined()
+    })
+  })
+
+  describe('insertShadowLogRow', () => {
+    const row: ShadowLogRow = {
+      scopeHash: 'hash-scope-1',
+      contextHash: 'hash-context-1',
+      turnRef: 'turn-77',
+      readerModelId: 'gpt-4o-mini',
+      activeRecordCount: 3,
+      shadowQueryHash: 'hash-query-1',
+      shadowQueryLenBucket: 'medium',
+      shadowHitCount: 2,
+      shadowTopScore: 0.87,
+      shadowTopProvenance: 'group',
+      shadowTopRecordHash: 'hash-record-1',
+      modelPulled: true,
+      pullCount: 1,
+      pullQueryHash: 'hash-pull-1',
+      pullResultCount: 2,
+      shadowPullOverlap: 1,
+      skippedReason: null,
+    }
+
+    test('persists a real row against the drizzle schema, assigning id and createdAt', () => {
+      const before = Date.now()
+
+      insertShadowLogRow(row)
+
+      const persisted = getDrizzleDb().select().from(memoryRecallShadowLog).all()
+      expect(persisted).toHaveLength(1)
+      const inserted = persisted[0]
+      expect(inserted).toBeDefined()
+
+      expect(typeof inserted?.id).toBe('string')
+      expect(inserted?.id.length).toBeGreaterThan(0)
+      expect(inserted?.createdAt).toBeGreaterThanOrEqual(before)
+      expect(inserted?.createdAt).toBeLessThanOrEqual(Date.now())
+
+      // Every column mapped through the real drizzle insert, matching what was passed in.
+      expect(inserted?.scopeHash).toBe(row.scopeHash)
+      expect(inserted?.contextHash).toBe(row.contextHash)
+      expect(inserted?.turnRef).toBe(row.turnRef)
+      expect(inserted?.readerModelId).toBe(row.readerModelId)
+      expect(inserted?.activeRecordCount).toBe(row.activeRecordCount)
+      expect(inserted?.shadowQueryHash).toBe(row.shadowQueryHash)
+      expect(inserted?.shadowQueryLenBucket).toBe(row.shadowQueryLenBucket)
+      expect(inserted?.shadowHitCount).toBe(row.shadowHitCount)
+      expect(inserted?.shadowTopScore).toBe(row.shadowTopScore)
+      expect(inserted?.shadowTopProvenance).toBe(row.shadowTopProvenance)
+      expect(inserted?.shadowTopRecordHash).toBe(row.shadowTopRecordHash)
+      expect(inserted?.modelPulled).toBe(row.modelPulled)
+      expect(inserted?.pullCount).toBe(row.pullCount)
+      expect(inserted?.pullQueryHash).toBe(row.pullQueryHash)
+      expect(inserted?.pullResultCount).toBe(row.pullResultCount)
+      expect(inserted?.shadowPullOverlap).toBe(row.shadowPullOverlap)
+      expect(inserted?.skippedReason).toBe(row.skippedReason)
+    })
+
+    test('assigns a distinct id per call, so repeated inserts do not collide', () => {
+      insertShadowLogRow(row)
+      insertShadowLogRow(row)
+
+      const persisted = getDrizzleDb().select().from(memoryRecallShadowLog).all()
+      expect(persisted).toHaveLength(2)
+      expect(persisted[0]?.id).not.toBe(persisted[1]?.id)
     })
   })
 })

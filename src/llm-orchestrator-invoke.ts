@@ -94,7 +94,7 @@ const scheduleShadowLogForTurn = (
 ): void => {
   scheduleShadowRecallLog({
     contextId: args.contextId,
-    configId: args.configId ?? args.contextId,
+    configId: args.configId,
     contextType: args.contextType,
     readerModelId: mainModel,
     turnRef: turnId,
