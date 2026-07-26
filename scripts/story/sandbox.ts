@@ -147,7 +147,7 @@ function translateLinuxCommandArgument(
   tempRoot: string,
   reports: readonly string[],
 ): string {
-  for (const prefix of ['--config=', '--reporter-outfile=']) {
+  for (const prefix of ['--config=', '--reporter-outfile=', '--coverage-dir=']) {
     if (argument.startsWith(prefix)) {
       return `${prefix}${translateLinuxSessionPath(argument.slice(prefix.length), appRoot, tempRoot, reports)}`
     }

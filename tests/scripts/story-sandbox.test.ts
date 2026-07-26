@@ -191,6 +191,18 @@ describe('Linux story sandbox', () => {
     expect(command).not.toContain(path.join(request.appRoot, 'tests/setup.ts'))
   })
 
+  test('translates --coverage-dir under tempRoot to the container temp path', () => {
+    const { request } = fixture()
+    const command = buildStorySandboxCommand({
+      ...request,
+      platform: 'linux',
+      command: [request.bunExecutable, 'test', `--coverage-dir=${path.join(request.tempRoot, 'coverage')}`],
+    })
+
+    expect(command).toContain('--coverage-dir=/session/tmp/coverage')
+    expect(command).not.toContain(`--coverage-dir=${path.join(request.tempRoot, 'coverage')}`)
+  })
+
   test('builds a pinned, capability-restricted Docker command with only declared mounts', () => {
     const { request, dependencyCacheRoot, liveRoot } = fixture()
 
