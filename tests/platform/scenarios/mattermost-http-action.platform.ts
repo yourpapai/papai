@@ -38,9 +38,10 @@ const signedContext = (secret: string): unknown =>
       // { ephemeral_text: 'Action is no longer available.' } string this test must rule
       // out — verified via a real container run with temporary tracing. A callbackData
       // that doesn't match the `perm:` prefix takes the router's safe-sink no-op branch
-      // instead, which proves signature verification + dispatcher lookup + authorized
-      // routing all succeeded (response stays the dispatcher's default
-      // { ephemeral_text: 'Action processed.' }) without colliding with the banned string.
+      // instead, leaving `reply` untouched at buildActionReply()'s static default,
+      // { ephemeral_text: 'Action processed.' } — which is what this test asserts, and
+      // which proves signature verification passed, the mattermost-default dispatcher
+      // was found, and the interaction was routed.
       callbackData: 'noop:test-action',
       sourceMessageText: 'do the thing',
       // Brief's literal fixed epoch (1_700_000_000_000, Nov 2023) predates the container's
@@ -97,9 +98,7 @@ describe.skipIf(!DOCKER)('T3 Mattermost — HTTP action callback', () => {
       const res = await postAction(handle!.container.webBaseUrl, signedContext(KNOWN_SECRET))
       expect(res.status).toBe(200)
       const body = ActionResponseBodySchema.parse(await res.json())
-      // Verify passed (not a bad-signature/expired/shape error) and a dispatcher was found.
-      expect(body).not.toHaveProperty('error')
-      expect(body).not.toEqual({ ephemeral_text: 'Action is no longer available.' })
+      expect(body).toEqual({ ephemeral_text: 'Action processed.' })
     },
     60_000,
   )
