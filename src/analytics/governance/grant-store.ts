@@ -52,12 +52,14 @@ export const getGrant = (grantKey: string, deps: GrantStoreDeps = DEFAULT_DEPS):
   return row === undefined ? null : toRef(row)
 }
 
-export const checkGrantCurrent = (
+type Db = ReturnType<typeof defaultGetDrizzleDb>
+type Tx = Parameters<Db['transaction']>[0] extends (tx: infer T) => unknown ? T : never
+
+export const checkGrantCurrentIn = (
+  db: Db | Tx,
   input: Readonly<{ grantKey: string; keyVersion: string; generation: number }>,
-  deps: GrantStoreDeps = DEFAULT_DEPS,
 ): boolean => {
-  const row = deps
-    .getDrizzleDb()
+  const row = db
     .select({ grantKey: analyticsEligibilityGrants.grantKey })
     .from(analyticsEligibilityGrants)
     .where(
@@ -71,6 +73,11 @@ export const checkGrantCurrent = (
     .get()
   return row !== undefined
 }
+
+export const checkGrantCurrent = (
+  input: Readonly<{ grantKey: string; keyVersion: string; generation: number }>,
+  deps: GrantStoreDeps = DEFAULT_DEPS,
+): boolean => checkGrantCurrentIn(deps.getDrizzleDb(), input)
 
 export const listGrantVersions = (
   grantKeys: readonly string[],

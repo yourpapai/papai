@@ -30,9 +30,9 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('070_message_metadata_history_search')
   })
 
-  test('073_analytics_governance is the last migration', () => {
+  test('074_analytics_delivery is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('073_analytics_governance')
+    expect(lastMigration.id).toBe('074_analytics_delivery')
   })
 
   test('migration ids are unique', () => {

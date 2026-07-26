@@ -84,6 +84,7 @@ import { migration070MessageMetadataHistorySearch } from './migrations/070_messa
 import { migration071MessageEmbeddings } from './migrations/071_message_embeddings.js'
 import { migration072AnalyticsFoundation } from './migrations/072_analytics_foundation.js'
 import { migration073AnalyticsGovernance } from './migrations/073_analytics_governance.js'
+import { migration074AnalyticsDelivery } from './migrations/074_analytics_delivery.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -192,6 +193,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration071MessageEmbeddings,
   migration072AnalyticsFoundation,
   migration073AnalyticsGovernance,
+  migration074AnalyticsDelivery,
 ]
 
 export const initDb = (): void => {

@@ -62,6 +62,10 @@ export default {
     // stores and the pure eligibility matrix) are the Stage A governance seam
     // consumed by later runtime/delivery tasks.
     'src/analytics/governance/*.ts!',
+    // Analytics delivery modules (delivery ledger store, sink capability gate,
+    // sink lifecycle service) are the Stage A egress seam consumed by the
+    // upcoming transport/egress tasks.
+    'src/analytics/delivery/*.ts!',
     // First-party plugin entry points are loaded dynamically by the plugin
     // loader, so they have no static importer.
     'plugins/*/index.ts!',
@@ -156,6 +160,10 @@ export default {
     // are consumed by upcoming runtime/delivery tasks and by analytics tests
     // outside knip's production project scope.
     'src/analytics/governance/*.ts': ['exports', 'types'],
+    // Analytics delivery modules are the Stage A egress seam; their exports are
+    // consumed by upcoming transport/egress tasks and by analytics tests outside
+    // knip's production project scope.
+    'src/analytics/delivery/*.ts': ['exports', 'types'],
     // Generated analytics modules are checked-in generator output; their exports
     // are consumed by sibling analytics modules and by tests outside knip's
     // production project scope.
