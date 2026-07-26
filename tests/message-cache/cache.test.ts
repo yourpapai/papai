@@ -8,16 +8,21 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { cacheMessage, getCachedMessage } from '../../src/message-cache/cache.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
+const flushPendingWrites = (): Promise<void> =>
+  new Promise<void>((resolve) => {
+    queueMicrotask(resolve)
+  })
+
 describe('Message Cache', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
   })
 
-  // Each test uses unique contextId/messageId prefixes to avoid sharing state
-  // across tests, since the in-memory Map in cache.ts persists for the process lifetime.
+  // Reads are DB-backed; cacheMessage flushes to SQLite on a queued microtask,
+  // so tests await the flush before asserting through getCachedMessage.
 
-  test('should cache and retrieve message', () => {
+  test('should cache and retrieve message', async () => {
     const message = {
       messageId: 'cache-msg-1',
       contextId: 'ctx-cache',
@@ -27,6 +32,7 @@ describe('Message Cache', () => {
     }
 
     cacheMessage(message)
+    await flushPendingWrites()
 
     const retrieved = getCachedMessage('ctx-cache', 'cache-msg-1')
     expect(retrieved).toBeDefined()
@@ -38,19 +44,21 @@ describe('Message Cache', () => {
     expect(result).toBeUndefined()
   })
 
-  test('should store messages in cache', () => {
+  test('should store messages in cache', async () => {
     expect(getCachedMessage('ctx-store', 'store-1')).toBeUndefined()
     cacheMessage({ messageId: 'store-1', contextId: 'ctx-store', timestamp: Date.now() })
+    await flushPendingWrites()
     expect(getCachedMessage('ctx-store', 'store-1')).toBeDefined()
   })
 
-  test('should check if message is cached', () => {
+  test('should check if message is cached', async () => {
     cacheMessage({ messageId: 'check-1', contextId: 'ctx-check', timestamp: Date.now() })
+    await flushPendingWrites()
     expect(getCachedMessage('ctx-check', 'check-1')).toBeDefined()
     expect(getCachedMessage('ctx-check', 'check-2')).toBeUndefined()
   })
 
-  test('should isolate messages by contextId', () => {
+  test('should isolate messages by contextId', async () => {
     cacheMessage({
       messageId: 'iso-1',
       contextId: 'ctx-iso-A',
@@ -63,6 +71,7 @@ describe('Message Cache', () => {
       text: 'From B',
       timestamp: Date.now(),
     })
+    await flushPendingWrites()
 
     const fromA = getCachedMessage('ctx-iso-A', 'iso-1')
     const fromB = getCachedMessage('ctx-iso-B', 'iso-1')
@@ -71,7 +80,7 @@ describe('Message Cache', () => {
     expect(fromB?.text).toBe('From B')
   })
 
-  test('should retain old messages (retention is unlimited)', () => {
+  test('should retain old messages (retention is unlimited)', async () => {
     const oldTimestamp = Date.now() - 30 * 24 * 60 * 60 * 1000
 
     cacheMessage({
@@ -80,6 +89,7 @@ describe('Message Cache', () => {
       text: 'Old but kept',
       timestamp: oldTimestamp,
     })
+    await flushPendingWrites()
 
     const result = getCachedMessage('ctx-old', 'old-msg')
     expect(result).toBeDefined()

@@ -9,24 +9,19 @@ import { getDrizzleDb } from '../db/drizzle.js'
 import { messageMetadata } from '../db/schema.js'
 import { logger } from '../logger.js'
 import { getPendingWritesCount, getIsFlushScheduled, scheduleMessagePersistence } from './persistence.js'
+import { getMessageByContext } from './store.js'
 import type { CachedMessage } from './types.js'
 
 const log = logger.child({ scope: 'message-cache' })
 
-// In-memory cache: "contextId:messageId" -> CachedMessage
-const messageCache = new Map<string, CachedMessage>()
-
-function cacheKey(contextId: string, messageId: string): string {
-  return `${contextId}:${messageId}`
-}
-
+/** Write: in-memory Map retired; DB is the source of truth. */
 export function cacheMessage(message: CachedMessage): void {
-  messageCache.set(cacheKey(message.contextId, message.messageId), message)
   scheduleMessagePersistence(message)
 }
 
+/** Read: DB-backed (thread-scoped context_id + message_id). Mock replaces this in tests. */
 export function getCachedMessage(contextId: string, messageId: string): CachedMessage | undefined {
-  return messageCache.get(cacheKey(contextId, messageId))
+  return getMessageByContext(contextId, messageId)
 }
 
 export type MessageCacheSnapshot = {
