@@ -1029,6 +1029,61 @@ describe('story report lifecycle', () => {
     }
   })
 
+  function writeCoverageFloor(root: string, floor: Readonly<{ lines: number; functions: number }>): void {
+    mkdirSync(path.join(root, 'scripts/story'), { recursive: true })
+    writeFileSync(path.join(root, 'scripts/story/coverage-floor.json'), JSON.stringify(floor))
+  }
+
+  function writeStoryCoverageLcov(root: string, lines: readonly string[]): void {
+    const lcovPath = path.join(root, 'reports/stories/coverage/lcov.info')
+    mkdirSync(path.dirname(lcovPath), { recursive: true })
+    writeFileSync(lcovPath, `${lines.join('\n')}\n`)
+  }
+
+  function coverageGateDependencies(
+    root: string,
+    overrides: Partial<TestRunnerDependencies> = {},
+  ): TestRunnerDependencies {
+    const candidate = manifest('a'.repeat(64))
+    const sessionManifest = {
+      ...candidate,
+      files: [{ path: 'tests/stories/a.story.test.ts', sha256: 'b'.repeat(64) }],
+    }
+    return dependencies(root, {
+      ...sessionDependencies(testSession(root, sessionManifest, { copyCoverage: () => Promise.resolve(true) })),
+      spawn: () => ({ exited: Promise.resolve(0), kill: (): void => undefined }),
+      ...overrides,
+    })
+  }
+
+  test('fails the run when --coverage totals are below the floor', async () => {
+    const fixture = reportFixture()
+    try {
+      writeCoverageFloor(fixture.root, { lines: 0.5, functions: 0.5 })
+      writeStoryCoverageLcov(fixture.root, ['SF:src/example.ts', 'FNF:10', 'FNH:1', 'LF:10', 'LH:1', 'end_of_record'])
+
+      const exitCode = await runStoryTests(['--coverage'], coverageGateDependencies(fixture.root))
+
+      expect(exitCode).not.toBe(0)
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true })
+    }
+  })
+
+  test('does not gate coverage without --coverage', async () => {
+    const fixture = reportFixture()
+    try {
+      writeCoverageFloor(fixture.root, { lines: 0.5, functions: 0.5 })
+      writeStoryCoverageLcov(fixture.root, ['SF:src/example.ts', 'FNF:10', 'FNH:1', 'LF:10', 'LH:1', 'end_of_record'])
+
+      const exitCode = await runStoryTests([], coverageGateDependencies(fixture.root))
+
+      expect(exitCode).toBe(0)
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true })
+    }
+  })
+
   test('attempts both standard report removals when one cleanup throws synchronously', async () => {
     const fixture = reportFixture()
     const attempted: string[] = []

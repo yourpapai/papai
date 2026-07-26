@@ -7,6 +7,7 @@ import path from 'node:path'
 
 import { spawnStorySandboxedChild, type SpawnedStoryChild } from './child.js'
 import { type ParsedStoryRunnerArguments, parseStoryRunnerArguments, STORY_SEED } from './cli.js'
+import { gateStoryCoverage } from './coverage-gate.js'
 import { formatStoryCoverageTotals } from './coverage-totals.js'
 import {
   buildBaselineStoryManifest,
@@ -257,7 +258,8 @@ async function executeStoryTests(
     const exitCode = await waitForChild(child)
     await session.verifyIntegrity()
     await session.copyReports()
-    return exitCode
+    if (!parsed.coverage) return exitCode
+    return gateStoryCoverage(dependencies, session, exitCode)
   })
 }
 
