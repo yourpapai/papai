@@ -246,6 +246,12 @@
         to remove it.
       </p>
       <div class="settings-memory__profile">
+        {#if currentMemory.profileContaminated}
+          <p class="settings-memory__note" data-testid="memory-profile-contaminated">
+            The profile is hidden because a memory was deleted and the prose may have repeated it. It is
+            rewritten automatically from the remaining memories; saving here replaces it immediately.
+          </p>
+        {/if}
         <Field label="Pinned profile">
           <Input
             value={profileDraft}

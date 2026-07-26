@@ -6,6 +6,7 @@
 import { z } from 'zod'
 
 import { logger } from '../../logger.js'
+import { visibleProfileText } from '../../long-term-memory/profile-visibility.js'
 import {
   clearMemoryScope,
   getMemoryProfile,
@@ -96,7 +97,11 @@ function handleGet(req: Request, url: URL): Response {
     scopeType: memoryScope.scopeType,
     enabled: profile?.enabled ?? true,
     injectRecords: profile?.injectRecords ?? false,
-    profile: profile?.profile ?? '',
+    // Same gate the prompt builder, extraction runner, and capture pipeline use: a profile
+    // contaminated by a purge must not be served back to anyone (in a group, that would
+    // expose forgotten prose to every member) until a rewrite clears the flag.
+    profile: visibleProfileText(profile) ?? '',
+    profileContaminated: profile !== null && profile.contaminatedAt !== null,
     records,
   })
 }

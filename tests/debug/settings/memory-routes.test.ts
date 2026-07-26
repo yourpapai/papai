@@ -13,6 +13,7 @@ import { handleMemoryRoutes } from '../../../src/debug/settings/memory-routes.js
 import {
   getMemoryProfile,
   listMemoryRecords,
+  purgeMemoryRecord,
   saveMemoryProfile,
   saveMemoryRecord,
 } from '../../../src/long-term-memory/store.js'
@@ -36,6 +37,7 @@ const GetMemoryResponseSchema = z.object({
   enabled: z.boolean(),
   injectRecords: z.boolean(),
   profile: z.string(),
+  profileContaminated: z.boolean(),
   records: z.array(MemoryRecordViewSchema),
 })
 
@@ -142,6 +144,26 @@ describe('settings memory routes', () => {
     expect(body.enabled).toBe(true)
     expect(body.profile).toBe('## Preferences\n- Keep answers concise')
     expect(body.records.map((record) => record.id)).toEqual(['active-1'])
+  })
+
+  test('GET withholds profile prose contaminated by a purge, and serves it again after a rewrite', async () => {
+    saveMemoryProfile(personalScope, 'User lives in Berlin', '2026-06-11T00:00:00.000Z')
+    saveMemoryRecord(memoryRecordInput({ id: 'berlin', scopeId: personalContextId, content: 'User lives in Berlin' }))
+    purgeMemoryRecord(personalScope, 'berlin', '2026-06-12T00:00:00.000Z')
+
+    const url = new URL('https://x/settings/api/memory')
+    const suppressed = GetMemoryResponseSchema.parse(
+      await (await handleMemoryRoutes(request('/settings/api/memory', session), url)).json(),
+    )
+    expect(suppressed.profile).toBe('')
+    expect(suppressed.profileContaminated).toBe(true)
+
+    saveMemoryProfile(personalScope, 'User prefers short answers', '2026-06-13T00:00:00.000Z')
+    const rewritten = GetMemoryResponseSchema.parse(
+      await (await handleMemoryRoutes(request('/settings/api/memory', session), url)).json(),
+    )
+    expect(rewritten.profile).toBe('User prefers short answers')
+    expect(rewritten.profileContaminated).toBe(false)
   })
 
   test('GET returns active and provisional records but excludes archived and stale', async () => {
