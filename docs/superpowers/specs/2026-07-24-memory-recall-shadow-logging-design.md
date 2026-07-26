@@ -233,12 +233,16 @@ are fixed now and must not move once collection starts (no post-hoc goalpost-mov
 - **Proceed to P2.** If bucket 3 is **at/above 5%** **and** the overlap signal shows those records
   are the same ones the model values when it looks: a real gap of valuable records exists. Build
   the abstention harness (P2) to test whether **auto-injecting** them is _safe_ before any Tier 3
-  ship. P1 proves the gap; P2 proves closing it does not fabricate.
+  ship. P1 **screens** for the gap; P2 adjudicates it and proves closing it does not fabricate.
 
-Because the shadow query is the raw-turn floor **and** `shadow_hit` is the looser
-`shadow_hit_count ≥ 1` criterion (not a stricter per-channel rank filter), a below-threshold
-bucket 3 is a strong stop signal (the real gap is ≤ the measured floor); an at/above bucket 3 is a
-_lower bound_ worth escalating.
+The threats below push bucket 3 in **both** directions — the raw-turn floor query pushes it down,
+while the looser `shadow_hit_count ≥ 1` criterion and the profile-already-covers-it confound push
+it up — so the measured rate is **not** a one-sided bound on the real gap in either direction. The
+gate is therefore a **screen, not a proof**, and each branch reads accordingly: a below-threshold
+bucket 3 is a stop signal because the rate came in low **despite** two threats inflating it; an
+at/above bucket 3 is a signal to **escalate**, because P1 is content-free and cannot by itself tell
+a real gap from a turn the profile already answered. Separating those two is exactly what P2's
+offline judged corpus does.
 
 **`overPullTurns` is not part of this frozen gate.** `computeShadowFunnel`
 (`src/long-term-memory/shadow-funnel.ts`) also reports `overPullTurns` (`model_pulled` with zero
