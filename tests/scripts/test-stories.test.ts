@@ -380,6 +380,7 @@ describe('story runner reports and compatibility', () => {
       baselineRef: 'abc1234',
       compat: true,
       contracts: false,
+      coverage: false,
       fixture: undefined,
       manifestOnly: false,
       forwarded: [
@@ -453,6 +454,7 @@ describe('story runner reports and compatibility', () => {
       baselineRef: undefined,
       compat: false,
       contracts: false,
+      coverage: false,
       fixture: undefined,
       forwarded: ['--seed', String(STORY_SEED)],
       manifestOnly: true,

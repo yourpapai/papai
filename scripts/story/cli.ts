@@ -41,6 +41,7 @@ export type ParsedStoryRunnerArguments = Readonly<{
   contracts: boolean
   baselineRef?: string
   manifestOnly: boolean
+  coverage: boolean
   seed: number
 }>
 
@@ -51,6 +52,7 @@ type ArgumentState = {
   compat: boolean
   contracts: boolean
   manifestOnly: boolean
+  coverage: boolean
   seed: number | undefined
   hasReporter: boolean
   hasReporterOutfile: boolean
@@ -117,6 +119,7 @@ function finalizeArguments(state: ArgumentState): ParsedStoryRunnerArguments {
     compat: state.compat || state.baselineRef !== undefined,
     contracts: state.contracts,
     manifestOnly: state.manifestOnly,
+    coverage: state.coverage,
     seed: effectiveSeed,
   }
 }
@@ -129,6 +132,7 @@ export function parseStoryRunnerArguments(args: readonly string[]): ParsedStoryR
     compat: false,
     contracts: false,
     manifestOnly: false,
+    coverage: false,
     seed: undefined,
     hasReporter: false,
     hasReporterOutfile: false,
@@ -144,10 +148,16 @@ export function parseStoryRunnerArguments(args: readonly string[]): ParsedStoryR
       index += parsed.consumed
       continue
     }
-    if (argument === '--compat' || argument === '--manifest-only' || argument === '--contracts') {
+    if (
+      argument === '--compat' ||
+      argument === '--manifest-only' ||
+      argument === '--contracts' ||
+      argument === '--coverage'
+    ) {
       if (argument === '--compat') state.compat = true
       else if (argument === '--manifest-only') state.manifestOnly = true
-      else state.contracts = true
+      else if (argument === '--contracts') state.contracts = true
+      else state.coverage = true
       continue
     }
     if (flag !== undefined && VALUE_FLAGS.has(flag)) {
