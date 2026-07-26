@@ -58,7 +58,7 @@ aggregate publication.
 | 9 — delivery ledger | 68 pass / 0 fail (072 migration, registration, delivery-store, sink-gate, sink-lifecycle); fix 2a9b3126b (stuck-leased send-start) | clean / clean (knip clean) | 9ac052ff0 + 2a9b3126b | 2026-07-26 |
 | 10 — intent + rephrase | 18 pass / 0 fail (intent-classifier, intent-derivation, rephrase, rephrase-handoff, intent-persistence-audit); affected suites 781 pass; gap-fix 3347cff30 (aggregate-local short-circuit + capture latency) | clean / clean (knip clean) | dccf6cc73 + 3347cff30 | 2026-07-26 |
 | 11 — materializations | 60 pass / 0 fail (073 migration, registration, sessionizer, outcomes, feature-materialization, friction); mirrored derive/store/job suites 145 pass; tests/db + tests/analytics 1122 pass | clean / clean (knip clean) | 35693a333 | 2026-07-26 |
-| 12 — backfill/reconcile | 30 pass / 0 fail (backfill, reconciliation); mirrored jobs suites + full tests/analytics 808 pass; fixture CLI dry-run/apply/reconcile status=reconciled unexplained_delta=0, rerun zero-change | clean / clean (knip clean, security 0 findings) | ff0df9c24 | 2026-07-26 |
+| 12 — backfill/reconcile | 30 pass / 0 fail (backfill, reconciliation); mirrored jobs suites + full tests/analytics 808 pass; fixture CLI dry-run/apply/reconcile status=reconciled unexplained_delta=0, rerun zero-change; fix 96d73c33d (fail-closed approval, HMAC high-water, ineligible writer) | clean / clean (knip clean, security 0 findings) | ff0df9c24 + 96d73c33d | 2026-07-26 |
 | 13 — lifecycle/subject rights | | | | |
 | 14 — snapshot/metabase | | | | |
 | 15 — aggregate delivery | | | | |
@@ -215,3 +215,13 @@ aggregate publication.
   by any follow-up (conservative); derived events stamped `source: 'live'`,
   `attribution_quality: 'native'` (consistent with Task 10 precedent — final
   review to confirm the contract reading).
+- Task 12 (parked Minors): reconciliation counts usage rows ≤ boundMs while
+  the scan bound is the finer (occurredAt, eventId) keyset — post-run rows at
+  the same ms surface as delta until the next run (honestly reported,
+  self-heals); `routeFutureCanonicalDecision` passes the outer db handle into
+  insertEligibleCanonicalEvent inside the tx callback; hand-crafted fixture
+  high-water keys still embed raw event IDs (fixtures only); arg parser's
+  missing-value error reason slightly misleading; rollback mixes db/tx in the
+  tx callback and relies on FK cascade for contribution-row removal;
+  `reverseCounterContribution` JSON.parses the cell key (string-format
+  coupling).
