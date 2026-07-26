@@ -5,17 +5,12 @@
 
 import { getScopeKey } from './chat/context-scope.js'
 import type { AuthorizationResult, IncomingMessage } from './chat/types.js'
-import { logger } from './logger.js'
 import { cacheMessage } from './message-cache/cache.js'
-import { embedAndStoreMessage } from './message-cache/embed-message.js'
-
-const log = logger.child({ scope: 'bot-message-caching' })
 
 /**
- * Persist every allowed observed non-command message to message_metadata,
- * then fire-and-forget an embedding (semantic search). Runs for the full
- * observable history (not just bot-addressed messages) so group-wide search
- * sees all traffic; commands are excluded via commandMatch.
+ * Persist every allowed observed non-command message to message_metadata.
+ * Runs for the full observable history (not just bot-addressed messages) so
+ * group-wide search sees all traffic; commands are excluded via commandMatch.
  */
 export function cacheObservedIncomingMessage(msg: IncomingMessage, auth: AuthorizationResult): void {
   if (!auth.allowed) return
@@ -38,22 +33,4 @@ export function cacheObservedIncomingMessage(msg: IncomingMessage, auth: Authori
     replyToMessageId: msg.replyToMessageId,
     timestamp: Date.now(),
   })
-  if (msg.text.trim() !== '' && auth.configContextId !== undefined) {
-    void embedAndStoreMessage({
-      text: msg.text,
-      contextId: auth.storageContextId,
-      messageId: msg.messageId,
-      configContextId: auth.configContextId,
-      embeddingCtx: {
-        storageContextId: auth.storageContextId,
-        contextType: msg.contextType,
-        chatUserId: msg.user.id,
-      },
-    }).catch((error: unknown) => {
-      log.warn(
-        { messageId: msg.messageId, error: error instanceof Error ? error.message : String(error) },
-        'embedAndStoreMessage rejected',
-      )
-    })
-  }
 }

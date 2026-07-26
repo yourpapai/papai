@@ -63,7 +63,7 @@ adapted for chat-history scale and the Phase 1 scope model.
 | Embedding source | The configured OpenAI-compatible provider via `getEmbeddingForContext` (inherits BYOK + the `embedding` role) |
 | Vector storage | Side table `message_embeddings` (BLOB), behind a `MessageVectorStore` seam |
 | Search at scale | In-memory cosine, **scope-bounded**; sqlite-vec indexed KNN deferred (the seam enables it) |
-| Write path | Hybrid — inline fire-and-forget embed at cache-write + a scheduled sweep safety net |
+| Write path | Scheduled sweep only (inline path dropped — see §3) |
 | Read path | Extend `search_chat_history` with `mode: keyword\|semantic\|auto` (default `auto`) |
 | Availability | "The `embedding` role resolves" — no new toggle; `auto` degrades to keyword silently |
 | Retention / scope / permissions | Inherited unchanged from Phase 1 |
@@ -147,61 +147,56 @@ search), isolating the storage strategy from the read API and the tools:
 - `nextPendingBatch(limit: number, currentModel: string): row[]` /
   `countPending(currentModel: string): number` — rows where `embedding IS
   NULL` **or** `embedding_model != currentModel`. Feeds the sweep (§3):
-  pre-Phase-2 backfill, inline-failure retries, and model-change re-embeds
+  pre-Phase-2 backfill, failure retries, and model-change re-embeds
   in one query.
 
 Everything here is the BLOB + in-memory-cosine implementation. A future
 `sqlite-vec` variant implements the same surface against a virtual table —
 no tool or `store.ts` change.
 
-### 3. Write path — hybrid inline + scheduled sweep
+### 3. Write path — scheduled sweep (sweep-only)
 
-Composes the two patterns already in the codebase.
+> **Design change during implementation.** The original design was *hybrid
+> inline + sweep* (a fire-and-forget embed in `cacheObservedIncomingMessage`
+> mirroring `save-memo.ts:33-46`, plus the sweep). The inline path was
+> **dropped** after it broke the hermetic story suite: firing an embedding
+> HTTP call on every incoming message collided with the stories' strict
+> `expectEmbedding` HTTP dispatcher (the per-message embed consumed the
+> one-shot expectation declared for a scripted semantic-search query embed,
+> breaking recall + the 8 ACP/MCP stories that script embeddings for
+> disclosure). It also added avoidable per-message API cost in production.
+> The sweep alone embeds everything via the `message_metadata LEFT JOIN
+> message_embeddings` discovery, never fires during a turn, and its ~5-min
+> lag is fine for a search index. The `message_embeddings` table,
+> `MessageVectorStore`, sweep, and `search_chat_history` semantic mode are
+> unchanged.
 
-**Inline (mirrors `save-memo.ts:33-46`):** in the Phase-1 chokepoint
-`cacheObservedIncomingMessage` (`src/bot-message-caching.ts`), immediately
-after the content row is inserted, kick off fire-and-forget embedding:
-
-```ts
-void getEmbeddingForContext(text, configContextId, ctx)
-  .then((vec) => {
-    if (vec !== null) {
-      store.storeEmbedding(ctxId, msgId, new Float32Array(vec), model, dim)
-    }
-  })
-  .catch((e) => log.warn({ messageId }, 'inline embed failed; sweep will retry'))
-```
-
-- `getEmbeddingForContext` returns `null` when no embedding model resolves
-  → the row is simply left without an embedding; the sweep still ignores it
-  (nothing to embed until a model is configured), and `auto` search falls
-  back to keyword. **Never blocks caching.**
-- Only precondition: non-empty text. Phase 1 already skips command/empty
-  messages at the chokepoint, and it caches only **incoming** messages, so
-  the bot's own outgoing replies are out of scope — no bot-vs-human filter.
-
-**Sweep safety net (mirrors `sweepDirtyContexts` / `memory-capture-sweep`):**
+The Phase-1 chokepoint `cacheObservedIncomingMessage`
+(`src/bot-message-caching.ts`) is **unchanged** — it caches the row and
+returns; it does **not** embed. Embedding happens entirely in the
+background sweep (mirrors `sweepDirtyContexts` / `memory-capture-sweep`):
 a new scheduler task `message-embedding-sweep`, registered in
-`registerDefaultSchedulerTasks` (`src/scheduler-instance.ts:82`) alongside
-the other default tasks, interval ~5 min. Handler:
+`registerDefaultSchedulerTasks` (`src/scheduler-instance.ts`) alongside the
+other default tasks, interval ~5 min. Handler:
 
-1. Resolve the current embedding model name (central or per-context — the
-   sweep processes contexts in batches, resolving each context's model via
-   the role resolver).
-2. `nextPendingBatch(limit, currentModel)` — NULL embeddings **and**
-   model-mismatched rows (re-embeds on model change in the same pass).
+1. `pendingConfigContexts(limit)` (NULL-embedding rows) unioned with
+   `embeddedConfigContexts(limit)` (rows with embeddings — stale-model
+   candidates), deduped.
+2. Per context: resolve the current embedding model via the role resolver;
+   skip at `debug` if not ok; `nextPendingBatchForContext(ctx, model, limit)`
+   — NULL embeddings **and** model-mismatched rows in one pass.
 3. Batch-embed via the AI SDK **`embedMany`** (the batch endpoint — cheaper
-   and faster than per-row; memos only does single `embed`, but a sweep
-   over many rows wants batching). *(De-risk: confirm `embedMany` is
-   exported by the installed `ai` version during planning; fall back to
-   bounded `p-limit` over `embed` if not.)*
-4. Bounded concurrency with `p-limit` (repo convention). Store results.
+   and faster than per-row).
+4. Bounded concurrency with `p-limit` (repo convention). Store results with
+   model + dim provenance.
 5. `info`-log `countPending()` (count only); per-row at `debug`.
 
-**Why both:** inline gives sub-second searchability; the sweep guarantees
-convergence — failures retry, the pre-Phase-2 cache backfills with no
-separate migration step, and a model change is handled by the
-`embedding_model != current` predicate. No special backfill command.
+**Why sweep-only:** convergence — failures retry, the pre-Phase-2 cache
+backfills with no separate migration step, new messages are picked up via
+the LEFT JOIN, and a model change is handled by the `embedding_model !=
+current` predicate. No special backfill command. The trade-off is that a
+freshly-arrived message is not semantically searchable until the next sweep
+tick (~5 min) — acceptable for a search index.
 
 ### 4. Read path — extend `search_chat_history`
 
@@ -265,9 +260,9 @@ not unbounded. The boundary is made explicit and observable:
 
 ### 7. Error handling & logging
 
-- Embed-API failure at write time → `getEmbeddingForContext` returns `null`
-  (inline) or the batch item fails (sweep) → row stays embedding-less;
-  search skips it; sweep retries. **Never blocks caching or search.**
+- Embed-API failure in the sweep → the batch item fails → row stays
+  embedding-less; search skips it; the next sweep tick retries. **Never
+  blocks caching or search** (the sweep runs off the message hot path).
 - Semantic path with zero results / unavailable → `auto` falls back to
   keyword; `semantic` mode returns `semantic_unavailable`. Never throws to
   the LLM (`wrapToolExecution` normalizes regardless).
@@ -292,13 +287,13 @@ TDD per `tests/CLAUDE.md` and the write-hook pipeline.
   `semantic_unavailable`; `keyword` mode unchanged; results carry
   `score`/`mode`; out-of-scope returns nothing in both paths.
 - **`message-embedding-sweep.test.ts`**: batch embeds NULL rows; retries
-  inline-failure rows; re-embeds model-mismatched rows; bounded
-  concurrency; a transient embed failure leaves rows pending (retried next
-  tick) without crashing the sweep.
+  failed-embed rows; re-embeds model-mismatched rows; bounded concurrency;
+  a transient embed failure leaves rows pending (retried next tick) without
+  crashing the sweep.
 - **Migration test** (`071_…test.ts`): table created; registered in the
   migration-registration list.
-- **Integration**: cache a message via the chokepoint → inline embed lands
-  → `search_chat_history` `auto` returns it by meaning (no shared word);
+- **Integration**: cache a message via the chokepoint → sweep embeds it →
+  `search_chat_history` `auto` returns it by meaning (no shared word);
   cross-context isolation end-to-end (semantic path); existing Phase-1
   keyword tests stay green.
 
