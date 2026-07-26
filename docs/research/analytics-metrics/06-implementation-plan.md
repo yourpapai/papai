@@ -1554,7 +1554,10 @@ type ProviderRequestScope =
       `callMagi` may return its product error body but analytics and logs never
       inspect or copy it.
 - [ ] Add MCP connection tests around `McpConnectionPool.connectWithRetry` for
-      available, connection failure, timeout, auth failure, and policy block.
+      available, connection failure, timeout, and auth failure. (Policy block:
+      no connect-time policy gate exists — the HTTPS rule is a config-schema
+      parse gate, so `policy_blocked` is intentionally unproduced in v1;
+      documented in `src/mcp/connect-observation.ts`.)
 - [ ] Add MCP execution tests around `tool-adapter.ts` and both endpoint
       builders for call/list success, failure, and overlap; assert the request
       scope reaches the actual client call and no endpoint/tool payload enters

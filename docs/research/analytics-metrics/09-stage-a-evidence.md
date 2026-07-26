@@ -54,7 +54,7 @@ aggregate publication.
 | 5 — normalizer/runtime | 97 pass / 0 fail (normalizer, aggregate, runtime, process-epoch, collection-writer-race, subscriber); feat c4079feb8 + fix d22a81eca | clean / clean (knip clean) | d22a81eca | 2026-07-24 |
 | 6 — turn lifecycle instrumentation | 144 pass / 0 fail (bot, reply-tracking, steering, queue, guest-role, steering-step, production-deps-analytics, message-turn-integration) | clean / clean (knip clean) | a284dda66 | 2026-07-24 |
 | 7 — llm/tool/perf instrumentation | 150 pass / 0 fail (orchestrator events/logging/tool-events, permission gate + prompt, live-status reporter, typing heartbeat, llm-tool integration, performance clocks, tool-slug generation, clarification) | clean / clean (knip clean) | 6d429b5c4 (+ knip 2a6d72ae5, fix f74047b35) | 2026-07-25 |
-| 8 — provider/feature boundaries | 8A: 270 pass / 0 fail (provider-observer, provider-request-scope, wrapper, builders, orchestrator, deferred-prompts, disclosure, compaction, tool-failure); fallback-open coverage 2249f2f60 | clean / clean (knip clean) | 8A: 1f68f3caf | 2026-07-25 |
+| 8 — provider/feature boundaries | 8A: 270 pass / 0 fail; 8B: 89 pass / 0 fail (analytics five + logging-privacy) + full regression 1756 pass; fix f3502ba5f (unconfigured producers, per-invocation opportunity, raw-URL log, MCP early-return) | clean / clean (knip clean) | 8A: 1f68f3caf; 8B: 0c8af4f0f + f3502ba5f | 2026-07-26 |
 | 9 — delivery ledger | | | | |
 | 10 — intent + rephrase | | | | |
 | 11 — materializations | | | | |
@@ -163,3 +163,13 @@ aggregate publication.
   descriptors dropped by finalize pass (matches legacy wrapToolSet),
   per-instance alert-poll attribution (first routable owner), dead
   `frame.lease === null` check.
+- Task 8 (parked Minors): acp unconfigured guards emit before returning the
+  error object (contract-equivalent ordering); `observeUnconfiguredTaskInstance`
+  builds settings actor context even when observer is null (short-circuit
+  opportunity); MCP `policy_blocked` enum intentionally unproduced — no
+  connect-time policy gate exists (documented in
+  src/mcp/connect-observation.ts; 06 plan text annotated).
+- Known environmental failure (not a branch defect):
+  tests/debug/settings/coding-credentials-models-route.test.ts fails locally
+  because this machine's DNS resolves api.anthropic.com to a fake-ip
+  (198.18.x.x) that `assertPublicUrl` blocks; expected green in CI.
