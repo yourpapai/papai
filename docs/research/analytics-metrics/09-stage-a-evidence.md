@@ -71,7 +71,7 @@ aggregate publication.
 | After task | Rebase commit | Date | Conflicts / resolution |
 |---|---|---|---|
 | 2 | rebased onto origin/master 0e5cfcc9e | 2026-07-24 | master added `069_alert_matched_task_ids`; analytics migration block renumbered to 070–073 per 06's own renumber rule (plan-sync commit follows) |
-| 8 | | | |
+| 8 | rebased onto origin/master 998f394cc | 2026-07-26 | master's 76334f1f6 rewrote two test files; merged: kept master's suites + preserved our scope-free descriptor assertion (collaboration-tools-builder) and scope-passthrough tests (auto-provision, adapted to required 5th scope param) |
 | 13 | | | |
 
 ## Stage A exit checklist
