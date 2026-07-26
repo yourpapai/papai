@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 
 import { isGateableImplFile } from '../../.hooks/tdd/test-resolver.mjs'
+import { loadBaseline, resolveRatchet } from './baseline.js'
 import { pairedRun, resolvePairedRunExitCode } from './paired-run.js'
 import type { PairedRunInput, PairedRunResult } from './paired-run.js'
 
@@ -22,7 +23,14 @@ export interface SelectInput {
 }
 
 type ChangedFilesCliArgs =
-  | { readonly kind: 'ok'; readonly baseRef: string; readonly threshold: number; readonly verbose: boolean }
+  | {
+      readonly kind: 'ok'
+      readonly baseRef: string
+      readonly threshold: number
+      readonly ratchetFloor: number
+      readonly noRatchet: boolean
+      readonly verbose: boolean
+    }
   | { readonly kind: 'usageError'; readonly reason: string }
 
 export interface ChangedFilesRunDeps {
@@ -46,7 +54,9 @@ type BunLike = {
 
 const DEFAULT_BASE_REF = 'origin/master'
 const DEFAULT_REPORT_DIR = 'reports/paired'
-const THRESHOLD_DECIMAL_PATTERN = /^(?:0(?:\.\d+)?|1(?:\.0+)?)$/u
+const DEFAULT_RATCHET_FLOOR = 0.5
+const BASELINE_FILE = 'scripts/mutation/baseline.json'
+const THRESHOLD_DECIMAL_PATTERN = /^(0(?:\.\d+)?|1(?:\.0+)?)$/u
 const THRESHOLD_RANGE_ERROR = 'threshold must be a decimal number between 0 and 1'
 
 const defaultDeps: ChangedFilesDeps = {
@@ -98,14 +108,10 @@ const resolveRunDeps = (deps: ChangedFilesRunDeps | undefined): ChangedFilesRunD
 }
 
 export const parseChangedFilesCliArgs = (argv: readonly string[]): ChangedFilesCliArgs => {
-  const unknownArg = argv.find(
-    (arg) =>
-      arg.startsWith('-') && !arg.startsWith('--base=') && !arg.startsWith('--threshold=') && arg !== '--verbose',
-  )
+  const knownFlags = ['--base=', '--threshold=', '--ratchet-floor=', '--no-ratchet', '--verbose']
+  const unknownArg = argv.find((arg) => arg.startsWith('-') && !knownFlags.some((f) => arg.startsWith(f)))
   if (unknownArg !== undefined) return { kind: 'usageError', reason: `unknown argument ${unknownArg}` }
-  const positionalArg = argv.find(
-    (arg) => !arg.startsWith('--base=') && !arg.startsWith('--threshold=') && arg !== '--verbose',
-  )
+  const positionalArg = argv.find((arg) => !knownFlags.some((f) => arg.startsWith(f) || arg === f.replace('=', '')))
   if (positionalArg !== undefined) {
     return { kind: 'usageError', reason: `unexpected positional argument ${positionalArg}` }
   }
@@ -114,6 +120,8 @@ export const parseChangedFilesCliArgs = (argv: readonly string[]): ChangedFilesC
   if (baseArgs.length > 1) return { kind: 'usageError', reason: 'base must be provided at most once' }
   const thresholdArgs = argv.filter((arg) => arg.startsWith('--threshold='))
   if (thresholdArgs.length > 1) return { kind: 'usageError', reason: 'threshold must be provided at most once' }
+  const floorArgs = argv.filter((arg) => arg.startsWith('--ratchet-floor='))
+  if (floorArgs.length > 1) return { kind: 'usageError', reason: 'ratchet-floor must be provided at most once' }
 
   const baseArg = baseArgs[0]
   const baseRef = baseArg === undefined ? DEFAULT_BASE_REF : baseArg.slice('--base='.length)
@@ -123,7 +131,21 @@ export const parseChangedFilesCliArgs = (argv: readonly string[]): ChangedFilesC
   const threshold = parseThreshold(thresholdArg === undefined ? undefined : thresholdArg.slice('--threshold='.length))
   if (typeof threshold !== 'number') return threshold
 
-  return { kind: 'ok', baseRef, threshold, verbose: argv.includes('--verbose') }
+  const floorArg = floorArgs[0]
+  const floorText = floorArg === undefined ? undefined : floorArg.slice('--ratchet-floor='.length)
+  if (floorText !== undefined && !THRESHOLD_DECIMAL_PATTERN.test(floorText)) {
+    return { kind: 'usageError', reason: THRESHOLD_RANGE_ERROR }
+  }
+  const ratchetFloor = floorText === undefined ? DEFAULT_RATCHET_FLOOR : Number(floorText)
+
+  return {
+    kind: 'ok',
+    baseRef,
+    threshold,
+    ratchetFloor,
+    noRatchet: argv.includes('--no-ratchet'),
+    verbose: argv.includes('--verbose'),
+  }
 }
 
 export const changedFilesRun = (input: ChangedFilesRunInput): Promise<PairedRunResult | null> => {
@@ -151,7 +173,9 @@ const main = async (bun: BunLike): Promise<number> => {
   const parsed = parseChangedFilesCliArgs(bun.argv.slice(2))
   if (parsed.kind === 'usageError') {
     console.error(parsed.reason)
-    console.error('Usage: bun scripts/mutation/changed-files.ts [--base=REF] [--threshold=N] [--verbose]')
+    console.error(
+      'Usage: bun scripts/mutation/changed-files.ts [--base=REF] [--threshold=N] [--ratchet-floor=N] [--no-ratchet] [--verbose]',
+    )
     return 2
   }
 
@@ -170,6 +194,20 @@ const main = async (bun: BunLike): Promise<number> => {
   if (resolvePairedRunExitCode(result.merged, parsed.threshold) === 1) {
     console.error(`Mutation score ${result.merged.score} is below threshold ${parsed.threshold}`)
     return 1
+  }
+  if (!parsed.noRatchet) {
+    const baseline = loadBaseline(path.join(projectRoot, BASELINE_FILE))
+    if (baseline !== null) {
+      const ratchet = resolveRatchet(result.perFile, baseline, parsed.ratchetFloor)
+      if (ratchet.exitCode === 1) {
+        console.error(
+          `Mutation ratchet regression (floor ${parsed.ratchetFloor}): ${ratchet.regressions
+            .map((r) => `${r.sourceFile} ${r.score.toFixed(4)} < ${r.threshold.toFixed(4)}`)
+            .join(', ')}`,
+        )
+        return 1
+      }
+    }
   }
   return 0
 }
