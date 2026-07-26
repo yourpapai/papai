@@ -66,8 +66,11 @@ transferred to papai.
 
 **Load-bearing consequence:** the shadow must be a **conservative floor**. If it uses the raw
 user turn as its query (no derived query, no extra LLM call), a smarter `deriveInjectionQuery`
-could only surface _more_. So a gap measured by the floor is a lower bound on the real gap — if
-even the floor is small, Tier 3 is not worth building.
+could only surface _more_. So a gap measured by the floor is a lower bound on the real gap **with
+respect to query quality** — if even the floor is small, Tier 3 is not worth building. This bound
+is one-directional and is partly offset by inflating threats elsewhere in the instrument; it does
+**not** make the measured under-trigger rate a lower bound overall. See "Threats to validity" for
+the full signed ledger.
 
 ## Goal
 
