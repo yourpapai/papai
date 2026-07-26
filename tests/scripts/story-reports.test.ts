@@ -80,3 +80,23 @@ test('copyStoryCoverage returns false when the source is missing', async () => {
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('copyStoryCoverage propagates a non-ENOENT stat failure instead of reporting false', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'papai-cov-'))
+  const failingFs: SessionFileSystem = {
+    ...sessionFs,
+    lstat: (): Promise<never> => {
+      const error = Object.assign(new Error('permission denied'), { code: 'EACCES' })
+      return Promise.reject(error)
+    },
+  }
+  try {
+    const source = path.join(dir, 'lcov.info')
+    await writeFile(source, 'SF:/session/app/src/x.ts\nDA:1,1\nend_of_record')
+    await expect(copyStoryCoverage(source, path.join(dir, 'out.info'), dir, failingFs)).rejects.toThrow(
+      `Failed to stat story coverage source ${source}`,
+    )
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

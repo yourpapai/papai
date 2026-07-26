@@ -217,8 +217,10 @@ export async function copyReports(
 async function coverageSourceExists(source: string, fs: SessionFileSystem): Promise<boolean> {
   try {
     return (await fs.lstat(source)).isFile()
-  } catch {
-    return false
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return false
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`Failed to stat story coverage source ${source}: ${message}`, { cause: error })
   }
 }
 
