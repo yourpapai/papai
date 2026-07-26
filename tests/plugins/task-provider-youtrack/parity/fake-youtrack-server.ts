@@ -552,11 +552,76 @@ const handleComments = (ctx: Ctx): Response | undefined => {
   return undefined
 }
 
+// ---------- Relations handler ----------
+
+const LINK_TYPES: ReadonlyArray<{ id: string; name: string; directed: boolean }> = [
+  { id: 'lt-depend', name: 'Depend', directed: true },
+  { id: 'lt-relate', name: 'Relates', directed: false },
+  { id: 'lt-duplicate', name: 'Duplicate', directed: true },
+  { id: 'lt-subtask', name: 'Subtask', directed: true },
+]
+
+const decodeLinkId = (linkId: string): { typeName: string; direction: string } => {
+  const suffix = linkId.slice(-1)
+  if (suffix === 's' || suffix === 't') {
+    const base = linkId.slice(0, -1)
+    const type = LINK_TYPES.find((t) => t.id === base)
+    if (type !== undefined) return { typeName: type.name, direction: suffix === 's' ? 'OUTWARD' : 'INWARD' }
+  }
+  const exact = LINK_TYPES.find((t) => t.id === linkId)
+  return { typeName: exact?.name ?? 'Relates', direction: 'BOTH' }
+}
+
+const readLinkTargetId = (body: unknown): string => {
+  if (body !== null && typeof body === 'object') {
+    const id = (body as { id?: unknown }).id
+    if (typeof id === 'string') return id
+  }
+  return ''
+}
+
+const handleRelations = (ctx: Ctx): Response | undefined => {
+  const { method, path, state } = ctx
+
+  if (path === '/api/issueLinkTypes' && method === 'GET') {
+    return json(LINK_TYPES)
+  }
+
+  const addPath = matchPath('/api/issues/:id/links/:linkId/issues', path)
+  if (addPath !== null && method === 'POST') {
+    const owner = findIssue(state, addPath['id'] ?? '')
+    if (owner === undefined) return errorResponse(404, 'issue not found')
+    const targetId = readLinkTargetId(ctx.body)
+    const target = targetId === '' ? undefined : (state.issues.get(targetId) ?? findIssue(state, targetId))
+    if (target === undefined) return errorResponse(404, 'target issue not found')
+    const { typeName, direction } = decodeLinkId(addPath['linkId'] ?? '')
+    const id = nextId(state, 'link')
+    const link: StoredLink = { id, ownerIssueId: owner.id, targetIssueId: target.id, typeName, direction }
+    state.links.set(id, link)
+    return json({ id })
+  }
+
+  const delPath = matchPath('/api/issues/:id/links/:linkId', path)
+  if (delPath !== null && method === 'DELETE') {
+    const owner = findIssue(state, delPath['id'] ?? '')
+    if (owner === undefined) return errorResponse(404, 'issue not found')
+    const linkId = delPath['linkId'] ?? ''
+    return state.links.delete(linkId) ? noContent() : errorResponse(404, 'link not found')
+  }
+
+  return undefined
+}
+
 // ---------- Server bootstrap ----------
 
 export const startFakeYouTrackServer = (): FakeYouTrackServer => {
   const state = createState()
-  const handlers: Array<(ctx: Ctx) => Response | undefined> = [handleProjects, handleIssues, handleComments]
+  const handlers: Array<(ctx: Ctx) => Response | undefined> = [
+    handleProjects,
+    handleIssues,
+    handleComments,
+    handleRelations,
+  ]
 
   const server: Server<undefined> = Bun.serve({
     port: 0,

@@ -355,3 +355,76 @@ describe('fake YouTrack server — comments', () => {
     expect(res.status).toBe(404)
   })
 })
+
+const LinkTypeSchema = z.object({ id: z.string(), name: z.string(), directed: z.boolean() })
+const LinkTypeListSchema = z.array(LinkTypeSchema)
+
+const IssueIdSchema = z.object({ id: z.string(), idReadable: z.string() })
+
+const OwnerLinksSchema = z.object({
+  links: z.array(
+    z.object({
+      id: z.string(),
+      linkType: z.object({ name: z.string() }),
+      issues: z.array(z.object({ idReadable: z.string() })),
+    }),
+  ),
+})
+
+const LinksLengthOnlySchema = z.object({ links: z.array(z.unknown()) })
+
+const firstLinkId = (owner: z.infer<typeof OwnerLinksSchema>): string => owner.links[0]?.id ?? ''
+
+describe('fake YouTrack server — relations', () => {
+  let fake: FakeYouTrackServer
+
+  beforeAll(() => {
+    fake = startFakeYouTrackServer()
+  })
+
+  afterAll(async () => {
+    await fake.stop()
+  })
+
+  test('exposes issue link types', async () => {
+    const res = await fetch(`${fake.url}/api/issueLinkTypes?fields=id,name,directed`)
+    const types = LinkTypeListSchema.parse(await res.json())
+    expect(types.map((t) => t.name)).toContain('Depend')
+    expect(types.map((t) => t.name)).toContain('Relates')
+    for (const t of types) expect(/[st]$/u.test(t.id)).toBe(false)
+  })
+
+  test('creates a link and surfaces it on the owner issue; delete removes it', async () => {
+    fake.reset()
+    const project = await createProject(fake, 'Rel P', 'RP')
+    const first = IssueIdSchema.parse(
+      await (await postJson(fake, '/api/issues', { project: { id: project.id }, summary: 'First' })).json(),
+    )
+    const second = IssueIdSchema.parse(
+      await (await postJson(fake, '/api/issues', { project: { id: project.id }, summary: 'Second' })).json(),
+    )
+    const add = await postJson(fake, `/api/issues/${first.idReadable}/links/lt-depends/issues`, { id: second.id })
+    expect(add.status).toBe(200)
+
+    const owner = OwnerLinksSchema.parse(
+      await (await fetch(`${fake.url}/api/issues/${first.idReadable}?fields=id`)).json(),
+    )
+    expect(owner.links.length).toBe(1)
+    expect(owner.links[0]?.linkType.name).toBe('Depend')
+    expect(owner.links[0]?.issues[0]?.idReadable).toBe(second.idReadable)
+
+    const linkId = firstLinkId(owner)
+    const del = await fetch(`${fake.url}/api/issues/${first.idReadable}/links/${linkId}`, { method: 'DELETE' })
+    expect(del.status).toBe(204)
+    const afterOwner = LinksLengthOnlySchema.parse(
+      await (await fetch(`${fake.url}/api/issues/${first.idReadable}?fields=id`)).json(),
+    )
+    expect(afterOwner.links.length).toBe(0)
+  })
+
+  test('resolving a missing related issue is 404', async () => {
+    fake.reset()
+    const res = await fetch(`${fake.url}/api/issues/NOPE-9?fields=id`)
+    expect(res.status).toBe(404)
+  })
+})
