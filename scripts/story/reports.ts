@@ -7,9 +7,12 @@ import { constants, type Dirent, type Stats } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 
+import { normalizeLcov } from '../coverage/normalize-lcov.js'
+
 export const STORY_REPORT_DIRECTORY = 'reports/stories'
 export const STORY_MANIFEST_REPORT_PATH = `${STORY_REPORT_DIRECTORY}/manifest.json`
 export const STORY_JUNIT_REPORT_PATH = `${STORY_REPORT_DIRECTORY}/junit.xml`
+export const STORY_COVERAGE_LCOV_PATH = 'reports/stories/coverage/lcov.info'
 
 function errorCode(error: unknown): string | undefined {
   if (typeof error !== 'object' || error === null || !('code' in error)) return undefined
@@ -146,7 +149,13 @@ async function assertSafeDestination(liveRoot: string, destination: string, fs: 
   }
 }
 
-async function copyReport(source: string, destination: string, liveRoot: string, fs: SessionFileSystem): Promise<void> {
+async function copyReport(
+  source: string,
+  destination: string,
+  liveRoot: string,
+  fs: SessionFileSystem,
+  transform?: (data: Uint8Array) => Uint8Array,
+): Promise<void> {
   await assertRegularFile(source, fs)
   await assertSafeDestination(liveRoot, destination, fs)
   await fs.mkdir(path.dirname(destination), { recursive: true, mode: 0o700 })
@@ -160,7 +169,8 @@ async function copyReport(source: string, destination: string, liveRoot: string,
     )
     try {
       await assertOpenedDestination(output, destination, liveRoot, fs)
-      await output.writeFile(await input.readFile())
+      const data = await input.readFile()
+      await output.writeFile(transform ? transform(data) : data)
     } finally {
       await output.close()
     }
@@ -202,4 +212,25 @@ export async function copyReports(
     const messages = failures.map((failure) => (failure instanceof Error ? failure.message : String(failure)))
     throw new AggregateError(failures, `Story report copy failed: ${messages.join('; ')}`)
   }
+}
+
+async function coverageSourceExists(source: string, fs: SessionFileSystem): Promise<boolean> {
+  try {
+    return (await fs.lstat(source)).isFile()
+  } catch {
+    return false
+  }
+}
+
+export async function copyStoryCoverage(
+  source: string,
+  destination: string,
+  liveRoot: string,
+  fs: SessionFileSystem,
+): Promise<boolean> {
+  if (!(await coverageSourceExists(source, fs))) return false
+  const decoder = new TextDecoder()
+  const encoder = new TextEncoder()
+  await copyReport(source, destination, liveRoot, fs, (data) => encoder.encode(normalizeLcov(decoder.decode(data))))
+  return true
 }

@@ -147,6 +147,7 @@ function createSession(
       reportPaths: [realpathSync(report)],
       verifyIntegrity: () => Promise.resolve(),
       copyReports: () => Promise.resolve(),
+      copyCoverage: () => Promise.resolve(false),
       cleanup: () => Promise.resolve(),
     },
   }

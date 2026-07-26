@@ -37,6 +37,7 @@ function fakeSession(): StoryRunnerSession {
     reportPaths: [],
     verifyIntegrity: () => Promise.resolve(),
     copyReports: () => Promise.resolve(),
+    copyCoverage: () => Promise.resolve(false),
     cleanup: () => Promise.resolve(),
   }
 }

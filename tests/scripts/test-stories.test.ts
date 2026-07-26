@@ -45,6 +45,7 @@ function testSession(
     appRoot?: string
     cleanup?: () => Promise<void>
     copyReports?: () => Promise<void>
+    copyCoverage?: () => Promise<boolean>
     verifyIntegrity?: () => Promise<void>
   }> = {},
 ): StoryRunnerSession {
@@ -61,6 +62,7 @@ function testSession(
     reportPaths: [reportPath],
     verifyIntegrity: options.verifyIntegrity ?? (() => Promise.resolve()),
     copyReports: options.copyReports ?? (() => Promise.resolve()),
+    copyCoverage: options.copyCoverage ?? (() => Promise.resolve(false)),
     cleanup: options.cleanup ?? (() => Promise.resolve()),
   }
 }
@@ -125,6 +127,7 @@ describe('story runner reports and compatibility', () => {
         actions.push('copy')
         return Promise.resolve()
       }),
+      copyCoverage: mock(() => Promise.resolve(false)),
       cleanup: mock(() => {
         actions.push('cleanup')
         return Promise.resolve()
