@@ -5,11 +5,8 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
+import { createActorProviderRequestScope, NO_ANALYTICS_SCOPE } from '../../src/analytics/provider-request-scope.js'
 import type { AnalyticsSourceContext } from '../../src/analytics/source-facts.js'
-import {
-  createActorProviderRequestScope,
-  NO_ANALYTICS_SCOPE,
-} from '../../src/analytics/provider-request-scope.js'
 import type { ReplyFn } from '../../src/chat/types.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { deleteTaskInstance, insertTaskInstance } from '../../src/instances/task-store.js'
