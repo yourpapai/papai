@@ -5,7 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import type { MemoryProfileRow } from '../../src/db/long-term-memory-schema.js'
@@ -14,6 +14,7 @@ import { searchLexical } from '../../src/long-term-memory/lexical-search.js'
 import { visibleProfileText } from '../../src/long-term-memory/profile-visibility.js'
 import { runRecallCascade, type RunRecallCascadeDeps } from '../../src/long-term-memory/recall-cascade.js'
 import { profileScopeCondition } from '../../src/long-term-memory/record-conditions.js'
+import { rankRecordsBySimilarity } from '../../src/long-term-memory/semantic-search.js'
 import { rowToProfile } from '../../src/long-term-memory/serialization.js'
 import {
   getMemoryProfile,
@@ -70,6 +71,27 @@ const recallIds = async (query: string): Promise<readonly string[]> => {
   return records.map((r) => r.id)
 }
 
+/**
+ * The dense channel in isolation. Every filter that could mask a surviving row is disarmed —
+ * all statuses, the record's own embedding identity, a zero threshold — so a miss can only
+ * mean the row is physically gone, not merely invalid or de-ranked.
+ */
+const semanticIds = (): readonly string[] =>
+  rankRecordsBySimilarity(scope, VEC, {
+    statuses: ALL_STATUSES,
+    embeddingVersion: VERSION,
+    threshold: 0,
+    limit: 8,
+  }).map((r) => r.id)
+
+/** Probes the FTS5 external-content index directly: its rows survive a canonical delete if a trigger is missing. */
+const ftsMatchCount = (term: string): number => {
+  const rows = getDrizzleDb().all<{ n: number }>(
+    sql`SELECT COUNT(*) AS n FROM memory_records_fts WHERE memory_records_fts MATCH ${term}`,
+  )
+  return rows[0]?.n ?? 0
+}
+
 /** Narrows the optional rows outside the test body (oxlint forbids conditionals inside `test()`). */
 const historyMessages = (row: { messages: string } | undefined): string => {
   if (row === undefined) throw new Error('conversation history row missing')
@@ -99,6 +121,10 @@ describe('durable erasure golden set', () => {
       expect(
         searchLexical({ ...scope, query: lang.term, statuses: ALL_STATUSES, limit: 8 }).map((r) => r.id),
       ).toContain(lang.id)
+      // sanity: reachable before forget (dense channel alone)
+      expect(semanticIds()).toContain(lang.id)
+      // sanity: the FTS index holds the row before the forget
+      expect(ftsMatchCount(lang.term)).toBe(1)
 
       const purged = purgeMemoryRecord(scope, lang.id, '2026-07-24T00:00:00.000Z')
       expect(purged).toBe(true)
@@ -109,6 +135,10 @@ describe('durable erasure golden set', () => {
       expect(
         searchLexical({ ...scope, query: lang.term, statuses: ALL_STATUSES, limit: 8 }).map((r) => r.id),
       ).not.toContain(lang.id)
+      // semantic channel — all filters disarmed, so absence means the row is gone
+      expect(semanticIds()).not.toContain(lang.id)
+      // raw FTS5 index probe
+      expect(ftsMatchCount(lang.term)).toBe(0)
       // forget-by-query search
       expect(searchMemoryRecords({ ...scope, query: lang.term, includeStale: true }).map((r) => r.id)).not.toContain(
         lang.id,
