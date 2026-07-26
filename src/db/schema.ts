@@ -211,6 +211,7 @@ export {
   type AnalyticsProcessEpochRow,
 } from './analytics-schema.js'
 export * from './analytics-governance-schema.js'
+export * from './analytics-derive-schema.js'
 export * from './analytics-delivery-schema.js'
 export const userIdentityMappings = sqliteTable(
   'user_identity_mappings',

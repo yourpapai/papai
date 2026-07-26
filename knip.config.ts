@@ -76,6 +76,10 @@ export default {
     // Analytics job modules (idempotent derivations over canonical events) are
     // the Stage A offline-derivation seam consumed by scheduled runners.
     'src/analytics/jobs/*.ts!',
+    // Analytics derive modules (sessionization, outcomes, features, friction
+    // materialization) are the Stage A derived-row seam consumed by the
+    // derive job.
+    'src/analytics/derive/*.ts!',
     // First-party plugin entry points are loaded dynamically by the plugin
     // loader, so they have no static importer.
     'plugins/*/index.ts!',
@@ -195,6 +199,10 @@ export default {
     // exports are consumed by the upcoming scheduled-runner registration task
     // and by analytics tests outside knip's production project scope.
     'src/analytics/jobs/*.ts': ['exports', 'types'],
+    // Analytics derive modules are the Stage A derived-row seam; their
+    // exports are consumed by the derive job and by analytics tests outside
+    // knip's production project scope.
+    'src/analytics/derive/*.ts': ['exports', 'types'],
   },
 
   includeEntryExports: true,
