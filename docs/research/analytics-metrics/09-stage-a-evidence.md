@@ -33,7 +33,7 @@ aggregate publication.
 | 6 | Semantic outcome | green | exactly-one terminal classification in tests/llm-orchestrator-tool-events.test.ts ('analytics terminal ordering') + tests/llm-orchestrator-tool-terminal.test.ts; SDK-success structured failure never maps to semantic success in tests/analytics/llm-tool-integration.test.ts (6d429b5c4); 2026-07-25 |
 | 7 | Consent matrix | partial | 38,880-cell exact-decision Cartesian matrix in tests/analytics/governance/eligibility.test.ts (ab504fd5e); Task 5 wires decideEligibility into the live observer fail-closed incl. preference/ref reads (c4079feb8); store/send/delete result coverage completes with Tasks 15/16 |
 | 8 | Withdrawal race | partial | local collection-ref races proven in tests/analytics/collection-writer-race.test.ts: deny-before-write yields no canonical/association rows; write-before-deny is found via analytics_event_collection_refs and deleted; repeated across retained key versions (c4079feb8); external delivery-grant race lands with the outbox tasks |
-| 9 | Outbox/sink | pending | |
+| 9 | Outbox/sink | partial | store parts: migration 072 restrictive sink/event FKs, nine-state closed ledger, single-enabled-sink partial unique index, independent minimal deletion receipts, enqueue/lease/send-start/recovery race proofs in tests/analytics/delivery/store.test.ts, capability gate incl. OpenPanel negative fixture in tests/analytics/delivery/sink.test.ts, write-only sink lifecycle in tests/analytics/delivery/sink-service.test.ts (9ac052ff0); transport/captured-egress parts land with the outbox sender tasks |
 | 10 | Session fixtures | pending | |
 | 11 | Cohort/censor fixtures | pending | |
 | 12 | Rephrase persistence audit | pending | |
@@ -55,7 +55,7 @@ aggregate publication.
 | 6 — turn lifecycle instrumentation | 144 pass / 0 fail (bot, reply-tracking, steering, queue, guest-role, steering-step, production-deps-analytics, message-turn-integration) | clean / clean (knip clean) | a284dda66 | 2026-07-24 |
 | 7 — llm/tool/perf instrumentation | 150 pass / 0 fail (orchestrator events/logging/tool-events, permission gate + prompt, live-status reporter, typing heartbeat, llm-tool integration, performance clocks, tool-slug generation, clarification) | clean / clean (knip clean) | 6d429b5c4 (+ knip 2a6d72ae5, fix f74047b35) | 2026-07-25 |
 | 8 — provider/feature boundaries | 8A: 270 pass / 0 fail; 8B: 89 pass / 0 fail (analytics five + logging-privacy) + full regression 1756 pass; fix f3502ba5f (unconfigured producers, per-invocation opportunity, raw-URL log, MCP early-return) | clean / clean (knip clean) | 8A: 1f68f3caf; 8B: 0c8af4f0f + f3502ba5f | 2026-07-26 |
-| 9 — delivery ledger | | | | |
+| 9 — delivery ledger | 68 pass / 0 fail (072 migration, registration, delivery-store, sink-gate, sink-lifecycle) | clean / clean (knip clean) | 9ac052ff0 | 2026-07-26 |
 | 10 — intent + rephrase | | | | |
 | 11 — materializations | | | | |
 | 12 — backfill/reconcile | | | | |
