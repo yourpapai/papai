@@ -4,8 +4,13 @@
 // See LICENSE in the project root for details.
 export type CoverageMetric = { found: number; hit: number; pct: number }
 
-function metric(found: number, hit: number): CoverageMetric {
-  return { found, hit, pct: found === 0 ? 0 : hit / found }
+type RecordMetric = { found: number; hit: number }
+
+function meanMetric(pooledFound: number, pooledHit: number, records: RecordMetric[]): CoverageMetric {
+  const eligible = records.filter((record) => record.found > 0)
+  const pct =
+    eligible.length === 0 ? 0 : eligible.reduce((sum, record) => sum + record.hit / record.found, 0) / eligible.length
+  return { found: pooledFound, hit: pooledHit, pct }
 }
 
 export function parseLcovTotals(lcov: string): {
@@ -16,14 +21,41 @@ export function parseLcovTotals(lcov: string): {
   let lh = 0
   let fnf = 0
   let fnh = 0
+  const lineRecords: RecordMetric[] = []
+  const functionRecords: RecordMetric[] = []
+  let currentLf = 0
+  let currentLh = 0
+  let currentFnf = 0
+  let currentFnh = 0
+
   for (const raw of lcov.split('\n')) {
     const line = raw.trim()
-    if (line.startsWith('LF:')) lf += Number(line.slice(3))
-    else if (line.startsWith('LH:')) lh += Number(line.slice(3))
-    else if (line.startsWith('FNF:')) fnf += Number(line.slice(4))
-    else if (line.startsWith('FNH:')) fnh += Number(line.slice(4))
+    if (line.startsWith('LF:')) {
+      currentLf = Number(line.slice(3))
+      lf += currentLf
+    } else if (line.startsWith('LH:')) {
+      currentLh = Number(line.slice(3))
+      lh += currentLh
+    } else if (line.startsWith('FNF:')) {
+      currentFnf = Number(line.slice(4))
+      fnf += currentFnf
+    } else if (line.startsWith('FNH:')) {
+      currentFnh = Number(line.slice(4))
+      fnh += currentFnh
+    } else if (line === 'end_of_record') {
+      lineRecords.push({ found: currentLf, hit: currentLh })
+      functionRecords.push({ found: currentFnf, hit: currentFnh })
+      currentLf = 0
+      currentLh = 0
+      currentFnf = 0
+      currentFnh = 0
+    }
   }
-  return { lines: metric(lf, lh), functions: metric(fnf, fnh) }
+
+  return {
+    lines: meanMetric(lf, lh, lineRecords),
+    functions: meanMetric(fnf, fnh, functionRecords),
+  }
 }
 
 export function parseBunfigThreshold(toml: string): {

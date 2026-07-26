@@ -23,14 +23,37 @@ const LCOV = [
 ].join('\n')
 
 describe('parseLcovTotals', () => {
-  test('sums LF/LH and FNF/FNH across records', () => {
+  test('pools found/hit but computes pct as the unweighted per-file mean', () => {
     const totals = parseLcovTotals(LCOV)
     expect(totals.lines).toEqual({ found: 20, hit: 19, pct: 0.95 })
-    expect(totals.functions).toEqual({ found: 10, hit: 9, pct: 0.9 })
+    expect(totals.functions).toEqual({ found: 10, hit: 9, pct: 0.875 })
   })
 
   test('pct is 0 when nothing found', () => {
     expect(parseLcovTotals('').lines).toEqual({ found: 0, hit: 0, pct: 0 })
+  })
+
+  test('excludes zero-found records from the mean, per metric', () => {
+    const lcov = [
+      'SF:src/a.ts',
+      'FNF:0',
+      'FNH:0',
+      'LF:10',
+      'LH:5',
+      'end_of_record',
+      'SF:src/b.ts',
+      'FNF:4',
+      'FNH:2',
+      'LF:10',
+      'LH:10',
+      'end_of_record',
+      '',
+    ].join('\n')
+    const totals = parseLcovTotals(lcov)
+    // functions: file a has FNF:0 and is excluded; only file b (2/4 = 0.5) contributes.
+    expect(totals.functions).toEqual({ found: 4, hit: 2, pct: 0.5 })
+    // lines: both records have found > 0, so both contribute: a = 5/10 = 0.5, b = 10/10 = 1.0 -> mean 0.75.
+    expect(totals.lines).toEqual({ found: 20, hit: 15, pct: 0.75 })
   })
 })
 
