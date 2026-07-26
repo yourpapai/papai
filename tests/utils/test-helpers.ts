@@ -86,6 +86,15 @@ export function hasCachedMessage(contextId: string, messageId: string): boolean 
   return testMessageCache.has(messageCacheKey(contextId, messageId))
 }
 
+/**
+ * Await the microtask on which cacheMessage flushes pending writes to SQLite.
+ */
+export function flushPendingWrites(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    queueMicrotask(resolve)
+  })
+}
+
 // ============================================================================
 // DATABASE & MIGRATION HELPERS
 // ============================================================================

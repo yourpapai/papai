@@ -6,13 +6,12 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { cacheMessage } from '../../src/message-cache/cache.js'
-import { getMessageByContext } from '../../src/message-cache/store.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { getMessage, getMessageByContext, getMessageContext, searchMessages } from '../../src/message-cache/store.js'
+import type { MessageScope } from '../../src/message-cache/store.js'
+import { flushPendingWrites, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
-const flushPendingWrites = (): Promise<void> =>
-  new Promise<void>((resolve) => {
-    queueMicrotask(resolve)
-  })
+const groupScope = (g: string): MessageScope => ({ kind: 'group', groupContextId: g })
+const dmScope = (c: string): MessageScope => ({ kind: 'dm', contextId: c })
 
 describe('message-cache store: getMessageByContext', () => {
   beforeEach(async () => {
@@ -38,5 +37,172 @@ describe('message-cache store: getMessageByContext', () => {
     await flushPendingWrites()
     expect(getMessageByContext('A', 'm1')?.text).toBe('in A')
     expect(getMessageByContext('B', 'm1')?.text).toBe('in B')
+  })
+})
+
+describe('message-cache store: rowToCachedMessage mapping', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  test('maps a fully populated row', async () => {
+    cacheMessage({
+      messageId: 'full',
+      contextId: 'g:t1',
+      authorId: 'u1',
+      authorUsername: 'alice',
+      text: 'hello',
+      replyToMessageId: 'parent',
+      groupContextId: 'g',
+      timestamp: 42,
+    })
+    await flushPendingWrites()
+    const got = getMessageByContext('g:t1', 'full')
+    expect(got).toEqual({
+      messageId: 'full',
+      contextId: 'g:t1',
+      authorId: 'u1',
+      authorUsername: 'alice',
+      text: 'hello',
+      replyToMessageId: 'parent',
+      groupContextId: 'g',
+      timestamp: 42,
+    })
+  })
+
+  test('coerces null columns to undefined', async () => {
+    cacheMessage({ messageId: 'sparse', contextId: 'g:t1', timestamp: 7 })
+    await flushPendingWrites()
+    const got = getMessageByContext('g:t1', 'sparse')
+    expect(got).toEqual({
+      messageId: 'sparse',
+      contextId: 'g:t1',
+      authorId: undefined,
+      authorUsername: undefined,
+      text: undefined,
+      replyToMessageId: undefined,
+      groupContextId: undefined,
+      timestamp: 7,
+    })
+  })
+})
+
+describe('message-cache store: searchMessages (FTS5)', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  test('matches by keyword within group scope, ranked by bm25', async () => {
+    cacheMessage({ messageId: '1', contextId: 'g:t1', groupContextId: 'g', text: 'deploy the thing', timestamp: 1 })
+    cacheMessage({ messageId: '2', contextId: 'g:t1', groupContextId: 'g', text: 'deploy went fine', timestamp: 2 })
+    cacheMessage({ messageId: '3', contextId: 'g:t1', groupContextId: 'g', text: 'unrelated chatter', timestamp: 3 })
+    await flushPendingWrites()
+    const results = searchMessages(groupScope('g'), 'deploy', {}, 10)
+    expect(results.map((r) => r.messageId).sort()).toEqual(['1', '2'])
+  })
+
+  test('does not leak across groups', async () => {
+    cacheMessage({ messageId: '1', contextId: 'a:t1', groupContextId: 'a', text: 'deploy', timestamp: 1 })
+    cacheMessage({ messageId: '2', contextId: 'b:t1', groupContextId: 'b', text: 'deploy', timestamp: 2 })
+    await flushPendingWrites()
+    expect(searchMessages(groupScope('a'), 'deploy', {}, 10).map((r) => r.messageId)).toEqual(['1'])
+  })
+
+  test('dm scope isolates to that dm (group_context_id IS NULL)', async () => {
+    cacheMessage({ messageId: '1', contextId: 'dm-alice', text: 'deploy note', timestamp: 1 })
+    cacheMessage({ messageId: '2', contextId: 'g:t1', groupContextId: 'g', text: 'deploy note', timestamp: 2 })
+    await flushPendingWrites()
+    expect(searchMessages(dmScope('dm-alice'), 'deploy', {}, 10).map((r) => r.messageId)).toEqual(['1'])
+  })
+
+  test('author filter narrows results', async () => {
+    cacheMessage({
+      messageId: '1',
+      contextId: 'g:t1',
+      groupContextId: 'g',
+      authorUsername: 'alice',
+      text: 'deploy',
+      timestamp: 1,
+    })
+    cacheMessage({
+      messageId: '2',
+      contextId: 'g:t1',
+      groupContextId: 'g',
+      authorUsername: 'bob',
+      text: 'deploy',
+      timestamp: 2,
+    })
+    await flushPendingWrites()
+    expect(searchMessages(groupScope('g'), 'deploy', { author: 'alice' }, 10).map((r) => r.messageId)).toEqual(['1'])
+  })
+
+  test('empty/no-match query returns []', async () => {
+    cacheMessage({ messageId: '1', contextId: 'g:t1', groupContextId: 'g', text: 'deploy', timestamp: 1 })
+    await flushPendingWrites()
+    expect(searchMessages(groupScope('g'), 'nonexistentterm', {}, 10)).toEqual([])
+  })
+})
+
+describe('message-cache store: getMessage (scope-checked)', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  test('returns message within group scope', async () => {
+    cacheMessage({ messageId: 'm', contextId: 'g:t1', groupContextId: 'g', text: 'x', timestamp: 1 })
+    await flushPendingWrites()
+    expect(getMessage(groupScope('g'), 'm')?.text).toBe('x')
+  })
+
+  test('returns undefined out of scope (no existence leak)', async () => {
+    cacheMessage({ messageId: 'm', contextId: 'g:t1', groupContextId: 'g', text: 'x', timestamp: 1 })
+    await flushPendingWrites()
+    expect(getMessage(groupScope('other'), 'm')).toBeUndefined()
+  })
+})
+
+describe('message-cache store: getMessageContext', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  test('temporal mode returns N before/after within scope', async () => {
+    cacheMessage({ messageId: 'a', contextId: 'g:t1', groupContextId: 'g', text: 'a', timestamp: 1 })
+    cacheMessage({ messageId: 'b', contextId: 'g:t1', groupContextId: 'g', text: 'b', timestamp: 2 })
+    cacheMessage({ messageId: 'c', contextId: 'g:t1', groupContextId: 'g', text: 'c', timestamp: 3 })
+    cacheMessage({ messageId: 'd', contextId: 'g:t1', groupContextId: 'g', text: 'd', timestamp: 4 })
+    await flushPendingWrites()
+    const res = getMessageContext(groupScope('g'), 'c', 1, 1, 'temporal')
+    expect(res.target?.messageId).toBe('c')
+    expect(res.before.map((m) => m.messageId)).toEqual(['b'])
+    expect(res.after.map((m) => m.messageId)).toEqual(['d'])
+  })
+
+  test('returns empty target when message missing in scope', async () => {
+    cacheMessage({ messageId: 'a', contextId: 'g:t1', groupContextId: 'g', text: 'a', timestamp: 1 })
+    await flushPendingWrites()
+    const res = getMessageContext(groupScope('g'), 'zzz', 1, 1, 'temporal')
+    expect(res.target).toBeUndefined()
+    expect(res.before).toEqual([])
+    expect(res.after).toEqual([])
+  })
+
+  test('reply_chain mode walks parents via buildReplyChain', async () => {
+    cacheMessage({ messageId: '1', contextId: 'g:t1', groupContextId: 'g', text: 'root', timestamp: 1 })
+    cacheMessage({
+      messageId: '2',
+      contextId: 'g:t1',
+      groupContextId: 'g',
+      text: 'reply',
+      replyToMessageId: '1',
+      timestamp: 2,
+    })
+    await flushPendingWrites()
+    const res = getMessageContext(groupScope('g'), '2', 0, 0, 'reply_chain')
+    expect(res.replyChain).toEqual(['1', '2'])
   })
 })

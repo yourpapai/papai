@@ -6,12 +6,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { cacheMessage, getCachedMessage } from '../../src/message-cache/cache.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
-
-const flushPendingWrites = (): Promise<void> =>
-  new Promise<void>((resolve) => {
-    queueMicrotask(resolve)
-  })
+import { flushPendingWrites, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 describe('Message Cache', () => {
   beforeEach(async () => {
