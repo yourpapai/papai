@@ -62,7 +62,7 @@ export function makeSearchChatHistoryTool(
         contextId: m.contextId,
         ...(m.replyToMessageId === undefined ? {} : { replyToMessageId: m.replyToMessageId }),
       }))
-      log.info({ query, resultCount: results.length }, 'search_chat_history completed')
+      log.info({ resultCount: results.length }, 'search_chat_history completed')
       return { results, total: results.length, mode: 'keyword' }
     },
   })
