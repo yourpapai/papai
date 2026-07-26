@@ -488,11 +488,75 @@ const handleIssues = (ctx: Ctx): Response | undefined => {
   return undefined
 }
 
+// ---------- Comments handler ----------
+
+const commentProjection = (c: StoredComment): unknown => ({
+  id: c.id,
+  $type: 'IssueComment',
+  text: c.text,
+  author: { id: 'fake-user-1', $type: 'User', login: 'fake.user', name: 'Fake User' },
+  created: c.created,
+  updated: c.updated ?? null,
+  reactions: [],
+})
+
+const handleComments = (ctx: Ctx): Response | undefined => {
+  const { method, path, state, query } = ctx
+
+  const onePath = matchPath('/api/issues/:id/comments/:commentId', path)
+  if (onePath !== null) {
+    const issue = findIssue(state, onePath['id'] ?? '')
+    if (issue === undefined) return errorResponse(404, 'issue not found')
+    const comment = state.comments.get(onePath['commentId'] ?? '')
+    if (comment === undefined || comment.issueId !== issue.id) return errorResponse(404, 'comment not found')
+    if (method === 'GET') return json(commentProjection(comment))
+    if (method === 'POST') {
+      const body = (ctx.body ?? {}) as { text?: string }
+      if (body.text !== undefined) {
+        comment.text = body.text
+        comment.updated = nextTs(state)
+      }
+      return json(commentProjection(comment))
+    }
+    if (method === 'DELETE') {
+      state.comments.delete(comment.id)
+      return noContent()
+    }
+  }
+
+  const collPath = matchPath('/api/issues/:id/comments', path)
+  if (collPath !== null) {
+    const issue = findIssue(state, collPath['id'] ?? '')
+    if (issue === undefined) return errorResponse(404, 'issue not found')
+    if (method === 'POST') {
+      const body = (ctx.body ?? {}) as { text?: string }
+      const id = nextId(state, 'comment')
+      const comment: StoredComment = {
+        id,
+        issueId: issue.id,
+        text: body.text ?? '',
+        created: nextTs(state),
+        updated: undefined,
+      }
+      state.comments.set(id, comment)
+      return json(commentProjection(comment))
+    }
+    if (method === 'GET') {
+      const list = [...state.comments.values()].filter((c) => c.issueId === issue.id)
+      const top = Number(query.get('$top') ?? '100')
+      const skip = Number(query.get('$skip') ?? '0')
+      return json(list.slice(skip, skip + top).map(commentProjection))
+    }
+  }
+
+  return undefined
+}
+
 // ---------- Server bootstrap ----------
 
 export const startFakeYouTrackServer = (): FakeYouTrackServer => {
   const state = createState()
-  const handlers: Array<(ctx: Ctx) => Response | undefined> = [handleProjects, handleIssues]
+  const handlers: Array<(ctx: Ctx) => Response | undefined> = [handleProjects, handleIssues, handleComments]
 
   const server: Server<undefined> = Bun.serve({
     port: 0,

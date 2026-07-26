@@ -293,3 +293,65 @@ describe('fake YouTrack server — list, sort, paging, search', () => {
     expect(got.customFields.find((f) => f.name === 'State')?.value.name).toBe('Done')
   })
 })
+
+const AddedCommentSchema = z.object({
+  id: z.string(),
+  text: z.string(),
+  author: z.object({ id: z.string(), login: z.string() }),
+  created: z.number(),
+})
+
+const CommentListItemSchema = z.object({ text: z.string() })
+const CommentListSchema = z.array(CommentListItemSchema)
+
+const UpdatedCommentSchema = z.object({ id: z.string(), text: z.string() })
+
+describe('fake YouTrack server — comments', () => {
+  let fake: FakeYouTrackServer
+
+  beforeAll(() => {
+    fake = startFakeYouTrackServer()
+  })
+
+  afterAll(async () => {
+    await fake.stop()
+  })
+
+  test('add, list, update, remove a comment', async () => {
+    fake.reset()
+    const project = await createProject(fake, 'Comment P', 'CP')
+    const issue = IdReadableOnlySchema.parse(
+      await (await postJson(fake, '/api/issues', { project: { id: project.id }, summary: 'Host' })).json(),
+    )
+
+    const added = AddedCommentSchema.parse(
+      await (await postJson(fake, `/api/issues/${issue.idReadable}/comments`, { text: 'first note' })).json(),
+    )
+    expect(added.text).toBe('first note')
+    expect(typeof added.author.login).toBe('string')
+
+    const listed = CommentListSchema.parse(
+      await (await fetch(`${fake.url}/api/issues/${issue.idReadable}/comments?fields=id`)).json(),
+    )
+    expect(listed.map((c) => c.text)).toEqual(['first note'])
+
+    const updated = UpdatedCommentSchema.parse(
+      await (
+        await postJson(fake, `/api/issues/${issue.idReadable}/comments/${added.id}`, { text: 'edited note' })
+      ).json(),
+    )
+    expect(updated.id).toBe(added.id)
+    expect(updated.text).toBe('edited note')
+
+    const removed = await fetch(`${fake.url}/api/issues/${issue.idReadable}/comments/${added.id}`, {
+      method: 'DELETE',
+    })
+    expect(removed.status).toBe(204)
+  })
+
+  test('commenting on a missing issue is 404', async () => {
+    fake.reset()
+    const res = await postJson(fake, '/api/issues/NOPE-1/comments', { text: 'orphan' })
+    expect(res.status).toBe(404)
+  })
+})
