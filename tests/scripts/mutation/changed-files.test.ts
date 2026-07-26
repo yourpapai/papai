@@ -97,7 +97,14 @@ describe('selectChangedMutationTargets', () => {
 
 describe('parseChangedFilesCliArgs', () => {
   test('returns defaults for no args', () => {
-    expect(parseChangedFilesCliArgs([])).toEqual({ kind: 'ok', baseRef: 'origin/master', threshold: 0, verbose: false })
+    expect(parseChangedFilesCliArgs([])).toEqual({
+      kind: 'ok',
+      baseRef: 'origin/master',
+      threshold: 0,
+      ratchetFloor: 0.5,
+      noRatchet: false,
+      verbose: false,
+    })
   })
 
   test('parses verbose mode', () => {
@@ -105,7 +112,20 @@ describe('parseChangedFilesCliArgs', () => {
       kind: 'ok',
       baseRef: 'origin/master',
       threshold: 0,
+      ratchetFloor: 0.5,
+      noRatchet: false,
       verbose: true,
+    })
+  })
+
+  test('parses --no-ratchet and --ratchet-floor', () => {
+    expect(parseChangedFilesCliArgs(['--no-ratchet', '--ratchet-floor=0.6'])).toEqual({
+      kind: 'ok',
+      baseRef: 'origin/master',
+      threshold: 0,
+      ratchetFloor: 0.6,
+      noRatchet: true,
+      verbose: false,
     })
   })
 
@@ -143,6 +163,7 @@ describe('changedFilesRun', () => {
         },
         perFile: [],
         skipped: [],
+        errored: [],
       }),
     )
     const deps: ChangedFilesRunDeps = {

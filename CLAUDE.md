@@ -65,7 +65,7 @@ Mandatory; pino with structured metadata-first calls. `debug` — function entry
 
 ## Testing Notes
 
-See `tests/CLAUDE.md`. Prefer DI over `mock.module()` where the module supports it. Helpers (`schemaValidates()`, `getToolExecutor()`, `setMockFetch()`, `restoreFetch()`) live in `tests/utils/test-helpers.ts`; `tests/mock-reset.ts` resets common mocks per test. The repo mixes DI-first and legacy delayed-import/mock suites — follow the local pattern unless intentionally refactoring style. Mutation testing (Stryker) is local-only, not in the write-hook pipeline.
+See `tests/CLAUDE.md`. Prefer DI over `mock.module()` where the module supports it. Helpers (`schemaValidates()`, `getToolExecutor()`, `setMockFetch()`, `restoreFetch()`) live in `tests/utils/test-helpers.ts`; `tests/mock-reset.ts` resets common mocks per test. The repo mixes DI-first and legacy delayed-import/mock suites — follow the local pattern unless intentionally refactoring style. Mutation testing (Stryker) runs as a blocking per-file ratchet gate in CI (`test:mutate:changed` on PRs; `scripts/mutation/baseline.json` is the monotonic per-file floor, ratcheted up on master via `test:mutate --update-baseline`) but is not in the write-hook pipeline.
 
 ## Pi Workflow
 

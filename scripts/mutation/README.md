@@ -41,12 +41,18 @@ Default output is concise: paired runs hide raw Stryker reporter chatter and
 print per-file plus aggregate summaries from JSON. Add `--verbose` to stream raw
 Stryker output. Per-file Stryker JSON reports land in `reports/paired/`.
 
+A file whose Stryker run fails (dry-run timeout, crash, or missing report) is
+recorded as errored and excluded from the aggregate score; the run continues so
+one bad file never aborts the batch. Errored files appear in the summary as
+`errored=N` and carry the captured failure message for diagnosis.
+
 ## Companion-test resolution
 
 The companion is resolved by `.hooks/tdd/test-resolver.mjs`:
 
 - `src/foo/bar.ts` -> `tests/foo/bar.test.ts`
 - `client/debug/x.ts` -> `tests/client/debug/x.test.ts`
+- `plugins/task-provider-kaneo/foo.ts` -> `tests/plugins/task-provider-kaneo/foo.test.ts`
 
 ## When a file's coverage lives elsewhere (cross-cutting)
 
@@ -73,3 +79,21 @@ by either adding a companion test or registering the cross-cutting tests above.
 - `bun test:mutate:file` — accurate paired run for explicitly listed files.
 - `bun test:mutate:changed-paired` — descriptive alias for
   `bun test:mutate:changed`.
+
+## Ratchet gate (`scripts/mutation/baseline.json`)
+
+A committed per-file baseline of mutation scores backs a monotonic ratchet:
+
+- **PR gate** (`test:mutate:changed`): a changed file fails when its score drops
+  below its recorded baseline. Files new to scope are held to a floor
+  (`--ratchet-floor=N`, default `0.5`). Existing files are held to their own
+  baseline — the floor does not retroactively demand legacy files reach it, so
+  the overall score ratchets upward as files improve without blocking routine
+  work on currently-below-floor code. Disable with `--no-ratchet`.
+- **Master ratchet** (`test:mutate --update-baseline`): after a full run,
+  rewrites `baseline.json` keeping the per-file max with the existing baseline,
+  so the recorded floor only ever goes up (or stays the same). The CI
+  `mutation-baseline` job runs this on push to `master` and commits the result.
+
+Re-generate the baseline from scratch (discards history) by deleting
+`scripts/mutation/baseline.json` and running `bun test:mutate --update-baseline`.
