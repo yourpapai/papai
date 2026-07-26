@@ -178,6 +178,18 @@ export default {
     // are consumed by sibling analytics modules and by tests outside knip's
     // production project scope.
     'src/analytics/generated/*.ts': ['exports', 'types'],
+    // Analytics intent modules are the Stage A taxonomy/classifier seam; their
+    // exports are consumed by the derivation job, the rephrase handoff, and by
+    // analytics tests outside knip's production project scope.
+    'src/analytics/intent/*.ts': ['exports', 'types'],
+    // Analytics rephrase modules are the Stage A transient rephrase seam; their
+    // exports are consumed by runtime wiring and by analytics tests outside
+    // knip's production project scope.
+    'src/analytics/rephrase/*.ts': ['exports', 'types'],
+    // Analytics job modules are the Stage A offline-derivation seam; their
+    // exports are consumed by the upcoming scheduled-runner registration task
+    // and by analytics tests outside knip's production project scope.
+    'src/analytics/jobs/*.ts': ['exports', 'types'],
   },
 
   includeEntryExports: true,
