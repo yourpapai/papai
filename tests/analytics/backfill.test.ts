@@ -13,8 +13,14 @@ import {
   decideLlmBackfillRow,
   decideToolBackfillRow,
   deriveBackfillSourceRef,
+  LLM_SOURCE_TABLE,
 } from '../../src/analytics/jobs/backfill-decisions.js'
-import { rollbackBackfillRun, routeFutureCanonicalDecision, runBackfillJob } from '../../src/analytics/jobs/backfill.js'
+import {
+  applyBackfillDecision,
+  rollbackBackfillRun,
+  routeFutureCanonicalDecision,
+  runBackfillJob,
+} from '../../src/analytics/jobs/backfill.js'
 import type { BackfillJobInput, FutureCanonicalInput } from '../../src/analytics/jobs/backfill.js'
 import { normalize } from '../../src/analytics/normalizer.js'
 import type { NormalizerEnv } from '../../src/analytics/normalizer.js'
@@ -488,6 +494,50 @@ describe('backfill job', () => {
     const run = db.select().from(schema.analyticsBackfillRuns).all()[0]
     expect(run?.policyCutoffMs).toBe(BASE_MS)
   })
+
+  test('persisted high-water key carries no raw source event id; resume decisions stay identical', () => {
+    const seeded = LLM_FIXTURES()
+    for (const row of seeded) db.insert(schema.llmUsageEvents).values(row).run()
+    const first = runBackfillJob(jobInput({ source: 'llm' }), { getDrizzleDb: () => db })
+    expect(first.runs[0]?.status).toBe('completed')
+    const run = db.select().from(schema.analyticsBackfillRuns).all()[0]
+    expect(run?.highWaterRowKey).toMatch(/^\d+:v1\.[-_A-Za-z0-9]+$/u)
+    for (const row of seeded) expect(run?.highWaterRowKey).not.toContain(row.eventId)
+
+    const resumed = runBackfillJob(jobInput({ source: 'llm', resume: true }), { getDrizzleDb: () => db })
+    expect(resumed.runs[0]?.status).toBe('completed')
+    expect(resumed.runs[0]?.decisions).toEqual(first.runs[0]?.decisions)
+    expect(resumed.runs[0]?.applied).toBe(0)
+    expect(resumed.runs[0]?.skipped).toBe(9)
+  })
+
+  test('ineligible decision writes exactly one provenance contribution and rerun skips it', () => {
+    db.insert(schema.analyticsBackfillRuns)
+      .values({
+        runId: 'backfill-v1:llm_usage_events',
+        sourceTable: 'llm_usage_events',
+        highWaterRowKey: `${BASE_MS}:v1.hw`,
+        policyCutoffMs: 0,
+        status: 'running',
+        startedAtMs: BASE_MS,
+      })
+      .run()
+    const ctx = {
+      runId: 'backfill-v1:llm_usage_events',
+      sourceTable: LLM_SOURCE_TABLE,
+      key: KEY,
+      keyVersion: 'v1',
+    } as const
+    const decision = { kind: 'ineligible' as const, reason: 'preference_denied' as const }
+    const row = llmRow({ eventId: 'llm-denied' })
+    expect(applyBackfillDecision(db, ctx, row, decision)).toBe('applied')
+    expect(applyBackfillDecision(db, ctx, row, decision)).toBe('skipped')
+    const contributions = db.select().from(schema.analyticsBackfillAggregateContributions).all()
+    expect(contributions).toHaveLength(1)
+    expect(contributions[0]?.metric).toBe('ineligible:preference_denied')
+    expect(contributions[0]?.delta).toBe(0)
+    expect(countsOf(db).rejections).toBe(0)
+  })
 })
 
 describe('future canonical branch', () => {
@@ -582,6 +632,7 @@ describe('future canonical branch', () => {
     collectionRef: allowRef(database),
     processEpochId: 'epoch-bf',
     runId: 'backfill-v1:llm_usage_events',
+    sourceTable: LLM_SOURCE_TABLE,
     sourceRefKey: deriveBackfillSourceRef({
       key: KEY,
       keyVersion: 'v1',
@@ -610,7 +661,7 @@ describe('future canonical branch', () => {
     expect(db.select().from(schema.analyticsEvents).all()).toHaveLength(1)
   })
 
-  test('deny-after-read before insert creates no canonical event or run map', () => {
+  test('deny-after-read before insert writes no canonical event and exactly one ineligible contribution', () => {
     const input = canonicalInput(db, 'llm-0')
     setEligibilityState(
       { refKey: input.collectionRef.refKey, keyVersion: 'v1', state: 'deny', policyVersion: 1, nowMs: BASE_MS + 1 },
@@ -619,6 +670,15 @@ describe('future canonical branch', () => {
     expect(routeFutureCanonicalDecision(input, { getDrizzleDb: () => db })).toBe('not_eligible')
     expect(db.select().from(schema.analyticsEvents).all()).toHaveLength(0)
     expect(db.select().from(schema.analyticsBackfillEventMap).all()).toHaveLength(0)
+    const contributions = db.select().from(schema.analyticsBackfillAggregateContributions).all()
+    expect(contributions).toHaveLength(1)
+    expect(contributions[0]?.metric).toBe('ineligible:preference_denied')
+    expect(contributions[0]?.sourceRefKey).toBe(input.sourceRefKey)
+    expect(contributions[0]?.aggregateCellKey).toBe(`${DAY}|llm_usage_events|ineligible`)
+
+    expect(routeFutureCanonicalDecision(canonicalInput(db, 'llm-0'), { getDrizzleDb: () => db })).toBe('already_mapped')
+    expect(db.select().from(schema.analyticsBackfillAggregateContributions).all()).toHaveLength(1)
+    expect(db.select().from(schema.analyticsEvents).all()).toHaveLength(0)
   })
 
   test('pre-eligibility rows are never reconstructed', () => {

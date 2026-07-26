@@ -17,6 +17,7 @@ import {
 import { utcDayOfMs } from '../aggregate.js'
 import { classifyAnalyticsTool } from '../tool-classification.js'
 import { controlledModelRoleOf, LLM_SOURCE_TABLE, TOOL_SOURCE_TABLE } from './backfill-decisions.js'
+import { highWaterBoundMs } from './backfill-readers.js'
 
 type Db = ReturnType<typeof defaultGetDrizzleDb>
 
@@ -74,7 +75,7 @@ const coverageByTable = (db: Db): Map<string, { cutoffMs: number; boundMs: numbe
   const coverage = new Map<string, { cutoffMs: number; boundMs: number }>()
   const runs = db.select().from(analyticsBackfillRuns).where(eq(analyticsBackfillRuns.status, 'completed')).all()
   for (const run of runs) {
-    const boundMs = Number(run.highWaterRowKey.split(':')[0])
+    const boundMs = highWaterBoundMs(run.highWaterRowKey)
     const existing = coverage.get(run.sourceTable)
     coverage.set(run.sourceTable, {
       cutoffMs: Math.min(existing?.cutoffMs ?? run.policyCutoffMs, run.policyCutoffMs),

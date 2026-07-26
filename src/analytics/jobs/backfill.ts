@@ -21,7 +21,7 @@ import {
   TOOL_SOURCE_TABLE,
 } from './backfill-decisions.js'
 import type { BackfillDecision, BackfillSourceTable } from './backfill-decisions.js'
-import { computeBound, formatRowKey, hashHighWaterKey, readLlmBatch, readToolBatch } from './backfill-readers.js'
+import { computeBound, formatHighWaterKey, hashHighWaterKey, readLlmBatch, readToolBatch } from './backfill-readers.js'
 import type { BatchQuery, RowKey } from './backfill-readers.js'
 import { rollbackBackfillRun } from './backfill-rollback.js'
 
@@ -238,7 +238,7 @@ const processSource = (
   const runId = `${input.runIdPrefix ?? 'backfill-v1'}:${table}`
   const bound = computeBound(db, table, input.cutoffMs)
   if (bound === null) return toRunSummary(runId, table, 'empty', null, zeroCounts())
-  const highWater = formatRowKey(bound)
+  const highWater = formatHighWaterKey(bound, table, input.key, input.keyVersion)
   const highWaterKeyHash = hashHighWaterKey(highWater)
   if (input.dryRun) {
     return toRunSummary(

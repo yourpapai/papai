@@ -27,6 +27,7 @@ describe('backfill canonical routing guards', () => {
         collectionRef: { refKey: 'ref-1', keyVersion: 'v1', generation: 1 },
         processEpochId: 'epoch-x',
         runId: 'run-x',
+        sourceTable: 'llm_usage_events',
         sourceRefKey: 'v1.ref-x',
         consentCutoffMs: llmCompletedFixture.event.occurred_at_ms + 1,
       },

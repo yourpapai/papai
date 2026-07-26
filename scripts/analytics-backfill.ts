@@ -11,23 +11,13 @@
  *     [--resume] [--source llm|tool|all] [--reconcile]
  */
 
-import { ANALYTICS_HMAC_KEYRING_ENV } from '../src/analytics/config.js'
 import { getPolicy } from '../src/analytics/governance/policy-store.js'
-import { parseAnalyticsKeyring } from '../src/analytics/identity/keyring.js'
-import { runBackfillJob } from '../src/analytics/jobs/backfill.js'
-import type { BackfillJobInput, BackfillSource } from '../src/analytics/jobs/backfill.js'
-import { runReconciliation } from '../src/analytics/jobs/reconcile.js'
-import { closeDrizzleDb } from '../src/db/drizzle.js'
+import { runBackfillCli } from '../src/analytics/jobs/backfill-cli.js'
+import type { BackfillCliArgs } from '../src/analytics/jobs/backfill-cli.js'
+import type { BackfillSource } from '../src/analytics/jobs/backfill.js'
+import { getDrizzleDb, closeDrizzleDb } from '../src/db/drizzle.js'
 
-const APPROVAL_ENV = 'ANALYTICS_BACKFILL_APPROVED_AT_MS'
-
-type CliArgs = Readonly<{
-  dryRun: boolean
-  batchSize: number
-  resume: boolean
-  source: BackfillSource
-  reconcile: boolean
-}>
+type CliArgs = BackfillCliArgs
 
 const fail = (message: string): never => {
   console.error(`status=error reason=${message}`)
@@ -61,59 +51,19 @@ const parseArgs = (argv: readonly string[]): CliArgs => {
   return args
 }
 
-const resolveCutoffMs = (): number => {
-  let policy: ReturnType<typeof getPolicy> | null = null
-  try {
-    policy = getPolicy()
-  } catch {
-    return 0
-  }
-  if (policy.lawfulBasisMode === 'legitimate_interest') {
-    const raw = process.env[APPROVAL_ENV]
-    const approvedAtMs = raw === undefined ? NaN : Number(raw)
-    if (!Number.isSafeInteger(approvedAtMs) || approvedAtMs < 0) fail('approval_required')
-    return approvedAtMs
-  }
-  return policy.policyEffectiveAtMs ?? 0
-}
-
 const main = (): void => {
   const args = parseArgs(process.argv.slice(2))
-  const keyring = parseAnalyticsKeyring(process.env[ANALYTICS_HMAC_KEYRING_ENV])
-  if (keyring.kind !== 'available') return fail('keyring_unavailable')
-  const input: BackfillJobInput = {
-    source: args.source,
-    batchSize: args.batchSize,
-    dryRun: args.dryRun,
-    resume: args.resume,
-    cutoffMs: resolveCutoffMs(),
-    key: keyring.activeKey,
-    keyVersion: keyring.activeVersion,
+  const result = runBackfillCli(args, {
+    getDrizzleDb,
+    env: process.env,
     nowMs: Date.now(),
+    getPolicy: () => getPolicy(),
+  })
+  for (const line of result.lines) {
+    if (result.error) console.error(line)
+    else console.log(line)
   }
-  const result = runBackfillJob(input)
-  let blocked = false
-  for (const run of result.runs) {
-    const d = run.decisions
-    console.log(
-      `run=${run.runId} source=${run.sourceTable} status=${run.status} ` +
-        `high_water=${run.highWaterKeyHash ?? 'none'} scanned=${run.scanned} ` +
-        `canonical=${d.canonical} aggregate_only=${d.aggregateOnly} ineligible=${d.ineligible} rejected=${d.rejected} ` +
-        `applied=${run.applied} skipped=${run.skipped}`,
-    )
-    if (run.status === 'failed' || run.status === 'requires_resume') blocked = true
-  }
-  if (blocked) process.exit(1)
-  if (args.reconcile && !args.dryRun) {
-    const report = runReconciliation({ nowMs: Date.now(), apply: true })
-    const gapEpochs = report.liveEpochs.filter((epoch) => epoch.status === 'unreconciled_restart_gap').length
-    const publishableEpochs = report.liveEpochs.filter((epoch) => epoch.status === 'publishable').length
-    console.log(
-      `reconciliation status=${report.status} unexplained_delta=${report.durableUsage.unexplainedDeltaTotal} ` +
-        `gap_epochs=${gapEpochs} publishable_epochs=${publishableEpochs} delivery_total=${report.delivery.total}`,
-    )
-    if (report.status === 'delta') process.exit(1)
-  }
+  if (result.exitCode !== 0) process.exit(result.exitCode)
 }
 
 try {

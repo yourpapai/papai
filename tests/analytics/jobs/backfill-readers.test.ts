@@ -7,14 +7,17 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import {
   computeBound,
-  formatRowKey,
+  formatHighWaterKey,
   hashHighWaterKey,
+  highWaterBoundMs,
   readLlmBatch,
 } from '../../../src/analytics/jobs/backfill-readers.js'
 import * as schema from '../../../src/db/schema.js'
 import { mockLogger, setupTestDb } from '../../utils/test-helpers.js'
 
 type Db = Awaited<ReturnType<typeof setupTestDb>>
+
+const KEY = Buffer.alloc(32, 7)
 
 const rowAt = (
   rows: readonly { occurredAt: number; eventId: string }[],
@@ -26,7 +29,7 @@ const rowAt = (
 }
 
 const boundKeyOf = (bound: { occurredAt: number; eventId: string } | null): string =>
-  bound === null ? 'none' : formatRowKey(bound)
+  bound === null ? 'none' : formatHighWaterKey(bound, 'llm_usage_events', KEY, 'v1')
 
 const insertLlm = (db: Db, eventId: string, occurredAt: number): void => {
   db.insert(schema.llmUsageEvents)
@@ -91,9 +94,11 @@ describe('backfill readers', () => {
     expect(second.map((row) => row.eventId)).toEqual(['e-3'])
   })
 
-  test('formatRowKey round-trips through bound computation', () => {
+  test('formatHighWaterKey keeps the ms bound but never the raw event id', () => {
     insertLlm(db, 'e-9', 42)
-    const bound = computeBound(db, 'llm_usage_events', 0)
-    expect(boundKeyOf(bound)).toBe('42:e-9')
+    const persisted = boundKeyOf(computeBound(db, 'llm_usage_events', 0))
+    expect(persisted).toMatch(/^42:v1\.[-_A-Za-z0-9]+$/u)
+    expect(persisted).not.toContain('e-9')
+    expect(highWaterBoundMs(persisted)).toBe(42)
   })
 })

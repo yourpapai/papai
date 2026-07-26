@@ -11,6 +11,7 @@ import { getDrizzleDb as defaultGetDrizzleDb } from '../../db/drizzle.js'
 import type { LlmUsageEventRow } from '../../db/llm-usage-events-schema.js'
 import { llmUsageEvents, toolCallEvents } from '../../db/schema.js'
 import type { ToolCallEventRow } from '../../db/tool-call-events-schema.js'
+import { createPseudonym } from '../identity/pseudonym.js'
 import type { BackfillSourceTable } from './backfill-decisions.js'
 import { LLM_SOURCE_TABLE } from './backfill-decisions.js'
 
@@ -18,7 +19,22 @@ type Db = ReturnType<typeof defaultGetDrizzleDb>
 
 export type RowKey = Readonly<{ occurredAt: number; eventId: string }>
 
-export const formatRowKey = (key: RowKey): string => `${key.occurredAt}:${key.eventId}`
+export const BACKFILL_HIGH_WATER_DOMAIN = 'backfill-high-water:v1'
+
+export const formatHighWaterKey = (
+  bound: RowKey,
+  table: BackfillSourceTable,
+  key: Buffer,
+  keyVersion: string,
+): string =>
+  `${bound.occurredAt}:${createPseudonym({
+    key,
+    keyVersion,
+    domain: BACKFILL_HIGH_WATER_DOMAIN,
+    components: [table, bound.eventId],
+  })}`
+
+export const highWaterBoundMs = (persistedKey: string): number => Number(persistedKey.split(':')[0])
 
 export const hashHighWaterKey = (key: string): string => createHash('sha256').update(key).digest('hex').slice(0, 16)
 

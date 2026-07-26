@@ -93,6 +93,21 @@ const applyAggregateOnly = (
 
 type Tx = Parameters<Db['transaction']>[0] extends (tx: infer T) => unknown ? T : never
 
+export const insertIneligibleContribution = (
+  tx: Tx,
+  input: Readonly<{ runId: string; sourceTable: string; utcDay: string; reason: string; sourceRefKey: string }>,
+): void => {
+  tx.insert(analyticsBackfillAggregateContributions)
+    .values({
+      runId: input.runId,
+      aggregateCellKey: `${input.utcDay}|${input.sourceTable}|ineligible`,
+      metric: `ineligible:${input.reason}`,
+      delta: 0,
+      sourceRefKey: input.sourceRefKey,
+    })
+    .run()
+}
+
 const applyRejected = (
   db: Db,
   tx: Tx,
@@ -137,6 +152,16 @@ export const applyBackfillDecision = (
     }
     if (decision.kind === 'rejected') {
       applyRejected(db, tx, ctx, utcDayOfMs(row.occurredAt), decision.reason, sourceRefKey)
+      return 'applied'
+    }
+    if (decision.kind === 'ineligible') {
+      insertIneligibleContribution(tx, {
+        runId: ctx.runId,
+        sourceTable: ctx.sourceTable,
+        utcDay: utcDayOfMs(row.occurredAt),
+        reason: decision.reason,
+        sourceRefKey,
+      })
       return 'applied'
     }
     return 'skipped'

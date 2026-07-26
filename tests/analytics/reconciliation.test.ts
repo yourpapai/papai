@@ -196,6 +196,7 @@ const seedDurableFixture = (db: Db): void => {
       collectionRef: { refKey, keyVersion: 'v1', generation },
       processEpochId: 'epoch-bf',
       runId: 'backfill-v1:llm_usage_events',
+      sourceTable: 'llm_usage_events',
       sourceRefKey: deriveBackfillSourceRef({
         key: KEY,
         keyVersion: 'v1',
@@ -208,22 +209,30 @@ const seedDurableFixture = (db: Db): void => {
     { getDrizzleDb: () => db },
   )
   expect(canonical).toBe('inserted')
-  closeEpoch({ epochId: 'epoch-bf', closedAtMs: BASE_MS + 1000 }, { getDrizzleDb: () => db })
-  db.insert(schema.analyticsBackfillAggregateContributions)
-    .values({
+  setEligibilityState(
+    { refKey, keyVersion: 'v1', state: 'deny', policyVersion: 1, nowMs: BASE_MS + 1 },
+    { getDrizzleDb: () => db },
+  )
+  const denied = routeFutureCanonicalDecision(
+    {
+      event: makeEvent('v1.p-ineligible-bf', BASE_MS),
+      collectionRef: { refKey, keyVersion: 'v1', generation },
+      processEpochId: 'epoch-bf',
       runId: 'backfill-v1:llm_usage_events',
-      aggregateCellKey: `${DAY}|llm_usage_events|ineligible`,
-      metric: 'ineligible:preference_denied',
-      delta: 0,
+      sourceTable: 'llm_usage_events',
       sourceRefKey: deriveBackfillSourceRef({
         key: KEY,
         keyVersion: 'v1',
         sourceTable: 'llm_usage_events',
         sourceEventId: 'llm-ineligible',
-        decisionName: 'ineligible:preference_denied',
+        decisionName: 'canonical:llm_completed',
       }),
-    })
-    .run()
+      consentCutoffMs: 0,
+    },
+    { getDrizzleDb: () => db },
+  )
+  expect(denied).toBe('not_eligible')
+  closeEpoch({ epochId: 'epoch-bf', closedAtMs: BASE_MS + 1000 }, { getDrizzleDb: () => db })
 }
 
 describe('durable usage reconciliation', () => {
@@ -251,6 +260,40 @@ describe('durable usage reconciliation', () => {
       unexplainedDelta: 0,
     })
     expect(report.durableUsage.breakdowns.perModelRole['main']).toBe(4)
+  })
+
+  test('rerunning a denied-canonical decision records nothing new and the equation still closes', () => {
+    seedDurableFixture(db)
+    const before = db.select().from(schema.analyticsBackfillAggregateContributions).all().length
+    const refKey = deriveCollectionRefKey({
+      key: KEY,
+      keyVersion: 'v1',
+      platformInstanceId: 'pi-1',
+      platformUserId: 'user-42',
+    })
+    const rerun = routeFutureCanonicalDecision(
+      {
+        event: makeEvent('v1.p-ineligible-bf', BASE_MS),
+        collectionRef: { refKey, keyVersion: 'v1', generation: 1 },
+        processEpochId: 'epoch-bf',
+        runId: 'backfill-v1:llm_usage_events',
+        sourceTable: 'llm_usage_events',
+        sourceRefKey: deriveBackfillSourceRef({
+          key: KEY,
+          keyVersion: 'v1',
+          sourceTable: 'llm_usage_events',
+          sourceEventId: 'llm-ineligible',
+          decisionName: 'canonical:llm_completed',
+        }),
+        consentCutoffMs: 0,
+      },
+      { getDrizzleDb: () => db },
+    )
+    expect(rerun).toBe('already_mapped')
+    expect(db.select().from(schema.analyticsBackfillAggregateContributions).all()).toHaveLength(before)
+    const report = runReconciliation({ nowMs: BASE_MS + DAY_MS, apply: false }, { getDrizzleDb: () => db })
+    expect(report.status).toBe('reconciled')
+    expect(report.durableUsage.unexplainedDeltaTotal).toBe(0)
   })
 
   test('losing a provenance row produces an unexplained delta', () => {
