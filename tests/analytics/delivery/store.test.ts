@@ -427,6 +427,7 @@ describe('analytics delivery store', () => {
       nextAttemptAtMs: NOW + 200,
       lastErrorClass: 'http_5xx',
       leaseUntilMs: null,
+      sendStartedAtMs: null,
     })
   })
 
@@ -542,6 +543,34 @@ describe('analytics delivery store', () => {
     expect(row?.state).toBe('ambiguous')
     expect(row?.deliveredAtMs).toBeNull()
     expect(leaseDeliveries({ nowMs: NOW + 100000, leaseMs: 10, limit: 10, maxAttempts: 99 }, deps)).toEqual([])
+  })
+
+  test('retryable then crash before send-start: expired-lease recovery returns the row to pending', () => {
+    toSending()
+    expect(
+      classifyDelivery(
+        {
+          eventId: 'event-1',
+          sinkVersionId: 'sv-1',
+          nowMs: NOW + 20,
+          outcome: 'retryable',
+          errorClass: 'http_5xx',
+          retryAtMs: NOW + 30,
+        },
+        deps,
+      ),
+    ).toBe('classified')
+
+    const reLeased = leaseDeliveries({ nowMs: NOW + 30, leaseMs: 10, limit: 10, maxAttempts: 3 }, deps)
+    expect(reLeased).toHaveLength(1)
+    const leasedRow = getDelivery(db, 'event-1', 'sv-1')
+    expect(leasedRow?.state).toBe('leased')
+    expect(leasedRow?.sendStartedAtMs).toBeNull()
+
+    const retried = leaseDeliveries({ nowMs: NOW + 100, leaseMs: 10, limit: 10, maxAttempts: 3 }, deps)
+    expect(retried).toHaveLength(1)
+    expect(retried[0]?.attempts).toBe(3)
+    expect(getDelivery(db, 'event-1', 'sv-1')).toMatchObject({ state: 'leased', sendStartedAtMs: null })
   })
 
   test('arbitrary network errors map to a finite error class and no message persists', () => {

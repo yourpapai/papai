@@ -117,7 +117,7 @@ const leaseOne = (
   leaseUntilMs: number,
 ): void => {
   tx.update(analyticsDeliveries)
-    .set({ state: 'leased', attempts: row.attempts + 1, leaseUntilMs })
+    .set({ state: 'leased', attempts: row.attempts + 1, leaseUntilMs, sendStartedAtMs: null })
     .where(
       and(
         eq(analyticsDeliveries.eventId, row.eventId),

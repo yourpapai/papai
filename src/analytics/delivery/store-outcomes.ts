@@ -41,6 +41,7 @@ const classificationPatch = (input: ClassifyDeliveryInput): Partial<typeof analy
       nextAttemptAtMs: input.retryAtMs ?? input.nowMs,
       lastErrorClass: input.errorClass ?? null,
       leaseUntilMs: null,
+      sendStartedAtMs: null,
     }
   }
   if (input.outcome === 'ambiguous') {
