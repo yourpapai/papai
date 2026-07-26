@@ -36,8 +36,8 @@ aggregate publication.
 | 9 | Outbox/sink | partial | store parts: migration 072 restrictive sink/event FKs, nine-state closed ledger, single-enabled-sink partial unique index, independent minimal deletion receipts, enqueue/lease/send-start/recovery race proofs in tests/analytics/delivery/store.test.ts, capability gate incl. OpenPanel negative fixture in tests/analytics/delivery/sink.test.ts, write-only sink lifecycle in tests/analytics/delivery/sink-service.test.ts (9ac052ff0); transport/captured-egress parts land with the outbox sender tasks |
 | 10 | Session fixtures | pending | |
 | 11 | Cohort/censor fixtures | pending | |
-| 12 | Rephrase persistence audit | pending | |
-| 13 | Classifier contract | pending | |
+| 12 | Rephrase persistence audit | green | transient in-memory lifecycle (capture discards raw text at the boundary, 30-minute TTL, max 3 sets per conversation, eviction/expiry/shutdown coverage-loss accounting, withdrawal without loss) in tests/analytics/rephrase/*.test.ts + tests/analytics/rephrase-handoff.test.ts; post-auth canary never survives capture or derivation in tests/analytics/intent-persistence-audit.test.ts (dccf6cc73); 2026-07-26 |
+| 13 | Classifier contract | green | sealed-corpus hybrid parity with the frozen PoC values (accuracy 0.991667, macro F1 0.995641, coverage 0.991667, unknown precision 0.909091) in tests/analytics/intent-classifier.test.ts; derived intent_classified envelope/props contract + deterministic intent-output:v1 ids + inherited-ref withdrawal in tests/analytics/intent-derivation.test.ts; no PoC/small-model import in the runtime module graph + latency budget in tests/analytics/intent-persistence-audit.test.ts (dccf6cc73); 2026-07-26 |
 | 14 | Backfill/provenance/reconciliation | pending | |
 | 15 | External thresholding | pending | |
 | 16 | DSAR/delete/rekey/snapshot | pending | |
@@ -56,7 +56,7 @@ aggregate publication.
 | 7 — llm/tool/perf instrumentation | 150 pass / 0 fail (orchestrator events/logging/tool-events, permission gate + prompt, live-status reporter, typing heartbeat, llm-tool integration, performance clocks, tool-slug generation, clarification) | clean / clean (knip clean) | 6d429b5c4 (+ knip 2a6d72ae5, fix f74047b35) | 2026-07-25 |
 | 8 — provider/feature boundaries | 8A: 270 pass / 0 fail; 8B: 89 pass / 0 fail (analytics five + logging-privacy) + full regression 1756 pass; fix f3502ba5f (unconfigured producers, per-invocation opportunity, raw-URL log, MCP early-return) | clean / clean (knip clean) | 8A: 1f68f3caf; 8B: 0c8af4f0f + f3502ba5f | 2026-07-26 |
 | 9 — delivery ledger | 68 pass / 0 fail (072 migration, registration, delivery-store, sink-gate, sink-lifecycle); fix 2a9b3126b (stuck-leased send-start) | clean / clean (knip clean) | 9ac052ff0 + 2a9b3126b | 2026-07-26 |
-| 10 — intent + rephrase | | | | |
+| 10 — intent + rephrase | 18 pass / 0 fail (intent-classifier, intent-derivation, rephrase, rephrase-handoff, intent-persistence-audit); affected suites 781 pass / 0 fail | clean / clean (knip clean) | dccf6cc73 | 2026-07-26 |
 | 11 — materializations | | | | |
 | 12 — backfill/reconcile | | | | |
 | 13 — lifecycle/subject rights | | | | |
