@@ -3,18 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { HttpFetch } from './client.js'
-import { continueSessionTool } from './continue-tool.js'
-import {
-  answerPermissionTool,
-  cancelSessionTool,
-  finishSessionTool,
-  listSessionsTool,
-  sessionStatusTool,
-  startSessionTool,
-} from './session-tools.js'
-import { ACP_CAPABILITIES, getTool, listProjectsTool } from './tools.js'
-import type { Tool } from './tools.js'
+type HttpFetch = import('./client.js').HttpFetch
+type Tool = import('./tools.js').Tool
+type SessionToolsModule = typeof import('./session-tools.js')
+type ContinueToolModule = typeof import('./continue-tool.js')
+type ToolsModule = typeof import('./tools.js')
 
 // Local structural plugin-context types: plugins cannot static-import src/ or zod
 // (discovery rejects bare-module imports), so we use structural types throughout.
@@ -37,6 +30,53 @@ type ActivationContext = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
+}
+
+const requireModule = import.meta.require
+
+function isToolsModule(value: unknown): value is ToolsModule {
+  return (
+    isRecord(value) &&
+    typeof value['getTool'] === 'function' &&
+    typeof value['listProjectsTool'] === 'function' &&
+    isRecord(value['ACP_CAPABILITIES'])
+  )
+}
+
+function isSessionToolsModule(value: unknown): value is SessionToolsModule {
+  return (
+    isRecord(value) &&
+    typeof value['startSessionTool'] === 'function' &&
+    typeof value['answerPermissionTool'] === 'function'
+  )
+}
+
+function isContinueToolModule(value: unknown): value is ContinueToolModule {
+  return isRecord(value) && typeof value['continueSessionTool'] === 'function'
+}
+
+function getToolsModule(): ToolsModule {
+  const moduleValue: unknown = requireModule('./tools.js')
+  if (!isToolsModule(moduleValue)) {
+    throw new Error('Invalid acp tools module contract')
+  }
+  return moduleValue
+}
+
+function getSessionToolsModule(): SessionToolsModule {
+  const moduleValue: unknown = requireModule('./session-tools.js')
+  if (!isSessionToolsModule(moduleValue)) {
+    throw new Error('Invalid acp session-tools module contract')
+  }
+  return moduleValue
+}
+
+function getContinueToolModule(): ContinueToolModule {
+  const moduleValue: unknown = requireModule('./continue-tool.js')
+  if (!isContinueToolModule(moduleValue)) {
+    throw new Error('Invalid acp continue-tool module contract')
+  }
+  return moduleValue
 }
 
 function requireRecord(value: unknown, message: string): Record<string, unknown> {
@@ -109,6 +149,16 @@ const ACP_COMMAND_TEXT =
 const factory = (): { activate(ctx: unknown): void } => ({
   activate(rawCtx: unknown): void {
     const ctx = extractActivationContext(rawCtx)
+    const { ACP_CAPABILITIES, getTool, listProjectsTool } = getToolsModule()
+    const {
+      answerPermissionTool,
+      cancelSessionTool,
+      finishSessionTool,
+      listSessionsTool,
+      sessionStatusTool,
+      startSessionTool,
+    } = getSessionToolsModule()
+    const { continueSessionTool } = getContinueToolModule()
     ctx.registerTool(listProjectsTool())
     ctx.registerTool(
       getTool(
