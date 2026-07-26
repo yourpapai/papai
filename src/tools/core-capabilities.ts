@@ -79,6 +79,7 @@ export const CORE_TOOL_CAPABILITIES = Object.freeze({
   'instructions.list': 'list_instructions',
   'instructions.delete': 'delete_instruction',
   'history.lookup': 'lookup_group_history',
+  'history.search': 'search_chat_history',
   'recurring.create': 'create_recurring_task',
   'recurring.list': 'list_recurring_tasks',
   'recurring.update': 'update_recurring_task',

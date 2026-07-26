@@ -27,6 +27,7 @@ import { makePauseRecurringTaskTool } from './pause-recurring-task.js'
 import { makeUpdateRecurringTaskTool } from './recurring-tools.js'
 import { makeResumeRecurringTaskTool } from './resume-recurring-task.js'
 import { makeSaveMemoTool } from './save-memo.js'
+import { makeSearchChatHistoryTool } from './search-chat-history.js'
 import { makeSearchMemosTool } from './search-memos.js'
 import { makeSkipRecurringTaskTool } from './skip-recurring-task.js'
 import { makeResolveStagedFileTool, makeSearchStagedFilesTool } from './staged-tools.js'
@@ -83,6 +84,17 @@ function addLookupGroupHistoryTool(tools: ToolSet, userId: string | undefined, c
   tools['lookup_group_history'] = makeLookupGroupHistoryTool(userId, contextId)
 }
 
+function addChatHistoryTools(
+  tools: ToolSet,
+  chatUserId: string | undefined,
+  contextId: string | undefined,
+  contextType: ContextType | undefined,
+): void {
+  if (chatUserId === undefined || contextId === undefined || contextType === undefined) return
+  tools['search_chat_history'] = makeSearchChatHistoryTool(chatUserId, contextId, contextType)
+  // get_message + get_message_context added in Task 7
+}
+
 function addFetchChatLinkTool(tools: ToolSet, chatUserId: string | undefined, contextId: string | undefined): void {
   if (chatUserId === undefined || contextId === undefined) return
   const parsed = parseScopedContextId(contextId)
@@ -128,6 +140,7 @@ export function addProviderIndependentTools(tools: ToolSet, options: AddProvider
   addMemoryTools(tools, contextId, contextType)
   addInstructionTools(tools, storageOwnerId)
   addLookupGroupHistoryTool(tools, chatUserId, contextId)
+  addChatHistoryTools(tools, chatUserId, contextId, contextType)
   if (contextId !== undefined) tools['web_fetch'] = makeWebFetchTool(contextId, chatUserId, contextType)
   addFetchChatLinkTool(tools, chatUserId, contextId)
   if (mode === 'normal' && storageOwnerId !== undefined) {
