@@ -72,4 +72,19 @@ describe('search_chat_history tool', () => {
     expect(result.results).toEqual([])
     expect(result.total).toBe(0)
   })
+
+  test('DM scope finds DM rows and group scope does not', async () => {
+    cacheMessage({ messageId: 'dm1', contextId: 'dm-ctx-1', text: 'secret deploy notes', timestamp: 1 })
+    await flushPendingWrites()
+    const dmTool = makeSearchChatHistoryTool('u1', 'dm-ctx-1', 'dm')
+    const dmResult: unknown = await getToolExecutor(dmTool)({ query: 'deploy' })
+    assert(isSearchResult(dmResult), 'Invalid result')
+    expect(dmResult.results.map((r) => r.messageId)).toEqual(['dm1'])
+
+    const groupTool = makeSearchChatHistoryTool('u1', threadContextId, 'group')
+    const groupResult: unknown = await getToolExecutor(groupTool)({ query: 'deploy' })
+    assert(isSearchResult(groupResult), 'Invalid result')
+    expect(groupResult.results).toEqual([])
+    expect(groupResult.total).toBe(0)
+  })
 })

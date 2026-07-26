@@ -18,6 +18,8 @@ import { addDeferredPromptTools } from './deferred-tools-builder.js'
 import { makeDeleteRecurringTaskTool } from './delete-recurring-task.js'
 import { makeFetchChatLinkTool } from './fetch-chat-link.js'
 import { makeGetCurrentTimeTool } from './get-current-time.js'
+import { makeGetMessageContextTool } from './get-message-context.js'
+import { makeGetMessageTool } from './get-message.js'
 import { makeDeleteInstructionTool, makeListInstructionsTool, makeSaveInstructionTool } from './instructions.js'
 import { makeListMemosTool } from './list-memos.js'
 import { makeListRecurringTasksTool } from './list-recurring-tasks.js'
@@ -92,7 +94,8 @@ function addChatHistoryTools(
 ): void {
   if (chatUserId === undefined || contextId === undefined || contextType === undefined) return
   tools['search_chat_history'] = makeSearchChatHistoryTool(chatUserId, contextId, contextType)
-  // get_message + get_message_context added in Task 7
+  tools['get_message'] = makeGetMessageTool(chatUserId, contextId, contextType)
+  tools['get_message_context'] = makeGetMessageContextTool(chatUserId, contextId, contextType)
 }
 
 function addFetchChatLinkTool(tools: ToolSet, chatUserId: string | undefined, contextId: string | undefined): void {

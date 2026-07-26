@@ -171,6 +171,8 @@ export const TOOL_METADATA: Readonly<Record<string, ToolClassification>> = {
 
   lookup_group_history: read('history'),
   search_chat_history: read('history'),
+  get_message: read('history'),
+  get_message_context: read('history'),
   fetch_chat_link: { domain: 'history', operation: 'read', risk: 'open-world' },
   web_fetch: { domain: 'web', operation: 'read', risk: 'open-world' },
 }

@@ -128,13 +128,6 @@ export default {
     // listRoutes is consumed by the behavior-audit closure verifier via
     // dynamic import; re-exported from src/debug/server.ts.
     'src/debug/server-route-options.ts': ['exports'],
-    // getMessageContext is the only store.ts export still without a
-    // production consumer (getMessage/rowToCachedMessage are used in-file;
-    // searchMessages/MessageScope/SearchFilters are consumed by the
-    // search_chat_history tool since Task 6). Temporary gap — Task 7 of
-    // docs/superpowers/plans/2026-07-26-chat-history-search-phase-1.md adds
-    // the get_message_context tool; remove this ignore once it lands.
-    'src/message-cache/store.ts': ['exports'],
   },
 
   includeEntryExports: true,

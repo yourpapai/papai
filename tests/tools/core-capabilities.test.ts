@@ -43,6 +43,8 @@ describe('core tool capabilities', () => {
     expect(CORE_TOOL_CAPABILITIES['instructions.delete']).toBe('delete_instruction')
     expect(CORE_TOOL_CAPABILITIES['history.lookup']).toBe('lookup_group_history')
     expect(CORE_TOOL_CAPABILITIES['history.search']).toBe('search_chat_history')
+    expect(CORE_TOOL_CAPABILITIES['history.fetch']).toBe('get_message')
+    expect(CORE_TOOL_CAPABILITIES['history.context']).toBe('get_message_context')
   })
 
   test('registers the stable core capabilities when their real wire tools are offered', () => {
@@ -123,6 +125,8 @@ describe('core tool capabilities', () => {
       ['instructions.delete', 'delete_instruction'],
       ['history.lookup', 'lookup_group_history'],
       ['history.search', 'search_chat_history'],
+      ['history.fetch', 'get_message'],
+      ['history.context', 'get_message_context'],
       ['recurring.create', 'create_recurring_task'],
       ['recurring.list', 'list_recurring_tasks'],
       ['recurring.update', 'update_recurring_task'],
