@@ -55,7 +55,7 @@ aggregate publication.
 | 6 — turn lifecycle instrumentation | 144 pass / 0 fail (bot, reply-tracking, steering, queue, guest-role, steering-step, production-deps-analytics, message-turn-integration) | clean / clean (knip clean) | a284dda66 | 2026-07-24 |
 | 7 — llm/tool/perf instrumentation | 150 pass / 0 fail (orchestrator events/logging/tool-events, permission gate + prompt, live-status reporter, typing heartbeat, llm-tool integration, performance clocks, tool-slug generation, clarification) | clean / clean (knip clean) | 6d429b5c4 (+ knip 2a6d72ae5, fix f74047b35) | 2026-07-25 |
 | 8 — provider/feature boundaries | 8A: 270 pass / 0 fail; 8B: 89 pass / 0 fail (analytics five + logging-privacy) + full regression 1756 pass; fix f3502ba5f (unconfigured producers, per-invocation opportunity, raw-URL log, MCP early-return) | clean / clean (knip clean) | 8A: 1f68f3caf; 8B: 0c8af4f0f + f3502ba5f | 2026-07-26 |
-| 9 — delivery ledger | 68 pass / 0 fail (072 migration, registration, delivery-store, sink-gate, sink-lifecycle) | clean / clean (knip clean) | 9ac052ff0 | 2026-07-26 |
+| 9 — delivery ledger | 68 pass / 0 fail (072 migration, registration, delivery-store, sink-gate, sink-lifecycle); fix 2a9b3126b (stuck-leased send-start) | clean / clean (knip clean) | 9ac052ff0 + 2a9b3126b | 2026-07-26 |
 | 10 — intent + rephrase | | | | |
 | 11 — materializations | | | | |
 | 12 — backfill/reconcile | | | | |
@@ -173,3 +173,11 @@ aggregate publication.
   tests/debug/settings/coding-credentials-models-route.test.ts fails locally
   because this machine's DNS resolves api.anthropic.com to a fake-ip
   (198.18.x.x) that `assertPublicUrl` blocks; expected green in CI.
+- Task 9 (parked Minors): `markSendStarted` doesn't compare caller grant ref
+  against the row's stored grant columns; `rotateSinkVersion` creates the
+  successor before running the capability gate (orphaned pending row on
+  denial); `disableSinkVersion` cannot retire a permanently-failed
+  `pending_verification` version (plan-mandated transition set — revisit at
+  plan level); `verifySinkVersion` enable not conditioned on still-pending
+  state; defensive `sendStartedAtMs: null` in markSendStarted's lease_expired
+  branch.
