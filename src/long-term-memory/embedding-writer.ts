@@ -56,9 +56,10 @@ export async function saveMemoryRecordWithEmbedding(
   input: MemoryRecordInput,
   configContextId: string,
   overrides: Partial<EmbeddingWriterDeps> = {},
-): Promise<MemoryRecord> {
+): Promise<MemoryRecord | null> {
   const deps: EmbeddingWriterDeps = { ...defaultDeps, ...overrides }
   const saved = saveMemoryRecord(input)
+  if (saved === null) return null
   try {
     const model = deps.resolveEmbeddingModel(configContextId)
     if (model === null) {

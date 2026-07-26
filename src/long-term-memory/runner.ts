@@ -22,7 +22,6 @@ import {
   saveMemoryRecord,
   updateMemoryRecord,
 } from './store.js'
-import { isContentTombstoned } from './tombstone.js'
 import type { MemoryRecord, MemoryScope } from './types.js'
 
 const log = logger.child({ scope: 'long-term-memory:runner' })
@@ -119,8 +118,7 @@ const insertRecords = (scope: MemoryScope, patch: MemoryPatch, deps: RunMemoryEx
   const now = deps.now()
   return patch.records.reduce<SuppressibleCount>(
     (acc, record) => {
-      if (isContentTombstoned(scope, record.content)) return { ...acc, suppressed: acc.suppressed + 1 }
-      saveMemoryRecord({
+      const saved = saveMemoryRecord({
         id: deps.randomUUID(),
         ...scope,
         kind: record.kind,
@@ -138,7 +136,7 @@ const insertRecords = (scope: MemoryScope, patch: MemoryPatch, deps: RunMemoryEx
         validUntil: canonicalIsoOrNull(record.validUntil),
         expiresAt: canonicalIsoOrNull(record.expiresAt),
       })
-      return { ...acc, count: acc.count + 1 }
+      return saved === null ? { ...acc, suppressed: acc.suppressed + 1 } : { ...acc, count: acc.count + 1 }
     },
     { count: 0, suppressed: 0 },
   )
@@ -147,11 +145,8 @@ const insertRecords = (scope: MemoryScope, patch: MemoryPatch, deps: RunMemoryEx
 const applyUpdates = (scope: MemoryScope, patch: MemoryPatch, now: string): SuppressibleCount =>
   patch.updates.reduce<SuppressibleCount>(
     (acc, update) => {
-      if (update.content !== undefined && isContentTombstoned(scope, update.content)) {
-        return { ...acc, suppressed: acc.suppressed + 1 }
-      }
       const updated = updateMemoryRecord(scope, update.id, update, now)
-      return updated === null ? acc : { ...acc, count: acc.count + 1 }
+      return updated === null ? { ...acc, suppressed: acc.suppressed + 1 } : { ...acc, count: acc.count + 1 }
     },
     { count: 0, suppressed: 0 },
   )
