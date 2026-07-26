@@ -101,7 +101,7 @@ const nextId = (state: State, prefix: string): string => {
   return `${prefix}-${state.seq}`
 }
 
-export const nextTs = (state: State): number => {
+const nextTs = (state: State): number => {
   state.seq += 1
   return 1_700_000_000_000 + state.seq
 }
@@ -236,11 +236,205 @@ const handleProjects = (ctx: Ctx): Response | undefined => {
   return undefined
 }
 
+// ---------- Custom-field payload parsing (write path) ----------
+
+const readName = (value: unknown): string | undefined => {
+  if (typeof value === 'string') return value
+  if (value !== null && typeof value === 'object') {
+    const named = (value as { name?: unknown }).name
+    if (typeof named === 'string') return named
+  }
+  return undefined
+}
+
+const readLogin = (value: unknown): string | undefined => {
+  if (value !== null && typeof value === 'object') {
+    const login = (value as { login?: unknown }).login
+    if (typeof login === 'string') return login
+  }
+  return undefined
+}
+
+const applyCustomFieldPayload = (issue: StoredIssue, payload: unknown): void => {
+  if (!Array.isArray(payload)) return
+  const items: unknown[] = payload
+  for (const raw of items) {
+    const item = (raw ?? {}) as { name?: string; value?: unknown }
+    if (item.name === 'State') issue.state = readName(item.value)
+    else if (item.name === 'Priority') issue.priority = readName(item.value)
+    else if (item.name === 'Due Date') issue.dueDateMs = typeof item.value === 'number' ? item.value : undefined
+    else if (item.name === 'Assignee') issue.assigneeLogin = readLogin(item.value)
+  }
+}
+
+// ---------- Issue projections (read path) ----------
+
+const findIssue = (state: State, ref: string): StoredIssue | undefined => {
+  const direct = state.issues.get(ref)
+  if (direct !== undefined) return direct
+  const dbId = state.issuesByReadable.get(ref)
+  return dbId === undefined ? undefined : state.issues.get(dbId)
+}
+
+const issueCustomFields = (issue: StoredIssue): unknown[] => {
+  const fields: unknown[] = []
+  if (issue.state !== undefined) {
+    fields.push({
+      $type: 'StateIssueCustomField',
+      name: 'State',
+      value: { $type: 'StateBundleElement', name: issue.state },
+    })
+  }
+  if (issue.priority !== undefined) {
+    fields.push({
+      $type: 'SingleEnumIssueCustomField',
+      name: 'Priority',
+      value: { $type: 'EnumBundleElement', name: issue.priority },
+    })
+  }
+  if (issue.dueDateMs !== undefined) {
+    fields.push({ $type: 'DateIssueCustomField', name: 'Due Date', value: issue.dueDateMs })
+  }
+  if (issue.assigneeLogin !== undefined) {
+    fields.push({ $type: 'SingleUserIssueCustomField', name: 'Assignee', value: { login: issue.assigneeLogin } })
+  }
+  return fields
+}
+
+const issueLinksProjection = (state: State, issue: StoredIssue): unknown[] => {
+  const out: unknown[] = []
+  for (const link of state.links.values()) {
+    if (link.ownerIssueId !== issue.id) continue
+    const target = state.issues.get(link.targetIssueId)
+    if (target === undefined) continue
+    out.push({
+      id: link.id,
+      direction: link.direction,
+      linkType: { id: `lt-${link.typeName}`, name: link.typeName },
+      issues: [{ id: target.id, idReadable: target.idReadable, summary: target.summary, resolved: null }],
+    })
+  }
+  return out
+}
+
+const issueProjection = (state: State, issue: StoredIssue): Record<string, unknown> => {
+  const project = state.projects.get(issue.projectDbId)
+  return {
+    id: issue.id,
+    $type: 'Issue',
+    idReadable: issue.idReadable,
+    numberInProject: issue.numberInProject,
+    summary: issue.summary,
+    description: issue.description ?? null,
+    created: issue.created,
+    updated: issue.updated,
+    resolved: null,
+    project: { id: issue.projectDbId, shortName: project?.shortName, name: project?.name },
+    customFields: issueCustomFields(issue),
+    links: issueLinksProjection(state, issue),
+    tags: [],
+    commentsCount: [...state.comments.values()].filter((c) => c.issueId === issue.id).length,
+    votes: 0,
+  }
+}
+
+export const issueListProjection = (state: State, issue: StoredIssue): Record<string, unknown> => {
+  const project = state.projects.get(issue.projectDbId)
+  const customFields: unknown[] = []
+  if (issue.state !== undefined) {
+    customFields.push({ $type: 'StateIssueCustomField', name: 'State', value: { name: issue.state } })
+  }
+  if (issue.priority !== undefined) {
+    customFields.push({ $type: 'SingleEnumIssueCustomField', name: 'Priority', value: { name: issue.priority } })
+  }
+  return {
+    id: issue.id,
+    idReadable: issue.idReadable,
+    numberInProject: issue.numberInProject,
+    summary: issue.summary,
+    resolved: null,
+    created: issue.created,
+    project: { id: issue.projectDbId, shortName: project?.shortName },
+    customFields,
+  }
+}
+
+// ---------- Issue handler ----------
+
+const handleIssues = (ctx: Ctx): Response | undefined => {
+  const { method, path, state } = ctx
+
+  const cfPath = matchPath('/api/issues/:id/customFields', path)
+  if (cfPath !== null && method === 'GET') {
+    const issue = findIssue(state, cfPath['id'] ?? '')
+    if (issue === undefined) return errorResponse(404, 'issue not found')
+    const out = issue.dueDateMs === undefined ? [] : [{ name: 'Due Date', value: issue.dueDateMs }]
+    return json(out)
+  }
+
+  const onePath = matchPath('/api/issues/:id', path)
+  if (onePath !== null) {
+    const issue = findIssue(state, onePath['id'] ?? '')
+    if (method === 'GET') {
+      return issue === undefined ? errorResponse(404, 'issue not found') : json(issueProjection(state, issue))
+    }
+    if (method === 'POST') {
+      if (issue === undefined) return errorResponse(404, 'issue not found')
+      const body = (ctx.body ?? {}) as { summary?: string; description?: string; customFields?: unknown }
+      if (body.summary !== undefined) issue.summary = body.summary
+      if (body.description !== undefined) issue.description = body.description
+      if (body.customFields !== undefined) applyCustomFieldPayload(issue, body.customFields)
+      issue.updated = nextTs(state)
+      return json(issueProjection(state, issue))
+    }
+    if (method === 'DELETE') {
+      if (issue === undefined) return errorResponse(404, 'issue not found')
+      state.issues.delete(issue.id)
+      state.issuesByReadable.delete(issue.idReadable)
+      return noContent()
+    }
+  }
+
+  if (path === '/api/issues' && method === 'POST') {
+    const body = (ctx.body ?? {}) as {
+      project?: { id?: string }
+      summary?: string
+      description?: string
+      customFields?: unknown
+    }
+    const projectId = body.project?.id ?? ''
+    const project = state.projects.get(projectId)
+    if (project === undefined) return errorResponse(404, 'project not found')
+    const dbId = nextId(state, 'issue')
+    const number = [...state.issues.values()].filter((i) => i.projectDbId === project.id).length + 1
+    const issue: StoredIssue = {
+      id: dbId,
+      idReadable: `${project.shortName}-${number}`,
+      numberInProject: number,
+      summary: body.summary ?? '',
+      description: body.description,
+      projectDbId: project.id,
+      created: nextTs(state),
+      updated: nextTs(state),
+      state: undefined,
+      priority: undefined,
+      dueDateMs: undefined,
+      assigneeLogin: undefined,
+    }
+    applyCustomFieldPayload(issue, body.customFields)
+    state.issues.set(dbId, issue)
+    state.issuesByReadable.set(issue.idReadable, dbId)
+    return json(issueProjection(state, issue))
+  }
+
+  return undefined
+}
+
 // ---------- Server bootstrap ----------
 
 export const startFakeYouTrackServer = (): FakeYouTrackServer => {
   const state = createState()
-  const handlers: Array<(ctx: Ctx) => Response | undefined> = [handleProjects]
+  const handlers: Array<(ctx: Ctx) => Response | undefined> = [handleProjects, handleIssues]
 
   const server: Server<undefined> = Bun.serve({
     port: 0,

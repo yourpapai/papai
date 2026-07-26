@@ -105,3 +105,100 @@ describe('fake YouTrack server — projects & custom-field schema', () => {
     expect(typeof body.error_description).toBe('string')
   })
 })
+
+const CreatedIssueSchema = z.object({
+  id: z.string(),
+  idReadable: z.string(),
+  customFields: z.array(z.object({ name: z.string(), value: z.unknown() })),
+})
+
+const IssueGetSchema = z.object({
+  customFields: z.array(z.object({ name: z.string(), value: z.unknown() })),
+})
+
+const CustomFieldValueSchema = z.union([z.object({ name: z.string().optional() }), z.number()])
+
+const IssueCustomFieldsListSchema = z.array(z.object({ name: z.string(), value: z.unknown() }))
+
+const IdReadableOnlySchema = z.object({ idReadable: z.string() })
+
+const nameInMap = (byName: Map<string, z.infer<typeof CustomFieldValueSchema>>, key: string): string | undefined => {
+  const value = byName.get(key)
+  if (value === undefined || typeof value !== 'object') return undefined
+  return value.name
+}
+
+describe('fake YouTrack server — issues & custom fields', () => {
+  let fake: FakeYouTrackServer
+
+  beforeAll(() => {
+    fake = startFakeYouTrackServer()
+  })
+
+  afterAll(async () => {
+    await fake.stop()
+  })
+
+  test('creates an issue and echoes State/Priority/Due Date on GET', async () => {
+    fake.reset()
+    const project = await createProject(fake, 'Issue P', 'IP')
+    const created = CreatedIssueSchema.parse(
+      await (
+        await postJson(fake, '/api/issues', {
+          project: { id: project.id },
+          summary: 'Hello',
+          customFields: [
+            { name: 'State', $type: 'StateIssueCustomField', value: { name: 'In Progress' } },
+            { name: 'Priority', $type: 'SingleEnumIssueCustomField', value: { name: 'high' } },
+            { name: 'Due Date', $type: 'DateIssueCustomField', value: 1_800_000_000_000 },
+          ],
+        })
+      ).json(),
+    )
+
+    expect(created.idReadable).toBe('IP-1')
+    const got = IssueGetSchema.parse(
+      await (await fetch(`${fake.url}/api/issues/${created.idReadable}?fields=id`)).json(),
+    )
+    const byName = new Map(got.customFields.map((f) => [f.name, CustomFieldValueSchema.parse(f.value)]))
+    expect(nameInMap(byName, 'State')).toBe('In Progress')
+    expect(nameInMap(byName, 'Priority')).toBe('high')
+    expect(byName.get('Due Date')).toBe(1_800_000_000_000)
+  })
+
+  test('per-issue customFields endpoint returns Due Date as a number for enrich', async () => {
+    fake.reset()
+    const project = await createProject(fake, 'Enrich P', 'EP')
+    const created = IdReadableOnlySchema.parse(
+      await (
+        await postJson(fake, '/api/issues', {
+          project: { id: project.id },
+          summary: 'Due',
+          customFields: [{ name: 'Due Date', $type: 'DateIssueCustomField', value: 1_800_000_000_000 }],
+        })
+      ).json(),
+    )
+    const res = await fetch(`${fake.url}/api/issues/${created.idReadable}/customFields?fields=name,value`)
+    const fields = IssueCustomFieldsListSchema.parse(await res.json())
+    const due = fields.find((f) => f.name === 'Due Date')
+    expect(due?.value).toBe(1_800_000_000_000)
+  })
+
+  test('delete removes the issue; subsequent GET is 404', async () => {
+    fake.reset()
+    const project = await createProject(fake, 'Del P', 'DP')
+    const created = IdReadableOnlySchema.parse(
+      await (await postJson(fake, '/api/issues', { project: { id: project.id }, summary: 'Bye' })).json(),
+    )
+    const del = await fetch(`${fake.url}/api/issues/${created.idReadable}`, { method: 'DELETE' })
+    expect(del.status).toBe(204)
+    const after = await fetch(`${fake.url}/api/issues/${created.idReadable}?fields=id`)
+    expect(after.status).toBe(404)
+  })
+
+  test('creating an issue in a missing project is 404', async () => {
+    fake.reset()
+    const res = await postJson(fake, '/api/issues', { project: { id: 'nope' }, summary: 'x' })
+    expect(res.status).toBe(404)
+  })
+})
