@@ -66,6 +66,16 @@ export default {
     // sink lifecycle service) are the Stage A egress seam consumed by the
     // upcoming transport/egress tasks.
     'src/analytics/delivery/*.ts!',
+    // Analytics intent modules (frozen taxonomy, deterministic classifier,
+    // rephrase lexical features) are the Stage A intent seam consumed by the
+    // derivation job and rephrase handoff.
+    'src/analytics/intent/*.ts!',
+    // Analytics rephrase modules (lifecycle handoff, store, matching, outcome)
+    // are the Stage A transient rephrase seam consumed by runtime wiring.
+    'src/analytics/rephrase/*.ts!',
+    // Analytics job modules (idempotent derivations over canonical events) are
+    // the Stage A offline-derivation seam consumed by scheduled runners.
+    'src/analytics/jobs/*.ts!',
     // First-party plugin entry points are loaded dynamically by the plugin
     // loader, so they have no static importer.
     'plugins/*/index.ts!',

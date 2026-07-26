@@ -6,14 +6,17 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import type { KeyringState } from '../../src/analytics/identity/keyring.js'
+import { createPseudonym } from '../../src/analytics/identity/pseudonym.js'
 import type { AnalyticsObserver } from '../../src/analytics/runtime.js'
-import type { AnalyticsSourceFact } from '../../src/analytics/source-facts.js'
+import type { AnalyticsSourceContext, AnalyticsSourceFact } from '../../src/analytics/source-facts.js'
 import { createTurnContextRegistry } from '../../src/analytics/turn-context.js'
 import { getThreadScopedStorageContextId } from '../../src/auth.js'
 import { ChatRouter } from '../../src/chat/router.js'
 import type { CommandHandler, IncomingMessage, ReplyFn } from '../../src/chat/types.js'
 import { runRegistry } from '../../src/run-control/registry.js'
 import { createProductionRuntimeDeps } from '../../src/runtime/production-deps.js'
+import { ensureProductionRephrase } from '../../src/runtime/production-rephrase.js'
 import { addUser } from '../../src/users.js'
 import {
   createAuth,
@@ -113,5 +116,96 @@ describe('production analytics dependency injection', () => {
     expect(accepted).toHaveLength(1)
     expect(accepted[0]?.source.invocationMode).toBe('command')
     expect(accepted[0]?.command).toBe('help')
+  })
+})
+
+const REPHARSE_KEY = Buffer.alloc(32, 9)
+const rephraseKeyring: KeyringState = {
+  kind: 'available',
+  activeVersion: 'v1',
+  activeKey: REPHARSE_KEY,
+  keys: new Map([['v1', REPHARSE_KEY]]),
+}
+
+const rephraseSource = (rawTurnId: string): AnalyticsSourceContext => ({
+  platform: 'telegram',
+  platformInstanceId: TEST_PLATFORM_ID,
+  chatUserId: 'di-rephrase-user',
+  nativeContextId: 'di-rephrase-user',
+  storageContextId: getThreadScopedStorageContextId('di-rephrase-user', 'dm', undefined, TEST_PLATFORM_ID),
+  configContextId: getThreadScopedStorageContextId('di-rephrase-user', 'dm', undefined, TEST_PLATFORM_ID),
+  contextType: 'dm',
+  actorRole: 'member',
+  taskInstanceId: null,
+  taskProvider: 'none',
+  invocationMode: 'normal',
+  rawTurnId,
+})
+
+function setupRephraseRuntime(options: { withKeyring: boolean }): {
+  observer: AnalyticsObserver
+  registry: ReturnType<typeof createTurnContextRegistry>
+} {
+  const observer: AnalyticsObserver = {
+    observe: () => undefined,
+    flush: () => Promise.resolve(),
+    stop: () => Promise.resolve(),
+  }
+  const registry = createTurnContextRegistry()
+  const mockProvider = createMockChat({})
+  const router = new ChatRouter(() => mockProvider)
+  const analytics = options.withKeyring ? { observer, registry, keyring: rephraseKeyring } : { observer, registry }
+  const deps = createProductionRuntimeDeps({}, { analytics })
+  deps.application.setupBot(router, ADMIN_ID)
+  return { observer, registry }
+}
+
+const clearKeyringEnv = (): void => {
+  Reflect.deleteProperty(process.env, 'ANALYTICS_HMAC_KEYRING')
+}
+
+const restoreKeyringEnv = (saved: string | undefined): void => {
+  if (saved === undefined) return
+  process.env['ANALYTICS_HMAC_KEYRING'] = saved
+}
+
+describe('production rephrase wiring', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    seedCommonTestPlatformInstances()
+    runRegistry.clear()
+  })
+
+  afterEach(() => {
+    runRegistry.clear()
+  })
+
+  test('setupBot attaches the terminal listener and the bundle is reused per registry', () => {
+    const { observer, registry } = setupRephraseRuntime({ withKeyring: true })
+    registry.register({ turnId: 't-rephrase-1', source: rephraseSource('t-rephrase-1') })
+    registry.noteTerminalEvidence('t-rephrase-1', { kind: 'llm_completed' })
+    registry.complete('t-rephrase-1')
+    const bundle = ensureProductionRephrase({ observer, registry, keyring: rephraseKeyring })
+    assert.ok(bundle !== null)
+    expect(bundle.inspect().pendingTerminals).toEqual([
+      createPseudonym({ key: REPHARSE_KEY, keyVersion: 'v1', domain: 'turn:v1', components: ['t-rephrase-1'] }),
+    ])
+    expect(ensureProductionRephrase({ observer, registry, keyring: rephraseKeyring })).toBe(bundle)
+  })
+
+  test('setupBot leaves the registry untouched when no keyring is available', () => {
+    const savedKeyring = process.env['ANALYTICS_HMAC_KEYRING']
+    clearKeyringEnv()
+    try {
+      const { observer, registry } = setupRephraseRuntime({ withKeyring: false })
+      registry.register({ turnId: 't-rephrase-2', source: rephraseSource('t-rephrase-2') })
+      registry.complete('t-rephrase-2')
+      const bundle = ensureProductionRephrase({ observer, registry, keyring: rephraseKeyring })
+      assert.ok(bundle !== null)
+      expect(bundle.inspect().pendingTerminals).toEqual([])
+    } finally {
+      restoreKeyringEnv(savedKeyring)
+    }
   })
 })

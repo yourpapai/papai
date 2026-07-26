@@ -11,6 +11,7 @@ import {
   createAuthorizedTurnSeed,
   type AuthorizedTurnSeed,
 } from './analytics/bot-observer.js'
+import type { RephraseBoundaryDeps } from './analytics/rephrase/handoff.js'
 import type { AnalyticsObserver } from './analytics/runtime.js'
 import type { AnalyticsSourceContext } from './analytics/source-facts.js'
 import type { AuthorizedTurnContextRegistry } from './analytics/turn-context.js'
@@ -49,7 +50,8 @@ export type BotDeps = Readonly<{ processMessage: ProcessMessageFn }> &
         Record<'enqueueMessage', typeof enqueueMessage> &
         Record<'chatParticipantResolver', ChatParticipantResolver> &
         Record<'analyticsObserver', AnalyticsObserver> &
-        Record<'analyticsTurnRegistry', AuthorizedTurnContextRegistry>
+        Record<'analyticsTurnRegistry', AuthorizedTurnContextRegistry> &
+        Record<'rephrase', RephraseBoundaryDeps>
     >
   >
 

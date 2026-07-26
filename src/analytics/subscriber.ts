@@ -24,7 +24,7 @@ import {
 } from './subscriber-schemas.js'
 import { classifyAnalyticsTool } from './tool-classification.js'
 import type { ExternalToolNameKeyDeriver } from './tool-classification.js'
-import type { AuthorizedTurnContextRegistry } from './turn-context.js'
+import type { AuthorizedTurnContextRegistry, RephraseTerminalEvidence } from './turn-context.js'
 
 const log = logger.child({ scope: 'analytics:subscriber' })
 
@@ -197,6 +197,21 @@ const mapToolEvent = (
   return null
 }
 
+const terminalEvidenceOf = (fact: AnalyticsSourceFact): RephraseTerminalEvidence | null => {
+  if (fact.type === 'llm_completed') return { kind: 'llm_completed' }
+  if (fact.type === 'llm_failed') return { kind: 'llm_failed' }
+  if (fact.type === 'tool_completed') {
+    return {
+      kind: 'tool_completed',
+      toolSlug: fact.toolSlug,
+      executionOutcome: fact.executionOutcome,
+      recoveredSameTurn: fact.recoveredSameTurn,
+      errorClass: fact.errorClass,
+    }
+  }
+  return null
+}
+
 const routeEvent = (
   observer: AnalyticsObserver,
   registry: AuthorizedTurnContextRegistry,
@@ -209,6 +224,10 @@ const routeEvent = (
   if (source === null) return
   const fact = mapEvent(event, source, deriveToolNameKey)
   if (fact === null) return
+  const evidence = terminalEvidenceOf(fact)
+  if (evidence !== null) {
+    registry.noteTerminalEvidence(event.turnId, evidence)
+  }
   observer.observe(fact)
 }
 

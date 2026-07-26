@@ -71,4 +71,56 @@ describe('authorized turn context registry', () => {
     expect(registry.resolve('turn-1')).toBeNull()
     expect(registry.resolve('turn-2')).toBeNull()
   })
+
+  test('complete fires the terminal listener exactly once with the noted evidence', () => {
+    const now = { value: T0 }
+    const registry = makeRegistry(now)
+    const calls: { turnId: string; evidence: readonly unknown[] }[] = []
+    registry.setTerminalListener((turnId, evidence) => {
+      calls.push({ turnId, evidence })
+    })
+    registry.register({ turnId: 'turn-1', source: memberSource })
+    registry.noteTerminalEvidence('turn-1', { kind: 'llm_completed' })
+    registry.noteTerminalEvidence('turn-1', {
+      kind: 'tool_completed',
+      toolSlug: 'create_task',
+      executionOutcome: 'semantic_success',
+      recoveredSameTurn: false,
+      errorClass: null,
+    })
+    registry.complete('turn-1')
+    registry.complete('turn-1')
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.turnId).toBe('turn-1')
+    expect(calls[0]?.evidence).toHaveLength(2)
+    expect(calls[0]?.evidence[0]).toEqual({ kind: 'llm_completed' })
+  })
+
+  test('evidence noted for an unknown turn is ignored and completion without a listener is a no-op', () => {
+    const now = { value: T0 }
+    const registry = makeRegistry(now)
+    registry.noteTerminalEvidence('turn-unknown', { kind: 'llm_completed' })
+    registry.register({ turnId: 'turn-1', source: memberSource })
+    registry.complete('turn-1')
+    const calls: string[] = []
+    registry.setTerminalListener((turnId) => {
+      calls.push(turnId)
+    })
+    registry.complete('turn-1')
+    expect(calls).toHaveLength(0)
+  })
+
+  test('clear drops the terminal listener with the entries', () => {
+    const now = { value: T0 }
+    const registry = makeRegistry(now)
+    const calls: string[] = []
+    registry.setTerminalListener((turnId) => {
+      calls.push(turnId)
+    })
+    registry.register({ turnId: 'turn-1', source: memberSource })
+    registry.clear()
+    registry.register({ turnId: 'turn-2', source: memberSource })
+    registry.complete('turn-2')
+    expect(calls).toHaveLength(0)
+  })
 })

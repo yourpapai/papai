@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { buildAnalyticsSourceContext, buildAuthCheckedFact } from './analytics/bot-observer.js'
+import type { RephraseBoundaryDeps } from './analytics/rephrase/handoff.js'
 import { toSourceProvider } from './attachments/types.js'
 import { checkAuthorizationExtended, getThreadScopedStorageContextId } from './auth.js'
 import { stageGroupFileCandidates } from './bot-attachments.js'
@@ -20,6 +21,7 @@ import { willQueueAuthorizedMessage } from './chat/queue-policy.js'
 import { resolveSourceProviderName } from './chat/source-instance.js'
 import type { ChatProvider, IncomingInteraction, IncomingMessage, ReplyFn } from './chat/types.js'
 import { emitUser } from './debug/event-bus.js'
+import type { ProcessMessageFn } from './llm-orchestrator-process-args.js'
 import { processMessage as defaultProcessMessage } from './llm-orchestrator.js'
 import { logger } from './logger.js'
 import { onIncomingEdit } from './message-edit/handle.js'
@@ -32,6 +34,49 @@ const defaultBotDeps: BotDeps = {
   enqueueMessage,
 }
 const log = logger.child({ scope: 'bot' })
+
+function captureRephraseText(
+  rephrase: RephraseBoundaryDeps,
+  contextId: string,
+  chatUserId: string,
+  userText: string,
+  turnId: string,
+  actorRole: string,
+): void {
+  try {
+    const keys = rephrase.deriveKeys({ storageContextId: contextId, chatUserId, rawTurnId: turnId, actorRole })
+    if (keys === null) return
+    if (rephrase.noteTurnSource !== undefined) {
+      rephrase.noteTurnSource(keys.turnKey, turnId)
+    }
+    rephrase.handoff.captureText({
+      actorKey: keys.actorKey,
+      conversationKey: keys.conversationKey,
+      turnKey: keys.turnKey,
+      capturedAtMs: (rephrase.nowMs ?? Date.now)(),
+      text: userText,
+    })
+  } catch (error: unknown) {
+    log.warn(
+      { error: error instanceof Error ? error.message : String(error) },
+      'rephrase capture failed; continuing the turn',
+    )
+  }
+}
+
+export function withRephraseCapture(deps: BotDeps): BotDeps {
+  const rephrase = deps.rephrase
+  if (rephrase === undefined) return deps
+  const processMessage: ProcessMessageFn = (reply, contextId, chatUserId, username, userText, contextType, ...rest) => {
+    const turnId = rest[3]
+    const actorRole = rest[4]
+    if (turnId !== undefined && !userText.startsWith('/') && actorRole !== 'guest') {
+      captureRephraseText(rephrase, contextId, chatUserId, userText, turnId, actorRole ?? 'member')
+    }
+    return deps.processMessage(reply, contextId, chatUserId, username, userText, contextType, ...rest)
+  }
+  return { ...deps, processMessage }
+}
 export { checkAuthorizationExtended, getThreadScopedStorageContextId }
 function tryStageGroupCandidates(chat: ChatProvider, msg: IncomingMessage, storageContextId: string): void {
   if (msg.contextType !== 'group' || msg.fileCandidates === undefined || msg.fileCandidates.length === 0) return

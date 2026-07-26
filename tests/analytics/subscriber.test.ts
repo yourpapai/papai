@@ -270,4 +270,66 @@ describe('analytics subscriber', () => {
       bus.emit(busEvent('llm:start', { model: 'gpt-x', messageCount: 5, toolCount: 10 }, 'turn-1'))
     }).not.toThrow()
   })
+
+  test('mapped terminal facts feed rephrase evidence delivered at turn completion', () => {
+    const { bus, registry } = setup()
+    const completions: { turnId: string; evidence: readonly unknown[] }[] = []
+    registry.setTerminalListener((turnId, evidence) => {
+      completions.push({ turnId, evidence })
+    })
+    registry.register({ turnId: 'turn-1', source: memberSource })
+    bus.emit(
+      busEvent(
+        'tool:analytics_completed',
+        {
+          toolName: 'create_task',
+          toolCallId: 'tc-1',
+          argsBytes: 42,
+          durationMs: 55,
+          executionOutcome: 'semantic_success',
+          resultBytes: 120,
+          errorClass: null,
+          statusClass: '2xx',
+          retryable: null,
+          recoveredSameTurn: false,
+          modelRole: 'main',
+        },
+        'turn-1',
+      ),
+    )
+    bus.emit(
+      busEvent(
+        'llm:end',
+        { model: 'gpt-x', actualModel: 'gpt-x', steps: 1, totalDuration: 300, finishReason: 'stop', tokenUsage: null },
+        'turn-1',
+      ),
+    )
+    registry.complete('turn-1')
+    expect(completions).toHaveLength(1)
+    expect(completions[0]?.turnId).toBe('turn-1')
+    expect(completions[0]?.evidence).toEqual([
+      {
+        kind: 'tool_completed',
+        toolSlug: 'create_task',
+        executionOutcome: 'semantic_success',
+        recoveredSameTurn: false,
+        errorClass: null,
+      },
+      { kind: 'llm_completed' },
+    ])
+  })
+
+  test('llm errors feed llm_failed evidence and non-terminal facts feed none', () => {
+    const { bus, registry } = setup()
+    const seen: unknown[][] = []
+    registry.setTerminalListener((_turnId, evidence) => {
+      seen.push([...evidence])
+    })
+    registry.register({ turnId: 'turn-2', source: memberSource })
+    bus.emit(busEvent('llm:start', { model: 'gpt-x', messageCount: 1, toolCount: 0 }, 'turn-2'))
+    bus.emit(busEvent('tool:request', { toolName: 'create_task', toolCallId: 'tc-9', argsBytes: 1 }, 'turn-2'))
+    bus.emit(busEvent('llm:error', { model: 'gpt-x', durationMs: 50 }, 'turn-2'))
+    registry.complete('turn-2')
+    expect(seen).toEqual([[{ kind: 'llm_failed' }]])
+  })
 })

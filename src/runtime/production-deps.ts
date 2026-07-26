@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { KeyringState } from '../analytics/identity/keyring.js'
 import { NO_ANALYTICS_SCOPE, type ProviderRequestScope } from '../analytics/provider-request-scope.js'
 import type { AnalyticsObserver } from '../analytics/runtime.js'
 import { getActiveAnalyticsRuntime, startAnalytics, stopAnalytics } from '../analytics/start-analytics.js'
@@ -10,7 +11,7 @@ import type { AuthorizedTurnContextRegistry } from '../analytics/turn-context.js
 import { announceNewVersion } from '../announcements.js'
 import { isS3Configured } from '../attachments/index.js'
 import { createStagedDownloader } from '../attachments/staged-download.js'
-import { setupBot, type BotDeps } from '../bot.js'
+import { setupBot, withRephraseCapture, type BotDeps } from '../bot.js'
 import { seedMattermostActionSigningSecretFromEnv } from '../chat/mattermost/action-secret.js'
 import { resolveChatParticipant } from '../chat/participants/roster.js'
 import { createChatProviderFromConfig } from '../chat/registry.js'
@@ -39,6 +40,7 @@ import { initUsageRecorder } from '../usage/index.js'
 import { toolCapabilityCatalog } from './capability-catalog.js'
 import type { ProductionBackgroundHandle } from './production-background.js'
 import { startProductionExtensions, type ProductionExtensionState } from './production-extensions.js'
+import { resolveProductionRephrase } from './production-rephrase.js'
 import type { PapaiRuntimeDeps, PartialRuntimeDeps } from './types.js'
 
 const log = logger.child({ scope: 'main' })
@@ -47,6 +49,7 @@ const INGRESS_ERROR = 'Programmatic ingress is available only when configured'
 type ProductionAnalyticsRuntime = Readonly<{
   observer: AnalyticsObserver
   registry: AuthorizedTurnContextRegistry
+  keyring?: KeyringState
 }>
 
 type ProductionState = ProductionExtensionState & {
@@ -148,13 +151,20 @@ function setupProductionBot(state: ProductionState, router: ChatRouter, adminUse
       (userId) => router.resolveUserLabel(userId, { contextId, contextType: 'group' }),
       limit,
     )
-  setupBot(router, adminUserId, {
-    processMessage,
-    stagedDownloadFn,
-    chatParticipantResolver,
-    analyticsObserver: state.analytics?.observer,
-    analyticsTurnRegistry: state.analytics?.registry,
-  })
+  const analytics = state.analytics
+  const rephrase = resolveProductionRephrase(analytics)
+  setupBot(
+    router,
+    adminUserId,
+    withRephraseCapture({
+      processMessage,
+      stagedDownloadFn,
+      chatParticipantResolver,
+      analyticsObserver: analytics?.observer,
+      analyticsTurnRegistry: analytics?.registry,
+      rephrase: rephrase?.boundary,
+    }),
+  )
 }
 
 function createApplicationDeps(state: ProductionState): PapaiRuntimeDeps['application'] {

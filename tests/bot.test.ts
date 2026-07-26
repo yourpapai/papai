@@ -8,9 +8,10 @@ import assert from 'node:assert/strict'
 
 import { and, eq } from 'drizzle-orm'
 
-import { KeyVersionSchema, VersionStringSchema } from '../src/analytics/controlled-types.js'
+import { KeyVersionSchema, PseudonymSchema, VersionStringSchema } from '../src/analytics/controlled-types.js'
 import type { EligibilityDecision } from '../src/analytics/governance/eligibility.js'
 import type { NormalizerEnv } from '../src/analytics/normalizer.js'
+import type { RephraseBoundaryDeps } from '../src/analytics/rephrase/handoff.js'
 import { createAnalyticsObserver } from '../src/analytics/runtime.js'
 import type { AnalyticsObserver } from '../src/analytics/runtime.js'
 import { createRecordingHealth, createRecordingSinks } from '../src/analytics/runtime.testing.js'
@@ -22,7 +23,7 @@ import {
   getThreadScopedStorageContextId,
 } from '../src/auth.js'
 import { addAuthorizedGroup, setGuestMode } from '../src/authorized-groups.js'
-import { setupBot, type BotDeps } from '../src/bot.js'
+import { setupBot, withRephraseCapture, type BotDeps } from '../src/bot.js'
 import { clearGroupAdminLiveCache } from '../src/chat/group-admin-live.testing.js'
 import type {
   AuthorizationResult,
@@ -2517,5 +2518,119 @@ describe('Analytics observation (setupBot)', () => {
     expect(recording.aggregates.filter((item) => item.increment.kind === 'histogram')).toEqual([])
     expect(recording.events).toEqual([])
     expect(health.counts.observer_failure).toBe(0)
+  })
+})
+
+describe('withRephraseCapture', () => {
+  const boundaryKeys = {
+    actorKey: PseudonymSchema.parse('v1.p-actor'),
+    conversationKey: PseudonymSchema.parse('v1.p-conversation'),
+    turnKey: PseudonymSchema.parse('v1.p-turn'),
+  }
+
+  type CaptureCall = Readonly<{
+    actorKey: unknown
+    conversationKey: unknown
+    turnKey: unknown
+    capturedAtMs: number
+    text: string
+  }>
+
+  function createBoundary(overrides?: { deriveNull?: boolean }): {
+    boundary: RephraseBoundaryDeps
+    captures: CaptureCall[]
+    sources: { turnKey: unknown; rawTurnId: string }[]
+  } {
+    const captures: CaptureCall[] = []
+    const sources: { turnKey: unknown; rawTurnId: string }[] = []
+    return {
+      captures,
+      sources,
+      boundary: {
+        handoff: {
+          captureText: (input) => {
+            captures.push(input)
+          },
+          completeTurn: () => undefined,
+          withdraw: () => undefined,
+        },
+        deriveKeys: () => (overrides?.deriveNull === true ? null : boundaryKeys),
+        noteTurnSource: (turnKey, rawTurnId) => {
+          sources.push({ turnKey, rawTurnId })
+        },
+        nowMs: () => 1_700_000_000_000,
+      },
+    }
+  }
+
+  const invoke = (
+    processMessage: BotDeps['processMessage'],
+    text: string,
+    actorRole?: 'guest' | 'member',
+  ): Promise<void> =>
+    processMessage(
+      createMockReply().reply,
+      'scoped:ctx',
+      'user-42',
+      null,
+      text,
+      'dm',
+      undefined,
+      undefined,
+      [],
+      'turn-1',
+      actorRole,
+    )
+
+  test('captures text with derived keys after authorization and still runs the turn', async () => {
+    const { boundary, captures, sources } = createBoundary()
+    const inner = mock((): Promise<void> => Promise.resolve())
+    const deps = withRephraseCapture({ processMessage: inner, rephrase: boundary })
+    await invoke(deps.processMessage, 'please create a task', 'member')
+    expect(inner).toHaveBeenCalledTimes(1)
+    expect(captures).toHaveLength(1)
+    expect(captures[0]).toEqual({
+      actorKey: boundaryKeys.actorKey,
+      conversationKey: boundaryKeys.conversationKey,
+      turnKey: boundaryKeys.turnKey,
+      capturedAtMs: 1_700_000_000_000,
+      text: 'please create a task',
+    })
+    expect(sources).toEqual([{ turnKey: boundaryKeys.turnKey, rawTurnId: 'turn-1' }])
+  })
+
+  test('commands, guests, and underivable identities are never captured', async () => {
+    const { boundary, captures } = createBoundary()
+    const deps = withRephraseCapture({ processMessage: () => Promise.resolve(), rephrase: boundary })
+    await invoke(deps.processMessage, '/config', 'member')
+    await invoke(deps.processMessage, 'guest message', 'guest')
+    expect(captures).toHaveLength(0)
+    const nullBoundary = createBoundary({ deriveNull: true })
+    const nullDeps = withRephraseCapture({ processMessage: () => Promise.resolve(), rephrase: nullBoundary.boundary })
+    await invoke(nullDeps.processMessage, 'please create a task', 'member')
+    expect(nullBoundary.captures).toHaveLength(0)
+  })
+
+  test('returns the original deps when no rephrase boundary is configured', () => {
+    const inner = mock((): Promise<void> => Promise.resolve())
+    const deps: BotDeps = { processMessage: inner }
+    expect(withRephraseCapture(deps)).toBe(deps)
+  })
+
+  test('a capture failure never breaks the turn', async () => {
+    const throwingBoundary: RephraseBoundaryDeps = {
+      handoff: {
+        captureText: () => {
+          throw new Error('capture exploded')
+        },
+        completeTurn: () => undefined,
+        withdraw: () => undefined,
+      },
+      deriveKeys: () => boundaryKeys,
+    }
+    const inner = mock((): Promise<void> => Promise.resolve())
+    const deps = withRephraseCapture({ processMessage: inner, rephrase: throwingBoundary })
+    await expect(invoke(deps.processMessage, 'please create a task', 'member')).resolves.toBeUndefined()
+    expect(inner).toHaveBeenCalledTimes(1)
   })
 })
