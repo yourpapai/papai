@@ -141,7 +141,11 @@ CI-serial `test` run inside `scripts/check.sh`. Local `check:full` (`--parallel`
 does not collect coverage. When coverage improves, raise the floor from a green
 run with `bun coverage:ratchet --update` and commit the `bunfig.toml` change; the
 script never lowers the floor. Running `bun test --coverage <subset>` locally
-enforces the same floor against that subset (expected to "fail" on partial runs).
+enforces the same floor against that subset (expected to "fail" on partial runs):
+bun's coverage denominator spans every discovered production file, not just the
+subset's imports, so a one-file run measures far below the floor regardless of
+that file's own coverage. `bun test:coverage` runs the full suite with
+`--coverage` and therefore enforces the same 0.90/0.90 floor locally.
 
 ## Mutation testing
 

@@ -15,6 +15,13 @@ See LICENSE in the project root for details.
 
 **Tech Stack:** Bun test runner (coverage + lcov reporter), TOML config, TypeScript CLI, GitHub Actions.
 
+## Errata (added during final review, 2026-07-26)
+
+Two claims in this plan, as originally written, do not hold and are corrected here rather than rewritten in place:
+
+- **Task 3 Step 3's "exits 0" expectation is wrong.** `bun test --coverage <one test file>` does not exit 0 above the floor: bun's coverage denominator spans every discovered production file (1106 records on a full run), not just the subset's imports, so a one-file run measures ~21% lines and exits 1 at any real floor — regardless of how well-covered that one file is. The gate mechanism (floor-bites-when-too-high, floor-passes-when-low) was instead verified on a clean scratch project: floor `0.99/0.99` against its fixture exited 1; floor `0.10/0.10` exited 0 with lcov written. That verification is what actually stands behind Task 3's completion, not the subset run described in Step 3.
+- **The baseline figures in the Global Constraints section (line 23) are wrong.** It cites "92.33 / 91.20". The real measured values (confirmed against the actual `reports/coverage/lcov.info`, unweighted per-file mean matching bun's own metric) are **92.32% lines / 91.16% functions**. Separately, the pooled-count math originally specified for the ratchet (found/hit totals summed across files, then divided) would have read **90.83% lines / 89.24% functions** on the same data — a different, lower number than either the plan's cited baseline or the real measured value, because pooling weights every file by its line count instead of averaging per-file ratios. `parseLcovTotals` implements the unweighted per-file mean (see `scripts/coverage/ratchet-lib.ts`), which is why the ratchet's output matches bun's own gate exactly.
+
 ## Global Constraints
 
 - Runtime is **Bun 1.3.13**; strict TypeScript; use `.js` extension in import paths.

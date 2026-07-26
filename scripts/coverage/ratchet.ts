@@ -10,7 +10,11 @@ const EPSILON = 0.005
 
 async function main(): Promise<void> {
   const update = process.argv.includes('--update')
-  const lcov = await Bun.file(LCOV_PATH).text()
+  const lcovFile = Bun.file(LCOV_PATH)
+  if (!(await lcovFile.exists())) {
+    throw new Error(`${LCOV_PATH} not found; run "bun test --coverage" first to generate it`)
+  }
+  const lcov = await lcovFile.text()
   const toml = await Bun.file(BUNFIG_PATH).text()
   const totals = parseLcovTotals(lcov)
   const floor = parseBunfigThreshold(toml)

@@ -335,6 +335,14 @@ else
         # --parallel worker contention.
         if [ "${CI:-}" = "true" ]; then
           bun test --coverage --timeout 15000 >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+          # bun's coverage-threshold failure exits non-zero with no diagnostic
+          # text (just a per-file table + pass/fail counts): a red CI log shows
+          # every test passing with no cue that coverage, not a test, failed
+          # the job. Append the ratchet's mirror of the same gate so the log
+          # names the real cause. Never let this touch exit_code.
+          if [ "$exit_code" -ne 0 ]; then
+            bun coverage:ratchet >>"$TMPDIR/$fname.out" 2>&1 || true
+          fi
         else
           bun test --parallel --timeout 15000 >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
         fi
