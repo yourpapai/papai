@@ -213,10 +213,12 @@ are fixed now and must not move once collection starts (no post-hoc goalpost-mov
 
   **Consequence for validity:** this is a **looser** criterion than a top-3-per-channel filter
   would have been, so it makes bucket 3 (the under-trigger headline) **more inclusive** — more
-  turns qualify as a "hit" than a stricter rank filter would allow. This is consistent with the
-  doc's existing framing that P1 measures a conservative floor: an at/above-threshold bucket-3
-  result remains a lower bound on the real gap, now for two independent reasons (the floor query,
-  and this looser hit criterion) rather than one.
+  turns qualify as a "hit" than a stricter rank filter would allow. That **inflates** bucket 3:
+  it pushes the measured under-trigger rate **up**, toward the at/above-5% escalate branch. It
+  therefore works **against** the conservative-floor framing in "Load-bearing consequence" above
+  rather than reinforcing it — the floor query (a matter of query quality) and this hit criterion
+  (a matter of rank looseness) push the measured rate in opposite directions. See "Threats to
+  validity" below for the full signed ledger.
 
 - **Collection target: N = 1000, M ≥ 50.** Collect until **1000** sampled memory-bearing turns
   across **at least 50 distinct scopes** (so no single chatty user/group decides the outcome), **per
@@ -247,17 +249,23 @@ no numeric cutoff — and it is explicitly excluded from the go/no-go decision, 
 
 ### Threats to validity (recorded)
 
-- **Floor underestimate.** Raw-turn shadow < derived-query shadow. Conservative by design; noted so
-  an at-threshold result is read as a lower bound.
-- **Looser hit criterion.** `shadow_hit` is `shadow_hit_count ≥ 1` (any record within the cascade's
-  top-`RECALL_DEFAULT_LIMIT` window), not a per-channel rank filter — see the decision-gate note
-  above. This makes bucket 3 more inclusive than a stricter filter would, reinforcing (not
-  undermining) the floor/lower-bound reading above.
-- **Profile already covers it.** The model may skip `search_memory` because layer A/B (summary /
+Each threat is labelled with the direction it pushes **bucket 3**, the headline under-trigger rate.
+Two push it up and one pushes it down, so the net bias is **indeterminate a priori** and the
+measured rate is not a one-sided bound on the real gap in either direction.
+
+- **Floor underestimate** — pushes bucket 3 **down**. Raw-turn shadow < derived-query shadow: a
+  smarter `deriveInjectionQuery` could only surface more, so some genuinely under-triggered turns
+  never register as shadow hits at all and are lost from the numerator.
+- **Looser hit criterion** — pushes bucket 3 **up**. `shadow_hit` is `shadow_hit_count ≥ 1` (any
+  record within the cascade's top-`RECALL_DEFAULT_LIMIT` window), not a per-channel rank filter —
+  see the decision-gate note above. More turns qualify as a hit than a stricter filter would admit,
+  inflating the numerator relative to what a top-3-per-channel criterion would have produced. This
+  works **against** the floor reading, not with it.
+- **Profile already covers it** — pushes bucket 3 **up**. The model may skip `search_memory` because layer A/B (summary /
   profile) already answered — a _non_-gap that inflates bucket 3. Cannot be separated from
   content-free logs; the offline judged stage (P2 corpus) removes it. Reported as a known
   over-count on bucket 3.
-- **Selection bias.** Deterministic hash sampling avoids time-of-day skew; the ≥ M-distinct-scopes
+- **Selection bias** — **neutral**. Deterministic hash sampling avoids time-of-day skew; the ≥ M-distinct-scopes
   floor avoids single-user domination.
 - **Cost on large scopes.** The shadow reuses the unindexed O(N) scan; sampling + zero-record
   precondition bound it, but large-scope deployments should watch added load.
