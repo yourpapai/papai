@@ -138,7 +138,13 @@ describe('intent persistence audit', () => {
       { getDrizzleDb: () => db },
     )
     runIntentDerivation(
-      { processEpochId: EPOCH_ID, key: KEY, keyVersion: KeyVersionSchema.parse('v1'), nowMs: NOW + 60_000 },
+      {
+        processEpochId: EPOCH_ID,
+        key: KEY,
+        keyVersion: KeyVersionSchema.parse('v1'),
+        nowMs: NOW + 60_000,
+        localMode: 'local_pseudonymous',
+      },
       { getDrizzleDb: () => db },
     )
     const rows = db.select().from(schema.analyticsEvents).all()
@@ -153,7 +159,13 @@ describe('intent persistence audit', () => {
       { getDrizzleDb: () => db },
     )
     runIntentDerivation(
-      { processEpochId: EPOCH_ID, key: KEY, keyVersion: KeyVersionSchema.parse('v1'), nowMs: NOW + 60_000 },
+      {
+        processEpochId: EPOCH_ID,
+        key: KEY,
+        keyVersion: KeyVersionSchema.parse('v1'),
+        nowMs: NOW + 60_000,
+        localMode: 'local_pseudonymous',
+      },
       { getDrizzleDb: () => db },
     )
     const rows = db
@@ -195,6 +207,39 @@ describe('intent persistence audit', () => {
         tool_trace: [{ tool_slug: 'create_task' }, { tool_slug: 'find_tasks' }],
         feature_events: [],
         command_family: 'none',
+      })
+    }
+    expect(performance.now() - started).toBeLessThan(2_000)
+  })
+
+  test('rephrase captureText is bounded and its dependency surface has no SQLite or network', () => {
+    const captureSurface = [
+      path.resolve(import.meta.dir, '../../src/analytics/rephrase/handoff.ts'),
+      path.resolve(import.meta.dir, '../../src/analytics/rephrase/state.ts'),
+      path.resolve(import.meta.dir, '../../src/analytics/rephrase/matching.ts'),
+      path.resolve(import.meta.dir, '../../src/analytics/intent/rephrase.ts'),
+    ]
+    for (const file of captureSurface) {
+      for (const specifier of importSpecifiersOf(file)) {
+        expect(specifier).not.toContain('db')
+        expect(specifier).not.toContain('drizzle')
+        expect(specifier).not.toContain('undici')
+        expect(specifier.startsWith('node:')).toBe(false)
+      }
+    }
+
+    const actorKey = PseudonymSchema.parse('v1.p-actor')
+    const conversationKey = PseudonymSchema.parse('v1.p-conversation')
+    const turnKeys = Array.from({ length: 10_000 }, (_, index) => PseudonymSchema.parse(`v1.p-turn-${index}`))
+    const { handoff } = createRephraseHandoff({ nowMs: () => NOW })
+    const started = performance.now()
+    for (const turnKey of turnKeys) {
+      handoff.captureText({
+        actorKey,
+        conversationKey,
+        turnKey,
+        capturedAtMs: NOW,
+        text: 'please create a task for the release',
       })
     }
     expect(performance.now() - started).toBeLessThan(2_000)

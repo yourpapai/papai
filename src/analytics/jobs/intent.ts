@@ -25,6 +25,7 @@ export type IntentDerivationInput = Readonly<{
   key: Buffer
   keyVersion: KeyVersion
   nowMs: number
+  localMode: 'off' | 'local_aggregate' | 'local_pseudonymous'
   limit?: number
 }>
 
@@ -205,7 +206,6 @@ export const runIntentDerivation = (
   input: IntentDerivationInput,
   deps: IntentDerivationDeps = { getDrizzleDb: defaultGetDrizzleDb },
 ): IntentDerivationResult => {
-  const db = deps.getDrizzleDb()
   const counters: Counters = {
     scanned: 0,
     alreadyPresent: 0,
@@ -214,6 +214,11 @@ export const runIntentDerivation = (
     skippedGuest: 0,
     notEligible: 0,
   }
+  if (input.localMode !== 'local_pseudonymous') {
+    log.debug({ localMode: input.localMode }, 'intent derivation skipped: local mode excludes pseudonymous intent')
+    return counters
+  }
+  const db = deps.getDrizzleDb()
   const rows = scanTurns(db, input.limit ?? DEFAULT_LIMIT)
   for (const row of rows) {
     counters.scanned += 1

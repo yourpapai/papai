@@ -119,7 +119,13 @@ const intentRows = (db: Db): readonly (typeof schema.analyticsEvents.$inferSelec
 
 const runJob = (db: Db): ReturnType<typeof runIntentDerivation> =>
   runIntentDerivation(
-    { processEpochId: EPOCH_ID, key: KEY, keyVersion: KeyVersionSchema.parse('v1'), nowMs: NOW + 60_000 },
+    {
+      processEpochId: EPOCH_ID,
+      key: KEY,
+      keyVersion: KeyVersionSchema.parse('v1'),
+      nowMs: NOW + 60_000,
+      localMode: 'local_pseudonymous',
+    },
     { getDrizzleDb: () => db },
   )
 
@@ -221,6 +227,50 @@ describe('intent derivation job', () => {
     expect(result.skippedGuest).toBe(1)
     expect(result.inserted).toBe(0)
     expect(intentRows(db)).toHaveLength(0)
+  })
+
+  test('aggregate-local mode never stores intent even with an eligible turn', () => {
+    insertSource(db, ref, envelope('turn_completed', 'tc-8', 'v1.p-turn-8', TURN_COMPLETED_PROPS))
+    insertSource(db, ref, envelope('tool_completed', 'tl-8', 'v1.p-turn-8', toolProps('create_task')))
+    const result = runIntentDerivation(
+      {
+        processEpochId: EPOCH_ID,
+        key: KEY,
+        keyVersion: KeyVersionSchema.parse('v1'),
+        nowMs: NOW + 60_000,
+        localMode: 'local_aggregate',
+      },
+      { getDrizzleDb: () => db },
+    )
+    expect(result).toEqual({
+      scanned: 0,
+      alreadyPresent: 0,
+      inserted: 0,
+      skippedNoRef: 0,
+      skippedGuest: 0,
+      notEligible: 0,
+    })
+    expect(intentRows(db)).toHaveLength(0)
+  })
+
+  test('non-pseudonymous modes short-circuit before resolving the database', () => {
+    const probeDb = (): never => {
+      throw new Error('derivation resolved the database outside local_pseudonymous mode')
+    }
+    for (const localMode of ['off', 'local_aggregate'] as const) {
+      const result = runIntentDerivation(
+        {
+          processEpochId: EPOCH_ID,
+          key: KEY,
+          keyVersion: KeyVersionSchema.parse('v1'),
+          nowMs: NOW + 60_000,
+          localMode,
+        },
+        { getDrizzleDb: probeDb },
+      )
+      expect(result.scanned).toBe(0)
+      expect(result.inserted).toBe(0)
+    }
   })
 
   test('a turn without a collection ref is skipped without minting one', () => {

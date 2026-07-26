@@ -124,7 +124,13 @@ const intentRow = (db: Db): typeof schema.analyticsEvents.$inferSelect | undefin
 
 const runJob = (db: Db): ReturnType<typeof runIntentDerivation> =>
   runIntentDerivation(
-    { processEpochId: EPOCH_ID, key: KEY, keyVersion: KeyVersionSchema.parse('v1'), nowMs: NOW + 60_000 },
+    {
+      processEpochId: EPOCH_ID,
+      key: KEY,
+      keyVersion: KeyVersionSchema.parse('v1'),
+      nowMs: NOW + 60_000,
+      localMode: 'local_pseudonymous',
+    },
     { getDrizzleDb: () => db },
   )
 
