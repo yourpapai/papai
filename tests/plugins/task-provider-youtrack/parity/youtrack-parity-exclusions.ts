@@ -25,7 +25,7 @@ export const YOUTRACK_PARITY_EXCLUSIONS: readonly Readonly<{ group: string; reas
   {
     group: 'SCN-parity-task-label',
     reason:
-      'Labels excluded for this lane by decision; YouTrack models tags, not the createLabel/addTaskLabel/removeTaskLabel surface the group asserts. Label coverage is deferred.',
+      "createLabel/addTaskLabel/removeTaskLabel/listLabels are fully implemented over YouTrack tags (plugins/task-provider-youtrack/labels.ts, wired in provider.ts), but YouTrackProvider never implements the optional TaskProvider method listTaskLabels (src/providers/types.ts), so the group's `provider.listTaskLabels?.(...) ?? []` read-back silently yields [] and the toEqual(['attach-label']) assertion cannot pass. Label coverage is deferred for this lane.",
   },
   {
     group: 'SCN-parity-identity',
