@@ -33,11 +33,6 @@ export const YOUTRACK_PARITY_EXCLUSIONS: readonly Readonly<{ group: string; reas
       'Identity excluded for this lane by decision; provisionWorkspaceMember/listUsers over the YouTrack Hub is out of scope for the conformance lane.',
   },
   {
-    group: 'SCN-parity-project-label-errors',
-    reason:
-      'Exercises removeTaskLabel (labels), excluded alongside SCN-parity-task-label; the updateProject-missing rejection is already covered structurally by other error groups.',
-  },
-  {
     group: 'SCN-parity-project-crud',
     reason:
       'YouTrackProvider project mappers (plugins/task-provider-youtrack/operations/projects.ts) always emit a description key (value undefined when absent), so Object.keys(project) is [description,id,name,url]; the group asserts exactly [id,name,url]. A normalized-shape divergence (YouTrack surfaces project description), not a fake limitation.',
