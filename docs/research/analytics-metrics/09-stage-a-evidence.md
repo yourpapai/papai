@@ -56,7 +56,7 @@ aggregate publication.
 | 7 — llm/tool/perf instrumentation | 150 pass / 0 fail (orchestrator events/logging/tool-events, permission gate + prompt, live-status reporter, typing heartbeat, llm-tool integration, performance clocks, tool-slug generation, clarification) | clean / clean (knip clean) | 6d429b5c4 (+ knip 2a6d72ae5, fix f74047b35) | 2026-07-25 |
 | 8 — provider/feature boundaries | 8A: 270 pass / 0 fail; 8B: 89 pass / 0 fail (analytics five + logging-privacy) + full regression 1756 pass; fix f3502ba5f (unconfigured producers, per-invocation opportunity, raw-URL log, MCP early-return) | clean / clean (knip clean) | 8A: 1f68f3caf; 8B: 0c8af4f0f + f3502ba5f | 2026-07-26 |
 | 9 — delivery ledger | 68 pass / 0 fail (072 migration, registration, delivery-store, sink-gate, sink-lifecycle); fix 2a9b3126b (stuck-leased send-start) | clean / clean (knip clean) | 9ac052ff0 + 2a9b3126b | 2026-07-26 |
-| 10 — intent + rephrase | 18 pass / 0 fail (intent-classifier, intent-derivation, rephrase, rephrase-handoff, intent-persistence-audit); affected suites 781 pass / 0 fail | clean / clean (knip clean) | dccf6cc73 | 2026-07-26 |
+| 10 — intent + rephrase | 18 pass / 0 fail (intent-classifier, intent-derivation, rephrase, rephrase-handoff, intent-persistence-audit); affected suites 781 pass; gap-fix 3347cff30 (aggregate-local short-circuit + capture latency) | clean / clean (knip clean) | dccf6cc73 + 3347cff30 | 2026-07-26 |
 | 11 — materializations | | | | |
 | 12 — backfill/reconcile | | | | |
 | 13 — lifecycle/subject rights | | | | |
@@ -181,3 +181,17 @@ aggregate publication.
   plan level); `verifySinkVersion` enable not conditioned on still-pending
   state; defensive `sendStartedAtMs: null` in markSendStarted's lease_expired
   branch.
+- Task 10 → **Task 13/16 review focus**: `withdrawFor` rephrase withdrawal is
+  built and unit-tested but has no production callers until the preference
+  withdrawal surfaces land.
+- Task 10 → **Task 17 review focus**: `runIntentDerivation` now requires
+  `localMode` and short-circuits outside `local_pseudonymous`
+  (3347cff30) — the job scheduler must pass the current mode.
+- Task 10 (parked Minors): persistence-audit sweep narrower than the brief's
+  literal list (expire-then-rescan, captured-log scan, queue scan);
+  no-SMALL_MODEL scan is regex over src/analytics specifiers, not a full
+  module-graph walk, and doesn't assert small-model-status.json values.
+- Task 8 → fixed during Task 10: ACP entry-graph containment regression
+  (coding-session configure 4 failures) fixed by import.meta.require lazy
+  loads (3601c2913). Gate lesson: tests/coding-sessions/ must be in
+  plugin-touching gate lists.
