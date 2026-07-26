@@ -45,6 +45,8 @@ See LICENSE in the project root for details.
 
 **Story-test harness (developer/CI only, never read by the bot):** `PAPAI_STORY_DEPENDENCY_CACHE_ROOT` (default `~/.cache/papai-story-dependencies`) — root of the sealed, lock-keyed dependency cache bind-mounted into the story sandbox; `PAPAI_STORY_DEPENDENCY_CACHE_KEEP` (positive integer, default `3`; invalid values fall back to `3`) — how many newest cache entries survive the best-effort prune that runs after every successful acquire; `PAPAI_REQUIRE_STORY_SANDBOX=1` — fail closed when the Docker sandbox is unavailable (always on in CI). See `docs/architecture/commands.md` § Hermetic story qualification.
 
+**`PAPAI_MATTERMOST_ACTION_SIGNING_SECRET`** — optional, developer/CI only (never required in production): when set at startup, seeds its value into the `system_config` Mattermost action-signing-secret key via `onConflictDoNothing`, so an already-stored (operator-chosen or previously generated) secret is never overwritten; when unset, the existing lazy random-generate-on-first-use path is unchanged. Lets the T3 platform-adapter lane (`tests/platform/`) pin the container's action-signing secret to a value the fake Mattermost server can sign against. Operators do not need to set this.
+
 **Behavior audit CI secrets** — required only by the nightly GitHub Actions workflow at `.github/workflows/behavior-audit.yml` (runs `bun audit:behavior` on `ubuntu-latest` against an external OpenAI-compatible gateway). Not read at papai runtime. Configure three repository secrets under repo settings → Secrets and variables → Actions:
 
 - `BEHAVIOR_AUDIT_BASE_URL` — gateway base URL (e.g. `https://openrouter.ai/api/v1`); mapped verbatim to the same-named env var.

@@ -132,6 +132,20 @@ When DI is not available and module evaluation order matters:
 - The suite is in transition: many files already rely on shared preload/setup, but some older E2E files still use local `beforeAll`/`afterAll` hooks or manual cleanup. Follow the local pattern unless you are intentionally modernizing that suite.
 - Before proposing new E2E coverage, read `docs/superpowers/e2e-planning-workflow.md` and start from `docs/superpowers/templates/e2e-test-plan-template.md`.
 
+### Tier 3 — platform-adapter lane (`tests/platform/`, nightly)
+
+Real adapter code (Mattermost) exercised in-container against fake platform
+servers (HTTP/WS), reusing the T2 harness (`tests/smoke/harness/`). Scenario
+files use the non-discovered `.platform.ts` suffix, so the default `bun test`
+never boots Docker. Run locally with `bun run test:platform`. The lane is
+**nightly only** (`.github/workflows/nightly.yml`), never a PR gate. Live
+scenarios: `SCN-fetch-chat-link` (permalink resolver) and
+`SCN-http-mattermost-action` (signed action-callback route). The Discord and
+Telegram interaction pends remain `needs-seam@3`, deferred until fake
+discord.js / grammY servers exist. The action-callback scenario relies on the
+`PAPAI_MATTERMOST_ACTION_SIGNING_SECRET` env seam so the container verifies
+against a test-known secret.
+
 ### Coverage floor
 
 The in-process suite's production-code coverage (`src/` + `plugins/`) is gated in
