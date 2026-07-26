@@ -3,20 +3,72 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { and, eq, inArray } from 'drizzle-orm'
+
 import { evictUser } from '../cache.js'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { memoryProfiles, memoryRecords, memorySummary, memoryTombstones } from '../db/schema.js'
 import { logger } from '../logger.js'
 import { profileScopeCondition, recordScopeCondition } from './record-conditions.js'
 import { workingMemoryKeyMatch } from './scope-clear.js'
-import { tombstoneValues } from './tombstone.js'
+import { contentHash, tombstoneValues } from './tombstone.js'
 import type { MemoryScope } from './types.js'
 
 const log = logger.child({ scope: 'long-term-memory:purge' })
 
-type PurgeOutcome = Readonly<{ purged: boolean; contaminatedProfile: boolean; clearedSummaryKeys: readonly string[] }>
+type PurgeOutcome = Readonly<{
+  purged: boolean
+  recordsDeleted: number
+  contaminatedProfile: boolean
+  clearedSummaryKeys: readonly string[]
+}>
 
-const NOT_PURGED: PurgeOutcome = { purged: false, contaminatedProfile: false, clearedSummaryKeys: [] }
+const NOT_PURGED: PurgeOutcome = {
+  purged: false,
+  recordsDeleted: 0,
+  contaminatedProfile: false,
+  clearedSummaryKeys: [],
+}
+
+/** Ids whose content hashes to `hash`. Pure so the sweep's matching rule stays testable apart from the transaction. */
+const idsMatchingHash = (rows: readonly { id: string; content: string }[], hash: string): string[] =>
+  rows.filter((row) => contentHash(row.content) === hash).map((row) => row.id)
+
+type MemoryTx = Parameters<Parameters<ReturnType<typeof getDrizzleDb>['transaction']>[0]>[0]
+
+type Sweep = Readonly<{ content: string; recordsDeleted: number }>
+
+/**
+ * Locates the target record, then deletes every row in its scope whose normalized
+ * content hashes the same — the provisional/expired twins a plain by-id delete would
+ * leave behind for the promotion sweep to resurrect. Returns `undefined` when the
+ * target record itself does not exist.
+ */
+const sweepMatchingContent = (tx: MemoryTx, scope: MemoryScope, recordId: string): Sweep | undefined => {
+  const target = tx
+    .select({ content: memoryRecords.content })
+    .from(memoryRecords)
+    .where(recordScopeCondition(scope, recordId))
+    .get()
+  if (target === undefined) return undefined
+
+  // Every row in the scope, all statuses and no validity filter: a purge must reach the
+  // provisional and expired rows the read paths hide, or a twin survives to be promoted back.
+  const scopeRows = tx
+    .select({ id: memoryRecords.id, content: memoryRecords.content })
+    .from(memoryRecords)
+    .where(and(eq(memoryRecords.scopeId, scope.scopeId), eq(memoryRecords.scopeType, scope.scopeType)))
+    .all()
+
+  const doomed = idsMatchingHash(scopeRows, contentHash(target.content))
+  const recordsDeleted = tx
+    .delete(memoryRecords)
+    .where(inArray(memoryRecords.id, doomed))
+    .returning({ id: memoryRecords.id })
+    .all().length
+
+  return { content: target.content, recordsDeleted }
+}
 
 /**
  * Destroys one memory record outright, taking its FTS entry and embedding with it.
@@ -58,16 +110,12 @@ export function deleteMemoryRecord(scope: MemoryScope, recordId: string): boolea
 export function purgeMemoryRecord(scope: MemoryScope, recordId: string, now: string): boolean {
   const db = getDrizzleDb()
   const outcome = db.transaction((tx): PurgeOutcome => {
-    const deleted = tx
-      .delete(memoryRecords)
-      .where(recordScopeCondition(scope, recordId))
-      .returning({ content: memoryRecords.content })
-      .all()
-    const row = deleted[0]
-    if (row === undefined) return NOT_PURGED
+    const swept = sweepMatchingContent(tx, scope, recordId)
+    if (swept === undefined) return NOT_PURGED
+    const { content, recordsDeleted } = swept
 
     tx.insert(memoryTombstones)
-      .values(tombstoneValues(scope, row.content, now))
+      .values(tombstoneValues(scope, content, now))
       .onConflictDoNothing()
       .run()
 
@@ -85,7 +133,7 @@ export function purgeMemoryRecord(scope: MemoryScope, recordId: string, now: str
       .all()
       .map((summaryRow) => summaryRow.key)
 
-    return { purged: true, contaminatedProfile: contaminated.length > 0, clearedSummaryKeys }
+    return { purged: true, recordsDeleted, contaminatedProfile: contaminated.length > 0, clearedSummaryKeys }
   })
 
   if (!outcome.purged) return false
@@ -97,6 +145,7 @@ export function purgeMemoryRecord(scope: MemoryScope, recordId: string, now: str
       scopeId: scope.scopeId,
       scopeType: scope.scopeType,
       recordId,
+      recordsDeleted: outcome.recordsDeleted,
       contaminatedProfile: outcome.contaminatedProfile,
       clearedSummaryKeys: outcome.clearedSummaryKeys.length,
     },

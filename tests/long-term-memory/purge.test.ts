@@ -6,10 +6,15 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { getDrizzleDb } from '../../src/db/drizzle.js'
-import { memoryProfiles, memorySummary } from '../../src/db/schema.js'
+import { memoryProfiles, memoryRecords, memorySummary } from '../../src/db/schema.js'
 import { purgeMemoryRecord } from '../../src/long-term-memory/purge.js'
 import { profileScopeCondition } from '../../src/long-term-memory/record-conditions.js'
-import { getMemoryProfile, saveMemoryProfile, saveMemoryRecord } from '../../src/long-term-memory/store.js'
+import {
+  getMemoryProfile,
+  listProvisionalRecords,
+  saveMemoryProfile,
+  saveMemoryRecord,
+} from '../../src/long-term-memory/store.js'
 import type { MemoryRecordInput, MemoryScope } from '../../src/long-term-memory/types.js'
 import { loadSummary } from '../../src/memory.js'
 import { setupTestDb } from '../utils/test-helpers.js'
@@ -105,5 +110,34 @@ describe('purgeMemoryRecord — derived-memory contamination', () => {
     expect(purgeMemoryRecord(scope, 'no-such-record', NOW)).toBe(false)
     expect(getMemoryProfile(scope)?.contaminatedAt).toBeNull()
     expect(summaryRowCount('dm-4')).toBe(1)
+  })
+
+  test('sweeps a provisional twin of the purged content, case and spacing insensitive', () => {
+    const scope: MemoryScope = { scopeId: 'dm-sweep', scopeType: 'personal' }
+    saveMemoryRecord(record(scope, 'mem-active', 'User lives in Berlin'))
+    saveMemoryRecord({
+      ...record(scope, 'mem-provisional', 'user   LIVES in berlin'),
+      status: 'provisional',
+      source: 'background',
+    })
+
+    expect(purgeMemoryRecord(scope, 'mem-active', NOW)).toBe(true)
+
+    // both rows are gone from the canonical table, not merely hidden
+    expect(getDrizzleDb().select().from(memoryRecords).all()).toHaveLength(0)
+    // ...so the promotion sweep has nothing left to promote back to active
+    expect(listProvisionalRecords({ ...scope, limit: 10 })).toHaveLength(0)
+  })
+
+  test('leaves records in other scopes alone even when the content matches', () => {
+    const mine: MemoryScope = { scopeId: 'dm-mine', scopeType: 'personal' }
+    const theirs: MemoryScope = { scopeId: 'grp-theirs', scopeType: 'group' }
+    saveMemoryRecord(record(mine, 'mem-mine', 'User lives in Berlin'))
+    saveMemoryRecord(record(theirs, 'mem-theirs', 'User lives in Berlin'))
+
+    expect(purgeMemoryRecord(mine, 'mem-mine', NOW)).toBe(true)
+
+    const surviving = getDrizzleDb().select().from(memoryRecords).all()
+    expect(surviving.map((row) => row.id)).toEqual(['mem-theirs'])
   })
 })
