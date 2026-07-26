@@ -34,8 +34,8 @@ aggregate publication.
 | 7 | Consent matrix | partial | 38,880-cell exact-decision Cartesian matrix in tests/analytics/governance/eligibility.test.ts (ab504fd5e); Task 5 wires decideEligibility into the live observer fail-closed incl. preference/ref reads (c4079feb8); store/send/delete result coverage completes with Tasks 15/16 |
 | 8 | Withdrawal race | partial | local collection-ref races proven in tests/analytics/collection-writer-race.test.ts: deny-before-write yields no canonical/association rows; write-before-deny is found via analytics_event_collection_refs and deleted; repeated across retained key versions (c4079feb8); external delivery-grant race lands with the outbox tasks |
 | 9 | Outbox/sink | partial | store parts: migration 072 restrictive sink/event FKs, nine-state closed ledger, single-enabled-sink partial unique index, independent minimal deletion receipts, enqueue/lease/send-start/recovery race proofs in tests/analytics/delivery/store.test.ts, capability gate incl. OpenPanel negative fixture in tests/analytics/delivery/sink.test.ts, write-only sink lifecycle in tests/analytics/delivery/sink-service.test.ts (9ac052ff0); transport/captured-egress parts land with the outbox sender tasks |
-| 10 | Session fixtures | pending | |
-| 11 | Cohort/censor fixtures | pending | |
+| 10 | Session fixtures | green | sessionization v1 boundary fixtures 29:59/30:00/30:00.001, out-of-order/midnight-UTC/two-actors-one-thread/sibling-thread/Discord-null-thread/command/proactive/bot-only-reply/zero-duration fixtures, child-inherit vs activity-extend semantics, and guests-produce-no-session-rows proof in tests/analytics/derive/sessionizer.test.ts + tests/analytics/sessionizer.test.ts (35693a333); 2026-07-26 |
+| 11 | Cohort/censor fixtures | green | immature (<24h) attempts censored never abandoned, withdrawal/deletion right-censoring (deny → censored + censor-interval materialization, deleteCanonicalEventsForRef cascades derived rows, interval survives), clarification_abandoned deny-after-scan/before-insert and writer-before-deny races via inherited ref in tests/analytics/outcomes.test.ts; censor-interval table in migration 073 (35693a333); 2026-07-26 |
 | 12 | Rephrase persistence audit | green | transient in-memory lifecycle (capture discards raw text at the boundary, 30-minute TTL, max 3 sets per conversation, eviction/expiry/shutdown coverage-loss accounting, withdrawal without loss) in tests/analytics/rephrase/*.test.ts + tests/analytics/rephrase-handoff.test.ts; post-auth canary never survives capture or derivation in tests/analytics/intent-persistence-audit.test.ts (dccf6cc73); 2026-07-26 |
 | 13 | Classifier contract | green | sealed-corpus hybrid parity with the frozen PoC values (accuracy 0.991667, macro F1 0.995641, coverage 0.991667, unknown precision 0.909091) in tests/analytics/intent-classifier.test.ts; derived intent_classified envelope/props contract + deterministic intent-output:v1 ids + inherited-ref withdrawal in tests/analytics/intent-derivation.test.ts; no PoC/small-model import in the runtime module graph + latency budget in tests/analytics/intent-persistence-audit.test.ts (dccf6cc73); 2026-07-26 |
 | 14 | Backfill/provenance/reconciliation | pending | |
@@ -57,7 +57,7 @@ aggregate publication.
 | 8 — provider/feature boundaries | 8A: 270 pass / 0 fail; 8B: 89 pass / 0 fail (analytics five + logging-privacy) + full regression 1756 pass; fix f3502ba5f (unconfigured producers, per-invocation opportunity, raw-URL log, MCP early-return) | clean / clean (knip clean) | 8A: 1f68f3caf; 8B: 0c8af4f0f + f3502ba5f | 2026-07-26 |
 | 9 — delivery ledger | 68 pass / 0 fail (072 migration, registration, delivery-store, sink-gate, sink-lifecycle); fix 2a9b3126b (stuck-leased send-start) | clean / clean (knip clean) | 9ac052ff0 + 2a9b3126b | 2026-07-26 |
 | 10 — intent + rephrase | 18 pass / 0 fail (intent-classifier, intent-derivation, rephrase, rephrase-handoff, intent-persistence-audit); affected suites 781 pass; gap-fix 3347cff30 (aggregate-local short-circuit + capture latency) | clean / clean (knip clean) | dccf6cc73 + 3347cff30 | 2026-07-26 |
-| 11 — materializations | | | | |
+| 11 — materializations | 60 pass / 0 fail (073 migration, registration, sessionizer, outcomes, feature-materialization, friction); mirrored derive/store/job suites 145 pass; tests/db + tests/analytics 1122 pass | clean / clean (knip clean) | 35693a333 | 2026-07-26 |
 | 12 — backfill/reconcile | | | | |
 | 13 — lifecycle/subject rights | | | | |
 | 14 — snapshot/metabase | | | | |
@@ -184,6 +184,14 @@ aggregate publication.
 - Task 10 → **Task 13/16 review focus**: `withdrawFor` rephrase withdrawal is
   built and unit-tested but has no production callers until the preference
   withdrawal surfaces land.
+- Task 11 → **Task 17 review focus**: `runDeriveJob` is a library function
+  (window + 2-minute live watermark, `localMode` gate); scheduled registration
+  must pass the current mode, like `runIntentDerivation`.
+- Task 11 (parked Minors): censor intervals are discovered only while a denied
+  ref still has event associations (deny-before-delete window); a deletion
+  executed before any derive run leaves no censor-interval row. Outcome
+  relevance is turn-level (any same-turn semantic success satisfies any goal of
+  that turn); per-goal tool relevance needs intent.v2-era evidence.
 - Task 10 → **Task 17 review focus**: `runIntentDerivation` now requires
   `localMode` and short-circuits outside `local_pseudonymous`
   (3347cff30) — the job scheduler must pass the current mode.
