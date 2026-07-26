@@ -128,9 +128,8 @@ export default {
     // listRoutes is consumed by the behavior-audit closure verifier via
     // dynamic import; re-exported from src/debug/server.ts.
     'src/debug/server-route-options.ts': ['exports'],
-    // Temporary: chat-history Phase 2 — Task 3 consumes storeEmbedding/
-    // loadEmbeddingsForScope; the sweep (Task 4) and search tool (Task 5)
-    // consume the rest. Remove once Tasks 4-5 land.
+    // Temporary: chat-history Phase 2 — searchKnn is consumed by the search
+    // tool (Task 5); Tasks 3-4 consume the rest. Remove once Task 5 lands.
     // Plan: docs/superpowers/plans/2026-07-26-chat-history-search-phase-2.md
     'src/message-cache/vector-store.ts': ['exports'],
   },

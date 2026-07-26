@@ -160,6 +160,19 @@ export function pendingConfigContexts(limit: number): string[] {
   return rows.map((r) => r.configContextId)
 }
 
+/** Distinct config-context ids that hold at least one stored embedding (stale-model sweep candidates). */
+export function embeddedConfigContexts(limit: number): string[] {
+  const rows = getDrizzleDb()
+    .select({ configContextId: configContextIdExpr })
+    .from(messageMetadata)
+    .innerJoin(messageEmbeddings, embeddingsJoin)
+    .where(sql`${messageEmbeddings.embedding} IS NOT NULL`)
+    .groupBy(configContextIdExpr)
+    .limit(limit)
+    .all()
+  return rows.map((r) => r.configContextId)
+}
+
 /** Pending rows for one config-context: NULL embedding OR model != currentModel. */
 export function nextPendingBatchForContext(
   configContextId: string,

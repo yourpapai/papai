@@ -14,6 +14,7 @@ import { logger } from './logger.js'
 import { sweepDirtyContexts } from './long-term-memory/capture-sweep.js'
 import { runMemoryMaintenance } from './long-term-memory/maintenance.js'
 import { sweepPromotions } from './long-term-memory/promotion-sweep.js'
+import { runMessageEmbeddingSweep } from './message-embedding-sweep.js'
 import { cleanupExpiredQueues } from './message-queue/index.js'
 import { createScheduler } from './utils/scheduler.js'
 import type { ErrorEvent, FatalErrorEvent } from './utils/scheduler.types.js'
@@ -33,6 +34,7 @@ export const DEFAULT_SCHEDULER_TASK_NAMES = [
   'long-term-memory-maintenance',
   'memory-capture-sweep',
   'memory-promotion-sweep',
+  'message-embedding-sweep',
 ] as const
 
 function registerImmediateDefaultTasks(): void {
@@ -74,6 +76,13 @@ function registerDeferredDefaultTasks(): void {
     interval: 30 * 60 * 1000,
     handler: () => {
       void sweepPromotions()
+    },
+    options: { immediate: false },
+  })
+  scheduler.register('message-embedding-sweep', {
+    interval: 5 * 60 * 1000,
+    handler: () => {
+      void runMessageEmbeddingSweep()
     },
     options: { immediate: false },
   })

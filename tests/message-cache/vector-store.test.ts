@@ -10,6 +10,7 @@ import { cacheMessage } from '../../src/message-cache/cache.js'
 import type { MessageScope } from '../../src/message-cache/store.js'
 import {
   countPending,
+  embeddedConfigContexts,
   loadEmbeddingsForScope,
   nextPendingBatchForContext,
   pendingConfigContexts,
@@ -182,5 +183,14 @@ describe('message vector store: pending queries', () => {
     await flushPendingWrites()
     storeEmbedding('g:t1', 'm1', vec(1, 0), 'current-model', 2)
     expect(nextPendingBatchForContext('g', 'current-model', 10)).toEqual([])
+  })
+
+  test('embeddedConfigContexts lists only contexts holding a stored embedding', async () => {
+    cacheMessage({ messageId: 'm1', contextId: 'g:t1', groupContextId: 'g', text: 'one', timestamp: 1 })
+    cacheMessage({ messageId: 'm2', contextId: 'h:t1', groupContextId: 'h', text: 'two', timestamp: 2 })
+    await flushPendingWrites()
+    expect(embeddedConfigContexts(10)).toEqual([])
+    storeEmbedding('g:t1', 'm1', vec(1, 0), 'm', 2)
+    expect(embeddedConfigContexts(10)).toEqual(['g'])
   })
 })
