@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
 import { checkConfidence, confidenceField } from './confirmation-gate.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:delete-status' })
 
@@ -27,30 +28,22 @@ export function makeDeleteStatusTool(provider: TaskProvider): Tool {
       confirm: z.boolean().optional().describe('Set to true to confirm changes to shared state bundles'),
     }),
     execute: async ({ projectId, statusId, label, confidence, confirm }) => {
-      log.debug({ projectId, statusId, confidence, confirm }, 'delete_status called')
+      log.debug({ confidence, confirm }, 'delete_status called')
       const gate = checkConfidence(confidence, `Delete status "${label ?? statusId}"`)
       if (gate !== null) {
-        log.warn({ projectId, statusId, confidence }, 'delete_status blocked — confirmation required')
+        log.warn({ confidence }, 'delete_status blocked — confirmation required')
         return gate
       }
       try {
         const result = await provider.deleteStatus!(projectId, statusId, confirm)
         if ('status' in result && result.status === 'confirmation_required') {
-          log.warn({ projectId, statusId }, 'delete_status blocked — shared bundle confirmation required')
+          log.warn('delete_status blocked — shared bundle confirmation required')
           return result
         }
-        log.info({ projectId, statusId }, 'Status deleted')
+        log.info('Status deleted')
         return result
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            projectId,
-            statusId,
-            tool: 'delete_status',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('delete_status', error), 'Tool execution failed')
         throw error
       }
     },

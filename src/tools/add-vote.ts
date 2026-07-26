@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:add-vote' })
 
@@ -21,17 +22,10 @@ export function makeAddVoteTool(provider: TaskProvider): Tool {
     execute: async ({ taskId }) => {
       try {
         const result = await provider.addVote!(taskId)
-        log.info({ taskId }, 'Vote added via tool')
+        log.info('Vote added via tool')
         return result
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            tool: 'add_vote',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('add_vote', error), 'Tool execution failed')
         throw error
       }
     },

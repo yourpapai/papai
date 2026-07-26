@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { NO_ANALYTICS_SCOPE, type ProviderRequestScope } from '../analytics/provider-request-scope.js'
 import type { AnalyticsObserver } from '../analytics/runtime.js'
 import { getActiveAnalyticsRuntime, startAnalytics, stopAnalytics } from '../analytics/start-analytics.js'
 import type { AuthorizedTurnContextRegistry } from '../analytics/turn-context.js'
@@ -90,8 +91,12 @@ function configureMembership(router: ChatRouter, state: ProductionState): void {
     resolveUserLabel: (userId: string, groupContextId: string, platformInstanceId: string): Promise<string | null> =>
       router.resolveUserLabel(userId, { contextId: groupContextId, contextType: 'group', platformInstanceId }),
   }
-  const ensure = (groupContextId: string, chatUserId: string): ReturnType<typeof ensureWorkspaceMember> =>
-    ensureWorkspaceMember(groupContextId, chatUserId, membershipDeps)
+  const ensure = (
+    groupContextId: string,
+    chatUserId: string,
+    scope: ProviderRequestScope,
+  ): ReturnType<typeof ensureWorkspaceMember> =>
+    ensureWorkspaceMember(groupContextId, chatUserId, scope, membershipDeps)
   state.disposeMembershipSubscriber?.()
   state.disposeMembershipSubscriber = null
   state.disposeMembershipSubscriber = registerMembershipSubscriber({
@@ -101,7 +106,7 @@ function configureMembership(router: ChatRouter, state: ProductionState): void {
       return Promise.resolve()
     },
   })
-  void runMembershipBackfill({ ensure })
+  void runMembershipBackfill({ ensure, scope: NO_ANALYTICS_SCOPE })
     .then((result) => {
       log.info(result, 'Startup membership backfill finished')
     })

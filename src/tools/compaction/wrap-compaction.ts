@@ -5,8 +5,11 @@
 
 import type { ToolExecutionOptions, ToolSet } from 'ai'
 
+import { KNOWN_TOOL_SLUG_SET } from '../../analytics/generated/tool-slugs.js'
+import { resolveAnalyticsToolSlug } from '../../analytics/tool-slug-generation.js'
 import { getConfigContextIdFromStorageContextId } from '../../chat/scoped-context.js'
 import { logger } from '../../logger.js'
+import { toolErrorClass } from '../tool-logging.js'
 import { COMPACTION_PREVIEW_CHARS } from './constants.js'
 import { putResult } from './result-store.js'
 import { evaluateForCompaction } from './size-gate.js'
@@ -53,7 +56,7 @@ async function compact(
     summary = summarized.summary
   } catch (err) {
     log.warn(
-      { tool: toolName, error: err instanceof Error ? err.message : String(err) },
+      { tool: resolveAnalyticsToolSlug(toolName, KNOWN_TOOL_SLUG_SET), errorClass: toolErrorClass(err) },
       'Summarizer dep threw; falling back to truncation',
     )
   }

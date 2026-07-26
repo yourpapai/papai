@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:update-work' })
 
@@ -27,7 +28,7 @@ export function makeUpdateWorkTool(provider: TaskProvider): Tool {
       type: z.string().optional().describe('New work item type name or ID (provider-specific)'),
     }),
     execute: async ({ taskId, workItemId, duration, date, description, type }) => {
-      log.debug({ taskId, workItemId, duration, date }, 'update_work called')
+      log.debug({ duration, date }, 'update_work called')
       try {
         const result = await provider.updateWorkItem!(taskId, workItemId, {
           duration,
@@ -35,18 +36,10 @@ export function makeUpdateWorkTool(provider: TaskProvider): Tool {
           description,
           type,
         })
-        log.info({ taskId, workItemId }, 'Work item updated')
+        log.info('Work item updated')
         return result
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            workItemId,
-            tool: 'update_work',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('update_work', error), 'Tool execution failed')
         throw error
       }
     },

@@ -6,11 +6,13 @@
 import type { ToolExecutionOptions, ToolSet } from 'ai'
 import { z } from 'zod'
 
+import { KNOWN_TOOL_SLUG_SET } from '../analytics/generated/tool-slugs.js'
 import {
   isProviderRequestScope,
   runWithProviderRequestScope,
   type ProviderRequestScope,
 } from '../analytics/provider-request-scope.js'
+import { resolveAnalyticsToolSlug } from '../analytics/tool-slug-generation.js'
 import { logger } from '../logger.js'
 import { buildToolFailureResult, createProviderScopeMissingFailureResult } from '../tool-failure.js'
 
@@ -32,9 +34,8 @@ const logFailure = (
 ): void => {
   log.error(
     {
-      tool: toolName,
+      tool: resolveAnalyticsToolSlug(toolName, KNOWN_TOOL_SLUG_SET),
       toolCallId,
-      error: failure.error,
       errorType: failure.errorType,
       errorCode: failure.errorCode,
     },

@@ -92,7 +92,7 @@ export function routeSettingsApi(
     const adminResult = routeAdminApi(req, url, options)
     if (adminResult !== null) return adminResult
   }
-  if (url.pathname === '/settings/api/byok') return handleByokRoutes(req, url)
+  if (url.pathname === '/settings/api/byok') return Promise.resolve(handleByokRoutes(req, url))
   if (url.pathname === '/settings/api/coding-credentials/models') return handleCodingCredentialsModelsRoute(req, url)
   if (url.pathname === '/settings/api/coding-credentials') return handleCodingCredentialsRoutes(req, url)
   if (url.pathname === '/settings/api/coding-repos') return handleCodingReposRoutes(req, url)

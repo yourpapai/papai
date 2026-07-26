@@ -109,10 +109,7 @@ export function makeRememberMemoryTool(input: MemoryToolContext): Tool {
         lastSeenAt: now,
         expiresAt: expiresAt ?? null,
       })
-      log.info(
-        { scopeId: scope.scopeId, scopeType: scope.scopeType, memoryId: record.id, kind },
-        'Memory saved via tool',
-      )
+      log.info({ scopeId: scope.scopeId, scopeType: scope.scopeType, kind }, 'Memory saved via tool')
       return { status: 'saved', id: record.id, kind: record.kind }
     },
   })
@@ -189,7 +186,7 @@ export function makeForgetMemoryTool(input: MemoryToolContext): Tool {
       if (memoryId !== undefined) {
         const archived = archiveMemoryRecord(scope, memoryId, now)
         log.info(
-          { scopeId: scope.scopeId, scopeType: scope.scopeType, memoryId, archived },
+          { scopeId: scope.scopeId, scopeType: scope.scopeType, archived },
           'Memory archive by ID requested via tool',
         )
         return archived ? { status: 'forgotten', id: memoryId } : { status: 'not_found' }
@@ -205,7 +202,7 @@ export function makeForgetMemoryTool(input: MemoryToolContext): Tool {
 
       const archived = archiveMemoryRecord(scope, match.id, now)
       log.info(
-        { scopeId: scope.scopeId, scopeType: scope.scopeType, memoryId: match.id, archived },
+        { scopeId: scope.scopeId, scopeType: scope.scopeType, archived },
         'Memory archive by query requested via tool',
       )
       return archived ? { status: 'forgotten', id: match.id } : { status: 'not_found' }

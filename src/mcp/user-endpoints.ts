@@ -6,10 +6,51 @@
 import type { ToolSet } from 'ai'
 import pLimit from 'p-limit'
 
+import { classifyProviderError, createProviderRequestClock } from '../analytics/provider-observer.js'
+import { type ProviderRequestScope, requireProviderRequestScope } from '../analytics/provider-request-scope.js'
 import { getCachedConfig } from '../cache.js'
 import { mcpPool } from './client-pool.js'
 import { convertMcpToolsToToolSet } from './tool-adapter.js'
 import { type McpEndpointConfig, mcpEndpointConfigSchema } from './types.js'
+
+/** Emits the controlled listTools observation; never throws, never carries server URLs or tool names. */
+const observeListTools = (
+  scope: ProviderRequestScope,
+  clock: Readonly<{ elapsedMs: () => number }>,
+  caught: unknown,
+): void => {
+  if (scope.kind !== 'actor') return
+  const classification =
+    caught === null ? { statusClass: '2xx' as const, retryable: null } : classifyProviderError(caught)
+  try {
+    scope.observeProviderRequest(scope.requestContext, {
+      provider: 'mcp',
+      operation: 'read',
+      durationMs: clock.elapsedMs(),
+      outcome: caught === null ? 'success' : 'failure',
+      statusClass: classification.statusClass,
+      retryable: classification.retryable,
+    })
+  } catch {
+    // Observation must never change MCP behavior.
+  }
+}
+
+const listToolsObserved = async (
+  scope: ProviderRequestScope,
+  client: McpClientHandle,
+): ReturnType<McpClientHandle['listTools']> => {
+  const clock = createProviderRequestClock()
+  let caught: unknown = null
+  try {
+    return await client.listTools()
+  } catch (error) {
+    caught = error
+    throw error
+  } finally {
+    observeListTools(scope, clock, caught)
+  }
+}
 
 export type McpClientHandle = {
   listTools: () => Promise<{
@@ -63,6 +104,7 @@ export function parseMcpEndpoints(raw: string | null): McpEndpointConfig[] {
 }
 
 export async function buildMcpToolSet(contextId: string, deps?: UserEndpointDeps): Promise<ToolSet> {
+  const scope = requireProviderRequestScope()
   const cfg = deps?.getCachedConfig ?? getCachedConfig
   const getOrCreate = deps?.getOrCreate ?? poolGetOrCreate
 
@@ -80,7 +122,7 @@ export async function buildMcpToolSet(contextId: string, deps?: UserEndpointDeps
       limit(async () => {
         try {
           const { client } = await getOrCreate(endpoint)
-          const { tools } = await client.listTools()
+          const { tools } = await listToolsObserved(scope, client)
           return { serverId: endpoint.id, tools, client, toolFilter: endpoint.toolFilter }
         } catch {
           return null

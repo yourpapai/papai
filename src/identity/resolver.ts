@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { runWithProviderRequestScope, type ProviderRequestScope } from '../analytics/provider-request-scope.js'
 import { getDrizzleDb as defaultGetDrizzleDb } from '../db/drizzle.js'
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
@@ -200,11 +201,13 @@ export async function attemptAutoLink(
   contextId: string,
   chatUsername: string,
   provider: TaskProvider,
+  scope: ProviderRequestScope,
   deps: ResolverDeps = defaultDeps,
 ): Promise<IdentityResolutionResult> {
   log.debug({ contextId, chatUsername, providerName: provider.name }, 'attemptAutoLink called')
 
-  if (provider.identityResolver === undefined) {
+  const identityResolver = provider.identityResolver
+  if (identityResolver === undefined) {
     log.warn({ providerName: provider.name }, 'Provider has no identity resolver')
     return {
       type: 'not_found',
@@ -213,14 +216,10 @@ export async function attemptAutoLink(
   }
 
   try {
-    const result = await tryStoreExactMatch(
-      contextId,
-      chatUsername,
-      provider.name,
-      provider.identityResolver,
-      (params): void => {
+    const result = await runWithProviderRequestScope(scope, () =>
+      tryStoreExactMatch(contextId, chatUsername, provider.name, identityResolver, (params): void => {
         deps.setIdentityMapping(params, deps)
-      },
+      }),
     )
     if (result !== null) {
       return result
@@ -243,12 +242,13 @@ export const maybeAutoLinkIdentity = async (
   chatUserId: string,
   username: string | null,
   provider: TaskProvider,
+  scope: ProviderRequestScope,
 ): Promise<void> => {
   if (username === null || provider.identityResolver === undefined) return
   const existingMapping = defaultGetIdentityMapping(chatUserId, provider.name)
   if (existingMapping !== null) return
   log.debug({ chatUserId, username }, 'Attempting auto-link for first group interaction')
-  const autoLinkResult = await attemptAutoLink(chatUserId, username, provider)
+  const autoLinkResult = await attemptAutoLink(chatUserId, username, provider, scope)
   if (autoLinkResult.type === 'found') {
     log.info({ chatUserId, login: autoLinkResult.identity.login }, 'Auto-linked user on first interaction')
   } else {

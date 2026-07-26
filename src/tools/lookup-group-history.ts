@@ -14,6 +14,7 @@ import { hoistSystemMessages } from '../llm-message-utils.js'
 import { buildChatModel } from '../llm-model-builder.js'
 import { resolveLlmConfig } from '../llm-providers/resolver.js'
 import { logger } from '../logger.js'
+import { toolErrorClass } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tools:lookup-group-history' })
 
@@ -54,13 +55,7 @@ const defaultDeps: LookupGroupHistoryDeps = {
 
     if (!resolved.ok) {
       log.warn(
-        {
-          configContextId,
-          source: resolved.source,
-          type: resolved.type,
-          missing: resolved.type === 'missing' ? resolved.missing : undefined,
-          error: resolved.type === 'error' ? resolved.error : undefined,
-        },
+        { configContextId, source: resolved.source, type: resolved.type },
         'LLM config not available for lookup_group_history',
       )
       return null
@@ -75,12 +70,11 @@ const defaultDeps: LookupGroupHistoryDeps = {
  * Uses small_model to extract relevant information from main chat history.
  */
 export async function executeLookupGroupHistory(
-  userId: string,
   groupId: string,
   queries: string[],
   deps: LookupGroupHistoryDeps = defaultDeps,
 ): Promise<string> {
-  log.debug({ userId, groupId, queries }, 'Executing lookup_group_history')
+  log.debug('Executing lookup_group_history')
 
   const mainHistory = deps.getCachedHistory(groupId)
   if (mainHistory.length === 0) {
@@ -90,7 +84,7 @@ export async function executeLookupGroupHistory(
   const configContextId = getMainContextIdFromThreadContextId(groupId)
   const smallModel = deps.getSmallModel(configContextId)
   if (smallModel === null) {
-    log.warn({ userId }, 'No LLM config available for lookup_group_history')
+    log.warn('No LLM config available for lookup_group_history')
     return 'Unable to search: LLM not configured.'
   }
 
@@ -103,13 +97,10 @@ export async function executeLookupGroupHistory(
       ],
     })
 
-    log.info({ userId, groupId, resultLength: result.text.length }, 'lookup_group_history completed')
+    log.info({ resultLength: result.text.length }, 'lookup_group_history completed')
     return result.text
   } catch (error) {
-    log.error(
-      { userId, groupId, error: error instanceof Error ? error.message : String(error) },
-      'lookup_group_history failed',
-    )
+    log.error({ errorClass: toolErrorClass(error) }, 'lookup_group_history failed')
     return 'Error searching main chat history.'
   }
 }
@@ -133,7 +124,7 @@ export function makeLookupGroupHistoryTool(userId?: string, contextId?: string):
         return Promise.resolve('Unable to search: missing user or context information.')
       }
       const groupId = getMainContextIdFromThreadContextId(contextId)
-      return executeLookupGroupHistory(userId, groupId, queries)
+      return executeLookupGroupHistory(groupId, queries)
     },
   })
 }

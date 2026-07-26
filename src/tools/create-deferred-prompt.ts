@@ -7,6 +7,7 @@ import { tool } from 'ai'
 import type { Tool } from 'ai'
 import { z } from 'zod'
 
+import { observeActiveFeatureUsed } from '../analytics/feature-observer.js'
 import type { ContextType } from '../chat/types.js'
 import { executeCreate, type CreateInput } from '../deferred-prompts/tool-handlers.js'
 import {
@@ -17,6 +18,7 @@ import {
   scheduleSchema,
 } from '../deferred-prompts/types.js'
 import { logger } from '../logger.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:create-deferred-prompt' })
 
@@ -77,15 +79,12 @@ export function makeCreateDeferredPromptTool(
         if (!allowTaskConditions && input.condition !== undefined) {
           return { error: 'Task-dependent deferred alerts require a task provider.' }
         }
-        return executeCreate(userId, input, { userId: actorUserId, storageContextId, contextType, username })
+        const result = executeCreate(userId, input, { userId: actorUserId, storageContextId, contextType, username })
+        observeActiveFeatureUsed({ feature: 'deferred', operation: 'create', outcome: 'success' })
+        return result
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            tool: 'create_deferred_prompt',
-          },
-          'Tool execution failed',
-        )
+        observeActiveFeatureUsed({ feature: 'deferred', operation: 'create', outcome: 'failure' })
+        log.error(toolFailureMeta('create_deferred_prompt', error), 'Tool execution failed')
         throw error
       }
     },

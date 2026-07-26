@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:add-comment-reaction' })
 
@@ -23,19 +24,10 @@ export function makeAddCommentReactionTool(provider: TaskProvider): Tool {
     execute: async ({ taskId, commentId, reaction }) => {
       try {
         const result = await provider.addCommentReaction!(taskId, commentId, reaction)
-        log.info({ taskId, commentId, reaction }, 'Comment reaction added via tool')
+        log.info('Comment reaction added via tool')
         return result
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            commentId,
-            reaction,
-            tool: 'add_comment_reaction',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('add_comment_reaction', error), 'Tool execution failed')
         throw error
       }
     },

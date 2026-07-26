@@ -23,9 +23,9 @@ export function makeListMemosTool(userId: string): Tool {
         .describe('Filter by status: active (default) or archived'),
     }),
     execute: ({ limit, status }) => {
-      log.debug({ userId, limit, status }, 'list_memos called')
+      log.debug({ limit, status }, 'list_memos called')
       const results = listMemos(userId, limit, status)
-      log.info({ userId, count: results.length, status }, 'Memos listed via tool')
+      log.info({ count: results.length, status }, 'Memos listed via tool')
       return { memos: results }
     },
   })

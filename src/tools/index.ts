@@ -15,6 +15,7 @@ import { getPluginsForContext } from '../plugins/registry.js'
 import type { TaskProvider } from '../providers/types.js'
 import { maybeSeedAdminToolDefaults } from './admin-tool-defaults.js'
 import { BUILTIN_TOOL_NAMES } from './builtin-names.js'
+import { emitResolvedSurfaceOpportunities } from './feature-opportunities.js'
 import { extendSchemaForAsk, gatedExecute, type AskPermissionFn } from './permission-gate.js'
 import { getToolMetadata } from './tool-metadata.js'
 import { getToolPrefs, resolveToolPermission } from './tool-preferences.js'
@@ -22,6 +23,8 @@ import { buildProviderlessTools, buildTools } from './tools-builder.js'
 import type { MakeToolsOptions, ToolMode } from './types.js'
 
 export type { MakeToolsOptions, ToolMode }
+
+export { observeFeatureOpportunities } from './feature-opportunities.js'
 
 /**
  * Static snapshot of builtin tool names the behavior-audit closure verifier
@@ -216,6 +219,8 @@ export async function buildToolDescriptors(provider: TaskProvider, options: Make
     Object.assign(mcpTools, result.extraMcpTools)
   }
 
+  emitResolvedSurfaceOpportunities(mode, contextType, sharedContextId, chatUserId, true, mcpTools)
+
   return { ...tools, ...mcpTools, ...pluginTools }
 }
 
@@ -255,6 +260,8 @@ export async function buildProviderlessToolDescriptors(options: MakeToolsOptions
     pluginTools = result.pluginTools
     Object.assign(mcpTools, result.extraMcpTools)
   }
+
+  emitResolvedSurfaceOpportunities(mode, contextType, sharedContextId, chatUserId, false, mcpTools)
 
   return { ...tools, ...mcpTools, ...pluginTools }
 }

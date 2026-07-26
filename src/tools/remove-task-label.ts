@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { logger } from '../logger.js'
 import type { TaskLabel, TaskProvider } from '../providers/types.js'
 import { listTaskLabels, listVisibleWorkspaceLabels, usesSeparateLabelReadApi } from './kaneo-label-helpers.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:remove-task-label' })
 
@@ -161,16 +162,7 @@ export function makeRemoveTaskLabelTool(provider: Readonly<TaskProvider>): Tool 
         if (typeof resolved === 'object' && 'status' in resolved) return resolved
         return await provider.removeTaskLabel!(taskId, resolved)
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            labelId,
-            labelName,
-            tool: 'remove_task_label',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('remove_task_label', error), 'Tool execution failed')
         throw error
       }
     },

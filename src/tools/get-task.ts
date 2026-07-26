@@ -11,6 +11,7 @@ import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.j
 import { getConfig } from '../config.js'
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:get-task' })
 
@@ -22,7 +23,7 @@ export function makeGetTaskTool(provider: Readonly<TaskProvider>, userId?: strin
     execute: async ({ taskId }) => {
       try {
         const task = await provider.getTask(taskId)
-        log.info({ taskId }, 'Task fetched via tool')
+        log.info('Task fetched via tool')
         // Timezone is stored under the (thread-stripped) config-context id; storageContextId may
         // be thread-scoped in a group thread, so strip it before the lookup (DM/non-thread: no-op).
         // Falls back to userId, then UTC.
@@ -33,14 +34,7 @@ export function makeGetTaskTool(provider: Readonly<TaskProvider>, userId?: strin
             : (getConfig(getConfigContextIdFromStorageContextId(configKey), 'timezone') ?? 'UTC')
         return { ...task, dueDate: provider.formatDueDateOutput(task.dueDate, timezone) }
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            tool: 'get_task',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('get_task', error), 'Tool execution failed')
         throw error
       }
     },

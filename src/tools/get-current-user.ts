@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:get-current-user' })
 
@@ -19,16 +20,10 @@ export function makeGetCurrentUserTool(provider: Readonly<TaskProvider>): Tool {
     execute: async () => {
       try {
         const user = await provider.getCurrentUser!()
-        log.info({ userId: user.id, login: user.login }, 'Current user fetched via tool')
+        log.info('Current user fetched via tool')
         return user
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            tool: 'get_current_user',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('get_current_user', error), 'Tool execution failed')
         throw error
       }
     },

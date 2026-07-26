@@ -7,6 +7,7 @@ import { generateText, isStepCount, type ModelMessage } from 'ai'
 
 import { getAiOutputSettings } from './ai-output-settings.js'
 import { createAiProgressReporter, type AiProgressReporter } from './ai-progress-reporter.js'
+import { NO_ANALYTICS_SCOPE } from './analytics/provider-request-scope.js'
 import { resolveNormalTurnProviderScope } from './analytics/provider-scope-factory.js'
 import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
 import type { ReplyFn } from './chat/types.js'
@@ -44,13 +45,14 @@ export const defaultDeps: LlmOrchestratorDeps = {
   stepCountIs: (...args) => isStepCount(...args),
   buildModel: (config) => getOpenAICompatibleProvider(config.main.apiKey, config.main.baseUrl)(config.main.model),
   resolve: (contextId: string) => defaultTaskProviderResolver.resolve(contextId),
-  maybeAutoProvision: (reply, contextId, chatUserId, username) =>
-    maybeAutoProvisionProvider(reply, contextId, chatUserId, username),
+  maybeAutoProvision: (reply, contextId, chatUserId, username, scope) =>
+    maybeAutoProvisionProvider(reply, contextId, chatUserId, username, scope),
 }
 
 /** Fire-and-forget workspace member provisioning backstop for group contexts. */
 const maybeEnsureGroupMembership = (configId: string, chatUserId: string, username: string | null): void => {
-  ensureWorkspaceMember(configId, chatUserId, undefined, { username }).catch((err: unknown) => {
+  // Detached backstop: no actor frame may leak into work that outlives the turn.
+  ensureWorkspaceMember(configId, chatUserId, NO_ANALYTICS_SCOPE, undefined, { username }).catch((err: unknown) => {
     log.warn(
       { chatUserId, error: err instanceof Error ? err.message : String(err) },
       'Backstop ensureWorkspaceMember failed',
@@ -86,10 +88,11 @@ type CallLlmResult = {
 }
 
 const prepareTurnProvider = async (args: CallLlmArgs): Promise<TaskProvider | null> => {
-  const { reply, contextId, chatUserId, username, contextType, actorRole, deps, configId } = args
+  const { reply, contextId, chatUserId, username, contextType, actorRole, deps, configId, turnId } = args
+  const turnScope = resolveNormalTurnProviderScope(turnId)
   if (contextType === 'dm') {
     try {
-      await deps.maybeAutoProvision(reply, configId, chatUserId, username)
+      await deps.maybeAutoProvision(reply, configId, chatUserId, username, turnScope)
     } catch {
       // Auto-provision is opportunistic; missing or broken hooks should fall through to normal setup guidance.
     }
@@ -99,7 +102,7 @@ const prepareTurnProvider = async (args: CallLlmArgs): Promise<TaskProvider | nu
     log.warn({ contextId, configId }, 'Task provider unavailable for LLM turn; using providerless fallback')
   } else {
     await ensureRequiredConfig(reply, contextId, configId)
-    await maybeAutoLinkIdentity(chatUserId, username, provider)
+    await maybeAutoLinkIdentity(chatUserId, username, provider, turnScope)
     if (shouldBackstopGroupMembership(contextType, actorRole))
       maybeEnsureGroupMembership(configId, chatUserId, username)
   }

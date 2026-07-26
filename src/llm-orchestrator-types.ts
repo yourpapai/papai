@@ -28,6 +28,7 @@ export type LlmOrchestratorDeps = {
     contextId: string,
     chatUserId: string,
     username: string | null,
+    scope: ProviderRequestScope,
   ) => Promise<boolean>
 } & Partial<Record<'stagedDownloadFn', StagedFileDownloadFn>> &
   Partial<Record<'chatParticipantResolver', ChatParticipantResolver>>

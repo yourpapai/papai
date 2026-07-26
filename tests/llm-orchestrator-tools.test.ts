@@ -21,6 +21,7 @@ import { NO_ANALYTICS_SCOPE } from '../src/analytics/provider-request-scope.js'
 import {
   createActorProviderRequestScope,
   requireProviderRequestScope,
+  runWithoutProviderRequestScope,
   type ProviderRequestScope,
 } from '../src/analytics/provider-request-scope.js'
 import type { AnalyticsSourceContext } from '../src/analytics/source-facts.js'
@@ -306,7 +307,9 @@ describe('llm-orchestrator-tools / two-actor cached descriptor attribution', () 
 
     expect(buildToolDescriptorsSpy).toHaveBeenCalledTimes(1)
     // requireProviderRequestScope outside any lease fails closed — no stale A frame.
-    expect(() => requireProviderRequestScope()).toThrow()
+    runWithoutProviderRequestScope(() => {
+      expect(() => requireProviderRequestScope()).toThrow()
+    })
   })
 })
 

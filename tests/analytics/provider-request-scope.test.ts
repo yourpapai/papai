@@ -12,6 +12,7 @@ import {
   NO_ANALYTICS_SCOPE,
   ProviderScopeMissingError,
   requireProviderRequestScope,
+  runWithoutProviderRequestScope,
   runWithProviderRequestScope,
   type ActorProviderRequestScope,
   type ProviderRequestScope,
@@ -165,7 +166,10 @@ describe('runWithProviderRequestScope', () => {
     expect(error).toBeInstanceOf(Error)
     expect(asError(error).message).toBe('callback failed')
     expect(detached).toBeDefined()
-    expect(() => detached!()).toThrow(ProviderScopeMissingError)
+    // Outside the frame (and outside any ambient test scope) the lease is closed.
+    runWithoutProviderRequestScope(() => {
+      expect(() => detached!()).toThrow(ProviderScopeMissingError)
+    })
   })
 
   test('supports nested awaited work with independent scopes', async () => {
@@ -244,15 +248,19 @@ describe('runWithProviderRequestScope', () => {
 
 describe('requireProviderRequestScope', () => {
   test('fails closed when no scope is active', () => {
-    try {
-      requireProviderRequestScope()
-      throw new Error('should have thrown')
-    } catch (error) {
-      expectScopeMissing(error)
-    }
+    runWithoutProviderRequestScope(() => {
+      try {
+        requireProviderRequestScope()
+        throw new Error('should have thrown')
+      } catch (error) {
+        expectScopeMissing(error)
+      }
+    })
   })
 
   test('never silently degrades a missing scope to NO_ANALYTICS_SCOPE', () => {
-    expect(() => requireProviderRequestScope()).toThrow(ProviderScopeMissingError)
+    runWithoutProviderRequestScope(() => {
+      expect(() => requireProviderRequestScope()).toThrow(ProviderScopeMissingError)
+    })
   })
 })

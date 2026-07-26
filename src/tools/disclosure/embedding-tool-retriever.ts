@@ -8,6 +8,7 @@ import { cosineSimilarity } from 'ai'
 import { type EmbeddingCallContext, tryGetEmbedding } from '../../embeddings.js'
 import { resolveLlmConfig } from '../../llm-providers/resolver.js'
 import { logger } from '../../logger.js'
+import { toolErrorClass } from '../tool-logging.js'
 import type { ToolBrief } from './tool-brief.js'
 import { LexicalToolRetriever, type RankedBrief, type ToolRetriever } from './tool-retriever.js'
 
@@ -29,10 +30,7 @@ export class EmbeddingToolRetriever implements ToolRetriever {
     try {
       return await this.deps.embed(text)
     } catch (error) {
-      log.warn(
-        { error: error instanceof Error ? error.message : String(error) },
-        'Embedding call threw; treating as unavailable',
-      )
+      log.warn({ errorClass: toolErrorClass(error) }, 'Embedding call threw; treating as unavailable')
       return null
     }
   }

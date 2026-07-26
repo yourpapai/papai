@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { observeActiveFeatureUsed } from '../analytics/feature-observer.js'
 import type { ReplyFn, StatusHandle } from '../chat/types.js'
 import { logger } from '../logger.js'
 import { createStatusEngine, THINKING } from './status-engine.js'
@@ -164,17 +165,20 @@ const startStatus = async (
     return
   }
   if (reply.createStatus === undefined) {
+    observeActiveFeatureUsed({ feature: 'live_status', operation: 'create', outcome: 'blocked' })
     recorder.emitOpportunity(false, 'platform_unsupported')
     return
   }
   const created = await reply.createStatus(THINKING).catch(() => undefined)
   if (created === undefined) {
+    observeActiveFeatureUsed({ feature: 'live_status', operation: 'create', outcome: 'failure' })
     recorder.recordLifecycle('create', 'failed')
     recorder.emitOpportunity(false, 'no_status_surface')
     return
   }
   state.handle = created
   state.createdAtMs = clock()
+  observeActiveFeatureUsed({ feature: 'live_status', operation: 'create', outcome: 'success' })
   recorder.recordLifecycle('create', 'success')
   engine.reset()
 }

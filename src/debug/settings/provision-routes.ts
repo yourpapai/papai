@@ -5,6 +5,7 @@
 
 import { z } from 'zod'
 
+import { resolveSettingsProviderRequestScope } from '../../analytics/provider-scope-factory.js'
 import { getContextSettings } from '../../instances/context-store.js'
 import { getTaskInstance } from '../../instances/task-store.js'
 import { logger } from '../../logger.js'
@@ -44,6 +45,32 @@ function outcomeToResponse(scope: ContextScope, outcome: TaskProviderProvisionOu
   return settingsJson(422, { status: 'failed', error: outcome.error })
 }
 
+type ProvisionHook = NonNullable<ReturnType<typeof getTaskProviderProvision>>
+
+function resolveProvisionHook(
+  contextId: string,
+): { ok: true; hook: ProvisionHook } | { ok: false; response: Response } {
+  const settings = getContextSettings(contextId)
+  if (settings === null) {
+    return { ok: false, response: settingsJson(422, { status: 'failed', error: 'Context has no settings' }) }
+  }
+  const taskInstance = getTaskInstance(settings.taskInstanceId)
+  if (taskInstance === null || taskInstance.status !== 'active') {
+    return { ok: false, response: settingsJson(422, { status: 'failed', error: 'No active task instance assigned' }) }
+  }
+  const provision = getTaskProviderProvision(taskInstance.type)
+  if (provision === undefined) {
+    return {
+      ok: false,
+      response: settingsJson(422, {
+        status: 'unsupported',
+        error: `Provider type '${taskInstance.type}' has no provision hook`,
+      }),
+    }
+  }
+  return { ok: true, hook: provision }
+}
+
 export async function handleProvisionKaneo(req: Request): Promise<Response> {
   if (req.method !== 'POST') return settingsJson(405, { error: 'method not allowed' })
   const auth = authenticate(req)
@@ -60,30 +87,25 @@ export async function handleProvisionKaneo(req: Request): Promise<Response> {
   const scope = resolveContextScope(principal, 'write', body.data.contextId)
   if (!scope.ok) return scope.response
 
-  const settings = getContextSettings(scope.scope.contextId)
-  if (settings === null) {
-    return settingsJson(422, { status: 'failed', error: 'Context has no settings' })
-  }
-  const taskInstance = getTaskInstance(settings.taskInstanceId)
-  if (taskInstance === null || taskInstance.status !== 'active') {
-    return settingsJson(422, { status: 'failed', error: 'No active task instance assigned' })
-  }
-  const provision = getTaskProviderProvision(taskInstance.type)
-  if (provision === undefined) {
-    return settingsJson(422, {
-      status: 'unsupported',
-      error: `Provider type '${taskInstance.type}' has no provision hook`,
-    })
-  }
+  const hook = resolveProvisionHook(scope.scope.contextId)
+  if (!hook.ok) return hook.response
 
   const username = resolveProvisionUsername(scope.scope, principal.platformInstanceId, principal.platformUserId)
   const publicUrl = process.env['KANEO_CLIENT_URL']
   const internalUrl = process.env['KANEO_INTERNAL_URL']
-  const outcome = await provision({
+  const providerRequestScope = resolveSettingsProviderRequestScope({
+    platformInstanceId: principal.platformInstanceId,
+    platformUserId: principal.platformUserId,
+    configContextId: scope.scope.contextId,
+    contextType: scope.scope.kind === 'group' ? 'group' : 'dm',
+    actorRole: principal.isBotAdmin || principal.isSuperAdmin ? 'admin' : 'member',
+  })
+  const outcome = await hook.hook({
     contextId: scope.scope.contextId,
     username,
     publicUrl,
     internalUrl,
+    scope: providerRequestScope,
   })
   return outcomeToResponse(scope.scope, outcome)
 }

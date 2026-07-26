@@ -8,6 +8,7 @@ export class KaneoApiError extends Error {
     message: string,
     public readonly statusCode: number,
     public readonly responseBody: unknown,
+    public readonly resourceClass?: string,
   ) {
     super(message)
     this.name = 'KaneoApiError'

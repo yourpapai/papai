@@ -15,6 +15,7 @@ import {
   scheduleSchema,
 } from '../deferred-prompts/types.js'
 import { logger } from '../logger.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:update-deferred-prompt' })
 
@@ -34,13 +35,7 @@ export function makeUpdateDeferredPromptTool(userId: string): Tool {
       try {
         return executeUpdate(userId, input)
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            tool: 'update_deferred_prompt',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('update_deferred_prompt', error), 'Tool execution failed')
         throw error
       }
     },

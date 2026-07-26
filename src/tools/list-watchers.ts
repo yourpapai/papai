@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:list-watchers' })
 
@@ -21,17 +22,10 @@ export function makeListWatchersTool(provider: TaskProvider): Tool {
     execute: async ({ taskId }) => {
       try {
         const users = await provider.listWatchers!(taskId)
-        log.info({ taskId, count: users.length }, 'Watchers listed via tool')
+        log.info({ count: users.length }, 'Watchers listed via tool')
         return users
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            tool: 'list_watchers',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('list_watchers', error), 'Tool execution failed')
         throw error
       }
     },

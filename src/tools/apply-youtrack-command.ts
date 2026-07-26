@@ -11,6 +11,7 @@ import { logger } from '../logger.js'
 import { providerError, ProviderClassifiedError } from '../providers/errors.js'
 import type { TaskCommandResult, TaskProvider } from '../providers/types.js'
 import { checkConfidence, confidenceField } from './confirmation-gate.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:apply-youtrack-command' })
 
@@ -54,8 +55,8 @@ const TASK_IDS_SCHEMA = z
     'Provide issue IDs as an array, for example ["TEST-1"]. Multi-issue requests are rejected for safety, so this tool is intended for single-issue use.',
   )
 
-const rejectBulkCommand = (query: string, taskCount: number): never => {
-  log.warn({ query, taskCount }, 'apply_youtrack_command blocked — bulk commands disabled')
+const rejectBulkCommand = (taskCount: number): never => {
+  log.warn({ taskCount }, 'apply_youtrack_command blocked — bulk commands disabled')
   throw new ProviderClassifiedError(
     BULK_COMMAND_DISABLED_REASON,
     providerError.validationFailed('taskIds', BULK_COMMAND_DISABLED_REASON),
@@ -79,16 +80,13 @@ async function executeApplyYouTrackCommand(
   }
 
   if (taskIds.length > 1) {
-    rejectBulkCommand(query, taskIds.length)
+    rejectBulkCommand(taskIds.length)
   }
 
   if (requiresConfirmation(query, comment, silent)) {
     const gate = checkConfidence(confidence ?? 0, describeAction(query, taskIds.length, comment, silent))
     if (gate !== null) {
-      log.warn(
-        { query, taskCount: taskIds.length, confidence },
-        'apply_youtrack_command blocked — confirmation required',
-      )
+      log.warn({ taskCount: taskIds.length, confidence }, 'apply_youtrack_command blocked — confirmation required')
       return gate
     }
   }
@@ -96,17 +94,10 @@ async function executeApplyYouTrackCommand(
   try {
     // Call through the provider so class-method implementations keep their `this` binding.
     const result: TaskCommandResult = await provider.applyCommand({ query, taskIds, comment, silent })
-    log.info({ query, taskCount: taskIds.length }, 'YouTrack command applied via tool')
+    log.info({ taskCount: taskIds.length }, 'YouTrack command applied via tool')
     return result
   } catch (error) {
-    log.error(
-      {
-        error: error instanceof Error ? error.message : String(error),
-        query,
-        tool: 'apply_youtrack_command',
-      },
-      'Tool execution failed',
-    )
+    log.error(toolFailureMeta('apply_youtrack_command', error), 'Tool execution failed')
     throw error
   }
 }

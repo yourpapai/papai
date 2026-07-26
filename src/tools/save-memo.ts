@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { getEmbeddingForContext } from '../embeddings.js'
 import { logger } from '../logger.js'
 import { saveMemo, updateMemoEmbedding } from '../memos.js'
+import { toolErrorClass } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:memo' })
 
@@ -26,9 +27,9 @@ export function makeSaveMemoTool(userId: string): Tool {
       summary: z.string().optional().describe('Optional one-line summary of the note'),
     }),
     execute: ({ content, tags, summary }) => {
-      log.debug({ userId, contentLength: content.length }, 'save_memo called')
+      log.debug({ contentLength: content.length }, 'save_memo called')
       const memo = saveMemo(userId, content, tags ?? [], summary)
-      log.info({ userId, memoId: memo.id, tags: memo.tags }, 'Memo saved via tool')
+      log.info({ tagCount: memo.tags.length }, 'Memo saved via tool')
 
       void getEmbeddingForContext(content, userId, {
         storageContextId: userId,
@@ -41,10 +42,7 @@ export function makeSaveMemoTool(userId: string): Tool {
           }
         })
         .catch((error: unknown) => {
-          log.error(
-            { memoId: memo.id, error: error instanceof Error ? error.message : String(error) },
-            'Embedding failed',
-          )
+          log.error({ errorClass: toolErrorClass(error) }, 'Embedding failed')
         })
 
       return { id: memo.id, content: memo.content, tags: memo.tags, createdAt: memo.createdAt }

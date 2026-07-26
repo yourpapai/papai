@@ -59,6 +59,26 @@ export function issueAuthCode(principal: AuthCodePrincipal, nowMs: number = Date
 }
 
 /**
+ * Non-consuming lookup of the principal bound to a code, regardless of
+ * expiry/use. Used to attribute failed exchanges (expired vs unknown) — never
+ * to authenticate.
+ */
+export function peekAuthCodePrincipal(code: string): AuthCodePrincipal | null {
+  const db = getDrizzleDb()
+  const codeHash = hashToken(code)
+  const row = db
+    .select({
+      platformInstanceId: settingsAuthCodes.platformInstanceId,
+      platformUserId: settingsAuthCodes.platformUserId,
+    })
+    .from(settingsAuthCodes)
+    .where(eq(settingsAuthCodes.codeHash, codeHash))
+    .get()
+  if (row === undefined) return null
+  return { platformInstanceId: row.platformInstanceId, platformUserId: row.platformUserId }
+}
+
+/**
  * Atomically consume a code: marks it used only if it is unused and unexpired.
  * Returns the bound principal, or null on any failure (unknown/expired/used).
  */

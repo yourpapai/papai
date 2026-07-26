@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:get-task-history' })
 
@@ -33,17 +34,10 @@ export function makeGetTaskHistoryTool(provider: Readonly<TaskProvider>): Tool {
     execute: async ({ taskId, ...params }) => {
       try {
         const history = await provider.getTaskHistory!(taskId, params)
-        log.info({ taskId, count: history.length }, 'Task history fetched via tool')
+        log.info({ count: history.length }, 'Task history fetched via tool')
         return history
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            tool: 'get_task_history',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('get_task_history', error), 'Tool execution failed')
         throw error
       }
     },

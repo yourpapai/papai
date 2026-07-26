@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:list-project-team' })
 
@@ -21,17 +22,10 @@ export function makeListProjectTeamTool(provider: TaskProvider): Tool {
     execute: async ({ projectId }) => {
       try {
         const users = await provider.listProjectTeam!(projectId)
-        log.info({ projectId, count: users.length }, 'Project team listed via tool')
+        log.info({ count: users.length }, 'Project team listed via tool')
         return users
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            projectId,
-            tool: 'list_project_team',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('list_project_team', error), 'Tool execution failed')
         throw error
       }
     },

@@ -3,6 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import {
+  observeActiveFeatureUsed,
+  activeActorRequestContext,
+  getFeatureObserver,
+} from '../analytics/feature-observer.js'
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import { isAppError, systemError, type AppError, webFetchError } from '../errors.js'
 import { logger } from '../logger.js'
@@ -19,6 +24,13 @@ const log = logger.child({ scope: 'web:fetch-extract' })
 const HTML_CONTENT_TYPES = new Set(['text/html', 'application/xhtml+xml'])
 
 export const DEFAULT_TTL_MS = 15 * 60 * 1000
+
+const observeRateLimitBlocked = (limit: 'web_fetch'): void => {
+  const requestContext = activeActorRequestContext()
+  const observer = getFeatureObserver()
+  if (requestContext === null || observer === null) return
+  observer.rateLimitBlocked(requestContext, limit)
+}
 
 type FetchAndExtractInput = {
   storageContextId: string
@@ -105,12 +117,10 @@ function normalizeUrl(rawUrl: string, deps: FetchAndExtractDeps): string {
   }
 }
 
-function logFetchStart(input: FetchAndExtractInput, actorId: string): void {
+function logFetchStart(input: FetchAndExtractInput): void {
   log.debug(
     {
       storageContextId: input.storageContextId,
-      actorId,
-      url: input.url,
       hasGoal: input.goal !== undefined,
     },
     'fetchAndExtract',
@@ -120,7 +130,9 @@ function logFetchStart(input: FetchAndExtractInput, actorId: string): void {
 function enforceQuota(actorId: string, requestStartedAt: number, deps: FetchAndExtractDeps): void {
   const quota = deps.consumeWebFetchQuota(actorId, requestStartedAt)
   if (!quota.allowed) {
-    log.warn({ actorId, retryAfterSec: quota.retryAfterSec }, 'Web fetch quota exceeded')
+    observeRateLimitBlocked('web_fetch')
+    observeActiveFeatureUsed({ feature: 'web_fetch', operation: 'read', outcome: 'blocked' })
+    log.warn({ retryAfterSec: quota.retryAfterSec }, 'Web fetch quota exceeded')
     throwClassifiedError(webFetchError.rateLimited(), 'Web fetch quota exceeded', quota.retryAfterSec)
   }
 }
@@ -224,7 +236,7 @@ export async function fetchAndExtract(
   const actorId = input.actorUserId ?? input.storageContextId
   const requestStartedAt = deps.now()
 
-  logFetchStart(input, actorId)
+  logFetchStart(input)
   const normalizedUrl = normalizeUrl(input.url, deps)
   enforceQuota(actorId, requestStartedAt, deps)
   const cached = getCachedResult(input, actorId, normalizedUrl, requestStartedAt, deps)
@@ -232,7 +244,12 @@ export async function fetchAndExtract(
     return cached
   }
 
-  const fetched = await deps.safeFetchContent(normalizedUrl, { abortSignal: input.abortSignal })
+  const fetched = await deps
+    .safeFetchContent(normalizedUrl, { abortSignal: input.abortSignal })
+    .catch((error: unknown) => {
+      observeActiveFeatureUsed({ feature: 'web_fetch', operation: 'read', outcome: 'failure' })
+      throw error
+    })
   const fetchedAt = deps.now()
   const processed = await resolveProcessedContent(fetched, deps)
   const distilled = await distillProcessedContent(input, processed, deps)
@@ -240,12 +257,10 @@ export async function fetchAndExtract(
   const result = buildResult(fetched, fetchedAt, processed, distilled)
   deps.putCachedWebFetch(normalizedUrl, result, fetchedAt + DEFAULT_TTL_MS)
 
+  observeActiveFeatureUsed({ feature: 'web_fetch', operation: 'read', outcome: 'success' })
   log.info(
     {
-      actorId,
       storageContextId: input.storageContextId,
-      normalizedUrl,
-      finalUrl: result.url,
       contentType: result.contentType,
       fetchedAt,
     },

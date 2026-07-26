@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:update-sprint' })
 const isoDatetimeSchema = z.iso.datetime({ offset: true })
@@ -36,18 +37,10 @@ export function makeUpdateSprintTool(provider: Readonly<TaskProvider>): Tool {
     execute: async ({ agileId, sprintId, ...params }) => {
       try {
         const sprint = await provider.updateSprint!(agileId, sprintId, params)
-        log.info({ agileId, sprintId: sprint.id }, 'Sprint updated via tool')
+        log.info('Sprint updated via tool')
         return sprint
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            agileId,
-            sprintId,
-            tool: 'update_sprint',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('update_sprint', error), 'Tool execution failed')
         throw error
       }
     },

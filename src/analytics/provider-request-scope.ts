@@ -151,12 +151,68 @@ export const runWithProviderRequestScope = async <T>(
 }
 
 /**
+ * Reads the active scope, or null when no live frame exists. For optional
+ * observation points (feature/milestone emission) that must never break the
+ * host operation — provider I/O boundaries use `requireProviderRequestScope`.
+ */
+export const getProviderRequestScope = (): ProviderRequestScope | null => {
+  try {
+    return requireProviderRequestScope()
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Test-only ambient scope: consulted ONLY when no ALS frame exists at all.
+ * Production never sets this — a missing scope stays fail-closed. Frames with
+ * a closed lease still throw before the ambient fallback is consulted.
+ */
+let ambientScope: ProviderRequestScope | null = null
+let ambientSuppressed = 0
+
+export const setAmbientProviderRequestScopeForTesting = (scope: ProviderRequestScope | null): void => {
+  if (scope !== null) resolveScope(scope)
+  ambientScope = scope
+}
+
+/**
+ * Runs the callback outside any active scope: exits the ALS frame AND
+ * suppresses the test ambient fallback for the callback's full (possibly
+ * async) extent. Used by fail-closed tests to observe the omitted-scope
+ * failure even when a test preload installed an ambient sentinel.
+ */
+export function runWithoutProviderRequestScope<T>(callback: () => Promise<T>): Promise<T>
+export function runWithoutProviderRequestScope<T>(callback: () => T): T
+export function runWithoutProviderRequestScope<T>(callback: () => T | Promise<T>): T | Promise<T> {
+  ambientSuppressed += 1
+  let result: T | Promise<T>
+  try {
+    result = storage.exit(callback)
+  } catch (error) {
+    ambientSuppressed -= 1
+    throw error
+  }
+  if (result instanceof Promise) {
+    return result.finally(() => {
+      ambientSuppressed -= 1
+    })
+  }
+  ambientSuppressed -= 1
+  return result
+}
+
+/**
  * Fail-closed boundary accessor. Raises the controlled `provider_scope_missing`
  * failure when no frame is active, the frame is malformed, or its lease closed.
  */
 export const requireProviderRequestScope = (): ProviderRequestScope => {
   const frame = storage.getStore()
-  if (frame === undefined || frame.lease === null || typeof frame.lease !== 'object') {
+  if (frame === undefined) {
+    if (ambientSuppressed === 0 && ambientScope !== null) return ambientScope
+    throw new ProviderScopeMissingError()
+  }
+  if (frame.lease === null || typeof frame.lease !== 'object') {
     throw new ProviderScopeMissingError()
   }
   if (frame.lease.closed) {

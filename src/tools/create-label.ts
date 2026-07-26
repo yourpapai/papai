@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
 import { listVisibleWorkspaceLabels, usesSeparateLabelReadApi } from './kaneo-label-helpers.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:create-label' })
 
@@ -37,14 +38,7 @@ export function makeCreateLabelTool(provider: TaskProvider): Tool {
 
         return await provider.createLabel!({ name, color })
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            name,
-            tool: 'create_label',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('create_label', error), 'Tool execution failed')
         throw error
       }
     },

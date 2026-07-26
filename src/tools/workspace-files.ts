@@ -45,10 +45,10 @@ export function makeDeleteFileTool(contextId: string, groupContextId?: string): 
       confidence: confidenceField,
     }),
     execute: async ({ fileId, confidence }) => {
-      log.debug({ contextId, fileId, confidence }, 'delete_file called')
+      log.debug({ contextId, confidence }, 'delete_file called')
       const gate = checkConfidence(confidence, `Delete file "${fileId}"`)
       if (gate !== null) {
-        log.warn({ contextId, fileId, confidence }, 'delete_file blocked — confirmation required')
+        log.warn({ contextId, confidence }, 'delete_file blocked — confirmation required')
         return gate
       }
 
@@ -64,7 +64,7 @@ export function makeDeleteFileTool(contextId: string, groupContextId?: string): 
         .get()
 
       if (row === undefined) {
-        log.warn({ contextId, fileId }, 'delete_file — fileId not found in workspace')
+        log.warn({ contextId }, 'delete_file — fileId not found in workspace')
         return {
           status: 'not_found',
           message: `File "${fileId}" is not available in this workspace.`,
@@ -79,7 +79,7 @@ export function makeDeleteFileTool(contextId: string, groupContextId?: string): 
         .where(eq(attachments.attachmentId, fileId))
         .run()
 
-      log.info({ contextId, fileId }, 'File deleted from workspace')
+      log.info({ contextId }, 'File deleted from workspace')
       return { status: 'deleted', fileId }
     },
   })

@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:count-tasks' })
 
@@ -25,13 +26,10 @@ export function makeCountTasksTool(provider: TaskProvider): Tool {
           throw new Error('countTasks not supported by this provider')
         }
         const count = await provider.countTasks({ query, projectId })
-        log.info({ count, query, projectId }, 'Tasks counted')
+        log.info({ count }, 'Tasks counted')
         return { count, query, projectId }
       } catch (error) {
-        log.error(
-          { error: error instanceof Error ? error.message : String(error), tool: 'count_tasks' },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('count_tasks', error), 'Tool execution failed')
         throw error
       }
     },

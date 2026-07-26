@@ -2,7 +2,7 @@
 
 ## Definition Pattern
 
-Tools use the Vercel AI SDK `tool()` factory from `ai`, but the exported tool is not the final execution surface. All tool sets are wrapped by `wrapToolExecution()` in `src/tools/index.ts`, which converts thrown failures into structured tool-failure payloads.
+Tools use the Vercel AI SDK `tool()` factory from `ai`, but the exported tool is not the final execution surface. Descriptors are assembled **scope-free**; a single `finalizeProviderScopedTools()` pass (from `src/tools/wrap-tool-execution.ts`) runs at the per-invocation boundary (orchestrator + proactive paths), after compaction/disclosure. The attached outer wrapper validates the per-call provider request scope from `ToolExecutionOptions.context` (strict `providerRequestScopeContextSchema`, failing closed with `provider_scope_missing` before the tool body runs) and converts thrown failures into structured tool-failure payloads.
 
 A single-tool factory returns `Tool` (not `ToolSet[string]`): under AI SDK v7 the `ToolSet` value type is a union whose `.execute` is not directly callable, so factories declare the single-tool `Tool` type instead.
 
@@ -29,7 +29,8 @@ export function makeExampleTool(provider: Readonly<TaskProvider>): Tool {
 - Public entry point is `makeTools(provider, options)` in `src/tools/index.ts`. It is
   **async** and returns `Promise<ToolSet>` (both overloads) — callers must `await` it —
   because it may connect to external MCP servers.
-- The merge order inside `makeTools()` is: wrapped builtins → MCP tools (user endpoints
+- The merge order inside `makeTools()` is: builtin tools (registered scope-free via
+  `registerProviderBackedTool` in `tools-builder.ts`) → MCP tools (user endpoints
   from `buildMcpToolSet`, plus plugin-declared servers from `buildPluginMcpToolSet`) →
   plugin tools. MCP tool building is wrapped in `try/catch` and never breaks the pipeline;
   see `src/mcp/CLAUDE.md`.
@@ -117,7 +118,7 @@ Those options matter. For example:
 
 ## Execution and Failures
 
-- Tool code may throw; the wrapper converts thrown failures into structured outputs via `buildToolFailureResult()`.
+- Tool code may throw; the finalize-pass wrapper converts thrown failures into structured outputs via `buildToolFailureResult()`.
 - Do not depend on uncaught tool exceptions bubbling directly back into the orchestrator.
 - Log failures before rethrowing inside the tool, and let the wrapper normalize the outward result.
 

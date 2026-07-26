@@ -50,7 +50,7 @@ export function makeSearchMemosTool(userId: string): Tool {
       limit: z.number().int().min(1).max(20).default(DEFAULT_LIMIT).describe('Maximum number of results'),
     }),
     execute: async ({ query, mode, limit }): Promise<SearchResult> => {
-      log.debug({ userId, query, mode, limit }, 'search_memos called')
+      log.debug({ mode, limit }, 'search_memos called')
 
       if (mode === 'keyword') {
         return doKeywordSearch(userId, query, limit, 'keyword')
@@ -66,7 +66,7 @@ export function makeSearchMemosTool(userId: string): Tool {
       }
 
       if (mode === 'semantic') {
-        log.warn({ userId, query }, 'Semantic search unavailable')
+        log.warn('Semantic search unavailable')
         return { results: [], mode: 'semantic' }
       }
 
@@ -77,7 +77,7 @@ export function makeSearchMemosTool(userId: string): Tool {
 
 function doKeywordSearch(userId: string, query: string, limit: number, mode: string): SearchResult {
   const results = keywordSearchMemos(userId, query, limit)
-  log.info({ userId, query, mode, resultCount: results.length }, 'Keyword search completed')
+  log.info({ mode, resultCount: results.length }, 'Keyword search completed')
   return { results, mode }
 }
 
@@ -94,6 +94,6 @@ async function trySemanticMode(
   if (queryVec === null) return { available: false }
 
   const results = trySemanticSearch(userId, queryVec, limit)
-  log.info({ userId, query, mode: 'semantic', resultCount: results.length }, 'Semantic search completed')
+  log.info({ mode: 'semantic', resultCount: results.length }, 'Semantic search completed')
   return { available: true, result: { results, mode: 'semantic' } }
 }

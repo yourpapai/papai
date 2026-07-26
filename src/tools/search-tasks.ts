@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { resolveMeReference } from '../identity/resolver.js'
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:search-tasks' })
 
@@ -33,7 +34,7 @@ export function makeSearchTasksTool(provider: TaskProvider, userId?: string): To
           if (identity.type === 'found') {
             resolvedAssigneeId =
               provider.preferredUserIdentifier === 'login' ? identity.identity.login : identity.identity.userId
-            log.debug({ userId, resolvedAssigneeId }, 'Resolved identity for assignee filter')
+            log.debug('Resolved identity for assignee filter')
           }
         }
 
@@ -44,17 +45,10 @@ export function makeSearchTasksTool(provider: TaskProvider, userId?: string): To
           limit,
           offset,
         })
-        log.info({ query, assigneeId: resolvedAssigneeId, resultCount: tasks.length }, 'Tasks searched via tool')
+        log.info({ resultCount: tasks.length }, 'Tasks searched via tool')
         return tasks
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            query,
-            tool: 'search_tasks',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('search_tasks', error), 'Tool execution failed')
         throw error
       }
     },
