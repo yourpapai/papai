@@ -156,6 +156,18 @@ When coverage improves, raise the floor from a green full run with
 `bun coverage:ratchet --update` and commit the `floor.json` change; the script
 never lowers the floor.
 
+### T0 story-lane line coverage
+
+`bun test:stories:coverage` runs the hermetic story lane with `--coverage`,
+copies the sandbox child's lcov to `reports/stories/coverage/lcov.info`, and
+fails the run if production-code (`src/` + `plugins/`) line/function coverage
+drops below the committed floor in `scripts/story/coverage-floor.json` (starts
+at `0.50/0.50`, unmeasured). This is the refactor-resilient tier's own
+reachability number, separate from the in-process floor in `bunfig.toml` (see
+the Coverage floor section above). Raise it from a green run with
+`bun coverage:ratchet:stories`, then commit the JSON change. CI runs the
+coverage variant in the `stories` job and never writes the floor.
+
 ## Mutation testing
 
 For accurate mutation scores that bypass the runner's static-bucket artifact,
