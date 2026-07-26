@@ -13,11 +13,9 @@ import assert from 'node:assert/strict'
 import { extractFilesFromContext } from '../../../src/chat/telegram/file-helpers.js'
 import { TelegramChatProvider } from '../../../src/chat/telegram/index.js'
 import {
-  cacheTelegramMessage,
   extractContextInfo,
   extractMessageIds,
   logMessageExtraction,
-  type CacheContext,
   type MinimalContext,
 } from '../../../src/chat/telegram/message-extraction.js'
 import type { AuthorizationResult } from '../../../src/chat/types.js'
@@ -843,20 +841,6 @@ describe('TelegramChatProvider', () => {
     test('logMessageExtraction logs debug info', () => {
       expect(() => {
         logMessageExtraction(123, 'ctx123', 'msg456', 'reply789', 'original text', 'quoted text')
-      }).not.toThrow()
-    })
-
-    test('cacheTelegramMessage caches message when messageId is defined', () => {
-      const ctx: CacheContext = { from: { username: 'testuser' } }
-      expect(() => {
-        cacheTelegramMessage(ctx, 123, 'ctx456', 'msg789', 'hello world', 'reply321')
-      }).not.toThrow()
-    })
-
-    test('cacheTelegramMessage does nothing when messageId is undefined', () => {
-      const ctx: CacheContext = { from: { username: 'testuser' } }
-      expect(() => {
-        cacheTelegramMessage(ctx, 123, 'ctx456', undefined, 'hello', 'reply')
       }).not.toThrow()
     })
   })

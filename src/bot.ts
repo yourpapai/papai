@@ -12,6 +12,7 @@ import {
   stageGroupFileCandidates,
 } from './bot-attachments.js'
 import { recordGroupObservation } from './bot-group-observation.js'
+import { cacheObservedIncomingMessage } from './bot-message-caching.js'
 import { emitReplyCompletedIfNeeded, trackReplyUsage } from './bot-reply-tracking.js'
 import { replyToUnauthorized } from './bot-unauthorized-reply.js'
 import { supportsFileReplies } from './chat/capabilities.js'
@@ -49,10 +50,7 @@ export type BotDeps = Readonly<{ processMessage: ProcessMessageFn }> &
         Record<'chatParticipantResolver', ChatParticipantResolver>
     >
   >
-const defaultBotDeps: BotDeps = {
-  processMessage: defaultProcessMessage,
-  enqueueMessage,
-}
+const defaultBotDeps: BotDeps = { processMessage: defaultProcessMessage, enqueueMessage }
 const log = logger.child({ scope: 'bot' })
 export { checkAuthorizationExtended, getThreadScopedStorageContextId }
 function resolveMessageAuth(msg: IncomingMessage): AuthorizationResult {
@@ -253,6 +251,7 @@ async function onIncomingMessage(
     storageContextId: auth.storageContextId,
   })
   if (auth.allowed) recordGroupObservation(chat, msg)
+  cacheObservedIncomingMessage(msg, auth)
   tryStageGroupCandidates(chat, msg, auth.storageContextId)
   await handleMessage(chat, msg, tracked.reply, auth, deps)
   if (!willQueueAuthorizedMessage(msg, auth))

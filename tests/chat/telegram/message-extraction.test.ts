@@ -10,11 +10,9 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import {
-  cacheTelegramMessage,
   extractContextInfo,
   extractMessageIds,
   logMessageExtraction,
-  type CacheContext,
   type MinimalContext,
 } from '../../../src/chat/telegram/message-extraction.js'
 import { mockLogger, mockMessageCache } from '../../utils/test-helpers.js'
@@ -154,41 +152,6 @@ describe('message-extraction', () => {
     test('does not throw when called', () => {
       expect(() => {
         logMessageExtraction(123, 'ctx456', 'msg789', 'reply321', 'original text', 'quoted text')
-      }).not.toThrow()
-    })
-  })
-
-  describe('CacheContext interface', () => {
-    test('can have from with username', () => {
-      const ctx: CacheContext = { from: { username: 'testuser' } }
-      expect(ctx.from?.username).toBe('testuser')
-    })
-
-    test('allows from to be undefined', () => {
-      const ctx: CacheContext = {}
-      expect(ctx.from).toBeUndefined()
-    })
-  })
-
-  describe('cacheTelegramMessage', () => {
-    test('caches message when messageId is defined', () => {
-      const ctx: CacheContext = { from: { username: 'testuser' } }
-      expect(() => {
-        cacheTelegramMessage(ctx, 123, 'ctx456', 'msg789', 'hello world', 'reply321')
-      }).not.toThrow()
-    })
-
-    test('does nothing when messageId is undefined', () => {
-      const ctx: CacheContext = { from: { username: 'testuser' } }
-      expect(() => {
-        cacheTelegramMessage(ctx, 123, 'ctx456', undefined, 'hello', 'reply')
-      }).not.toThrow()
-    })
-
-    test('handles ctx without from property', () => {
-      const ctx: CacheContext = {}
-      expect(() => {
-        cacheTelegramMessage(ctx, 123, 'ctx456', 'msg789', 'hello world', 'reply321')
       }).not.toThrow()
     })
   })
