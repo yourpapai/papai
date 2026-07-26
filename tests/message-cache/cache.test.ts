@@ -8,9 +8,6 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { cacheMessage, getCachedMessage } from '../../src/message-cache/cache.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
-const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000
-const ONE_MINUTE_MS = 60 * 1000
-
 describe('Message Cache', () => {
   beforeEach(async () => {
     mockLogger()
@@ -74,33 +71,18 @@ describe('Message Cache', () => {
     expect(fromB?.text).toBe('From B')
   })
 
-  test('should expire messages that exceed TTL', () => {
-    const expiredTimestamp = Date.now() - ONE_WEEK_MS - 1000
+  test('should retain old messages (retention is unlimited)', () => {
+    const oldTimestamp = Date.now() - 30 * 24 * 60 * 60 * 1000
 
     cacheMessage({
-      messageId: 'ttl-expired',
-      contextId: 'ctx-ttl',
-      text: 'Expired',
-      timestamp: expiredTimestamp,
+      messageId: 'old-msg',
+      contextId: 'ctx-old',
+      text: 'Old but kept',
+      timestamp: oldTimestamp,
     })
 
-    const result = getCachedMessage('ctx-ttl', 'ttl-expired')
-    expect(result).toBeUndefined()
-  })
-
-  test('should return messages within TTL', () => {
-    // 1 minute before expiry
-    const freshTimestamp = Date.now() - ONE_WEEK_MS + ONE_MINUTE_MS
-
-    cacheMessage({
-      messageId: 'ttl-fresh',
-      contextId: 'ctx-ttl',
-      text: 'Fresh',
-      timestamp: freshTimestamp,
-    })
-
-    const result = getCachedMessage('ctx-ttl', 'ttl-fresh')
+    const result = getCachedMessage('ctx-old', 'old-msg')
     expect(result).toBeDefined()
-    expect(result?.text).toBe('Fresh')
+    expect(result?.text).toBe('Old but kept')
   })
 })

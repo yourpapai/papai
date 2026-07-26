@@ -20,7 +20,6 @@ import { seedDefaultLlmProviderFromEnv } from '../llm-providers/env-bootstrap.js
 import { getAdminRoleBindings, primeLlmAdminCache } from '../llm-providers/store.js'
 import { logger } from '../logger.js'
 import { cancelAndDrainPendingMemoryCaptures } from '../long-term-memory/capture-debounce.js'
-import { initializeMessageCache } from '../message-cache/index.js'
 import { flushOnShutdown } from '../message-queue/index.js'
 import { deactivateAllPlugins } from '../plugins/loader.js'
 import type { ProviderRuntimeDeps } from '../plugins/provider-runtime.js'
@@ -131,7 +130,7 @@ function setupProductionBot(router: ChatRouter, adminUserId: string): void {
 
 function createApplicationDeps(state: ProductionState): PapaiRuntimeDeps['application'] {
   return {
-    initializeStores: initializeMessageCache,
+    initializeStores: () => undefined,
     setupBot: setupProductionBot,
     registerCommandMenu: async (router, adminUserId) => {
       await registerCommandMenuIfSupported(router, adminUserId)

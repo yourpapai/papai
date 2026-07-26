@@ -3,10 +3,15 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { emitGlobal } from '../../src/debug/event-bus.js'
 import { addClient, removeClient, init } from '../../src/debug/state-collector.js'
+import { setupTestDb } from '../utils/test-helpers.js'
+
+beforeEach(async () => {
+  await setupTestDb()
+})
 
 const collect = (): { controller: ReadableStreamDefaultController; seen: string[] } => {
   const seen: string[] = []

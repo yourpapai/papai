@@ -18,7 +18,6 @@ const GROUP_SCOPED = toScopedContextId({ platformInstanceId: 'pi1', nativeContex
 const THREAD_SCOPED = toScopedThreadContextId({ platformInstanceId: 'pi1', nativeContextId: 'grp1', threadId: 't1' })
 
 const NOW_TS = 1_000_000_000
-const FAR_FUTURE = NOW_TS + 86_400 * 365
 
 function insertMember(groupId: string, userId: string): void {
   getDrizzleDb().insert(groupMembers).values({ groupId, userId, addedBy: 'test' }).onConflictDoNothing().run()
@@ -33,7 +32,6 @@ function insertSender(contextId: string, messageId: string, authorId: string, us
       authorId,
       authorUsername: username,
       timestamp: NOW_TS,
-      expiresAt: FAR_FUTURE,
     })
     .run()
 }
@@ -78,7 +76,6 @@ describe('gatherParticipants', () => {
         authorId: null,
         authorUsername: null,
         timestamp: NOW_TS,
-        expiresAt: FAR_FUTURE,
       })
       .run()
 

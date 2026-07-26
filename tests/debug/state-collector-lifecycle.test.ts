@@ -14,6 +14,7 @@ import {
   removeClient,
   resetClientsForTest,
 } from '../../src/debug/state-collector.js'
+import { setupTestDb } from '../utils/test-helpers.js'
 
 // Track controllers so afterEach tears down shared module singletons (clients set,
 // onEvent subscription, heartbeat interval) between tests in this file.
@@ -23,7 +24,8 @@ const track = (c: ReadableStreamDefaultController): ReadableStreamDefaultControl
   return c
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await setupTestDb()
   resetClientsForTest()
 })
 
