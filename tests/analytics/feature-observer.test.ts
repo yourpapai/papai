@@ -6,6 +6,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import type { ToolSet } from 'ai'
+
 import type { AnalyticsEventV1 } from '../../src/analytics/contracts.js'
 import { KeyVersionSchema, VersionStringSchema } from '../../src/analytics/controlled-types.js'
 import {
@@ -33,6 +35,9 @@ import type {
 } from '../../src/analytics/source-facts.js'
 import { insertCanonicalEventRow } from '../../src/analytics/storage/event-store.js'
 import { saveAttachment } from '../../src/attachments/store.js'
+import { userCachesForTesting } from '../../src/cache.js'
+import type { LlmInvocationOptions } from '../../src/llm-orchestrator-tools.js'
+import { prepareLlmInvocation } from '../../src/llm-orchestrator-tools.js'
 import { runMemoryCapture } from '../../src/long-term-memory/capture.js'
 import { searchMemoryRecords } from '../../src/long-term-memory/store.js'
 import { convertMcpToolsToToolSet } from '../../src/mcp/tool-adapter.js'
@@ -530,6 +535,80 @@ describe('integration features', () => {
     const serialized = JSON.stringify(recorder.facts)
     expect(serialized).not.toContain('read_thing')
     expect(serialized).not.toContain('upstream blew up')
+  })
+})
+
+describe('per-invocation opportunity emission', () => {
+  test('cache-hit invocations still emit: one durable row per day, a second row on a new UTC day', async () => {
+    await setupTestDb()
+    const db = getTestDb()
+    createTestEpoch(db)
+    userCachesForTesting.clear()
+
+    const { createMockProvider } = await import('../tools/mock-provider.js')
+    const buildSpy = mock((_provider: unknown, _options: unknown): Promise<ToolSet> => Promise.resolve({}))
+    const deps = {
+      buildToolDescriptors: buildSpy,
+      buildProviderlessToolDescriptors: mock((_options: unknown): Promise<ToolSet> => Promise.resolve({})),
+      applyResultCompaction: (tools: ToolSet): ToolSet => tools,
+    }
+    const invocationOpts = (): LlmInvocationOptions => ({
+      contextId: 'pi-1:chat-1',
+      configId: 'pi-1:chat-1',
+      chatUserId: 'user-1',
+      username: null,
+      contextType: 'dm',
+      provider: createMockProvider(),
+      history: [],
+      userText: 'hello',
+      stagedDownloadFn: undefined,
+      askPermission: undefined,
+      providerRequestScope: makeActorScope(),
+    })
+
+    // First invocation populates the descriptor cache; the second is a hit.
+    await prepareLlmInvocation(invocationOpts(), deps)
+    await prepareLlmInvocation(invocationOpts(), deps)
+    expect(buildSpy).toHaveBeenCalledTimes(1)
+
+    const dayOne = factsOfType('feature_opportunity').filter((fact) => fact.feature === 'web_fetch')
+    expect(dayOne).toHaveLength(2)
+    expect(dayOne[0]!.sourceEventId).toBe(dayOne[1]!.sourceEventId)
+
+    const toEvent = (fact: FeatureOpportunityFact): AnalyticsEventV1 => {
+      const result = normalize(fact, normalizerEnv)
+      assert.ok(result.status === 'ok', 'expected normalization to succeed')
+      return result.event
+    }
+    const insertFor = (fact: FeatureOpportunityFact): string => {
+      const event = toEvent(fact)
+      const inserted = insertCanonicalEventRow(db, {
+        storageGeneration: 'gen-test',
+        processEpochId: TEST_EPOCH_ID,
+        sourceRefKey: event.event.id,
+        sourceKind: 'live',
+        expiresAtMs: fact.occurredAtMs + 90 * 24 * 60 * 60 * 1000,
+        event,
+      })
+      return inserted.status
+    }
+
+    expect(insertFor(dayOne[0]!)).toBe('created')
+    expect(insertFor(dayOne[1]!)).toBe('already_present')
+    expect(db.$client.query('SELECT event_id FROM analytics_events').all()).toHaveLength(1)
+
+    const realNow = Date.now
+    Date.now = (): number => realNow() + 24 * 60 * 60 * 1000
+    try {
+      await prepareLlmInvocation(invocationOpts(), deps)
+    } finally {
+      Date.now = realNow
+    }
+    const all = factsOfType('feature_opportunity').filter((fact) => fact.feature === 'web_fetch')
+    expect(all).toHaveLength(3)
+    expect(all[2]!.sourceEventId).not.toBe(all[0]!.sourceEventId)
+    expect(insertFor(all[2]!)).toBe('created')
+    expect(db.$client.query('SELECT event_id FROM analytics_events').all()).toHaveLength(2)
   })
 })
 

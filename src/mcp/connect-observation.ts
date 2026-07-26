@@ -17,7 +17,13 @@ export type ConnectObservationTarget = Readonly<{
   serverRawId: string
 }>
 
-/** Maps a connect failure onto the bounded availability outcome enum; never carries messages or URLs. */
+/**
+ * Maps a connect failure onto the bounded availability outcome enum; never
+ * carries messages or URLs. `policy_blocked` is catalog-reserved but has no
+ * producer today: the pool connects directly (no connect-time host policy),
+ * and the user-endpoint HTTPS rule is a config-schema parse gate, not a
+ * connect-time block.
+ */
 const availabilityOutcomeOf = (statusClass: StatusClass): McpAvailabilityOutcome => {
   if (statusClass === 'timeout') return 'timeout'
   if (statusClass === 'auth') return 'auth_failed'

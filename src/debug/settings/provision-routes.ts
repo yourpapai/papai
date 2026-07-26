@@ -5,11 +5,16 @@
 
 import { z } from 'zod'
 
-import { resolveSettingsProviderRequestScope } from '../../analytics/provider-scope-factory.js'
+import { getFeatureObserver } from '../../analytics/feature-observer.js'
+import {
+  buildSettingsActorRequestContext,
+  resolveSettingsProviderRequestScope,
+} from '../../analytics/provider-scope-factory.js'
 import { getContextSettings } from '../../instances/context-store.js'
 import { getTaskInstance } from '../../instances/task-store.js'
 import { logger } from '../../logger.js'
 import { getTaskProviderProvision, type TaskProviderProvisionOutcome } from '../../providers/registry.js'
+import type { SettingsPrincipal } from '../../settings/principal.js'
 import { listUsers } from '../../users.js'
 import { authenticate, parseJsonBody, requireCsrf, resolveContextScope, settingsJson } from './respond.js'
 import type { ContextScope } from './respond.js'
@@ -47,16 +52,40 @@ function outcomeToResponse(scope: ContextScope, outcome: TaskProviderProvisionOu
 
 type ProvisionHook = NonNullable<ReturnType<typeof getTaskProviderProvision>>
 
-function resolveProvisionHook(
-  contextId: string,
-): { ok: true; hook: ProvisionHook } | { ok: false; response: Response } {
+type ProvisionHookResolution =
+  | { ok: true; hook: ProvisionHook }
+  | { ok: false; response: Response; missing?: 'task_instance' }
+
+/**
+ * Records `unconfigured_reply` (task_instance) after the controlled 422
+ * fallback reply is already produced — enum only, never the error text.
+ */
+function observeUnconfiguredTaskInstance(principal: SettingsPrincipal, scope: ContextScope): void {
+  const observer = getFeatureObserver()
+  const requestContext = buildSettingsActorRequestContext({
+    platformInstanceId: principal.platformInstanceId,
+    platformUserId: principal.platformUserId,
+    configContextId: scope.contextId,
+    contextType: scope.kind === 'group' ? 'group' : 'dm',
+    actorRole: principal.isBotAdmin || principal.isSuperAdmin ? 'admin' : 'member',
+  })
+  if (observer !== null && requestContext !== null) {
+    observer.unconfiguredReply(requestContext, { missing: 'task_instance', surface: 'settings' })
+  }
+}
+
+function resolveProvisionHook(contextId: string): ProvisionHookResolution {
   const settings = getContextSettings(contextId)
   if (settings === null) {
     return { ok: false, response: settingsJson(422, { status: 'failed', error: 'Context has no settings' }) }
   }
   const taskInstance = getTaskInstance(settings.taskInstanceId)
   if (taskInstance === null || taskInstance.status !== 'active') {
-    return { ok: false, response: settingsJson(422, { status: 'failed', error: 'No active task instance assigned' }) }
+    return {
+      ok: false,
+      response: settingsJson(422, { status: 'failed', error: 'No active task instance assigned' }),
+      missing: 'task_instance',
+    }
   }
   const provision = getTaskProviderProvision(taskInstance.type)
   if (provision === undefined) {
@@ -88,7 +117,10 @@ export async function handleProvisionKaneo(req: Request): Promise<Response> {
   if (!scope.ok) return scope.response
 
   const hook = resolveProvisionHook(scope.scope.contextId)
-  if (!hook.ok) return hook.response
+  if (!hook.ok) {
+    if (hook.missing === 'task_instance') observeUnconfiguredTaskInstance(principal, scope.scope)
+    return hook.response
+  }
 
   const username = resolveProvisionUsername(scope.scope, principal.platformInstanceId, principal.platformUserId)
   const publicUrl = process.env['KANEO_CLIENT_URL']

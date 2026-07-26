@@ -15,15 +15,15 @@ import { appendHistory } from './history.js'
 import { maybeAutoLinkIdentity } from './identity/resolver.js'
 import { recordAssistantTurn } from './llm-history.js'
 import { getOpenAICompatibleProvider } from './llm-model-builder.js'
-import { checkRequiredProviderConfig, resolveConfigId } from './llm-orchestrator-config.js'
+import { resolveConfigId } from './llm-orchestrator-config.js'
 import { buildHistory } from './llm-orchestrator-history.js'
 import { replayLeftoverSteerAsFreshTurn } from './llm-orchestrator-leftover-replay.js'
 import { shouldBackstopGroupMembership } from './llm-orchestrator-membership.js'
 import { resolveProcessMessageInputs, type ProcessMessageRest } from './llm-orchestrator-process-args.js'
-import { resolveLlmForTurn } from './llm-orchestrator-resolve-llm.js'
 import { handleLlmTurnError, invokeWithLiveStatus, logProcessMessage } from './llm-orchestrator-support.js'
 import { buildLlmInvocationOpts, prepareLlmInvocation, type InvocationSource } from './llm-orchestrator-tools.js'
 import type { LlmOrchestratorDeps } from './llm-orchestrator-types.js'
+import { ensureRequiredConfig, resolveLlmForTurn } from './llm-orchestrator-unconfigured.js'
 import type { EffectiveLlmConfig } from './llm-providers/types.js'
 import { logger } from './logger.js'
 import { maybeAutoProvisionProvider } from './providers/auto-provision.js'
@@ -60,16 +60,8 @@ const maybeEnsureGroupMembership = (configId: string, chatUserId: string, userna
   })
 }
 
-const ensureRequiredConfig = async (reply: ReplyFn, contextId: string, configId: string): Promise<void> => {
-  const missing = checkRequiredProviderConfig(configId)
-  if (missing.length === 0) return
-  log.warn({ contextId, configId, missing }, 'Missing required provider config keys')
-  await reply.text(`Missing configuration: ${missing.join(', ')}.\nUse /config to finish setup in the settings web UI.`)
-  throw new Error('Missing configuration')
-}
-
-// Re-exported from the resolve-llm module so existing tests importing from here keep working.
-export { resetBotMisconfiguredNotifiedForTesting } from './llm-orchestrator-resolve-llm.js'
+/** Test-only helper to reset the admin-notified guard between tests. */
+export { resetBotMisconfiguredNotifiedForTesting } from './llm-orchestrator-unconfigured.js'
 
 const createProgressReporterForContext = (reply: ReplyFn, contextId: string): AiProgressReporter =>
   createAiProgressReporter(reply, getAiOutputSettings(resolveAiOutputSettingsContextId(contextId)))
@@ -101,7 +93,7 @@ const prepareTurnProvider = async (args: CallLlmArgs): Promise<TaskProvider | nu
   if (provider === null) {
     log.warn({ contextId, configId }, 'Task provider unavailable for LLM turn; using providerless fallback')
   } else {
-    await ensureRequiredConfig(reply, contextId, configId)
+    await ensureRequiredConfig(reply, contextId, configId, turnScope)
     await maybeAutoLinkIdentity(chatUserId, username, provider, turnScope)
     if (shouldBackstopGroupMembership(contextType, actorRole))
       maybeEnsureGroupMembership(configId, chatUserId, username)
@@ -236,7 +228,8 @@ export const processMessage = async (
     resolveProcessMessageInputs(rest, defaultDeps)
   logProcessMessage(contextId, configContextId, chatUserId, userText, newAttachmentIds, resolvedTurnId)
   const configId = resolveConfigId(contextId, configContextId)
-  const resolvedLlm = await resolveLlmForTurn(reply, contextId, configId)
+  const turnScope = resolveNormalTurnProviderScope(resolvedTurnId)
+  const resolvedLlm = await resolveLlmForTurn(reply, contextId, configId, turnScope)
   if (resolvedLlm === null) return
   const turn = await buildHistory(
     contextId,

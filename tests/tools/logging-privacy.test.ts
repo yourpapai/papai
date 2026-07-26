@@ -14,6 +14,7 @@ const { convertMcpToolsToToolSet } = await import('../../src/mcp/tool-adapter.js
 const { makeTools } = await import('../../src/tools/index.js')
 const { buildToolsContextRecord, finalizeProviderScopedTools } = await import('../../src/tools/wrap-tool-execution.js')
 const { getToolExecutor, restoreFetch, setMockFetch, setupTestDb } = await import('../utils/test-helpers.js')
+const { fetchAndExtract } = await import('../../src/web/fetch-extract.js')
 const { createMockProvider } = await import('./mock-provider.js')
 
 const CANARIES = [
@@ -114,6 +115,25 @@ describe('logging privacy runtime closure', () => {
     expectNoCanaryInLogs()
     expect(serializedLogLines(), 'failure logs must not carry raw error messages').not.toContain(PAYLOAD)
     expect(serializedLogLines(), 'expected at least one failure log').toContain('"level":50')
+  })
+
+  test('web URL normalization failure logs a bounded error class, never the raw URL', async () => {
+    await setupTestDb()
+    logLines.length = 0
+    logger.level = 'debug'
+    const CANARY_RAW_URL = 'CANARY-RAW-URL-4q7'
+    try {
+      await fetchAndExtract({
+        storageContextId: 'pi-1:chat-1',
+        url: `http://${CANARY_RAW_URL}.example bad url`,
+      }).catch(() => undefined)
+    } finally {
+      logger.level = 'silent'
+    }
+    const serialized = serializedLogLines()
+    expect(serialized).not.toContain(CANARY_RAW_URL)
+    expect(serialized).not.toContain('Invalid URL')
+    expect(serialized).toContain('errorClass')
   })
 })
 

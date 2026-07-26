@@ -219,8 +219,6 @@ export async function buildToolDescriptors(provider: TaskProvider, options: Make
     Object.assign(mcpTools, result.extraMcpTools)
   }
 
-  emitResolvedSurfaceOpportunities(mode, contextType, sharedContextId, chatUserId, true, mcpTools)
-
   return { ...tools, ...mcpTools, ...pluginTools }
 }
 
@@ -261,8 +259,6 @@ export async function buildProviderlessToolDescriptors(options: MakeToolsOptions
     Object.assign(mcpTools, result.extraMcpTools)
   }
 
-  emitResolvedSurfaceOpportunities(mode, contextType, sharedContextId, chatUserId, false, mcpTools)
-
   return { ...tools, ...mcpTools, ...pluginTools }
 }
 
@@ -282,5 +278,15 @@ export async function makeTools(
 ): Promise<ToolSet> {
   const options: MakeToolsOptions = args.length === 0 ? {} : args[0]
   const descriptors = await buildToolDescriptors(provider, options)
+  // Per-invocation opportunity observation (uncached path); the orchestrator's
+  // cached path emits separately after its descriptor cache resolves.
+  emitResolvedSurfaceOpportunities({
+    mode: options.mode ?? 'normal',
+    contextType: options.contextType,
+    storageContextId: options.storageContextId,
+    chatUserId: options.chatUserId,
+    hasProvider: true,
+    tools: descriptors,
+  })
   return applyToolPreferences(descriptors, options.storageContextId, options.askPermission)
 }

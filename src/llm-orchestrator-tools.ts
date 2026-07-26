@@ -25,6 +25,7 @@ import { registerMcpToolCapabilities, registerOfferedCoreToolCapabilities } from
 import { getToolRetriever } from './tools/disclosure/embedding-tool-retriever.js'
 import type { DisclosureSession } from './tools/disclosure/registry.js'
 import { maybeApplyDisclosure } from './tools/disclosure/wire.js'
+import { emitResolvedSurfaceOpportunities } from './tools/feature-opportunities.js'
 import {
   applyGuestReadOnlyFilter,
   applyToolPreferences,
@@ -204,6 +205,24 @@ const applyGateFilters = (descriptors: ToolSet, opts: LlmInvocationOptions): Too
     : applyWhoMayUseFilter(prefTools, resolveCodingGuardrails(pi).whoMayUse, chatUserId)
 }
 
+/**
+ * Per-invocation opportunity observation: runs on cache hits AND misses so the
+ * (actor, feature, UTC day) series does not collapse behind the descriptor
+ * cache. The deterministic source reference dedupes to one durable row per
+ * day. Skips silently for non-actor scopes (e.g. guests).
+ */
+const observeInvocationSurface = (opts: LlmInvocationOptions, descriptors: ToolSet): void => {
+  emitResolvedSurfaceOpportunities({
+    mode: 'normal',
+    contextType: opts.contextType,
+    storageContextId: opts.contextId,
+    chatUserId: opts.chatUserId,
+    hasProvider: opts.provider !== null,
+    tools: descriptors,
+    requestContext: opts.providerRequestScope.kind === 'actor' ? opts.providerRequestScope.requestContext : null,
+  })
+}
+
 const buildFullToolSet = async (
   opts: LlmInvocationOptions,
   deps: PrepareLlmInvocationDeps,
@@ -224,6 +243,7 @@ const buildFullToolSet = async (
       deps,
     ),
   )
+  observeInvocationSurface(opts, descriptors)
   const gatedTools = applyGateFilters(descriptors, opts)
   registerOfferedCoreToolCapabilities(gatedTools, toolCapabilityCatalog)
   registerMcpToolCapabilities(gatedTools, toolCapabilityCatalog)

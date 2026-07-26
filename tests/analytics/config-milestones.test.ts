@@ -14,10 +14,12 @@ import { handleSettingsBootstrap, handleSettingsExchange } from '../../src/debug
 import { handleByokRoutes } from '../../src/debug/settings/byok-routes.js'
 import { handleContextTaskInstanceRoutes } from '../../src/debug/settings/context-task-instance-routes.js'
 import { handleGroupRoutes } from '../../src/debug/settings/group-routes.js'
-import { ensureContextPlatformInstance } from '../../src/instances/context-store.js'
+import { handleProvisionKaneo } from '../../src/debug/settings/provision-routes.js'
+import { ensureContextPlatformInstance, setContextSettings } from '../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { issueAuthCode } from '../../src/settings/auth-code-store.js'
 import { ISSUE_LIMIT } from '../../src/settings/issue-link.js'
+import { resolveSettingsPrincipal } from '../../src/settings/principal.js'
 import { addUser } from '../../src/users.js'
 import { authHeaders, establishSession, type SettingsSession } from '../debug/settings/helpers.js'
 import {
@@ -259,6 +261,46 @@ describe('task assignment milestones', () => {
   test('cold-context platform seeding emits no task assignment fact', () => {
     ensureContextPlatformInstance('pi-1:group-9', 'pi-1')
     expect(factsOfType('task_instance_assigned')).toHaveLength(0)
+  })
+})
+
+describe('provision fallback milestones', () => {
+  let session: SettingsSession
+
+  const postProvision = (): Promise<Response> =>
+    handleProvisionKaneo(
+      new Request('https://x/settings/api/provision/kaneo', {
+        method: 'POST',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    )
+
+  beforeEach(async () => {
+    seedTestPlatformInstance({ id: 'pi-1' })
+    addUser({ userId: 'u-1', platformInstanceId: 'pi-1', addedBy: 'admin', username: undefined })
+    session = await establishSession({ platformInstanceId: 'pi-1', platformUserId: 'u-1' })
+  })
+
+  test('no active task instance emits unconfigured_reply task_instance after the settings fallback reply', async () => {
+    const { personalConfigContextId } = resolveSettingsPrincipal('pi-1', 'u-1')
+    insertTaskInstance({ id: 'ti-stopped', type: 'kaneo', config: {}, status: 'stopped' })
+    setContextSettings({ contextId: personalConfigContextId, taskInstanceId: 'ti-stopped', platformInstanceId: 'pi-1' })
+    const res = await postProvision()
+    expect(res.status).toBe(422)
+    const unconfigured = factsOfType('unconfigured_reply')
+    expect(unconfigured).toHaveLength(1)
+    expect(unconfigured[0]).toMatchObject({ missing: 'task_instance', surface: 'settings' })
+    expect(JSON.stringify(unconfigured)).not.toContain('ti-stopped')
+  })
+
+  test('an active instance without a provision hook produces no unconfigured fact', async () => {
+    const { personalConfigContextId } = resolveSettingsPrincipal('pi-1', 'u-1')
+    insertTaskInstance({ id: 'ti-kaneo', type: 'kaneo', config: {}, status: 'active' })
+    setContextSettings({ contextId: personalConfigContextId, taskInstanceId: 'ti-kaneo', platformInstanceId: 'pi-1' })
+    const res = await postProvision()
+    expect(res.status).toBe(422)
+    expect(factsOfType('unconfigured_reply')).toHaveLength(0)
   })
 })
 

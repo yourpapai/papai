@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { observeActiveFeatureUsed } from '../../src/analytics/feature-observer.js'
+import { observeActiveFeatureUsed, observeActiveUnconfiguredReply } from '../../src/analytics/feature-observer.js'
 import {
   asObject,
   asPositiveInt,
@@ -39,26 +39,32 @@ function resolveStartSessionAccess(
   prNumber: number | null,
 ): StartSessionAccess {
   const secrets = codingSecrets.resolve()
-  if (secrets === null)
+  if (secrets === null) {
+    observeActiveUnconfiguredReply({ missing: 'coding_credentials', surface: 'coding' })
     return {
       error: 'not_configured',
       message:
         "You haven't set up your coding credentials. DM me and open settings → Coding sessions to configure your AI provider key (and code host).",
     }
+  }
   const forgeToken = codingSecrets.resolveForgeToken()
   const resolvedAgent = codingSecrets.resolveAgent() ?? 'claude'
-  if (codingSecrets.resolveForge() === null && !canDeriveForge(repo.repoUrl))
+  if (codingSecrets.resolveForge() === null && !canDeriveForge(repo.repoUrl)) {
+    observeActiveUnconfiguredReply({ missing: 'forge_credentials', surface: 'coding' })
     return {
       error: 'not_configured',
       message:
         'This repository is on a self-hosted code host. Open settings → Coding sessions and set your Code host (kind, instance URL, and token) before starting a session.',
     }
-  if (prNumber !== null && forgeToken === null)
+  }
+  if (prNumber !== null && forgeToken === null) {
+    observeActiveUnconfiguredReply({ missing: 'forge_credentials', surface: 'coding' })
     return {
       error: 'not_configured',
       message:
         "You haven't connected your code host. DM me and open settings → Coding sessions to add your code host token before starting a session on a PR.",
     }
+  }
   return { secrets, forgeToken, resolvedAgent }
 }
 
@@ -189,11 +195,13 @@ export function finishSessionTool(httpFetch: HttpFetch | undefined): Tool {
       const cfg = readMagiConfig(runtimeContext.adminConfig)
       if (cfg === null || httpFetch === undefined) return Promise.resolve(NOT_CONFIGURED)
       const forgeToken = runtimeContext.codingSecrets.resolveForgeToken()
-      if (forgeToken === null)
+      if (forgeToken === null) {
+        observeActiveUnconfiguredReply({ missing: 'forge_credentials', surface: 'coding' })
         return Promise.resolve({
           error: 'not_configured',
           message: 'Connect a code host in settings → Coding sessions before pushing or opening a PR.',
         })
+      }
       const args = asObject(input)
       const sessionId = asString(args, 'sessionId')
       const action = asString(args, 'action')

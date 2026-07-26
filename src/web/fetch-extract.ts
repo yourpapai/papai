@@ -109,10 +109,9 @@ function normalizeUrl(rawUrl: string, deps: FetchAndExtractDeps): string {
   try {
     return deps.normalizeWebUrl(rawUrl)
   } catch (error) {
-    log.warn(
-      { rawUrl, error: error instanceof Error ? error.message : String(error) },
-      'Web fetch URL normalization failed',
-    )
+    // Bounded classes only: never the raw URL, never the parser message.
+    const errorClass = error instanceof TypeError ? 'invalid_url' : 'unexpected'
+    log.warn({ errorClass }, 'Web fetch URL normalization failed')
     return throwClassifiedError(webFetchError.invalidUrl(), 'Invalid URL')
   }
 }

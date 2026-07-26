@@ -104,7 +104,6 @@ export function parseMcpEndpoints(raw: string | null): McpEndpointConfig[] {
 }
 
 export async function buildMcpToolSet(contextId: string, deps?: UserEndpointDeps): Promise<ToolSet> {
-  const scope = requireProviderRequestScope()
   const cfg = deps?.getCachedConfig ?? getCachedConfig
   const getOrCreate = deps?.getOrCreate ?? poolGetOrCreate
 
@@ -112,7 +111,10 @@ export async function buildMcpToolSet(contextId: string, deps?: UserEndpointDeps
   const endpoints = parseMcpEndpoints(raw)
 
   const enabled = endpoints.filter((e) => e.enabled ?? true)
+  // No endpoints means no I/O — no provider request scope is required.
   if (enabled.length === 0) return {}
+
+  const scope = requireProviderRequestScope()
 
   const limit = pLimit(3)
   const merged: ToolSet = {}

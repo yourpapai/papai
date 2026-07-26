@@ -14,6 +14,7 @@ import {
 import type { FeatureOpportunityInput, FeatureV1 } from './feature-opportunity.js'
 import type { AnalyticsRequestContext } from './provider-observer.js'
 import { getProviderRequestScope } from './provider-request-scope.js'
+import type { ProviderRequestScope } from './provider-request-scope.js'
 import type { AnalyticsObserver } from './runtime.js'
 import type { AnalyticsSourceContext, AnalyticsSourceFact } from './source-facts.js'
 import { getActiveAnalyticsRuntime } from './start-analytics.js'
@@ -260,4 +261,30 @@ export const observeActiveFeatureUsed = (input: FeatureUsedInput): void => {
   const observer = getFeatureObserver()
   if (requestContext === null || observer === null) return
   observer.featureUsed(requestContext, input)
+}
+
+export type UnconfiguredReplyInput = Readonly<{ missing: UnconfiguredMissing; surface: UnconfiguredSurface }>
+
+/**
+ * Emits `unconfigured_reply` against an explicit scope. Call only AFTER the
+ * controlled fallback reply succeeded — never before, never with key lists or
+ * reply text. Skips silently for operational/no scopes.
+ */
+export const observeScopedUnconfiguredReply = (scope: ProviderRequestScope, input: UnconfiguredReplyInput): void => {
+  if (scope.kind !== 'actor') return
+  const observer = getFeatureObserver()
+  if (observer === null) return
+  observer.unconfiguredReply(scope.requestContext, input)
+}
+
+/**
+ * Emits `unconfigured_reply` against the active actor scope (tool-execution
+ * boundaries). Same contract as observeScopedUnconfiguredReply: only after the
+ * controlled fallback reply succeeded.
+ */
+export const observeActiveUnconfiguredReply = (input: UnconfiguredReplyInput): void => {
+  const requestContext = activeActorRequestContext()
+  const observer = getFeatureObserver()
+  if (requestContext === null || observer === null) return
+  observer.unconfiguredReply(requestContext, input)
 }

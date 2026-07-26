@@ -310,6 +310,26 @@ describe('tool-adapter callTool observation', () => {
 })
 
 describe('endpoint builders listTools observation', () => {
+  test('buildMcpToolSet returns {} without a scope when no endpoints are configured', async () => {
+    const getOrCreate = mock(() => Promise.reject(new Error('must not be called')))
+    await runWithoutProviderRequestScope(async () => {
+      const toolSet = await buildMcpToolSet('ctx-1', { getCachedConfig: () => null, getOrCreate })
+      expect(toolSet).toEqual({})
+    })
+    expect(getOrCreate).not.toHaveBeenCalled()
+  })
+
+  test('buildPluginMcpToolSet returns {} without a scope when no plugins are active', async () => {
+    const pool = {
+      getOrCreateFromPlugin: mock(() => Promise.reject(new Error('must not be called'))),
+    }
+    await runWithoutProviderRequestScope(async () => {
+      const toolSet = await buildPluginMcpToolSet([], new Map(), pool)
+      expect(toolSet).toEqual({})
+    })
+    expect(pool.getOrCreateFromPlugin).not.toHaveBeenCalled()
+  })
+
   test('buildMcpToolSet observes listTools and fails closed without a scope', async () => {
     const recorder = createRecorder()
     const client = {

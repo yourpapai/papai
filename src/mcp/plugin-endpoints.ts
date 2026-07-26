@@ -128,8 +128,9 @@ export async function buildPluginMcpToolSet(
   pluginDescriptors: Map<string, PluginMcpDescriptor>,
   pool: PoolLike,
 ): Promise<ToolSet> {
-  const scope = requireProviderRequestScope()
+  // No endpoints means no I/O — no provider request scope is required.
   if (activePluginIds.length === 0) return {}
+  const scope = requireProviderRequestScope()
 
   const limit = pLimit(3)
   const merged: ToolSet = {}
