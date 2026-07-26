@@ -1,1 +1,219 @@
-{}
+{
+  "plugins/task-provider-kaneo/add-comment.ts": ["tests/plugins/task-provider-kaneo/operations/comments.test.ts"],
+  "plugins/task-provider-kaneo/add-task-label.ts": ["tests/plugins/task-provider-kaneo/operations/labels.test.ts"],
+  "plugins/task-provider-kaneo/add-task-relation.ts": [
+    "tests/plugins/task-provider-kaneo/activation.test.ts",
+    "tests/plugins/task-provider-kaneo/index.test.ts",
+    "tests/plugins/task-provider-kaneo/provision.test.ts",
+    "tests/plugins/task-provider-kaneo/operations/members.test.ts"
+  ],
+  "plugins/task-provider-kaneo/api-error.ts": ["tests/plugins/task-provider-kaneo/classify-error.test.ts"],
+  "plugins/task-provider-kaneo/auto-provision.ts": ["tests/plugins/task-provider-kaneo/provision.test.ts"],
+  "plugins/task-provider-kaneo/create-column.ts": ["tests/plugins/task-provider-kaneo/operations/statuses.test.ts"],
+  "plugins/task-provider-kaneo/create-label.ts": [
+    "tests/plugins/task-provider-kaneo/label-resource.test.ts",
+    "tests/plugins/task-provider-kaneo/list-task-labels.test.ts",
+    "tests/plugins/task-provider-kaneo/operations/labels.test.ts",
+    "tests/plugins/task-provider-kaneo/update-label.test.ts"
+  ],
+  "plugins/task-provider-kaneo/create-project.ts": [
+    "tests/plugins/task-provider-kaneo/activation.test.ts",
+    "tests/plugins/task-provider-kaneo/index.test.ts",
+    "tests/plugins/task-provider-kaneo/provision.test.ts",
+    "tests/plugins/task-provider-kaneo/operations/members.test.ts"
+  ],
+  "plugins/task-provider-kaneo/create-task.ts": [
+    "tests/plugins/task-provider-kaneo/operations/tasks.test.ts",
+    "tests/plugins/task-provider-kaneo/task-resource.test.ts",
+    "tests/plugins/task-provider-kaneo/task-update-helpers.test.ts"
+  ],
+  "plugins/task-provider-kaneo/delete-column.ts": ["tests/plugins/task-provider-kaneo/operations/statuses.test.ts"],
+  "plugins/task-provider-kaneo/delete-project.ts": [
+    "tests/plugins/task-provider-kaneo/activation.test.ts",
+    "tests/plugins/task-provider-kaneo/index.test.ts",
+    "tests/plugins/task-provider-kaneo/provision.test.ts",
+    "tests/plugins/task-provider-kaneo/operations/members.test.ts"
+  ],
+  "plugins/task-provider-kaneo/delete-task.ts": ["tests/plugins/task-provider-kaneo/operations/tasks.test.ts"],
+  "plugins/task-provider-kaneo/entry-runtime.ts": ["tests/plugins/task-provider-kaneo/index.test.ts"],
+  "plugins/task-provider-kaneo/errors.ts": [
+    "tests/plugins/task-provider-kaneo/classify-error.test.ts",
+    "tests/plugins/task-provider-kaneo/client.test.ts"
+  ],
+  "plugins/task-provider-kaneo/get-comments.ts": ["tests/plugins/task-provider-kaneo/operations/comments.test.ts"],
+  "plugins/task-provider-kaneo/get-task.ts": [
+    "tests/plugins/task-provider-kaneo/operations/tasks.test.ts",
+    "tests/plugins/task-provider-kaneo/task-resource.test.ts"
+  ],
+  "plugins/task-provider-kaneo/kaneo-client.ts": [
+    "tests/plugins/task-provider-kaneo/list-task-labels.test.ts",
+    "tests/plugins/task-provider-kaneo/search-tasks.test.ts",
+    "tests/plugins/task-provider-kaneo/update-label.test.ts",
+    "tests/plugins/task-provider-kaneo/update-project.test.ts"
+  ],
+  "plugins/task-provider-kaneo/label-resource.ts": ["tests/plugins/task-provider-kaneo/label-resource.test.ts"],
+  "plugins/task-provider-kaneo/list-columns.ts": [
+    "tests/plugins/task-provider-kaneo/operations/statuses.test.ts",
+    "tests/plugins/task-provider-kaneo/task-status.test.ts"
+  ],
+  "plugins/task-provider-kaneo/list-labels.ts": ["tests/plugins/task-provider-kaneo/operations/labels.test.ts"],
+  "plugins/task-provider-kaneo/list-projects.ts": [
+    "tests/plugins/task-provider-kaneo/activation.test.ts",
+    "tests/plugins/task-provider-kaneo/index.test.ts",
+    "tests/plugins/task-provider-kaneo/provision.test.ts",
+    "tests/plugins/task-provider-kaneo/operations/members.test.ts"
+  ],
+  "plugins/task-provider-kaneo/list-tasks-query.ts": ["tests/plugins/task-provider-kaneo/task-resource.test.ts"],
+  "plugins/task-provider-kaneo/list-tasks.ts": [
+    "tests/plugins/task-provider-kaneo/operations/tasks.test.ts",
+    "tests/plugins/task-provider-kaneo/task-resource.test.ts"
+  ],
+  "plugins/task-provider-kaneo/mappers.ts": ["tests/plugins/task-provider-kaneo/operations/tasks.test.ts"],
+  "plugins/task-provider-kaneo/operations/projects.ts": [
+    "tests/plugins/task-provider-kaneo/activation.test.ts",
+    "tests/plugins/task-provider-kaneo/index.test.ts",
+    "tests/plugins/task-provider-kaneo/provision.test.ts",
+    "tests/plugins/task-provider-kaneo/operations/members.test.ts"
+  ],
+  "plugins/task-provider-kaneo/operations/relations.ts": [
+    "tests/plugins/task-provider-kaneo/activation.test.ts",
+    "tests/plugins/task-provider-kaneo/index.test.ts",
+    "tests/plugins/task-provider-kaneo/provision.test.ts",
+    "tests/plugins/task-provider-kaneo/operations/members.test.ts"
+  ],
+  "plugins/task-provider-kaneo/provider.ts": [
+    "tests/plugins/task-provider-kaneo/activation.test.ts",
+    "tests/plugins/task-provider-kaneo/index.test.ts",
+    "tests/plugins/task-provider-kaneo/provision.test.ts",
+    "tests/plugins/task-provider-kaneo/operations/members.test.ts"
+  ],
+  "plugins/task-provider-kaneo/provision-messages.ts": ["tests/plugins/task-provider-kaneo/provision.test.ts"],
+  "plugins/task-provider-kaneo/remove-comment.ts": ["tests/plugins/task-provider-kaneo/operations/comments.test.ts"],
+  "plugins/task-provider-kaneo/remove-label.ts": ["tests/plugins/task-provider-kaneo/operations/labels.test.ts"],
+  "plugins/task-provider-kaneo/remove-task-label.ts": ["tests/plugins/task-provider-kaneo/operations/labels.test.ts"],
+  "plugins/task-provider-kaneo/remove-task-relation.ts": [
+    "tests/plugins/task-provider-kaneo/activation.test.ts",
+    "tests/plugins/task-provider-kaneo/index.test.ts",
+    "tests/plugins/task-provider-kaneo/provision.test.ts",
+    "tests/plugins/task-provider-kaneo/operations/members.test.ts"
+  ],
+  "plugins/task-provider-kaneo/reorder-columns.ts": ["tests/plugins/task-provider-kaneo/operations/statuses.test.ts"],
+  "plugins/task-provider-kaneo/schemas/api-compat.ts": ["tests/plugins/task-provider-kaneo/schema-validation.test.ts"],
+  "plugins/task-provider-kaneo/schemas/create-comment.ts": [
+    "tests/plugins/task-provider-kaneo/schema-validation.test.ts"
+  ],
+  "plugins/task-provider-kaneo/schemas/create-label.ts": [
+    "tests/plugins/task-provider-kaneo/schema-validation.test.ts"
+  ],
+  "plugins/task-provider-kaneo/schemas/create-task.ts": [
+    "tests/plugins/task-provider-kaneo/client.test.ts",
+    "tests/plugins/task-provider-kaneo/schema-validation.test.ts"
+  ],
+  "plugins/task-provider-kaneo/schemas/get-project.ts": ["tests/plugins/task-provider-kaneo/schema-validation.test.ts"],
+  "plugins/task-provider-kaneo/schemas/get-task.ts": [
+    "tests/plugins/task-provider-kaneo/operations/tasks.test.ts",
+    "tests/plugins/task-provider-kaneo/task-resource.test.ts"
+  ],
+  "plugins/task-provider-kaneo/schemas/global-search.ts": [
+    "tests/plugins/task-provider-kaneo/schema-validation.test.ts"
+  ],
+  "plugins/task-provider-kaneo/schemas/list-tasks.ts": ["tests/plugins/task-provider-kaneo/schema-validation.test.ts"],
+  "plugins/task-provider-kaneo/schemas/update-comment.ts": [
+    "tests/plugins/task-provider-kaneo/comment-resource.test.ts",
+    "tests/plugins/task-provider-kaneo/operations/comments.test.ts"
+  ],
+  "plugins/task-provider-kaneo/schemas/update-project.ts": [
+    "tests/plugins/task-provider-kaneo/project-resource.test.ts",
+    "tests/plugins/task-provider-kaneo/update-project.test.ts"
+  ],
+  "plugins/task-provider-kaneo/update-column.ts": ["tests/plugins/task-provider-kaneo/operations/statuses.test.ts"],
+  "plugins/task-provider-kaneo/update-comment.ts": [
+    "tests/plugins/task-provider-kaneo/comment-resource.test.ts",
+    "tests/plugins/task-provider-kaneo/operations/comments.test.ts"
+  ],
+  "plugins/task-provider-kaneo/update-label.ts": ["tests/plugins/task-provider-kaneo/update-label.test.ts"],
+  "plugins/task-provider-kaneo/update-project.ts": ["tests/plugins/task-provider-kaneo/update-project.test.ts"],
+  "plugins/task-provider-kaneo/update-task-relation.ts": [
+    "tests/plugins/task-provider-kaneo/activation.test.ts",
+    "tests/plugins/task-provider-kaneo/index.test.ts",
+    "tests/plugins/task-provider-kaneo/provision.test.ts",
+    "tests/plugins/task-provider-kaneo/operations/members.test.ts"
+  ],
+  "plugins/task-provider-kaneo/update-task.ts": ["tests/plugins/task-provider-kaneo/operations/tasks.test.ts"],
+  "plugins/task-provider-kaneo/url-builder.ts": ["tests/plugins/task-provider-kaneo/operations/tasks.test.ts"],
+  "plugins/task-provider-kaneo/validation-error.ts": ["tests/plugins/task-provider-kaneo/classify-error.test.ts"],
+  "plugins/task-provider-youtrack/custom-field-values.ts": [
+    "tests/plugins/task-provider-youtrack/task-helpers.test.ts"
+  ],
+  "plugins/task-provider-youtrack/entry-runtime.ts": ["tests/plugins/task-provider-youtrack/index.test.ts"],
+  "plugins/task-provider-youtrack/operations/agiles.ts": [
+    "tests/plugins/task-provider-youtrack/operations/agiles.test.ts"
+  ],
+  "plugins/task-provider-youtrack/operations/task-list-fetch.ts": [
+    "tests/plugins/task-provider-youtrack/operations/tasks.test.ts"
+  ],
+  "plugins/task-provider-youtrack/phase-five-mappers.ts": ["tests/plugins/task-provider-youtrack/mappers.test.ts"],
+  "plugins/task-provider-youtrack/phase-five-provider.ts": [
+    "tests/plugins/task-provider-youtrack/activation.test.ts",
+    "tests/plugins/task-provider-youtrack/index.test.ts",
+    "tests/plugins/task-provider-youtrack/tools-integration.test.ts",
+    "tests/plugins/task-provider-youtrack/collaboration-provider.test.ts"
+  ],
+  "plugins/task-provider-youtrack/provider.ts": [
+    "tests/plugins/task-provider-youtrack/tools-integration.test.ts",
+    "tests/plugins/task-provider-youtrack/activation.test.ts",
+    "tests/plugins/task-provider-youtrack/index.test.ts",
+    "tests/plugins/task-provider-youtrack/collaboration-provider.test.ts"
+  ],
+  "plugins/task-provider-youtrack/query-builder.ts": ["tests/plugins/task-provider-youtrack/task-helpers.test.ts"],
+  "plugins/task-provider-youtrack/schemas/visibility.ts": [
+    "tests/plugins/task-provider-youtrack/mappers.test.ts",
+    "tests/plugins/task-provider-youtrack/operations/collaboration.test.ts",
+    "tests/plugins/task-provider-youtrack/schemas/issue.test.ts"
+  ],
+  "plugins/task-provider-youtrack/validate-config.ts": ["tests/plugins/task-provider-youtrack/index.test.ts"],
+  "src/providers/config-validation.ts": ["tests/providers/resolver.test.ts"],
+  "src/tools/add-comment.ts": ["tests/tools/comment-tools.test.ts", "tests/tools/add-comment-reaction.test.ts"],
+  "src/tools/add-task-relation.ts": ["tests/tools/task-relation-tools.test.ts"],
+  "src/tools/archive-memos.ts": ["tests/tools/memo-tools.test.ts"],
+  "src/tools/assign-task-to-sprint.ts": ["tests/tools/agile-tools.test.ts"],
+  "src/tools/cancel-deferred-prompt.ts": ["tests/deferred-prompts/tools.test.ts"],
+  "src/tools/create-project.ts": ["tests/tools/project-tools.test.ts"],
+  "src/tools/create-sprint.ts": ["tests/tools/agile-tools.test.ts"],
+  "src/tools/delete-project.ts": ["tests/tools/project-tools.test.ts"],
+  "src/tools/delete-recurring-task.ts": ["tests/tools/recurring-tools.test.ts"],
+  "src/tools/delete-task.ts": ["tests/tools/task-tools.test.ts"],
+  "src/tools/get-comments.ts": ["tests/tools/comment-tools.test.ts"],
+  "src/tools/get-deferred-prompt.ts": ["tests/deferred-prompts/tools.test.ts"],
+  "src/tools/get-project.ts": ["tests/tools/project-tools.test.ts"],
+  "src/tools/get-task-history.ts": ["tests/tools/task-history-tools.test.ts"],
+  "src/tools/list-agiles.ts": ["tests/tools/agile-tools.test.ts"],
+  "src/tools/list-attachments.ts": ["tests/tools/attachment-tools.test.ts"],
+  "src/tools/list-deferred-prompts.ts": ["tests/deferred-prompts/tools.test.ts"],
+  "src/tools/list-labels.ts": ["tests/tools/label-tools.test.ts"],
+  "src/tools/list-memos.ts": ["tests/tools/memo-tools.test.ts"],
+  "src/tools/list-projects.ts": ["tests/tools/project-tools.test.ts"],
+  "src/tools/list-recurring-tasks.ts": ["tests/tools/recurring-tools.test.ts"],
+  "src/tools/list-saved-queries.ts": ["tests/tools/saved-query-tools.test.ts"],
+  "src/tools/list-sprints.ts": ["tests/tools/agile-tools.test.ts"],
+  "src/tools/list-work.ts": ["tests/tools/work-item-tools.test.ts"],
+  "src/tools/log-work.ts": ["tests/tools/work-item-tools.test.ts"],
+  "src/tools/pause-recurring-task.ts": ["tests/tools/recurring-tools.test.ts"],
+  "src/tools/remove-attachment.ts": ["tests/tools/attachment-tools.test.ts"],
+  "src/tools/remove-comment.ts": ["tests/tools/remove-comment-reaction.test.ts", "tests/tools/comment-tools.test.ts"],
+  "src/tools/remove-label.ts": ["tests/tools/label-tools.test.ts"],
+  "src/tools/remove-task-relation.ts": ["tests/tools/task-relation-tools.test.ts"],
+  "src/tools/remove-work.ts": ["tests/tools/work-item-tools.test.ts"],
+  "src/tools/resume-recurring-task.ts": ["tests/tools/recurring-tools.test.ts"],
+  "src/tools/run-saved-query.ts": ["tests/tools/saved-query-tools.test.ts"],
+  "src/tools/save-memo.ts": ["tests/tools/memo-tools.test.ts"],
+  "src/tools/search-memos.ts": ["tests/tools/memo-tools.test.ts"],
+  "src/tools/skip-recurring-task.ts": ["tests/tools/recurring-tools.test.ts"],
+  "src/tools/update-comment.ts": ["tests/tools/comment-tools.test.ts"],
+  "src/tools/update-deferred-prompt.ts": ["tests/deferred-prompts/tools.test.ts"],
+  "src/tools/update-label.ts": ["tests/tools/label-tools.test.ts"],
+  "src/tools/update-project.ts": ["tests/tools/project-tools.test.ts"],
+  "src/tools/update-sprint.ts": ["tests/tools/agile-tools.test.ts"],
+  "src/tools/update-task-relation.ts": ["tests/tools/task-relation-tools.test.ts"],
+  "src/tools/update-work.ts": ["tests/tools/work-item-tools.test.ts"]
+}

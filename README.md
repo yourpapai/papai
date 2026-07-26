@@ -586,10 +586,18 @@ compatibility mode.
 ### Mutation Testing
 
 ```bash
-bun test:mutate:changed
+bun test:mutate:changed          # PR gate: changed files vs base branch
+bun test:mutate                  # full paired run over the configured scope
+bun test:mutate --update-baseline  # full run; ratchet scripts/mutation/baseline.json up
 ```
 
-Runs changed-file paired mutation testing with Stryker. Full paired mutation runs are available via `bun test:mutate`.
+Runs paired, per-file mutation testing with Stryker (`ignoreStatic: false`, each
+source file paired with its companion test). The CI `mutation-testing` job is a
+**blocking per-file ratchet** on PRs: a changed file fails if its score drops
+below its recorded entry in `scripts/mutation/baseline.json`; files new to scope
+must clear a 0.5 floor. The `mutation-baseline` job ratchets the baseline upward
+(per-file max) on push to `master`. See `scripts/mutation/README.md` for flags
+(`--no-ratchet`, `--ratchet-floor=N`) and the override/companion resolution.
 
 ---
 

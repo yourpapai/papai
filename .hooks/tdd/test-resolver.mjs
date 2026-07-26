@@ -20,12 +20,13 @@ export function isTestFile(filePath) {
  * @returns {boolean} True if this is a gateable implementation file
  */
 export function isGateableImplFile(filePath, projectRoot) {
-  // Must be under src/, client/, or review-loop/src/, match IMPL_PATTERN, and NOT match TEST_PATTERN
+  // Must be under src/, client/, plugins/, or review-loop/src/, match IMPL_PATTERN, and NOT match TEST_PATTERN
   const rel = path.relative(projectRoot, path.resolve(projectRoot, filePath))
   const isSrc = rel.startsWith('src/') || rel.startsWith('src\\')
   const isClient = rel.startsWith('client/') || rel.startsWith('client\\')
+  const isPlugins = rel.startsWith('plugins/') || rel.startsWith('plugins\\')
   const isReviewLoop = rel.startsWith('review-loop/src/') || rel.startsWith('review-loop\\src\\')
-  if (!isSrc && !isClient && !isReviewLoop) return false
+  if (!isSrc && !isClient && !isPlugins && !isReviewLoop) return false
   if (!IMPL_PATTERN.test(rel)) return false
   if (TEST_PATTERN.test(rel)) return false
   return true
@@ -39,6 +40,12 @@ export function isGateableImplFile(filePath, projectRoot) {
 export function suggestTestPath(implRelPath) {
   // client/debug/helpers.ts → tests/client/debug/helpers.test.ts (keep client/ prefix)
   if (implRelPath.startsWith('client/') || implRelPath.startsWith('client\\')) {
+    const ext = path.extname(implRelPath)
+    const base = implRelPath.slice(0, -ext.length)
+    return path.join('tests', `${base}.test${ext}`)
+  }
+  // plugins/task-provider-kaneo/foo.ts → tests/plugins/task-provider-kaneo/foo.test.ts (keep plugins/ prefix)
+  if (implRelPath.startsWith('plugins/') || implRelPath.startsWith('plugins\\')) {
     const ext = path.extname(implRelPath)
     const base = implRelPath.slice(0, -ext.length)
     return path.join('tests', `${base}.test${ext}`)
@@ -68,6 +75,17 @@ export function findTestFile(implAbsPath, projectRoot) {
 
   // Client files: client/debug/helpers.ts → tests/client/debug/helpers.test.ts
   if (rel.startsWith('client/') || rel.startsWith('client\\')) {
+    const ext = path.extname(rel)
+    const base = rel.slice(0, -ext.length)
+
+    for (const suffix of ['.test', '.spec']) {
+      const candidate = path.join(projectRoot, 'tests', `${base}${suffix}${ext}`)
+      if (fs.existsSync(candidate)) return candidate
+    }
+  }
+
+  // Plugin files: plugins/task-provider-kaneo/foo.ts → tests/plugins/task-provider-kaneo/foo.test.ts
+  if (rel.startsWith('plugins/') || rel.startsWith('plugins\\')) {
     const ext = path.extname(rel)
     const base = rel.slice(0, -ext.length)
 
@@ -127,6 +145,10 @@ export function resolveImplPath(testRelPath) {
     const dir = path.dirname(testRelPath).replace(/^tests[/\\]?/u, '')
     // tests/client/debug/helpers.test.ts → client/debug/helpers.ts (client/ stays)
     if (dir.startsWith('client/') || dir.startsWith('client\\') || dir === 'client') {
+      return path.join(dir, `${base}${ext}`)
+    }
+    // tests/plugins/task-provider-kaneo/foo.test.ts → plugins/task-provider-kaneo/foo.ts (plugins/ stays)
+    if (dir.startsWith('plugins/') || dir.startsWith('plugins\\') || dir === 'plugins') {
       return path.join(dir, `${base}${ext}`)
     }
     // tests/scripts/foo.test.ts → scripts/foo.ts (scripts/ at root — bug fix for old src/scripts/* mapping; scripts/ is NOT a gateable source root)
