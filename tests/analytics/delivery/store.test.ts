@@ -77,7 +77,7 @@ const insertEvent = (db: Db, eventId: string): void => {
       eligibility: 'allowed',
       maxClass: 'C0',
       propsJson: '{"x":1}',
-      expiresAtMs: NOW + 1000,
+      expiresAtMs: NOW + 100_000_000,
     })
     .run()
 }

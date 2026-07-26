@@ -5,12 +5,14 @@
 
 import { createHash } from 'node:crypto'
 
-import { and, eq } from 'drizzle-orm'
+import { and, asc, eq, inArray, lte } from 'drizzle-orm'
 
 import { getDrizzleDb as defaultGetDrizzleDb } from '../../db/drizzle.js'
 import { analyticsBackfillEventMap, analyticsEvents } from '../../db/schema.js'
+import type { AnalyticsEventRow } from '../../db/schema.js'
 import { logger } from '../../logger.js'
 import type { AnalyticsEventV1 } from '../contracts.js'
+import { unexpiredEventFilter } from '../retention/expiry-guard.js'
 import { requireOpenEpoch } from './epoch-store.js'
 
 const log = logger.child({ scope: 'analytics:storage:event-store' })
@@ -153,6 +155,63 @@ export const insertCanonicalEvent = (
 
   log.debug({ eventId: result.eventId }, 'canonical event stored')
   return { status: 'created', eventId: result.eventId, processEpochId: result.processEpochId }
+}
+
+export const loadUnexpiredEventRow = (
+  input: Readonly<{ eventId: string; nowMs: number }>,
+  deps: EventStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
+): AnalyticsEventRow | null => {
+  const row = deps
+    .getDrizzleDb()
+    .select()
+    .from(analyticsEvents)
+    .where(and(eq(analyticsEvents.eventId, input.eventId), unexpiredEventFilter(input.nowMs)))
+    .get()
+  return row ?? null
+}
+
+export const listUnexpiredEventsByActor = (
+  input: Readonly<{ actorKeys: readonly string[]; nowMs: number }>,
+  deps: EventStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
+): AnalyticsEventRow[] => {
+  if (input.actorKeys.length === 0) return []
+  return deps
+    .getDrizzleDb()
+    .select()
+    .from(analyticsEvents)
+    .where(and(inArray(analyticsEvents.actorKey, [...input.actorKeys]), unexpiredEventFilter(input.nowMs)))
+    .orderBy(asc(analyticsEvents.occurredAtMs), asc(analyticsEvents.eventId))
+    .all()
+}
+
+export const listSnapshotSourceEvents = (
+  input: Readonly<{ storageGeneration: string; nowMs: number }>,
+  deps: EventStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
+): AnalyticsEventRow[] =>
+  deps
+    .getDrizzleDb()
+    .select()
+    .from(analyticsEvents)
+    .where(and(eq(analyticsEvents.storageGeneration, input.storageGeneration), unexpiredEventFilter(input.nowMs)))
+    .orderBy(asc(analyticsEvents.occurredAtMs), asc(analyticsEvents.eventId))
+    .all()
+
+export const listExpiredEventIds = (tx: Tx, nowMs: number): readonly string[] =>
+  tx
+    .select({ eventId: analyticsEvents.eventId })
+    .from(analyticsEvents)
+    .where(lte(analyticsEvents.expiresAtMs, nowMs))
+    .all()
+    .map((row) => row.eventId)
+
+export const deleteEventRowsIn = (tx: Tx, eventIds: readonly string[]): number => {
+  if (eventIds.length === 0) return 0
+  const filter = inArray(analyticsEvents.eventId, [...eventIds])
+  const count = tx.select({ eventId: analyticsEvents.eventId }).from(analyticsEvents).where(filter).all().length
+  if (count === 0) return 0
+  tx.delete(analyticsEvents).where(filter).run()
+  log.info({ count }, 'canonical event rows removed')
+  return count
 }
 
 export const insertCanonicalEventForBackfill = (

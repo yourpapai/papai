@@ -39,6 +39,7 @@ import {
 import { insertEligibleCanonicalEvent } from '../governance/collection-serialization.js'
 import { resolveActive } from '../governance/generation-store.js'
 import { createPseudonym } from '../identity/pseudonym.js'
+import { purgeExpired } from './retention.js'
 
 export const LIVE_WATERMARK_MS = 120_000
 
@@ -246,6 +247,7 @@ export const runDeriveJob = (
     log.debug({ windowStartMs: input.windowStartMs, scanEndMs }, 'derive job skipped: empty scan window')
     return counters
   }
+  purgeExpired({ nowMs: input.nowMs }, { getDrizzleDb: deps.getDrizzleDb })
   const generation = resolveActive({ getDrizzleDb: deps.getDrizzleDb }).generation
   const keyInput: SessionKeyInput = { key: input.key, keyVersion: input.keyVersion }
 

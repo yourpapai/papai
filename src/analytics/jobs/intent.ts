@@ -17,6 +17,7 @@ import { createPseudonym } from '../identity/pseudonym.js'
 import { classifyHybrid, toClassifierToolSlug } from '../intent/classifier.js'
 import type { IntentPrediction } from '../intent/classifier.js'
 import { INTENT_IDS, isCoreIntent, sortGoals, TAXONOMY_VERSION } from '../intent/taxonomy.js'
+import { isUnexpired } from '../retention/expiry-guard.js'
 
 export type IntentDerivationDeps = Readonly<{ getDrizzleDb: typeof defaultGetDrizzleDb }>
 
@@ -173,6 +174,10 @@ const processTurn = (db: Db, input: IntentDerivationInput, row: TurnRow, counter
   }
   if (row.actorRole === 'guest') {
     counters.skippedGuest += 1
+    return
+  }
+  if (!isUnexpired(input.nowMs, row.expiresAtMs)) {
+    log.debug('intent derivation skipped an expired turn row')
     return
   }
   const ref = refFor(db, row.eventId)

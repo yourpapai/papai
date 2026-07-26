@@ -141,3 +141,27 @@ export const setGrantState = (
   log.info({ state: input.state, generation }, 'delivery grant updated')
   return { generation }
 }
+
+export const revokeGrantInTx = (
+  tx: Tx,
+  input: Readonly<{ grantKey: string; policyVersion: number; nowMs: number }>,
+): Readonly<{ generation: number }> | null => {
+  const current = tx
+    .select()
+    .from(analyticsEligibilityGrants)
+    .where(eq(analyticsEligibilityGrants.grantKey, input.grantKey))
+    .get()
+  if (current === undefined) return null
+  if (current.state === 'deny') return { generation: current.generation }
+  const nextGeneration = current.generation + 1
+  tx.update(analyticsEligibilityGrants)
+    .set({
+      state: 'deny',
+      generation: nextGeneration,
+      policyVersion: input.policyVersion,
+      revokedAt: input.nowMs,
+    })
+    .where(eq(analyticsEligibilityGrants.grantKey, input.grantKey))
+    .run()
+  return { generation: nextGeneration }
+}

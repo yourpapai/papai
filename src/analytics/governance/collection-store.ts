@@ -23,6 +23,33 @@ export type CollectionStoreDeps = Readonly<{
 
 const DEFAULT_DEPS: CollectionStoreDeps = { getDrizzleDb: defaultGetDrizzleDb }
 
+type Db = ReturnType<typeof defaultGetDrizzleDb>
+type Tx = Parameters<Db['transaction']>[0] extends (tx: infer T) => unknown ? T : never
+
+export const revokeEligibilityInTx = (
+  tx: Tx,
+  input: Readonly<{ refKey: string; policyVersion: number; nowMs: number }>,
+): Readonly<{ generation: number }> | null => {
+  const current = tx
+    .select()
+    .from(analyticsCollectionEligibility)
+    .where(eq(analyticsCollectionEligibility.refKey, input.refKey))
+    .get()
+  if (current === undefined) return null
+  if (current.state === 'deny') return { generation: current.generation }
+  const nextGeneration = current.generation + 1
+  tx.update(analyticsCollectionEligibility)
+    .set({
+      state: 'deny',
+      generation: nextGeneration,
+      policyVersion: input.policyVersion,
+      revokedAt: input.nowMs,
+    })
+    .where(eq(analyticsCollectionEligibility.refKey, input.refKey))
+    .run()
+  return { generation: nextGeneration }
+}
+
 export const deriveCollectionRefKey = (input: {
   key: Buffer | Uint8Array
   keyVersion: string

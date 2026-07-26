@@ -80,6 +80,9 @@ export default {
     // materialization) are the Stage A derived-row seam consumed by the
     // derive job.
     'src/analytics/derive/*.ts!',
+    // Analytics retention modules (expiry guard, deadline computation) are the
+    // Stage A lifecycle seam consumed by the retention job and read adapters.
+    'src/analytics/retention/*.ts!',
     // First-party plugin entry points are loaded dynamically by the plugin
     // loader, so they have no static importer.
     'plugins/*/index.ts!',
@@ -203,6 +206,10 @@ export default {
     // exports are consumed by the derive job and by analytics tests outside
     // knip's production project scope.
     'src/analytics/derive/*.ts': ['exports', 'types'],
+    // Analytics retention modules are the Stage A lifecycle seam; their
+    // exports are consumed by the retention job, read adapters, and by
+    // analytics tests outside knip's production project scope.
+    'src/analytics/retention/*.ts': ['exports', 'types'],
   },
 
   includeEntryExports: true,

@@ -7,6 +7,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 
 import { getDrizzleDb as defaultGetDrizzleDb } from '../../db/drizzle.js'
 import {
+  analyticsBackfillEventMap,
   analyticsCollectionEligibility,
   analyticsEpochSourceCounters,
   analyticsEventCollectionRefs,
@@ -17,6 +18,7 @@ import { logger } from '../../logger.js'
 import { utcDayOfMs } from '../aggregate.js'
 import type { AnalyticsEventV1 } from '../contracts.js'
 import type { EventNameV1 } from '../controlled-types.js'
+import { cancelNeverStartedIn, deleteDeliveryRowsForEventsIn, markSendingAmbiguousIn } from '../delivery/settlement.js'
 import { insertCanonicalEventRow } from '../storage/event-store.js'
 import type { CollectionEligibilityRef } from './eligibility.js'
 import { resolveActive, V1_MAX_EVENT_RETENTION_DAYS } from './generation-store.js'
@@ -228,6 +230,10 @@ export const deleteCanonicalEventsForRef = (
       .all()
     const deletedEventIds = rows.map((row) => row.eventId)
     if (deletedEventIds.length > 0) {
+      cancelNeverStartedIn(tx, deletedEventIds)
+      markSendingAmbiguousIn(tx, deletedEventIds)
+      deleteDeliveryRowsForEventsIn(tx, deletedEventIds)
+      tx.delete(analyticsBackfillEventMap).where(inArray(analyticsBackfillEventMap.eventId, deletedEventIds)).run()
       tx.delete(analyticsEventCollectionRefs).where(eq(analyticsEventCollectionRefs.refKey, input.refKey)).run()
       tx.delete(analyticsEvents).where(inArray(analyticsEvents.eventId, deletedEventIds)).run()
     }

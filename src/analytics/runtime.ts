@@ -99,6 +99,22 @@ const routePseudonymous = (
   )
 }
 
+export type SubjectWithdrawalHook = (identity: Readonly<{ platformInstanceId: string; platformUserId: string }>) => void
+
+/**
+ * Production caller for the rephrase handoff's `withdrawFor`: authenticated
+ * preference withdrawal drives rephrase feature-set withdrawal through this
+ * hook so the in-memory rephrase state is dropped together with the durable
+ * analytics withdrawal.
+ */
+export const createSubjectWithdrawalHook = (
+  rephrase: Readonly<{ withdrawFor: (platformInstanceId: string, platformUserId: string) => void }> | null,
+): SubjectWithdrawalHook => {
+  return (identity) => {
+    rephrase?.withdrawFor(identity.platformInstanceId, identity.platformUserId)
+  }
+}
+
 export const createAnalyticsObserver = (deps: AnalyticsRuntimeDeps): AnalyticsObserver => {
   const capacity = deps.queueCapacity ?? DEFAULT_QUEUE_CAPACITY
   const eventQueue: QueuedPseudonymousEvent[] = []

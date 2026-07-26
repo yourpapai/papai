@@ -10,11 +10,15 @@ import {
   analyticsAggregateEpochContributions,
   analyticsBackfillAggregateContributions,
   analyticsDailyCounters,
+  analyticsDailyHistograms,
 } from '../../db/schema.js'
 import { logger } from '../../logger.js'
+import type { RetentionLimits } from '../retention/expiry-guard.js'
+import { aggregateDeadlineMs } from '../retention/expiry-guard.js'
 import { buildQualityColumns, type DailyAggregateKey, type QualityDisclosure } from './aggregate-store-helpers.js'
 import { requireOpenEpoch } from './epoch-store.js'
 
+export { rebuildDailyAggregatesForDays } from './aggregate-rebuild.js'
 export { type MergeHistogramInput, mergeHistogram } from './aggregate-histogram-store.js'
 
 const log = logger.child({ scope: 'analytics:storage:aggregate-store' })
@@ -91,6 +95,43 @@ const upsertDailyCounter = (tx: Tx, input: IncrementCounterInput, quality: Recor
       },
     })
     .run()
+}
+
+const purgeExpiredRollupRows = (
+  tx: Tx,
+  table: typeof analyticsDailyCounters | typeof analyticsDailyHistograms,
+  nowMs: number,
+  limits: RetentionLimits,
+): number => {
+  const rows = tx.select({ utcDay: table.utcDay, threshold: table.threshold }).from(table).all()
+  const expired = new Map<string, { utcDay: string; assessed: boolean }>()
+  for (const row of rows) {
+    const assessed = row.threshold !== null
+    if (aggregateDeadlineMs(row.utcDay, assessed, limits) > nowMs) continue
+    expired.set(`${row.utcDay}|${assessed}`, { utcDay: row.utcDay, assessed })
+  }
+  let removed = 0
+  for (const group of expired.values()) {
+    const filter = group.assessed
+      ? sql`${table.utcDay} = ${group.utcDay} AND ${table.threshold} IS NOT NULL`
+      : sql`${table.utcDay} = ${group.utcDay} AND ${table.threshold} IS NULL`
+    const count = tx.select({ utcDay: table.utcDay }).from(table).where(filter).all().length
+    if (count === 0) continue
+    tx.delete(table).where(filter).run()
+    removed += count
+  }
+  return removed
+}
+
+export const purgeExpiredAggregatesIn = (
+  tx: Tx,
+  input: Readonly<{ nowMs: number; limits: RetentionLimits }>,
+): number => {
+  const counters = purgeExpiredRollupRows(tx, analyticsDailyCounters, input.nowMs, input.limits)
+  const histograms = purgeExpiredRollupRows(tx, analyticsDailyHistograms, input.nowMs, input.limits)
+  const removed = counters + histograms
+  if (removed > 0) log.info({ counters, histograms }, 'expired daily rollups removed')
+  return removed
 }
 
 export const incrementCounter = (

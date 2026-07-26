@@ -125,7 +125,7 @@ const updatePreferenceRow = (
     .run()
 }
 
-const upsertPreferenceRow = (tx: Tx, input: PreferenceUpsertInput): AnalyticsPreferenceRow => {
+export const upsertPreferenceRowInTx = (tx: Tx, input: PreferenceUpsertInput): AnalyticsPreferenceRow => {
   const current = tx
     .select()
     .from(analyticsPreferences)
@@ -183,7 +183,7 @@ export const setPreference = (
 ): PreferenceMutationResult => {
   const auditId = randomUUID()
   const row = deps.getDrizzleDb().transaction((tx: Tx) => {
-    const upserted = upsertPreferenceRow(tx, {
+    const upserted = upsertPreferenceRowInTx(tx, {
       governanceActorKey: input.governanceActorKey,
       keyVersion: input.keyVersion,
       policyVersion: input.policyVersion,
@@ -221,7 +221,7 @@ export const withdrawPreference = (
 ): PreferenceMutationResult => {
   const auditId = randomUUID()
   const row = deps.getDrizzleDb().transaction((tx: Tx) => {
-    const upserted = upsertPreferenceRow(tx, {
+    const upserted = upsertPreferenceRowInTx(tx, {
       governanceActorKey: input.governanceActorKey,
       keyVersion: input.keyVersion,
       policyVersion: input.policyVersion,
@@ -244,3 +244,6 @@ export const withdrawPreference = (
   log.info({ action: 'withdraw' }, 'analytics preference withdrawn')
   return { status: 'applied', auditId, row }
 }
+
+export type { PreferenceUpsertInput }
+export type { Tx as PreferenceTx }

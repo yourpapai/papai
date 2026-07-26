@@ -20,6 +20,7 @@ import { factHasOnlyAllowedKeys } from './normalizer-shared.js'
 import { createFactKeyDeriver } from './normalizer-shared.js'
 import type { NormalizationReason, PropsBuildResult, ValidatedFactRecord } from './normalizer-shared.js'
 import { ANALYTICS_EVENT_REGISTRY_V1 } from './registry.js'
+import { canonicalEventExpiryMs } from './retention/expiry-guard.js'
 import type { AnalyticsSourceContext } from './source-facts.js'
 
 export type NormalizerEnv = Readonly<{
@@ -201,6 +202,9 @@ export function normalize(fact: unknown, env: NormalizerEnv): NormalizationResul
 
   if (validated.version !== 1) return rejected(factType, 'unknown_version')
   if (!Number.isSafeInteger(validated.occurredAtMs) || validated.occurredAtMs < 0) {
+    return rejected(factType, 'invalid_value')
+  }
+  if (canonicalEventExpiryMs(validated.occurredAtMs) <= env.ingestedAtMs) {
     return rejected(factType, 'invalid_value')
   }
   if (validated.sourceEventId.length === 0 || validated.source.platformInstanceId.length === 0) {

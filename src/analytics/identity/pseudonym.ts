@@ -45,3 +45,24 @@ export function createPseudonym(input: PseudonymInput): Pseudonym {
   const suffix = truncated.toString('base64url')
   return PseudonymSchema.parse(`${input.keyVersion}.${suffix}`)
 }
+
+export type VersionedKey = Readonly<{
+  keyVersion: string
+  key: Buffer | Uint8Array
+}>
+
+export type VersionedPseudonym = Readonly<{
+  keyVersion: string
+  pseudonym: Pseudonym
+}>
+
+export function derivePseudonymsAcrossVersions(
+  keys: readonly VersionedKey[],
+  domain: string,
+  components: readonly string[],
+): readonly VersionedPseudonym[] {
+  return keys.map((entry) => ({
+    keyVersion: entry.keyVersion,
+    pseudonym: createPseudonym({ key: entry.key, keyVersion: entry.keyVersion, domain, components }),
+  }))
+}

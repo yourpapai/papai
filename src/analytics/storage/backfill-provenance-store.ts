@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { eq } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 
 import { getDrizzleDb as defaultGetDrizzleDb } from '../../db/drizzle.js'
 import {
@@ -68,6 +68,24 @@ export const failBackfillRun = (
     .where(eq(analyticsBackfillRuns.runId, input.runId))
     .run()
   log.debug({ runId: input.runId }, 'backfill run failed')
+}
+
+export const deleteBackfillEventMapsForEvents = (
+  eventIds: readonly string[],
+  deps: BackfillProvenanceStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
+): number => {
+  if (eventIds.length === 0) return 0
+  const db = deps.getDrizzleDb()
+  const filter = inArray(analyticsBackfillEventMap.eventId, [...eventIds])
+  const count = db
+    .select({ eventId: analyticsBackfillEventMap.eventId })
+    .from(analyticsBackfillEventMap)
+    .where(filter)
+    .all().length
+  if (count === 0) return 0
+  db.delete(analyticsBackfillEventMap).where(filter).run()
+  log.info({ count }, 'backfill event maps removed for deleted events')
+  return count
 }
 
 export const insertBackfillEventMap = (

@@ -10,6 +10,8 @@ import { analyticsDeliveries, analyticsEvents } from '../../db/schema.js'
 import { logger } from '../../logger.js'
 import type { DeliveryGrantRef } from '../governance/eligibility.js'
 import { checkGrantCurrentIn } from '../governance/grant-store.js'
+import { isUnexpired, unexpiredEventFilter } from '../retention/expiry-guard.js'
+import { eventExpiryForSendIn, markDeliverySendingIn, releaseDeliveryToPendingIn } from './settlement.js'
 import type { StrictDeliveryPayloadV1 } from './sink.js'
 import { DELIVERY_PAYLOAD_SCHEMA_VERSION } from './sink.js'
 
@@ -128,6 +130,59 @@ const leaseOne = (
     .run()
 }
 
+const listLeaseCandidates = (tx: Tx, input: LeaseDeliveriesInput): readonly LeaseCandidate[] =>
+  tx
+    .select({
+      eventId: analyticsDeliveries.eventId,
+      sinkVersionId: analyticsDeliveries.sinkVersionId,
+      grantKey: analyticsDeliveries.grantKey,
+      grantKeyVersion: analyticsDeliveries.grantKeyVersion,
+      grantGeneration: analyticsDeliveries.grantGeneration,
+      attempts: analyticsDeliveries.attempts,
+      eventName: analyticsEvents.eventName,
+      occurredAtMs: analyticsEvents.occurredAtMs,
+      propsJson: analyticsEvents.propsJson,
+    })
+    .from(analyticsDeliveries)
+    .innerJoin(analyticsEvents, eq(analyticsEvents.eventId, analyticsDeliveries.eventId))
+    .where(
+      and(
+        eq(analyticsDeliveries.state, 'pending'),
+        sql`${analyticsDeliveries.nextAttemptAtMs} <= ${input.nowMs}`,
+        sql`${analyticsDeliveries.attempts} < ${input.maxAttempts}`,
+        unexpiredEventFilter(input.nowMs),
+      ),
+    )
+    .orderBy(analyticsDeliveries.nextAttemptAtMs)
+    .limit(input.limit)
+    .all()
+
+type LeaseCandidate = Readonly<{
+  eventId: string
+  sinkVersionId: string
+  grantKey: string
+  grantKeyVersion: string
+  grantGeneration: number
+  attempts: number
+  eventName: string
+  occurredAtMs: number
+  propsJson: string
+}>
+
+const toLeasedDelivery = (row: LeaseCandidate, leaseUntilMs: number): LeasedDelivery => ({
+  eventId: row.eventId,
+  sinkVersionId: row.sinkVersionId,
+  grant: { grantKey: row.grantKey, keyVersion: row.grantKeyVersion, generation: row.grantGeneration },
+  attempts: row.attempts + 1,
+  leaseUntilMs,
+  payload: {
+    schemaVersion: DELIVERY_PAYLOAD_SCHEMA_VERSION,
+    eventName: row.eventName,
+    occurredAtMs: row.occurredAtMs,
+    propsJson: row.propsJson,
+  },
+})
+
 export const leaseDeliveries = (
   input: LeaseDeliveriesInput,
   deps: DeliveryStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
@@ -137,44 +192,11 @@ export const leaseDeliveries = (
   return db.transaction((tx) => {
     releaseExpiredLeases(tx, input.nowMs)
     exhaustDeadRows(tx, input.maxAttempts)
-    const candidates = tx
-      .select({
-        eventId: analyticsDeliveries.eventId,
-        sinkVersionId: analyticsDeliveries.sinkVersionId,
-        grantKey: analyticsDeliveries.grantKey,
-        grantKeyVersion: analyticsDeliveries.grantKeyVersion,
-        grantGeneration: analyticsDeliveries.grantGeneration,
-        attempts: analyticsDeliveries.attempts,
-        eventName: analyticsEvents.eventName,
-        occurredAtMs: analyticsEvents.occurredAtMs,
-        propsJson: analyticsEvents.propsJson,
-      })
-      .from(analyticsDeliveries)
-      .innerJoin(analyticsEvents, eq(analyticsEvents.eventId, analyticsDeliveries.eventId))
-      .where(
-        and(
-          eq(analyticsDeliveries.state, 'pending'),
-          sql`${analyticsDeliveries.nextAttemptAtMs} <= ${input.nowMs}`,
-          sql`${analyticsDeliveries.attempts} < ${input.maxAttempts}`,
-        ),
-      )
-      .orderBy(analyticsDeliveries.nextAttemptAtMs)
-      .limit(input.limit)
-      .all()
-    for (const row of candidates) leaseOne(tx, row, leaseUntilMs)
-    return candidates.map((row) => ({
-      eventId: row.eventId,
-      sinkVersionId: row.sinkVersionId,
-      grant: { grantKey: row.grantKey, keyVersion: row.grantKeyVersion, generation: row.grantGeneration },
-      attempts: row.attempts + 1,
-      leaseUntilMs,
-      payload: {
-        schemaVersion: DELIVERY_PAYLOAD_SCHEMA_VERSION,
-        eventName: row.eventName,
-        occurredAtMs: row.occurredAtMs,
-        propsJson: row.propsJson,
-      },
-    }))
+    const eligible = listLeaseCandidates(tx, input).filter((row) =>
+      recheck(deps, tx, { grantKey: row.grantKey, keyVersion: row.grantKeyVersion, generation: row.grantGeneration }),
+    )
+    for (const row of eligible) leaseOne(tx, row, leaseUntilMs)
+    return eligible.map((row) => toLeasedDelivery(row, leaseUntilMs))
   })
 }
 
@@ -208,7 +230,7 @@ export type MarkSendStartedInput = Readonly<{
   nowMs: number
 }>
 
-export type MarkSendStartedResult = 'started' | 'not_leased' | 'lease_expired' | 'grant_not_current'
+export type MarkSendStartedResult = 'started' | 'not_leased' | 'lease_expired' | 'grant_not_current' | 'event_expired'
 
 export const markSendStarted = (
   input: MarkSendStartedInput,
@@ -225,34 +247,29 @@ export const markSendStarted = (
       .get()
     if (row === undefined || row.state !== 'leased') return 'not_leased'
     if (row.leaseUntilMs === null || row.leaseUntilMs < input.nowMs) {
-      tx.update(analyticsDeliveries)
-        .set({ state: 'pending', leaseUntilMs: null })
-        .where(
-          and(
-            eq(analyticsDeliveries.eventId, input.eventId),
-            eq(analyticsDeliveries.sinkVersionId, input.sinkVersionId),
-          ),
-        )
-        .run()
+      releaseDeliveryToPendingIn(tx, input.eventId, input.sinkVersionId)
       return 'lease_expired'
+    }
+    const expiresAtMs = eventExpiryForSendIn(tx, input.eventId)
+    if (expiresAtMs === null || !isUnexpired(input.nowMs, expiresAtMs)) {
+      log.warn({ sinkVersionId: input.sinkVersionId }, 'send-start blocked: event expired')
+      return 'event_expired'
     }
     if (!recheck(deps, tx, input.grant)) {
       log.warn({ sinkVersionId: input.sinkVersionId }, 'send-start blocked: grant not current')
       return 'grant_not_current'
     }
-    tx.update(analyticsDeliveries)
-      .set({ state: 'sending', sendStartedAtMs: input.nowMs })
-      .where(
-        and(
-          eq(analyticsDeliveries.eventId, input.eventId),
-          eq(analyticsDeliveries.sinkVersionId, input.sinkVersionId),
-          eq(analyticsDeliveries.state, 'leased'),
-        ),
-      )
-      .run()
+    markDeliverySendingIn(tx, input.eventId, input.sinkVersionId, input.nowMs)
     return 'started'
   })
 }
 
-export { classifyDelivery, classifySendError, recoverOrphanedSends, reconcileAmbiguous } from './store-outcomes.js'
-export type { ClassifyDeliveryInput, ClassifyDeliveryResult, ReconcileAmbiguousInput } from './store-outcomes.js'
+export {
+  classifyDelivery,
+  classifySendError,
+  recoverOrphanedSends,
+  reconcileAmbiguous,
+  type ClassifyDeliveryInput,
+  type ClassifyDeliveryResult,
+  type ReconcileAmbiguousInput,
+} from './store-outcomes.js'
