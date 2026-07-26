@@ -30,7 +30,7 @@ Tracing the claim, the error appears at four sites and is seeded by a fifth:
 | A | 67–70 | raw-turn query means measured <= real | correct, but stated unconditionally — seeds the rest |
 | B | 214–219 | loose hit criterion "reinforces" the lower bound | **wrong — inflating** |
 | C | 236–239 | "below-threshold → the real gap is <= the measured floor" | **wrong — attributes the stop signal to the floor half, which pushes the other way** |
-| D | 244 | "P1 proves the gap" | over-claims given the inflating threats |
+| D | 234 | "P1 proves the gap" | over-claims given the inflating threats |
 | E | 250–255 | threats list repeats site B verbatim | **wrong — same defect** |
 
 Site C is the most consequential: it credits the strength of the stop branch to the raw-turn floor,
@@ -108,7 +108,7 @@ floor reading rather than reinforcing it.
 **C — lines 236–239, summary paragraph.** Replace with the screen-and-adjudicate reading above,
 dropping the claim that the real gap is `<=` the measured floor.
 
-**D — line 244.** "P1 proves the gap; P2 proves closing it does not fabricate" → "P1 **screens** for
+**D — line 234.** "P1 proves the gap; P2 proves closing it does not fabricate" → "P1 **screens** for
 the gap; P2 adjudicates it and proves closing it does not fabricate."
 
 **E — lines 250–255, threats to validity.** Restructure the existing entries into the signed ledger:
