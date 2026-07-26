@@ -9,8 +9,11 @@ import { eq } from 'drizzle-orm'
 
 import { enqueueDelivery, leaseDeliveries, markSendStarted } from '../../src/analytics/delivery/store.js'
 import type { DeliveryStoreDeps } from '../../src/analytics/delivery/store.js'
+import { classifyDelivery } from '../../src/analytics/delivery/store.js'
 import { recheckAndAssociateEvent } from '../../src/analytics/governance/collection-store.js'
-import { withdrawSubject } from '../../src/analytics/governance/subject-service.js'
+import { createGrantSendMutex } from '../../src/analytics/governance/grant-serialization.js'
+import type { GrantSendMutex } from '../../src/analytics/governance/grant-serialization.js'
+import { requestSubjectDeletion, withdrawSubject } from '../../src/analytics/governance/subject-service.js'
 import * as schema from '../../src/db/schema.js'
 import { setupTestDb } from '../utils/test-helpers.js'
 import {
@@ -33,10 +36,12 @@ describe('withdrawal races', () => {
   type Db = Awaited<ReturnType<typeof setupTestDb>>
   let db: Db
   let deliveryDeps: DeliveryStoreDeps
+  let grantMutex: GrantSendMutex
 
   beforeEach(async () => {
     db = await setupTestDb()
-    deliveryDeps = { getDrizzleDb: (): Db => db }
+    grantMutex = createGrantSendMutex()
+    deliveryDeps = { getDrizzleDb: (): Db => db, grantMutex }
   })
 
   test('deny-before-writer: associating an event after withdrawal inserts nothing', () => {
@@ -158,6 +163,76 @@ describe('withdrawal races', () => {
     expect(receipts).toHaveLength(1)
     expect(receipts[0]?.remoteReceiptHash).toBe('remote-race')
     expect(JSON.stringify(receipts)).not.toContain(eventId)
+  })
+
+  test('the withdrawal transaction cancels never-started deliveries, so no send begins before settlement runs', () => {
+    const grant = allowGrantFor(db, IDENTITY_A, 'v3')
+    const eventId = seedSubjectEvent(db, IDENTITY_A, {
+      keyVersion: 'v3',
+      storageGeneration: GENERATIONS.active,
+      sourceRefKey: 'ref-race-tx',
+      eventId: 'ev-race-tx',
+    })
+    seedSink(db, 'sv-tx')
+    enqueueDelivery({ eventId, sinkVersionId: 'sv-tx', grant, nowMs: T }, deliveryDeps)
+    leaseDeliveries({ nowMs: T, leaseMs: 100_000, limit: 10, maxAttempts: 3 }, deliveryDeps)
+
+    requestSubjectDeletion(IDENTITY_A, makeSubjectDeps(db), T + 1)
+
+    expect(db.select().from(schema.analyticsEvents).all()).toHaveLength(1)
+    expect(allDeliveries(db).map((row) => row.state)).toEqual(['cancelled'])
+    expect(markSendStarted({ eventId, sinkVersionId: 'sv-tx', grant, nowMs: T + 2 }, deliveryDeps)).not.toBe('started')
+    expect(leaseDeliveries({ nowMs: T + 3, leaseMs: 10_000, limit: 10, maxAttempts: 3 }, deliveryDeps)).toHaveLength(0)
+  })
+
+  test('send holding the per-grant mutex vs deny commit: no send begins or completes after deny', () => {
+    const grant = allowGrantFor(db, IDENTITY_A, 'v3')
+    const eventId = seedSubjectEvent(db, IDENTITY_A, {
+      keyVersion: 'v3',
+      storageGeneration: GENERATIONS.active,
+      sourceRefKey: 'ref-race-mutex',
+      eventId: 'ev-race-mutex',
+    })
+    seedSink(db, 'sv-mutex-a')
+    seedSink(db, 'sv-mutex-b')
+    enqueueDelivery({ eventId, sinkVersionId: 'sv-mutex-a', grant, nowMs: T }, deliveryDeps)
+    enqueueDelivery({ eventId, sinkVersionId: 'sv-mutex-b', grant, nowMs: T }, deliveryDeps)
+    leaseDeliveries({ nowMs: T, leaseMs: 100_000, limit: 10, maxAttempts: 3 }, deliveryDeps)
+
+    expect(markSendStarted({ eventId, sinkVersionId: 'sv-mutex-a', grant, nowMs: T }, deliveryDeps)).toBe('started')
+    expect(grantMutex.isHeld(grant.grantKey)).toBe(true)
+    expect(markSendStarted({ eventId, sinkVersionId: 'sv-mutex-b', grant, nowMs: T }, deliveryDeps)).toBe(
+      'send_in_progress',
+    )
+
+    const result = withdrawSubject(
+      IDENTITY_A,
+      {
+        ...makeSubjectDeps(db),
+        requestRemoteDeletion: (sinkVersionId) => ({ remoteReceiptHash: `remote-${sinkVersionId}` }),
+      },
+      T + 1,
+    )
+
+    expect(result.state).toBe('completed')
+    expect(
+      classifyDelivery(
+        {
+          eventId,
+          sinkVersionId: 'sv-mutex-a',
+          grantKey: grant.grantKey,
+          nowMs: T + 2,
+          outcome: 'delivered',
+          remoteReceiptHash: 'late-ack',
+        },
+        deliveryDeps,
+      ),
+    ).toBe('not_sending')
+    expect(grantMutex.isHeld(grant.grantKey)).toBe(false)
+    expect(markSendStarted({ eventId, sinkVersionId: 'sv-mutex-b', grant, nowMs: T + 3 }, deliveryDeps)).not.toBe(
+      'started',
+    )
+    expect(allDeliveries(db)).toHaveLength(0)
   })
 
   test('withdrawal covers every retained key version: old-version refs and grants are revoked too', () => {

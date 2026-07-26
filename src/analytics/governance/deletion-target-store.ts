@@ -148,8 +148,13 @@ export const sealDeletionTargetsIn = (
   return targetHash
 }
 
+/**
+ * Opens a sealed bundle with every retained key version (active first), so a
+ * deletion requested before a governance rekey can still resume while the old
+ * key remains in the keyring. Fails closed when no retained key authenticates.
+ */
 export const openDeletionTargets = (
-  input: Readonly<{ requestId: string; encryptionKey: Buffer }>,
+  input: Readonly<{ requestId: string; encryptionKeys: readonly Buffer[] }>,
   deps: DeletionTargetStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
 ): DeletionTargetSet | null => {
   const row = deps
@@ -159,7 +164,18 @@ export const openDeletionTargets = (
     .where(eq(analyticsDeletionTargetBundles.requestId, input.requestId))
     .get()
   if (row === undefined || row.destroyedAt !== null || row.targetCiphertext.length === 0) return null
-  return parseTargets(open(row.targetCiphertext, input.encryptionKey))
+  let lastError: unknown = new Error('no retained governance key to open the deletion target bundle')
+  for (const encryptionKey of input.encryptionKeys) {
+    let plaintext: string
+    try {
+      plaintext = open(row.targetCiphertext, encryptionKey)
+    } catch (error) {
+      lastError = error
+      continue
+    }
+    return parseTargets(plaintext)
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError))
 }
 
 export const destroyDeletionTargetCiphertextIn = (

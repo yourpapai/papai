@@ -3,12 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 
 import { getDrizzleDb as defaultGetDrizzleDb } from '../../db/drizzle.js'
 import { analyticsDeliveries } from '../../db/schema.js'
 import { logger } from '../../logger.js'
 import type { DeliveryErrorClass } from './sink.js'
+import { resolveGrantSendMutex } from './store.js'
 import type { DeliveryStoreDeps } from './store.js'
 
 const log = logger.child({ scope: 'analytics:delivery:store-outcomes' })
@@ -18,6 +19,7 @@ export type ClassifyDeliveryInput = Readonly<{
   sinkVersionId: string
   nowMs: number
   outcome: 'delivered' | 'retryable' | 'ambiguous' | 'dead'
+  grantKey?: string
   remoteReceiptHash?: string
   errorClass?: DeliveryErrorClass
   retryAtMs?: number
@@ -55,38 +57,70 @@ export const classifyDelivery = (
   deps: DeliveryStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
 ): ClassifyDeliveryResult => {
   const db = deps.getDrizzleDb()
-  return db.transaction((tx) => {
-    const row = tx
-      .select()
-      .from(analyticsDeliveries)
-      .where(
-        and(eq(analyticsDeliveries.eventId, input.eventId), eq(analyticsDeliveries.sinkVersionId, input.sinkVersionId)),
-      )
-      .get()
-    if (row === undefined || row.state !== 'sending') return 'not_sending'
-    if (row.leaseUntilMs === null || row.leaseUntilMs < input.nowMs) return 'lease_expired'
-    tx.update(analyticsDeliveries)
-      .set(classificationPatch(input))
-      .where(
-        and(eq(analyticsDeliveries.eventId, input.eventId), eq(analyticsDeliveries.sinkVersionId, input.sinkVersionId)),
-      )
-      .run()
-    return 'classified'
-  })
+  const mutex = resolveGrantSendMutex(deps)
+  let heldGrantKey: string | null = null
+  try {
+    return db.transaction((tx) => {
+      const row = tx
+        .select()
+        .from(analyticsDeliveries)
+        .where(
+          and(
+            eq(analyticsDeliveries.eventId, input.eventId),
+            eq(analyticsDeliveries.sinkVersionId, input.sinkVersionId),
+          ),
+        )
+        .get()
+      if (row === undefined || row.state !== 'sending') {
+        if (row === undefined && input.grantKey !== undefined && mutex.isHeld(input.grantKey)) {
+          heldGrantKey = input.grantKey
+        }
+        return 'not_sending'
+      }
+      heldGrantKey = row.grantKey
+      if (row.leaseUntilMs === null || row.leaseUntilMs < input.nowMs) return 'lease_expired'
+      tx.update(analyticsDeliveries)
+        .set(classificationPatch(input))
+        .where(
+          and(
+            eq(analyticsDeliveries.eventId, input.eventId),
+            eq(analyticsDeliveries.sinkVersionId, input.sinkVersionId),
+          ),
+        )
+        .run()
+      return 'classified'
+    })
+  } finally {
+    if (heldGrantKey !== null) mutex.release(heldGrantKey)
+  }
 }
 
 export const recoverOrphanedSends = (
   input: Readonly<{ nowMs: number }>,
   deps: DeliveryStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
 ): Readonly<{ moved: number }> => {
-  const result = deps
-    .getDrizzleDb()
-    .$client.query<{ changes: number }, [number]>(
+  const db = deps.getDrizzleDb()
+  const orphans = db
+    .select({ grantKey: analyticsDeliveries.grantKey })
+    .from(analyticsDeliveries)
+    .where(
+      and(
+        eq(analyticsDeliveries.state, 'sending'),
+        sql`${analyticsDeliveries.leaseUntilMs} IS NULL OR ${analyticsDeliveries.leaseUntilMs} < ${input.nowMs}`,
+      ),
+    )
+    .all()
+  const result = db.$client
+    .query<{ changes: number }, [number]>(
       `UPDATE analytics_deliveries SET state = 'ambiguous', lease_until_ms = NULL
-       WHERE state = 'sending' AND (lease_until_ms IS NULL OR lease_until_ms < ?)`,
+     WHERE state = 'sending' AND (lease_until_ms IS NULL OR lease_until_ms < ?)`,
     )
     .run(input.nowMs)
-  if (result.changes > 0) log.info({ moved: result.changes }, 'orphaned sends marked ambiguous')
+  if (result.changes > 0) {
+    const mutex = resolveGrantSendMutex(deps)
+    for (const orphan of orphans) mutex.release(orphan.grantKey)
+    log.info({ moved: result.changes }, 'orphaned sends marked ambiguous')
+  }
   return { moved: result.changes }
 }
 

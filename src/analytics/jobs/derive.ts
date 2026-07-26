@@ -199,15 +199,15 @@ const derivePartition = (
   keyInput: SessionKeyInput,
   counters: Counters,
 ): void => {
-  const events = loadPartitionEvents(db, generation, partition)
+  const events = loadPartitionEvents(db, generation, partition, input.nowMs)
   const sessions = sessionizePartition({ ...partition, events }, keyInput)
   const sessionWrite = replaceSessions(db, generation, partition, sessions)
   counters.sessionsWritten += sessionWrite.sessions
   counters.sessionEventsWritten += sessionWrite.events
 
-  let turns = loadTurnFacts(db, generation, partition)
+  let turns = loadTurnFacts(db, generation, partition, input.nowMs)
   if (reconcileClarificationAbandonment(db, input, generation, partition, turns, counters)) {
-    turns = loadTurnFacts(db, generation, partition)
+    turns = loadTurnFacts(db, generation, partition, input.nowMs)
   }
 
   const attempts = buildGoalAttempts(turns, { nowMs: input.nowMs, censorStartMs: null }, keyInput)
@@ -253,7 +253,7 @@ export const runDeriveJob = (
 
   counters.censorIntervalsWritten += upsertCensorIntervals(db, findWithdrawnActorCensors(db))
 
-  const partitions = findAffectedPartitions(db, generation, input.windowStartMs, scanEndMs)
+  const partitions = findAffectedPartitions(db, generation, input.windowStartMs, scanEndMs, input.nowMs)
   counters.partitions = partitions.length
   const actors = new Set<string>()
   for (const partition of partitions) {
@@ -261,7 +261,7 @@ export const runDeriveJob = (
     actors.add(partition.actorKey)
   }
   for (const actorKey of actors) {
-    const facts = loadFeatureFacts(db, generation, actorKey)
+    const facts = loadFeatureFacts(db, generation, actorKey, input.nowMs)
     const written = replaceFeatureDays(db, actorKey, materializeFeatureDays(facts), generation)
     counters.featureOpportunityDaysWritten += written.opportunities
     counters.featureUseDaysWritten += written.uses

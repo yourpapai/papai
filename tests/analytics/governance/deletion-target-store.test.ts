@@ -55,7 +55,7 @@ describe('deletion target store', () => {
       sealDeletionTargetsIn(tx, { requestId: 'req-1', targets: TARGETS, encryptionKey: KEY, nowMs: T }),
     )
     expect(targetHash).toMatch(/^[0-9a-f]{64}$/u)
-    const opened = openDeletionTargets({ requestId: 'req-1', encryptionKey: KEY }, { getDrizzleDb: () => db })
+    const opened = openDeletionTargets({ requestId: 'req-1', encryptionKeys: [KEY] }, { getDrizzleDb: () => db })
     expect(opened).toEqual(TARGETS)
     const row = db.select().from(schema.analyticsDeletionTargetBundles).all()[0]
     expect(row?.targetCiphertext).not.toContain('v1.a-one')
@@ -68,7 +68,7 @@ describe('deletion target store', () => {
       sealDeletionTargetsIn(tx, { requestId: 'req-1', targets: TARGETS, encryptionKey: KEY, nowMs: T }),
     )
     expect(() =>
-      openDeletionTargets({ requestId: 'req-1', encryptionKey: Buffer.alloc(32, 4) }, { getDrizzleDb: () => db }),
+      openDeletionTargets({ requestId: 'req-1', encryptionKeys: [Buffer.alloc(32, 4)] }, { getDrizzleDb: () => db }),
     ).toThrow()
   })
 
@@ -98,11 +98,11 @@ describe('deletion target store', () => {
     expect(row?.targetCiphertext).toBe('')
     expect(row?.targetHash).toMatch(/^[0-9a-f]{64}$/u)
     expect(row?.destroyedAt).toBe(T + 5)
-    expect(openDeletionTargets({ requestId: 'req-1', encryptionKey: KEY }, { getDrizzleDb: () => db })).toBeNull()
+    expect(openDeletionTargets({ requestId: 'req-1', encryptionKeys: [KEY] }, { getDrizzleDb: () => db })).toBeNull()
   })
 
   test('a request without a bundle opens as null', () => {
     seedRequest(db)
-    expect(openDeletionTargets({ requestId: 'req-1', encryptionKey: KEY }, { getDrizzleDb: () => db })).toBeNull()
+    expect(openDeletionTargets({ requestId: 'req-1', encryptionKeys: [KEY] }, { getDrizzleDb: () => db })).toBeNull()
   })
 })

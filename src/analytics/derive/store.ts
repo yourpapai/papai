@@ -8,6 +8,7 @@ import type { SQL } from 'drizzle-orm'
 
 import type { getDrizzleDb as defaultGetDrizzleDb } from '../../db/drizzle.js'
 import { analyticsCollectionEligibility, analyticsEventCollectionRefs, analyticsEvents } from '../../db/schema.js'
+import { unexpiredEventFilter } from '../retention/expiry-guard.js'
 import type { ExecutedToolOutcome } from './outcomes.js'
 import type { SessionSourceEvent } from './sessionizer.js'
 
@@ -58,6 +59,7 @@ export const findAffectedPartitions = (
   generation: string,
   startMs: number,
   endMs: number,
+  nowMs: number,
 ): readonly AffectedPartition[] => {
   const rows = db
     .select({
@@ -73,6 +75,7 @@ export const findAffectedPartitions = (
         lt(analyticsEvents.occurredAtMs, endMs),
         isNotNull(analyticsEvents.actorKey),
         ne(analyticsEvents.actorRole, 'guest'),
+        unexpiredEventFilter(nowMs),
       ),
     )
     .all()
@@ -89,11 +92,18 @@ export const findAffectedPartitions = (
   )
 }
 
-const loadPartitionRows = (db: Db, generation: string, partition: AffectedPartition): readonly EventRow[] =>
+const loadPartitionRows = (
+  db: Db,
+  generation: string,
+  partition: AffectedPartition,
+  nowMs: number,
+): readonly EventRow[] =>
   db
     .select()
     .from(analyticsEvents)
-    .where(and(eq(analyticsEvents.storageGeneration, generation), partitionFilter(partition)))
+    .where(
+      and(eq(analyticsEvents.storageGeneration, generation), partitionFilter(partition), unexpiredEventFilter(nowMs)),
+    )
     .orderBy(asc(analyticsEvents.occurredAtMs), asc(analyticsEvents.eventId))
     .all()
 
@@ -101,8 +111,9 @@ export const loadPartitionEvents = (
   db: Db,
   generation: string,
   partition: AffectedPartition,
+  nowMs: number,
 ): readonly SessionSourceEvent[] =>
-  loadPartitionRows(db, generation, partition).map((row) => ({
+  loadPartitionRows(db, generation, partition, nowMs).map((row) => ({
     eventId: row.eventId,
     eventName: row.eventName,
     occurredAtMs: row.occurredAtMs,
@@ -195,8 +206,9 @@ export const loadTurnFacts = (
   db: Db,
   generation: string,
   partition: AffectedPartition,
+  nowMs: number,
 ): readonly PartitionTurnFacts[] => {
-  const rows = loadPartitionRows(db, generation, partition).filter((row) => row.turnKey !== null)
+  const rows = loadPartitionRows(db, generation, partition, nowMs).filter((row) => row.turnKey !== null)
   const byTurn = new Map<string, EventRow[]>()
   for (const row of rows) {
     if (row.turnKey === null) continue

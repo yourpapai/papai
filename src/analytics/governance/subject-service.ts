@@ -5,8 +5,12 @@
 
 import { randomUUID } from 'node:crypto'
 
+import { inArray } from 'drizzle-orm'
+
 import { getDrizzleDb as defaultGetDrizzleDb } from '../../db/drizzle.js'
+import { analyticsEvents } from '../../db/schema.js'
 import { logger } from '../../logger.js'
+import { cancelNeverStartedIn } from '../delivery/settlement.js'
 import { revokeEligibilityInTx } from './collection-store.js'
 import {
   createDeletionRequestIn,
@@ -53,7 +57,38 @@ export const exportSubjectData = (
   return buildSubjectExport(keys, deps, nowMs)
 }
 
-const sealRequestForIdentity = (
+type Tx = Parameters<ReturnType<typeof defaultGetDrizzleDb>['transaction']>[0] extends (tx: infer T) => unknown
+  ? T
+  : never
+
+const cancelNeverStartedForActorsIn = (tx: Tx, analyticsActorKeys: readonly string[]): void => {
+  if (analyticsActorKeys.length === 0) return
+  const subjectEventIds = tx
+    .select({ eventId: analyticsEvents.eventId })
+    .from(analyticsEvents)
+    .where(inArray(analyticsEvents.actorKey, [...analyticsActorKeys]))
+    .all()
+    .map((row) => row.eventId)
+  cancelNeverStartedIn(tx, subjectEventIds)
+}
+
+const resolvePrimaryGovernance = (
+  keys: ReturnType<typeof deriveSubjectKeys>,
+  activeVersion: string,
+): Readonly<{ governanceActorKey: string; keyVersion: string }> => {
+  const primary = keys.governanceActorKeys.find((entry) => entry.keyVersion === activeVersion)
+  const governanceActorKey = primary?.pseudonym ?? keys.governanceActorKeys[0]?.pseudonym
+  if (governanceActorKey === undefined) throw new Error('no retained governance key version for the subject')
+  return { governanceActorKey, keyVersion: primary?.keyVersion ?? keys.governanceActorKeys[0]?.keyVersion ?? 'v1' }
+}
+
+/**
+ * The withdrawal transaction: deny UPSERTs, ref/grant generation advance and
+ * revocation, never-started delivery cancel, and the durable deletion request
+ * with its sealed target bundle plus audit — all in one transaction, before
+ * any settlement runs.
+ */
+export const requestSubjectDeletion = (
   identity: SubjectIdentity,
   deps: SubjectServiceDeps,
   nowMs: number,
@@ -65,10 +100,7 @@ const sealRequestForIdentity = (
   if (governance.kind !== 'available') {
     throw new Error('governance keyring unavailable; deletion targets cannot be sealed')
   }
-  const primaryGovernance = keys.governanceActorKeys.find((entry) => entry.keyVersion === governance.activeVersion)
-  const governanceActorKey = primaryGovernance?.pseudonym ?? keys.governanceActorKeys[0]?.pseudonym
-  if (governanceActorKey === undefined) throw new Error('no retained governance key version for the subject')
-  const keyVersion = primaryGovernance?.keyVersion ?? keys.governanceActorKeys[0]?.keyVersion ?? 'v1'
+  const { governanceActorKey, keyVersion } = resolvePrimaryGovernance(keys, governance.activeVersion)
   const requestId = randomUUID()
   const policyVersion = deps.policyVersion ?? DEFAULT_POLICY_VERSION
   const db = deps.getDrizzleDb()
@@ -89,6 +121,7 @@ const sealRequestForIdentity = (
     for (const grantKey of [...flat.grantKeys].sort()) {
       revokeGrantInTx(tx, { grantKey, policyVersion, nowMs })
     }
+    cancelNeverStartedForActorsIn(tx, flat.analyticsActorKeys)
     createDeletionRequestIn(tx, { requestId, governanceActorKey, keyVersion, policyVersion, nowMs })
     sealDeletionTargetsIn(tx, {
       requestId,
@@ -106,7 +139,7 @@ export const deleteSubjectData = (
   deps: SubjectServiceDeps,
   nowMs: number,
 ): DeletionWorkflowResult => {
-  const { requestId, governanceActorKey } = sealRequestForIdentity(identity, deps, nowMs)
+  const { requestId, governanceActorKey } = requestSubjectDeletion(identity, deps, nowMs)
   const result = executeDeletionWorkflow({ requestId, nowMs }, toDeletionDeps(deps))
   const policyVersion = deps.policyVersion ?? DEFAULT_POLICY_VERSION
   deps.getDrizzleDb().transaction((tx) => {

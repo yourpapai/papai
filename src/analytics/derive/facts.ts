@@ -7,6 +7,7 @@ import { and, asc, eq, isNotNull, ne, or, sql } from 'drizzle-orm'
 
 import { analyticsCollectionEligibility, analyticsEventCollectionRefs, analyticsEvents } from '../../db/schema.js'
 import type { CollectionEligibilityRef } from '../governance/eligibility.js'
+import { unexpiredEventFilter } from '../retention/expiry-guard.js'
 import type { FeatureOpportunityFact, FeatureUseFact } from './features.js'
 import type { AffectedPartition, Db, EventRow } from './store.js'
 import { partitionFilter, readProps } from './store.js'
@@ -15,6 +16,7 @@ export const loadFeatureFacts = (
   db: Db,
   generation: string,
   actorKey: string,
+  nowMs: number,
 ): Readonly<{ opportunities: readonly FeatureOpportunityFact[]; uses: readonly FeatureUseFact[] }> => {
   const rows = db
     .select()
@@ -25,6 +27,7 @@ export const loadFeatureFacts = (
         eq(analyticsEvents.actorKey, actorKey),
         ne(analyticsEvents.actorRole, 'guest'),
         or(eq(analyticsEvents.eventName, 'feature_opportunity'), eq(analyticsEvents.eventName, 'feature_used')),
+        unexpiredEventFilter(nowMs),
       ),
     )
     .orderBy(asc(analyticsEvents.occurredAtMs), asc(analyticsEvents.eventId))

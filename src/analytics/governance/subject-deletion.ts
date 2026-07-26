@@ -69,7 +69,7 @@ export type DeletionWorkflowResult = Readonly<{
 type Db = ReturnType<typeof defaultGetDrizzleDb>
 type Tx = Parameters<Db['transaction']>[0] extends (tx: infer T) => unknown ? T : never
 
-const REMOTE_SETTLED_STATES = new Set(['delivered', 'sending', 'ambiguous'])
+export const REMOTE_SETTLED_STATES: ReadonlySet<string> = new Set(['delivered', 'sending', 'ambiguous'])
 
 const insertWithdrawalCensorsIn = (tx: Tx, actorKeys: readonly string[], nowMs: number): void => {
   for (const actorKey of actorKeys) {
@@ -85,11 +85,13 @@ const insertWithdrawalCensorsIn = (tx: Tx, actorKeys: readonly string[], nowMs: 
   }
 }
 
-const governanceEncryptionKey = (keyrings: SubjectKeyrings): Buffer => {
+const governanceEncryptionKeys = (keyrings: SubjectKeyrings): readonly Buffer[] => {
   if (keyrings.governance.kind !== 'available') {
     throw new DeletionIncompleteError('governance keyring unavailable; deletion cannot resume')
   }
-  return keyrings.governance.activeKey
+  const { activeKey, activeVersion, keys } = keyrings.governance
+  const retired = [...keys.entries()].filter(([version]) => version !== activeVersion).map(([, key]) => key)
+  return [activeKey, ...retired]
 }
 
 const listSubjectEventIds = (
@@ -104,7 +106,7 @@ const listSubjectEventIds = (
     .all()
 }
 
-const confirmRemoteDeletions = (
+export const confirmRemoteDeletions = (
   sinkVersionIds: readonly string[],
   requestRemoteDeletion: RemoteDeletionRequest | undefined,
 ): readonly Readonly<{ sinkVersionId: string; remoteReceiptHash: string }>[] | null => {
@@ -172,7 +174,7 @@ const resolveResumableTargets = (
   if (request === null) throw new DeletionIncompleteError('deletion request not found')
   if (request.state === 'completed') return 'completed'
   const targets = openDeletionTargets(
-    { requestId: input.requestId, encryptionKey: governanceEncryptionKey(deps.keyrings) },
+    { requestId: input.requestId, encryptionKeys: governanceEncryptionKeys(deps.keyrings) },
     deps,
   )
   if (targets === null) {

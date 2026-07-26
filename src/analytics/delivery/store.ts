@@ -9,6 +9,8 @@ import { getDrizzleDb as defaultGetDrizzleDb } from '../../db/drizzle.js'
 import { analyticsDeliveries, analyticsEvents } from '../../db/schema.js'
 import { logger } from '../../logger.js'
 import type { DeliveryGrantRef } from '../governance/eligibility.js'
+import { createGrantSendMutex } from '../governance/grant-serialization.js'
+import type { GrantSendMutex } from '../governance/grant-serialization.js'
 import { checkGrantCurrentIn } from '../governance/grant-store.js'
 import { isUnexpired, unexpiredEventFilter } from '../retention/expiry-guard.js'
 import { eventExpiryForSendIn, markDeliverySendingIn, releaseDeliveryToPendingIn } from './settlement.js'
@@ -25,7 +27,13 @@ export type GrantRecheck = (db: Db | Tx, ref: DeliveryGrantRef) => boolean
 export type DeliveryStoreDeps = Readonly<{
   getDrizzleDb: typeof defaultGetDrizzleDb
   recheckGrant?: GrantRecheck
+  grantMutex?: GrantSendMutex
 }>
+
+const defaultGrantSendMutex = createGrantSendMutex()
+
+export const resolveGrantSendMutex = (deps: DeliveryStoreDeps): GrantSendMutex =>
+  deps.grantMutex ?? defaultGrantSendMutex
 
 const recheck = (deps: DeliveryStoreDeps, db: Db | Tx, ref: DeliveryGrantRef): boolean =>
   (deps.recheckGrant ?? checkGrantCurrentIn)(db, ref)
@@ -230,13 +238,20 @@ export type MarkSendStartedInput = Readonly<{
   nowMs: number
 }>
 
-export type MarkSendStartedResult = 'started' | 'not_leased' | 'lease_expired' | 'grant_not_current' | 'event_expired'
+export type MarkSendStartedResult =
+  | 'started'
+  | 'not_leased'
+  | 'lease_expired'
+  | 'grant_not_current'
+  | 'event_expired'
+  | 'send_in_progress'
 
 export const markSendStarted = (
   input: MarkSendStartedInput,
   deps: DeliveryStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
 ): MarkSendStartedResult => {
   const db = deps.getDrizzleDb()
+  const mutex = resolveGrantSendMutex(deps)
   return db.transaction((tx) => {
     const row = tx
       .select()
@@ -259,7 +274,16 @@ export const markSendStarted = (
       log.warn({ sinkVersionId: input.sinkVersionId }, 'send-start blocked: grant not current')
       return 'grant_not_current'
     }
-    markDeliverySendingIn(tx, input.eventId, input.sinkVersionId, input.nowMs)
+    if (mutex.tryAcquire(input.grant.grantKey) === null) {
+      log.warn({ sinkVersionId: input.sinkVersionId }, 'send-start blocked: another send holds the grant mutex')
+      return 'send_in_progress'
+    }
+    try {
+      markDeliverySendingIn(tx, input.eventId, input.sinkVersionId, input.nowMs)
+    } catch (error) {
+      mutex.release(input.grant.grantKey)
+      throw error
+    }
     return 'started'
   })
 }

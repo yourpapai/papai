@@ -50,6 +50,7 @@ describe('grant send serialization', () => {
         return mutex.tryAcquire(grantKey)
       },
       isHeld: (grantKey: string): boolean => mutex.isHeld(grantKey),
+      release: (grantKey: string): boolean => mutex.release(grantKey),
     }
     runInDeterministicGrantOrder(mutexWithOrder, ['v1.d-grant-c', 'v1.d-grant-a', 'v1.d-grant-b'], () => {
       expect(mutex.isHeld('v1.d-grant-a')).toBe(true)

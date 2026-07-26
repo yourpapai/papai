@@ -10,6 +10,7 @@ import { eq } from 'drizzle-orm'
 import { KeyVersionSchema, VersionStringSchema } from '../../src/analytics/controlled-types.js'
 import { enqueueDelivery, leaseDeliveries, markSendStarted } from '../../src/analytics/delivery/store.js'
 import type { DeliveryStoreDeps } from '../../src/analytics/delivery/store.js'
+import { createGrantSendMutex } from '../../src/analytics/governance/grant-serialization.js'
 import { setGrantState } from '../../src/analytics/governance/grant-store.js'
 import { createSnapshotInvalidator } from '../../src/analytics/governance/snapshot-invalidator.js'
 import { exportSubjectData } from '../../src/analytics/governance/subject-service.js'
@@ -458,7 +459,7 @@ describe('read boundary: every path hides the row at the exact deadline', () => 
   beforeEach(async () => {
     db = await setupTestDb()
     deps = { getDrizzleDb: (): Db => db }
-    deliveryDeps = { getDrizzleDb: (): Db => db }
+    deliveryDeps = { getDrizzleDb: (): Db => db, grantMutex: createGrantSendMutex() }
   })
 
   test('canonical query: visible at expires_at-1, hidden at expires_at and expires_at+1', () => {
@@ -575,7 +576,7 @@ describe('read boundary: every path hides the row at the exact deadline', () => 
     ).toBe('started')
 
     db = await setupTestDb()
-    deliveryDeps = { getDrizzleDb: (): Db => db }
+    deliveryDeps = { getDrizzleDb: (): Db => db, grantMutex: createGrantSendMutex() }
     insertSinkRow(db, 'sv-1')
     allowGrant(db)
     insertEventRow(db, { eventId: 'ev-send', occurredAtMs: T - 90 * DAY, expiresAtMs: T })
@@ -753,12 +754,23 @@ describe('physical expiry ordering is enforced by ON DELETE RESTRICT', () => {
     })
     insertDeliveryRow(db, { eventId: 'ev-st', sinkVersionId: 'sv-4', state: 'delivered', deliveredAtMs: T - DAY })
 
-    const result = purgeExpired({ nowMs: T }, deps)
+    const remoteCalls: string[] = []
+    const remoteDeps: RetentionJobDeps = {
+      getDrizzleDb: (): Db => db,
+      requestRemoteDeletion: (sinkVersionId) => {
+        remoteCalls.push(sinkVersionId)
+        return { remoteReceiptHash: `remote-${sinkVersionId}` }
+      },
+    }
+    const result = purgeExpired({ nowMs: T }, remoteDeps)
 
+    expect(remoteCalls).toEqual(['sv-3', 'sv-4'])
     expect(deliveryRows(db)).toHaveLength(0)
     expect(eventRow(db, 'ev-st')).toBeUndefined()
     expect(result.deliveryRowsRemoved).toBe(4)
     expect(result.eventsRemoved).toBe(1)
+    const receipts = db.select().from(schema.analyticsDeliveryDeletionReceipts).all()
+    expect(receipts.map((row) => row.sinkVersionId).sort()).toEqual(['sv-3', 'sv-4'])
   })
 })
 

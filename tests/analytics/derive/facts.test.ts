@@ -49,7 +49,7 @@ describe('derive facts lookups', () => {
       occurredAtMs: T0,
       props: { feature: 'coding', available: true, reason: 'available', sampling: 'first_eligible_actor_day' },
     })
-    const facts = loadFeatureFacts(db, generation, 'v1.p-actor')
+    const facts = loadFeatureFacts(db, generation, 'v1.p-actor', T0 + 1000)
     expect(facts.opportunities).toHaveLength(1)
     expect(facts.opportunities[0]?.available).toBe(true)
     expect(facts.uses).toHaveLength(1)

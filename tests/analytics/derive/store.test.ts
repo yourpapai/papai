@@ -29,6 +29,10 @@ const messageProps = (): Record<string, unknown> => ({
   command: 'none',
 })
 
+const DAY = 86_400_000
+const LIVE_NOW = T0 + 1000
+const EXPIRY_DEADLINE = T0 + 90 * DAY
+
 describe('derive store reads', () => {
   let db: TestDb
   let ref: CollectionEligibilityRef
@@ -51,13 +55,13 @@ describe('derive store reads', () => {
       actorRole: 'guest',
       props: messageProps(),
     })
-    expect(findAffectedPartitions(db, generation, T0, T0 + 100)).toEqual([
+    expect(findAffectedPartitions(db, generation, T0, T0 + 100, LIVE_NOW)).toEqual([
       { actorKey: 'v1.p-actor', conversationKey: 'v1.p-context' },
     ])
-    expect(findAffectedPartitions(db, generation, T0 + 100, T0 + 200)).toEqual([
+    expect(findAffectedPartitions(db, generation, T0 + 100, T0 + 200, LIVE_NOW)).toEqual([
       { actorKey: 'v1.p-actor', conversationKey: 'v1.p-context' },
     ])
-    expect(findAffectedPartitions(db, generation, T0 + 101, T0 + 200)).toEqual([])
+    expect(findAffectedPartitions(db, generation, T0 + 101, T0 + 200, LIVE_NOW)).toEqual([])
   })
 
   test('loadPartitionEvents matches thread-keyed and context-keyed conversations', () => {
@@ -69,9 +73,19 @@ describe('derive store reads', () => {
       props: messageProps(),
     })
     seedEvent(db, ref, { id: 'v1.p-e2', name: 'chat_message_accepted', occurredAtMs: T0 + 1, props: messageProps() })
-    const threaded = loadPartitionEvents(db, generation, { actorKey: 'v1.p-actor', conversationKey: 'v1.p-thread' })
+    const threaded = loadPartitionEvents(
+      db,
+      generation,
+      { actorKey: 'v1.p-actor', conversationKey: 'v1.p-thread' },
+      LIVE_NOW,
+    )
     expect(threaded.map((event) => event.eventId)).toHaveLength(1)
-    const contexted = loadPartitionEvents(db, generation, { actorKey: 'v1.p-actor', conversationKey: 'v1.p-context' })
+    const contexted = loadPartitionEvents(
+      db,
+      generation,
+      { actorKey: 'v1.p-actor', conversationKey: 'v1.p-context' },
+      LIVE_NOW,
+    )
     expect(contexted.map((event) => event.eventId)).toHaveLength(1)
   })
 
@@ -126,7 +140,7 @@ describe('derive store reads', () => {
       props: intentProps(['I01']),
     })
     const partition = { actorKey: 'v1.p-actor', conversationKey: 'v1.p-context' }
-    const facts = loadTurnFacts(db, generation, partition)
+    const facts = loadTurnFacts(db, generation, partition, LIVE_NOW)
     expect(facts).toHaveLength(1)
     const fact = facts[0]
     expect(fact?.turnStartMs).toBe(T0)
@@ -138,7 +152,37 @@ describe('derive store reads', () => {
     expect(fact?.censorStartMs).toBeNull()
 
     denyActor(db, ref, T0 + 100)
-    const censored = loadTurnFacts(db, generation, partition)
+    const censored = loadTurnFacts(db, generation, partition, LIVE_NOW)
     expect(censored[0]?.censorStartMs).toBe(T0 + 100)
+  })
+
+  test('expiry guard: a row at the exact deadline is hidden from every derive scan with purge disabled', () => {
+    seedEvent(db, ref, {
+      id: 'v1.p-x-start',
+      name: 'turn_started',
+      occurredAtMs: T0,
+      turnKey: 'v1.p-turn-x',
+      props: TURN_STARTED_PROPS,
+    })
+    seedEvent(db, ref, {
+      id: 'v1.p-x-end',
+      name: 'turn_completed',
+      occurredAtMs: T0,
+      turnKey: 'v1.p-turn-x',
+      props: turnCompletedProps(0),
+    })
+    const partition = { actorKey: 'v1.p-actor', conversationKey: 'v1.p-context' }
+
+    expect(findAffectedPartitions(db, generation, T0, EXPIRY_DEADLINE, EXPIRY_DEADLINE - 1)).toEqual([partition])
+    expect(loadPartitionEvents(db, generation, partition, EXPIRY_DEADLINE - 1)).toHaveLength(2)
+    expect(loadTurnFacts(db, generation, partition, EXPIRY_DEADLINE - 1)).toHaveLength(1)
+
+    expect(findAffectedPartitions(db, generation, T0, EXPIRY_DEADLINE, EXPIRY_DEADLINE)).toEqual([])
+    expect(loadPartitionEvents(db, generation, partition, EXPIRY_DEADLINE)).toHaveLength(0)
+    expect(loadTurnFacts(db, generation, partition, EXPIRY_DEADLINE)).toHaveLength(0)
+
+    expect(findAffectedPartitions(db, generation, T0, EXPIRY_DEADLINE, EXPIRY_DEADLINE + 1)).toEqual([])
+    expect(loadPartitionEvents(db, generation, partition, EXPIRY_DEADLINE + 1)).toHaveLength(0)
+    expect(loadTurnFacts(db, generation, partition, EXPIRY_DEADLINE + 1)).toHaveLength(0)
   })
 })

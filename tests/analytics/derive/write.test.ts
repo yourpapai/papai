@@ -61,7 +61,7 @@ describe('derive write', () => {
 
   test('replaceSessions persists rows and a rerun replaces them without duplicates', () => {
     seedEvent(db, ref, { id: 'v1.p-e1', name: 'chat_message_accepted', occurredAtMs: T0, props: messageProps() })
-    const events = loadPartitionEvents(db, generation, PARTITION)
+    const events = loadPartitionEvents(db, generation, PARTITION, T0 + 1000)
     const sessions = sessionizePartition({ ...PARTITION, events }, KEY_INPUT)
     expect(replaceSessions(db, generation, PARTITION, sessions)).toEqual({ sessions: 1, events: 1 })
     expect(replaceSessions(db, generation, PARTITION, sessions)).toEqual({ sessions: 1, events: 1 })
@@ -80,7 +80,7 @@ describe('derive write', () => {
       turnKey: 'v1.p-turn-1',
       props: turnCompletedProps(10),
     })
-    const facts = loadTurnFacts(db, generation, PARTITION)
+    const facts = loadTurnFacts(db, generation, PARTITION, T0 + 1000)
     const attempts = buildGoalAttempts(
       facts.map((fact) => ({ ...fact, goals: ['I01'] })),
       { nowMs: T0 + 90_000_000, censorStartMs: null },
@@ -133,7 +133,7 @@ describe('derive write', () => {
       turnKey: 'v1.p-turn-1',
       props: intentProps(['I01']),
     })
-    const facts = loadTurnFacts(db, generation, PARTITION)
+    const facts = loadTurnFacts(db, generation, PARTITION, T0 + 1000)
     const rows = facts.map((fact) =>
       computeTurnFriction({
         turnKey: fact.turnKey,
@@ -172,7 +172,7 @@ describe('derive write', () => {
       occurredAtMs: T0 + 10,
       props: { feature: 'coding', operation: 'start', outcome: 'success' },
     })
-    const materialization = materializeFeatureDays(loadFeatureFacts(db, generation, 'v1.p-actor'))
+    const materialization = materializeFeatureDays(loadFeatureFacts(db, generation, 'v1.p-actor', T0 + 1000))
     expect(replaceFeatureDays(db, 'v1.p-actor', materialization, generation)).toEqual({ opportunities: 1, uses: 1 })
     replaceFeatureDays(db, 'v1.p-actor', materialization, generation)
     const useRow = db.select().from(schema.analyticsFeatureUseDays).get()

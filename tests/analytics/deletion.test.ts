@@ -9,6 +9,7 @@ import { eq } from 'drizzle-orm'
 
 import { openDeletionTargets } from '../../src/analytics/governance/deletion-target-store.js'
 import { deleteSubjectData, resumeUnresolvedDeletions } from '../../src/analytics/governance/subject-service.js'
+import type { SubjectServiceDeps } from '../../src/analytics/governance/subject-service.js'
 import * as schema from '../../src/db/schema.js'
 import { setupTestDb } from '../utils/test-helpers.js'
 import {
@@ -18,6 +19,7 @@ import {
   allowCollectionRef,
   allowGrantFor,
   GENERATIONS,
+  GKEYS,
   IDENTITY_A,
   IDENTITY_B,
   KEYRING,
@@ -237,7 +239,7 @@ describe('authenticated subject deletion', () => {
     expect(db.select().from(schema.analyticsEvents).all().length).toBeGreaterThan(0)
 
     const targets = openDeletionTargets(
-      { requestId: requireFirstRequestId(), encryptionKey: KEYRING.governance.activeKey },
+      { requestId: requireFirstRequestId(), encryptionKeys: [KEYRING.governance.activeKey] },
       { getDrizzleDb: (): typeof db => db },
     )
     expect(targets).not.toBeNull()
@@ -250,6 +252,59 @@ describe('authenticated subject deletion', () => {
     expect(allReceipts(db)).toHaveLength(1)
     const bundle = db.select().from(schema.analyticsDeletionTargetBundles).all()[0]
     expect(bundle?.targetCiphertext).toBe('')
+  })
+
+  test('resume survives a governance rekey: a bundle sealed under the old key opens with the rotated keyring', () => {
+    const eventId = seedFullGraph()
+    seedSink(db, 'sv-del-rekey')
+    seedDelivery(db, {
+      eventId,
+      sinkVersionId: 'sv-del-rekey',
+      state: 'delivered',
+      deliveredAtMs: T,
+      remoteReceiptHash: 'rh-rekey',
+    })
+    const preRekeyKeyrings = {
+      analytics: KEYRING.analytics,
+      governance: {
+        kind: 'available',
+        activeVersion: 'v1',
+        activeKey: GKEYS.v1,
+        keys: new Map([['v1', GKEYS.v1]]),
+      },
+    } as const
+    const refuse = (): null => null
+    const confirm = (): { remoteReceiptHash: string } => ({ remoteReceiptHash: 'remote-rekey' })
+    let remoteBehavior: typeof refuse | typeof confirm = refuse
+    const depsWith = (keyrings: SubjectServiceDeps['keyrings']): SubjectServiceDeps => ({
+      ...makeSubjectDeps(db),
+      keyrings,
+      requestRemoteDeletion: (): { remoteReceiptHash: string } | null => remoteBehavior(),
+    })
+
+    expect(() => deleteSubjectData(IDENTITY_A, depsWith(preRekeyKeyrings), T + 10)).toThrow()
+    expect(db.select().from(schema.analyticsDeletionRequests).all()[0]?.state).toBe('failed')
+
+    const rotatedKeyrings = {
+      analytics: KEYRING.analytics,
+      governance: {
+        kind: 'available',
+        activeVersion: 'v3',
+        activeKey: GKEYS.v3,
+        keys: new Map([
+          ['v1', GKEYS.v1],
+          ['v2', GKEYS.v2],
+          ['v3', GKEYS.v3],
+        ]),
+      },
+    } as const
+    remoteBehavior = confirm
+    const outcomes = resumeUnresolvedDeletions(depsWith(rotatedKeyrings), T + 20)
+
+    expect(outcomes).toEqual(['completed'])
+    expect(db.select().from(schema.analyticsEvents).all()).toHaveLength(0)
+    expect(allReceipts(db)).toHaveLength(1)
+    expect(db.select().from(schema.analyticsDeletionTargetBundles).all()[0]?.targetCiphertext).toBe('')
   })
 
   test('another member is completely untouched by deletion', () => {

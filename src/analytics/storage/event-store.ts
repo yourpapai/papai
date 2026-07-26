@@ -196,7 +196,7 @@ export const listSnapshotSourceEvents = (
     .orderBy(asc(analyticsEvents.occurredAtMs), asc(analyticsEvents.eventId))
     .all()
 
-export const listExpiredEventIds = (tx: Tx, nowMs: number): readonly string[] =>
+export const listExpiredEventIds = (tx: Db | Tx, nowMs: number): readonly string[] =>
   tx
     .select({ eventId: analyticsEvents.eventId })
     .from(analyticsEvents)

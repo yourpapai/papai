@@ -19,6 +19,7 @@ import {
   renewLease,
 } from '../../../src/analytics/delivery/store.js'
 import type { DeliveryStoreDeps } from '../../../src/analytics/delivery/store.js'
+import { createGrantSendMutex } from '../../../src/analytics/governance/grant-serialization.js'
 import { checkGrantCurrentIn, setGrantState } from '../../../src/analytics/governance/grant-store.js'
 import {
   analyticsDeliveries,
@@ -41,6 +42,7 @@ const requireFirst = <T>(items: readonly T[]): T => {
 
 const NOW = 1_700_000_000_000
 const GRANT = { grantKey: 'v1.d-grant-1', keyVersion: 'v1', generation: 1 }
+const GRANT_2 = { grantKey: 'v1.d-grant-2', keyVersion: 'v1', generation: 1 }
 
 const insertEvent = (db: Db, eventId: string): void => {
   db.insert(analyticsProcessEpochs)
@@ -134,7 +136,7 @@ describe('analytics delivery store', () => {
 
   beforeEach(async () => {
     db = await setupTestDb()
-    deps = { getDrizzleDb: (): Db => db }
+    deps = { getDrizzleDb: (): Db => db, grantMutex: createGrantSendMutex() }
   })
 
   test('one event enqueues independently to two disabled sink versions; a referenced version cannot be deleted', () => {
@@ -453,13 +455,62 @@ describe('analytics delivery store', () => {
     ).toBe('not_sending')
   })
 
+  test('send-start holds the per-grant mutex until classification releases it', () => {
+    seed(db)
+    const mutex = createGrantSendMutex()
+    const mutexDeps: DeliveryStoreDeps = { getDrizzleDb: (): Db => db, grantMutex: mutex }
+    enqueueDelivery({ eventId: 'event-1', sinkVersionId: 'sv-1', grant: GRANT, nowMs: NOW }, mutexDeps)
+    leaseDeliveries({ nowMs: NOW, leaseMs: 100, limit: 10, maxAttempts: 3 }, mutexDeps)
+
+    expect(mutex.isHeld(GRANT.grantKey)).toBe(false)
+    expect(
+      markSendStarted({ eventId: 'event-1', sinkVersionId: 'sv-1', grant: GRANT, nowMs: NOW + 10 }, mutexDeps),
+    ).toBe('started')
+    expect(mutex.isHeld(GRANT.grantKey)).toBe(true)
+
+    insertEvent(db, 'event-2')
+    insertSink(db, 'sv-2')
+    enqueueDelivery({ eventId: 'event-2', sinkVersionId: 'sv-2', grant: GRANT, nowMs: NOW }, mutexDeps)
+    leaseDeliveries({ nowMs: NOW, leaseMs: 100, limit: 10, maxAttempts: 3 }, mutexDeps)
+    expect(
+      markSendStarted({ eventId: 'event-2', sinkVersionId: 'sv-2', grant: GRANT, nowMs: NOW + 10 }, mutexDeps),
+    ).toBe('send_in_progress')
+    expect(getDelivery(db, 'event-2', 'sv-2')?.state).toBe('leased')
+
+    expect(
+      classifyDelivery(
+        { eventId: 'event-1', sinkVersionId: 'sv-1', nowMs: NOW + 20, outcome: 'delivered', remoteReceiptHash: 'r' },
+        mutexDeps,
+      ),
+    ).toBe('classified')
+    expect(mutex.isHeld(GRANT.grantKey)).toBe(false)
+
+    expect(
+      markSendStarted({ eventId: 'event-2', sinkVersionId: 'sv-2', grant: GRANT, nowMs: NOW + 30 }, mutexDeps),
+    ).toBe('started')
+  })
+
+  test('recovery of an orphaned send releases the per-grant mutex', () => {
+    seed(db)
+    const mutex = createGrantSendMutex()
+    const mutexDeps: DeliveryStoreDeps = { getDrizzleDb: (): Db => db, grantMutex: mutex }
+    enqueueDelivery({ eventId: 'event-1', sinkVersionId: 'sv-1', grant: GRANT, nowMs: NOW }, mutexDeps)
+    leaseDeliveries({ nowMs: NOW, leaseMs: 100, limit: 10, maxAttempts: 3 }, mutexDeps)
+    markSendStarted({ eventId: 'event-1', sinkVersionId: 'sv-1', grant: GRANT, nowMs: NOW + 10 }, mutexDeps)
+    expect(mutex.isHeld(GRANT.grantKey)).toBe(true)
+
+    expect(recoverOrphanedSends({ nowMs: NOW + 500 }, mutexDeps)).toEqual({ moved: 1 })
+    expect(mutex.isHeld(GRANT.grantKey)).toBe(false)
+  })
+
   test('recovery moves orphaned sending rows to ambiguous; live sends are untouched', () => {
     toSending()
     insertEvent(db, 'event-2')
     insertSink(db, 'sv-2')
-    enqueueDelivery({ eventId: 'event-2', sinkVersionId: 'sv-2', grant: GRANT, nowMs: NOW }, deps)
+    allowGrant(db, GRANT_2.grantKey)
+    enqueueDelivery({ eventId: 'event-2', sinkVersionId: 'sv-2', grant: GRANT_2, nowMs: NOW }, deps)
     leaseDeliveries({ nowMs: NOW, leaseMs: 100000, limit: 10, maxAttempts: 3 }, deps)
-    markSendStarted({ eventId: 'event-2', sinkVersionId: 'sv-2', grant: GRANT, nowMs: NOW + 10 }, deps)
+    markSendStarted({ eventId: 'event-2', sinkVersionId: 'sv-2', grant: GRANT_2, nowMs: NOW + 10 }, deps)
 
     expect(recoverOrphanedSends({ nowMs: NOW + 500 }, deps)).toEqual({ moved: 1 })
     expect(getDelivery(db, 'event-1', 'sv-1')?.state).toBe('ambiguous')
