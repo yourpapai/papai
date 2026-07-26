@@ -9,10 +9,14 @@ import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
 import { memoryProfiles, memoryRecallShadowLog, memoryRecords } from '../db/schema.js'
+import { logger } from '../logger.js'
 import { profileScopeCondition, recordScopeCondition, recordValidityCondition } from './record-conditions.js'
 import { rowToProfile, rowToRecord, sanitizeFtsQuery, serializeEmbedding } from './serialization.js'
 import type { ShadowLogRow } from './shadow-log-row.js'
+import { isContentTombstoned } from './tombstone.js'
 import type { MemoryKind, MemoryProfile, MemoryRecord, MemoryRecordInput, MemoryScope, MemoryStatus } from './types.js'
+
+const log = logger.child({ scope: 'long-term-memory:store' })
 
 export type ListMemoryRecordsFilter = Readonly<{
   status?: MemoryStatus
@@ -160,7 +164,26 @@ export function setMemoryRecordInjectionEnabled(scope: MemoryScope, enabled: boo
   return loadProfile(scope)
 }
 
-export function saveMemoryRecord(input: MemoryRecordInput): MemoryRecord {
+/**
+ * Writes a record unless its content has been forgotten in this scope.
+ *
+ * The tombstone check lives here rather than at the capture and extraction call sites so
+ * that a write path added later inherits the suppression instead of having to remember it.
+ * Explicit saves are never gated: `remember_memory` is a deliberate user override that
+ * clears the matching tombstone immediately after.
+ *
+ * Returns null when the write was suppressed.
+ */
+export function saveMemoryRecord(input: MemoryRecordInput): MemoryRecord | null {
+  const scope: MemoryScope = { scopeId: input.scopeId, scopeType: input.scopeType }
+  if (input.source !== 'explicit' && isContentTombstoned(scope, input.content)) {
+    log.info(
+      { scopeId: input.scopeId, scopeType: input.scopeType, source: input.source },
+      'Memory write suppressed by tombstone',
+    )
+    return null
+  }
+
   const values = inputToRecordValues(input)
 
   getDrizzleDb()
@@ -235,6 +258,11 @@ export function updateMemoryRecord(
   patch: Readonly<{ status?: MemoryStatus; content?: string; confidence?: number }>,
   now: string,
 ): MemoryRecord | null {
+  if (patch.content !== undefined && isContentTombstoned(scope, patch.content)) {
+    log.info({ scopeId: scope.scopeId, scopeType: scope.scopeType, recordId }, 'Memory update suppressed by tombstone')
+    return null
+  }
+
   const rows = getDrizzleDb()
     .update(memoryRecords)
     .set({

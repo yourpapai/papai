@@ -111,6 +111,8 @@ export function makeRememberMemoryTool(input: MemoryToolContext): Tool {
         lastSeenAt: now,
         expiresAt: expiresAt ?? null,
       })
+      // Unreachable: the gate in saveMemoryRecord never suppresses an explicit save.
+      if (record === null) throw new Error('Explicit memory save was unexpectedly suppressed by a tombstone')
       deleteMatchingTombstone(scope, content)
       log.info(
         { scopeId: scope.scopeId, scopeType: scope.scopeType, memoryId: record.id, kind },

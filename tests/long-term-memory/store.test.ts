@@ -29,6 +29,7 @@ import {
   saveMemoryRecord,
   searchMemoryRecords,
   setMemoryRecordInjectionEnabled,
+  updateMemoryRecord,
 } from '../../src/long-term-memory/store.js'
 import { insertTombstone } from '../../src/long-term-memory/tombstone.testing.js'
 import type { MemoryRecordInput } from '../../src/long-term-memory/types.js'
@@ -427,6 +428,71 @@ describe('long-term memory store', () => {
       const persisted = getDrizzleDb().select().from(memoryRecallShadowLog).all()
       expect(persisted).toHaveLength(2)
       expect(persisted[0]?.id).not.toBe(persisted[1]?.id)
+    })
+  })
+
+  describe('tombstone gate at the write boundary', () => {
+    const scope = { scopeId: 'dm-gate', scopeType: 'personal' as const }
+    const CONTENT = 'User lives in Berlin'
+    const NOW = '2026-07-26T00:00:00.000Z'
+
+    beforeEach(async () => {
+      await setupTestDb()
+      saveMemoryRecord(memoryRecordInput({ id: 'seed', scopeId: scope.scopeId, content: CONTENT }))
+      purgeMemoryRecord(scope, 'seed', NOW)
+    })
+
+    test('refuses a background save of tombstoned content', () => {
+      const saved = saveMemoryRecord(
+        memoryRecordInput({ id: 'bg-1', scopeId: scope.scopeId, content: CONTENT, source: 'background' }),
+      )
+      expect(saved).toBeNull()
+      expect(listMemoryRecords({ ...scope, status: 'active' }).map((r) => r.id)).not.toContain('bg-1')
+    })
+
+    test('refuses a background save that differs only in case and spacing', () => {
+      const saved = saveMemoryRecord(
+        memoryRecordInput({
+          id: 'bg-2',
+          scopeId: scope.scopeId,
+          content: 'user   LIVES in berlin',
+          source: 'background',
+        }),
+      )
+      expect(saved).toBeNull()
+    })
+
+    test('allows an explicit save of tombstoned content as an intentional override', () => {
+      const saved = saveMemoryRecord(
+        memoryRecordInput({ id: 'ex-1', scopeId: scope.scopeId, content: CONTENT, source: 'explicit' }),
+      )
+      expect(saved?.id).toBe('ex-1')
+    })
+
+    test('does not gate a background save in a different scope', () => {
+      const saved = saveMemoryRecord(
+        memoryRecordInput({ id: 'other-1', scopeId: 'dm-other', content: CONTENT, source: 'background' }),
+      )
+      expect(saved?.id).toBe('other-1')
+    })
+
+    test('refuses an update that rewrites content to a tombstoned value', () => {
+      saveMemoryRecord(
+        memoryRecordInput({ id: 'upd-1', scopeId: scope.scopeId, content: 'User likes tea', source: 'background' }),
+      )
+
+      expect(updateMemoryRecord(scope, 'upd-1', { content: CONTENT }, NOW)).toBeNull()
+
+      const [row] = listMemoryRecords({ ...scope, status: 'active' }).filter((r) => r.id === 'upd-1')
+      expect(row?.content).toBe('User likes tea')
+    })
+
+    test('still applies an update that does not touch content', () => {
+      saveMemoryRecord(
+        memoryRecordInput({ id: 'upd-2', scopeId: scope.scopeId, content: 'User likes tea', source: 'background' }),
+      )
+
+      expect(updateMemoryRecord(scope, 'upd-2', { confidence: 0.5 }, NOW)?.confidence).toBe(0.5)
     })
   })
 })
