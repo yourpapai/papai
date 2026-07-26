@@ -22,7 +22,13 @@ import {
 } from '../../../src/chat/telegram/message-extraction.js'
 import type { AuthorizationResult } from '../../../src/chat/types.js'
 import type { DeferredDeliveryTarget, IncomingMessage, ReplyFn } from '../../../src/chat/types.js'
-import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
+import {
+  clearMessageCache,
+  mockLogger,
+  mockMessageCache,
+  restoreFetch,
+  setMockFetch,
+} from '../../utils/test-helpers.js'
 
 type EditMessageCall = [text: string, options: Partial<{ reply_markup: unknown }> | undefined]
 type SendMessageCall = [
@@ -125,6 +131,8 @@ void mock.module('../../../src/auth.js', () => ({
 describe('TelegramChatProvider', () => {
   beforeEach(() => {
     mockLogger()
+    mockMessageCache()
+    clearMessageCache()
   })
 
   test('constructor requires explicit token and platform instance id', () => {
