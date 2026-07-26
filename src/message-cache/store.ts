@@ -134,7 +134,8 @@ export function getMessageContext(
     return { target, before: [], after: [], replyChain: chain }
   }
 
-  const threadFilter = mode === 'thread' ? eq(messageMetadata.contextId, target.contextId) : scopeWhere(scope)
+  const threadFilter =
+    mode === 'thread' ? and(scopeWhere(scope), eq(messageMetadata.contextId, target.contextId)) : scopeWhere(scope)
   const db = getDrizzleDb()
   const beforeRows = db
     .select()

@@ -143,6 +143,27 @@ describe('message-cache store: searchMessages (FTS5)', () => {
     await flushPendingWrites()
     expect(searchMessages(groupScope('g'), 'nonexistentterm', {}, 10)).toEqual([])
   })
+
+  test('bm25 ranks the higher-relevance message first', async () => {
+    cacheMessage({
+      messageId: '1',
+      contextId: 'g:t1',
+      groupContextId: 'g',
+      text: 'deploy alpha beta gamma',
+      timestamp: 1,
+    })
+    cacheMessage({
+      messageId: '2',
+      contextId: 'g:t1',
+      groupContextId: 'g',
+      text: 'deploy deploy alpha beta',
+      timestamp: 2,
+    })
+    cacheMessage({ messageId: '3', contextId: 'g:t1', groupContextId: 'g', text: 'unrelated chatter', timestamp: 3 })
+    await flushPendingWrites()
+    const results = searchMessages(groupScope('g'), 'deploy', {}, 10)
+    expect(results[0]?.messageId).toBe('2')
+  })
 })
 
 describe('message-cache store: getMessage (scope-checked)', () => {
@@ -180,6 +201,19 @@ describe('message-cache store: getMessageContext', () => {
     expect(res.target?.messageId).toBe('c')
     expect(res.before.map((m) => m.messageId)).toEqual(['b'])
     expect(res.after.map((m) => m.messageId)).toEqual(['d'])
+  })
+
+  test('thread mode isolates to the anchor contextId within the group scope', async () => {
+    cacheMessage({ messageId: 'a1', contextId: 'g:t1', groupContextId: 'g', text: 'a1', timestamp: 1 })
+    cacheMessage({ messageId: 'b1', contextId: 'g:t2', groupContextId: 'g', text: 'b1', timestamp: 2 })
+    cacheMessage({ messageId: 'a2', contextId: 'g:t1', groupContextId: 'g', text: 'a2', timestamp: 3 })
+    cacheMessage({ messageId: 'b2', contextId: 'g:t2', groupContextId: 'g', text: 'b2', timestamp: 4 })
+    cacheMessage({ messageId: 'a3', contextId: 'g:t1', groupContextId: 'g', text: 'a3', timestamp: 5 })
+    await flushPendingWrites()
+    const res = getMessageContext(groupScope('g'), 'a2', 5, 5, 'thread')
+    expect(res.target?.messageId).toBe('a2')
+    expect(res.before.map((m) => m.messageId)).toEqual(['a1'])
+    expect(res.after.map((m) => m.messageId)).toEqual(['a3'])
   })
 
   test('returns empty target when message missing in scope', async () => {

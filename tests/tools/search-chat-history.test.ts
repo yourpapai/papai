@@ -18,10 +18,17 @@ const threadContextId = toScopedThreadContextId({
 })
 const groupContextId = toScopedContextId({ platformInstanceId: 'inst1', nativeContextId: 'group1' })
 
-type SearchChatHistoryResult = { results: { messageId: string }[]; total: number; mode: string }
+type SearchChatHistoryResult = { results: { messageId: string }[]; total: number; mode: string; hasMore: boolean }
 
 function isSearchResult(value: unknown): value is SearchChatHistoryResult {
-  return typeof value === 'object' && value !== null && 'results' in value && 'total' in value && 'mode' in value
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'results' in value &&
+    'total' in value &&
+    'mode' in value &&
+    'hasMore' in value
+  )
 }
 
 describe('search_chat_history tool', () => {
@@ -61,6 +68,30 @@ describe('search_chat_history tool', () => {
     expect(result.results.map((r) => r.messageId)).toEqual(['1'])
     expect(result.total).toBe(1)
     expect(result.mode).toBe('keyword')
+    expect(result.hasMore).toBe(false)
+  })
+
+  test('hasMore is true when results hit the requested limit', async () => {
+    for (let i = 1; i <= 3; i++) {
+      cacheMessage({
+        messageId: String(i),
+        contextId: threadContextId,
+        groupContextId,
+        text: 'deploy',
+        timestamp: i,
+      })
+    }
+    await flushPendingWrites()
+    const tool = makeSearchChatHistoryTool('u1', threadContextId, 'group')
+    const capped: unknown = await getToolExecutor(tool)({ query: 'deploy', limit: 2 })
+    assert(isSearchResult(capped), 'Invalid result')
+    expect(capped.total).toBe(2)
+    expect(capped.hasMore).toBe(true)
+
+    const uncapped: unknown = await getToolExecutor(tool)({ query: 'deploy', limit: 5 })
+    assert(isSearchResult(uncapped), 'Invalid result')
+    expect(uncapped.total).toBe(3)
+    expect(uncapped.hasMore).toBe(false)
   })
 
   test('returns empty result set on no match', async () => {
