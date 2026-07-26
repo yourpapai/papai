@@ -1084,6 +1084,32 @@ describe('story report lifecycle', () => {
     }
   })
 
+  test('returns the child exit code unchanged when --coverage is set but no lcov was produced', async () => {
+    const fixture = reportFixture()
+    const candidate = manifest('a'.repeat(64))
+    const sessionManifest = {
+      ...candidate,
+      files: [{ path: 'tests/stories/a.story.test.ts', sha256: 'b'.repeat(64) }],
+    }
+    try {
+      writeCoverageFloor(fixture.root, { lines: 0.5, functions: 0.5 })
+
+      const exitCode = await runStoryTests(
+        ['--coverage'],
+        dependencies(fixture.root, {
+          ...sessionDependencies(
+            testSession(fixture.root, sessionManifest, { copyCoverage: () => Promise.resolve(false) }),
+          ),
+          spawn: () => ({ exited: Promise.resolve(7), kill: (): void => undefined }),
+        }),
+      )
+
+      expect(exitCode).toBe(7)
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true })
+    }
+  })
+
   test('attempts both standard report removals when one cleanup throws synchronously', async () => {
     const fixture = reportFixture()
     const attempted: string[] = []

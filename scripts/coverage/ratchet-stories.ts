@@ -31,4 +31,9 @@ async function main(): Promise<void> {
   console.log(`T0 coverage floor raised to lines ${next.lines}, functions ${next.functions}. Commit the change.`)
 }
 
-if (import.meta.main) await main()
+if (import.meta.main) {
+  main().catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : String(error))
+    process.exit(1)
+  })
+}
