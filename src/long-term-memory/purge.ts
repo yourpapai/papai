@@ -34,6 +34,7 @@ const NOT_PURGED: PurgeOutcome = {
 const idsMatchingHash = (rows: readonly { id: string; content: string }[], hash: string): string[] =>
   rows.filter((row) => contentHash(row.content) === hash).map((row) => row.id)
 
+/** The transaction handle passed to `db.transaction((tx) => ...)`, for helpers extracted outside that closure. */
 type MemoryTx = Parameters<Parameters<ReturnType<typeof getDrizzleDb>['transaction']>[0]>[0]
 
 type Sweep = Readonly<{ content: string; recordsDeleted: number }>
