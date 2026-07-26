@@ -41,7 +41,7 @@
     "test:serial": "bun test",
     "test:client": "bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/",
     "test:watch": "bun test --watch",
-    "test:coverage": "bun test --coverage",
+    "test:coverage": "bun scripts/ensure-client-built.ts && bun test --coverage",
     "coverage:ratchet": "bun scripts/coverage/ratchet.ts",
     "coverage:ratchet:stories": "bun scripts/coverage/ratchet-stories.ts",
     "test:mutate": "bun scripts/mutation/all-files.ts",

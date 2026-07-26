@@ -306,6 +306,19 @@ else
     done
     checks=("${filtered_checks[@]}")
   fi
+
+  # Build client bundles before the parallel fan-out when the `test` check is
+  # active and the bundles are missing. The `tests/debug/` suites fail fast in
+  # beforeAll without them. The guard script no-ops when bundles already exist
+  # (repeat local runs, and CI where public/ arrives as a downloaded artifact),
+  # so this is cheap except on the first bundle-less run.
+  for check in "${checks[@]}"; do
+    if [ "$check" = "test" ]; then
+      bun scripts/ensure-client-built.ts || exit 1
+      break
+    fi
+  done
+
   failed=0
   pids=()
 
