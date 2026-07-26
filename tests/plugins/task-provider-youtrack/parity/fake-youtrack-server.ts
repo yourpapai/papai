@@ -338,7 +338,7 @@ const issueProjection = (state: State, issue: StoredIssue): Record<string, unkno
   }
 }
 
-export const issueListProjection = (state: State, issue: StoredIssue): Record<string, unknown> => {
+const issueListProjection = (state: State, issue: StoredIssue): Record<string, unknown> => {
   const project = state.projects.get(issue.projectDbId)
   const customFields: unknown[] = []
   if (issue.state !== undefined) {
@@ -359,10 +359,68 @@ export const issueListProjection = (state: State, issue: StoredIssue): Record<st
   }
 }
 
+// ---------- YouTrack query interpreter (list + search) ----------
+
+type ParsedQuery = {
+  shortName: string | undefined
+  freeText: string
+  sortField: string | undefined
+  sortDir: string | undefined
+}
+
+const interpretQuery = (raw: string): ParsedQuery => {
+  let rest = raw
+  let shortName: string | undefined
+  const projectMatch = /project:\s*\{([^}]+)\}/u.exec(rest)
+  if (projectMatch !== null) {
+    shortName = projectMatch[1]
+    rest = rest.replace(projectMatch[0], ' ')
+  }
+  let sortField: string | undefined
+  let sortDir: string | undefined
+  const sortMatch = /sort by:\s*(\S+)\s+(asc|desc)/u.exec(rest)
+  if (sortMatch !== null) {
+    sortField = sortMatch[1]
+    sortDir = sortMatch[2]
+    rest = rest.replace(sortMatch[0], ' ')
+  }
+  // Strip any remaining `Field: {..}` and `Due date: <..` directives so only free text remains.
+  rest = rest.replace(/[A-Za-z ]+:\s*\{[^}]*\}/gu, ' ').replace(/Due date:\s*[<>]\S+/giu, ' ')
+  return { shortName, freeText: rest.trim(), sortField, sortDir }
+}
+
+const handleIssueQuery = (ctx: Ctx): Response => {
+  const { state, query } = ctx
+  const parsed = interpretQuery(query.get('query') ?? '')
+  let issues = [...state.issues.values()]
+  if (parsed.shortName !== undefined) {
+    issues = issues.filter((i) => state.projects.get(i.projectDbId)?.shortName === parsed.shortName)
+  }
+  if (parsed.freeText.length > 0) {
+    const needle = parsed.freeText.toLowerCase()
+    issues = issues.filter((i) => i.summary.toLowerCase().includes(needle))
+  }
+  const byTitle = parsed.sortField === 'title' || parsed.sortField === 'summary'
+  issues.sort((a, b) => {
+    if (byTitle) {
+      const cmp = a.summary.localeCompare(b.summary)
+      return parsed.sortDir === 'desc' ? -cmp : cmp
+    }
+    return a.created - b.created
+  })
+  const top = Number(query.get('$top') ?? '100')
+  const skip = Number(query.get('$skip') ?? '0')
+  return json(issues.slice(skip, skip + top).map((i) => issueListProjection(state, i)))
+}
+
 // ---------- Issue handler ----------
 
 const handleIssues = (ctx: Ctx): Response | undefined => {
   const { method, path, state } = ctx
+
+  if (path === '/api/issues' && method === 'GET') {
+    return handleIssueQuery(ctx)
+  }
 
   const cfPath = matchPath('/api/issues/:id/customFields', path)
   if (cfPath !== null && method === 'GET') {

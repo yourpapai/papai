@@ -202,3 +202,94 @@ describe('fake YouTrack server — issues & custom fields', () => {
     expect(res.status).toBe(404)
   })
 })
+
+const SummarySchema = z.object({ summary: z.string() })
+const SummaryListSchema = z.array(SummarySchema)
+const UnknownListSchema = z.array(z.unknown())
+
+const UpdatedIssueSchema = z.object({
+  summary: z.string(),
+  customFields: z.array(z.object({ name: z.string(), value: z.object({ name: z.string().optional() }) })),
+})
+
+describe('fake YouTrack server — list, sort, paging, search', () => {
+  let fake: FakeYouTrackServer
+
+  beforeAll(() => {
+    fake = startFakeYouTrackServer()
+  })
+
+  afterAll(async () => {
+    await fake.stop()
+  })
+
+  const seed = async (project: { id: string }, summary: string): Promise<void> => {
+    await postJson(fake, '/api/issues', { project: { id: project.id }, summary })
+  }
+
+  test('sorts by title ascending when the query carries a sort-by clause', async () => {
+    fake.reset()
+    const project = await createProject(fake, 'Sort P', 'SORT')
+    await seed(project, 'Sort B')
+    await seed(project, 'Sort C')
+    await seed(project, 'Sort A')
+    const q = encodeURIComponent('project: {SORT} sort by: title asc')
+    const res = await fetch(`${fake.url}/api/issues?query=${q}&$top=100`)
+    const items = SummaryListSchema.parse(await res.json())
+    expect(items.map((i) => i.summary)).toEqual(['Sort A', 'Sort B', 'Sort C'])
+  })
+
+  test('pages by $top/$skip in insertion order', async () => {
+    fake.reset()
+    const project = await createProject(fake, 'Page P', 'PAGE')
+    await seed(project, 'Page A')
+    await seed(project, 'Page B')
+    await seed(project, 'Page C')
+    const q = encodeURIComponent('project: {PAGE}')
+    const first = SummaryListSchema.parse(await (await fetch(`${fake.url}/api/issues?query=${q}&$top=2`)).json())
+    const second = SummaryListSchema.parse(
+      await (await fetch(`${fake.url}/api/issues?query=${q}&$top=2&$skip=2`)).json(),
+    )
+    expect(first.map((i) => i.summary)).toEqual(['Page A', 'Page B'])
+    expect(second.map((i) => i.summary)).toEqual(['Page C'])
+  })
+
+  test('search matches free-text within a project and excludes other projects', async () => {
+    fake.reset()
+    const a = await createProject(fake, 'Search A', 'SA')
+    const b = await createProject(fake, 'Search B', 'SB')
+    await seed(a, 'Searchable Falcon')
+    await seed(a, 'Unrelated Item')
+    await seed(b, 'Searchable Outsider')
+    const q = encodeURIComponent('project: {SA} Searchable')
+    const res = await fetch(`${fake.url}/api/issues?query=${q}&$top=100`)
+    const items = SummaryListSchema.parse(await res.json())
+    expect(items.map((i) => i.summary)).toEqual(['Searchable Falcon'])
+  })
+
+  test('search returns empty for a non-matching query', async () => {
+    fake.reset()
+    const project = await createProject(fake, 'Empty P', 'EMP')
+    await seed(project, 'Present Task')
+    const q = encodeURIComponent('project: {EMP} zzz-no-such-token-qxqx')
+    const res = await fetch(`${fake.url}/api/issues?query=${q}&$top=100`)
+    expect(UnknownListSchema.parse(await res.json())).toEqual([])
+  })
+
+  test('update via POST /api/issues/{id} changes summary and State', async () => {
+    fake.reset()
+    const project = await createProject(fake, 'Upd P', 'UP')
+    const created = IdReadableOnlySchema.parse(
+      await (await postJson(fake, '/api/issues', { project: { id: project.id }, summary: 'Before' })).json(),
+    )
+    await postJson(fake, `/api/issues/${created.idReadable}`, {
+      summary: 'After',
+      customFields: [{ name: 'State', $type: 'StateIssueCustomField', value: { name: 'Done' } }],
+    })
+    const got = UpdatedIssueSchema.parse(
+      await (await fetch(`${fake.url}/api/issues/${created.idReadable}?fields=id`)).json(),
+    )
+    expect(got.summary).toBe('After')
+    expect(got.customFields.find((f) => f.name === 'State')?.value.name).toBe('Done')
+  })
+})
