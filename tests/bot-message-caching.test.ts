@@ -133,5 +133,29 @@ describe('bot message caching (onIncomingMessage)', () => {
       const rows = getTestDb().select().from(schema.messageMetadata).all()
       expect(rows).toHaveLength(0)
     })
+
+    test('does not throw when text is empty (no embed attempted)', async () => {
+      const auth = { ...createAuth('guard-user'), configContextId: 'guard-user' }
+      expect(() =>
+        cacheObservedIncomingMessage({ ...createDmMessage('guard-user'), text: '   ', messageId: 'gd-2' }, auth),
+      ).not.toThrow()
+      await flushPendingWrites()
+
+      expect(getTestDb().select().from(schema.messageEmbeddings).all()).toHaveLength(0)
+    })
+
+    test('does not throw when text is present but no embedding LLM config resolves', async () => {
+      const auth = { ...createAuth('guard-user'), configContextId: 'guard-user' }
+      expect(() =>
+        cacheObservedIncomingMessage({ ...createDmMessage('guard-user'), text: 'hi', messageId: 'gd-3' }, auth),
+      ).not.toThrow()
+      await flushPendingWrites()
+      // Let the fire-and-forget embed promise settle.
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0)
+      })
+
+      expect(getTestDb().select().from(schema.messageEmbeddings).all()).toHaveLength(0)
+    })
   })
 })

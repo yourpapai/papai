@@ -128,11 +128,11 @@ export default {
     // listRoutes is consumed by the behavior-audit closure verifier via
     // dynamic import; re-exported from src/debug/server.ts.
     'src/debug/server-route-options.ts': ['exports'],
-    // Temporary: chat-history Phase 2 Task 2 lands the vector store ahead of
-    // its consumers (Task 3 inline embed, Task 4 sweep, Task 5 search tool);
-    // no static importer exists until those land. Remove once Task 3+ merges.
+    // Temporary: chat-history Phase 2 — Task 3 consumes storeEmbedding/
+    // loadEmbeddingsForScope; the sweep (Task 4) and search tool (Task 5)
+    // consume the rest. Remove once Tasks 4-5 land.
     // Plan: docs/superpowers/plans/2026-07-26-chat-history-search-phase-2.md
-    'src/message-cache/vector-store.ts': ['files'],
+    'src/message-cache/vector-store.ts': ['exports'],
   },
 
   includeEntryExports: true,
