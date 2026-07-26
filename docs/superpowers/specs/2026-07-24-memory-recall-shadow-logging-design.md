@@ -191,6 +191,23 @@ Companion signals from the same rows:
 **Pre-registered on 2026-07-25, before any collection.** Frozen-protocol discipline: these numbers
 are fixed now and must not move once collection starts (no post-hoc goalpost-moving).
 
+> **Amended 2026-07-26 — rationale text only, before any collection.** The validity argument
+> originally claimed the looser `shadow_hit_count ≥ 1` hit criterion reinforced a conservative
+> lower-bound reading of bucket 3. That was directionally wrong: a looser hit criterion admits more
+> turns as shadow hits and so **inflates** bucket 3's numerator. The argument was replaced with the
+> signed threat ledger under "Threats to validity" and the screen-and-adjudicate reading below.
+>
+> **No pre-registered quantity moved.** Sample rate `0.1`; `shadow_hit` criterion
+> `shadow_hit_count ≥ 1`; rank cutoff k = `RECALL_DEFAULT_LIMIT` = 8; bucket-3 stop threshold
+> `< 5%`; N = 1000; M ≥ 50 distinct scopes; `overPullTurns` excluded from the gate — all unchanged.
+>
+> **Precondition.** No data had been collected against this protocol at amendment time. Collection
+> is gated on `MEMORY_SHADOW_LOG_ENABLED`, which requires an exact `'true'`
+> (`src/long-term-memory/shadow-log-config.ts`) and had not been set;
+> `memory_recall_shadow_log` held no rows. Correcting a pre-registered rationale is legitimate only
+> before collection begins — after the first row lands, an edit to the validity argument is
+> indistinguishable from goalpost-moving regardless of intent.
+
 - **Sample rate: `0.1`.** This is the committed default in `shadowSampleRate()`
   (`src/long-term-memory/shadow-log-config.ts`) — the shipped default and the pre-registered rate
   are the same number by design. A deployment that overrides `MEMORY_SHADOW_LOG_SAMPLE_RATE` away
