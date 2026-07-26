@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../../src/db/drizzle.js'
-import { conversationHistory, memoryTombstones } from '../../src/db/schema.js'
+import { conversationHistory, memoryFacts, memoryTombstones } from '../../src/db/schema.js'
 import { clearMemoryScope } from '../../src/long-term-memory/scope-clear.js'
 import { saveMemoryProfile, saveMemoryRecord } from '../../src/long-term-memory/store.js'
 import { insertTombstone } from '../../src/long-term-memory/tombstone.testing.js'
@@ -58,5 +58,31 @@ describe('scope-clear', () => {
     expect(
       db.select().from(conversationHistory).where(eq(conversationHistory.userId, 'other-user')).get(),
     ).toBeDefined()
+  })
+
+  test('deletes the web-fetch fact cache for the scope and its thread keys', () => {
+    const scope = { scopeId: 'grp-1', scopeType: 'group' as const }
+    for (const userId of ['grp-1', 'grp-1:thread:t1', 'grp-other']) {
+      getDrizzleDb()
+        .insert(memoryFacts)
+        .values({
+          userId,
+          identifier: 'https://example.com/a',
+          title: 'A page',
+          url: 'https://example.com/a',
+          lastSeen: '2026-07-01T00:00:00.000Z',
+        })
+        .run()
+    }
+
+    clearMemoryScope(scope)
+
+    expect(
+      getDrizzleDb()
+        .select()
+        .from(memoryFacts)
+        .all()
+        .map((row) => row.userId),
+    ).toEqual(['grp-other'])
   })
 })

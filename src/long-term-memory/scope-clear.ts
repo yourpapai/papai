@@ -76,6 +76,9 @@ const deleteWorkingMemory = (tx: MemoryTx, scope: MemoryScope): WorkingMemoryCle
     .returning({ key: memorySummary.userId })
     .all())
     clearedKeys.add(row.key)
+  // `memory_facts` is the web-fetch title/URL cache keyed by storage user id, not a projection of
+  // memory records. A scope clear removes it because it is keyed to the scope; a single-record purge
+  // deliberately does not, because no row here derives from the purged record.
   for (const row of tx
     .delete(memoryFacts)
     .where(workingMemoryKeyMatch(memoryFacts.userId, scope))

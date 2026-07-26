@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { getDrizzleDb } from '../../src/db/drizzle.js'
-import { memoryProfiles, memoryRecords, memorySummary } from '../../src/db/schema.js'
+import { memoryFacts, memoryProfiles, memoryRecords, memorySummary } from '../../src/db/schema.js'
 import { purgeMemoryRecord } from '../../src/long-term-memory/purge.js'
 import { profileScopeCondition } from '../../src/long-term-memory/record-conditions.js'
 import {
@@ -139,5 +139,24 @@ describe('purgeMemoryRecord — derived-memory contamination', () => {
 
     const surviving = getDrizzleDb().select().from(memoryRecords).all()
     expect(surviving.map((row) => row.id)).toEqual(['mem-theirs'])
+  })
+
+  test('leaves the web-fetch fact cache alone — it is not derived from memory records', () => {
+    const scope: MemoryScope = { scopeId: 'dm-facts', scopeType: 'personal' }
+    saveMemoryRecord(record(scope, 'mem-1', 'User lives in Berlin'))
+    getDrizzleDb()
+      .insert(memoryFacts)
+      .values({
+        userId: scope.scopeId,
+        identifier: 'https://example.com/a',
+        title: 'A page the user fetched',
+        url: 'https://example.com/a',
+        lastSeen: '2026-07-01T00:00:00.000Z',
+      })
+      .run()
+
+    expect(purgeMemoryRecord(scope, 'mem-1', NOW)).toBe(true)
+
+    expect(getDrizzleDb().select().from(memoryFacts).all()).toHaveLength(1)
   })
 })
