@@ -41,7 +41,7 @@ export function getMessageByContext(contextId: string, messageId: string): Cache
 
 export type MessageScope = { kind: 'group'; groupContextId: string } | { kind: 'dm'; contextId: string }
 
-const scopeWhere = (scope: MessageScope): SQL =>
+export const scopeWhere = (scope: MessageScope): SQL =>
   scope.kind === 'group'
     ? eq(messageMetadata.groupContextId, scope.groupContextId)
     : and(isNull(messageMetadata.groupContextId), eq(messageMetadata.contextId, scope.contextId))!
