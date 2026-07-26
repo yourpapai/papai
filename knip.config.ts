@@ -137,6 +137,11 @@ export default {
     // Task-provider plugin clients are reached only via those same dynamic
     // bridges. Scoped to task-provider-* so other plugins' clients stay checked.
     'plugins/task-provider-*/client.ts': ['exports'],
+    // acp bridge modules are consumed by plugins/acp/index.ts through
+    // import.meta.require() (entry-graph containment for their src/analytics
+    // imports, same pattern as the kaneo bridges above); knip cannot trace
+    // require boundaries.
+    'plugins/acp/{tools,session-tools,continue-tool}.ts': ['exports'],
     // strybk.config.ts default export is consumed by the crvy-strybk CLI at
     // runtime via --config; no static importer exists.
     'strybk.config.ts': ['exports'],
