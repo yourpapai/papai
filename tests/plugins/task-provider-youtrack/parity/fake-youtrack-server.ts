@@ -561,7 +561,9 @@ const LINK_TYPES: ReadonlyArray<{ id: string; name: string; directed: boolean }>
   { id: 'lt-subtask', name: 'Subtask', directed: true },
 ]
 
-const decodeLinkId = (linkId: string): { typeName: string; direction: string } => {
+const decodeLinkId = (state: State, linkId: string): { typeName: string; direction: string } => {
+  const stored = state.links.get(linkId)
+  if (stored !== undefined) return { typeName: stored.typeName, direction: stored.direction }
   const suffix = linkId.slice(-1)
   if (suffix === 's' || suffix === 't') {
     const base = linkId.slice(0, -1)
@@ -592,9 +594,9 @@ const handleRelations = (ctx: Ctx): Response | undefined => {
     const owner = findIssue(state, addPath['id'] ?? '')
     if (owner === undefined) return errorResponse(404, 'issue not found')
     const targetId = readLinkTargetId(ctx.body)
-    const target = targetId === '' ? undefined : (state.issues.get(targetId) ?? findIssue(state, targetId))
+    const target = targetId === '' ? undefined : findIssue(state, targetId)
     if (target === undefined) return errorResponse(404, 'target issue not found')
-    const { typeName, direction } = decodeLinkId(addPath['linkId'] ?? '')
+    const { typeName, direction } = decodeLinkId(state, addPath['linkId'] ?? '')
     const id = nextId(state, 'link')
     const link: StoredLink = { id, ownerIssueId: owner.id, targetIssueId: target.id, typeName, direction }
     state.links.set(id, link)
@@ -606,7 +608,10 @@ const handleRelations = (ctx: Ctx): Response | undefined => {
     const owner = findIssue(state, delPath['id'] ?? '')
     if (owner === undefined) return errorResponse(404, 'issue not found')
     const linkId = delPath['linkId'] ?? ''
-    return state.links.delete(linkId) ? noContent() : errorResponse(404, 'link not found')
+    const link = state.links.get(linkId)
+    if (link === undefined || link.ownerIssueId !== owner.id) return errorResponse(404, 'link not found')
+    state.links.delete(linkId)
+    return noContent()
   }
 
   return undefined

@@ -427,4 +427,58 @@ describe('fake YouTrack server — relations', () => {
     const res = await fetch(`${fake.url}/api/issues/NOPE-9?fields=id`)
     expect(res.status).toBe(404)
   })
+
+  test('reusing an existing link id inherits its stored type, not the Relates default', async () => {
+    fake.reset()
+    const project = await createProject(fake, 'Reuse P', 'REU')
+    const first = IssueIdSchema.parse(
+      await (await postJson(fake, '/api/issues', { project: { id: project.id }, summary: 'First' })).json(),
+    )
+    const second = IssueIdSchema.parse(
+      await (await postJson(fake, '/api/issues', { project: { id: project.id }, summary: 'Second' })).json(),
+    )
+    const third = IssueIdSchema.parse(
+      await (await postJson(fake, '/api/issues', { project: { id: project.id }, summary: 'Third' })).json(),
+    )
+
+    await postJson(fake, `/api/issues/${first.idReadable}/links/lt-depends/issues`, { id: second.id })
+    const owner = OwnerLinksSchema.parse(
+      await (await fetch(`${fake.url}/api/issues/${first.idReadable}?fields=id`)).json(),
+    )
+    const existingLinkId = firstLinkId(owner)
+
+    await postJson(fake, `/api/issues/${first.idReadable}/links/${existingLinkId}/issues`, { id: third.id })
+    const afterOwner = OwnerLinksSchema.parse(
+      await (await fetch(`${fake.url}/api/issues/${first.idReadable}?fields=id`)).json(),
+    )
+    expect(afterOwner.links.length).toBe(2)
+    for (const link of afterOwner.links) expect(link.linkType.name).toBe('Depend')
+  })
+
+  test('deleting a link through the wrong owner issue is 404', async () => {
+    fake.reset()
+    const project = await createProject(fake, 'Cross P', 'CRO')
+    const owner = IssueIdSchema.parse(
+      await (await postJson(fake, '/api/issues', { project: { id: project.id }, summary: 'Owner' })).json(),
+    )
+    const other = IssueIdSchema.parse(
+      await (await postJson(fake, '/api/issues', { project: { id: project.id }, summary: 'Other' })).json(),
+    )
+    const target = IssueIdSchema.parse(
+      await (await postJson(fake, '/api/issues', { project: { id: project.id }, summary: 'Target' })).json(),
+    )
+    await postJson(fake, `/api/issues/${owner.idReadable}/links/lt-depends/issues`, { id: target.id })
+    const ownerLinks = OwnerLinksSchema.parse(
+      await (await fetch(`${fake.url}/api/issues/${owner.idReadable}?fields=id`)).json(),
+    )
+    const linkId = firstLinkId(ownerLinks)
+
+    const del = await fetch(`${fake.url}/api/issues/${other.idReadable}/links/${linkId}`, { method: 'DELETE' })
+    expect(del.status).toBe(404)
+
+    const stillThere = OwnerLinksSchema.parse(
+      await (await fetch(`${fake.url}/api/issues/${owner.idReadable}?fields=id`)).json(),
+    )
+    expect(stillThere.links.length).toBe(1)
+  })
 })
