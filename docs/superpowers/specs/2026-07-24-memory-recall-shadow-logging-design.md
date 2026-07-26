@@ -259,10 +259,12 @@ The threats below push bucket 3 in **both** directions — the raw-turn floor qu
 while the looser `shadow_hit_count ≥ 1` criterion and the profile-already-covers-it confound push
 it up — so the measured rate is **not** a one-sided bound on the real gap in either direction. The
 gate is therefore a **screen, not a proof**, and each branch reads accordingly: a below-threshold
-bucket 3 is a stop signal because the rate came in low **despite** two threats inflating it; an
-at/above bucket 3 is a signal to **escalate**, because P1 is content-free and cannot by itself tell
-a real gap from a turn the profile already answered. Separating those two is exactly what P2's
-offline judged corpus does.
+bucket 3 is a stop signal because the rate came in low **despite** two threats inflating it — but
+that reading does not cancel the floor threat's opposite pull, so a below-threshold result is a
+screen conditioned on the raw-turn query being roughly representative, not full compensation for
+it; an at/above bucket 3 is a signal to **escalate**, because P1 is content-free and cannot by
+itself tell a real gap from a turn the profile already answered. Separating those two is exactly
+what P2's offline judged corpus does.
 
 **`overPullTurns` is not part of this frozen gate.** `computeShadowFunnel`
 (`src/long-term-memory/shadow-funnel.ts`) also reports `overPullTurns` (`model_pulled` with zero
