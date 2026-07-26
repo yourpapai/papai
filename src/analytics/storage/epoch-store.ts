@@ -3,10 +3,15 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { eq, sql } from 'drizzle-orm'
+import { eq, inArray, sql } from 'drizzle-orm'
 
 import { getDrizzleDb as defaultGetDrizzleDb } from '../../db/drizzle.js'
-import { analyticsEpochSourceCounters, analyticsProcessEpochs } from '../../db/schema.js'
+import {
+  analyticsDailyCounters,
+  analyticsDailyHistograms,
+  analyticsEpochSourceCounters,
+  analyticsProcessEpochs,
+} from '../../db/schema.js'
 import { logger } from '../../logger.js'
 
 const log = logger.child({ scope: 'analytics:storage:epoch-store' })
@@ -150,4 +155,81 @@ export const incrementEpochSourceCounter = (
     })
     .run()
   log.debug({ ...input, value }, 'epoch source counter incremented')
+}
+
+export type ProcessEpochSummary = Readonly<{
+  epochId: string
+  state: EpochState
+  startedAtMs: number
+  closedAtMs: number | null
+  staleMarkedAtMs: number | null
+}>
+
+export const listProcessEpochs = (
+  deps: EpochStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
+): readonly ProcessEpochSummary[] =>
+  deps
+    .getDrizzleDb()
+    .select()
+    .from(analyticsProcessEpochs)
+    .all()
+    .flatMap((row) =>
+      isEpochState(row.state)
+        ? [
+            {
+              epochId: row.epochId,
+              state: row.state,
+              startedAtMs: row.startedAtMs,
+              closedAtMs: row.closedAtMs,
+              staleMarkedAtMs: row.staleMarkedAtMs,
+            },
+          ]
+        : [],
+    )
+
+export type EpochSourceCounterSummary = Readonly<{
+  utcDay: string
+  sourceFamily: string
+  disposition: string
+  value: number
+}>
+
+export const listEpochSourceCounters = (
+  input: { epochId: string },
+  deps: EpochStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
+): readonly EpochSourceCounterSummary[] =>
+  deps
+    .getDrizzleDb()
+    .select()
+    .from(analyticsEpochSourceCounters)
+    .where(eq(analyticsEpochSourceCounters.epochId, input.epochId))
+    .all()
+    .map((row) => ({
+      utcDay: row.utcDay,
+      sourceFamily: row.sourceFamily,
+      disposition: row.disposition,
+      value: row.value,
+    }))
+
+export const markRestartGapBuckets = (
+  input: { utcDays: readonly string[] },
+  deps: EpochStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
+): void => {
+  if (input.utcDays.length === 0) return
+  const db = deps.getDrizzleDb()
+  const gap = {
+    finalized: false,
+    restartGapDetected: true,
+    reconciliationStatus: 'unreconciled_restart_gap',
+    contributorCount: null,
+  }
+  db.update(analyticsDailyCounters)
+    .set(gap)
+    .where(inArray(analyticsDailyCounters.utcDay, [...input.utcDays]))
+    .run()
+  db.update(analyticsDailyHistograms)
+    .set(gap)
+    .where(inArray(analyticsDailyHistograms.utcDay, [...input.utcDays]))
+    .run()
+  log.info({ days: input.utcDays.length }, 'buckets marked as unreconciled restart gap')
 }
