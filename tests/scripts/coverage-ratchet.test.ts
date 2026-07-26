@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 import { describe, expect, test } from 'bun:test'
 
-import { applyThreshold, nextFloor, parseBunfigThreshold, parseLcovTotals } from '../../scripts/coverage/ratchet-lib.js'
+import { nextFloor, parseFloor, parseLcovTotals, serializeFloor } from '../../scripts/coverage/ratchet-lib.js'
 
 const LCOV = [
   'SF:src/a.ts',
@@ -57,14 +57,24 @@ describe('parseLcovTotals', () => {
   })
 })
 
-describe('parseBunfigThreshold', () => {
-  test('reads lines and functions from the coverageThreshold line', () => {
-    const toml = 'coverageThreshold = { lines = 0.90, functions = 0.88 }\n'
-    expect(parseBunfigThreshold(toml)).toEqual({ lines: 0.9, functions: 0.88 })
+describe('parseFloor', () => {
+  test('reads lines and functions from the floor file', () => {
+    expect(parseFloor('{ "lines": 0.90, "functions": 0.88 }\n')).toEqual({ lines: 0.9, functions: 0.88 })
   })
 
-  test('throws when the line is missing', () => {
-    expect(() => parseBunfigThreshold('[test]\n')).toThrow()
+  test('throws when a key is missing', () => {
+    expect(() => parseFloor('{ "lines": 0.9 }')).toThrow()
+  })
+
+  test('throws when a value is not a fraction', () => {
+    // A floor above 1 would silently never be satisfiable; a string would compare
+    // nonsensically against the measured number. Both must fail loudly.
+    expect(() => parseFloor('{ "lines": 90, "functions": 0.9 }')).toThrow()
+    expect(() => parseFloor('{ "lines": "0.9", "functions": 0.9 }')).toThrow()
+  })
+
+  test('throws when the file is not a JSON object', () => {
+    expect(() => parseFloor('null')).toThrow()
   })
 })
 
@@ -82,11 +92,14 @@ describe('nextFloor', () => {
   })
 })
 
-describe('applyThreshold', () => {
-  test('rewrites only the coverageThreshold line', () => {
-    const toml = '[test]\ncoverageThreshold = { lines = 0.90, functions = 0.90 }\ntimeout = 15000\n'
-    const out = applyThreshold(toml, { lines: 0.91, functions: 0.9 })
-    expect(out).toContain('coverageThreshold = { lines = 0.91, functions = 0.9 }')
-    expect(out).toContain('timeout = 15000')
+describe('serializeFloor', () => {
+  test('round-trips through parseFloor', () => {
+    expect(parseFloor(serializeFloor({ lines: 0.91, functions: 0.9 }))).toEqual({ lines: 0.91, functions: 0.9 })
+  })
+
+  test('writes formatted JSON with a trailing newline', () => {
+    // The file is committed, so it must survive format:check and produce a
+    // one-line-per-key diff when the ratchet raises the floor.
+    expect(serializeFloor({ lines: 0.91, functions: 0.9 })).toBe('{\n  "lines": 0.91,\n  "functions": 0.9\n}\n')
   })
 })

@@ -18,10 +18,13 @@ timeout = 15000
 # Preload global setup (server-side tests only)
 preload = ["./tests/setup.ts", "./tests/mock-reset.ts"]
 
-# Coverage floor (enforced only when --coverage is passed — see scripts/check.sh
-# CI branch). Not `coverage = true`: coverage stays opt-in so the stories/e2e/
-# smoke/client runs and local `--parallel` checks are unaffected. Raise the floor
-# from a green run with `bun coverage:ratchet --update`.
-coverageThreshold = { lines = 0.90, functions = 0.90 }
+# Coverage reporting only — the floor is NOT enforced here. bun's
+# `coverageThreshold` is a per-file rule (every file must individually clear the
+# bar), which cannot express the aggregate floor this repo gates on; measured on
+# bun 1.3.13, a threshold above the worst file fails even when the pooled and
+# mean totals both clear it. The floor lives in scripts/coverage/ratchet.ts and
+# is enforced by scripts/check.sh after the CI coverage run.
+# Not `coverage = true`: coverage stays opt-in so the stories/e2e/smoke/client
+# runs and local `--parallel` checks are unaffected.
 coverageReporter = ["text", "lcov"]
 coverageDir = "reports/coverage"

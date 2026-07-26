@@ -135,17 +135,26 @@ When DI is not available and module evaluation order matters:
 ### Coverage floor
 
 The in-process suite's production-code coverage (`src/` + `plugins/`) is gated in
-CI. The floor lives in `bunfig.toml` (`coverageThreshold = { lines, functions }`)
-and is enforced by bun when `--coverage` is passed — which happens only on the
-CI-serial `test` run inside `scripts/check.sh`. Local `check:full` (`--parallel`)
-does not collect coverage. When coverage improves, raise the floor from a green
-run with `bun coverage:ratchet --update` and commit the `bunfig.toml` change; the
-script never lowers the floor. Running `bun test --coverage <subset>` locally
-enforces the same floor against that subset (expected to "fail" on partial runs):
-bun's coverage denominator spans every discovered production file, not just the
-subset's imports, so a one-file run measures far below the floor regardless of
-that file's own coverage. `bun test:coverage` runs the full suite with
-`--coverage` and therefore enforces the same 0.90/0.90 floor locally.
+CI. The floor lives in `scripts/coverage/floor.json` and is enforced by
+`bun coverage:ratchet`, which the CI-serial `test` run inside `scripts/check.sh`
+executes after `bun test --coverage` passes. The metric is the **unweighted
+per-file mean** of the lcov records — the same number bun's text reporter prints
+on its `All files` row — not a line-weighted total.
+
+The floor is deliberately _not_ bunfig's `coverageThreshold`: that key is a
+per-file rule (every file must individually clear the bar), so it cannot express
+an aggregate floor, and it fails with no output naming coverage as the cause.
+`bun test --coverage` therefore never fails on coverage by itself; only the
+ratchet gates.
+
+Local `check:full` (`--parallel`) does not collect coverage. To check the floor
+locally, run `bun test:coverage` and then `bun coverage:ratchet`, which prints
+`measured` vs `floor`. Do this on a full run only: bun's coverage denominator
+spans every discovered production file, not just the subset's imports, so a
+subset run measures far below the floor regardless of that file's own coverage.
+When coverage improves, raise the floor from a green full run with
+`bun coverage:ratchet --update` and commit the `floor.json` change; the script
+never lowers the floor.
 
 ## Mutation testing
 

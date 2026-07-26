@@ -2,6 +2,8 @@
 // Copyright (c) 2026 Dmitriy Lazarev
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
+import { z } from 'zod'
+
 export type CoverageMetric = { found: number; hit: number; pct: number }
 
 type RecordMetric = { found: number; hit: number }
@@ -58,13 +60,22 @@ export function parseLcovTotals(lcov: string): {
   }
 }
 
-export function parseBunfigThreshold(toml: string): {
-  lines: number
-  functions: number
-} {
-  const match = toml.match(/coverageThreshold\s*=\s*\{\s*lines\s*=\s*([0-9.]+)\s*,\s*functions\s*=\s*([0-9.]+)\s*\}/u)
-  if (!match) throw new Error('coverageThreshold line not found in bunfig.toml')
-  return { lines: Number(match[1]), functions: Number(match[2]) }
+export type CoverageFloor = { lines: number; functions: number }
+
+// The floor is compared against a 0..1 fraction, so the bounds are part of the
+// contract: a percentage-shaped 90 would silently make the gate unsatisfiable.
+const floorSchema = z.object({
+  lines: z.number().min(0).max(1),
+  functions: z.number().min(0).max(1),
+})
+
+/**
+ * The floor lives in its own JSON file rather than bunfig's `coverageThreshold`
+ * because that key is a per-file rule in bun: it fails when any single file is
+ * below the bar, which cannot express the aggregate floor this repo gates on.
+ */
+export function parseFloor(json: string): CoverageFloor {
+  return floorSchema.parse(JSON.parse(json))
 }
 
 export function nextFloor(current: number, measuredPct: number, epsilon: number): number {
@@ -72,9 +83,6 @@ export function nextFloor(current: number, measuredPct: number, epsilon: number)
   return candidate > current ? candidate : current
 }
 
-export function applyThreshold(toml: string, next: { lines: number; functions: number }): string {
-  return toml.replace(
-    /coverageThreshold\s*=\s*\{[^}]*\}/u,
-    `coverageThreshold = { lines = ${next.lines}, functions = ${next.functions} }`,
-  )
+export function serializeFloor(next: CoverageFloor): string {
+  return `${JSON.stringify({ lines: next.lines, functions: next.functions }, null, 2)}\n`
 }

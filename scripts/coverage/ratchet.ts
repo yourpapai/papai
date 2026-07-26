@@ -2,10 +2,10 @@
 // Copyright (c) 2026 Dmitriy Lazarev
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
-import { applyThreshold, nextFloor, parseBunfigThreshold, parseLcovTotals } from './ratchet-lib.js'
+import { nextFloor, parseFloor, parseLcovTotals, serializeFloor } from './ratchet-lib.js'
 
 const LCOV_PATH = 'reports/coverage/lcov.info'
-const BUNFIG_PATH = 'bunfig.toml'
+const FLOOR_PATH = 'scripts/coverage/floor.json'
 const EPSILON = 0.005
 
 async function main(): Promise<void> {
@@ -15,9 +15,8 @@ async function main(): Promise<void> {
     throw new Error(`${LCOV_PATH} not found; run "bun test --coverage" first to generate it`)
   }
   const lcov = await lcovFile.text()
-  const toml = await Bun.file(BUNFIG_PATH).text()
   const totals = parseLcovTotals(lcov)
-  const floor = parseBunfigThreshold(toml)
+  const floor = parseFloor(await Bun.file(FLOOR_PATH).text())
 
   const pct = (n: number): string => `${(n * 100).toFixed(2)}%`
   console.log(`measured: lines ${pct(totals.lines.pct)}, functions ${pct(totals.functions.pct)}`)
@@ -32,7 +31,7 @@ async function main(): Promise<void> {
       console.log('no improvement beyond epsilon; floor unchanged')
       return
     }
-    await Bun.write(BUNFIG_PATH, applyThreshold(toml, next))
+    await Bun.write(FLOOR_PATH, serializeFloor(next))
     console.log(`floor raised to lines ${pct(next.lines)}, functions ${pct(next.functions)}`)
     return
   }

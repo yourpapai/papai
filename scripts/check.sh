@@ -335,13 +335,16 @@ else
         # --parallel worker contention.
         if [ "${CI:-}" = "true" ]; then
           bun test --coverage --timeout 15000 >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
-          # bun's coverage-threshold failure exits non-zero with no diagnostic
-          # text (just a per-file table + pass/fail counts): a red CI log shows
-          # every test passing with no cue that coverage, not a test, failed
-          # the job. Append the ratchet's mirror of the same gate so the log
-          # names the real cause. Never let this touch exit_code.
-          if [ "$exit_code" -ne 0 ]; then
-            bun coverage:ratchet >>"$TMPDIR/$fname.out" 2>&1 || true
+          # The coverage floor is enforced HERE, not by bun. bun's
+          # `coverageThreshold` is a per-file rule, so it cannot express an
+          # aggregate floor, and it fails silently (no text naming coverage as
+          # the cause). coverage:ratchet reads the lcov this run just wrote,
+          # compares the aggregate against the floor in bunfig-adjacent config,
+          # and prints `measured` vs `floor`. Only run it when the suite itself
+          # passed: a test failure is its own diagnostic, and a partial run's
+          # lcov would report a meaningless number.
+          if [ "$exit_code" -eq 0 ]; then
+            bun coverage:ratchet >>"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
           fi
         else
           bun test --parallel --timeout 15000 >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
