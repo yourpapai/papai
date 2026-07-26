@@ -203,3 +203,15 @@ aggregate publication.
   (coding-session configure 4 failures) fixed by import.meta.require lazy
   loads (3601c2913). Gate lesson: tests/coding-sessions/ must be in
   plugin-touching gate lists.
+- Task 11 → **Task 13/17 review focus**: censor intervals are discovered only
+  while a denied ref retains associations — a deny+delete before any derive
+  run leaves no interval row (accepted v1 limitation).
+- Task 11 (parked Minors): `analytics_censor_intervals` kind `'deletion'` has
+  no writer (deletion right-censors via FK cascade instead); outcome success
+  relevance is turn-level not per-goal (documented v1 limitation — a goal
+  whose tools failed can inherit a sibling goal's success);
+  clarification_abandoned inserted mid-run reflects in session-events on the
+  next run (eventual consistency); goal-less clarification treated as engaged
+  by any follow-up (conservative); derived events stamped `source: 'live'`,
+  `attribution_quality: 'native'` (consistent with Task 10 precedent — final
+  review to confirm the contract reading).
