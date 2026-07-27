@@ -16,6 +16,7 @@ export type SnapshotInvalidationRequest = Readonly<{
   nowMs: number
   storageGeneration?: string
   transitionRunId?: string
+  contributionMarker?: string
 }>
 
 export type SnapshotInvalidationResult = Readonly<{
@@ -53,11 +54,54 @@ export type GenerationTransitionCoordinator = Readonly<{
 
 export type SnapshotInvalidatorDeps = Readonly<{
   getDrizzleDb: typeof defaultGetDrizzleDb
+  coordinator?: Readonly<{
+    coordinateSubjectDeletion: (
+      input: Readonly<{ newSnapshotId: string; oldSnapshotId: string; contributionMarker: string }>,
+    ) => Readonly<{ acknowledged: true }>
+  }>
+  rebuild?: () => Readonly<{ newSnapshotId: string }>
 }>
+
+/**
+ * Coordinated subject-deletion path (Task 14): after the rows are unpublished
+ * the consumer must remount a rebuilt snapshot and prove the new snapshot_id
+ * plus a zero old contribution before containment is reported clear. Without
+ * a contribution marker the result stays fail-closed.
+ */
+const coordinateUnpublished = (
+  unpublishedSnapshotIds: readonly string[],
+  request: SnapshotInvalidationRequest,
+  deps: SnapshotInvalidatorDeps,
+): boolean => {
+  if (deps.coordinator === undefined || deps.rebuild === undefined || unpublishedSnapshotIds.length === 0) {
+    return false
+  }
+  if (request.contributionMarker === undefined) {
+    log.warn('no contribution marker supplied; snapshot containment stays fail-closed')
+    return true
+  }
+  try {
+    const { newSnapshotId } = deps.rebuild()
+    for (const oldSnapshotId of unpublishedSnapshotIds) {
+      deps.coordinator.coordinateSubjectDeletion({
+        newSnapshotId,
+        oldSnapshotId,
+        contributionMarker: request.contributionMarker,
+      })
+    }
+    return false
+  } catch (error) {
+    log.warn(
+      { reason: error instanceof Error ? error.message : String(error) },
+      'coordinated snapshot replacement failed; deletion stays incomplete',
+    )
+    return true
+  }
+}
 
 export const createSnapshotInvalidator = (deps: SnapshotInvalidatorDeps): SnapshotInvalidator => {
   return (request) => {
-    return deps.getDrizzleDb().transaction((tx) => {
+    const unpublishedSnapshotIds = deps.getDrizzleDb().transaction((tx) => {
       const published = tx
         .select()
         .from(analyticsSnapshotPublications)
@@ -70,33 +114,38 @@ export const createSnapshotInvalidator = (deps: SnapshotInvalidatorDeps): Snapsh
               ),
         )
         .all()
-      const unpublishedSnapshotIds = published.map((row) => row.snapshotId)
-      for (const snapshotId of unpublishedSnapshotIds) {
+      const ids = published.map((row) => row.snapshotId)
+      for (const snapshotId of ids) {
         tx.update(analyticsSnapshotPublications)
           .set({ state: 'invalidated', invalidatedAt: request.nowMs })
           .where(eq(analyticsSnapshotPublications.snapshotId, snapshotId))
           .run()
       }
-      const remaining = tx
-        .select({ snapshotId: analyticsSnapshotPublications.snapshotId })
-        .from(analyticsSnapshotPublications)
-        .where(
-          request.storageGeneration === undefined
-            ? eq(analyticsSnapshotPublications.state, 'published')
-            : and(
-                eq(analyticsSnapshotPublications.state, 'published'),
-                eq(analyticsSnapshotPublications.storageGeneration, request.storageGeneration),
-              ),
-        )
-        .all()
-      log.info(
-        { reason: request.reason, unpublished: unpublishedSnapshotIds.length },
-        'snapshot publications invalidated',
-      )
+      log.info({ reason: request.reason, unpublished: ids.length }, 'snapshot publications invalidated')
+      return ids
+    })
+    if (request.reason === 'subject_deletion') {
       return {
         unpublishedSnapshotIds,
-        publishedSnapshotContainsContribution: remaining.length > 0,
+        publishedSnapshotContainsContribution: coordinateUnpublished(unpublishedSnapshotIds, request, deps),
       }
-    })
+    }
+    const remaining = deps
+      .getDrizzleDb()
+      .select({ snapshotId: analyticsSnapshotPublications.snapshotId })
+      .from(analyticsSnapshotPublications)
+      .where(
+        request.storageGeneration === undefined
+          ? eq(analyticsSnapshotPublications.state, 'published')
+          : and(
+              eq(analyticsSnapshotPublications.state, 'published'),
+              eq(analyticsSnapshotPublications.storageGeneration, request.storageGeneration),
+            ),
+      )
+      .all()
+    return {
+      unpublishedSnapshotIds,
+      publishedSnapshotContainsContribution: remaining.length > 0,
+    }
   }
 }

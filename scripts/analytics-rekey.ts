@@ -11,15 +11,24 @@
  *   bun run scripts/analytics-rekey.ts apply --run-id <id> --plan-hash <hash>
  *   bun run scripts/analytics-rekey.ts verify --run-id <id>
  *   bun run scripts/analytics-rekey.ts abort --run-id <id>
- * The generation-transition coordinator and remote egress are fail-closed
- * stubs pending Task 14, so apply pauses at the cutover boundary.
+ * The generation-transition coordinator is the production
+ * SnapshotConsumerCoordinator over a file-bound consumer when
+ * ANALYTICS_SNAPSHOT_DIR is set; without it the coordinator stays fail-closed
+ * and apply pauses at the cutover boundary. Remote egress remains a
+ * fail-closed stub pending Task 15.
  */
 
+import { randomUUID } from 'node:crypto'
+import { isAbsolute, join } from 'node:path'
+
 import { getPolicy } from '../src/analytics/governance/policy-store.js'
+import { createSnapshotConsumerCoordinator } from '../src/analytics/governance/snapshot-consumer.js'
+import { createFileBoundConsumer } from '../src/analytics/governance/snapshot-file-consumer.js'
 import type { GenerationTransitionCoordinator } from '../src/analytics/governance/snapshot-invalidator.js'
 import { parseAnalyticsKeyring, parseGovernanceKeyring } from '../src/analytics/identity/keyring.js'
 import { abortRekeyAction, applyRekeyAction, planRekeyAction, verifyRekeyAction } from '../src/analytics/jobs/rekey.js'
 import type { RekeyWorkflowDeps } from '../src/analytics/jobs/rekey.js'
+import { publishAnalyticsSnapshot } from '../src/analytics/jobs/snapshot.js'
 import { createRekeyCutoverFence } from '../src/analytics/rekey/cutover-fence.js'
 import type { RekeyFullKeyMaterial } from '../src/analytics/rekey/dual-write.js'
 import type { RekeyRemoteEgress } from '../src/analytics/rekey/remote.js'
@@ -104,35 +113,72 @@ const fullKeyMaterialFor = (toVersions: readonly string[]): RekeyFullKeyMaterial
   }
 }
 
-const PENDING_TASK_14 = 'production coordinator/egress lands in Task 14; run paused at the cutover boundary'
+const PENDING_TASK_15 = 'production remote egress lands in Task 15; run paused at the cutover boundary'
+
+const MISSING_SNAPSHOT_DIR = 'ANALYTICS_SNAPSHOT_DIR is not configured; BI coordination stays fail-closed'
 
 const failClosedCoordinator: GenerationTransitionCoordinator = {
   quiesceQueries: () => {
-    throw new Error(PENDING_TASK_14)
+    throw new Error(MISSING_SNAPSHOT_DIR)
   },
   closeSourceConnections: () => {
-    throw new Error(PENDING_TASK_14)
+    throw new Error(MISSING_SNAPSHOT_DIR)
   },
   buildTargetSnapshot: () => {
-    throw new Error(PENDING_TASK_14)
+    throw new Error(MISSING_SNAPSHOT_DIR)
   },
   remountAndVerify: () => {
-    throw new Error(PENDING_TASK_14)
+    throw new Error(MISSING_SNAPSHOT_DIR)
   },
   resumeQueries: () => {
-    throw new Error(PENDING_TASK_14)
+    throw new Error(MISSING_SNAPSHOT_DIR)
   },
   unlinkSourceFile: () => {
-    throw new Error(PENDING_TASK_14)
+    throw new Error(MISSING_SNAPSHOT_DIR)
   },
 }
 
 const failClosedEgress: RekeyRemoteEgress = {
   pauseEgress: () => undefined,
   requestActorDeletion: () => {
-    throw new Error(PENDING_TASK_14)
+    throw new Error(PENDING_TASK_15)
   },
   resumeEgress: () => undefined,
+}
+
+/** The production snapshot_republish coordinator over a file-bound BI consumer. */
+const productionCoordinator = (snapshotDir: string): GenerationTransitionCoordinator => {
+  if (!isAbsolute(snapshotDir)) throw new Error('ANALYTICS_SNAPSHOT_DIR must be an absolute path')
+  const consumer = createFileBoundConsumer()
+  return createSnapshotConsumerCoordinator({
+    getDrizzleDb,
+    consumer,
+    pathForSnapshot: (snapshotId) => join(snapshotDir, `${snapshotId}.db`),
+    buildSnapshot: ({ transitionRunId }) => {
+      const snapshotId = `snap-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`
+      const result = publishAnalyticsSnapshot(
+        { outputPath: join(snapshotDir, `${snapshotId}.db`), transitionRunId, replace: true },
+        {
+          getDrizzleDb,
+          fence: createRekeyCutoverFence({ getDrizzleDb }),
+          nowMs: () => Date.now(),
+          snapshotId: () => snapshotId,
+        },
+      )
+      return {
+        snapshotId: result.snapshotId,
+        pathHash: result.pathHash,
+        sourceHighWater: result.sourceHighWater,
+      }
+    },
+    nowMs: () => Date.now(),
+  }).transitionCoordinator
+}
+
+const resolveCoordinator = (): GenerationTransitionCoordinator => {
+  const snapshotDir = process.env['ANALYTICS_SNAPSHOT_DIR']
+  if (snapshotDir === undefined || snapshotDir === '') return failClosedCoordinator
+  return productionCoordinator(snapshotDir)
 }
 
 const retainedHorizonDays = (): number => {
@@ -144,7 +190,7 @@ const retainedHorizonDays = (): number => {
 const workflowDeps = (toVersions: readonly string[]): RekeyWorkflowDeps => ({
   getDrizzleDb,
   keyMaterial: (): RekeyFullKeyMaterial | null => fullKeyMaterialFor(toVersions),
-  coordinator: failClosedCoordinator,
+  coordinator: resolveCoordinator(),
   egress: failClosedEgress,
   fence: createRekeyCutoverFence({ getDrizzleDb }),
   retainedEventHorizonDays: retainedHorizonDays(),
