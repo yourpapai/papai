@@ -207,10 +207,10 @@ const runTurn = async (args: RunTurnArgs): Promise<InjectedMessage[]> => {
     }
   } finally {
     leftover = runRegistry.end(contextId)
+    // run is still a valid reference (end() only drops the map entry); capture
+    // the finished turn's state so later W2 edit classification can inspect it.
+    recordFinishedTurn(contextId, run)
   }
-  // run is still a valid reference (end() only drops the map entry); capture
-  // the finished turn's state so later W2 edit classification can inspect it.
-  recordFinishedTurn(contextId, run)
   return leftover
 }
 
