@@ -139,8 +139,5 @@ export default {
 
   // Migrations are runtime-only SQL; client/stories/** is the dev-only
   // Storybook harness; tests/visual/** is the Playwright screenshot suite.
-  // shadow-gate.ts holds the frozen shadow-logging study preconditions and
-  // marker formatters; a later task wires it into
-  // scripts/memory-shadow-funnel.ts, so it has no static importer yet.
-  ignore: ['src/db/migrations/**', 'client/stories/**', 'tests/visual/**', 'src/long-term-memory/shadow-gate.ts'],
+  ignore: ['src/db/migrations/**', 'client/stories/**', 'tests/visual/**'],
 }

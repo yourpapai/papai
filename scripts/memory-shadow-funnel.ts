@@ -16,11 +16,18 @@
  * prints per-row hashes, query text, or any other free-form/high-cardinality value that
  * could aid re-identification by correlation.
  *
+ * Each reader model's memory-bearing turn count and distinct-scope count (M) are printed
+ * with their standing against the pre-registered gate preconditions (N = 1000, M >= 50,
+ * `src/long-term-memory/shadow-gate.ts`). The under-trigger rate is deliberately left
+ * unmarked -- the < 5% stop branch is a human judgment, not a computed verdict.
+ *
  * Usage:
  *   bun run scripts/memory-shadow-funnel.ts [--reader-model-id <id>]
  */
 
 import { computeShadowFunnel } from '../src/long-term-memory/shadow-funnel.js'
+import type { ShadowFunnelEntry } from '../src/long-term-memory/shadow-funnel.js'
+import { formatScopesMarker, formatTurnsMarker } from '../src/long-term-memory/shadow-gate.js'
 
 function parseReaderModelId(argv: readonly string[]): string | undefined {
   const flagIndex = argv.indexOf('--reader-model-id')
@@ -30,6 +37,39 @@ function parseReaderModelId(argv: readonly string[]): string | undefined {
 
 function formatRate(rate: number): string {
   return `${(rate * 100).toFixed(2)}%`
+}
+
+function printEntry(entry: ShadowFunnelEntry): void {
+  console.log(`reader_model_id: ${entry.readerModelId}`)
+  console.log(`  memory-bearing turns:      ${entry.memoryBearingTurns} ${formatTurnsMarker(entry.memoryBearingTurns)}`)
+  console.log(`  shadow_hit turns (rank>=1): ${entry.shadowHitTurns}`)
+  console.log(`  under-trigger turns:       ${entry.underTriggerTurns}`)
+  // Deliberately unmarked: the bucket-3 5% branch is the operator's call.
+  console.log(`  under-trigger rate:        ${formatRate(entry.underTriggerRate)}`)
+  console.log(`  overlap-when-pulled turns: ${entry.overlapWhenPulled}`)
+  console.log(`  over-pull turns:           ${entry.overPullTurns}`)
+  console.log(`  distinct scopes (M):       ${entry.distinctScopes} ${formatScopesMarker(entry.distinctScopes)}`)
+  console.log('')
+}
+
+function printFootnotes(): void {
+  console.log(
+    'Note: shadow_hit is a rank cutoff (top-k position within the shadow cascade), not a relevance-score' +
+      ' threshold -- see the doc comment on ShadowRecallHit.score in src/long-term-memory/shadow-recall.ts.',
+  )
+  console.log(
+    'Note: over-pull turns (shadow_pull_overlap = 0) is NOT a pre-registered or spec-numeric threshold -- the' +
+      ' design doc only describes this companion signal qualitatively ("low overlap"). It is this repo\'s own' +
+      ' operationalization and sits outside the frozen go/no-go gate.',
+  )
+  console.log(
+    'Note: distinct scopes (M) IS part of the frozen go/no-go gate -- the gate requires N = 1000 sampled' +
+      ' memory-bearing turns across M >= 50 distinct scopes, per reader model, before trusting the' +
+      ' under-trigger rate above. Both preconditions are marked inline above. The under-trigger rate itself' +
+      " is deliberately unmarked: the < 5% stop branch is the operator's call, read against the" +
+      ' threats-to-validity ledger in the design doc. M counts only scopes that produced at least one' +
+      ' memory-bearing turn.',
+  )
 }
 
 function printFunnel(): void {
@@ -44,32 +84,10 @@ function printFunnel(): void {
   console.log('Memory-recall shadow under-trigger funnel (per reader model -- never averaged across models)\n')
 
   for (const entry of entries) {
-    console.log(`reader_model_id: ${entry.readerModelId}`)
-    console.log(`  memory-bearing turns:      ${entry.memoryBearingTurns}`)
-    console.log(`  shadow_hit turns (rank>=1): ${entry.shadowHitTurns}`)
-    console.log(`  under-trigger turns:       ${entry.underTriggerTurns}`)
-    console.log(`  under-trigger rate:        ${formatRate(entry.underTriggerRate)}`)
-    console.log(`  overlap-when-pulled turns: ${entry.overlapWhenPulled}`)
-    console.log(`  over-pull turns:           ${entry.overPullTurns}`)
-    console.log(`  distinct scopes (M):       ${entry.distinctScopes}`)
-    console.log('')
+    printEntry(entry)
   }
 
-  console.log(
-    'Note: shadow_hit is a rank cutoff (top-k position within the shadow cascade), not a relevance-score' +
-      ' threshold -- see the doc comment on ShadowRecallHit.score in src/long-term-memory/shadow-recall.ts.',
-  )
-  console.log(
-    'Note: over-pull turns (shadow_pull_overlap = 0) is NOT a pre-registered or spec-numeric threshold -- the' +
-      ' design doc only describes this companion signal qualitatively ("low overlap"). It is this repo\'s own' +
-      ' operationalization and sits outside the frozen go/no-go gate.',
-  )
-  console.log(
-    'Note: distinct scopes (M) IS part of the frozen go/no-go gate -- the gate requires N = 1000 sampled' +
-      ' memory-bearing turns across M >= 50 distinct scopes, per reader model, before trusting the' +
-      ' under-trigger rate above. Compare this count against 50 before acting on that rate. M counts' +
-      ' only scopes that produced at least one memory-bearing turn.',
-  )
+  printFootnotes()
 }
 
 printFunnel()
