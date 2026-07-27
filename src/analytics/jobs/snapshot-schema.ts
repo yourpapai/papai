@@ -228,7 +228,11 @@ export const CURATED_TABLES_PSEUDONYMOUS: readonly string[] = [
  * sessions, retention, intent, cohorts, and actor adoption as UNAVAILABLE
  * instead of approximating them.
  */
-export const CURATED_TABLES_AGGREGATE_ONLY: readonly string[] = CURATED_TABLES_PSEUDONYMOUS
+export const CURATED_TABLES_AGGREGATE_ONLY: readonly string[] = [
+  'snapshot_meta',
+  ...ACTOR_LEVEL_TABLES,
+  ...AGGREGATE_TABLES,
+]
 
 /** Builds the fresh-empty allowlisted publish schema; never copies live DDL. */
 export const createSnapshotSchema = (db: Database, mode: SnapshotMode): void => {
