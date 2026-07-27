@@ -12,12 +12,16 @@ const log = logger.child({ scope: 'run-control:registry' })
 export class RunRegistry {
   private runs = new Map<string, RunControl>()
 
-  begin(contextId: string, opts: { turnId: string; reply: ReplyFn }): RunControl {
+  begin(
+    contextId: string,
+    opts: { turnId: string; reply: ReplyFn; originatingMessageIds: readonly string[] },
+  ): RunControl {
     const run: RunControl = {
       contextId,
       turnId: opts.turnId,
       reply: opts.reply,
       abortController: new AbortController(),
+      originatingMessageIds: opts.originatingMessageIds,
       steerQueue: [],
       stopRequested: false,
       completedEffects: [],

@@ -105,7 +105,7 @@ describe('mid-run steering routing', () => {
 
     // Simulate an active run for the DM user's storage context
     const { reply: runReply } = createMockReply()
-    const run = runRegistry.begin(storageContextId, { turnId: 't1', reply: runReply })
+    const run = runRegistry.begin(storageContextId, { turnId: 't1', reply: runReply, originatingMessageIds: [] })
 
     const { reply, textCalls } = createMockReply()
     const messageHandler = getMessageHandler()

@@ -16,13 +16,9 @@ import { recordAssistantTurn } from './llm-history.js'
 import { getOpenAICompatibleProvider } from './llm-model-builder.js'
 import { checkRequiredProviderConfig, resolveConfigId } from './llm-orchestrator-config.js'
 import { buildHistory } from './llm-orchestrator-history.js'
+import { replayLeftoverSteerAsFreshTurn } from './llm-orchestrator-leftover-replay.js'
 import { shouldBackstopGroupMembership } from './llm-orchestrator-membership.js'
-import {
-  resolveAttachmentIds,
-  resolveDeps,
-  resolveTurnId,
-  type ProcessMessageRest,
-} from './llm-orchestrator-process-args.js'
+import { resolveProcessMessageInputs, type ProcessMessageRest } from './llm-orchestrator-process-args.js'
 import { handleLlmTurnError, invokeWithLiveStatus, logProcessMessage } from './llm-orchestrator-support.js'
 import { buildLlmInvocationOpts, prepareLlmInvocation, type InvocationSource } from './llm-orchestrator-tools.js'
 import type { LlmOrchestratorDeps } from './llm-orchestrator-types.js'
@@ -144,7 +140,10 @@ type CallLlmArgs = InvocationSource & {
 }
 
 // `finishReason` distinguishes a step-cap truncation ('tool-calls') from a normal stop.
-type CallLlmResult = { finalStep: { response: { messages: ModelMessage[] } }; finishReason?: string }
+type CallLlmResult = {
+  finalStep: { response: { messages: ModelMessage[] } }
+  finishReason?: string
+}
 
 const callLlm = async (args: CallLlmArgs): Promise<CallLlmResult> => {
   const { reply, contextId, chatUserId, username, contextType, actorRole, deps, configId, resolvedLlm, turnId } = args
@@ -204,13 +203,18 @@ type RunTurnArgs = {
   configId: string
   resolvedLlm: EffectiveLlmConfig
   resolvedTurnId: string
+  originatingMessageIds: readonly string[]
   startedAt: number
 }
 
 const runTurn = async (args: RunTurnArgs): Promise<InjectedMessage[]> => {
-  const { invocationSource, turn, deps, configId, resolvedLlm, resolvedTurnId, startedAt } = args
+  const { invocationSource, turn, deps, configId, resolvedLlm, resolvedTurnId, originatingMessageIds, startedAt } = args
   const { reply, contextId, contextType, actorRole } = invocationSource
-  const run = runRegistry.begin(contextId, { turnId: resolvedTurnId, reply })
+  const run = runRegistry.begin(contextId, {
+    turnId: resolvedTurnId,
+    reply,
+    originatingMessageIds,
+  })
   let leftover: InjectedMessage[] = []
   try {
     const result = await callLlm({
@@ -221,7 +225,13 @@ const runTurn = async (args: RunTurnArgs): Promise<InjectedMessage[]> => {
       resolvedLlm,
       turnId: resolvedTurnId,
     })
-    const meta = { contextId, configId, mainModel: resolvedLlm.main.model, contextType, actorRole }
+    const meta = {
+      contextId,
+      configId,
+      mainModel: resolvedLlm.main.model,
+      contextType,
+      actorRole,
+    }
     recordAssistantTurn(meta, turn, result)
     if (run.stopRequested) await reply.formatted(buildStopSummary(run.completedEffects, { forced: false }))
   } catch (error) {
@@ -253,16 +263,22 @@ export const processMessage = async (
   contextType: 'dm' | 'group',
   ...rest: ProcessMessageRest
 ): Promise<void> => {
-  const [configContextId, depsInput, newAttachmentIdsInput, turnId, actorRole = 'member'] = rest
-  const deps = resolveDeps(depsInput, defaultDeps)
-  const newAttachmentIds = resolveAttachmentIds(newAttachmentIdsInput)
-  const resolvedTurnId = resolveTurnId(turnId)
+  const { configContextId, deps, newAttachmentIds, resolvedTurnId, originatingMessageIds, actorRole } =
+    resolveProcessMessageInputs(rest, defaultDeps)
   logProcessMessage(contextId, configContextId, chatUserId, userText, newAttachmentIds, resolvedTurnId)
   const configId = resolveConfigId(contextId, configContextId)
   const resolvedLlm = await resolveLlmForTurn(reply, contextId, configId)
   if (resolvedLlm === null) return
   const turn = await buildHistory(contextId, chatUserId, resolvedLlm.main.model, userText, newAttachmentIds)
-  const invocationSource = { reply, contextId, chatUserId, username, userText, contextType, actorRole }
+  const invocationSource = {
+    reply,
+    contextId,
+    chatUserId,
+    username,
+    userText,
+    contextType,
+    actorRole,
+  }
   appendHistory(contextId, [turn.historyMessage])
   const leftover = await runTurn({
     invocationSource,
@@ -271,23 +287,8 @@ export const processMessage = async (
     configId,
     resolvedLlm,
     resolvedTurnId,
+    originatingMessageIds,
     startedAt: Date.now(),
   })
-  // Any steer message that never reached a step boundary becomes a fresh turn (never dropped).
-  if (leftover.length > 0) {
-    const text = leftover.map((m) => m.text).join('\n\n')
-    await processMessage(
-      reply,
-      contextId,
-      chatUserId,
-      username,
-      text,
-      contextType,
-      configContextId,
-      deps,
-      [],
-      undefined,
-      actorRole,
-    )
-  }
+  await replayLeftoverSteerAsFreshTurn(leftover, { invocationSource, configContextId, deps, processMessage })
 }

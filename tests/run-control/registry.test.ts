@@ -17,7 +17,7 @@ describe('RunRegistry', () => {
 
   test('begin creates a run retrievable by contextId', () => {
     const { reply } = createMockReply()
-    const run = registry.begin('ctx-1', { turnId: 't1', reply })
+    const run = registry.begin('ctx-1', { turnId: 't1', reply, originatingMessageIds: [] })
     expect(run.contextId).toBe('ctx-1')
     expect(run.turnId).toBe('t1')
     expect(run.stopRequested).toBe(false)
@@ -32,7 +32,7 @@ describe('RunRegistry', () => {
 
   test('end removes the run and returns leftover steer messages', () => {
     const { reply } = createMockReply()
-    const run = registry.begin('ctx-1', { turnId: 't1', reply })
+    const run = registry.begin('ctx-1', { turnId: 't1', reply, originatingMessageIds: [] })
     run.steerQueue.push({ text: 'only project X' })
     const leftover = registry.end('ctx-1')
     expect(leftover).toEqual([{ text: 'only project X' }])
@@ -45,8 +45,14 @@ describe('RunRegistry', () => {
 
   test('one run per context — second begin replaces the first', () => {
     const { reply } = createMockReply()
-    registry.begin('ctx-1', { turnId: 't1', reply })
-    const second = registry.begin('ctx-1', { turnId: 't2', reply })
+    registry.begin('ctx-1', { turnId: 't1', reply, originatingMessageIds: [] })
+    const second = registry.begin('ctx-1', { turnId: 't2', reply, originatingMessageIds: [] })
     expect(registry.get('ctx-1')).toBe(second)
+  })
+
+  test('records originatingMessageIds on the run', () => {
+    const { reply } = createMockReply()
+    const run = registry.begin('ctx', { turnId: 't1', reply, originatingMessageIds: ['m1', 'm2'] })
+    expect(run.originatingMessageIds).toEqual(['m1', 'm2'])
   })
 })

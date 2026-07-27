@@ -12,6 +12,7 @@ export type ProcessMessageRest = readonly [
   newAttachmentIds?: readonly string[],
   turnId?: string,
   actorRole?: ActorRole,
+  originatingMessageIds?: readonly string[],
 ]
 
 export type ProcessMessageFn = (
@@ -40,4 +41,34 @@ export const resolveAttachmentIds = (attachmentIds: readonly string[] | undefine
 export const resolveTurnId = (turnId: string | undefined): string => {
   if (turnId === undefined) return crypto.randomUUID()
   return turnId
+}
+
+export const resolveOriginatingMessageIds = (ids: readonly string[] | undefined): readonly string[] => {
+  if (ids === undefined) return []
+  return ids
+}
+
+export type ResolvedProcessMessageInputs = {
+  readonly configContextId: string | undefined
+  readonly deps: LlmOrchestratorDeps
+  readonly newAttachmentIds: readonly string[]
+  readonly resolvedTurnId: string
+  readonly originatingMessageIds: readonly string[]
+  readonly actorRole: ActorRole
+}
+
+export const resolveProcessMessageInputs = (
+  rest: ProcessMessageRest,
+  fallbackDeps: LlmOrchestratorDeps,
+): ResolvedProcessMessageInputs => {
+  const [configContextId, depsInput, newAttachmentIdsInput, turnId, actorRole = 'member', originatingMessageIdsInput] =
+    rest
+  return {
+    configContextId,
+    deps: resolveDeps(depsInput, fallbackDeps),
+    newAttachmentIds: resolveAttachmentIds(newAttachmentIdsInput),
+    resolvedTurnId: resolveTurnId(turnId),
+    originatingMessageIds: resolveOriginatingMessageIds(originatingMessageIdsInput),
+    actorRole,
+  }
 }

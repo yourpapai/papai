@@ -233,7 +233,7 @@ function createPendingWork(ids: ScenarioIds): PendingWork {
 
 function createScenarioProcessMessage(model: ScriptedModel): ProcessMessageFn {
   return (reply, contextId, userId, username, text, contextType, ...rest) => {
-    const [configContextId, deps, attachmentIds, turnId, actorRole] = rest
+    const [configContextId, deps, attachmentIds, turnId, actorRole, originatingMessageIds] = rest
     return processMessage(
       reply,
       contextId,
@@ -249,6 +249,7 @@ function createScenarioProcessMessage(model: ScriptedModel): ProcessMessageFn {
       attachmentIds,
       turnId,
       actorRole,
+      originatingMessageIds,
     )
   }
 }

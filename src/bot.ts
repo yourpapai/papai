@@ -150,6 +150,7 @@ async function processCoalescedMessage(coalescedItem: QueuedCoalescedItem, deps:
       [...voiceAttachmentIds, ...coalescedItem.newAttachmentIds],
       coalescedItem.turnId,
       coalescedItem.actorRole,
+      coalescedItem.messageIds,
     )
   } finally {
     emitReplyCompletedIfNeeded(tracked, coalescedItem.userId, coalescedItem.storageContextId, start)

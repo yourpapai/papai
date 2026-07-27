@@ -17,6 +17,7 @@ export type RunControl = {
   readonly turnId: string
   readonly reply: ReplyFn
   readonly abortController: AbortController
+  readonly originatingMessageIds: readonly string[]
   steerQueue: InjectedMessage[]
   stopRequested: boolean
   completedEffects: EffectRecord[]

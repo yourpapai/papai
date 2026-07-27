@@ -6,7 +6,13 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { ProcessMessageRest } from '../src/llm-orchestrator-process-args.js'
-import { resolveAttachmentIds, resolveDeps, resolveTurnId } from '../src/llm-orchestrator-process-args.js'
+import {
+  resolveAttachmentIds,
+  resolveDeps,
+  resolveOriginatingMessageIds,
+  resolveProcessMessageInputs,
+  resolveTurnId,
+} from '../src/llm-orchestrator-process-args.js'
 import { defaultDeps } from '../src/llm-orchestrator.js'
 
 describe('llm-orchestrator-process-args', () => {
@@ -41,6 +47,43 @@ describe('llm-orchestrator-process-args', () => {
 
     test('returns the provided id when defined', () => {
       expect(resolveTurnId('my-turn-id')).toBe('my-turn-id')
+    })
+  })
+
+  describe('resolveOriginatingMessageIds', () => {
+    test('returns empty array when undefined', () => {
+      expect(resolveOriginatingMessageIds(undefined)).toEqual([])
+    })
+
+    test('returns provided ids when defined', () => {
+      const ids = ['m1', 'm2']
+      expect(resolveOriginatingMessageIds(ids)).toBe(ids)
+    })
+  })
+
+  describe('resolveProcessMessageInputs', () => {
+    test('defaults every optional field when rest is empty', () => {
+      const inputs = resolveProcessMessageInputs([], defaultDeps)
+      expect(inputs.configContextId).toBeUndefined()
+      expect(inputs.deps).toBe(defaultDeps)
+      expect(inputs.newAttachmentIds).toEqual([])
+      expect(inputs.actorRole).toBe('member')
+      expect(inputs.originatingMessageIds).toEqual([])
+      expect(typeof inputs.resolvedTurnId).toBe('string')
+    })
+
+    test('preserves provided values for every field', () => {
+      const customDeps = { ...defaultDeps }
+      const inputs = resolveProcessMessageInputs(
+        ['cfg-1', customDeps, ['att-1'], 'turn-9', 'guest', ['m1', 'm2']],
+        defaultDeps,
+      )
+      expect(inputs.configContextId).toBe('cfg-1')
+      expect(inputs.deps).toBe(customDeps)
+      expect(inputs.newAttachmentIds).toEqual(['att-1'])
+      expect(inputs.resolvedTurnId).toBe('turn-9')
+      expect(inputs.actorRole).toBe('guest')
+      expect(inputs.originatingMessageIds).toEqual(['m1', 'm2'])
     })
   })
 
