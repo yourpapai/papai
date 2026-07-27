@@ -7,6 +7,7 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { Glob, Transpiler } from 'bun'
+import pLimit from 'p-limit'
 
 export const STORY_SCOPE_ROOTS: readonly string[] = ['src', 'plugins']
 
@@ -109,11 +110,17 @@ async function discoverRoot(cwd: string, root: string): Promise<readonly string[
     throw new Error(`Failed to scan story coverage scope root ${root}: ${message}`, { cause: error })
   }
   const scoped = entries.filter(isScopedSourceFile)
+  // Bound concurrency to avoid exhausting file descriptors when scanning
+  // ~900 files; p-limit also sidesteps oxlint's no-await-in-loop, which only
+  // fires on await directly inside a for/while body.
+  const limit = pLimit(16)
   const checked = await Promise.all(
-    scoped.map(async (relative) => {
-      const source = await readFile(path.join(cwd, relative), 'utf8')
-      return { relative, hasRuntimeCode: hasRuntimeCode(source, relative) }
-    }),
+    scoped.map((relative) =>
+      limit(async () => {
+        const source = await readFile(path.join(cwd, relative), 'utf8')
+        return { relative, hasRuntimeCode: hasRuntimeCode(source, relative) }
+      }),
+    ),
   )
   const files = checked.filter((entry) => entry.hasRuntimeCode).map((entry) => entry.relative)
   // An empty root would make seeding a silent no-op and the gate would report
