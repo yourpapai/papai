@@ -208,6 +208,7 @@ function createPendingWork(ids: ScenarioIds): PendingWork {
       ...item,
       reply,
       turnId: ids.next('turn'),
+      messageIds: item.messageId === undefined ? [] : [item.messageId],
     }).catch((error: unknown) => {
       failures = [...failures, error]
     })

@@ -23,6 +23,7 @@ export type QueueItem = Readonly<{
   newAttachmentIds: readonly string[]
   voiceStagedIds: readonly string[]
   actorRole?: ActorRole
+  messageId?: string
 }> &
   QueueContextInfo &
   QueueConfigContextInfo
@@ -37,6 +38,7 @@ export type CoalescedItem = Readonly<{
   reply: ReplyFn
   turnId: string
   actorRole?: ActorRole
+  messageIds: readonly string[]
 }> &
   QueueContextInfo &
   QueueConfigContextInfo

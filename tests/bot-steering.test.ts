@@ -84,6 +84,7 @@ describe('mid-run steering routing', () => {
           voiceStagedIds: args[0].voiceStagedIds,
           reply: args[1],
           turnId: 'test-turn-id',
+          messageIds: args[0].messageId === undefined ? [] : [args[0].messageId],
         }).catch(() => {})
       },
     }

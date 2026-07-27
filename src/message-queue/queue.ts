@@ -155,10 +155,12 @@ export class MessageQueue {
     texts: string[]
     attachmentIds: string[]
     voiceStagedIds: string[]
+    messageIds: string[]
   } {
     const texts: string[] = []
     const attachmentIds: string[] = []
     const voiceStagedIds: string[] = []
+    const messageIds: string[] = []
     for (const msg of this.messages) {
       if (isThread && msg.item.username !== null) {
         texts.push(`[@${msg.item.username}]: ${msg.item.text}`)
@@ -167,8 +169,9 @@ export class MessageQueue {
       }
       attachmentIds.push(...msg.item.newAttachmentIds)
       voiceStagedIds.push(...msg.item.voiceStagedIds)
+      if (msg.item.messageId !== undefined) messageIds.push(msg.item.messageId)
     }
-    return { texts, attachmentIds, voiceStagedIds }
+    return { texts, attachmentIds, voiceStagedIds, messageIds }
   }
 
   private flush(): CoalescedItem | null {
@@ -186,7 +189,7 @@ export class MessageQueue {
 
     const isThread = firstMessage.item.contextType === 'group' && this.storageContextId.includes(':')
     const isDm = firstMessage.item.contextType === 'dm'
-    const { texts, attachmentIds, voiceStagedIds } = this.collectMessageContent(isThread)
+    const { texts, attachmentIds, voiceStagedIds, messageIds } = this.collectMessageContent(isThread)
     const text = isDm ? texts.join('\n\n') : texts.join('\n')
 
     const turnId = randomUUID()
@@ -203,6 +206,7 @@ export class MessageQueue {
       reply: lastMessage.reply,
       turnId,
       actorRole: lastMessage.item.actorRole,
+      messageIds,
     }
 
     this.messages = []

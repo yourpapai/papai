@@ -202,6 +202,7 @@ async function handleMessage(
       newAttachmentIds,
       voiceStagedIds,
       actorRole: auth.isGuest === true ? 'guest' : 'member',
+      messageId: msg.messageId,
     },
     reply,
     (coalescedItem): Promise<void> => processCoalescedMessage(coalescedItem, deps),
