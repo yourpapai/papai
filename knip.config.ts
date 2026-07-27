@@ -127,6 +127,11 @@ export default {
     // listRoutes is consumed by the behavior-audit closure verifier via
     // dynamic import; re-exported from src/debug/server.ts.
     'src/debug/server-route-options.ts': ['exports'],
+    // applyEditToHistory is the public edit-application entry; the chat-layer
+    // dispatch that calls it lands in task 8 of the message-edit-handling plan
+    // (.superpowers/sdd/task-4-brief.md references Task 8's role). Temporary
+    // unused-export gap.
+    'src/history.ts': ['exports'],
   },
 
   includeEntryExports: true,
