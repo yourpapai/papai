@@ -10,7 +10,7 @@ import { getCachedHistory, setCachedHistory, appendToCachedHistory, clearCachedH
 import { getDrizzleDb } from './db/drizzle.js'
 import { conversationHistory } from './db/schema.js'
 import { logger } from './logger.js'
-import { rebuildCoalescedText, type MessageSegment } from './message-edit/segments.js'
+import { rebuildCoalescedText, type PapaiTurnMeta } from './message-edit/segments.js'
 
 const log = logger.child({ scope: 'history' })
 
@@ -39,13 +39,6 @@ export function clearHistory(userId: string): void {
   db.delete(conversationHistory).where(eq(conversationHistory.userId, userId)).run()
 
   log.info({ userId }, 'History cleared')
-}
-
-type PapaiTurnMeta = {
-  messageIds: string[]
-  segments: MessageSegment[]
-  isThread: boolean
-  isDm: boolean
 }
 
 function papaiMeta(msg: ModelMessage): PapaiTurnMeta | undefined {

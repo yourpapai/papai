@@ -5,6 +5,13 @@
 
 export type MessageSegment = { messageId: string; text: string; username: string | null }
 
+export type PapaiTurnMeta = {
+  messageIds: string[]
+  segments: MessageSegment[]
+  isThread: boolean
+  isDm: boolean
+}
+
 /**
  * Format a single message segment for inclusion in a coalesced user turn.
  * Reproduces the queue's `collectMessageContent` rule exactly: thread context

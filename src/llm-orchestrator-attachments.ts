@@ -15,7 +15,7 @@ import {
 } from './attachments/index.js'
 import type { AttachmentRef, StoredAttachment } from './attachments/types.js'
 import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
-import type { MessageSegment } from './message-edit/segments.js'
+import type { MessageSegment, PapaiTurnMeta } from './message-edit/segments.js'
 import { hasContextTransformers, transformNewAttachments, type TransformLine } from './plugins/attachment-transform.js'
 import { getUserTimezoneOrDefault } from './utils/config-timezone.js'
 import { formatCurrentTimeTag } from './utils/current-time-format.js'
@@ -24,13 +24,6 @@ type AttachmentPart =
   | { type: 'text'; text: string }
   | { type: 'image'; image: Buffer; mediaType?: string }
   | { type: 'file'; data: Buffer; filename?: string; mediaType: string }
-
-type PapaiTurnMeta = {
-  messageIds: string[]
-  segments: MessageSegment[]
-  isThread: boolean
-  isDm: boolean
-}
 
 /**
  * Build the `providerOptions.papai` block for a user turn, or `undefined` when
