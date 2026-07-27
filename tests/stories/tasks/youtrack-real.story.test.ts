@@ -5,7 +5,11 @@
 
 import { expect } from 'bun:test'
 
+import { eq } from 'drizzle-orm'
+
 import { YouTrackClassifiedError } from '../../../plugins/task-provider-youtrack/classify-error.js'
+import { getDrizzleDb } from '../../../src/db/drizzle.js'
+import { kaneoWorkspaceMembers } from '../../../src/db/schema.js'
 import { scenario } from '../harness/scenario.js'
 import { answer, callCapability } from '../harness/scripted-llm.js'
 
@@ -87,6 +91,39 @@ scenario(
     if (failure instanceof YouTrackClassifiedError) {
       expect(failure.appError.code).toBe('project-not-found')
     }
+  },
+  { realTaskProvider: 'youtrack' },
+)
+
+scenario(
+  'SCN-task-youtrack-real-gating: skips member provisioning for a provider without members.provision',
+  async ({ given, when, then, resolveRealTaskProvider }) => {
+    const bob = given.user('bob')
+    const group = given.group('gated-team')
+    given.member(group, bob)
+    const instance = given.taskInstance(undefined, 'youtrack')
+    given.assign(group, instance)
+    given.llm([callCapability('tasks.projects.create', { name: 'Gated' }), answer('Project created.')])
+
+    await when.message(bob, group, 'Create a project called Gated')
+    then.replyIn(group).equals('Project created.')
+
+    // Positive evidence the turn genuinely exercised the real provider (not a vacuous
+    // no-op): the project was actually created through the real YouTrack provider.
+    const provider = await resolveRealTaskProvider(group)
+    const projects = (await provider.listProjects?.()) ?? []
+    expect(projects.some((project) => project.name === 'Gated')).toBe(true)
+
+    // Positive evidence the capability gate in ensure-member.ts:215-220 is the reason no
+    // row was written: this is the exact provider instance `ensureWorkspaceMember` resolves
+    // for this group's config context (same `defaultTaskProviderResolver.resolve`), and it
+    // lacks `members.provision`.
+    expect(provider.capabilities.has('members.provision')).toBe(false)
+    expect('provisionWorkspaceMember' in provider).toBe(false)
+
+    expect(
+      getDrizzleDb().select().from(kaneoWorkspaceMembers).where(eq(kaneoWorkspaceMembers.chatUserId, bob.id)).get(),
+    ).toBeUndefined()
   },
   { realTaskProvider: 'youtrack' },
 )
