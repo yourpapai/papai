@@ -86,6 +86,10 @@ export function formatStoryCoverageScope(scoped: ScopedLcov): string {
 
 const SOURCE_GLOB = '**/*.ts'
 
+// Bound discovery concurrency to avoid exhausting file descriptors when
+// scanning ~900 files.
+const DISCOVERY_CONCURRENCY_LIMIT = 16
+
 // Bun's transpiler strips types and comments, so empty output proves the file
 // has no coverable lines. This is a decision procedure, not a heuristic.
 const transpiler = new Transpiler({ loader: 'ts' })
@@ -110,10 +114,9 @@ async function discoverRoot(cwd: string, root: string): Promise<readonly string[
     throw new Error(`Failed to scan story coverage scope root ${root}: ${message}`, { cause: error })
   }
   const scoped = entries.filter(isScopedSourceFile)
-  // Bound concurrency to avoid exhausting file descriptors when scanning
-  // ~900 files; p-limit also sidesteps oxlint's no-await-in-loop, which only
-  // fires on await directly inside a for/while body.
-  const limit = pLimit(16)
+  // p-limit also sidesteps oxlint's no-await-in-loop, which only fires on
+  // await directly inside a for/while body.
+  const limit = pLimit(DISCOVERY_CONCURRENCY_LIMIT)
   const checked = await Promise.all(
     scoped.map((relative) =>
       limit(async () => {
