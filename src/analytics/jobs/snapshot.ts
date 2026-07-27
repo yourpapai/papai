@@ -66,8 +66,8 @@ const resolveGeneration = (
   input: SnapshotPublishInput,
   deps: SnapshotPublishDeps,
 ): { generation: string; release: () => void } => {
-  const active = resolveActive({ getDrizzleDb: deps.getDrizzleDb })
   if (input.transitionRunId !== undefined) {
+    const active = resolveActive({ getDrizzleDb: deps.getDrizzleDb })
     const run = deps
       .getDrizzleDb()
       .select()
@@ -83,7 +83,13 @@ const resolveGeneration = (
   }
   const admission = deps.fence.admit('snapshot')
   if (admission === null) throw new Error('snapshot staging refused: the cutover fence is held')
-  return { generation: active.generation, release: admission.release }
+  try {
+    const active = resolveActive({ getDrizzleDb: deps.getDrizzleDb })
+    return { generation: active.generation, release: admission.release }
+  } catch (error) {
+    admission.release()
+    throw error
+  }
 }
 
 const insertMeta = (publishDb: Database, meta: SnapshotMeta): void => {

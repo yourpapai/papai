@@ -423,7 +423,84 @@ const insertMsg = (
   })
 }
 
+const insertSession = (
+  db: Database,
+  sessionKey: string,
+  actor: string,
+  startMs: number,
+  durationMs: number,
+  turnCount: number,
+): void => {
+  db.prepare(
+    `INSERT INTO curated_sessions (
+       session_key, actor_key, conversation_key, start_ms, end_ms, duration_ms,
+       activity_count, turn_count, sessionization_version
+     ) VALUES (?, ?, 'v1.c-conv', ?, ?, ?, ?, ?, 1)`,
+  ).run(sessionKey, actor, startMs, startMs + durationMs, durationMs, turnCount + 1, turnCount)
+}
+
 describe('metabase model: retention and engagement', () => {
+  test('UTC DAU/WAU/MAU, stickiness, and conversation session metrics', () => {
+    const engagementDb = new Database(':memory:')
+    createSnapshotSchema(engagementDb, 'pseudonymous')
+    insertMeta(engagementDb)
+
+    // Snapshot day is 2026-02-10 (NOW).
+    insertMsg(engagementDb, 's1', 'received', NOW)
+    insertMsg(engagementDb, 's1', 'received', NOW - 3 * DAY)
+    insertMsg(engagementDb, 's1', 'received', NOW - 10 * DAY)
+    insertMsg(engagementDb, 's2', 'sent', NOW - 2 * DAY)
+    insertMsg(engagementDb, 's2', 'received', NOW - 25 * DAY)
+    insertMsg(engagementDb, 's3', 'received', NOW - 35 * DAY)
+
+    insertSession(engagementDb, 'sess-1', 's1', NOW - 3 * DAY, 60_000, 2)
+    insertSession(engagementDb, 'sess-2', 's1', NOW - DAY, 120_000, 4)
+    insertSession(engagementDb, 'sess-3', 's2', NOW - 2 * DAY, 0, 1)
+
+    const rows = runModel(engagementDb, '02-retention-engagement.sql')
+    for (const row of rows) {
+      for (const column of HONESTY_COLUMNS) {
+        expect(row).toHaveProperty(column)
+      }
+    }
+
+    const utc = rows.filter((row) => row['row_kind'] === 'utc_engagement')
+    const utcAt = (metric: string): Record<string, unknown> | undefined => utc.find((row) => row['metric'] === metric)
+    expect(utcAt('dau')?.['numerator']).toBe(1)
+    expect(utcAt('dau')?.['window_start_utc']).toBe('2026-02-10')
+    expect(utcAt('dau')?.['window_end_utc']).toBe('2026-02-10')
+    expect(utcAt('wau')?.['numerator']).toBe(2)
+    expect(utcAt('wau')?.['window_start_utc']).toBe('2026-02-04')
+    expect(utcAt('mau')?.['numerator']).toBe(2)
+    expect(utcAt('mau')?.['window_start_utc']).toBe('2026-01-12')
+
+    const stickiness = rows.find((row) => row['metric'] === 'stickiness')
+    expect(stickiness?.['numerator']).toBe(1)
+    expect(stickiness?.['denominator']).toBe(2)
+    expect(stickiness?.['suppressed']).toBe(1)
+    expect(stickiness?.['rate']).toBeNull()
+
+    const sessions = rows.find((row) => row['metric'] === 'sessions_per_actor')
+    expect(sessions?.['numerator']).toBe(3)
+    expect(sessions?.['denominator']).toBe(2)
+    expect(sessions?.['suppressed']).toBe(1)
+    expect(sessions?.['rate']).toBeNull()
+
+    const turns = rows.find((row) => row['metric'] === 'turns_per_session')
+    expect(turns?.['numerator']).toBe(7)
+    expect(turns?.['denominator']).toBe(3)
+
+    const duration = rows.find((row) => row['row_kind'] === 'session_duration_seconds')
+    expect(duration?.['numerator']).toBe(3)
+    expect(duration?.['p50_seconds']).toBe(60)
+    expect(duration?.['p75_seconds']).toBe(120)
+    expect(duration?.['p90_seconds']).toBe(120)
+    expect(duration?.['p95_seconds']).toBe(120)
+    expect(duration?.['suppressed']).toBe(1)
+
+    engagementDb.close()
+  })
+
   test('exact returned-by horizons, censoring, weekly engagement, mix, tenure, pairing, latency', () => {
     const engagementDb = new Database(':memory:')
     createSnapshotSchema(engagementDb, 'pseudonymous')
@@ -461,6 +538,16 @@ describe('metabase model: retention and engagement', () => {
     insertMsg(engagementDb, 'e8', 'received', T0 + 20 * DAY)
     insertMsg(engagementDb, 'e8', 'sent', T0 + 20 * DAY + 3_600_000)
 
+    // E9: onboarded 40 days back, never returned, withdrew before the D30 horizon
+    // (withdrawal before N is censoring, not churn).
+    insertOnboarded(engagementDb, 'e9', T0 - 40 * DAY)
+    engagementDb
+      .prepare(
+        `INSERT INTO curated_censor_intervals (actor_key, kind, start_ms, end_ms, censor_version)
+         VALUES ('e9', 'withdrawal', ?, NULL, 1)`,
+      )
+      .run(T0 - 20 * DAY)
+
     const rows = runModel(engagementDb, '02-retention-engagement.sql')
     for (const row of rows) {
       for (const column of HONESTY_COLUMNS) {
@@ -473,10 +560,12 @@ describe('metabase model: retention and engagement', () => {
       retention.filter((row) => row['cohort_week'] === week).find((row) => row['metric'] === metric)
 
     expect(retentionAt('2025-11-17', 'returned_by_d1')?.['numerator']).toBe(3)
-    expect(retentionAt('2025-11-17', 'returned_by_d1')?.['denominator']).toBe(3)
+    expect(retentionAt('2025-11-17', 'returned_by_d1')?.['denominator']).toBe(4)
     expect(retentionAt('2025-11-17', 'returned_by_d7')?.['numerator']).toBe(3)
+    expect(retentionAt('2025-11-17', 'returned_by_d7')?.['denominator']).toBe(4)
     expect(retentionAt('2025-11-17', 'returned_by_d30')?.['numerator']).toBe(2)
     expect(retentionAt('2025-11-17', 'returned_by_d30')?.['denominator']).toBe(3)
+    expect(retentionAt('2025-11-17', 'returned_by_d30')?.['censored_count']).toBe(1)
 
     expect(retentionAt('2025-12-08', 'returned_by_d1')?.['numerator']).toBe(1)
     expect(retentionAt('2025-12-08', 'returned_by_d7')?.['numerator']).toBe(1)
@@ -528,7 +617,7 @@ describe('metabase model: retention and engagement', () => {
       tenure.find((row) => row['tenure_band'] === band)
     expect(tenureAt('1_2w')?.['numerator']).toBe(1)
     expect(tenureAt('2_4w')?.['numerator']).toBe(2)
-    expect(tenureAt('4_12w')?.['numerator']).toBe(4)
+    expect(tenureAt('4_12w')?.['numerator']).toBe(5)
     expect(tenureAt('12w_plus')?.['numerator']).toBe(1)
 
     const pairing = rows.filter((row) => row['row_kind'] === 'cross_platform_actor')
@@ -617,35 +706,35 @@ describe('metabase model: intents and features', () => {
       eventName: 'intent_classified',
       occurredAtMs: T0,
       actorKey: 'f1',
-      props: { primary: 'task_create', goals: ['G1', 'G2'] },
+      props: { primary: 'task_create', goals: ['G1', 'G2'], strategy: 'tool_trace_v1' },
     })
     insertEvent(intentsDb, {
       eventId: 'i2',
       eventName: 'intent_classified',
       occurredAtMs: T0,
       actorKey: 'f2',
-      props: { primary: 'unknown' },
+      props: { primary: 'unknown', strategy: 'tool_trace_v1' },
     })
     insertEvent(intentsDb, {
       eventId: 'i3',
       eventName: 'intent_classified',
       occurredAtMs: T0,
       actorKey: 'f3',
-      props: { primary: 'no_action' },
+      props: { primary: 'no_action', strategy: 'small_model_v1' },
     })
     insertEvent(intentsDb, {
       eventId: 'i4',
       eventName: 'intent_classified',
       occurredAtMs: T0,
       actorKey: 'f1',
-      props: { primary: 'task_create', abstained: true },
+      props: { primary: 'task_create', abstained: true, strategy: 'small_model_v1' },
     })
     insertEvent(intentsDb, {
       eventId: 'i5',
       eventName: 'intent_classified',
       occurredAtMs: T0,
       actorKey: 'f2',
-      props: { primary: 'query', goals: ['G1'] },
+      props: { primary: 'query', goals: ['G1'], strategy: 'metadata_v1' },
     })
 
     insertGoalAttempt(intentsDb, {
@@ -717,6 +806,21 @@ describe('metabase model: intents and features', () => {
     for (const row of buckets) {
       expect(row['denominator']).toBe(5)
       expect(row['suppressed']).toBe(1)
+    }
+
+    const coverage = rows.filter((row) => row['row_kind'] === 'classification_coverage')
+    const coverageAt = (strategy: string): Record<string, unknown> | undefined =>
+      coverage.find((row) => row['bucket'] === strategy)
+    expect(coverageAt('tool_trace_v1')?.['numerator']).toBe(1)
+    expect(coverageAt('tool_trace_v1')?.['denominator']).toBe(2)
+    expect(coverageAt('small_model_v1')?.['numerator']).toBe(1)
+    expect(coverageAt('small_model_v1')?.['denominator']).toBe(2)
+    expect(coverageAt('metadata_v1')?.['numerator']).toBe(1)
+    expect(coverageAt('metadata_v1')?.['denominator']).toBe(1)
+    for (const row of coverage) {
+      expect(row['suppressed']).toBe(1)
+      expect(row['rate']).toBeNull()
+      expect(row['availability']).toBe('available')
     }
 
     const goals = rows

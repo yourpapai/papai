@@ -1,5 +1,6 @@
 -- Model 03: intents and features.
 -- Intent classification buckets (unknown / no_action / multi_goal / single),
+-- classification coverage (non-unknown / classified) segmented by strategy,
 -- per-goal attainment over mature attempts (immature attempts are censored,
 -- never counted as failures), fractional goal attribution (each goal in a
 -- multi-goal turn earns 1/N of the turn), feature adoption against
@@ -21,7 +22,8 @@ intent_events AS (
     event_id,
     prop_primary_intent AS primary_intent,
     prop_abstained AS abstained,
-    prop_goals_json AS goals_json
+    prop_goals_json AS goals_json,
+    prop_strategy AS strategy
   FROM curated_events
   WHERE event_name = 'intent_classified'
 ),
@@ -42,6 +44,14 @@ intent_bucket_rows AS (
     (SELECT COUNT(*) FROM intent_buckets) AS total_intents
   FROM intent_buckets
   GROUP BY bucket
+),
+strategy_coverage AS (
+  SELECT
+    COALESCE(strategy, 'missing_strategy') AS strategy,
+    COUNT(*) AS classified,
+    SUM(CASE WHEN primary_intent = 'unknown' OR abstained = 1 THEN 0 ELSE 1 END) AS non_unknown
+  FROM intent_events
+  GROUP BY COALESCE(strategy, 'missing_strategy')
 ),
 goal_turn_sizes AS (
   SELECT turn_key, COUNT(*) AS goals_in_turn
@@ -163,6 +173,38 @@ SELECT
   meta.snapshot_created_at_ms,
   meta.reconciliation_status
 FROM intent_bucket_rows
+CROSS JOIN meta
+WHERE meta.snapshot_mode = 'pseudonymous'
+
+UNION ALL
+
+SELECT
+  'classification_coverage' AS row_kind,
+  'classification_coverage' AS metric,
+  'available' AS availability,
+  strategy_coverage.strategy AS bucket,
+  NULL AS goal,
+  NULL AS feature,
+  NULL AS arm,
+  NULL AS suppression_reason,
+  CASE
+    WHEN strategy_coverage.classified >= 30
+      THEN ROUND(CAST(strategy_coverage.non_unknown AS REAL) / strategy_coverage.classified, 4)
+  END AS rate,
+  1 AS metric_version,
+  NULL AS window_start_utc,
+  date(meta.snap_end / 1000, 'unixepoch') AS window_end_utc,
+  strategy_coverage.non_unknown AS numerator,
+  strategy_coverage.classified AS denominator,
+  0 AS unknown_count,
+  0 AS censored_count,
+  NULL AS eligibility_coverage,
+  NULL AS wilson_low,
+  NULL AS wilson_high,
+  CASE WHEN strategy_coverage.classified < 30 THEN 1 ELSE 0 END AS suppressed,
+  meta.snapshot_created_at_ms,
+  meta.reconciliation_status
+FROM strategy_coverage
 CROSS JOIN meta
 WHERE meta.snapshot_mode = 'pseudonymous'
 

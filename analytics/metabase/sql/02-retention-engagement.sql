@@ -1,11 +1,14 @@
 -- Model 02: retention and engagement.
 -- Weekly cohort retention (returned-by D1/D7/D30 measured from each actor's own
--- onboarding timestamp, never from the cohort window start), weekly engagement
--- per platform, new/returning weekly activity mix via consecutive-week streaks,
--- tenure bands from cohort age, same-platform send/receive pairing, and
--- send-after-receive latency percentiles. Horizons not yet observable at the
--- snapshot cut are censored (denominator 0, censored_count > 0) instead of
--- being misreported as zero retention.
+-- onboarding timestamp, never from the cohort window start), UTC DAU/WAU/MAU
+-- with stickiness, conversation-session volume/duration/turns from
+-- sessionization.v1, weekly engagement per platform, new/returning weekly
+-- activity mix via consecutive-week streaks, tenure bands from cohort age,
+-- same-platform send/receive pairing, and send-after-receive latency
+-- percentiles. Horizons not yet observable at the snapshot cut are censored
+-- (denominator 0, censored_count > 0) instead of being misreported as zero
+-- retention, and a withdrawal starting on or before a horizon is censoring,
+-- never churn.
 
 WITH RECURSIVE meta AS (
   SELECT
@@ -48,6 +51,14 @@ msg AS (
   WHERE event_name IN ('message_received', 'message_sent')
     AND actor_key IS NOT NULL
 ),
+withdrawn AS (
+  SELECT
+    actor_key,
+    MIN(start_ms) AS withdrawn_ms
+  FROM curated_censor_intervals
+  WHERE kind = 'withdrawal'
+  GROUP BY actor_key
+),
 horizons AS (
   SELECT 1 AS horizon_days
   UNION ALL SELECT 7
@@ -60,9 +71,21 @@ retention AS (
     COUNT(*) AS cohort_size,
     SUM(CASE
       WHEN actor_cohort.onboard_ms + horizons.horizon_days * 86400000 <= snap.snap_end
+        AND NOT EXISTS (
+          SELECT 1
+          FROM withdrawn
+          WHERE withdrawn.actor_key = actor_cohort.actor_key
+            AND withdrawn.withdrawn_ms <= actor_cohort.onboard_ms + horizons.horizon_days * 86400000
+        )
         THEN 1 ELSE 0 END) AS eligible,
     SUM(CASE
       WHEN actor_cohort.onboard_ms + horizons.horizon_days * 86400000 <= snap.snap_end
+        AND NOT EXISTS (
+          SELECT 1
+          FROM withdrawn
+          WHERE withdrawn.actor_key = actor_cohort.actor_key
+            AND withdrawn.withdrawn_ms <= actor_cohort.onboard_ms + horizons.horizon_days * 86400000
+        )
         AND EXISTS (
           SELECT 1
           FROM msg
@@ -75,6 +98,49 @@ retention AS (
   CROSS JOIN horizons
   CROSS JOIN snap
   GROUP BY actor_cohort.cohort_week, horizons.horizon_days
+),
+utc_windows AS (
+  SELECT
+    date(snap.snap_end / 1000, 'unixepoch') AS utc_day,
+    (SELECT COUNT(DISTINCT exact_day.actor_key)
+     FROM msg AS exact_day
+     WHERE date(exact_day.occurred_at_ms / 1000, 'unixepoch') = date(snap.snap_end / 1000, 'unixepoch')) AS dau,
+    (SELECT COUNT(DISTINCT rolling_week.actor_key)
+     FROM msg AS rolling_week
+     WHERE date(rolling_week.occurred_at_ms / 1000, 'unixepoch')
+       BETWEEN date(snap.snap_end / 1000, 'unixepoch', '-6 days') AND date(snap.snap_end / 1000, 'unixepoch')) AS wau,
+    (SELECT COUNT(DISTINCT rolling_month.actor_key)
+     FROM msg AS rolling_month
+     WHERE date(rolling_month.occurred_at_ms / 1000, 'unixepoch')
+       BETWEEN date(snap.snap_end / 1000, 'unixepoch', '-29 days') AND date(snap.snap_end / 1000, 'unixepoch')) AS mau
+  FROM snap
+),
+session_stats AS (
+  SELECT
+    COUNT(*) AS session_count,
+    COUNT(DISTINCT actor_key) AS session_actors,
+    SUM(turn_count) AS total_turns
+  FROM curated_sessions
+),
+session_durations AS (
+  SELECT
+    duration_ms / 1000.0 AS duration_seconds,
+    ROW_NUMBER() OVER (ORDER BY duration_ms) AS duration_rank,
+    COUNT(*) OVER () AS duration_count
+  FROM curated_sessions
+),
+session_duration_percentiles AS (
+  SELECT
+    MAX(CASE WHEN duration_rank = CAST((duration_count * 50 + 99) / 100 AS INTEGER)
+      THEN duration_seconds END) AS p50_seconds,
+    MAX(CASE WHEN duration_rank = CAST((duration_count * 75 + 99) / 100 AS INTEGER)
+      THEN duration_seconds END) AS p75_seconds,
+    MAX(CASE WHEN duration_rank = CAST((duration_count * 90 + 99) / 100 AS INTEGER)
+      THEN duration_seconds END) AS p90_seconds,
+    MAX(CASE WHEN duration_rank = CAST((duration_count * 95 + 99) / 100 AS INTEGER)
+      THEN duration_seconds END) AS p95_seconds,
+    MAX(duration_count) AS duration_count
+  FROM session_durations
 ),
 weekly_engagement AS (
   SELECT
@@ -112,10 +178,13 @@ streaks AS (
 ),
 activity_mix AS (
   SELECT
-    SUM(CASE WHEN week_streak = 1 THEN 1 ELSE 0 END) AS new_actors,
-    SUM(CASE WHEN week_streak >= 2 THEN 1 ELSE 0 END) AS returning_actors,
+    SUM(CASE WHEN onboarded.actor_key IS NOT NULL AND streaks.week_streak = 1 THEN 1 ELSE 0 END) AS new_actors,
+    SUM(CASE WHEN onboarded.actor_key IS NOT NULL AND streaks.week_streak >= 2 THEN 1 ELSE 0 END) AS returning_actors,
+    SUM(CASE WHEN onboarded.actor_key IS NULL THEN 1 ELSE 0 END) AS tenure_unknown_actors,
     COUNT(*) AS total_actors
   FROM streaks
+  LEFT JOIN onboarded
+    ON onboarded.actor_key = streaks.actor_key
 ),
 max_week AS (
   SELECT MAX(iso_week) AS wk FROM msg
@@ -203,7 +272,9 @@ SELECT
   NULL AS returning_actors,
   NULL AS tenure_unknown_actors,
   NULL AS p50_seconds,
+  NULL AS p75_seconds,
   NULL AS p90_seconds,
+  NULL AS p95_seconds,
   CASE
     WHEN retention.eligible >= 30
       THEN ROUND(CAST(retention.returned AS REAL) / retention.eligible, 4)
@@ -249,6 +320,264 @@ WHERE meta.snapshot_mode = 'pseudonymous'
 UNION ALL
 
 SELECT
+  'utc_engagement' AS row_kind,
+  'dau' AS metric,
+  'available' AS availability,
+  NULL AS platform,
+  NULL AS cohort_week,
+  NULL AS iso_week,
+  NULL AS tenure_band,
+  NULL AS week_streak,
+  NULL AS returning_actors,
+  NULL AS tenure_unknown_actors,
+  NULL AS p50_seconds,
+  NULL AS p75_seconds,
+  NULL AS p90_seconds,
+  NULL AS p95_seconds,
+  NULL AS rate,
+  1 AS metric_version,
+  utc_windows.utc_day AS window_start_utc,
+  utc_windows.utc_day AS window_end_utc,
+  utc_windows.dau AS numerator,
+  NULL AS denominator,
+  0 AS unknown_count,
+  0 AS censored_count,
+  NULL AS eligibility_coverage,
+  NULL AS wilson_low,
+  NULL AS wilson_high,
+  0 AS suppressed,
+  meta.snapshot_created_at_ms,
+  meta.reconciliation_status
+FROM utc_windows
+CROSS JOIN meta
+WHERE meta.snapshot_mode = 'pseudonymous'
+
+UNION ALL
+
+SELECT
+  'utc_engagement' AS row_kind,
+  'wau' AS metric,
+  'available' AS availability,
+  NULL AS platform,
+  NULL AS cohort_week,
+  NULL AS iso_week,
+  NULL AS tenure_band,
+  NULL AS week_streak,
+  NULL AS returning_actors,
+  NULL AS tenure_unknown_actors,
+  NULL AS p50_seconds,
+  NULL AS p75_seconds,
+  NULL AS p90_seconds,
+  NULL AS p95_seconds,
+  NULL AS rate,
+  1 AS metric_version,
+  date(utc_windows.utc_day, '-6 days') AS window_start_utc,
+  utc_windows.utc_day AS window_end_utc,
+  utc_windows.wau AS numerator,
+  NULL AS denominator,
+  0 AS unknown_count,
+  0 AS censored_count,
+  NULL AS eligibility_coverage,
+  NULL AS wilson_low,
+  NULL AS wilson_high,
+  0 AS suppressed,
+  meta.snapshot_created_at_ms,
+  meta.reconciliation_status
+FROM utc_windows
+CROSS JOIN meta
+WHERE meta.snapshot_mode = 'pseudonymous'
+
+UNION ALL
+
+SELECT
+  'utc_engagement' AS row_kind,
+  'mau' AS metric,
+  'available' AS availability,
+  NULL AS platform,
+  NULL AS cohort_week,
+  NULL AS iso_week,
+  NULL AS tenure_band,
+  NULL AS week_streak,
+  NULL AS returning_actors,
+  NULL AS tenure_unknown_actors,
+  NULL AS p50_seconds,
+  NULL AS p75_seconds,
+  NULL AS p90_seconds,
+  NULL AS p95_seconds,
+  NULL AS rate,
+  1 AS metric_version,
+  date(utc_windows.utc_day, '-29 days') AS window_start_utc,
+  utc_windows.utc_day AS window_end_utc,
+  utc_windows.mau AS numerator,
+  NULL AS denominator,
+  0 AS unknown_count,
+  0 AS censored_count,
+  NULL AS eligibility_coverage,
+  NULL AS wilson_low,
+  NULL AS wilson_high,
+  0 AS suppressed,
+  meta.snapshot_created_at_ms,
+  meta.reconciliation_status
+FROM utc_windows
+CROSS JOIN meta
+WHERE meta.snapshot_mode = 'pseudonymous'
+
+UNION ALL
+
+SELECT
+  'utc_engagement' AS row_kind,
+  'stickiness' AS metric,
+  'available' AS availability,
+  NULL AS platform,
+  NULL AS cohort_week,
+  NULL AS iso_week,
+  NULL AS tenure_band,
+  NULL AS week_streak,
+  NULL AS returning_actors,
+  NULL AS tenure_unknown_actors,
+  NULL AS p50_seconds,
+  NULL AS p75_seconds,
+  NULL AS p90_seconds,
+  NULL AS p95_seconds,
+  CASE
+    WHEN utc_windows.mau >= 30
+      THEN ROUND(CAST(utc_windows.dau AS REAL) / utc_windows.mau, 4)
+  END AS rate,
+  1 AS metric_version,
+  date(utc_windows.utc_day, '-29 days') AS window_start_utc,
+  utc_windows.utc_day AS window_end_utc,
+  utc_windows.dau AS numerator,
+  utc_windows.mau AS denominator,
+  0 AS unknown_count,
+  0 AS censored_count,
+  NULL AS eligibility_coverage,
+  NULL AS wilson_low,
+  NULL AS wilson_high,
+  CASE WHEN utc_windows.mau < 30 THEN 1 ELSE 0 END AS suppressed,
+  meta.snapshot_created_at_ms,
+  meta.reconciliation_status
+FROM utc_windows
+CROSS JOIN meta
+WHERE meta.snapshot_mode = 'pseudonymous'
+
+UNION ALL
+
+SELECT
+  'conversation_sessions' AS row_kind,
+  'sessions_per_actor' AS metric,
+  'available' AS availability,
+  NULL AS platform,
+  NULL AS cohort_week,
+  NULL AS iso_week,
+  NULL AS tenure_band,
+  NULL AS week_streak,
+  NULL AS returning_actors,
+  NULL AS tenure_unknown_actors,
+  NULL AS p50_seconds,
+  NULL AS p75_seconds,
+  NULL AS p90_seconds,
+  NULL AS p95_seconds,
+  CASE
+    WHEN session_stats.session_actors >= 30
+      THEN ROUND(CAST(session_stats.session_count AS REAL) / session_stats.session_actors, 4)
+  END AS rate,
+  1 AS metric_version,
+  NULL AS window_start_utc,
+  date(snap.snap_end / 1000, 'unixepoch') AS window_end_utc,
+  session_stats.session_count AS numerator,
+  session_stats.session_actors AS denominator,
+  0 AS unknown_count,
+  0 AS censored_count,
+  NULL AS eligibility_coverage,
+  NULL AS wilson_low,
+  NULL AS wilson_high,
+  CASE WHEN session_stats.session_actors < 30 THEN 1 ELSE 0 END AS suppressed,
+  meta.snapshot_created_at_ms,
+  meta.reconciliation_status
+FROM session_stats
+CROSS JOIN snap
+CROSS JOIN meta
+WHERE meta.snapshot_mode = 'pseudonymous'
+
+UNION ALL
+
+SELECT
+  'conversation_sessions' AS row_kind,
+  'turns_per_session' AS metric,
+  'available' AS availability,
+  NULL AS platform,
+  NULL AS cohort_week,
+  NULL AS iso_week,
+  NULL AS tenure_band,
+  NULL AS week_streak,
+  NULL AS returning_actors,
+  NULL AS tenure_unknown_actors,
+  NULL AS p50_seconds,
+  NULL AS p75_seconds,
+  NULL AS p90_seconds,
+  NULL AS p95_seconds,
+  CASE
+    WHEN session_stats.session_count >= 30
+      THEN ROUND(CAST(session_stats.total_turns AS REAL) / session_stats.session_count, 4)
+  END AS rate,
+  1 AS metric_version,
+  NULL AS window_start_utc,
+  date(snap.snap_end / 1000, 'unixepoch') AS window_end_utc,
+  COALESCE(session_stats.total_turns, 0) AS numerator,
+  session_stats.session_count AS denominator,
+  0 AS unknown_count,
+  0 AS censored_count,
+  NULL AS eligibility_coverage,
+  NULL AS wilson_low,
+  NULL AS wilson_high,
+  CASE WHEN session_stats.session_count < 30 THEN 1 ELSE 0 END AS suppressed,
+  meta.snapshot_created_at_ms,
+  meta.reconciliation_status
+FROM session_stats
+CROSS JOIN snap
+CROSS JOIN meta
+WHERE meta.snapshot_mode = 'pseudonymous'
+
+UNION ALL
+
+SELECT
+  'session_duration_seconds' AS row_kind,
+  'session_duration' AS metric,
+  'available' AS availability,
+  NULL AS platform,
+  NULL AS cohort_week,
+  NULL AS iso_week,
+  NULL AS tenure_band,
+  NULL AS week_streak,
+  NULL AS returning_actors,
+  NULL AS tenure_unknown_actors,
+  session_duration_percentiles.p50_seconds,
+  session_duration_percentiles.p75_seconds,
+  session_duration_percentiles.p90_seconds,
+  session_duration_percentiles.p95_seconds,
+  NULL AS rate,
+  1 AS metric_version,
+  NULL AS window_start_utc,
+  date(snap.snap_end / 1000, 'unixepoch') AS window_end_utc,
+  session_duration_percentiles.duration_count AS numerator,
+  session_duration_percentiles.duration_count AS denominator,
+  0 AS unknown_count,
+  0 AS censored_count,
+  NULL AS eligibility_coverage,
+  NULL AS wilson_low,
+  NULL AS wilson_high,
+  CASE WHEN session_duration_percentiles.duration_count < 30 THEN 1 ELSE 0 END AS suppressed,
+  meta.snapshot_created_at_ms,
+  meta.reconciliation_status
+FROM session_duration_percentiles
+CROSS JOIN snap
+CROSS JOIN meta
+WHERE meta.snapshot_mode = 'pseudonymous'
+  AND session_duration_percentiles.duration_count > 0
+
+UNION ALL
+
+SELECT
   'weekly_engagement' AS row_kind,
   'weekly_engagement' AS metric,
   'available' AS availability,
@@ -260,7 +589,9 @@ SELECT
   NULL AS returning_actors,
   NULL AS tenure_unknown_actors,
   NULL AS p50_seconds,
+  NULL AS p75_seconds,
   NULL AS p90_seconds,
+  NULL AS p95_seconds,
   NULL AS rate,
   1 AS metric_version,
   weekly_engagement.iso_week AS window_start_utc,
@@ -293,7 +624,9 @@ SELECT
   NULL AS returning_actors,
   NULL AS tenure_unknown_actors,
   NULL AS p50_seconds,
+  NULL AS p75_seconds,
   NULL AS p90_seconds,
+  NULL AS p95_seconds,
   NULL AS rate,
   1 AS metric_version,
   weekly_engagement.iso_week AS window_start_utc,
@@ -324,9 +657,11 @@ SELECT
   NULL AS tenure_band,
   NULL AS week_streak,
   activity_mix.returning_actors,
-  0 AS tenure_unknown_actors,
+  activity_mix.tenure_unknown_actors,
   NULL AS p50_seconds,
+  NULL AS p75_seconds,
   NULL AS p90_seconds,
+  NULL AS p95_seconds,
   CASE
     WHEN activity_mix.total_actors >= 30
       THEN ROUND(CAST(activity_mix.new_actors AS REAL) / activity_mix.total_actors, 4)
@@ -363,7 +698,9 @@ SELECT
   NULL AS returning_actors,
   NULL AS tenure_unknown_actors,
   NULL AS p50_seconds,
+  NULL AS p75_seconds,
   NULL AS p90_seconds,
+  NULL AS p95_seconds,
   CASE
     WHEN tenure_total.total_actors >= 30
       THEN ROUND(CAST(tenure_bands.actors AS REAL) / tenure_total.total_actors, 4)
@@ -401,7 +738,9 @@ SELECT
   NULL AS returning_actors,
   NULL AS tenure_unknown_actors,
   NULL AS p50_seconds,
+  NULL AS p75_seconds,
   NULL AS p90_seconds,
+  NULL AS p95_seconds,
   CASE
     WHEN pairing.active_actors >= 30
       THEN ROUND(CAST(pairing.paired_actors AS REAL) / pairing.active_actors, 4)
@@ -438,7 +777,9 @@ SELECT
   NULL AS returning_actors,
   NULL AS tenure_unknown_actors,
   latency_percentiles.p50_seconds,
+  NULL AS p75_seconds,
   latency_percentiles.p90_seconds,
+  NULL AS p95_seconds,
   NULL AS rate,
   1 AS metric_version,
   NULL AS window_start_utc,
@@ -472,7 +813,9 @@ SELECT
   NULL AS returning_actors,
   NULL AS tenure_unknown_actors,
   NULL AS p50_seconds,
+  NULL AS p75_seconds,
   NULL AS p90_seconds,
+  NULL AS p95_seconds,
   NULL AS rate,
   1 AS metric_version,
   NULL AS window_start_utc,

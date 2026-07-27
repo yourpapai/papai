@@ -19,6 +19,7 @@ import {
 } from '../../../src/analytics/jobs/snapshot.js'
 import type { SnapshotPublishDeps, SnapshotFailurePoint } from '../../../src/analytics/jobs/snapshot.js'
 import { createRekeyCutoverFence } from '../../../src/analytics/rekey/cutover-fence.js'
+import type { RekeyCutoverFence } from '../../../src/analytics/rekey/cutover-fence.js'
 import { MIGRATIONS } from '../../../src/db/index.js'
 import { runMigrations } from '../../../src/db/migrate.js'
 import * as schema from '../../../src/db/schema.js'
@@ -148,6 +149,23 @@ describe('snapshot publisher', () => {
     expect(
       db.$client.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM analytics_snapshot_publications`).get()?.n,
     ).toBe(0)
+  })
+
+  test('a pointer swap landing between fence admission and generation resolution stages only the post-swap generation', () => {
+    const inner = createRekeyCutoverFence({ getDrizzleDb: () => db })
+    const swappingFence: RekeyCutoverFence = {
+      ...inner,
+      admit: (writerClass) => {
+        const admission = inner.admit(writerClass)
+        db.$client.run(`UPDATE analytics_active_generation SET active_generation = 'gen-2', updated_at_ms = 1`)
+        return admission
+      },
+    }
+    const outputPath = join(workDir, 'snapshot.db')
+    const result = publishAnalyticsSnapshot({ outputPath }, { ...depsFor(db), fence: swappingFence })
+    expect(result.storageGeneration).toBe(TARGET_GEN)
+    expect(outputEventIds(outputPath)).toEqual(['ev-shadow'])
+    expect(verifySnapshotFile(outputPath).storageGeneration).toBe(TARGET_GEN)
   })
 
   test('an admitted snapshot reader blocks the cutover drain until released', async () => {
