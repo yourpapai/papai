@@ -175,8 +175,11 @@ never lowers the floor.
 `bun test:stories:coverage` runs the hermetic story lane with `--coverage`,
 copies the sandbox child's lcov to `reports/stories/coverage/lcov.info`, and
 fails the run if production-code (`src/` + `plugins/`) line/function coverage
-drops below the committed floor in `scripts/story/coverage-floor.json` (starts
-at `0.50/0.50`, unmeasured). This is the refactor-resilient tier's own
+drops below the committed floor in `scripts/story/coverage-floor.json`. The
+metric excludes `tests/**` and `*.testing.ts` doubles, and counts files no
+story imports as 0% rather than omitting them, so it reads lower than a
+conventional coverage percentage and falls when new uncovered modules land.
+This is the refactor-resilient tier's own
 reachability number, separate from the in-process floor in `bunfig.toml` (see
 the Coverage floor section above). Raise it from a green run with
 `bun coverage:ratchet:stories`, then commit the JSON change. CI runs the
