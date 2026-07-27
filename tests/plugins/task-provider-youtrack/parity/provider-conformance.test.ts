@@ -6,16 +6,19 @@
 import { afterAll, describe, test } from 'bun:test'
 
 import { YouTrackProvider } from '../../../../plugins/task-provider-youtrack/provider.js'
+import {
+  startFakeYouTrackServer,
+  type FakeYouTrackServer,
+} from '../../../stories/harness/fake-youtrack/serve-over-http.js'
 import { PARITY_GROUPS } from '../../../stories/harness/parity/expectations.js'
 import { required } from '../../../stories/harness/parity/group.js'
-import { startFakeYouTrackServer, type FakeYouTrackServer } from './fake-youtrack-server.js'
 import { youtrackCustomFieldGroups } from './youtrack-custom-field-groups.js'
 import { YOUTRACK_PARITY_EXCLUSIONS } from './youtrack-parity-exclusions.js'
 
 // Third binding of the shared parity contract: YouTrackProvider over a fake
 // YouTrack REST server. Proves request-building + response-mapping + contract
 // conformance; NOT fidelity against a real YouTrack (both fake and expectations
-// are authored here). See fake-youtrack-server.ts header.
+// are authored here). See tests/stories/harness/fake-youtrack/state.ts header.
 const excluded = new Set(YOUTRACK_PARITY_EXCLUSIONS.map((entry) => entry.group))
 const includedGroups = PARITY_GROUPS.filter((group) => !excluded.has(group.id))
 const allGroups = [...includedGroups, ...youtrackCustomFieldGroups]

@@ -14,7 +14,7 @@ import type { ParityGroup } from '../../../stories/harness/parity/group.js'
  * getCustomFieldValue on read. Values are YouTrack-specific, so these are not
  * canonicalize-based and live outside the frozen shared module. The fake seeds
  * State values ['Open','In Progress','Done'] and Priority values
- * ['high','normal','low'] (fake-youtrack-server.ts).
+ * ['high','normal','low'] (tests/stories/harness/fake-youtrack/state.ts).
  */
 
 export const youtrackCustomFieldGroups: readonly ParityGroup[] = [

@@ -3,117 +3,29 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { Server } from 'bun'
-
-/**
- * A stateful in-memory fake YouTrack REST server. It models exactly the request
- * shapes YouTrackProvider builds and the `fields=` projection shapes its mappers
- * parse (plugins/task-provider-youtrack/mappers.ts). It is NOT a fidelity model
- * of a real YouTrack — both this fake and the parity expectations are authored
- * here, so this lane proves request-building + response-mapping + contract
- * conformance, never drift against a live YouTrack.
- */
-
-export type FakeYouTrackServer = {
-  url: string
-  stop(): Promise<void>
-  reset(): void
-}
-
-// ---------- Stored entities ----------
-
-type StoredProject = {
-  id: string
-  name: string
-  shortName: string
-  description: string | undefined
-  archived: boolean
-}
-
-type StoredIssue = {
-  id: string
-  idReadable: string
-  numberInProject: number
-  summary: string
-  description: string | undefined
-  projectDbId: string
-  created: number
-  updated: number
-  state: string | undefined
-  priority: string | undefined
-  dueDateMs: number | undefined
-  assigneeLogin: string | undefined
-}
-
-type StoredComment = {
-  id: string
-  issueId: string
-  text: string
-  created: number
-  updated: number | undefined
-}
-
-type StoredLink = {
-  id: string
-  ownerIssueId: string
-  targetIssueId: string
-  typeName: string
-  direction: string
-}
-
-type State = {
-  projects: Map<string, StoredProject>
-  issues: Map<string, StoredIssue>
-  issuesByReadable: Map<string, string>
-  comments: Map<string, StoredComment>
-  links: Map<string, StoredLink>
-  seq: number
-}
-
-type Ctx = {
-  method: string
-  path: string
-  query: URLSearchParams
-  body: unknown
-  state: State
-}
-
-// ---------- Bundle seeds (values the provider resolves status/priority against) ----------
-
-const STATE_BUNDLE_ID = 'state-bundle-1'
-const PRIORITY_BUNDLE_ID = 'enum-bundle-1'
-const STATE_VALUES: readonly string[] = ['Open', 'In Progress', 'Done']
-const PRIORITY_VALUES: readonly string[] = ['high', 'normal', 'low']
-
-// ---------- State + id helpers ----------
-
-const createState = (): State => ({
-  projects: new Map(),
-  issues: new Map(),
-  issuesByReadable: new Map(),
-  comments: new Map(),
-  links: new Map(),
-  seq: 0,
-})
-
-const nextId = (state: State, prefix: string): string => {
-  state.seq += 1
-  return `${prefix}-${state.seq}`
-}
-
-const nextTs = (state: State): number => {
-  state.seq += 1
-  return 1_700_000_000_000 + state.seq
-}
+import {
+  type FakeYouTrackCtx,
+  type FakeYouTrackState,
+  nextId,
+  nextTs,
+  PRIORITY_BUNDLE_ID,
+  PRIORITY_VALUES,
+  STATE_BUNDLE_ID,
+  STATE_VALUES,
+  type StoredComment,
+  type StoredIssue,
+  type StoredLink,
+  type StoredProject,
+} from './state.js'
 
 // ---------- Response helpers ----------
 
-const json = (data: unknown, status = 200): Response =>
+export const json = (data: unknown, status = 200): Response =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
 
 const noContent = (): Response => new Response(null, { status: 204 })
 
-const errorResponse = (status: number, message: string): Response =>
+export const errorResponse = (status: number, message: string): Response =>
   json({ error: message, error_description: message }, status)
 
 // ---------- Path matcher ----------
@@ -173,7 +85,7 @@ const bundleValuesResponse = (segment: string): unknown => {
 
 // ---------- Project + custom-field-schema handler ----------
 
-const handleProjects = (ctx: Ctx): Response | undefined => {
+const handleProjects = (ctx: FakeYouTrackCtx): Response | undefined => {
   const { method, path, state, query } = ctx
 
   const cfPath = matchPath('/api/admin/projects/:id/customFields', path)
@@ -269,7 +181,7 @@ const applyCustomFieldPayload = (issue: StoredIssue, payload: unknown): void => 
 
 // ---------- Issue projections (read path) ----------
 
-const findIssue = (state: State, ref: string): StoredIssue | undefined => {
+const findIssue = (state: FakeYouTrackState, ref: string): StoredIssue | undefined => {
   const direct = state.issues.get(ref)
   if (direct !== undefined) return direct
   const dbId = state.issuesByReadable.get(ref)
@@ -301,7 +213,7 @@ const issueCustomFields = (issue: StoredIssue): unknown[] => {
   return fields
 }
 
-const issueLinksProjection = (state: State, issue: StoredIssue): unknown[] => {
+const issueLinksProjection = (state: FakeYouTrackState, issue: StoredIssue): unknown[] => {
   const out: unknown[] = []
   for (const link of state.links.values()) {
     if (link.ownerIssueId !== issue.id) continue
@@ -317,7 +229,7 @@ const issueLinksProjection = (state: State, issue: StoredIssue): unknown[] => {
   return out
 }
 
-const issueProjection = (state: State, issue: StoredIssue): Record<string, unknown> => {
+const issueProjection = (state: FakeYouTrackState, issue: StoredIssue): Record<string, unknown> => {
   const project = state.projects.get(issue.projectDbId)
   return {
     id: issue.id,
@@ -338,7 +250,7 @@ const issueProjection = (state: State, issue: StoredIssue): Record<string, unkno
   }
 }
 
-const issueListProjection = (state: State, issue: StoredIssue): Record<string, unknown> => {
+const issueListProjection = (state: FakeYouTrackState, issue: StoredIssue): Record<string, unknown> => {
   const project = state.projects.get(issue.projectDbId)
   const customFields: unknown[] = []
   if (issue.state !== undefined) {
@@ -389,7 +301,7 @@ const interpretQuery = (raw: string): ParsedQuery => {
   return { shortName, freeText: rest.trim(), sortField, sortDir }
 }
 
-const handleIssueQuery = (ctx: Ctx): Response => {
+const handleIssueQuery = (ctx: FakeYouTrackCtx): Response => {
   const { state, query } = ctx
   const parsed = interpretQuery(query.get('query') ?? '')
   let issues = [...state.issues.values()]
@@ -415,7 +327,7 @@ const handleIssueQuery = (ctx: Ctx): Response => {
 
 // ---------- Issue handler ----------
 
-const handleIssues = (ctx: Ctx): Response | undefined => {
+const handleIssues = (ctx: FakeYouTrackCtx): Response | undefined => {
   const { method, path, state } = ctx
 
   if (path === '/api/issues' && method === 'GET') {
@@ -500,7 +412,7 @@ const commentProjection = (c: StoredComment): unknown => ({
   reactions: [],
 })
 
-const handleComments = (ctx: Ctx): Response | undefined => {
+const handleComments = (ctx: FakeYouTrackCtx): Response | undefined => {
   const { method, path, state, query } = ctx
 
   const onePath = matchPath('/api/issues/:id/comments/:commentId', path)
@@ -561,7 +473,7 @@ const LINK_TYPES: ReadonlyArray<{ id: string; name: string; directed: boolean }>
   { id: 'lt-subtask', name: 'Subtask', directed: true },
 ]
 
-const decodeLinkId = (state: State, linkId: string): { typeName: string; direction: string } => {
+const decodeLinkId = (state: FakeYouTrackState, linkId: string): { typeName: string; direction: string } => {
   const stored = state.links.get(linkId)
   if (stored !== undefined) return { typeName: stored.typeName, direction: stored.direction }
   const suffix = linkId.slice(-1)
@@ -582,7 +494,7 @@ const readLinkTargetId = (body: unknown): string => {
   return ''
 }
 
-const handleRelations = (ctx: Ctx): Response | undefined => {
+const handleRelations = (ctx: FakeYouTrackCtx): Response | undefined => {
   const { method, path, state } = ctx
 
   if (path === '/api/issueLinkTypes' && method === 'GET') {
@@ -617,45 +529,19 @@ const handleRelations = (ctx: Ctx): Response | undefined => {
   return undefined
 }
 
-// ---------- Server bootstrap ----------
+// ---------- Handler chain ----------
 
-export const startFakeYouTrackServer = (): FakeYouTrackServer => {
-  const state = createState()
-  const handlers: Array<(ctx: Ctx) => Response | undefined> = [
-    handleProjects,
-    handleIssues,
-    handleComments,
-    handleRelations,
-  ]
+const handlers: ReadonlyArray<(ctx: FakeYouTrackCtx) => Response | undefined> = [
+  handleProjects,
+  handleIssues,
+  handleComments,
+  handleRelations,
+]
 
-  const server: Server<undefined> = Bun.serve({
-    port: 0,
-    async fetch(req): Promise<Response> {
-      const url = new URL(req.url)
-      const hasBody = req.method === 'POST' || req.method === 'PUT'
-      const bodyText = hasBody ? await req.text() : ''
-      const body: unknown = bodyText.length > 0 ? JSON.parse(bodyText) : undefined
-      const ctx: Ctx = { method: req.method, path: url.pathname, query: url.searchParams, body, state }
-      for (const handler of handlers) {
-        const res = handler(ctx)
-        if (res !== undefined) return res
-      }
-      return errorResponse(404, `no route for ${req.method} ${url.pathname}`)
-    },
-  })
-
-  return {
-    url: `http://localhost:${server.port}`,
-    stop: async (): Promise<void> => {
-      await server.stop(true)
-    },
-    reset: (): void => {
-      state.projects.clear()
-      state.issues.clear()
-      state.issuesByReadable.clear()
-      state.comments.clear()
-      state.links.clear()
-      state.seq = 0
-    },
+export const handleFakeYouTrackRequest = (ctx: FakeYouTrackCtx): Response => {
+  for (const handler of handlers) {
+    const response = handler(ctx)
+    if (response !== undefined) return response
   }
+  return errorResponse(404, `no route for ${ctx.method} ${ctx.path}`)
 }

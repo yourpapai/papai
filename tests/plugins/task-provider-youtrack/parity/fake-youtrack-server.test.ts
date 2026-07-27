@@ -7,7 +7,10 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 
 import { z } from 'zod'
 
-import { startFakeYouTrackServer, type FakeYouTrackServer } from './fake-youtrack-server.js'
+import {
+  startFakeYouTrackServer,
+  type FakeYouTrackServer,
+} from '../../../stories/harness/fake-youtrack/serve-over-http.js'
 
 const postJson = (fake: FakeYouTrackServer, path: string, body: unknown): Promise<Response> =>
   fetch(`${fake.url}${path}`, {
