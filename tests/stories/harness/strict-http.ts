@@ -137,9 +137,10 @@ export function createStrictHttpDispatcher(events: ScenarioEvents): StrictHttpDi
         headers: Object.fromEntries(request.headers.entries()),
       })
 
-      const simulator = hosts.get(hostOf(actual.url))
+      const actualHost = hostOf(actual.url)
+      const simulator = hosts.get(actualHost)
       if (simulator !== undefined) {
-        hostRequestCounts.set(hostOf(actual.url), (hostRequestCounts.get(hostOf(actual.url)) ?? 0) + 1)
+        hostRequestCounts.set(actualHost, (hostRequestCounts.get(actualHost) ?? 0) + 1)
         const hostExpectation: PendingExpectation = {
           request: { ...actual, allowRedirect: simulator.allowRedirect },
           respond: simulator.respond,

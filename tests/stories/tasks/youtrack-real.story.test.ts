@@ -14,7 +14,7 @@ import { scenario } from '../harness/scenario.js'
 import { answer, callCapability } from '../harness/scripted-llm.js'
 
 scenario(
-  'SCN-task-youtrack-real-create: activates the real YouTrack plugin and creates a task over fake REST',
+  'SCN-task-youtrack-real-create: activates the real YouTrack plugin and creates a project over fake REST',
   async ({ given, when, then }) => {
     const alice = given.user('alice')
     const dm = given.dm(alice)
@@ -114,7 +114,7 @@ scenario(
     const projects = (await provider.listProjects?.()) ?? []
     expect(projects.some((project) => project.name === 'Gated')).toBe(true)
 
-    // Positive evidence the capability gate in ensure-member.ts:215-220 is the reason no
+    // Positive evidence the capability gate in ensure-member.ts:217-220 is the reason no
     // row was written: this is the exact provider instance `ensureWorkspaceMember` resolves
     // for this group's config context (same `defaultTaskProviderResolver.resolve`), and it
     // lacks `members.provision`.

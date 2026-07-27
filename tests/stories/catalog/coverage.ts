@@ -1172,7 +1172,7 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
   'SCN-task-youtrack-real-create': {
     verifiedAt: '2026-07-27',
     storyIds: [
-      'tests/stories/tasks/youtrack-real.story.test.ts#SCN-task-youtrack-real-create: activates the real YouTrack plugin and creates a task over fake REST',
+      'tests/stories/tasks/youtrack-real.story.test.ts#SCN-task-youtrack-real-create: activates the real YouTrack plugin and creates a project over fake REST',
     ],
   },
   'SCN-task-youtrack-real-fields': {
