@@ -1,8 +1,6 @@
 {
   "testRunner": "bun",
-  "appendPlugins": ["@hughescr/stryker-bun-runner", "@stryker-mutator/typescript-checker"],
-  "checkers": ["typescript"],
-  "tsconfigFile": "tsconfig.json",
+  "appendPlugins": ["@hughescr/stryker-bun-runner"],
   "bun": {
     "timeout": 120000
   },
@@ -13,6 +11,10 @@
     "!src/providers/types.ts",
     "src/tools/**/*.ts",
     "!src/tools/index.ts",
+    "plugins/task-provider-*/**/*.ts",
+    "!plugins/task-provider-*/**/index.ts",
+    "!plugins/task-provider-*/**/constants.ts",
+    "!plugins/task-provider-*/**/client.ts",
     "src/errors.ts",
     "src/config.ts",
     "src/memory.ts",

@@ -168,15 +168,40 @@ jobs:
         env:
           E2E_KANEO_URL: http://localhost:11337
 
+  smoke:
+    name: T2 Process-Real Smoke
+    runs-on: ubuntu-latest
+    # Backstop for a hung container or an unreachable host fake. The lane is two full
+    # boots + one fast-fail; replace the value below only if the runaway guard proves
+    # too tight after measurement (Step 2).
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.13
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          driver: docker
+      - name: Install dependencies
+        run: bun install
+      - name: Build papai:e2e image
+        run: docker build -t papai:e2e .
+      - name: Run T2 smoke lane
+        # Enforces the T2 measured wall-clock budget (Rule 5). The value below is the
+        # measured lane time rounded up to ~2x headroom (see Step 2); it is a real
+        # measurement, not a guess. host.docker.internal resolves via --add-host
+        # (--add-host=host.docker.internal:host-gateway is set by the harness).
+        timeout-minutes: 3
+        run: bun run test:smoke
+
   mutation-testing:
     name: Mutation Testing (paired, changed files)
     runs-on: ubuntu-latest
-    # Temporarily disabled while the paired mutation runner is calibrated.
-    # Re-enable with: if: ${{ github.event_name == 'pull_request' }}
-    if: ${{ false }}
-    # Warn-only during calibration. Flip continue-on-error to false once we
-    # have a stable score floor (see spec §5).
-    continue-on-error: true
+    # Blocking PR gate. The per-file ratchet in scripts/mutation/baseline.json
+    # fails the run when any changed file drops below max(0.5, its baseline).
+    if: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -198,3 +223,40 @@ jobs:
           path: reports/paired/
           if-no-files-found: ignore
           retention-days: 14
+
+  mutation-baseline:
+    name: Mutation Testing (full ratchet)
+    runs-on: ubuntu-latest
+    # On master merge: run the full suite and ratchet scripts/mutation/baseline.json
+    # up only (per-file max). The committed baseline is the floor the PR gate enforces.
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.13
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Run full mutation suite and ratchet baseline
+        run: bun test:mutate --update-baseline
+      - name: Commit ratcheted baseline
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet scripts/mutation/baseline.json; then
+            echo "No baseline change; nothing to commit."
+          else
+            git add scripts/mutation/baseline.json
+            git commit -m "chore(mutation): ratchet baseline"
+            git push
+          fi
+      - name: Upload full mutation reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-full-reports
+          path: reports/paired/
+          if-no-files-found: ignore
+          retention-days: 30

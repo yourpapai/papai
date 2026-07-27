@@ -456,4 +456,76 @@ describe('LabelResource', () => {
       await expect(promise).rejects.toHaveProperty('appError.code', 'label-not-found')
     })
   })
+
+  // Endpoint contract for the four methods whose existing tests asserted only
+  // body/result. listForTask/addToTask/removeFromTask already assert URL+method.
+  // Log-payload / message-string survivors are intentionally not chased — see
+  // docs/superpowers/specs/2026-07-25-plugin-test-quality-design.md.
+  describe('HTTP method and path contract', () => {
+    test('create POSTs to /api/label', async () => {
+      const requests: Array<{ url: string; method: string }> = []
+      setMockFetch((url, options) => {
+        requests.push({ url, method: getRequestMethod(options) })
+        return Promise.resolve(
+          new Response(JSON.stringify({ id: 'label-1', name: 'n', color: '#6b7280' }), { status: 200 }),
+        )
+      })
+
+      const resource = new LabelResource(mockConfig)
+      await resource.create({ workspaceId: 'ws-1', name: 'n' })
+
+      expect(requests).toEqual([{ url: 'https://api.test.com/api/label', method: 'POST' }])
+    })
+
+    test('list GETs /api/label/workspace/:id', async () => {
+      const requests: Array<{ url: string; method: string }> = []
+      setMockFetch((url, options) => {
+        requests.push({ url, method: getRequestMethod(options) })
+        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))
+      })
+
+      const resource = new LabelResource(mockConfig)
+      await resource.list('ws-1')
+
+      expect(requests).toEqual([{ url: 'https://api.test.com/api/label/workspace/ws-1', method: 'GET' }])
+    })
+
+    test('update GETs then PUTs /api/label/:id', async () => {
+      const requests: Array<{ url: string; method: string }> = []
+      setMockFetch((url, options) => {
+        requests.push({ url, method: getRequestMethod(options) })
+        return Promise.resolve(
+          new Response(JSON.stringify({ id: 'label-1', name: 'n', color: '#ff0000' }), { status: 200 }),
+        )
+      })
+
+      const resource = new LabelResource(mockConfig)
+      await resource.update('label-1', { name: 'n' })
+
+      expect(requests).toEqual([
+        { url: 'https://api.test.com/api/label/label-1', method: 'GET' },
+        { url: 'https://api.test.com/api/label/label-1', method: 'PUT' },
+      ])
+    })
+
+    test('remove GETs then DELETEs /api/label/:id', async () => {
+      const requests: Array<{ url: string; method: string }> = []
+      setMockFetch((url, options) => {
+        requests.push({ url, method: getRequestMethod(options) })
+        return Promise.resolve(
+          new Response(JSON.stringify({ id: 'label-1', name: 'b', color: '#ff0000', taskId: 'task-1' }), {
+            status: 200,
+          }),
+        )
+      })
+
+      const resource = new LabelResource(mockConfig)
+      await resource.remove('label-1')
+
+      expect(requests).toEqual([
+        { url: 'https://api.test.com/api/label/label-1', method: 'GET' },
+        { url: 'https://api.test.com/api/label/label-1', method: 'DELETE' },
+      ])
+    })
+  })
 })
