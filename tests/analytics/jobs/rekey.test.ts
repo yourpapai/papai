@@ -8,7 +8,13 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { PseudonymSchema } from '../../../src/analytics/controlled-types.js'
 import { insertEligibleCanonicalEvent } from '../../../src/analytics/governance/collection-serialization.js'
 import type { CollectionSerializationDeps } from '../../../src/analytics/governance/collection-serialization.js'
+import { setEligibilityState } from '../../../src/analytics/governance/collection-store.js'
+import {
+  openDeletionTargetsIn,
+  sealDeletionTargetsIn,
+} from '../../../src/analytics/governance/deletion-target-store.js'
 import { resolveActive } from '../../../src/analytics/governance/generation-store.js'
+import { setGrantState } from '../../../src/analytics/governance/grant-store.js'
 import { getPreference, setPreference, withdrawPreference } from '../../../src/analytics/governance/preference-store.js'
 import type { GenerationTransitionCoordinator } from '../../../src/analytics/governance/snapshot-invalidator.js'
 import {
@@ -19,6 +25,7 @@ import {
   verifyRekeyAction,
 } from '../../../src/analytics/jobs/rekey.js'
 import type { RekeyWorkflowDeps } from '../../../src/analytics/jobs/rekey.js'
+import { REKEY_HELD_NEXT_ATTEMPT_MS } from '../../../src/analytics/rekey/copy.js'
 import { createRekeyCutoverFence } from '../../../src/analytics/rekey/cutover-fence.js'
 import type { RekeyFullKeyMaterial } from '../../../src/analytics/rekey/dual-write.js'
 import { createGovernanceDualWriteResolver } from '../../../src/analytics/rekey/governance-dual-write.js'
@@ -170,13 +177,13 @@ const completeSeededDeletionRequest = (db: Db): void => {
   )
 }
 
-const insertLive = (db: Db, eventId: string): void => {
+const insertLive = (db: Db, eventId: string): string => {
   const base = makeTestEvent()
   const deps: CollectionSerializationDeps = {
     getDrizzleDb: () => db,
     getRekeyKeyMaterial: () => ({ toVersion: 'v2', toKey: ANALYTICS_KEY_V2, encryptionKey: GOV_KEY_V2 }),
   }
-  insertEligibleCanonicalEvent(
+  const result = insertEligibleCanonicalEvent(
     {
       event: makeTestEvent({
         event: { ...base.event, id: PseudonymSchema.parse(eventId) },
@@ -191,6 +198,8 @@ const insertLive = (db: Db, eventId: string): void => {
     },
     deps,
   )
+  if (!('eventId' in result)) throw new Error('delta source opportunity was not eligible')
+  return result.eventId
 }
 
 const resolver = createGovernanceDualWriteResolver({
@@ -354,5 +363,195 @@ describe('rekey CLI actions', () => {
     applyRekeyAction({ runId: planned.runId, planHash: planned.planHash }, harness.deps)
     expect(getPreference('v1.p-gov-actor', depsOf(db))).toBeNull()
     expect(countRows(db, `SELECT COUNT(*) AS n FROM analytics_preferences WHERE key_version = 'v2'`)).toBe(1)
+  })
+
+  const RETENTION_DELTA_EXPIRY = NOW + 7 * DAY_MS
+
+  const mutateAllDeltaClasses = (deltaDb: Db): void => {
+    const deltaEventId = insertLive(deltaDb, 'v1.ev-delta')
+    setPreference(
+      {
+        governanceActorKey: 'v1.p-gov-actor',
+        keyVersion: 'v1',
+        lane: 'external_pseudonymous',
+        value: 'deny',
+        policyVersion: 1,
+        source: 'settings',
+        nowMs: NOW + 5,
+      },
+      { getDrizzleDb: () => deltaDb, dualWriteResolver: resolver },
+    )
+    withdrawPreference(
+      {
+        governanceActorKey: 'v1.p-gov-actor',
+        keyVersion: 'v1',
+        policyVersion: 1,
+        source: 'authenticated_request',
+        nowMs: NOW + 6,
+      },
+      { getDrizzleDb: () => deltaDb, dualWriteResolver: resolver },
+    )
+    setEligibilityState(
+      { refKey: 'v1.p-colref', keyVersion: 'v1', state: 'deny', policyVersion: 1, nowMs: NOW + 7 },
+      { getDrizzleDb: () => deltaDb, dualWriteResolver: resolver },
+    )
+    setGrantState(
+      { grantKey: 'v1.p-grant', keyVersion: 'v1', state: 'deny', policyVersion: 1, nowMs: NOW + 8 },
+      { getDrizzleDb: () => deltaDb, dualWriteResolver: resolver },
+    )
+    deltaDb.$client.run(
+      `INSERT INTO analytics_goal_attempts (
+         attempt_key, storage_generation, turn_key, goal, actor_key, conversation_key,
+         start_ms, mature_at_ms, outcome, resolved_at_ms, anchor_event_id, outcome_version
+       ) VALUES ('v1.p-goal-attempt-delta', 'gen-1', 'v1.p-turn-delta', 'task_done', 'v1.p-actor', 'v1.p-conversation',
+                 ?, ?, 'immediate_success', ?, ?, 1)`,
+      [NOW + 10, NOW + 5010, NOW + 510, deltaEventId],
+    )
+    deltaDb.$client.run(
+      `INSERT INTO analytics_sessions (
+         session_key, storage_generation, actor_key, conversation_key, start_ms, end_ms,
+         duration_ms, activity_count, turn_count, first_event_id, last_event_id, sessionization_version
+       ) VALUES ('v1.p-session-delta', 'gen-1', 'v1.p-actor', 'v1.p-conversation', ?, ?, 1000, 1, 1, ?, ?, 1)`,
+      [NOW + 10, NOW + 1010, deltaEventId, deltaEventId],
+    )
+    deltaDb.$client.run(
+      `INSERT INTO analytics_session_events (session_key, event_id, occurred_at_ms, extends_session, sessionization_version)
+       VALUES ('v1.p-session-delta', ?, ?, 0, 1)`,
+      [deltaEventId, NOW + 10],
+    )
+    deltaDb.$client.run(
+      `INSERT INTO analytics_backfill_runs (run_id, source_table, high_water_row_key, policy_cutoff_ms, status, started_at_ms)
+       VALUES ('bf-2', 'llm_usage_events', 'row-3', 0, 'completed', 0)`,
+    )
+    deltaDb.$client.run(
+      `INSERT INTO analytics_backfill_event_map (run_id, event_id, source_ref_key) VALUES ('bf-2', ?, 'src-delta')`,
+      [deltaEventId],
+    )
+    deltaDb.$client.run(
+      `INSERT INTO analytics_deliveries (
+         event_id, sink_version_id, grant_key, grant_key_version, grant_generation, state,
+         attempts, next_attempt_at_ms, delivered_at_ms, remote_receipt_hash, payload_schema_version
+       ) VALUES (?, 'sink-1', 'v1.p-grant', 'v1', 1, 'delivered', 1, 0, ?, 'rh-delta', 1)`,
+      [deltaEventId, NOW + 600],
+    )
+    deltaDb.$client.run(
+      `INSERT INTO analytics_deletion_requests (request_id, governance_actor_key, key_version, state, policy_version, requested_at_ms)
+       VALUES ('del-2', 'v1.p-gov-actor', 'v1', 'requested', 1, 0)`,
+    )
+    deltaDb.transaction((tx) => {
+      sealDeletionTargetsIn(tx, {
+        requestId: 'del-2',
+        encryptionKey: GOV_KEY_V1,
+        nowMs: 0,
+        targets: {
+          analyticsActorKeys: ['v1.p-actor'],
+          governanceActorKeys: ['v1.p-gov-actor'],
+          collectionRefKeys: ['v1.p-colref'],
+          grantKeys: ['v1.p-grant'],
+        },
+      })
+    })
+    deltaDb.$client.run(
+      `INSERT INTO analytics_delivery_deletion_receipts (
+         deletion_request_id, sink_version_id, state, remote_receipt_hash, requested_at_ms
+       ) VALUES ('del-2', 'sink-1', 'reconciled', 'rrh-2', 0)`,
+    )
+    deltaDb.$client.run(`UPDATE analytics_events SET expires_at_ms = ? WHERE event_id = 'ev-1'`, [
+      RETENTION_DELTA_EXPIRY,
+    ])
+  }
+
+  test('post-high-water deltas across every mutation class survive interruption and stay bound by every generation deny', () => {
+    const harness = createHarness(db)
+    const planned = planViaAction(harness.deps)
+    harness.failAfter('dual_write.governance')
+    expect(() => applyRekeyAction({ runId: planned.runId, planHash: planned.planHash }, harness.deps)).toThrow()
+    harness.failAfter(null)
+    mutateAllDeltaClasses(db)
+    harness.failAfter('copy_children.delivery_deletion')
+    expect(() => applyRekeyAction({ runId: planned.runId, planHash: planned.planHash }, harness.deps)).toThrow()
+    expect(runRow(db, planned.runId)?.status).toBe('paused')
+    harness.failAfter(null)
+    const result = applyRekeyAction({ runId: planned.runId, planHash: planned.planHash }, harness.deps)
+    expect(result.phase).toBe('retire')
+    expect(resolveActive(depsOf(db)).generation).toBe(TARGET_GEN)
+    expect(counterValue(db, 'opportunity')).toBe(1)
+    expect(counterValue(db, 'canonical')).toBe(1)
+    expect(countRows(db, `SELECT COUNT(*) AS n FROM analytics_events WHERE storage_generation = 'gen-1'`)).toBe(4)
+    expect(countRows(db, `SELECT COUNT(*) AS n FROM analytics_events WHERE storage_generation = 'gen-2'`)).toBe(4)
+    expect(
+      countRows(db, `SELECT COUNT(*) AS n FROM analytics_rekey_mappings WHERE domain = 'event-source-ref:v1'`),
+    ).toBe(4)
+    expect(getPreference('v1.p-gov-actor', depsOf(db))?.externalPseudonymous).toBe('deny')
+    expect(
+      countRows(
+        db,
+        `SELECT COUNT(*) AS n FROM analytics_preferences WHERE key_version = 'v2' AND external_pseudonymous = 'deny'`,
+      ),
+    ).toBe(1)
+    expect(countRows(db, `SELECT COUNT(*) AS n FROM analytics_collection_eligibility WHERE state = 'deny'`)).toBe(2)
+    expect(countRows(db, `SELECT COUNT(*) AS n FROM analytics_eligibility_grants WHERE state = 'deny'`)).toBe(2)
+    expect(countRows(db, `SELECT COUNT(*) AS n FROM analytics_goal_attempts WHERE storage_generation = 'gen-2'`)).toBe(
+      2,
+    )
+    expect(countRows(db, `SELECT COUNT(*) AS n FROM analytics_sessions WHERE storage_generation = 'gen-2'`)).toBe(2)
+    expect(countRows(db, `SELECT COUNT(*) AS n FROM analytics_session_events`)).toBe(6)
+    expect(countRows(db, `SELECT COUNT(*) AS n FROM analytics_backfill_event_map`)).toBe(2)
+    expect(countRows(db, `SELECT COUNT(*) AS n FROM analytics_deliveries`)).toBe(6)
+    expect(
+      countRows(
+        db,
+        `SELECT COUNT(*) AS n FROM analytics_deliveries d
+          JOIN analytics_events e ON e.event_id = d.event_id
+         WHERE e.storage_generation = 'gen-2' AND d.state = 'pending' AND d.next_attempt_at_ms = ${REKEY_HELD_NEXT_ATTEMPT_MS}`,
+      ),
+    ).toBe(3)
+    const del2 = db.$client
+      .query<{ key_version: string }, []>(
+        `SELECT key_version FROM analytics_deletion_requests WHERE request_id = 'del-2'`,
+      )
+      .get()
+    expect(del2?.key_version).toBe('v2')
+    const targets = db.transaction((tx) =>
+      openDeletionTargetsIn(tx, { requestId: 'del-2', encryptionKeys: [GOV_KEY_V2] }),
+    )
+    expect(targets?.analyticsActorKeys).toHaveLength(2)
+    const shadowExpiry = db.$client
+      .query<{ expires_at_ms: number }, []>(
+        `SELECT expires_at_ms FROM analytics_events WHERE storage_generation = 'gen-2' AND source_ref_key = 'src-1'`,
+      )
+      .get()
+    expect(shadowExpiry?.expires_at_ms).toBe(RETENTION_DELTA_EXPIRY)
+    const verified = verifyRekeyAction({ runId: planned.runId }, harness.deps)
+    expect(verified.equation.ok).toBe(true)
+    expect(verified.content.ok).toBe(true)
+    completeSeededDeletionRequest(db)
+    db.$client.run(
+      `UPDATE analytics_deletion_requests SET state = 'completed', completed_at_ms = 1 WHERE request_id = 'del-2'`,
+    )
+    db.$client.run(
+      `UPDATE analytics_deletion_target_bundles SET target_ciphertext = '', destroyed_at = 1 WHERE request_id = 'del-2'`,
+    )
+    harness.setClock(NOW + 90 * DAY_MS)
+    const retired = applyRekeyAction({ runId: planned.runId, planHash: planned.planHash }, harness.deps)
+    expect(retired.retired).toBe(true)
+    expect(countRows(db, `SELECT COUNT(*) AS n FROM analytics_events WHERE storage_generation = 'gen-1'`)).toBe(0)
+    expect(countRows(db, `SELECT COUNT(*) AS n FROM analytics_events WHERE storage_generation = 'gen-2'`)).toBe(4)
+    expect(countRows(db, `SELECT COUNT(*) AS n FROM analytics_preferences WHERE key_version = 'v1'`)).toBe(0)
+    expect(countRows(db, `SELECT COUNT(*) AS n FROM analytics_collection_eligibility WHERE key_version = 'v1'`)).toBe(0)
+    expect(countRows(db, `SELECT COUNT(*) AS n FROM analytics_eligibility_grants WHERE key_version = 'v1'`)).toBe(0)
+    expect(
+      countRows(
+        db,
+        `SELECT COUNT(*) AS n FROM analytics_collection_eligibility WHERE key_version = 'v2' AND state = 'deny'`,
+      ),
+    ).toBe(1)
+    expect(
+      countRows(
+        db,
+        `SELECT COUNT(*) AS n FROM analytics_eligibility_grants WHERE key_version = 'v2' AND state = 'deny'`,
+      ),
+    ).toBe(1)
+    expect(countRows(db, `SELECT COUNT(*) AS n FROM analytics_delivery_deletion_receipts`)).toBe(2)
   })
 })

@@ -154,10 +154,14 @@ describe('rekey retirement', () => {
     )
   })
 
-  test('retirement is refused while local verification is incomplete', () => {
+  test('retirement is refused before the swap completes', () => {
     db.$client.run(
-      `DELETE FROM analytics_rekey_mappings WHERE domain = 'event-source-ref:v1' AND old_key_hash LIKE '%' LIMIT 0`,
+      `UPDATE analytics_rekey_runs SET swap_completed_at_ms = NULL, retire_not_before_ms = NULL WHERE run_id = 'run-1'`,
     )
+    expect(evaluate(db, RETIRE_NOT_BEFORE).refusedReasons).toEqual(['swap_incomplete'])
+  })
+
+  test('retirement is refused while local verification is incomplete', () => {
     db.$client.run(
       `INSERT INTO analytics_events (
          event_id, storage_generation, process_epoch_id, source_ref_key, source_kind,
@@ -187,6 +191,11 @@ describe('rekey retirement', () => {
   test('retirement is refused while a retained-generation deny cannot be resolved to the target', () => {
     db.$client.run(`DELETE FROM analytics_eligibility_grants WHERE key_version = 'v2'`)
     expect(evaluate(db, RETIRE_NOT_BEFORE).refusedReasons).toContain('unresolved_deny')
+  })
+
+  test('retirement is refused while a retained-generation event collection ref cannot be resolved to the target', () => {
+    db.$client.run(`DELETE FROM analytics_collection_eligibility WHERE key_version = 'v2'`)
+    expect(evaluate(db, RETIRE_NOT_BEFORE).refusedReasons).toContain('unresolved_ref')
   })
 
   test('a restart re-evaluates and still refuses', () => {
