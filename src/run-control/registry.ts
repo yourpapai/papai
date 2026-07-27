@@ -5,6 +5,7 @@
 
 import type { ReplyFn } from '../chat/types.js'
 import { logger } from '../logger.js'
+import { lastTurnRegistry } from './last-turn-registry.js'
 import type { InjectedMessage, RunControl } from './types.js'
 
 const log = logger.child({ scope: 'run-control:registry' })
@@ -16,12 +17,15 @@ export class RunRegistry {
     contextId: string,
     opts: { turnId: string; reply: ReplyFn; originatingMessageIds: readonly string[] },
   ): RunControl {
+    // A new run supersedes any prior last-turn snapshot for this context.
+    lastTurnRegistry.evict(contextId)
     const run: RunControl = {
       contextId,
       turnId: opts.turnId,
       reply: opts.reply,
       abortController: new AbortController(),
       originatingMessageIds: opts.originatingMessageIds,
+      replyTarget: undefined,
       steerQueue: [],
       stopRequested: false,
       completedEffects: [],

@@ -29,9 +29,10 @@ import { maybeAutoProvisionProvider } from './providers/auto-provision.js'
 import { ensureWorkspaceMember } from './providers/membership/index.js'
 import { defaultTaskProviderResolver } from './providers/resolver.js'
 import type { TaskProvider } from './providers/types.js'
+import { lastTurnRegistry } from './run-control/last-turn-registry.js'
 import { runRegistry } from './run-control/registry.js'
 import { buildStopSummary } from './run-control/summary.js'
-import { RunAbortedError, type InjectedMessage } from './run-control/types.js'
+import { RunAbortedError, type InjectedMessage, type RunControl } from './run-control/types.js'
 
 const log = logger.child({ scope: 'llm-orchestrator' })
 
@@ -207,7 +208,22 @@ const runTurn = async (args: RunTurnArgs): Promise<InjectedMessage[]> => {
   } finally {
     leftover = runRegistry.end(contextId)
   }
+  // run is still a valid reference (end() only drops the map entry); capture
+  // the finished turn's state so later W2 edit classification can inspect it.
+  recordFinishedTurn(contextId, run)
   return leftover
+}
+
+const recordFinishedTurn = (
+  contextId: string,
+  run: Readonly<Pick<RunControl, 'originatingMessageIds' | 'completedEffects' | 'replyTarget'>>,
+): void => {
+  lastTurnRegistry.record(contextId, {
+    originatingMessageIds: run.originatingMessageIds,
+    completedEffects: run.completedEffects,
+    replyTarget: run.replyTarget,
+    finishedAt: Date.now(),
+  })
 }
 
 export const processMessage = async (
