@@ -193,8 +193,13 @@ scenario(
   { realTaskProvider: 'youtrack' },
 )
 
+// All three shared project groups (SCN-parity-project-crud, SCN-parity-task-label,
+// SCN-parity-identity) are YOUTRACK_PARITY_EXCLUSIONS entries for this binding, so
+// this scenario never runs a shared ParityGroup — it only proves that the real
+// provider resolves and round-trips a `createProject` call. Do not rename this back
+// to claiming shared project-group conformance.
 scenario(
-  'SCN-youtrack-conformance-projects: real YouTrack provider satisfies the shared project groups',
+  'SCN-youtrack-conformance-projects: real YouTrack provider resolves and round-trips createProject (shared project groups are excluded for this binding)',
   (api) => runDomainScenario(api, DOMAIN_PROJECTS),
   { realTaskProvider: 'youtrack' },
 )

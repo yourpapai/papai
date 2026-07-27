@@ -1220,7 +1220,7 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
   'SCN-youtrack-conformance-projects': {
     verifiedAt: '2026-07-27',
     storyIds: [
-      'tests/stories/tasks/youtrack-conformance.story.test.ts#SCN-youtrack-conformance-projects: real YouTrack provider satisfies the shared project groups',
+      'tests/stories/tasks/youtrack-conformance.story.test.ts#SCN-youtrack-conformance-projects: real YouTrack provider resolves and round-trips createProject (shared project groups are excluded for this binding)',
     ],
   },
   'SCN-youtrack-conformance-errors': {
