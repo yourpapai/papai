@@ -22,6 +22,12 @@ const BroadcastSchema = z.object({ totalUsers: z.number(), successCount: z.numbe
 const GuardrailsViewSchema = z.object({
   guardrails: z.object({ whoMayUse: z.union([z.literal('members'), z.array(z.string())]) }),
 })
+const AdminAnalyticsViewSchema = z.looseObject({
+  configVersion: z.number(),
+  mode: z.object({ localMode: z.string() }),
+  readiness: z.object({ ready: z.boolean(), missing: z.array(z.string()) }),
+})
+const ReconcileReportSchema = z.looseObject({ status: z.string() })
 
 scenario(
   'SCN-settings-admin-guardrails: a guardrail saved through settings changes the advertised toolset',
@@ -165,6 +171,70 @@ scenario(
     const trace = JSON.stringify(world.events.all())
     expect(trace).not.toContain(MAGI_TOKEN)
     expect(trace).not.toContain(PROVIDER_KEY)
+  },
+)
+
+scenario(
+  'SCN-settings-admin-analytics: an operator reviews and updates the analytics policy through settings',
+  async ({ given, when, then }) => {
+    const alice = given.user('alice')
+    const bob = given.user('bob')
+    const admin = await given.settingsAdminSession(alice)
+    const bobSession = await when.settingsSession(bob)
+    const patchBody = JSON.stringify({
+      expectedConfigVersion: 1,
+      localMode: 'local_aggregate',
+      policyVersion: 1,
+      noticeVersion: 1,
+      purpose: 'product improvement',
+      controllerContact: 'privacy@example.com',
+      lawfulBasisMode: 'consent',
+      retainedEventHorizonDays: 30,
+      acknowledge: true,
+    })
+
+    const unauthenticated = await when.request('/settings/api/admin/analytics')
+    then.responseStatus(unauthenticated, 401)
+
+    const denied = await when.settingsRequest(bobSession, '/settings/api/admin/analytics')
+    then.responseStatus(denied, 403)
+
+    const initial = await when.settingsRequest(admin, '/settings/api/admin/analytics')
+    then.responseStatus(initial, 200)
+    const initialView = AdminAnalyticsViewSchema.parse(await initial.json())
+
+    const csrfRejected = await when.settingsRequest(
+      admin,
+      '/settings/api/admin/analytics',
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: patchBody },
+      { csrf: false },
+    )
+    then.responseStatus(csrfRejected, 403)
+
+    const staleVersion = await when.settingsRequest(admin, '/settings/api/admin/analytics', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expectedConfigVersion: initialView.configVersion + 99, acknowledge: true }),
+    })
+    then.responseStatus(staleVersion, 409)
+
+    const updated = await when.settingsRequest(admin, '/settings/api/admin/analytics', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...JSON.parse(patchBody), expectedConfigVersion: initialView.configVersion }),
+    })
+    then.responseStatus(updated, 200)
+    const updatedView = AdminAnalyticsViewSchema.parse(await updated.json())
+    expect(updatedView.mode.localMode).toBe('local_aggregate')
+    expect(updatedView.configVersion).toBeGreaterThan(initialView.configVersion)
+
+    const reconciliation = await when.settingsRequest(admin, '/settings/api/admin/analytics/reconcile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apply: false }),
+    })
+    then.responseStatus(reconciliation, 200)
+    ReconcileReportSchema.parse(await reconciliation.json())
   },
 )
 
