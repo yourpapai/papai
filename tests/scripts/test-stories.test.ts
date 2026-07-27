@@ -26,6 +26,7 @@ import { resolveStoryDependencyPlatform } from '../../scripts/story/sandbox.js'
 import type { StorySandboxRequest } from '../../scripts/story/sandbox.js'
 import type { StoryRunnerSession } from '../../scripts/story/session.js'
 import { parseStoryRunnerArguments, runStoryTests, STORY_SEED } from '../../scripts/story/test-stories.js'
+import { writeFrozenCoverageSupport } from './story-frozen-inputs.helpers.js'
 
 const manifest = (treeHash: string): StoryManifest => ({
   version: 4,
@@ -637,6 +638,7 @@ describe('story runner reports and compatibility', () => {
       mkdirSync(path.join(root, 'tests/stories'), { recursive: true })
       mkdirSync(path.join(root, 'tests/utils'), { recursive: true })
       mkdirSync(path.join(root, 'scripts/story'), { recursive: true })
+      writeFrozenCoverageSupport(root)
       mkdirSync(path.join(root, 'src'), { recursive: true })
       mkdirSync(path.join(root, 'plugins'), { recursive: true })
       writeFileSync(path.join(root, 'bunfig.toml'), '[test]')

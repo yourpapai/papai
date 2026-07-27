@@ -17,6 +17,7 @@ import {
   StoryManifestSchema,
   writeStoryManifest,
 } from '../../scripts/story/manifest.js'
+import { writeFrozenCoverageSupport } from './story-frozen-inputs.helpers.js'
 
 const roots: string[] = []
 const PROJECT_ROOT = path.resolve(import.meta.dir, '../..')
@@ -72,6 +73,7 @@ function fixture(options: Readonly<{ includePublic?: boolean }> = {}): string {
     `scenario('alpha story', async ({ then }) => {\n  then.replyIn(context).equals('ok')\n  await then.task('A').exists()\n})\n` +
       `test('wrapped', async () => {\n  await executeScenario('nested story', async ({ then }) => {\n    then.responseStatus(response, 200)\n  })\n})\n`,
   )
+  writeFrozenCoverageSupport(root)
   writeFileSync(path.join(root, 'scripts/story/test-stories.ts'), 'runner enforcement')
   writeFileSync(path.join(root, 'scripts/story/dependencies-install.ts'), 'dependency installer enforcement')
   writeFileSync(path.join(root, 'scripts/story/dependencies-tree.ts'), 'dependency tree enforcement')
@@ -118,6 +120,9 @@ describe('story manifest', () => {
     expect(repeated.treeHash).toBe(manifest.treeHash)
     expect(manifest.files.map(({ path: filePath }) => filePath)).toEqual([
       'bunfig.toml',
+      'scripts/coverage/normalize-lcov.ts',
+      'scripts/coverage/ratchet-lib.ts',
+      'scripts/coverage/story-coverage-gate.ts',
       'scripts/story/cli.ts',
       'scripts/story/dependencies-install.ts',
       'scripts/story/dependencies-tree.ts',

@@ -24,6 +24,7 @@ import path from 'node:path'
 
 import type { StoryDependencySnapshot } from '../../scripts/story/dependencies.js'
 import { createCandidateStorySnapshotSource, StorySnapshotInterruptedError } from '../../scripts/story/snapshot.js'
+import { writeFrozenCoverageSupport } from './story-frozen-inputs.helpers.js'
 
 const roots: string[] = []
 const TEST_DEPENDENCY_SNAPSHOT: StoryDependencySnapshot = {
@@ -105,6 +106,7 @@ function fixture(): string {
   writeFileSync(path.join(root, 'tests/mock-reset.ts'), 'reset')
   writeFileSync(path.join(root, 'tests/utils/test-helpers.ts'), 'helper')
   writeFileSync(path.join(root, 'tests/utils/logger-mock.ts'), 'logger')
+  writeFrozenCoverageSupport(root)
   writeFileSync(path.join(root, 'scripts/story/test-stories.ts'), 'captured runner')
   writeFileSync(path.join(root, 'src/live.ts'), 'production v1')
   symlinkSync('live.ts', path.join(root, 'src/alias.ts'))
