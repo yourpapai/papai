@@ -46,7 +46,6 @@ import type { CachedMessage } from '../../src/message-cache/types.js'
 
 // Test-local message cache — fully isolated from production
 const testMessageCache = new Map<string, CachedMessage>()
-const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000
 
 function messageCacheKey(contextId: string, messageId: string): string {
   return `${contextId}:${messageId}`
@@ -68,15 +67,8 @@ export function mockMessageCache(): void {
     cacheMessage: (message: CachedMessage): void => {
       testMessageCache.set(messageCacheKey(message.contextId, message.messageId), message)
     },
-    getCachedMessage: (contextId: string, messageId: string): CachedMessage | undefined => {
-      const cached = testMessageCache.get(messageCacheKey(contextId, messageId))
-      if (cached === undefined) return undefined
-      if (Date.now() - cached.timestamp > ONE_WEEK_MS) {
-        testMessageCache.delete(messageCacheKey(contextId, messageId))
-        return undefined
-      }
-      return cached
-    },
+    getCachedMessage: (contextId: string, messageId: string): CachedMessage | undefined =>
+      testMessageCache.get(messageCacheKey(contextId, messageId)),
   }))
 }
 
@@ -91,13 +83,16 @@ export function clearMessageCache(): void {
  * Check if a message exists in the test message cache.
  */
 export function hasCachedMessage(contextId: string, messageId: string): boolean {
-  const cached = testMessageCache.get(messageCacheKey(contextId, messageId))
-  if (cached === undefined) return false
-  if (Date.now() - cached.timestamp > ONE_WEEK_MS) {
-    testMessageCache.delete(messageCacheKey(contextId, messageId))
-    return false
-  }
-  return true
+  return testMessageCache.has(messageCacheKey(contextId, messageId))
+}
+
+/**
+ * Await the microtask on which cacheMessage flushes pending writes to SQLite.
+ */
+export function flushPendingWrites(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    queueMicrotask(resolve)
+  })
 }
 
 // ============================================================================

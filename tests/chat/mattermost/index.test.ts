@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, mock, test } from 'bun:test'
+import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { fetchMattermostFiles } from '../../../src/chat/mattermost/file-helpers.js'
@@ -14,7 +14,13 @@ import type { MattermostPost } from '../../../src/chat/mattermost/schema.js'
 import { toScopedThreadContextId } from '../../../src/chat/scoped-context.js'
 import type { AuthorizationResult } from '../../../src/chat/types.js'
 import type { ContextSnapshot, IncomingMessage } from '../../../src/chat/types.js'
-import { createMockReply, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
+import {
+  clearMessageCache,
+  createMockReply,
+  mockMessageCache,
+  restoreFetch,
+  setMockFetch,
+} from '../../utils/test-helpers.js'
 
 type BuiltPostedMessage = { readonly msg: IncomingMessage }
 type PostedEventHandler = (data: Record<string, unknown>) => Promise<void>
@@ -197,6 +203,11 @@ void mock.module('../../../src/auth.js', () => ({
 
 describe('MattermostChatProvider', () => {
   let provider: MattermostChatProvider
+
+  beforeEach(() => {
+    mockMessageCache()
+    clearMessageCache()
+  })
 
   test('constructor requires explicit baseUrl, token, and platform instance id', () => {
     expect(() => new MattermostChatProvider({ token: 'cfg-token', platformInstanceId: TEST_PLATFORM_ID })).toThrow(

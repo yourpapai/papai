@@ -45,6 +45,7 @@ import * as _chatRouterRuntime from '../src/debug/chat-router-runtime.js'
 import * as _debugServer from '../src/debug/server.js'
 import * as _poller from '../src/deferred-prompts/poller.js'
 import * as _scheduledPrompts from '../src/deferred-prompts/scheduled.js'
+import * as _embeddings from '../src/embeddings.js'
 import * as _identityMapping from '../src/identity/mapping.js'
 import * as _instancesBootstrap from '../src/instances/bootstrap.js'
 import * as _instanceHealth from '../src/instances/health.js'
@@ -100,6 +101,7 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/debug/server.js', { ..._debugServer }],
   ['../src/deferred-prompts/scheduled.js', { ..._scheduledPrompts }],
   ['../src/deferred-prompts/poller.js', { ..._poller }],
+  ['../src/embeddings.js', { ..._embeddings }],
   ['../src/identity/mapping.js', { ..._identityMapping }],
   ['../src/instances/bootstrap.js', { ..._instancesBootstrap }],
   ['../src/instances/health.js', { ..._instanceHealth }],

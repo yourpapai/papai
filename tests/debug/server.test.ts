@@ -150,8 +150,9 @@ describe('debug-server', () => {
     seedLogBuffer()
   })
 
-  beforeEach(() => {
+  beforeEach(async () => {
     mockDebugServerDependencies()
+    await setupTestDb()
   })
 
   afterAll(() => {

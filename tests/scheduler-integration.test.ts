@@ -29,8 +29,7 @@ describe('Scheduler Integration', () => {
 
   test('should have cleanup tasks registered', () => {
     expect(scheduler.hasTask('user-cache-cleanup')).toBe(true)
-    expect(scheduler.hasTask('message-cache-sweep')).toBe(true)
-    expect(scheduler.hasTask('message-cleanup')).toBe(true)
+    expect(scheduler.hasTask('message-queue-cleanup')).toBe(true)
     expect(scheduler.hasTask('staged-files-purge')).toBe(true)
   })
 
@@ -38,14 +37,12 @@ describe('Scheduler Integration', () => {
     scheduler.startAll()
 
     expect(scheduler.getTaskState('user-cache-cleanup')?.running).toBe(true)
-    expect(scheduler.getTaskState('message-cache-sweep')?.running).toBe(true)
-    expect(scheduler.getTaskState('message-cleanup')?.running).toBe(true)
+    expect(scheduler.getTaskState('message-queue-cleanup')?.running).toBe(true)
 
     scheduler.stopAll()
 
     expect(scheduler.getTaskState('user-cache-cleanup')?.running).toBe(false)
-    expect(scheduler.getTaskState('message-cache-sweep')?.running).toBe(false)
-    expect(scheduler.getTaskState('message-cleanup')?.running).toBe(false)
+    expect(scheduler.getTaskState('message-queue-cleanup')?.running).toBe(false)
   })
 
   test('should handle task errors gracefully', async () => {

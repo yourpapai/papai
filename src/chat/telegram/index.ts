@@ -28,7 +28,6 @@ import { formatLlmOutput } from './format.js'
 import { buildTelegramInteraction } from './interaction-helpers.js'
 import { getTelegramDisplayLabel, resolveTelegramGroupLabel, resolveTelegramUserLabel } from './label-helpers.js'
 import {
-  cacheTelegramMessage,
   extractContextInfo,
   extractMessageIds,
   extractReplyContext,
@@ -196,7 +195,6 @@ export class TelegramChatProvider implements ChatProvider {
     const { id, contextId, contextType, text, isMentioned } = contextInfo
     const { messageIdStr, replyToMessageIdStr, replyToMessageText, quoteText } = extractMessageIds(ctx)
     logMessageExtraction(id, contextId, messageIdStr, replyToMessageIdStr, replyToMessageText, quoteText)
-    cacheTelegramMessage(ctx, id, contextId, messageIdStr, text, replyToMessageIdStr)
     const replyContext = extractReplyContext(ctx, contextId)
     const isReplyToBot = replyContext?.authorId !== undefined && String(ctx.me.id) === replyContext.authorId
     const threadId = await resolveThreadId(ctx, isMentioned, contextType, this.bot.api)

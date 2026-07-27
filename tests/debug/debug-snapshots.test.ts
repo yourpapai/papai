@@ -3,14 +3,17 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { getSessionSnapshots } from '../../src/cache-snapshots.js'
 import { userCachesForTesting } from '../../src/cache.js'
+import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { messageMetadata } from '../../src/db/schema.js'
 import { getPollerSnapshot } from '../../src/deferred-prompts/poller.js'
 import { getMessageCacheSnapshot } from '../../src/message-cache/cache.js'
 import { getPendingWritesCount, getIsFlushScheduled } from '../../src/message-cache/persistence.js'
 import { getSchedulerSnapshot } from '../../src/scheduler.js'
+import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 describe('message-cache persistence accessors', () => {
   test('getPendingWritesCount returns a number', () => {
     const count = getPendingWritesCount()
@@ -25,15 +28,27 @@ describe('message-cache persistence accessors', () => {
 })
 
 describe('getMessageCacheSnapshot', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
   test('returns snapshot with expected shape', () => {
     const snap = getMessageCacheSnapshot()
     expect(snap).toHaveProperty('size')
-    expect(snap).toHaveProperty('ttlMs')
     expect(snap).toHaveProperty('pendingWrites')
     expect(snap).toHaveProperty('isFlushScheduled')
     expect(typeof snap.size).toBe('number')
-    expect(typeof snap.ttlMs).toBe('number')
-    expect(snap.ttlMs).toBe(7 * 24 * 60 * 60 * 1000)
+  })
+
+  test('size reflects live message_metadata row count', () => {
+    getDrizzleDb()
+      .insert(messageMetadata)
+      .values({ contextId: 'snap-ctx', messageId: 'snap-m1', timestamp: 1000 })
+      .run()
+
+    const snap = getMessageCacheSnapshot()
+    expect(snap.size).toBeGreaterThanOrEqual(1)
   })
 })
 

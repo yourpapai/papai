@@ -34,14 +34,14 @@ function seedFixtures(): void {
     for (let i = 0; i < GROUP_SUBJECTS; i++) insertGroup.run(`g${i}`, 'admin', baseAddedAt)
 
     const insertMessage = sqlite.prepare(
-      'INSERT INTO message_metadata (context_id, message_id, author_id, timestamp, expires_at) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO message_metadata (context_id, message_id, author_id, timestamp) VALUES (?, ?, ?, ?)',
     )
     const now = Date.now()
     for (let i = 0; i < MESSAGE_ROWS; i++) {
       const subjectIndex = i % TOTAL_SUBJECTS
       const contextId = subjectIndex < DM_SUBJECTS ? `u${subjectIndex}` : `g${subjectIndex - DM_SUBJECTS}`
       const ts = now - (i % (30 * 24 * 60 * 60 * 1000))
-      insertMessage.run(contextId, `m${i}`, contextId, ts, ts + 1_000_000)
+      insertMessage.run(contextId, `m${i}`, contextId, ts)
     }
 
     const insertMemo = sqlite.prepare(

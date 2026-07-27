@@ -33,7 +33,6 @@ import { resolveMattermostConfig, type MattermostConstructorConfig } from './con
 import { fetchMattermostChannelInfo, fetchMattermostTeamInfo, type MattermostChannelInfo } from './context-metadata.js'
 import { renderMattermostContext } from './context-renderer.js'
 import {
-  cacheIncomingPost,
   downloadMattermostFile,
   parsePostedEvent,
   resolveMattermostPostFiles,
@@ -169,7 +168,6 @@ export class MattermostChatProvider implements ChatProvider {
     const { post, senderName } = parsed
     if (post.user_id === this.botUserId) return
     const replyToMessageId = extractReplyId(post.parent_id, post.root_id)
-    cacheIncomingPost(post, replyToMessageId, senderName)
     const { msg, reply, command, isAdmin } = await this.buildPostedMessage(post, senderName, replyToMessageId)
     if (msg.isMentioned && msg.text === '') {
       const mentionHelp =

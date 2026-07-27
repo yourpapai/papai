@@ -13,7 +13,6 @@ import type {
   UserIdEvent,
   SchedulerTickEvent,
   PollerEvent,
-  MessageCacheEvent,
   Turn,
   Notification,
   ToolFailure,
@@ -140,10 +139,6 @@ export function handleSchedulerTick(state: DashboardState, d: SchedulerTickEvent
 
 export function handlePollerEvent(state: DashboardState, d: PollerEvent): void {
   Object.assign(state.pollers, d)
-}
-
-export function handleMsgcacheSweep(state: DashboardState, d: MessageCacheEvent): void {
-  Object.assign(state.messageCache, d)
 }
 
 export function handleLogEntry(state: DashboardState, d: LogEntry): void {

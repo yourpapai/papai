@@ -7,7 +7,6 @@ import type { MessageEntity } from '@grammyjs/types/message.js'
 import type { Context } from 'grammy'
 
 import { logger } from '../../logger.js'
-import { cacheMessage } from '../../message-cache/index.js'
 import type { ContextType } from '../types.js'
 import { createForumTopicIfNeeded } from './forum-topic-helpers.js'
 import { extractReplyContext } from './reply-context-helpers.js'
@@ -99,31 +98,6 @@ export function logMessageExtraction(
     },
     'Extracting Telegram message with reply/quote data',
   )
-}
-
-export interface CacheContext {
-  from?: { username?: string } | undefined
-}
-
-export function cacheTelegramMessage(
-  ctx: CacheContext,
-  id: number,
-  contextId: string,
-  messageIdStr: string | undefined,
-  text: string,
-  replyToMessageIdStr: string | undefined,
-): void {
-  if (messageIdStr !== undefined) {
-    cacheMessage({
-      messageId: messageIdStr,
-      contextId,
-      authorId: String(id),
-      authorUsername: ctx.from?.username ?? undefined,
-      text,
-      replyToMessageId: replyToMessageIdStr,
-      timestamp: Date.now(),
-    })
-  }
 }
 
 export function resolveThreadId(

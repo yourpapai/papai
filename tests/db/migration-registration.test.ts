@@ -23,8 +23,13 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('051_legacy_context_id_backfill')
   })
 
-  test('069_alert_matched_task_ids is the last migration', () => {
+  test('includes migration 070_message_metadata_history_search', () => {
+    const ids = MIGRATIONS.map((m) => m.id)
+    expect(ids).toContain('070_message_metadata_history_search')
+  })
+
+  test('071_message_embeddings is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('069_alert_matched_task_ids')
+    expect(lastMigration.id).toBe('071_message_embeddings')
   })
 })

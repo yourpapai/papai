@@ -262,10 +262,6 @@ export function parsePollerEvent(data: unknown): PollerEvent {
   return PollerEventSchema.parse(data)
 }
 
-export function parseMessageCacheEvent(data: unknown): MessageCacheEvent {
-  return MessageCacheEventSchema.parse(data)
-}
-
 // Safe validation helpers that return null on failure
 export function safeParseSession(data: unknown): Session | null {
   const result = SessionSchema.safeParse(data)

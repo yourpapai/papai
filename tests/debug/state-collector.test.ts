@@ -3,12 +3,16 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, mock, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { emitGlobal, emitUser, emitGroup } from '../../src/debug/event-bus.js'
 import { addClient, init, removeClient } from '../../src/debug/state-collector.js'
-import { resetStats } from '../utils/test-helpers.js'
+import { resetStats, setupTestDb } from '../utils/test-helpers.js'
+
+beforeEach(async () => {
+  await setupTestDb()
+})
 
 type MockController = {
   ctrl: ReadableStreamDefaultController

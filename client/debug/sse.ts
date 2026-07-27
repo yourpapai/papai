@@ -12,7 +12,6 @@ import {
   parseWizard,
   parseSchedulerTickEvent,
   parsePollerEvent,
-  parseMessageCacheEvent,
   parseLogEntry,
 } from '../../src/debug/schemas.js'
 import type { DashboardState } from './dashboard-types.js'
@@ -22,7 +21,6 @@ import {
   handleCacheExpire,
   handleLlmFull,
   handleLogEntry,
-  handleMsgcacheSweep,
   handleNotificationEvent,
   handlePollerEvent,
   handleSchedulerTick,
@@ -86,9 +84,6 @@ function coreHandlers(state: DashboardState): Record<string, EventHandler> {
     }),
     'poller:alerts': safe(parsePollerEvent, (d) => {
       handlePollerEvent(state, d)
-    }),
-    'msgcache:sweep': safe(parseMessageCacheEvent, (d) => {
-      handleMsgcacheSweep(state, d)
     }),
     'log:entry': safe(parseLogEntry, (d) => {
       handleLogEntry(state, d)

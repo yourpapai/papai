@@ -10,6 +10,7 @@ import { handleAdminInstancesRoutes } from './settings/admin/instances-routes.js
 import { handleAdminLlmProvidersRoutes } from './settings/admin/llm-providers-routes.js'
 import { handleAdminMcpCatalogRoutes } from './settings/admin/mcp-catalog-routes.js'
 import { handleAdminMcpPluginServersRoutes } from './settings/admin/mcp-plugin-servers-routes.js'
+import { handleAdminMessageHistoryRoutes } from './settings/admin/message-history-routes.js'
 import { handleAdminPluginConfigRoutes } from './settings/admin/plugin-config-routes.js'
 import { handleAdminReleaseNotesRoutes } from './settings/admin/release-notes-routes.js'
 import { handleAdminRosterPluginsRoutes } from './settings/admin/roster-plugins-routes.js'
@@ -69,6 +70,11 @@ function routeAdminApi(req: Request, url: URL, options: SettingsApiRouteOptions)
     p === '/settings/api/admin/llm-roles'
   )
     return handleAdminLlmProvidersRoutes(req, url, p)
+  if (
+    p === '/settings/api/admin/message-history' ||
+    (p.startsWith('/settings/api/admin/contexts/') && p.endsWith('/message-history'))
+  )
+    return handleAdminMessageHistoryRoutes(req, url, p)
   return null
 }
 

@@ -80,6 +80,8 @@ import { migration066CodingReposEgress } from './migrations/066_coding_repos_egr
 import { migration067MultiLlmProviders } from './migrations/067_multi_llm_providers.js'
 import { migration068IdentityScopedKeyCleanup } from './migrations/068_identity_scoped_key_cleanup.js'
 import { migration069AlertMatchedTaskIds } from './migrations/069_alert_matched_task_ids.js'
+import { migration070MessageMetadataHistorySearch } from './migrations/070_message_metadata_history_search.js'
+import { migration071MessageEmbeddings } from './migrations/071_message_embeddings.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -184,6 +186,8 @@ export const MIGRATIONS: readonly Migration[] = [
   migration067MultiLlmProviders,
   migration068IdentityScopedKeyCleanup,
   migration069AlertMatchedTaskIds,
+  migration070MessageMetadataHistorySearch,
+  migration071MessageEmbeddings,
 ]
 
 export const initDb = (): void => {

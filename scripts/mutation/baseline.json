@@ -1,1 +1,19 @@
-{}
+{
+  "client/debug/handlers.ts": 0.4526,
+  "client/debug/sse.ts": 0.2156,
+  "src/chat/mattermost/file-helpers.ts": 0.0576,
+  "src/chat/mattermost/index.ts": 0.4676,
+  "src/chat/telegram/message-extraction.ts": 0.3882,
+  "src/db/index.ts": 0.0303,
+  "src/db/message-embeddings-schema.ts": 0.0833,
+  "src/db/migrations/071_message_embeddings.ts": 0.4285,
+  "src/db/schema.ts": 0.0579,
+  "src/debug/schemas.ts": 0.325,
+  "src/debug/settings-api-router.ts": 0.2645,
+  "src/message-cache/cache.ts": 0.1538,
+  "src/runtime/production-deps.ts": 0.3304,
+  "src/scheduler-instance.ts": 0.3134,
+  "src/tools/get-message-context.ts": 0.3709,
+  "src/tools/provider-independent-tools-builder.ts": 0.131,
+  "src/tools/tool-metadata.ts": 0.1741
+}
