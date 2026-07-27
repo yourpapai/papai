@@ -281,6 +281,7 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   // @0 — real YouTrack provider inside the hermetic lane (t0-real-youtrack-provider)
   'SCN-task-youtrack-real-create',
   'SCN-task-youtrack-real-fields',
+  'SCN-task-youtrack-real-error',
 ] as const)
 
 const GAP_SCENARIO_IDS = new Set<CatalogScenarioId>([
@@ -1170,6 +1171,12 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     verifiedAt: '2026-07-27',
     storyIds: [
       'tests/stories/tasks/youtrack-real.story.test.ts#SCN-task-youtrack-real-fields: maps YouTrack custom fields through the real provider',
+    ],
+  },
+  'SCN-task-youtrack-real-error': {
+    verifiedAt: '2026-07-27',
+    storyIds: [
+      'tests/stories/tasks/youtrack-real.story.test.ts#SCN-task-youtrack-real-error: translates a YouTrack 404 into a tool failure the model can report',
     ],
   },
 }

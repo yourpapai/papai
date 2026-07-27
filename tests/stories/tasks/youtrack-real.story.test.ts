@@ -5,6 +5,7 @@
 
 import { expect } from 'bun:test'
 
+import { YouTrackClassifiedError } from '../../../plugins/task-provider-youtrack/classify-error.js'
 import { scenario } from '../harness/scenario.js'
 import { answer, callCapability } from '../harness/scripted-llm.js'
 
@@ -50,6 +51,42 @@ scenario(
     expect(tasks).toHaveLength(1)
     expect(tasks[0]?.status).toBe('In Progress')
     expect(tasks[0]?.priority).toBe('high')
+  },
+  { realTaskProvider: 'youtrack' },
+)
+
+scenario(
+  'SCN-task-youtrack-real-error: translates a YouTrack 404 into a tool failure the model can report',
+  async ({ given, when, then, resolveRealTaskProvider }) => {
+    const alice = given.user('alice')
+    const dm = given.dm(alice)
+    const instance = given.taskInstance(undefined, 'youtrack')
+    given.assign(dm, instance)
+    given.llm([
+      callCapability('tasks.create', { projectId: 'no-such-project', title: 'Doomed' }),
+      answer('That project does not exist.'),
+      answer('That project does not exist.'),
+    ])
+
+    await when.message(alice, dm, 'Create Doomed in project no-such-project')
+    then.replyTo(alice).equals('That project does not exist.')
+
+    // The harness `then` surface has no accessor for recorded tool results (see
+    // tests/stories/harness/scenario.ts:287-295), so assert on the classified error
+    // directly against the real provider instead.
+    const provider = await resolveRealTaskProvider(dm)
+
+    await expect(provider.createTask({ projectId: 'no-such-project', title: 'Doomed' })).rejects.toThrow(
+      YouTrackClassifiedError,
+    )
+
+    const failure = await provider
+      .createTask({ projectId: 'no-such-project', title: 'Doomed' })
+      .catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(YouTrackClassifiedError)
+    if (failure instanceof YouTrackClassifiedError) {
+      expect(failure.appError.code).toBe('project-not-found')
+    }
   },
   { realTaskProvider: 'youtrack' },
 )
