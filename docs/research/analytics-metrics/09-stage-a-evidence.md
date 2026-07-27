@@ -40,7 +40,7 @@ aggregate publication.
 | 13 | Classifier contract | green | sealed-corpus hybrid parity with the frozen PoC values (accuracy 0.991667, macro F1 0.995641, coverage 0.991667, unknown precision 0.909091) in tests/analytics/intent-classifier.test.ts; derived intent_classified envelope/props contract + deterministic intent-output:v1 ids + inherited-ref withdrawal in tests/analytics/intent-derivation.test.ts; no PoC/small-model import in the runtime module graph + latency budget in tests/analytics/intent-persistence-audit.test.ts (dccf6cc73); 2026-07-26 |
 | 14 | Backfill/provenance/reconciliation | green | one controlled decision per durable row (aggregate_only/rejected with exact controlled reasons; current rows never canonical/pseudonym/`unknown`), HMAC source references, provenance rerun = zero changes, interrupt/resume identical decisions, rollback reverses only first-created deltas, durable equation `usage_rows = canonical + rejected + ineligible + aggregate_only` with zero unexplained delta on closed epochs, open/stale epochs → `unreconciled_restart_gap` (no numeric plug) in tests/analytics/backfill.test.ts + tests/analytics/reconciliation.test.ts; fixture CLI dry-run/apply/reconcile status=reconciled unexplained_delta=0, rerun applied=0 (ff0df9c24); 2026-07-26 |
 | 15 | External thresholding | pending | |
-| 16 | DSAR/delete/rekey/snapshot | partial | DSAR export (all-generation/keyring-independent lookup, dedupe, no-other-member) in tests/analytics/subject-export.test.ts; deletion workflow (all key versions, restricted FK order, independent receipts, small-cell rebuild, snapshot unpublish, rekey-overlap resume) in tests/analytics/deletion.test.ts; encrypted deletion target bundles lifecycle (d994c6f7e); rekey workflow + snapshot cutover land in Task 13B, production coordinator in Task 14 |
+| 16 | DSAR/delete/rekey/snapshot | partial | DSAR export + deletion workflow + encrypted target bundles (d994c6f7e); rekey workflow: plan/apply/verify/abort CLI, dual-write fenced seam, encrypted domain-complete mappings, FK-ordered copy, cutover fence, shadow equation, swap tx, retirement gating (193327d5b + 1cdb28106); PRODUCTION fence admission wiring lands with Task 17 job registration + Task 15 delivery worker; production snapshot coordinator lands in Task 14 |
 | 17 | Performance/expiry clocks | green | monotonic TTFT/first-visible-feedback clocks with not-applicable/negative/implausible rejection in tests/analytics/performance-clocks.test.ts (6d429b5c4); one isUnexpired guard at every read/derive/export/snapshot/lease/send boundary incl. purge-disabled exact-deadline proof, startup purge barrier, earliest-deadline wake in tests/analytics/retention.test.ts + tests/analytics/derive/store.test.ts (d994c6f7e); 2026-07-26 |
 
 ## Per-task evidence log
@@ -59,7 +59,7 @@ aggregate publication.
 | 10 — intent + rephrase | 18 pass / 0 fail (intent-classifier, intent-derivation, rephrase, rephrase-handoff, intent-persistence-audit); affected suites 781 pass; gap-fix 3347cff30 (aggregate-local short-circuit + capture latency) | clean / clean (knip clean) | dccf6cc73 + 3347cff30 | 2026-07-26 |
 | 11 — materializations | 60 pass / 0 fail (073 migration, registration, sessionizer, outcomes, feature-materialization, friction); mirrored derive/store/job suites 145 pass; tests/db + tests/analytics 1122 pass | clean / clean (knip clean) | 35693a333 | 2026-07-26 |
 | 12 — backfill/reconcile | 30 pass / 0 fail (backfill, reconciliation); mirrored jobs suites + full tests/analytics 808 pass; fixture CLI dry-run/apply/reconcile status=reconciled unexplained_delta=0, rerun zero-change; fix 96d73c33d (fail-closed approval, HMAC high-water, ineligible writer) | clean / clean (knip clean, security 0 findings) | ff0df9c24 + 96d73c33d | 2026-07-26 |
-| 13 — lifecycle/subject rights | 13A: 51 pass / 0 fail (retention, withdrawal-race, subject-export, deletion); fix d994c6f7e (derive guard, grant mutex, NUL bytes, expiry settlement, rekey-resume, in-tx cancel) | clean / clean (knip clean) | 13A: abc702633 + d994c6f7e | 2026-07-26 |
+| 13 — lifecycle/subject rights | 13A: 51 pass / 0 fail (retention, withdrawal-race, subject-export, deletion); fix d994c6f7e. 13B: 106 pass / 0 fail (rekey + cutover suites, all 14 checkpoints, abort matrix, shadow equation, interruption/resume at every subphase boundary, all 9 retirement refusals, 10-class delta survival) | clean / clean (knip clean) | 13A: abc702633 + d994c6f7e; 13B: 193327d5b + 1cdb28106 | 2026-07-26 |
 | 14 — snapshot/metabase | | | | |
 | 15 — aggregate delivery | | | | |
 | 16 — settings surfaces | | | | |
@@ -239,3 +239,16 @@ aggregate publication.
   invalidator's containment check is vacuous until Task 14's coordinator;
   aggregate rebuild downgrades assessed rollups (threshold → null) and resets
   quality columns — review at Task 14.
+- Task 13B → **Task 17 review focus**: production mutable writers (intent
+  scheduler, derive, backfill, retention, delivery worker) must call the
+  cutover fence `admit`/`isFenceHeld` — currently only snapshot staging is
+  durably blocked (fail-closed stubs pending).
+- Task 13B → **Task 15 review focus**: the delivery worker (built in Task 15)
+  must also admit to the cutover fence.
+- Task 13B (parked Minors): per-subphase before-commit interruption fixtures
+  absent (shared rollback primitive covers the mechanism); `releaseFence`
+  dead API; verify-content test imports from sibling suite; censor intervals
+  keep old-generation actor keys after retirement (deliberate audit choice);
+  `remoteDeleteIn` can issue duplicate remote deletion calls for actors with
+  multiple settled deliveries; CLI `apply` checks stored plan hash without
+  recomputing against current DB state (delta catch-up by design).
