@@ -15,7 +15,6 @@ export const AnalyticsNoticeSchema = z
     policyEffectiveAtMs: z.number().nullable(),
   })
   .strict()
-export type AnalyticsNotice = z.infer<typeof AnalyticsNoticeSchema>
 
 export const AnalyticsPreferenceStateSchema = z
   .object({
