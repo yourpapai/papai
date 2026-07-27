@@ -9,11 +9,12 @@ import { getDrizzleDb as defaultGetDrizzleDb } from '../../db/drizzle.js'
 import { analyticsDeliveries, analyticsEvents } from '../../db/schema.js'
 import { logger } from '../../logger.js'
 import type { DeliveryGrantRef } from '../governance/eligibility.js'
+import { resolveActive } from '../governance/generation-store.js'
 import { createGrantSendMutex } from '../governance/grant-serialization.js'
 import type { GrantSendMutex } from '../governance/grant-serialization.js'
 import { checkGrantCurrentIn } from '../governance/grant-store.js'
-import { isUnexpired, unexpiredEventFilter } from '../retention/expiry-guard.js'
-import { eventExpiryForSendIn, markDeliverySendingIn, releaseDeliveryToPendingIn } from './settlement.js'
+import type { RekeyCutoverFence } from '../rekey/cutover-fence.js'
+import { unexpiredEventFilter } from '../retention/expiry-guard.js'
 import type { StrictDeliveryPayloadV1 } from './sink.js'
 import { DELIVERY_PAYLOAD_SCHEMA_VERSION } from './sink.js'
 
@@ -28,6 +29,7 @@ export type DeliveryStoreDeps = Readonly<{
   getDrizzleDb: typeof defaultGetDrizzleDb
   recheckGrant?: GrantRecheck
   grantMutex?: GrantSendMutex
+  fence?: RekeyCutoverFence
 }>
 
 const defaultGrantSendMutex = createGrantSendMutex()
@@ -35,54 +37,26 @@ const defaultGrantSendMutex = createGrantSendMutex()
 export const resolveGrantSendMutex = (deps: DeliveryStoreDeps): GrantSendMutex =>
   deps.grantMutex ?? defaultGrantSendMutex
 
-const recheck = (deps: DeliveryStoreDeps, db: Db | Tx, ref: DeliveryGrantRef): boolean =>
+export const recheck = (deps: DeliveryStoreDeps, db: Db | Tx, ref: DeliveryGrantRef): boolean =>
   (deps.recheckGrant ?? checkGrantCurrentIn)(db, ref)
 
-export type EnqueueDeliveryInput = Readonly<{
-  eventId: string
-  sinkVersionId: string
-  grant: DeliveryGrantRef
-  nowMs: number
-}>
+export const admitFence = (deps: DeliveryStoreDeps): (() => void) | null => {
+  if (deps.fence === undefined) return (): void => undefined
+  const admission = deps.fence.admit('delivery')
+  if (admission === null) return null
+  return admission.release
+}
 
-export type EnqueueDeliveryResult = Readonly<{
-  status: 'enqueued' | 'already_present' | 'grant_not_current'
-}>
+export const activeGenerationOf = (deps: DeliveryStoreDeps): string =>
+  resolveActive({ getDrizzleDb: deps.getDrizzleDb }).generation
 
-export const enqueueDelivery = (
-  input: EnqueueDeliveryInput,
-  deps: DeliveryStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
-): EnqueueDeliveryResult => {
-  const db = deps.getDrizzleDb()
-  return db.transaction((tx) => {
-    if (!recheck(deps, tx, input.grant)) {
-      log.debug({ sinkVersionId: input.sinkVersionId }, 'delivery enqueue rejected: grant not current')
-      return { status: 'grant_not_current' }
-    }
-    const existing = tx
-      .select({ eventId: analyticsDeliveries.eventId })
-      .from(analyticsDeliveries)
-      .where(
-        and(eq(analyticsDeliveries.eventId, input.eventId), eq(analyticsDeliveries.sinkVersionId, input.sinkVersionId)),
-      )
-      .get()
-    if (existing !== undefined) return { status: 'already_present' }
-    tx.insert(analyticsDeliveries)
-      .values({
-        eventId: input.eventId,
-        sinkVersionId: input.sinkVersionId,
-        grantKey: input.grant.grantKey,
-        grantKeyVersion: input.grant.keyVersion,
-        grantGeneration: input.grant.generation,
-        state: 'pending',
-        attempts: 0,
-        nextAttemptAtMs: input.nowMs,
-        payloadSchemaVersion: DELIVERY_PAYLOAD_SCHEMA_VERSION,
-      })
-      .run()
-    log.debug({ sinkVersionId: input.sinkVersionId }, 'delivery enqueued')
-    return { status: 'enqueued' }
-  })
+export const eventGenerationIn = (db: Db | Tx, eventId: string): string | null => {
+  const row = db
+    .select({ storageGeneration: analyticsEvents.storageGeneration })
+    .from(analyticsEvents)
+    .where(eq(analyticsEvents.eventId, eventId))
+    .get()
+  return row?.storageGeneration ?? null
 }
 
 export type LeasedDelivery = Readonly<{
@@ -114,6 +88,22 @@ const releaseExpiredLeases = (tx: Tx, nowMs: number): void => {
     .run()
 }
 
+const cancelExpiredPendingRows = (tx: Tx, nowMs: number): void => {
+  tx.update(analyticsDeliveries)
+    .set({ state: 'cancelled', leaseUntilMs: null })
+    .where(
+      and(
+        eq(analyticsDeliveries.state, 'pending'),
+        sql`EXISTS (
+          SELECT 1 FROM ${analyticsEvents}
+          WHERE ${analyticsEvents.eventId} = ${analyticsDeliveries.eventId}
+            AND ${analyticsEvents.expiresAtMs} <= ${nowMs}
+        )`,
+      ),
+    )
+    .run()
+}
+
 const exhaustDeadRows = (tx: Tx, maxAttempts: number): void => {
   tx.update(analyticsDeliveries)
     .set({ state: 'dead' })
@@ -138,7 +128,19 @@ const leaseOne = (
     .run()
 }
 
-const listLeaseCandidates = (tx: Tx, input: LeaseDeliveriesInput): readonly LeaseCandidate[] =>
+type LeaseCandidate = Readonly<{
+  eventId: string
+  sinkVersionId: string
+  grantKey: string
+  grantKeyVersion: string
+  grantGeneration: number
+  attempts: number
+  eventName: string
+  occurredAtMs: number
+  propsJson: string
+}>
+
+const listLeaseCandidates = (tx: Tx, input: LeaseDeliveriesInput, generation: string): readonly LeaseCandidate[] =>
   tx
     .select({
       eventId: analyticsDeliveries.eventId,
@@ -156,6 +158,7 @@ const listLeaseCandidates = (tx: Tx, input: LeaseDeliveriesInput): readonly Leas
     .where(
       and(
         eq(analyticsDeliveries.state, 'pending'),
+        eq(analyticsEvents.storageGeneration, generation),
         sql`${analyticsDeliveries.nextAttemptAtMs} <= ${input.nowMs}`,
         sql`${analyticsDeliveries.attempts} < ${input.maxAttempts}`,
         unexpiredEventFilter(input.nowMs),
@@ -164,18 +167,6 @@ const listLeaseCandidates = (tx: Tx, input: LeaseDeliveriesInput): readonly Leas
     .orderBy(analyticsDeliveries.nextAttemptAtMs)
     .limit(input.limit)
     .all()
-
-type LeaseCandidate = Readonly<{
-  eventId: string
-  sinkVersionId: string
-  grantKey: string
-  grantKeyVersion: string
-  grantGeneration: number
-  attempts: number
-  eventName: string
-  occurredAtMs: number
-  propsJson: string
-}>
 
 const toLeasedDelivery = (row: LeaseCandidate, leaseUntilMs: number): LeasedDelivery => ({
   eventId: row.eventId,
@@ -196,96 +187,26 @@ export const leaseDeliveries = (
   deps: DeliveryStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
 ): LeasedDelivery[] => {
   const db = deps.getDrizzleDb()
-  const leaseUntilMs = input.nowMs + input.leaseMs
-  return db.transaction((tx) => {
-    releaseExpiredLeases(tx, input.nowMs)
-    exhaustDeadRows(tx, input.maxAttempts)
-    const eligible = listLeaseCandidates(tx, input).filter((row) =>
-      recheck(deps, tx, { grantKey: row.grantKey, keyVersion: row.grantKeyVersion, generation: row.grantGeneration }),
-    )
-    for (const row of eligible) leaseOne(tx, row, leaseUntilMs)
-    return eligible.map((row) => toLeasedDelivery(row, leaseUntilMs))
-  })
-}
-
-export type RenewLeaseInput = Readonly<{
-  eventId: string
-  sinkVersionId: string
-  expectedLeaseUntilMs: number
-  nowMs: number
-  leaseMs: number
-}>
-
-export const renewLease = (
-  input: RenewLeaseInput,
-  deps: DeliveryStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
-): boolean => {
-  const result = deps
-    .getDrizzleDb()
-    .$client.query<{ changes: number }, [number, string, string, number, number]>(
-      `UPDATE analytics_deliveries SET lease_until_ms = ?
-       WHERE event_id = ? AND sink_version_id = ? AND state = 'leased'
-         AND lease_until_ms = ? AND lease_until_ms > ?`,
-    )
-    .run(input.nowMs + input.leaseMs, input.eventId, input.sinkVersionId, input.expectedLeaseUntilMs, input.nowMs)
-  return result.changes > 0
-}
-
-export type MarkSendStartedInput = Readonly<{
-  eventId: string
-  sinkVersionId: string
-  grant: DeliveryGrantRef
-  nowMs: number
-}>
-
-export type MarkSendStartedResult =
-  | 'started'
-  | 'not_leased'
-  | 'lease_expired'
-  | 'grant_not_current'
-  | 'event_expired'
-  | 'send_in_progress'
-
-export const markSendStarted = (
-  input: MarkSendStartedInput,
-  deps: DeliveryStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
-): MarkSendStartedResult => {
-  const db = deps.getDrizzleDb()
-  const mutex = resolveGrantSendMutex(deps)
-  return db.transaction((tx) => {
-    const row = tx
-      .select()
-      .from(analyticsDeliveries)
-      .where(
-        and(eq(analyticsDeliveries.eventId, input.eventId), eq(analyticsDeliveries.sinkVersionId, input.sinkVersionId)),
+  const releaseFence = admitFence(deps)
+  if (releaseFence === null) {
+    log.warn('delivery lease refused: cutover fence held')
+    return []
+  }
+  try {
+    const leaseUntilMs = input.nowMs + input.leaseMs
+    return db.transaction((tx) => {
+      releaseExpiredLeases(tx, input.nowMs)
+      cancelExpiredPendingRows(tx, input.nowMs)
+      exhaustDeadRows(tx, input.maxAttempts)
+      const eligible = listLeaseCandidates(tx, input, activeGenerationOf(deps)).filter((row) =>
+        recheck(deps, tx, { grantKey: row.grantKey, keyVersion: row.grantKeyVersion, generation: row.grantGeneration }),
       )
-      .get()
-    if (row === undefined || row.state !== 'leased') return 'not_leased'
-    if (row.leaseUntilMs === null || row.leaseUntilMs < input.nowMs) {
-      releaseDeliveryToPendingIn(tx, input.eventId, input.sinkVersionId)
-      return 'lease_expired'
-    }
-    const expiresAtMs = eventExpiryForSendIn(tx, input.eventId)
-    if (expiresAtMs === null || !isUnexpired(input.nowMs, expiresAtMs)) {
-      log.warn({ sinkVersionId: input.sinkVersionId }, 'send-start blocked: event expired')
-      return 'event_expired'
-    }
-    if (!recheck(deps, tx, input.grant)) {
-      log.warn({ sinkVersionId: input.sinkVersionId }, 'send-start blocked: grant not current')
-      return 'grant_not_current'
-    }
-    if (mutex.tryAcquire(input.grant.grantKey) === null) {
-      log.warn({ sinkVersionId: input.sinkVersionId }, 'send-start blocked: another send holds the grant mutex')
-      return 'send_in_progress'
-    }
-    try {
-      markDeliverySendingIn(tx, input.eventId, input.sinkVersionId, input.nowMs)
-    } catch (error) {
-      mutex.release(input.grant.grantKey)
-      throw error
-    }
-    return 'started'
-  })
+      for (const row of eligible) leaseOne(tx, row, leaseUntilMs)
+      return eligible.map((row) => toLeasedDelivery(row, leaseUntilMs))
+    })
+  } finally {
+    releaseFence()
+  }
 }
 
 export {

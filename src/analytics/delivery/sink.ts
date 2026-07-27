@@ -108,3 +108,47 @@ export const assessSink = (input: AssessSinkInput): SinkGateResult => {
   if (!input.capabilities.deleteActor) return { approved: false, reason: 'missing_delete_actor' }
   return { approved: true }
 }
+
+export type SinkRegistryEntry = Readonly<{
+  kind: 'webhook' | 'openpanel'
+  egressMode: SinkEgressMode
+  capabilities: SinkCapabilities
+}>
+
+/**
+ * OpenPanel's Stage A capability assessment: deterministic reconciliation
+ * passes locally, but caller-controlled destination idempotency and complete
+ * per-actor deletion do not, so the strict AND keeps it rejected for
+ * pseudonymous egress.
+ */
+export const OPENPANEL_ASSESSED_CAPABILITIES: SinkCapabilities = {
+  callerControlledIdempotency: false,
+  deterministicReconciliation: true,
+  deleteActor: false,
+}
+
+/**
+ * The production sink registry. Only assessed aggregate egress is registered
+ * in v1; the `external_pseudonymous` registry stays empty until a sink passes
+ * the strict capability AND (caller-controlled destination idempotency,
+ * deterministic reconciliation, complete per-actor deletion).
+ */
+export const PRODUCTION_SINK_REGISTRY: readonly SinkRegistryEntry[] = [
+  {
+    kind: 'webhook',
+    egressMode: 'aggregate',
+    capabilities: {
+      callerControlledIdempotency: false,
+      deterministicReconciliation: false,
+      deleteActor: false,
+    },
+  },
+]
+
+export const listProductionSinks = (egressMode?: SinkEgressMode): readonly SinkRegistryEntry[] =>
+  egressMode === undefined
+    ? PRODUCTION_SINK_REGISTRY
+    : PRODUCTION_SINK_REGISTRY.filter((entry) => entry.egressMode === egressMode)
+
+export const findProductionSink = (kind: string, egressMode: SinkEgressMode): SinkRegistryEntry | null =>
+  PRODUCTION_SINK_REGISTRY.find((entry) => entry.kind === kind && entry.egressMode === egressMode) ?? null

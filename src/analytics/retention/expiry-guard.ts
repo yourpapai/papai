@@ -115,6 +115,14 @@ export const aggregateDeadlineMs = (
 ): number =>
   utcDayStartMs(utcDay) + DAY_MS + (assessed ? limits.assessedRollupDays : limits.canonicalEventDays) * DAY_MS
 
+export const nextUtcDayStartMs = (nowMs: number): number =>
+  utcDayStartMs(new Date(nowMs).toISOString().slice(0, 10)) + DAY_MS
+
+export const pendingAggregateDeliveryDeadlineMs = (
+  utcDay: string,
+  limits: RetentionLimits = DEFAULT_RETENTION_LIMITS,
+): number => utcDayStartMs(utcDay) + DAY_MS + limits.pendingDeliveryDays * DAY_MS
+
 export const governanceAuditDeadlineMs = (
   occurredAtMs: number,
   limits: RetentionLimits = DEFAULT_RETENTION_LIMITS,

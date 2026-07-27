@@ -34,7 +34,10 @@ export const createGrantSendMutex = (): GrantSendMutex => {
     tryAcquire: (grantKey) => {
       if (held.has(grantKey)) return null
       held.add(grantKey)
+      let released = false
       return () => {
+        if (released) return
+        released = true
         held.delete(grantKey)
       }
     },
@@ -52,6 +55,28 @@ export const withGrantSendLock = <T>(mutex: GrantSendMutex, grantKey: string, fn
   }
   try {
     return fn()
+  } finally {
+    release()
+  }
+}
+
+/**
+ * Async counterpart of {@link withGrantSendLock}: the per-grant mutex stays
+ * held across await boundaries (e.g. an in-flight sink request) until the
+ * returned promise settles.
+ */
+export const withGrantSendLockAsync = async <T>(
+  mutex: GrantSendMutex,
+  grantKey: string,
+  fn: () => Promise<T>,
+): Promise<T> => {
+  const release = mutex.tryAcquire(grantKey)
+  if (release === null) {
+    log.warn('grant send mutex contention')
+    throw new GrantMutexHeldError(grantKey)
+  }
+  try {
+    return await fn()
   } finally {
     release()
   }

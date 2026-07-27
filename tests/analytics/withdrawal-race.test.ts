@@ -7,7 +7,8 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { eq } from 'drizzle-orm'
 
-import { enqueueDelivery, leaseDeliveries, markSendStarted } from '../../src/analytics/delivery/store.js'
+import { enqueueDelivery, markSendStarted } from '../../src/analytics/delivery/delivery-lifecycle.js'
+import { leaseDeliveries } from '../../src/analytics/delivery/store.js'
 import type { DeliveryStoreDeps } from '../../src/analytics/delivery/store.js'
 import { classifyDelivery } from '../../src/analytics/delivery/store.js'
 import { recheckAndAssociateEvent } from '../../src/analytics/governance/collection-store.js'
