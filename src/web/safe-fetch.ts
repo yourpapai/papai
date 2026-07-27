@@ -53,7 +53,7 @@ export const setAssertPublicUrlForTesting = (fn?: (url: URL) => Promise<void>): 
 
 const defaultDeps: SafeFetchDeps = {
   fetch: (input, init) => globalThis.fetch(input, init),
-  assertPublicUrl: (url) => (assertPublicUrlOverride ?? assertPublicUrl)(url),
+  assertPublicUrl,
 }
 
 function throwWebFetchError(appError: WebFetchError, message: string): never {
@@ -88,6 +88,9 @@ function normalizeHostname(hostname: string): string {
 }
 
 export async function assertPublicUrl(url: URL): Promise<void> {
+  // Honor the testing override directly so direct importers (fetchProviderModels, etc.)
+  // stay hermetic without each having to thread a deps seam. Production never sets it.
+  if (assertPublicUrlOverride !== undefined) return assertPublicUrlOverride(url)
   if (hasBlockedUrlParts(url)) {
     throwWebFetchError(webFetchError.blockedHost(), 'Blocked non-public URL')
   }

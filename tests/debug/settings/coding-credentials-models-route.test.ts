@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { handleCodingCredentialsModelsRoute } from '../../../src/debug/settings/coding-credentials-models-route.js'
 import { addUser } from '../../../src/users.js'
+import { setAssertPublicUrlForTesting } from '../../../src/web/safe-fetch.js'
 import {
   mockLogger,
   restoreFetch,
@@ -31,6 +32,9 @@ describe('coding-credentials models route', () => {
   beforeEach(async () => {
     mockLogger()
     process.env['INSTANCE_CONFIG_KEY'] = 'e'.repeat(64)
+    // The /models route proxies to fetchProviderModels, which runs the real assertPublicUrl
+    // (live DNS) before fetch. Bypass it so the suite is hermetic.
+    setAssertPublicUrlForTesting(() => Promise.resolve())
     await setupTestDb()
     seedTestPlatformInstance({ id: PLATFORM_INSTANCE_ID })
     addUser({
@@ -46,6 +50,7 @@ describe('coding-credentials models route', () => {
   })
 
   afterEach(() => {
+    setAssertPublicUrlForTesting(undefined)
     restoreFetch()
   })
 

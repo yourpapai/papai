@@ -3,12 +3,22 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 
 import { fetchProviderModels } from '../../src/coding-credentials/provider-models.js'
+import { setAssertPublicUrlForTesting } from '../../src/web/safe-fetch.js'
 import { restoreFetch, setMockFetch } from '../utils/test-helpers.js'
 
-afterEach(() => restoreFetch())
+// fetchProviderModels runs the real assertPublicUrl (live DNS) before reaching fetch.
+// These suites stub fetch but must also bypass the DNS guard so they don't depend on
+// a real resolver reaching routable IPs for api.openai.com / api.anthropic.com.
+// The SSRF test re-enables the real guard locally.
+beforeEach(() => setAssertPublicUrlForTesting(() => Promise.resolve()))
+
+afterEach(() => {
+  setAssertPublicUrlForTesting(undefined)
+  restoreFetch()
+})
 
 describe('fetchProviderModels', () => {
   it('lists OpenAI models', async () => {
@@ -43,6 +53,8 @@ describe('fetchProviderModels', () => {
   })
 
   it('rejects a private base URL (SSRF)', async () => {
+    // This test exists to prove the SSRF guard fires, so re-enable the real assertion.
+    setAssertPublicUrlForTesting(undefined)
     await expect(fetchProviderModels('openai-compatible', 'http://127.0.0.1/v1', 'k', 'codex')).rejects.toThrow()
   })
 
