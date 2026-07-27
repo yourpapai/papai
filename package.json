@@ -126,7 +126,7 @@
     "vite": "^8.1.4"
   },
   "overrides": {
-    "typescript": "$typescript"
+    "typescript": "$@typescript/typescript6"
   },
   "msw": {
     "workerDirectory": [
