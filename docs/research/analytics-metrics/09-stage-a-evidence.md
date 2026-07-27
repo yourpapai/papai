@@ -62,7 +62,7 @@ aggregate publication.
 | 13 — lifecycle/subject rights | 13A: 51 pass / 0 fail (retention, withdrawal-race, subject-export, deletion); fix d994c6f7e. 13B: 106 pass / 0 fail (rekey + cutover suites, all 14 checkpoints, abort matrix, shadow equation, interruption/resume at every subphase boundary, all 9 retirement refusals, 10-class delta survival) | clean / clean (knip clean) | 13A: abc702633 + d994c6f7e; 13B: 193327d5b + 1cdb28106 | 2026-07-26 |
 | 14 — snapshot/metabase | 193 pass / 0 fail (snapshot, metabase-models, friction-sample, rekey, rekey-cutover aggregators); full tests/analytics 1110 pass; fix 026f5be3f (DAU/MAU + sessions metrics, strategy/coverage, in-admission generation resolution) | clean / clean (security 0 findings) | 3361cd9fb + 026f5be3f | 2026-07-27 |
 | 15 — aggregate delivery | 48 pass / 0 fail (http-policy, aggregate-release, delivery-worker, captured-egress named gates); mirrored delivery suites + full tests/analytics 1206 pass; fix 8de50e5c4 (aggregate cutover-drain: two-table sendingInFlight, fence-free classify) | clean / clean (knip clean, format clean, security 0 findings) | 4a1ecab2a + 8de50e5c4 | 2026-07-27 |
-| 16 — settings surfaces | | | | |
+| 16 — settings surfaces | server analytics suites 36 pass / 0 fail; test:client 1231 pass; stories 110 pass (incl. SCN-settings-admin-analytics); story contracts 354 pass; build:client clean | clean / clean (knip clean) | 471ac40f7 | 2026-07-27 |
 | 17 — job registration | | | | |
 | 18 — docs/release gates | | | | |
 
@@ -267,3 +267,10 @@ aggregate publication.
   delivery lane (crossed sinkVersionId would misroute); `assessReleaseRequest`
   has no production caller yet (wire with the Task 16 release API); drain
   window is lease-bounded in both lanes (consistent).
+- Task 16 (parked Minors): body-supplied actor IDs on export/withdraw/delete
+  are ignored not rejected (query-param path rejects; inconsistent);
+  action-purity assertion written only for preference-write + withdrawal, not
+  export/delete; admin gate attestation checkboxes default to true
+  (unchecked-by-default would match evidentiary intent); stories pass
+  undeclared contextId/scope args (dead args); SCN-settings-admin-analytics
+  has no coverage.ts entry (invisible to coverage counting).
