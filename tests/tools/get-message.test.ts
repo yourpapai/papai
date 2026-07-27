@@ -23,7 +23,7 @@ const otherThreadContextId = toScopedThreadContextId({
 })
 const groupContextId = toScopedContextId({ platformInstanceId: 'inst1', nativeContextId: 'group1' })
 
-type GetMessageResult = { messageId: string; text: string }
+type GetMessageResult = { messageId: string; text: string; replyToMessageId?: string }
 type NotFoundResult = { not_found: boolean }
 
 function isGetMessageResult(value: unknown): value is GetMessageResult {
@@ -78,5 +78,43 @@ describe('get_message tool', () => {
   test('schema requires messageId', () => {
     expect(schemaValidates(makeGetMessageTool('u', 'g', 'group'), { messageId: 'x' })).toBe(true)
     expect(schemaValidates(makeGetMessageTool('u', 'g', 'group'), {})).toBe(false)
+  })
+
+  test('schema accepts a multi-character messageId (guards min→max mutation)', () => {
+    expect(schemaValidates(makeGetMessageTool('u', 'g', 'group'), { messageId: 'msg-12345' })).toBe(true)
+  })
+
+  test('returns a message including replyToMessageId when present', async () => {
+    cacheMessage({
+      messageId: 'parent',
+      contextId: threadContextId,
+      groupContextId,
+      text: 'root',
+      timestamp: 1,
+    })
+    cacheMessage({
+      messageId: 'child',
+      contextId: threadContextId,
+      groupContextId,
+      text: 'a reply',
+      replyToMessageId: 'parent',
+      timestamp: 2,
+    })
+    await flushPendingWrites()
+    const tool = makeGetMessageTool('u1', threadContextId, 'group')
+    const result: unknown = await getToolExecutor(tool)({ messageId: 'child' })
+    assert(isGetMessageResult(result), 'Invalid result')
+    expect(result.messageId).toBe('child')
+    expect(result.replyToMessageId).toBe('parent')
+  })
+
+  test('DM scope fetches a DM-scoped message', async () => {
+    cacheMessage({ messageId: 'dm1', contextId: 'dm-alice', text: 'secret', timestamp: 1 })
+    await flushPendingWrites()
+    const tool = makeGetMessageTool('alice', 'dm-alice', 'dm')
+    const result: unknown = await getToolExecutor(tool)({ messageId: 'dm1' })
+    assert(isGetMessageResult(result), 'Invalid result')
+    expect(result.messageId).toBe('dm1')
+    expect(result.text).toBe('secret')
   })
 })
