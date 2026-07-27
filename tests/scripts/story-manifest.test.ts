@@ -123,6 +123,7 @@ describe('story manifest', () => {
       'scripts/coverage/normalize-lcov.ts',
       'scripts/coverage/ratchet-lib.ts',
       'scripts/coverage/story-coverage-gate.ts',
+      'scripts/coverage/story-scope.ts',
       'scripts/story/cli.ts',
       'scripts/story/dependencies-install.ts',
       'scripts/story/dependencies-tree.ts',

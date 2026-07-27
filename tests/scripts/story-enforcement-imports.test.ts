@@ -42,6 +42,7 @@ describe('story enforcement snapshot self-containment', () => {
     expect(isFrozenCoverageSupportPath('scripts/coverage/normalize-lcov.ts')).toBe(true)
     expect(isFrozenCoverageSupportPath('scripts/coverage/story-coverage-gate.ts')).toBe(true)
     expect(isFrozenCoverageSupportPath('scripts/coverage/ratchet-lib.ts')).toBe(true)
+    expect(isFrozenCoverageSupportPath('scripts/coverage/story-scope.ts')).toBe(true)
     expect(isFrozenCoverageSupportPath('scripts/coverage/ratchet.ts')).toBe(false)
   })
 })
