@@ -72,7 +72,7 @@ aggregate publication.
 |---|---|---|---|
 | 2 | rebased onto origin/master 0e5cfcc9e | 2026-07-24 | master added `069_alert_matched_task_ids`; analytics migration block renumbered to 070–073 per 06's own renumber rule (plan-sync commit follows) |
 | 8 | rebased onto origin/master 998f394cc | 2026-07-26 | master's 76334f1f6 rewrote two test files; merged: kept master's suites + preserved our scope-free descriptor assertion (collaboration-tools-builder) and scope-passthrough tests (auto-provision, adapted to required 5th scope param) |
-| 13 | | | |
+| 13 | rebased onto origin/master 9e6760773 | 2026-07-26 | master added `070_message_metadata_history_search` + `071_message_embeddings`; analytics block renumbered to 072–075 per 06's renumber rule; also merged master's bot caching refactor (cacheObservedIncomingMessage) with our bot split, and regenerated tool slugs for master's new tools |
 
 ## Stage A exit checklist
 

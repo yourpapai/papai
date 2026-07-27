@@ -13,7 +13,7 @@ See LICENSE in the project root for details.
 
 **Architecture:** Typed source facts → fail-closed normalizer → canonical events (governance-gated) and closed daily aggregates (default lane) in SQLite; per-sink delivery ledger for any egress; curated read-only snapshot → Metabase. All lanes behind a runtime mode switch; pseudonymous machinery dormant until Stage C.
 
-**Tech Stack:** Bun, TypeScript (strict, `.js` import extensions), Zod v4, SQLite migrations 070–073, pino, p-limit, Svelte (settings UI), Metabase (BI, ad-hoc container).
+**Tech Stack:** Bun, TypeScript (strict, `.js` import extensions), Zod v4, SQLite migrations 072–075, pino, p-limit, Svelte (settings UI), Metabase (BI, ad-hoc container).
 
 **Plan-of-record relationship:** [`docs/research/analytics-metrics/06-implementation-plan.md`](../../research/analytics-metrics/06-implementation-plan.md) ("06") is the authoritative, independently reviewed step list — 3,228 lines of per-checkbox TDD steps, exact code, and exact commit commands. This plan is the **execution wrapper**: it fixes task order, files, interfaces, gates, and review focus per task, and the orchestration protocol between tasks. To avoid two diverging copies, task steps are **not** duplicated here; the orchestrator copies 06's task section **verbatim** into each subagent brief. If 06 and this wrapper ever disagree, stop and sync per the spec.
 
@@ -27,7 +27,7 @@ Every task implicitly includes all of the following (exact values from 02/03/06/
 - Sessionization: partition `(actor_key, thread_key ?? context_key)`; new session when gap **strictly greater than 1,800,000 ms**; Discord `thread_key = null`.
 - Pseudonyms: HMAC-SHA-256 over `purpose_domain || 0x00 || length-prefixed UTF-8 components`, 192-bit truncation, base64url; keyrings from `ANALYTICS_HMAC_KEYRING` / `ANALYTICS_GOVERNANCE_HMAC_KEYRING`; **never** reuse `stats_anonymity_salt`; raw identifiers never persist.
 - `intent.v1`: 23 immutable labels I01–I23; deterministic `hybrid_v1` (tool-trace → metadata) only; SMALL_MODEL is never imported or invoked.
-- Migrations 070–073 are additive only; rollback = runtime kill switch, never destructive migration reversal.
+- Migrations 072–075 are additive only; rollback = runtime kill switch, never destructive migration reversal.
 - The 17 release-blocking privacy controls (03 §12) are CI gates; controls 1–9, 14–17 and aggregate parts of 15 also block aggregate publication. C3 canaries across all surfaces.
 - Repo conventions: TDD write hooks (failing test first), pino metadata-first logging, no secrets in logs, `p-limit` for bounded concurrency, no lint-disable/type-ignore comments, error extraction via `error instanceof Error ? error.message : String(error)`.
 - One commit per task using the exact `git add`/`git commit -m` command in 06's task section; record `git rev-parse HEAD` in the evidence doc after each task commit.
@@ -73,15 +73,15 @@ Every task implicitly includes all of the following (exact values from 02/03/06/
 
 **Steps:** 06 §Task 2 verbatim.
 **Files:**
-- Create: `src/db/analytics-schema.ts`, `src/db/migrations/070_analytics_foundation.ts`, `src/analytics/storage/event-store.ts`, `src/analytics/storage/aggregate-store.ts`, `src/analytics/storage/rejection-store.ts`, `src/analytics/storage/backfill-provenance-store.ts`, `src/analytics/storage/epoch-store.ts`
+- Create: `src/db/analytics-schema.ts`, `src/db/migrations/072_analytics_foundation.ts`, `src/analytics/storage/event-store.ts`, `src/analytics/storage/aggregate-store.ts`, `src/analytics/storage/rejection-store.ts`, `src/analytics/storage/backfill-provenance-store.ts`, `src/analytics/storage/epoch-store.ts`
 - Modify: `src/db/schema.ts`, `src/db/index.ts`
-- Test: `tests/db/migrations/070_analytics_foundation.test.ts`, `tests/db/migration-registration.test.ts`, `tests/analytics/storage.test.ts`
+- Test: `tests/db/migrations/072_analytics_foundation.test.ts`, `tests/db/migration-registration.test.ts`, `tests/analytics/storage.test.ts`
 
 **Interfaces:**
 - Consumes: Task 1 contracts/registry.
 - Produces: migration 070 tables (canonical events, daily counters/histograms, process epochs, epoch source counters, aggregate epoch contributions, normalization rejections, backfill runs/event map/contributions); storage store APIs used by Tasks 5, 11–13.
 
-**Named gate:** `bun test tests/db/migrations/070_analytics_foundation.test.ts tests/db/migration-registration.test.ts tests/analytics/storage.test.ts`
+**Named gate:** `bun test tests/db/migrations/072_analytics_foundation.test.ts tests/db/migration-registration.test.ts tests/analytics/storage.test.ts`
 **Review focus:** migration registered in order after 068; additive only; deterministic event-id primary key with duplicate-swallow; no outbox reuse of legacy `forwarded_*` columns.
 **Milestone:** rebase onto `origin/master` after this task's commit.
 **Commit:** `feat(analytics): add canonical and aggregate storage`
@@ -106,15 +106,15 @@ Every task implicitly includes all of the following (exact values from 02/03/06/
 
 **Steps:** 06 §Task 4 verbatim.
 **Files:**
-- Create: `src/db/analytics-governance-schema.ts`, `src/db/migrations/071_analytics_governance.ts`, `src/analytics/governance/policy-store.ts`, `src/analytics/governance/preference-store.ts`, `src/analytics/governance/collection-store.ts`, `src/analytics/governance/grant-store.ts`, `src/analytics/governance/generation-store.ts`, `src/analytics/governance/eligibility.ts`
+- Create: `src/db/analytics-governance-schema.ts`, `src/db/migrations/073_analytics_governance.ts`, `src/analytics/governance/policy-store.ts`, `src/analytics/governance/preference-store.ts`, `src/analytics/governance/collection-store.ts`, `src/analytics/governance/grant-store.ts`, `src/analytics/governance/generation-store.ts`, `src/analytics/governance/eligibility.ts`
 - Modify: `src/db/schema.ts`, `src/db/index.ts`
-- Test: `tests/db/migrations/071_analytics_governance.test.ts`, `tests/db/migration-registration.test.ts`, `tests/analytics/governance-store.test.ts`, `tests/analytics/collection-store.test.ts`, `tests/analytics/grant-store.test.ts`, `tests/analytics/generation-store.test.ts`, `tests/analytics/eligibility-matrix.test.ts`
+- Test: `tests/db/migrations/073_analytics_governance.test.ts`, `tests/db/migration-registration.test.ts`, `tests/analytics/governance-store.test.ts`, `tests/analytics/collection-store.test.ts`, `tests/analytics/grant-store.test.ts`, `tests/analytics/generation-store.test.ts`, `tests/analytics/eligibility-matrix.test.ts`
 
 **Interfaces:**
 - Consumes: Tasks 1–3 (contracts, storage, pseudonyms).
 - Produces: `EligibilityDecision` evaluation (pure mode × basis × preference × role × lane matrix), generation-bearing `CollectionEligibilityRef`/`DeliveryGrantRef` stores, singleton active-generation row, append-only policy audit.
 
-**Named gate:** `bun test tests/db/migrations/071_analytics_governance.test.ts tests/db/migration-registration.test.ts tests/analytics/governance-store.test.ts tests/analytics/collection-store.test.ts tests/analytics/grant-store.test.ts tests/analytics/generation-store.test.ts tests/analytics/eligibility-matrix.test.ts`
+**Named gate:** `bun test tests/db/migrations/073_analytics_governance.test.ts tests/db/migration-registration.test.ts tests/analytics/governance-store.test.ts tests/analytics/collection-store.test.ts tests/analytics/grant-store.test.ts tests/analytics/generation-store.test.ts tests/analytics/eligibility-matrix.test.ts`
 **Review focus:** every mode × basis × preference × role × egress combination has the 03-mandated result; guests never get a longitudinal decision; aggregate lanes always carry `null` refs.
 **Commit:** `feat(analytics): enforce governance eligibility`
 
@@ -186,15 +186,15 @@ Every task implicitly includes all of the following (exact values from 02/03/06/
 
 **Steps:** 06 §Task 9 verbatim.
 **Files:**
-- Create: `src/db/analytics-delivery-schema.ts`, `src/db/migrations/072_analytics_delivery.ts`, `src/analytics/delivery/sink.ts`, `src/analytics/delivery/sink-service.ts`, `src/analytics/delivery/store.ts`
+- Create: `src/db/analytics-delivery-schema.ts`, `src/db/migrations/074_analytics_delivery.ts`, `src/analytics/delivery/sink.ts`, `src/analytics/delivery/sink-service.ts`, `src/analytics/delivery/store.ts`
 - Modify: `src/db/schema.ts`, `src/db/index.ts`, `src/analytics/governance/grant-store.ts`
-- Test: `tests/db/migrations/072_analytics_delivery.test.ts`, `tests/db/migration-registration.test.ts`, `tests/analytics/delivery-store.test.ts`, `tests/analytics/sink-gate.test.ts`, `tests/analytics/sink-lifecycle.test.ts`
+- Test: `tests/db/migrations/074_analytics_delivery.test.ts`, `tests/db/migration-registration.test.ts`, `tests/analytics/delivery-store.test.ts`, `tests/analytics/sink-gate.test.ts`, `tests/analytics/sink-lifecycle.test.ts`
 
 **Interfaces:**
 - Consumes: Tasks 2, 4.
 - Produces: per-`(event_id, sink_version_id)` delivery rows with states `pending|leased|sending|delivered|ambiguous|dead|delete_pending|deleted|cancelled`, write-only versioned sink lifecycle (create/verify/rotate/disable, secrets never returned), the sink capability gate (`callerControlledIdempotency` AND `deterministicReconciliation` AND `deleteActor`).
 
-**Named gate:** `bun test tests/db/migrations/072_analytics_delivery.test.ts tests/db/migration-registration.test.ts tests/analytics/delivery-store.test.ts tests/analytics/sink-gate.test.ts tests/analytics/sink-lifecycle.test.ts`
+**Named gate:** `bun test tests/db/migrations/074_analytics_delivery.test.ts tests/db/migration-registration.test.ts tests/analytics/delivery-store.test.ts tests/analytics/sink-gate.test.ts tests/analytics/sink-lifecycle.test.ts`
 **Review focus:** legacy `forwarded_*` columns untouched; OpenPanel fails the capability gate as documented; ledger-referenced sink versions cannot be deleted — **privacy control 9 (store parts) — update the control matrix**.
 **Commit:** `feat(analytics): add independent delivery ledger`
 
@@ -218,15 +218,15 @@ Every task implicitly includes all of the following (exact values from 02/03/06/
 
 **Steps:** 06 §Task 11 verbatim.
 **Files:**
-- Create: `src/db/migrations/073_analytics_materializations.ts`, `src/analytics/derive/sessionizer.ts`, `src/analytics/derive/outcomes.ts`, `src/analytics/derive/features.ts`, `src/analytics/derive/friction.ts`, `src/analytics/jobs/derive.ts`
+- Create: `src/db/migrations/075_analytics_materializations.ts`, `src/analytics/derive/sessionizer.ts`, `src/analytics/derive/outcomes.ts`, `src/analytics/derive/features.ts`, `src/analytics/derive/friction.ts`, `src/analytics/jobs/derive.ts`
 - Modify: `src/db/analytics-schema.ts`, `src/db/index.ts`
-- Test: `tests/db/migrations/073_analytics_materializations.test.ts`, `tests/db/migration-registration.test.ts`, `tests/analytics/sessionizer.test.ts`, `tests/analytics/outcomes.test.ts`, `tests/analytics/feature-materialization.test.ts`, `tests/analytics/friction.test.ts`
+- Test: `tests/db/migrations/075_analytics_materializations.test.ts`, `tests/db/migration-registration.test.ts`, `tests/analytics/sessionizer.test.ts`, `tests/analytics/outcomes.test.ts`, `tests/analytics/feature-materialization.test.ts`, `tests/analytics/friction.test.ts`
 
 **Interfaces:**
 - Consumes: Tasks 2–10 (canonical store, intent, features).
 - Produces: versioned `sessionization.v1` (strict 1,800,000 ms gap; 29:59/30:00/30:00.001 fixtures), `outcome.v1` (eight terminal states incl. `censored`), daily feature exposure/use materialization, `friction.v1` (seven binary components, 0–7).
 
-**Named gate:** `bun test tests/db/migrations/073_analytics_materializations.test.ts tests/db/migration-registration.test.ts tests/analytics/sessionizer.test.ts tests/analytics/outcomes.test.ts tests/analytics/feature-materialization.test.ts tests/analytics/friction.test.ts`
+**Named gate:** `bun test tests/db/migrations/075_analytics_materializations.test.ts tests/db/migration-registration.test.ts tests/analytics/sessionizer.test.ts tests/analytics/outcomes.test.ts tests/analytics/feature-materialization.test.ts tests/analytics/friction.test.ts`
 **Review focus:** session boundary fixtures exact; recovered never labeled first-time success; friction count is the plain sum of bits; guests produce no session/outcome/intent rows — **privacy controls 10, 11 (fixtures) — update the control matrix**.
 **Commit:** `feat(analytics): materialize sessions outcomes and friction`
 
@@ -363,4 +363,4 @@ Every task implicitly includes all of the following (exact values from 02/03/06/
 
 - **Spec coverage:** execution spec sections 1–5 map to: orchestration protocol (§1), gates/evidence incl. Task 0/19 and control matrix (§2), branch/PR + rebase milestones (§3), Stage B handoff (§4), risks handled via stop-and-report + review-focus bullets (§5). All four decision points are encoded in Global Constraints.
 - **Placeholders:** none — every task names exact files, exact test commands, exact commit messages copied from 06.
-- **Type consistency:** interface names match 06 §"Public interfaces to hold stable" verbatim; migration numbers 070–073; event/mode/label vocabularies match 02/03/04.
+- **Type consistency:** interface names match 06 §"Public interfaces to hold stable" verbatim; migration numbers 072–075; event/mode/label vocabularies match 02/03/04.
