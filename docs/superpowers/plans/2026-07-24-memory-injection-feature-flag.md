@@ -11,6 +11,11 @@ See LICENSE in the project root for details.
 
 **Goal:** Gate the per-turn injection of long-term-memory records behind a per-memory-scope boolean (`inject_records`) that defaults **off**, exposed as an opt-in toggle in the settings `MemorySection`.
 
+> **Execution status (2026-07-26): Historical — implemented.** The original unchecked step
+> boxes are authoring history; the reconciliation table and drift log at the end are
+> authoritative. Do not start new work from this plan; use
+> `2026-07-26-memory-production-roadmap.md`.
+
 **Architecture:** A new boolean column on `memory_profiles` (beside the existing capture `enabled` flag), read from the profile that `buildMessagesWithMemory` already loads — so no new reads, no signature change, no call-site churn. When off, the long-term-memory system message still carries the profile; only records are suppressed. End-to-end plumbing mirrors the existing capture-enabled toggle.
 
 **Tech Stack:** Bun 1.3, strict TypeScript, Drizzle ORM over `bun:sqlite`, Zod v4, `bun:test`, Svelte 5 (runes) settings SPA.
@@ -614,3 +619,16 @@ git commit -m "docs(memory): ADR 0225 record injection opt-in"
 **Type consistency:** `injectRecords` (camelCase, TS) ↔ `inject_records` (snake_case, SQL) used consistently; `setMemoryRecordInjectionEnabled(scope, enabled, now): MemoryProfile` signature identical across Tasks 2/3/4; `MemoryResponse.injectRecords` matches the GET payload key in Task 4.
 
 **Placeholder scan:** every code step shows concrete code; the two test steps that defer to existing local helpers (Task 4 route helpers, Task 5 story fixture) explicitly say to mirror the file's existing capture test/story rather than invent helpers — appropriate because those helpers are file-local and already established.
+
+## Execution Reconciliation — 2026-07-26
+
+| Tasks | Status | Code evidence |
+| --- | --- | --- |
+| 1–6 | Complete in code | Migration 070, profile/store/API/client toggle, `buildMessagesWithMemory` gate, ADR 0225, and migration/conversation/settings tests; commits `52767da` through `a6ed1ef`. |
+
+## Drift Log
+
+| Date | Category | Item | Decision |
+| --- | --- | --- |
+| 2026-07-26 | In-plan, stale task state | Tasks 1–6 had landed commits but every step box remained unchecked. | Recorded completion above; retained original boxes as authoring history. |
+| 2026-07-26 | Scope boundary | This flag only stops automatic `memory_records` injection; it does not make a future query-aware injection safe or approved. | Tier 3 remains blocked by the active roadmap’s P1/P2 gates. |

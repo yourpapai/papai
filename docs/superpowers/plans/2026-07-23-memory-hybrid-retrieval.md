@@ -11,6 +11,11 @@ See LICENSE in the project root for details.
 
 **Goal:** Replace papai's ASCII-only, either/or long-term-memory retrieval with a Unicode FTS5 lexical channel fused against a version-checked dense channel by weighted reciprocal rank fusion, with validity and expiry enforced at query time.
 
+> **Execution status (2026-07-26): Historical — implemented.** The original unchecked
+> step boxes are retained as the authoring record, not live task state. The reconciliation
+> table and drift log at the end of this document are authoritative. Do not start new work
+> from this plan; use `2026-07-26-memory-production-roadmap.md`.
+
 **Architecture:** Two independent retrieval channels feed one fusion step. The lexical channel runs SQLite FTS5 with the existing `unicode61` tokenizer, ranked by `bm25()`, driven by a Unicode tokenizer that emits quoted prefix terms joined by `OR`. The dense channel is the existing in-process cosine scan, newly restricted to records whose stored embedding identity matches the identity of the config context running the query. Weighted RRF (`k=60`, lexical `2`, dense `1`) merges the two ranked lists, so a record missing an embedding stays reachable. A shared SQL validity predicate is applied to every read path, and four new columns plus a post-boot backfill job give every embedding a recorded model, dimension, and version.
 
 **Tech Stack:** Bun, TypeScript (strict), Drizzle ORM over `bun:sqlite`, SQLite FTS5, Zod v4, `p-limit`, `bun:test`.
@@ -2595,3 +2600,18 @@ git commit -m "test(memory): bilingual golden set guarding audit defects 1-4"
 - **Ranking shifts on deploy.** There is no shadow mode in this slice. The golden set proves the defects are fixed; it is synthetic and does not prove real-world recall improved.
 - **Dense-coverage gap during backfill.** Every pre-existing vector is `unknown` and therefore dense-ineligible until the sweep reaches it. This is deliberate — it is what prevents the invisible-record bug from recurring during migration.
 - **Defects 5 (erasure) and 6 (query-aware injection) are out of scope** and belong to their own specs.
+
+## Execution Reconciliation — 2026-07-26
+
+| Tasks | Status | Code evidence |
+| --- | --- | --- |
+| 1–10 | Complete in code | Migrations 068; `record-conditions.ts`, `lexical-*`, `fusion.ts`, `hybrid-search.ts`, `embedding-*`; `hybrid-retrieval.golden.test.ts`; commits `289c989` through `99e3475`. |
+
+The original line anchors and unchecked step boxes are stale. The resync reran the focused hybrid/memory suite on 2026-07-26 (366 passing tests across the relevant surfaces); it did not re-attest the historical full-repository gate in Task 10.
+
+## Drift Log
+
+| Date | Category | Item | Decision |
+| --- | --- | --- | --- |
+| 2026-07-26 | In-plan, stale task state | Tasks 1–10 had landed commits but every step box remained unchecked. | Recorded completion above; retained original boxes as authoring history. |
+| 2026-07-26 | Scope boundary | Durable erasure and delivery/injection work followed in separate plans. | Kept out of this completed retrieval plan; forward work is centralized in `2026-07-26-memory-production-roadmap.md`. |

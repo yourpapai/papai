@@ -50,6 +50,9 @@ Living companions (**not** part of the sealed `00`–`06` evidence record):
   production data-collection plan to decide `deriveInjectionQuery` on evidence.
   It cites external systems and benchmarks as research inputs only; no published
   score is transferred to papai.
+- [Production roadmap](../../superpowers/plans/2026-07-26-memory-production-roadmap.md)
+  is the sole active forward-looking implementation sequence. The older memory
+  implementation plans are reconciled historical records, not active work queues.
 
 Protocol v4's deterministic papai component and storage tracks were reproduced
 locally on 2026-07-23. Protocol-v3 artifacts are preserved as a superseded

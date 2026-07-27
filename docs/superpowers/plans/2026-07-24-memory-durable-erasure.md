@@ -11,6 +11,11 @@ See LICENSE in the project root for details.
 
 **Goal:** Make memory forget and scope-clear durable — a forgotten record is unreachable by every channel, physically zeroed, and not silently re-learned; a scope clear wipes long-term memory, working memory, watermark, tombstones, and caches.
 
+> **Execution status (2026-07-26): Historical — implemented, then strengthened by later
+> erasure slices.** The original unchecked step boxes are authoring history; the reconciliation
+> table and drift log at the end are authoritative. Do not start new work from this plan; use
+> `2026-07-26-memory-production-roadmap.md`.
+
 **Architecture:** `forget_memory` switches from soft-archive to a transactional purge that deletes the canonical row (FTS + embedding drop via existing triggers) and writes a content-hash **tombstone**. Background capture and extraction consult the tombstone to suppress recapture; explicit `remember` overrides and clears it. `clearMemoryScope` is extended to span the two scope-keying schemes and evict caches. `PRAGMA secure_delete=ON` removes freelist/WAL byte residue.
 
 **Tech Stack:** Bun + `bun:sqlite`, Drizzle ORM, Zod v4, Vercel AI SDK `tool()`, `bun:test`.
@@ -1186,3 +1191,17 @@ git commit -m "docs(memory): document durable erasure semantics"
 **Placeholder scan:** The two `runner.test.ts` / `memory.test.ts` steps that reference "the existing test's construction" are intentional — they point at concrete, already-present setups in those files rather than inventing signatures; every source-code step contains complete code.
 
 **Type consistency:** `purgeMemoryRecord(scope, recordId, now): boolean`, `clearMemoryScope` return shape, and `tombstoneValues`/`isContentTombstoned`/`deleteMatchingTombstone`/`insertTombstone` signatures are used identically across tasks.
+
+## Execution Reconciliation — 2026-07-26
+
+| Tasks | Status | Code evidence |
+| --- | --- | --- |
+| 1–7 | Complete in code | Migration 069, `tombstone.ts`, purge/tool wiring, capture/runner suppression, extended scope clear, secure-delete and bilingual durable-erasure tests; commits `7d53c7e` through `03ab843`. |
+
+## Drift Log
+
+| Date | Category | Item | Decision |
+| --- | --- | --- | --- |
+| 2026-07-26 | In-plan, stale task state | Tasks 1–7 had landed commits but every step box remained unchecked. | Recorded completion above; retained original boxes as authoring history. |
+| 2026-07-26 | Out-of-plan, on-goal | Derived profile/summary invalidation and same-content sweep were required to make the stated “every channel” promise meaningful. | Delivered and tracked separately in the prose-cache and erasure-completeness plans; not silently folded into this plan. |
+| 2026-07-26 | Scope boundary | WAL/backup/restore, replica, and race guarantees are not proven by this live-store slice. | Remain acceptance gates in the active roadmap, not completed work. |

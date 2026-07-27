@@ -11,6 +11,11 @@ See LICENSE in the project root for details.
 
 **Goal:** Make a memory forget destroy every row in the scope carrying the forgotten content, enforce tombstone suppression at the record write boundary rather than at two call sites, and prove unreachability on five independent retrieval channels.
 
+> **Execution status (2026-07-26): Historical — implemented.** The original unchecked step
+> boxes are authoring history; the reconciliation table and drift log at the end are
+> authoritative. Do not start new work from this plan; use
+> `2026-07-26-memory-production-roadmap.md`.
+
 **Architecture:** Two coupled behavior changes plus test completeness. `purgeMemoryRecord` gains a content-hash sweep inside its existing transaction, so a `provisional` twin of the purged fact dies with it. The `isContentTombstoned` checks move out of `capture.ts`/`runner.ts` and into `saveMemoryRecord` and `updateMemoryRecord`, which start returning `null` for suppressed writes. Together these close the re-materialization hole: a tombstoned provisional cannot exist to be promoted, because one created before the forget is swept and one created after is refused at insert.
 
 **Tech Stack:** Bun, TypeScript (strict), Drizzle ORM over `bun:sqlite`, `bun:test`, Zod v4, pino.
@@ -755,3 +760,16 @@ Expected: lint, typecheck, format, and the full test suite pass.
 - [ ] **Confirm the five channels are covered**
 
 Open `tests/long-term-memory/durable-erasure.golden.test.ts` and confirm the post-purge block asserts, for both EN and RU: lexical (`searchLexical`), semantic (`semanticIds`), `listMemoryRecords` across every status, profile prose (`visibleProfileText` → `null`, in the second test), and the rolling summary (`memory_summary` empty, in the second test) — plus the two raw probes, the canonical row and `ftsMatchCount`.
+
+## Execution Reconciliation — 2026-07-26
+
+| Tasks | Status | Code evidence |
+| --- | --- | --- |
+| 1–5 | Complete in code | Content-hash sweep, write-boundary tombstone gate, writer propagation, five-channel golden assertions, and the explicit `memory_facts` boundary; commits `a9f11d9` through `db306d2`. |
+
+## Drift Log
+
+| Date | Category | Item | Decision |
+| --- | --- | --- |
+| 2026-07-26 | In-plan, stale task state | Tasks 1–5 had landed commits but every step box remained unchecked. | Recorded completion above; retained original boxes as authoring history. |
+| 2026-07-26 | In-plan, boundary clarification | “Every channel” could be misread to include the legacy `memory_facts` task-result cache. | Task 5 and its test make the deliberate single-record-purge boundary explicit; user-facing copy must not overclaim. |

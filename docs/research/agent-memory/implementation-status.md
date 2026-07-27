@@ -8,7 +8,7 @@ See LICENSE in the project root for details.
 # Implementation status since sealing (living companion)
 
 **Status:** living — **not** part of the frozen `00`–`06` evidence record.
-**Last verified:** 2026-07-25 against branch `memory-vector-graph-research` HEAD.
+**Last verified:** 2026-07-26 against branch `memory-vector-graph-research` HEAD.
 
 ## Why this file exists
 
@@ -18,6 +18,15 @@ is the sealed baseline the `04`/`06` decision was computed against. But producti
 advanced since that commit, and several gaps the audit catalogues are now closed in source.
 A reader who takes the audit as HEAD will believe retrieval is still ASCII-only,
 non-fused, and validity-blind. It is not.
+
+## Current execution roadmap
+
+The completed hybrid, erasure, injection-flag, and dark P1 shadow-log slices are
+reconciled historical plans. The only active forward-looking sequence is
+[`2026-07-26-memory-production-roadmap.md`](../../superpowers/plans/2026-07-26-memory-production-roadmap.md):
+production acceptance contract → canonical dark capture → rebuildable hybrid projections →
+hierarchy experiment → reader/canary decision. It explicitly defers temporal graph retrieval,
+automatic injection, and storage/ANN selection until their registered gates are met.
 
 This companion records, **from HEAD source only**, what changed since sealing. It transfers
 **no** benchmark score and does not amend any sealed claim; it maps audit gaps to the current

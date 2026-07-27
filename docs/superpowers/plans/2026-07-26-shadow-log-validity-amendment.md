@@ -11,6 +11,11 @@ See LICENSE in the project root for details.
 
 **Goal:** Correct a directional error in the frozen shadow-logging decision gate's validity argument — the doc claims a loose hit criterion reinforces a conservative lower bound when it actually inflates the headline metric — without moving any pre-registered number.
 
+> **Execution status (2026-07-26): Historical — implemented.** The original unchecked step
+> boxes are authoring history; the reconciliation table and drift log at the end are
+> authoritative. Do not start new work from this plan; use
+> `2026-07-26-memory-production-roadmap.md`.
+
 **Architecture:** Prose-only edits to one Markdown file, replacing "conservative lower bound" framing with a signed threat ledger (each threat labelled with the direction it pushes bucket 3) and a screen-and-adjudicate reading of the gate. A dated amendment note records that the edit happened before any data collection, which is the only thing that makes amending a pre-registered protocol legitimate.
 
 **Tech Stack:** Markdown. No source code, no tests, no build step.
@@ -479,3 +484,16 @@ paragraph)."
 - Both gate branches read as screen-and-adjudicate, with `5%` intact on each.
 - A dated amendment note enumerates every frozen quantity as unchanged and states the empty-collection precondition.
 - `git diff --stat` across all five commits touches exactly two files, both under `docs/superpowers/specs/`.
+
+## Execution Reconciliation — 2026-07-26
+
+| Tasks | Status | Documentation evidence |
+| --- | --- | --- |
+| 1–5 | Complete | The signed threat ledger, screen-not-bound reading, query-quality qualification, dated pre-collection amendment, and line-pointer correction landed in commits `0e51b44` through `25f2fa3`. |
+
+## Drift Log
+
+| Date | Category | Item | Decision |
+| --- | --- | --- |
+| 2026-07-26 | In-plan, stale task state | Tasks 1–5 had landed commits but every step box remained unchecked. | Recorded completion above; retained original boxes as authoring history. |
+| 2026-07-26 | Scope boundary | The amendment corrects interpretation before collection; it neither validates the P1 instrument nor authorizes P2/Tier 3. | The active roadmap retains those gates. |

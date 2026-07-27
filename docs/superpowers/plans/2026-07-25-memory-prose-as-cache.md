@@ -13,6 +13,11 @@ See LICENSE in the project root for details.
 
 **Goal:** Make `forget_memory` erase the fact from every always-on prompt channel — the derived profile and the session summary — not just the canonical `memory_records` row.
 
+> **Execution status (2026-07-26): Historical — implemented.** The original unchecked step
+> boxes are authoring history; the reconciliation table and drift log at the end are
+> authoritative. Do not start new work from this plan; use
+> `2026-07-26-memory-production-roadmap.md`.
+
 **Architecture:** Add one nullable column, `memory_profiles.contaminated_at`. Purging a record synchronously (inside the existing transaction) stamps that column, deletes the scope's `memory_summary` rows, and evicts the corresponding caches. Every read of the profile goes through a single `visibleProfileText()` helper that returns `null` while the flag is set, so contaminated prose can reach neither the prompt nor the extraction LLM. The next background extraction rewrites the profile from the remaining active records, which clears the flag — regeneration is quality restoration, never a safety dependency. Separately, dedup losers are purged instead of archived, so no un-tombstoned twin survives.
 
 **Tech Stack:** Bun, TypeScript (strict), Drizzle ORM over `bun:sqlite`, Zod v4, `bun:test`.
@@ -1350,3 +1355,17 @@ git commit -m "test(memory): bilingual golden set for derived-memory erasure"
 - The profile stays hidden if regeneration never runs or throws.
 - No dedup path produces an archived duplicate; `archiveMemoryRecord` no longer exists.
 - The conversation-history boundary is asserted by a test, not assumed.
+
+## Execution Reconciliation — 2026-07-26
+
+| Tasks | Status | Code evidence |
+| --- | --- | --- |
+| 1–9 | Complete in code | Migration 072, visibility gate, extracted purge module, profile/summary invalidation, regeneration, dedup deletion, tool-copy boundary, and bilingual tests; commits `4d9cfc1` through `d8b3538`. |
+
+## Drift Log
+
+| Date | Category | Item | Decision |
+| --- | --- | --- |
+| 2026-07-26 | In-plan, stale task state | Tasks 1–9 had landed commits but every step box remained unchecked. | Recorded completion above; retained original boxes as authoring history. |
+| 2026-07-26 | In-plan, divergent phrasing | The plan called `memory_records` canonical, although the research’s canonical-event architecture is not implemented. | Retained the code’s table name but corrected forward-facing terminology in the active roadmap: this is a current-record store, not the recommended canonical evidence log. |
+| 2026-07-26 | Scope boundary | Conversation history and legacy task-fact cache are intentionally outside a single-record `forget_memory` purge. | Boundaries stay explicit; a later canonical-event/retention design must decide their lifecycle. |

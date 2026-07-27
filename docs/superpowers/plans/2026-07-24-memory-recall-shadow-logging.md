@@ -11,6 +11,11 @@ See LICENSE in the project root for details.
 
 **Goal:** Ship a sampled, off-hot-path, **content-free** production instrument that, at memory-bearing turns, runs the counterfactual query-aware recall Tier 3 *would* run, **discards the records**, and logs only anonymized counts/scores about what it would have surfaced versus what the model actually pulled via `search_memory`. Output: the under-trigger funnel that decides (pre-registered gate) whether P2 (abstention harness) and Tier 3 (auto-injection) are built at all.
 
+> **Execution status (2026-07-26): Historical — implemented dark.** The original unchecked
+> step boxes are authoring history; the reconciliation table and drift log at the end are
+> authoritative. Collection remains explicitly disabled until an approved deployment opts in.
+> Do not start new work from this plan; use `2026-07-26-memory-production-roadmap.md`.
+
 **Architecture:** A new append-only telemetry table `memory_recall_shadow_log`. A fire-and-forget hook (`queueMicrotask`, mirroring `src/cache-db.ts`) fires **after** the turn resolves, right after `emitLlmEnd` in `src/llm-orchestrator-invoke.ts:127` — so it adds **zero** latency to the user-facing turn and injects **nothing** into the prompt. The shadow reuses `runRecallCascade` with a **no-op `schedulePromotion` dep** so it is side-effect-free (no `lastSeenAt`/promotion mutation). Every high-cardinality string is keyed-hashed with the existing `keyedHash` (`src/stats/hashing.ts`, `stats_anonymity_salt`); the row holds only hashes/counts/enums/scores/bools — it inherits the `/stats/*` anonymity contract, and a schema-guard test makes a free-text column a build failure. A deterministic sampler and a default-OFF kill switch gate the whole path.
 
 **Tech Stack:** Bun 1.3, strict TypeScript, Drizzle ORM over `bun:sqlite`, Zod v4, `bun:test`.
@@ -196,3 +201,17 @@ This is the anonymity-critical seam: a pure function from a rich in-memory outco
 - Hot-path proof test (Task 6) is present and asserts synchronous return with zero pre-flush work.
 - Kill switch defaults OFF; both env vars documented.
 - The instrument, when enabled, writes content-free rows and `computeShadowFunnel` reports the per-reader-model under-trigger funnel.
+
+## Execution Reconciliation — 2026-07-26
+
+| Tasks | Status | Code evidence |
+| --- | --- | --- |
+| 1–8 | Complete in code/docs | Migration 071; content-free row builder, recall, pull extraction, sampler, off-hot-path orchestration, funnel reader/script, environment and pre-registration docs; commits `beccc46` through `e67d2e8`. |
+
+## Drift Log
+
+| Date | Category | Item | Decision |
+| --- | --- | --- |
+| 2026-07-26 | In-plan, stale task state | Tasks 1–8 had landed commits but every step box remained unchecked. | Recorded completion above; retained original boxes as authoring history. |
+| 2026-07-26 | In-plan, divergent measurement interpretation | The original score-threshold reading was invalid because cascade ordering is provenance-layered rather than globally relevance-ranked. | Code and frozen-doc amendment now use the computable `shadow_hit_count >= 1` screen; collection has not started. |
+| 2026-07-26 | Scope boundary | P1 measures model tool-under-triggering, not answer quality or the value of automatic injection. | P2 reader/abstention evaluation and Tier 3 remain blocked in the active roadmap. |
