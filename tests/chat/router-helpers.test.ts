@@ -9,7 +9,14 @@ import { providerForResolveContextForManagedInstance } from '../../src/chat/rout
 import { registerCommandForManagedInstance } from '../../src/chat/router-helpers.js'
 import { registerMessageEditHandlerForManagedInstance } from '../../src/chat/router-helpers.js'
 import type { ManagedChatInstance } from '../../src/chat/router-types.js'
-import type { ChatProvider, CommandHandler, ResolveUserContext } from '../../src/chat/types.js'
+import type {
+  AuthorizationResult,
+  ChatProvider,
+  CommandHandler,
+  IncomingMessage,
+  ReplyFn,
+  ResolveUserContext,
+} from '../../src/chat/types.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 type ContextRenderedShape = { method: 'text'; content: string }
@@ -40,6 +47,29 @@ const makeInstance = (overrides: Partial<ManagedChatInstance> = {}): ManagedChat
 
 const noopHandler = (): Promise<void> => Promise.resolve()
 
+const fakeReply: ReplyFn = {
+  text: (): Promise<void> => Promise.resolve(),
+  formatted: (): Promise<void> => Promise.resolve(),
+  typing: () => {},
+  buttons: (): Promise<undefined> => Promise.resolve(undefined),
+}
+
+const fakeAuth: AuthorizationResult = {
+  allowed: true,
+  isBotAdmin: false,
+  isGroupAdmin: false,
+  storageContextId: 'user-1',
+}
+
+const makeIncomingMessage = (): IncomingMessage => ({
+  user: { id: 'user-1', username: 'alice', isAdmin: false },
+  contextId: 'user-1',
+  contextType: 'dm',
+  isMentioned: false,
+  text: 'hello',
+  platformInstanceId: 'wrong-id',
+})
+
 describe('router-helpers', () => {
   beforeEach(async () => {
     mockLogger()
@@ -62,17 +92,27 @@ describe('router-helpers', () => {
   })
 
   describe('registerMessageEditHandlerForManagedInstance', () => {
-    test('registers via provider.onMessageEdit when present', (): void => {
-      let called = false
+    test('wraps the handler with routedMessageHandler so the edit arrives with the instance platformInstanceId', async (): Promise<void> => {
+      let captured: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null = null
       const instance = makeInstance({
+        id: 'inst-1',
         provider: makeProvider({
-          onMessageEdit: (): void => {
-            called = true
+          onMessageEdit: (handler): void => {
+            captured = handler
           },
         }),
       })
-      registerMessageEditHandlerForManagedInstance(instance, noopHandler)
-      expect(called).toBe(true)
+      const seen: IncomingMessage[] = []
+      const captureHandler = (msg: IncomingMessage): Promise<void> => {
+        seen.push(msg)
+        return Promise.resolve()
+      }
+      registerMessageEditHandlerForManagedInstance(instance, captureHandler)
+
+      expect(captured).not.toBeNull()
+      await captured!(makeIncomingMessage(), fakeReply)
+
+      expect(seen.map((msg): string => msg.platformInstanceId)).toEqual(['inst-1'])
     })
 
     test('is a no-op when the provider lacks onMessageEdit', (): void => {
@@ -82,6 +122,29 @@ describe('router-helpers', () => {
   })
 
   describe('registerCommandForManagedInstance', () => {
+    test('wraps the command handler so the message arrives with the instance platformInstanceId', async (): Promise<void> => {
+      let captured: CommandHandler | null = null
+      const instance = makeInstance({
+        id: 'inst-1',
+        provider: makeProvider({
+          registerCommand: (_name, handler): void => {
+            captured = handler
+          },
+        }),
+      })
+      const seen: IncomingMessage[] = []
+      const captureHandler = (msg: IncomingMessage): Promise<void> => {
+        seen.push(msg)
+        return Promise.resolve()
+      }
+      registerCommandForManagedInstance(instance, 'cmd', captureHandler)
+
+      expect(captured).not.toBeNull()
+      await captured!(makeIncomingMessage(), fakeReply, fakeAuth)
+
+      expect(seen.map((msg): string => msg.platformInstanceId)).toEqual(['inst-1'])
+    })
+
     test('registers via provider.registerCommand with the given name', (): void => {
       const names: string[] = []
       const instance = makeInstance({

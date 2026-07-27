@@ -854,11 +854,14 @@ describe('ChatRouter', () => {
     const forwardedEdits: string[] = []
     const telegramProvider = makeProvider('telegram', { supportsMessageEdit: true })
     const discordProvider = makeProvider('discord', {})
+    const mattermostProvider = makeProvider('mattermost', { supportsMessageEdit: true })
     providers['telegram-main'] = telegramProvider
     providers['discord-main'] = discordProvider
+    providers['mattermost-main'] = mattermostProvider
     const providersById: Record<string, ChatProvider> = {
       'telegram-main': telegramProvider,
       'discord-main': discordProvider,
+      'mattermost-main': mattermostProvider,
     }
     router = new ChatRouter((id) => providersById[id]!)
     router.addInstance('telegram-main', 'telegram', {})
@@ -867,12 +870,15 @@ describe('ChatRouter', () => {
       return Promise.resolve()
     })
     router.addInstance('discord-main', 'discord', {})
+    router.addInstance('mattermost-main', 'mattermost', {})
 
     expect(telegramProvider.onMessageEdit).toBeFunction()
+    expect(mattermostProvider.onMessageEdit).toBeFunction()
     expect(discordProvider.onMessageEdit).toBeUndefined()
 
     await telegramProvider.deliverEdit!(makeMessage('wrong-id'))
+    await mattermostProvider.deliverEdit!(makeMessage('wrong-id'))
 
-    expect(forwardedEdits).toEqual(['telegram-main'])
+    expect(forwardedEdits).toEqual(['telegram-main', 'mattermost-main'])
   })
 })
