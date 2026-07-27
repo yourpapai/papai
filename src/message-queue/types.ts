@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { ActorRole, ContextType, ReplyFn } from '../chat/types.js'
+import type { MessageSegment } from '../message-edit/segments.js'
 
 type QueueContextInfo = Readonly<{
   contextType: ContextType
@@ -39,6 +40,7 @@ export type CoalescedItem = Readonly<{
   turnId: string
   actorRole?: ActorRole
   messageIds: readonly string[]
+  segments: readonly MessageSegment[]
 }> &
   QueueContextInfo &
   QueueConfigContextInfo

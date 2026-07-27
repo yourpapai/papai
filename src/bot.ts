@@ -5,12 +5,8 @@
 
 import { toSourceProvider, type StagedFileDownloadFn } from './attachments/types.js'
 import { checkAuthorizationExtended, getThreadScopedStorageContextId } from './auth.js'
-import {
-  findVoiceStagedIds,
-  resolveMessageAttachments,
-  resolveVoiceStagedFiles,
-  stageGroupFileCandidates,
-} from './bot-attachments.js'
+import { findVoiceStagedIds, resolveMessageAttachments, stageGroupFileCandidates } from './bot-attachments.js'
+import { processCoalescedMessage } from './bot-coalesced-processing.js'
 import { recordGroupObservation } from './bot-group-observation.js'
 import { cacheObservedIncomingMessage } from './bot-message-caching.js'
 import { emitReplyCompletedIfNeeded, trackReplyUsage } from './bot-reply-tracking.js'
@@ -34,9 +30,9 @@ import {
 } from './commands/index.js'
 import { emitUser } from './debug/event-bus.js'
 import type { ProcessMessageFn } from './llm-orchestrator-process-args.js'
-import { defaultDeps, processMessage as defaultProcessMessage } from './llm-orchestrator.js'
+import { processMessage as defaultProcessMessage } from './llm-orchestrator.js'
 import { logger } from './logger.js'
-import { enqueueMessage, type CoalescedItem as QueuedCoalescedItem } from './message-queue/index.js'
+import { enqueueMessage } from './message-queue/index.js'
 import { registerPluginCommands } from './plugins/command-contributions.js'
 import { buildPromptWithReplyContext } from './reply-context.js'
 import { runRegistry } from './run-control/registry.js'
@@ -124,37 +120,6 @@ function registerCommands(chat: ChatProvider, adminUserId: string): void {
   registerDashboardCommand(observedChat)
   registerStopCommand(observedChat)
   registerPluginCommands(observedChat)
-}
-async function processCoalescedMessage(coalescedItem: QueuedCoalescedItem, deps: BotDeps): Promise<void> {
-  const start = Date.now()
-  const tracked = trackReplyUsage(coalescedItem.reply, true)
-  try {
-    const voiceAttachmentIds = await resolveVoiceStagedFiles(
-      coalescedItem.storageContextId,
-      coalescedItem.voiceStagedIds,
-      deps.stagedDownloadFn,
-    )
-    await deps.processMessage(
-      tracked.reply,
-      coalescedItem.storageContextId,
-      coalescedItem.userId,
-      coalescedItem.username,
-      coalescedItem.text,
-      coalescedItem.contextType,
-      coalescedItem.configContextId,
-      {
-        ...defaultDeps,
-        stagedDownloadFn: deps.stagedDownloadFn,
-        chatParticipantResolver: deps.chatParticipantResolver,
-      },
-      [...voiceAttachmentIds, ...coalescedItem.newAttachmentIds],
-      coalescedItem.turnId,
-      coalescedItem.actorRole,
-      coalescedItem.messageIds,
-    )
-  } finally {
-    emitReplyCompletedIfNeeded(tracked, coalescedItem.userId, coalescedItem.storageContextId, start)
-  }
 }
 function shouldIgnoreGroupMessage(msg: IncomingMessage): boolean {
   if (msg.contextType !== 'group') return false

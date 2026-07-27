@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto'
 import type { ReplyFn } from '../chat/types.js'
 import { emitGroup, emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
+import { formatMessageSegment } from '../message-edit/segments.js'
 import type { QueueItem, CoalescedItem } from './types.js'
 
 const log = logger.child({ scope: 'message-queue' })
@@ -156,22 +157,25 @@ export class MessageQueue {
     attachmentIds: string[]
     voiceStagedIds: string[]
     messageIds: string[]
+    segments: { messageId: string; text: string; username: string | null }[]
   } {
     const texts: string[] = []
     const attachmentIds: string[] = []
     const voiceStagedIds: string[] = []
     const messageIds: string[] = []
+    const segments: { messageId: string; text: string; username: string | null }[] = []
     for (const msg of this.messages) {
-      if (isThread && msg.item.username !== null) {
-        texts.push(`[@${msg.item.username}]: ${msg.item.text}`)
-      } else {
-        texts.push(msg.item.text)
-      }
+      texts.push(formatMessageSegment(msg.item.text, msg.item.username, isThread))
       attachmentIds.push(...msg.item.newAttachmentIds)
       voiceStagedIds.push(...msg.item.voiceStagedIds)
       if (msg.item.messageId !== undefined) messageIds.push(msg.item.messageId)
+      segments.push({
+        messageId: msg.item.messageId ?? '',
+        text: msg.item.text,
+        username: msg.item.username,
+      })
     }
-    return { texts, attachmentIds, voiceStagedIds, messageIds }
+    return { texts, attachmentIds, voiceStagedIds, messageIds, segments }
   }
 
   private flush(): CoalescedItem | null {
@@ -189,7 +193,7 @@ export class MessageQueue {
 
     const isThread = firstMessage.item.contextType === 'group' && this.storageContextId.includes(':')
     const isDm = firstMessage.item.contextType === 'dm'
-    const { texts, attachmentIds, voiceStagedIds, messageIds } = this.collectMessageContent(isThread)
+    const { texts, attachmentIds, voiceStagedIds, messageIds, segments } = this.collectMessageContent(isThread)
     const text = isDm ? texts.join('\n\n') : texts.join('\n')
 
     const turnId = randomUUID()
@@ -207,6 +211,7 @@ export class MessageQueue {
       turnId,
       actorRole: lastMessage.item.actorRole,
       messageIds,
+      segments,
     }
 
     this.messages = []

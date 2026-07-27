@@ -5,6 +5,7 @@
 
 import type { ActorRole, ReplyFn } from './chat/types.js'
 import type { LlmOrchestratorDeps } from './llm-orchestrator-types.js'
+import type { MessageSegment } from './message-edit/segments.js'
 
 export type ProcessMessageRest = readonly [
   configContextId?: string,
@@ -13,6 +14,7 @@ export type ProcessMessageRest = readonly [
   turnId?: string,
   actorRole?: ActorRole,
   originatingMessageIds?: readonly string[],
+  segments?: readonly MessageSegment[],
 ]
 
 export type ProcessMessageFn = (
@@ -48,6 +50,11 @@ export const resolveOriginatingMessageIds = (ids: readonly string[] | undefined)
   return ids
 }
 
+export const resolveSegments = (segments: readonly MessageSegment[] | undefined): readonly MessageSegment[] => {
+  if (segments === undefined) return []
+  return segments
+}
+
 export type ResolvedProcessMessageInputs = {
   readonly configContextId: string | undefined
   readonly deps: LlmOrchestratorDeps
@@ -55,14 +62,22 @@ export type ResolvedProcessMessageInputs = {
   readonly resolvedTurnId: string
   readonly originatingMessageIds: readonly string[]
   readonly actorRole: ActorRole
+  readonly segments: readonly MessageSegment[]
 }
 
 export const resolveProcessMessageInputs = (
   rest: ProcessMessageRest,
   fallbackDeps: LlmOrchestratorDeps,
 ): ResolvedProcessMessageInputs => {
-  const [configContextId, depsInput, newAttachmentIdsInput, turnId, actorRole = 'member', originatingMessageIdsInput] =
-    rest
+  const [
+    configContextId,
+    depsInput,
+    newAttachmentIdsInput,
+    turnId,
+    actorRole = 'member',
+    originatingMessageIdsInput,
+    segmentsInput,
+  ] = rest
   return {
     configContextId,
     deps: resolveDeps(depsInput, fallbackDeps),
@@ -70,5 +85,6 @@ export const resolveProcessMessageInputs = (
     resolvedTurnId: resolveTurnId(turnId),
     originatingMessageIds: resolveOriginatingMessageIds(originatingMessageIdsInput),
     actorRole,
+    segments: resolveSegments(segmentsInput),
   }
 }

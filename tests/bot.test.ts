@@ -146,6 +146,8 @@ const enqueueMessageSynchronously: NonNullable<BotDeps['enqueueMessage']> = (ite
     reply,
     turnId: 'test-turn-id',
     messageIds: item.messageId === undefined ? [] : [item.messageId],
+    segments:
+      item.messageId === undefined ? [] : [{ messageId: item.messageId, text: item.text, username: item.username }],
   }).catch(() => {})
 }
 

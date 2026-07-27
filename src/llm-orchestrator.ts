@@ -19,12 +19,11 @@ import { buildHistory } from './llm-orchestrator-history.js'
 import { replayLeftoverSteerAsFreshTurn } from './llm-orchestrator-leftover-replay.js'
 import { shouldBackstopGroupMembership } from './llm-orchestrator-membership.js'
 import { resolveProcessMessageInputs, type ProcessMessageRest } from './llm-orchestrator-process-args.js'
+import { resolveLlmForTurn } from './llm-orchestrator-resolve-llm.js'
 import { handleLlmTurnError, invokeWithLiveStatus, logProcessMessage } from './llm-orchestrator-support.js'
 import { buildLlmInvocationOpts, prepareLlmInvocation, type InvocationSource } from './llm-orchestrator-tools.js'
 import type { LlmOrchestratorDeps } from './llm-orchestrator-types.js'
-import { resolveLlmConfig } from './llm-providers/resolver.js'
-import { getAdminRoleBindings } from './llm-providers/store.js'
-import type { EffectiveLlmConfig, LlmConfigResult } from './llm-providers/types.js'
+import type { EffectiveLlmConfig } from './llm-providers/types.js'
 import { logger } from './logger.js'
 import { maybeAutoProvisionProvider } from './providers/auto-provision.js'
 import { ensureWorkspaceMember } from './providers/membership/index.js'
@@ -82,52 +81,9 @@ const ensureRequiredConfig = async (reply: ReplyFn, contextId: string, configId:
   await reply.text(`Missing configuration: ${missing.join(', ')}.\nUse /config to finish setup in the settings web UI.`)
   throw new Error('Missing configuration')
 }
-let botMisconfiguredNotified = false
 
-const replyBotMisconfigured = async (reply: ReplyFn, contextId: string): Promise<void> => {
-  const configured = getAdminRoleBindings() !== null
-  log.error({ contextId, configured }, 'admin LLM provider registry is incomplete; bot cannot serve this turn')
-  await reply.text(
-    '⚠️ The bot is not fully configured. Ask the administrator to run /config and complete setup in the web UI.',
-  )
-  if (!botMisconfiguredNotified) {
-    botMisconfiguredNotified = true
-    log.warn({ configured }, 'admin notification suppressed for subsequent turns in this process')
-  }
-}
-
-type LlmConfigFailure = Exclude<LlmConfigResult, EffectiveLlmConfig>
-type ResolvedTurnLlmConfig = EffectiveLlmConfig | null
-
-async function replyByokConfigProblem(reply: ReplyFn, contextId: string, result: LlmConfigFailure): Promise<void> {
-  if (result.type === 'missing') {
-    log.warn({ contextId, missing: result.missing }, 'BYOK LLM config is incomplete; bot cannot serve this turn')
-    await reply.text(
-      `BYOK is enabled for this context, but LLM setup is incomplete. Missing: ${result.missing.join(', ')}. Use /config to finish BYOK setup in the settings web UI.`,
-    )
-    return
-  }
-  log.warn({ contextId }, 'BYOK LLM config is unreadable; bot cannot serve this turn')
-  await reply.text(
-    'BYOK credentials for this context are unreadable. Use /config to re-enter the BYOK LLM credentials in the settings web UI.',
-  )
-}
-
-async function resolveLlmForTurn(reply: ReplyFn, contextId: string, configId: string): Promise<ResolvedTurnLlmConfig> {
-  const resolvedLlm = resolveLlmConfig(configId)
-  if (resolvedLlm.ok) return resolvedLlm
-  if (resolvedLlm.source === 'global') {
-    await replyBotMisconfigured(reply, contextId)
-    return null
-  }
-  await replyByokConfigProblem(reply, contextId, resolvedLlm)
-  return null
-}
-
-/** Test-only helper to reset the admin-notified guard between tests. */
-export const resetBotMisconfiguredNotifiedForTesting = (): void => {
-  botMisconfiguredNotified = false
-}
+// Re-exported from the resolve-llm module so existing tests importing from here keep working.
+export { resetBotMisconfiguredNotifiedForTesting } from './llm-orchestrator-resolve-llm.js'
 
 const createProgressReporterForContext = (reply: ReplyFn, contextId: string): AiProgressReporter =>
   createAiProgressReporter(reply, getAiOutputSettings(resolveAiOutputSettingsContextId(contextId)))
@@ -263,13 +219,21 @@ export const processMessage = async (
   contextType: 'dm' | 'group',
   ...rest: ProcessMessageRest
 ): Promise<void> => {
-  const { configContextId, deps, newAttachmentIds, resolvedTurnId, originatingMessageIds, actorRole } =
+  const { configContextId, deps, newAttachmentIds, resolvedTurnId, originatingMessageIds, actorRole, segments } =
     resolveProcessMessageInputs(rest, defaultDeps)
   logProcessMessage(contextId, configContextId, chatUserId, userText, newAttachmentIds, resolvedTurnId)
   const configId = resolveConfigId(contextId, configContextId)
   const resolvedLlm = await resolveLlmForTurn(reply, contextId, configId)
   if (resolvedLlm === null) return
-  const turn = await buildHistory(contextId, chatUserId, resolvedLlm.main.model, userText, newAttachmentIds)
+  const turn = await buildHistory(
+    contextId,
+    chatUserId,
+    resolvedLlm.main.model,
+    userText,
+    newAttachmentIds,
+    segments,
+    contextType,
+  )
   const invocationSource = {
     reply,
     contextId,
