@@ -13,7 +13,7 @@ export type StoryTier = (typeof STORY_TIERS)[number]
  * never speculatively: an executable record may only claim a live tier, so a
  * planned tier can never be mistaken for coverage that exists.
  */
-export const LIVE_STORY_TIERS: readonly StoryTier[] = Object.freeze(['0', '1', '2'])
+export const LIVE_STORY_TIERS: readonly StoryTier[] = Object.freeze(['0', '1', '2', '3'])
 
 /**
  * Repository-relative suite root each tier's stories live under. A record's story
@@ -1142,6 +1142,21 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     provingTier: '2',
     storyIds: ['tests/smoke/scenarios/container-p.smoke.ts#drains and exits 0 on SIGTERM'],
   },
+  // @3 — platform-adapter lane (nightly); storyIds are byte-identical to PLATFORM_STORY_IDS.
+  'SCN-fetch-chat-link': {
+    verifiedAt: '2026-07-25',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/mattermost-fetch-chat-link.platform.ts#resolves a Mattermost permalink thread through fetch_chat_link against a fake server',
+    ],
+  },
+  'SCN-http-mattermost-action': {
+    verifiedAt: '2026-07-25',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/mattermost-http-action.platform.ts#verifies a signed action context and dispatches over POST /mattermost/actions',
+    ],
+  },
 }
 
 function auditRecord(readiness: AuditReadiness, family: StoryFamily, rationale: string): AuditRecord {
@@ -1166,20 +1181,6 @@ export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
   'SCN-cmd-announce': blocked(
     'F1',
     'No chat /announce command exists; admin broadcast via the settings route is covered by SCN-settings-admin-roster-announce. Keeps gap status.',
-  ),
-  // F3 — memory, memos, instructions, history, chat links
-  'SCN-fetch-chat-link': needs(
-    'F3',
-    ['capability-ids', 'platform-adapter-fakes'],
-    '3',
-    'fetch_chat_link resolves Mattermost permalinks through the authenticated Mattermost REST API (resolveChatLink), never assertPublicUrl (that DNS/SSRF guard is web_fetch, family F6). Needs a Mattermost REST resolver fake, not built speculatively.',
-  ),
-  // F4 — HTTP surfaces
-  'SCN-http-mattermost-action': needs(
-    'F4',
-    ['mattermost-action-fixture'],
-    '3',
-    'Action callbacks bypass the session gate but need the test secret option wired into the world; wire verification stays forward-only.',
   ),
   // F8 — platform interactions
   'SCN-interaction-discord-router-wrapped': needs(

@@ -55,6 +55,9 @@ function childCommand(
     path.join(session.appRoot, 'tests/mock-reset.ts'),
     ...(parsed.contracts ? [] : ['--preload', path.join(session.appRoot, 'tests/stories/preload.ts')]),
     ...session.childReporterArguments,
+    ...(parsed.coverage
+      ? ['--coverage', '--coverage-reporter=lcov', `--coverage-dir=${path.join(session.tempRoot, 'coverage')}`]
+      : []),
     ...files,
   ]
 }

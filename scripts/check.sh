@@ -306,6 +306,19 @@ else
     done
     checks=("${filtered_checks[@]}")
   fi
+
+  # Build client bundles before the parallel fan-out when the `test` check is
+  # active and the bundles are missing. The `tests/debug/` suites fail fast in
+  # beforeAll without them. The guard script no-ops when bundles already exist
+  # (repeat local runs, and CI where public/ arrives as a downloaded artifact),
+  # so this is cheap except on the first bundle-less run.
+  for check in "${checks[@]}"; do
+    if [ "$check" = "test" ]; then
+      bun scripts/ensure-client-built.ts || exit 1
+      break
+    fi
+  done
+
   failed=0
   pids=()
 
@@ -334,7 +347,18 @@ else
         # integration tests (e.g. review-loop worktree tests) time out under
         # --parallel worker contention.
         if [ "${CI:-}" = "true" ]; then
-          bun test --timeout 15000 >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+          bun test --coverage --timeout 15000 >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+          # The coverage floor is enforced HERE, not by bun. bun's
+          # `coverageThreshold` is a per-file rule, so it cannot express an
+          # aggregate floor, and it fails silently (no text naming coverage as
+          # the cause). coverage:ratchet reads the lcov this run just wrote,
+          # compares the aggregate against the floor in bunfig-adjacent config,
+          # and prints `measured` vs `floor`. Only run it when the suite itself
+          # passed: a test failure is its own diagnostic, and a partial run's
+          # lcov would report a meaningless number.
+          if [ "$exit_code" -eq 0 ]; then
+            bun coverage:ratchet >>"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+          fi
         else
           bun test --parallel --timeout 15000 >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
         fi

@@ -3,20 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { z } from 'zod'
 
 import { handleCodingCredentialsModelsRoute } from '../../../src/debug/settings/coding-credentials-models-route.js'
 import { addUser } from '../../../src/users.js'
-import { setAssertPublicUrlForTesting } from '../../../src/web/safe-fetch.js'
-import {
-  mockLogger,
-  restoreFetch,
-  seedTestPlatformInstance,
-  setMockFetch,
-  setupTestDb,
-} from '../../utils/test-helpers.js'
+import { mockLogger, restoreFetch, seedTestPlatformInstance, setupTestDb } from '../../utils/test-helpers.js'
 import { authHeaders, establishSession, type SettingsSession } from './helpers.js'
 
 const PLATFORM_INSTANCE_ID = 'pi-models'
@@ -32,9 +25,6 @@ describe('coding-credentials models route', () => {
   beforeEach(async () => {
     mockLogger()
     process.env['INSTANCE_CONFIG_KEY'] = 'e'.repeat(64)
-    // The /models route proxies to fetchProviderModels, which runs the real assertPublicUrl
-    // (live DNS) before fetch. Bypass it so the suite is hermetic.
-    setAssertPublicUrlForTesting(() => Promise.resolve())
     await setupTestDb()
     seedTestPlatformInstance({ id: PLATFORM_INSTANCE_ID })
     addUser({
@@ -50,7 +40,6 @@ describe('coding-credentials models route', () => {
   })
 
   afterEach(() => {
-    setAssertPublicUrlForTesting(undefined)
     restoreFetch()
   })
 
@@ -81,19 +70,24 @@ describe('coding-credentials models route', () => {
       }),
       patchUrl,
     )
-    // Mock the upstream /v1/models call
-    setMockFetch(() =>
-      Promise.resolve(
-        new Response(JSON.stringify({ data: [{ id: 'claude-sonnet-4-6' }, { id: 'claude-opus-4' }] }), {
-          status: 200,
-        }),
-      ),
+    // Inject the model fetcher rather than mocking fetch: the real one runs the SSRF
+    // guard, which resolves DNS for api.anthropic.com and would tie this route test to
+    // the developer's resolver. fetchProviderModels itself is covered in
+    // tests/coding-credentials/provider-models.test.ts.
+    const fetchModels = mock(() =>
+      Promise.resolve([
+        { value: 'claude-sonnet-4-6', label: 'claude-sonnet-4-6' },
+        { value: 'claude-opus-4', label: 'claude-opus-4' },
+      ]),
     )
     const url = new URL('https://x/settings/api/coding-credentials/models?agent=claude')
     const res = await handleCodingCredentialsModelsRoute(
       get('/settings/api/coding-credentials/models?agent=claude', session),
       url,
+      { fetchModels },
     )
+    // The route must forward the stored provider/key/base-url and the requested agent.
+    expect(fetchModels).toHaveBeenCalledWith('anthropic', undefined, 'sk-ant-test', 'claude')
     expect(res.status).toBe(200)
     const body = z
       .object({ ok: z.literal(true), models: z.array(z.object({ value: z.string(), label: z.string() })) })

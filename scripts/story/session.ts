@@ -15,8 +15,10 @@ import {
 import type { StoryManifest } from './manifest.js'
 import {
   copyReports,
+  copyStoryCoverage,
   createReportFiles,
   reporterMappings,
+  STORY_COVERAGE_LCOV_PATH,
   type ReportMapping,
   type SessionFileSystem,
   verifyReportFiles,
@@ -39,6 +41,7 @@ export type StoryRunnerSession = Readonly<{
   reportPaths: readonly string[]
   verifyIntegrity(): Promise<void>
   copyReports(): Promise<void>
+  copyCoverage(): Promise<boolean>
   cleanup(): Promise<void>
 }>
 
@@ -207,6 +210,13 @@ async function materializeSession(
       reportPaths: childReportPaths,
       verifyIntegrity,
       copyReports: (): Promise<void> => copyReports(mapped.reports, options.root, fs),
+      copyCoverage: (): Promise<boolean> =>
+        copyStoryCoverage(
+          path.join(tempRoot, 'coverage', 'lcov.info'),
+          path.join(options.root, STORY_COVERAGE_LCOV_PATH),
+          options.root,
+          fs,
+        ),
       cleanup,
     }
   } catch (error) {

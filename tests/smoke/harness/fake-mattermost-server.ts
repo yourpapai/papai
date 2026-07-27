@@ -10,6 +10,16 @@ import { z } from 'zod'
 export type IncomingPost = { channelId: string; message: string; userId: string; userName?: string; postId?: string }
 export type CapturedPost = { channel_id: string; message: string; root_id?: string }
 
+export type SeededPost = {
+  id: string
+  channelId: string
+  userId: string
+  message: string
+  createAt?: number
+  rootId?: string
+  userName?: string
+}
+
 export type FakeMattermostServer = {
   containerBaseUrl: string
   localBaseUrl: string
@@ -18,11 +28,15 @@ export type FakeMattermostServer = {
   whenConnected(): Promise<void>
   deliverMessage(post: IncomingPost): void
   waitForPost(timeoutMs?: number): Promise<CapturedPost>
+  seedPost(post: SeededPost): void
+  observedGets(): readonly string[]
   stop(): Promise<void>
 }
 
 const CHANNEL_RE = /^\/api\/v4\/channels\/[^/]+$/u
 const MEMBER_RE = /^\/api\/v4\/channels\/[^/]+\/members\/[^/]+$/u
+const POST_SINGLE_RE = /^\/api\/v4\/posts\/([^/]+)$/u
+const POST_THREAD_RE = /^\/api\/v4\/posts\/([^/]+)\/thread$/u
 
 const postBodySchema = z.object({
   channel_id: z.string().optional(),
@@ -48,6 +62,8 @@ export function startFakeMattermostServer(
   let outCount = 0
   const postBuffer: CapturedPost[] = []
   const postWaiters: Array<(post: CapturedPost) => void> = []
+  const seededPosts = new Map<string, SeededPost>()
+  const observedGetPaths: string[] = []
 
   const onPost = (post: CapturedPost): void => {
     const waiter = postWaiters.shift()
@@ -55,8 +71,18 @@ export function startFakeMattermostServer(
     else waiter(post)
   }
 
+  const toThreadPost = (post: SeededPost): Record<string, unknown> => ({
+    id: post.id,
+    user_id: post.userId,
+    channel_id: post.channelId,
+    message: post.message,
+    create_at: post.createAt ?? 0,
+    ...(post.rootId === undefined ? {} : { root_id: post.rootId }),
+  })
+
   const handleHttp = async (req: Request, url: URL): Promise<Response> => {
     const path = url.pathname
+    if (req.method === 'GET') observedGetPaths.push(path)
     if (req.method === 'GET' && path === '/api/v4/users/me') {
       return Response.json({ id: botUserId, username: botUsername })
     }
@@ -66,6 +92,24 @@ export function startFakeMattermostServer(
     if (req.method === 'GET' && MEMBER_RE.test(path)) {
       const segments = path.split('/')
       return Response.json({ channel_id: segments[4], user_id: segments.at(-1), roles: 'channel_member' })
+    }
+    if (req.method === 'GET') {
+      const threadMatch = POST_THREAD_RE.exec(path)
+      if (threadMatch !== null) {
+        const rootId = threadMatch[1] ?? ''
+        const root = seededPosts.get(rootId)
+        if (root === undefined) return new Response('not found', { status: 404 })
+        const threadPosts = [root, ...[...seededPosts.values()].filter((p) => p.rootId === rootId)]
+        const order = threadPosts.map((p) => p.id)
+        const posts = Object.fromEntries(threadPosts.map((p) => [p.id, toThreadPost(p)]))
+        return Response.json({ order, posts })
+      }
+      const singleMatch = POST_SINGLE_RE.exec(path)
+      if (singleMatch !== null) {
+        const post = seededPosts.get(singleMatch[1] ?? '')
+        if (post === undefined) return new Response('not found', { status: 404 })
+        return Response.json(toThreadPost(post))
+      }
     }
     if (req.method === 'POST' && path === '/api/v4/posts') {
       const rawBody: unknown = await req.json().catch(() => ({}))
@@ -147,6 +191,12 @@ export function startFakeMattermostServer(
           resolve(post)
         })
       })
+    },
+    seedPost(post) {
+      seededPosts.set(post.id, post)
+    },
+    observedGets() {
+      return observedGetPaths.slice()
     },
     async stop() {
       await server.stop(true)

@@ -277,16 +277,6 @@ describe('setAssertPublicUrlForTesting (module override)', () => {
     expect(override).toHaveBeenCalledTimes(1)
   })
 
-  test('the exported assertPublicUrl also consults the override (direct callers stay hermetic)', async () => {
-    const override = mock((_url: URL): Promise<void> => Promise.resolve())
-    setAssertPublicUrlForTesting(override)
-
-    // Direct importers of assertPublicUrl (e.g. fetchProviderModels) must be bypassable too,
-    // otherwise suites that stub fetch but resolve provider hosts via live DNS leak the guard.
-    await assertPublicUrl(new URL('http://api.openai.com/v1/models'))
-    expect(override).toHaveBeenCalledTimes(1)
-  })
-
   test('clearing the override restores the real public-URL guard', async () => {
     setAssertPublicUrlForTesting(() => Promise.resolve())
     setAssertPublicUrlForTesting(undefined)

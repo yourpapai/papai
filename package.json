@@ -41,7 +41,9 @@
     "test:serial": "bun test",
     "test:client": "bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/",
     "test:watch": "bun test --watch",
-    "test:coverage": "bun test --coverage",
+    "test:coverage": "bun scripts/ensure-client-built.ts && bun test --coverage",
+    "coverage:ratchet": "bun scripts/coverage/ratchet.ts",
+    "coverage:ratchet:stories": "bun scripts/coverage/ratchet-stories.ts",
     "test:mutate": "bun scripts/mutation/all-files.ts",
     "test:mutate:changed": "bun scripts/mutation/changed-files.ts",
     "test:mutate:file": "bun scripts/mutation/paired-run.ts",
@@ -49,7 +51,9 @@
     "test:e2e": "bun test --preload ./tests/e2e/bun-test-setup.ts --path-ignore-patterns '' tests/e2e/e2e.test.ts",
     "test:e2e:watch": "bun test --preload ./tests/e2e/bun-test-setup.ts --path-ignore-patterns '' tests/e2e/e2e.test.ts --watch",
     "test:smoke": "bun test ./tests/smoke/run-smoke.ts",
+    "test:platform": "bun test ./tests/platform/run-platform.ts",
     "test:stories": "bun scripts/story/test-stories.ts",
+    "test:stories:coverage": "bun scripts/story/test-stories.ts --coverage",
     "test:stories:contracts": "bun scripts/story/test-stories.ts --contracts",
     "test:stories:sandbox": "bun scripts/story/test-story-sandbox.ts",
     "test:stories:stress": "bun scripts/story/test-stories.ts --rerun-each 10 --randomize",
@@ -126,7 +130,7 @@
     "vite": "^8.1.4"
   },
   "overrides": {
-    "typescript": "$typescript"
+    "typescript": "$@typescript/typescript6"
   },
   "msw": {
     "workerDirectory": [
