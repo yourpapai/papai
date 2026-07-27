@@ -35,6 +35,7 @@ import {
 type FakeProvider = ChatProvider & {
   deliverMessage: (msg: IncomingMessage) => Promise<void>
   deliverInteraction: (interaction: IncomingInteraction) => Promise<void>
+  deliverEdit?: (msg: IncomingMessage) => Promise<void>
   downloadFile: (fileId: string) => Promise<Buffer | null>
   downloadFileCalls: string[]
   sent: Array<{ platformInstanceId: string; target: DeferredDeliveryTarget; markdown: string }>
@@ -112,6 +113,7 @@ type FakeProviderOptions = Partial<{
   threadCapabilities: ThreadCapabilities
   downloadFile: (fileId: string) => Promise<Buffer | null>
   isGroupAdmin: (platformInstanceId: string, groupId: string, userId: string) => Promise<boolean | null>
+  supportsMessageEdit: boolean
 }>
 
 const threadCapabilitiesForOptions = (options: FakeProviderOptions): ThreadCapabilities => {
@@ -143,6 +145,7 @@ const stopForOptions = (options: FakeProviderOptions): (() => Promise<void>) => 
 const makeProvider = (name: string, options: FakeProviderOptions): FakeProvider => {
   let messageHandler: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null = null
   let interactionHandler: ((interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) | null = null
+  let editHandler: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null = null
   const sent: Array<{ platformInstanceId: string; target: DeferredDeliveryTarget; markdown: string }> = []
   const commandNames: string[] = []
   const commandHandlers: Record<string, CommandHandler> = {}
@@ -150,6 +153,7 @@ const makeProvider = (name: string, options: FakeProviderOptions): FakeProvider 
   const downloadFileCalls: string[] = []
   const setCommands = options.setCommands
   const render = options.render
+  const supportsMessageEdit = options.supportsMessageEdit === true
   return {
     name,
     threadCapabilities: threadCapabilitiesForOptions(options),
@@ -166,6 +170,17 @@ const makeProvider = (name: string, options: FakeProviderOptions): FakeProvider 
     onInteraction: (handler): void => {
       interactionHandler = handler
     },
+    ...(supportsMessageEdit
+      ? {
+          onMessageEdit: (handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>): void => {
+            editHandler = handler
+          },
+          deliverEdit: async (msg: IncomingMessage): Promise<void> => {
+            if (editHandler === null) throw new Error('edit handler missing')
+            await editHandler(msg, fakeReply)
+          },
+        }
+      : {}),
     sendMessage: (platformInstanceId, target, markdown): Promise<void> => {
       sent.push({ platformInstanceId, target, markdown })
       return Promise.resolve()
@@ -814,5 +829,50 @@ describe('ChatRouter', () => {
     await commandHandler('telegram-main', 'setup')(makeMessage('wrong-id'), fakeReply, fakeAuth)
 
     expect(commandMessages.map((msg): string => msg.platformInstanceId)).toEqual(['telegram-main'])
+  })
+
+  test('fans out onMessageEdit with platformInstanceId injected', async () => {
+    const forwardedEdits: IncomingMessage[] = []
+    factory = (id, type): ChatProvider => {
+      const fakeProvider = makeProvider(type, { supportsMessageEdit: true })
+      providers[id] = fakeProvider
+      return fakeProvider
+    }
+    router = new ChatRouter(factory)
+    router.addInstance('telegram-main', 'telegram', {})
+    router.onMessageEdit((msg): Promise<void> => {
+      forwardedEdits.push(msg)
+      return Promise.resolve()
+    })
+
+    await getProvider('telegram-main').deliverEdit!(makeMessage('wrong-id'))
+
+    expect(forwardedEdits.map((msg): string => msg.platformInstanceId)).toEqual(['telegram-main'])
+  })
+
+  test('replays onMessageEdit via registerExistingHandlers and skips providers lacking it', async () => {
+    const forwardedEdits: string[] = []
+    const telegramProvider = makeProvider('telegram', { supportsMessageEdit: true })
+    const discordProvider = makeProvider('discord', {})
+    providers['telegram-main'] = telegramProvider
+    providers['discord-main'] = discordProvider
+    const providersById: Record<string, ChatProvider> = {
+      'telegram-main': telegramProvider,
+      'discord-main': discordProvider,
+    }
+    router = new ChatRouter((id) => providersById[id]!)
+    router.addInstance('telegram-main', 'telegram', {})
+    router.onMessageEdit((msg): Promise<void> => {
+      forwardedEdits.push(msg.platformInstanceId)
+      return Promise.resolve()
+    })
+    router.addInstance('discord-main', 'discord', {})
+
+    expect(telegramProvider.onMessageEdit).toBeFunction()
+    expect(discordProvider.onMessageEdit).toBeUndefined()
+
+    await telegramProvider.deliverEdit!(makeMessage('wrong-id'))
+
+    expect(forwardedEdits).toEqual(['telegram-main'])
   })
 })

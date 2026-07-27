@@ -224,6 +224,14 @@ async function onIncomingMessage(
   if (!willQueueAuthorizedMessage(msg, auth))
     emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
 }
+async function onIncomingEdit(
+  _chat: ChatProvider,
+  _msg: IncomingMessage,
+  _reply: ReplyFn,
+  _deps: BotDeps,
+): Promise<void> {
+  // implemented in Task 8
+}
 async function routeIncomingInteraction(interaction: IncomingInteraction, reply: ReplyFn): Promise<void> {
   try {
     const auth = checkAuthorizationExtended(
@@ -259,6 +267,8 @@ export function setupBot(chat: ChatProvider, adminUserId: string, ...rest: [] | 
   if (initializedChats.has(chat)) return
   registerCommands(chat, adminUserId)
   chat.onMessage((msg, reply): Promise<void> => onIncomingMessage(chat, msg, reply, deps))
+  if (chat.onMessageEdit !== undefined)
+    chat.onMessageEdit((msg, reply): Promise<void> => onIncomingEdit(chat, msg, reply, deps))
   if (chat.onInteraction !== undefined)
     chat.onInteraction((interaction, reply): Promise<void> => routeIncomingInteraction(interaction, reply))
   initializedChats.add(chat)
