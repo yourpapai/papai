@@ -173,19 +173,24 @@ const sendAggregateRow = async (
     config === null
       ? ({ outcome: 'retryable', errorClass: 'policy' } as const)
       : await sendWithPolicy(config, row.payloadJson, deps)
-  const classified = classifyAggregateDelivery(
-    {
-      releaseId: row.releaseId,
-      sinkVersionId: row.sinkVersionId,
-      nowMs,
-      outcome: classification.outcome,
-      remoteReceiptHash: classification.remoteReceiptHash,
-      errorClass: classification.errorClass,
-      retryAtMs: nowMs + computeRetryDelayMs(row.attempts),
-    },
-    storeDeps,
-  )
-  if (classified === 'classified') counters[classification.outcome] += 1
+  const fenceAdmission = deps.fence?.admit('delivery')
+  try {
+    const classified = classifyAggregateDelivery(
+      {
+        releaseId: row.releaseId,
+        sinkVersionId: row.sinkVersionId,
+        nowMs,
+        outcome: classification.outcome,
+        remoteReceiptHash: classification.remoteReceiptHash,
+        errorClass: classification.errorClass,
+        retryAtMs: nowMs + computeRetryDelayMs(row.attempts),
+      },
+      storeDeps,
+    )
+    if (classified === 'classified') counters[classification.outcome] += 1
+  } finally {
+    fenceAdmission?.release()
+  }
 }
 
 const sendLeasedRows = async (

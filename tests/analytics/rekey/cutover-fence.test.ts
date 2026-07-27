@@ -87,6 +87,21 @@ describe('rekey cutover fence', () => {
     expect(fence.isDrained()).toBe(true)
   })
 
+  test('a persisted in-flight aggregate send blocks the drain until settlement', () => {
+    const fence = createRekeyCutoverFence(depsOf(db))
+    db.$client.run(
+      `INSERT INTO analytics_aggregate_releases (release_id, release_hash, payload_json, payload_schema_version, created_at_ms)
+       VALUES ('agg-1', 'h-1', '{"utc_day":"2023-11-14","cells":[]}', 1, 0)`,
+    )
+    db.$client.run(
+      `INSERT INTO analytics_aggregate_deliveries (release_id, sink_version_id, state, attempts, next_attempt_at_ms, send_started_at_ms, payload_schema_version)
+       VALUES ('agg-1', 'sink-1', 'sending', 1, 0, 1, 1)`,
+    )
+    expect(fence.isDrained()).toBe(false)
+    db.$client.run(`UPDATE analytics_aggregate_deliveries SET state = 'delivered' WHERE release_id = 'agg-1'`)
+    expect(fence.isDrained()).toBe(true)
+  })
+
   test('an in-flight send holding the grant mutex blocks the drain', () => {
     const grantMutex = createGrantSendMutex()
     const fence = createRekeyCutoverFence({ ...depsOf(db), grantMutex })

@@ -649,6 +649,83 @@ describe('worker generation and cutover fencing', () => {
     expect(fence.isDrained()).toBe(true)
   })
 
+  const seedAggregateDelivery = (releaseId: string, utcDay: string): void => {
+    db.insert(analyticsAggregateReleases)
+      .values({
+        releaseId,
+        releaseHash: releaseId.padEnd(64, '0').slice(0, 64),
+        payloadJson: `{"utc_day":"${utcDay}","cells":[]}`,
+        payloadSchemaVersion: 1,
+        createdAtMs: NOW,
+      })
+      .run()
+    db.insert(analyticsAggregateDeliveries)
+      .values({
+        releaseId,
+        sinkVersionId: 'sv-agg',
+        state: 'pending',
+        attempts: 0,
+        nextAttemptAtMs: NOW,
+        payloadSchemaVersion: 1,
+      })
+      .run()
+  }
+
+  const aggregateDeliveryState = (releaseId: string): string | undefined =>
+    db
+      .select({ state: analyticsAggregateDeliveries.state })
+      .from(analyticsAggregateDeliveries)
+      .where(eq(analyticsAggregateDeliveries.releaseId, releaseId))
+      .get()?.state
+
+  test('cutover drains an admitted aggregate send before the fence reports drained', async () => {
+    insertSink(db, 'sv-agg', 'aggregate')
+    seedAggregateDelivery('agg-release:drain', new Date(NOW).toISOString().slice(0, 10))
+
+    const gate = createDeferred()
+    const entered = createDeferred()
+    deps = {
+      ...deps,
+      transport: (): Promise<PinnedSendOutcome> => {
+        entered.resolve()
+        return gate.promise.then(
+          (): PinnedSendOutcome => ({ kind: 'delivered', status: 200, receiptHash: 'f'.repeat(64) }),
+        )
+      },
+    }
+    const tick = runDeliveryWorkerTick({ nowMs: NOW }, deps)
+    await entered.promise
+    expect(aggregateDeliveryState('agg-release:drain')).toBe('sending')
+
+    startCutover('run-1')
+    expect(fence.isFenceHeld()).toBe(true)
+    expect(fence.isDrained()).toBe(false)
+
+    gate.resolve()
+    const result = await tick
+    expect(result.delivered).toBe(1)
+    expect(aggregateDeliveryState('agg-release:drain')).toBe('delivered')
+    expect(fence.isDrained()).toBe(true)
+  })
+
+  test('only still-eligible aggregate rows lease after the rekey resumes egress', async () => {
+    insertSink(db, 'sv-agg', 'aggregate')
+    seedAggregateDelivery('agg-release:eligible', new Date(NOW).toISOString().slice(0, 10))
+    seedAggregateDelivery('agg-release:expired', '2020-01-01')
+    startCutover('run-1')
+
+    const paused = await runDeliveryWorkerTick({ nowMs: NOW }, deps)
+    expect(paused.leased).toBe(0)
+    expect(scripted.calls).toHaveLength(0)
+
+    fence.releaseFence('run-1', NOW + 1)
+    const resumed = await runDeliveryWorkerTick({ nowMs: NOW + 2 }, deps)
+    expect(resumed).toMatchObject({ leased: 1, delivered: 1 })
+    expect(scripted.calls).toHaveLength(1)
+    expect(aggregateDeliveryState('agg-release:eligible')).toBe('delivered')
+    expect(aggregateDeliveryState('agg-release:expired')).toBe('cancelled')
+  })
+
   test('only still-eligible new-generation rows enqueue after the rekey resumes egress', () => {
     insertEvent(db, 'old-1', 'gen-1')
     insertEvent(db, 'new-1', 'gen-2')

@@ -5,7 +5,7 @@
 
 import { analyticsAggregateDeliveries } from '../../db/schema.js'
 import { logger } from '../../logger.js'
-import { admitFence, keyFilter } from './aggregate-delivery-store.js'
+import { keyFilter } from './aggregate-delivery-store.js'
 import type { AggregateDeliveryStoreDeps } from './aggregate-delivery-store.js'
 import type { DeliveryErrorClass } from './sink.js'
 
@@ -54,27 +54,21 @@ export const classifyAggregateDelivery = (
   input: ClassifyAggregateDeliveryInput,
   deps: AggregateDeliveryStoreDeps,
 ): ClassifyAggregateDeliveryResult => {
-  const releaseFence = admitFence(deps)
-  if (releaseFence === null) return 'not_sending'
-  try {
-    const db = deps.getDrizzleDb()
-    return db.transaction((tx) => {
-      const row = tx
-        .select()
-        .from(analyticsAggregateDeliveries)
-        .where(keyFilter(input.releaseId, input.sinkVersionId))
-        .get()
-      if (row === undefined || row.state !== 'sending') return 'not_sending'
-      if (row.leaseUntilMs === null || row.leaseUntilMs < input.nowMs) return 'lease_expired'
-      tx.update(analyticsAggregateDeliveries)
-        .set(classificationPatch(input))
-        .where(keyFilter(input.releaseId, input.sinkVersionId))
-        .run()
-      return 'classified'
-    })
-  } finally {
-    releaseFence()
-  }
+  const db = deps.getDrizzleDb()
+  return db.transaction((tx) => {
+    const row = tx
+      .select()
+      .from(analyticsAggregateDeliveries)
+      .where(keyFilter(input.releaseId, input.sinkVersionId))
+      .get()
+    if (row === undefined || row.state !== 'sending') return 'not_sending'
+    if (row.leaseUntilMs === null || row.leaseUntilMs < input.nowMs) return 'lease_expired'
+    tx.update(analyticsAggregateDeliveries)
+      .set(classificationPatch(input))
+      .where(keyFilter(input.releaseId, input.sinkVersionId))
+      .run()
+    return 'classified'
+  })
 }
 
 export type ReconcileAggregateAmbiguousInput = Readonly<{

@@ -6,7 +6,7 @@
 import { and, eq } from 'drizzle-orm'
 
 import { getDrizzleDb as defaultGetDrizzleDb } from '../../db/drizzle.js'
-import { analyticsDeliveries, analyticsRekeyRuns } from '../../db/schema.js'
+import { analyticsAggregateDeliveries, analyticsDeliveries, analyticsRekeyRuns } from '../../db/schema.js'
 import { logger } from '../../logger.js'
 import type { GrantSendMutex } from '../governance/grant-serialization.js'
 import { getNonterminalRekeyRun } from './run-store.js'
@@ -66,12 +66,22 @@ const createAdmit = (counts: Record<MutableWriterClass, number>, isFenceHeld: ()
   }
 }
 
-const sendingInFlight = (getDrizzleDb: GetDb): boolean =>
+const eventSendInFlight = (getDrizzleDb: GetDb): boolean =>
   getDrizzleDb()
     .select({ eventId: analyticsDeliveries.eventId })
     .from(analyticsDeliveries)
     .where(eq(analyticsDeliveries.state, 'sending'))
     .get() !== undefined
+
+const aggregateSendInFlight = (getDrizzleDb: GetDb): boolean =>
+  getDrizzleDb()
+    .select({ releaseId: analyticsAggregateDeliveries.releaseId })
+    .from(analyticsAggregateDeliveries)
+    .where(eq(analyticsAggregateDeliveries.state, 'sending'))
+    .get() !== undefined
+
+const sendingInFlight = (getDrizzleDb: GetDb): boolean =>
+  eventSendInFlight(getDrizzleDb) || aggregateSendInFlight(getDrizzleDb)
 
 const createIsDrained = (deps: RekeyCutoverFenceDeps, counts: Record<MutableWriterClass, number>) => {
   return (): boolean => {

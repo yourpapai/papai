@@ -17,7 +17,13 @@ import {
   markAggregateSendStarted,
 } from '../../../src/analytics/delivery/aggregate-delivery-store.js'
 import type { AggregateDeliveryStoreDeps } from '../../../src/analytics/delivery/aggregate-delivery-store.js'
-import { analyticsAggregateDeliveries, analyticsAggregateReleases, analyticsSinks } from '../../../src/db/schema.js'
+import { createRekeyCutoverFence } from '../../../src/analytics/rekey/cutover-fence.js'
+import {
+  analyticsAggregateDeliveries,
+  analyticsAggregateReleases,
+  analyticsRekeyRuns,
+  analyticsSinks,
+} from '../../../src/db/schema.js'
 import type { AnalyticsAggregateDeliveryRow } from '../../../src/db/schema.js'
 import { mockLogger, setupTestDb } from '../../utils/test-helpers.js'
 
@@ -103,6 +109,49 @@ describe('aggregate delivery classification', () => {
           remoteReceiptHash: 'r'.repeat(64),
         },
         deps,
+      ),
+    ).toBe('classified')
+    expect(row(db)).toMatchObject({ state: 'delivered', deliveredAtMs: NOW + 1, remoteReceiptHash: 'r'.repeat(64) })
+  })
+
+  test('an admitted in-flight send classifies across the held cutover fence', () => {
+    insertSinkAndRelease(db)
+    insertDelivery(db)
+    const fence = createRekeyCutoverFence({ getDrizzleDb: (): Db => db })
+    const fencedDeps: AggregateDeliveryStoreDeps = { getDrizzleDb: (): Db => db, fence }
+    leaseAggregateDeliveries({ nowMs: NOW, leaseMs: 10_000, limit: 10, maxAttempts: 8 }, fencedDeps)
+    expect(markAggregateSendStarted({ releaseId: RELEASE, sinkVersionId: SINK, nowMs: NOW }, fencedDeps)).toBe(
+      'started',
+    )
+
+    db.insert(analyticsRekeyRuns)
+      .values({
+        runId: 'run-1',
+        sourceGeneration: 'gen-1',
+        targetGeneration: 'gen-2',
+        fromVersions: JSON.stringify(['v1']),
+        toVersions: JSON.stringify(['v2']),
+        sourceHighWater: 'hw-1',
+        phase: 'cutover',
+        subphase: null,
+        planHash: 'plan-1',
+        status: 'running',
+        createdAt: NOW,
+        updatedAt: NOW,
+      })
+      .run()
+    expect(fence.isFenceHeld()).toBe(true)
+
+    expect(
+      classifyAggregateDelivery(
+        {
+          releaseId: RELEASE,
+          sinkVersionId: SINK,
+          nowMs: NOW + 1,
+          outcome: 'delivered',
+          remoteReceiptHash: 'r'.repeat(64),
+        },
+        fencedDeps,
       ),
     ).toBe('classified')
     expect(row(db)).toMatchObject({ state: 'delivered', deliveredAtMs: NOW + 1, remoteReceiptHash: 'r'.repeat(64) })
