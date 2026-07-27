@@ -330,7 +330,7 @@ describe('discoverScopedSourceFiles', () => {
       await mkdir(path.join(root, 'src'), { recursive: true })
       await writeFile(path.join(root, 'src', 'runtime.ts'), 'export const value = 1\n')
 
-      expect(discoverScopedSourceFiles(root)).rejects.toThrow('plugins')
+      await expect(discoverScopedSourceFiles(root)).rejects.toThrow('plugins')
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -341,7 +341,7 @@ describe('discoverScopedSourceFiles', () => {
     try {
       await rm(path.join(root, 'plugins', 'demo', 'index.ts'))
 
-      expect(discoverScopedSourceFiles(root)).rejects.toThrow('plugins')
+      await expect(discoverScopedSourceFiles(root)).rejects.toThrow('plugins')
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -352,7 +352,7 @@ describe('discoverScopedSourceFiles', () => {
     try {
       await writeFile(path.join(root, 'src', 'broken.ts'), 'export const = \n')
 
-      expect(discoverScopedSourceFiles(root)).rejects.toThrow('src/broken.ts')
+      await expect(discoverScopedSourceFiles(root)).rejects.toThrow('src/broken.ts')
     } finally {
       await rm(root, { recursive: true, force: true })
     }
