@@ -53,6 +53,7 @@ export type ChatCapability =
   | 'messages.files'
   | 'messages.redact'
   | 'messages.reply-context'
+  | 'messages.edit.inbound'
   | 'files.receive'
   | 'users.resolve'
 
@@ -154,6 +155,7 @@ export type IncomingMessage = {
   threadId: string
   /** message is a reply to one of the bot's own messages; undefined when the adapter cannot determine this (treat as false) */
   isReplyToBot: boolean
+  editedAt: number
 }>
 
 /** An incoming button interaction from a user. */
@@ -209,6 +211,9 @@ export type { PromptHandle } from './prompt-handle.js'
 import type { StatusHandle } from './status-handle.js'
 export type { StatusHandle } from './status-handle.js'
 
+/** Opaque platform handle to a sent message the bot can later edit. */
+export type ReplyTarget = { readonly platform: 'telegram' | 'discord' | 'mattermost'; readonly ref: unknown }
+
 /** Reply function injected into handlers — the only way to send messages back to the user. */
 export type ReplyFn = {
   text: { (content: string): Promise<void>; (content: string, options: ReplyOptions): Promise<void> }
@@ -232,6 +237,7 @@ export type ReplyFn = {
    * Returns undefined when the platform cannot create one (e.g. Kontur Talk) or the send fails.
    */
   createStatus: (initialText: string) => Promise<StatusHandle | undefined>
+  editReply: (target: ReplyTarget, markdown: string) => Promise<void>
 }>
 
 /** Result of `ChatProvider.renderContext` — describes how the handler should send the output. */
@@ -266,6 +272,7 @@ export type ChatProvider = {
 } & Partial<{
   /** Register the handler for button/callback interactions (optional). */
   onInteraction: (handler: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) => void
+  onMessageEdit: (handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>) => void
   resolveUserId: (username: string, context: ResolveUserContext) => Promise<string | null>
   resolveUserLabel: (userId: string, context: ResolveUserContext | undefined) => Promise<string | null>
   resolveGroupLabel: (groupId: string) => Promise<string | null>
