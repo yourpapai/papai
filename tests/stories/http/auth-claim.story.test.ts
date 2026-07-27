@@ -48,6 +48,12 @@ scenario(
       body: '{not valid json',
     })
     then.responseStatus(malformed, 400)
+    const missingCode = await when.request('/settings/auth/exchange', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    then.responseStatus(missingCode, 400)
     then.responseStatus(await when.request('/settings/auth/exchange'), 405)
 
     const csrfRejected = await when.settingsRequest(
