@@ -22,6 +22,7 @@ import { createProductionRuntimeDeps } from '../../../src/runtime/production-dep
 import type { PapaiRuntime, PapaiRuntimeDeps } from '../../../src/runtime/types.js'
 import { createScenarioChat, type ScenarioChat, type ScenarioReply } from './chat.js'
 import { createScenarioEvents, type ScenarioEvent, type ScenarioEvents } from './events.js'
+import { createFakeYouTrackResponder } from './fake-youtrack/responder.js'
 import { SCENARIO_PLATFORM_INSTANCE_ID, createScenarioFixtures, type ScenarioFixtures } from './fixtures.js'
 import { MemoryTaskProvider } from './memory-task-provider.js'
 import {
@@ -35,6 +36,10 @@ import { createStrictHttpDispatcher, type StrictHttpDispatcher } from './strict-
 
 const FIXED_NOW = '2026-01-01T00:00:00.000Z'
 export const ADMIN_USER_ID = 'scenario-admin'
+
+const REAL_YOUTRACK_HOST = 'youtrack.invalid'
+export const REAL_YOUTRACK_BASE_URL = `https://${REAL_YOUTRACK_HOST}`
+export const REAL_YOUTRACK_TOKEN = 'fake-token'
 
 export type ScenarioClock = Readonly<{ now(): Date; advance(milliseconds: number): void }>
 export type ScenarioIds = Readonly<{ next(namespace: string): string }>
@@ -98,6 +103,7 @@ export type ScenarioWorldOptions = Readonly<{
   testHooks?: ScenarioWorldTestHooks
   tempRoot?: string
   debugEnabled?: boolean
+  realTaskProvider?: 'youtrack'
 }>
 
 export type ScenarioWorld = Readonly<{
@@ -435,6 +441,10 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     fixtures.seedSystemLlmConfig()
     resources.providerAttempted = true
     fixtures.registerTaskProvider()
+    if (options.realTaskProvider === 'youtrack') {
+      fixtures.approveRealTaskProviderPlugin('youtrack')
+      http.serveHost(REAL_YOUTRACK_HOST, createFakeYouTrackResponder())
+    }
     const pluginProviderRuntimeDeps = { fetch: http.fetch, assertPublicUrl: (): Promise<void> => Promise.resolve() }
     const productionDeps = createProductionRuntimeDeps(
       {

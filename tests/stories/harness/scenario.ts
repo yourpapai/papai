@@ -42,7 +42,8 @@ import type {
 } from '../../../src/long-term-memory/types.js'
 import { kvList } from '../../../src/plugins/store.js'
 import type { DiscoveredPlugin } from '../../../src/plugins/types.js'
-import type { TaskCapability } from '../../../src/providers/types.js'
+import { defaultTaskProviderResolver } from '../../../src/providers/resolver.js'
+import type { TaskCapability, TaskProvider } from '../../../src/providers/types.js'
 import { tick } from '../../../src/scheduler.js'
 import { setToolPrefs, type ToolPrefs } from '../../../src/tools/tool-preferences.js'
 import { MATCH_EMBEDDING } from './embeddings.js'
@@ -52,6 +53,8 @@ import type { ScenarioRuntimeExtension } from './runtime-extension.js'
 import type { ModelDecision } from './scripted-llm.js'
 import {
   ADMIN_USER_ID,
+  REAL_YOUTRACK_BASE_URL,
+  REAL_YOUTRACK_TOKEN,
   type ContextHandle,
   type DmHandle,
   type GroupHandle,
@@ -296,11 +299,12 @@ export type ScenarioApi = Readonly<{
   when: ScenarioWhen
   then: ScenarioThen
   world: ScenarioWorld
+  resolveRealTaskProvider(context: ContextHandle): Promise<TaskProvider>
 }>
 
 type WorldFactory = (name: string) => Promise<ScenarioWorld>
 
-export type ScenarioOptions = Readonly<{ debugEnabled?: boolean }>
+export type ScenarioOptions = Readonly<{ debugEnabled?: boolean; realTaskProvider?: 'youtrack' }>
 
 const contextId = (context: ContextHandle): string =>
   context.kind === 'dm' ? context.user.id : context.kind === 'thread' ? context.group.id : context.id
@@ -529,7 +533,11 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
     },
     taskInstance(id = world.ids.next('task-instance'), providerType = 'kaneo'): TaskInstanceHandle {
       prerequisite('given.taskInstance')
-      world.fixtures.seedTaskInstance({ id, type: providerType })
+      world.fixtures.seedTaskInstance({
+        id,
+        type: providerType,
+        ...(providerType === 'youtrack' ? { config: { baseUrl: REAL_YOUTRACK_BASE_URL } } : {}),
+      })
       return makeTaskInstanceHandle(id, providerType)
     },
     taskCapabilities(capabilities): void {
@@ -543,6 +551,14 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
         platformInstanceId: context.platformInstanceId,
         taskInstanceId: taskInstance.id,
       })
+      if (taskInstance.providerType === 'youtrack') {
+        world.fixtures.seedProviderContextConfig({
+          contextId: scopedConfigContextId(context),
+          pluginId: 'task-provider-youtrack',
+          key: 'token',
+          value: REAL_YOUTRACK_TOKEN,
+        })
+      }
     },
     settingsSession(user): Promise<SettingsSessionHandle> {
       prerequisite('given.settingsSession')
@@ -914,7 +930,17 @@ function createThen(world: ScenarioWorld): ScenarioThen {
 }
 
 export function createScenarioApi(world: ScenarioWorld): ScenarioApi {
-  return { world, given: createGiven(world), when: createWhen(world), then: createThen(world) }
+  return {
+    world,
+    given: createGiven(world),
+    when: createWhen(world),
+    then: createThen(world),
+    async resolveRealTaskProvider(context: ContextHandle): Promise<TaskProvider> {
+      const provider = await defaultTaskProviderResolver.resolve(scopedConfigContextId(context))
+      if (provider === null) throw new Error('Scenario expected a resolvable real task provider')
+      return provider
+    },
+  }
 }
 
 function combineFailures(primary: unknown, teardown: unknown): AggregateError {
@@ -934,7 +960,11 @@ export function executeScenario(
       createWorld ??
       ((scenarioName): Promise<ScenarioWorld> =>
         import('./world.js').then((module) =>
-          module.createScenarioWorld(scenarioName, { tempRoot: guard?.tempRoot, debugEnabled: options?.debugEnabled }),
+          module.createScenarioWorld(scenarioName, {
+            tempRoot: guard?.tempRoot,
+            debugEnabled: options?.debugEnabled,
+            realTaskProvider: options?.realTaskProvider,
+          }),
         ))
     const world = await factory(name)
     guard?.bind({ events: world.events, http: world.http })

@@ -103,7 +103,7 @@ export type CatalogCoverage =
     }>
 
 export const CATALOG_SOURCE =
-  'scenario-catalog snapshot supplied 2026-07-13; extended 2026-07-23 with 12 SCN-parity-* provider-real (@1) ids (tier1-provider-real-parity); extended 2026-07-24 with 17 SCN-parity-* domain-retrofit (@1) ids (tier1b-e2e-parity-retrofit); extended 2026-07-24 with 8 SCN-* process-real smoke (@2) ids (tier2-process-smoke)' as const
+  'scenario-catalog snapshot supplied 2026-07-13; extended 2026-07-23 with 12 SCN-parity-* provider-real (@1) ids (tier1-provider-real-parity); extended 2026-07-24 with 17 SCN-parity-* domain-retrofit (@1) ids (tier1b-e2e-parity-retrofit); extended 2026-07-24 with 8 SCN-* process-real smoke (@2) ids (tier2-process-smoke); extended 2026-07-27 with 10 real-YouTrack (@0) ids (t0-real-youtrack-provider)' as const
 
 export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-task-create-update',
@@ -278,6 +278,8 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-plugin-registry-served',
   'SCN-chat-turn-tool-loop',
   'SCN-graceful-shutdown',
+  // @0 — real YouTrack provider inside the hermetic lane (t0-real-youtrack-provider)
+  'SCN-task-youtrack-real-create',
 ] as const)
 
 const GAP_SCENARIO_IDS = new Set<CatalogScenarioId>([
@@ -1155,6 +1157,12 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     provingTier: '3',
     storyIds: [
       'tests/platform/scenarios/mattermost-http-action.platform.ts#verifies a signed action context and dispatches over POST /mattermost/actions',
+    ],
+  },
+  'SCN-task-youtrack-real-create': {
+    verifiedAt: '2026-07-27',
+    storyIds: [
+      'tests/stories/tasks/youtrack-real.story.test.ts#SCN-task-youtrack-real-create: activates the real YouTrack plugin and creates a task over fake REST',
     ],
   },
 }

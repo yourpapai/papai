@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { saveAttachment } from '../../../src/attachments/store.js'
 import { addAuthorizedGroup, setGuestMode } from '../../../src/authorized-groups.js'
 import { setMcpPluginServerConfigs } from '../../../src/coding-credentials/mcp-plugin-servers.js'
+import { setConfigValue } from '../../../src/config.js'
 import { SESSION_COOKIE_NAME as DASHBOARD_SESSION_COOKIE_NAME } from '../../../src/dashboard-auth/cookie.js'
 import { addGroupMember } from '../../../src/groups.js'
 import { setIdentityMapping } from '../../../src/identity/mapping.js'
@@ -20,6 +21,7 @@ import type { MemoryRecord, MemoryRecordInput } from '../../../src/long-term-mem
 import { mcpPool } from '../../../src/mcp/client-pool.js'
 import { saveMemo, updateMemoEmbedding } from '../../../src/memos.js'
 import { resetNotifyTokenCacheForTesting } from '../../../src/notify-token.js'
+import { discoverPlugins } from '../../../src/plugins/discovery.js'
 import { pluginRegistry } from '../../../src/plugins/registry.js'
 import { PLUGIN_API_VERSION, type DiscoveredPlugin } from '../../../src/plugins/types.js'
 import {
@@ -252,13 +254,16 @@ export type ScenarioFixturesOptions = Readonly<{
   chat?: ScenarioGroupAdminSeed
 }>
 
+/** Real, plugin-contributed task provider types the story lane can approve and activate. */
+const REAL_TASK_PROVIDER_PLUGIN_IDS: Readonly<Record<'youtrack', string>> = { youtrack: 'task-provider-youtrack' }
+
 export type ScenarioFixtures = Readonly<{
   taskProvider: TaskProvider
   settingsSessions: SettingsSessionVault
   dashboardSessions: DashboardSessionVault
   setupDatabase(): Promise<void>
   seedPlatformInstance(input?: Readonly<{ id?: string; type?: PlatformInstanceType }>): void
-  seedTaskInstance(input?: Readonly<{ id?: string; type?: string }>): void
+  seedTaskInstance(input?: Readonly<{ id?: string; type?: string; config?: Record<string, string> }>): void
   seedRecurringTask(input: RecurringTaskSeed): void
   exhaustWebFetchQuota(input: Readonly<{ actorId: string; nowMs: number }>): void
   seedScheduledPrompt(input: ScheduledPromptSeed): void
@@ -287,6 +292,8 @@ export type ScenarioFixtures = Readonly<{
   ): Promise<{ id: string }>
   issueSettingsAuthCode(input: Readonly<{ platformInstanceId: string; platformUserId: string }>, nowMs: number): string
   approvePlugin(plugin?: DiscoveredPlugin): DiscoveredPlugin
+  approveRealTaskProviderPlugin(type: 'youtrack'): void
+  seedProviderContextConfig(input: Readonly<{ contextId: string; pluginId: string; key: string; value: string }>): void
   registerTaskProvider(): void
   seedMemo(
     input: Readonly<{
@@ -355,7 +362,11 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
       seedTestPlatformInstance({ id: input.id ?? SCENARIO_PLATFORM_INSTANCE_ID, type: input.type ?? 'telegram' })
     },
     seedTaskInstance(input = {}): void {
-      seedTestTaskInstance({ id: input.id ?? SCENARIO_TASK_INSTANCE_ID, type: input.type ?? 'kaneo', config: {} })
+      seedTestTaskInstance({
+        id: input.id ?? SCENARIO_TASK_INSTANCE_ID,
+        type: input.type ?? 'kaneo',
+        config: input.config ?? {},
+      })
     },
     seedRecurringTask(input): void {
       seedTestRecurringTask(input)
@@ -467,6 +478,19 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
       const approved = pluginRegistry.approve(plugin.manifest.id, 'scenario-admin', plugin.manifestHash)
       if (!approved) throw new Error(`Failed to approve scenario plugin: ${plugin.manifest.id}`)
       return plugin
+    },
+    approveRealTaskProviderPlugin(type): void {
+      const pluginId = REAL_TASK_PROVIDER_PLUGIN_IDS[type]
+      const discovered = discoverPlugins('plugins').plugins.find((plugin) => plugin.manifest.id === pluginId)
+      if (discovered === undefined) {
+        throw new Error(`Real task provider plugin not discovered on disk: ${pluginId}`)
+      }
+      pluginRegistry.registerDiscovered(discovered)
+      const approved = pluginRegistry.approve(pluginId, 'scenario-admin', discovered.manifestHash)
+      if (!approved) throw new Error(`Failed to approve real task provider plugin: ${pluginId}`)
+    },
+    seedProviderContextConfig(input): void {
+      setConfigValue(input.contextId, `plugin:${input.pluginId}:provider:${input.key}`, input.value)
     },
     registerTaskProvider(): void {
       unregisterContributedTaskProviderType(SCENARIO_PROVIDER_PLUGIN_ID)
