@@ -8,8 +8,26 @@
  * All periodic tasks are registered here.
  */
 
+import { isAbsolute } from 'node:path'
+
+import { ANALYTICS_HMAC_KEYRING_ENV } from './analytics/config.js'
+import { KeyVersionSchema } from './analytics/controlled-types.js'
+import type { EffectiveLanes } from './analytics/governance/policy-store.js'
+import { getPolicy, resolveEffectiveLanes } from './analytics/governance/policy-store.js'
+import { parseAnalyticsKeyring } from './analytics/identity/keyring.js'
+import type { AnalyticsJobDeps, AnalyticsJobKeyMaterial } from './analytics/jobs/register.js'
+import {
+  ANALYTICS_SNAPSHOT_PATH_ENV,
+  registerAnalyticsJobs,
+  unregisterAnalyticsJobs,
+} from './analytics/jobs/register.js'
+import { createRekeyCutoverFence } from './analytics/rekey/cutover-fence.js'
+import type { AnalyticsObserver } from './analytics/runtime.js'
+import { getActiveAnalyticsRuntime } from './analytics/start-analytics.js'
+import { getOpenEpoch } from './analytics/storage/epoch-store.js'
 import { purgeExpiredStagedFiles } from './attachments/staged.js'
 import { cleanupExpiredCaches } from './cache.js'
+import { getDrizzleDb } from './db/drizzle.js'
 import { logger } from './logger.js'
 import { sweepDirtyContexts } from './long-term-memory/capture-sweep.js'
 import { runMemoryMaintenance } from './long-term-memory/maintenance.js'
@@ -98,6 +116,59 @@ export function unregisterDefaultSchedulerTasks(): void {
   for (const taskName of DEFAULT_SCHEDULER_TASK_NAMES) {
     if (scheduler.hasTask(taskName)) scheduler.unregister(taskName)
   }
+}
+
+const OFF_LANES: EffectiveLanes = {
+  killSwitchActive: true,
+  localMode: 'off',
+  externalAggregateEnabled: false,
+  externalPseudonymousEnabled: false,
+}
+
+const readAnalyticsLanes = (): EffectiveLanes => {
+  try {
+    return resolveEffectiveLanes({ policy: getPolicy() })
+  } catch {
+    return OFF_LANES
+  }
+}
+
+const readAnalyticsKeyMaterial = (): AnalyticsJobKeyMaterial | null => {
+  const keyring = parseAnalyticsKeyring(process.env[ANALYTICS_HMAC_KEYRING_ENV])
+  if (keyring.kind !== 'available') return null
+  return { key: keyring.activeKey, keyVersion: KeyVersionSchema.parse(keyring.activeVersion) }
+}
+
+const readSnapshotPath = (): string | null => {
+  const configured = process.env[ANALYTICS_SNAPSHOT_PATH_ENV]
+  return typeof configured === 'string' && configured.length > 0 && isAbsolute(configured) ? configured : null
+}
+
+const readOpenEpochId = (): string | null => {
+  try {
+    return getOpenEpoch({ getDrizzleDb })?.epochId ?? null
+  } catch {
+    return null
+  }
+}
+
+export const buildAnalyticsJobDeps = (): AnalyticsJobDeps => ({
+  nowMs: Date.now,
+  getDrizzleDb,
+  lanes: readAnalyticsLanes,
+  observer: (): AnalyticsObserver | null => getActiveAnalyticsRuntime()?.observer ?? null,
+  openEpochId: readOpenEpochId,
+  keyMaterial: readAnalyticsKeyMaterial,
+  snapshotPath: readSnapshotPath,
+  fence: createRekeyCutoverFence({ getDrizzleDb }),
+})
+
+export function registerAnalyticsSchedulerJobs(): void {
+  registerAnalyticsJobs(scheduler, buildAnalyticsJobDeps())
+}
+
+export function unregisterAnalyticsSchedulerJobs(): void {
+  unregisterAnalyticsJobs(scheduler)
 }
 
 // Event hooks

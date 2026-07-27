@@ -53,6 +53,12 @@ export type AnalyticsRuntimeDeps = Readonly<{
   log: AnalyticsRuntimeLog
   sinks: RuntimeSinks
   queueCapacity?: number
+  /**
+   * Durable controlled-overflow binding: invoked once per dropped item with
+   * the dropped item's UTC day so the exact overflow count lands on the open
+   * process epoch instead of a process-global implicit counter.
+   */
+  onControlledOverflow?: (utcDay: string) => void
 }>
 
 const isPseudonymousLane = (decision: EligibilityDecision): boolean =>
@@ -63,12 +69,13 @@ const classifyError = (error: unknown): string => {
   return 'non_error'
 }
 
-const enqueue = <T>(queue: T[], item: T, capacity: number, health: AnalyticsRuntimeHealth): void => {
+const enqueue = <T>(queue: T[], item: T, capacity: number, health: AnalyticsRuntimeHealth): boolean => {
   if (queue.length >= capacity) {
     health.increment('queue_full')
-    return
+    return false
   }
   queue.push(item)
+  return true
 }
 
 const aggregateItemFor = (event: AnalyticsEventV1, increment: AggregateIncrement): QueuedAggregateIncrement => ({
@@ -91,12 +98,13 @@ const routePseudonymous = (
     deps.log.warn({ factType: fact.type, lane: decision.lane }, 'pseudonymous decision missing collection ref')
     return
   }
-  enqueue(
+  const enqueued = enqueue(
     queue,
     { event, collectionRef: decision.collectionEligibility, deliveryGrant: decision.deliveryGrant },
     capacity,
     deps.health,
   )
+  if (!enqueued) deps.onControlledOverflow?.(utcDayOfMs(event.event.occurred_at_ms))
 }
 
 export type SubjectWithdrawalHook = (identity: Readonly<{ platformInstanceId: string; platformUserId: string }>) => void
@@ -130,7 +138,8 @@ export const createAnalyticsObserver = (deps: AnalyticsRuntimeDeps): AnalyticsOb
     if (result.status !== 'ok') return
     const { event } = result
     incrementsForEvent(event).forEach((increment) => {
-      enqueue(aggregateQueue, aggregateItemFor(event, increment), capacity, deps.health)
+      const item = aggregateItemFor(event, increment)
+      if (!enqueue(aggregateQueue, item, capacity, deps.health)) deps.onControlledOverflow?.(item.utcDay)
     })
     if (isPseudonymousLane(decision)) routePseudonymous(fact, event, decision, eventQueue, capacity, deps)
   }

@@ -10,6 +10,8 @@ import {
   analyticsEvents,
   analyticsPolicyAudit,
 } from '../../db/schema.js'
+import { logger } from '../../logger.js'
+import type { RekeyCutoverFence } from '../rekey/cutover-fence.js'
 import {
   aggregateDeadlineMs,
   deliveryReceiptDeadlineMs,
@@ -24,6 +26,39 @@ import type { DeliveryJoinRow, PurgeResult, RetentionJobDeps, RetentionJobInput 
 
 export { purgeExpired } from './retention-purge.js'
 export type { PurgeResult, RetentionJobDeps, RetentionJobInput } from './retention-purge.js'
+
+const log = logger.child({ scope: 'analytics:jobs:retention' })
+
+export type RetentionSweepDeps = RetentionJobDeps &
+  Readonly<{
+    fence?: RekeyCutoverFence
+  }>
+
+export type RetentionSweepResult = Readonly<{
+  status: 'purged' | 'fence_held'
+  purge: PurgeResult | null
+  nextWakeMs: number
+}>
+
+/**
+ * Scheduled expiry purge. Retention is never gated by collection mode (a kill
+ * switch must never block deletion), but it admits to the rekey cutover fence:
+ * while a cutover is held the sweep skips its mutable phase entirely and only
+ * reports the next wake, so no generation is mutated mid-swap.
+ */
+export const runExpirySweep = (input: RetentionJobInput, deps: RetentionSweepDeps): RetentionSweepResult => {
+  const admission = deps.fence?.admit('retention')
+  if (deps.fence !== undefined && admission === null) {
+    log.warn('expiry sweep skipped: the cutover fence is held')
+    return { status: 'fence_held', purge: null, nextWakeMs: nextExpiryDeadline(input, deps) }
+  }
+  try {
+    const purge = purgeExpired(input, deps)
+    return { status: 'purged', purge, nextWakeMs: nextExpiryDeadline(input, deps) }
+  } finally {
+    admission?.release()
+  }
+}
 
 type Db = ReturnType<typeof defaultGetDrizzleDb>
 type Tx = Parameters<Db['transaction']>[0] extends (tx: infer T) => unknown ? T : never

@@ -74,6 +74,7 @@ const contributionDays = (tx: Tx, epochId: string): readonly string[] => {
 const markBucketsUnreconciled = (tx: Tx, days: readonly string[]): void => {
   if (days.length === 0) return
   const quality = {
+    finalized: false,
     restartGapDetected: true,
     reconciliationStatus: 'unreconciled_restart_gap',
     contributorCount: null,

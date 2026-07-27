@@ -17,9 +17,13 @@ import { createPseudonym } from '../identity/pseudonym.js'
 import { classifyHybrid, toClassifierToolSlug } from '../intent/classifier.js'
 import type { IntentPrediction } from '../intent/classifier.js'
 import { INTENT_IDS, isCoreIntent, sortGoals, TAXONOMY_VERSION } from '../intent/taxonomy.js'
+import type { RekeyCutoverFence } from '../rekey/cutover-fence.js'
 import { isUnexpired } from '../retention/expiry-guard.js'
 
-export type IntentDerivationDeps = Readonly<{ getDrizzleDb: typeof defaultGetDrizzleDb }>
+export type IntentDerivationDeps = Readonly<{
+  getDrizzleDb: typeof defaultGetDrizzleDb
+  fence?: RekeyCutoverFence
+}>
 
 export type IntentDerivationInput = Readonly<{
   processEpochId: string
@@ -223,12 +227,21 @@ export const runIntentDerivation = (
     log.debug({ localMode: input.localMode }, 'intent derivation skipped: local mode excludes pseudonymous intent')
     return counters
   }
-  const db = deps.getDrizzleDb()
-  const rows = scanTurns(db, input.limit ?? DEFAULT_LIMIT)
-  for (const row of rows) {
-    counters.scanned += 1
-    processTurn(db, input, row, counters)
+  const admission = deps.fence?.admit('intent')
+  if (deps.fence !== undefined && admission === null) {
+    log.warn('intent derivation skipped: the cutover fence is held')
+    return counters
   }
-  log.info({ ...counters }, 'intent derivation run completed')
-  return counters
+  try {
+    const db = deps.getDrizzleDb()
+    const rows = scanTurns(db, input.limit ?? DEFAULT_LIMIT)
+    for (const row of rows) {
+      counters.scanned += 1
+      processTurn(db, input, row, counters)
+    }
+    log.info({ ...counters }, 'intent derivation run completed')
+    return counters
+  } finally {
+    admission?.release()
+  }
 }

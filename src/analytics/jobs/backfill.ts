@@ -10,6 +10,7 @@ import type { LlmUsageEventRow } from '../../db/llm-usage-events-schema.js'
 import { analyticsBackfillRuns } from '../../db/schema.js'
 import type { ToolCallEventRow } from '../../db/tool-call-events-schema.js'
 import { logger } from '../../logger.js'
+import type { RekeyCutoverFence } from '../rekey/cutover-fence.js'
 import { completeBackfillRun, createBackfillRun, failBackfillRun } from '../storage/backfill-provenance-store.js'
 import { applyBackfillDecision } from './backfill-apply.js'
 import { routeFutureCanonicalDecision } from './backfill-canonical.js'
@@ -72,6 +73,7 @@ export type BackfillJobResult = Readonly<{ runs: readonly BackfillRunSummary[] }
 
 export type BackfillJobDeps = Readonly<{
   getDrizzleDb: typeof defaultGetDrizzleDb
+  fence?: RekeyCutoverFence
   hooks?: Readonly<{ afterBatch?: () => void }>
 }>
 
@@ -271,11 +273,20 @@ export const runBackfillJob = (
   input: BackfillJobInput,
   deps: BackfillJobDeps = { getDrizzleDb: defaultGetDrizzleDb },
 ): BackfillJobResult => {
-  const tables: BackfillSourceTable[] =
-    input.source === 'all'
-      ? [LLM_SOURCE_TABLE, TOOL_SOURCE_TABLE]
-      : input.source === 'llm'
-        ? [LLM_SOURCE_TABLE]
-        : [TOOL_SOURCE_TABLE]
-  return { runs: tables.map((table) => processSource(input, table, deps)) }
+  const admission = input.dryRun ? null : deps.fence?.admit('backfill')
+  if (!input.dryRun && deps.fence !== undefined && admission === null) {
+    log.warn('backfill job skipped: the cutover fence is held')
+    return { runs: [] }
+  }
+  try {
+    const tables: BackfillSourceTable[] =
+      input.source === 'all'
+        ? [LLM_SOURCE_TABLE, TOOL_SOURCE_TABLE]
+        : input.source === 'llm'
+          ? [LLM_SOURCE_TABLE]
+          : [TOOL_SOURCE_TABLE]
+    return { runs: tables.map((table) => processSource(input, table, deps)) }
+  } finally {
+    admission?.release()
+  }
 }

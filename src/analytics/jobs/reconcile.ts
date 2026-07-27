@@ -10,6 +10,7 @@ import { analyticsAggregateEpochContributions, analyticsDeliveries, analyticsEve
 import { logger } from '../../logger.js'
 import { utcDayOfMs } from '../aggregate.js'
 import { resolveActive } from '../governance/generation-store.js'
+import type { RekeyCutoverFence } from '../rekey/cutover-fence.js'
 import { listEpochSourceCounters, listProcessEpochs, markRestartGapBuckets } from '../storage/epoch-store.js'
 import { reconcileDurableUsage } from './reconcile-durable.js'
 import type { DurableSourceDayRow, DurableUsageReport } from './reconcile-durable.js'
@@ -49,7 +50,10 @@ export type ReconciliationReport = Readonly<{
   eventsByAttributionQuality: Readonly<Record<string, number>>
 }>
 
-export type ReconcileDeps = Readonly<{ getDrizzleDb: typeof defaultGetDrizzleDb }>
+export type ReconcileDeps = Readonly<{
+  getDrizzleDb: typeof defaultGetDrizzleDb
+  fence?: RekeyCutoverFence
+}>
 
 const TERMINAL_DISPOSITIONS = new Set([
   'canonical',
@@ -177,11 +181,16 @@ export const runReconciliation = (
   input: Readonly<{ nowMs: number; apply: boolean }>,
   deps: ReconcileDeps = { getDrizzleDb: defaultGetDrizzleDb },
 ): ReconciliationReport => {
+  const fenceHeld = deps.fence?.isFenceHeld() ?? false
+  if (input.apply && fenceHeld) {
+    log.warn('reconciliation apply phase skipped: the cutover fence is held')
+  }
+  const effectiveInput = { nowMs: input.nowMs, apply: input.apply && !fenceHeld }
   const db = deps.getDrizzleDb()
   const activeGeneration = resolveActive({ getDrizzleDb: deps.getDrizzleDb }).generation
   const durable = reconcileDurableUsage(db, activeGeneration)
   const liveEpochs = listProcessEpochs({ getDrizzleDb: deps.getDrizzleDb }).map((epoch) =>
-    reconcileEpoch(db, epoch, activeGeneration, input),
+    reconcileEpoch(db, epoch, activeGeneration, effectiveInput),
   )
   const delivery = reconcileDeliveries(db, activeGeneration)
   const eventsByName: Record<string, number> = {}

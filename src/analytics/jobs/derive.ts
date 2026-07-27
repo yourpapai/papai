@@ -39,6 +39,7 @@ import {
 import { insertEligibleCanonicalEvent } from '../governance/collection-serialization.js'
 import { resolveActive } from '../governance/generation-store.js'
 import { createPseudonym } from '../identity/pseudonym.js'
+import type { RekeyCutoverFence } from '../rekey/cutover-fence.js'
 import { purgeExpired } from './retention.js'
 
 export const LIVE_WATERMARK_MS = 120_000
@@ -47,7 +48,10 @@ const log = logger.child({ component: 'analytics-derive-job' })
 
 type Db = ReturnType<typeof defaultGetDrizzleDb>
 
-export type DeriveJobDeps = Readonly<{ getDrizzleDb: typeof defaultGetDrizzleDb }>
+export type DeriveJobDeps = Readonly<{
+  getDrizzleDb: typeof defaultGetDrizzleDb
+  fence?: RekeyCutoverFence
+}>
 
 export type DeriveJobInput = Readonly<{
   processEpochId: string
@@ -241,6 +245,19 @@ export const runDeriveJob = (
     log.debug({ localMode: input.localMode }, 'derive job skipped: local mode excludes pseudonymous materialization')
     return counters
   }
+  const admission = deps.fence?.admit('derive')
+  if (deps.fence !== undefined && admission === null) {
+    log.warn('derive job skipped: the cutover fence is held')
+    return counters
+  }
+  try {
+    return runDeriveUnderAdmission(input, deps, counters)
+  } finally {
+    admission?.release()
+  }
+}
+
+const runDeriveUnderAdmission = (input: DeriveJobInput, deps: DeriveJobDeps, counters: Counters): DeriveJobResult => {
   const db = deps.getDrizzleDb()
   const scanEndMs = Math.min(input.windowEndMs, input.nowMs - LIVE_WATERMARK_MS)
   if (scanEndMs <= input.windowStartMs) {

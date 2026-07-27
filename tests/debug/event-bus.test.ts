@@ -5,7 +5,11 @@
 
 import { afterEach, describe, expect, mock, test } from 'bun:test'
 
+import type { AnalyticsObserver } from '../../src/analytics/runtime.js'
+import { initAnalyticsRuntime, stopAnalyticsRuntime } from '../../src/analytics/subscriber.js'
+import type { AuthorizedTurnContextRegistry } from '../../src/analytics/turn-context.js'
 import { emitGlobal, emitUser, subscribe, unsubscribe, type DebugEvent } from '../../src/debug/event-bus.js'
+import { mockLogger } from '../utils/test-helpers.js'
 
 describe('event-bus', () => {
   const listeners: Array<(event: DebugEvent) => void> = []
@@ -111,5 +115,48 @@ describe('event-bus', () => {
     expect(received).not.toBeNull()
     expect(received!.turnId).toBe('turn-abc')
     expect(received!.scope).toEqual({ kind: 'user', userId: 'user-1' })
+  })
+
+  test('a throwing listener propagates synchronously (bus contract unchanged)', () => {
+    subscribe(
+      track(() => {
+        throw new Error('listener boom')
+      }),
+    )
+
+    expect(() => emitGlobal('contract:throwing-listener', {})).toThrow('listener boom')
+  })
+
+  test('analytics runtime callbacks catch internally and never throw into the bus', () => {
+    mockLogger()
+    const observer: AnalyticsObserver = {
+      observe: () => undefined,
+      flush: () => Promise.resolve(),
+      stop: () => Promise.resolve(),
+    }
+    const registry: AuthorizedTurnContextRegistry = {
+      register: () => undefined,
+      resolve: (): null => {
+        throw new Error('registry boom')
+      },
+      complete: () => undefined,
+      noteTerminalEvidence: () => undefined,
+      setTerminalListener: () => undefined,
+      clear: () => undefined,
+    }
+    let captured: ((event: DebugEvent) => void) | null = null
+    initAnalyticsRuntime({
+      observer,
+      registry,
+      subscribe: (fn) => {
+        captured = fn
+      },
+      unsubscribe: () => undefined,
+    })
+
+    expect(captured).not.toBeNull()
+    const event: DebugEvent = { type: 'llm:start', timestamp: 1, data: {}, scope: { kind: 'global' }, turnId: 't-1' }
+    expect(() => captured?.(event)).not.toThrow()
+    stopAnalyticsRuntime()
   })
 })

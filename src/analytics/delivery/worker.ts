@@ -112,6 +112,8 @@ const deferDuePendingRows = (deps: DeliveryWorkerDeps, nowMs: number): void => {
 
 type SendCounters = { delivered: number; retryable: number; ambiguous: number; dead: number }
 
+const rowKillSwitchActive = (deps: DeliveryWorkerDeps): boolean => (deps.killSwitchActive ?? isKillSwitchActive)()
+
 const sendEventRow = async (
   row: LeasedDelivery,
   deps: DeliveryWorkerDeps,
@@ -119,6 +121,10 @@ const sendEventRow = async (
   nowMs: number,
   counters: SendCounters,
 ): Promise<void> => {
+  if (rowKillSwitchActive(deps)) {
+    log.warn('send skipped at row entry: kill switch activated after leasing; row left for recovery')
+    return
+  }
   const started = markSendStarted(
     { eventId: row.eventId, sinkVersionId: row.sinkVersionId, grant: row.grant, nowMs },
     storeDeps,
@@ -159,6 +165,10 @@ const sendAggregateRow = async (
   nowMs: number,
   counters: SendCounters,
 ): Promise<void> => {
+  if (rowKillSwitchActive(deps)) {
+    log.warn('aggregate send skipped at row entry: kill switch activated after leasing; row left for recovery')
+    return
+  }
   const storeDeps = { getDrizzleDb: deps.getDrizzleDb, fence: deps.fence }
   const started = markAggregateSendStarted(
     { releaseId: row.releaseId, sinkVersionId: row.sinkVersionId, nowMs },

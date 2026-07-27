@@ -83,7 +83,12 @@ function startDatabase(state: ProductionState): void {
 }
 
 async function stopDatabase(): Promise<void> {
-  await stopAnalytics()
+  await stopAnalytics().catch((error: unknown) => {
+    log.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      'Analytics runtime stop failed; continuing database close',
+    )
+  })
   closeDrizzleDb()
   closeMigrationDbInstance()
 }

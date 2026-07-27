@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, ne, sql } from 'drizzle-orm'
 
 import { getDrizzleDb as defaultGetDrizzleDb } from '../../db/drizzle.js'
 import {
@@ -164,6 +164,48 @@ export type ProcessEpochSummary = Readonly<{
   closedAtMs: number | null
   staleMarkedAtMs: number | null
 }>
+
+export const getOpenEpoch = (
+  deps: EpochStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
+): { epochId: string; startedAtMs: number } | null => {
+  const row = deps
+    .getDrizzleDb()
+    .select({ epochId: analyticsProcessEpochs.epochId, startedAtMs: analyticsProcessEpochs.startedAtMs })
+    .from(analyticsProcessEpochs)
+    .where(eq(analyticsProcessEpochs.state, 'open'))
+    .get()
+  return row ?? null
+}
+
+/**
+ * Finalizes one complete UTC day's buckets (used by the scheduled
+ * flush/finalize job after the 00:05 grace window). Restart-gap days are
+ * never re-finalized: their publication block is terminal until re-derived.
+ */
+export const finalizeUtcDayBuckets = (
+  input: { utcDay: string },
+  deps: EpochStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
+): number => {
+  const db = deps.getDrizzleDb()
+  const matching = (table: typeof analyticsDailyCounters | typeof analyticsDailyHistograms): number =>
+    db
+      .select({ utcDay: table.utcDay })
+      .from(table)
+      .where(and(eq(table.utcDay, input.utcDay), ne(table.reconciliationStatus, 'unreconciled_restart_gap')))
+      .all().length
+  const set = { finalized: true, partialDay: false }
+  const finalize = (table: typeof analyticsDailyCounters | typeof analyticsDailyHistograms): void => {
+    db.update(table)
+      .set(set)
+      .where(and(eq(table.utcDay, input.utcDay), ne(table.reconciliationStatus, 'unreconciled_restart_gap')))
+      .run()
+  }
+  const updated = matching(analyticsDailyCounters) + matching(analyticsDailyHistograms)
+  finalize(analyticsDailyCounters)
+  finalize(analyticsDailyHistograms)
+  if (updated > 0) log.debug({ utcDay: input.utcDay, updated }, 'prior UTC day buckets finalized')
+  return updated
+}
 
 export const listProcessEpochs = (
   deps: EpochStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
