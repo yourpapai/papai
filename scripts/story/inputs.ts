@@ -23,8 +23,31 @@ export function isFrozenTestSupportPath(filePath: string): boolean {
   return FROZEN_TEST_SUPPORT.has(filePath)
 }
 
+// coverage modules the frozen enforcement tree imports; the snapshot must carry them or the runner cannot load.
+export const FROZEN_COVERAGE_SUPPORT: readonly string[] = [
+  'scripts/coverage/normalize-lcov.ts',
+  'scripts/coverage/ratchet-lib.ts',
+  'scripts/coverage/story-coverage-gate.ts',
+]
+
+const FROZEN_COVERAGE_SUPPORT_PATHS = new Set(FROZEN_COVERAGE_SUPPORT)
+
+export function isFrozenCoverageSupportPath(filePath: string): boolean {
+  return FROZEN_COVERAGE_SUPPORT_PATHS.has(filePath)
+}
+
 const STORIES_PREFIX = 'tests/stories'
 const ENFORCEMENT_PREFIX = 'scripts/story'
+const COVERAGE_SUPPORT_PREFIX = 'scripts/coverage'
+
+export function isCapturedStoryInputPath(filePath: string): boolean {
+  return (
+    filePath.startsWith(`${STORIES_PREFIX}/`) ||
+    isFrozenEnforcementPath(filePath) ||
+    isFrozenTestSupportPath(filePath) ||
+    isFrozenCoverageSupportPath(filePath)
+  )
+}
 
 export type LoadedStoryFile = Readonly<{ path: string; bytes: Uint8Array }>
 export type CandidateCaptureDependencies = Readonly<{
@@ -151,6 +174,12 @@ async function loadSelectedDirectoryFiles(
   return files.filter((file): file is LoadedStoryFile => file !== undefined)
 }
 
+function assertFrozenCoverageSupport(files: readonly LoadedStoryFile[]): void {
+  const captured = new Set(files.map((file) => file.path))
+  const missing = FROZEN_COVERAGE_SUPPORT.filter((filePath) => !captured.has(filePath)).toSorted(compareText)
+  if (missing.length > 0) throw new Error(`Missing frozen story coverage input: ${missing.join(', ')}`)
+}
+
 export async function loadCandidateStoryFiles(
   root: string,
   dependencies: CandidateCaptureDependencies = {},
@@ -168,9 +197,11 @@ export async function loadCandidateStoryFiles(
   const selected = await Promise.all([
     loadSelectedDirectoryFiles(root, '', isFrozenTestSupportPath, dependencies),
     loadSelectedDirectoryFiles(root, ENFORCEMENT_PREFIX, isFrozenEnforcementPath, dependencies),
+    loadSelectedDirectoryFiles(root, COVERAGE_SUPPORT_PREFIX, isFrozenCoverageSupportPath, dependencies),
     loadSelectedDirectoryFiles(root, 'tests', isFrozenTestSupportPath, dependencies),
     loadSelectedDirectoryFiles(root, 'tests/utils', isFrozenTestSupportPath, dependencies),
   ])
   files.push(...selected.flat())
+  assertFrozenCoverageSupport(files)
   return files.sort((left, right) => compareText(left.path, right.path))
 }

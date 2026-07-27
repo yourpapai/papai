@@ -15,6 +15,13 @@ const channelSchema = z.object({ id: z.string(), type: z.string() })
 const frameSchema = z.record(z.string(), z.unknown())
 const postedFrameSchema = z.object({ data: z.object({ post: z.string() }) })
 const embeddedPostSchema = z.object({ message: z.string(), user_id: z.string() })
+const singlePostSchema = z.object({
+  id: z.string(),
+  channel_id: z.string(),
+  message: z.string(),
+  create_at: z.number(),
+})
+const threadSchema = z.object({ order: z.array(z.string()), posts: z.record(z.string(), z.object({ id: z.string() })) })
 
 describe('fake Mattermost server', () => {
   test('handshakes, delivers a posted event, and captures the outbound reply', async () => {
@@ -65,6 +72,58 @@ describe('fake Mattermost server', () => {
       })
       expect(await captured).toEqual({ channel_id: 'dm-1', message: 'reply body', root_id: 'in-1' })
       ws.close()
+    } finally {
+      await mm.stop()
+    }
+  })
+})
+
+describe('fake Mattermost server — T3 post + thread endpoints', () => {
+  test('serves a seeded single post and records the GET', async () => {
+    const mm = startFakeMattermostServer({ botUserId: 'bot-1', botUsername: 'bot' })
+    try {
+      mm.seedPost({
+        id: 'post-1',
+        channelId: 'chan-1',
+        userId: 'author-1',
+        message: 'ship it',
+        createAt: 1_700_000_000_000,
+      })
+      const res = await fetch(`${mm.localBaseUrl}/api/v4/posts/post-1`)
+      expect(res.status).toBe(200)
+      const body = singlePostSchema.parse(await res.json())
+      expect(body).toMatchObject({
+        id: 'post-1',
+        channel_id: 'chan-1',
+        message: 'ship it',
+        create_at: 1_700_000_000_000,
+      })
+      expect(mm.observedGets()).toContain('/api/v4/posts/post-1')
+    } finally {
+      await mm.stop()
+    }
+  })
+
+  test('serves a seeded post thread as { order, posts }', async () => {
+    const mm = startFakeMattermostServer()
+    try {
+      mm.seedPost({ id: 'root-1', channelId: 'chan-1', userId: 'author-1', message: 'hello', createAt: 1000 })
+      const res = await fetch(`${mm.localBaseUrl}/api/v4/posts/root-1/thread`)
+      expect(res.status).toBe(200)
+      const body = threadSchema.parse(await res.json())
+      expect(body.order).toEqual(['root-1'])
+      expect(body.posts['root-1']?.id).toBe('root-1')
+      expect(mm.observedGets()).toContain('/api/v4/posts/root-1/thread')
+    } finally {
+      await mm.stop()
+    }
+  })
+
+  test('returns 404 for an unseeded single post', async () => {
+    const mm = startFakeMattermostServer()
+    try {
+      const res = await fetch(`${mm.localBaseUrl}/api/v4/posts/missing`)
+      expect(res.status).toBe(404)
     } finally {
       await mm.stop()
     }

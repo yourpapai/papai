@@ -93,6 +93,14 @@ jobs:
           path: public/
       - name: Run all checks
         run: bun check:full
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-lcov
+          path: reports/coverage/lcov.info
+          if-no-files-found: warn
+          retention-days: 14
 
   stories:
     name: Hermetic Full-Stack Stories
@@ -127,7 +135,7 @@ jobs:
       - name: Run hermetic full-stack stories
         env:
           PAPAI_REQUIRE_STORY_SANDBOX: '1'
-        run: bun test:stories
+        run: bun test:stories:coverage
       - name: Upload story reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

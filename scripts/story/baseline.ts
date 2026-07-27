@@ -5,7 +5,7 @@
 
 import pLimit from 'p-limit'
 
-import { compareText, isFrozenEnforcementPath, isFrozenTestSupportPath, type LoadedStoryFile } from './inputs.js'
+import { compareText, isCapturedStoryInputPath, type LoadedStoryFile } from './inputs.js'
 import {
   assertRuntimeSymlinkTarget,
   isRuntimeInputPath,
@@ -104,15 +104,7 @@ async function loadBaselineFiles(
 }
 
 export function loadBaselineStoryFiles(root: string, commit: string): Promise<readonly LoadedStoryFile[]> {
-  return loadBaselineFiles(
-    root,
-    commit,
-    ['bunfig.toml', 'tests', 'scripts'],
-    (filePath) =>
-      filePath.startsWith(`${STORIES_PREFIX}/`) ||
-      isFrozenEnforcementPath(filePath) ||
-      isFrozenTestSupportPath(filePath),
-  )
+  return loadBaselineFiles(root, commit, ['bunfig.toml', 'tests', 'scripts'], isCapturedStoryInputPath)
 }
 
 function runtimeDirectories(paths: readonly string[]): readonly string[] {

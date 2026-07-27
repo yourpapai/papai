@@ -213,7 +213,7 @@ describe('scenario catalog coverage', () => {
   })
 
   test('tracks the executable coverage total', () => {
-    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(138)
+    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(140)
   })
 
   test('stamps every executable record with a live proving tier', () => {
@@ -222,9 +222,9 @@ describe('scenario catalog coverage', () => {
       .filter((coverage) => !LIVE_STORY_TIERS.includes(coverage.provingTier))
       .map(({ scenarioId, provingTier }) => `${scenarioId} -> T${provingTier}`)
 
-    expect(executable).toHaveLength(138)
+    expect(executable).toHaveLength(140)
     expect(offLaneTiers).toEqual([])
-    expect(new Set(executable.map((coverage) => coverage.provingTier))).toEqual(new Set(['0', '1', '2']))
+    expect(new Set(executable.map((coverage) => coverage.provingTier))).toEqual(new Set(['0', '1', '2', '3']))
   })
 
   test('maps every @1 parity record to its exact parity story title', () => {
@@ -302,7 +302,7 @@ describe('scenario catalog coverage', () => {
   test('audit records cover exactly the pending scenarios', () => {
     const pendingIds = pendingCoverage.map(({ scenarioId }) => scenarioId)
 
-    expect(pendingIds).toHaveLength(27)
+    expect(pendingIds).toHaveLength(25)
     expect(sorted(Object.keys(AUDIT_RECORDS))).toEqual(sorted(pendingIds))
   })
 
@@ -338,20 +338,18 @@ describe('scenario catalog coverage', () => {
     const unblockingTiers = seamReadiness.map((readiness) => readiness.unblockedByTier)
 
     expect(sorted(seamPending.map(({ scenarioId }) => scenarioId))).toEqual([
-      'SCN-fetch-chat-link',
-      'SCN-http-mattermost-action',
       'SCN-interaction-discord-router-wrapped',
       'SCN-interaction-discord-standalone-fallback',
       'SCN-interaction-telegram-callback',
     ])
-    expect(unblockingTiers).toEqual(['3', '3', '3', '3', '3'])
+    expect(unblockingTiers).toEqual(['3', '3', '3'])
   })
 
   test('audit readiness totals match the audit outcome', () => {
     const states = pendingCoverage.map((coverage) => coverage.audit.readiness.state)
 
     expect(states.filter((state) => state === 'executable-as-is')).toHaveLength(0)
-    expect(states.filter((state) => state === 'needs-seam')).toHaveLength(5)
+    expect(states.filter((state) => state === 'needs-seam')).toHaveLength(3)
     expect(states.filter((state) => state === 'blocked')).toHaveLength(22)
   })
 

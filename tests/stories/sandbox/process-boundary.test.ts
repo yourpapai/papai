@@ -147,6 +147,7 @@ function createSession(
       reportPaths: [realpathSync(report)],
       verifyIntegrity: () => Promise.resolve(),
       copyReports: () => Promise.resolve(),
+      copyCoverage: () => Promise.resolve(false),
       cleanup: () => Promise.resolve(),
     },
   }
@@ -166,6 +167,7 @@ function spawnFixture(operation: Operation, session: StoryRunnerSession, fixture
       compat: false,
       contracts: true,
       manifestOnly: false,
+      coverage: false,
       seed: 41021,
     },
     {

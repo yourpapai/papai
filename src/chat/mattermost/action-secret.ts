@@ -45,3 +45,33 @@ export function getMattermostActionSigningSecret(): string {
   log.info({ key: MATTERMOST_ACTION_SIGNING_SECRET_KEY }, 'Mattermost action signing secret initialized')
   return stored
 }
+
+const getTrimmedEnv = (name: string): string | undefined => {
+  const raw = process.env[name]
+  if (raw === undefined) return undefined
+  const trimmed = raw.trim()
+  return trimmed === '' ? undefined : trimmed
+}
+
+/**
+ * Optionally pin the Mattermost action signing secret from the environment.
+ * When PAPAI_MATTERMOST_ACTION_SIGNING_SECRET is set, seed it into system_config
+ * once. `onConflictDoNothing` means an already-stored (operator-chosen or
+ * previously generated) secret is never overwritten. No-op when the env var is
+ * absent, leaving the lazy random-generate path in getMattermostActionSigningSecret.
+ */
+export function seedMattermostActionSigningSecretFromEnv(): void {
+  const configured = getTrimmedEnv('PAPAI_MATTERMOST_ACTION_SIGNING_SECRET')
+  if (configured === undefined) return
+  getDrizzleDb()
+    .insert(systemConfig)
+    .values({
+      key: MATTERMOST_ACTION_SIGNING_SECRET_KEY,
+      value: configured,
+      updatedAt: Date.now(),
+      updatedBy: UPDATED_BY,
+    })
+    .onConflictDoNothing({ target: systemConfig.key })
+    .run()
+  log.info({ key: MATTERMOST_ACTION_SIGNING_SECRET_KEY }, 'Mattermost action signing secret seeded from environment')
+}
