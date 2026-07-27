@@ -35,3 +35,32 @@ scenario(
     then.responseStatus(replay, 401)
   },
 )
+
+scenario(
+  'SCN-http-settings-auth-validation: malformed exchanges and invalid logout sessions are rejected',
+  async ({ given, when, then }) => {
+    const alice = given.user('alice')
+    const session = await given.settingsSession(alice)
+
+    const malformed = await when.request('/settings/auth/exchange', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{not valid json',
+    })
+    then.responseStatus(malformed, 400)
+    then.responseStatus(await when.request('/settings/auth/exchange'), 405)
+
+    const csrfRejected = await when.settingsRequest(
+      session,
+      '/settings/auth/logout',
+      { method: 'POST' },
+      { csrf: false },
+    )
+    then.responseStatus(csrfRejected, 403)
+
+    const logout = await when.settingsRequest(session, '/settings/auth/logout', { method: 'POST' })
+    then.responseStatus(logout, 200)
+    then.responseStatus(await when.settingsRequest(session, '/settings/api/bootstrap'), 401)
+    then.responseStatus(await when.request('/settings/auth/logout', { method: 'POST' }), 401)
+  },
+)

@@ -51,3 +51,33 @@ scenario(
   },
   { debugEnabled: true },
 )
+
+scenario(
+  'SCN-http-dashboard-debug-gate: debug paths and the legacy dashboard redirect are hidden when disabled',
+  async ({ given, when, then }) => {
+    then.responseStatus(await when.request('/debug'), 404)
+
+    const session = await given.dashboardSession()
+    then.responseStatus(await when.dashboardRequest(session, '/admin'), 200)
+    then.responseStatus(await when.dashboardRequest(session, '/dashboard'), 404)
+  },
+)
+
+scenario(
+  'SCN-http-debug-protected-surfaces: enabled diagnostic reads still require a dashboard session',
+  async ({ given, when, then }) => {
+    then.responseStatus(await when.request('/logs'), 401)
+    then.responseStatus(await when.request('/mcp/status'), 401)
+
+    const session = await given.dashboardSession()
+    const status = await when.dashboardRequest(session, '/mcp/status')
+    then.responseStatus(status, 200)
+    then.responseJson(await status.json()).contains('servers')
+    then.responseStatus(await when.dashboardRequest(session, '/mcp/status', { method: 'POST' }), 405)
+
+    const legacyDashboard = await when.dashboardRequest(session, '/dashboard')
+    then.responseStatus(legacyDashboard, 301)
+    then.responseJson({ location: legacyDashboard.headers.get('Location') }).contains('/debug')
+  },
+  { debugEnabled: true },
+)
