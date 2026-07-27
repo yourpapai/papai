@@ -280,6 +280,7 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-graceful-shutdown',
   // @0 — real YouTrack provider inside the hermetic lane (t0-real-youtrack-provider)
   'SCN-task-youtrack-real-create',
+  'SCN-task-youtrack-real-fields',
 ] as const)
 
 const GAP_SCENARIO_IDS = new Set<CatalogScenarioId>([
@@ -1163,6 +1164,12 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     verifiedAt: '2026-07-27',
     storyIds: [
       'tests/stories/tasks/youtrack-real.story.test.ts#SCN-task-youtrack-real-create: activates the real YouTrack plugin and creates a task over fake REST',
+    ],
+  },
+  'SCN-task-youtrack-real-fields': {
+    verifiedAt: '2026-07-27',
+    storyIds: [
+      'tests/stories/tasks/youtrack-real.story.test.ts#SCN-task-youtrack-real-fields: maps YouTrack custom fields through the real provider',
     ],
   },
 }
