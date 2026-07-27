@@ -283,6 +283,13 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-task-youtrack-real-fields',
   'SCN-task-youtrack-real-error',
   'SCN-task-youtrack-real-gating',
+  // @0 — real YouTrack provider conformance sweep, grouped by domain (t0-real-youtrack-provider)
+  'SCN-youtrack-conformance-tasks',
+  'SCN-youtrack-conformance-search',
+  'SCN-youtrack-conformance-comments',
+  'SCN-youtrack-conformance-relations',
+  'SCN-youtrack-conformance-projects',
+  'SCN-youtrack-conformance-errors',
 ] as const)
 
 const GAP_SCENARIO_IDS = new Set<CatalogScenarioId>([
@@ -1184,6 +1191,42 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     verifiedAt: '2026-07-27',
     storyIds: [
       'tests/stories/tasks/youtrack-real.story.test.ts#SCN-task-youtrack-real-gating: skips member provisioning for a provider without members.provision',
+    ],
+  },
+  'SCN-youtrack-conformance-tasks': {
+    verifiedAt: '2026-07-27',
+    storyIds: [
+      'tests/stories/tasks/youtrack-conformance.story.test.ts#SCN-youtrack-conformance-tasks: real YouTrack provider satisfies the shared task groups',
+    ],
+  },
+  'SCN-youtrack-conformance-search': {
+    verifiedAt: '2026-07-27',
+    storyIds: [
+      'tests/stories/tasks/youtrack-conformance.story.test.ts#SCN-youtrack-conformance-search: real YouTrack provider satisfies the shared search groups',
+    ],
+  },
+  'SCN-youtrack-conformance-comments': {
+    verifiedAt: '2026-07-27',
+    storyIds: [
+      'tests/stories/tasks/youtrack-conformance.story.test.ts#SCN-youtrack-conformance-comments: real YouTrack provider satisfies the shared comment groups',
+    ],
+  },
+  'SCN-youtrack-conformance-relations': {
+    verifiedAt: '2026-07-27',
+    storyIds: [
+      'tests/stories/tasks/youtrack-conformance.story.test.ts#SCN-youtrack-conformance-relations: real YouTrack provider satisfies the shared relation groups',
+    ],
+  },
+  'SCN-youtrack-conformance-projects': {
+    verifiedAt: '2026-07-27',
+    storyIds: [
+      'tests/stories/tasks/youtrack-conformance.story.test.ts#SCN-youtrack-conformance-projects: real YouTrack provider satisfies the shared project groups',
+    ],
+  },
+  'SCN-youtrack-conformance-errors': {
+    verifiedAt: '2026-07-27',
+    storyIds: [
+      'tests/stories/tasks/youtrack-conformance.story.test.ts#SCN-youtrack-conformance-errors: real YouTrack provider satisfies the shared error groups',
     ],
   },
 }

@@ -5,7 +5,7 @@
 
 import { expect } from 'bun:test'
 
-import type { ParityGroup } from '../../../stories/harness/parity/group.js'
+import type { ParityGroup } from './group.js'
 
 /**
  * YouTrack-only parity groups: they prove status and priority round-trip through

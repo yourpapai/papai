@@ -12,8 +12,8 @@ import {
 } from '../../../stories/harness/fake-youtrack/serve-over-http.js'
 import { PARITY_GROUPS } from '../../../stories/harness/parity/expectations.js'
 import { required } from '../../../stories/harness/parity/group.js'
-import { youtrackCustomFieldGroups } from './youtrack-custom-field-groups.js'
-import { YOUTRACK_PARITY_EXCLUSIONS } from './youtrack-parity-exclusions.js'
+import { youtrackCustomFieldGroups } from '../../../stories/harness/parity/youtrack-custom-field-groups.js'
+import { YOUTRACK_PARITY_EXCLUSIONS } from '../../../stories/harness/parity/youtrack-parity-exclusions.js'
 
 // Third binding of the shared parity contract: YouTrackProvider over a fake
 // YouTrack REST server. Proves request-building + response-mapping + contract
