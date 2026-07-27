@@ -13,6 +13,8 @@ import type { AnalyticsPolicyAuditRow, AnalyticsPreferenceRow } from '../../db/s
 import { logger } from '../../logger.js'
 import type { Pseudonym } from '../controlled-types.js'
 import { createPseudonym } from '../identity/pseudonym.js'
+import { createDefaultGovernanceDualWriteResolver } from '../rekey/governance-dual-write.js'
+import type { GovernanceDualWriteResolver } from '../rekey/governance-dual-write.js'
 
 const log = logger.child({ scope: 'analytics:governance:preference-store' })
 
@@ -20,6 +22,7 @@ export const GOVERNANCE_ACTOR_DOMAIN = 'governance-actor:v1'
 
 export type PreferenceStoreDeps = Readonly<{
   getDrizzleDb: typeof defaultGetDrizzleDb
+  dualWriteResolver?: GovernanceDualWriteResolver
 }>
 
 export type PreferenceLane = 'local_longitudinal' | 'external_pseudonymous'
@@ -169,6 +172,32 @@ const appendAuditRow = (
     .run()
 }
 
+const mirrorPreferenceInTx = (
+  tx: Tx,
+  resolver: GovernanceDualWriteResolver,
+  source: Readonly<{
+    governanceActorKey: string
+    policyVersion: number
+    source: PreferenceSource
+    nowMs: number
+    lanes: Pick<AnalyticsPreferenceRow, 'localLongitudinal' | 'externalPseudonymous'>
+  }>,
+): void => {
+  const target = resolver(GOVERNANCE_ACTOR_DOMAIN, source.governanceActorKey)
+  if (target === null) return
+  upsertPreferenceRowInTx(tx, {
+    governanceActorKey: target.key,
+    keyVersion: target.keyVersion,
+    policyVersion: source.policyVersion,
+    source: source.source,
+    nowMs: source.nowMs,
+    apply: () => ({
+      localLongitudinal: source.lanes.localLongitudinal,
+      externalPseudonymous: source.lanes.externalPseudonymous,
+    }),
+  })
+}
+
 export const setPreference = (
   input: Readonly<{
     governanceActorKey: string
@@ -182,6 +211,7 @@ export const setPreference = (
   deps: PreferenceStoreDeps = DEFAULT_DEPS,
 ): PreferenceMutationResult => {
   const auditId = randomUUID()
+  const resolver = deps.dualWriteResolver ?? createDefaultGovernanceDualWriteResolver(deps.getDrizzleDb)
   const row = deps.getDrizzleDb().transaction((tx: Tx) => {
     const upserted = upsertPreferenceRowInTx(tx, {
       governanceActorKey: input.governanceActorKey,
@@ -195,6 +225,13 @@ export const setPreference = (
         externalPseudonymous:
           input.lane === 'external_pseudonymous' ? input.value : (current?.externalPseudonymous ?? 'unknown'),
       }),
+    })
+    mirrorPreferenceInTx(tx, resolver, {
+      governanceActorKey: input.governanceActorKey,
+      policyVersion: input.policyVersion,
+      source: input.source,
+      nowMs: input.nowMs,
+      lanes: { localLongitudinal: upserted.localLongitudinal, externalPseudonymous: upserted.externalPseudonymous },
     })
     appendAuditRow(tx, {
       auditId,
@@ -220,6 +257,7 @@ export const withdrawPreference = (
   deps: PreferenceStoreDeps = DEFAULT_DEPS,
 ): PreferenceMutationResult => {
   const auditId = randomUUID()
+  const resolver = deps.dualWriteResolver ?? createDefaultGovernanceDualWriteResolver(deps.getDrizzleDb)
   const row = deps.getDrizzleDb().transaction((tx: Tx) => {
     const upserted = upsertPreferenceRowInTx(tx, {
       governanceActorKey: input.governanceActorKey,
@@ -231,6 +269,13 @@ export const withdrawPreference = (
         localLongitudinal: 'deny',
         externalPseudonymous: 'deny',
       }),
+    })
+    mirrorPreferenceInTx(tx, resolver, {
+      governanceActorKey: input.governanceActorKey,
+      policyVersion: input.policyVersion,
+      source: input.source,
+      nowMs: input.nowMs,
+      lanes: { localLongitudinal: 'deny', externalPseudonymous: 'deny' },
     })
     appendAuditRow(tx, {
       auditId,

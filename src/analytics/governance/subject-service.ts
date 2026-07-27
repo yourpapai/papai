@@ -11,12 +11,14 @@ import { getDrizzleDb as defaultGetDrizzleDb } from '../../db/drizzle.js'
 import { analyticsEvents } from '../../db/schema.js'
 import { logger } from '../../logger.js'
 import { cancelNeverStartedIn } from '../delivery/settlement.js'
+import { expandKeysThroughMappings } from '../rekey/mapping-store.js'
 import { revokeEligibilityInTx } from './collection-store.js'
 import {
   createDeletionRequestIn,
   listUnresolvedDeletionRequests,
   sealDeletionTargetsIn,
 } from './deletion-target-store.js'
+import type { DeletionTargetSet } from './deletion-target-store.js'
 import { revokeGrantInTx } from './grant-store.js'
 import { appendPolicyAuditInTx, upsertPreferenceDenyInTx } from './preference-lifecycle.js'
 import type { SnapshotInvalidator } from './snapshot-invalidator.js'
@@ -24,7 +26,8 @@ import { executeDeletionWorkflow } from './subject-deletion.js'
 import type { DeletionWorkflowResult, RemoteDeletionRequest, SubjectDeletionDeps } from './subject-deletion.js'
 import { buildSubjectExport } from './subject-export.js'
 import type { SubjectExport } from './subject-export.js'
-import { deriveSubjectKeys, flattenSubjectKeys, toDeletionTargetSet } from './subject-keys.js'
+import { deriveSubjectKeys, flattenSubjectKeys } from './subject-keys.js'
+import { ANALYTICS_ACTOR_DOMAIN } from './subject-keys.js'
 import type { SubjectIdentity, SubjectKeyrings } from './subject-keys.js'
 
 const log = logger.child({ scope: 'analytics:governance:subject-service' })
@@ -47,12 +50,43 @@ const toDeletionDeps = (deps: SubjectServiceDeps): SubjectDeletionDeps => ({
   requestRemoteDeletion: deps.requestRemoteDeletion,
 })
 
+/**
+ * All-retained-version subject keys plus forward translation through retained
+ * encrypted rekey mappings, so denial, export, and deletion search active,
+ * target-shadow, and retired generations and rekeyed rows alike.
+ */
+const expandedSubjectKeys = (
+  keys: ReturnType<typeof deriveSubjectKeys>,
+  deps: SubjectServiceDeps,
+): ReturnType<typeof flattenSubjectKeys> => {
+  const flat = flattenSubjectKeys(keys)
+  const encryptionKeys =
+    deps.keyrings.governance.kind === 'available' ? [...deps.keyrings.governance.keys.values()] : []
+  if (encryptionKeys.length === 0) return flat
+  const expanded = expandKeysThroughMappings(
+    {
+      [ANALYTICS_ACTOR_DOMAIN]: flat.analyticsActorKeys,
+      'governance-actor:v1': flat.governanceActorKeys,
+      'collection-eligibility:v1': flat.collectionRefKeys,
+      'delivery-grant:v1': flat.grantKeys,
+    },
+    encryptionKeys,
+    { getDrizzleDb: deps.getDrizzleDb },
+  )
+  return {
+    analyticsActorKeys: expanded.get(ANALYTICS_ACTOR_DOMAIN) ?? flat.analyticsActorKeys,
+    governanceActorKeys: expanded.get('governance-actor:v1') ?? flat.governanceActorKeys,
+    collectionRefKeys: expanded.get('collection-eligibility:v1') ?? flat.collectionRefKeys,
+    grantKeys: expanded.get('delivery-grant:v1') ?? flat.grantKeys,
+  }
+}
+
 export const exportSubjectData = (
   identity: SubjectIdentity,
   deps: SubjectServiceDeps,
   nowMs: number,
 ): SubjectExport => {
-  const keys = flattenSubjectKeys(deriveSubjectKeys(identity, deps.keyrings))
+  const keys = expandedSubjectKeys(deriveSubjectKeys(identity, deps.keyrings), deps)
   log.info('authenticated subject export served')
   return buildSubjectExport(keys, deps, nowMs)
 }
@@ -94,8 +128,13 @@ export const requestSubjectDeletion = (
   nowMs: number,
 ): Readonly<{ requestId: string; governanceActorKey: string; keyVersion: string }> => {
   const keys = deriveSubjectKeys(identity, deps.keyrings)
-  const flat = flattenSubjectKeys(keys)
-  const targets = toDeletionTargetSet(keys)
+  const flat = expandedSubjectKeys(keys, deps)
+  const targets: DeletionTargetSet = {
+    analyticsActorKeys: flat.analyticsActorKeys,
+    governanceActorKeys: flat.governanceActorKeys,
+    collectionRefKeys: flat.collectionRefKeys,
+    grantKeys: flat.grantKeys,
+  }
   const governance = deps.keyrings.governance
   if (governance.kind !== 'available') {
     throw new Error('governance keyring unavailable; deletion targets cannot be sealed')

@@ -149,6 +149,44 @@ export const sealDeletionTargetsIn = (
 }
 
 /**
+ * Opens a sealed bundle inside the caller's transaction with every retained
+ * key version (active first). Tx-scoped variant used by the rekey copy phase,
+ * which reseals bundles across key generations atomically.
+ */
+export const openDeletionTargetsIn = (
+  tx: Tx,
+  input: Readonly<{ requestId: string; encryptionKeys: readonly Buffer[] }>,
+): DeletionTargetSet | null => {
+  const row = tx
+    .select()
+    .from(analyticsDeletionTargetBundles)
+    .where(eq(analyticsDeletionTargetBundles.requestId, input.requestId))
+    .get()
+  if (row === undefined || row.destroyedAt !== null || row.targetCiphertext.length === 0) return null
+  let lastError: unknown = new Error('no retained governance key to open the deletion target bundle')
+  for (const encryptionKey of input.encryptionKeys) {
+    let plaintext: string
+    try {
+      plaintext = open(row.targetCiphertext, encryptionKey)
+    } catch (error) {
+      lastError = error
+      continue
+    }
+    return parseTargets(plaintext)
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError))
+}
+
+/** Seals a target-set payload for persistence; rekey uses it to reseal bundles under the target key. */
+export const sealDeletionTargetPayload = (
+  targets: DeletionTargetSet,
+  key: Buffer,
+): Readonly<{ ciphertext: string; targetHash: string }> => {
+  const plaintext = JSON.stringify(targets)
+  return { ciphertext: seal(plaintext, key), targetHash: createHash('sha256').update(plaintext).digest('hex') }
+}
+
+/**
  * Opens a sealed bundle with every retained key version (active first), so a
  * deletion requested before a governance rekey can still resume while the old
  * key remains in the keyring. Fails closed when no retained key authenticates.

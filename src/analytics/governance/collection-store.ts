@@ -11,6 +11,8 @@ import type { AnalyticsCollectionEligibilityRow } from '../../db/schema.js'
 import { logger } from '../../logger.js'
 import type { Pseudonym } from '../controlled-types.js'
 import { createPseudonym } from '../identity/pseudonym.js'
+import { createDefaultGovernanceDualWriteResolver } from '../rekey/governance-dual-write.js'
+import type { GovernanceDualWriteResolver } from '../rekey/governance-dual-write.js'
 import type { CollectionEligibilityRef } from './eligibility.js'
 
 const log = logger.child({ scope: 'analytics:governance:collection-store' })
@@ -19,6 +21,7 @@ export const COLLECTION_ELIGIBILITY_DOMAIN = 'collection-eligibility:v1'
 
 export type CollectionStoreDeps = Readonly<{
   getDrizzleDb: typeof defaultGetDrizzleDb
+  dualWriteResolver?: GovernanceDualWriteResolver
 }>
 
 const DEFAULT_DEPS: CollectionStoreDeps = { getDrizzleDb: defaultGetDrizzleDb }
@@ -95,17 +98,46 @@ export const listEligibilityVersions = (
     .all()
 }
 
+export type SetEligibilityStateInput = Readonly<{
+  refKey: string
+  keyVersion: string
+  state: 'allow' | 'deny'
+  policyVersion: number
+  nowMs: number
+}>
+
+const upsertEligibilityInTx = (tx: Tx, input: SetEligibilityStateInput, nextGeneration: number): void => {
+  const writable = {
+    keyVersion: input.keyVersion,
+    state: input.state,
+    generation: nextGeneration,
+    policyVersion: input.policyVersion,
+    effectiveAt: input.nowMs,
+    revokedAt: input.state === 'deny' ? input.nowMs : null,
+  }
+  const current = tx
+    .select()
+    .from(analyticsCollectionEligibility)
+    .where(eq(analyticsCollectionEligibility.refKey, input.refKey))
+    .get()
+  if (current === undefined) {
+    tx.insert(analyticsCollectionEligibility)
+      .values({ refKey: input.refKey, ...writable })
+      .run()
+    return
+  }
+  tx.update(analyticsCollectionEligibility)
+    .set(writable)
+    .where(eq(analyticsCollectionEligibility.refKey, input.refKey))
+    .run()
+}
+
 export const setEligibilityState = (
-  input: Readonly<{
-    refKey: string
-    keyVersion: string
-    state: 'allow' | 'deny'
-    policyVersion: number
-    nowMs: number
-  }>,
+  input: SetEligibilityStateInput,
   deps: CollectionStoreDeps = DEFAULT_DEPS,
 ): Readonly<{ generation: number }> => {
   const db = deps.getDrizzleDb()
+  const resolver = deps.dualWriteResolver ?? createDefaultGovernanceDualWriteResolver(deps.getDrizzleDb)
   const generation = db.transaction((tx) => {
     const current = tx
       .select()
@@ -114,35 +146,56 @@ export const setEligibilityState = (
       .get()
     const nextGeneration =
       input.state === 'deny' ? (current === undefined ? 1 : current.generation + 1) : (current?.generation ?? 1)
-    if (current === undefined) {
-      tx.insert(analyticsCollectionEligibility)
-        .values({
-          refKey: input.refKey,
-          keyVersion: input.keyVersion,
-          state: input.state,
-          generation: nextGeneration,
-          policyVersion: input.policyVersion,
-          effectiveAt: input.nowMs,
-          revokedAt: input.state === 'deny' ? input.nowMs : null,
-        })
-        .run()
-    } else {
-      tx.update(analyticsCollectionEligibility)
-        .set({
-          keyVersion: input.keyVersion,
-          state: input.state,
-          generation: nextGeneration,
-          policyVersion: input.policyVersion,
-          effectiveAt: input.nowMs,
-          revokedAt: input.state === 'deny' ? input.nowMs : null,
-        })
-        .where(eq(analyticsCollectionEligibility.refKey, input.refKey))
-        .run()
-    }
+    upsertEligibilityInTx(tx, input, nextGeneration)
+    mirrorEligibilityInTx(tx, resolver, input.refKey, {
+      state: input.state,
+      generation: nextGeneration,
+      policyVersion: input.policyVersion,
+      nowMs: input.nowMs,
+    })
     return nextGeneration
   })
   log.info({ state: input.state, generation }, 'collection eligibility updated')
   return { generation }
+}
+
+const mirrorEligibilityInTx = (
+  tx: Tx,
+  resolver: GovernanceDualWriteResolver,
+  sourceRefKey: string,
+  mirror: Readonly<{ state: 'allow' | 'deny'; generation: number; policyVersion: number; nowMs: number }>,
+): void => {
+  const target = resolver(COLLECTION_ELIGIBILITY_DOMAIN, sourceRefKey)
+  if (target === null) return
+  const current = tx
+    .select()
+    .from(analyticsCollectionEligibility)
+    .where(eq(analyticsCollectionEligibility.refKey, target.key))
+    .get()
+  if (current === undefined) {
+    tx.insert(analyticsCollectionEligibility)
+      .values({
+        refKey: target.key,
+        keyVersion: target.keyVersion,
+        state: mirror.state,
+        generation: mirror.generation,
+        policyVersion: mirror.policyVersion,
+        effectiveAt: mirror.nowMs,
+        revokedAt: mirror.state === 'deny' ? mirror.nowMs : null,
+      })
+      .run()
+    return
+  }
+  tx.update(analyticsCollectionEligibility)
+    .set({
+      keyVersion: target.keyVersion,
+      state: mirror.state,
+      generation: mirror.generation,
+      policyVersion: mirror.policyVersion,
+      revokedAt: mirror.state === 'deny' ? (current.revokedAt ?? mirror.nowMs) : null,
+    })
+    .where(eq(analyticsCollectionEligibility.refKey, target.key))
+    .run()
 }
 
 export const recheckAndAssociateEvent = (

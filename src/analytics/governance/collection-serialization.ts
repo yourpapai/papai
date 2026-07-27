@@ -19,6 +19,9 @@ import { utcDayOfMs } from '../aggregate.js'
 import type { AnalyticsEventV1 } from '../contracts.js'
 import type { EventNameV1 } from '../controlled-types.js'
 import { cancelNeverStartedIn, deleteDeliveryRowsForEventsIn, markSendingAmbiguousIn } from '../delivery/settlement.js'
+import { defaultRekeyKeyMaterial, insertShadowParentIn, loadEventRowIn } from '../rekey/dual-write.js'
+import type { RekeyKeyMaterialProvider } from '../rekey/dual-write.js'
+import { getNonterminalRekeyRunIn, isDualWriteActive, parseRekeyVersions } from '../rekey/run-store.js'
 import { insertCanonicalEventRow } from '../storage/event-store.js'
 import type { CollectionEligibilityRef } from './eligibility.js'
 import { resolveActive, V1_MAX_EVENT_RETENTION_DAYS } from './generation-store.js'
@@ -89,7 +92,10 @@ const EVENT_SOURCE_FAMILY = {
   guest_turn_aggregate: 'guest',
 } satisfies Record<EventNameV1, SourceFamily>
 
-export type CollectionSerializationDeps = Readonly<{ getDrizzleDb: typeof defaultGetDrizzleDb }>
+export type CollectionSerializationDeps = Readonly<{
+  getDrizzleDb: typeof defaultGetDrizzleDb
+  getRekeyKeyMaterial?: RekeyKeyMaterialProvider
+}>
 
 type Db = ReturnType<typeof defaultGetDrizzleDb>
 type Tx = Parameters<Db['transaction']>[0] extends (tx: infer T) => unknown ? T : never
@@ -161,10 +167,31 @@ const incrementCounterTx = (
     .run()
 }
 
+const dualWriteShadowIn = (
+  tx: Tx,
+  input: InsertEligibleCanonicalEventInput,
+  storageGeneration: string,
+  activeEventId: string,
+  materialProvider: RekeyKeyMaterialProvider,
+): void => {
+  const run = getNonterminalRekeyRunIn(tx)
+  if (run === null || !isDualWriteActive(run) || run.sourceGeneration !== storageGeneration) return
+  const activeRow = loadEventRowIn(tx, activeEventId)
+  if (activeRow === null) throw new Error('active parent missing after fenced insert')
+  const toVersions = parseRekeyVersions(run.toVersions)
+  const material = materialProvider(toVersions)
+  if (material === null) {
+    log.warn('dual-write refused: rekey key material unavailable')
+    throw new Error('rekey key material unavailable while dual-write is armed')
+  }
+  insertShadowParentIn(tx, { activeRow, collectionRef: input.collectionRef, run, material })
+}
+
 const insertFenced = (
   tx: Tx,
   input: InsertEligibleCanonicalEventInput,
   storageGeneration: string,
+  materialProvider: RekeyKeyMaterialProvider,
 ): InsertEligibleCanonicalEventResult => {
   const utcDay = utcDayOfMs(input.event.event.occurred_at_ms)
   const family = EVENT_SOURCE_FAMILY[input.event.event.name]
@@ -182,6 +209,7 @@ const insertFenced = (
     event: input.event,
   })
   if (inserted.status === 'already_present') {
+    dualWriteShadowIn(tx, input, storageGeneration, inserted.eventId, materialProvider)
     return { status: 'already_present', eventId: inserted.eventId }
   }
   tx.insert(analyticsEventCollectionRefs)
@@ -195,6 +223,7 @@ const insertFenced = (
     .run()
   incrementCounterTx(tx, input.processEpochId, utcDay, family, 'opportunity')
   incrementCounterTx(tx, input.processEpochId, utcDay, family, 'canonical')
+  dualWriteShadowIn(tx, input, storageGeneration, inserted.eventId, materialProvider)
   return { status: 'inserted', eventId: inserted.eventId }
 }
 
@@ -211,7 +240,7 @@ export const insertEligibleCanonicalEvent = (
   const result = db.transaction((tx) => {
     requireOpenEpochTx(tx, input.processEpochId)
     const storageGeneration = resolveActive({ getDrizzleDb: deps.getDrizzleDb }).generation
-    return insertFenced(tx, input, storageGeneration)
+    return insertFenced(tx, input, storageGeneration, deps.getRekeyKeyMaterial ?? defaultRekeyKeyMaterial)
   })
   log.debug({ status: result.status }, 'eligible canonical insert resolved')
   return result

@@ -32,6 +32,25 @@ export type SnapshotInvalidationResult = Readonly<{
  */
 export type SnapshotInvalidator = (request: SnapshotInvalidationRequest) => SnapshotInvalidationResult
 
+/**
+ * Generation-transition coordinator port (06 §Task 13 snapshot cutover). The
+ * rekey `snapshot_republish` phase drives this sequence; Task 14 supplies the
+ * production Metabase coordinator. Implementations must be idempotent per
+ * run: a restart in `snapshot_republish` re-enters with the same run and must
+ * never serve or republish the source-generation file. The rekey-owned
+ * cutover token is the transition run id.
+ */
+export type GenerationTransitionCoordinator = Readonly<{
+  quiesceQueries: (input: Readonly<{ runId: string; nowMs: number }>) => void
+  closeSourceConnections: (input: Readonly<{ runId: string; sourceGeneration: string; nowMs: number }>) => void
+  buildTargetSnapshot: (
+    input: Readonly<{ runId: string; targetGeneration: string; nowMs: number }>,
+  ) => Readonly<{ snapshotId: string; pathHash: string; sourceHighWater: string }>
+  remountAndVerify: (input: Readonly<{ snapshotId: string; expectedGeneration: string }>) => boolean
+  resumeQueries: (input: Readonly<{ runId: string; nowMs: number }>) => void
+  unlinkSourceFile: (input: Readonly<{ sourceGeneration: string; nowMs: number }>) => void
+}>
+
 export type SnapshotInvalidatorDeps = Readonly<{
   getDrizzleDb: typeof defaultGetDrizzleDb
 }>

@@ -83,6 +83,11 @@ export default {
     // Analytics retention modules (expiry guard, deadline computation) are the
     // Stage A lifecycle seam consumed by the retention job and read adapters.
     'src/analytics/retention/*.ts!',
+    // Analytics rekey modules (run/mapping stores, dual-write seam, FK-ordered
+    // copy, cutover fence, verification, snapshot transition, remote transition,
+    // retirement) are the Stage A rekey seam consumed by the rekey orchestrator
+    // job and the analytics-rekey CLI (Task 13B, in flight).
+    'src/analytics/rekey/*.ts!',
     // First-party plugin entry points are loaded dynamically by the plugin
     // loader, so they have no static importer.
     'plugins/*/index.ts!',
@@ -210,6 +215,11 @@ export default {
     // exports are consumed by the retention job, read adapters, and by
     // analytics tests outside knip's production project scope.
     'src/analytics/retention/*.ts': ['exports', 'types'],
+    // Analytics rekey modules are the Stage A rekey seam; their exports are
+    // consumed by the rekey orchestrator job and analytics-rekey CLI (Task
+    // 13B, in flight) and by analytics tests outside knip's production
+    // project scope.
+    'src/analytics/rekey/*.ts': ['exports', 'types'],
   },
 
   includeEntryExports: true,

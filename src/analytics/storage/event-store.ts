@@ -47,6 +47,14 @@ const derivePhysicalEventId = (input: {
   return createHash('sha256').update(payload).digest('hex')
 }
 
+/** Deterministic physical id for one generation-scoped source opportunity. */
+export const physicalEventIdFor = (input: {
+  storageGeneration: string
+  sourceKind: string
+  sourceRefKey: string
+  eventName: string
+}): string => derivePhysicalEventId(input)
+
 const buildEventRow = (input: InsertCanonicalEventInput): typeof analyticsEvents.$inferInsert => {
   const event = input.event
   return {

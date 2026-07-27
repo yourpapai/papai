@@ -18,6 +18,7 @@ export type GrantSendMutex = Readonly<{
   tryAcquire: (grantKey: string) => (() => void) | null
   isHeld: (grantKey: string) => boolean
   release: (grantKey: string) => boolean
+  heldCount?: () => number
 }>
 
 /**
@@ -39,6 +40,7 @@ export const createGrantSendMutex = (): GrantSendMutex => {
     },
     isHeld: (grantKey) => held.has(grantKey),
     release: (grantKey) => held.delete(grantKey),
+    heldCount: () => held.size,
   }
 }
 

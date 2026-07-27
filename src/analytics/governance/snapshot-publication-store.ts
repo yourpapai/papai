@@ -22,6 +22,27 @@ const DEFAULT_DEPS: SnapshotPublicationStoreDeps = {
   getDrizzleDb: defaultGetDrizzleDb,
 }
 
+const REKEY_CUTOVER_PHASES: ReadonlySet<string> = new Set(['cutover', 'swap', 'snapshot_republish'])
+
+/**
+ * Normal (null-owned) snapshot scheduling must neither deadlock nor bypass a
+ * rekey-owned cutover: while a nonterminal run holds the cutover token,
+ * ordinary staging is refused; the rekey path stages via
+ * `stageRekeySnapshotPublication` with the run id.
+ */
+const assertNoRekeyCutoverIn = (
+  tx: Parameters<ReturnType<typeof defaultGetDrizzleDb>['transaction']>[0] extends (tx: infer T) => unknown ? T : never,
+): void => {
+  const runs = tx.select().from(analyticsRekeyRuns).all()
+  const blocking = runs.find(
+    (run) => run.status !== 'completed' && run.status !== 'aborted' && REKEY_CUTOVER_PHASES.has(run.phase),
+  )
+  if (blocking !== undefined) {
+    log.warn('ordinary snapshot staging refused: rekey cutover token held')
+    throw new Error('snapshot staging is rekey-owned while a transition run holds the cutover')
+  }
+}
+
 type StagedPublication = Readonly<{ snapshotId: string; state: 'staged' }>
 
 export const getPublication = (
@@ -57,6 +78,7 @@ const stageRow = (
   }>,
 ): StagedPublication =>
   deps.getDrizzleDb().transaction((tx) => {
+    if (input.transitionRunId === null) assertNoRekeyCutoverIn(tx)
     const existing = findStagedRow(tx, input.transitionRunId)
     if (existing !== undefined) {
       tx.update(analyticsSnapshotPublications)

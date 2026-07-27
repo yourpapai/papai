@@ -51,6 +51,27 @@ export type VersionedKey = Readonly<{
   key: Buffer | Uint8Array
 }>
 
+/**
+ * Planned-rekey derivation: the target-generation pseudonym is the HMAC of the
+ * source pseudonym under the target key version, so stored rows can be rekeyed
+ * without ever retaining native identity. Deterministic, so copy, dual-write,
+ * and verification all derive identical target keys without decrypting
+ * mappings.
+ */
+export function deriveRekeyedPseudonym(input: {
+  key: Buffer | Uint8Array
+  keyVersion: string
+  domain: string
+  sourcePseudonym: string
+}): Pseudonym {
+  return createPseudonym({
+    key: input.key,
+    keyVersion: input.keyVersion,
+    domain: input.domain,
+    components: [input.sourcePseudonym],
+  })
+}
+
 export type VersionedPseudonym = Readonly<{
   keyVersion: string
   pseudonym: Pseudonym

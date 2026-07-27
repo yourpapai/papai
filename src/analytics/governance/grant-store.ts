@@ -11,6 +11,8 @@ import type { AnalyticsEligibilityGrantRow } from '../../db/schema.js'
 import { logger } from '../../logger.js'
 import type { Pseudonym } from '../controlled-types.js'
 import { createPseudonym } from '../identity/pseudonym.js'
+import { createDefaultGovernanceDualWriteResolver } from '../rekey/governance-dual-write.js'
+import type { GovernanceDualWriteResolver } from '../rekey/governance-dual-write.js'
 import type { DeliveryGrantRef } from './eligibility.js'
 
 const log = logger.child({ scope: 'analytics:governance:grant-store' })
@@ -19,6 +21,7 @@ export const DELIVERY_GRANT_DOMAIN = 'delivery-grant:v1'
 
 export type GrantStoreDeps = Readonly<{
   getDrizzleDb: typeof defaultGetDrizzleDb
+  dualWriteResolver?: GovernanceDualWriteResolver
 }>
 
 const DEFAULT_DEPS: GrantStoreDeps = { getDrizzleDb: defaultGetDrizzleDb }
@@ -92,17 +95,46 @@ export const listGrantVersions = (
     .all()
 }
 
+export type SetGrantStateInput = Readonly<{
+  grantKey: string
+  keyVersion: string
+  state: 'allow' | 'deny'
+  policyVersion: number
+  nowMs: number
+}>
+
+const upsertGrantInTx = (tx: Tx, input: SetGrantStateInput, nextGeneration: number): void => {
+  const writable = {
+    keyVersion: input.keyVersion,
+    state: input.state,
+    generation: nextGeneration,
+    policyVersion: input.policyVersion,
+    effectiveAt: input.nowMs,
+    revokedAt: input.state === 'deny' ? input.nowMs : null,
+  }
+  const current = tx
+    .select()
+    .from(analyticsEligibilityGrants)
+    .where(eq(analyticsEligibilityGrants.grantKey, input.grantKey))
+    .get()
+  if (current === undefined) {
+    tx.insert(analyticsEligibilityGrants)
+      .values({ grantKey: input.grantKey, ...writable })
+      .run()
+    return
+  }
+  tx.update(analyticsEligibilityGrants)
+    .set(writable)
+    .where(eq(analyticsEligibilityGrants.grantKey, input.grantKey))
+    .run()
+}
+
 export const setGrantState = (
-  input: Readonly<{
-    grantKey: string
-    keyVersion: string
-    state: 'allow' | 'deny'
-    policyVersion: number
-    nowMs: number
-  }>,
+  input: SetGrantStateInput,
   deps: GrantStoreDeps = DEFAULT_DEPS,
 ): Readonly<{ generation: number }> => {
   const db = deps.getDrizzleDb()
+  const resolver = deps.dualWriteResolver ?? createDefaultGovernanceDualWriteResolver(deps.getDrizzleDb)
   const generation = db.transaction((tx) => {
     const current = tx
       .select()
@@ -111,35 +143,56 @@ export const setGrantState = (
       .get()
     const nextGeneration =
       input.state === 'deny' ? (current === undefined ? 1 : current.generation + 1) : (current?.generation ?? 1)
-    if (current === undefined) {
-      tx.insert(analyticsEligibilityGrants)
-        .values({
-          grantKey: input.grantKey,
-          keyVersion: input.keyVersion,
-          state: input.state,
-          generation: nextGeneration,
-          policyVersion: input.policyVersion,
-          effectiveAt: input.nowMs,
-          revokedAt: input.state === 'deny' ? input.nowMs : null,
-        })
-        .run()
-    } else {
-      tx.update(analyticsEligibilityGrants)
-        .set({
-          keyVersion: input.keyVersion,
-          state: input.state,
-          generation: nextGeneration,
-          policyVersion: input.policyVersion,
-          effectiveAt: input.nowMs,
-          revokedAt: input.state === 'deny' ? input.nowMs : null,
-        })
-        .where(eq(analyticsEligibilityGrants.grantKey, input.grantKey))
-        .run()
-    }
+    upsertGrantInTx(tx, input, nextGeneration)
+    mirrorGrantInTx(tx, resolver, input.grantKey, {
+      state: input.state,
+      generation: nextGeneration,
+      policyVersion: input.policyVersion,
+      nowMs: input.nowMs,
+    })
     return nextGeneration
   })
   log.info({ state: input.state, generation }, 'delivery grant updated')
   return { generation }
+}
+
+const mirrorGrantInTx = (
+  tx: Tx,
+  resolver: GovernanceDualWriteResolver,
+  sourceGrantKey: string,
+  mirror: Readonly<{ state: 'allow' | 'deny'; generation: number; policyVersion: number; nowMs: number }>,
+): void => {
+  const target = resolver(DELIVERY_GRANT_DOMAIN, sourceGrantKey)
+  if (target === null) return
+  const current = tx
+    .select()
+    .from(analyticsEligibilityGrants)
+    .where(eq(analyticsEligibilityGrants.grantKey, target.key))
+    .get()
+  if (current === undefined) {
+    tx.insert(analyticsEligibilityGrants)
+      .values({
+        grantKey: target.key,
+        keyVersion: target.keyVersion,
+        state: mirror.state,
+        generation: mirror.generation,
+        policyVersion: mirror.policyVersion,
+        effectiveAt: mirror.nowMs,
+        revokedAt: mirror.state === 'deny' ? mirror.nowMs : null,
+      })
+      .run()
+    return
+  }
+  tx.update(analyticsEligibilityGrants)
+    .set({
+      keyVersion: target.keyVersion,
+      state: mirror.state,
+      generation: mirror.generation,
+      policyVersion: mirror.policyVersion,
+      revokedAt: mirror.state === 'deny' ? (current.revokedAt ?? mirror.nowMs) : null,
+    })
+    .where(eq(analyticsEligibilityGrants.grantKey, target.key))
+    .run()
 }
 
 export const revokeGrantInTx = (
