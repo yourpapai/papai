@@ -3,6 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
+
+import { Glob, Transpiler } from 'bun'
+
 export const STORY_SCOPE_ROOTS: readonly string[] = ['src', 'plugins']
 
 const TESTING_DOUBLE_SUFFIX = '.testing.ts'
@@ -76,4 +81,52 @@ export function scopeLcov(lcov: string, sourceFiles: readonly string[]): ScopedL
 export function formatStoryCoverageScope(scoped: ScopedLcov): string {
   const total = scoped.measured.length + scoped.seeded.length
   return `  scope: ${scoped.measured.length} measured, ${scoped.seeded.length} unloaded seeded as 0%, ${total} files`
+}
+
+const SOURCE_GLOB = '**/*.ts'
+
+// Bun's transpiler strips types and comments, so empty output proves the file
+// has no coverable lines. This is a decision procedure, not a heuristic.
+const transpiler = new Transpiler({ loader: 'ts' })
+
+function hasRuntimeCode(source: string, relativePath: string): boolean {
+  try {
+    return transpiler.transformSync(source).trim().length > 0
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`Failed to transpile scoped source file ${relativePath}: ${message}`, { cause: error })
+  }
+}
+
+async function discoverRoot(cwd: string, root: string): Promise<readonly string[]> {
+  const entries: string[] = []
+  try {
+    for await (const entry of new Glob(SOURCE_GLOB).scan({ cwd: path.join(cwd, root) })) {
+      entries.push(`${root}/${entry.split(path.sep).join('/')}`)
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`Failed to scan story coverage scope root ${root}: ${message}`, { cause: error })
+  }
+  const scoped = entries.filter(isScopedSourceFile)
+  const checked = await Promise.all(
+    scoped.map(async (relative) => {
+      const source = await readFile(path.join(cwd, relative), 'utf8')
+      return { relative, hasRuntimeCode: hasRuntimeCode(source, relative) }
+    }),
+  )
+  const files = checked.filter((entry) => entry.hasRuntimeCode).map((entry) => entry.relative)
+  // An empty root would make seeding a silent no-op and the gate would report
+  // the old, inflated figure while still passing.
+  if (files.length === 0) throw new Error(`Story coverage scope root ${root} yielded no source files`)
+  return files
+}
+
+/**
+ * IO edge. Injected into callers so `scopeLcov` stays pure and testable
+ * against a literal file list.
+ */
+export async function discoverScopedSourceFiles(cwd: string): Promise<readonly string[]> {
+  const perRoot = await Promise.all(STORY_SCOPE_ROOTS.map((root) => discoverRoot(cwd, root)))
+  return perRoot.flat().toSorted()
 }
