@@ -20,6 +20,11 @@ export const PLATFORM_STORIES = {
     title: 'verifies a signed action context and dispatches over POST /mattermost/actions',
     file: HTTP_ACTION,
   },
+  'SCN-http-mattermost-action-bad-signature': {
+    scenarioId: 'SCN-http-mattermost-action-bad-signature',
+    title: 'rejects a context signed with the wrong secret (seam gates)',
+    file: HTTP_ACTION,
+  },
 } as const satisfies Record<string, PlatformStory>
 
 export function platformStoryId(story: PlatformStory): string {

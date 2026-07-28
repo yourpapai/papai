@@ -306,6 +306,7 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-settings-task-instance-assignment',
   'SCN-plugin-context-eligibility',
   'SCN-plugin-contribution-isolation',
+  'SCN-http-mattermost-action-bad-signature',
 ] as const)
 
 const GAP_SCENARIO_IDS = new Set<CatalogScenarioId>([
@@ -1185,6 +1186,13 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     provingTier: '3',
     storyIds: [
       'tests/platform/scenarios/mattermost-http-action.platform.ts#verifies a signed action context and dispatches over POST /mattermost/actions',
+    ],
+  },
+  'SCN-http-mattermost-action-bad-signature': {
+    verifiedAt: '2026-07-28',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/mattermost-http-action.platform.ts#rejects a context signed with the wrong secret (seam gates)',
     ],
   },
   'SCN-task-youtrack-real-create': {

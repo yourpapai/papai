@@ -125,8 +125,8 @@ describe('scenario catalog coverage', () => {
   test('classifies every catalog scenario exactly once', () => {
     const ledgerIds = catalogCoverage.map(({ scenarioId }) => scenarioId)
 
-    expect(CATALOG_SCENARIO_IDS).toHaveLength(191)
-    expect(new Set(CATALOG_SCENARIO_IDS).size).toBe(191)
+    expect(CATALOG_SCENARIO_IDS).toHaveLength(192)
+    expect(new Set(CATALOG_SCENARIO_IDS).size).toBe(192)
     expect(sorted(ledgerIds)).toEqual(sorted(CATALOG_SCENARIO_IDS))
   })
 
@@ -235,7 +235,7 @@ describe('scenario catalog coverage', () => {
   })
 
   test('tracks the executable coverage total', () => {
-    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(166)
+    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(167)
   })
 
   test('stamps every executable record with a live proving tier', () => {
@@ -244,7 +244,7 @@ describe('scenario catalog coverage', () => {
       .filter((coverage) => !LIVE_STORY_TIERS.includes(coverage.provingTier))
       .map(({ scenarioId, provingTier }) => `${scenarioId} -> T${provingTier}`)
 
-    expect(executable).toHaveLength(166)
+    expect(executable).toHaveLength(167)
     expect(offLaneTiers).toEqual([])
     expect(new Set(executable.map((coverage) => coverage.provingTier))).toEqual(new Set(['0', '1', '2', '3']))
   })

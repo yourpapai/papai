@@ -7,6 +7,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { repoRoot } from '../smoke/harness/docker.js'
+import { censusMarkedLane } from '../smoke/harness/lane-census.js'
 import { catalogCoverage } from '../stories/catalog/coverage.js'
 import { PLATFORM_STORIES, PLATFORM_STORY_IDS } from './scenarios/catalog.js'
 
@@ -18,7 +19,7 @@ describe('@3 catalog crosscheck', () => {
     )
     const t3 = executable.filter((coverage) => coverage.provingTier === '3')
 
-    expect(t3).toHaveLength(2)
+    expect(t3).toHaveLength(3)
     const byScenario: Map<string, readonly string[]> = new Map(
       t3.map((coverage) => [coverage.scenarioId, coverage.storyIds]),
     )
@@ -33,5 +34,18 @@ describe('@3 catalog crosscheck', () => {
       const bytes = await Bun.file(`${repoRoot()}${story.file}`).text()
       expect(bytes.includes(`title('${story.scenarioId}')`)).toBe(true)
     }
+  })
+
+  test('every @3 scenario marker is registered and claimed, and none bypasses title()', async () => {
+    const { census, unregistered, violations } = await censusMarkedLane({
+      tier: '3',
+      glob: 'tests/platform/scenarios/*.platform.ts',
+      registry: PLATFORM_STORY_IDS,
+    })
+
+    expect(unregistered).toEqual([])
+    expect(violations).toEqual([])
+    expect(census.orphans).toEqual([])
+    expect(census.dangling).toEqual([])
   })
 })

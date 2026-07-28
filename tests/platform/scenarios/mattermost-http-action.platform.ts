@@ -103,7 +103,7 @@ describe.skipIf(!DOCKER)('T3 Mattermost — HTTP action callback', () => {
     60_000,
   )
 
-  test('rejects a context signed with the wrong secret (seam gates)', async () => {
+  test(title('SCN-http-mattermost-action-bad-signature'), async () => {
     const res = await postAction(handle!.container.webBaseUrl, signedContext('a-different-secret'))
     expect(res.status).toBe(200)
     const body = ActionResponseBodySchema.parse(await res.json())

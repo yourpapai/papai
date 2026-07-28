@@ -8,6 +8,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { catalogCoverage } from '../stories/catalog/coverage.js'
 import { repoRoot } from './harness/docker.js'
+import { censusMarkedLane } from './harness/lane-census.js'
 import { SMOKE_STORIES, SMOKE_STORY_IDS } from './scenarios/catalog.js'
 
 describe('@2 catalog crosscheck', () => {
@@ -34,5 +35,21 @@ describe('@2 catalog crosscheck', () => {
       const bytes = await Bun.file(`${repoRoot()}${story.file}`).text()
       expect(bytes.includes(`title('${story.scenarioId}')`)).toBe(true)
     }
+  })
+
+  test('every @2 scenario marker is registered and claimed, and none bypasses title()', async () => {
+    const { census, unregistered, violations } = await censusMarkedLane({
+      tier: '2',
+      glob: 'tests/smoke/scenarios/*.smoke.ts',
+      registry: SMOKE_STORY_IDS,
+    })
+
+    // A marker with no SMOKE_STORIES entry, a test that skips the title() helper,
+    // or a scenario no catalog record claims — each would be coverage nobody
+    // declared. Add the registry entry and the catalog record.
+    expect(unregistered).toEqual([])
+    expect(violations).toEqual([])
+    expect(census.orphans).toEqual([])
+    expect(census.dangling).toEqual([])
   })
 })
