@@ -58,12 +58,13 @@ Arithmetic check: 16 new records cover 17 stories (one record holds two), plus 2
 
 **Create:**
 
-- `tests/stories/catalog/census.ts` — pure bidirectional comparison. No I/O, no lane imports.
-- `tests/stories/catalog/supporting.ts` — the exemption list and its `PendingReason` construction.
+- `tests/stories/catalog/census.ts` — the pure bidirectional comparison (`censusStories`), plus the one place that assembles a tier's claim and exemption sets from the live ledger (`censusTier`). No I/O.
+- `tests/stories/catalog/supporting.ts` — the exemption list, its `PendingReason` construction, and the mutual-exclusion predicate.
 - `tests/stories/harness/census.test.ts` — unit tests for both modules above.
 - `tests/stories/harness/catalog-census.test.ts` — Tier 0 and Tier 1 census assertions.
-- `tests/smoke/harness/story-markers.ts` — AST scanner for `test(title('SCN-x'), …)` markers and helper-bypass violations.
+- `tests/smoke/harness/story-markers.ts` — AST scanner for `test(title('SCN-x'), …)` markers and helper-bypass violations. Pure: takes source text, no I/O.
 - `tests/smoke/harness/story-markers.test.ts` — unit tests for the scanner.
+- `tests/smoke/harness/lane-census.ts` — the I/O layer for Tiers 2/3: glob-discovers scenario files, scans them, maps markers through the lane registry, and censuses. Shared by both container-lane crosschecks.
 
 **Modify:**
 
@@ -88,7 +89,7 @@ The comparison function. Pure, so its failing test needs no disk and no fixtures
 **Interfaces:**
 
 - Consumes: `StoryTier` from `tests/stories/catalog/coverage.ts` (exported type, union of `'0' | '1' | '2' | '3' | '4'`).
-- Produces: `censusStories(input) => StoryCensus` and the `StoryCensus` type. Tasks 6 and 7 call this.
+- Produces: `censusStories(input) => StoryCensus` and the `StoryCensus` type. Task 2 wraps this as `censusTier`; the lanes call that wrapper, not this function directly.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -252,48 +253,72 @@ git commit -m "test(stories): add a bidirectional story census core"
 
 ---
 
-### Task 2: Supporting-story exemption list
+### Task 2: Supporting-story exemption list and tier wiring
 
-The exemption list ships **empty** (see Decision Log). Its contract — non-blank rationale, and mutual exclusion with catalog claims — is proven with synthetic fixtures.
+The exemption list ships **empty** (see Decision Log), so its contract is expressed as a
+predicate over a passed-in map rather than as an assertion over the live constant — a test
+that iterates an empty object proves nothing. `doubleBookedExemptions` is exercised by
+synthetic fixtures that genuinely fail when the invariant breaks, and then applied to the
+real ledger.
+
+There is deliberately **no** assertion that rationales are non-blank: `toPendingReason`
+throws at module load on a blank string, so a blank rationale cannot reach the map. The
+boundary test covers that invariant where it is actually enforced.
+
+This task also adds the tier wiring — `censusTier` — so each of the four lanes calls one
+function instead of assembling `claimed` and `supporting` itself.
 
 **Files:**
 
 - Create: `tests/stories/catalog/supporting.ts`
+- Modify: `tests/stories/catalog/census.ts` (append the tier wiring)
 - Modify: `tests/stories/harness/census.test.ts` (append a second `describe` block)
 
 **Interfaces:**
 
-- Consumes: `toPendingReason(value: string) => PendingReason` and the `PendingReason` type, both exported from `tests/stories/catalog/coverage.ts`. `PendingReason.from` throws `'Pending reason must not be empty'` on a blank string.
-- Produces: `SUPPORTING_STORIES: Readonly<Record<string, PendingReason>>`. Tasks 6 and 7 pass `Object.keys(SUPPORTING_STORIES)` as the census `supporting` input.
+- Consumes: `toPendingReason(value: string) => PendingReason` and the `PendingReason` type, both exported from `tests/stories/catalog/coverage.ts`. `PendingReason.from` throws `'Pending reason must not be empty'` on a blank string. Also `catalogCoverage` and `TIER_SUITE_ROOTS` (`Record<StoryTier, string>`, e.g. `'0' -> 'tests/stories/'`) from the same module.
+- Produces: `SUPPORTING_STORIES: Readonly<Record<string, PendingReason>>`, `doubleBookedExemptions(supporting, claimed) => readonly string[]`, and `censusTier(tier, observed) => StoryCensus`. Tasks 6 and 7 call `censusTier` and nothing else.
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `tests/stories/harness/census.test.ts` (keep the existing `describe` block above it), adding `toPendingReason` to a new `../catalog/coverage.js` import alongside `catalogCoverage`:
+Append to `tests/stories/harness/census.test.ts` (keep the existing `describe` block above it), adding `censusTier` to the existing `../catalog/census.js` import:
 
 ```typescript
 import { catalogCoverage, toPendingReason } from '../catalog/coverage.js'
-import { SUPPORTING_STORIES } from '../catalog/supporting.js'
+import { doubleBookedExemptions, SUPPORTING_STORIES } from '../catalog/supporting.js'
 
-describe('SUPPORTING_STORIES', () => {
-  test('never exempts a story that a catalog record already claims', () => {
+describe('exemption contract', () => {
+  test('names an exemption that a catalog record already claims', () => {
+    expect(
+      doubleBookedExemptions({ 'a.story.test.ts#x': toPendingReason('helper') }, new Set(['a.story.test.ts#x'])),
+    ).toEqual(['a.story.test.ts#x'])
+  })
+
+  test('accepts an exemption that no record claims', () => {
+    expect(doubleBookedExemptions({ 'a.story.test.ts#x': toPendingReason('helper') }, new Set())).toEqual([])
+  })
+
+  test('no live exemption is double-booked against the real catalog', () => {
     const claimed = new Set(
       catalogCoverage.flatMap((coverage) => (coverage.kind === 'executable' ? [...coverage.storyIds] : [])),
     )
-    const doubleBooked = Object.keys(SUPPORTING_STORIES).filter((storyId) => claimed.has(storyId))
 
-    expect(doubleBooked).toEqual([])
+    expect(doubleBookedExemptions(SUPPORTING_STORIES, claimed)).toEqual([])
   })
 
-  test('carries a non-blank rationale for every exemption', () => {
-    const blank = Object.entries(SUPPORTING_STORIES)
-      .filter(([, rationale]) => rationale.toString().trim().length === 0)
-      .map(([storyId]) => storyId)
-
-    expect(blank).toEqual([])
-  })
-
+  // The non-blank-rationale invariant is enforced by construction, not by assertion:
+  // toPendingReason throws before a blank rationale can reach SUPPORTING_STORIES.
   test('rejects a blank rationale at the boundary rather than at assertion time', () => {
     expect(() => toPendingReason('  ')).toThrow('Pending reason must not be empty')
+  })
+})
+
+describe('censusTier', () => {
+  test('reads the live ledger rather than an empty claim set', () => {
+    // Guards the wiring itself: an exemption filter that matched everything, or a claim
+    // filter that matched nothing, would make every lane's census meaningless.
+    expect(censusTier('0', []).claimed).toBeGreaterThan(100)
+    expect(censusTier('0', []).supporting).toBe(0)
   })
 })
 ```
@@ -302,7 +327,7 @@ describe('SUPPORTING_STORIES', () => {
 
 Run: `bun test:stories:contracts`
 
-Expected: FAIL — cannot resolve `../catalog/supporting.js`.
+Expected: FAIL — cannot resolve `../catalog/supporting.js`, and `censusTier` is not exported.
 
 - [ ] **Step 3: Write the minimal implementation**
 
@@ -332,19 +357,62 @@ const RATIONALES: Readonly<Record<string, string>> = Object.freeze({})
 export const SUPPORTING_STORIES: Readonly<Record<string, PendingReason>> = Object.freeze(
   Object.fromEntries(Object.entries(RATIONALES).map(([storyId, rationale]) => [storyId, toPendingReason(rationale)])),
 )
+
+/**
+ * Exemption and coverage claim are mutually exclusive: a story cannot both prove a
+ * cataloged behavior and be excused from proving one. Taking both sides as parameters
+ * keeps this falsifiable while the list is empty.
+ */
+export function doubleBookedExemptions(
+  supporting: Readonly<Record<string, PendingReason>>,
+  claimed: ReadonlySet<string>,
+): readonly string[] {
+  return Object.keys(supporting)
+    .filter((storyId) => claimed.has(storyId))
+    .sort()
+}
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [ ] **Step 4: Add the tier wiring to `tests/stories/catalog/census.ts`**
+
+Change the type-only coverage import to a value import and append the three functions:
+
+```typescript
+import { catalogCoverage, TIER_SUITE_ROOTS, type StoryTier } from './coverage.js'
+import { SUPPORTING_STORIES } from './supporting.js'
+```
+
+```typescript
+function claimedStoryIds(tier: StoryTier): readonly string[] {
+  return catalogCoverage.flatMap((coverage) =>
+    coverage.kind === 'executable' && coverage.provingTier === tier ? [...coverage.storyIds] : [],
+  )
+}
+
+function exemptedStoryIds(tier: StoryTier): readonly string[] {
+  return Object.keys(SUPPORTING_STORIES).filter((storyId) => storyId.startsWith(TIER_SUITE_ROOTS[tier]))
+}
+
+/**
+ * Census one tier against the live ledger. Every lane calls this, so the claim and
+ * exemption sets are assembled in exactly one place.
+ */
+export function censusTier(tier: StoryTier, observed: readonly string[]): StoryCensus {
+  return censusStories({ tier, observed, claimed: claimedStoryIds(tier), supporting: exemptedStoryIds(tier) })
+}
+```
+
+- [ ] **Step 5: Run the test to verify it passes**
 
 Run: `bun test:stories:contracts`
 
-Expected: PASS — 3 new tests, 9 total in `census.test.ts`.
+Expected: PASS — 5 new tests, 11 total in `census.test.ts`.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add tests/stories/catalog/supporting.ts tests/stories/harness/census.test.ts
-git commit -m "test(stories): add the supporting-story exemption list"
+git add tests/stories/catalog/supporting.ts tests/stories/catalog/census.ts tests/stories/harness/census.test.ts
+git commit -m "test(stories): add the supporting-story exemption list and tier wiring"
 ```
 
 ---
@@ -889,7 +957,7 @@ The assertions that keep the ledger honest from here on.
 
 **Interfaces:**
 
-- Consumes: `censusStories` (Task 1), `SUPPORTING_STORIES` (Task 2), `catalogCoverage` from `coverage.ts`, `loadCandidateStoryFiles(root)` from `scripts/story/inputs.ts` returning `Promise<readonly { path: string; bytes: Uint8Array }[]>`, `extractStoryScenarios(path, bytes)` from `scripts/story/scenarios.ts` returning `readonly { id: string; checkpoints: readonly string[] }[]`, and `PARITY_GROUPS` from `tests/stories/harness/parity/expectations.ts` (each group has `id` and `title`).
+- Consumes: `censusTier(tier, observed)` (Task 2), `loadCandidateStoryFiles(root)` from `scripts/story/inputs.ts` returning `Promise<readonly { path: string; bytes: Uint8Array }[]>`, `extractStoryScenarios(path, bytes)` from `scripts/story/scenarios.ts` returning `readonly { id: string; checkpoints: readonly string[] }[]`, and `PARITY_GROUPS` from `tests/stories/harness/parity/expectations.ts` (each group has `id` and `title`).
 - Produces: nothing consumed by later tasks.
 
 - [ ] **Step 1: Write the test**
@@ -907,9 +975,7 @@ import nodePath from 'node:path'
 
 import { loadCandidateStoryFiles } from '../../../scripts/story/inputs.js'
 import { extractStoryScenarios } from '../../../scripts/story/scenarios.js'
-import { censusStories } from '../catalog/census.js'
-import { catalogCoverage, type StoryTier } from '../catalog/coverage.js'
-import { SUPPORTING_STORIES } from '../catalog/supporting.js'
+import { censusTier } from '../catalog/census.js'
 import { PARITY_GROUPS } from './parity/expectations.js'
 
 // A story scenario that no catalog record claims is a coverage claim nobody
@@ -928,25 +994,12 @@ function resolveStoryContractRoot(harnessDirectory: string): string {
   return nodePath.resolve(harnessDirectory, '../../..')
 }
 
-function claimedStoryIds(tier: StoryTier): readonly string[] {
-  return catalogCoverage.flatMap((coverage) =>
-    coverage.kind === 'executable' && coverage.provingTier === tier ? [...coverage.storyIds] : [],
-  )
-}
-
-const supportingStoryIds = Object.keys(SUPPORTING_STORIES)
-
 describe('story catalog census', () => {
   test('every Tier 0 story scenario is claimed by a record or declared supporting', async () => {
     const files = await loadCandidateStoryFiles(resolveStoryContractRoot(import.meta.dir))
     const observed = files.flatMap(({ path, bytes }) => extractStoryScenarios(path, bytes).map(({ id }) => id))
 
-    const census = censusStories({
-      tier: '0',
-      observed,
-      claimed: claimedStoryIds('0'),
-      supporting: supportingStoryIds.filter((id) => id.startsWith('tests/stories/')),
-    })
+    const census = censusTier('0', observed)
 
     expect(census.orphans).toEqual([])
     expect(census.dangling).toEqual([])
@@ -955,12 +1008,7 @@ describe('story catalog census', () => {
   test('every Tier 1 parity group is claimed by a record', () => {
     const observed = PARITY_GROUPS.map((group) => `tests/e2e/parity/provider-parity.test.ts#${group.title}`)
 
-    const census = censusStories({
-      tier: '1',
-      observed,
-      claimed: claimedStoryIds('1'),
-      supporting: supportingStoryIds.filter((id) => id.startsWith('tests/e2e/')),
-    })
+    const census = censusTier('1', observed)
 
     expect(census.orphans).toEqual([])
     expect(census.dangling).toEqual([])
@@ -1003,51 +1051,82 @@ git commit -m "test(stories): assert the Tier 0 and Tier 1 catalog census"
 
 ### Task 7: Wire the Tier 2 and Tier 3 census
 
-Same comparison for the container lanes, plus the helper-bypass check that keeps their registry-derived titles trustworthy.
+Same comparison for the container lanes, plus the helper-bypass check that keeps their registry-derived titles trustworthy. The two lanes differ only in glob, registry, and tier, so the scan-and-compare lives in one helper and each crosscheck supplies its three parameters.
 
 **Files:**
 
+- Create: `tests/smoke/harness/lane-census.ts`
 - Modify: `tests/smoke/catalog-crosscheck.test.ts`
 - Modify: `tests/platform/catalog-crosscheck.test.ts`
 
 **Interfaces:**
 
-- Consumes: `scanStoryMarkers` (Task 3), `censusStories` (Task 1), `SUPPORTING_STORIES` (Task 2), `repoRoot()` from `tests/smoke/harness/docker.ts` (returns an absolute path **with a trailing slash**), `SMOKE_STORY_IDS` / `PLATFORM_STORY_IDS` (`Record<string, string>` mapping scenario id to full story id).
-- Produces: nothing consumed by later tasks.
+- Consumes: `scanStoryMarkers` (Task 3), `censusTier` and the `StoryCensus` type (Tasks 1-2), `repoRoot()` from `tests/smoke/harness/docker.ts` (returns an absolute path **with a trailing slash**), `SMOKE_STORY_IDS` / `PLATFORM_STORY_IDS` (`Record<string, string>` mapping scenario id to full story id).
+- Produces: `censusMarkedLane(input) => Promise<MarkedLaneCensus>`, used by both crosschecks.
 
-- [ ] **Step 1: Add the Tier 2 census test**
+- [ ] **Step 1: Write the shared lane helper**
+
+Create `tests/smoke/harness/lane-census.ts`:
+
+```typescript
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { censusTier, type StoryCensus } from '../../stories/catalog/census.js'
+import type { StoryTier } from '../../stories/catalog/coverage.js'
+import { repoRoot } from './docker.js'
+import { scanStoryMarkers } from './story-markers.js'
+
+export type MarkedLaneCensus = Readonly<{
+  census: StoryCensus
+  /** Marker keys with no registry entry: the scenario runs, but no lane record names it. */
+  unregistered: readonly string[]
+  /** Tests that named themselves without going through the `title()` helper. */
+  violations: readonly string[]
+}>
+
+/**
+ * Discovery is by glob, not by walking the registry: a scenario file nobody
+ * registered has to be visible, and iterating the registry would never see it.
+ */
+export async function censusMarkedLane(
+  input: Readonly<{ tier: StoryTier; glob: string; registry: Readonly<Record<string, string>> }>,
+): Promise<MarkedLaneCensus> {
+  const observed: string[] = []
+  const unregistered: string[] = []
+  const violations: string[] = []
+
+  for await (const file of new Bun.Glob(input.glob).scan({ cwd: repoRoot() })) {
+    const scan = scanStoryMarkers(file, await Bun.file(`${repoRoot()}${file}`).text())
+    violations.push(...scan.violations)
+    for (const key of scan.keys) {
+      const storyId = input.registry[key]
+      if (storyId === undefined) unregistered.push(`${file}#${key}`)
+      else observed.push(storyId)
+    }
+  }
+
+  return Object.freeze({ census: censusTier(input.tier, observed), unregistered, violations })
+}
+```
+
+- [ ] **Step 2: Add the Tier 2 census test**
 
 Append to the `describe('@2 catalog crosscheck', …)` block in `tests/smoke/catalog-crosscheck.test.ts`:
 
 ```typescript
 test('every @2 scenario marker is registered and claimed, and none bypasses title()', async () => {
-  const glob = new Bun.Glob('tests/smoke/scenarios/*.smoke.ts')
-  const observed: string[] = []
-  const unregistered: string[] = []
-  const violations: string[] = []
-
-  for await (const file of glob.scan({ cwd: repoRoot() })) {
-    const scan = scanStoryMarkers(file, await Bun.file(`${repoRoot()}${file}`).text())
-    violations.push(...scan.violations)
-    for (const key of scan.keys) {
-      const storyId = SMOKE_STORY_IDS[key]
-      if (storyId === undefined) unregistered.push(`${file}#${key}`)
-      else observed.push(storyId)
-    }
-  }
-
-  const census = censusStories({
+  const { census, unregistered, violations } = await censusMarkedLane({
     tier: '2',
-    observed,
-    claimed: catalogCoverage.flatMap((coverage) =>
-      coverage.kind === 'executable' && coverage.provingTier === '2' ? [...coverage.storyIds] : [],
-    ),
-    supporting: Object.keys(SUPPORTING_STORIES).filter((id) => id.startsWith('tests/smoke/')),
+    glob: 'tests/smoke/scenarios/*.smoke.ts',
+    registry: SMOKE_STORY_IDS,
   })
 
-  // A marker with no SMOKE_STORIES entry, a test that skips the title()
-  // helper, or a scenario no catalog record claims — each would be coverage
-  // nobody declared. Add the registry entry and the catalog record.
+  // A marker with no SMOKE_STORIES entry, a test that skips the title() helper,
+  // or a scenario no catalog record claims — each would be coverage nobody
+  // declared. Add the registry entry and the catalog record.
   expect(unregistered).toEqual([])
   expect(violations).toEqual([])
   expect(census.orphans).toEqual([])
@@ -1055,48 +1134,28 @@ test('every @2 scenario marker is registered and claimed, and none bypasses titl
 })
 ```
 
-Add these imports at the top of the file:
+Add this import at the top of the file:
 
 ```typescript
-import { censusStories } from '../stories/catalog/census.js'
-import { SUPPORTING_STORIES } from '../stories/catalog/supporting.js'
-import { scanStoryMarkers } from './harness/story-markers.js'
+import { censusMarkedLane } from './harness/lane-census.js'
 ```
 
-- [ ] **Step 2: Run the Tier 2 test to verify it passes**
+- [ ] **Step 3: Run the Tier 2 test to verify it passes**
 
 Run: `bun test tests/smoke/catalog-crosscheck.test.ts`
 
 Expected: PASS — 3 tests. This file runs in the default lane and boots no containers.
 
-- [ ] **Step 3: Add the Tier 3 census test**
+- [ ] **Step 4: Add the Tier 3 census test**
 
 Append to the `describe('@3 catalog crosscheck', …)` block in `tests/platform/catalog-crosscheck.test.ts`:
 
 ```typescript
 test('every @3 scenario marker is registered and claimed, and none bypasses title()', async () => {
-  const glob = new Bun.Glob('tests/platform/scenarios/*.platform.ts')
-  const observed: string[] = []
-  const unregistered: string[] = []
-  const violations: string[] = []
-
-  for await (const file of glob.scan({ cwd: repoRoot() })) {
-    const scan = scanStoryMarkers(file, await Bun.file(`${repoRoot()}${file}`).text())
-    violations.push(...scan.violations)
-    for (const key of scan.keys) {
-      const storyId = PLATFORM_STORY_IDS[key]
-      if (storyId === undefined) unregistered.push(`${file}#${key}`)
-      else observed.push(storyId)
-    }
-  }
-
-  const census = censusStories({
+  const { census, unregistered, violations } = await censusMarkedLane({
     tier: '3',
-    observed,
-    claimed: catalogCoverage.flatMap((coverage) =>
-      coverage.kind === 'executable' && coverage.provingTier === '3' ? [...coverage.storyIds] : [],
-    ),
-    supporting: Object.keys(SUPPORTING_STORIES).filter((id) => id.startsWith('tests/platform/')),
+    glob: 'tests/platform/scenarios/*.platform.ts',
+    registry: PLATFORM_STORY_IDS,
   })
 
   expect(unregistered).toEqual([])
@@ -1106,21 +1165,19 @@ test('every @3 scenario marker is registered and claimed, and none bypasses titl
 })
 ```
 
-Add these imports at the top of the file:
+Add this import at the top of the file:
 
 ```typescript
-import { censusStories } from '../stories/catalog/census.js'
-import { SUPPORTING_STORIES } from '../stories/catalog/supporting.js'
-import { scanStoryMarkers } from '../smoke/harness/story-markers.js'
+import { censusMarkedLane } from '../smoke/harness/lane-census.js'
 ```
 
-- [ ] **Step 4: Run the Tier 3 test to verify it passes**
+- [ ] **Step 5: Run the Tier 3 test to verify it passes**
 
 Run: `bun test tests/platform/catalog-crosscheck.test.ts`
 
 Expected: PASS — 3 tests.
 
-- [ ] **Step 5: Verify the bypass check bites**
+- [ ] **Step 6: Verify the bypass check bites**
 
 Temporarily change one test in `tests/smoke/scenarios/container-p.smoke.ts` from `test(title('SCN-boot-serve-empty-db'), …)` to `test('boots and serves', …)`.
 
@@ -1130,10 +1187,10 @@ Expected: FAIL on both `violations` (the literal title) and `census.dangling` (t
 
 Revert the edit (`git checkout tests/smoke/scenarios/container-p.smoke.ts`) and re-run to confirm PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add tests/smoke/catalog-crosscheck.test.ts tests/platform/catalog-crosscheck.test.ts
+git add tests/smoke/harness/lane-census.ts tests/smoke/catalog-crosscheck.test.ts tests/platform/catalog-crosscheck.test.ts
 git commit -m "test(smoke,platform): assert the Tier 2 and Tier 3 catalog census"
 ```
 
