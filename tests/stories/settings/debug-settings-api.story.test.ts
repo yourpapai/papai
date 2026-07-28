@@ -81,7 +81,7 @@ scenario(
     const aliceDm = given.dm(alice)
     const bobDm = given.dm(bob)
     const session = await given.settingsSession(alice)
-    const bobSession = await given.settingsSession(bob)
+    const bobSession = await when.settingsSession(bob)
     const bobContextId = world.scopedStorageContextId(bobDm)
 
     const bobBefore = await when.settingsRequest(bobSession, '/settings/api/byok')
