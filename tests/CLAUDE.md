@@ -147,8 +147,10 @@ servers (HTTP/WS), reusing the T2 harness (`tests/smoke/harness/`). Scenario
 files use the non-discovered `.platform.ts` suffix, so the default `bun test`
 never boots Docker. Run locally with `bun run test:platform`. The lane is
 **nightly only** (`.github/workflows/nightly.yml`), never a PR gate. Live
-scenarios: `SCN-fetch-chat-link` (permalink resolver) and
-`SCN-http-mattermost-action` (signed action-callback route). The Discord and
+scenarios: `SCN-fetch-chat-link` (permalink resolver),
+`SCN-http-mattermost-action` (signed action-callback route), and
+`SCN-http-mattermost-action-bad-signature` (the same route rejecting a context
+signed with the wrong secret). The Discord and
 Telegram interaction pends remain `needs-seam@3`, deferred until fake
 discord.js / grammY servers exist. The action-callback scenario relies on the
 `PAPAI_MATTERMOST_ACTION_SIGNING_SECRET` env seam so the container verifies

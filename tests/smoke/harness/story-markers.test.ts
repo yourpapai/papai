@@ -52,6 +52,18 @@ describe('scanStoryMarkers', () => {
     })
   })
 
+  test("sees bun:test's it() alias, so a bypass under it() is loud rather than silent", () => {
+    const source = `
+      it(title('SCN-alias-marked'), async () => {})
+      it('bypasses the helper', async () => {})
+    `
+
+    expect(scanStoryMarkers('a.smoke.ts', source)).toEqual({
+      keys: ['SCN-alias-marked'],
+      violations: ["a.smoke.ts: 'bypasses the helper'"],
+    })
+  })
+
   test('flags a title() call whose key is not a string literal', () => {
     const source = `test(title(key), async () => {})`
 

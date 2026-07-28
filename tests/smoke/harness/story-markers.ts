@@ -13,9 +13,14 @@ import ts from '@typescript/typescript6'
  */
 export type StoryMarkerScan = Readonly<{ keys: readonly string[]; violations: readonly string[] }>
 
-/** Matches `test(...)`, `test.skip(...)`, and `test.skipIf(cond)(...)`. */
+/**
+ * Matches `test(...)`, `test.skip(...)`, and `test.skipIf(cond)(...)`, plus the
+ * same shapes under bun:test's `it` alias. No scenario file uses `it` today, but
+ * an unrecognized declarator is a *silent* miss — neither a key nor a violation —
+ * which is the exact blind spot this scanner exists to remove.
+ */
 function isTestCall(expression: ts.Expression): boolean {
-  if (ts.isIdentifier(expression)) return expression.text === 'test'
+  if (ts.isIdentifier(expression)) return expression.text === 'test' || expression.text === 'it'
   if (ts.isPropertyAccessExpression(expression)) return isTestCall(expression.expression)
   if (ts.isCallExpression(expression)) return isTestCall(expression.expression)
   return false
