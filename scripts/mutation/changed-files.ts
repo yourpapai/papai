@@ -7,8 +7,8 @@ import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 
 import { isGateableImplFile } from '../../.hooks/tdd/test-resolver.mjs'
-import { loadBaseline, resolveRatchet } from './baseline.js'
-import type { BaselineMap } from './baseline.js'
+import { buildBaselineFromPerFile, loadBaseline, resolveRatchet, seedMerge, writeBaseline } from './baseline.js'
+import type { BaselineMap, PerFileScore } from './baseline.js'
 import { pairedRun, resolvePairedRunExitCode } from './paired-run.js'
 import type { PairedRunInput, PairedRunResult } from './paired-run.js'
 
@@ -30,6 +30,7 @@ type ChangedFilesCliArgs =
       readonly threshold: number
       readonly noRatchet: boolean
       readonly verbose: boolean
+      readonly updateBaseline: boolean
     }
   | { readonly kind: 'usageError'; readonly reason: string }
 
@@ -108,7 +109,7 @@ const resolveRunDeps = (deps: ChangedFilesRunDeps | undefined): ChangedFilesRunD
 }
 
 export const parseChangedFilesCliArgs = (argv: readonly string[]): ChangedFilesCliArgs => {
-  const knownFlags = ['--base=', '--threshold=', '--no-ratchet', '--verbose']
+  const knownFlags = ['--base=', '--threshold=', '--no-ratchet', '--verbose', '--update-baseline']
   const unknownArg = argv.find((arg) => arg.startsWith('-') && !knownFlags.some((f) => arg.startsWith(f)))
   if (unknownArg !== undefined) return { kind: 'usageError', reason: `unknown argument ${unknownArg}` }
   const positionalArg = argv.find((arg) => !knownFlags.some((f) => arg.startsWith(f) || arg === f.replace('=', '')))
@@ -135,6 +136,7 @@ export const parseChangedFilesCliArgs = (argv: readonly string[]): ChangedFilesC
     threshold,
     noRatchet: argv.includes('--no-ratchet'),
     verbose: argv.includes('--verbose'),
+    updateBaseline: argv.includes('--update-baseline'),
   }
 }
 
@@ -168,18 +170,33 @@ export const changedFilesRun = async (input: ChangedFilesRunInput): Promise<Pair
   return result
 }
 
+/**
+ * Seed the baseline from a changed-files run, PRESERVING existing entries for
+ * files that were not re-measured (unlike a full-run ratchet). Used by the
+ * master seed command (`--update-baseline`): measures only changed files but
+ * must not erase the rest of the baseline. Returns the resulting entry count.
+ */
+export const seedBaseline = (baselinePath: string, perFile: readonly PerFileScore[]): number => {
+  const existing = loadBaseline(baselinePath) ?? {}
+  const latest = buildBaselineFromPerFile(perFile)
+  const merged = seedMerge(existing, latest)
+  writeBaseline(baselinePath, merged)
+  return Object.keys(merged).length
+}
+
 const main = async (bun: BunLike): Promise<number> => {
   const parsed = parseChangedFilesCliArgs(bun.argv.slice(2))
   if (parsed.kind === 'usageError') {
     console.error(parsed.reason)
     console.error(
-      'Usage: bun scripts/mutation/changed-files.ts [--base=REF] [--threshold=N] [--no-ratchet] [--verbose]',
+      'Usage: bun scripts/mutation/changed-files.ts [--base=REF] [--threshold=N] [--no-ratchet] [--update-baseline] [--verbose]',
     )
     return 2
   }
 
   const projectRoot = process.cwd()
-  const baseline = loadBaseline(path.join(projectRoot, BASELINE_FILE)) ?? {}
+  const baselinePath = path.join(projectRoot, BASELINE_FILE)
+  const baseline = loadBaseline(baselinePath) ?? {}
   const result = await changedFilesRun({
     projectRoot,
     reportDir: path.join(projectRoot, DEFAULT_REPORT_DIR),
@@ -189,6 +206,12 @@ const main = async (bun: BunLike): Promise<number> => {
     deps: undefined,
   })
   if (result === null) {
+    return 0
+  }
+
+  if (parsed.updateBaseline) {
+    const count = seedBaseline(baselinePath, result.perFile)
+    console.log(`Seeded baseline written to ${BASELINE_FILE} (${count} files)`)
     return 0
   }
 
