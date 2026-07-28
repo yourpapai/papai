@@ -132,8 +132,10 @@ export class TelegramChatProvider implements ChatProvider {
       const reply = this.buildReplyFn(ctx, msg.threadId, false)
       await handler({ ...msg, editedAt: ctx.editedMessage?.edit_date ?? 0 }, reply)
     }
+    // Channel-broadcast edits (edited_channel_post) are intentionally not subscribed:
+    // channels are not a papai context type (user-auth based; channel posts carry
+    // sender_chat with no `from`), and forum-topic edits arrive as edited_message.
     this.bot.on('edited_message:text', deliver)
-    this.bot.on('edited_channel_post:text', deliver)
   }
   async sendMessage(_platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<void> {
     const chatId = parseInt(target.contextId, 10)

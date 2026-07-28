@@ -691,7 +691,7 @@ describe('TelegramChatProvider', () => {
   })
 
   describe('message edit handling', () => {
-    test('onMessageEdit subscribes to edited_message:text and edited_channel_post:text', () => {
+    test('onMessageEdit subscribes to edited_message:text only', () => {
       const provider = createTelegramProvider()
       const botValue = Reflect.get(provider as object, 'bot') as unknown
       assert(isBotWithLifecycleMethods(botValue), 'Expected Telegram provider bot to expose lifecycle methods')
@@ -704,7 +704,7 @@ describe('TelegramChatProvider', () => {
       provider.onMessageEdit((_msg) => Promise.resolve())
 
       expect(filters).toContain('edited_message:text')
-      expect(filters).toContain('edited_channel_post:text')
+      expect(filters).not.toContain('edited_channel_post:text')
     })
 
     test('delivers edited_message:text to onMessageEdit with editedAt and messageId', async () => {
@@ -771,37 +771,6 @@ describe('TelegramChatProvider', () => {
       )
 
       expect(received).toEqual([{ editedAt: 0, messageId: '7' }])
-    })
-
-    test('delivers edited_channel_post:text through the same handler', async () => {
-      const provider = createTelegramProvider()
-      const botValue = Reflect.get(provider as object, 'bot') as unknown
-      assert(isBotWithLifecycleMethods(botValue), 'Expected Telegram provider bot to expose lifecycle methods')
-
-      const handlers = new Map<string | string[], (...args: unknown[]) => unknown>()
-      botValue.on = (filter: string | string[], handler: (...args: unknown[]) => unknown): void => {
-        handlers.set(filter, handler)
-      }
-
-      const received: Array<{ editedAt: number | undefined; messageId: string | undefined }> = []
-      provider.onMessageEdit((msg) => {
-        received.push({ editedAt: msg.editedAt, messageId: msg.messageId })
-        return Promise.resolve()
-      })
-
-      const channelHandler = handlers.get('edited_channel_post:text')
-      assert(channelHandler !== undefined, 'Expected edited_channel_post:text handler to be registered')
-
-      await Promise.resolve(
-        channelHandler({
-          from: { id: 42, username: 'alice' },
-          chat: { id: -100123, type: 'channel' },
-          editedMessage: { message_id: 901, text: 'channel edit', edit_date: 999 },
-          me: { id: 99999 },
-        }),
-      )
-
-      expect(received).toEqual([{ editedAt: 999, messageId: '901' }])
     })
   })
 
