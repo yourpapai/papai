@@ -447,7 +447,7 @@ describe('pairedRun', () => {
     })
   })
 
-  test('selects a coverage-discovered NON-companion test when buildMap returns one', async () => {
+  test('selects coverage-discovered tests AND keeps the companion (additive) when buildMap returns one', async () => {
     const reportDir = makeReportDir()
     const captured = { configPath: '' }
     const runStryker = mock((configPath: string) => {
@@ -474,7 +474,7 @@ describe('pairedRun', () => {
 
     const testFiles = readConfiguredBunTestFiles(captured.configPath)
     expect(testFiles).toContain('./tests/integration/covers-foo.test.ts')
-    expect(testFiles).not.toContain('./tests/companion.test.ts')
+    expect(testFiles).toContain('./tests/companion.test.ts')
   })
 
   test('companions still get selected as fallback when buildMap returns no entry for the source', async () => {
