@@ -76,3 +76,10 @@ Every `Write`/`Edit`/`MultiEdit` on an implementation file in `src/` or `client/
 - Bash-hook policy blocks `git stash` and `git checkout --`.
 
 Fix the underlying issue rather than bypassing linting or hook policy.
+
+## Stop hooks (session review reminders)
+
+Two once-per-session stop hooks run after the TDD pipeline, in both Claude Code (`.claude/hooks/*-stop.mjs`) and opencode (`.opencode/plugins/`), sharing `.hooks/docs/` mapping modules and the session state in `.hooks/tdd/session-state.mjs`. Both track `Write`/`Edit`/`MultiEdit` paths under `src/`, `client/`, `plugins/`, `scripts/`, `review-loop/` and fire at most once per session each:
+
+- **Doc review** (`doc-review-stop.mjs` / `doc-review.ts`): always suggests `CLAUDE.md` + `README.md`, and discovers scoped `CLAUDE.md` files on disk via `map-files-to-docs.mjs` — the nearest ancestor directory of each changed file that actually contains one (no hardcoded list, so new scoped docs are picked up automatically).
+- **Analytics review** (`analytics-review-stop.mjs` / `analytics-review.ts`): maps changed files to analytics-covered surfaces via `map-files-to-analytics.mjs` — tool surface (slug regeneration, classification, logging-privacy), versioned contracts/registry (spec amendment in `docs/research/analytics-metrics/02`/`03`), the `src/analytics/` module (runbook sync), instrumentation boundaries (typed-fact emission), DB migrations, settings analytics UI/API parity, and analytics operator CLIs (runbook command blocks). Each matched area carries its verification command. Fires only when a changed file matches an analytics-covered surface.

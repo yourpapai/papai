@@ -7,8 +7,8 @@ import path from 'node:path'
 
 import type { Plugin } from '@opencode-ai/plugin'
 
-import { buildDocReviewPrompt } from '../../.hooks/docs/build-doc-review-prompt.mjs'
-import { mapFilesToDocs } from '../../.hooks/docs/map-files-to-docs.mjs'
+import { buildAnalyticsReviewPrompt } from '../../.hooks/docs/build-analytics-review-prompt.mjs'
+import { mapFilesToAnalytics } from '../../.hooks/docs/map-files-to-analytics.mjs'
 import { trackSourceWrite } from '../../.hooks/docs/track-source-write.mjs'
 import { getSessionsDir } from '../../.hooks/tdd/paths.mjs'
 import { SessionState } from '../../.hooks/tdd/session-state.mjs'
@@ -20,7 +20,7 @@ const normalizeChangedFilePath = (filePath: string, directory: string): string =
   return path.relative(directory, filePath)
 }
 
-export const DocReview: Plugin = ({ client, directory }) => {
+export const AnalyticsReview: Plugin = ({ client, directory }) => {
   let currentSessionID = ''
 
   return Promise.resolve({
@@ -47,15 +47,17 @@ export const DocReview: Plugin = ({ client, directory }) => {
       if (!sessionID) return Promise.resolve()
 
       const state = new SessionState(sessionID, getSessionsDir(directory))
-      if (state.getDocReviewSuggested()) return Promise.resolve()
+      if (state.getAnalyticsReviewSuggested()) return Promise.resolve()
 
       const changedFiles = state.getChangedSourceFiles()
       if (changedFiles.length === 0) return Promise.resolve()
 
-      const docPaths = mapFilesToDocs(changedFiles, directory)
-      const prompt = buildDocReviewPrompt(changedFiles, docPaths)
+      const areas = mapFilesToAnalytics(changedFiles)
+      if (areas.length === 0) return Promise.resolve()
 
-      state.setDocReviewSuggested(true)
+      const prompt = buildAnalyticsReviewPrompt(areas)
+
+      state.setAnalyticsReviewSuggested(true)
 
       void client.session.promptAsync({
         path: { id: sessionID },

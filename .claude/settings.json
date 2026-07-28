@@ -57,6 +57,17 @@
             "statusMessage": "Checking doc review..."
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/analytics-review-stop.mjs",
+            "timeout": 200,
+            "statusMessage": "Checking analytics review..."
+          }
+        ]
       }
     ]
   }
