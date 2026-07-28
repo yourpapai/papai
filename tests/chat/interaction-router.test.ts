@@ -9,7 +9,8 @@ import { routeInteraction } from '../../src/chat/interaction-router.js'
 import { askPermissionViaChat } from '../../src/chat/permission-prompt.js'
 import { resetPermissionPromptForTesting } from '../../src/chat/permission-prompt.testing.js'
 import type { AuthorizationResult, IncomingInteraction, ReplyFn } from '../../src/chat/types.js'
-import { registerEditPrompt, resetEditPromptStoreForTesting } from '../../src/message-edit/edit-prompt-store.js'
+import { registerEditPrompt } from '../../src/message-edit/edit-prompt-store.js'
+import { resetEditPromptStoreForTesting } from '../../src/message-edit/edit-prompt-store.testing.js'
 import { createMockReply } from '../utils/test-helpers.js'
 
 const auth = (allowed: boolean, storageContextId = 'tg:u1'): AuthorizationResult => ({

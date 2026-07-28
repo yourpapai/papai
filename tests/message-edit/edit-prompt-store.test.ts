@@ -5,12 +5,8 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import {
-  peekEditPrompt,
-  registerEditPrompt,
-  resetEditPromptStoreForTesting,
-  resolveEditPrompt,
-} from '../../src/message-edit/edit-prompt-store.js'
+import { peekEditPrompt, registerEditPrompt, resolveEditPrompt } from '../../src/message-edit/edit-prompt-store.js'
+import { resetEditPromptStoreForTesting } from '../../src/message-edit/edit-prompt-store.testing.js'
 
 describe('edit-prompt-store', () => {
   beforeEach(() => resetEditPromptStoreForTesting())
