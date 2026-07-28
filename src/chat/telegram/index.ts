@@ -124,6 +124,17 @@ export class TelegramChatProvider implements ChatProvider {
   onInteraction(handler: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>): void {
     this.interactionHandler = handler
   }
+  onMessageEdit(handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>): void {
+    const deliver = async (ctx: Context): Promise<void> => {
+      const isAdmin = await this.checkAdminStatus(ctx)
+      const msg = await this.extractMessage(ctx, isAdmin)
+      if (msg === null) return
+      const reply = this.buildReplyFn(ctx, msg.threadId, false)
+      await handler({ ...msg, editedAt: ctx.editedMessage?.edit_date ?? 0 }, reply)
+    }
+    this.bot.on('edited_message:text', deliver)
+    this.bot.on('edited_channel_post:text', deliver)
+  }
   async sendMessage(_platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<void> {
     const chatId = parseInt(target.contextId, 10)
     const mentionPrefix = buildTelegramMentionPrefix(target)
