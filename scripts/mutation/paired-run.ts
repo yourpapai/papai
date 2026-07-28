@@ -10,6 +10,8 @@ import path from 'node:path'
 import { findTestFile } from '../../.hooks/tdd/test-resolver.mjs'
 import { buildPairedConfig } from './config-builder.js'
 import type { StrykerConfig } from './config-builder.js'
+import { buildCoverageMap, createDefaultCoverageMapDeps } from './coverage-map.js'
+import type { CoverageMap } from './coverage-map.js'
 import { readJsonRecord, readStrykerReport } from './json-readers.js'
 import { parsePairedRunCliArgs, resolvePairedRunCliUsageExitCode, resolvePairedRunExitCode } from './paired-run-cli.js'
 import { appendProcessFailure } from './process-error.js'
@@ -29,6 +31,11 @@ export interface PairedRunDeps {
   readonly runStryker: (configPath: string, projectRoot: string, options: PairedRunStrykerOptions) => void
   readonly readReport: (reportPath: string) => StrykerReport
   readonly log: (message: string) => void
+  /**
+   * Build {sourceFile -> covering testFiles} once per batch. When omitted, pairedRun builds it
+   * lazily via `buildCoverageMap` with the production deps from `coverage-map.ts`.
+   */
+  readonly buildMap?: (sourceFiles: readonly string[]) => CoverageMap
 }
 
 export interface PairedRunInput {
@@ -141,12 +148,14 @@ const runOneFile = (
   base: StrykerConfig,
   overrides: OverridesMap,
   verbose: boolean,
+  discovered: readonly string[] | undefined,
 ): CompletedFileRun | SkippedFile => {
   const resolved = resolveTestFiles({
     srcFile,
     projectRoot: input.projectRoot,
     overrides,
     findTestFile: companionResolverFor(deps),
+    discovered,
   })
   if (resolved.kind === 'skip') return { sourceFile: srcFile, reason: resolved.reason }
 
@@ -187,6 +196,22 @@ const resolveDeps = (deps: PairedRunDeps | undefined): PairedRunDeps => {
   return deps
 }
 
+const defaultBuildMapFor = (projectRoot: string): ((sourceFiles: readonly string[]) => CoverageMap) => {
+  return (sourceFiles) => {
+    try {
+      return buildCoverageMap({
+        sourceFiles,
+        projectRoot,
+        deps: createDefaultCoverageMapDeps(projectRoot),
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error(`paired-run: coverage map build failed (${message}); falling back to companion-only selection`)
+      return {}
+    }
+  }
+}
+
 export const pairedRun = (input: PairedRunInput): Promise<PairedRunResult> => {
   const deps = resolveDeps(input.deps)
   const verbose = input.verbose === true
@@ -194,6 +219,8 @@ export const pairedRun = (input: PairedRunInput): Promise<PairedRunResult> => {
   const base = deps.readBaseConfig(input.projectRoot)
   const overrides = deps.loadOverrides(input.projectRoot)
   fs.mkdirSync(input.reportDir, { recursive: true })
+  const buildMap = deps.buildMap ?? defaultBuildMapFor(input.projectRoot)
+  const coverageMap = buildMap(sourceFiles)
 
   const completed: CompletedFileRun[] = []
   const skipped: SkippedFile[] = []
@@ -202,7 +229,7 @@ export const pairedRun = (input: PairedRunInput): Promise<PairedRunResult> => {
   sourceFiles.forEach((srcFile, index) => {
     deps.log(`Running paired mutation ${index + 1}/${sourceFiles.length}: ${srcFile}`)
     try {
-      const result = runOneFile(srcFile, input, deps, base, overrides, verbose)
+      const result = runOneFile(srcFile, input, deps, base, overrides, verbose, coverageMap[srcFile])
       if (isSkippedFile(result)) skipped.push(result)
       else {
         deps.log(formatFileSummary(result))

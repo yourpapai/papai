@@ -10,7 +10,8 @@ import path from 'node:path'
 
 import { Glob } from 'bun'
 
-import { testFileImportsImpl } from '../../.hooks/tdd/test-resolver.mjs'
+import { openCoverageCache } from './coverage-cache.js'
+import type { CoverageCache } from './coverage-cache.js'
 
 export type CoverageMap = Record<string, string[]>
 
@@ -58,21 +59,18 @@ export interface DefaultCoverageMapDepsOptions {
   readonly timeoutMs?: number
 }
 
-interface CoverageCacheEntry {
-  readonly value: ReadonlyArray<readonly [string, number]>
-  readonly ts: number
-}
-
-type CoverageCacheFile = { entries: Record<string, CoverageCacheEntry> }
-
-interface CoverageCache {
-  readonly get: (key: string, ttlMs: number) => Map<string, number> | undefined
-  readonly set: (key: string, value: Map<string, number>) => void
+/** Memoized per-batch candidate universe + import-scan context. */
+interface CandidateContext {
+  readonly scan: () => readonly string[]
+  readonly importsImpl: (testAbs: string, srcAbs: string) => boolean
 }
 
 /**
- * Production default deps for `buildCoverageMap`. `listCandidateTests` narrows the universe
- * via `testFileImportsImpl` (static import scan); `runCoverage` spawns `bun test --coverage`,
+ * Production default deps for `buildCoverageMap`. `listCandidateTests` narrows the universe via
+ * two heuristics unioned together: (a) tests whose text directly imports the source (mirrors the
+ * TDD write-hook's `testFileImportsImpl`), AND (b) tests in the same package directory as the
+ * source's companion (catches transitive coverage where a same-package index test exercises the
+ * source indirectly through a re-exporting barrel). `runCoverage` spawns `bun test --coverage`,
  * parses the lcov, and consults a content-keyed TTL cache. Never throws — fails open to empty.
  */
 export function createDefaultCoverageMapDeps(
@@ -85,26 +83,95 @@ export function createDefaultCoverageMapDeps(
   const lcovName = options.lcovName ?? DEFAULT_LCOV_NAME
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const cache = openCoverageCache(cachePath)
+  const contentCache = new Map<string, string>()
+  const readTestContent = (testAbs: string): string => readMemoizedContent(testAbs, contentCache)
+  let scanned: readonly string[] | undefined
+  const ctx: CandidateContext = {
+    scan: () => (scanned ??= scanTestFiles(projectRoot)),
+    importsImpl: (testAbs, srcAbs) => scanImportsInContent(readTestContent(testAbs), testAbs, srcAbs),
+  }
   return {
-    listCandidateTests: (srcFile) => listCandidateTests(srcFile, projectRoot),
+    listCandidateTests: (srcFile) => listCandidateTests(srcFile, projectRoot, ctx),
     runCoverage: (testFile, runRoot) =>
-      runCoverageFor(testFile, runRoot, { coverageDir, lcovName, timeoutMs, cache, cacheTtlMs }),
+      runCoverageFor(testFile, runRoot, { coverageDir, lcovName, timeoutMs, cache, cacheTtlMs, readTestContent }),
   }
 }
 
-const listCandidateTests = (srcFile: string, projectRoot: string): string[] => {
-  const srcAbs = path.isAbsolute(srcFile) ? srcFile : path.resolve(projectRoot, srcFile)
-  return scanTestFiles(projectRoot).filter((testRel) => {
-    try {
-      return testFileImportsImpl(path.resolve(projectRoot, testRel), srcAbs)
-    } catch {
-      return false
-    }
-  })
+const readMemoizedContent = (testAbs: string, cache: Map<string, string>): string => {
+  const cached = cache.get(testAbs)
+  if (cached !== undefined) return cached
+  let content = ''
+  try {
+    content = fs.existsSync(testAbs) ? fs.readFileSync(testAbs, 'utf8') : ''
+  } catch {
+    content = ''
+  }
+  cache.set(testAbs, content)
+  return content
 }
 
-const scanTestFiles = (projectRoot: string): string[] =>
-  [...new Glob(TEST_SCAN_PATTERN).scanSync({ cwd: projectRoot, onlyFiles: true })].sort()
+const listCandidateTests = (srcFile: string, projectRoot: string, ctx: CandidateContext): string[] => {
+  const srcAbs = path.isAbsolute(srcFile) ? srcFile : path.resolve(projectRoot, srcFile)
+  const srcRel = path.relative(projectRoot, srcAbs)
+  const pkgDirAbs = path.resolve(projectRoot, samePackageTestDir(srcRel))
+  return ctx
+    .scan()
+    .filter((testRel) => {
+      const testAbs = path.resolve(projectRoot, testRel)
+      if (path.dirname(testAbs) === pkgDirAbs) return true
+      return ctx.importsImpl(testAbs, srcAbs)
+    })
+    .sort()
+}
+
+const scanTestFiles = (projectRoot: string): string[] => {
+  try {
+    return [...new Glob(TEST_SCAN_PATTERN).scanSync({ cwd: projectRoot, onlyFiles: true })].sort()
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Derive the same-package tests directory for a source file, mirroring the src↔tests directory
+ * mapping in `.hooks/tdd/test-resolver.mjs` (`findTestFile` / `suggestTestPath`). For
+ * `src/chat/mattermost/file-helpers.ts` this returns `tests/chat/mattermost`; for `src/history.ts`
+ * it returns `tests` (top-level); for `plugins/foo/bar.ts` → `tests/plugins/foo`;
+ * for `review-loop/src/x.ts` → `tests/review-loop`; for `client/a/b.ts` → `tests/client/a/b`.
+ */
+const samePackageTestDir = (srcRel: string): string => {
+  const forward = srcRel.replace(/\\/gu, '/')
+  const dirOf = (p: string): string => path.dirname(p).replace(/\\/gu, '/')
+  if (forward.startsWith('client/')) {
+    return path.join('tests', dirOf(forward))
+  }
+  if (forward.startsWith('plugins/')) {
+    return path.join('tests', dirOf(forward))
+  }
+  if (forward.startsWith('review-loop/src/')) {
+    const withoutPrefix = forward.replace(/^review-loop\/src\//u, '')
+    return path.join('tests', 'review-loop', dirOf(withoutPrefix))
+  }
+  if (forward.startsWith('src/')) {
+    const withoutSrc = forward.replace(/^src\//u, '')
+    return path.join('tests', dirOf(withoutSrc))
+  }
+  return 'tests'
+}
+
+/**
+ * Mirror of `.hooks/tdd/test-resolver.mjs`'s `testFileImportsImpl`, accepting pre-read content so
+ * the per-batch content cache can amortize reads across all source files. MUST stay in sync with
+ * the hook's heuristic — a string-`includes` check on the relative import path with/without `.js`.
+ */
+const scanImportsInContent = (content: string, testAbs: string, implAbs: string): boolean => {
+  if (content === '') return false
+  const testDir = path.dirname(testAbs)
+  const relToImpl = path.relative(testDir, implAbs).replace(/\\/gu, '/')
+  const noExt = relToImpl.replace(/\.(ts|tsx|js|jsx)$/u, '')
+  const withJs = `${noExt}.js`
+  return content.includes(withJs) || content.includes(`${noExt}'`) || content.includes(`${noExt}"`)
+}
 
 interface RunCoverageOptions {
   readonly coverageDir: string
@@ -112,6 +179,7 @@ interface RunCoverageOptions {
   readonly timeoutMs: number
   readonly cache: CoverageCache
   readonly cacheTtlMs: number
+  readonly readTestContent: (testAbs: string) => string
 }
 
 const runCoverageFor = (
@@ -120,7 +188,7 @@ const runCoverageFor = (
   opts: RunCoverageOptions,
 ): ReadonlyMap<string, number> => {
   const testAbs = path.isAbsolute(testFile) ? testFile : path.resolve(projectRoot, testFile)
-  const key = cacheKeyForTest(testAbs)
+  const key = cacheKeyForTest(testAbs, opts.readTestContent)
   const cached = opts.cache.get(key, opts.cacheTtlMs)
   if (cached !== undefined) return cached
   const fresh = spawnAndParseLcov(testFile, projectRoot, opts)
@@ -179,51 +247,8 @@ const parseLcovAll = (lcovPath: string, projectRoot: string): Map<string, number
   return out
 }
 
-const cacheKeyForTest = (testAbs: string): string => {
-  const content = fs.existsSync(testAbs) ? fs.readFileSync(testAbs, 'utf8') : ''
+const cacheKeyForTest = (testAbs: string, readContent: (testAbs: string) => string): string => {
+  const content = readContent(testAbs)
   const hash = createHash('sha256').update(content).digest('hex').slice(0, 16)
   return `${testAbs}:${hash}`
-}
-
-const openCoverageCache = (cachePath: string): CoverageCache => {
-  const entries = readCacheFile(cachePath)
-  return {
-    get: (key, ttlMs) => {
-      const entry = entries[key]
-      if (entry === undefined) return undefined
-      if (Date.now() - entry.ts > ttlMs) return undefined
-      return new Map(entry.value)
-    },
-    set: (key, value) => {
-      entries[key] = { value: [...value.entries()], ts: Date.now() }
-      writeCacheFile(cachePath, { entries })
-    },
-  }
-}
-
-const isCoverageCacheFile = (value: unknown): value is CoverageCacheFile => {
-  if (typeof value !== 'object' || value === null) return false
-  if (!('entries' in value)) return false
-  const entries: unknown = value.entries
-  return typeof entries === 'object' && entries !== null
-}
-
-const readCacheFile = (cachePath: string): Record<string, CoverageCacheEntry> => {
-  try {
-    if (!fs.existsSync(cachePath)) return {}
-    const parsed: unknown = JSON.parse(fs.readFileSync(cachePath, 'utf8'))
-    if (!isCoverageCacheFile(parsed)) return {}
-    return parsed.entries
-  } catch {
-    return {}
-  }
-}
-
-const writeCacheFile = (cachePath: string, cache: CoverageCacheFile): void => {
-  try {
-    fs.mkdirSync(path.dirname(cachePath), { recursive: true })
-    fs.writeFileSync(cachePath, JSON.stringify(cache))
-  } catch {
-    // best-effort cache persistence; a write failure must not abort the run
-  }
 }
