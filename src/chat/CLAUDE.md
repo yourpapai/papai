@@ -23,6 +23,7 @@ interface ChatProvider {
   start(): Promise<void>
   stop(): Promise<void>
   onInteraction?: (handler: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) => void
+  onMessageEdit?: (handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>) => void
   resolveUserId?(username: string, context: ResolveUserContext): Promise<string | null>
   resolveUserLabel?(userId: string, context: ResolveUserContext | undefined): Promise<string | null>
   resolveGroupLabel?(groupId: string): Promise<string | null>
