@@ -27,11 +27,15 @@ Two consequences:
    `hermetic-stories-continue` branch were authored story-first and therefore never saw
    their expected failing step.
 
-The gap is real today, not hypothetical. Measured on this branch: 120 Tier 0 scenarios
-observed, 111 claimed by records, **9 orphans**.
+The gap is real today, not hypothetical, and it is actively widening. Measured on this
+branch at HEAD `0fbda8ec7`: 130 Tier 0 scenarios observed, 111 claimed by records,
+**19 orphans**.
 
 ```
 tests/stories/chat-task/create-and-read-task.story.test.ts#creates and reads a task through the real chat tool loop
+tests/stories/http/auth-claim.story.test.ts#SCN-http-settings-auth-validation: malformed exchanges and invalid logout sessions are rejected
+tests/stories/http/dashboard.story.test.ts#SCN-http-dashboard-debug-gate: debug paths and the legacy dashboard redirect are hidden when disabled
+tests/stories/http/dashboard.story.test.ts#SCN-http-debug-protected-surfaces: enabled diagnostic reads still require a dashboard session
 tests/stories/integrations/coding-sessions/acp-mcp.story.test.ts#an unresolved MCP selection fails closed before Magi session startup
 tests/stories/integrations/coding-sessions/acp-mcp.story.test.ts#malformed MCP settings fail closed before Magi session startup
 tests/stories/integrations/coding-sessions/module-qualification.story.test.ts#configured ACP upstream failure does not persist a session or expose credentials
@@ -39,8 +43,20 @@ tests/stories/integrations/coding-sessions/start-session.story.test.ts#starts a 
 tests/stories/integrations/plugins/eligibility.story.test.ts#plugin context eligibility
 tests/stories/integrations/plugins/eligibility.story.test.ts#plugin isolation after lifecycle
 tests/stories/integrations/runtime-extensions/tool-eligibility.story.test.ts#runtime extension ACP tool is offered and executed only in its eligible context
+tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-tools: tool permissions reject untrusted writes and round-trip a domain setting
+tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-byok: BYOK writes stay in the caller context and never disclose the submitted secret
+tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-memory: invalid memory updates leave the view unchanged and valid capture writes persist
+tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-plugins: plugin config rejects unknown keys and masks a persisted context secret
+tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-mcp: endpoint validation preserves prior state and masks persisted authorization headers
+tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-group: only a group administrator can update the group guest-mode setting
+tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-release: only a group administrator can change a group release subscription
 tests/stories/settings/task-instance-assignment.story.test.ts#settings task assignment changes the provider used by the next chat turn
 ```
+
+**Ten of those nineteen accrued during the half-day this design was being written**, in
+commits `a8be8512d`, `84b7e8019`, and `0fbda8ec7`. None of the three authors added a
+catalog record; none of the three saw a failing test; the plan document behind the largest
+of them never mentions the catalog at all. The drift rate is the argument for the gate.
 
 ## Goal
 
@@ -175,10 +191,24 @@ Each lane's test carries a comment naming the two legal remedies: add the id to 
 `storyIds`, or declare it in `SUPPORTING_STORIES` with a rationale. That is the RED a
 story-first task now hits.
 
-## Disposing of the 9 existing orphans
+## Disposing of the 19 existing orphans
 
-No grandfather baseline. All 9 are classified as part of this work, so the gate lands with
+No grandfather baseline. All 19 are classified as part of this work, so the gate lands with
 zero deferred debt.
+
+**Mint the id the title already declares.** Ten orphans carry a scenario title that already
+follows the `SCN-<id>: <description>` convention — the author named a catalog id and simply
+never added the record. These are mechanical: mint the declared id, point it at the story,
+done. No judgment needed beyond confirming the id is well-formed and unclaimed.
+
+- `SCN-http-settings-auth-validation`, `SCN-http-dashboard-debug-gate`,
+  `SCN-http-debug-protected-surfaces`
+- `SCN-settings-api-tools`, `SCN-settings-api-byok`, `SCN-settings-api-memory`,
+  `SCN-settings-api-plugins`, `SCN-settings-api-mcp`, `SCN-settings-api-group`,
+  `SCN-settings-api-release`
+
+This bucket is also the clearest evidence for the design: the convention was followed, the
+intent was recorded in the title, and the ledger still missed all ten.
 
 **Attach as a second `storyId` on an existing record.** A record's `storyIds` is already a
 non-empty tuple, and the uniqueness assertion at `catalog-coverage.test.ts:186` keeps each
@@ -214,9 +244,9 @@ work adds its own entry alongside `tier2-process-smoke` and `t0-real-youtrack-pr
 
 Minting also moves hardcoded totals: `CATALOG_SCENARIO_IDS` length (175), the executable
 total (150, asserted in two tests), the Tier 0 per-tier count, and
-`tests/scripts/story-coverage-totals.test.ts`. Mechanical, but each minted id touches
-several assertions — the plan fixes the final id count before implementation starts rather
-than discovering it midway.
+`tests/scripts/story-coverage-totals.test.ts`. With roughly 15 ids minted across both
+buckets this is the largest mechanical surface in the work — the plan fixes the final id
+count before implementation starts rather than discovering it midway.
 
 ## Testing
 
@@ -258,9 +288,11 @@ uncataloged story: free today, a required catalog decision at authoring time aft
 rationale is the only thing making that visible in review. No cap or ratchet is proposed
 (YAGNI), but it is the thing to watch.
 
-**Concurrent work in this worktree.** Another session is writing under `tests/stories/`
-(the `debug-settings-http-story-coverage` work). If it lands a story without a catalog
-record, the census fails its run, not this one. Coordinate before merging.
+**The orphan set is a moving target.** Ten orphans landed while this document was being
+written. Any further story work merged before the gate adds to the classification backlog,
+and the disposition tables above go stale. Re-run the orphan count at the start of
+implementation rather than trusting the list here; the plan should treat classification as
+sized-at-implementation-time, not fixed at 19.
 
 ## Alternatives considered
 
@@ -275,5 +307,7 @@ a normal `bun test` run — which defeats the reason for the work.
 **No exemptions at all** — require every scenario to be claimed by some record. Simplest
 gate, but forces false coverage claims for genuinely supporting stories.
 
-**Frozen grandfather baseline for the 9.** Lands the gate sooner at the cost of deferred
-classification. Rejected: 9 items, each a one-line judgment call.
+**Frozen grandfather baseline for the existing orphans.** Lands the gate sooner at the cost
+of deferred classification. Rejected: ten of the nineteen are mechanical id mints, and a
+baseline that absorbs them would let the ledger stay wrong indefinitely — the drift rate
+observed here suggests the burndown would never happen.
