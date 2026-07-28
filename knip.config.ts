@@ -88,6 +88,10 @@ export default {
     // retirement) are the Stage A rekey seam consumed by the rekey orchestrator
     // job and the analytics-rekey CLI (Task 13B, in flight).
     'src/analytics/rekey/*.ts!',
+    // Rollout stage-gate module is the executable Stage A–E operator seam; its
+    // only consumers today are the rollout-gate/privacy-contract tests outside
+    // knip's production project scope (operator wiring lands with Stage B).
+    'src/analytics/rollout/*.ts!',
     // First-party plugin entry points are loaded dynamically by the plugin
     // loader, so they have no static importer.
     'plugins/*/index.ts!',
@@ -191,6 +195,11 @@ export default {
     // consumed by upcoming transport/egress tasks and by analytics tests outside
     // knip's production project scope.
     'src/analytics/delivery/*.ts': ['exports', 'types'],
+    // The rollout stage-gate module is the executable Stage A–E operator seam;
+    // its exports are consumed by the rollout-gate/privacy-contract tests
+    // outside knip's production project scope (operator wiring lands with
+    // Stage B).
+    'src/analytics/rollout/*.ts': ['exports', 'types'],
     // Generated analytics modules are checked-in generator output; their exports
     // are consumed by sibling analytics modules and by tests outside knip's
     // production project scope.

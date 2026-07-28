@@ -352,6 +352,23 @@ Required when the bot needs to receive, persist, or attach files to tasks.
 
 </details>
 
+<details>
+<summary><b>Analytics (Privacy-Gated, Off By Default)</b></summary>
+
+papai ships a four-lane, privacy-gated analytics pipeline (`src/analytics/`). The shipping default is `local_aggregate` (closed daily counters only — no actor continuity); pseudonymous lanes require complete governance fields, both HMAC keyrings, and an explicit rollout stage. Operators:
+
+| Variable                            | When required                        | Description                                                                           |
+| ----------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------- |
+| `ANALYTICS_KILL_SWITCH`             | Stage A; incident response           | `1`/`true`/`on` forces every analytics lane off regardless of stored policy           |
+| `ANALYTICS_HMAC_KEYRING`            | Pseudonymous longitudinal lane       | Pseudonym keyring, `v1:<64-hex>[;v2:<64-hex>...]`                                     |
+| `ANALYTICS_GOVERNANCE_HMAC_KEYRING` | Pseudonymous longitudinal lane       | Separate keyring for eligibility refs, consent fences, and deletion-bundle encryption |
+| `ANALYTICS_SNAPSHOT_DIR`            | Rekey BI coordination                | Absolute dir holding published Metabase snapshot files; fail-closed without it        |
+| `ANALYTICS_BACKFILL_APPROVED_AT_MS` | Backfill under `legitimate_interest` | Operator approval timestamp used as the backfill policy cutoff                        |
+
+Full operator flows, rollout stages A–E, and incident response: [`docs/operations/analytics-runbook.md`](docs/operations/analytics-runbook.md) and [`docs/operations/analytics-incident-runbook.md`](docs/operations/analytics-incident-runbook.md).
+
+</details>
+
 ### Runtime Configuration
 
 Use the settings web UI to configure the bot. Launch it via `/config` in DM:
