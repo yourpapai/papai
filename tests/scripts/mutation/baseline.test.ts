@@ -10,6 +10,7 @@ import {
   isBaselineMap,
   ratchetMerge,
   resolveRatchet,
+  seedMerge,
 } from '../../../scripts/mutation/baseline.js'
 import type { PerFileScore } from '../../../scripts/mutation/baseline.js'
 
@@ -82,6 +83,26 @@ describe('ratchetMerge', () => {
   test('adds new files and drops files no longer measured', () => {
     const out = ratchetMerge({ 'src/old.ts': 0.5 }, { 'src/new.ts': 0.7 })
     expect(out).toEqual({ 'src/new.ts': 0.7 })
+  })
+})
+
+describe('seedMerge', () => {
+  it('keeps existing keys absent from latest and takes per-key max', () => {
+    const existing = { 'src/a.ts': 0.5, 'src/untouched.ts': 0.7 }
+    const latest = { 'src/a.ts': 0.6, 'src/new.ts': 0.3 }
+    expect(seedMerge(existing, latest)).toEqual({
+      'src/a.ts': 0.6,
+      'src/untouched.ts': 0.7,
+      'src/new.ts': 0.3,
+    })
+  })
+
+  it('never lowers an existing score', () => {
+    expect(seedMerge({ 'src/a.ts': 0.8 }, { 'src/a.ts': 0.2 })).toEqual({ 'src/a.ts': 0.8 })
+  })
+
+  it('returns latest unchanged when existing is empty', () => {
+    expect(seedMerge({}, { 'src/a.ts': 0.4 })).toEqual({ 'src/a.ts': 0.4 })
   })
 })
 

@@ -70,6 +70,21 @@ export const ratchetMerge = (existing: BaselineMap, latest: BaselineMap): Baseli
 }
 
 /**
+ * Merge a changed-files run into the baseline, PRESERVING existing keys (unlike
+ * {@link ratchetMerge}, which drops keys absent from `latest` — correct for a
+ * full run, wrong for a changed-files seed where most baseline files aren't
+ * re-measured). Each key takes the max of existing and latest; new keys are added.
+ */
+export const seedMerge = (existing: BaselineMap, latest: BaselineMap): BaselineMap => {
+  const out: BaselineMap = { ...existing }
+  for (const [key, next] of Object.entries(latest)) {
+    const prev = out[key]
+    out[key] = prev === undefined ? next : Math.max(prev, next)
+  }
+  return out
+}
+
+/**
  * Compare per-file run results against the baseline. A file regresses only when
  * it has a recorded baseline entry AND its score falls below it. Files with no
  * entry (first-touch — new or never-baselined) are not regressions. Files with
