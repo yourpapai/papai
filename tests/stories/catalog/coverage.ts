@@ -103,7 +103,7 @@ export type CatalogCoverage =
     }>
 
 export const CATALOG_SOURCE =
-  'scenario-catalog snapshot supplied 2026-07-13; extended 2026-07-23 with 12 SCN-parity-* provider-real (@1) ids (tier1-provider-real-parity); extended 2026-07-24 with 17 SCN-parity-* domain-retrofit (@1) ids (tier1b-e2e-parity-retrofit); extended 2026-07-24 with 8 SCN-* process-real smoke (@2) ids (tier2-process-smoke); extended 2026-07-27 with 10 real-YouTrack (@0) ids (t0-real-youtrack-provider)' as const
+  'scenario-catalog snapshot supplied 2026-07-13; extended 2026-07-23 with 12 SCN-parity-* provider-real (@1) ids (tier1-provider-real-parity); extended 2026-07-24 with 17 SCN-parity-* domain-retrofit (@1) ids (tier1b-e2e-parity-retrofit); extended 2026-07-24 with 8 SCN-* process-real smoke (@2) ids (tier2-process-smoke); extended 2026-07-27 with 10 real-YouTrack (@0) ids (t0-real-youtrack-provider); extended 2026-07-28 with 16 previously uncataloged story ids (story-catalog-census)' as const
 
 export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-task-create-update',
@@ -290,6 +290,16 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-youtrack-conformance-relations',
   'SCN-youtrack-conformance-projects',
   'SCN-youtrack-conformance-errors',
+  'SCN-http-settings-auth-validation',
+  'SCN-http-dashboard-debug-gate',
+  'SCN-http-debug-protected-surfaces',
+  'SCN-settings-api-tools',
+  'SCN-settings-api-byok',
+  'SCN-settings-api-memory',
+  'SCN-settings-api-plugins',
+  'SCN-settings-api-mcp',
+  'SCN-settings-api-group',
+  'SCN-settings-api-release',
 ] as const)
 
 const GAP_SCENARIO_IDS = new Set<CatalogScenarioId>([
@@ -1227,6 +1237,66 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     verifiedAt: '2026-07-27',
     storyIds: [
       'tests/stories/tasks/youtrack-conformance.story.test.ts#SCN-youtrack-conformance-errors: real YouTrack provider satisfies the shared error groups',
+    ],
+  },
+  'SCN-http-settings-auth-validation': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/http/auth-claim.story.test.ts#SCN-http-settings-auth-validation: malformed exchanges and invalid logout sessions are rejected',
+    ],
+  },
+  'SCN-http-dashboard-debug-gate': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/http/dashboard.story.test.ts#SCN-http-dashboard-debug-gate: debug paths and the legacy dashboard redirect are hidden when disabled',
+    ],
+  },
+  'SCN-http-debug-protected-surfaces': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/http/dashboard.story.test.ts#SCN-http-debug-protected-surfaces: enabled diagnostic reads still require a dashboard session',
+    ],
+  },
+  'SCN-settings-api-tools': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-tools: tool permissions reject untrusted writes and round-trip a domain setting',
+    ],
+  },
+  'SCN-settings-api-byok': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-byok: BYOK writes stay in the caller context and never disclose the submitted secret',
+    ],
+  },
+  'SCN-settings-api-memory': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-memory: invalid memory updates leave the view unchanged and valid capture writes persist',
+    ],
+  },
+  'SCN-settings-api-plugins': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-plugins: plugin config rejects unknown keys and masks a persisted context secret',
+    ],
+  },
+  'SCN-settings-api-mcp': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-mcp: endpoint validation preserves prior state and masks persisted authorization headers',
+    ],
+  },
+  'SCN-settings-api-group': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-group: only a group administrator can update the group guest-mode setting',
+    ],
+  },
+  'SCN-settings-api-release': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-release: only a group administrator can change a group release subscription',
     ],
   },
 }
