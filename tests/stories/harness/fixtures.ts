@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { join } from 'node:path'
+
 import { z } from 'zod'
 
 import { saveAttachment } from '../../../src/attachments/store.js'
@@ -240,8 +242,8 @@ const SCENARIO_PLUGIN: DiscoveredPlugin = {
     providerContextConfigSchema: [],
     providerAllowedHosts: [],
   },
-  pluginDir: '/scenario/plugins/scenario-approved-plugin',
-  entryPoint: '/scenario/plugins/scenario-approved-plugin/index.ts',
+  pluginDir: import.meta.dir,
+  entryPoint: join(import.meta.dir, 'scenario-approved-plugin.ts'),
   manifestHash: 'scenario-approved-plugin-hash',
 }
 

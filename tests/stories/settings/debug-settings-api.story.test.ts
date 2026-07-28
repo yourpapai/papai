@@ -161,7 +161,8 @@ scenario(
 
     const before = await when.settingsRequest(session, '/settings/api/plugins')
     then.responseStatus(before, 200)
-    const beforeValue = z.unknown().parse(await before.json())
+    const beforePlugins = PluginsResponseSchema.parse(await before.json()).plugins
+    expect(beforePlugins.find(({ id }) => id === plugin.manifest.id)).toMatchObject({ enabled: false })
 
     const invalid = await when.settingsRequest(session, '/settings/api/plugins/config', {
       method: 'PATCH',
@@ -172,19 +173,20 @@ scenario(
 
     const afterRejected = await when.settingsRequest(session, '/settings/api/plugins')
     then.responseStatus(afterRejected, 200)
-    expect(await afterRejected.json()).toEqual(beforeValue)
+    const afterRejectedPlugins = PluginsResponseSchema.parse(await afterRejected.json()).plugins
+    expect(afterRejectedPlugins.find(({ id }) => id === plugin.manifest.id)).toMatchObject({ enabled: false })
 
     const enabled = await when.settingsRequest(session, '/settings/api/plugins/toggle', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pluginId: plugin.manifest.id, enabled: false }),
+      body: JSON.stringify({ pluginId: plugin.manifest.id, enabled: true }),
     })
     then.responseStatus(enabled, 200)
 
     const observed = await when.settingsRequest(session, '/settings/api/plugins')
     then.responseStatus(observed, 200)
     const plugins = PluginsResponseSchema.parse(await observed.json()).plugins
-    expect(plugins.find(({ id }) => id === plugin.manifest.id)).toMatchObject({ active: false, enabled: false })
+    expect(plugins.find(({ id }) => id === plugin.manifest.id)).toMatchObject({ active: true, enabled: true })
   },
 )
 

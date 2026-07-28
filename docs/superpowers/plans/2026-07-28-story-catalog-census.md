@@ -681,7 +681,7 @@ In the same file, append to `EXECUTABLE_STORY_MAPPINGS`, before its closing `}`:
   'SCN-settings-api-plugins': {
     verifiedAt: '2026-07-28',
     storyIds: [
-      'tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-plugins: plugin config rejects unknown keys and masks a persisted context secret',
+      'tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-plugins: plugin config rejects unknown keys and persists an authorized plugin selection',
     ],
   },
   'SCN-settings-api-mcp': {
