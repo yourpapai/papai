@@ -20,6 +20,8 @@ export interface CoverageMapDeps {
   readonly listCandidateTests: (srcFile: string) => readonly string[]
   /** Run one test file with coverage; return sourceFile -> lines-hit (>0 means covered). */
   readonly runCoverage: (testFile: string, projectRoot: string) => ReadonlyMap<string, number>
+  /** Optional: persist any batched coverage-cache writes once the batch completes. */
+  readonly flush?: () => void
 }
 
 export interface BuildCoverageMapInput {
@@ -31,15 +33,20 @@ export interface BuildCoverageMapInput {
 /** Build {sourceFile -> testFiles that cover it} for the requested sources. */
 export function buildCoverageMap(input: BuildCoverageMapInput): CoverageMap {
   const out: CoverageMap = {}
-  for (const srcFile of input.sourceFiles) {
-    const candidates = input.deps.listCandidateTests(srcFile)
-    const covering: string[] = []
-    for (const testFile of candidates) {
-      const hits = input.deps.runCoverage(testFile, input.projectRoot)
-      if ((hits.get(srcFile) ?? 0) > 0) covering.push(testFile)
+  try {
+    for (const srcFile of input.sourceFiles) {
+      const candidates = input.deps.listCandidateTests(srcFile)
+      const covering: string[] = []
+      for (const testFile of candidates) {
+        const hits = input.deps.runCoverage(testFile, input.projectRoot)
+        if ((hits.get(srcFile) ?? 0) > 0) covering.push(testFile)
+      }
+      if (covering.length > 0) out[srcFile] = covering
+      else
+        console.error(`coverage-map: no covering test found for ${srcFile} (checked ${candidates.length} candidates)`)
     }
-    if (covering.length > 0) out[srcFile] = covering
-    else console.error(`coverage-map: no covering test found for ${srcFile} (checked ${candidates.length} candidates)`)
+  } finally {
+    input.deps.flush?.()
   }
   return out
 }
@@ -94,6 +101,9 @@ export function createDefaultCoverageMapDeps(
     listCandidateTests: (srcFile) => listCandidateTests(srcFile, projectRoot, ctx),
     runCoverage: (testFile, runRoot) =>
       runCoverageFor(testFile, runRoot, { coverageDir, lcovName, timeoutMs, cache, cacheTtlMs, readTestContent }),
+    flush: () => {
+      cache.flush()
+    },
   }
 }
 

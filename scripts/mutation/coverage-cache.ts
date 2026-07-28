@@ -16,6 +16,8 @@ export type CoverageCacheFile = { entries: Record<string, CoverageCacheEntry> }
 export interface CoverageCache {
   readonly get: (key: string, ttlMs: number) => Map<string, number> | undefined
   readonly set: (key: string, value: Map<string, number>) => void
+  /** Persist any pending `set` writes to disk. Batched: call once at the end of a run. */
+  readonly flush: () => void
 }
 
 /**
@@ -23,14 +25,23 @@ export interface CoverageCache {
  * a malformed cache file or entry is treated as a miss (and `get` returns `undefined`); a write
  * failure is swallowed (a write must not abort the run). This fail-open posture is the reason
  * `safeGetEntry` validates per-entry shape AND wraps `new Map(...)` in try/catch.
+ *
+ * Writes are batched: `set` only updates the in-memory map and marks it dirty; `flush` persists
+ * once. Call `flush` at the end of a batch so N coverage misses don't trigger N full-file writes.
  */
 export const openCoverageCache = (cachePath: string): CoverageCache => {
   const entries = readCacheFile(cachePath)
+  let dirty = false
   return {
     get: (key, ttlMs) => safeGetEntry(entries, key, ttlMs),
     set: (key, value) => {
       entries[key] = { value: [...value.entries()], ts: Date.now() }
+      dirty = true
+    },
+    flush: () => {
+      if (!dirty) return
       writeCacheFile(cachePath, { entries })
+      dirty = false
     },
   }
 }

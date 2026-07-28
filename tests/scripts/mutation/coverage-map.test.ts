@@ -48,6 +48,38 @@ describe('buildCoverageMap', () => {
     })
     expect(map).toEqual({})
   })
+
+  it('calls flush exactly once after the batch completes', () => {
+    let flushCalls = 0
+    buildCoverageMap({
+      sourceFiles: ['src/a.ts', 'src/b.ts'],
+      projectRoot: '/proj',
+      deps: {
+        listCandidateTests: () => ['tests/a.test.ts'],
+        runCoverage: () => new Map([['src/a.ts', 1]]),
+        flush: () => {
+          flushCalls += 1
+        },
+      },
+    })
+    expect(flushCalls).toBe(1)
+  })
+
+  it('calls flush even when a source has no candidates (still completes the batch)', () => {
+    let flushCalls = 0
+    buildCoverageMap({
+      sourceFiles: ['src/none.ts'],
+      projectRoot: '/proj',
+      deps: {
+        listCandidateTests: () => [],
+        runCoverage: () => new Map(),
+        flush: () => {
+          flushCalls += 1
+        },
+      },
+    })
+    expect(flushCalls).toBe(1)
+  })
 })
 
 describe('createDefaultCoverageMapDeps — listCandidateTests widening', () => {
@@ -169,11 +201,26 @@ describe('openCoverageCache — malformed entries are treated as a miss (never t
     expect(openCoverageCache(cachePath).get(key, 1)).toBeUndefined()
   })
 
-  it('round-trips a well-formed entry (positive control proving misses are not vacuous)', () => {
+  it('round-trips a well-formed entry after flush (positive control proving misses are not vacuous)', () => {
     const cachePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cov-cache-ok-')), 'cache.json')
-    openCoverageCache(cachePath).set(key, new Map([['src/a.ts', 7]]))
+    const cache = openCoverageCache(cachePath)
+    cache.set(key, new Map([['src/a.ts', 7]]))
+    cache.flush()
     const got = openCoverageCache(cachePath).get(key, ttl)
     expect(got).toBeInstanceOf(Map)
     expect(got?.get('src/a.ts')).toBe(7)
+  })
+
+  it('does NOT persist a set to disk until flush (batched writes)', () => {
+    const cachePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cov-cache-batch-')), 'cache.json')
+    openCoverageCache(cachePath).set(key, new Map([['src/a.ts', 9]]))
+    // A fresh instance reads the file, which was never written -> miss.
+    expect(openCoverageCache(cachePath).get(key, ttl)).toBeUndefined()
+  })
+
+  it('flush is a no-op when nothing was set (not dirty)', () => {
+    const cachePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cov-cache-noop-')), 'cache.json')
+    expect(() => openCoverageCache(cachePath).flush()).not.toThrow()
+    expect(fs.existsSync(cachePath)).toBe(false)
   })
 })
