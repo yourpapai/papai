@@ -12,9 +12,11 @@ Fast, accurate mutation testing per file. Built around the observation that
 the `static` bucket, which `ignoreStatic: true` then discards (see
 `docs/research/2026-05-24-mutation-measurement-and-test-quality-findings.md`).
 
-This tool pairs each source file with **only its companion test file** (via
-`bun.testFiles`) and runs Stryker with `ignoreStatic: false`. Because the test
-set is tiny, the accurate mode is cheap.
+This tool pairs each source file with the **test set that actually exercises it**
+(via `bun.testFiles`) and runs Stryker with `ignoreStatic: false`. The test set
+is built per batch from a coverage map (see `scripts/mutation/coverage-map.ts`)
+and falls back to the companion when no covering test is found. Because the
+test set stays small, the accurate mode is cheap.
 
 ## Commands
 
@@ -46,29 +48,46 @@ recorded as errored and excluded from the aggregate score; the run continues so
 one bad file never aborts the batch. Errored files appear in the summary as
 `errored=N` and carry the captured failure message for diagnosis.
 
-## Companion-test resolution
+## Test-set resolution
 
-The companion is resolved by `.hooks/tdd/test-resolver.mjs`:
+For each source file, `pairedRun` resolves the test set in this priority:
 
-- `src/foo/bar.ts` -> `tests/foo/bar.test.ts`
-- `client/debug/x.ts` -> `tests/client/debug/x.test.ts`
-- `plugins/task-provider-kaneo/foo.ts` -> `tests/plugins/task-provider-kaneo/foo.test.ts`
+1. **Coverage-derived set (primary)** — per batch, `pairedRun` builds a
+   `{sourceFile -> [covering testFiles]}` map via `buildCoverageMap`
+   (`scripts/mutation/coverage-map.ts`). For each source, the candidate
+   universe is `direct-import tests ∪ same-package tests`:
+   - _Direct-import tests_ — tests whose source text references the impl path
+     (mirrors `.hooks/tdd/test-resolver.mjs`'s `testFileImportsImpl`).
+   - _Same-package tests_ — every test under the source's companion package
+     directory (e.g. `src/chat/mattermost/file-helpers.ts` → all
+     `tests/chat/mattermost/*.test.ts`). This catches transitive coverage where
+     a same-package `index.test.ts` exercises the impl through a re-exporting
+     barrel rather than importing it directly.
 
-## When a file's coverage lives elsewhere (cross-cutting)
+   Each candidate is then run once with `bun test --coverage`, and the source
+   is attributed the candidates whose lcov shows `lines-hit > 0`. A 24h
+   content-keyed cache (`reports/paired/coverage-map.cache.json`) amortizes
+   coverage runs across batches; the cache never throws — a malformed file or
+   entry is treated as a miss.
 
-If a source file is mostly exercised by integration or other suites rather than
-its companion, register the extra tests in `scripts/mutation/overrides.json`.
-The override list is **added to** the companion (or used alone if no companion
-exists), e.g.:
+2. **Overrides (additive)** — `scripts/mutation/overrides.json` is unioned onto
+   the coverage-derived set (or used alone if no covering test was found). Use
+   this as the escape hatch for cross-cutting suites the heuristics miss:
+   ```json
+   {
+     "src/providers/factory.ts": ["tests/llm-orchestrator.test.ts", "tests/commands/context.test.ts"]
+   }
+   ```
+3. **Companion (fallback)** — when no covering test was found AND no override
+   is registered, the companion from `.hooks/tdd/test-resolver.mjs` is used:
+   - `src/foo/bar.ts` -> `tests/foo/bar.test.ts`
+   - `client/debug/x.ts` -> `tests/client/debug/x.test.ts`
+   - `plugins/task-provider-kaneo/foo.ts` -> `tests/plugins/task-provider-kaneo/foo.test.ts`
+   - `review-loop/src/foo.ts` -> `tests/review-loop/foo.test.ts`
 
-```json
-{
-  "src/providers/factory.ts": ["tests/llm-orchestrator.test.ts", "tests/commands/context.test.ts"]
-}
-```
-
-A file with no companion **and** no override is skipped with a warning — fix it
-by either adding a companion test or registering the cross-cutting tests above.
+A source with no covering test, no override, and no companion is skipped with
+a warning — fix it by adding a companion test, registering a cross-cutting
+override, or widening the candidate heuristics in `coverage-map.ts`.
 
 ## Command mapping
 

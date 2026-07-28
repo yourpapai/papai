@@ -592,7 +592,9 @@ bun test:mutate --update-baseline  # full run; ratchet scripts/mutation/baseline
 ```
 
 Runs paired, per-file mutation testing with Stryker (`ignoreStatic: false`, each
-source file paired with its companion test). The CI `mutation-testing` job is a
+source file paired with the test set that actually covers it — coverage-derived
+via `scripts/mutation/coverage-map.ts`, with the companion as fallback). The CI
+`mutation-testing` job is a
 **blocking per-file ratchet** on PRs: a changed file fails only if it has a
 recorded entry in `scripts/mutation/baseline.json` and its score drops below it;
 files with no recorded entry (new or never-baselined) are not regressions. The
