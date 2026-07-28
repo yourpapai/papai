@@ -15,7 +15,7 @@ export type IdentityInput = {
   storageContextId: string
   chatUserId: string
   actorRole: 'admin' | 'member' | 'guest' | 'system'
-  rawTurnId: string
+  rawTurnId: string | null
   taskInstanceId: string | null
   sessionStartMs: number | null
   firstEventId: string | null
@@ -62,6 +62,11 @@ function buildThreadKey(input: IdentityInput): Pseudonym | null {
   return buildPseudonym(input, 'thread:v1', [input.storageContextId])
 }
 
+function buildTurnKey(input: IdentityInput): Pseudonym | null {
+  if (input.rawTurnId === null || input.rawTurnId === '') return null
+  return buildPseudonym(input, 'turn:v1', [input.rawTurnId])
+}
+
 function buildTaskInstanceKey(input: IdentityInput): Pseudonym | null {
   if (input.taskInstanceId === null) return null
   return buildPseudonym(input, 'task-instance:v1', [input.taskInstanceId])
@@ -100,7 +105,7 @@ export function buildIdentityKeys(input: IdentityInput): IdentityKeys {
   const actor_key = buildActorKey(input, scoped.platformInstanceId)
   const context_key = buildContextKey(input, scoped.platformInstanceId, nativeContextId)
   const thread_key = buildThreadKey(input)
-  const turn_key = buildPseudonym(input, 'turn:v1', [input.rawTurnId])
+  const turn_key = buildTurnKey(input)
   const task_instance_key = buildTaskInstanceKey(input)
   const conversation_key = thread_key ?? context_key
   const session_key = buildSessionKey(input, actor_key, conversation_key)

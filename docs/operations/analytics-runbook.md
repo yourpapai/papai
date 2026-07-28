@@ -33,9 +33,9 @@ The privacy/security owner signs the Stage A evidence log
   `external_pseudonymous_enabled`), managed via
   `GET/PATCH /settings/api/admin/analytics` (super admin, no restart needed).
 - Deployment kill switch: `ANALYTICS_KILL_SWITCH=1` forces every lane off
-  regardless of stored policy; takes effect on the next lanes resolution
-  (restart the bot to change a deployment env var). Stage A runs with the kill
-  switch set.
+  regardless of stored policy; a running process re-reads it at each lanes
+  resolution, so no restart is required when the deployment can mutate the env
+  in place. Stage A runs with the kill switch set.
 - Governance readiness (required before `local_pseudonymous`): policy/notice
   versions, controller contact, purpose, lawful-basis mode, retained-event
   horizon, review date, operator acknowledgement, and both keyrings
@@ -227,6 +227,20 @@ capabilities recorded in
 `external_pseudonymous` production registry empty). If it ever opens: one sink,
 a daily cap, the kill switch armed, daily reconciliation for the first two
 weeks then weekly.
+
+## Stage B entry checklist
+
+Deferred external-lane items triaged from the Stage A whole-branch review.
+Every item is **gating**: none of the external lanes (Stage D/E) may be
+enabled until all boxes are checked.
+
+- [ ] `resolveSinkForSend` matches the event/aggregate `egressMode` to the
+  delivery lane before any external lane is enabled (today it only checks the
+  sink is `enabled`, never the row's lane).
+- [ ] The release path has a production caller: `assessReleaseRequest` runs
+  only as an assessment sidecar of the reconcile route, and
+  `buildDailyAggregateRelease` is not wired to any release API.
+- [ ] `ClassifyDeliveryInput.grantKey` is a required field, not optional.
 
 ## Recurring schedule
 

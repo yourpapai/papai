@@ -64,7 +64,7 @@ const PRIVACY_CONTRACT: readonly ContractRow[] = [
     fixtures: [
       'tests/analytics/keyring.test.ts',
       'tests/analytics/pseudonym.test.ts',
-      'tests/analytics/scope.test.ts',
+      'tests/analytics/identity/scope.test.ts',
       'tests/analytics/install-id.test.ts',
       'tests/llm-orchestrator-tools.test.ts',
     ],

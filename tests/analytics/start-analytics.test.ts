@@ -8,51 +8,15 @@ import assert from 'node:assert/strict'
 
 import { eq } from 'drizzle-orm'
 
-import { createContributorTracker } from '../../src/analytics/aggregate-contributors.js'
 import { ANALYTICS_HMAC_KEYRING_ENV } from '../../src/analytics/config.js'
-import { VersionStringSchema } from '../../src/analytics/controlled-types.js'
-import type { QueuedAggregateIncrement } from '../../src/analytics/runtime.js'
 import type { AnalyticsSourceContext, ChatMessageAcceptedFact } from '../../src/analytics/source-facts.js'
-import {
-  createProductionSinks,
-  getActiveAnalyticsRuntime,
-  startAnalytics,
-  stopAnalytics,
-} from '../../src/analytics/start-analytics.js'
-import { getOpenEpoch, openEpoch } from '../../src/analytics/storage/epoch-store.js'
+import { getActiveAnalyticsRuntime, startAnalytics, stopAnalytics } from '../../src/analytics/start-analytics.js'
+import { getOpenEpoch } from '../../src/analytics/storage/epoch-store.js'
 import { toScopedContextId } from '../../src/chat/scoped-context.js'
 import * as schema from '../../src/db/schema.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 type Db = Awaited<ReturnType<typeof setupTestDb>>
-
-const EPOCH_ID = 'epoch-prod-1'
-const UTC_DAY = '2023-11-14'
-
-const counterItem = (contributorKey: string | null): QueuedAggregateIncrement => ({
-  increment: { kind: 'counter', metric: 'message_accepted', delta: 1 },
-  utcDay: UTC_DAY,
-  contributorKey,
-  dimensions: {
-    platform: 'telegram',
-    context_type: 'dm',
-    actor_role: 'member',
-    task_provider: 'none',
-    app_version: VersionStringSchema.parse('6.10.0'),
-  },
-})
-
-const counterRow = (db: Db): { value: number; contributorCount: number | null } => {
-  const row = db
-    .select({
-      value: schema.analyticsDailyCounters.value,
-      contributorCount: schema.analyticsDailyCounters.contributorCount,
-    })
-    .from(schema.analyticsDailyCounters)
-    .get()
-  if (row === undefined) throw new Error('no counter row written')
-  return row
-}
 
 const memberSource: AnalyticsSourceContext = {
   platform: 'telegram',
@@ -100,28 +64,6 @@ describe('start-analytics', () => {
   test('stop without start is an idempotent no-op', async () => {
     await expect(stopAnalytics()).resolves.toBeUndefined()
     expect(typeof startAnalytics).toBe('function')
-  })
-
-  test('the production aggregate sink persists the distinct contributor count per cell', async () => {
-    openEpoch({ epochId: EPOCH_ID, startedAtMs: 1700000000000 }, { getDrizzleDb: () => db })
-    const sinks = createProductionSinks({
-      epochId: EPOCH_ID,
-      tracker: createContributorTracker(),
-      getDrizzleDb: () => db,
-    })
-    await sinks.writeAggregates([counterItem('ck-a'), counterItem('ck-b'), counterItem('ck-a')])
-    expect(counterRow(db)).toEqual({ value: 3, contributorCount: 2 })
-  })
-
-  test('the production aggregate sink records a null contributor count when the contributor key is unavailable', async () => {
-    openEpoch({ epochId: EPOCH_ID, startedAtMs: 1700000000000 }, { getDrizzleDb: () => db })
-    const sinks = createProductionSinks({
-      epochId: EPOCH_ID,
-      tracker: createContributorTracker(),
-      getDrizzleDb: () => db,
-    })
-    await sinks.writeAggregates([counterItem(null)])
-    expect(counterRow(db)).toEqual({ value: 1, contributorCount: null })
   })
 
   test('the live observer records the epoch-bound controlled overflow row on a full queue', async () => {

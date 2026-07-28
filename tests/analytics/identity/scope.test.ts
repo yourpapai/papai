@@ -5,8 +5,8 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { buildIdentityKeys, type IdentityInput } from '../../src/analytics/identity/scope.js'
-import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
+import { buildIdentityKeys, type IdentityInput } from '../../../src/analytics/identity/scope.js'
+import { toScopedContextId, toScopedThreadContextId } from '../../../src/chat/scoped-context.js'
 
 const FROZEN_KEY = Buffer.from('000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f', 'hex')
 
@@ -178,5 +178,35 @@ describe('session key', () => {
   test('is produced when session inputs are supplied', () => {
     const keys = buildIdentityKeys(input({ sessionStartMs: 1700000000000, firstEventId: 'event-1' }))
     expect(keys.session_key).not.toBeNull()
+  })
+})
+
+describe('turn key sentinel', () => {
+  test('a null raw turn id yields a null turn_key', () => {
+    const keys = buildIdentityKeys(input({ rawTurnId: null }))
+    expect(keys.turn_key).toBeNull()
+  })
+
+  test('an empty raw turn id yields a null turn_key', () => {
+    const keys = buildIdentityKeys(input({ rawTurnId: '' }))
+    expect(keys.turn_key).toBeNull()
+  })
+
+  test('two different actors without a turn id do not share a turn_key', () => {
+    const a = buildIdentityKeys(input({ rawTurnId: null }))
+    const b = buildIdentityKeys(
+      input({ rawTurnId: null, chatUserId: 'user-43', storageContextId: scoped('dm-user-43') }),
+    )
+    expect(a.turn_key).toBeNull()
+    expect(b.turn_key).toBeNull()
+    expect(a.actor_key).not.toBe(b.actor_key)
+  })
+
+  test('a real turn id still yields a stable non-null turn_key', () => {
+    const first = buildIdentityKeys(input({ rawTurnId: 'turn-9' }))
+    const second = buildIdentityKeys(input({ rawTurnId: 'turn-9' }))
+    expect(first.turn_key).not.toBeNull()
+    expect(first.turn_key).toBe(second.turn_key)
+    expect(first.turn_key).not.toBe(buildIdentityKeys(input({ rawTurnId: 'turn-10' })).turn_key)
   })
 })

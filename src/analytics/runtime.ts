@@ -38,12 +38,20 @@ export type RuntimeSinks = Readonly<{
   writeAggregates: (items: readonly QueuedAggregateIncrement[]) => void | Promise<void>
 }>
 
+export type AnalyticsHealthCounter = 'queue_full' | 'observer_failure' | 'normalization_rejection'
+
 export type AnalyticsRuntimeHealth = Readonly<{
-  increment: (counter: 'queue_full' | 'observer_failure') => void
+  increment: (counter: AnalyticsHealthCounter) => void
 }>
 
 export type AnalyticsRuntimeLog = Readonly<{
   warn: (meta: Record<string, unknown>, message: string) => void
+}>
+
+export type NormalizationRejection = Readonly<{
+  utcDay: string
+  sourceEventType: string
+  reason: string
 }>
 
 export type AnalyticsRuntimeDeps = Readonly<{
@@ -59,6 +67,13 @@ export type AnalyticsRuntimeDeps = Readonly<{
    * process epoch instead of a process-global implicit counter.
    */
   onControlledOverflow?: (utcDay: string) => void
+  /**
+   * Durable rejection accounting: invoked once per dropped fact with the
+   * bounded (utc_day, source_event_type, reason) triple so live-lane
+   * normalization rejections land in the same rejection store the backfill
+   * lane uses. Must never throw; failures degrade to `observer_failure`.
+   */
+  onNormalizationRejection?: (rejection: NormalizationRejection) => void
 }>
 
 const isPseudonymousLane = (decision: EligibilityDecision): boolean =>
@@ -123,6 +138,31 @@ export const createSubjectWithdrawalHook = (
   }
 }
 
+const recordRejection = (deps: AnalyticsRuntimeDeps, rejection: NormalizationRejection): void => {
+  deps.health.increment('normalization_rejection')
+  try {
+    deps.onNormalizationRejection?.(rejection)
+  } catch (error) {
+    deps.health.increment('observer_failure')
+    deps.log.warn({ errorClass: classifyError(error) }, 'normalization rejection accounting failed')
+  }
+}
+
+const normalizeFact = (fact: AnalyticsSourceFact, deps: AnalyticsRuntimeDeps): AnalyticsEventV1 | null => {
+  const rejectionBase = { utcDay: utcDayOfMs(fact.occurredAtMs) }
+  const env = deps.normalizerEnv()
+  if (env === null) {
+    recordRejection(deps, { ...rejectionBase, sourceEventType: fact.type, reason: 'normalizer_unavailable' })
+    return null
+  }
+  const result = normalize(fact, env)
+  if (result.status !== 'ok') {
+    recordRejection(deps, { ...rejectionBase, sourceEventType: result.sourceEventType, reason: result.reason })
+    return null
+  }
+  return result.event
+}
+
 export const createAnalyticsObserver = (deps: AnalyticsRuntimeDeps): AnalyticsObserver => {
   const capacity = deps.queueCapacity ?? DEFAULT_QUEUE_CAPACITY
   const eventQueue: QueuedPseudonymousEvent[] = []
@@ -132,11 +172,8 @@ export const createAnalyticsObserver = (deps: AnalyticsRuntimeDeps): AnalyticsOb
   const route = (fact: AnalyticsSourceFact): void => {
     const decision = deps.decide(fact)
     if (!decision.allowed) return
-    const env = deps.normalizerEnv()
-    if (env === null) return
-    const result = normalize(fact, env)
-    if (result.status !== 'ok') return
-    const { event } = result
+    const event = normalizeFact(fact, deps)
+    if (event === null) return
     incrementsForEvent(event).forEach((increment) => {
       const item = aggregateItemFor(event, increment)
       if (!enqueue(aggregateQueue, item, capacity, deps.health)) deps.onControlledOverflow?.(item.utcDay)

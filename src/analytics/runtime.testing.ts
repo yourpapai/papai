@@ -4,17 +4,17 @@
 // See LICENSE in the project root for details.
 
 import type {
+  AnalyticsHealthCounter,
   AnalyticsRuntimeHealth,
   QueuedAggregateIncrement,
   QueuedPseudonymousEvent,
   RuntimeSinks,
 } from './runtime.js'
 
-export type RecordingHealth = AnalyticsRuntimeHealth &
-  Readonly<{ counts: Record<'queue_full' | 'observer_failure', number> }>
+export type RecordingHealth = AnalyticsRuntimeHealth & Readonly<{ counts: Record<AnalyticsHealthCounter, number> }>
 
 export const createRecordingHealth = (): RecordingHealth => {
-  const counts = { queue_full: 0, observer_failure: 0 }
+  const counts = { queue_full: 0, observer_failure: 0, normalization_rejection: 0 }
   return {
     counts,
     increment: (counter) => {

@@ -13,6 +13,6 @@ describe('runtime.testing', () => {
     health.increment('queue_full')
     health.increment('queue_full')
     health.increment('observer_failure')
-    expect(health.counts).toEqual({ queue_full: 2, observer_failure: 1 })
+    expect(health.counts).toEqual({ queue_full: 2, observer_failure: 1, normalization_rejection: 0 })
   })
 })

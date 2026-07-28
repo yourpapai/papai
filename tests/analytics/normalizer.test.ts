@@ -1186,3 +1186,50 @@ describe('normalizer', () => {
     )
   })
 })
+
+describe('normalizer turn_key sentinel', () => {
+  const providerScopeFact = (sourceEventId: string, source: AnalyticsSourceContext): Record<string, unknown> => ({
+    version: 1,
+    type: 'provider_request_completed',
+    sourceEventId,
+    occurredAtMs: 1_700_000_001_600,
+    source,
+    provider: 'kaneo',
+    operation: 'read',
+    durationMs: 10,
+    outcome: 'success',
+    statusClass: '2xx',
+    retryable: null,
+  })
+
+  test('a provider-scope fact with rawTurnId null emits a null turn_key', () => {
+    const source: AnalyticsSourceContext = { ...memberSource, invocationMode: 'proactive', rawTurnId: null }
+    const event = expectOkEvent(normalize(providerScopeFact('se-prc-1', source), env))
+    expect(event.correlation.turn_key).toBeNull()
+  })
+
+  test('two different actors without a turn id do not share a turn_key', () => {
+    const sourceA: AnalyticsSourceContext = { ...memberSource, invocationMode: 'proactive', rawTurnId: null }
+    const sourceB: AnalyticsSourceContext = {
+      ...memberSource,
+      chatUserId: 'user-43',
+      nativeContextId: 'user-43',
+      storageContextId: toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'user-43' }),
+      configContextId: toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'user-43' }),
+      invocationMode: 'proactive',
+      rawTurnId: null,
+    }
+    const eventA = expectOkEvent(normalize(providerScopeFact('se-prc-a', sourceA), env))
+    const eventB = expectOkEvent(normalize(providerScopeFact('se-prc-b', sourceB), env))
+    expect(eventA.correlation.turn_key).toBeNull()
+    expect(eventB.correlation.turn_key).toBeNull()
+    expect(eventA.identity.actor_key).not.toBe(eventB.identity.actor_key)
+  })
+
+  test('a fact with a real turn id keeps its non-null turn_key', () => {
+    const event = expectOkEvent(normalize(providerScopeFact('se-prc-turn', memberSource), env))
+    expect(event.correlation.turn_key).toBe(
+      createPseudonym({ key: hmacKey, keyVersion, domain: 'turn:v1', components: ['turn-raw-1'] }),
+    )
+  })
+})

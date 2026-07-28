@@ -74,7 +74,7 @@ const buildIdentity = (fact: ValidatedFactRecord, env: NormalizerEnv): IdentityK
     storageContextId: fact.source.storageContextId,
     chatUserId: fact.source.chatUserId ?? '',
     actorRole: fact.source.actorRole,
-    rawTurnId: fact.source.rawTurnId ?? '',
+    rawTurnId: fact.source.rawTurnId,
     taskInstanceId: fact.source.taskInstanceId,
     sessionStartMs: null,
     firstEventId: null,

@@ -6,13 +6,9 @@
 import packageJson from '../../package.json' with { type: 'json' }
 import { getDrizzleDb } from '../db/drizzle.js'
 import { logger } from '../logger.js'
-import { FIXED_HISTOGRAM_BUCKETS_MS } from './aggregate-contract.js'
 import { createContributorTracker } from './aggregate-contributors.js'
-import type { ContributorTracker } from './aggregate-contributors.js'
-import { contributorBasisForMetric, histogramBucketIndex } from './aggregate.js'
 import { ANALYTICS_GOVERNANCE_HMAC_KEYRING_ENV, ANALYTICS_HMAC_KEYRING_ENV } from './config.js'
 import { KeyVersionSchema, VersionStringSchema } from './controlled-types.js'
-import { insertEligibleCanonicalEvent } from './governance/collection-serialization.js'
 import { deriveCollectionRefKey, getEligibilityRef } from './governance/collection-store.js'
 import { decideEligibility } from './governance/eligibility.js'
 import type { AnalyticsLane, EligibilityDecision } from './governance/eligibility.js'
@@ -25,11 +21,12 @@ import { parseAnalyticsKeyring, parseGovernanceKeyring } from './identity/keyrin
 import type { KeyringState } from './identity/keyring.js'
 import type { NormalizerEnv } from './normalizer.js'
 import { createProcessEpochCoordinator } from './process-epoch.js'
+import { createProductionSinks } from './production-sinks.js'
 import { createAnalyticsObserver } from './runtime.js'
-import type { AnalyticsObserver, QueuedAggregateIncrement, RuntimeSinks } from './runtime.js'
+import type { AnalyticsObserver } from './runtime.js'
 import type { AnalyticsSourceFact } from './source-facts.js'
-import { incrementCounter, mergeHistogram } from './storage/aggregate-store.js'
 import { createControlledOverflowBinding } from './storage/epoch-store.js'
+import { incrementNormalizationRejection } from './storage/rejection-store.js'
 import { createToolNameKeyDeriver, initAnalyticsRuntime, stopAnalyticsRuntime } from './subscriber.js'
 import { createTurnContextRegistry } from './turn-context.js'
 import type { AuthorizedTurnContextRegistry } from './turn-context.js'
@@ -162,93 +159,6 @@ const buildNormalizerEnv = (analyticsKeyring: KeyringState): NormalizerEnv | nul
   }
 }
 
-const aggregateCellKeyOf = (item: QueuedAggregateIncrement): string =>
-  `${item.utcDay}|${JSON.stringify(item.dimensions)}|${item.increment.metric}`
-
-const recordContributor = (
-  tracker: ContributorTracker,
-  item: QueuedAggregateIncrement,
-  cellKey: string,
-): number | null => {
-  if (item.contributorKey === null) return null
-  tracker.record(item.utcDay, cellKey, item.contributorKey)
-  return tracker.count(item.utcDay, cellKey)
-}
-
-export type ProductionSinkDeps = Readonly<{
-  epochId: string
-  tracker: ContributorTracker
-  getDrizzleDb: typeof getDrizzleDb
-}>
-
-const writeAggregateItem = (item: QueuedAggregateIncrement, deps: ProductionSinkDeps): void => {
-  const cellKey = aggregateCellKeyOf(item)
-  const quality = {
-    disclosureScope: 'local_only',
-    contributorBasis: contributorBasisForMetric(item.increment.metric),
-    contributorCount: recordContributor(deps.tracker, item, cellKey),
-  }
-  const base = {
-    utcDay: item.utcDay,
-    definitionVersion: 1,
-    platform: item.dimensions.platform,
-    contextType: item.dimensions.context_type,
-    actorRole: item.dimensions.actor_role,
-    taskProvider: item.dimensions.task_provider,
-    appVersion: item.dimensions.app_version,
-    aggregateCellKey: cellKey,
-    epochId: deps.epochId,
-  }
-  const storeDeps = { getDrizzleDb: deps.getDrizzleDb }
-  if (item.increment.kind === 'counter') {
-    incrementCounter(
-      {
-        ...base,
-        metric: item.increment.metric,
-        delta: item.increment.delta,
-        ...quality,
-      },
-      storeDeps,
-    )
-    return
-  }
-  const counts = FIXED_HISTOGRAM_BUCKETS_MS.map(() => 0)
-  const bucketIndex = histogramBucketIndex(item.increment.valueMs)
-  counts[bucketIndex] = 1
-  mergeHistogram(
-    {
-      ...base,
-      metric: item.increment.metric,
-      fixedBuckets: FIXED_HISTOGRAM_BUCKETS_MS,
-      counts,
-      sum: item.increment.valueMs,
-      sampleCount: 1,
-      ...quality,
-    },
-    storeDeps,
-  )
-}
-
-export const createProductionSinks = (deps: ProductionSinkDeps): RuntimeSinks => ({
-  writeEvents: (items): void => {
-    items.forEach((item) => {
-      insertEligibleCanonicalEvent(
-        {
-          event: item.event,
-          processEpochId: deps.epochId,
-          collectionRef: item.collectionRef,
-        },
-        { getDrizzleDb: deps.getDrizzleDb },
-      )
-    })
-  },
-  writeAggregates: (items): void => {
-    items.forEach((item) => {
-      writeAggregateItem(item, deps)
-    })
-  },
-})
-
 export const startAnalytics = (): void => {
   if (active !== null) return
   resolveActive()
@@ -262,7 +172,7 @@ export const startAnalytics = (): void => {
   coordinator.recoverStaleEpochs()
   coordinator.open()
   const registry = createTurnContextRegistry()
-  const healthCounts = { queue_full: 0, observer_failure: 0 }
+  const healthCounts = { queue_full: 0, observer_failure: 0, normalization_rejection: 0 }
   const observer = createAnalyticsObserver({
     decide: buildDecide(analyticsKeyring, governanceKeyring),
     normalizerEnv: () => buildNormalizerEnv(analyticsKeyring),
@@ -274,6 +184,9 @@ export const startAnalytics = (): void => {
     },
     log,
     onControlledOverflow: createControlledOverflowBinding({ epochId: coordinator.epochId }),
+    onNormalizationRejection: (rejection) => {
+      incrementNormalizationRejection(rejection, { getDrizzleDb })
+    },
     sinks: createProductionSinks({
       epochId: coordinator.epochId,
       tracker: createContributorTracker(),

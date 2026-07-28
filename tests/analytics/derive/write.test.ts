@@ -181,6 +181,89 @@ describe('derive write', () => {
     expect(useRow?.definitionVersion).toBe(1)
   })
 
+  test('replaceSessions rolls back the delete when an insert fails mid-partition', () => {
+    seedEvent(db, ref, { id: 'v1.p-e1', name: 'chat_message_accepted', occurredAtMs: T0, props: messageProps() })
+    const events = loadPartitionEvents(db, generation, PARTITION, T0 + 1000)
+    const sessions = sessionizePartition({ ...PARTITION, events }, KEY_INPUT)
+    replaceSessions(db, generation, PARTITION, sessions)
+    expect(() => replaceSessions(db, generation, PARTITION, [...sessions, ...sessions])).toThrow()
+    expect(db.select().from(schema.analyticsSessions).all()).toHaveLength(1)
+    expect(db.select().from(schema.analyticsSessionEvents).all()).toHaveLength(1)
+  })
+
+  test('replaceGoalAttempts rolls back the delete when an insert fails mid-partition', () => {
+    seedEvent(db, ref, {
+      id: 'v1.p-done',
+      name: 'turn_completed',
+      occurredAtMs: T0,
+      turnKey: 'v1.p-turn-1',
+      props: turnCompletedProps(10),
+    })
+    const facts = loadTurnFacts(db, generation, PARTITION, T0 + 1000)
+    const attempts = buildGoalAttempts(
+      facts.map((fact) => ({ ...fact, goals: ['I01'] })),
+      { nowMs: T0 + 90_000_000, censorStartMs: null },
+      KEY_INPUT,
+    )
+    replaceGoalAttempts(db, PARTITION, attempts, generation)
+    expect(() => replaceGoalAttempts(db, PARTITION, [...attempts, ...attempts], generation)).toThrow()
+    expect(db.select().from(schema.analyticsGoalAttempts).all()).toHaveLength(1)
+  })
+
+  test('replaceTurnFriction rolls back the delete when an insert fails mid-partition', () => {
+    seedEvent(db, ref, {
+      id: 'v1.p-done',
+      name: 'turn_completed',
+      occurredAtMs: T0,
+      turnKey: 'v1.p-turn-1',
+      props: turnCompletedProps(40),
+    })
+    const facts = loadTurnFacts(db, generation, PARTITION, T0 + 1000)
+    const rows = facts.map((fact) =>
+      computeTurnFriction({
+        turnKey: fact.turnKey,
+        actorKey: fact.actorKey,
+        conversationKey: fact.conversationKey,
+        occurredAtMs: fact.turnEndMs,
+        anchorEventId: fact.anchorEventId,
+        durationMs: fact.durationMs,
+        hasRephrase: fact.hasRephrase,
+        hasClarificationAbandoned: fact.hasClarificationAbandoned,
+        hasPermissionIssue: fact.hasPermissionIssue,
+        hasStop: fact.hasStop,
+        hasDisclosureFallback: fact.hasDisclosureFallback,
+        executedOutcomes: fact.executedOutcomes,
+      }),
+    )
+    replaceTurnFriction(db, PARTITION, rows, generation)
+    expect(() => replaceTurnFriction(db, PARTITION, [...rows, ...rows], generation)).toThrow()
+    expect(db.select().from(schema.analyticsTurnFriction).all()).toHaveLength(1)
+  })
+
+  test('replaceFeatureDays rolls back both deletes when an insert fails mid-actor', () => {
+    seedEvent(db, ref, {
+      id: 'v1.p-opp',
+      name: 'feature_opportunity',
+      occurredAtMs: T0,
+      props: { feature: 'coding', available: true, reason: 'available', sampling: 'first_eligible_actor_day' },
+    })
+    seedEvent(db, ref, {
+      id: 'v1.p-use',
+      name: 'feature_used',
+      occurredAtMs: T0 + 10,
+      props: { feature: 'coding', operation: 'start', outcome: 'success' },
+    })
+    const materialization = materializeFeatureDays(loadFeatureFacts(db, generation, 'v1.p-actor', T0 + 1000))
+    replaceFeatureDays(db, 'v1.p-actor', materialization, generation)
+    const duplicated = {
+      opportunities: [...materialization.opportunities, ...materialization.opportunities],
+      uses: [...materialization.uses, ...materialization.uses],
+    }
+    expect(() => replaceFeatureDays(db, 'v1.p-actor', duplicated, generation)).toThrow()
+    expect(db.select().from(schema.analyticsFeatureOpportunityDays).all()).toHaveLength(1)
+    expect(db.select().from(schema.analyticsFeatureUseDays).all()).toHaveLength(1)
+  })
+
   test('upsertCensorIntervals writes each actor interval once', () => {
     const rows = [{ actorKey: 'v1.p-actor', startMs: T0 + 200 }]
     expect(upsertCensorIntervals(db, rows)).toBe(1)
