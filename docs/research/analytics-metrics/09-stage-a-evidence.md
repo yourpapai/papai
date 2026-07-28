@@ -64,7 +64,7 @@ aggregate publication.
 | 15 — aggregate delivery | 48 pass / 0 fail (http-policy, aggregate-release, delivery-worker, captured-egress named gates); mirrored delivery suites + full tests/analytics 1206 pass; fix 8de50e5c4 (aggregate cutover-drain: two-table sendingInFlight, fence-free classify) | clean / clean (knip clean, format clean, security 0 findings) | 4a1ecab2a + 8de50e5c4 | 2026-07-27 |
 | 16 — settings surfaces | server analytics suites 36 pass / 0 fail; test:client 1231 pass; stories 110 pass (incl. SCN-settings-admin-analytics); story contracts 354 pass; build:client clean | clean / clean (knip clean) | 471ac40f7 | 2026-07-27 |
 | 17 — job registration | 32 pass / 0 fail (job-registration, runtime-lifecycle, event-bus, production-background); sweep 2204 pass; fix 0934b6fc5 (reconcile fence admission, epoch-bound overflow wiring, per-spec idempotence) | clean / clean (knip clean) | 8b62caaad + 0934b6fc5 | 2026-07-28 |
-| 18 — docs/release gates | | | | |
+| 18 — docs/release gates | privacy-contract 19 pass / 0 fail (17-control table + synthetic captured-request sweep); rollout-gates 21 pass / 0 fail; binding sequence: build:client clean, tests/analytics+tests/settings 1334 pass / 0 fail, test:client 1231 pass, typecheck clean, lint clean, security 0 findings, test:stories:contracts 354 pass, test:stories 110 pass; `bun run test` (parallel) fails locally ONLY in review-loop suites (hard 5s timeouts under worker CPU contention; reproduced identically without Task 18 changes; 10474 pass / 0 fail serially, 244/244 standalone) — recorded as environmental, not a branch defect; test:e2e 66 pass / 0 fail (Docker Kaneo, test credentials); format/security:ci/knip/duplicates clean. Fixes: 1a3134b96 includes search-chat-history C3 log-key fix + E2E provider-scope harness fix | clean / clean (knip clean, format clean, security 0 findings) | 1a3134b96 | 2026-07-28 |
 
 ## Milestone rebases onto origin/master
 
@@ -76,18 +76,22 @@ aggregate publication.
 
 ## Stage A exit checklist
 
-- [ ] All 18 task commits recorded above with hashes
-- [ ] Control matrix all green
-- [ ] Synthetic complete process epoch reconciles to zero (attach output)
-- [ ] Snapshot byte verification result recorded
-- [ ] Deletion drill output recorded
-- [ ] Rekey drill output recorded
-- [ ] Task 18 binding commands all pass, outputs attached:
+- [x] All 18 task commits recorded above with hashes
+- [x] Control matrix all green (driven end-to-end by tests/analytics/privacy-contract.test.ts: 19 pass / 0 fail, 2026-07-28)
+- [x] Synthetic complete process epoch reconciles to zero (attach output) — final reconciliation 2026-07-28, synthetic fixture DB (`/tmp/final-recon/recon.db`, one synthetic `llm_usage_events` row at/after the approval cutoff):
+  `run=backfill-v1:llm_usage_events status=completed scanned=1 aggregate_only=1 applied=1`; rerun `applied=0 skipped=1`;
+  `reconciliation status=reconciled unexplained_delta=0 gap_epochs=0 publishable_epochs=0 delivery_total=0`
+  (zero unexplained source delta, zero epoch-association delta, zero delivery-state delta, zero privacy canary — synthetic values only; canary sweep in tests/analytics/privacy-contract.test.ts)
+- [x] Snapshot byte verification result recorded — synthetic snapshot published + `verifySnapshotFile` green in the privacy-contract sweep (snapshot bytes scanned for C3/raw-ID canaries: zero matches); CLI `--verify` semantics verified in tests/analytics/jobs/snapshot.test.ts (gate 2)
+- [x] Deletion drill output recorded — subject deletion workflow + encrypted target-bundle destruction suites green (tests/analytics/governance/subject-deletion.test.ts, deletion-target-store.test.ts; control 16, 2026-07-28)
+- [x] Rekey drill output recorded — plan/apply/verify/abort + retirement-refusal + cutover suites green (tests/analytics/rekey.test.ts, rekey-cutover.test.ts; control 16, 2026-07-28)
+- [x] Task 18 binding commands all pass, outputs attached (see Task 18 row above):
   `bun build:client`, `bun test tests/analytics tests/settings`,
   `bun test:client`, `bun run typecheck`, `bun run lint`, `bun security`,
-  `bun run test`, `bun test:stories:contracts`, `bun test:stories`,
-  `bun run format:check`, `bun security:ci`, `bun run knip`,
-  `bun run duplicates`
+  `bun run test` (local parallel-run environmental failure recorded; full suite
+  green serially: 10474 pass / 0 fail), `bun test:stories:contracts`,
+  `bun test:stories`, `bun run format:check`, `bun security:ci`, `bun run knip`,
+  `bun run duplicates`; `bun test:e2e` 66 pass / 0 fail
 - [ ] Privacy/security owner signature on this evidence
 
 **Privacy/security owner signature:** ____________________  date: ________
@@ -172,7 +176,28 @@ aggregate publication.
 - Known environmental failure (not a branch defect):
   tests/debug/settings/coding-credentials-models-route.test.ts fails locally
   because this machine's DNS resolves api.anthropic.com to a fake-ip
-  (198.18.x.x) that `assertPublicUrl` blocks; expected green in CI.
+  (198.18.x.x) that `assertPublicUrl` blocks; expected green in CI. **Not
+  observed during Task 18 (2026-07-28): the suite passed locally (4 pass / 0
+  fail) and in the full serial run.**
+- Task 18 (recorded, not fixed): `bun run test` (`bun test --parallel`) times
+  out locally in ~15–27 review-loop suites (hard 5s timeouts under worker CPU
+  contention on this machine; git-heavy fixtures). Reproduced identically with
+  Task 18's changes removed, so it is not a branch defect; the affected suites
+  pass standalone (244/244) and the full suite passes serially
+  (`bun test:serial`: 10474 pass / 0 fail across 1197 files). CI runs the suite
+  serially for exactly this reason (tests/CLAUDE.md).
+- Task 18 (fixed in 1a3134b96): gate 7 exposed a real branch defect — master's
+  `src/tools/search-chat-history.ts` logged the raw `query` metadata key (C3
+  free text), failing the Task 8B logging-privacy static closure; the debug
+  entry log now records `queryLengthChars` instead. `bun test:e2e` exposed a
+  second latent defect — tests/e2e/global-setup.ts called
+  `provisionAndConfigure` directly with no provider request scope (Task 8
+  boundary made `provisionFetch` fail-closed); the harness now wraps the call
+  in `runWithProviderRequestScope(NO_ANALYTICS_SCOPE, …)`, the designed
+  bootstrap sentinel. E2E is green (66 pass / 0 fail) with test credentials.
+- Task 18 (tooling wart, not fixed): `bun security`/`security:ci` leaves an
+  untracked `semgrep-results.sarif` in the repo root that `bun run format:check`
+  then flags; delete the artifact before the format gate.
 - Task 9 (parked Minors): `markSendStarted` doesn't compare caller grant ref
   against the row's stored grant columns; `rotateSinkVersion` creates the
   successor before running the capability gate (orphaned pending row on
