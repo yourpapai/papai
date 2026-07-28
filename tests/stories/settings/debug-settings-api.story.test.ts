@@ -81,11 +81,12 @@ scenario(
     const aliceDm = given.dm(alice)
     const bobDm = given.dm(bob)
     const session = await given.settingsSession(alice)
+    const bobSession = await given.settingsSession(bob)
     const bobContextId = world.scopedStorageContextId(bobDm)
 
-    const before = await when.settingsRequest(session, '/settings/api/byok')
-    then.responseStatus(before, 200)
-    const beforeValue = z.unknown().parse(await before.json())
+    const bobBefore = await when.settingsRequest(bobSession, '/settings/api/byok')
+    then.responseStatus(bobBefore, 200)
+    const bobBeforeValue = z.unknown().parse(await bobBefore.json())
 
     const crossContext = await when.settingsRequest(session, '/settings/api/byok', {
       method: 'PATCH',
@@ -94,9 +95,9 @@ scenario(
     })
     then.responseStatus(crossContext, 403)
 
-    const afterRejected = await when.settingsRequest(session, '/settings/api/byok')
-    then.responseStatus(afterRejected, 200)
-    expect(await afterRejected.json()).toEqual(beforeValue)
+    const bobAfterRejected = await when.settingsRequest(bobSession, '/settings/api/byok')
+    then.responseStatus(bobAfterRejected, 200)
+    expect(await bobAfterRejected.json()).toEqual(bobBeforeValue)
 
     const enabled = await when.settingsRequest(session, '/settings/api/byok', {
       method: 'PATCH',
@@ -241,6 +242,7 @@ scenario(
       }),
     })
     then.responseStatus(saved, 200)
+    expect(JSON.stringify(await saved.json())).not.toContain(MCP_SECRET)
 
     const observed = await when.settingsRequest(session, '/settings/api/mcp')
     then.responseStatus(observed, 200)
