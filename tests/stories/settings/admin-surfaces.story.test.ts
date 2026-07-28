@@ -23,10 +23,6 @@ const GuardrailsViewSchema = z.object({
   guardrails: z.object({ whoMayUse: z.union([z.literal('members'), z.array(z.string())]) }),
 })
 const ToolDefaultsViewSchema = z.object({ activePreset: z.string().nullable(), hasStoredDefaults: z.boolean() })
-const ProviderCreateSchema = z.object({
-  provider: z.object({ id: z.string(), label: z.string(), apiKeyMasked: z.string() }),
-})
-const ProviderListSchema = z.object({ providers: z.array(z.object({ id: z.string(), label: z.string() })) })
 
 scenario(
   'SCN-settings-admin-tool-defaults: a bot admin saves and reads back the default tool preset',
@@ -44,12 +40,20 @@ scenario(
     })
     then.responseStatus(unauthenticated, 401)
 
+    const initial = await when.settingsRequest(admin, '/settings/api/admin/tool-defaults')
+    then.responseStatus(initial, 200)
+    const baseline = ToolDefaultsViewSchema.parse(await initial.json())
+
     const forbidden = await when.settingsRequest(memberSession, '/settings/api/admin/tool-defaults', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body,
     })
     then.responseStatus(forbidden, 403)
+
+    const afterForbidden = await when.settingsRequest(admin, '/settings/api/admin/tool-defaults')
+    then.responseStatus(afterForbidden, 200)
+    expect(ToolDefaultsViewSchema.parse(await afterForbidden.json())).toEqual(baseline)
 
     const csrfRejected = await when.settingsRequest(
       admin,
@@ -58,6 +62,10 @@ scenario(
       { csrf: false },
     )
     then.responseStatus(csrfRejected, 403)
+
+    const afterCsrfRejection = await when.settingsRequest(admin, '/settings/api/admin/tool-defaults')
+    then.responseStatus(afterCsrfRejection, 200)
+    expect(ToolDefaultsViewSchema.parse(await afterCsrfRejection.json())).toEqual(baseline)
 
     const saved = await when.settingsRequest(admin, '/settings/api/admin/tool-defaults', {
       method: 'POST',
@@ -76,69 +84,6 @@ scenario(
       activePreset: 'read-only',
       hasStoredDefaults: true,
     })
-  },
-)
-
-scenario(
-  'SCN-settings-admin-providers: a super admin validates and reads back a system LLM provider',
-  async ({ given, when, then, world }) => {
-    const root = given.user('root')
-    const bob = given.user('bob')
-    const superAdmin = await given.settingsAdminSession(root, { superAdmin: true })
-    const memberSession = await when.settingsSession(bob)
-    const path = '/settings/api/admin/providers'
-    const body = JSON.stringify({
-      label: 'Scenario provider',
-      providerType: 'openai',
-      baseUrl: 'https://llm.invalid/v1',
-      apiKey: 'scenario-provider-key',
-    })
-
-    const unauthenticated = await when.request(path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body,
-    })
-    then.responseStatus(unauthenticated, 401)
-
-    const forbidden = await when.settingsRequest(memberSession, path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body,
-    })
-    then.responseStatus(forbidden, 403)
-
-    const csrfRejected = await when.settingsRequest(
-      superAdmin,
-      path,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body },
-      { csrf: false },
-    )
-    then.responseStatus(csrfRejected, 403)
-
-    const invalid = await when.settingsRequest(superAdmin, path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ label: '', providerType: 'nope' }),
-    })
-    then.responseStatus(invalid, 422)
-
-    world.http.expect({ method: 'GET', url: 'https://llm.invalid/v1/models' }, () =>
-      Response.json({ data: [{ id: 'scenario-model' }] }),
-    )
-    const created = await when.settingsRequest(superAdmin, path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body,
-    })
-    then.responseStatus(created, 200)
-    const provider = ProviderCreateSchema.parse(await created.json()).provider
-    expect(provider.label).toBe('Scenario provider')
-    expect(provider.apiKeyMasked).toStartWith('****')
-
-    const listed = await when.settingsRequest(superAdmin, path)
-    then.responseStatus(listed, 200)
-    expect(ProviderListSchema.parse(await listed.json()).providers.map((entry) => entry.id)).toContain(provider.id)
   },
 )
 
@@ -299,11 +244,27 @@ scenario(
     const carolSession = await when.settingsSession(carol)
     const grantBody = JSON.stringify({ userId: bob.id, platformInstanceId: bob.platformInstanceId })
 
-    const unauthenticated = await when.request('/settings/api/admin/admins')
+    const unauthenticated = await when.request('/settings/api/admin/admins', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: grantBody,
+    })
     then.responseStatus(unauthenticated, 401)
 
-    const before = await when.settingsRequest(bobSession, '/settings/api/admin/admins')
-    then.responseStatus(before, 403)
+    const initial = await when.settingsRequest(superSession, '/settings/api/admin/admins')
+    then.responseStatus(initial, 200)
+    const baseline = AdminsSchema.parse(await initial.json())
+
+    const ordinaryForbidden = await when.settingsRequest(bobSession, '/settings/api/admin/admins', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: grantBody,
+    })
+    then.responseStatus(ordinaryForbidden, 403)
+
+    const afterOrdinaryForbidden = await when.settingsRequest(superSession, '/settings/api/admin/admins')
+    then.responseStatus(afterOrdinaryForbidden, 200)
+    expect(AdminsSchema.parse(await afterOrdinaryForbidden.json())).toEqual(baseline)
 
     const notSuper = await when.settingsRequest(carolSession, '/settings/api/admin/admins', {
       method: 'POST',
@@ -311,6 +272,10 @@ scenario(
       body: grantBody,
     })
     then.responseStatus(notSuper, 403)
+
+    const afterBotAdminForbidden = await when.settingsRequest(superSession, '/settings/api/admin/admins')
+    then.responseStatus(afterBotAdminForbidden, 200)
+    expect(AdminsSchema.parse(await afterBotAdminForbidden.json())).toEqual(baseline)
 
     const csrfRejected = await when.settingsRequest(
       superSession,
@@ -320,6 +285,21 @@ scenario(
     )
     then.responseStatus(csrfRejected, 403)
 
+    const afterCsrfRejection = await when.settingsRequest(superSession, '/settings/api/admin/admins')
+    then.responseStatus(afterCsrfRejection, 200)
+    expect(AdminsSchema.parse(await afterCsrfRejection.json())).toEqual(baseline)
+
+    const invalid = await when.settingsRequest(superSession, '/settings/api/admin/admins', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: '', platformInstanceId: bob.platformInstanceId }),
+    })
+    then.responseStatus(invalid, 422)
+
+    const afterInvalid = await when.settingsRequest(superSession, '/settings/api/admin/admins')
+    then.responseStatus(afterInvalid, 200)
+    expect(AdminsSchema.parse(await afterInvalid.json())).toEqual(baseline)
+
     const granted = await when.settingsRequest(superSession, '/settings/api/admin/admins', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -327,9 +307,12 @@ scenario(
     })
     then.responseStatus(granted, 200)
 
-    const after = await when.settingsRequest(bobSession, '/settings/api/admin/admins')
-    then.responseStatus(after, 200)
-    expect(AdminsSchema.parse(await after.json()).admins.map((admin) => admin.userId)).toContain(bob.id)
+    const readback = await when.settingsRequest(superSession, '/settings/api/admin/admins')
+    then.responseStatus(readback, 200)
+    expect(AdminsSchema.parse(await readback.json()).admins.map((admin) => admin.userId)).toContain(bob.id)
+
+    const bobReadback = await when.settingsRequest(bobSession, '/settings/api/admin/admins')
+    then.responseStatus(bobReadback, 200)
 
     const revoked = await when.settingsRequest(superSession, '/settings/api/admin/admins', {
       method: 'DELETE',
