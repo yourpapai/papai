@@ -85,7 +85,7 @@ describe('resolveTestFiles', () => {
     expectSkipWithNoCompanionReason(result)
   })
 
-  test('uses discovered tests when present, unioning overrides and skipping the companion', () => {
+  test('uses discovered tests when present, ADDITIVELY unioning the companion and overrides', () => {
     const result = resolveTestFiles({
       srcFile: 'src/foo.ts',
       projectRoot: PROJECT_ROOT,
@@ -95,7 +95,21 @@ describe('resolveTestFiles', () => {
     })
     expect(result).toEqual({
       kind: 'ok',
-      testFiles: ['tests/integration/covers.test.ts', 'tests/extra.test.ts'],
+      testFiles: ['tests/companion.test.ts', 'tests/integration/covers.test.ts', 'tests/extra.test.ts'],
+    })
+  })
+
+  test('includes the companion additively even when discovered has it covered (0-lines-hit safety net)', () => {
+    const result = resolveTestFiles({
+      srcFile: 'src/foo.ts',
+      projectRoot: PROJECT_ROOT,
+      overrides: {},
+      findTestFile: () => 'tests/companion.test.ts',
+      discovered: ['tests/integration/covers.test.ts', 'tests/companion.test.ts'],
+    })
+    expect(result).toEqual({
+      kind: 'ok',
+      testFiles: ['tests/companion.test.ts', 'tests/integration/covers.test.ts'],
     })
   })
 
