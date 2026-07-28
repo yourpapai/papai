@@ -40,7 +40,7 @@ aggregate publication.
 | 13 | Classifier contract | green | sealed-corpus hybrid parity with the frozen PoC values (accuracy 0.991667, macro F1 0.995641, coverage 0.991667, unknown precision 0.909091) in tests/analytics/intent-classifier.test.ts; derived intent_classified envelope/props contract + deterministic intent-output:v1 ids + inherited-ref withdrawal in tests/analytics/intent-derivation.test.ts; no PoC/small-model import in the runtime module graph + latency budget in tests/analytics/intent-persistence-audit.test.ts (dccf6cc73); 2026-07-26 |
 | 14 | Backfill/provenance/reconciliation | green | one controlled decision per durable row (aggregate_only/rejected with exact controlled reasons; current rows never canonical/pseudonym/`unknown`), HMAC source references, provenance rerun = zero changes, interrupt/resume identical decisions, rollback reverses only first-created deltas, durable equation `usage_rows = canonical + rejected + ineligible + aggregate_only` with zero unexplained delta on closed epochs, open/stale epochs → `unreconciled_restart_gap` (no numeric plug) in tests/analytics/backfill.test.ts + tests/analytics/reconciliation.test.ts; fixture CLI dry-run/apply/reconcile status=reconciled unexplained_delta=0, rerun applied=0 (ff0df9c24); 2026-07-26 |
 | 15 | External thresholding | green | frozen one-way lattice (total + one-way children only; multi-dimension/app-version/drill-through off-lattice) with primary thresholds (actor cells ≥10 eligible actors; guest cells ≥10 turns AND ≥10 contexts; null contributor count suppressed; unreconciled_restart_gap never publishable) and complementary suppression (single suppressed child hides the smallest releasable sibling, then the revealing parent total), strict aggregate-release V1 envelope, deterministic content-hash releaseId + idempotent rebuild, disclosureScope/threshold persisted per cell in tests/analytics/delivery/release-suppression.test.ts + tests/analytics/delivery/aggregate-release.test.ts (4a1ecab2a); 2026-07-27 |
-| 16 | DSAR/delete/rekey/snapshot | partial | DSAR export + deletion workflow + encrypted target bundles (d994c6f7e); rekey workflow incl. shadow equation + retirement gating (193327d5b + 1cdb28106); curated snapshot publisher + fail-closed SnapshotConsumerCoordinator + five reviewed Metabase models (3361cd9fb + fix 026f5be3f); REMAINING: production fence admission wiring for job runners (Task 17 — delivery worker already admits, 8de50e5c4) |
+| 16 | DSAR/delete/rekey/snapshot | green | DSAR export + deletion workflow + encrypted target bundles (d994c6f7e); rekey workflow incl. shadow equation + retirement gating (193327d5b + 1cdb28106); curated snapshot publisher + fail-closed SnapshotConsumerCoordinator + five reviewed Metabase models (3361cd9fb + 026f5be3f); production cutover-fence admission complete across every mutable class: delivery worker (8de50e5c4), intent/derive/backfill/retention/censor (8b62caaad), reconcile (0934b6fc5), snapshot staging (3361cd9fb); 2026-07-28 |
 | 17 | Performance/expiry clocks | green | monotonic TTFT/first-visible-feedback clocks with not-applicable/negative/implausible rejection in tests/analytics/performance-clocks.test.ts (6d429b5c4); one isUnexpired guard at every read/derive/export/snapshot/lease/send boundary incl. purge-disabled exact-deadline proof, startup purge barrier, earliest-deadline wake in tests/analytics/retention.test.ts + tests/analytics/derive/store.test.ts (d994c6f7e); 2026-07-26 |
 
 ## Per-task evidence log
@@ -63,7 +63,7 @@ aggregate publication.
 | 14 — snapshot/metabase | 193 pass / 0 fail (snapshot, metabase-models, friction-sample, rekey, rekey-cutover aggregators); full tests/analytics 1110 pass; fix 026f5be3f (DAU/MAU + sessions metrics, strategy/coverage, in-admission generation resolution) | clean / clean (security 0 findings) | 3361cd9fb + 026f5be3f | 2026-07-27 |
 | 15 — aggregate delivery | 48 pass / 0 fail (http-policy, aggregate-release, delivery-worker, captured-egress named gates); mirrored delivery suites + full tests/analytics 1206 pass; fix 8de50e5c4 (aggregate cutover-drain: two-table sendingInFlight, fence-free classify) | clean / clean (knip clean, format clean, security 0 findings) | 4a1ecab2a + 8de50e5c4 | 2026-07-27 |
 | 16 — settings surfaces | server analytics suites 36 pass / 0 fail; test:client 1231 pass; stories 110 pass (incl. SCN-settings-admin-analytics); story contracts 354 pass; build:client clean | clean / clean (knip clean) | 471ac40f7 | 2026-07-27 |
-| 17 — job registration | | | | |
+| 17 — job registration | 32 pass / 0 fail (job-registration, runtime-lifecycle, event-bus, production-background); sweep 2204 pass; fix 0934b6fc5 (reconcile fence admission, epoch-bound overflow wiring, per-spec idempotence) | clean / clean (knip clean) | 8b62caaad + 0934b6fc5 | 2026-07-28 |
 | 18 — docs/release gates | | | | |
 
 ## Milestone rebases onto origin/master
@@ -274,3 +274,10 @@ aggregate publication.
   (unchecked-by-default would match evidentiary intent); stories pass
   undeclared contextId/scope args (dead args); SCN-settings-admin-analytics
   has no coverage.ts entry (invisible to coverage counting).
+- Task 17 (parked Minors): reconcile holds its fence admission across the
+  whole run incl. the read phase (narrow to apply phase if drain latency
+  matters); overflow binding hardcodes sourceFamily `chat` (skew only in
+  per-family breakdowns; disposition accounting correct); dynamic next-expiry
+  wake is computed but never re-points the scheduler (fixed 60s cadence
+  satisfies the floor); snapshot handler throws on held fence while other
+  jobs skip cleanly (error-hook noise hourly during cutover).
