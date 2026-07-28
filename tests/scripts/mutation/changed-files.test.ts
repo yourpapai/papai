@@ -101,7 +101,6 @@ describe('parseChangedFilesCliArgs', () => {
       kind: 'ok',
       baseRef: 'origin/master',
       threshold: 0,
-      ratchetFloor: 0.5,
       noRatchet: false,
       verbose: false,
     })
@@ -112,20 +111,25 @@ describe('parseChangedFilesCliArgs', () => {
       kind: 'ok',
       baseRef: 'origin/master',
       threshold: 0,
-      ratchetFloor: 0.5,
       noRatchet: false,
       verbose: true,
     })
   })
 
-  test('parses --no-ratchet and --ratchet-floor', () => {
-    expect(parseChangedFilesCliArgs(['--no-ratchet', '--ratchet-floor=0.6'])).toEqual({
+  test('parses --no-ratchet', () => {
+    expect(parseChangedFilesCliArgs(['--no-ratchet'])).toEqual({
       kind: 'ok',
       baseRef: 'origin/master',
       threshold: 0,
-      ratchetFloor: 0.6,
       noRatchet: true,
       verbose: false,
+    })
+  })
+
+  test('rejects the removed --ratchet-floor flag', () => {
+    expect(parseChangedFilesCliArgs(['--ratchet-floor=0.6'])).toEqual({
+      kind: 'usageError',
+      reason: 'unknown argument --ratchet-floor=0.6',
     })
   })
 
@@ -176,6 +180,7 @@ describe('changedFilesRun', () => {
       projectRoot: '/repo',
       reportDir: '/repo/reports/paired',
       baseRef: 'origin/master',
+      baseline: {},
       verbose: true,
       deps,
     })
@@ -187,5 +192,105 @@ describe('changedFilesRun', () => {
       verbose: true,
       deps: undefined,
     })
+  })
+
+  test('warns on first-touch unbaselined files inside changedFilesRun', async () => {
+    const logs: string[] = []
+    const deps: ChangedFilesRunDeps = {
+      selectTargets: () => ['src/a.ts', 'src/new.ts', 'src/unscored.ts'],
+      runPaired: () =>
+        Promise.resolve({
+          merged: {
+            killed: 5,
+            survived: 15,
+            noCoverage: 0,
+            timeout: 0,
+            compileError: 0,
+            ignored: 0,
+            runtimeError: 0,
+            pending: 0,
+            total: 20,
+            scored: 20,
+            score: 0.25,
+          },
+          perFile: [
+            {
+              sourceFile: 'src/a.ts',
+              testFiles: [],
+              configPath: '',
+              reportPath: '',
+              merged: {
+                killed: 4,
+                survived: 6,
+                noCoverage: 0,
+                timeout: 0,
+                compileError: 0,
+                ignored: 0,
+                runtimeError: 0,
+                pending: 0,
+                total: 10,
+                scored: 10,
+                score: 0.4,
+              },
+            },
+            {
+              sourceFile: 'src/new.ts',
+              testFiles: [],
+              configPath: '',
+              reportPath: '',
+              merged: {
+                killed: 1,
+                survived: 9,
+                noCoverage: 0,
+                timeout: 0,
+                compileError: 0,
+                ignored: 0,
+                runtimeError: 0,
+                pending: 0,
+                total: 10,
+                scored: 10,
+                score: 0.1,
+              },
+            },
+            {
+              sourceFile: 'src/unscored.ts',
+              testFiles: [],
+              configPath: '',
+              reportPath: '',
+              merged: {
+                killed: 0,
+                survived: 0,
+                noCoverage: 0,
+                timeout: 0,
+                compileError: 0,
+                ignored: 0,
+                runtimeError: 0,
+                pending: 0,
+                total: 0,
+                scored: 0,
+                score: 0,
+              },
+            },
+          ],
+          skipped: [],
+          errored: [],
+        }),
+      log: (m) => {
+        logs.push(m)
+      },
+    }
+
+    await changedFilesRun({
+      projectRoot: '<tmp>',
+      reportDir: '<tmp>',
+      baseRef: 'origin/master',
+      baseline: { 'src/a.ts': 0.5 },
+      verbose: false,
+      deps,
+    })
+
+    expect(logs.some((m) => m.includes('First measurement for src/new.ts: score 0.1000'))).toBe(true)
+    expect(logs.every((m) => !m.includes('First measurement for src/a.ts'))).toBe(true)
+    expect(logs.every((m) => !m.includes('First measurement for src/unscored.ts'))).toBe(true)
   })
 })

@@ -84,12 +84,12 @@ by either adding a companion test or registering the cross-cutting tests above.
 
 A committed per-file baseline of mutation scores backs a monotonic ratchet:
 
-- **PR gate** (`test:mutate:changed`): a changed file fails when its score drops
-  below its recorded baseline. Files new to scope are held to a floor
-  (`--ratchet-floor=N`, default `0.5`). Existing files are held to their own
-  baseline — the floor does not retroactively demand legacy files reach it, so
-  the overall score ratchets upward as files improve without blocking routine
-  work on currently-below-floor code. Disable with `--no-ratchet`.
+- **PR gate** (`test:mutate:changed`): a changed file fails only when it has a
+  recorded baseline entry and its score drops below it. Files with no baseline
+  entry (new or never-baselined) are not regressions — the gate is
+  regression-only, so the overall score ratchets upward as files improve without
+  blocking routine work on currently-low-scoring or newly-added code. Disable
+  with `--no-ratchet`.
 - **Master ratchet** (`test:mutate --update-baseline`): after a full run,
   rewrites `baseline.json` keeping the per-file max with the existing baseline,
   so the recorded floor only ever goes up (or stays the same). The CI

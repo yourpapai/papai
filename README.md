@@ -593,11 +593,12 @@ bun test:mutate --update-baseline  # full run; ratchet scripts/mutation/baseline
 
 Runs paired, per-file mutation testing with Stryker (`ignoreStatic: false`, each
 source file paired with its companion test). The CI `mutation-testing` job is a
-**blocking per-file ratchet** on PRs: a changed file fails if its score drops
-below its recorded entry in `scripts/mutation/baseline.json`; files new to scope
-must clear a 0.5 floor. The `mutation-baseline` job ratchets the baseline upward
+**blocking per-file ratchet** on PRs: a changed file fails only if it has a
+recorded entry in `scripts/mutation/baseline.json` and its score drops below it;
+files with no recorded entry (new or never-baselined) are not regressions. The
+`mutation-baseline` job ratchets the baseline upward
 (per-file max) on push to `master`. See `scripts/mutation/README.md` for flags
-(`--no-ratchet`, `--ratchet-floor=N`) and the override/companion resolution.
+(`--no-ratchet`) and the override/companion resolution.
 
 ---
 

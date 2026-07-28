@@ -42,7 +42,8 @@ export const isBaselineMap = (value: unknown): value is BaselineMap =>
 /**
  * Build a baseline map from per-file run results. Files with no scoreable
  * mutants (`scored === 0`) are excluded: a 0 score from "no mutants" is not a
- * real coverage signal and would otherwise be perpetually flagged by the floor.
+ * real coverage signal — `resolveRatchet` skips them anyway, and recording a
+ * placeholder would lock such files to a meaningless threshold.
  */
 export const buildBaselineFromPerFile = (perFile: readonly PerFileScore[]): BaselineMap => {
   const out: BaselineMap = {}

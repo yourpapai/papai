@@ -207,8 +207,9 @@ jobs:
   mutation-testing:
     name: Mutation Testing (paired, changed files)
     runs-on: ubuntu-latest
-    # Blocking PR gate. The per-file ratchet in scripts/mutation/baseline.json
-    # fails the run when any changed file drops below max(0.5, its baseline).
+    # Blocking PR gate. A changed file fails only if it has a recorded baseline
+    # entry in scripts/mutation/baseline.json and drops below it. Files new to
+    # scope (first-touch) warn and are seeded by the master mutation-baseline job.
     if: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
