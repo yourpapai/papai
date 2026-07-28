@@ -10,9 +10,10 @@ import type { MergedScore } from './score-merger.js'
 /**
  * A committed map of source file -> mutation score, used as a monotonic
  * ratchet baseline. Scores only ever go up: a master run merges new per-file
- * scores via {@link ratchetMerge} (per-key max), and a PR fails when any
- * changed file drops below `max(floor, baseline[file])` (see
- * {@link resolveRatchet}).
+ * scores via {@link ratchetMerge} / {@link seedMerge} (per-key max), and a PR
+ * fails only when a changed file that already has a baseline entry drops below
+ * it (see {@link resolveRatchet}). Files with no baseline entry (first-touch)
+ * are not regressions — they warn and are seeded after merge.
  */
 export type BaselineMap = Record<string, number>
 
@@ -68,27 +69,20 @@ export const ratchetMerge = (existing: BaselineMap, latest: BaselineMap): Baseli
 }
 
 /**
- * Compare per-file run results against the baseline. A file regresses when its
- * score falls below its recorded baseline; a file with no baseline entry (new
- * to scope) is held to `floor`. Files with no scoreable mutants are skipped
- * (not measurable). Returns exit code 1 if any file regressed.
- *
- * Note: the floor is intentionally applied only to files that lack a baseline
- * entry. Existing files below the floor are held to their own baseline so the
- * gate stays practical while the overall score ratchets upward over time.
+ * Compare per-file run results against the baseline. A file regresses only when
+ * it has a recorded baseline entry AND its score falls below it. Files with no
+ * entry (first-touch — new or never-baselined) are not regressions. Files with
+ * no scoreable mutants are skipped (not measurable). Returns exit code 1 if any
+ * baselined file regressed.
  */
-export const resolveRatchet = (
-  perFile: readonly PerFileScore[],
-  baseline: BaselineMap,
-  floor: number,
-): RatchetResult => {
+export const resolveRatchet = (perFile: readonly PerFileScore[], baseline: BaselineMap): RatchetResult => {
   const regressions: RatchetRegression[] = []
   for (const entry of perFile) {
     if (entry.merged.scored === 0) continue
     const recorded = baseline[entry.sourceFile]
-    const threshold = recorded ?? floor
-    if (entry.merged.score < threshold) {
-      regressions.push({ sourceFile: entry.sourceFile, score: entry.merged.score, threshold })
+    if (recorded === undefined) continue
+    if (entry.merged.score < recorded) {
+      regressions.push({ sourceFile: entry.sourceFile, score: entry.merged.score, threshold: recorded })
     }
   }
   return { exitCode: regressions.length > 0 ? 1 : 0, regressions }

@@ -198,7 +198,7 @@ const main = async (bun: BunLike): Promise<number> => {
   if (!parsed.noRatchet) {
     const baseline = loadBaseline(path.join(projectRoot, BASELINE_FILE))
     if (baseline !== null) {
-      const ratchet = resolveRatchet(result.perFile, baseline, parsed.ratchetFloor)
+      const ratchet = resolveRatchet(result.perFile, baseline)
       if (ratchet.exitCode === 1) {
         console.error(
           `Mutation ratchet regression (floor ${parsed.ratchetFloor}): ${ratchet.regressions
