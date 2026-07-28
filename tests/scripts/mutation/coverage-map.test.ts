@@ -9,7 +9,32 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { openCoverageCache } from '../../../scripts/mutation/coverage-cache.js'
-import { buildCoverageMap, createDefaultCoverageMapDeps } from '../../../scripts/mutation/coverage-map.js'
+import {
+  buildCoverageMap,
+  createDefaultCoverageMapDeps,
+  _samePackageTestDirForTest as samePackageTestDir,
+} from '../../../scripts/mutation/coverage-map.js'
+
+describe('samePackageTestDir — src↔tests package mapping (all roots)', () => {
+  // Mirrors `.hooks/tdd/test-resolver.mjs` findTestPath/suggestTestPath. Locks every branch so a
+  // future change to either side can't silently drift the candidate-narrowing universe.
+  const cases: ReadonlyArray<readonly [string, string]> = [
+    ['src/chat/mattermost/file-helpers.ts', 'tests/chat/mattermost'],
+    ['src/history.ts', 'tests'],
+    ['src/tools/create-task.ts', 'tests/tools'],
+    ['client/admin/handlers.ts', 'tests/client/admin'],
+    ['client/a/b/c.ts', 'tests/client/a/b'],
+    ['plugins/task-provider-kaneo/client.ts', 'tests/plugins/task-provider-kaneo'],
+    ['review-loop/src/index.ts', 'tests/review-loop'],
+    ['review-loop/src/lib/util.ts', 'tests/review-loop/lib'],
+    ['scripts/foo.ts', 'tests'],
+  ]
+  for (const [input, expected] of cases) {
+    it(`maps ${input} -> ${expected}`, () => {
+      expect(samePackageTestDir(input)).toBe(expected)
+    })
+  }
+})
 
 describe('buildCoverageMap', () => {
   it('inverts per-test coverage into sourceFile -> testFiles, filtered to requested sources', () => {

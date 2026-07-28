@@ -168,6 +168,7 @@ const samePackageTestDir = (srcRel: string): string => {
   }
   return 'tests'
 }
+export { samePackageTestDir as _samePackageTestDirForTest }
 
 /**
  * Mirror of `.hooks/tdd/test-resolver.mjs`'s `testFileImportsImpl`, accepting pre-read content so
