@@ -3,7 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { StoryTier } from './coverage.js'
+import { catalogCoverage, TIER_SUITE_ROOTS, type StoryTier } from './coverage.js'
+import { SUPPORTING_STORIES } from './supporting.js'
 
 /**
  * Both directions of the catalog↔lane relationship in one result.
@@ -45,4 +46,22 @@ export function censusStories(input: StoryCensusInput): StoryCensus {
     claimed: claimed.size,
     supporting: supporting.size,
   })
+}
+
+function claimedStoryIds(tier: StoryTier): readonly string[] {
+  return catalogCoverage.flatMap((coverage) =>
+    coverage.kind === 'executable' && coverage.provingTier === tier ? [...coverage.storyIds] : [],
+  )
+}
+
+function exemptedStoryIds(tier: StoryTier): readonly string[] {
+  return Object.keys(SUPPORTING_STORIES).filter((storyId) => storyId.startsWith(TIER_SUITE_ROOTS[tier]))
+}
+
+/**
+ * Census one tier against the live ledger. Every lane calls this, so the claim and
+ * exemption sets are assembled in exactly one place.
+ */
+export function censusTier(tier: StoryTier, observed: readonly string[]): StoryCensus {
+  return censusStories({ tier, observed, claimed: claimedStoryIds(tier), supporting: exemptedStoryIds(tier) })
 }

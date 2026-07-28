@@ -5,7 +5,13 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { censusStories } from '../catalog/census.js'
+import { censusStories, censusTier } from '../catalog/census.js'
+import { catalogCoverage, toPendingReason } from '../catalog/coverage.js'
+import { doubleBookedExemptions, SUPPORTING_STORIES } from '../catalog/supporting.js'
+
+function claimedStoryIdsAcrossAllTiers(): Set<string> {
+  return new Set(catalogCoverage.flatMap((coverage) => (coverage.kind === 'executable' ? [...coverage.storyIds] : [])))
+}
 
 describe('censusStories', () => {
   test('reports an observed story that no record claims as an orphan', () => {
@@ -75,5 +81,36 @@ describe('censusStories', () => {
       claimed: 0,
       supporting: 0,
     })
+  })
+})
+
+describe('exemption contract', () => {
+  test('names an exemption that a catalog record already claims', () => {
+    expect(
+      doubleBookedExemptions({ 'a.story.test.ts#x': toPendingReason('helper') }, new Set(['a.story.test.ts#x'])),
+    ).toEqual(['a.story.test.ts#x'])
+  })
+
+  test('accepts an exemption that no record claims', () => {
+    expect(doubleBookedExemptions({ 'a.story.test.ts#x': toPendingReason('helper') }, new Set())).toEqual([])
+  })
+
+  test('no live exemption is double-booked against the real catalog', () => {
+    expect(doubleBookedExemptions(SUPPORTING_STORIES, claimedStoryIdsAcrossAllTiers())).toEqual([])
+  })
+
+  // The non-blank-rationale invariant is enforced by construction, not by assertion:
+  // toPendingReason throws before a blank rationale can reach SUPPORTING_STORIES.
+  test('rejects a blank rationale at the boundary rather than at assertion time', () => {
+    expect(() => toPendingReason('  ')).toThrow('Pending reason must not be empty')
+  })
+})
+
+describe('censusTier', () => {
+  test('reads the live ledger rather than an empty claim set', () => {
+    // Guards the wiring itself: an exemption filter that matched everything, or a claim
+    // filter that matched nothing, would make every lane's census meaningless.
+    expect(censusTier('0', []).claimed).toBeGreaterThan(100)
+    expect(censusTier('0', []).supporting).toBe(0)
   })
 })
