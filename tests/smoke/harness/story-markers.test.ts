@@ -35,7 +35,21 @@ describe('scanStoryMarkers', () => {
       test.skip(title('SCN-required-env-admin'), async () => {})
     `
 
-    expect(scanStoryMarkers('a.smoke.ts', source).keys).toEqual(['SCN-graceful-shutdown', 'SCN-required-env-admin'])
+    expect(scanStoryMarkers('a.smoke.ts', source)).toEqual({
+      keys: ['SCN-graceful-shutdown', 'SCN-required-env-admin'],
+      violations: [],
+    })
+  })
+
+  test('reads a marker through a test.each curried call', () => {
+    const source = `
+      test.each(cases)(title('SCN-each-case'), async () => {})
+    `
+
+    expect(scanStoryMarkers('a.smoke.ts', source)).toEqual({
+      keys: ['SCN-each-case'],
+      violations: [],
+    })
   })
 
   test('flags a title() call whose key is not a string literal', () => {

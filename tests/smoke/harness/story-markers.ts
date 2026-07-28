@@ -33,8 +33,8 @@ export function scanStoryMarkers(filePath: string, source: string): StoryMarkerS
   const keys: string[] = []
   const violations: string[] = []
 
-  const visit = (node: ts.Node): void => {
-    if (ts.isCallExpression(node) && isTestCall(node.expression)) {
+  const visit = (node: ts.Node, calleeOf: ts.CallExpression | undefined): void => {
+    if (ts.isCallExpression(node) && node !== calleeOf && isTestCall(node.expression)) {
       const [first] = node.arguments
       const key = markerKey(first)
       if (key === undefined) {
@@ -43,9 +43,10 @@ export function scanStoryMarkers(filePath: string, source: string): StoryMarkerS
         keys.push(key)
       }
     }
-    ts.forEachChild(node, visit)
+    const innerCallee = ts.isCallExpression(node) && ts.isCallExpression(node.expression) ? node.expression : undefined
+    ts.forEachChild(node, (child) => visit(child, innerCallee))
   }
 
-  visit(sourceFile)
+  visit(sourceFile, undefined)
   return Object.freeze({ keys, violations })
 }
