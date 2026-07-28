@@ -137,7 +137,7 @@ const scanTestFiles = (projectRoot: string): string[] => {
  * mapping in `.hooks/tdd/test-resolver.mjs` (`findTestFile` / `suggestTestPath`). For
  * `src/chat/mattermost/file-helpers.ts` this returns `tests/chat/mattermost`; for `src/history.ts`
  * it returns `tests` (top-level); for `plugins/foo/bar.ts` → `tests/plugins/foo`;
- * for `review-loop/src/x.ts` → `tests/review-loop`; for `client/a/b.ts` → `tests/client/a/b`.
+ * for `review-loop/src/x.ts` → `tests/review-loop`; for `client/a/b.ts` → `tests/client/a`.
  */
 const samePackageTestDir = (srcRel: string): string => {
   const forward = srcRel.replace(/\\/gu, '/')

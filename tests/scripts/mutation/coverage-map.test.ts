@@ -8,6 +8,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { openCoverageCache } from '../../../scripts/mutation/coverage-cache.js'
 import { buildCoverageMap, createDefaultCoverageMapDeps } from '../../../scripts/mutation/coverage-map.js'
 
 describe('buildCoverageMap', () => {
@@ -104,27 +105,75 @@ describe('createDefaultCoverageMapDeps — listCandidateTests widening', () => {
   })
 })
 
-describe('createDefaultCoverageMapDeps — cache never-throws', () => {
-  it('treats a malformed cache entry as a miss and runs coverage fresh', () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cov-map-cache-'))
-    const cachePath = path.join(root, 'cache.json')
-    // The implementation looks up cache entries by `<testAbs>:<sha256(content)[0:16]>`.
-    // tests/anything.test.ts does not exist on disk -> content is '' -> hash is the
-    // well-known empty-string sha256 prefix. We inject a malformed entry under that
-    // exact key so the cache hit path is exercised (and must not throw).
-    const testAbs = path.resolve(root, 'tests/anything.test.ts')
-    const key = `${testAbs}:e3b0c44298fc1c14`
-    fs.writeFileSync(
-      cachePath,
-      JSON.stringify({
-        entries: {
-          [key]: { value: 'not-an-iterable-of-pairs', ts: Date.now() },
-        },
-      }),
-    )
-    const deps = createDefaultCoverageMapDeps(root, { cachePath, cacheTtlMs: 60_000 })
-    // Lookup of a malformed entry must not throw; it returns undefined (cache miss),
-    // then runCoverage spawns bun and fails open to an empty Map.
-    expect(() => deps.runCoverage('tests/anything.test.ts', root)).not.toThrow()
+describe('openCoverageCache — malformed entries are treated as a miss (never throws)', () => {
+  // Exercises the cache layer directly (safeGetEntry / isCoverageCacheEntry / isCachePair /
+  // isCoverageCacheFile). Hermetic: no `createDefaultCoverageMapDeps`, no `runCoverage`, and
+  // therefore NO `bun test` spawn. The cache keys are arbitrary strings — the key derivation
+  // lives in coverage-map.ts and is not under test here.
+  const key = 'tests/x.test.ts:deadbeefdeadbeef'
+  const ttl = 60_000
+
+  const writeCache = (cachePath: string, payload: unknown): void => {
+    fs.writeFileSync(cachePath, typeof payload === 'string' ? payload : JSON.stringify(payload))
+  }
+
+  it('returns undefined for an entry whose value is not an array of pairs', () => {
+    const cachePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cov-cache-value-')), 'cache.json')
+    writeCache(cachePath, {
+      entries: {
+        [key]: { value: 'not-an-iterable-of-pairs', ts: Date.now() },
+      },
+    })
+    expect(openCoverageCache(cachePath).get(key, ttl)).toBeUndefined()
+  })
+
+  it('returns undefined when value holds a non-pair element (isCachePair rejects)', () => {
+    const cachePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cov-cache-pairs-')), 'cache.json')
+    writeCache(cachePath, {
+      entries: {
+        [key]: { value: [['src/a.ts', 1], 'not-a-pair'], ts: Date.now() },
+      },
+    })
+    expect(openCoverageCache(cachePath).get(key, ttl)).toBeUndefined()
+  })
+
+  it('returns undefined for an entry with a non-finite timestamp', () => {
+    const cachePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cov-cache-ts-')), 'cache.json')
+    writeCache(cachePath, {
+      entries: {
+        [key]: { value: [['src/a.ts', 1]], ts: Number.POSITIVE_INFINITY },
+      },
+    })
+    expect(openCoverageCache(cachePath).get(key, ttl)).toBeUndefined()
+  })
+
+  it('returns undefined for a structurally wrong top-level cache file', () => {
+    const cachePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cov-cache-top-')), 'cache.json')
+    writeCache(cachePath, 'not-a-cache-object')
+    expect(openCoverageCache(cachePath).get(key, ttl)).toBeUndefined()
+  })
+
+  it('returns undefined when the cache file is unparseable JSON', () => {
+    const cachePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cov-cache-json-')), 'cache.json')
+    writeCache(cachePath, '{broken')
+    expect(openCoverageCache(cachePath).get(key, ttl)).toBeUndefined()
+  })
+
+  it('returns undefined for a stale (expired) entry', () => {
+    const cachePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cov-cache-ttl-')), 'cache.json')
+    writeCache(cachePath, {
+      entries: {
+        [key]: { value: [['src/a.ts', 3]], ts: Date.now() - 10_000 },
+      },
+    })
+    expect(openCoverageCache(cachePath).get(key, 1)).toBeUndefined()
+  })
+
+  it('round-trips a well-formed entry (positive control proving misses are not vacuous)', () => {
+    const cachePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cov-cache-ok-')), 'cache.json')
+    openCoverageCache(cachePath).set(key, new Map([['src/a.ts', 7]]))
+    const got = openCoverageCache(cachePath).get(key, ttl)
+    expect(got).toBeInstanceOf(Map)
+    expect(got?.get('src/a.ts')).toBe(7)
   })
 })
