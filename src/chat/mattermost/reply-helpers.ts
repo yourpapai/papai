@@ -9,6 +9,7 @@ import type {
   PromptHandle,
   ReplyFn,
   ReplyOptions,
+  ReplyTarget,
   StatusHandle,
 } from '../types.js'
 import type { MattermostActionContextInput, MattermostSignedActionContext } from './action-signing.js'
@@ -144,6 +145,24 @@ const buildMattermostStatusHandle = async (
   }
 }
 
+const buildMattermostRedactMessage =
+  (
+    postId: string | undefined,
+    apiFetch: (method: string, path: string, body: unknown) => Promise<unknown>,
+  ): ReplyFn['redactMessage'] =>
+  async (replacementText) => {
+    if (postId === undefined) return
+    await apiFetch('PUT', `/api/v4/posts/${postId}/patch`, { message: replacementText }).catch(() => undefined)
+  }
+
+const buildMattermostEditReply =
+  (apiFetch: (method: string, path: string, body: unknown) => Promise<unknown>): ReplyFn['editReply'] =>
+  async (target, markdown) => {
+    const id = target.ref
+    if (typeof id !== 'string') return
+    await apiFetch('PUT', `/api/v4/posts/${id}/patch`, { message: markdown }).catch(() => undefined)
+  }
+
 const makePost =
   (
     channelId: string,
@@ -174,12 +193,14 @@ export function createMattermostReplyFn(params: MattermostReplyHelpersParams): R
     createActionContext,
   } = params
   const post = makePost(channelId, threadId, apiFetch)
+  let lastReplyTarget: ReplyTarget | undefined
   return {
     text: async (content: string, options?: ReplyOptions): Promise<void> => {
       await post(content, options)
     },
     formatted: async (markdown: string, options?: ReplyOptions): Promise<void> => {
-      await post(markdown, options)
+      const id = await post(markdown, options)
+      lastReplyTarget = id === undefined ? undefined : { platform: 'mattermost', ref: id }
     },
     file: async (file, options?: ReplyOptions): Promise<void> => {
       const fileId = await uploadFile(channelId, file.content, file.filename)
@@ -188,11 +209,7 @@ export function createMattermostReplyFn(params: MattermostReplyHelpersParams): R
     typing: () => {
       wsSend({ seq: getWsSeq(), action: 'user_typing', data: { channel_id: channelId } })
     },
-    redactMessage: async (replacementText: string) => {
-      if (postId !== undefined) {
-        await apiFetch('PUT', `/api/v4/posts/${postId}/patch`, { message: replacementText }).catch(() => undefined)
-      }
-    },
+    redactMessage: buildMattermostRedactMessage(postId, apiFetch),
     deleteMessage: async (messageId: string) => {
       await apiFetch('DELETE', `/api/v4/posts/${messageId}`, undefined)
     },
@@ -207,6 +224,8 @@ export function createMattermostReplyFn(params: MattermostReplyHelpersParams): R
     ),
     createStatus: (initialText: string): Promise<StatusHandle | undefined> =>
       buildMattermostStatusHandle(post, apiFetch, initialText),
+    editReply: buildMattermostEditReply(apiFetch),
+    lastReplyTarget: (): ReplyTarget | undefined => lastReplyTarget,
   }
 }
 

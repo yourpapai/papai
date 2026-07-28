@@ -19,10 +19,11 @@ export type RunControl = {
   readonly abortController: AbortController
   readonly originatingMessageIds: readonly string[]
   /**
-   * Where the assistant's reply for this run should be posted. Populated by the
-   * reply-target-capture wiring; stays `undefined` until then.
+   * Where the assistant's reply for this run should be posted. Starts `undefined`;
+   * `sendLlmResponse` populates it from the adapter's `lastReplyTarget()` once the
+   * reply posts, so later W2 edit classification can revise that message in place.
    */
-  readonly replyTarget: ReplyTarget | undefined
+  replyTarget: ReplyTarget | undefined
   steerQueue: InjectedMessage[]
   stopRequested: boolean
   completedEffects: EffectRecord[]

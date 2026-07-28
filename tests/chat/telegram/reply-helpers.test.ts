@@ -17,7 +17,6 @@ import {
   type ButtonReplyCapableContext,
   createReplyParamsBuilder,
   type ReplacementReplyContext,
-  type ReplyCapableContext,
   type ReplyContext,
   type ReplyParamsBuilder,
   type SentButtonMessage,
@@ -46,12 +45,12 @@ describe('sendFormattedReply link preview', () => {
     mockLogger()
   })
 
-  const makeReplyCtx = (): { ctx: ReplyCapableContext; calls: Array<Record<string, unknown> | undefined> } => {
+  const makeReplyCtx = (): { ctx: ButtonReplyCapableContext; calls: Array<Record<string, unknown> | undefined> } => {
     const calls: Array<Record<string, unknown> | undefined> = []
-    const ctx: ReplyCapableContext = {
-      reply: (_text: string, opts?: Record<string, unknown>): Promise<unknown> => {
+    const ctx: ButtonReplyCapableContext = {
+      reply: (_text: string, opts?: Record<string, unknown>): Promise<SentButtonMessage> => {
         calls.push(opts)
-        return Promise.resolve({})
+        return Promise.resolve({ message_id: 1, chat: { id: 1 } })
       },
     }
     return { ctx, calls }
@@ -67,6 +66,22 @@ describe('sendFormattedReply link preview', () => {
     const { ctx, calls } = makeReplyCtx()
     await sendFormattedReply(ctx, 'hello https://example.com', () => undefined, { disableLinkPreview: true })
     expect(calls[0]?.['link_preview_options']).toEqual({ is_disabled: true })
+  })
+})
+
+describe('sendFormattedReply returns sent message id', () => {
+  beforeEach(() => {
+    mockLogger()
+  })
+  test('returns the sent message id and chat id', async () => {
+    const ctx: ButtonReplyCapableContext = {
+      reply: (): Promise<SentButtonMessage> => Promise.resolve({ message_id: 42, chat: { id: 7 } }),
+    }
+
+    const sent = await sendFormattedReply(ctx, 'hello', () => undefined, undefined)
+
+    expect(sent.messageId).toBe(42)
+    expect(sent.chatId).toBe(7)
   })
 })
 

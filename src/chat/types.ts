@@ -238,6 +238,8 @@ export type ReplyFn = {
    */
   createStatus: (initialText: string) => Promise<StatusHandle | undefined>
   editReply: (target: ReplyTarget, markdown: string) => Promise<void>
+  /** Returns the target of the most recent `formatted` post, if any. Used by the orchestrator to populate `run.replyTarget`. */
+  lastReplyTarget?: () => ReplyTarget | undefined
 }>
 
 /** Result of `ChatProvider.renderContext` — describes how the handler should send the output. */
