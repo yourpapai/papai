@@ -22,6 +22,125 @@ const BroadcastSchema = z.object({ totalUsers: z.number(), successCount: z.numbe
 const GuardrailsViewSchema = z.object({
   guardrails: z.object({ whoMayUse: z.union([z.literal('members'), z.array(z.string())]) }),
 })
+const ToolDefaultsViewSchema = z.object({ activePreset: z.string().nullable(), hasStoredDefaults: z.boolean() })
+const ProviderCreateSchema = z.object({
+  provider: z.object({ id: z.string(), label: z.string(), apiKeyMasked: z.string() }),
+})
+const ProviderListSchema = z.object({ providers: z.array(z.object({ id: z.string(), label: z.string() })) })
+
+scenario(
+  'SCN-settings-admin-tool-defaults: a bot admin saves and reads back the default tool preset',
+  async ({ given, when, then }) => {
+    const alice = given.user('alice')
+    const bob = given.user('bob')
+    const admin = await given.settingsAdminSession(alice)
+    const memberSession = await when.settingsSession(bob)
+    const body = JSON.stringify({ kind: 'preset', preset: 'read-only' })
+
+    const unauthenticated = await when.request('/settings/api/admin/tool-defaults', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    })
+    then.responseStatus(unauthenticated, 401)
+
+    const forbidden = await when.settingsRequest(memberSession, '/settings/api/admin/tool-defaults', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    })
+    then.responseStatus(forbidden, 403)
+
+    const csrfRejected = await when.settingsRequest(
+      admin,
+      '/settings/api/admin/tool-defaults',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body },
+      { csrf: false },
+    )
+    then.responseStatus(csrfRejected, 403)
+
+    const saved = await when.settingsRequest(admin, '/settings/api/admin/tool-defaults', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    })
+    then.responseStatus(saved, 200)
+    expect(ToolDefaultsViewSchema.parse(await saved.json())).toMatchObject({
+      activePreset: 'read-only',
+      hasStoredDefaults: true,
+    })
+
+    const readback = await when.settingsRequest(admin, '/settings/api/admin/tool-defaults')
+    then.responseStatus(readback, 200)
+    expect(ToolDefaultsViewSchema.parse(await readback.json())).toMatchObject({
+      activePreset: 'read-only',
+      hasStoredDefaults: true,
+    })
+  },
+)
+
+scenario(
+  'SCN-settings-admin-providers: a super admin validates and reads back a system LLM provider',
+  async ({ given, when, then, world }) => {
+    const root = given.user('root')
+    const bob = given.user('bob')
+    const superAdmin = await given.settingsAdminSession(root, { superAdmin: true })
+    const memberSession = await when.settingsSession(bob)
+    const path = '/settings/api/admin/providers'
+    const body = JSON.stringify({
+      label: 'Scenario provider',
+      providerType: 'openai',
+      baseUrl: 'https://llm.invalid/v1',
+      apiKey: 'scenario-provider-key',
+    })
+
+    const unauthenticated = await when.request(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    })
+    then.responseStatus(unauthenticated, 401)
+
+    const forbidden = await when.settingsRequest(memberSession, path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    })
+    then.responseStatus(forbidden, 403)
+
+    const csrfRejected = await when.settingsRequest(
+      superAdmin,
+      path,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body },
+      { csrf: false },
+    )
+    then.responseStatus(csrfRejected, 403)
+
+    const invalid = await when.settingsRequest(superAdmin, path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label: '', providerType: 'nope' }),
+    })
+    then.responseStatus(invalid, 422)
+
+    world.http.expect({ method: 'GET', url: 'https://llm.invalid/v1/models' }, () =>
+      Response.json({ data: [{ id: 'scenario-model' }] }),
+    )
+    const created = await when.settingsRequest(superAdmin, path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    })
+    then.responseStatus(created, 200)
+    const provider = ProviderCreateSchema.parse(await created.json()).provider
+    expect(provider.label).toBe('Scenario provider')
+    expect(provider.apiKeyMasked).toStartWith('****')
+
+    const listed = await when.settingsRequest(superAdmin, path)
+    then.responseStatus(listed, 200)
+    expect(ProviderListSchema.parse(await listed.json()).providers.map((entry) => entry.id)).toContain(provider.id)
+  },
+)
 
 scenario(
   'SCN-settings-admin-guardrails: a guardrail saved through settings changes the advertised toolset',
