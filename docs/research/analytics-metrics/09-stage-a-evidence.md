@@ -92,6 +92,16 @@ aggregate publication.
   green serially: 10474 pass / 0 fail), `bun test:stories:contracts`,
   `bun test:stories`, `bun run format:check`, `bun security:ci`, `bun run knip`,
   `bun run duplicates`; `bun test:e2e` 66 pass / 0 fail
+- [x] Final whole-branch review (2026-07-28, base 9e6760773): verdict **With
+  fixes** — three Important findings closed in `a4f7d821e` (live-lane
+  normalization-rejection accounting wired to the bounded rejection store;
+  derive partition writes made transactional; no-turn facts produce
+  `turn_key = null` instead of a shared sentinel). All ~35 parked Minor
+  findings triaged: none block merge; deferred external-lane items captured
+  in the runbook's new **Stage B entry checklist** (`resolveSinkForSend`
+  egressMode matching, release-execution wiring, grantKey required-ness).
+  Post-fix gates: tests/analytics 1398 pass, privacy-contract + rollout-gates
+  green, typecheck/lint/knip clean.
 - [ ] Privacy/security owner signature on this evidence
 
 **Privacy/security owner signature:** ____________________  date: ________
