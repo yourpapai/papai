@@ -230,7 +230,7 @@ describe('W2 rerun pathway', () => {
   })
 
   describe('side-effects present (completedEffects non-empty)', () => {
-    test('does NOT regenerate (deferred to Task 11)', async () => {
+    test('does NOT immediately regenerate — Task 11 posts an ask-first prompt instead', async () => {
       const ctxId = scopedDm('w2-side-user')
       addUser({ userId: 'w2-side-user', platformInstanceId: PLATFORM_ID, addedBy: ADMIN_ID })
 

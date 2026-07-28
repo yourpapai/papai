@@ -9,6 +9,7 @@ import { routeInteraction } from '../../src/chat/interaction-router.js'
 import { askPermissionViaChat } from '../../src/chat/permission-prompt.js'
 import { resetPermissionPromptForTesting } from '../../src/chat/permission-prompt.testing.js'
 import type { AuthorizationResult, IncomingInteraction, ReplyFn } from '../../src/chat/types.js'
+import { registerEditPrompt, resetEditPromptStoreForTesting } from '../../src/message-edit/edit-prompt-store.js'
 import { createMockReply } from '../utils/test-helpers.js'
 
 const auth = (allowed: boolean, storageContextId = 'tg:u1'): AuthorizationResult => ({
@@ -61,8 +62,14 @@ async function createPendingPermissionId(contextId = 'tg:u1'): Promise<string> {
 }
 
 describe('routeInteraction (post-retirement)', () => {
-  beforeEach(() => resetPermissionPromptForTesting())
-  afterEach(() => resetPermissionPromptForTesting())
+  beforeEach(() => {
+    resetPermissionPromptForTesting()
+    resetEditPromptStoreForTesting()
+  })
+  afterEach(() => {
+    resetPermissionPromptForTesting()
+    resetEditPromptStoreForTesting()
+  })
 
   test('rejects an unauthorized interaction', async () => {
     const { reply, getReplies } = createMockReply()
@@ -256,5 +263,90 @@ describe('routeInteraction (post-retirement)', () => {
     expect(handled).toBe(true)
     expect(spyHandle.remove.mock.calls).toHaveLength(0)
     expect(replacements).toEqual(['Run `delete_task`?\n\nDenied delete_task 🚫'])
+  })
+
+  test('routes edit:adjust to the registered edit-adjust handler', async () => {
+    const { reply } = createMockReply()
+    let adjusted = false
+    let noted = false
+    registerEditPrompt('e1', {
+      contextId: 'tg:u1',
+      editedText: 'x',
+      onAdjust: () => {
+        adjusted = true
+      },
+      onNote: () => {
+        noted = true
+      },
+    })
+
+    const handled = await routeInteraction(interaction('edit:adjust:e1'), reply, auth(true))
+
+    expect(handled).toBe(true)
+    expect(adjusted).toBe(true)
+    expect(noted).toBe(false)
+  })
+
+  test('routes edit:note to the registered edit-note handler', async () => {
+    const { reply } = createMockReply()
+    let adjusted = false
+    let noted = false
+    registerEditPrompt('e2', {
+      contextId: 'tg:u1',
+      editedText: 'x',
+      onAdjust: () => {
+        adjusted = true
+      },
+      onNote: () => {
+        noted = true
+      },
+    })
+
+    const handled = await routeInteraction(interaction('edit:note:e2'), reply, auth(true))
+
+    expect(handled).toBe(true)
+    expect(adjusted).toBe(false)
+    expect(noted).toBe(true)
+  })
+
+  test('reports missing edit prompts as unavailable', async () => {
+    const { reply, getReplies } = createMockReply()
+
+    const handled = await routeInteraction(interaction('edit:adjust:missing'), reply, auth(true))
+
+    expect(handled).toBe(true)
+    expect(getReplies()[0]).toContain('Action is no longer available')
+  })
+
+  test('does not resolve edit callbacks from another context', async () => {
+    const { reply, getReplies } = createMockReply()
+    let adjusted = false
+    registerEditPrompt('e3', {
+      contextId: 'ctx-a',
+      editedText: 'x',
+      onAdjust: () => {
+        adjusted = true
+      },
+      onNote: () => {},
+    })
+
+    const handled = await routeInteraction(interaction('edit:adjust:e3', 'ctx-b'), reply, auth(true, 'ctx-b'))
+
+    expect(handled).toBe(true)
+    expect(getReplies()[0]).toContain('Action is no longer available')
+    expect(adjusted).toBe(false)
+    // The cross-context probe must not delete the entry — same-context retry still works.
+    let noted = false
+    const sameCtxReply = createMockReply()
+    registerEditPrompt('e3', {
+      contextId: 'ctx-a',
+      editedText: 'x',
+      onAdjust: () => {},
+      onNote: () => {
+        noted = true
+      },
+    })
+    await routeInteraction(interaction('edit:note:e3', 'ctx-a'), sameCtxReply.reply, auth(true, 'ctx-a'))
+    expect(noted).toBe(true)
   })
 })
