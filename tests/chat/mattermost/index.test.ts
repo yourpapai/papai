@@ -1218,6 +1218,97 @@ describe('MattermostChatProvider', () => {
       expect(result).toBeUndefined()
     })
   })
+
+  describe('post_updated event handling', () => {
+    type WsHandler = (event: MessageEvent) => Promise<void>
+
+    function isWsHandler(value: unknown): value is WsHandler {
+      return typeof value === 'function'
+    }
+
+    function getWsHandler(instance: MattermostChatProvider): WsHandler {
+      const handler = Reflect.get(instance, 'handleWsMessage') as unknown
+      if (!isWsHandler(handler)) throw new Error('Expected Mattermost handleWsMessage')
+      return handler
+    }
+
+    function buildWsMessage(event: string, data: Record<string, unknown>): MessageEvent {
+      return new MessageEvent('message', { data: JSON.stringify({ event, data }) })
+    }
+
+    function dispatchWs(instance: MattermostChatProvider, event: string, data: Record<string, unknown>): Promise<void> {
+      return getWsHandler(instance).call(instance, buildWsMessage(event, data))
+    }
+
+    test('routes post_updated WS event to onMessageEdit with editedAt and stable messageId', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+      provider = createMattermostProvider()
+
+      const edits: Array<{ text: string; messageId: string | undefined; editedAt: number | undefined }> = []
+      provider.onMessageEdit?.((msg) => {
+        edits.push({ text: msg.text, messageId: msg.messageId, editedAt: msg.editedAt })
+        return Promise.resolve()
+      })
+
+      await dispatchWs(provider, 'post_updated', {
+        post: JSON.stringify({
+          id: 'post-edit-1',
+          message: 'edited text',
+          user_id: 'user-1',
+          channel_id: 'chan-1',
+        }),
+        sender_name: 'alice',
+      })
+
+      expect(edits).toHaveLength(1)
+      expect(edits[0]?.text).toBe('edited text')
+      expect(edits[0]?.messageId).toBe('post-edit-1')
+      expect(edits[0]?.editedAt).toBeGreaterThan(0)
+
+      restoreFetch()
+    })
+
+    test('ignores post_updated events for the bot own posts (e.g. live-status edits)', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+      provider = createMattermostProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUserId = 'bot-user'
+
+      let editCalled = false
+      provider.onMessageEdit?.(() => {
+        editCalled = true
+        return Promise.resolve()
+      })
+
+      await dispatchWs(provider, 'post_updated', {
+        post: JSON.stringify({
+          id: 'post-edit-self',
+          message: 'bot edits its own live-status',
+          user_id: 'bot-user',
+          channel_id: 'chan-1',
+        }),
+      })
+
+      expect(editCalled).toBe(false)
+      restoreFetch()
+    })
+
+    test('never throws on missing or invalid post payload and skips delivery', async () => {
+      provider = createMattermostProvider()
+
+      let editCalled = false
+      provider.onMessageEdit?.(() => {
+        editCalled = true
+        return Promise.resolve()
+      })
+
+      await dispatchWs(provider, 'post_updated', {})
+      await dispatchWs(provider, 'post_updated', { post: 'not-json' })
+      await dispatchWs(provider, 'post_updated', { post: JSON.stringify({ foo: 'bar' }) })
+
+      expect(editCalled).toBe(false)
+    })
+  })
 })
 
 describe('fetchMattermostFiles', () => {
