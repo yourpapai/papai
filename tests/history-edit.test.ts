@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import type { ModelMessage } from 'ai'
 
-import { appendHistory, applyEditToHistory, loadHistory } from '../src/history.js'
+import { appendHistory, applyEditToHistory, loadHistory, trimTurnForRegeneration } from '../src/history.js'
 import type { MessageSegment } from '../src/message-edit/segments.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
@@ -140,5 +140,101 @@ describe('applyEditToHistory', () => {
     const users = history.filter((m) => m.role === 'user')
     expect(users[0]!.content).toBe('rewritten')
     expect(users[1]!.content).toBe('b-text')
+  })
+})
+
+describe('trimTurnForRegeneration', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  test('trims the originating user message, its assistant reply, and trailing tool messages', () => {
+    const userMsg = {
+      role: 'user',
+      content: 'hello',
+      providerOptions: {
+        papai: {
+          messageIds: ['m1'],
+          segments: [{ messageId: 'm1', text: 'hello', username: null }],
+          isThread: false,
+          isDm: true,
+        },
+      },
+    } as ModelMessage
+    const assistant = { role: 'assistant', content: 'old answer' } as ModelMessage
+    const toolMsg = { role: 'tool', content: [] } as ModelMessage
+    appendHistory('ctx-trim', [userMsg, assistant, toolMsg])
+
+    const trimmed = trimTurnForRegeneration('ctx-trim', 'm1')
+
+    expect(trimmed).toBe(true)
+    expect(loadHistory('ctx-trim')).toEqual([])
+  })
+
+  test('preserves earlier turns and trims only the trailing turn', () => {
+    const turnA = {
+      role: 'user',
+      content: 'a',
+      providerOptions: {
+        papai: {
+          messageIds: ['m1'],
+          segments: [{ messageId: 'm1', text: 'a', username: null }],
+          isThread: false,
+          isDm: true,
+        },
+      },
+    } as ModelMessage
+    const asstA = { role: 'assistant', content: 'A' } as ModelMessage
+    const turnB = {
+      role: 'user',
+      content: 'b',
+      providerOptions: {
+        papai: {
+          messageIds: ['m2'],
+          segments: [{ messageId: 'm2', text: 'b', username: null }],
+          isThread: false,
+          isDm: true,
+        },
+      },
+    } as ModelMessage
+    const asstB = { role: 'assistant', content: 'B' } as ModelMessage
+    appendHistory('ctx-multi', [turnA, asstA, turnB, asstB])
+
+    const trimmed = trimTurnForRegeneration('ctx-multi', 'm2')
+
+    expect(trimmed).toBe(true)
+    const history = loadHistory('ctx-multi')
+    expect(history.length).toBe(2)
+    expect(history[0]!.content).toBe('a')
+    expect(history[1]!.content).toBe('A')
+  })
+
+  test('no-op (returns false) when messageId is absent from all turns', () => {
+    const userMsg = {
+      role: 'user',
+      content: 'hello',
+      providerOptions: {
+        papai: {
+          messageIds: ['m1'],
+          segments: [{ messageId: 'm1', text: 'hello', username: null }],
+          isThread: false,
+          isDm: true,
+        },
+      },
+    } as ModelMessage
+    appendHistory('ctx-miss', [userMsg])
+
+    const trimmed = trimTurnForRegeneration('ctx-miss', 'missing')
+
+    expect(trimmed).toBe(false)
+    expect(loadHistory('ctx-miss').length).toBe(1)
+  })
+
+  test('no-op on legacy user turn without providerOptions.papai', () => {
+    appendHistory('ctx-legacy', [{ role: 'user', content: 'plain' } as ModelMessage])
+
+    expect(trimTurnForRegeneration('ctx-legacy', 'm1')).toBe(false)
+    expect(loadHistory('ctx-legacy').length).toBe(1)
   })
 })

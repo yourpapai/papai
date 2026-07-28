@@ -84,3 +84,41 @@ export function applyEditToHistory(contextId: string, messageId: string, newText
   log.info({ contextId, messageId }, 'applyEditToHistory: user turn rewritten')
   return true
 }
+
+/**
+ * Remove the trailing completed turn whose originating user message carries
+ * `messageId` (looked up via `providerOptions.papai.messageIds`, same key as
+ * `applyEditToHistory`) and every message after it — the assistant reply plus
+ * any interleaved `tool` / `tool-result` messages belonging to that turn — so a
+ * W2 regeneration can re-create the turn cleanly. Without this, `processMessage`
+ * would append a *second* user turn onto history whose trailing turn was already
+ * rewritten in place by `applyEditToHistory`, duplicating the user message and
+ * leaving the stale assistant reply.
+ *
+ * Returns `false` (no-op, never throws) when no turn carries `messageId`.
+ * Persists via `saveHistory` (in-memory cache + background DB sync).
+ */
+export function trimTurnForRegeneration(contextId: string, messageId: string): boolean {
+  const history = [...loadHistory(contextId)]
+  let originIndex = -1
+  for (let i = history.length - 1; i >= 0; i--) {
+    const msg = history[i]!
+    if (msg.role !== 'user') continue
+    const meta = papaiMeta(msg)
+    if (meta !== undefined && meta.messageIds.includes(messageId)) {
+      originIndex = i
+      break
+    }
+  }
+  if (originIndex === -1) {
+    log.debug({ contextId, messageId }, 'trimTurnForRegeneration: originating user message not found')
+    return false
+  }
+  const trimmed = history.slice(0, originIndex)
+  saveHistory(contextId, trimmed)
+  log.info(
+    { contextId, messageId, removedCount: history.length - trimmed.length },
+    'trimTurnForRegeneration: trailing turn removed for regeneration',
+  )
+  return true
+}

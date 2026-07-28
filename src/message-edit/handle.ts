@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { and, eq, gt } from 'drizzle-orm'
+import { and, eq, gt, ne } from 'drizzle-orm'
 
 import type { StagedFileDownloadFn } from '../attachments/types.js'
 import { resolveMessageAuth, shouldIgnoreGroupMessage } from '../bot-guards.js'
@@ -29,12 +29,24 @@ const log = logger.child({ scope: 'message-edit' })
  * strictly after `beforeTimestamp`. Backs the W2-vs-W3 decision: a later user
  * turn means the edited message is no longer the "last" one and a W2 rerun
  * would only re-derive a stale reply.
+ *
+ * `editedId` is excluded explicitly so the query is correct by construction
+ * regardless of write-ordering: the just-upserted edited row never counts as a
+ * "later user message" (which would silently flip every W2 to W3). Without this,
+ * the call site relies on `cacheObservedIncomingMessage`'s microtask-deferred
+ * upsert not having flushed before the query — a single `await` would break it.
  */
-function laterUserMessageExists(contextId: string, beforeTimestamp: number): boolean {
+function laterUserMessageExists(contextId: string, beforeTimestamp: number, editedId: string): boolean {
   const row = getDrizzleDb()
     .select({ messageId: messageMetadata.messageId })
     .from(messageMetadata)
-    .where(and(eq(messageMetadata.contextId, contextId), gt(messageMetadata.timestamp, beforeTimestamp)))
+    .where(
+      and(
+        eq(messageMetadata.contextId, contextId),
+        gt(messageMetadata.timestamp, beforeTimestamp),
+        ne(messageMetadata.messageId, editedId),
+      ),
+    )
     .limit(1)
     .get()
   return row !== undefined
@@ -91,7 +103,7 @@ export async function onIncomingEdit(
   const activeRun = runRegistry.get(auth.storageContextId)
   const lastTurn = lastTurnRegistry.get(auth.storageContextId)
   const beforeTs = prior?.timestamp ?? 0
-  const later = laterUserMessageExists(auth.storageContextId, beforeTs)
+  const later = laterUserMessageExists(auth.storageContextId, beforeTs, msg.messageId)
   const window = classifyEdit({
     editedMessageId: msg.messageId,
     activeRun,

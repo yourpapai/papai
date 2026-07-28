@@ -6,6 +6,7 @@
 import { randomUUID } from 'node:crypto'
 
 import type { AuthorizationResult, IncomingMessage, PromptHandle, ReplyFn } from '../chat/types.js'
+import { trimTurnForRegeneration } from '../history.js'
 import { defaultDeps } from '../llm-orchestrator.js'
 import { logger } from '../logger.js'
 import type { LastTurn } from '../run-control/last-turn-registry.js'
@@ -44,6 +45,14 @@ export async function regenerateFromEditedText(
     ...defaultDeps,
     ...(deps.stagedDownloadFn === undefined ? {} : { stagedDownloadFn: deps.stagedDownloadFn }),
     ...(deps.chatParticipantResolver === undefined ? {} : { chatParticipantResolver: deps.chatParticipantResolver }),
+  }
+  // `applyEditToHistory` (run in `onIncomingEdit`) rewrote the originating user
+  // turn in place; drop that rewritten turn + its trailing assistant/tool
+  // messages so `processMessage` re-creates the turn fresh instead of appending
+  // a duplicate user message onto the stale reply. W1/W3 are unaffected: this
+  // only runs in the regen path.
+  if (msg.messageId !== undefined) {
+    trimTurnForRegeneration(auth.storageContextId, msg.messageId)
   }
   await processMessage(
     reply,
