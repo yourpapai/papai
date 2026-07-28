@@ -127,22 +127,7 @@ export default {
     // listRoutes is consumed by the behavior-audit closure verifier via
     // dynamic import; re-exported from src/debug/server.ts.
     'src/debug/server-route-options.ts': ['exports'],
-    // applyEditToHistory is the public edit-application entry; the chat-layer
-    // dispatch that calls it lands in task 8 of the message-edit-handling plan
-    // (.superpowers/sdd/task-4-brief.md references Task 8's role). Temporary
-    // unused-export gap.
-    'src/history.ts': ['exports'],
   },
-
-  // `ignoreFiles` (not `ignoreIssues: ['files']`) is knip's documented knob for
-  // the "Unused files" section: it keeps the file analyzed for exports/types
-  // while excluding it from the project-minus-entry unused-file set.
-  ignoreFiles: [
-    // classifyEdit is the pure window classifier produced by task 6 of the
-    // message-edit-handling plan; the chat-layer dispatch in task 8 is its
-    // first static importer. Temporary unused-file gap.
-    'src/message-edit/classify.ts',
-  ],
 
   includeEntryExports: true,
   treatConfigHintsAsErrors: true,

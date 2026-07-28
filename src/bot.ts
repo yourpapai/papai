@@ -8,6 +8,7 @@ import { checkAuthorizationExtended, getThreadScopedStorageContextId } from './a
 import { findVoiceStagedIds, resolveMessageAttachments, stageGroupFileCandidates } from './bot-attachments.js'
 import { processCoalescedMessage } from './bot-coalesced-processing.js'
 import { recordGroupObservation } from './bot-group-observation.js'
+import { resolveMessageAuth, shouldIgnoreGroupMessage } from './bot-guards.js'
 import { cacheObservedIncomingMessage } from './bot-message-caching.js'
 import { emitReplyCompletedIfNeeded, trackReplyUsage } from './bot-reply-tracking.js'
 import { replyToUnauthorized } from './bot-unauthorized-reply.js'
@@ -32,6 +33,7 @@ import { emitUser } from './debug/event-bus.js'
 import type { ProcessMessageFn } from './llm-orchestrator-process-args.js'
 import { processMessage as defaultProcessMessage } from './llm-orchestrator.js'
 import { logger } from './logger.js'
+import { onIncomingEdit } from './message-edit/handle.js'
 import { enqueueMessage } from './message-queue/index.js'
 import { registerPluginCommands } from './plugins/command-contributions.js'
 import { buildPromptWithReplyContext } from './reply-context.js'
@@ -49,17 +51,6 @@ export type BotDeps = Readonly<{ processMessage: ProcessMessageFn }> &
 const defaultBotDeps: BotDeps = { processMessage: defaultProcessMessage, enqueueMessage }
 const log = logger.child({ scope: 'bot' })
 export { checkAuthorizationExtended, getThreadScopedStorageContextId }
-function resolveMessageAuth(msg: IncomingMessage): AuthorizationResult {
-  return checkAuthorizationExtended(
-    msg.user.id,
-    msg.user.username,
-    msg.contextId,
-    msg.contextType,
-    msg.threadId,
-    msg.user.isAdmin,
-    msg.platformInstanceId,
-  )
-}
 // A denied DM user who can manage a group (auth.configCommandAllowed) is still
 // allowed to launch the settings UI via /config, but nothing else.
 function isConfigLaunchBypass(commandName: string, auth: AuthorizationResult): boolean {
@@ -120,11 +111,6 @@ function registerCommands(chat: ChatProvider, adminUserId: string): void {
   registerDashboardCommand(observedChat)
   registerStopCommand(observedChat)
   registerPluginCommands(observedChat)
-}
-function shouldIgnoreGroupMessage(msg: IncomingMessage): boolean {
-  if (msg.contextType !== 'group') return false
-  if (msg.commandMatch !== undefined && msg.commandMatch !== '') return false
-  return !msg.isMentioned && msg.isReplyToBot !== true
 }
 async function handleMessage(
   chat: ChatProvider,
@@ -223,14 +209,6 @@ async function onIncomingMessage(
   await handleMessage(chat, msg, tracked.reply, auth, deps)
   if (!willQueueAuthorizedMessage(msg, auth))
     emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
-}
-async function onIncomingEdit(
-  _chat: ChatProvider,
-  _msg: IncomingMessage,
-  _reply: ReplyFn,
-  _deps: BotDeps,
-): Promise<void> {
-  // implemented in Task 8
 }
 async function routeIncomingInteraction(interaction: IncomingInteraction, reply: ReplyFn): Promise<void> {
   try {
