@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import {
   closeEpoch,
+  createControlledOverflowBinding,
   getEpochState,
   incrementEpochSourceCounter,
   markOpenEpochsStaleOnStartup,
@@ -70,5 +71,21 @@ describe('analytics epoch storage', () => {
     openEpoch({ epochId: TEST_EPOCH_ID, startedAtMs: 1700000000000 }, { getDrizzleDb: () => db })
     closeEpoch({ epochId: TEST_EPOCH_ID, closedAtMs: 1700000000001 }, { getDrizzleDb: () => db })
     expect(() => requireOpenEpoch({ epochId: TEST_EPOCH_ID }, { getDrizzleDb: () => db })).toThrow()
+  })
+
+  test('the controlled overflow binding increments the exact epoch-bound overflow counter', () => {
+    openEpoch({ epochId: TEST_EPOCH_ID, startedAtMs: 1700000000000 }, { getDrizzleDb: () => db })
+    const onControlledOverflow = createControlledOverflowBinding({ epochId: TEST_EPOCH_ID }, { getDrizzleDb: () => db })
+    onControlledOverflow('2026-01-01')
+    onControlledOverflow('2026-01-01')
+    const rows = db.select().from(schema.analyticsEpochSourceCounters).all()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      epochId: TEST_EPOCH_ID,
+      utcDay: '2026-01-01',
+      sourceFamily: 'chat',
+      disposition: 'controlled_overflow',
+      value: 2,
+    })
   })
 })

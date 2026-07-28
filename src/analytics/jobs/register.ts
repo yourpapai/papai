@@ -88,14 +88,16 @@ export type AnalyticsJobDeps = Readonly<{
 /**
  * Registers the nine bounded analytics jobs on the shared scheduler.
  * Registration is additive (provider poller/recurring tasks are untouched)
- * and idempotent across runtime restarts: a fully registered set is never
- * duplicated. All kill-switch/mode checks happen at job entry, so a mode
- * change while a job is queued exits before any actor data is read.
+ * and idempotent per spec: already-registered jobs are skipped individually,
+ * so a partially registered set (a crash mid-registration) is completed on
+ * re-registration instead of being stranded by a first-name guard. All
+ * kill-switch/mode checks happen at job entry, so a mode change while a job
+ * is queued exits before any actor data is read.
  */
 export const registerAnalyticsJobs = (scheduler: Scheduler, deps: AnalyticsJobDeps): void => {
-  if (scheduler.hasTask(ANALYTICS_JOB_SPECS[0]?.name ?? 'analytics-aggregate-flush')) return
   const handlers = createAnalyticsJobHandlers(deps)
   for (const spec of ANALYTICS_JOB_SPECS) {
+    if (scheduler.hasTask(spec.name)) continue
     const handler = handlers[spec.name]
     if ('intervalMs' in spec) scheduler.register(spec.name, { interval: spec.intervalMs, handler })
     else scheduler.register(spec.name, { cron: spec.cron, handler })

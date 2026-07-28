@@ -157,6 +157,24 @@ export const incrementEpochSourceCounter = (
   log.debug({ ...input, value }, 'epoch source counter incremented')
 }
 
+/**
+ * Production binding for the runtime observer's controlled-overflow hook: a
+ * queue-full drop increments the exact `controlled_overflow` source counter
+ * on the open process epoch (durable), in addition to the process-global
+ * health signal.
+ */
+export const createControlledOverflowBinding = (
+  input: { epochId: string },
+  deps: EpochStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
+): ((utcDay: string) => void) => {
+  return (utcDay) => {
+    incrementEpochSourceCounter(
+      { epochId: input.epochId, utcDay, sourceFamily: 'chat', disposition: 'controlled_overflow' },
+      deps,
+    )
+  }
+}
+
 export type ProcessEpochSummary = Readonly<{
   epochId: string
   state: EpochState

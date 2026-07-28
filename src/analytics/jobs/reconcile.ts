@@ -177,44 +177,57 @@ const reconcileDeliveries = (db: Db, activeGeneration: string): DeliveryReport =
   }
 }
 
+/**
+ * Hourly reconciliation. The apply phase (restart-gap status writes) is a
+ * mutable phase, so it holds a cutover-fence admission under the backfill
+ * writer class (the class that owns aggregate-bucket writes) for the whole
+ * run: a mid-run cutover acquisition cannot drain past reconcile, and a
+ * fence already held at entry skips the apply phase cleanly (read-only
+ * report, no throw, no admission).
+ */
 export const runReconciliation = (
   input: Readonly<{ nowMs: number; apply: boolean }>,
   deps: ReconcileDeps = { getDrizzleDb: defaultGetDrizzleDb },
 ): ReconciliationReport => {
-  const fenceHeld = deps.fence?.isFenceHeld() ?? false
-  if (input.apply && fenceHeld) {
+  const admission = input.apply && deps.fence !== undefined ? deps.fence.admit('backfill') : null
+  const fenceBlocked = input.apply && deps.fence !== undefined && admission === null
+  if (fenceBlocked) {
     log.warn('reconciliation apply phase skipped: the cutover fence is held')
   }
-  const effectiveInput = { nowMs: input.nowMs, apply: input.apply && !fenceHeld }
-  const db = deps.getDrizzleDb()
-  const activeGeneration = resolveActive({ getDrizzleDb: deps.getDrizzleDb }).generation
-  const durable = reconcileDurableUsage(db, activeGeneration)
-  const liveEpochs = listProcessEpochs({ getDrizzleDb: deps.getDrizzleDb }).map((epoch) =>
-    reconcileEpoch(db, epoch, activeGeneration, effectiveInput),
-  )
-  const delivery = reconcileDeliveries(db, activeGeneration)
-  const eventsByName: Record<string, number> = {}
-  const eventsByAttributionQuality: Record<string, number> = {}
-  for (const event of db.select().from(analyticsEvents).all()) {
-    if (event.storageGeneration !== activeGeneration) continue
-    bump(eventsByName, event.eventName)
-    bump(eventsByAttributionQuality, event.attributionQuality)
-  }
-  const hasDelta =
-    durable.unexplainedDeltaTotal > 0 ||
-    durable.associationViolations > 0 ||
-    liveEpochs.some((epoch) => epoch.status === 'delta') ||
-    !delivery.conserved
-  const hasGap = liveEpochs.some((epoch) => epoch.status === 'unreconciled_restart_gap')
-  const status = hasDelta ? 'delta' : hasGap ? 'gap' : 'reconciled'
-  log.info({ status, unexplainedDelta: durable.unexplainedDeltaTotal }, 'reconciliation completed')
-  return {
-    status,
-    durableUsage: durable,
-    liveEpochs,
-    delivery,
-    associationViolations: durable.associationViolations,
-    eventsByName,
-    eventsByAttributionQuality,
+  const effectiveInput = { nowMs: input.nowMs, apply: input.apply && !fenceBlocked }
+  try {
+    const db = deps.getDrizzleDb()
+    const activeGeneration = resolveActive({ getDrizzleDb: deps.getDrizzleDb }).generation
+    const durable = reconcileDurableUsage(db, activeGeneration)
+    const liveEpochs = listProcessEpochs({ getDrizzleDb: deps.getDrizzleDb }).map((epoch) =>
+      reconcileEpoch(db, epoch, activeGeneration, effectiveInput),
+    )
+    const delivery = reconcileDeliveries(db, activeGeneration)
+    const eventsByName: Record<string, number> = {}
+    const eventsByAttributionQuality: Record<string, number> = {}
+    for (const event of db.select().from(analyticsEvents).all()) {
+      if (event.storageGeneration !== activeGeneration) continue
+      bump(eventsByName, event.eventName)
+      bump(eventsByAttributionQuality, event.attributionQuality)
+    }
+    const hasDelta =
+      durable.unexplainedDeltaTotal > 0 ||
+      durable.associationViolations > 0 ||
+      liveEpochs.some((epoch) => epoch.status === 'delta') ||
+      !delivery.conserved
+    const hasGap = liveEpochs.some((epoch) => epoch.status === 'unreconciled_restart_gap')
+    const status = hasDelta ? 'delta' : hasGap ? 'gap' : 'reconciled'
+    log.info({ status, unexplainedDelta: durable.unexplainedDeltaTotal }, 'reconciliation completed')
+    return {
+      status,
+      durableUsage: durable,
+      liveEpochs,
+      delivery,
+      associationViolations: durable.associationViolations,
+      eventsByName,
+      eventsByAttributionQuality,
+    }
+  } finally {
+    admission?.release()
   }
 }

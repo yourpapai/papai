@@ -264,6 +264,18 @@ describe('analytics job registration', () => {
     unregisterAnalyticsJobs(scheduler)
   })
 
+  test('a partially registered set is completed per-spec on re-registration', () => {
+    const scheduler = createScheduler()
+    const deps = makeDeps(db)
+    scheduler.register('analytics-aggregate-flush', { interval: 60_000, handler: () => undefined })
+    scheduler.register('analytics-usage-highwater', { interval: 300_000, handler: () => undefined })
+    scheduler.register('analytics-intent-scan', { interval: 300_000, handler: () => undefined })
+    expect(() => registerAnalyticsJobs(scheduler, deps)).not.toThrow()
+    expect(ANALYTICS_JOB_NAMES.filter((name) => scheduler.hasTask(name))).toHaveLength(ANALYTICS_JOB_NAMES.length)
+    unregisterAnalyticsJobs(scheduler)
+    for (const name of ANALYTICS_JOB_NAMES) expect(scheduler.hasTask(name)).toBe(false)
+  })
+
   test('kill switch and mode gates are checked at job entry before any actor read', async () => {
     const { overrides, calls } = overrideSpies()
     const deps = makeDeps(db, { overrides, snapshotPath: () => '/tmp/papai-registration-snap.db' })
