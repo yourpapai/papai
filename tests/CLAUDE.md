@@ -126,6 +126,14 @@ When DI is not available and module evaluation order matters:
 - Run E2E with `bun test:e2e`.
 - The Docker-backed Kaneo harness is **Tier 1: Provider-Real E2E**. Tier 0 does not replace it; provider-real tests remain responsible for Kaneo/container/API behavior.
 - Every catalog record carries a **proving tier** — the lowest tier that can prove the behavior — in `tests/stories/catalog/coverage.ts`. Executable records may only claim a tier in `LIVE_STORY_TIERS`, and their story ids must sit under that tier's `TIER_SUITE_ROOTS` prefix. Seam-pending records name the tier that unblocks them; `blocked:missing-implementation` records name none, because no tier reaches them. The runner prints per-tier totals on every run.
+- The catalog is **bidirectional**. Alongside the forward check (every record points at a
+  real story), a census asserts the reverse: every story scenario a lane declares is either
+  claimed by a record or listed in `tests/stories/catalog/supporting.ts` with a rationale.
+  Tier 0 observes `scenario(...)` calls, Tier 1 observes `PARITY_GROUPS`, and Tiers 2/3
+  observe `title(...)` markers in glob-discovered `.smoke.ts` / `.platform.ts` files —
+  which also fails any test that bypasses the `title()` helper. Writing a story therefore
+  requires a catalog decision at authoring time; an uncataloged scenario fails
+  `bun test:stories:contracts` (T0/T1) or the default `bun test` lane (T2/T3).
 - The 0Q compatibility proof is Tier 0 only. Higher tiers are regression lanes and never gate a refactor qualification. Canonical tier definitions: `docs/superpowers/specs/2026-07-23-tier-expansion-roadmap-design.md`.
 - Prefer `KaneoTestClient` for new resource-management-heavy suites.
 - Track resources created outside the test client with `testClient.trackTask(...)` or the matching tracker helper when the suite uses `KaneoTestClient`.
