@@ -54,6 +54,16 @@ The spec deferred one classification to the plan. It is now resolved:
 
 Arithmetic check: 16 new records cover 17 stories (one record holds two), plus 2 attached = 19 orphans resolved. 111 + 19 = 130 = total observed.
 
+> **Corrected during execution — this table is Tier 0 only.** It was derived from a
+> Tier-0 orphan analysis that assumed the container lanes were already clean. They were
+> not: on its first run, Task 7's Tier 3 census caught a real pre-existing bypass in
+> `tests/platform/scenarios/mattermost-http-action.platform.ts` — a second test titled
+> with a string literal instead of the `title()` helper, so it bypassed the registry and
+> no record claimed it. It was minted as `SCN-http-mattermost-action-bad-signature`
+> (proving tier 3). **The true end state is `CATALOG_SCENARIO_IDS` 192, executable 167,
+> Tier 3 executable 3.** Every `191` / `166` / `T3 2` below is one short; the Tier 0
+> figures (127, 130) are unaffected. This is the census working as designed, not drift.
+
 ## File Structure
 
 **Create:**
