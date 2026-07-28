@@ -109,10 +109,25 @@ A committed per-file baseline of mutation scores backs a monotonic ratchet:
   regression-only, so the overall score ratchets upward as files improve without
   blocking routine work on currently-low-scoring or newly-added code. Disable
   with `--no-ratchet`.
-- **Master ratchet** (`test:mutate --update-baseline`): after a full run,
-  rewrites `baseline.json` keeping the per-file max with the existing baseline,
-  so the recorded floor only ever goes up (or stays the same). The CI
-  `mutation-baseline` job runs this on push to `master` and commits the result.
+- **Master seed** (`test:mutate:changed --base=HEAD~1 --update-baseline`): on
+  push to `master`, the CI `mutation-baseline` job measures the files changed
+  since the previous master commit and merges them into `baseline.json` via
+  `seedMerge`, which takes the per-key max and PRESERVES existing entries
+  (unlike the full-run `ratchetMerge`, which drops keys no longer in scope).
+  First-touch files — new or never-baselined — get seeded after merge, so the
+  baseline accumulates floors for every touched file over time. The committed
+  baseline is the floor the PR gate enforces.
 
 Re-generate the baseline from scratch (discards history) by deleting
-`scripts/mutation/baseline.json` and running `bun test:mutate --update-baseline`.
+`scripts/mutation/baseline.json` and running `bun test:mutate --update-baseline`
+(a full run; its `ratchetMerge` drops keys no longer in scope, which is what you
+want when rebuilding).
+
+### Migration (one-time catch-up)
+
+The first master run after the changed-files seed shipped measures and seeds
+every recently-changed unbaselined file at once — expect a large one-time
+`baseline.json` diff; this is expected and correct. Existing companion-only
+baseline entries (measured against the companion test set alone, often an
+undercount) ratchet upward as their files are re-measured on later master runs
+with coverage-derived test sets.

@@ -598,9 +598,11 @@ via `scripts/mutation/coverage-map.ts`, with the companion as fallback). The CI
 **blocking per-file ratchet** on PRs: a changed file fails only if it has a
 recorded entry in `scripts/mutation/baseline.json` and its score drops below it;
 files with no recorded entry (new or never-baselined) are not regressions. The
-`mutation-baseline` job ratchets the baseline upward
-(per-file max) on push to `master`. See `scripts/mutation/README.md` for flags
-(`--no-ratchet`) and the override/companion resolution.
+`mutation-baseline` job seeds the baseline from files changed since the previous
+master commit (`test:mutate:changed --base=HEAD~1 --update-baseline`; broad
+scope, `seedMerge` preserves existing entries — not a full run) on push to
+`master`. See `scripts/mutation/README.md` for flags (`--no-ratchet`), the
+override/companion resolution, and the one-time migration catch-up note.
 
 ---
 

@@ -234,7 +234,7 @@ jobs:
           retention-days: 14
 
   mutation-baseline:
-    name: Mutation Testing (full ratchet)
+    name: Mutation Testing (changed-files baseline seed)
     runs-on: ubuntu-latest
     # On master merge: seed scripts/mutation/baseline.json with mutation scores for
     # changed files (broad scope) using seedMerge; existing entries are preserved
