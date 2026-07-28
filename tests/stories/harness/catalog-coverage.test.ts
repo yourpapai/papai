@@ -32,6 +32,10 @@ function isNeitherIdSet(scenarioId: string, firstIds: ReadonlySet<string>, secon
   return !firstIds.has(scenarioId) && !secondIds.has(scenarioId)
 }
 
+function isCensusScenarioId(scenarioId: string): boolean {
+  return scenarioId.startsWith('SCN-settings-api-') || scenarioId === 'SCN-settings-task-instance-assignment'
+}
+
 function resolveStoryContractRoot(harnessDirectory: string): string {
   return nodePath.resolve(harnessDirectory, '../../..')
 }
@@ -75,6 +79,12 @@ const ACP_CATALOG_STORY_IDS = {
   'SCN-coding-acp-guest-denied':
     'tests/stories/integrations/coding-sessions/module-qualification.story.test.ts#SCN-coding-acp-guest-denied: hides session start from a guest group turn',
   'SCN-coding-acp-command': ACP_COMMAND_STORY_ID,
+  'SCN-coding-acp-mcp-fail-closed':
+    'tests/stories/integrations/coding-sessions/acp-mcp.story.test.ts#an unresolved MCP selection fails closed before Magi session startup',
+  'SCN-coding-acp-upstream-failure':
+    'tests/stories/integrations/coding-sessions/module-qualification.story.test.ts#configured ACP upstream failure does not persist a session or expose credentials',
+  'SCN-coding-acp-tool-eligibility':
+    'tests/stories/integrations/runtime-extensions/tool-eligibility.story.test.ts#runtime extension ACP tool is offered and executed only in its eligible context',
 } as const
 
 const pendingCoverage = catalogCoverage.filter((coverage) => coverage.kind === 'pending')
@@ -115,8 +125,8 @@ describe('scenario catalog coverage', () => {
   test('classifies every catalog scenario exactly once', () => {
     const ledgerIds = catalogCoverage.map(({ scenarioId }) => scenarioId)
 
-    expect(CATALOG_SCENARIO_IDS).toHaveLength(185)
-    expect(new Set(CATALOG_SCENARIO_IDS).size).toBe(185)
+    expect(CATALOG_SCENARIO_IDS).toHaveLength(191)
+    expect(new Set(CATALOG_SCENARIO_IDS).size).toBe(191)
     expect(sorted(ledgerIds)).toEqual(sorted(CATALOG_SCENARIO_IDS))
   })
 
@@ -153,8 +163,8 @@ describe('scenario catalog coverage', () => {
         coverage.kind === 'executable',
     )
 
-    expect(acpCoverage).toHaveLength(18)
-    expect(executableAcpCoverage).toHaveLength(18)
+    expect(acpCoverage).toHaveLength(21)
+    expect(executableAcpCoverage).toHaveLength(21)
     expect(
       Object.fromEntries(executableAcpCoverage.map(({ scenarioId, storyIds }) => [scenarioId, storyIds[0]])),
     ).toEqual(ACP_CATALOG_STORY_IDS)
@@ -196,9 +206,7 @@ describe('scenario catalog coverage', () => {
       .filter((coverage) => coverage.scenarioId.startsWith('SCN-settings-'))
     const mcpScenarioIds = new Set(['SCN-settings-admin-mcp-catalog', 'SCN-settings-admin-mcp-plugin-servers'])
     const censusScenarioIds = new Set(
-      settingsCoverage
-        .map(({ scenarioId }) => scenarioId)
-        .filter((scenarioId) => scenarioId.startsWith('SCN-settings-api-')),
+      settingsCoverage.map(({ scenarioId }) => scenarioId).filter((scenarioId) => isCensusScenarioId(scenarioId)),
     )
     const mcpCoverage = settingsCoverage.filter((coverage) => mcpScenarioIds.has(coverage.scenarioId))
     const censusCoverage = settingsCoverage.filter((coverage) => censusScenarioIds.has(coverage.scenarioId))
@@ -206,8 +214,8 @@ describe('scenario catalog coverage', () => {
       isNeitherIdSet(coverage.scenarioId, mcpScenarioIds, censusScenarioIds),
     )
 
-    expect(settingsCoverage).toHaveLength(20)
-    expect(censusCoverage).toHaveLength(7)
+    expect(settingsCoverage).toHaveLength(21)
+    expect(censusCoverage).toHaveLength(8)
     for (const coverage of mcpCoverage) expect(coverage.verifiedAt).toBe('2026-07-22')
     for (const coverage of censusCoverage) expect(coverage.verifiedAt).toBe('2026-07-28')
     for (const coverage of otherCoverage) expect(coverage.verifiedAt).toBe('2026-07-18')
@@ -227,7 +235,7 @@ describe('scenario catalog coverage', () => {
   })
 
   test('tracks the executable coverage total', () => {
-    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(160)
+    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(166)
   })
 
   test('stamps every executable record with a live proving tier', () => {
@@ -236,7 +244,7 @@ describe('scenario catalog coverage', () => {
       .filter((coverage) => !LIVE_STORY_TIERS.includes(coverage.provingTier))
       .map(({ scenarioId, provingTier }) => `${scenarioId} -> T${provingTier}`)
 
-    expect(executable).toHaveLength(160)
+    expect(executable).toHaveLength(166)
     expect(offLaneTiers).toEqual([])
     expect(new Set(executable.map((coverage) => coverage.provingTier))).toEqual(new Set(['0', '1', '2', '3']))
   })

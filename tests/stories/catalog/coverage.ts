@@ -300,6 +300,12 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-settings-api-mcp',
   'SCN-settings-api-group',
   'SCN-settings-api-release',
+  'SCN-coding-acp-mcp-fail-closed',
+  'SCN-coding-acp-upstream-failure',
+  'SCN-coding-acp-tool-eligibility',
+  'SCN-settings-task-instance-assignment',
+  'SCN-plugin-context-eligibility',
+  'SCN-plugin-contribution-isolation',
 ] as const)
 
 const GAP_SCENARIO_IDS = new Set<CatalogScenarioId>([
@@ -346,6 +352,7 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     verifiedAt: '2026-07-13',
     storyIds: [
       'tests/stories/integrations/coding-sessions/module-qualification.story.test.ts#SCN-coding-acp-start-fresh: starts a configured session through the real ACP tool loop',
+      'tests/stories/integrations/coding-sessions/start-session.story.test.ts#starts a coding session through the real capability and tool loop',
     ],
   },
   'SCN-coding-acp-start-on-pr': {
@@ -632,6 +639,7 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     verifiedAt: '2026-07-19',
     storyIds: [
       'tests/stories/tasks/lifecycle-and-policy.story.test.ts#SCN-task-create-update: creates and renames a task through the tool loop',
+      'tests/stories/chat-task/create-and-read-task.story.test.ts#creates and reads a task through the real chat tool loop',
     ],
   },
   'SCN-task-query': {
@@ -1298,6 +1306,39 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     storyIds: [
       'tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-release: only a group administrator can change a group release subscription',
     ],
+  },
+  'SCN-coding-acp-mcp-fail-closed': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/integrations/coding-sessions/acp-mcp.story.test.ts#an unresolved MCP selection fails closed before Magi session startup',
+      'tests/stories/integrations/coding-sessions/acp-mcp.story.test.ts#malformed MCP settings fail closed before Magi session startup',
+    ],
+  },
+  'SCN-coding-acp-upstream-failure': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/integrations/coding-sessions/module-qualification.story.test.ts#configured ACP upstream failure does not persist a session or expose credentials',
+    ],
+  },
+  'SCN-coding-acp-tool-eligibility': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/integrations/runtime-extensions/tool-eligibility.story.test.ts#runtime extension ACP tool is offered and executed only in its eligible context',
+    ],
+  },
+  'SCN-settings-task-instance-assignment': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/settings/task-instance-assignment.story.test.ts#settings task assignment changes the provider used by the next chat turn',
+    ],
+  },
+  'SCN-plugin-context-eligibility': {
+    verifiedAt: '2026-07-28',
+    storyIds: ['tests/stories/integrations/plugins/eligibility.story.test.ts#plugin context eligibility'],
+  },
+  'SCN-plugin-contribution-isolation': {
+    verifiedAt: '2026-07-28',
+    storyIds: ['tests/stories/integrations/plugins/eligibility.story.test.ts#plugin isolation after lifecycle'],
   },
 }
 
