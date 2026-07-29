@@ -35,15 +35,15 @@ Gate 0's job is to freeze the contract, not to turn all eleven criteria green.
 ## Goals
 
 - Version the full contract: eleven criteria and nine scenario shapes, frozen before Gate 1 begins.
-- Implement the five criteria and seven scenario shapes the current code can genuinely exercise.
-- Make the six unmet criteria and two unimplemented shapes **visible and non-waivable**, each
+- Implement the four criteria and five scenario shapes the current code can genuinely exercise.
+- Make the seven unmet criteria and four unimplemented shapes **visible and non-waivable**, each
   carrying a named blocker.
 - Guarantee the standard for any future criterion is written **before** the code that must clear it.
 - Produce an executable statement that Phase 0 is **not** passed.
 
 ## Non-goals
 
-- Implementing the six unmet criteria. Each gets its own spec.
+- Implementing the seven unmet criteria. Each gets its own spec.
 - Changing anything under `src/`. This adds tests, data, and a report script only.
 - Claiming Phase 0 is passed, or transferring any sealed benchmark score to shipped code.
 - Reader-level or answer-quality evaluation. That is `reader-quality`, gated on the P1 screen.
@@ -173,10 +173,10 @@ its `CASES` table. The report script gets its own test asserting the rendered sh
 
 ## Consequences
 
-Gate 0's exit condition is met when the registry, corpus, five criterion suites, invariants, and
+Gate 0's exit condition is met when the registry, corpus, four criterion suites, invariants, and
 report are merged and versioned. Gate 1 may then begin.
 
 The harness will report `production ready = NO` for the foreseeable future. That is the intended
-output, not a defect: six criteria have no evidence, and the roadmap forbids treating the
+output, not a defect: seven criteria have no evidence, and the roadmap forbids treating the
 representation as production-proven until they do. A future change that makes the report read
-`YES` without six follow-on specs having landed is itself the bug.
+`YES` without seven follow-on specs having landed is itself the bug.
