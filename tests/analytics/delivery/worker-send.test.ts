@@ -130,6 +130,36 @@ describe('sink config resolution', () => {
       getDrizzleDb: (): Db => db,
       loadSinkConfig: (): WorkerSinkConfig => ({ ...CONFIG, state: 'disabled' }),
     }
-    expect(resolveSinkForSend(deps, 'sv-1')).toBeNull()
+    expect(resolveSinkForSend(deps, 'sv-1', 'aggregate')).toBeNull()
+  })
+
+  test('an enabled sink whose egress mode differs from the delivery lane is refused', () => {
+    const deps = {
+      getDrizzleDb: (): never => {
+        throw new Error('loader stub must be used')
+      },
+      loadSinkConfig: (): WorkerSinkConfig => ({
+        endpoint: 'https://sinks.example.net/ingest/x',
+        secret: 's',
+        egressMode: 'aggregate',
+        state: 'enabled',
+      }),
+    }
+    expect(resolveSinkForSend(deps, 'sv-1', 'pseudonymous')).toBeNull()
+  })
+
+  test('an enabled sink matching the delivery lane resolves', () => {
+    const deps = {
+      getDrizzleDb: (): never => {
+        throw new Error('loader stub must be used')
+      },
+      loadSinkConfig: (): WorkerSinkConfig => ({
+        endpoint: 'https://sinks.example.net/ingest/x',
+        secret: 's',
+        egressMode: 'aggregate',
+        state: 'enabled',
+      }),
+    }
+    expect(resolveSinkForSend(deps, 'sv-1', 'aggregate')).not.toBeNull()
   })
 })

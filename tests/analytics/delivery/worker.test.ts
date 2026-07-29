@@ -190,10 +190,10 @@ describe('delivery worker', () => {
         scripted.calls.push({ url: endpoint.url, headers: input.headers, body: input.body })
         return Promise.resolve(scripted.outcome())
       },
-      loadSinkConfig: (): WorkerSinkConfig => ({
+      loadSinkConfig: (sinkVersionId): WorkerSinkConfig => ({
         endpoint: ENDPOINT,
         secret: 'sink-token',
-        egressMode: 'pseudonymous',
+        egressMode: sinkVersionId === 'sv-agg' ? 'aggregate' : 'pseudonymous',
         state: 'enabled',
       }),
     }
@@ -285,6 +285,23 @@ describe('delivery worker', () => {
     const result = await runDeliveryWorkerTick({ nowMs: NOW }, deps)
     expect(result).toMatchObject({ status: 'ok', retryable: 1 })
     expect(deliveryRow(db, 'event-1', 'sv-1')).toMatchObject({ state: 'pending', lastErrorClass: 'network' })
+  })
+
+  test('an event delivery row whose sink resolves to the aggregate lane is never sent', async () => {
+    seedEventDelivery()
+    deps = {
+      ...deps,
+      loadSinkConfig: (): WorkerSinkConfig => ({
+        endpoint: ENDPOINT,
+        secret: 'sink-token',
+        egressMode: 'aggregate',
+        state: 'enabled',
+      }),
+    }
+    const result = await runDeliveryWorkerTick({ nowMs: NOW }, deps)
+    expect(scripted.calls).toHaveLength(0)
+    expect(result).toMatchObject({ status: 'ok', leased: 1, retryable: 1 })
+    expect(deliveryRow(db, 'event-1', 'sv-1')).toMatchObject({ state: 'pending', lastErrorClass: 'policy' })
   })
 
   test('a never-started expired lease returns to pending and is sent by a later tick', async () => {
@@ -561,10 +578,10 @@ describe('worker generation and cutover fencing', () => {
         scripted.calls.push({ url: endpoint.url, headers: input.headers, body: input.body })
         return Promise.resolve(scripted.outcome())
       },
-      loadSinkConfig: (): WorkerSinkConfig => ({
+      loadSinkConfig: (sinkVersionId): WorkerSinkConfig => ({
         endpoint: ENDPOINT,
         secret: 'sink-token',
-        egressMode: 'pseudonymous',
+        egressMode: sinkVersionId === 'sv-agg' ? 'aggregate' : 'pseudonymous',
         state: 'enabled',
       }),
     }

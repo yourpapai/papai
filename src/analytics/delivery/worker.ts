@@ -133,7 +133,7 @@ const sendEventRow = async (
     log.debug({ sinkVersionId: row.sinkVersionId, reason: started }, 'send-start refused; row left for settlement')
     return
   }
-  const config = resolveSinkForSend(deps, row.sinkVersionId)
+  const config = resolveSinkForSend(deps, row.sinkVersionId, 'pseudonymous')
   const classification =
     config === null
       ? ({ outcome: 'retryable', errorClass: 'policy' } as const)
@@ -178,7 +178,7 @@ const sendAggregateRow = async (
     log.debug({ sinkVersionId: row.sinkVersionId, reason: started }, 'aggregate send-start refused')
     return
   }
-  const config = resolveSinkForSend(deps, row.sinkVersionId)
+  const config = resolveSinkForSend(deps, row.sinkVersionId, 'aggregate')
   const classification =
     config === null
       ? ({ outcome: 'retryable', errorClass: 'policy' } as const)

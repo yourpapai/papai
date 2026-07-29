@@ -98,9 +98,22 @@ export const createDbSinkConfigLoader = (
   }
 }
 
-export const resolveSinkForSend = (deps: SinkConfigDeps, sinkVersionId: string): WorkerSinkConfig | null => {
+export type SinkDeliveryLane = 'aggregate' | 'pseudonymous'
+
+export const resolveSinkForSend = (
+  deps: SinkConfigDeps,
+  sinkVersionId: string,
+  lane: SinkDeliveryLane,
+): WorkerSinkConfig | null => {
   const loader = deps.loadSinkConfig ?? createDbSinkConfigLoader(deps)
   const config = loader(sinkVersionId)
   if (config === null || config.state !== 'enabled') return null
+  if (config.egressMode !== lane) {
+    log.warn(
+      { sinkVersionId, sinkLane: config.egressMode, deliveryLane: lane },
+      'sink refused for send: egress mode does not match the delivery lane',
+    )
+    return null
+  }
   return config
 }
