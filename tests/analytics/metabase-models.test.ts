@@ -1096,7 +1096,12 @@ describe('metabase model: reliability, friction, and performance', () => {
     reliabilityDb.close()
   })
 
-  test('aggregate-only snapshots label reliability unavailable', () => {
+  // No edit counters are seeded here: this covers only the unavailable wrapper
+  // row and the collapse of the pseudonymous-only cards. The edit_funnel card
+  // is ungated (analytics_daily_counters exist in both snapshot modes) and CAN
+  // be available in an aggregate-only snapshot; that positive behavior is
+  // pinned by the dedicated test immediately below.
+  test('aggregate-only snapshots without edit counters label reliability cards unavailable', () => {
     const aggregateDb = new Database(':memory:')
     createSnapshotSchema(aggregateDb, 'aggregate_only')
     insertMeta(aggregateDb, 'aggregate_only')
@@ -1105,6 +1110,42 @@ describe('metabase model: reliability, friction, and performance', () => {
     for (const row of rows) {
       expect(row['row_kind']).toBe('unavailable')
     }
+    aggregateDb.close()
+  })
+
+  test('aggregate-only snapshots with edit counters emit edit_funnel rows as available', () => {
+    const aggregateDb = new Database(':memory:')
+    createSnapshotSchema(aggregateDb, 'aggregate_only')
+    insertMeta(aggregateDb, 'aggregate_only')
+
+    insertCounter(aggregateDb, { utcDay: '2026-01-01', metric: 'edit_classified_w1', value: 5 })
+    insertCounter(aggregateDb, { utcDay: '2026-01-01', metric: 'edit_classified_w2', value: 3 })
+    insertCounter(aggregateDb, { utcDay: '2026-01-01', metric: 'edit_prompt_shown', value: 4 })
+    insertCounter(aggregateDb, { utcDay: '2026-01-01', metric: 'edit_regen_completed', value: 2 })
+    insertCounter(aggregateDb, { utcDay: '2026-01-02', metric: 'edit_classified_w1', value: 7 })
+
+    const rows = runModel(aggregateDb, '04-reliability-friction-performance.sql')
+
+    const funnel = rows.filter((row) => row['row_kind'] === 'edit_funnel')
+    expect(funnel.length).toBe(5)
+    for (const row of funnel) {
+      expect(row['availability']).toBe('available')
+      expect(row['suppressed']).toBe(0)
+      expect(row['window_start_utc']).toBe(row['window_end_utc'])
+    }
+    const at = (utcDay: string, metric: string): Record<string, unknown> | undefined =>
+      funnel.filter((row) => row['window_start_utc'] === utcDay).find((row) => row['metric'] === metric)
+    expect(at('2026-01-01', 'edit_classified_w1')?.['numerator']).toBe(5)
+    expect(at('2026-01-01', 'edit_classified_w2')?.['numerator']).toBe(3)
+    expect(at('2026-01-01', 'edit_prompt_shown')?.['numerator']).toBe(4)
+    expect(at('2026-01-01', 'edit_regen_completed')?.['numerator']).toBe(2)
+    expect(at('2026-01-02', 'edit_classified_w1')?.['numerator']).toBe(7)
+
+    // The pseudonymous-only cards still collapse into a single unavailable wrapper.
+    const unavailable = rows.filter((row) => row['row_kind'] === 'unavailable')
+    expect(unavailable.length).toBe(1)
+    expect(unavailable[0]?.['availability']).toBe('unavailable_aggregate_only_snapshot')
+
     aggregateDb.close()
   })
 

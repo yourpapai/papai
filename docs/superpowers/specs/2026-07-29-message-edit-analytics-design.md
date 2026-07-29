@@ -87,7 +87,7 @@ window distribution is complete without conflating the two event types.
 
 - Contracts: strict props schemas added to the per-event props union
   (`contracts.ts`), both events registered in `registry-events.ts` with
-  privacy class, aggregate mapping, source family (`chat`), and RQ4 coverage.
+  privacy class, aggregate mapping, source family (`edit`), and RQ4 coverage.
 - Envelope: standard source context via `buildAnalyticsSourceContext(msg,
   auth, 'normal', null)`; guests produce guest-role sources.
 - Eligibility: no new rules — the existing consent/eligibility matrix decides;
