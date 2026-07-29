@@ -1849,8 +1849,8 @@ Under the `### Gate 0` section, append:
 ```markdown
 **Status (2026-07-29):** the contract is versioned and executable —
 `docs/superpowers/specs/2026-07-29-memory-gate0-acceptance-harness-design.md`,
-`tests/long-term-memory/acceptance/`, `bun run memory:acceptance`. Five criteria and seven
-scenario shapes are implemented; six criteria and two shapes are declared with named blockers.
+`tests/long-term-memory/acceptance/`, `bun run memory:acceptance`. Four criteria and five
+scenario shapes are implemented; seven criteria and four shapes are declared with named blockers.
 Each unmet criterion's pass predicate must be authored in its own follow-on spec before its
 implementation begins. Gate 1 may begin.
 ```
@@ -1861,9 +1861,9 @@ In the "Still open at HEAD" section, append a bullet:
 
 ```markdown
 - **Gate 0 acceptance harness** — landed 2026-07-29. `bun run memory:acceptance` renders the
-  frozen eleven-criterion contract; five criteria pass, six are declared-unmet with named
-  blockers (races, crash recovery, migration, backup/restore, load, reader quality). The harness
-  reporting `production ready = NO` is its intended output, not a defect.
+  frozen eleven-criterion contract; four criteria pass, seven are declared-unmet with named
+  blockers (capture idempotency, races, crash recovery, migration, backup/restore, load, reader
+  quality). The harness reporting `production ready = NO` is its intended output, not a defect.
 ```
 
 - [ ] **Step 3: Verify the docs render and commit**
