@@ -103,7 +103,7 @@ export type CatalogCoverage =
     }>
 
 export const CATALOG_SOURCE =
-  'scenario-catalog snapshot supplied 2026-07-13; extended 2026-07-23 with 12 SCN-parity-* provider-real (@1) ids (tier1-provider-real-parity); extended 2026-07-24 with 17 SCN-parity-* domain-retrofit (@1) ids (tier1b-e2e-parity-retrofit); extended 2026-07-24 with 8 SCN-* process-real smoke (@2) ids (tier2-process-smoke); extended 2026-07-27 with 10 real-YouTrack (@0) ids (t0-real-youtrack-provider); extended 2026-07-28 with 16 previously uncataloged story ids (story-catalog-census)' as const
+  'scenario-catalog snapshot supplied 2026-07-13; extended 2026-07-23 with 12 SCN-parity-* provider-real (@1) ids (tier1-provider-real-parity); extended 2026-07-24 with 17 SCN-parity-* domain-retrofit (@1) ids (tier1b-e2e-parity-retrofit); extended 2026-07-24 with 8 SCN-* process-real smoke (@2) ids (tier2-process-smoke); extended 2026-07-27 with 10 real-YouTrack (@0) ids (t0-real-youtrack-provider); extended 2026-07-28 with 18 previously uncataloged story ids (story-catalog-census)' as const
 
 export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-task-create-update',
@@ -220,6 +220,7 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-settings-coding-mcp',
   'SCN-settings-coding-repos',
   'SCN-settings-admin-guardrails',
+  'SCN-settings-admin-tool-defaults',
   'SCN-settings-admin-mcp-catalog',
   'SCN-settings-admin-mcp-plugin-servers',
   'SCN-settings-admin-system-access',
@@ -232,6 +233,7 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-http-admin-dashboard',
   'SCN-http-billing-stats-readonly',
   'SCN-http-debug-live-panels',
+  'SCN-http-debug-schemas',
   'SCN-context-thread-scope',
   'SCN-context-group-identity',
   // @1 — provider-real parity lane (tier1-provider-real-parity)
@@ -1271,6 +1273,18 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     verifiedAt: '2026-07-28',
     storyIds: [
       'tests/stories/http/dashboard.story.test.ts#SCN-http-debug-protected-surfaces: enabled diagnostic reads still require a dashboard session',
+    ],
+  },
+  'SCN-http-debug-schemas': {
+    verifiedAt: '2026-07-29',
+    storyIds: [
+      'tests/stories/http/debug-schemas.story.test.ts#SCN-http-debug-schemas: debug payload parsers accept valid events and reject malformed payloads',
+    ],
+  },
+  'SCN-settings-admin-tool-defaults': {
+    verifiedAt: '2026-07-29',
+    storyIds: [
+      'tests/stories/settings/admin-surfaces.story.test.ts#SCN-settings-admin-tool-defaults: a bot admin saves and reads back the default tool preset',
     ],
   },
   'SCN-settings-api-tools': {
