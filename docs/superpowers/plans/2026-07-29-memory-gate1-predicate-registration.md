@@ -76,7 +76,7 @@ describe('predicate registration log', () => {
 
   test('every entry carries an ISO date and a spec path', () => {
     for (const entry of PREDICATE_REGISTRATIONS) {
-      expect(entry.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+      expect(entry.date).toMatch(/^\d{4}-\d{2}-\d{2}$/u)
       expect(entry.spec).toStartWith('docs/superpowers/specs/')
       expect(entry.spec).toEndWith('.md')
     }
