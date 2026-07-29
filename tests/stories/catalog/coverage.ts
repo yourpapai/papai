@@ -1461,6 +1461,13 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     verifiedAt: '2026-07-28',
     storyIds: ['tests/stories/integrations/plugins/eligibility.story.test.ts#plugin isolation after lifecycle'],
   },
+  'SCN-plugin-deny-gating': {
+    verifiedAt: '2026-07-29',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/integrations/plugins/eligibility.story.test.ts#SCN-plugin-deny-gating: unavailable plugin capabilities are removed before execution',
+    ],
+  },
 }
 
 function auditRecord(readiness: AuditReadiness, family: StoryFamily, rationale: string): AuditRecord {
@@ -1507,10 +1514,6 @@ export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
   'SCN-stats-aggregate-window': ready(
     'F4',
     'The existing stats query runtime can prove internally consistent windowed aggregates.',
-  ),
-  'SCN-plugin-deny-gating': ready(
-    'F7',
-    'The existing plugin capability runtime can prove denied capabilities are absent before execution without a new seam.',
   ),
   'SCN-interaction-discord-command-routing': needs(
     'F8',

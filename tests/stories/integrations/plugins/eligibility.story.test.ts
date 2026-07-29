@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { expect, test } from 'bun:test'
+import { expect, mock, test } from 'bun:test'
 
 import { toScopedContextId } from '../../../../src/chat/scoped-context.js'
 import { contributionRegistry } from '../../../../src/plugins/contributions.js'
@@ -11,13 +11,22 @@ import { discoverPlugins } from '../../../../src/plugins/discovery.js'
 import { getActivatedPluginIds } from '../../../../src/plugins/loader.js'
 import { pluginRegistry, setPluginEnabledForContext } from '../../../../src/plugins/registry.js'
 import { setPluginAdminConfig } from '../../../../src/plugins/store.js'
+import { buildPluginToolRuntimeContext } from '../../../../src/plugins/tool-runtime.js'
 import type { DiscoveredPlugin } from '../../../../src/plugins/types.js'
+import type { TaskProvider } from '../../../../src/providers/types.js'
 import { buildProviderlessToolDescriptors } from '../../../../src/tools/index.js'
+import { MemoryTaskProvider } from '../../harness/memory-task-provider.js'
 import { executeScenario } from '../../harness/scenario.js'
 
 const BASE_PLUGIN_ID = 'synthetic-web-search'
 const CONSTRAINED_PLUGIN_ID = 'synthetic-needs-user-resolution'
 const TOOL_NAME = 'plugin_synthetic_web_search__search'
+
+function createMockProvider(getTask: TaskProvider['getTask']): TaskProvider {
+  const provider = new MemoryTaskProvider()
+  provider.getTask = getTask
+  return provider
+}
 
 function discovered(pluginId: string): DiscoveredPlugin {
   const plugin = discoverPlugins('plugins').plugins.find(({ manifest }) => manifest.id === pluginId)
@@ -89,4 +98,38 @@ test('real plugin lifecycle evaluates context state and leaves no contribution l
     expect(getActivatedPluginIds()).not.toContain(BASE_PLUGIN_ID)
     expect(await toolNames(contextId, bob.id)).not.toContain(TOOL_NAME)
   })
+})
+
+test('SCN-plugin-deny-gating: unavailable plugin capabilities are removed before execution', async () => {
+  await executeScenario(
+    'SCN-plugin-deny-gating: unavailable plugin capabilities are removed before execution',
+    async ({ given, world }) => {
+      const alice = given.user('alice')
+      const contextId = toScopedContextId({ platformInstanceId: alice.platformInstanceId, nativeContextId: alice.id })
+      const constrained = capabilityConstrainedClone(discovered(BASE_PLUGIN_ID))
+      given.plugin(constrained)
+      setPluginAdminConfig(CONSTRAINED_PLUGIN_ID, 'api_key', 'synthetic-private-key', 'scenario-admin')
+      setPluginEnabledForContext(CONSTRAINED_PLUGIN_ID, contextId, true)
+
+      await world.start()
+
+      expect(pluginRegistry.getEntry(CONSTRAINED_PLUGIN_ID)?.state).toBe('incompatible')
+      expect(getActivatedPluginIds()).not.toContain(CONSTRAINED_PLUGIN_ID)
+      expect(await toolNames(contextId, alice.id)).not.toContain(TOOL_NAME)
+
+      const getTask = mock(() =>
+        Promise.resolve({ id: 'task-1', title: 'ignored', status: 'todo', url: 'https://example.test/task-1' }),
+      )
+      const runtime = buildPluginToolRuntimeContext(
+        CONSTRAINED_PLUGIN_ID,
+        { ...constrained.manifest, permissions: [] },
+        { provider: createMockProvider(getTask), storageContextId: contextId, chatUserId: alice.id },
+      )
+
+      expect(() => runtime.taskProvider?.getTask('task-1')).toThrow(
+        `Plugin ${CONSTRAINED_PLUGIN_ID} does not have 'tasks.read' permission`,
+      )
+      expect(getTask).not.toHaveBeenCalled()
+    },
+  )
 })
