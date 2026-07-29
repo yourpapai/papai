@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { CASE_TABLES, coveredShapes } from './coverage.js'
 import { CRITERIA, CRITERION_KEYS, SHAPE_KEYS, SHAPES } from './registry.js'
 
 describe('acceptance registry contract', () => {
@@ -65,6 +66,45 @@ describe('acceptance registry contract', () => {
     for (const shape of SHAPES.filter((s) => s.status === 'declared-unimplemented')) {
       expect(shape.blocker).not.toBeNull()
       expect(shape.blocker).not.toBe('')
+    }
+  })
+})
+
+describe('acceptance registry coverage cross-check', () => {
+  test('every implemented criterion exports a case table', () => {
+    for (const criterion of CRITERIA.filter((c) => c.status === 'implemented')) {
+      expect(CASE_TABLES[criterion.key]).toBeDefined()
+    }
+  })
+
+  test('no declared-unmet criterion exports a case table', () => {
+    for (const criterion of CRITERIA.filter((c) => c.status === 'declared-unmet')) {
+      expect(CASE_TABLES[criterion.key]).toBeUndefined()
+    }
+  })
+
+  test('every declared cell has a matching case', () => {
+    for (const criterion of CRITERIA) {
+      const covered = coveredShapes(criterion.key)
+      for (const shape of criterion.shapes) {
+        expect(covered).toContain(shape)
+      }
+    }
+  })
+
+  test('every exported case is declared in the registry', () => {
+    for (const criterion of CRITERIA) {
+      for (const shape of coveredShapes(criterion.key)) {
+        expect(criterion.shapes).toContain(shape)
+      }
+    }
+  })
+
+  test('every case carries a non-empty description', () => {
+    for (const table of Object.values(CASE_TABLES)) {
+      for (const description of Object.values(table)) {
+        expect(description).not.toBe('')
+      }
     }
   })
 })
