@@ -5,6 +5,412 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.11.0] - 2026-07-29
+
+### Added
+
+- Add matched_task_ids column to alert_prompts (migration 068)
+- Alert match-state store helpers
+- Snapshot task labels for alert change detection
+- Task change gate for alert polling
+- Fail alert enrichment on any getTask rejection
+- Edge-triggered batched alert firing
+- Share task fetches per instance and skip quiet alert cycles
+- **tools:** Register expand_result as a stable tool capability
+- **tools:** Register task lifecycle capabilities
+- **tools:** Register provider-surface capabilities
+- **tools:** Register integration-surface capabilities
+- **tools:** Register memory/memo/instruction capabilities
+- **tools:** Register capability ids for recurring and deferred-prompt tools
+- **scheduler:** Allow injecting the recurring-notification chat provider via SchedulerDeps
+- **tools:** Register the web.fetch capability id
+- **web:** Add a testing override for the public-URL assertion
+- **tools:** Register user-MCP tool wire names as capabilities
+- **load_tool:** Warn when requested tool names are unrecognized
+- **search_tools:** Hint available domains on empty results; sharpen limit description
+- **db:** Migration 070 — message_metadata group_context_id + FTS5, drop expires_at
+- **message-cache:** FTS5 search + scope-checked get/context window
+- **bot:** Unify message caching in onIncomingMessage
+- **tools:** Search_chat_history — FTS5 keyword search over chat history
+- **tools:** Get_message + get_message_context
+- **admin:** Message-history purge endpoint (super-admin)
+- **db:** Migration 071 message_embeddings side table
+- **message-cache:** MessageVectorStore — storage + scope-bounded cosine search
+- **message-cache:** Inline fire-and-forget embedding at the caching chokepoint
+- **scheduler:** Message-embedding-sweep — backfill, retry, model-mismatch re-embed
+- **tools:** Search_chat_history semantic/auto mode (embedding similarity)
+- **catalog:** Mint 8 @2 process-real smoke records; open tier 2 live
+- **coverage:** Ratchet library for lcov totals and bunfig floor
+- **coverage:** Coverage:ratchet CLI (check + update floor)
+- **coverage:** Lcov SF-path normalization for story runner
+- **coverage:** T0 story coverage floor + gate evaluator
+- **story-runner:** Add --coverage flag to CLI parser
+- **story-sandbox:** Translate --coverage-dir to container temp path
+- **story-runner:** Emit bun coverage flags in the sandboxed child
+- **story-runner:** Copy + normalize child lcov via session.copyCoverage
+- **story-runner:** Collect + gate T0 coverage when --coverage is set
+- **coverage:** Coverage:ratchet:stories raises the T0 floor from green runs
+- **mattermost:** Env-seedable action signing secret (T3 seam)
+- **catalog:** Open tier 3 live; flip both Mattermost pends to executable@3
+- **scripts:** Add presence-guarded client-bundle build guard
+- **chat:** Add messages.edit.inbound capability + IncomingMessage.editedAt
+- **queue:** Preserve originating messageIds through coalescing
+- **run-control:** Record originatingMessageIds on RunControl
+- **history:** Store turn segments for edit + applyEditToHistory
+- **run-control:** LastTurnRegistry captures finished turn state
+- **edit:** Pure classifyEdit window classifier
+- **chat:** Router onMessageEdit fan-out + setupBot wiring
+- **edit:** OnIncomingEdit guards + baseline history + W1/W3 dispatch
+- **chat:** Reply-target capture + editReply on telegram/discord/mattermost
+- **edit:** W2 regenerate when no side-effects; supersede old reply
+- **edit:** W2 side-effects ask-first prompt + edit: router prefix
+- **telegram:** Subscribe edited_message:text → onMessageEdit
+- **discord:** Subscribe messageUpdate → onMessageEdit
+- **mattermost:** Route post_updated → onMessageEdit
+- **mutation:** Gate warns on first-touch, drops the 0.5 floor
+- **mutation:** SeedMerge preserves existing baseline entries
+- **mutation:** Coverage map builder (sourceFile -> covering tests)
+- **mutation:** Use coverage-derived test sets (companion as fallback)
+- **mutation:** Changed-files --update-baseline seeds via seedMerge
+
+### Changed
+
+- **stories:** Reorganize runner scripts into scripts/story/ modules
+- **compaction:** Rename char-count constants from _BYTES to _CHARS
+- **parity:** Split expectations into per-domain modules
+- **message-cache:** DB-primary reads; retire in-memory Map
+- **chat-history:** Final-review polish — scope defense-in-depth, hasMore flag, phrase-match doc, store tests, dead SSE cleanup
+- **edit:** Share PapaiTurnMeta via segments.ts
+- **mutation:** ResolveRatchet is regression-only (drop the floor)
+- **mutation:** Batch coverage-cache writes via flush()
+
+### Documentation
+
+- Alert polling optimization design (change gate, edge-trigger, batched firing)
+- Alert polling optimization implementation plan
+- **testing:** Design hermetic story hardening tiers
+- **testing:** Design process-isolated stories
+- **testing:** Design app-local story dependencies
+- **testing:** Design Docker story sandbox on all hosts
+- **stories:** Require Docker sandbox on every host
+- **readme:** Document Docker-backed hermetic story tests
+- **testing:** Design settings HTTP story family
+- **testing:** Plan settings HTTP story family
+- **testing:** Note session-ordering and reply-flush constraints in settings plan
+- **testing:** Design harness hygiene batch and coverage expansion roadmap
+- **testing:** Plan harness hygiene batch
+- **adr:** Record hermetic story docker sandbox decision
+- **db:** Annotate historical identity scoping entry and pin user-scope rule
+- **testing:** Document seam-API contract of the story compatibility proof
+- **readme:** Document story cache eviction and image single-source
+- **testing:** Document story cache env vars and prune behavior
+- **testing:** Plan story catalog audit
+- **testing:** Design F1 command and meta story family
+- **testing:** Plan F1 command and meta story family
+- **testing:** Reconcile F1 deviations and document env restore pattern
+- **testing:** Design F2a task lifecycle story family
+- **testing:** Plan F2a task lifecycle story family
+- **testing:** Reconcile F2a spec with implementation learnings
+- **testing:** Design F2b-1 task provider-surface story family
+- **testing:** Plan F2b-1 and design+plan F2b-2 task surface families
+- **testing:** Design F3 memory story family
+- **testing:** Plan F3 memory story family
+- **testing:** Reconcile F3 spec with implementation learnings
+- **testing:** Reconcile roadmap with F1-F4 reclassifications
+- **testing:** Design F4 http story family
+- **testing:** Plan F4 http story family
+- **testing:** Reconcile F4 spec with implementation learnings
+- **testing:** Design F5 scheduling story family (reminders + deferred work)
+- **testing:** Plan F5 scheduling story family implementation
+- **testing:** Reconcile F5 spec with implementation learnings
+- **f6:** Design the web-fetch story family
+- **f7:** Design the MCP story family
+- **f7:** Plan the MCP story family implementation
+- **f8:** Design the interaction story family
+- **f8:** Plan the interaction story family implementation
+- **f8:** Append the terminal F5-F8 roadmap amendment
+- **f8:** Reconcile the roadmap's F5-F8 landed-status cross-references
+- **tiers:** Design the tier expansion roadmap
+- **tiers:** Plan the tier-aware ledger migration
+- **tiers:** Make the tier taxonomy canonical and single-sourced
+- **tiers:** Sharpen the proving-tier success metric
+- Design for context-tools clarity & discoverability fixes
+- Implementation plan for context-tools clarity fixes
+- **get_current_time:** Reframe as fallback to injected current_time line
+- **tier1:** Design the provider-real parity lane
+- **tier1:** Add the provider-real parity implementation plan
+- **tier1:** Declare the measured parity-lane wall-clock budget
+- **specs:** T1b tests/e2e parity retrofit design
+- **tier1b:** Triage the tests/e2e domain suites for parity retrofit
+- **specs:** Add T1b tests/e2e parity retrofit implementation plan
+- **tier1b:** Adjudicate triage findings (reclassify 3 rows, +2 exclusions)
+- **catalog:** Record the tier1b domain-retrofit provenance
+- **spec:** Chat history search/fetch/context lookup — phase 1 design
+- **plan:** Chat history search phase 1 implementation plan
+- **tools:** Note search_chat_history in context-sensitive tool areas
+- **tools:** Note get_message + get_message_context in context-sensitive tool areas
+- **specs:** Chat history search Phase 2 (semantic/embedding) design
+- **plans:** Chat history search Phase 2 implementation plan
+- **specs:** T2 process-real smoke lane design
+- **plans:** T2 process-real smoke lane implementation plan
+- **specs:** Add Stryker TS7 unblock design
+- **plans:** Add Stryker TS7 unblock implementation plan
+- **specs:** Add update-status test-quality design
+- **plans:** Add update-status test-quality implementation plan
+- **specs:** Add plugin resource/operation test-quality design
+- **plans:** Add plugin resource/operation test-quality implementation plan
+- **specs:** T0 story-runner line-coverage design
+- **plans:** T0 story-runner line-coverage implementation plan
+- **spec:** T3 platform-adapter lane (scaffold + Mattermost vertical)
+- **spec:** YouTrack provider-conformance lane (fake-backed, uncatalogued)
+- **spec:** Build client bundles in the measurement path (fix 3 debug-suite failures)
+- **superpowers:** Add test-hardening specs and implementation plans
+- Note that check:full and test:coverage now build client bundles
+- **spec:** Message edit handling design
+- **plan:** Message edit handling implementation plan
+- **chat:** Document editReply + lastReplyTarget reply surfaces
+- **chat:** Add onMessageEdit to ChatProvider sketch
+- **spec:** Mutation gate ratchet fix design
+- **plan:** Mutation gate ratchet fix implementation plan
+- **mutation:** Reflect coverage-derived test selection
+- **mutation:** Master changed-files seed, migration catch-up note
+- **claude:** Master mutation job seeds changed files, not full run
+
+### Fixed
+
+- Bound intra-instance alert concurrency with p-limit
+- Final review — gate colon handling, enrichment-abort test, match-set reset on condition change
+- **settings:** Key identity mappings by platform user id in identity routes
+- **settings:** Clean orphaned scoped-key identity rows and annotate deferred seams
+- **stories:** Fail closed with actionable error on Windows hosts
+- **web:** Read global fetch live so test interception applies to web_fetch
+- **stories:** Seed the web-fetch quota bucket against the real clock
+- **llm:** Preserve full tool trace under AI SDK v7; fix story LLM host
+- **review-loop:** Serialize worktree teardown to stop git lock races
+- **expand_result:** Bound offset so schema stops emitting MAX_SAFE_INTEGER
+- **search_tools:** Guard empty-context hint; doc conditional hint/warning fields
+- **context:** Count disclosed tool surface, not full catalog
+- Complete migration renumber to 069 in file contents
+- **tools:** Keep search_chat_history info log to counts only
+- **chat-history:** Drop inline embed path (sweep-only) — restores hermetic stories
+- **smoke:** Poll for the posted frame instead of a fixed sleep
+- **mutation:** Ratchet changed files + raise get-message coverage
+- **web:** AssertPublicUrl honors the testing override for direct callers
+- **mutation:** Resolve typescript to TS6 for stryker core tsconfig rewrite
+- **coverage:** Match bun's per-file-mean coverage metric
+- **ci-coverage:** Review fixes for coverage-floor branch
+- **coding-credentials:** Make provider-model tests independent of DNS
+- **coverage:** Enforce the aggregate floor via the ratchet, not bun's per-file threshold
+- **story-runner:** Distinguish a missing coverage lcov from a stat failure
+- **coverage:** Guard the story-ratchet CLI entrypoint and pin the no-lcov contract
+- **stories:** Capture the coverage modules the story enforcement tree imports
+- **run-control:** Record last turn inside runTurn finally block
+- **knip:** Edit-prompt-store.testing shim for resetEditPromptStoreForTesting
+- **telegram:** Drop inert edited_channel_post subscription
+- **edit:** W2 regen replaces prior turn; later-user query excludes edited msg
+- **mutation:** Include companion additively when coverage set is present
+
+### Miscellaneous
+
+- Allow unused alert match-state exports for Task 6 poller
+- **stories:** Checkpoint hermetic sandbox work
+- **knip:** Ignore the test-only safe-fetch public-URL override seam
+- **knip:** Ignore store.ts exports pending chat-history tools (tasks 6/7)
+- **knip:** Ignore vector-store.ts unused-file until Phase 2 Tasks 3-5 land
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **knip:** Ignore applyEditToHistory (consumed by task 8)
+- **knip:** Ignore classifyEdit file (consumed by task 8)
+- **mutation:** Ratchet baseline
+
+### Testing
+
+- **stories:** Record immutable runtime inputs
+- **stories:** Materialize immutable runtime snapshot
+- **stories:** Run stories from immutable snapshot
+- **stories:** Enforce hermetic filesystem reads
+- **stories:** Snapshot locked dependencies
+- **stories:** Create sealed runner sessions
+- **stories:** Sandbox Darwin story children
+- **stories:** Isolate Linux story children
+- **stories:** Require process sandbox sessions
+- **stories:** Materialize app-local dependencies
+- **stories:** Require Docker sandbox on all hosts
+- **stories:** Mount dependency cache read-only instead of copying
+- **stories:** Target container platform in dependency cache
+- **stories:** Preserve published dependency cache entries on transient failures
+- **stories:** Add settingsAdminSession fixture for admin settings stories
+- **stories:** Cover settings bootstrap, instances, and context-config qualification
+- **stories:** Cover settings identity qualification
+- **settings:** Pin group-scope identity keyspace and log storage key
+- **stories:** Cover coding forge, mcp, and repos settings qualification
+- **stories:** Harden coding settings stories with hygiene and fail-closed checks
+- **stories:** Cover admin guardrails, system-access, and announce qualification
+- **stories:** Add contract checkpoints to admin settings stories
+- **stories:** Harden settings stories with csrf, cross-context, and readback checks
+- **stories:** Add given.admin seed and use it in system-access story
+- **db:** Pin anchored scoped-key pattern in migration 067 test
+- **stories:** Stamp catalog verification dates and map guest-readonly story
+- **stories:** Narrow preflight platform matrix after win32 rejection
+- **stories:** Single-source the pinned sandbox image reference
+- **stories:** Evict stale dependency cache entries
+- **stories:** Cover dependency cache prune failure path
+- **chat:** Pluralize grandfathered entries in ratchet test name
+- **stories:** Audit every pending catalog scenario with structured records
+- **stories:** Print catalog coverage totals in runner output
+- **stories:** Add contains reply matcher and groupAdmin fixture
+- **stories:** Add gated scripted-LLM decision and dispatchMessage
+- **stories:** Resolve compaction handles in scripted tool input
+- **stories:** Cover the command surface end to end
+- **stories:** Cover meta tools and register search_tools capability
+- **stories:** Map F1 command and meta scenarios in the catalog
+- **stories:** Fingerprint tool-result content and assert expand payload
+- **stories:** Guard tool-result serialization in fingerprints
+- **stories:** Add delete, count, and self-seeding history to the memory provider
+- **stories:** Pin non-string field serialization in task history
+- **stories:** Update capability contract tests for memory provider task deletion
+- **stories:** Add toolPrefs fixture and task absent assertion
+- **stories:** Make tool-prefs contract test deny-discriminating
+- **stories:** Cover task lifecycle and tool permission policy
+- **stories:** Map F2a task lifecycle scenarios in the catalog
+- **stories:** Add projects, statuses, and project team to the memory provider
+- **stories:** Add relations, worklog, sprints, and saved queries to the memory provider
+- **stories:** Cover the task provider surface
+- **stories:** Map F2b-1 provider-surface scenarios in the catalog
+- **stories:** Retarget unsupported-capability assertions to attachments.list
+- **stories:** Add collaboration and identity surface to the memory provider
+- **stories:** Add attachments and applyCommand to the memory provider
+- **stories:** Add attachment relay fixture
+- **stories:** Cover the task integration surface
+- **stories:** Map F2b-2 integration-surface scenarios in the catalog
+- **stories:** Map task visibility groupIds to id refs
+- **stories:** Add strict-http drain and embeddings fixture
+- **stories:** Add memory seed helpers and sweep primitives
+- **stories:** Cover the memo tool surface
+- **stories:** Observe real memo tool output (rule 3)
+- **stories:** Cover the long-term memory tool surface
+- **stories:** Cover instructions and group history lookup
+- **stories:** Map F3 scenarios in the catalog
+- **stories:** Thread a debugEnabled world option and a traced responseJson helper
+- **stories:** Add a dashboard-auth session fixture
+- **stories:** Add a seedable notify-token fixture with per-scenario cache reset
+- **stories:** Serve transcript bytes from the fake magi
+- **stories:** Add a given.publicBaseUrl seam and retire the env one-off
+- **stories:** Observe the settings auth-claim exchange as a first-class subject
+- **stories:** Cover the dashboard trust domain (admin, stats, debug)
+- **stories:** Deliver a proactive message through the notify route
+- **stories:** Proxy transcript bytes through the viewer route
+- **stories:** Map F4 http scenarios and reclassify mcp-plugin to F7
+- **stories:** Seed due recurring tasks and drive a single scheduler tick
+- **stories:** Seed due deferred prompts and drive single scheduled/alert polls
+- **stories:** Cover recurring-task create, manage, and fire
+- **stories:** Cover deferred schedule/alert create, manage, and fire
+- **stories:** Map F5 scheduling scenarios and update the ledger totals
+- **stories:** Make recurring-create assertion gate on the list call
+- **stories:** Add the given.allowPublicUrl harness seam
+- **stories:** Add the given.exhaustedWebFetchQuota harness seam
+- **stories:** Cover public web-fetch success and rate-limit deny
+- **stories:** Promote the F6 web-fetch scenarios to executable
+- **stories:** Add the FakeMcpServer external-server harness seam
+- **stories:** Shut the MCP client pool down at scenario teardown
+- **stories:** Cover a configured MCP endpoint invoked in a chat turn
+- **stories:** Add the given.mcpPluginServer enablement seam
+- **stories:** Cover the hosted plugin-MCP route and its token gate
+- **stories:** Cover operator governance of the hosted plugin-MCP route
+- **stories:** Reconcile F7 ledger totals to 100 executable
+- **stories:** Await the MCP pool shutdown at scenario teardown
+- **stories:** Promote the F8 interaction permission-decision scenario
+- **stories:** Reconcile the F8 ledger to 101 executable
+- **stories:** Stamp executable catalog records with a proving tier
+- **stories:** Contract story placement against tier suite roots
+- **stories:** Record the unblocking tier on seam-pending audits
+- **stories:** Report per-tier coverage totals in the runner line
+- **stories:** Add the parity canonicalization utility
+- **stories:** Declare provider parity expectations and the fake binding
+- **stories:** Assert order in list-sort and tighten identity parity checks
+- **e2e:** Run the parity expectations against real Kaneo
+- **stories:** Restore 5 core parity groups with presence-subset assertions
+- **e2e:** Resolve current Kaneo user by owner role, not singleton membership
+- **stories:** Restore url + status round-trip coverage in parity task groups
+- **stories:** Mint the provider-real parity @1 catalog ids
+- **stories:** Tally the T1 parity lane in per-tier totals
+- **stories:** Cross-check @1 parity catalog storyIds against PARITY_GROUPS titles
+- **stories:** Strengthen identity listUsers shape check; note mapProject description asymmetry
+- **parity:** Add task field-depth and content-edge groups (@1)
+- **parity:** Add search-variant groups and invalid-workspace exclusion (@1)
+- **parity:** Add comment-depth and content-edge groups (@1)
+- **parity:** Add consolidated error-parity groups (@1)
+- **parity:** Add relation-multiple group and directionality exclusion (@1)
+- **e2e:** Retire domain tests migrated into the parity lane
+- **parity:** Tighten task round-trip and search-isolation assertions
+- **parity:** Assert calendar-date prefix for Kaneo-normalized dates
+- **parity:** Record getCurrentUser/getLabelByName exclusions; enforce T1 budget
+- **chat:** Isolate mattermost/telegram adapter suites from DB-backed message cache
+- **smoke:** Docker command helpers for the T2 lane
+- **smoke:** Build-if-absent papai:e2e image helper
+- **smoke:** Deterministic openai-compatible fake LLM server
+- **smoke:** Minimal fake Mattermost HTTP+WS ingress server
+- **smoke:** Papai container lifecycle harness
+- **smoke:** SMOKE_STORIES candidate registry for the @2 lane
+- **smoke:** Container P scenarios — boot, gating, plugins, chat turn, shutdown
+- **smoke:** Container D and E scenarios — debug gate and required-env fast-fail
+- **smoke:** Lane aggregator and test:smoke script
+- **smoke:** Crosscheck @2 catalog records against scenario invocations
+- **smoke:** Stop fake servers if container boot throws in P/D beforeAll
+- **update-status:** Cover schema refine acceptance direction
+- **mutation:** Resolve 47 paired-runner skips
+- **youtrack-agiles:** Cover parseSprintTimestamp calendar/timezone/regex
+- **kaneo-label-resource:** Assert HTTP method/path contract
+- **kaneo-update-label:** Cover endpoint contract and merged-body behavior
+- **kaneo-update-project:** Cover endpoint contract and merged-body behavior
+- **harness:** Fake Mattermost single-post + thread endpoints for T3
+- **platform:** T3 lane scenario registry + test:platform script
+- **platform:** T3 lane aggregator + Mattermost fetch-chat-link and http-action scenarios
+- **platform:** Assert the exact action-callback dispatch response
+- **stories:** Sync coverage-totals expectations with the tier-3 catalog counts
+- **youtrack-parity:** Fake server skeleton with project + custom-field schema
+- **youtrack-parity:** Fake issue CRUD + custom-field read/write
+- **youtrack-parity:** Fake issue list/sort/paging/search + update
+- **youtrack-parity:** Fake comment CRUD
+- **youtrack-parity:** Fake issue links + link types
+- **youtrack-parity:** Faithful link-id decode, owner-scoped link delete
+- **youtrack-parity:** Exclusion set + integrity tests
+- **youtrack-parity:** Correct the task-label exclusion rationale
+- **youtrack-parity:** Status/priority custom-field extension groups
+- **youtrack-parity:** Bind YouTrackProvider to the fake over shared + custom-field groups
+- **debug:** Guard debug-smoke teardown against unassigned db
+- **chat:** Strengthen onMessageEdit replay + helper wiring tests
+- **kontur-talk:** Verify no inbound edit support in v1
+- **mutation:** Coverage cache test is hermetic (no bun spawn)
+- **mutation:** Lock samePackageTestDir mapping for all roots
+- **mutation:** Paired-run keeps companion additively with coverage set
+
+### Build
+
+- **stryker:** Drop TS7-incompatible typescript-checker
+- **mutation:** Register kaneo/youtrack plugin files for paired mutation
+- **mutation:** Register kaneo update-label/update-project for paired mutation
+- **mutation:** Add per-file ratchet gate and measure plugin scope
+- **check:** Build client bundles in the coverage/check measurement path
+
+### Ci
+
+- Bump softprops/action-gh-release in the github-actions group
+- **stories:** Enforce sandboxed story tiers
+- **stories:** Enforce sandboxed story tiers
+- Add T2 process-real smoke gate job with measured budget
+- **coverage:** Enforce line/function floor on the CI test run
+- **coverage:** Upload lcov artifact; document coverage floor
+- **stories:** Run T0 story lane with coverage gate; document floor
+- Nightly T3 platform-adapter lane + docs
+- **nightly:** Drop SPDX header from workflow to match sibling workflows
+- **mutation:** Seed baseline from changed files on master (broad scope)
+- **mutation:** Rename master artifact to changed-files reports
+- Bump the github-actions group across 1 directory with 2 updates
+
+### Deps
+
+- Bump the bun-dependencies group with 13 updates
 ## [6.10.0] - 2026-07-20
 
 ### Added
