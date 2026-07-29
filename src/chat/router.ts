@@ -6,7 +6,6 @@
 import pLimit from 'p-limit'
 
 import type { AttachmentSourceProvider } from '../attachments/types.js'
-import { getContextSettings } from '../instances/context-store.js'
 import type { InstanceConfig, PlatformInstanceType } from '../instances/types.js'
 import { logger } from '../logger.js'
 import {
@@ -18,8 +17,10 @@ import {
   isGroupAdminForManagedInstance,
   managedInstanceOrNull,
   managedInstanceSnapshots,
-  providerForManagedInstance,
+  providerForResolveContextForManagedInstance,
+  registerCommandForManagedInstance,
   registerInteractionHandlerForManagedInstance,
+  registerMessageEditHandlerForManagedInstance,
   renderContextForManagedInstance,
   renderContextFromManagedInstances,
   resolveGroupLabelForManagedInstance,
@@ -57,6 +58,7 @@ export class ChatRouter implements ChatProvider {
   private readonly stoppingInstances = new Set<string>()
   private readonly commandHandlers = new Map<string, CommandHandler>()
   private messageHandler: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null = null
+  private messageEditHandler: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null = null
   private interactionHandler: ((interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) | null = null
 
   constructor(private readonly factory: ManagedChatInstanceFactory) {}
@@ -166,7 +168,7 @@ export class ChatRouter implements ChatProvider {
   registerCommand(name: string, handler: CommandHandler): void {
     this.commandHandlers.set(name, handler)
     for (const instance of this.instances.values()) {
-      this.registerCommandForInstance(instance, name, handler)
+      registerCommandForManagedInstance(instance, name, handler)
     }
   }
 
@@ -174,6 +176,13 @@ export class ChatRouter implements ChatProvider {
     this.messageHandler = handler
     for (const instance of this.instances.values()) {
       instance.provider.onMessage(routedMessageHandler(instance.id, handler))
+    }
+  }
+
+  onMessageEdit(handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>): void {
+    this.messageEditHandler = handler
+    for (const instance of this.instances.values()) {
+      registerMessageEditHandlerForManagedInstance(instance, handler)
     }
   }
 
@@ -229,14 +238,13 @@ export class ChatRouter implements ChatProvider {
   }
 
   resolveUserId(username: string, context: ResolveUserContext): Promise<string | null> {
-    const provider = this.providerForResolveContext(context)
-    if (provider === null) return Promise.resolve(null)
-    if (provider.resolveUserId === undefined) return Promise.resolve(null)
+    const provider = providerForResolveContextForManagedInstance(this.instances, context)
+    if (provider?.resolveUserId === undefined) return Promise.resolve(null)
     return provider.resolveUserId(username, context)
   }
 
   resolveUserLabel(userId: string, context: ResolveUserContext | undefined): Promise<string | null> {
-    const provider = context === undefined ? null : this.providerForResolveContext(context)
+    const provider = context === undefined ? null : providerForResolveContextForManagedInstance(this.instances, context)
     if (provider === null) return Promise.resolve(null)
     if (provider.resolveUserLabel === undefined) return Promise.resolve(null)
     return provider.resolveUserLabel(userId, context)
@@ -256,26 +264,17 @@ export class ChatRouter implements ChatProvider {
 
   private registerExistingHandlers(instance: ManagedChatInstance): void {
     for (const [name, handler] of this.commandHandlers.entries()) {
-      this.registerCommandForInstance(instance, name, handler)
+      registerCommandForManagedInstance(instance, name, handler)
     }
     if (this.messageHandler !== null) {
       instance.provider.onMessage(routedMessageHandler(instance.id, this.messageHandler))
     }
+    if (this.messageEditHandler !== null) {
+      registerMessageEditHandlerForManagedInstance(instance, this.messageEditHandler)
+    }
     if (this.interactionHandler !== null) {
       registerInteractionHandlerForManagedInstance(instance, this.interactionHandler)
     }
-  }
-
-  private registerCommandForInstance(instance: ManagedChatInstance, name: string, handler: CommandHandler): void {
-    instance.provider.registerCommand(name, async (msg, reply, auth) => {
-      await handler({ ...msg, platformInstanceId: instance.id }, reply, auth)
-    })
-  }
-
-  private providerForResolveContext(context: ResolveUserContext): ChatProvider | null {
-    const platformInstanceId =
-      context.platformInstanceId ?? getContextSettings(context.contextId)?.platformInstanceId ?? null
-    return platformInstanceId === null ? null : providerForManagedInstance(this.instances.get(platformInstanceId))
   }
 
   private async stopInstanceSafely(instance: ManagedChatInstance): Promise<void> {

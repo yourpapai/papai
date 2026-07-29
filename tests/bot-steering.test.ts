@@ -84,6 +84,11 @@ describe('mid-run steering routing', () => {
           voiceStagedIds: args[0].voiceStagedIds,
           reply: args[1],
           turnId: 'test-turn-id',
+          messageIds: args[0].messageId === undefined ? [] : [args[0].messageId],
+          segments:
+            args[0].messageId === undefined
+              ? []
+              : [{ messageId: args[0].messageId, text: args[0].text, username: args[0].username }],
         }).catch(() => {})
       },
     }
@@ -104,7 +109,7 @@ describe('mid-run steering routing', () => {
 
     // Simulate an active run for the DM user's storage context
     const { reply: runReply } = createMockReply()
-    const run = runRegistry.begin(storageContextId, { turnId: 't1', reply: runReply })
+    const run = runRegistry.begin(storageContextId, { turnId: 't1', reply: runReply, originatingMessageIds: [] })
 
     const { reply, textCalls } = createMockReply()
     const messageHandler = getMessageHandler()

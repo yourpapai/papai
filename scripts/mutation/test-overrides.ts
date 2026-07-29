@@ -35,16 +35,24 @@ export interface ResolveTestFilesInput {
   projectRoot: string
   overrides: OverridesMap
   findTestFile: (implAbsPath: string, projectRoot: string) => string | null
+  /** Coverage-discovered test set for this source (e.g. from `buildCoverageMap`). */
+  readonly discovered?: readonly string[]
 }
 
 export function resolveTestFiles(input: ResolveTestFilesInput): ResolveResult {
-  const { srcFile, projectRoot, overrides, findTestFile } = input
+  const { srcFile, projectRoot, overrides, findTestFile, discovered } = input
+  const extras = overrides[srcFile] ?? []
   const absImpl = path.join(projectRoot, srcFile)
   const companionAbs = findTestFile(absImpl, projectRoot)
   const companionRel = companionAbs === null ? null : path.relative(projectRoot, companionAbs)
 
-  const extras = overrides[srcFile] ?? []
-  const ordered = companionRel === null ? [...extras] : [companionRel, ...extras]
+  // Coverage-derived set is the primary source; overrides AND the companion stay ADDITIVE.
+  // The companion is always included as a safety net: a companion that imports the impl but
+  // reports 0 lines-hit (all lines in un-hit branches) would be absent from `discovered`, so
+  // including it guarantees that direct coverage is measured rather than undercounted.
+  const discoveredFiles = discovered !== undefined && discovered.length > 0 ? [...discovered] : []
+  const ordered =
+    companionRel === null ? [...discoveredFiles, ...extras] : [companionRel, ...discoveredFiles, ...extras]
   const deduped = Array.from(new Set(ordered))
 
   if (deduped.length === 0) {

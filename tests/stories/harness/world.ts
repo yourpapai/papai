@@ -208,6 +208,9 @@ function createPendingWork(ids: ScenarioIds): PendingWork {
       ...item,
       reply,
       turnId: ids.next('turn'),
+      messageIds: item.messageId === undefined ? [] : [item.messageId],
+      segments:
+        item.messageId === undefined ? [] : [{ messageId: item.messageId, text: item.text, username: item.username }],
     }).catch((error: unknown) => {
       failures = [...failures, error]
     })
@@ -232,7 +235,7 @@ function createPendingWork(ids: ScenarioIds): PendingWork {
 
 function createScenarioProcessMessage(model: ScriptedModel): ProcessMessageFn {
   return (reply, contextId, userId, username, text, contextType, ...rest) => {
-    const [configContextId, deps, attachmentIds, turnId, actorRole] = rest
+    const [configContextId, deps, attachmentIds, turnId, actorRole, originatingMessageIds, segments] = rest
     return processMessage(
       reply,
       contextId,
@@ -248,6 +251,8 @@ function createScenarioProcessMessage(model: ScriptedModel): ProcessMessageFn {
       attachmentIds,
       turnId,
       actorRole,
+      originatingMessageIds,
+      segments,
     )
   }
 }

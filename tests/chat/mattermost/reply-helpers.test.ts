@@ -231,6 +231,65 @@ describe('createMattermostReplyFn', () => {
     })
   })
 
+  describe('formatted + editReply + lastReplyTarget', () => {
+    test('formatted captures the post id via lastReplyTarget()', async () => {
+      const { reply } = makeReplyFn()
+
+      expect(reply.lastReplyTarget).toBeDefined()
+      expect(reply.lastReplyTarget!()).toBeUndefined()
+
+      await reply.formatted('**hello**')
+
+      expect(reply.lastReplyTarget!()).toEqual({ platform: 'mattermost', ref: 'post-1' })
+    })
+
+    test('editReply PATCHes the captured post id with the new message', async () => {
+      const { reply, apiCalls } = makeReplyFn()
+
+      await reply.formatted('original')
+      const target = reply.lastReplyTarget!()
+      expect(target).toBeDefined()
+
+      await reply.editReply!(target!, '**updated**')
+
+      const patchCall = apiCalls.find((c) => c.method === 'PUT')
+      expect(patchCall).toBeDefined()
+      expect(patchCall!.path).toBe('/api/v4/posts/post-1/patch')
+      expect(patchCall!.body).toEqual({ message: '**updated**' })
+    })
+
+    test('editReply leaves the message unformatted (posts markdown verbatim)', async () => {
+      const { reply, apiCalls } = makeReplyFn()
+      await reply.formatted('original')
+      const target = reply.lastReplyTarget!()
+      const markdown = '**bold** _italic_'
+      await reply.editReply!(target!, markdown)
+      const patchCall = apiCalls.find((c) => c.method === 'PUT')
+      expect(patchCall!.body).toEqual({ message: markdown })
+    })
+
+    test('editReply swallows platform errors (never throws)', async () => {
+      const calls: Array<{ method: string; path: string }> = []
+      const reply = createMattermostReplyFn({
+        channelId: 'chan-1',
+        getWsSeq: () => 1,
+        apiFetch: (method, path): Promise<unknown> => {
+          calls.push({ method, path })
+          return Promise.reject(new Error('patch failed'))
+        },
+        wsSend: () => {},
+        uploadFile: () => Promise.resolve('file-1'),
+        platformInstanceId: 'mattermost-main',
+        callbackBaseUrl: 'https://bot.example',
+        createActionContext: () => {
+          throw new Error('not used')
+        },
+      })
+      await reply.editReply!({ platform: 'mattermost', ref: 'post-9' }, 'new')
+      expect(calls).toContainEqual({ method: 'PUT', path: '/api/v4/posts/post-9/patch' })
+    })
+  })
+
   describe('createStatus', () => {
     test('posts the status then updates and dismisses it', async () => {
       const { reply, apiCalls } = makeReplyFn()

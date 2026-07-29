@@ -144,7 +144,13 @@ export function parsePostedEvent(data: Record<string, unknown>): { post: Matterm
   if (!postedDataResult.success) return null
 
   const { post: postJson, sender_name: senderName } = postedDataResult.data
-  const postResult = MattermostPostSchema.safeParse(JSON.parse(postJson))
+  let parsedPost: unknown
+  try {
+    parsedPost = JSON.parse(postJson)
+  } catch {
+    return null
+  }
+  const postResult = MattermostPostSchema.safeParse(parsedPost)
   if (!postResult.success) return null
   return { post: postResult.data, senderName }
 }

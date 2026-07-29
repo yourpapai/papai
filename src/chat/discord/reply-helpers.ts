@@ -6,7 +6,15 @@
 import pLimit from 'p-limit'
 
 import { logger } from '../../logger.js'
-import type { ButtonReplyOptions, EmbedOptions, PromptHandle, ReplyFn, ReplyOptions, StatusHandle } from '../types.js'
+import type {
+  ButtonReplyOptions,
+  EmbedOptions,
+  PromptHandle,
+  ReplyFn,
+  ReplyOptions,
+  ReplyTarget,
+  StatusHandle,
+} from '../types.js'
 import { toActionRows } from './buttons.js'
 import { chunkForDiscord } from './format-chunking.js'
 import { formatLlmOutput } from './format.js'
@@ -164,6 +172,33 @@ type ReplyContext = {
   sentMessages: BotMessage[]
 }
 
+const isBotMessage = (value: unknown): value is BotMessage => {
+  if (typeof value !== 'object' || value === null || !('edit' in value)) return false
+  return typeof (value as Record<string, unknown>)['edit'] === 'function'
+}
+
+const isBotMessageArray = (ref: unknown): ref is BotMessage[] => Array.isArray(ref) && ref.every(isBotMessage)
+
+const buildDiscordEditReply =
+  (channel: SendableChannel) =>
+  async (target: ReplyTarget, markdown: string): Promise<void> => {
+    if (!isBotMessageArray(target.ref)) return
+    await redactMessages(channel.id, target.ref, markdown).catch(() => undefined)
+  }
+
+const buildDiscordStatus = async (channel: SendableChannel, initialText: string): Promise<StatusHandle | undefined> => {
+  const sent = await channel.send({ content: initialText }).catch(() => undefined)
+  if (sent === undefined) return undefined
+  return {
+    update: async (text: string): Promise<void> => {
+      await sent.edit({ content: text }).catch(() => undefined)
+    },
+    dismiss: async (): Promise<void> => {
+      await sent.delete().catch(() => undefined)
+    },
+  }
+}
+
 function buildTextHandlers(ctx: ReplyContext): Pick<ReplyFn, 'text' | 'replaceText' | 'formatted'> {
   const { channel, replyToMessageId, replaceMessage, sentMessages } = ctx
   return {
@@ -182,6 +217,7 @@ export function createDiscordReplyFn(params: CreateDiscordReplyFnParams): ReplyF
   const { channel, replyToMessageId, replaceMessage, ephemeralReply } = params
   const sentMessages: BotMessage[] = []
   const ctx: ReplyContext = { channel, replyToMessageId, replaceMessage, sentMessages }
+  let lastReplyTarget: ReplyTarget | undefined
 
   const reply: ReplyFn = {
     ...buildTextHandlers(ctx),
@@ -205,19 +241,15 @@ export function createDiscordReplyFn(params: CreateDiscordReplyFnParams): ReplyF
       const sent = await channel.send({ embeds: [embed] })
       sentMessages.push(sent)
     },
-    createStatus: async (initialText: string): Promise<StatusHandle | undefined> => {
-      const sent = await channel.send({ content: initialText }).catch(() => undefined)
-      if (sent === undefined) return undefined
-      return {
-        update: async (text: string): Promise<void> => {
-          await sent.edit({ content: text }).catch(() => undefined)
-        },
-        dismiss: async (): Promise<void> => {
-          await sent.delete().catch(() => undefined)
-        },
-      }
-    },
+    createStatus: (initialText: string): Promise<StatusHandle | undefined> => buildDiscordStatus(channel, initialText),
   }
+  // Override `formatted` so each post also snapshots the sent chunks as the run's reply target.
+  reply.formatted = async (markdown: string, ...rest: [] | [ReplyOptions]): Promise<void> => {
+    await sendFormattedReply(channel, sentMessages, replyToMessageId, markdown, rest[0])
+    lastReplyTarget = { platform: 'discord', ref: [...sentMessages] }
+  }
+  reply.editReply = buildDiscordEditReply(channel)
+  reply.lastReplyTarget = (): ReplyTarget | undefined => lastReplyTarget
 
   if (ephemeralReply !== undefined) {
     reply.ephemeralConfirm = ephemeralReply

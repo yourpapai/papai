@@ -12,9 +12,11 @@ Fast, accurate mutation testing per file. Built around the observation that
 the `static` bucket, which `ignoreStatic: true` then discards (see
 `docs/research/2026-05-24-mutation-measurement-and-test-quality-findings.md`).
 
-This tool pairs each source file with **only its companion test file** (via
-`bun.testFiles`) and runs Stryker with `ignoreStatic: false`. Because the test
-set is tiny, the accurate mode is cheap.
+This tool pairs each source file with the **test set that actually exercises it**
+(via `bun.testFiles`) and runs Stryker with `ignoreStatic: false`. The test set
+is built per batch from a coverage map (see `scripts/mutation/coverage-map.ts`)
+and falls back to the companion when no covering test is found. Because the
+test set stays small, the accurate mode is cheap.
 
 ## Commands
 
@@ -46,29 +48,46 @@ recorded as errored and excluded from the aggregate score; the run continues so
 one bad file never aborts the batch. Errored files appear in the summary as
 `errored=N` and carry the captured failure message for diagnosis.
 
-## Companion-test resolution
+## Test-set resolution
 
-The companion is resolved by `.hooks/tdd/test-resolver.mjs`:
+For each source file, `pairedRun` resolves the test set in this priority:
 
-- `src/foo/bar.ts` -> `tests/foo/bar.test.ts`
-- `client/debug/x.ts` -> `tests/client/debug/x.test.ts`
-- `plugins/task-provider-kaneo/foo.ts` -> `tests/plugins/task-provider-kaneo/foo.test.ts`
+1. **Coverage-derived set (primary)** — per batch, `pairedRun` builds a
+   `{sourceFile -> [covering testFiles]}` map via `buildCoverageMap`
+   (`scripts/mutation/coverage-map.ts`). For each source, the candidate
+   universe is `direct-import tests ∪ same-package tests`:
+   - _Direct-import tests_ — tests whose source text references the impl path
+     (mirrors `.hooks/tdd/test-resolver.mjs`'s `testFileImportsImpl`).
+   - _Same-package tests_ — every test under the source's companion package
+     directory (e.g. `src/chat/mattermost/file-helpers.ts` → all
+     `tests/chat/mattermost/*.test.ts`). This catches transitive coverage where
+     a same-package `index.test.ts` exercises the impl through a re-exporting
+     barrel rather than importing it directly.
 
-## When a file's coverage lives elsewhere (cross-cutting)
+   Each candidate is then run once with `bun test --coverage`, and the source
+   is attributed the candidates whose lcov shows `lines-hit > 0`. A 24h
+   content-keyed cache (`reports/paired/coverage-map.cache.json`) amortizes
+   coverage runs across batches; the cache never throws — a malformed file or
+   entry is treated as a miss.
 
-If a source file is mostly exercised by integration or other suites rather than
-its companion, register the extra tests in `scripts/mutation/overrides.json`.
-The override list is **added to** the companion (or used alone if no companion
-exists), e.g.:
+2. **Overrides (additive)** — `scripts/mutation/overrides.json` is unioned onto
+   the coverage-derived set (or used alone if no covering test was found). Use
+   this as the escape hatch for cross-cutting suites the heuristics miss:
+   ```json
+   {
+     "src/providers/factory.ts": ["tests/llm-orchestrator.test.ts", "tests/commands/context.test.ts"]
+   }
+   ```
+3. **Companion (fallback)** — when no covering test was found AND no override
+   is registered, the companion from `.hooks/tdd/test-resolver.mjs` is used:
+   - `src/foo/bar.ts` -> `tests/foo/bar.test.ts`
+   - `client/debug/x.ts` -> `tests/client/debug/x.test.ts`
+   - `plugins/task-provider-kaneo/foo.ts` -> `tests/plugins/task-provider-kaneo/foo.test.ts`
+   - `review-loop/src/foo.ts` -> `tests/review-loop/foo.test.ts`
 
-```json
-{
-  "src/providers/factory.ts": ["tests/llm-orchestrator.test.ts", "tests/commands/context.test.ts"]
-}
-```
-
-A file with no companion **and** no override is skipped with a warning — fix it
-by either adding a companion test or registering the cross-cutting tests above.
+A source with no covering test, no override, and no companion is skipped with
+a warning — fix it by adding a companion test, registering a cross-cutting
+override, or widening the candidate heuristics in `coverage-map.ts`.
 
 ## Command mapping
 
@@ -84,16 +103,31 @@ by either adding a companion test or registering the cross-cutting tests above.
 
 A committed per-file baseline of mutation scores backs a monotonic ratchet:
 
-- **PR gate** (`test:mutate:changed`): a changed file fails when its score drops
-  below its recorded baseline. Files new to scope are held to a floor
-  (`--ratchet-floor=N`, default `0.5`). Existing files are held to their own
-  baseline — the floor does not retroactively demand legacy files reach it, so
-  the overall score ratchets upward as files improve without blocking routine
-  work on currently-below-floor code. Disable with `--no-ratchet`.
-- **Master ratchet** (`test:mutate --update-baseline`): after a full run,
-  rewrites `baseline.json` keeping the per-file max with the existing baseline,
-  so the recorded floor only ever goes up (or stays the same). The CI
-  `mutation-baseline` job runs this on push to `master` and commits the result.
+- **PR gate** (`test:mutate:changed`): a changed file fails only when it has a
+  recorded baseline entry and its score drops below it. Files with no baseline
+  entry (new or never-baselined) are not regressions — the gate is
+  regression-only, so the overall score ratchets upward as files improve without
+  blocking routine work on currently-low-scoring or newly-added code. Disable
+  with `--no-ratchet`.
+- **Master seed** (`test:mutate:changed --base=HEAD~1 --update-baseline`): on
+  push to `master`, the CI `mutation-baseline` job measures the files changed
+  since the previous master commit and merges them into `baseline.json` via
+  `seedMerge`, which takes the per-key max and PRESERVES existing entries
+  (unlike the full-run `ratchetMerge`, which drops keys no longer in scope).
+  First-touch files — new or never-baselined — get seeded after merge, so the
+  baseline accumulates floors for every touched file over time. The committed
+  baseline is the floor the PR gate enforces.
 
 Re-generate the baseline from scratch (discards history) by deleting
-`scripts/mutation/baseline.json` and running `bun test:mutate --update-baseline`.
+`scripts/mutation/baseline.json` and running `bun test:mutate --update-baseline`
+(a full run; its `ratchetMerge` drops keys no longer in scope, which is what you
+want when rebuilding).
+
+### Migration (one-time catch-up)
+
+The first master run after the changed-files seed shipped measures and seeds
+every recently-changed unbaselined file at once — expect a large one-time
+`baseline.json` diff; this is expected and correct. Existing companion-only
+baseline entries (measured against the companion test set alone, often an
+undercount) ratchet upward as their files are re-measured on later master runs
+with coverage-derived test sets.

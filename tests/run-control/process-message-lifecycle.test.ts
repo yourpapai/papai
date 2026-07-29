@@ -10,6 +10,7 @@ import { MockLanguageModelV3 } from 'ai/test'
 
 import type { LlmOrchestratorDeps } from '../../src/llm-orchestrator-types.js'
 import { processMessage } from '../../src/llm-orchestrator.js'
+import { lastTurnRegistry } from '../../src/run-control/last-turn-registry.js'
 import { runRegistry } from '../../src/run-control/registry.js'
 import {
   createMockReply,
@@ -45,8 +46,12 @@ describe('processMessage run lifecycle', () => {
     seedCommonTestPlatformInstances()
     seedAdminLlmBinding()
     runRegistry.clear()
+    lastTurnRegistry.clear()
   })
-  afterEach(() => runRegistry.clear())
+  afterEach(() => {
+    runRegistry.clear()
+    lastTurnRegistry.clear()
+  })
 
   test('the run is registered during the turn and removed after (every exit path cleans up)', async () => {
     const { reply } = createMockReply()
@@ -87,5 +92,33 @@ describe('processMessage run lifecycle', () => {
     await processMessage(reply, 'dm-user-1', 'user-1', null, 'hello', 'dm', undefined, deps, [], 't2')
 
     expect(runRegistry.get('dm-user-1')).toBeUndefined()
+  })
+
+  test('records the last turn even when the catch body throws', async () => {
+    const { reply } = createMockReply()
+    // Drive the double-failure path: callLlm rejects (try block throws), then the
+    // catch body's handleLlmTurnError -> handleOrchestratorMessageError -> reply.text
+    // also rejects, simulating a transport failure on the user-facing error reply.
+    reply.text = (): Promise<void> => Promise.reject(new Error('transport down'))
+
+    const deps: LlmOrchestratorDeps = {
+      generateText: () => Promise.reject(new Error('boom')),
+      stepCountIs: (...args) => stepCountIs(...args),
+      buildModel: () => mockModel,
+      resolve: () => null,
+      maybeAutoProvision: () => Promise.resolve(false),
+    }
+
+    // The catch-body rejection propagates after finally runs; processMessage rethrows.
+    await expect(
+      processMessage(reply, 'dm-user-1', 'user-1', null, 'hello', 'dm', undefined, deps, [], 't3', 'member', [
+        'orig-1',
+      ]),
+    ).rejects.toThrow('transport down')
+
+    // Despite the catch body throwing, the finished turn was captured inside finally.
+    const last = lastTurnRegistry.get('dm-user-1')
+    expect(last).toBeDefined()
+    expect(last?.originatingMessageIds).toEqual(['orig-1'])
   })
 })

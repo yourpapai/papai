@@ -16,27 +16,23 @@ import { recordAssistantTurn } from './llm-history.js'
 import { getOpenAICompatibleProvider } from './llm-model-builder.js'
 import { checkRequiredProviderConfig, resolveConfigId } from './llm-orchestrator-config.js'
 import { buildHistory } from './llm-orchestrator-history.js'
+import { replayLeftoverSteerAsFreshTurn } from './llm-orchestrator-leftover-replay.js'
 import { shouldBackstopGroupMembership } from './llm-orchestrator-membership.js'
-import {
-  resolveAttachmentIds,
-  resolveDeps,
-  resolveTurnId,
-  type ProcessMessageRest,
-} from './llm-orchestrator-process-args.js'
+import { resolveProcessMessageInputs, type ProcessMessageRest } from './llm-orchestrator-process-args.js'
+import { resolveLlmForTurn } from './llm-orchestrator-resolve-llm.js'
 import { handleLlmTurnError, invokeWithLiveStatus, logProcessMessage } from './llm-orchestrator-support.js'
 import { buildLlmInvocationOpts, prepareLlmInvocation, type InvocationSource } from './llm-orchestrator-tools.js'
 import type { LlmOrchestratorDeps } from './llm-orchestrator-types.js'
-import { resolveLlmConfig } from './llm-providers/resolver.js'
-import { getAdminRoleBindings } from './llm-providers/store.js'
-import type { EffectiveLlmConfig, LlmConfigResult } from './llm-providers/types.js'
+import type { EffectiveLlmConfig } from './llm-providers/types.js'
 import { logger } from './logger.js'
 import { maybeAutoProvisionProvider } from './providers/auto-provision.js'
 import { ensureWorkspaceMember } from './providers/membership/index.js'
 import { defaultTaskProviderResolver } from './providers/resolver.js'
 import type { TaskProvider } from './providers/types.js'
+import { lastTurnRegistry } from './run-control/last-turn-registry.js'
 import { runRegistry } from './run-control/registry.js'
 import { buildStopSummary } from './run-control/summary.js'
-import { RunAbortedError, type InjectedMessage } from './run-control/types.js'
+import { RunAbortedError, type InjectedMessage, type RunControl } from './run-control/types.js'
 
 const log = logger.child({ scope: 'llm-orchestrator' })
 
@@ -86,52 +82,9 @@ const ensureRequiredConfig = async (reply: ReplyFn, contextId: string, configId:
   await reply.text(`Missing configuration: ${missing.join(', ')}.\nUse /config to finish setup in the settings web UI.`)
   throw new Error('Missing configuration')
 }
-let botMisconfiguredNotified = false
 
-const replyBotMisconfigured = async (reply: ReplyFn, contextId: string): Promise<void> => {
-  const configured = getAdminRoleBindings() !== null
-  log.error({ contextId, configured }, 'admin LLM provider registry is incomplete; bot cannot serve this turn')
-  await reply.text(
-    '⚠️ The bot is not fully configured. Ask the administrator to run /config and complete setup in the web UI.',
-  )
-  if (!botMisconfiguredNotified) {
-    botMisconfiguredNotified = true
-    log.warn({ configured }, 'admin notification suppressed for subsequent turns in this process')
-  }
-}
-
-type LlmConfigFailure = Exclude<LlmConfigResult, EffectiveLlmConfig>
-type ResolvedTurnLlmConfig = EffectiveLlmConfig | null
-
-async function replyByokConfigProblem(reply: ReplyFn, contextId: string, result: LlmConfigFailure): Promise<void> {
-  if (result.type === 'missing') {
-    log.warn({ contextId, missing: result.missing }, 'BYOK LLM config is incomplete; bot cannot serve this turn')
-    await reply.text(
-      `BYOK is enabled for this context, but LLM setup is incomplete. Missing: ${result.missing.join(', ')}. Use /config to finish BYOK setup in the settings web UI.`,
-    )
-    return
-  }
-  log.warn({ contextId }, 'BYOK LLM config is unreadable; bot cannot serve this turn')
-  await reply.text(
-    'BYOK credentials for this context are unreadable. Use /config to re-enter the BYOK LLM credentials in the settings web UI.',
-  )
-}
-
-async function resolveLlmForTurn(reply: ReplyFn, contextId: string, configId: string): Promise<ResolvedTurnLlmConfig> {
-  const resolvedLlm = resolveLlmConfig(configId)
-  if (resolvedLlm.ok) return resolvedLlm
-  if (resolvedLlm.source === 'global') {
-    await replyBotMisconfigured(reply, contextId)
-    return null
-  }
-  await replyByokConfigProblem(reply, contextId, resolvedLlm)
-  return null
-}
-
-/** Test-only helper to reset the admin-notified guard between tests. */
-export const resetBotMisconfiguredNotifiedForTesting = (): void => {
-  botMisconfiguredNotified = false
-}
+// Re-exported from the resolve-llm module so existing tests importing from here keep working.
+export { resetBotMisconfiguredNotifiedForTesting } from './llm-orchestrator-resolve-llm.js'
 
 const createProgressReporterForContext = (reply: ReplyFn, contextId: string): AiProgressReporter =>
   createAiProgressReporter(reply, getAiOutputSettings(resolveAiOutputSettingsContextId(contextId)))
@@ -144,7 +97,10 @@ type CallLlmArgs = InvocationSource & {
 }
 
 // `finishReason` distinguishes a step-cap truncation ('tool-calls') from a normal stop.
-type CallLlmResult = { finalStep: { response: { messages: ModelMessage[] } }; finishReason?: string }
+type CallLlmResult = {
+  finalStep: { response: { messages: ModelMessage[] } }
+  finishReason?: string
+}
 
 const callLlm = async (args: CallLlmArgs): Promise<CallLlmResult> => {
   const { reply, contextId, chatUserId, username, contextType, actorRole, deps, configId, resolvedLlm, turnId } = args
@@ -204,13 +160,18 @@ type RunTurnArgs = {
   configId: string
   resolvedLlm: EffectiveLlmConfig
   resolvedTurnId: string
+  originatingMessageIds: readonly string[]
   startedAt: number
 }
 
 const runTurn = async (args: RunTurnArgs): Promise<InjectedMessage[]> => {
-  const { invocationSource, turn, deps, configId, resolvedLlm, resolvedTurnId, startedAt } = args
+  const { invocationSource, turn, deps, configId, resolvedLlm, resolvedTurnId, originatingMessageIds, startedAt } = args
   const { reply, contextId, contextType, actorRole } = invocationSource
-  const run = runRegistry.begin(contextId, { turnId: resolvedTurnId, reply })
+  const run = runRegistry.begin(contextId, {
+    turnId: resolvedTurnId,
+    reply,
+    originatingMessageIds,
+  })
   let leftover: InjectedMessage[] = []
   try {
     const result = await callLlm({
@@ -221,7 +182,13 @@ const runTurn = async (args: RunTurnArgs): Promise<InjectedMessage[]> => {
       resolvedLlm,
       turnId: resolvedTurnId,
     })
-    const meta = { contextId, configId, mainModel: resolvedLlm.main.model, contextType, actorRole }
+    const meta = {
+      contextId,
+      configId,
+      mainModel: resolvedLlm.main.model,
+      contextType,
+      actorRole,
+    }
     recordAssistantTurn(meta, turn, result)
     if (run.stopRequested) await reply.formatted(buildStopSummary(run.completedEffects, { forced: false }))
   } catch (error) {
@@ -240,8 +207,23 @@ const runTurn = async (args: RunTurnArgs): Promise<InjectedMessage[]> => {
     }
   } finally {
     leftover = runRegistry.end(contextId)
+    // run is still a valid reference (end() only drops the map entry); capture
+    // the finished turn's state so later W2 edit classification can inspect it.
+    recordFinishedTurn(contextId, run)
   }
   return leftover
+}
+
+const recordFinishedTurn = (
+  contextId: string,
+  run: Readonly<Pick<RunControl, 'originatingMessageIds' | 'completedEffects' | 'replyTarget'>>,
+): void => {
+  lastTurnRegistry.record(contextId, {
+    originatingMessageIds: run.originatingMessageIds,
+    completedEffects: run.completedEffects,
+    replyTarget: run.replyTarget,
+    finishedAt: Date.now(),
+  })
 }
 
 export const processMessage = async (
@@ -253,16 +235,30 @@ export const processMessage = async (
   contextType: 'dm' | 'group',
   ...rest: ProcessMessageRest
 ): Promise<void> => {
-  const [configContextId, depsInput, newAttachmentIdsInput, turnId, actorRole = 'member'] = rest
-  const deps = resolveDeps(depsInput, defaultDeps)
-  const newAttachmentIds = resolveAttachmentIds(newAttachmentIdsInput)
-  const resolvedTurnId = resolveTurnId(turnId)
+  const { configContextId, deps, newAttachmentIds, resolvedTurnId, originatingMessageIds, actorRole, segments } =
+    resolveProcessMessageInputs(rest, defaultDeps)
   logProcessMessage(contextId, configContextId, chatUserId, userText, newAttachmentIds, resolvedTurnId)
   const configId = resolveConfigId(contextId, configContextId)
   const resolvedLlm = await resolveLlmForTurn(reply, contextId, configId)
   if (resolvedLlm === null) return
-  const turn = await buildHistory(contextId, chatUserId, resolvedLlm.main.model, userText, newAttachmentIds)
-  const invocationSource = { reply, contextId, chatUserId, username, userText, contextType, actorRole }
+  const turn = await buildHistory(
+    contextId,
+    chatUserId,
+    resolvedLlm.main.model,
+    userText,
+    newAttachmentIds,
+    segments,
+    contextType,
+  )
+  const invocationSource = {
+    reply,
+    contextId,
+    chatUserId,
+    username,
+    userText,
+    contextType,
+    actorRole,
+  }
   appendHistory(contextId, [turn.historyMessage])
   const leftover = await runTurn({
     invocationSource,
@@ -271,23 +267,8 @@ export const processMessage = async (
     configId,
     resolvedLlm,
     resolvedTurnId,
+    originatingMessageIds,
     startedAt: Date.now(),
   })
-  // Any steer message that never reached a step boundary becomes a fresh turn (never dropped).
-  if (leftover.length > 0) {
-    const text = leftover.map((m) => m.text).join('\n\n')
-    await processMessage(
-      reply,
-      contextId,
-      chatUserId,
-      username,
-      text,
-      contextType,
-      configContextId,
-      deps,
-      [],
-      undefined,
-      actorRole,
-    )
-  }
+  await replayLeftoverSteerAsFreshTurn(leftover, { invocationSource, configContextId, deps, processMessage })
 }

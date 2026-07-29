@@ -13,7 +13,7 @@ import { createMockReply } from '../utils/test-helpers.js'
 
 function makeRun(): RunControl {
   const { reply } = createMockReply()
-  return new RunRegistry().begin('ctx', { turnId: 't', reply })
+  return new RunRegistry().begin('ctx', { turnId: 't', reply, originatingMessageIds: [] })
 }
 
 describe('createSteeringPrepareStep', () => {

@@ -5,13 +5,10 @@
 
 import { toSourceProvider, type StagedFileDownloadFn } from './attachments/types.js'
 import { checkAuthorizationExtended, getThreadScopedStorageContextId } from './auth.js'
-import {
-  findVoiceStagedIds,
-  resolveMessageAttachments,
-  resolveVoiceStagedFiles,
-  stageGroupFileCandidates,
-} from './bot-attachments.js'
+import { findVoiceStagedIds, resolveMessageAttachments, stageGroupFileCandidates } from './bot-attachments.js'
+import { processCoalescedMessage } from './bot-coalesced-processing.js'
 import { recordGroupObservation } from './bot-group-observation.js'
+import { resolveMessageAuth, shouldIgnoreGroupMessage } from './bot-guards.js'
 import { cacheObservedIncomingMessage } from './bot-message-caching.js'
 import { emitReplyCompletedIfNeeded, trackReplyUsage } from './bot-reply-tracking.js'
 import { replyToUnauthorized } from './bot-unauthorized-reply.js'
@@ -34,9 +31,10 @@ import {
 } from './commands/index.js'
 import { emitUser } from './debug/event-bus.js'
 import type { ProcessMessageFn } from './llm-orchestrator-process-args.js'
-import { defaultDeps, processMessage as defaultProcessMessage } from './llm-orchestrator.js'
+import { processMessage as defaultProcessMessage } from './llm-orchestrator.js'
 import { logger } from './logger.js'
-import { enqueueMessage, type CoalescedItem as QueuedCoalescedItem } from './message-queue/index.js'
+import { onIncomingEdit } from './message-edit/handle.js'
+import { enqueueMessage } from './message-queue/index.js'
 import { registerPluginCommands } from './plugins/command-contributions.js'
 import { buildPromptWithReplyContext } from './reply-context.js'
 import { runRegistry } from './run-control/registry.js'
@@ -53,17 +51,6 @@ export type BotDeps = Readonly<{ processMessage: ProcessMessageFn }> &
 const defaultBotDeps: BotDeps = { processMessage: defaultProcessMessage, enqueueMessage }
 const log = logger.child({ scope: 'bot' })
 export { checkAuthorizationExtended, getThreadScopedStorageContextId }
-function resolveMessageAuth(msg: IncomingMessage): AuthorizationResult {
-  return checkAuthorizationExtended(
-    msg.user.id,
-    msg.user.username,
-    msg.contextId,
-    msg.contextType,
-    msg.threadId,
-    msg.user.isAdmin,
-    msg.platformInstanceId,
-  )
-}
 // A denied DM user who can manage a group (auth.configCommandAllowed) is still
 // allowed to launch the settings UI via /config, but nothing else.
 function isConfigLaunchBypass(commandName: string, auth: AuthorizationResult): boolean {
@@ -125,41 +112,6 @@ function registerCommands(chat: ChatProvider, adminUserId: string): void {
   registerStopCommand(observedChat)
   registerPluginCommands(observedChat)
 }
-async function processCoalescedMessage(coalescedItem: QueuedCoalescedItem, deps: BotDeps): Promise<void> {
-  const start = Date.now()
-  const tracked = trackReplyUsage(coalescedItem.reply, true)
-  try {
-    const voiceAttachmentIds = await resolveVoiceStagedFiles(
-      coalescedItem.storageContextId,
-      coalescedItem.voiceStagedIds,
-      deps.stagedDownloadFn,
-    )
-    await deps.processMessage(
-      tracked.reply,
-      coalescedItem.storageContextId,
-      coalescedItem.userId,
-      coalescedItem.username,
-      coalescedItem.text,
-      coalescedItem.contextType,
-      coalescedItem.configContextId,
-      {
-        ...defaultDeps,
-        stagedDownloadFn: deps.stagedDownloadFn,
-        chatParticipantResolver: deps.chatParticipantResolver,
-      },
-      [...voiceAttachmentIds, ...coalescedItem.newAttachmentIds],
-      coalescedItem.turnId,
-      coalescedItem.actorRole,
-    )
-  } finally {
-    emitReplyCompletedIfNeeded(tracked, coalescedItem.userId, coalescedItem.storageContextId, start)
-  }
-}
-function shouldIgnoreGroupMessage(msg: IncomingMessage): boolean {
-  if (msg.contextType !== 'group') return false
-  if (msg.commandMatch !== undefined && msg.commandMatch !== '') return false
-  return !msg.isMentioned && msg.isReplyToBot !== true
-}
 async function handleMessage(
   chat: ChatProvider,
   msg: IncomingMessage,
@@ -202,6 +154,7 @@ async function handleMessage(
       newAttachmentIds,
       voiceStagedIds,
       actorRole: auth.isGuest === true ? 'guest' : 'member',
+      messageId: msg.messageId,
     },
     reply,
     (coalescedItem): Promise<void> => processCoalescedMessage(coalescedItem, deps),
@@ -292,6 +245,8 @@ export function setupBot(chat: ChatProvider, adminUserId: string, ...rest: [] | 
   if (initializedChats.has(chat)) return
   registerCommands(chat, adminUserId)
   chat.onMessage((msg, reply): Promise<void> => onIncomingMessage(chat, msg, reply, deps))
+  if (chat.onMessageEdit !== undefined)
+    chat.onMessageEdit((msg, reply): Promise<void> => onIncomingEdit(chat, msg, reply, deps))
   if (chat.onInteraction !== undefined)
     chat.onInteraction((interaction, reply): Promise<void> => routeIncomingInteraction(interaction, reply))
   initializedChats.add(chat)

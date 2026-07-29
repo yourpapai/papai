@@ -11,6 +11,7 @@ import { buildVerifiedCompletion, detectToolFailure } from './completion/verifie
 import type { VerifierDeps } from './completion/verified-completion.js'
 import { collectTurnMessages, type TurnMessagesResult } from './llm-orchestrator-messages.js'
 import { logger } from './logger.js'
+import { runRegistry } from './run-control/registry.js'
 
 const log = logger.child({ scope: 'llm-orchestrator:send' })
 
@@ -74,6 +75,14 @@ export const sendLlmResponse = async (
   }
   if (beforeFirstMessage !== undefined) await beforeFirstMessage()
   await reply.formatted(textToFormat)
+  recordReplyTarget(contextId, reply)
   await flushProgressDetails(progressReporter, contextId)
   log.info(meta, 'Response sent successfully')
+}
+
+const recordReplyTarget = (contextId: string, reply: ReplyFn): void => {
+  if (reply.lastReplyTarget === undefined) return
+  const run = runRegistry.get(contextId)
+  if (run === undefined) return
+  run.replyTarget = reply.lastReplyTarget()
 }
