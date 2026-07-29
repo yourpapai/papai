@@ -398,6 +398,20 @@ type ExecutableStoryMapping = Readonly<{
 }>
 
 const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableStoryMapping>> = {
+  'SCN-attachments-staged-scope-search': {
+    verifiedAt: '2026-07-29',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/runtime/staged-attachments.story.test.ts#SCN-attachments-staged-scope-search: staged search respects thread and group boundaries',
+    ],
+  },
+  'SCN-attachments-staged-resolution': {
+    verifiedAt: '2026-07-29',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/runtime/staged-attachments.story.test.ts#SCN-attachments-staged-resolution: staged resolution is single-use, terminal, and re-sendable',
+    ],
+  },
   'SCN-queue-coalescing': {
     verifiedAt: '2026-07-29',
     provingTier: '0',
@@ -1487,14 +1501,6 @@ const blocked = (family: StoryFamily, rationale: string): AuditRecord =>
 
 export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
   // Phase 3 — uncatalogued runtime cluster; catalog-only until each record has a literal story mapping.
-  'SCN-attachments-staged-scope-search': ready(
-    'F2',
-    'The existing database-backed attachment runtime can prove context and group search isolation without a new seam.',
-  ),
-  'SCN-attachments-staged-resolution': ready(
-    'F2',
-    'The existing attachment relay runtime can prove single-use resolution, terminal failure, and intentional re-send behavior.',
-  ),
   'SCN-byok-context-credentials': ready(
     'F1',
     'The existing encrypted configuration store can prove per-context merge and clear behavior while assertions omit secret values.',
