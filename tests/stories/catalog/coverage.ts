@@ -398,6 +398,20 @@ type ExecutableStoryMapping = Readonly<{
 }>
 
 const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableStoryMapping>> = {
+  'SCN-queue-coalescing': {
+    verifiedAt: '2026-07-29',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/runtime/queue.story.test.ts#SCN-queue-coalescing: same-actor messages form one ordered turn',
+    ],
+  },
+  'SCN-queue-group-serialization': {
+    verifiedAt: '2026-07-29',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/runtime/queue.story.test.ts#SCN-queue-group-serialization: actor changes flush and serialize group-thread turns',
+    ],
+  },
   'SCN-memory-tool-pairing': {
     verifiedAt: '2026-07-29',
     storyIds: [
@@ -1452,14 +1466,6 @@ const blocked = (family: StoryFamily, rationale: string): AuditRecord =>
 
 export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
   // Phase 3 — uncatalogued runtime cluster; catalog-only until each record has a literal story mapping.
-  'SCN-queue-coalescing': ready(
-    'F1',
-    'The existing queue runtime can prove same-actor batching and output ordering without a new seam.',
-  ),
-  'SCN-queue-group-serialization': ready(
-    'F1',
-    'The existing queue runtime can prove actor-change flushing and one-run-per-thread serialization without a new seam.',
-  ),
   'SCN-attachments-staged-scope-search': ready(
     'F2',
     'The existing database-backed attachment runtime can prove context and group search isolation without a new seam.',
