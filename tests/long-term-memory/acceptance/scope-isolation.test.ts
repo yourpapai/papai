@@ -6,18 +6,40 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { searchLexical } from '../../../src/long-term-memory/lexical-search.js'
+import { rankRecordsBySimilarity } from '../../../src/long-term-memory/semantic-search.js'
 import { listMemoryRecords } from '../../../src/long-term-memory/store.js'
 import { setupTestDb } from '../../utils/test-helpers.js'
-import { ALL_STATUSES, BILINGUAL, GROUP, OTHER_PERSONAL, PERSONAL, seedMultiParty, seedMultilingual } from './corpus.js'
+import {
+  ALL_STATUSES,
+  BILINGUAL,
+  GROUP,
+  OTHER_PERSONAL,
+  PERSONAL,
+  VEC,
+  VERSION,
+  seedMultiParty,
+  seedMultilingual,
+} from './corpus.js'
 import { CASES } from './scope-isolation.cases.js'
 
 const lexicalIds = (scope: typeof PERSONAL, query: string): readonly string[] =>
   searchLexical({ ...scope, query, statuses: ALL_STATUSES, limit: 8 }).map((r) => r.id)
 
+const denseIds = (scope: typeof PERSONAL): readonly string[] =>
+  rankRecordsBySimilarity(scope, VEC, {
+    statuses: ALL_STATUSES,
+    embeddingVersion: VERSION,
+    threshold: 0,
+    limit: 8,
+  }).map((r) => r.id)
+
 const listedIds = (scope: typeof PERSONAL): readonly string[] =>
   ALL_STATUSES.flatMap((status) => listMemoryRecords({ ...scope, status }).map((r) => r.id))
 
 const scopedId = (scope: typeof PERSONAL, entryId: string): string => `${scope.scopeId}-${entryId}`
+
+const threadScopedGroupIds = (threadContextId: string): readonly string[] =>
+  searchLexical({ ...GROUP, query: 'release', statuses: ALL_STATUSES, threadContextId, limit: 8 }).map((r) => r.id)
 
 describe('acceptance: scope-isolation', () => {
   beforeEach(async () => {
@@ -42,6 +64,15 @@ describe('acceptance: scope-isolation', () => {
       // Positive control: the query does reach the other scope's own twin, so the negative
       // assertion above is load-bearing rather than an assertion against an empty result.
       expect(otherHits).toContain(scopedId(OTHER_PERSONAL, entry.id))
+
+      // Dense channel: semantic-search.ts implements its own scope filter, separate from
+      // lexical-search.ts's and store.ts's, so it needs its own isolation proof.
+      expect(denseIds(PERSONAL)).toContain(id)
+      const otherDenseHits = denseIds(OTHER_PERSONAL)
+      expect(otherDenseHits).not.toContain(id)
+      // Positive control: the other scope's own twin is dense-reachable, so the miss above is
+      // a scope filter, not a dead query.
+      expect(otherDenseHits).toContain(scopedId(OTHER_PERSONAL, entry.id))
     }
   })
 
@@ -54,18 +85,20 @@ describe('acceptance: scope-isolation', () => {
     expect(listedIds(GROUP)).toContain('acc-mp-group')
     expect(listedIds(GROUP)).not.toContain('acc-mp-personal')
     expect(lexicalIds(PERSONAL, 'stands')).not.toContain('acc-mp-group')
+
+    // Dense channel: personal-vs-group, each negative beside a positive on the same call.
+    expect(denseIds(PERSONAL)).toContain('acc-mp-personal')
+    expect(denseIds(PERSONAL)).not.toContain('acc-mp-group')
+    expect(denseIds(GROUP)).toContain('acc-mp-group')
+    expect(denseIds(GROUP)).not.toContain('acc-mp-personal')
   })
 
   test('multi-party — a thread-scoped record is filtered by threadContextId', () => {
     seedMultiParty()
 
-    const otherThread = searchLexical({
-      ...GROUP,
-      query: 'release',
-      statuses: ALL_STATUSES,
-      threadContextId: 'thread-b',
-      limit: 8,
-    }).map((r) => r.id)
-    expect(otherThread).not.toContain('acc-mp-group-thread')
+    expect(threadScopedGroupIds('thread-b')).not.toContain('acc-mp-group-thread')
+    // Positive control: the same query with the matching thread id does return the record, so
+    // the negative assertion above proves a thread filter rather than an always-empty result.
+    expect(threadScopedGroupIds('thread-a')).toContain('acc-mp-group-thread')
   })
 })

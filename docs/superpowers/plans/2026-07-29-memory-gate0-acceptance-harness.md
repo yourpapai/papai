@@ -9,9 +9,9 @@ See LICENSE in the project root for details.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a versioned, executable production-acceptance contract for the memory subsystem that implements the five criteria current code can satisfy and makes the six it cannot both visible and non-waivable.
+**Goal:** Build a versioned, executable production-acceptance contract for the memory subsystem that implements the four criteria current code can satisfy and makes the seven it cannot both visible and non-waivable.
 
-**Architecture:** A plain-data registry names all eleven acceptance criteria and nine scenario shapes with their status, blocker, and pass predicate. A shared synthetic corpus seeds fixtures per shape. Five criterion test suites drive their cases from exported tables, and a consistency test cross-checks those tables against the registry in both directions. An operator script renders the whole contract but never adjudicates readiness.
+**Architecture:** A plain-data registry names all eleven acceptance criteria and nine scenario shapes with their status, blocker, and pass predicate. A shared synthetic corpus seeds fixtures per shape. Four criterion test suites drive their cases from exported tables, and a consistency test cross-checks those tables against the registry in both directions. An operator script renders the whole contract but never adjudicates readiness.
 
 **Tech Stack:** Bun, TypeScript (strict), Drizzle ORM over `bun:sqlite`, `bun:test`, Zod v4.
 

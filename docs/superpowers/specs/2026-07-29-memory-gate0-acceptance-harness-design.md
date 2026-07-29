@@ -158,7 +158,7 @@ These make the contract self-enforcing:
 ### 6. Report — `scripts/memory-acceptance.ts`, `bun run memory:acceptance`
 
 Renders the corpus version, the criteria table with blockers, the shapes table, the coverage
-matrix, and a summary line of the form `contract versioned = YES / production ready = NO (6 unmet)`.
+matrix, and a summary line of the form `contract versioned = YES / production ready = NO (7 unmet)`.
 
 **Exit code is always 0.** The report is informational; enforcement lives in the tests. This
 mirrors `memory:shadow-funnel`, which renders mechanical preconditions but refuses to print a
