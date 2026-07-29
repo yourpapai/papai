@@ -121,12 +121,12 @@ export const CRITERIA: readonly Criterion[] = [
   },
   {
     key: 'capture-idempotency',
-    status: 'implemented',
-    passPredicate:
-      'Duplicate and out-of-order capture of identical content yields exactly one record with a deterministic content hash; a contradiction supersedes rather than duplicates.',
-    blocker: null,
-    predicateRule: null,
-    shapes: ['duplicate-out-of-order', 'contradiction'],
+    status: 'declared-unmet',
+    passPredicate: null,
+    blocker:
+      'no content-hash-keyed dedup at the write boundary; content collapse exists only in the LLM-gated group-promotion path',
+    predicateRule: PREDICATE_RULE,
+    shapes: [],
   },
   {
     key: 'reproducibility',
@@ -191,9 +191,19 @@ export const SHAPES: readonly Shape[] = [
   { key: 'multilingual', status: 'implemented', blocker: null },
   { key: 'multi-party', status: 'implemented', blocker: null },
   { key: 'tool-result', status: 'implemented', blocker: null },
-  { key: 'contradiction', status: 'implemented', blocker: null },
+  {
+    key: 'contradiction',
+    status: 'declared-unimplemented',
+    blocker:
+      'Belongs to capture-idempotency, demoted to declared-unmet; supersession is asserted as store behaviour, not as a Gate 0 cell.',
+  },
   { key: 'missing-embedding', status: 'implemented', blocker: null },
-  { key: 'duplicate-out-of-order', status: 'implemented', blocker: null },
+  {
+    key: 'duplicate-out-of-order',
+    status: 'declared-unimplemented',
+    blocker:
+      'Belongs to capture-idempotency, demoted to declared-unmet; no write-boundary content dedup exists to exercise.',
+  },
   { key: 'adversarial-erasure', status: 'implemented', blocker: null },
   {
     key: 'long-horizon',

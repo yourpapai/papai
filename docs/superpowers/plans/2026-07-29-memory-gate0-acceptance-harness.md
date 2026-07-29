@@ -1192,6 +1192,16 @@ git commit -m "test(memory): assert the Gate 0 provenance criterion"
 
 ### Task 6: `capture-idempotency` criterion suite
 
+**Superseded — see the Drift Log.** The suite below was implemented, but the controller and the
+task reviewer independently confirmed against `src/` that the system does not have the behaviour
+the frozen pass predicate asserts: `saveMemoryRecord` upserts on `memoryRecords.id` only; there is
+no content-hash-keyed dedup at the write boundary. The registry now records `capture-idempotency`
+as `declared-unmet`, and its `duplicate-out-of-order` and `contradiction` shapes followed it to
+`declared-unimplemented`. The genuine upsert-by-id and supersession behaviour the suite below did
+prove was relocated to `tests/long-term-memory/store-upsert-idempotency.test.ts`, an ordinary store
+test outside `acceptance/` that claims no Gate 0 cell. The steps below are retained as authoring
+history only; the files they created were deleted.
+
 **Files:**
 
 - Create: `tests/long-term-memory/acceptance/capture-idempotency.cases.ts`
@@ -1892,3 +1902,9 @@ After all tasks:
 - [ ] `bun run typecheck` — clean.
 - [ ] `bun knip` — no new findings.
 - [ ] `bun run memory:acceptance` — renders the contract, exits 0.
+
+## Drift Log
+
+| Date | Category | Item | Decision |
+| --- | --- | --- | --- |
+| 2026-07-29 | Predicate vs. implementation | The frozen `capture-idempotency` predicate asserts content-keyed capture collapse. `saveMemoryRecord` upserts on `memoryRecords.id` only (`store.ts:189-197`); `contentHash` is used solely by the erasure tombstone (`purge.ts:35,64`); content collapse exists only in the LLM-gated group-promotion path (`promotion.ts:38-46,73`). | Demoted the criterion to `declared-unmet` rather than narrowing the predicate. Its predicate must be re-authored in its own follow-on spec before implementation. The `duplicate-out-of-order` and `contradiction` shapes follow the criterion to `declared-unimplemented`. The upsert-by-id behaviour the suite did prove moved to `tests/long-term-memory/store-upsert-idempotency.test.ts`, where it claims no Gate 0 cell. |

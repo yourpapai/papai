@@ -72,7 +72,7 @@ interface Criterion {
 | `scope-isolation`      | implemented    | —                                           |
 | `erasure`              | implemented    | —                                           |
 | `provenance`           | implemented    | —                                           |
-| `capture-idempotency`  | implemented    | —                                           |
+| `capture-idempotency`  | declared-unmet | no write-boundary content-hash dedup        |
 | `reproducibility`      | implemented    | —                                           |
 | `races`                | declared-unmet | needs a concurrency harness                 |
 | `crash-recovery`       | declared-unmet | needs fault injection                       |
@@ -82,18 +82,21 @@ interface Criterion {
 | `reader-quality`       | declared-unmet | gated on the P1 screen                      |
 
 **Nine scenario shapes**, from the roadmap's Gate 0 paragraph: `multilingual`, `multi-party`,
-`tool-result`, `contradiction`, `missing-embedding`, `duplicate-out-of-order`,
-`adversarial-erasure` are implemented; `long-horizon` (needs canonical events, Gate 1) and
-`abstention` (needs a live reader, Gate 4) are declared but unimplemented.
+`tool-result`, `missing-embedding`, `adversarial-erasure` are implemented; `long-horizon` (needs
+canonical events, Gate 1), `abstention` (needs a live reader, Gate 4), `contradiction`, and
+`duplicate-out-of-order` are declared but unimplemented. The latter two followed
+`capture-idempotency` into `declared-unmet`: no write-boundary content dedup exists to exercise
+`duplicate-out-of-order`, and supersession is asserted as ordinary store behaviour rather than as
+a Gate 0 cell for `contradiction`.
 
 ### 2. Promotion rule
 
 A criterion moves from `declared-unmet` to `implemented` only by satisfying a **pass predicate
 written before its implementation began**.
 
-- For the five implemented criteria, predicates are written now (§3), while the outcome is already
+- For the four implemented criteria, predicates are written now (§3), while the outcome is already
   known and uncontested.
-- For the six unmet criteria, the registry records a `predicateRule` instead: the predicate MUST be
+- For the seven unmet criteria, the registry records a `predicateRule` instead: the predicate MUST be
   written and reviewed in that criterion's own follow-on spec, **before** its implementation starts
   — never at promotion time.
 
@@ -131,7 +134,6 @@ table, so the declared coverage and the executed coverage are the same object.
 | `scope-isolation`     | No record in scope A is reachable from scope B through any channel — personal, group, thread, guest.                                                                  | multilingual, multi-party           |
 | `erasure`             | A purged id is unreachable via lexical, dense, `listMemoryRecords` (every status), summary, and profile — each asserted independently — and is not recaptured after.   | multilingual, adversarial-erasure   |
 | `provenance`          | Every recalled record resolves to its stored source/evidence; no derived text surfaces without a resolvable record.                                                   | tool-result, multilingual           |
-| `capture-idempotency` | Duplicate and out-of-order capture of identical content yields exactly one record with a deterministic content hash; a contradiction supersedes rather than duplicates. | duplicate-out-of-order, contradiction |
 | `reproducibility`     | Identical corpus and embedding identity yield identical ordered recall; absent or incompatible embeddings degrade to lexical without losing order determinism.         | missing-embedding, multilingual     |
 
 Every implemented shape appears in at least one cell.

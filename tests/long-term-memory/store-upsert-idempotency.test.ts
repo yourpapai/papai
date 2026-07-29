@@ -3,14 +3,32 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+/**
+ * The store has NO content-hash-keyed dedup at the write boundary. `saveMemoryRecord`
+ * (`src/long-term-memory/store.ts:189-197`) upserts with
+ * `onConflictDoUpdate({ target: memoryRecords.id, set: values })` — that is id-keyed collapse
+ * only. Two writes of identical content under two different ids leave two active rows;
+ * `contentHash` (`src/long-term-memory/tombstone.ts`) is consulted only by the erasure
+ * tombstone path, never here. Content collapse exists solely in the LLM-gated
+ * group-promotion path (`src/long-term-memory/promotion.ts:38-46,73`), which applies only to
+ * provisional group records and is gated on `MEMORY_PROMOTION_MIN_THREADS` distinct threads
+ * plus an LLM `confirmDurable` call.
+ *
+ * The guarantee this file actually proves is upsert-by-id: a duplicate, out-of-order
+ * resubmission of the SAME capture (same id, reordered arrival, reworded whitespace/case)
+ * collapses to exactly one stored row. That is a real store guarantee, but it is not content
+ * dedup, and it does not satisfy the frozen `capture-idempotency` pass predicate. The Gate 0
+ * `capture-idempotency` criterion is therefore `declared-unmet`
+ * (`tests/long-term-memory/acceptance/registry.ts`) and this file claims no Gate 0 cell.
+ */
+
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { listMemoryRecords, saveMemoryRecord } from '../../../src/long-term-memory/store.js'
-import { contentHash, normalizeForHash } from '../../../src/long-term-memory/tombstone.js'
-import type { MemoryRecord } from '../../../src/long-term-memory/types.js'
-import { setupTestDb } from '../../utils/test-helpers.js'
-import { CASES } from './capture-idempotency.cases.js'
-import { acceptanceRecord, PERSONAL, seedContradiction, seedDuplicateOutOfOrder } from './corpus.js'
+import { listMemoryRecords, saveMemoryRecord } from '../../src/long-term-memory/store.js'
+import { contentHash } from '../../src/long-term-memory/tombstone.js'
+import type { MemoryRecord } from '../../src/long-term-memory/types.js'
+import { setupTestDb } from '../utils/test-helpers.js'
+import { acceptanceRecord, PERSONAL, seedContradiction } from './acceptance/corpus.js'
 
 /** Dense enough that a miss means the row is absent, not filtered out by an unrelated status. */
 const activeRecords = (): readonly MemoryRecord[] => listMemoryRecords({ ...PERSONAL, status: 'active' })
@@ -22,35 +40,13 @@ const activeById = (id: string): MemoryRecord => {
   return record
 }
 
-describe('acceptance: capture-idempotency', () => {
+describe('long-term-memory store: upsert-by-id idempotency', () => {
   beforeEach(async () => {
     await setupTestDb()
   })
 
-  test(`duplicate-out-of-order — ${CASES['duplicate-out-of-order']}`, () => {
-    const seeded = seedDuplicateOutOfOrder(PERSONAL)
-
-    // positive control: both independently captured writes actually landed, so the hash
-    // agreement below proves the two rows carry identical content rather than one write
-    // having silently failed and leaving a trivially-matching set of size one
-    const seededActive = activeRecords().filter((r) => seeded.includes(r.id))
-    expect(seededActive).toHaveLength(seeded.length)
-
-    const hashes = new Set(seededActive.map((r) => contentHash(r.content)))
-    expect(hashes.size).toBe(1)
-
-    // the hash function itself is order-independent and whitespace/case-normalized — the
-    // property that would let a consumer collapse independently captured rows into one
-    // logical identity
-    expect(contentHash('User drinks oat milk')).toBe(contentHash('  user   DRINKS oat milk '))
-    expect(normalizeForHash('  User   Drinks Oat Milk ')).toBe('user drinks oat milk')
-
-    // seedDuplicateOutOfOrder models "duplicate capture" as two independent writes under two
-    // different ids: the store has no content-hash-keyed dedup, so both rows above remain
-    // active (see task report). The guarantee the write path actually provides is
-    // upsert-by-id: a duplicate, out-of-order resubmission of the SAME capture (same id,
-    // reordered arrival, reworded whitespace/case) collapses to exactly one stored row.
-    const sameId = `${PERSONAL.scopeId}-acc-dup-same-id`
+  test('a duplicate, out-of-order, reworded resubmission under the same id collapses to one row', () => {
+    const sameId = `${PERSONAL.scopeId}-store-dup-same-id`
     const lateArrival = saveMemoryRecord(
       acceptanceRecord({
         ...PERSONAL,
@@ -78,15 +74,18 @@ describe('acceptance: capture-idempotency', () => {
 
     const collapsed = activeRecords().filter((r) => r.id === sameId)
     expect(collapsed).toHaveLength(1)
+    // last-write-wins content: the later `saveMemoryRecord` call's payload is what survives
     expect(contentHash(activeById(sameId).content)).toBe(contentHash('User drinks oat milk'))
   })
 
-  test(`contradiction — ${CASES.contradiction}`, () => {
+  test('a superseded record is retained as contradicted while its replacement is active', () => {
     seedContradiction(PERSONAL)
 
     const contradicted = listMemoryRecords({ ...PERSONAL, status: 'contradicted' })
     const active = listMemoryRecords({ ...PERSONAL, status: 'active' })
 
+    // positive control: the corpus actually seeded one row per status, so the content/id
+    // assertions below distinguish real records rather than passing on empty sets
     expect(contradicted).toHaveLength(1)
     expect(active).toHaveLength(1)
     expect(contradicted[0]?.content).toBe('User lives in Berlin')
