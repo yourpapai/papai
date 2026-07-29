@@ -6,8 +6,11 @@
 
 /**
  * Read-only Stage B evidence report. Usage:
- *   bun run scripts/analytics-stage-b-report.ts [--day YYYY-MM-DD] [--db PATH] [--log PATH]
- *   bun run scripts/analytics-stage-b-report.ts --assess --log PATH [--db PATH]
+ *   bun run scripts/analytics-stage-b-report.ts --db PATH [--day YYYY-MM-DD] [--log PATH]
+ *   bun run scripts/analytics-stage-b-report.ts --db PATH --assess --log PATH
+ *
+ * One of `--db PATH` or the `DB_PATH` env var is required for BOTH modes
+ * (assess reads the policy store from the DB).
  * Exit 0 = report produced (ineligible days are data); exit 1 = operational failure.
  */
 

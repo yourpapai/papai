@@ -59,6 +59,19 @@ const insertStaleEpochTouchingDay = (): void => {
     .run()
 }
 
+const insertStaleEpochOutsideDay = (): void => {
+  const earlierStartMs = DAY_START_MS - 2 * DAY_MS
+  db.insert(analyticsProcessEpochs)
+    .values({
+      epochId: 'epoch-stale-earlier',
+      state: 'stale_open',
+      startedAtMs: earlierStartMs + 1_000,
+      closedAtMs: null,
+      staleMarkedAtMs: earlierStartMs + 2_000,
+    })
+    .run()
+}
+
 const insertRejection = (reason: string, count: number): void => {
   db.insert(analyticsNormalizationRejections).values({ utcDay: DAY, sourceEventType: 'llm', reason, count }).run()
 }
@@ -138,6 +151,15 @@ describe('collectStageBDay', () => {
     expect(report.eligible).toBe(false)
     expect(report.reason).toBe('restart_gap')
     expect(report.restartGap).toBe(true)
+  })
+
+  test('a stale-open epoch entirely outside the reported day stays eligible with a global gap', () => {
+    insertStaleEpochOutsideDay()
+    const report = collectStageBDay({ day: DAY, nowMs: NOW_MS }, deps())
+    expect(report.eligible).toBe(true)
+    expect(report.reason).toBe('ok')
+    expect(report.reconciliation).toBe('gap')
+    expect(report.restartGap).toBe(false)
   })
 
   test('an incomplete (still running) day is ineligible', () => {

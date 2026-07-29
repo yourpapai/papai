@@ -49,6 +49,14 @@ describe('parseStageBLog', () => {
   test('blank lines are ignored', () => {
     expect(parseStageBLog(`\n${JSON.stringify(day('2026-08-01'))}\n\n`)).toHaveLength(1)
   })
+
+  test('corrupt and wrong-shape lines are skipped without failing', () => {
+    const jsonl = [JSON.stringify(day('2026-08-01')), '{not json', JSON.stringify(day('2026-08-02')), '{"foo":1}'].join(
+      '\n',
+    )
+    const records = parseStageBLog(jsonl)
+    expect(records.map((record) => record.day)).toEqual(['2026-08-01', '2026-08-02'])
+  })
 })
 
 describe('assessRecordedWindow', () => {

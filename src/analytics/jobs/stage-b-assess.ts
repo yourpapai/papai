@@ -3,10 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { logger } from '../../logger.js'
 import type { GovernanceReadiness } from '../governance/policy-store.js'
 import type { RolloutDecision, StageBDayEvidence } from '../rollout/stage-gates.js'
 import { STAGE_B_REQUIRED_CONSECUTIVE_WEEKS, assessStageBWindow, assessStageCEntry } from '../rollout/stage-gates.js'
 import type { StageBDayReport } from './stage-b-report.js'
+
+const log = logger.child({ scope: 'analytics:jobs:stage-b-assess' })
 
 const isRecordLike = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 
@@ -22,11 +25,22 @@ const isStageBDayRecord = (value: unknown): value is StageBDayReport => {
 
 export const parseStageBLog = (jsonl: string): StageBDayReport[] => {
   const byDay = new Map<string, StageBDayReport>()
-  for (const line of jsonl.split('\n')) {
+  const lines = jsonl.split('\n')
+  for (const [index, line] of lines.entries()) {
     const trimmed = line.trim()
     if (trimmed.length === 0) continue
-    const parsed: unknown = JSON.parse(trimmed)
-    if (!isStageBDayRecord(parsed)) continue
+    const lineNumber = index + 1
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(trimmed)
+    } catch {
+      log.warn({ lineNumber }, 'skipping unparseable stage-b log line')
+      continue
+    }
+    if (!isStageBDayRecord(parsed)) {
+      log.warn({ lineNumber }, 'skipping malformed stage-b log line')
+      continue
+    }
     byDay.set(parsed.day, parsed)
   }
   return [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day))

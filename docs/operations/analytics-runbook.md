@@ -260,6 +260,9 @@ enabled until all boxes are checked.
   `DB_PATH=... bun run scripts/analytics-stage-b-report.ts --log /var/lib/papai/stage-b.jsonl`
   (read-only; cron-safe; see the Stage B design spec) and paste the printed
   window-log row into the evidence doc.
+  If a day reports `reconciliation=gap` with `reason=ok`, the restart gap
+  belongs to an earlier day (its own row is suppressed); the current day is
+  eligible and no incident response is needed.
 
 ### Weekly (45 minutes; product/UX + engineering, privacy/security when gated)
 

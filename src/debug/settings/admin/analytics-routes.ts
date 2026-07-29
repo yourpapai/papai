@@ -198,7 +198,7 @@ const handleReleaseRequest = (
   nowMs: number,
   deps: AdminAnalyticsRouteDeps,
 ): ReleaseOutcome => {
-  const { execute, ...assessmentInput } = release
+  const { execute, sinkVersionId, ...assessmentInput } = release
   const assessment = assessReleaseRequest({ ...assessmentInput, nowMs })
   if (!assessment.ok) {
     return {
@@ -211,7 +211,7 @@ const handleReleaseRequest = (
     }
   }
   if (execute !== true) return { kind: 'handled', assessment: { ok: true }, execution: undefined }
-  const outcome = executeRelease(release, nowMs, deps)
+  const outcome = executeRelease({ ...assessmentInput, sinkVersionId, execute }, nowMs, deps)
   if (outcome.kind === 'denied') return outcome
   return { kind: 'handled', assessment: { ok: true }, execution: outcome.execution }
 }

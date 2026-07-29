@@ -149,9 +149,9 @@ export const collectStageBDay = (
   const reason: StageBDayReason = completeUtcDay
     ? restartGap
       ? 'restart_gap'
-      : reconciliation.status === 'reconciled'
-        ? 'ok'
-        : 'delta'
+      : reconciliation.status === 'delta'
+        ? 'delta'
+        : 'ok'
     : 'incomplete_day'
   return {
     day: input.day,

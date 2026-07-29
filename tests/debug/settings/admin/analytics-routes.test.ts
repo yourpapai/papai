@@ -506,6 +506,7 @@ describe('settings admin analytics routes', () => {
     const ReleaseExecutionSchema = z.object({
       status: z.string(),
       releaseId: z.string(),
+      releaseHash: z.string().min(1),
       cellCount: z.number(),
     })
 
@@ -549,9 +550,12 @@ describe('settings admin analytics routes', () => {
       expect(firstBody.releaseExecution.cellCount).toBeGreaterThan(0)
       const second = await postReconcile({ utcDay: DAY, sinkVersionId, execute: true })
       const secondBody = z
-        .object({ releaseExecution: z.object({ status: z.string(), releaseId: z.string() }) })
+        .object({
+          releaseExecution: z.object({ status: z.string(), releaseId: z.string(), cellCount: z.number() }),
+        })
         .parse(await second.json())
       expect(secondBody.releaseExecution.status).toBe('already_released')
+      expect(secondBody.releaseExecution.cellCount).toBe(0)
       expect(secondBody.releaseExecution.releaseId).toBe(firstBody.releaseExecution.releaseId)
     })
 
