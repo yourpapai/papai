@@ -8,6 +8,8 @@ import { performance } from 'node:perf_hooks'
 import { and, eq, gt, ne } from 'drizzle-orm'
 
 import { buildAnalyticsSourceContext, createAuthorizedTurnSeed } from '../analytics/bot-observer.js'
+import type { AuthorizedTurnSeed } from '../analytics/bot-observer.js'
+import { buildEditSeed, observeEditClassified, observeEditRegen } from '../analytics/edit-observer.js'
 import type { AnalyticsObserver } from '../analytics/runtime.js'
 import { buildTurnSteeredFact, nextSteerOrdinal } from '../analytics/turn-observer.js'
 import type { StagedFileDownloadFn } from '../attachments/types.js'
@@ -25,6 +27,7 @@ import { lastTurnRegistry, type LastTurn } from '../run-control/last-turn-regist
 import { runRegistry } from '../run-control/registry.js'
 import type { RunControl } from '../run-control/types.js'
 import { classifyEdit } from './classify.js'
+import type { EditWindow } from './classify.js'
 import { handleW2WithSideEffects, regenerateFromEditedText } from './w2-regen.js'
 
 const log = logger.child({ scope: 'message-edit' })
@@ -118,6 +121,8 @@ export async function onIncomingEdit(
     laterUserMessageExists: later,
   })
 
+  const editSeed = observeEditClassification(deps, msg, auth, window)
+
   log.debug(
     {
       storageContextId: auth.storageContextId,
@@ -132,9 +137,29 @@ export async function onIncomingEdit(
     return
   }
   if (window === 'w2' && lastTurn !== undefined) {
-    await handleW2(chat, msg, reply, auth, lastTurn, deps)
+    await handleW2(chat, msg, reply, auth, lastTurn, deps, editSeed)
   }
   // w3: baseline-only (history + metadata already corrected above).
+}
+
+/**
+ * Builds the edit analytics seed at the classification boundary and emits the
+ * `edit_classified` fact (window only). Returns the seed so the W2 path can
+ * reuse it for its regen-funnel emissions without rebuilding the source.
+ * No observer or unknown platform instance → returns undefined (silent).
+ */
+function observeEditClassification(
+  deps: EditHandlerDeps,
+  msg: IncomingMessage,
+  auth: AuthorizationResult,
+  window: EditWindow,
+): AuthorizedTurnSeed | undefined {
+  const observer = deps.analyticsObserver
+  if (observer === undefined) return undefined
+  const editSeed = buildEditSeed(msg, auth)
+  if (editSeed === undefined) return undefined
+  observeEditClassified(observer, editSeed, window)
+  return editSeed
 }
 
 /**
@@ -193,6 +218,7 @@ async function handleW2(
   auth: AuthorizationResult,
   last: LastTurn,
   deps: EditHandlerDeps,
+  editSeed: AuthorizedTurnSeed | undefined,
 ): Promise<void> {
   if (last.completedEffects.length > 0) {
     await handleW2WithSideEffects(msg, reply, auth, last, deps)
@@ -203,7 +229,12 @@ async function handleW2(
       { storageContextId: auth.storageContextId, messageId: msg.messageId },
       'W2 regeneration requested but processMessage is not wired into deps; skipping',
     )
+    const observer = deps.analyticsObserver
+    if (observer !== undefined && editSeed !== undefined) observeEditRegen(observer, editSeed, 'history_only')
     return
   }
+  const observer = deps.analyticsObserver
+  if (observer !== undefined && editSeed !== undefined) observeEditRegen(observer, editSeed, 'regen_started')
   await regenerateFromEditedText(msg, reply, auth, last, deps)
+  if (observer !== undefined && editSeed !== undefined) observeEditRegen(observer, editSeed, 'regen_completed')
 }
