@@ -412,6 +412,20 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
       'tests/stories/runtime/staged-attachments.story.test.ts#SCN-attachments-staged-resolution: staged resolution is single-use, terminal, and re-sendable',
     ],
   },
+  'SCN-byok-context-credentials': {
+    verifiedAt: '2026-07-29',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/settings/byok-credentials.story.test.ts#SCN-byok-context-credentials: context credentials merge and clear without disclosure',
+    ],
+  },
+  'SCN-byok-unreadable-credentials': {
+    verifiedAt: '2026-07-29',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/settings/byok-credentials.story.test.ts#SCN-byok-unreadable-credentials: unreadable credentials fail closed without disclosure',
+    ],
+  },
   'SCN-queue-coalescing': {
     verifiedAt: '2026-07-29',
     provingTier: '0',
@@ -1501,14 +1515,6 @@ const blocked = (family: StoryFamily, rationale: string): AuditRecord =>
 
 export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
   // Phase 3 — uncatalogued runtime cluster; catalog-only until each record has a literal story mapping.
-  'SCN-byok-context-credentials': ready(
-    'F1',
-    'The existing encrypted configuration store can prove per-context merge and clear behavior while assertions omit secret values.',
-  ),
-  'SCN-byok-unreadable-credentials': ready(
-    'F1',
-    'The existing encrypted configuration store can prove unreadable data fails closed without a new runtime seam.',
-  ),
   'SCN-announcement-delivery-fanout': ready(
     'F1',
     'The existing announcement broadcast dependency injection can prove independent fan-out success and failure accounting.',
