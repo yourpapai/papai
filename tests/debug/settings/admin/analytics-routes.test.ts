@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 
-import { analyticsSinks } from '../../../../src/db/schema.js'
+import { analyticsDailyCounters, analyticsSinks } from '../../../../src/db/schema.js'
 import { routeSettingsApi } from '../../../../src/debug/settings-api-router.js'
 import { handleAdminAnalyticsRoutes } from '../../../../src/debug/settings/admin/analytics-routes.js'
 import type { AdminAnalyticsRouteDeps } from '../../../../src/debug/settings/admin/analytics-routes.js'
@@ -451,5 +451,129 @@ describe('settings admin analytics routes', () => {
     )
     expect(wrongMethod).not.toBeNull()
     expect(wrongMethod!.status).toBe(405)
+  })
+
+  describe('aggregate release execution', () => {
+    const DAY = '2026-07-15'
+
+    const insertReleasableCounterCell = (over: Record<string, unknown> = {}): void => {
+      db.insert(analyticsDailyCounters)
+        .values({
+          utcDay: DAY,
+          definitionVersion: 1,
+          platform: 'all',
+          contextType: 'all',
+          actorRole: 'all',
+          taskProvider: 'all',
+          appVersion: 'all',
+          metric: 'turn_started',
+          value: 25,
+          finalized: true,
+          partialDay: false,
+          restartGapDetected: false,
+          lateEventCount: 0,
+          reconciliationStatus: 'complete_epoch',
+          disclosureScope: 'local_only',
+          contributorBasis: 'eligible_actor',
+          contributorCount: 12,
+          threshold: null,
+          ...over,
+        })
+        .run()
+    }
+
+    const createEnabledAggregateSink = async (): Promise<string> => {
+      const created = CreatedSinkSchema.parse(
+        await (await createSink({ kind: 'webhook', egressMode: 'aggregate' })).json(),
+      ).sink
+      probeOk = true
+      const verify = await call(`/settings/api/admin/analytics/sinks/${created.sinkVersionId}/verify`, {
+        method: 'POST',
+        headers: admin(true),
+        body: JSON.stringify(FULL_GATE),
+      })
+      expect(verify.status).toBe(200)
+      return created.sinkVersionId
+    }
+
+    const postReconcile = (release: Record<string, unknown>): Promise<Response> =>
+      call('/settings/api/admin/analytics/reconcile', {
+        method: 'POST',
+        headers: admin(true),
+        body: JSON.stringify({ release }),
+      })
+
+    const ReleaseExecutionSchema = z.object({
+      status: z.string(),
+      releaseId: z.string(),
+      cellCount: z.number(),
+    })
+
+    test('execute without sinkVersionId is refused', async () => {
+      const res = await postReconcile({ utcDay: DAY, execute: true })
+      expect(res.status).toBe(422)
+      expect(CodeSchema.parse(await res.json()).code).toBe('release_sink_required')
+    })
+
+    test('execute with a disabled aggregate sink is refused', async () => {
+      const created = CreatedSinkSchema.parse(
+        await (await createSink({ kind: 'webhook', egressMode: 'aggregate' })).json(),
+      ).sink
+      const res = await postReconcile({ utcDay: DAY, sinkVersionId: created.sinkVersionId, execute: true })
+      expect(res.status).toBe(422)
+      expect(CodeSchema.parse(await res.json()).code).toBe('release_sink_unavailable')
+    })
+
+    test('execute with a pseudonymous-lane sink is refused', async () => {
+      // createSink defaults to egressMode 'pseudonymous'
+      const created = CreatedSinkSchema.parse(await (await createSink()).json()).sink
+      const res = await postReconcile({ utcDay: DAY, sinkVersionId: created.sinkVersionId, execute: true })
+      expect(res.status).toBe(422)
+      expect(CodeSchema.parse(await res.json()).code).toBe('release_sink_unavailable')
+    })
+
+    test('denied release shapes stay denied with execute: true', async () => {
+      const sinkVersionId = await createEnabledAggregateSink()
+      const res = await postReconcile({ utcDay: DAY, sinkVersionId, execute: true, rollingWindowDays: 7 })
+      expect(res.status).toBe(422)
+      expect(CodeSchema.parse(await res.json()).code).toBe('release_denied')
+    })
+
+    test('execute builds and enqueues the release; re-execute is idempotent', async () => {
+      const sinkVersionId = await createEnabledAggregateSink()
+      insertReleasableCounterCell()
+      const first = await postReconcile({ utcDay: DAY, sinkVersionId, execute: true })
+      expect(first.status).toBe(200)
+      const firstBody = z.object({ releaseExecution: ReleaseExecutionSchema }).parse(await first.json())
+      expect(firstBody.releaseExecution.status).toBe('released')
+      expect(firstBody.releaseExecution.cellCount).toBeGreaterThan(0)
+      const second = await postReconcile({ utcDay: DAY, sinkVersionId, execute: true })
+      const secondBody = z
+        .object({ releaseExecution: z.object({ status: z.string(), releaseId: z.string() }) })
+        .parse(await second.json())
+      expect(secondBody.releaseExecution.status).toBe('already_released')
+      expect(secondBody.releaseExecution.releaseId).toBe(firstBody.releaseExecution.releaseId)
+    })
+
+    test('execute on an incomplete day is refused', async () => {
+      const sinkVersionId = await createEnabledAggregateSink()
+      insertReleasableCounterCell({ finalized: false })
+      const res = await postReconcile({ utcDay: DAY, sinkVersionId, execute: true })
+      expect(res.status).toBe(422)
+      expect(CodeSchema.parse(await res.json()).code).toBe('release_day_incomplete')
+    })
+
+    test('assessment-only (no execute) behavior is unchanged', async () => {
+      const res = await postReconcile({ utcDay: DAY })
+      expect(res.status).toBe(200)
+      const body = z
+        .object({
+          releaseAssessment: z.object({ ok: z.literal(true) }).optional(),
+          releaseExecution: z.unknown().optional(),
+        })
+        .parse(await res.json())
+      expect(body.releaseAssessment).toEqual({ ok: true })
+      expect(body.releaseExecution).toBeUndefined()
+    })
   })
 })

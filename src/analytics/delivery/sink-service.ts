@@ -277,6 +277,11 @@ export const hasEnabledSink = (egressMode: 'aggregate' | 'pseudonymous', deps: S
     .where(and(eq(analyticsSinks.egressMode, egressMode), eq(analyticsSinks.state, 'enabled')))
     .get() !== undefined
 
+export const isEnabledAggregateSinkVersion = (sinkVersionId: string, deps: SinkServiceDeps): boolean => {
+  const row = getSinkVersion(sinkVersionId, deps)
+  return row !== null && row.egressMode === 'aggregate' && row.state === 'enabled'
+}
+
 export const listSinkVersions = (deps: SinkServiceDeps): SinkPublicView[] =>
   deps
     .getDrizzleDb()

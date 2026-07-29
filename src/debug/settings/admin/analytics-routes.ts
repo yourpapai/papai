@@ -5,8 +5,9 @@
 
 import { z } from 'zod'
 
+import { buildDailyAggregateRelease } from '../../../analytics/delivery/aggregate-release.js'
 import { assessReleaseRequest } from '../../../analytics/delivery/release-suppression.js'
-import { hasEnabledSink } from '../../../analytics/delivery/sink-service.js'
+import { hasEnabledSink, isEnabledAggregateSinkVersion } from '../../../analytics/delivery/sink-service.js'
 import { getPolicy, updatePolicy } from '../../../analytics/governance/policy-store.js'
 import type { PolicyUpdateFields } from '../../../analytics/governance/policy-store.js'
 import { runReconciliation } from '../../../analytics/jobs/reconcile.js'
@@ -55,6 +56,8 @@ const ReconcileBodySchema = z
         dimensions: z.array(z.enum(['platform', 'contextType', 'actorRole', 'taskProvider'])).optional(),
         appVersion: z.string().optional(),
         drillThrough: z.boolean().optional(),
+        sinkVersionId: z.string().min(1).optional(),
+        execute: z.boolean().optional(),
       })
       .strict()
       .optional(),
@@ -135,6 +138,84 @@ const handlePatch = async (
   return settingsJson(200, buildAdminView(deps, nowMs))
 }
 
+type ReconcileRelease = NonNullable<z.infer<typeof ReconcileBodySchema>['release']>
+
+type ReleaseExecution = Readonly<{ status: string; releaseId: string; releaseHash: string; cellCount: number }>
+
+type ReleaseOutcome =
+  | Readonly<{ kind: 'denied'; response: Response }>
+  | Readonly<{ kind: 'handled'; assessment: Readonly<{ ok: true }>; execution: ReleaseExecution | undefined }>
+
+type ExecuteOutcome =
+  | Readonly<{ kind: 'denied'; response: Response }>
+  | Readonly<{ kind: 'executed'; execution: ReleaseExecution }>
+
+const executeRelease = (release: ReconcileRelease, nowMs: number, deps: AdminAnalyticsRouteDeps): ExecuteOutcome => {
+  const { sinkVersionId } = release
+  if (sinkVersionId === undefined) {
+    return {
+      kind: 'denied',
+      response: settingsJson(422, {
+        error: 'sinkVersionId is required when execute is true',
+        code: 'release_sink_required',
+      }),
+    }
+  }
+  if (!isEnabledAggregateSinkVersion(sinkVersionId, sinkDepsOf(deps))) {
+    return {
+      kind: 'denied',
+      response: settingsJson(422, { error: 'no enabled aggregate sink version', code: 'release_sink_unavailable' }),
+    }
+  }
+  const result = buildDailyAggregateRelease(
+    { utcDay: release.utcDay, sinkVersionId, nowMs },
+    { getDrizzleDb: deps.getDrizzleDb },
+  )
+  if (result.status === 'day_not_complete') {
+    return {
+      kind: 'denied',
+      response: settingsJson(422, { error: 'utc day is not complete', code: 'release_day_incomplete' }),
+    }
+  }
+  if (result.status === 'empty') {
+    return {
+      kind: 'denied',
+      response: settingsJson(422, { error: 'no aggregate cells for utc day', code: 'release_empty_day' }),
+    }
+  }
+  const execution: ReleaseExecution = {
+    status: result.status,
+    releaseId: result.releaseId,
+    releaseHash: result.releaseHash,
+    cellCount: result.status === 'released' ? result.cellCount : 0,
+  }
+  log.info({ releaseId: result.releaseId, status: result.status }, 'aggregate release executed through settings')
+  return { kind: 'executed', execution }
+}
+
+const handleReleaseRequest = (
+  release: ReconcileRelease,
+  nowMs: number,
+  deps: AdminAnalyticsRouteDeps,
+): ReleaseOutcome => {
+  const { execute, ...assessmentInput } = release
+  const assessment = assessReleaseRequest({ ...assessmentInput, nowMs })
+  if (!assessment.ok) {
+    return {
+      kind: 'denied',
+      response: settingsJson(422, {
+        error: 'release request denied',
+        code: 'release_denied',
+        reason: assessment.reason,
+      }),
+    }
+  }
+  if (execute !== true) return { kind: 'handled', assessment: { ok: true }, execution: undefined }
+  const outcome = executeRelease(release, nowMs, deps)
+  if (outcome.kind === 'denied') return outcome
+  return { kind: 'handled', assessment: { ok: true }, execution: outcome.execution }
+}
+
 const handleReconcile = async (
   req: Request,
   authed: AuthenticatedSettingsRequest,
@@ -149,12 +230,12 @@ const handleReconcile = async (
 
   const nowMs = settingsRequestNowMs(req)
   let releaseAssessment: Readonly<{ ok: true }> | undefined
+  let releaseExecution: ReleaseExecution | undefined
   if (body.data.release !== undefined) {
-    const assessment = assessReleaseRequest({ ...body.data.release, nowMs })
-    if (!assessment.ok) {
-      return settingsJson(422, { error: 'release request denied', code: 'release_denied', reason: assessment.reason })
-    }
-    releaseAssessment = { ok: true }
+    const outcome = handleReleaseRequest(body.data.release, nowMs, deps)
+    if (outcome.kind === 'denied') return outcome.response
+    releaseAssessment = outcome.assessment
+    releaseExecution = outcome.execution
   }
   const report = runReconciliation({ nowMs, apply: body.data.apply ?? false }, { getDrizzleDb: deps.getDrizzleDb })
   return settingsJson(200, {
@@ -165,6 +246,7 @@ const handleReconcile = async (
     eventsByName: report.eventsByName,
     eventsByAttributionQuality: report.eventsByAttributionQuality,
     releaseAssessment,
+    releaseExecution,
   })
 }
 
