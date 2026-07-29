@@ -26,6 +26,7 @@ Spec: `docs/superpowers/specs/2026-07-29-memory-gate0-acceptance-harness-design.
 - **Nothing under `src/` changes.** This plan adds test files, test data, and one script.
 - **No module reachable from `scripts/memory-acceptance.ts` may import a `*.test.ts` file.** The script runs under plain `bun run`, where calling `describe()`/`test()` outside the test runner throws. Each criterion's `CASES` table therefore lives in a plain `<criterion>.cases.ts` sibling that both its `.test.ts` and `coverage.ts` import.
 - Corpus data is **synthetic only**. Never add real conversation content.
+- **Avoid `expect(x).toEqual(expect.arrayContaining([...]))`.** `expect.arrayContaining` is typed `any` in `bun:test`, so the positive form trips `typescript(no-unsafe-argument)` (verified; the `.not.toEqual` form happens not to). Assert membership with a loop of `expect(x).toContain(id)` instead — lint-clean, stronger, and it names the offending id on failure.
 - `oxlint`'s `vitest/no-conditional-in-test` forbids conditionals inside `test()` bodies. Verified empirically against this repo's config: **`??` IS flagged; `?.` is NOT.** So optional chaining is fine inside a test, but any nullish-coalescing default must move into a helper declared at module scope, as `durable-erasure.golden.test.ts` does. Never reach for a lint-disable.
 - Scope types are exactly `'personal' | 'group'` (`MemoryScopeType`). There is no `thread` scope type; thread isolation is expressed through the `threadContextId` field.
 - `MemoryEvidence` fields are exactly `messageIds`, `actorIds`, `timestamps`, `contextId`, `threads`, `promotionRejectedAt`. Do not invent evidence fields.
@@ -435,7 +436,9 @@ describe('acceptance corpus', () => {
   test('multilingual seeds one Latin and one Cyrillic record', () => {
     const ids = seedMultilingual(PERSONAL)
     expect(ids).toHaveLength(2)
-    expect(idsIn(PERSONAL)).toEqual(expect.arrayContaining([...ids]))
+    for (const id of ids) {
+      expect(idsIn(PERSONAL)).toContain(id)
+    }
   })
 
   test('multi-party seeds separate personal and group scopes', () => {
@@ -759,8 +762,8 @@ describe('acceptance: scope-isolation', () => {
     for (const id of seeded) {
       expect(listedIds(PERSONAL)).toContain(id)
       expect(listedIds(OTHER_PERSONAL)).not.toContain(id)
+      expect(lexicalIds(OTHER_PERSONAL, 'Berlin')).not.toContain(id)
     }
-    expect(lexicalIds(OTHER_PERSONAL, 'Berlin')).not.toEqual(expect.arrayContaining([...seeded]))
   })
 
   test(`multi-party — ${CASES['multi-party']}`, () => {
