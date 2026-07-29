@@ -340,4 +340,4 @@ aggregate publication.
 | resolveSinkForSend egressMode matching | tests/analytics/delivery green (worker-send + worker crossed-lane) | 6933360d6 | 2026-07-29 |
 | ClassifyDeliveryInput.grantKey required | tests/analytics/delivery + withdrawal-race green | c3f39ddd1 | 2026-07-29 |
 | Release execution route | tests/debug/settings/admin/analytics-routes green (deny matrix, execute, idempotency, sink gating) | af2eae8ec | 2026-07-29 |
-| Stage B report CLI | tests/analytics/jobs/stage-b-report + stage-b-assess green; zero-write proof; smoke run recorded | <task-4-hash> | 2026-07-29 |
+| Stage B report CLI | tests/analytics/jobs/stage-b-report + stage-b-assess green; zero-write proof; smoke run recorded | 86c82e1db | 2026-07-29 |
