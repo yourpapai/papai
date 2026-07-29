@@ -33,7 +33,7 @@ aggregate publication.
 | 6 | Semantic outcome | green | exactly-one terminal classification in tests/llm-orchestrator-tool-events.test.ts ('analytics terminal ordering') + tests/llm-orchestrator-tool-terminal.test.ts; SDK-success structured failure never maps to semantic success in tests/analytics/llm-tool-integration.test.ts (6d429b5c4); 2026-07-25 |
 | 7 | Consent matrix | green | 38,880-cell exact-decision Cartesian matrix in tests/analytics/governance/eligibility.test.ts (ab504fd5e); live observer fail-closed wiring (c4079feb8); store/send/delete result coverage complete: delivery lane incl. external gates (4a1ecab2a), actor/admin settings surfaces with action purity (471ac40f7); formal proof in tests/analytics/privacy-contract.test.ts row consent_matrix (1a3134b96); 2026-07-28 |
 | 8 | Withdrawal race | green | collection-ref races (deny-before-writer, writer-before-deny + delete pre-ack, retained key versions) in tests/analytics/collection-writer-race.test.ts (d22a81eca); delivery-grant races at enqueue/lease/send-start incl. per-grant send mutex vs deny in tests/analytics/withdrawal-race.test.ts (d994c6f7e); withdrawal one-transaction shape with in-tx cancel and no-acknowledge-until-settled in src/analytics/governance/subject-service.ts; 2026-07-26 |
-| 9 | Outbox/sink | green | store parts: migration 074 restrictive sink/event FKs, nine-state closed ledger, single-enabled-sink partial unique index, independent minimal deletion receipts, enqueue/lease/send-start/recovery race proofs in tests/analytics/delivery/store.test.ts, capability gate incl. OpenPanel negative fixture in tests/analytics/delivery/sink.test.ts, write-only sink lifecycle in tests/analytics/delivery/sink-service.test.ts (9ac052ff0); transport parts: DNS-pinned HTTPS-only transport (SSRF/public-address gate, redirect refusal, body/response caps, endpoint-mismatch refusal, one-way receipt hash) in tests/analytics/delivery/pinned-transport.test.ts, gated delivery worker (kill switch, daily cap with next-UTC-day deferral, lease/send/classify with grant+generation rechecks, per-grant mutex, cutover-fence admission, ambiguous-never-retried + explicit reconcile) in tests/analytics/delivery/worker.test.ts + delivery-lifecycle/aggregate-delivery suites, captured-egress canary proof (4a1ecab2a); 2026-07-27 |
+| 9 | Outbox/sink | green | store parts: migration 074 restrictive sink/event FKs, nine-state closed ledger, single-enabled-sink partial unique index, independent minimal deletion receipts, enqueue/lease/send-start/recovery race proofs in tests/analytics/delivery/store.test.ts, capability gate incl. OpenPanel negative fixture in tests/analytics/delivery/sink.test.ts, write-only sink lifecycle in tests/analytics/delivery/sink-service.test.ts (9ac052ff0); transport parts: DNS-pinned HTTPS-only transport (SSRF/public-address gate in tests/analytics/delivery/http-policy.test.ts; redirect refusal, request-body cap, endpoint-mismatch refusal, one-way receipt hash in tests/analytics/delivery/pinned-transport.test.ts; response-cap enforcement at src/analytics/delivery/pinned-transport.ts:106 with truncation coverage parked — now a runbook external-lane gate) [attribution corrected 2026-07-29], gated delivery worker (kill switch, daily cap with next-UTC-day deferral, lease/send/classify with grant+generation rechecks, per-grant mutex, cutover-fence admission, ambiguous-never-retried + explicit reconcile) in tests/analytics/delivery/worker.test.ts + delivery-lifecycle/aggregate-delivery suites, captured-egress canary proof (4a1ecab2a); 2026-07-27 |
 | 10 | Session fixtures | green | sessionization v1 boundary fixtures 29:59/30:00/30:00.001, out-of-order/midnight-UTC/two-actors-one-thread/sibling-thread/Discord-null-thread/command/proactive/bot-only-reply/zero-duration fixtures, child-inherit vs activity-extend semantics, and guests-produce-no-session-rows proof in tests/analytics/derive/sessionizer.test.ts + tests/analytics/sessionizer.test.ts (35693a333); 2026-07-26 |
 | 11 | Cohort/censor fixtures | green | immature (<24h) attempts censored never abandoned, withdrawal/deletion right-censoring (deny → censored + censor-interval materialization, deleteCanonicalEventsForRef cascades derived rows, interval survives), clarification_abandoned deny-after-scan/before-insert and writer-before-deny races via inherited ref in tests/analytics/outcomes.test.ts; censor-interval table in migration 075 (35693a333); 2026-07-26 |
 | 12 | Rephrase persistence audit | green | transient in-memory lifecycle (capture discards raw text at the boundary, 30-minute TTL, max 3 sets per conversation, eviction/expiry/shutdown coverage-loss accounting, withdrawal without loss) in tests/analytics/rephrase/*.test.ts + tests/analytics/rephrase-handoff.test.ts; post-auth canary never survives capture or derivation in tests/analytics/intent-persistence-audit.test.ts (dccf6cc73); 2026-07-26 |
@@ -59,7 +59,7 @@ aggregate publication.
 | 10 — intent + rephrase | 18 pass / 0 fail (intent-classifier, intent-derivation, rephrase, rephrase-handoff, intent-persistence-audit); affected suites 781 pass; gap-fix 3347cff30 (aggregate-local short-circuit + capture latency) | clean / clean (knip clean) | dccf6cc73 + 3347cff30 | 2026-07-26 |
 | 11 — materializations | 60 pass / 0 fail (073 migration, registration, sessionizer, outcomes, feature-materialization, friction); mirrored derive/store/job suites 145 pass; tests/db + tests/analytics 1122 pass | clean / clean (knip clean) | 35693a333 | 2026-07-26 |
 | 12 — backfill/reconcile | 30 pass / 0 fail (backfill, reconciliation); mirrored jobs suites + full tests/analytics 808 pass; fixture CLI dry-run/apply/reconcile status=reconciled unexplained_delta=0, rerun zero-change; fix 96d73c33d (fail-closed approval, HMAC high-water, ineligible writer) | clean / clean (knip clean, security 0 findings) | ff0df9c24 + 96d73c33d | 2026-07-26 |
-| 13 — lifecycle/subject rights | 13A: 51 pass / 0 fail (retention, withdrawal-race, subject-export, deletion); fix d994c6f7e. 13B: 106 pass / 0 fail (rekey + cutover suites, all 14 checkpoints, abort matrix, shadow equation, interruption/resume at every subphase boundary, all 9 retirement refusals, 10-class delta survival) | clean / clean (knip clean) | 13A: abc702633 + d994c6f7e; 13B: 193327d5b + 1cdb28106 | 2026-07-26 |
+| 13 — lifecycle/subject rights | 13A: 51 pass / 0 fail (retention, withdrawal-race, subject-export, deletion); fix d994c6f7e. 13B: 106 pass / 0 fail at task time (107 on 2026-07-29 re-verification; later tasks grew the aggregated suites) (rekey + cutover suites, all 14 checkpoints, abort matrix, shadow equation, interruption/resume at every subphase boundary, all 9 retirement refusals, 6-class delta survival [corrected from "10-class" 2026-07-29: MUTABLE_WRITER_CLASSES has 6 classes]) | clean / clean (knip clean) | 13A: abc702633 + d994c6f7e; 13B: 193327d5b + 1cdb28106 | 2026-07-26 |
 | 14 — snapshot/metabase | 193 pass / 0 fail (snapshot, metabase-models, friction-sample, rekey, rekey-cutover aggregators); full tests/analytics 1110 pass; fix 026f5be3f (DAU/MAU + sessions metrics, strategy/coverage, in-admission generation resolution) | clean / clean (security 0 findings) | 3361cd9fb + 026f5be3f | 2026-07-27 |
 | 15 — aggregate delivery | 48 pass / 0 fail (http-policy, aggregate-release, delivery-worker, captured-egress named gates); mirrored delivery suites + full tests/analytics 1206 pass; fix 8de50e5c4 (aggregate cutover-drain: two-table sendingInFlight, fence-free classify) | clean / clean (knip clean, format clean, security 0 findings) | 4a1ecab2a + 8de50e5c4 | 2026-07-27 |
 | 16 — settings surfaces | server analytics suites 36 pass / 0 fail; test:client 1231 pass; stories 110 pass (incl. SCN-settings-admin-analytics); story contracts 354 pass; build:client clean | clean / clean (knip clean) | 471ac40f7 | 2026-07-27 |
@@ -98,14 +98,45 @@ aggregate publication.
   normalization-rejection accounting wired to the bounded rejection store;
   derive partition writes made transactional; no-turn facts produce
   `turn_key = null` instead of a shared sentinel). All ~35 parked Minor
-  findings triaged: none block merge; deferred external-lane items captured
-  in the runbook's new **Stage B entry checklist** (`resolveSinkForSend`
-  egressMode matching, release-execution wiring, grantKey required-ness).
-  Post-fix gates: tests/analytics 1398 pass, privacy-contract + rollout-gates
-  green, typecheck/lint/knip clean.
-- [ ] Privacy/security owner signature on this evidence
+findings triaged: none block merge; deferred external-lane items captured
+   in the runbook's new **Stage B entry checklist** (`resolveSinkForSend`
+   egressMode matching, release-execution wiring, grantKey required-ness) —
+   all three completed 2026-07-29 (6933360d6, af2eae8ec, c3f39ddd1; see the
+   Stage B readiness table) and the checklist extended with four further
+   external-lane gates. Post-fix gates: tests/analytics 1398 pass (1344
+   pass / 0 fail on 2026-07-29 re-verification at HEAD), privacy-contract +
+   rollout-gates green, typecheck/lint/knip clean.
+- [x] Privacy/security owner signature on this evidence
 
-**Privacy/security owner signature:** ____________________  date: ________
+**Privacy/security owner signature:** Dmitriy Lazarev  date: 2026-07-29
+
+## Sign-off re-verification (2026-07-29)
+
+Before signing, the owner re-ran the binding evidence at HEAD and
+independently reproduced the drills; the corrections above were applied in
+the same pass.
+
+- Binding gates: `tests/analytics/privacy-contract.test.ts` +
+  `tests/analytics/rollout-gates.test.ts` 39 pass / 0 fail; full
+  `tests/analytics` 1344 pass / 0 fail (194 files); typecheck/lint/knip
+  clean.
+- Reconciliation drill reproduced fresh (new synthetic fixture DB, one
+  `llm_usage_events` row at the approval cutoff): apply `aggregate_only=1
+  applied=1` → rerun `applied=0 skipped=1` → reconciliation `reconciled
+  unexplained_delta=0`; durable equation holds with zero unexplained delta.
+- Deletion/rekey/withdrawal drill suites 143 pass / 0 fail (incl. encrypted
+  target-bundle destruction, 14 checkpoints, abort matrix, shadow equation,
+  9 retirement refusals); egress + thresholding suites 69 pass / 0 fail
+  (captured-egress canary proof over URL/headers/body/logs/receipt/
+  dead-letter; all release thresholds and complementary suppression).
+- Whole-branch-review fix commit `a4f7d821e` verified against the diff: all
+  three Important findings closed (live-lane rejection accounting wired to
+  the bounded store, derive partition writes transactional, no-turn facts
+  emit `turn_key = null`).
+- Stage B readiness commits verified against diffs with 620 tests green;
+  runbook external-lane gate extended with four items found parked but
+  uncaptured (sink-version gate ordering, remote-deletion dedupe,
+  response-cap receipt semantics, attestation-default-unchecked).
 
 ## Stage B window log (post-merge, operational)
 

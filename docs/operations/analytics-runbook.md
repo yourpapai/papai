@@ -243,6 +243,20 @@ enabled until all boxes are checked.
   af2eae8ec).
 - [x] `ClassifyDeliveryInput.grantKey` is a required field (commit
   c3f39ddd1).
+- [ ] `rotateSinkVersion` runs the capability gate **before** creating the
+  successor version — today the `pending_verification` successor is created
+  first and a gate denial leaves it orphaned
+  (`src/analytics/delivery/sink-service.ts`).
+- [ ] `remoteDeleteIn` dedupes per-actor remote deletion calls across an
+  actor's multiple settled deliveries
+  (`src/analytics/delivery/remote.ts`) — currently one call per delivery
+  row, relying on sink-side idempotency.
+- [ ] Response-cap coverage: a test exercises `EGRESS_MAX_RESPONSE_BYTES`
+  truncation and pins the receipt-hash semantics over a truncated body
+  (`src/analytics/delivery/pinned-transport.ts`).
+- [ ] Admin sink-gate attestation checkboxes default to **unchecked**, so
+  sink enablement is an explicit operator act
+  (`client/settings/sections/admin/AdminAnalyticsSection.svelte`).
 
 ## Recurring schedule
 
