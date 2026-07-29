@@ -343,6 +343,8 @@ Every event permits exactly the listed properties.
 | `turn_stop_requested`        | `stage: graceful\|forced`                                                                                                                                                                                                                                                                                              |
 | `clarification_requested`    | `reason: missing_required_input\|ambiguous_target\|ambiguous_action\|permission\|configuration\|other`                                                                                                                                                                                                                 |
 | `rephrase_detected`          | `detector: lexical_v1\|small_model_v1`; `similarity: 080_089\|090_094\|ge_095`; `prior_outcome: clarification\|failure\|no_action`; `gap: le_2m\|2m_10m`                                                                                                                                                               |
+| `edit_classified`              | `window: w1\|w2\|w3`                                                                                                                                                                                                                                                                                                               |
+| `edit_regen`                   | `phase: prompt_shown\|prompt_adjust\|prompt_note\|regen_started\|regen_completed\|regen_failed\|history_only`; `duration_ms` (optional, regen completed/failed only)                                                                                                                                                                  |
 | `clarification_abandoned`    | `observation_hours: 24`                                                                                                                                                                                                                                                                                                |
 | `disclosure_fallback`        | `reason: no_real_load\|meta_tool_churn`; `step_bucket: 1_2\|3_5\|6_plus`                                                                                                                                                                                                                                               |
 | `config_link_issued`         | `result: issued\|not_configured\|rate_limited`                                                                                                                                                                                                                                                                         |
@@ -780,6 +782,31 @@ Always show components, session turn count, detector coverage, and 24-hour
 maturity. Compare within turn-count deciles; use random sampling within
 high-signature strata. This is not an employee/model ranking, SLO, or direct
 cross-platform score.
+
+## 14.1. Edit handling metrics (standalone friction companions)
+
+**`edit_classified`** — one per authorized, content-changed edit, after
+window classification. Props: `window` (`w1` active-run steer, `w2` last-turn
+regen, `w3` baseline-only). Silent paths (unauthorized, group-ignored,
+command, empty, same-text) emit nothing.
+
+**`edit_regen`** — one per executed W2 funnel step. Props: `phase`
+(`prompt_shown`, `prompt_adjust`, `prompt_note`, `regen_started`,
+`regen_completed`, `regen_failed`, `history_only`) and optional `durationMs`
+(regen start→settle, completed/failed only). `history_only` covers
+no-buttons platforms and unwired `processMessage`; distinguish via the
+platform dimension.
+
+Both events are RQ4 friction companions. They carry no message or edit
+content. They do not create turn, session, or outcome semantics: regen turns
+are invisible to turn/session/outcome materializations, the original turn is
+never retracted or marked superseded, and Friction Signature v1 is unchanged.
+Guests contribute aggregate-only counters. Events are live-only; no backfill
+source exists.
+
+Metrics: edit rate per eligible actor-day, window distribution, regen funnel
+conversion (prompt_shown → adjust → completed), regen failure rate, regen
+duration percentiles. All with the standard honesty block.
 
 ## 15. Intent taxonomy
 

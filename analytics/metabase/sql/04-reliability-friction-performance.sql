@@ -173,6 +173,20 @@ reply_rollup AS (
 reply_metrics(metric, numerator) AS (
   SELECT 'turn_failed_reply_only', failed_with_reply FROM reply_rollup
   UNION ALL SELECT 'turn_failed_without_reply', failed_total - failed_with_reply FROM reply_rollup
+),
+edit_counters AS (
+  SELECT
+    utc_day,
+    metric,
+    SUM(value) AS numerator
+  FROM analytics_daily_counters
+  WHERE metric IN (
+    'edit_classified_w1', 'edit_classified_w2', 'edit_classified_w3',
+    'edit_prompt_shown', 'edit_prompt_adjust', 'edit_prompt_note',
+    'edit_regen_started', 'edit_regen_completed', 'edit_regen_failed',
+    'edit_history_only'
+  )
+  GROUP BY utc_day, metric
 )
 
 SELECT
@@ -402,6 +416,35 @@ FROM reply_metrics
 CROSS JOIN reply_rollup
 CROSS JOIN meta
 WHERE meta.snapshot_mode = 'pseudonymous'
+
+UNION ALL
+
+SELECT
+  'edit_funnel' AS row_kind,
+  edit_counters.metric,
+  'available' AS availability,
+  NULL AS friction_bit,
+  NULL AS p50,
+  NULL AS p75,
+  NULL AS p90,
+  NULL AS p95,
+  NULL AS p99,
+  NULL AS rate,
+  1 AS metric_version,
+  edit_counters.utc_day AS window_start_utc,
+  edit_counters.utc_day AS window_end_utc,
+  edit_counters.numerator,
+  NULL AS denominator,
+  0 AS unknown_count,
+  0 AS censored_count,
+  NULL AS eligibility_coverage,
+  NULL AS wilson_low,
+  NULL AS wilson_high,
+  0 AS suppressed,
+  meta.snapshot_created_at_ms,
+  meta.reconciliation_status
+FROM edit_counters
+CROSS JOIN meta
 
 UNION ALL
 

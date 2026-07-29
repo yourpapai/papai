@@ -1107,6 +1107,73 @@ describe('metabase model: reliability, friction, and performance', () => {
     }
     aggregateDb.close()
   })
+
+  test('model 04 edit_funnel card reports window distribution and funnel counts', () => {
+    const editDb = new Database(':memory:')
+    createSnapshotSchema(editDb, 'pseudonymous')
+    insertMeta(editDb)
+
+    insertCounter(editDb, { utcDay: '2026-01-01', metric: 'edit_classified_w1', value: 5 })
+    editDb
+      .prepare(
+        `INSERT INTO analytics_daily_counters (
+           utc_day, definition_version, platform, context_type, actor_role, task_provider, app_version,
+           metric, value, finalized, partial_day, restart_gap_detected, late_event_count,
+           reconciliation_status, disclosure_scope, contributor_basis, contributor_count, threshold
+         ) VALUES (?, 1, 'mattermost', 'dm', 'admin', 'none', '6.10.0', ?, ?, 1, 0, 0, 0, 'reconciled', 'public', 'actors', NULL, NULL)`,
+      )
+      .run('2026-01-01', 'edit_classified_w1', 2)
+    insertCounter(editDb, { utcDay: '2026-01-01', metric: 'edit_classified_w2', value: 3 })
+    insertCounter(editDb, { utcDay: '2026-01-01', metric: 'edit_classified_w3', value: 10 })
+    insertCounter(editDb, { utcDay: '2026-01-01', metric: 'edit_prompt_shown', value: 4 })
+    insertCounter(editDb, { utcDay: '2026-01-01', metric: 'edit_prompt_adjust', value: 1 })
+    insertCounter(editDb, { utcDay: '2026-01-01', metric: 'edit_prompt_note', value: 2 })
+    insertCounter(editDb, { utcDay: '2026-01-01', metric: 'edit_regen_started', value: 3 })
+    insertCounter(editDb, { utcDay: '2026-01-01', metric: 'edit_regen_completed', value: 2 })
+    insertCounter(editDb, { utcDay: '2026-01-01', metric: 'edit_regen_failed', value: 1 })
+    insertCounter(editDb, { utcDay: '2026-01-01', metric: 'edit_history_only', value: 6 })
+    insertCounter(editDb, { utcDay: '2026-01-02', metric: 'edit_classified_w1', value: 7 })
+    insertCounter(editDb, { utcDay: '2026-01-02', metric: 'edit_prompt_shown', value: 5 })
+    insertCounter(editDb, { utcDay: '2026-01-02', metric: 'edit_regen_completed', value: 4 })
+
+    const rows = runModel(editDb, '04-reliability-friction-performance.sql')
+    for (const row of rows) {
+      for (const column of HONESTY_COLUMNS) {
+        expect(row).toHaveProperty(column)
+      }
+    }
+
+    const funnel = rows.filter((row) => row['row_kind'] === 'edit_funnel')
+    // The edit_funnel card reads analytics_daily_counters, which exist in both
+    // snapshot modes; the card is therefore ungated (no snapshot_mode filter),
+    // while the model's unavailable wrapper still marks the pseudonymous-only
+    // cards in aggregate-only snapshots.
+    const at = (utcDay: string, metric: string): Record<string, unknown> | undefined =>
+      funnel.filter((row) => row['window_start_utc'] === utcDay).find((row) => row['metric'] === metric)
+
+    expect(at('2026-01-01', 'edit_classified_w1')?.['numerator']).toBe(7)
+    expect(at('2026-01-01', 'edit_classified_w2')?.['numerator']).toBe(3)
+    expect(at('2026-01-01', 'edit_classified_w3')?.['numerator']).toBe(10)
+    expect(at('2026-01-01', 'edit_prompt_shown')?.['numerator']).toBe(4)
+    expect(at('2026-01-01', 'edit_prompt_adjust')?.['numerator']).toBe(1)
+    expect(at('2026-01-01', 'edit_prompt_note')?.['numerator']).toBe(2)
+    expect(at('2026-01-01', 'edit_regen_started')?.['numerator']).toBe(3)
+    expect(at('2026-01-01', 'edit_regen_completed')?.['numerator']).toBe(2)
+    expect(at('2026-01-01', 'edit_regen_failed')?.['numerator']).toBe(1)
+    expect(at('2026-01-01', 'edit_history_only')?.['numerator']).toBe(6)
+    expect(at('2026-01-02', 'edit_classified_w1')?.['numerator']).toBe(7)
+    expect(at('2026-01-02', 'edit_prompt_shown')?.['numerator']).toBe(5)
+    expect(at('2026-01-02', 'edit_regen_completed')?.['numerator']).toBe(4)
+    expect(funnel.length).toBe(13)
+
+    for (const row of funnel) {
+      expect(row['availability']).toBe('available')
+      expect(row['suppressed']).toBe(0)
+      expect(row['window_start_utc']).toBe(row['window_end_utc'])
+    }
+
+    editDb.close()
+  })
 })
 
 const insertCounter = (
