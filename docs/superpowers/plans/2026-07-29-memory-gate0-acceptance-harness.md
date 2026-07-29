@@ -1683,19 +1683,20 @@ describe('acceptance report', () => {
   })
 
   test('renders blockers for unmet criteria', () => {
-    expect(renderAcceptanceReport()).toContain('needs fault injection')
+    expect(renderAcceptanceReport()).toContain('Needs fault injection')
   })
 
   test('states that the contract is versioned and production readiness is not established', () => {
     const output = renderAcceptanceReport()
     expect(output).toContain('contract versioned = YES')
-    expect(output).toContain('production ready = NO (6 unmet)')
+    expect(output).toContain('production ready = NO (7 unmet)')
   })
 
-  test('renders the two unimplemented shapes with their blockers', () => {
+  test('renders the unimplemented shapes with their blockers', () => {
     const output = renderAcceptanceReport()
-    expect(output).toContain('long-horizon')
-    expect(output).toContain('abstention')
+    for (const key of ['long-horizon', 'abstention', 'duplicate-out-of-order', 'contradiction']) {
+      expect(output).toContain(key)
+    }
   })
 
   test('never prints a readiness verdict beyond the counts', () => {
@@ -1810,7 +1811,7 @@ In `package.json`, add alongside `"memory:shadow-funnel"`:
 - [ ] **Step 7: Run the script**
 
 Run: `bun run memory:acceptance`
-Expected: the contract renders, ending with `production ready = NO (6 unmet)`, exit code 0.
+Expected: the contract renders, ending with `production ready = NO (7 unmet)`, exit code 0.
 
 Verify the exit code: `bun run memory:acceptance > /dev/null; echo $status`
 Expected: `0`.
