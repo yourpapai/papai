@@ -8,6 +8,8 @@ import type {
   ClarificationRequestedFact,
   ConfigLinkIssuedFact,
   DisclosureFallbackFact,
+  EditClassifiedFact,
+  EditRegenFact,
   IntentClassifiedFact,
   RephraseDetectedFact,
   SettingsOpenedFact,
@@ -65,6 +67,8 @@ export type {
   ClarificationRequestedFact,
   ConfigLinkIssuedFact,
   DisclosureFallbackFact,
+  EditClassifiedFact,
+  EditRegenFact,
   IntentClassifiedFact,
   RephraseDetectedFact,
   SettingsOpenedFact,
@@ -125,6 +129,8 @@ export type AnalyticsSourceFact =
   | ClarificationRequestedFact
   | RephraseDetectedFact
   | ClarificationAbandonedFact
+  | EditClassifiedFact
+  | EditRegenFact
   | DisclosureFallbackFact
   | ConfigLinkIssuedFact
   | SettingsOpenedFact

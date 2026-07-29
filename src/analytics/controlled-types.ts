@@ -133,6 +133,8 @@ export const EventNameV1Schema = z.enum([
   'clarification_requested',
   'rephrase_detected',
   'clarification_abandoned',
+  'edit_classified',
+  'edit_regen',
   'disclosure_fallback',
   'config_link_issued',
   'settings_opened',
@@ -170,6 +172,16 @@ export const AggregateCounterV1Schema = z.enum([
   'unconfigured_reply',
   'guest_turn',
   'normalization_rejected',
+  'edit_classified_w1',
+  'edit_classified_w2',
+  'edit_classified_w3',
+  'edit_prompt_shown',
+  'edit_prompt_adjust',
+  'edit_prompt_note',
+  'edit_regen_started',
+  'edit_regen_completed',
+  'edit_regen_failed',
+  'edit_history_only',
 ])
 export type AggregateCounterV1 = z.infer<typeof AggregateCounterV1Schema>
 

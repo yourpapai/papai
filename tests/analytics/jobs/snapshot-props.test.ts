@@ -46,4 +46,11 @@ describe('extractTypedProps', () => {
       expect(column.startsWith('prop_')).toBe(true)
     }
   })
+
+  test('extracts the edit family window and phase props onto typed text columns', () => {
+    const extracted = extractTypedProps({ window: 'w2', phase: 'regen_completed' })
+    expect(extracted).toEqual({ prop_window: 'w2', prop_phase: 'regen_completed' })
+    expect(CURATED_EVENT_PROP_COLUMNS).toContain('prop_window')
+    expect(CURATED_EVENT_PROP_COLUMNS).toContain('prop_phase')
+  })
 })

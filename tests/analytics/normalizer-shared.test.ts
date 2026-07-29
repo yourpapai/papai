@@ -5,7 +5,13 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { byteBucket, countBucket, lengthBucket, nonNegativeInt } from '../../src/analytics/normalizer-shared.js'
+import {
+  byteBucket,
+  countBucket,
+  FACT_VARIANT_KEYS,
+  lengthBucket,
+  nonNegativeInt,
+} from '../../src/analytics/normalizer-shared.js'
 
 describe('normalizer-shared buckets', () => {
   test('count bucket boundaries', () => {
@@ -61,5 +67,13 @@ describe('normalizer-shared buckets', () => {
     expect(countBucket(-1)).toBeNull()
     expect(lengthBucket(2.5)).toBeNull()
     expect(byteBucket(Number.NaN)).toBeNull()
+  })
+
+  test('FACT_VARIANT_KEYS allowlists only the edit_classified window field', () => {
+    expect(FACT_VARIANT_KEYS.edit_classified).toEqual(['window'])
+  })
+
+  test('FACT_VARIANT_KEYS allowlists the edit_regen phase and durationMs fields', () => {
+    expect(FACT_VARIANT_KEYS.edit_regen).toEqual(['phase', 'durationMs'])
   })
 })

@@ -40,6 +40,28 @@ describe('source-facts', () => {
     }
     expect(fact.type).toBe('chat_message_accepted')
     expect(ANALYTICS_EVENT_REGISTRY_V1.eventNames).toContain(fact.type)
-    expect(ANALYTICS_EVENT_REGISTRY_V1.eventNames).toHaveLength(32)
+    expect(ANALYTICS_EVENT_REGISTRY_V1.eventNames).toHaveLength(34)
+  })
+
+  test('the edit family facts belong to the AnalyticsSourceFact union', () => {
+    const classified: AnalyticsSourceFact = {
+      version: 1,
+      type: 'edit_classified',
+      sourceEventId: 'se-ec-1',
+      occurredAtMs: 1_700_000_000_000,
+      source,
+      window: 'w2',
+    }
+    const regen: AnalyticsSourceFact = {
+      version: 1,
+      type: 'edit_regen',
+      sourceEventId: 'se-er-1',
+      occurredAtMs: 1_700_000_000_000,
+      source,
+      phase: 'regen_completed',
+      durationMs: 100,
+    }
+    expect(classified.type).toBe('edit_classified')
+    expect(regen.type).toBe('edit_regen')
   })
 })

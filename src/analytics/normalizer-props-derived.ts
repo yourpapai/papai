@@ -76,6 +76,22 @@ const buildTurnSteered = (fact: ValidatedFactRecord): Result => {
   return propsOk({ ordinal, length_bucket: steerLength, ack_sent: ackSent })
 }
 
+const buildEditClassified = (fact: ValidatedFactRecord): Result => {
+  const window = parseEnum(propsByEventName.edit_classified.shape.window, fact['window'])
+  if (window === null) return propsRejected('unknown_enum')
+  return propsOk({ window })
+}
+
+const buildEditRegen = (fact: ValidatedFactRecord): Result => {
+  const phase = parseEnum(propsByEventName.edit_regen.shape.phase, fact['phase'])
+  if (phase === null) return propsRejected('unknown_enum')
+  const rawDuration = fact['durationMs']
+  if (rawDuration === undefined) return propsOk({ phase })
+  const durationMs = nonNegativeInt(rawDuration)
+  if (durationMs === null) return propsRejected('invalid_value')
+  return propsOk({ phase, duration_ms: durationMs })
+}
+
 const buildTurnStopRequested = (fact: ValidatedFactRecord): Result => {
   const stage = parseEnum(propsByEventName.turn_stop_requested.shape.stage, fact['stage'])
   if (stage === null) return propsRejected('unknown_enum')
@@ -157,6 +173,10 @@ export const buildDerivedFamilyProps = (fact: ValidatedFactRecord, keys: FactKey
       return buildFeatureUsed(fact, keys)
     case 'turn_steered':
       return buildTurnSteered(fact)
+    case 'edit_classified':
+      return buildEditClassified(fact)
+    case 'edit_regen':
+      return buildEditRegen(fact)
     case 'turn_stop_requested':
       return buildTurnStopRequested(fact)
     case 'clarification_requested':

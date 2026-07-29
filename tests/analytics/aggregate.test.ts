@@ -376,6 +376,22 @@ describe('aggregate increments mapping', () => {
     expect(increments).toEqual([counter('guest_turn', 5)])
   })
 
+  test('edit_classified increments the per-window counter', () => {
+    expect(incrementsOf(dayFact('edit_classified', { window: 'w1' }))).toEqual([counter('edit_classified_w1')])
+    expect(incrementsOf(dayFact('edit_classified', { window: 'w3' }))).toEqual([counter('edit_classified_w3')])
+  })
+
+  test('edit_regen increments the per-phase counter', () => {
+    expect(incrementsOf(dayFact('edit_regen', { phase: 'regen_completed', durationMs: 100 }))).toEqual([
+      counter('edit_regen_completed'),
+    ])
+    expect(incrementsOf(dayFact('edit_regen', { phase: 'history_only' }))).toEqual([counter('edit_history_only')])
+  })
+
+  test('edit events with out-of-schema props are rejected before aggregation', () => {
+    expect(() => eventOf(dayFact('edit_regen', { phase: 'nope' }))).toThrow()
+  })
+
   test('emits no increments for events outside the closed aggregate set', () => {
     expect(incrementsOf(dayFact('turn_steered', { ordinal: 1, steerLengthChars: 50, ackSent: true }))).toEqual([])
     expect(incrementsOf(dayFact('settings_opened', { entry: 'config_link', result: 'success' }))).toEqual([])

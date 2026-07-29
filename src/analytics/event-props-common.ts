@@ -73,6 +73,27 @@ const TurnSteeredPropsSchema = z
   })
   .strict()
 
+const EditClassifiedPropsSchema = z
+  .object({
+    window: z.enum(['w1', 'w2', 'w3']),
+  })
+  .strict()
+
+const EditRegenPropsSchema = z
+  .object({
+    phase: z.enum([
+      'prompt_shown',
+      'prompt_adjust',
+      'prompt_note',
+      'regen_started',
+      'regen_completed',
+      'regen_failed',
+      'history_only',
+    ]),
+    duration_ms: NonNegativeInt.optional(),
+  })
+  .strict()
+
 const TurnStopRequestedPropsSchema = z
   .object({
     stage: z.enum(['graceful', 'forced']),
@@ -182,6 +203,8 @@ export const CommonEventPropsSchemas = {
   turn_completed: TurnCompletedPropsSchema,
   reply_sent: ReplySentPropsSchema,
   turn_steered: TurnSteeredPropsSchema,
+  edit_classified: EditClassifiedPropsSchema,
+  edit_regen: EditRegenPropsSchema,
   turn_stop_requested: TurnStopRequestedPropsSchema,
   clarification_requested: ClarificationRequestedPropsSchema,
   rephrase_detected: RephraseDetectedPropsSchema,

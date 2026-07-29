@@ -57,6 +57,8 @@ export const PROP_EXTRACTIONS: readonly PropExtraction[] = [
   realProp('latency_from_turn_start_ms'),
   integerProp('eligible'),
   integerProp('clarification'),
+  textProp('window'),
+  textProp('phase'),
 ]
 
 export const CURATED_EVENT_PROP_COLUMNS: readonly string[] = PROP_EXTRACTIONS.map((entry) => entry.column)

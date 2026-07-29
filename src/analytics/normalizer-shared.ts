@@ -183,6 +183,8 @@ export const FACT_VARIANT_KEYS: Readonly<Record<EventNameV1, readonly string[]>>
   confirmation_requested: ['toolSlug', 'toolOrigin', 'risk', 'timeoutMs', 'toolNameKey'],
   confirmation_resolved: ['toolSlug', 'toolOrigin', 'decision', 'decisionLatencyMs', 'toolNameKey'],
   turn_steered: ['ordinal', 'steerLengthChars', 'ackSent'],
+  edit_classified: ['window'],
+  edit_regen: ['phase', 'durationMs'],
   turn_stop_requested: ['stage'],
   clarification_requested: ['reason'],
   rephrase_detected: ['detector', 'similarity', 'priorOutcome', 'gap'],

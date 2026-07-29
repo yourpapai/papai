@@ -13,8 +13,8 @@ describe('ANALYTICS_EVENT_REGISTRY_V1 closure', () => {
 
   const mapKeys = (map: ReadonlyMap<string, unknown>): string[] => Array.from<string>(map.keys()).sort()
 
-  test('has exactly 32 canonical event names', (): void => {
-    expect(ANALYTICS_EVENT_REGISTRY_V1.eventNames.length).toBe(32)
+  test('has exactly 34 canonical event names', (): void => {
+    expect(ANALYTICS_EVENT_REGISTRY_V1.eventNames.length).toBe(34)
   })
 
   test('event-name keys equal registry events keys', (): void => {

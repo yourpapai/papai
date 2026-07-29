@@ -13,6 +13,19 @@ export type TurnSteeredFact = FactBase &
     ackSent: boolean
   }>
 
+export type EditClassifiedFact = FactBase &
+  Readonly<{
+    type: 'edit_classified'
+    window: string
+  }>
+
+export type EditRegenFact = FactBase &
+  Readonly<{
+    type: 'edit_regen'
+    phase: string
+    durationMs?: number
+  }>
+
 export type TurnStopRequestedFact = FactBase &
   Readonly<{
     type: 'turn_stop_requested'

@@ -18,6 +18,7 @@ export type SourceFamilyV1 =
   | 'stop'
   | 'clarification'
   | 'rephrase'
+  | 'edit'
   | 'disclosure'
   | 'settings'
   | 'task'
@@ -153,6 +154,32 @@ const events = {
     privacyClass: 'C2',
     sourceFamily: 'rephrase',
     metricMapping: { counters: [] as const, histograms: [] as const },
+    rqCoverage: ['RQ4'] as const,
+  },
+  edit_classified: {
+    privacyClass: 'C0',
+    sourceFamily: 'edit',
+    metricMapping: {
+      counters: ['edit_classified_w1', 'edit_classified_w2', 'edit_classified_w3'] as const,
+      histograms: [] as const,
+    },
+    rqCoverage: ['RQ4'] as const,
+  },
+  edit_regen: {
+    privacyClass: 'C0',
+    sourceFamily: 'edit',
+    metricMapping: {
+      counters: [
+        'edit_prompt_shown',
+        'edit_prompt_adjust',
+        'edit_prompt_note',
+        'edit_regen_started',
+        'edit_regen_completed',
+        'edit_regen_failed',
+        'edit_history_only',
+      ] as const,
+      histograms: [] as const,
+    },
     rqCoverage: ['RQ4'] as const,
   },
   clarification_abandoned: {

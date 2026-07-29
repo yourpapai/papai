@@ -28,6 +28,7 @@ export const SourceFamilyV1Schema = z.enum([
   'stop',
   'clarification',
   'rephrase',
+  'edit',
   'disclosure',
   'settings',
   'task',
