@@ -197,17 +197,21 @@ git commit -m "test(memory): add the append-only predicate registration log"
 
 ---
 
-### Task 2: Tri-state criterion status and registered cells
+### Task 2: Tri-state criterion status, registered cells, and the report's third bucket
+
+The registry change and the report change are one deliverable: `report.ts` reads `criterion.status`, so adding a third state without teaching the renderer about it leaves the suite red. Every commit in this plan is green.
 
 **Files:**
 
 - Modify: `tests/long-term-memory/acceptance/registry.ts` (`Criterion` type; the `capture-idempotency`, `races`, `crash-recovery` entries; the `duplicate-out-of-order` and `long-horizon` shape blockers)
 - Modify: `tests/long-term-memory/acceptance/registry.test.ts`
+- Modify: `tests/long-term-memory/acceptance/report.ts`
+- Modify: `tests/long-term-memory/acceptance/report.test.ts`
 
 **Interfaces:**
 
 - Consumes: nothing from Task 1.
-- Produces: `Criterion.status` widened to `'implemented' | 'predicate-registered' | 'declared-unmet'`; new field `Criterion.registeredShapes: readonly ShapeKey[]`; new exported helper `registeredCriteria(): readonly Criterion[]`. Tasks 3 and 4 consume all of these.
+- Produces: `Criterion.status` widened to `'implemented' | 'predicate-registered' | 'declared-unmet'`; new field `Criterion.registeredShapes: readonly ShapeKey[]`; new exported helper `registeredCriteria(): readonly Criterion[]`. Task 3 consumes all of these. `renderAcceptanceReport()` keeps its signature.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -411,21 +415,122 @@ export function registeredCriteria(): readonly Criterion[] {
 }
 ```
 
-- [ ] **Step 8: Run the full acceptance suite**
+- [ ] **Step 8: Confirm the registry tests pass and the report tests now fail**
 
 Run: `bun test tests/long-term-memory/acceptance/`
 
-Expected: the new registry tests PASS. Two pre-existing tests FAIL, and both are expected at this point — they are fixed in Tasks 3 and 4 respectively:
+Expected: `registry.test.ts` fully green. `report.test.ts` FAILS on `states that the contract is versioned and production readiness is not established`, because the summary still reads `production ready = NO (7 unmet)` while only four criteria are still `declared-unmet`. That failure is what Steps 9-12 fix. Do not commit yet.
 
-- `no declared-unmet criterion exports a case table` — passes vacuously but no longer covers the three flipped criteria; broadened in Task 3.
-- `states that the contract is versioned and production readiness is not established` in `report.test.ts` — FAILS on `production ready = NO (7 unmet)`, because only four criteria are still `declared-unmet`. Fixed in Task 4.
+- [ ] **Step 9: Write the failing report tests**
 
-Confirm the `report.test.ts` failure names the count, and that `registry.test.ts` is fully green. Do not fix the report here.
+In `tests/long-term-memory/acceptance/report.test.ts`, replace the `'states that the contract is versioned and production readiness is not established'` test and add three more:
 
-- [ ] **Step 9: Commit**
+```typescript
+  test('states that the contract is versioned and production readiness is not established', () => {
+    const output = renderAcceptanceReport()
+    expect(output).toContain('contract versioned = YES')
+    expect(output).toContain('production ready = NO (4 implemented, 3 predicate-registered, 4 unmet)')
+  })
+
+  test('marks predicate-registered criteria with a distinct glyph', () => {
+    const line = renderAcceptanceReport()
+      .split('\n')
+      .find((row) => row.includes('crash-recovery'))
+    expect(line).toStartWith('  [~]')
+  })
+
+  test('renders registered cells distinctly from executed cells', () => {
+    const output = renderAcceptanceReport()
+    const registered = output.split('\n').find((row) => row.includes('capture-idempotency'))
+    const executed = output.split('\n').find((row) => row.includes('scope-isolation'))
+    expect(registered).toContain('registered cells: duplicate-out-of-order, long-horizon')
+    expect(executed).toContain('shapes: multilingual, multi-party')
+    expect(registered).not.toContain('shapes:')
+  })
+
+  test('still names the blocker of a predicate-registered criterion', () => {
+    const line = renderAcceptanceReport()
+      .split('\n')
+      .find((row) => row.includes('crash-recovery'))
+    expect(line).toContain('Needs fault injection')
+  })
+```
+
+- [ ] **Step 10: Run report tests to verify they fail**
+
+Run: `bun test tests/long-term-memory/acceptance/report.test.ts`
+
+Expected: FAIL — four failures. The summary line still reads `production ready = NO (4 unmet)`; `crash-recovery` renders with `[!]`; `capture-idempotency` renders no registered cells.
+
+- [ ] **Step 11: Rewrite the criterion renderer and summary**
+
+Replace `criterionLines` and `renderAcceptanceReport` in `tests/long-term-memory/acceptance/report.ts`:
+
+```typescript
+const CRITERION_MARKS: Readonly<Record<Criterion['status'], string>> = {
+  implemented: 'x',
+  'predicate-registered': '~',
+  'declared-unmet': '!',
+}
+
+const criterionDetail = (criterion: Criterion): string => {
+  if (criterion.status === 'implemented') return `shapes: ${coveredShapes(criterion.key).join(', ')}`
+  const blocker = `blocker: ${criterion.blocker ?? ''}`
+  if (criterion.status === 'declared-unmet') return blocker
+  return `registered cells: ${criterion.registeredShapes.join(', ')} — ${blocker}`
+}
+
+const criterionLines = (): readonly string[] =>
+  CRITERIA.map(
+    (criterion) => `  [${CRITERION_MARKS[criterion.status]}] ${criterion.key.padEnd(22)} ${criterionDetail(criterion)}`,
+  )
+
+export function renderAcceptanceReport(): string {
+  const implemented = CRITERIA.filter((c) => c.status === 'implemented').length
+  const registered = CRITERIA.filter((c) => c.status === 'predicate-registered').length
+  const unmet = CRITERIA.filter((c) => c.status === 'declared-unmet').length
+  return [
+    'Memory Gate 0 — production acceptance contract',
+    `corpus version: ${CORPUS_VERSION}`,
+    '',
+    `criteria (${CRITERIA.length}):`,
+    ...criterionLines(),
+    '',
+    `scenario shapes (${SHAPES.length}):`,
+    ...shapeLines(),
+    '',
+    'contract versioned = YES',
+    `production ready = NO (${implemented} implemented, ${registered} predicate-registered, ${unmet} unmet)`,
+    '',
+    'This report is informational. Criterion enforcement lives in',
+    'tests/long-term-memory/acceptance/. A criterion is promoted only by satisfying a pass',
+    'predicate written before its implementation began — see the design doc.',
+    'A [~] criterion has a frozen predicate and no evidence: the cells it lists are promised,',
+    'not executed.',
+  ].join('\n')
+}
+```
+
+Update the import on line 13 to bring in the type:
+
+```typescript
+import { type Criterion, CRITERIA, SHAPES } from './registry.js'
+```
+
+- [ ] **Step 12: Run the whole acceptance suite and the report script**
+
+Run: `bun test tests/long-term-memory/acceptance/`
+
+Expected: PASS, all files green — no failures left from Step 8.
+
+Run: `bun run memory:acceptance`
+
+Expected: exit 0. Read the output and confirm by eye that `capture-idempotency`, `races`, and `crash-recovery` render as `[~]` with their registered cells and blockers, that the summary reads `production ready = NO (4 implemented, 3 predicate-registered, 4 unmet)`, and that no line claims readiness.
+
+- [ ] **Step 13: Commit**
 
 ```bash
-git add tests/long-term-memory/acceptance/registry.ts tests/long-term-memory/acceptance/registry.test.ts
+git add tests/long-term-memory/acceptance/registry.ts tests/long-term-memory/acceptance/registry.test.ts tests/long-term-memory/acceptance/report.ts tests/long-term-memory/acceptance/report.test.ts
 git commit -m "test(memory): add the predicate-registered criterion state"
 ```
 
@@ -599,140 +704,7 @@ git commit -m "test(memory): bind registered predicates to the append-only log"
 
 ---
 
-### Task 4: Report the third bucket
-
-**Files:**
-
-- Modify: `tests/long-term-memory/acceptance/report.ts`
-- Modify: `tests/long-term-memory/acceptance/report.test.ts`
-
-**Interfaces:**
-
-- Consumes: `Criterion.status` and `Criterion.registeredShapes` from Task 2.
-- Produces: nothing consumed downstream. `renderAcceptanceReport()` keeps its signature.
-
-- [ ] **Step 1: Write the failing tests**
-
-In `tests/long-term-memory/acceptance/report.test.ts`, replace the `'states that the contract is versioned and production readiness is not established'` test and add three more:
-
-```typescript
-  test('states that the contract is versioned and production readiness is not established', () => {
-    const output = renderAcceptanceReport()
-    expect(output).toContain('contract versioned = YES')
-    expect(output).toContain('production ready = NO (4 implemented, 3 predicate-registered, 4 unmet)')
-  })
-
-  test('marks predicate-registered criteria with a distinct glyph', () => {
-    const line = renderAcceptanceReport()
-      .split('\n')
-      .find((row) => row.includes('crash-recovery'))
-    expect(line).toStartWith('  [~]')
-  })
-
-  test('renders registered cells distinctly from executed cells', () => {
-    const output = renderAcceptanceReport()
-    const registered = output.split('\n').find((row) => row.includes('capture-idempotency'))
-    const executed = output.split('\n').find((row) => row.includes('scope-isolation'))
-    expect(registered).toContain('registered cells: duplicate-out-of-order, long-horizon')
-    expect(executed).toContain('shapes: multilingual, multi-party')
-    expect(registered).not.toContain('shapes:')
-  })
-
-  test('still names the blocker of a predicate-registered criterion', () => {
-    const line = renderAcceptanceReport()
-      .split('\n')
-      .find((row) => row.includes('crash-recovery'))
-    expect(line).toContain('Needs fault injection')
-  })
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `bun test tests/long-term-memory/acceptance/report.test.ts`
-
-Expected: FAIL — four failures. The summary line still reads `production ready = NO (4 unmet)`; `crash-recovery` renders with `[!]`; `capture-idempotency` renders no registered cells.
-
-- [ ] **Step 3: Rewrite the criterion renderer and summary**
-
-Replace `criterionLines` and `renderAcceptanceReport` in `tests/long-term-memory/acceptance/report.ts`:
-
-```typescript
-const CRITERION_MARKS: Readonly<Record<Criterion['status'], string>> = {
-  implemented: 'x',
-  'predicate-registered': '~',
-  'declared-unmet': '!',
-}
-
-const criterionDetail = (criterion: Criterion): string => {
-  if (criterion.status === 'implemented') return `shapes: ${coveredShapes(criterion.key).join(', ')}`
-  const blocker = `blocker: ${criterion.blocker ?? ''}`
-  if (criterion.status === 'declared-unmet') return blocker
-  return `registered cells: ${criterion.registeredShapes.join(', ')} — ${blocker}`
-}
-
-const criterionLines = (): readonly string[] =>
-  CRITERIA.map(
-    (criterion) => `  [${CRITERION_MARKS[criterion.status]}] ${criterion.key.padEnd(22)} ${criterionDetail(criterion)}`,
-  )
-
-export function renderAcceptanceReport(): string {
-  const implemented = CRITERIA.filter((c) => c.status === 'implemented').length
-  const registered = CRITERIA.filter((c) => c.status === 'predicate-registered').length
-  const unmet = CRITERIA.filter((c) => c.status === 'declared-unmet').length
-  return [
-    'Memory Gate 0 — production acceptance contract',
-    `corpus version: ${CORPUS_VERSION}`,
-    '',
-    `criteria (${CRITERIA.length}):`,
-    ...criterionLines(),
-    '',
-    `scenario shapes (${SHAPES.length}):`,
-    ...shapeLines(),
-    '',
-    'contract versioned = YES',
-    `production ready = NO (${implemented} implemented, ${registered} predicate-registered, ${unmet} unmet)`,
-    '',
-    'This report is informational. Criterion enforcement lives in',
-    'tests/long-term-memory/acceptance/. A criterion is promoted only by satisfying a pass',
-    'predicate written before its implementation began — see the design doc.',
-    'A [~] criterion has a frozen predicate and no evidence: the cells it lists are promised,',
-    'not executed.',
-  ].join('\n')
-}
-```
-
-Update the import on line 13 to bring in the type:
-
-```typescript
-import { type Criterion, CRITERIA, SHAPES } from './registry.js'
-```
-
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `bun test tests/long-term-memory/acceptance/report.test.ts`
-
-Expected: PASS, 9 tests.
-
-- [ ] **Step 5: Run the whole acceptance suite and the report script**
-
-Run: `bun test tests/long-term-memory/acceptance/`
-
-Expected: PASS, all files green — no leftover failures from Task 2 Step 8.
-
-Run: `bun run memory:acceptance`
-
-Expected: exit 0. Read the output and confirm by eye that `capture-idempotency`, `races`, and `crash-recovery` render as `[~]` with their registered cells and blockers, that the summary reads `production ready = NO (4 implemented, 3 predicate-registered, 4 unmet)`, and that no line claims readiness.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add tests/long-term-memory/acceptance/report.ts tests/long-term-memory/acceptance/report.test.ts
-git commit -m "test(memory): report predicate-registered criteria as a third bucket"
-```
-
----
-
-### Task 5: Record the registration in the roadmap
+### Task 4: Record the registration in the roadmap
 
 The roadmap is the single active queue; it must state that Gate 1 now has a frozen bar and an observable contract binding on its design.
 
