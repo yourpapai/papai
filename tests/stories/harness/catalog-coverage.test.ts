@@ -21,6 +21,7 @@ import {
   toPendingReason,
   type StoryFamily,
   type StorySeamId,
+  type StoryTier,
 } from '../catalog/coverage.js'
 import { PARITY_GROUPS } from './parity/expectations.js'
 
@@ -101,6 +102,163 @@ function pendingNeedsSeamTierProjections(coverage: readonly (typeof catalogCover
   })
 }
 
+type Phase3AuditProjection = Readonly<{
+  scenarioId: string
+  family: StoryFamily
+  readiness: 'executable-as-is' | 'needs-seam' | 'blocked'
+  seams: readonly StorySeamId[]
+  unblockedByTier: StoryTier | null
+}>
+
+type PendingCatalogCoverage = Extract<(typeof catalogCoverage)[number], { kind: 'pending' }>
+
+function isPhase3PendingCoverage(coverage: (typeof catalogCoverage)[number]): coverage is PendingCatalogCoverage {
+  return coverage.kind === 'pending' && phase3UncataloguedClusterIdSet.has(coverage.scenarioId)
+}
+
+function phase3AuditProjection(coverage: PendingCatalogCoverage): Phase3AuditProjection {
+  const { readiness } = coverage.audit
+  return {
+    scenarioId: coverage.scenarioId,
+    family: coverage.audit.family,
+    readiness: readiness.state,
+    seams: readiness.state === 'needs-seam' ? readiness.seams : [],
+    unblockedByTier: readiness.state === 'needs-seam' ? readiness.unblockedByTier : null,
+  }
+}
+
+const PHASE3_AUDIT_PROJECTION: Phase3AuditProjection[] = [
+  {
+    scenarioId: 'SCN-memory-tool-pairing',
+    family: 'F3',
+    readiness: 'executable-as-is',
+    seams: [],
+    unblockedByTier: null,
+  },
+  { scenarioId: 'SCN-queue-coalescing', family: 'F1', readiness: 'executable-as-is', seams: [], unblockedByTier: null },
+  {
+    scenarioId: 'SCN-queue-group-serialization',
+    family: 'F1',
+    readiness: 'executable-as-is',
+    seams: [],
+    unblockedByTier: null,
+  },
+  {
+    scenarioId: 'SCN-attachments-staged-scope-search',
+    family: 'F2',
+    readiness: 'executable-as-is',
+    seams: [],
+    unblockedByTier: null,
+  },
+  {
+    scenarioId: 'SCN-attachments-staged-resolution',
+    family: 'F2',
+    readiness: 'executable-as-is',
+    seams: [],
+    unblockedByTier: null,
+  },
+  {
+    scenarioId: 'SCN-byok-context-credentials',
+    family: 'F1',
+    readiness: 'executable-as-is',
+    seams: [],
+    unblockedByTier: null,
+  },
+  {
+    scenarioId: 'SCN-byok-unreadable-credentials',
+    family: 'F1',
+    readiness: 'executable-as-is',
+    seams: [],
+    unblockedByTier: null,
+  },
+  {
+    scenarioId: 'SCN-message-cache-persistence',
+    family: 'F3',
+    readiness: 'executable-as-is',
+    seams: [],
+    unblockedByTier: null,
+  },
+  { scenarioId: 'SCN-usage-accounting', family: 'F4', readiness: 'executable-as-is', seams: [], unblockedByTier: null },
+  {
+    scenarioId: 'SCN-announcement-delivery-fanout',
+    family: 'F1',
+    readiness: 'executable-as-is',
+    seams: [],
+    unblockedByTier: null,
+  },
+  { scenarioId: 'SCN-stats-anonymity', family: 'F4', readiness: 'executable-as-is', seams: [], unblockedByTier: null },
+  {
+    scenarioId: 'SCN-stats-aggregate-window',
+    family: 'F4',
+    readiness: 'executable-as-is',
+    seams: [],
+    unblockedByTier: null,
+  },
+  {
+    scenarioId: 'SCN-scheduler-execution-tracking',
+    family: 'F5',
+    readiness: 'executable-as-is',
+    seams: [],
+    unblockedByTier: null,
+  },
+  {
+    scenarioId: 'SCN-changelog-version-section',
+    family: 'F1',
+    readiness: 'executable-as-is',
+    seams: [],
+    unblockedByTier: null,
+  },
+  {
+    scenarioId: 'SCN-interaction-discord-command-routing',
+    family: 'F8',
+    readiness: 'needs-seam',
+    seams: ['platform-adapter-fakes'],
+    unblockedByTier: '3',
+  },
+  {
+    scenarioId: 'SCN-interaction-discord-format-chunking',
+    family: 'F8',
+    readiness: 'needs-seam',
+    seams: ['platform-adapter-fakes'],
+    unblockedByTier: '3',
+  },
+  {
+    scenarioId: 'SCN-interaction-discord-response-lifecycle',
+    family: 'F8',
+    readiness: 'needs-seam',
+    seams: ['platform-adapter-fakes'],
+    unblockedByTier: '3',
+  },
+  {
+    scenarioId: 'SCN-interaction-kontur-reply-formatting',
+    family: 'F8',
+    readiness: 'needs-seam',
+    seams: ['platform-adapter-fakes'],
+    unblockedByTier: '3',
+  },
+  {
+    scenarioId: 'SCN-interaction-telegram-admin-authorization',
+    family: 'F8',
+    readiness: 'needs-seam',
+    seams: ['platform-adapter-fakes'],
+    unblockedByTier: '3',
+  },
+  {
+    scenarioId: 'SCN-deferred-poller-lifecycle',
+    family: 'F5',
+    readiness: 'needs-seam',
+    seams: ['scheduler-due-seed', 'scheduler-chat-di'],
+    unblockedByTier: '4',
+  },
+  {
+    scenarioId: 'SCN-plugin-deny-gating',
+    family: 'F7',
+    readiness: 'executable-as-is',
+    seams: [],
+    unblockedByTier: null,
+  },
+]
+
 const FAMILY_QUEUE_EXPECTATIONS: ReadonlyArray<readonly [string, StoryFamily]> = [
   ['SCN-meta-', 'F1'],
   ['SCN-cmd-', 'F1'],
@@ -178,6 +336,12 @@ describe('scenario catalog coverage', () => {
     expect(phase3Coverage).toHaveLength(21)
     expect(phase3Coverage.every(({ catalogStatus }) => catalogStatus === 'gap')).toBe(true)
     expect(phase3Coverage.every(({ kind }) => kind === 'pending')).toBe(true)
+  })
+
+  test('freezes the exact Phase 3 audit projection', () => {
+    const phase3Coverage = catalogCoverage.filter(isPhase3PendingCoverage)
+
+    expect(phase3Coverage.map(phase3AuditProjection)).toEqual(PHASE3_AUDIT_PROJECTION)
   })
 
   test('marks only platform-adapter interaction scenarios as forward-only', () => {
