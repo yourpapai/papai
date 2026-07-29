@@ -1542,7 +1542,6 @@ Create `tests/long-term-memory/acceptance/coverage.ts`:
  * throws.
  */
 
-import { CASES as captureIdempotency } from './capture-idempotency.cases.js'
 import { CASES as erasure } from './erasure.cases.js'
 import { CASES as provenance } from './provenance.cases.js'
 import type { CriterionKey, ShapeKey } from './registry.js'
@@ -1553,7 +1552,6 @@ export const CASE_TABLES: Readonly<Partial<Record<CriterionKey, Partial<Record<S
   'scope-isolation': scopeIsolation,
   erasure,
   provenance,
-  'capture-idempotency': captureIdempotency,
   reproducibility,
 }
 
@@ -1622,7 +1620,7 @@ Expected: PASS, 14 tests.
 
 - [ ] **Step 4: Verify the cross-check actually bites**
 
-Temporarily add `'contradiction'` to the `scope-isolation` criterion's `shapes` array in `registry.ts`.
+Temporarily add `'multi-party'` to the `provenance` criterion's `shapes` array in `registry.ts`. `multi-party` is an implemented shape, so the other registry invariants stay green and the failure lands squarely on the cross-check.
 
 Run: `bun test tests/long-term-memory/acceptance/registry.test.ts`
 Expected: FAIL on "every declared cell has a matching case".
