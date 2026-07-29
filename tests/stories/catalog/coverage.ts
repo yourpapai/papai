@@ -412,6 +412,20 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
       'tests/stories/runtime/queue.story.test.ts#SCN-queue-group-serialization: actor changes flush and serialize group-thread turns',
     ],
   },
+  'SCN-message-cache-persistence': {
+    verifiedAt: '2026-07-29',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/runtime/persistence-and-usage.story.test.ts#SCN-message-cache-persistence: persisted messages retain context and reply-chain boundaries',
+    ],
+  },
+  'SCN-usage-accounting': {
+    verifiedAt: '2026-07-29',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/runtime/persistence-and-usage.story.test.ts#SCN-usage-accounting: idempotent request and tool events remain window-queryable',
+    ],
+  },
   'SCN-memory-tool-pairing': {
     verifiedAt: '2026-07-29',
     storyIds: [
@@ -1481,14 +1495,6 @@ export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
   'SCN-byok-unreadable-credentials': ready(
     'F1',
     'The existing encrypted configuration store can prove unreadable data fails closed without a new runtime seam.',
-  ),
-  'SCN-message-cache-persistence': ready(
-    'F3',
-    'The existing message-cache persistence runtime can prove eligible persistence and chain/context retrieval boundaries.',
-  ),
-  'SCN-usage-accounting': ready(
-    'F4',
-    'The existing usage recorder and query runtime can prove idempotent event identity and window-scoped reads.',
   ),
   'SCN-announcement-delivery-fanout': ready(
     'F1',
