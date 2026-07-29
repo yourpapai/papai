@@ -8,7 +8,7 @@ import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'memory:embedding-identity' })
 
-/** Stamped by migration 068 on vectors that predate identity tracking. Never dense-eligible. */
+/** Stamped by migration 072 on vectors that predate identity tracking. Never dense-eligible. */
 export const UNKNOWN_EMBEDDING_VERSION = 'unknown'
 
 /**
