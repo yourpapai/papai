@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import type { ModelMessage } from 'ai'
 
+import type { AnalyticsSourceFact } from '../../src/analytics/source-facts.js'
 import { getThreadScopedStorageContextId } from '../../src/auth.js'
 import { cacheObservedIncomingMessage } from '../../src/bot-message-caching.js'
 import type { AuthorizationResult, IncomingMessage } from '../../src/chat/types.js'
@@ -115,6 +116,53 @@ describe('onIncomingEdit', () => {
     // Baseline history + metadata correction ran for W1 too.
     expect(loadHistory(ctxId).find((m) => m.role === 'user')?.content).toBe('hi')
     expect(getMessageByContext(ctxId, 'm1')?.text).toBe('hi')
+
+    runRegistry.end(ctxId)
+  })
+
+  test('W1 emits a turn_steered fact on the active run when an analytics observer is wired', async () => {
+    const ctxId = scopedDm('w1-analytics-user')
+    addUser({ userId: 'w1-analytics-user', platformInstanceId: PLATFORM_ID, addedBy: ADMIN_ID })
+
+    const original: IncomingMessage = {
+      ...createDmMessage('w1-analytics-user'),
+      text: 'hello',
+      messageId: 'm1',
+    }
+    cacheObservedIncomingMessage(original, authFor(ctxId))
+    await flushPendingWrites()
+    appendHistory(ctxId, [makeUserTurn('m1', 'hello')])
+
+    const { reply } = createMockReply()
+    const run = runRegistry.begin(ctxId, { turnId: 't-analytics', reply, originatingMessageIds: ['m1'] })
+
+    const facts: AnalyticsSourceFact[] = []
+    const edited: IncomingMessage = {
+      ...createDmMessage('w1-analytics-user'),
+      text: 'hi',
+      messageId: 'm1',
+      editedAt: 1,
+    }
+    await onIncomingEdit(chat, edited, reply, {
+      analyticsObserver: {
+        observe: (fact: AnalyticsSourceFact): void => {
+          facts.push(fact)
+        },
+        flush: (): Promise<void> => Promise.resolve(),
+        stop: (): Promise<void> => Promise.resolve(),
+      },
+    })
+
+    const steered = facts.filter((fact) => fact.type === 'turn_steered')
+    expect(steered).toHaveLength(1)
+    expect(steered[0]).toMatchObject({
+      ordinal: 1,
+      ackSent: true,
+      source: { rawTurnId: 't-analytics', actorRole: 'member' },
+    })
+    // The edit is a correction, not a newly accepted message: no double count.
+    expect(facts.some((fact) => fact.type === 'chat_message_accepted')).toBe(false)
+    expect(run.steerQueue.some((s) => s.text.includes('Your earlier message was edited'))).toBe(true)
 
     runRegistry.end(ctxId)
   })

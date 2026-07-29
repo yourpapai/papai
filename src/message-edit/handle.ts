@@ -3,8 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { performance } from 'node:perf_hooks'
+
 import { and, eq, gt, ne } from 'drizzle-orm'
 
+import { buildAnalyticsSourceContext, createAuthorizedTurnSeed } from '../analytics/bot-observer.js'
+import type { AnalyticsObserver } from '../analytics/runtime.js'
+import { buildTurnSteeredFact, nextSteerOrdinal } from '../analytics/turn-observer.js'
 import type { StagedFileDownloadFn } from '../attachments/types.js'
 import { resolveMessageAuth, shouldIgnoreGroupMessage } from '../bot-guards.js'
 import { cacheObservedIncomingMessage } from '../bot-message-caching.js'
@@ -65,6 +70,8 @@ export type EditHandlerDeps = {
   stagedDownloadFn?: StagedFileDownloadFn
   /** Optional bot-level DI forwarded into the orchestrator deps, mirroring `BotDeps`. */
   chatParticipantResolver?: ChatParticipantResolver
+  /** Optional analytics observer for the W1 edit-steer boundary, mirroring `BotDeps`. */
+  analyticsObserver?: AnalyticsObserver
 } & Record<string, unknown>
 
 /**
@@ -121,7 +128,7 @@ export async function onIncomingEdit(
   )
 
   if (window === 'w1' && activeRun !== undefined) {
-    await pushW1SteerAndAck(activeRun, msg, reply)
+    await pushW1SteerAndAck(activeRun, msg, reply, auth, deps)
     return
   }
   if (window === 'w2' && lastTurn !== undefined) {
@@ -133,12 +140,39 @@ export async function onIncomingEdit(
 /**
  * W1 dispatch: inject the edited text into the live run's `steerQueue` (the
  * orchestrator picks it up at the next tool-step boundary) and ack the user.
+ * An edit-steer is the same mid-run steering boundary as a manual steer, so it
+ * emits the same `turn_steered` fact; the edit itself is a correction, not a
+ * newly accepted message, so no accepted/turn facts are produced here.
  */
-async function pushW1SteerAndAck(run: RunControl, msg: IncomingMessage, reply: ReplyFn): Promise<void> {
-  run.steerQueue.push({
-    text: `⟲ Your earlier message was edited. New version:\n\n${msg.text}`,
-  })
+async function pushW1SteerAndAck(
+  run: RunControl,
+  msg: IncomingMessage,
+  reply: ReplyFn,
+  auth: AuthorizationResult,
+  deps: EditHandlerDeps,
+): Promise<void> {
+  const steerText = `⟲ Your earlier message was edited. New version:\n\n${msg.text}`
+  run.steerQueue.push({ text: steerText })
   await reply.text('✋ folding that into the current run…')
+  const observer = deps.analyticsObserver
+  if (observer === undefined) return
+  const source = buildAnalyticsSourceContext(msg, auth, 'normal', null)
+  if (source === null) return
+  const seed = createAuthorizedTurnSeed(source, msg, 0, {
+    nowMs: () => Date.now(),
+    nowMonotonicMs: () => performance.now(),
+  })
+  observer.observe(
+    buildTurnSteeredFact(
+      { ...seed.source, rawTurnId: run.turnId },
+      {
+        sourceEventId: `${seed.sourceEventId}:steered`,
+        ordinal: nextSteerOrdinal(run),
+        steerLengthChars: steerText.length,
+        ackSent: true,
+      },
+    ),
+  )
 }
 
 /**
