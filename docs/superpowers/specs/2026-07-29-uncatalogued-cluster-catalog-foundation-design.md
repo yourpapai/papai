@@ -25,7 +25,7 @@ visible and accountable before a story claims any coverage.
 
 ## Goals
 
-- Add behavior-level Tier 0 ids for the uncatalogued cluster.
+- Add behavior-level ids at the lowest tier that can prove each uncatalogued behavior.
 - Give every new id a precise pending audit record and future story seam.
 - Preserve the catalog's one-to-one classification and literal-story mapping
   contract.
@@ -46,8 +46,9 @@ in `CATALOG_SOURCE` as this Phase 3 extension, and represented in `AUDIT_RECORDS
 Every record starts as `catalogStatus: 'gap'` and `kind: 'pending'`. Pure behavior
 that can be exercised directly with existing runtime dependencies is marked
 `executable-as-is`. Runtime behavior whose deterministic exercise needs a clock,
-persistence, encryption, downloader, or delivery boundary is marked `needs-seam`
-with the narrowest named seam. No new executable mapping is added in this slice.
+persistence, encryption, downloader, delivery boundary, or platform adapter fake is
+marked `needs-seam` with the narrowest named seam and its lowest proving tier. No new
+executable mapping is added in this slice.
 
 The following behavior records are the initial Phase 3 set:
 
@@ -68,12 +69,37 @@ The following behavior records are the initial Phase 3 set:
 | `SCN-scheduler-execution-tracking` | Active executions are removed after both fulfillment and rejection. |
 | `SCN-changelog-version-section` | Version extraction stops at the next release and returns `null` when the requested version is absent. |
 
-The implementation audits the remaining zero-coverage files from the frozen coverage
-report against this matrix. A helper implementing one listed behavior is documented
-as source evidence for its owning record; it does not receive a duplicate id. A
-distinct user- or operator-observable invariant receives one additional
-behavior-level `SCN-*` record under the same status and audit rules. This is an
-explicit inventory step, not a source-file-per-id rule.
+The current coverage run identifies these eleven zero-line files:
+
+```
+src/attachments/staged-download.ts
+src/changelog-reader.ts
+src/chat/discord/commands.ts
+src/chat/discord/format-chunking.ts
+src/chat/discord/interaction-helpers.ts
+src/chat/kontur-talk/reply-helpers.ts
+src/chat/telegram/admin-helpers.ts
+src/deferred-prompts/poller-lifecycle.ts
+src/plugins/deny.ts
+src/utils/changelog.ts
+src/utils/scheduler.executions.ts
+```
+
+`staged-download.ts` and `changelog-reader.ts` are source evidence for the staged
+resolution and changelog-section records above; they do not receive duplicate ids.
+The remaining distinct behaviors add seven records:
+
+| Id | Lowest tier and behavior |
+| --- | --- |
+| `SCN-interaction-discord-command-routing` | Tier 3 — Discord command helpers route a command into the runtime with the correct interaction acknowledgement. |
+| `SCN-interaction-discord-format-chunking` | Tier 3 — oversized Discord output is split without reordering or data loss. |
+| `SCN-interaction-discord-response-lifecycle` | Tier 3 — deferred/replied interaction helpers preserve the one-response lifecycle. |
+| `SCN-interaction-kontur-reply-formatting` | Tier 3 — Kontur Talk replies use the platform's supported formatting and chunking boundaries. |
+| `SCN-interaction-telegram-admin-authorization` | Tier 3 — Telegram admin helper decisions reflect the platform-admin response and fail safely. |
+| `SCN-deferred-poller-lifecycle` | Tier 4 — a poller starts one controlled sweep and stops without leaving a live timer. |
+| `SCN-plugin-deny-gating` | Tier 0 — denied plugin capabilities are absent before tool execution and leave no privileged escape path. |
+
+This is an explicit behavior inventory, not a source-file-per-id rule.
 
 ## Follow-up ordering
 
@@ -82,9 +108,12 @@ fixture cost:
 
 1. Pure helpers: memory tool pairing, scheduler execution tracking, and changelog
    extraction.
-2. Existing runtime flows: message queue, message cache, and usage accounting.
+2. Existing runtime flows: message queue, message cache, usage accounting, and plugin
+   denial.
 3. Persistence/credential flows: staged attachments and BYOK resolution.
 4. Remote fan-out and aggregate privacy: announcements and stats.
+5. Platform adapters and operational polling: the five Tier-3 platform records, then
+   the Tier-4 poller lifecycle record.
 
 Each slice moves only the ids it proves from `AUDIT_RECORDS` into
 `EXECUTABLE_STORY_MAPPINGS`; it must use literal story ids and an implementation
@@ -95,8 +124,8 @@ shares a subsystem.
 
 The existing `catalog-coverage.test.ts` remains the enforcement point. This change
 updates its literal catalog and pending totals to the final audited count, and adds a
-focused assertion that the Phase 3 records are unique, pending, Tier-0-directed, and
-have nonblank rationales. The generic contract continues to require that
+focused assertion that the Phase 3 records are unique, pending, assigned to their
+lowest proving tier, and have nonblank rationales. The generic contract continues to require that
 `AUDIT_RECORDS` exactly equals the pending set; a new id therefore cannot be minted
 without an accountable audit record.
 
