@@ -40,7 +40,7 @@ describe('/stop command', () => {
 
   test('first /stop on an active run sets stopRequested and acks winding down', async () => {
     const handler = getHandler()
-    const run = runRegistry.begin('user-1', { turnId: 't1', reply: createMockReply().reply })
+    const run = runRegistry.begin('user-1', { turnId: 't1', reply: createMockReply().reply, originatingMessageIds: [] })
     const { reply, textCalls } = createMockReply()
     await handler(createDmMessage('user-1'), reply, createAuth('user-1'))
     expect(run.stopRequested).toBe(true)
@@ -50,7 +50,7 @@ describe('/stop command', () => {
 
   test('second /stop while stopping force-aborts', async () => {
     const handler = getHandler()
-    const run = runRegistry.begin('user-1', { turnId: 't1', reply: createMockReply().reply })
+    const run = runRegistry.begin('user-1', { turnId: 't1', reply: createMockReply().reply, originatingMessageIds: [] })
     run.stopRequested = true
     const { reply, textCalls } = createMockReply()
     await handler(createDmMessage('user-1'), reply, createAuth('user-1'))
@@ -60,7 +60,7 @@ describe('/stop command', () => {
 
   test('unauthorized user is rejected without touching the run', async () => {
     const handler = getHandler()
-    const run = runRegistry.begin('user-1', { turnId: 't1', reply: createMockReply().reply })
+    const run = runRegistry.begin('user-1', { turnId: 't1', reply: createMockReply().reply, originatingMessageIds: [] })
     const { reply, textCalls } = createMockReply()
     await handler(createDmMessage('user-1'), reply, createAuth('user-1', { allowed: false }))
     expect(run.stopRequested).toBe(false)

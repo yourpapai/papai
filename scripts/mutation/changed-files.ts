@@ -7,6 +7,8 @@ import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 
 import { isGateableImplFile } from '../../.hooks/tdd/test-resolver.mjs'
+import { buildBaselineFromPerFile, loadBaseline, resolveRatchet, seedMerge, writeBaseline } from './baseline.js'
+import type { BaselineMap, PerFileScore } from './baseline.js'
 import { pairedRun, resolvePairedRunExitCode } from './paired-run.js'
 import type { PairedRunInput, PairedRunResult } from './paired-run.js'
 
@@ -22,7 +24,14 @@ export interface SelectInput {
 }
 
 type ChangedFilesCliArgs =
-  | { readonly kind: 'ok'; readonly baseRef: string; readonly threshold: number; readonly verbose: boolean }
+  | {
+      readonly kind: 'ok'
+      readonly baseRef: string
+      readonly threshold: number
+      readonly noRatchet: boolean
+      readonly verbose: boolean
+      readonly updateBaseline: boolean
+    }
   | { readonly kind: 'usageError'; readonly reason: string }
 
 export interface ChangedFilesRunDeps {
@@ -35,6 +44,7 @@ export interface ChangedFilesRunInput {
   readonly projectRoot: string
   readonly reportDir: string
   readonly baseRef: string
+  readonly baseline: BaselineMap
   readonly verbose: boolean | undefined
   readonly deps: ChangedFilesRunDeps | undefined
 }
@@ -46,7 +56,8 @@ type BunLike = {
 
 const DEFAULT_BASE_REF = 'origin/master'
 const DEFAULT_REPORT_DIR = 'reports/paired'
-const THRESHOLD_DECIMAL_PATTERN = /^(?:0(?:\.\d+)?|1(?:\.0+)?)$/u
+const BASELINE_FILE = 'scripts/mutation/baseline.json'
+const THRESHOLD_DECIMAL_PATTERN = /^(0(?:\.\d+)?|1(?:\.0+)?)$/u
 const THRESHOLD_RANGE_ERROR = 'threshold must be a decimal number between 0 and 1'
 
 const defaultDeps: ChangedFilesDeps = {
@@ -98,14 +109,10 @@ const resolveRunDeps = (deps: ChangedFilesRunDeps | undefined): ChangedFilesRunD
 }
 
 export const parseChangedFilesCliArgs = (argv: readonly string[]): ChangedFilesCliArgs => {
-  const unknownArg = argv.find(
-    (arg) =>
-      arg.startsWith('-') && !arg.startsWith('--base=') && !arg.startsWith('--threshold=') && arg !== '--verbose',
-  )
+  const knownFlags = ['--base=', '--threshold=', '--no-ratchet', '--verbose', '--update-baseline']
+  const unknownArg = argv.find((arg) => arg.startsWith('-') && !knownFlags.some((f) => arg.startsWith(f)))
   if (unknownArg !== undefined) return { kind: 'usageError', reason: `unknown argument ${unknownArg}` }
-  const positionalArg = argv.find(
-    (arg) => !arg.startsWith('--base=') && !arg.startsWith('--threshold=') && arg !== '--verbose',
-  )
+  const positionalArg = argv.find((arg) => !knownFlags.some((f) => arg.startsWith(f) || arg === f.replace('=', '')))
   if (positionalArg !== undefined) {
     return { kind: 'usageError', reason: `unexpected positional argument ${positionalArg}` }
   }
@@ -123,10 +130,17 @@ export const parseChangedFilesCliArgs = (argv: readonly string[]): ChangedFilesC
   const threshold = parseThreshold(thresholdArg === undefined ? undefined : thresholdArg.slice('--threshold='.length))
   if (typeof threshold !== 'number') return threshold
 
-  return { kind: 'ok', baseRef, threshold, verbose: argv.includes('--verbose') }
+  return {
+    kind: 'ok',
+    baseRef,
+    threshold,
+    noRatchet: argv.includes('--no-ratchet'),
+    verbose: argv.includes('--verbose'),
+    updateBaseline: argv.includes('--update-baseline'),
+  }
 }
 
-export const changedFilesRun = (input: ChangedFilesRunInput): Promise<PairedRunResult | null> => {
+export const changedFilesRun = async (input: ChangedFilesRunInput): Promise<PairedRunResult | null> => {
   const deps = resolveRunDeps(input.deps)
   const targets = deps.selectTargets(input.baseRef, input.projectRoot)
   if (targets.length === 0) {
@@ -138,28 +152,56 @@ export const changedFilesRun = (input: ChangedFilesRunInput): Promise<PairedRunR
   targets.forEach((target) => {
     deps.log(`- ${target}`)
   })
-  return deps.runPaired({
+  const result = await deps.runPaired({
     projectRoot: input.projectRoot,
     reportDir: input.reportDir,
     sourceFiles: targets,
     verbose: input.verbose === true,
     deps: undefined,
   })
+  for (const entry of result.perFile) {
+    if (entry.merged.scored === 0) continue
+    if (input.baseline[entry.sourceFile] === undefined) {
+      deps.log(
+        `First measurement for ${entry.sourceFile}: score ${entry.merged.score.toFixed(4)} — seeded; future PRs enforce ≥ this.`,
+      )
+    }
+  }
+  return result
+}
+
+/**
+ * Seed the baseline from a changed-files run, PRESERVING existing entries for
+ * files that were not re-measured (unlike a full-run ratchet). Used by the
+ * master seed command (`--update-baseline`): measures only changed files but
+ * must not erase the rest of the baseline. Returns the resulting entry count.
+ */
+export const seedBaseline = (baselinePath: string, perFile: readonly PerFileScore[]): number => {
+  const existing = loadBaseline(baselinePath) ?? {}
+  const latest = buildBaselineFromPerFile(perFile)
+  const merged = seedMerge(existing, latest)
+  writeBaseline(baselinePath, merged)
+  return Object.keys(merged).length
 }
 
 const main = async (bun: BunLike): Promise<number> => {
   const parsed = parseChangedFilesCliArgs(bun.argv.slice(2))
   if (parsed.kind === 'usageError') {
     console.error(parsed.reason)
-    console.error('Usage: bun scripts/mutation/changed-files.ts [--base=REF] [--threshold=N] [--verbose]')
+    console.error(
+      'Usage: bun scripts/mutation/changed-files.ts [--base=REF] [--threshold=N] [--no-ratchet] [--update-baseline] [--verbose]',
+    )
     return 2
   }
 
   const projectRoot = process.cwd()
+  const baselinePath = path.join(projectRoot, BASELINE_FILE)
+  const baseline = loadBaseline(baselinePath) ?? {}
   const result = await changedFilesRun({
     projectRoot,
     reportDir: path.join(projectRoot, DEFAULT_REPORT_DIR),
     baseRef: parsed.baseRef,
+    baseline,
     verbose: parsed.verbose,
     deps: undefined,
   })
@@ -167,9 +209,26 @@ const main = async (bun: BunLike): Promise<number> => {
     return 0
   }
 
+  if (parsed.updateBaseline) {
+    const count = seedBaseline(baselinePath, result.perFile)
+    console.log(`Seeded baseline written to ${BASELINE_FILE} (${count} files)`)
+    return 0
+  }
+
   if (resolvePairedRunExitCode(result.merged, parsed.threshold) === 1) {
     console.error(`Mutation score ${result.merged.score} is below threshold ${parsed.threshold}`)
     return 1
+  }
+  if (!parsed.noRatchet) {
+    const ratchet = resolveRatchet(result.perFile, baseline)
+    if (ratchet.exitCode === 1) {
+      console.error(
+        `Mutation ratchet regression: ${ratchet.regressions
+          .map((r) => `${r.sourceFile} ${r.score.toFixed(4)} < ${r.threshold.toFixed(4)}`)
+          .join(', ')}`,
+      )
+      return 1
+    }
   }
   return 0
 }

@@ -7,7 +7,7 @@ import type { ToolExecutionOptions, ToolSet } from 'ai'
 
 import { getConfigContextIdFromStorageContextId } from '../../chat/scoped-context.js'
 import { logger } from '../../logger.js'
-import { COMPACTION_PREVIEW_BYTES } from './constants.js'
+import { COMPACTION_PREVIEW_CHARS } from './constants.js'
 import { putResult } from './result-store.js'
 import { evaluateForCompaction } from './size-gate.js'
 import { buildSummarizerDeps, summarizeResult } from './summarizer.js'
@@ -57,7 +57,7 @@ async function compact(
       'Summarizer dep threw; falling back to truncation',
     )
   }
-  const preview = decision.serialized.slice(0, COMPACTION_PREVIEW_BYTES)
+  const preview = decision.serialized.slice(0, COMPACTION_PREVIEW_CHARS)
   log.info(
     {
       contextId: ctx.storageContextId,

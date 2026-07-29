@@ -13,6 +13,7 @@ export const telegramCapabilities: ReadonlySet<ChatCapability> = new Set<ChatCap
   'messages.files',
   'messages.redact',
   'messages.reply-context',
+  'messages.edit.inbound',
   'files.receive',
 ])
 

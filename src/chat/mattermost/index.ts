@@ -11,7 +11,6 @@ import type {
   CommandHandler,
   ContextRendered,
   ContextSnapshot,
-  ContextType,
   DeferredDeliveryTarget,
   IncomingInteraction,
   IncomingMessage,
@@ -30,31 +29,20 @@ import { createMattermostActionContext } from './action-signing.js'
 import { makeMattermostApiFetch } from './api-fetch.js'
 import { checkChannelAdmin } from './channel-helpers.js'
 import { resolveMattermostConfig, type MattermostConstructorConfig } from './config.js'
-import { fetchMattermostChannelInfo, fetchMattermostTeamInfo, type MattermostChannelInfo } from './context-metadata.js'
 import { renderMattermostContext } from './context-renderer.js'
 import {
-  cacheIncomingPost,
   downloadMattermostFile,
   parsePostedEvent,
-  resolveMattermostPostFiles,
   resolveMattermostUserId,
   uploadMattermostFile,
 } from './file-helpers.js'
 import { resolveMattermostGroupLabel, resolveMattermostUserLabel } from './label-helpers.js'
-import { determineMattermostThreadId, normalizeMattermostMessageText } from './message-normalization.js'
 import { mattermostCapabilities, mattermostConfigRequirements, mattermostTraits } from './metadata.js'
-import { buildMattermostReplyContext } from './reply-context.js'
+import { buildMattermostPostedMessage, type PostedMessageResult } from './post-builder.js'
 import { createMattermostReplyFn, sendMattermostDeferredMessage } from './reply-helpers.js'
 import { extractReplyId, MattermostWsEventSchema, type MattermostPost, UserMeSchema } from './schema.js'
 
 const log = logger.child({ scope: 'chat:mattermost' })
-
-type PostedMessageResult = {
-  msg: IncomingMessage
-  reply: ReplyFn
-  command: { handler: CommandHandler; match: string } | null
-  isAdmin: boolean
-}
 
 export class MattermostChatProvider implements ChatProvider {
   readonly name = 'mattermost'
@@ -72,6 +60,7 @@ export class MattermostChatProvider implements ChatProvider {
   private readonly mmFetch: import('./file-helpers.js').MattermostApiFetch
   private readonly commands = new Map<string, CommandHandler>()
   private messageHandler: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null = null
+  private editHandler: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null = null
   private interactionHandler: ((interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) | null = null
   private ws: WebSocket | null = null
   private botUserId: string | null = null
@@ -92,6 +81,10 @@ export class MattermostChatProvider implements ChatProvider {
 
   onMessage(handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>): void {
     this.messageHandler = handler
+  }
+
+  onMessageEdit(handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>): void {
+    this.editHandler = handler
   }
 
   onInteraction(handler: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>): void {
@@ -160,6 +153,8 @@ export class MattermostChatProvider implements ChatProvider {
     }
     if (parsed.data.event === 'posted') {
       await this.handlePostedEvent(parsed.data.data)
+    } else if (parsed.data.event === 'post_updated') {
+      await this.handlePostUpdatedEvent(parsed.data.data)
     }
   }
 
@@ -169,7 +164,6 @@ export class MattermostChatProvider implements ChatProvider {
     const { post, senderName } = parsed
     if (post.user_id === this.botUserId) return
     const replyToMessageId = extractReplyId(post.parent_id, post.root_id)
-    cacheIncomingPost(post, replyToMessageId, senderName)
     const { msg, reply, command, isAdmin } = await this.buildPostedMessage(post, senderName, replyToMessageId)
     if (msg.isMentioned && msg.text === '') {
       const mentionHelp =
@@ -185,55 +179,30 @@ export class MattermostChatProvider implements ChatProvider {
     if (this.messageHandler !== null) await this.messageHandler(msg, reply)
   }
 
-  async buildPostedMessage(
+  private async handlePostUpdatedEvent(data: Record<string, unknown>): Promise<void> {
+    if (this.editHandler === null) return
+    const parsed = parsePostedEvent(data)
+    if (parsed === null || parsed.post.user_id === this.botUserId) return
+    const replyToMessageId = extractReplyId(parsed.post.parent_id, parsed.post.root_id)
+    const { msg, reply } = await this.buildPostedMessage(parsed.post, parsed.senderName, replyToMessageId)
+    msg.editedAt = Date.now()
+    await this.editHandler(msg, reply)
+  }
+
+  buildPostedMessage(
     post: MattermostPost,
     senderName: string | undefined,
     replyToMessageId: string | undefined,
   ): Promise<PostedMessageResult> {
-    const api = this.apiFetch.bind(this)
-    const replyContext =
-      replyToMessageId === undefined ? undefined : await buildMattermostReplyContext(post, replyToMessageId, api)
-    const channelInfo: MattermostChannelInfo = await fetchMattermostChannelInfo(api, post.channel_id)
-    const contextType: ContextType = channelInfo.type === 'D' ? 'dm' : 'group'
-    const teamId = contextType === 'group' ? channelInfo.team_id : undefined
-    const teamInfo = teamId === undefined ? null : await fetchMattermostTeamInfo(api, teamId)
-    const isAdmin = await checkChannelAdmin(post.channel_id, post.user_id, api)
-    const normalized = normalizeMattermostMessageText(post.message, this.botUsername)
-    const isMentioned = normalized.isMentioned
-    const threadId = determineMattermostThreadId(post, isMentioned, contextType, replyToMessageId)
-    const reply = this.buildReplyFn(post.channel_id, post.id, threadId)
-    const command = normalized.commandInput === null ? null : this.matchCommand(normalized.commandInput)
-    const uname = post.user_name
-    const username = typeof uname === 'string' ? uname : typeof senderName === 'string' ? senderName : null
-    const dispName = typeof channelInfo.display_name === 'string' ? channelInfo.display_name : channelInfo.name
-    const contextName =
-      contextType === 'group' ? (typeof dispName === 'string' ? dispName : post.channel_id) : undefined
-    const pt = contextType === 'group' ? teamInfo : null
-    const contextParentName = pt === null ? undefined : typeof pt.display_name === 'string' ? pt.display_name : pt.name
-    const { files, fileCandidates } = await resolveMattermostPostFiles(
-      post.file_ids,
-      contextType === 'group',
-      this.apiFetch.bind(this),
-      (fid) => downloadMattermostFile(this.baseUrl, this.token, fid),
-    )
-    const msg: IncomingMessage = {
-      user: { id: post.user_id, username, isAdmin },
-      contextId: post.channel_id,
-      contextType,
-      contextName,
-      contextParentName,
-      isMentioned,
-      text: normalized.text,
+    return buildMattermostPostedMessage(post, senderName, replyToMessageId, {
+      apiFetch: this.apiFetch.bind(this),
+      botUsername: this.botUsername,
       platformInstanceId: this.platformInstanceId,
-      commandMatch: command === null ? undefined : command.match,
-      messageId: post.id,
-      replyToMessageId,
-      replyContext,
-      threadId,
-      ...(files ? { files } : {}),
-      ...(fileCandidates ? { fileCandidates } : {}),
-    }
-    return { msg, reply, command, isAdmin }
+      baseUrl: this.baseUrl,
+      token: this.token,
+      buildReplyFn: this.buildReplyFn.bind(this),
+      matchCommand: this.matchCommand.bind(this),
+    })
   }
 
   private matchCommand(text: string): { handler: CommandHandler; match: string } | null {

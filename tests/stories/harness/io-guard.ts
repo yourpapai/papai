@@ -9,7 +9,6 @@ import childProcess from 'node:child_process'
 import dgram from 'node:dgram'
 import fs from 'node:fs'
 import net from 'node:net'
-import os from 'node:os'
 import path from 'node:path'
 import workerThreads from 'node:worker_threads'
 
@@ -17,6 +16,7 @@ import * as bunModule from 'bun'
 
 import type { ScenarioEvents } from './events.js'
 import {
+  assertGuardedReadPath,
   assertGuardedWritePath,
   type FilesystemBoundary,
   installFilesystemGuard,
@@ -274,6 +274,26 @@ function guardedBunFile(...args: unknown[]): unknown {
   const file = invoke(originals.bunFile, args)
   if (file === null || typeof file !== 'object') return file
   const target = args[0]
+  for (const methodName of ['text', 'json', 'arrayBuffer', 'bytes'] as const) {
+    const method = Reflect.get(file, methodName) as unknown
+    if (typeof method !== 'function') continue
+    Reflect.set(file, methodName, (...methodArgs: unknown[]): unknown => {
+      assertGuardedReadPath(target, `Bun.file.${methodName}`, active, (operation) =>
+        diagnostic(active(operation), operation),
+      )
+      return invokeOn(method, file, methodArgs)
+    })
+  }
+  for (const methodName of ['stream', 'slice'] as const) {
+    const method = Reflect.get(file, methodName) as unknown
+    if (typeof method !== 'function') continue
+    Reflect.set(file, methodName, (...methodArgs: unknown[]): unknown => {
+      assertGuardedReadPath(target, `Bun.file.${methodName}`, active, (operation) =>
+        diagnostic(active(operation), operation),
+      )
+      return invokeOn(method, file, methodArgs)
+    })
+  }
   const writer = Reflect.get(file, 'writer') as unknown
   if (typeof writer === 'function') {
     Reflect.set(file, 'writer', (...writerArgs: unknown[]): unknown => {
@@ -430,11 +450,18 @@ export function runWithScenarioIoGuard<T>(
       ),
     )
   }
+  const executionRoot = process.env['PAPAI_STORY_EXECUTION_ROOT']
+  if (executionRoot === undefined) throw new Error('Story I/O guard requires PAPAI_STORY_EXECUTION_ROOT')
+  const runnerTempRoot = process.env['TMPDIR']
+  if (runnerTempRoot === undefined || !path.isAbsolute(runnerTempRoot)) {
+    throw new Error('Story I/O guard requires an absolute runner TMPDIR')
+  }
   boundaryOwner = name
-  const tempRoot = originals.fsMkdtempSync(path.join(os.tmpdir(), 'papai-story-'))
+  const tempRoot = originals.fsMkdtempSync(path.join(runnerTempRoot, 'papai-story-'))
   const boundary: Boundary = {
     name,
     tempRoot: originals.fsRealpathSync(tempRoot),
+    executionRoot: originals.fsRealpathSync(executionRoot),
     env: environmentSnapshot(),
     timers: new Set(),
     listeners: new Set(),

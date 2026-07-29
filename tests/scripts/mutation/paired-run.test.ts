@@ -50,6 +50,24 @@ const readConfiguredReportPath = (configPath: string): string => {
   return parsed.jsonReporter.fileName
 }
 
+const isBunTestFilesConfig = (value: unknown): value is { readonly bun: { readonly testFiles: readonly string[] } } => {
+  if (value === null || typeof value !== 'object') return false
+  if (!('bun' in value)) return false
+  const bun: unknown = value.bun
+  if (bun === null || typeof bun !== 'object') return false
+  if (!('testFiles' in bun)) return false
+  const testFiles: unknown = bun.testFiles
+  return Array.isArray(testFiles) && testFiles.every((f) => typeof f === 'string')
+}
+
+const readConfiguredBunTestFiles = (configPath: string): readonly string[] => {
+  const parsed: unknown = JSON.parse(fs.readFileSync(configPath, 'utf8'))
+  if (!isBunTestFilesConfig(parsed)) {
+    throw new Error('Expected paired config to contain bun.testFiles')
+  }
+  return parsed.bun.testFiles
+}
+
 const writeConfiguredReport = (configPath: string, report: StrykerReport): void => {
   fs.writeFileSync(readConfiguredReportPath(configPath), `${JSON.stringify(report)}\n`)
 }
@@ -104,6 +122,7 @@ describe('pairedRun', () => {
     expect(result.merged.survived).toBe(2)
     expect(result.merged.score).toBe(0.5)
     expect(result.skipped).toEqual([])
+    expect(result.errored).toEqual([])
   })
 
   test('logs each file before and immediately after it runs', async () => {
@@ -146,7 +165,7 @@ describe('pairedRun', () => {
       'src/one.ts: killed=1 survived=0 noCoverage=0 pending=0 score=1',
       'Running paired mutation 2/2: src/two.ts',
       'src/two.ts: killed=1 survived=0 noCoverage=0 pending=0 score=1',
-      'Paired mutation summary: files=2 skipped=0 killed=2 survived=0 pending=0 score=1',
+      'Paired mutation summary: files=2 skipped=0 errored=0 killed=2 survived=0 pending=0 score=1',
     ])
   })
 
@@ -177,7 +196,7 @@ describe('pairedRun', () => {
     expect(messages).toEqual([
       'Running paired mutation 1/1: src/foo.ts',
       'src/foo.ts: killed=1 survived=0 noCoverage=0 pending=0 score=1',
-      'Paired mutation summary: files=1 skipped=0 killed=1 survived=0 pending=0 score=1',
+      'Paired mutation summary: files=1 skipped=0 errored=0 killed=1 survived=0 pending=0 score=1',
     ])
   })
 
@@ -210,7 +229,7 @@ describe('pairedRun', () => {
     expect(result.merged.survived).toBe(0)
   })
 
-  test('fails when Stryker does not write the expected report', async () => {
+  test('records an errored file when Stryker does not write the expected report', async () => {
     const reportDir = makeReportDir()
     const deps: PairedRunDeps = {
       readBaseConfig: () => ({}),
@@ -221,17 +240,18 @@ describe('pairedRun', () => {
       log: () => {},
     }
 
-    await expect(
-      Promise.resolve().then(() =>
-        pairedRun({
-          projectRoot: '/repo',
-          reportDir,
-          sourceFiles: ['src/foo.ts'],
-          verbose: undefined,
-          deps,
-        }),
-      ),
-    ).rejects.toThrow(/missing Stryker JSON report/u)
+    const result = await pairedRun({
+      projectRoot: '/repo',
+      reportDir,
+      sourceFiles: ['src/foo.ts'],
+      verbose: undefined,
+      deps,
+    })
+
+    expect(result.errored).toHaveLength(1)
+    expect(result.errored[0]?.sourceFile).toBe('src/foo.ts')
+    expect(result.errored[0]?.error).toMatch(/missing Stryker JSON report/u)
+    expect(result.merged.total).toBe(0)
   })
 
   test('continues when Stryker throws after writing the expected report', async () => {
@@ -260,7 +280,7 @@ describe('pairedRun', () => {
     expect(result.merged.survived).toBe(1)
   })
 
-  test('fails with missing-report error when Stryker throws without writing the report', async () => {
+  test('records the missing-report error when Stryker throws without writing the report', async () => {
     const reportDir = makeReportDir()
     const deps: PairedRunDeps = {
       readBaseConfig: () => ({}),
@@ -273,20 +293,21 @@ describe('pairedRun', () => {
       log: () => {},
     }
 
-    await expect(
-      Promise.resolve().then(() =>
-        pairedRun({
-          projectRoot: '/repo',
-          reportDir,
-          sourceFiles: ['src/foo.ts'],
-          verbose: undefined,
-          deps,
-        }),
-      ),
-    ).rejects.toThrow(/missing Stryker JSON report/u)
+    const result = await pairedRun({
+      projectRoot: '/repo',
+      reportDir,
+      sourceFiles: ['src/foo.ts'],
+      verbose: undefined,
+      deps,
+    })
+
+    expect(result.errored).toHaveLength(1)
+    expect(result.errored[0]?.sourceFile).toBe('src/foo.ts')
+    expect(result.errored[0]?.error).toMatch(/missing Stryker JSON report/u)
+    expect(result.merged.total).toBe(0)
   })
 
-  test('includes captured Stryker output when it throws without writing the report', async () => {
+  test('includes captured Stryker output in the errored entry when it throws without writing the report', async () => {
     const reportDir = makeReportDir()
     const deps: PairedRunDeps = {
       readBaseConfig: () => ({}),
@@ -304,17 +325,60 @@ describe('pairedRun', () => {
       log: () => {},
     }
 
-    await expect(
-      Promise.resolve().then(() =>
-        pairedRun({
-          projectRoot: '/repo',
-          reportDir,
-          sourceFiles: ['src/foo.ts'],
-          verbose: undefined,
-          deps,
-        }),
-      ),
-    ).rejects.toThrow(/Stryker configuration failed/u)
+    const result = await pairedRun({
+      projectRoot: '/repo',
+      reportDir,
+      sourceFiles: ['src/foo.ts'],
+      verbose: undefined,
+      deps,
+    })
+
+    expect(result.errored).toHaveLength(1)
+    expect(result.errored[0]?.error).toMatch(/Stryker configuration failed/u)
+  })
+
+  test('continues after one file errors and still aggregates the rest', async () => {
+    const reportDir = makeReportDir()
+    const respond = (): ((configPath: string) => void) => {
+      let next = 0
+      const behaviors: ReadonlyArray<(configPath: string) => void> = [
+        (configPath): void => writeConfiguredReport(configPath, makeReport(['Killed'])),
+        (): never => {
+          throw new Error('stryker dry run timed out')
+        },
+        (configPath): void => writeConfiguredReport(configPath, makeReport(['Killed'])),
+      ]
+      return (configPath): void => {
+        const behavior = behaviors[next]
+        next += 1
+        behavior?.(configPath)
+      }
+    }
+    const runStryker = mock(respond())
+    const deps: PairedRunDeps = {
+      readBaseConfig: () => ({}),
+      resolveCompanion: (srcFile) => `tests/${path.basename(srcFile, '.ts')}.test.ts`,
+      loadOverrides: () => ({}),
+      runStryker,
+      readReport: readStrykerReport,
+      log: () => {},
+    }
+
+    const result = await pairedRun({
+      projectRoot: '/repo',
+      reportDir,
+      sourceFiles: ['src/one.ts', 'src/two.ts', 'src/three.ts'],
+      verbose: undefined,
+      deps,
+    })
+
+    expect(runStryker).toHaveBeenCalledTimes(3)
+    expect(result.perFile).toHaveLength(2)
+    expect(result.errored).toHaveLength(1)
+    expect(result.errored[0]?.sourceFile).toBe('src/two.ts')
+    expect(result.errored[0]?.error).toMatch(/timed out/u)
+    expect(result.merged.killed).toBe(2)
+    expect(result.skipped).toEqual([])
   })
 
   test('skips files with no companion and no override', async () => {
@@ -381,6 +445,65 @@ describe('pairedRun', () => {
       ignoreStatic: false,
       bun: { testFiles: ['./tests/foo.test.ts'] },
     })
+  })
+
+  test('selects coverage-discovered tests AND keeps the companion (additive) when buildMap returns one', async () => {
+    const reportDir = makeReportDir()
+    const captured = { configPath: '' }
+    const runStryker = mock((configPath: string) => {
+      captured.configPath = configPath
+      writeConfiguredReport(configPath, makeReport(['Killed']))
+    })
+    const deps: PairedRunDeps = {
+      readBaseConfig: () => ({}),
+      resolveCompanion: () => 'tests/companion.test.ts',
+      loadOverrides: () => ({}),
+      runStryker,
+      readReport: readStrykerReport,
+      log: () => {},
+      buildMap: () => ({ 'src/foo.ts': ['tests/integration/covers-foo.test.ts'] }),
+    }
+
+    await pairedRun({
+      projectRoot: '/repo',
+      reportDir,
+      sourceFiles: ['src/foo.ts'],
+      verbose: undefined,
+      deps,
+    })
+
+    const testFiles = readConfiguredBunTestFiles(captured.configPath)
+    expect(testFiles).toContain('./tests/integration/covers-foo.test.ts')
+    expect(testFiles).toContain('./tests/companion.test.ts')
+  })
+
+  test('companions still get selected as fallback when buildMap returns no entry for the source', async () => {
+    const reportDir = makeReportDir()
+    const captured = { configPath: '' }
+    const runStryker = mock((configPath: string) => {
+      captured.configPath = configPath
+      writeConfiguredReport(configPath, makeReport(['Killed']))
+    })
+    const deps: PairedRunDeps = {
+      readBaseConfig: () => ({}),
+      resolveCompanion: () => 'tests/companion.test.ts',
+      loadOverrides: () => ({}),
+      runStryker,
+      readReport: readStrykerReport,
+      log: () => {},
+      buildMap: () => ({}),
+    }
+
+    await pairedRun({
+      projectRoot: '/repo',
+      reportDir,
+      sourceFiles: ['src/foo.ts'],
+      verbose: undefined,
+      deps,
+    })
+
+    const testFiles = readConfiguredBunTestFiles(captured.configPath)
+    expect(testFiles).toEqual(['./tests/companion.test.ts'])
   })
 })
 

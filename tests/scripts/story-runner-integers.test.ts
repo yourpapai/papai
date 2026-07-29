@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { parseBunInteger } from '../../scripts/story-runner-integers.js'
+import { parseBunInteger } from '../../scripts/story/cli.js'
 
 describe('parseBunInteger', () => {
   test.each([

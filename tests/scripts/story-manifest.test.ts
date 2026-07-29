@@ -4,21 +4,42 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
+import { createHash } from 'node:crypto'
 import { existsSync, mkdtempSync, mkdirSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import type { StoryDependencySnapshot } from '../../scripts/story/dependencies.js'
 import {
   buildBaselineStoryManifest,
-  buildCandidateStoryManifest,
+  buildCandidateStoryManifest as acquireCandidateStoryManifest,
   compareStoryManifests,
-  parseStoryManifestArguments,
   StoryManifestSchema,
   writeStoryManifest,
-} from '../../scripts/story-manifest.js'
+} from '../../scripts/story/manifest.js'
+import { writeFrozenCoverageSupport } from './story-frozen-inputs.helpers.js'
 
 const roots: string[] = []
 const PROJECT_ROOT = path.resolve(import.meta.dir, '../..')
+const TEST_DEPENDENCY_SNAPSHOT: StoryDependencySnapshot = {
+  key: 'a'.repeat(64),
+  root: '/dependency-cache/node_modules',
+  treeHash: 'b'.repeat(64),
+}
+
+function buildCandidateStoryManifest(
+  options: Readonly<{
+    root: string
+    seed: number
+    bunVersion?: string
+    sandboxBackend?: 'linux-docker'
+  }>,
+  dependencySnapshot: StoryDependencySnapshot = TEST_DEPENDENCY_SNAPSHOT,
+): Promise<Awaited<ReturnType<typeof acquireCandidateStoryManifest>>> {
+  return acquireCandidateStoryManifest(options, {
+    acquireDependencySnapshot: (): Promise<StoryDependencySnapshot> => Promise.resolve(dependencySnapshot),
+  })
+}
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
@@ -30,8 +51,9 @@ function git(root: string, ...args: readonly string[]): string {
   return result.stdout.toString().trim()
 }
 
-function fixture(): string {
+function fixture(options: Readonly<{ includePublic?: boolean }> = {}): string {
   const root = mkdtempSync(path.join(os.tmpdir(), 'papai-story-manifest-'))
+  const includesPublic = options.includePublic ?? true
   roots.push(root)
   git(root, 'init', '-q')
   git(root, 'config', 'user.email', 'stories@example.invalid')
@@ -40,7 +62,10 @@ function fixture(): string {
   mkdirSync(path.join(root, 'tests/stories/harness'), { recursive: true })
   mkdirSync(path.join(root, 'tests/stories/user stories'), { recursive: true })
   mkdirSync(path.join(root, 'tests/utils'), { recursive: true })
-  mkdirSync(path.join(root, 'scripts'), { recursive: true })
+  mkdirSync(path.join(root, 'scripts/story'), { recursive: true })
+  mkdirSync(path.join(root, 'src'), { recursive: true })
+  mkdirSync(path.join(root, 'plugins/example'), { recursive: true })
+  if (includesPublic) mkdirSync(path.join(root, 'public'), { recursive: true })
   writeFileSync(path.join(root, 'bunfig.toml'), '[test]')
   writeFileSync(path.join(root, 'tests/stories/harness/helper.ts'), Buffer.from([0, 10, 255]))
   writeFileSync(
@@ -48,15 +73,38 @@ function fixture(): string {
     `scenario('alpha story', async ({ then }) => {\n  then.replyIn(context).equals('ok')\n  await then.task('A').exists()\n})\n` +
       `test('wrapped', async () => {\n  await executeScenario('nested story', async ({ then }) => {\n    then.responseStatus(response, 200)\n  })\n})\n`,
   )
-  writeFileSync(path.join(root, 'scripts/test-stories.ts'), 'runner enforcement')
-  writeFileSync(path.join(root, 'scripts/story-manifest.ts'), 'manifest enforcement')
-  writeFileSync(path.join(root, 'scripts/story-reports.ts'), 'report enforcement')
-  writeFileSync(path.join(root, 'scripts/story-runner-arguments.ts'), 'argument enforcement')
+  writeFrozenCoverageSupport(root)
+  writeFileSync(path.join(root, 'scripts/story/test-stories.ts'), 'runner enforcement')
+  writeFileSync(path.join(root, 'scripts/story/dependencies-install.ts'), 'dependency installer enforcement')
+  writeFileSync(path.join(root, 'scripts/story/dependencies-tree.ts'), 'dependency tree enforcement')
+  writeFileSync(path.join(root, 'scripts/story/dependencies.ts'), 'dependency snapshot enforcement')
+  writeFileSync(path.join(root, 'scripts/story/cli.ts'), 'argument enforcement')
+  writeFileSync(path.join(root, 'scripts/story/manifest.ts'), 'manifest enforcement')
+  writeFileSync(path.join(root, 'scripts/story/reports.ts'), 'report enforcement')
+  writeFileSync(path.join(root, 'scripts/story/sandbox.ts'), 'sandbox enforcement')
+  writeFileSync(path.join(root, 'scripts/story/test-story-sandbox.ts'), 'sandbox launcher enforcement')
   writeFileSync(path.join(root, 'tests/setup.ts'), 'test setup')
   writeFileSync(path.join(root, 'tests/mock-reset.ts'), 'test reset')
   writeFileSync(path.join(root, 'tests/utils/test-helpers.ts'), `export * from './logger-mock.js'`)
   writeFileSync(path.join(root, 'tests/utils/logger-mock.ts'), 'logger mock')
-  git(root, 'add', '--', 'bunfig.toml', 'tests', 'scripts')
+  writeFileSync(path.join(root, 'src/runtime.ts'), 'runtime source')
+  writeFileSync(path.join(root, 'plugins/example/plugin.json'), '{"name":"example"}')
+  writeFileSync(path.join(root, 'package.json'), '{"name":"story-fixture"}')
+  writeFileSync(path.join(root, 'bun.lock'), 'lockfile')
+  if (includesPublic) writeFileSync(path.join(root, 'public/settings.js'), 'settings asset')
+  git(
+    root,
+    'add',
+    '--',
+    'bunfig.toml',
+    'tests',
+    'scripts',
+    'src',
+    'plugins',
+    'package.json',
+    'bun.lock',
+    ...(includesPublic ? ['public'] : []),
+  )
   git(root, 'commit', '-qm', 'baseline')
   return root
 }
@@ -72,10 +120,18 @@ describe('story manifest', () => {
     expect(repeated.treeHash).toBe(manifest.treeHash)
     expect(manifest.files.map(({ path: filePath }) => filePath)).toEqual([
       'bunfig.toml',
-      'scripts/story-manifest.ts',
-      'scripts/story-reports.ts',
-      'scripts/story-runner-arguments.ts',
-      'scripts/test-stories.ts',
+      'scripts/coverage/normalize-lcov.ts',
+      'scripts/coverage/ratchet-lib.ts',
+      'scripts/coverage/story-coverage-gate.ts',
+      'scripts/story/cli.ts',
+      'scripts/story/dependencies-install.ts',
+      'scripts/story/dependencies-tree.ts',
+      'scripts/story/dependencies.ts',
+      'scripts/story/manifest.ts',
+      'scripts/story/reports.ts',
+      'scripts/story/sandbox.ts',
+      'scripts/story/test-stories.ts',
+      'scripts/story/test-story-sandbox.ts',
       'tests/mock-reset.ts',
       'tests/setup.ts',
       'tests/stories/harness/helper.ts',
@@ -96,6 +152,70 @@ describe('story manifest', () => {
         checkpoints: ['then.responseStatus'],
       },
     ])
+  })
+
+  test('captures runtime inputs separately from frozen harness inputs', async () => {
+    const root = fixture()
+    const manifest = await buildCandidateStoryManifest({ root, seed: 41021, bunVersion: '1.2.3' })
+    writeFileSync(path.join(root, 'src/runtime.ts'), 'changed runtime source')
+    const rebuilt = await buildCandidateStoryManifest({ root, seed: 41021, bunVersion: '1.2.3' })
+
+    expect(manifest.runtimeInputs.files.map(({ path: filePath }) => filePath)).toEqual([
+      'bun.lock',
+      'package.json',
+      'plugins/example/plugin.json',
+      'public/settings.js',
+      'src/runtime.ts',
+    ])
+    expect(manifest.runtimeInputs.files.find(({ path: filePath }) => filePath === 'src/runtime.ts')?.sha256).toBe(
+      'c66ab3c24521ad1065019facb8f0ec2727e8cae52d4e1f1f21108bd3abdb7a65',
+    )
+    expect(rebuilt.runtimeInputs.treeHash).not.toBe(manifest.runtimeInputs.treeHash)
+    expect(rebuilt.treeHash).toBe(manifest.treeHash)
+  })
+
+  test('emits schema version 4 and runtime directory topology for candidate and baseline manifests', async () => {
+    const root = fixture()
+    const ref = git(root, 'rev-parse', 'HEAD')
+    const [candidate, baseline] = await Promise.all([
+      buildCandidateStoryManifest({ root, seed: 41021 }),
+      buildBaselineStoryManifest({ root, ref, seed: 41021 }),
+    ])
+
+    expect(candidate.version).toBe(4)
+    expect(baseline.version).toBe(4)
+    expect(candidate.runtimeInputs.directories).toEqual(['plugins', 'plugins/example', 'public', 'src'])
+    expect(baseline.runtimeInputs.directories).toEqual(['plugins', 'plugins/example', 'public', 'src'])
+    expect(StoryManifestSchema.safeParse({ ...candidate, version: 3 }).success).toBe(false)
+  })
+
+  test('captures empty required and present optional runtime directories', async () => {
+    const root = fixture()
+    rmSync(path.join(root, 'src'), { recursive: true })
+    rmSync(path.join(root, 'plugins'), { recursive: true })
+    rmSync(path.join(root, 'public'), { recursive: true })
+    mkdirSync(path.join(root, 'src'))
+    mkdirSync(path.join(root, 'plugins'))
+    mkdirSync(path.join(root, 'public'))
+
+    const manifest = await buildCandidateStoryManifest({ root, seed: 41021, bunVersion: '1.2.3' })
+
+    expect(manifest.version).toBe(4)
+    expect(manifest.runtimeInputs.directories).toEqual(['plugins', 'public', 'src'])
+  })
+
+  test('omits an absent optional public root deterministically', async () => {
+    const root = fixture({ includePublic: false })
+    const manifest = await buildCandidateStoryManifest({ root, seed: 41021, bunVersion: '1.2.3' })
+    const repeated = await buildCandidateStoryManifest({ root, seed: 41021, bunVersion: '1.2.3' })
+
+    expect(manifest.runtimeInputs.files.map(({ path: filePath }) => filePath)).toEqual([
+      'bun.lock',
+      'package.json',
+      'plugins/example/plugin.json',
+      'src/runtime.ts',
+    ])
+    expect(repeated.runtimeInputs).toEqual(manifest.runtimeInputs)
   })
 
   test('removes the temporary manifest when atomic publication fails', async () => {
@@ -147,7 +267,56 @@ describe('story manifest', () => {
       'changed: tests/stories/user stories/example.story.test.ts',
     )
     expect(baseline.commit).toBe(baselineRef)
+    expect(StoryManifestSchema.parse(baseline)).toEqual(baseline)
+    expect(baseline.runtimeInputs.files.map(({ kind, path: filePath }) => ({ kind, path: filePath }))).toEqual([
+      { kind: 'file', path: 'bun.lock' },
+      { kind: 'file', path: 'package.json' },
+      { kind: 'file', path: 'plugins/example/plugin.json' },
+      { kind: 'file', path: 'public/settings.js' },
+      { kind: 'file', path: 'src/runtime.ts' },
+    ])
     expect(baseline.scenarios[0]?.id).toContain('#alpha story')
+  })
+
+  test('captures candidate dependency evidence while omitting it from the historical baseline', async () => {
+    const root = fixture()
+    const ref = git(root, 'rev-parse', 'HEAD')
+    const dependencySnapshot = { key: 'c'.repeat(64), root: '/cache/node_modules', treeHash: 'd'.repeat(64) }
+    const [candidate, baseline] = await Promise.all([
+      buildCandidateStoryManifest({ root, seed: 41021, bunVersion: '1.2.3' }, dependencySnapshot),
+      buildBaselineStoryManifest({ root, ref, seed: 41021, bunVersion: '1.2.3' }),
+    ])
+
+    expect(candidate.dependencySnapshot).toEqual({
+      key: dependencySnapshot.key,
+      treeHash: dependencySnapshot.treeHash,
+      bunVersion: '1.2.3',
+    })
+    expect(baseline.dependencySnapshot).toBeUndefined()
+    expect(StoryManifestSchema.parse(baseline)).toEqual(baseline)
+  })
+
+  test('captures the selected sandbox backend while omitting it from historical baselines', async () => {
+    const root = fixture()
+    const ref = git(root, 'rev-parse', 'HEAD')
+    const candidate = await buildCandidateStoryManifest({ root, seed: 41021, sandboxBackend: 'linux-docker' })
+    const baseline = await buildBaselineStoryManifest({ root, ref, seed: 41021 })
+
+    expect(candidate.sandboxBackend).toBe('linux-docker')
+    expect(baseline.sandboxBackend).toBeUndefined()
+    expect(StoryManifestSchema.parse(baseline)).toEqual(baseline)
+    expect(() => compareStoryManifests(candidate, baseline)).not.toThrow()
+  })
+
+  test('rejects a baseline ref without every required runtime input', async () => {
+    const root = fixture()
+    rmSync(path.join(root, 'package.json'))
+    git(root, 'rm', '--', 'package.json')
+    git(root, 'commit', '-qm', 'remove runtime metadata')
+
+    await expect(buildBaselineStoryManifest({ root, ref: 'HEAD', seed: 41021 })).rejects.toThrow(
+      'Baseline runtime inputs missing: package.json',
+    )
   })
 
   test('accepts identical frozen content across different run metadata', async () => {
@@ -155,6 +324,29 @@ describe('story manifest', () => {
     const ref = git(root, 'rev-parse', 'HEAD')
     const baseline = await buildBaselineStoryManifest({ root, ref, seed: 1, bunVersion: 'old' })
     const candidate = await buildCandidateStoryManifest({ root, seed: 999, bunVersion: 'new' })
+
+    expect(() => compareStoryManifests(candidate, baseline)).not.toThrow()
+  })
+
+  test('ignores runtime input changes during compatibility comparison', async () => {
+    const root = fixture()
+    const ref = git(root, 'rev-parse', 'HEAD')
+    const baseline = await buildBaselineStoryManifest({ root, ref, seed: 41021 })
+    writeFileSync(path.join(root, 'src/runtime.ts'), 'changed runtime source')
+    const candidate = await buildCandidateStoryManifest({ root, seed: 41021 })
+
+    expect(candidate.runtimeInputs.treeHash).not.toBe(baseline.runtimeInputs.treeHash)
+    expect(() => compareStoryManifests(candidate, baseline)).not.toThrow()
+  })
+
+  test('ignores candidate dependency evidence during compatibility comparison', async () => {
+    const root = fixture()
+    const ref = git(root, 'rev-parse', 'HEAD')
+    const baseline = await buildBaselineStoryManifest({ root, ref, seed: 41021 })
+    const candidate = await buildCandidateStoryManifest(
+      { root, seed: 41021 },
+      { key: 'e'.repeat(64), root: '/cache/node_modules', treeHash: 'f'.repeat(64) },
+    )
 
     expect(() => compareStoryManifests(candidate, baseline)).not.toThrow()
   })
@@ -193,12 +385,12 @@ describe('story manifest', () => {
     const root = fixture()
     const ref = git(root, 'rev-parse', 'HEAD')
     const baseline = await buildBaselineStoryManifest({ root, ref, seed: 41021 })
-    writeFileSync(path.join(root, 'scripts/story-manifest.ts'), 'changed enforcement')
-    writeFileSync(path.join(root, 'scripts/story-runner-new-guard.ts'), 'new enforcement')
+    writeFileSync(path.join(root, 'scripts/story/manifest.ts'), 'changed enforcement')
+    writeFileSync(path.join(root, 'scripts/story/new-guard.ts'), 'new enforcement')
     const candidate = await buildCandidateStoryManifest({ root, seed: 41021 })
 
-    expect(() => compareStoryManifests(candidate, baseline)).toThrow('changed: scripts/story-manifest.ts')
-    expect(() => compareStoryManifests(candidate, baseline)).toThrow('added: scripts/story-runner-new-guard.ts')
+    expect(() => compareStoryManifests(candidate, baseline)).toThrow('changed: scripts/story/manifest.ts')
+    expect(() => compareStoryManifests(candidate, baseline)).toThrow('added: scripts/story/new-guard.ts')
   })
 
   test('fails closed on symlinks in the candidate tree', async () => {
@@ -207,6 +399,27 @@ describe('story manifest', () => {
 
     await expect(buildCandidateStoryManifest({ root, seed: 41021 })).rejects.toThrow(
       'Unsupported story manifest entry: tests/stories/link.ts (symbolic link)',
+    )
+  })
+
+  test('rejects runtime symlinks that escape declared inputs', async () => {
+    const root = fixture()
+    symlinkSync('../../external', path.join(root, 'src/escaped.ts'))
+
+    await expect(buildCandidateStoryManifest({ root, seed: 41021 })).rejects.toThrow(
+      'Unsupported story runtime symlink: src/escaped.ts -> ../../external',
+    )
+  })
+
+  test.each([
+    ['backslash traversal', '..\\..\\external'],
+    ['drive-root target', 'C:\\external'],
+  ])('rejects runtime symlinks with %s', async (_description, target) => {
+    const root = fixture()
+    symlinkSync(target, path.join(root, 'src/escaped.ts'))
+
+    await expect(buildCandidateStoryManifest({ root, seed: 41021 })).rejects.toThrow(
+      `Unsupported story runtime symlink: src/escaped.ts -> ${target}`,
     )
   })
 
@@ -292,16 +505,21 @@ describe('story manifest', () => {
     const eligibility = manifest.scenarios.filter(({ id }) => id.includes('/eligibility.story.test.ts#'))
     const filePaths = manifest.files.map(({ path: filePath }) => filePath)
     const enforcementPaths = [
-      'scripts/test-stories.ts',
-      'scripts/story-manifest.ts',
-      'scripts/story-manifest-scenarios.ts',
-      'scripts/story-reports.ts',
-      'scripts/story-runner-arguments.ts',
-      'scripts/story-runner-environment.ts',
-      'scripts/story-runner-integers.ts',
+      'scripts/story/cli.ts',
+      'scripts/story/manifest.ts',
+      'scripts/story/reports.ts',
+      'scripts/story/scenarios.ts',
+      'scripts/story/test-stories.ts',
     ]
 
     expect(enforcementPaths.filter((enforcementPath) => !filePaths.includes(enforcementPath))).toEqual([])
+    const target = 'CLAUDE.md'
+    expect(manifest.runtimeInputs.files).toContainEqual({
+      kind: 'symlink',
+      path: 'src/tools/AGENTS.md',
+      sha256: createHash('sha256').update(target).digest('hex'),
+      target,
+    })
     expect(eligibility).toEqual([
       {
         id: 'tests/stories/integrations/plugins/eligibility.story.test.ts#plugin context eligibility',
@@ -312,41 +530,5 @@ describe('story manifest', () => {
         checkpoints: [],
       },
     ])
-  })
-
-  test('direct manifest CLI removes a stale standard manifest before a build failure', async () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), 'papai-story-cli-failure-'))
-    roots.push(root)
-    const report = path.join(root, 'reports/stories/manifest.json')
-    mkdirSync(path.dirname(report), { recursive: true })
-    writeFileSync(report, 'stale')
-    const script = path.join(PROJECT_ROOT, 'scripts/story-manifest.ts')
-    const child = Bun.spawn(['bun', script], { cwd: root, stdout: 'pipe', stderr: 'pipe' })
-    await child.exited
-
-    expect(existsSync(report)).toBe(false)
-  })
-
-  test('direct manifest argument parser shares Bun integer lexical rules', () => {
-    expect(parseStoryManifestArguments(['--seed=+001'])).toEqual({ seed: 1 })
-    expect(parseStoryManifestArguments(['--seed', '0002'])).toEqual({ seed: 2 })
-    expect(() => parseStoryManifestArguments(['--seed=1e2'])).toThrow('--seed requires an integer')
-    expect(() => parseStoryManifestArguments(['--seed', '1.5'])).toThrow('--seed requires an integer')
-    expect(() => parseStoryManifestArguments(['--seed='])).toThrow('--seed requires a non-empty value')
-  })
-
-  test('direct manifest CLI clears stale output before rejecting malformed seed syntax', async () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), 'papai-story-cli-seed-'))
-    roots.push(root)
-    const report = path.join(root, 'reports/stories/manifest.json')
-    mkdirSync(path.dirname(report), { recursive: true })
-    writeFileSync(report, 'stale')
-    const script = path.join(PROJECT_ROOT, 'scripts/story-manifest.ts')
-    const child = Bun.spawn(['bun', script, '--seed=1e2'], { cwd: root, stdout: 'pipe', stderr: 'pipe' })
-    const [exitCode, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
-
-    expect(exitCode).toBe(2)
-    expect(stderr).toContain('--seed requires an integer')
-    expect(existsSync(report)).toBe(false)
   })
 })

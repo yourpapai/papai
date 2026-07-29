@@ -12,6 +12,12 @@ export interface ModelOption {
   label: string
 }
 
+export interface ProviderModelsDeps {
+  assertPublicUrl: (url: URL) => Promise<void>
+}
+
+const defaultDeps: ProviderModelsDeps = { assertPublicUrl }
+
 const stripSlash = (u: string): string => u.replace(/\/+$/u, '')
 
 function modelsRequest(
@@ -50,15 +56,20 @@ function extractIds(body: unknown): string[] {
  * assertPublicUrl (initial URL) and redirect:'error' (prevents open-redirect to
  * private addresses). For opencode, ids are prefixed with the provider where known.
  * Throws on network error / non-200 / blocked URL — the caller degrades to free-text.
+ *
+ * `deps.assertPublicUrl` is injectable because the default guard resolves DNS for
+ * real hostnames: tests that only mock fetch would otherwise depend on the
+ * developer's resolver (interception into a reserved range blocks the request).
  */
 export async function fetchProviderModels(
   provider: string,
   baseUrl: string | undefined,
   key: string,
   agent: string,
+  deps: ProviderModelsDeps = defaultDeps,
 ): Promise<ModelOption[]> {
   const { url, headers } = modelsRequest(provider, baseUrl, key)
-  await assertPublicUrl(new URL(url))
+  await deps.assertPublicUrl(new URL(url))
   const res = await fetch(url, { headers, signal: AbortSignal.timeout(5000), redirect: 'error' })
   if (!res.ok) throw new Error(`provider models request failed: ${res.status}`)
   const ids = extractIds(await res.json())

@@ -8,6 +8,7 @@ import path from 'node:path'
 
 import { Glob } from 'bun'
 
+import { buildBaselineFromPerFile, loadBaseline, ratchetMerge, writeBaseline } from './baseline.js'
 import type { StrykerConfig } from './config-builder.js'
 import { pairedRun, resolvePairedRunExitCode } from './paired-run.js'
 import type { PairedRunInput, PairedRunResult } from './paired-run.js'
@@ -32,7 +33,7 @@ export interface AllFilesRunInput {
 }
 
 export type AllFilesCliArgs =
-  | { readonly kind: 'ok'; readonly threshold: number; readonly verbose: boolean }
+  | { readonly kind: 'ok'; readonly threshold: number; readonly updateBaseline: boolean; readonly verbose: boolean }
   | { readonly kind: 'usageError'; readonly reason: string }
 
 type BunLike = {
@@ -41,6 +42,7 @@ type BunLike = {
 }
 
 const DEFAULT_REPORT_DIR = 'reports/paired'
+const BASELINE_FILE = 'scripts/mutation/baseline.json'
 const THRESHOLD_DECIMAL_PATTERN = /^(?:0(?:\.\d+)?|1(?:\.0+)?)$/u
 const THRESHOLD_RANGE_ERROR = 'threshold must be a decimal number between 0 and 1'
 
@@ -126,10 +128,15 @@ export const allFilesRun = (input: AllFilesRunInput): Promise<PairedRunResult> =
 }
 
 export const parseAllFilesCliArgs = (argv: readonly string[]): AllFilesCliArgs => {
-  const unknownArg = argv.find((arg) => arg.startsWith('-') && !arg.startsWith('--threshold=') && arg !== '--verbose')
+  const unknownArg = argv.find(
+    (arg) =>
+      arg.startsWith('-') && !arg.startsWith('--threshold=') && arg !== '--verbose' && arg !== '--update-baseline',
+  )
   if (unknownArg !== undefined) return { kind: 'usageError', reason: `unknown argument ${unknownArg}` }
 
-  const positionalArg = argv.find((arg) => !arg.startsWith('--threshold=') && arg !== '--verbose')
+  const positionalArg = argv.find(
+    (arg) => !arg.startsWith('--threshold=') && arg !== '--verbose' && arg !== '--update-baseline',
+  )
   if (positionalArg !== undefined)
     return { kind: 'usageError', reason: `unexpected positional argument ${positionalArg}` }
 
@@ -145,14 +152,19 @@ export const parseAllFilesCliArgs = (argv: readonly string[]): AllFilesCliArgs =
   const threshold = thresholdText === undefined ? 0 : Number(thresholdText)
   if (!Number.isFinite(threshold)) return { kind: 'usageError', reason: 'threshold must be a finite number' }
 
-  return { kind: 'ok', threshold, verbose: argv.includes('--verbose') }
+  return {
+    kind: 'ok',
+    threshold,
+    updateBaseline: argv.includes('--update-baseline'),
+    verbose: argv.includes('--verbose'),
+  }
 }
 
 const main = async (bun: BunLike): Promise<number> => {
   const parsed = parseAllFilesCliArgs(bun.argv.slice(2))
   if (parsed.kind === 'usageError') {
     console.error(parsed.reason)
-    console.error('Usage: bun scripts/mutation/all-files.ts [--threshold=N] [--verbose]')
+    console.error('Usage: bun scripts/mutation/all-files.ts [--threshold=N] [--update-baseline] [--verbose]')
     return 2
   }
 
@@ -167,6 +179,14 @@ const main = async (bun: BunLike): Promise<number> => {
   if (resolvePairedRunExitCode(result.merged, parsed.threshold) === 1) {
     console.error(`Mutation score ${result.merged.score} is below threshold ${parsed.threshold}`)
     return 1
+  }
+  if (parsed.updateBaseline) {
+    const baselinePath = path.join(projectRoot, BASELINE_FILE)
+    const existing = loadBaseline(baselinePath)
+    const latest = buildBaselineFromPerFile(result.perFile)
+    const merged = existing === null ? latest : ratchetMerge(existing, latest)
+    writeBaseline(baselinePath, merged)
+    console.log(`Ratcheted baseline written to ${BASELINE_FILE} (${Object.keys(merged).length} files)`)
   }
   return 0
 }

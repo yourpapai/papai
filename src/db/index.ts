@@ -78,11 +78,15 @@ import { migration064CodingSessionRepos } from './migrations/064_coding_session_
 import { migration065CodingIdentity } from './migrations/065_coding_identity.js'
 import { migration066CodingReposEgress } from './migrations/066_coding_repos_egress.js'
 import { migration067MultiLlmProviders } from './migrations/067_multi_llm_providers.js'
-import { migration068MemoryEmbeddingIdentity } from './migrations/068_memory_embedding_identity.js'
-import { migration069MemoryTombstones } from './migrations/069_memory_tombstones.js'
-import { migration070MemoryRecordInjection } from './migrations/070_memory_record_injection.js'
-import { migration071MemoryRecallShadowLog } from './migrations/071_memory_recall_shadow_log.js'
-import { migration072MemoryProfileContaminatedAt } from './migrations/072_memory_profile_contaminated_at.js'
+import { migration068IdentityScopedKeyCleanup } from './migrations/068_identity_scoped_key_cleanup.js'
+import { migration069AlertMatchedTaskIds } from './migrations/069_alert_matched_task_ids.js'
+import { migration070MessageMetadataHistorySearch } from './migrations/070_message_metadata_history_search.js'
+import { migration071MessageEmbeddings } from './migrations/071_message_embeddings.js'
+import { migration072MemoryEmbeddingIdentity } from './migrations/072_memory_embedding_identity.js'
+import { migration073MemoryTombstones } from './migrations/073_memory_tombstones.js'
+import { migration074MemoryRecordInjection } from './migrations/074_memory_record_injection.js'
+import { migration075MemoryRecallShadowLog } from './migrations/075_memory_recall_shadow_log.js'
+import { migration076MemoryProfileContaminatedAt } from './migrations/076_memory_profile_contaminated_at.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -185,11 +189,15 @@ export const MIGRATIONS: readonly Migration[] = [
   migration065CodingIdentity,
   migration066CodingReposEgress,
   migration067MultiLlmProviders,
-  migration068MemoryEmbeddingIdentity,
-  migration069MemoryTombstones,
-  migration070MemoryRecordInjection,
-  migration071MemoryRecallShadowLog,
-  migration072MemoryProfileContaminatedAt,
+  migration068IdentityScopedKeyCleanup,
+  migration069AlertMatchedTaskIds,
+  migration070MessageMetadataHistorySearch,
+  migration071MessageEmbeddings,
+  migration072MemoryEmbeddingIdentity,
+  migration073MemoryTombstones,
+  migration074MemoryRecordInjection,
+  migration075MemoryRecallShadowLog,
+  migration076MemoryProfileContaminatedAt,
 ]
 
 export const initDb = (): void => {

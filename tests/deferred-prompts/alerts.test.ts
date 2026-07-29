@@ -13,8 +13,9 @@ import {
   getAlertPrompt,
   getEligibleAlertPrompts,
   listAlertPrompts,
+  updateAlertMatchState,
+  updateAlertMatchedTaskIds,
   updateAlertPrompt,
-  updateAlertTriggerTime,
 } from '../../src/deferred-prompts/alerts.js'
 import type { AlertCondition } from '../../src/deferred-prompts/types.js'
 import type { Task } from '../../src/providers/types.js'
@@ -150,6 +151,29 @@ describe('alert prompt CRUD', () => {
     expect(() => updateAlertPrompt(created.id, 'user1', { condition: badCondition })).toThrow()
   })
 
+  test('updateAlertPrompt resets matched task ids when condition changes', () => {
+    const oldCondition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+    const created = createAlertPrompt('user1', 'Alert', oldCondition)
+    updateAlertMatchState(created.id, 'user1', new Date().toISOString(), ['task-1', 'task-2'])
+
+    const newCondition: AlertCondition = { field: 'task.priority', op: 'eq', value: 'urgent' }
+    const updated = updateAlertPrompt(created.id, 'user1', { condition: newCondition })
+    expect(updated).not.toBeNull()
+    expect(updated!.condition).toEqual(newCondition)
+    expect(updated!.matchedTaskIds).toEqual([])
+  })
+
+  test('updateAlertPrompt preserves matched task ids when only prompt text changes', () => {
+    const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+    const created = createAlertPrompt('user1', 'Alert', condition)
+    updateAlertMatchState(created.id, 'user1', new Date().toISOString(), ['task-1', 'task-2'])
+
+    const updated = updateAlertPrompt(created.id, 'user1', { prompt: 'Updated prompt' })
+    expect(updated).not.toBeNull()
+    expect(updated!.prompt).toBe('Updated prompt')
+    expect(updated!.matchedTaskIds).toEqual(['task-1', 'task-2'])
+  })
+
   test('cancelAlertPrompt sets status to cancelled', () => {
     const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
     const created = createAlertPrompt('user1', 'Alert', condition)
@@ -164,16 +188,29 @@ describe('alert prompt CRUD', () => {
     expect(result).toBeNull()
   })
 
-  test('updateAlertTriggerTime updates last_triggered_at', () => {
+  test('updateAlertMatchedTaskIds updates match set without touching trigger time', () => {
     const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
     const created = createAlertPrompt('user1', 'Alert', condition)
-    const triggerTime = new Date().toISOString()
 
-    updateAlertTriggerTime(created.id, 'user1', triggerTime)
+    updateAlertMatchedTaskIds(created.id, 'user1', ['task-1', 'task-2'])
 
     const found = getAlertPrompt(created.id, 'user1')
     expect(found).not.toBeNull()
-    expect(found!.lastTriggeredAt).toBe(triggerTime)
+    expect(found!.matchedTaskIds).toEqual(['task-1', 'task-2'])
+    expect(found!.lastTriggeredAt).toBeNull()
+  })
+
+  test('updateAlertMatchState updates trigger time and match set together', () => {
+    const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+    const created = createAlertPrompt('user1', 'Alert', condition)
+    const now = new Date().toISOString()
+
+    updateAlertMatchState(created.id, 'user1', now, ['task-1'])
+
+    const found = getAlertPrompt(created.id, 'user1')
+    expect(found).not.toBeNull()
+    expect(found!.lastTriggeredAt).toBe(now)
+    expect(found!.matchedTaskIds).toEqual(['task-1'])
   })
 
   test('getEligibleAlertPrompts returns alerts with no trigger history', () => {
@@ -200,7 +237,7 @@ describe('alert prompt CRUD', () => {
 
     // Trigger recently (within cooldown)
     const recentTrigger = new Date().toISOString()
-    updateAlertTriggerTime(alert.id, 'user1', recentTrigger)
+    updateAlertMatchState(alert.id, 'user1', recentTrigger, [])
 
     const eligible = getEligibleAlertPrompts()
     expect(eligible).toHaveLength(0)
@@ -212,7 +249,7 @@ describe('alert prompt CRUD', () => {
 
     // Trigger 2 minutes ago (past 1 minute cooldown)
     const oldTrigger = new Date(Date.now() - 2 * 60 * 1000).toISOString()
-    updateAlertTriggerTime(alert.id, 'user1', oldTrigger)
+    updateAlertMatchState(alert.id, 'user1', oldTrigger, [])
 
     const eligible = getEligibleAlertPrompts()
     expect(eligible).toHaveLength(1)

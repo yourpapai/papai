@@ -3,12 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { gt, lte, sql } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
 import { messageMetadata } from '../db/schema.js'
 import { logger } from '../logger.js'
-import { ONE_WEEK_MS, type CachedMessage } from './types.js'
+import type { CachedMessage } from './types.js'
 
 const log = logger.child({ scope: 'message-cache:persistence' })
 
@@ -54,8 +54,8 @@ function flushPendingWrites(): void {
           authorUsername: msg.authorUsername ?? null,
           text: msg.text ?? null,
           replyToMessageId: msg.replyToMessageId ?? null,
+          groupContextId: msg.groupContextId ?? null,
           timestamp: msg.timestamp,
-          expiresAt: msg.timestamp + ONE_WEEK_MS,
         })),
       )
       .onConflictDoUpdate({
@@ -65,8 +65,8 @@ function flushPendingWrites(): void {
           authorUsername: sql`excluded.author_username`,
           text: sql`excluded.text`,
           replyToMessageId: sql`excluded.reply_to_message_id`,
+          groupContextId: sql`excluded.group_context_id`,
           timestamp: sql`excluded.timestamp`,
-          expiresAt: sql`excluded.expires_at`,
         },
       })
       .run()
@@ -85,51 +85,10 @@ function flushPendingWrites(): void {
   }
 }
 
-export function cleanupExpiredMessages(): void {
-  const db = getDrizzleDb()
-  const now = Date.now()
-
-  try {
-    db.delete(messageMetadata).where(lte(messageMetadata.expiresAt, now)).run()
-    log.debug('Cleaned up expired message metadata')
-  } catch (err) {
-    log.error({ error: err instanceof Error ? err.message : String(err) }, 'Failed to cleanup expired messages')
-  }
-}
-
 export function getPendingWritesCount(): number {
   return pendingWrites.size
 }
 
 export function getIsFlushScheduled(): boolean {
   return isFlushScheduled
-}
-
-/** Load non-expired messages from SQLite into the provided cache Map. */
-export function restoreMessagesFromDb(cache: Map<string, CachedMessage>): number {
-  const db = getDrizzleDb()
-  const now = Date.now()
-
-  try {
-    const rows = db.select().from(messageMetadata).where(gt(messageMetadata.expiresAt, now)).all()
-
-    for (const row of rows) {
-      const msg: CachedMessage = {
-        messageId: row.messageId,
-        contextId: row.contextId,
-        authorId: row.authorId ?? undefined,
-        authorUsername: row.authorUsername ?? undefined,
-        text: row.text ?? undefined,
-        replyToMessageId: row.replyToMessageId ?? undefined,
-        timestamp: row.timestamp,
-      }
-      cache.set(`${msg.contextId}:${msg.messageId}`, msg)
-    }
-
-    log.info({ count: rows.length }, 'Restored messages from database')
-    return rows.length
-  } catch (err) {
-    log.error({ error: err instanceof Error ? err.message : String(err) }, 'Failed to restore messages from database')
-    return 0
-  }
 }

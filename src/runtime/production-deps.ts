@@ -7,6 +7,7 @@ import { announceNewVersion } from '../announcements.js'
 import { isS3Configured } from '../attachments/index.js'
 import { createStagedDownloader } from '../attachments/staged-download.js'
 import { setupBot, type BotDeps } from '../bot.js'
+import { seedMattermostActionSigningSecretFromEnv } from '../chat/mattermost/action-secret.js'
 import { resolveChatParticipant } from '../chat/participants/roster.js'
 import { createChatProviderFromConfig } from '../chat/registry.js'
 import { ChatRouter } from '../chat/router.js'
@@ -20,7 +21,6 @@ import { seedDefaultLlmProviderFromEnv } from '../llm-providers/env-bootstrap.js
 import { getAdminRoleBindings, primeLlmAdminCache } from '../llm-providers/store.js'
 import { logger } from '../logger.js'
 import { cancelAndDrainPendingMemoryCaptures } from '../long-term-memory/capture-debounce.js'
-import { initializeMessageCache } from '../message-cache/index.js'
 import { flushOnShutdown } from '../message-queue/index.js'
 import { deactivateAllPlugins } from '../plugins/loader.js'
 import type { ProviderRuntimeDeps } from '../plugins/provider-runtime.js'
@@ -56,6 +56,7 @@ function startDatabase(): void {
   seedDefaultLlmProviderFromEnv()
   const bootstrapResult = bootstrapInstancesFromEnv()
   log.info({ bootstrapResult }, 'instance bootstrap evaluated')
+  seedMattermostActionSigningSecretFromEnv()
   if (getAdminRoleBindings() === null) {
     log.warn('admin LLM role bindings are not configured; the bot will reply "misconfigured" until a provider is set')
   }
@@ -131,7 +132,7 @@ function setupProductionBot(router: ChatRouter, adminUserId: string): void {
 
 function createApplicationDeps(state: ProductionState): PapaiRuntimeDeps['application'] {
   return {
-    initializeStores: initializeMessageCache,
+    initializeStores: () => undefined,
     setupBot: setupProductionBot,
     registerCommandMenu: async (router, adminUserId) => {
       await registerCommandMenuIfSupported(router, adminUserId)

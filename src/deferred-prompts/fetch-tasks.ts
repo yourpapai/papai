@@ -90,8 +90,7 @@ export function fetchAllTasks(provider: TaskProvider): Promise<Task[]> {
   return fetchViaSearch(provider)
 }
 
-/** Enrich lightweight tasks with full details via getTask (only when conditions need it). */
-export async function enrichTasks(provider: TaskProvider, tasks: Task[]): Promise<Task[]> {
-  const results = await Promise.allSettled(tasks.map((t) => provider.getTask(t.id)))
-  return results.filter((r): r is PromiseFulfilledResult<Task> => r.status === 'fulfilled').map((r) => r.value)
+/** Enrich lightweight tasks with full details via getTask. Rejects if any getTask fails. */
+export function enrichTasks(provider: TaskProvider, tasks: Task[]): Promise<Task[]> {
+  return Promise.all(tasks.map((t) => provider.getTask(t.id)))
 }

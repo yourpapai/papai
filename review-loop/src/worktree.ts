@@ -163,17 +163,20 @@ export async function cleanWorkerWorktrees(repoRoot: string, runId?: string): Pr
   // whose path happens to contain "worker".
   const { stdout } = await execGit(repoRoot, ['worktree', 'list', '--porcelain'])
   const lines = stdout.split('\n')
-  const removals: Array<Promise<unknown>> = []
+  const staleWorktrees: string[] = []
   for (const line of lines) {
     if (line.startsWith('worktree ')) {
       const wtPath = line.slice('worktree '.length)
       const isStaleWorker =
         runId === undefined ? path.basename(wtPath).includes('-worker-') : wtPath.includes(`${runId}-worker-`)
-      if (isStaleWorker) {
-        const workerName = path.basename(wtPath)
-        removals.push(removeWorktree(repoRoot, wtPath, workerName).catch(() => undefined))
-      }
+      if (isStaleWorker) staleWorktrees.push(wtPath)
     }
   }
-  await Promise.all(removals)
+  // Remove sequentially via a promise chain: `git worktree remove`/`branch -D` take repo-wide
+  // locks, so running them concurrently races and intermittently fails under load (see closePool).
+  let chain: Promise<unknown> = Promise.resolve()
+  for (const wtPath of staleWorktrees) {
+    chain = chain.then(() => removeWorktree(repoRoot, wtPath, path.basename(wtPath)).catch(() => undefined))
+  }
+  await chain
 }

@@ -9,8 +9,6 @@ setDefaultTimeout(10000)
 
 import type { KaneoConfig } from '../../plugins/task-provider-kaneo/client.js'
 import { listColumns } from '../../plugins/task-provider-kaneo/list-columns.js'
-import { listProjects } from '../../plugins/task-provider-kaneo/list-projects.js'
-import { updateProject } from '../../plugins/task-provider-kaneo/update-project.js'
 import { createTestClient, KaneoTestClient } from './kaneo-test-client.js'
 
 describe('E2E: Project Lifecycle', () => {
@@ -23,38 +21,6 @@ describe('E2E: Project Lifecycle', () => {
     await testClient.cleanup()
   })
 
-  test('creates and lists projects', async () => {
-    const project = await testClient.createTestProject(`List Test ${Date.now()}`)
-
-    const projects = await listProjects({
-      config: kaneoConfig,
-      workspaceId: testClient.getWorkspaceId(),
-    })
-    const found = projects.find((p) => p.id === project.id)
-    expect(found?.name).toBe(project.name)
-  })
-
-  test('updates a project', async () => {
-    const project = await testClient.createTestProject(`Update Test ${Date.now()}`)
-
-    const updated = await updateProject({
-      config: kaneoConfig,
-      workspaceId: testClient.getWorkspaceId(),
-      projectId: project.id,
-      name: 'Updated Project Name',
-    })
-
-    expect(updated.name).toBe('Updated Project Name')
-
-    // Verify via re-fetch
-    const projects = await listProjects({
-      config: kaneoConfig,
-      workspaceId: testClient.getWorkspaceId(),
-    })
-    const refetched = projects.find((p) => p.id === project.id)
-    expect(refetched?.name).toBe('Updated Project Name')
-  })
-
   test('lists columns in a project', async () => {
     const project = await testClient.createTestProject(`Column Test ${Date.now()}`)
 
@@ -62,15 +28,5 @@ describe('E2E: Project Lifecycle', () => {
     expect(columns.length).toBeGreaterThan(0)
     expect(columns[0]).toHaveProperty('name')
     expect(columns[0]).toHaveProperty('id')
-  })
-
-  test('throws error when updating non-existent project', async () => {
-    const promise = updateProject({
-      config: kaneoConfig,
-      workspaceId: testClient.getWorkspaceId(),
-      projectId: 'non-existent-id',
-      name: 'X',
-    })
-    await expect(promise).rejects.toThrow()
   })
 })

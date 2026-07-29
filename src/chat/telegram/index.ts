@@ -28,7 +28,6 @@ import { formatLlmOutput } from './format.js'
 import { buildTelegramInteraction } from './interaction-helpers.js'
 import { getTelegramDisplayLabel, resolveTelegramGroupLabel, resolveTelegramUserLabel } from './label-helpers.js'
 import {
-  cacheTelegramMessage,
   extractContextInfo,
   extractMessageIds,
   extractReplyContext,
@@ -125,6 +124,19 @@ export class TelegramChatProvider implements ChatProvider {
   onInteraction(handler: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>): void {
     this.interactionHandler = handler
   }
+  onMessageEdit(handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>): void {
+    const deliver = async (ctx: Context): Promise<void> => {
+      const isAdmin = await this.checkAdminStatus(ctx)
+      const msg = await this.extractMessage(ctx, isAdmin)
+      if (msg === null) return
+      const reply = this.buildReplyFn(ctx, msg.threadId, false)
+      await handler({ ...msg, editedAt: ctx.editedMessage?.edit_date ?? 0 }, reply)
+    }
+    // Channel-broadcast edits (edited_channel_post) are intentionally not subscribed:
+    // channels are not a papai context type (user-auth based; channel posts carry
+    // sender_chat with no `from`), and forum-topic edits arrive as edited_message.
+    this.bot.on('edited_message:text', deliver)
+  }
   async sendMessage(_platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<void> {
     const chatId = parseInt(target.contextId, 10)
     const mentionPrefix = buildTelegramMentionPrefix(target)
@@ -196,7 +208,6 @@ export class TelegramChatProvider implements ChatProvider {
     const { id, contextId, contextType, text, isMentioned } = contextInfo
     const { messageIdStr, replyToMessageIdStr, replyToMessageText, quoteText } = extractMessageIds(ctx)
     logMessageExtraction(id, contextId, messageIdStr, replyToMessageIdStr, replyToMessageText, quoteText)
-    cacheTelegramMessage(ctx, id, contextId, messageIdStr, text, replyToMessageIdStr)
     const replyContext = extractReplyContext(ctx, contextId)
     const isReplyToBot = replyContext?.authorId !== undefined && String(ctx.me.id) === replyContext.authorId
     const threadId = await resolveThreadId(ctx, isMentioned, contextType, this.bot.api)

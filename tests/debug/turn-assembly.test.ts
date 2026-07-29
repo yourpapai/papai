@@ -18,6 +18,11 @@ import {
   handleTurnAssembly,
 } from '../../src/debug/turn-assembly.js'
 import { resetTurnBuffers } from '../../src/debug/turn-assembly.testing.js'
+import { setupTestDb } from '../utils/test-helpers.js'
+
+beforeEach(async () => {
+  await setupTestDb()
+})
 
 function createMockController(): ReadableStreamDefaultController {
   return {

@@ -128,4 +128,46 @@ describe('makeUpdateStatusTool', () => {
     const tool = makeUpdateStatusTool(provider)
     expect(schemaValidates(tool, { projectId: 'proj-1', statusId: 'col-1' })).toBe(false)
   })
+
+  // Positive-direction coverage for the .refine() "at least one field" rule.
+  // Log-payload / description-string / confirmation-branch mutants are intentionally
+  // not chased here — see docs/superpowers/specs/2026-07-25-update-status-test-quality-design.md.
+  test('accepts input with only name set', () => {
+    const provider = createMockProvider()
+    const tool = makeUpdateStatusTool(provider)
+    expect(schemaValidates(tool, { projectId: 'proj-1', statusId: 'col-1', name: 'New' })).toBe(true)
+  })
+
+  test('accepts input with only icon set', () => {
+    const provider = createMockProvider()
+    const tool = makeUpdateStatusTool(provider)
+    expect(schemaValidates(tool, { projectId: 'proj-1', statusId: 'col-1', icon: 'flag' })).toBe(true)
+  })
+
+  test('accepts input with only color set', () => {
+    const provider = createMockProvider()
+    const tool = makeUpdateStatusTool(provider)
+    expect(schemaValidates(tool, { projectId: 'proj-1', statusId: 'col-1', color: '#ffffff' })).toBe(true)
+  })
+
+  test('accepts input with only isFinal set', () => {
+    const provider = createMockProvider()
+    const tool = makeUpdateStatusTool(provider)
+    expect(schemaValidates(tool, { projectId: 'proj-1', statusId: 'col-1', isFinal: true })).toBe(true)
+  })
+
+  test('accepts input with all updatable fields', () => {
+    const provider = createMockProvider()
+    const tool = makeUpdateStatusTool(provider)
+    expect(
+      schemaValidates(tool, {
+        projectId: 'proj-1',
+        statusId: 'col-1',
+        name: 'New',
+        icon: 'flag',
+        color: '#ffffff',
+        isFinal: true,
+      }),
+    ).toBe(true)
+  })
 })

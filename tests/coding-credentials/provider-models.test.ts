@@ -5,17 +5,23 @@
 
 import { afterEach, describe, expect, it } from 'bun:test'
 
-import { fetchProviderModels } from '../../src/coding-credentials/provider-models.js'
+import { fetchProviderModels, type ProviderModelsDeps } from '../../src/coding-credentials/provider-models.js'
 import { restoreFetch, setMockFetch } from '../utils/test-helpers.js'
 
 afterEach(() => restoreFetch())
+
+// The real SSRF guard resolves DNS for hostnames like api.openai.com, so a test that
+// only mocks fetch would still depend on the developer's resolver (interception into a
+// reserved range makes the guard reject). Tests about id parsing/URL shaping stub the
+// guard; the SSRF test below deliberately keeps the real one.
+const allowUrl: ProviderModelsDeps = { assertPublicUrl: (): Promise<void> => Promise.resolve() }
 
 describe('fetchProviderModels', () => {
   it('lists OpenAI models', async () => {
     setMockFetch(() =>
       Promise.resolve(new Response(JSON.stringify({ data: [{ id: 'gpt-5' }, { id: 'o3' }] }), { status: 200 })),
     )
-    expect(await fetchProviderModels('openai', undefined, 'k', 'codex')).toEqual([
+    expect(await fetchProviderModels('openai', undefined, 'k', 'codex', allowUrl)).toEqual([
       { value: 'gpt-5', label: 'gpt-5' },
       { value: 'o3', label: 'o3' },
     ])
@@ -25,21 +31,21 @@ describe('fetchProviderModels', () => {
     setMockFetch(() =>
       Promise.resolve(new Response(JSON.stringify({ data: [{ id: 'claude-sonnet-4-6' }] }), { status: 200 })),
     )
-    expect(await fetchProviderModels('anthropic', undefined, 'k', 'claude')).toEqual([
+    expect(await fetchProviderModels('anthropic', undefined, 'k', 'claude', allowUrl)).toEqual([
       { value: 'claude-sonnet-4-6', label: 'claude-sonnet-4-6' },
     ])
   })
 
   it('prefixes ids for opencode (openai provider)', async () => {
     setMockFetch(() => Promise.resolve(new Response(JSON.stringify({ data: [{ id: 'gpt-5' }] }), { status: 200 })))
-    expect(await fetchProviderModels('openai', undefined, 'k', 'opencode')).toEqual([
+    expect(await fetchProviderModels('openai', undefined, 'k', 'opencode', allowUrl)).toEqual([
       { value: 'openai/gpt-5', label: 'openai/gpt-5' },
     ])
   })
 
   it('throws on a non-200', async () => {
     setMockFetch(() => Promise.resolve(new Response('nope', { status: 500 })))
-    await expect(fetchProviderModels('openai', undefined, 'k', 'codex')).rejects.toThrow()
+    await expect(fetchProviderModels('openai', undefined, 'k', 'codex', allowUrl)).rejects.toThrow()
   })
 
   it('rejects a private base URL (SSRF)', async () => {
@@ -54,7 +60,7 @@ describe('fetchProviderModels', () => {
     })
     // redirect:'error' causes the runtime to reject on a real network; with the mock the
     // 301 fails res.ok → throws. Either way the function must not succeed.
-    await expect(fetchProviderModels('openai', undefined, 'k', 'codex')).rejects.toThrow()
+    await expect(fetchProviderModels('openai', undefined, 'k', 'codex', allowUrl)).rejects.toThrow()
     // Pin the flag so removing redirect:'error' from production code breaks this test.
     expect(capturedInit?.redirect).toBe('error')
   })
@@ -67,7 +73,7 @@ describe('fetchProviderModels', () => {
     })
     // api.anthropic.com/v1 is a common gateway convention; the code must strip /v1
     // so the final URL is /v1/models, not /v1/v1/models.
-    await fetchProviderModels('anthropic', 'https://api.anthropic.com/v1', 'k', 'claude')
+    await fetchProviderModels('anthropic', 'https://api.anthropic.com/v1', 'k', 'claude', allowUrl)
     expect(capturedUrl).toBe('https://api.anthropic.com/v1/models')
     expect(capturedUrl).not.toContain('/v1/v1/')
   })
@@ -76,7 +82,7 @@ describe('fetchProviderModels', () => {
     setMockFetch(() =>
       Promise.resolve(new Response(JSON.stringify({ data: [{ id: 'claude-opus-4' }] }), { status: 200 })),
     )
-    expect(await fetchProviderModels('anthropic', undefined, 'k', 'opencode')).toEqual([
+    expect(await fetchProviderModels('anthropic', undefined, 'k', 'opencode', allowUrl)).toEqual([
       { value: 'anthropic/claude-opus-4', label: 'anthropic/claude-opus-4' },
     ])
   })

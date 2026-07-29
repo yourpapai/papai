@@ -8,6 +8,7 @@ dist
 
 # code coverage
 coverage
+!/scripts/coverage/
 *.lcov
 
 # logs

@@ -8,6 +8,7 @@ import { expect } from 'bun:test'
 import { getThreadScopedStorageContextId } from '../../../src/auth.js'
 import { setupBot, type BotDeps } from '../../../src/bot.js'
 import { ChatRouter } from '../../../src/chat/router.js'
+import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import type { IncomingInteraction, IncomingMessage } from '../../../src/chat/types.js'
 import { closeDrizzleDb } from '../../../src/db/drizzle.js'
 import { routeRequest } from '../../../src/debug/server.js'
@@ -33,7 +34,7 @@ import { createScriptedModel, type ScriptedModel } from './scripted-llm.js'
 import { createStrictHttpDispatcher, type StrictHttpDispatcher } from './strict-http.js'
 
 const FIXED_NOW = '2026-01-01T00:00:00.000Z'
-const ADMIN_USER_ID = 'scenario-admin'
+export const ADMIN_USER_ID = 'scenario-admin'
 
 export type ScenarioClock = Readonly<{ now(): Date; advance(milliseconds: number): void }>
 export type ScenarioIds = Readonly<{ next(namespace: string): string }>
@@ -96,6 +97,7 @@ export type ScenarioWorldOptions = Readonly<{
   runtimeExtensions?: readonly ScenarioRuntimeExtension[]
   testHooks?: ScenarioWorldTestHooks
   tempRoot?: string
+  debugEnabled?: boolean
 }>
 
 export type ScenarioWorld = Readonly<{
@@ -119,6 +121,12 @@ export type ScenarioWorld = Readonly<{
   registerRuntimeExtension(extension: ScenarioRuntimeExtension): void
   message(user: UserHandle, context: ContextHandle, text: string): IncomingMessage
   repliesForThread(thread: ThreadHandle): readonly ScenarioReply[]
+  /** The thread-aware storage context id production code would compute for this context. */
+  scopedStorageContextId(context: ContextHandle): string
+  /** The group's memory-scope id (`resolveMemoryScope(...).scopeId` for any thread of this group). */
+  groupScopeId(group: GroupHandle): string
+  /** The group's main (non-thread) storage context id, e.g. what `lookup_group_history` keys history by. */
+  mainGroupStorageId(group: GroupHandle): string
   settle(): Promise<void>
   verify(): void
   stop(): Promise<void>
@@ -200,6 +208,9 @@ function createPendingWork(ids: ScenarioIds): PendingWork {
       ...item,
       reply,
       turnId: ids.next('turn'),
+      messageIds: item.messageId === undefined ? [] : [item.messageId],
+      segments:
+        item.messageId === undefined ? [] : [{ messageId: item.messageId, text: item.text, username: item.username }],
     }).catch((error: unknown) => {
       failures = [...failures, error]
     })
@@ -224,7 +235,7 @@ function createPendingWork(ids: ScenarioIds): PendingWork {
 
 function createScenarioProcessMessage(model: ScriptedModel): ProcessMessageFn {
   return (reply, contextId, userId, username, text, contextType, ...rest) => {
-    const [configContextId, deps, attachmentIds, turnId, actorRole] = rest
+    const [configContextId, deps, attachmentIds, turnId, actorRole, originatingMessageIds, segments] = rest
     return processMessage(
       reply,
       contextId,
@@ -240,6 +251,8 @@ function createScenarioProcessMessage(model: ScriptedModel): ProcessMessageFn {
       attachmentIds,
       turnId,
       actorRole,
+      originatingMessageIds,
+      segments,
     )
   }
 }
@@ -402,7 +415,7 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     },
   })
   const tasks = new MemoryTaskProvider({ events, nextId: (): string => ids.next('task') })
-  const fixtures = createScenarioFixtures({ taskProvider: tasks })
+  const fixtures = createScenarioFixtures({ taskProvider: tasks, chat })
   const resources: CleanupResources = { runtime: undefined, databaseAttempted: false, providerAttempted: false }
   let runtimeExtensions: readonly ScenarioRuntimeExtension[] = [...(options.runtimeExtensions ?? [])]
   const runtimeExtensionLifecycle = createScenarioRuntimeExtensionLifecycle(() => runtimeExtensions, {
@@ -439,7 +452,7 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
         web: {
           route: (request) =>
             routeRequest(request, {
-              debugEnabled: false,
+              debugEnabled: options.debugEnabled ?? false,
               nowMs: clock.now().getTime(),
               pluginProviderRuntimeDeps,
             }),
@@ -541,7 +554,13 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     registerRuntimeExtension,
     message: (user, context, text) => messageForContext(world, user, context, text),
     repliesForThread: (thread) => repliesForThread(world, thread),
-    settle: pending.settle,
+    scopedStorageContextId: (context) => scopedStorageContextIdFor(context),
+    groupScopeId: (group) => groupScopeIdFor(group),
+    mainGroupStorageId: (group) => mainGroupStorageIdFor(group),
+    settle: async (): Promise<void> => {
+      await pending.settle()
+      await http.idle()
+    },
     verify,
     stop,
     get api(): ScenarioApi {
@@ -551,6 +570,23 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
   }
   return world
 }
+
+const contextNativeId = (context: ContextHandle): string =>
+  context.kind === 'dm' ? context.user.id : context.kind === 'thread' ? context.group.id : context.id
+
+export const scopedStorageContextIdFor = (context: ContextHandle): string =>
+  getThreadScopedStorageContextId(
+    contextNativeId(context),
+    context.kind === 'dm' ? 'dm' : 'group',
+    context.kind === 'thread' ? context.id : undefined,
+    context.platformInstanceId,
+  )
+
+export const groupScopeIdFor = (group: GroupHandle): string =>
+  toScopedContextId({ platformInstanceId: group.platformInstanceId, nativeContextId: group.id })
+
+export const mainGroupStorageIdFor = (group: GroupHandle): string =>
+  getThreadScopedStorageContextId(group.id, 'group', undefined, group.platformInstanceId)
 
 export const repliesForContext = (world: ScenarioWorld, contextId: string): readonly ScenarioReply[] =>
   world.chat

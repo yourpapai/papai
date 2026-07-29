@@ -12,7 +12,6 @@ import {
   handleCacheExpire,
   handleLlmFull,
   handleLogEntry,
-  handleMsgcacheSweep,
   handleNotificationEvent,
   handlePollerEvent,
   handleSchedulerTick,
@@ -178,12 +177,6 @@ describe('infra handlers', () => {
     const s = freshState()
     handlePollerEvent(s, { scheduledRunning: true })
     expect(s.pollers.scheduledRunning).toBe(true)
-  })
-
-  test('handleMsgcacheSweep merges message cache info', () => {
-    const s = freshState()
-    handleMsgcacheSweep(s, { size: 12, pendingWrites: 3 })
-    expect(s.messageCache.size).toBe(12)
   })
 })
 

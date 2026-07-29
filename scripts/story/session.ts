@@ -1,0 +1,226 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+
+import { chmod, lstat, mkdir, mkdtemp, open, readdir, readlink, realpath, rm, symlink } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+
+import {
+  acquireStoryDependencySnapshot,
+  storyDependencyCacheRoot,
+  type StoryDependencyPlatform,
+  type StoryDependencySnapshot,
+} from './dependencies.js'
+import type { StoryManifest } from './manifest.js'
+import {
+  copyReports,
+  copyStoryCoverage,
+  createReportFiles,
+  reporterMappings,
+  STORY_COVERAGE_LCOV_PATH,
+  type ReportMapping,
+  type SessionFileSystem,
+  verifyReportFiles,
+} from './reports.js'
+import { resolveStoryDependencyPlatform, selectStorySandboxBackend, type StorySandboxBackend } from './sandbox.js'
+import {
+  createCandidateStorySnapshotSource,
+  type CandidateStorySnapshotSource,
+  type SnapshotDependencies,
+} from './snapshot.js'
+
+export type StoryRunnerSession = Readonly<{
+  root: string
+  appRoot: string
+  dependencyRoot: string
+  tempRoot: string
+  manifest: StoryManifest
+  childReporterArguments: readonly string[]
+  childReportPaths: readonly string[]
+  reportPaths: readonly string[]
+  verifyIntegrity(): Promise<void>
+  copyReports(): Promise<void>
+  copyCoverage(): Promise<boolean>
+  cleanup(): Promise<void>
+}>
+
+export type StoryRunnerSessionOptions = Readonly<{
+  root: string
+  seed: number
+  bunVersion?: string
+  sandboxBackend?: StorySandboxBackend
+  reporterArguments: readonly string[]
+}>
+
+export type StoryRunnerSessionDependencies = Readonly<{
+  acquireDependencySnapshot?(
+    options: Readonly<{
+      projectRoot: string
+      cacheRoot: string
+      bunVersion: string
+      platform: StoryDependencyPlatform
+    }>,
+  ): Promise<StoryDependencySnapshot>
+  inspectDependencyPlatform?(): Promise<StoryDependencyPlatform>
+  createSnapshotSource?(
+    options: Readonly<{ root: string; seed: number; bunVersion?: string; sandboxBackend?: StorySandboxBackend }>,
+    dependencies: SnapshotDependencies,
+  ): Promise<CandidateStorySnapshotSource>
+  fileSystem?: Partial<SessionFileSystem>
+}>
+
+const fileSystem: SessionFileSystem = {
+  chmod,
+  lstat,
+  mkdir,
+  mkdtemp,
+  open,
+  readlink,
+  readdir: (target) => readdir(target, { withFileTypes: true }),
+  realpath,
+  rm,
+  symlink,
+}
+
+async function makeTreeRemovable(directory: string, fs: SessionFileSystem): Promise<void> {
+  await fs.chmod(directory, 0o700).catch(() => undefined)
+  const entries = await fs.readdir(directory, { withFileTypes: true }).catch(() => [])
+  await Promise.all(
+    entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => makeTreeRemovable(path.join(directory, entry.name), fs)),
+  )
+}
+
+function cleanupSession(root: string, fs: SessionFileSystem): () => Promise<void> {
+  let cleanup: Promise<void> | undefined
+  return () => {
+    cleanup ??= makeTreeRemovable(root, fs).then(() => fs.rm(root, { recursive: true, force: true }))
+    return cleanup
+  }
+}
+
+async function verifySession(
+  appIntegrity: Readonly<{ verifyIntegrity(): Promise<void> }>,
+  dependency: StoryDependencySnapshot,
+  nodeModules: string,
+  reports: readonly ReportMapping[],
+  fs: SessionFileSystem,
+): Promise<void> {
+  await appIntegrity.verifyIntegrity()
+  await verifyDependencySnapshotSeal(dependency, fs)
+  const mountpoint = await fs.lstat(nodeModules)
+  if (!mountpoint.isDirectory() || mountpoint.isSymbolicLink() || (mountpoint.mode & 0o222) !== 0) {
+    throw new Error('Story session dependency mountpoint is unsafe')
+  }
+  await verifyReportFiles(reports, fs)
+}
+
+async function verifyDependencySnapshotSeal(
+  dependency: StoryDependencySnapshot,
+  fs: Pick<SessionFileSystem, 'lstat'>,
+): Promise<void> {
+  const root = await fs.lstat(dependency.root)
+  if (!root.isDirectory() || root.isSymbolicLink() || (root.mode & 0o222) !== 0) {
+    throw new Error('Story session dependency snapshot is unsafe')
+  }
+}
+
+export async function createStoryRunnerSession(
+  options: StoryRunnerSessionOptions,
+  dependencies: StoryRunnerSessionDependencies = {},
+): Promise<StoryRunnerSession> {
+  const fs: SessionFileSystem = { ...fileSystem, ...dependencies.fileSystem }
+  const selectedOptions = {
+    ...options,
+    sandboxBackend: options.sandboxBackend ?? selectStorySandboxBackend(process.platform),
+  }
+  const acquired = await acquireSessionDependency(selectedOptions, dependencies)
+  await verifyDependencySnapshotSeal(acquired.dependency, fs)
+  const source = await captureSessionSource(selectedOptions, dependencies, acquired)
+  if (source.manifest.sandboxBackend !== selectedOptions.sandboxBackend) {
+    throw new Error('Story session manifest does not record the selected sandbox backend')
+  }
+  return materializeSession(selectedOptions, source, acquired.dependency, fs)
+}
+
+async function acquireSessionDependency(
+  options: StoryRunnerSessionOptions,
+  dependencies: StoryRunnerSessionDependencies,
+): Promise<Readonly<{ dependency: StoryDependencySnapshot; platform: StoryDependencyPlatform }>> {
+  const bunVersion = options.bunVersion ?? Bun.version
+  const platform = await (dependencies.inspectDependencyPlatform ?? resolveStoryDependencyPlatform)()
+  const acquire = dependencies.acquireDependencySnapshot ?? acquireStoryDependencySnapshot
+  const dependency = await acquire({
+    projectRoot: options.root,
+    cacheRoot: storyDependencyCacheRoot(),
+    bunVersion,
+    platform,
+  })
+  return { dependency, platform }
+}
+
+function captureSessionSource(
+  options: StoryRunnerSessionOptions,
+  dependencies: StoryRunnerSessionDependencies,
+  acquired: Readonly<{ dependency: StoryDependencySnapshot; platform: StoryDependencyPlatform }>,
+): Promise<CandidateStorySnapshotSource> {
+  const sourceFactory = dependencies.createSnapshotSource ?? createCandidateStorySnapshotSource
+  return sourceFactory(options, {
+    candidateCaptureDependencies: {
+      acquireDependencySnapshot: () => Promise.resolve(acquired.dependency),
+      inspectDependencyPlatform: () => Promise.resolve(acquired.platform),
+    },
+  })
+}
+
+async function materializeSession(
+  options: StoryRunnerSessionOptions,
+  source: CandidateStorySnapshotSource,
+  dependency: StoryDependencySnapshot,
+  fs: SessionFileSystem,
+): Promise<StoryRunnerSession> {
+  const temporaryParent = await fs.realpath(os.tmpdir())
+  const root = await fs.mkdtemp(path.join(temporaryParent, 'papai-story-session-'))
+  const cleanup = cleanupSession(root, fs)
+  try {
+    const appRoot = path.join(root, 'app')
+    const tempRoot = path.join(root, 'tmp')
+    const nodeModules = path.join(appRoot, 'node_modules')
+    const reportsRoot = path.join(root, 'reports')
+    const mapped = reporterMappings(options.reporterArguments, options.root, root)
+    await fs.mkdir(appRoot, { recursive: true, mode: 0o700 })
+    const appIntegrity = await source.materialize(appRoot, [{ kind: 'directory', path: 'node_modules' }])
+    await fs.mkdir(tempRoot, { recursive: true, mode: 0o700 })
+    await fs.chmod(tempRoot, 0o700)
+    await fs.mkdir(reportsRoot, { recursive: true, mode: 0o700 })
+    await createReportFiles(mapped.reports, fs)
+    const childReportPaths = mapped.reports.map((report) => report.sessionPath)
+    const verifyIntegrity = (): Promise<void> =>
+      verifySession(appIntegrity, dependency, nodeModules, mapped.reports, fs)
+    return {
+      root,
+      appRoot,
+      dependencyRoot: dependency.root,
+      tempRoot,
+      manifest: source.manifest,
+      childReporterArguments: mapped.argumentsForChild,
+      childReportPaths,
+      reportPaths: childReportPaths,
+      verifyIntegrity,
+      copyReports: (): Promise<void> => copyReports(mapped.reports, options.root, fs),
+      copyCoverage: (): Promise<boolean> =>
+        copyStoryCoverage(
+          path.join(tempRoot, 'coverage', 'lcov.info'),
+          path.join(options.root, STORY_COVERAGE_LCOV_PATH),
+          options.root,
+          fs,
+        ),
+      cleanup,
+    }
+  } catch (error) {
+    await cleanup()
+    throw error
+  }
+}

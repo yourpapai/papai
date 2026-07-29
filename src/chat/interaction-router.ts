@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { logger } from '../logger.js'
+import { peekEditPrompt, resolveEditPrompt } from '../message-edit/edit-prompt-store.js'
 import {
   formatDecisionConfirmation,
   peekPermissionRequest,
@@ -14,6 +15,7 @@ import type { AuthorizationResult, IncomingInteraction, PromptHandle, ReplyFn } 
 
 const log = logger.child({ scope: 'chat:interaction-router' })
 const PERMISSION_CALLBACK_PATTERN = /^perm:(a|d):([A-Za-z0-9_-]+)$/u
+const EDIT_CALLBACK_PATTERN = /^edit:(adjust|note):([A-Za-z0-9_-]+)$/u
 
 const permissionDecisionFromCode = (code: string): PermissionDecision => (code === 'a' ? 'allow' : 'deny')
 
@@ -51,10 +53,15 @@ async function finalizePermissionDecision(
 
 /**
  * The config-flow callbacks were retired with the move to the settings web UI.
- * This router authorizes the actor and handles exactly one prefix — `perm:a:`/`perm:d:`,
- * the allow/deny decision for an `ask`-gated tool prompt (see `finalizePermissionDecision`).
- * Any other callback is a safe-sink no-op, so adapters that still emit interaction
- * events have a single, harmless entry point.
+ * This router authorizes the actor and handles two prefixes:
+ *  - `perm:a:`/`perm:d:` — the allow/deny decision for an `ask`-gated tool
+ *    prompt (see `finalizePermissionDecision`).
+ *  - `edit:adjust:`/`edit:note:` — the W2 side-effects "ask-first" buttons
+ *    posted by `src/message-edit/handle.ts` when an edit targets a just-finished
+ *    turn that made side-effects. `adjust` triggers a corrective regen +
+ *    supersede; `note` leaves the (already baseline-corrected) history alone.
+ * Any other callback is a safe-sink no-op, so adapters that still emit
+ * interaction events have a single, harmless entry point.
  */
 export async function routeInteraction(
   interaction: IncomingInteraction,
@@ -81,6 +88,25 @@ export async function routeInteraction(
       return true
     }
     await finalizePermissionDecision(reply, pending.toolName, interaction.sourceMessageText, decision, result.handle)
+    return true
+  }
+
+  const editMatch = EDIT_CALLBACK_PATTERN.exec(interaction.callbackData)
+  if (editMatch !== null) {
+    const action = editMatch[1]!
+    const id = editMatch[2]!
+    const prompt = peekEditPrompt(id)
+    if (prompt === undefined || prompt.contextId !== auth.storageContextId) {
+      await reply.text('Action is no longer available.')
+      return true
+    }
+    const resolved = resolveEditPrompt(id)
+    if (resolved === undefined) {
+      await reply.text('Action is no longer available.')
+      return true
+    }
+    if (action === 'adjust') await resolved.onAdjust()
+    else await resolved.onNote()
     return true
   }
 

@@ -5,6 +5,7 @@
 
 import type { ActorRole, ReplyFn } from './chat/types.js'
 import type { LlmOrchestratorDeps } from './llm-orchestrator-types.js'
+import type { MessageSegment } from './message-edit/segments.js'
 
 export type ProcessMessageRest = readonly [
   configContextId?: string,
@@ -12,6 +13,8 @@ export type ProcessMessageRest = readonly [
   newAttachmentIds?: readonly string[],
   turnId?: string,
   actorRole?: ActorRole,
+  originatingMessageIds?: readonly string[],
+  segments?: readonly MessageSegment[],
 ]
 
 export type ProcessMessageFn = (
@@ -40,4 +43,48 @@ export const resolveAttachmentIds = (attachmentIds: readonly string[] | undefine
 export const resolveTurnId = (turnId: string | undefined): string => {
   if (turnId === undefined) return crypto.randomUUID()
   return turnId
+}
+
+export const resolveOriginatingMessageIds = (ids: readonly string[] | undefined): readonly string[] => {
+  if (ids === undefined) return []
+  return ids
+}
+
+export const resolveSegments = (segments: readonly MessageSegment[] | undefined): readonly MessageSegment[] => {
+  if (segments === undefined) return []
+  return segments
+}
+
+export type ResolvedProcessMessageInputs = {
+  readonly configContextId: string | undefined
+  readonly deps: LlmOrchestratorDeps
+  readonly newAttachmentIds: readonly string[]
+  readonly resolvedTurnId: string
+  readonly originatingMessageIds: readonly string[]
+  readonly actorRole: ActorRole
+  readonly segments: readonly MessageSegment[]
+}
+
+export const resolveProcessMessageInputs = (
+  rest: ProcessMessageRest,
+  fallbackDeps: LlmOrchestratorDeps,
+): ResolvedProcessMessageInputs => {
+  const [
+    configContextId,
+    depsInput,
+    newAttachmentIdsInput,
+    turnId,
+    actorRole = 'member',
+    originatingMessageIdsInput,
+    segmentsInput,
+  ] = rest
+  return {
+    configContextId,
+    deps: resolveDeps(depsInput, fallbackDeps),
+    newAttachmentIds: resolveAttachmentIds(newAttachmentIdsInput),
+    resolvedTurnId: resolveTurnId(turnId),
+    originatingMessageIds: resolveOriginatingMessageIds(originatingMessageIdsInput),
+    actorRole,
+    segments: resolveSegments(segmentsInput),
+  }
 }

@@ -35,7 +35,7 @@ function ensurePublicBuilt(): void {
 }
 
 describe('debug-smoke', () => {
-  let db: Database
+  let db: Database | undefined
   let cookieValue: string
 
   beforeAll(() => {
@@ -53,7 +53,7 @@ describe('debug-smoke', () => {
   afterAll(() => {
     stopDebugServer()
     setStoreDb(null)
-    db.close()
+    if (db !== undefined) db.close()
     logBuffer.clear()
     delete process.env['DEBUG_PORT']
     delete process.env['DEBUG_HOSTNAME']

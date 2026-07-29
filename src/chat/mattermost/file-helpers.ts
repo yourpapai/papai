@@ -4,7 +4,6 @@
 // See LICENSE in the project root for details.
 
 import { logger } from '../../logger.js'
-import { cacheMessage } from '../../message-cache/index.js'
 import type { IncomingFile, IncomingFileCandidate } from '../types.js'
 import {
   FileUploadSchema,
@@ -140,28 +139,18 @@ export async function resolveMattermostPostFiles(
   return files.length > 0 ? { files } : {}
 }
 
-export function cacheIncomingPost(
-  post: MattermostPost,
-  replyToMessageId: string | undefined,
-  senderName?: string,
-): void {
-  cacheMessage({
-    messageId: post.id,
-    contextId: post.channel_id,
-    authorId: post.user_id,
-    authorUsername: post.user_name ?? senderName,
-    text: post.message,
-    replyToMessageId,
-    timestamp: Date.now(),
-  })
-}
-
 export function parsePostedEvent(data: Record<string, unknown>): { post: MattermostPost; senderName?: string } | null {
   const postedDataResult = MattermostPostedDataSchema.safeParse(data)
   if (!postedDataResult.success) return null
 
   const { post: postJson, sender_name: senderName } = postedDataResult.data
-  const postResult = MattermostPostSchema.safeParse(JSON.parse(postJson))
+  let parsedPost: unknown
+  try {
+    parsedPost = JSON.parse(postJson)
+  } catch {
+    return null
+  }
+  const postResult = MattermostPostSchema.safeParse(parsedPost)
   if (!postResult.success) return null
   return { post: postResult.data, senderName }
 }

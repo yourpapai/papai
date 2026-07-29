@@ -26,7 +26,7 @@ export interface ContextCollectorDeps {
   getSummary: () => string | null
   getFacts: () => readonly Fact[]
   getActiveToolDefinitions: () => Record<string, unknown>
-  getProviderName: () => string
+  getDisclosedToolDefinitions: () => Record<string, unknown>
   countTokens: (text: string) => number
 }
 
@@ -153,14 +153,18 @@ const buildHistorySection = (deps: ContextCollectorDeps, counter: SafeCounter): 
 }
 
 const buildToolsSection = (deps: ContextCollectorDeps, counter: SafeCounter): ContextSection => {
-  const tools = deps.getActiveToolDefinitions()
-  const count = Object.keys(tools).length
-  const providerName = deps.getProviderName()
-  const tokens = counter.count(serializeTools(tools))
+  // Progressive disclosure only exposes the always-on/meta tools at a turn's first step; the
+  // rest of the catalog is discoverable via search_tools but its schemas only enter context
+  // when load_tool pulls them in. Count the disclosed surface (what actually costs tokens now)
+  // and report the full catalog size as available context.
+  const disclosed = deps.getDisclosedToolDefinitions()
+  const activeCount = Object.keys(disclosed).length
+  const availableCount = Object.keys(deps.getActiveToolDefinitions()).length
+  const tokens = counter.count(serializeTools(disclosed))
   return {
     label: 'Tools',
     tokens,
-    detail: `${String(count)} active, gated by ${providerName}`,
+    detail: `${String(activeCount)} active · ${String(availableCount)} available (progressive disclosure)`,
   }
 }
 

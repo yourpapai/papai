@@ -368,6 +368,102 @@ describe('createDiscordReplyFn', () => {
   })
 })
 
+describe('createDiscordReplyFn editReply + lastReplyTarget', () => {
+  beforeEach(() => {
+    mockLogger()
+  })
+
+  function makeChannel(): {
+    channel: SendableChannel
+    edits: Array<{ id: string; content: string }>
+    sends: SendArg[]
+  } {
+    const sends: SendArg[] = []
+    const edits: Array<{ id: string; content: string }> = []
+    let counter = 0
+    return {
+      sends,
+      edits,
+      channel: {
+        id: 'chan-1',
+        send: (arg: SendArg) => {
+          sends.push(arg)
+          counter += 1
+          const msgId = `bot-msg-${String(counter)}`
+          return Promise.resolve({
+            id: msgId,
+            edit: (editArg: EditArg): Promise<void> => {
+              edits.push({ id: msgId, content: editArg.content ?? '' })
+              return Promise.resolve()
+            },
+            delete: (): Promise<void> => Promise.resolve(),
+          })
+        },
+        sendTyping: (): Promise<void> => Promise.resolve(),
+      },
+    }
+  }
+
+  test('formatted snapshots sentMessages into lastReplyTarget (copy, not live ref)', async () => {
+    const { channel } = makeChannel()
+    const reply = createDiscordReplyFn({ channel, replyToMessageId: undefined })
+
+    expect(reply.lastReplyTarget).toBeDefined()
+    expect(reply.lastReplyTarget!()).toBeUndefined()
+
+    await reply.formatted('first chunk')
+    const target = reply.lastReplyTarget!()
+    expect(target).toBeDefined()
+    expect(target).toEqual({
+      platform: 'discord',
+      ref: [expect.objectContaining({ id: 'bot-msg-1' })],
+    })
+
+    // A later send must not mutate the snapshot captured at the first formatted() call.
+    await reply.formatted('second chunk')
+    expect(target).toEqual({
+      platform: 'discord',
+      ref: [expect.objectContaining({ id: 'bot-msg-1' })],
+    })
+  })
+
+  test('editReply edits every captured chunk in place with the new text', async () => {
+    const { channel, edits, sends } = makeChannel()
+    const reply = createDiscordReplyFn({ channel, replyToMessageId: undefined })
+
+    // Multi-chunk formatted send (>2000 chars splits into 3+ chunks).
+    await reply.formatted('x'.repeat(4500))
+    expect(sends.length).toBeGreaterThanOrEqual(3)
+    const target = reply.lastReplyTarget!()
+    expect(target).toBeDefined()
+
+    await reply.editReply!(target!, '[edited]')
+
+    expect(edits.length).toBe(sends.length)
+    for (const edit of edits) {
+      expect(edit.content).toBe('[edited]')
+    }
+  })
+
+  test('editReply swallows platform errors (never throws)', async () => {
+    const channel: SendableChannel = {
+      id: 'chan-1',
+      send: () =>
+        Promise.resolve({
+          id: 'bot-msg-1',
+          edit: (): Promise<never> => Promise.reject(new Error('edit failed')),
+          delete: (): Promise<void> => Promise.resolve(),
+        }),
+      sendTyping: (): Promise<void> => Promise.resolve(),
+    }
+    const reply = createDiscordReplyFn({ channel, replyToMessageId: undefined })
+    await reply.formatted('original')
+    const target = reply.lastReplyTarget!()
+    expect(target).toBeDefined()
+    await expect(reply.editReply!(target!, 'new')).resolves.toBeUndefined()
+  })
+})
+
 describe('createDiscordReplyFn createStatus', () => {
   beforeEach(() => {
     mockLogger()

@@ -17,6 +17,7 @@ export type StrictHttpDispatcher = Readonly<{
   expect(request: StrictHttpExpectation, respond: Responder): void
   fetch(input: string | URL | Request, init?: RequestInit): Promise<Response>
   verifyConsumed(): void
+  idle(): Promise<void>
 }>
 
 type PendingExpectation = Readonly<{
@@ -46,6 +47,7 @@ const runResponder = async (
 export function createStrictHttpDispatcher(events: ScenarioEvents): StrictHttpDispatcher {
   let expectations: readonly PendingExpectation[] = []
   let consumed = 0
+  const inFlight: Set<Promise<unknown>> = new Set()
 
   return {
     expect(request, respond): void {
@@ -78,7 +80,18 @@ export function createStrictHttpDispatcher(events: ScenarioEvents): StrictHttpDi
       }
 
       consumed += 1
-      const response = await runResponder(pending, request, events, actual)
+      const responderPromise = runResponder(pending, request, events, actual)
+      inFlight.add(responderPromise)
+      void responderPromise
+        .finally(() => {
+          inFlight.delete(responderPromise)
+        })
+        .catch(() => {
+          // Rejection is surfaced to the caller via the `await responderPromise` below;
+          // this branch only exists so the untracked `.finally()` chain doesn't register
+          // as an unhandled rejection independently of that await.
+        })
+      const response = await responderPromise
       const isRedirect = REDIRECT_STATUSES.has(response.status)
       if (isRedirect && !pending.request.allowRedirect) {
         throw new Error(
@@ -95,6 +108,11 @@ export function createStrictHttpDispatcher(events: ScenarioEvents): StrictHttpDi
       if (remaining.length === 0) return
       const descriptions = remaining.map(({ request }) => describe(request)).join(', ')
       throw new Error(events.formatFailure(`unconsumed HTTP expectations: ${descriptions}`))
+    },
+    async idle(): Promise<void> {
+      while (inFlight.size > 0) {
+        await Promise.allSettled([...inFlight])
+      }
     },
   }
 }

@@ -3,11 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
 
 import type { ModelMessage } from 'ai'
 
+import type { ReplyTarget } from '../src/chat/types.js'
 import { sendLlmResponse } from '../src/llm-orchestrator-send.js'
+import { runRegistry } from '../src/run-control/registry.js'
 import { createMockReply, mockLogger } from './utils/test-helpers.js'
 
 const baseResult = {
@@ -106,5 +108,43 @@ describe('sendLlmResponse beforeFirstMessage (live-status placeholder dismissal)
     // The placeholder stays up through the verifier call, then is dismissed right before the reply posts.
     expect(order).toEqual(['verify', 'dismiss', 'reply'])
     expect(reply.textCalls).toContain('Created task TK-42.')
+  })
+})
+
+describe('sendLlmResponse reply-target capture', () => {
+  beforeEach(() => {
+    mockLogger()
+    runRegistry.clear()
+  })
+
+  test('records the adapter lastReplyTarget onto the active run after posting', async () => {
+    const target: ReplyTarget = { platform: 'telegram', ref: { messageId: 42, chatId: 7 } }
+    const reply = createMockReply()
+    reply.reply.lastReplyTarget = (): ReplyTarget | undefined => target
+
+    runRegistry.begin('ctx-target', {
+      turnId: 'turn-1',
+      reply: reply.reply,
+      originatingMessageIds: [],
+    })
+
+    await sendLlmResponse(reply.reply, 'ctx-target', { ...baseResult, text: 'Done.' }, undefined)
+
+    const run = runRegistry.get('ctx-target')
+    expect(run).toBeDefined()
+    expect(run!.replyTarget).toBe(target)
+  })
+
+  test('leaves replyTarget undefined when the adapter exposes no lastReplyTarget', async () => {
+    const reply = createMockReply()
+    runRegistry.begin('ctx-no-target', {
+      turnId: 'turn-2',
+      reply: reply.reply,
+      originatingMessageIds: [],
+    })
+
+    await sendLlmResponse(reply.reply, 'ctx-no-target', { ...baseResult, text: 'Done.' }, undefined)
+
+    expect(runRegistry.get('ctx-no-target')!.replyTarget).toBeUndefined()
   })
 })

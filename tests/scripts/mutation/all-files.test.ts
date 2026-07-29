@@ -57,15 +57,34 @@ describe('selectAllMutationTargets', () => {
 
 describe('parseAllFilesCliArgs', () => {
   test('returns defaults for no args', () => {
-    expect(parseAllFilesCliArgs([])).toEqual({ kind: 'ok', threshold: 0, verbose: false })
+    expect(parseAllFilesCliArgs([])).toEqual({ kind: 'ok', threshold: 0, updateBaseline: false, verbose: false })
   })
 
   test('accepts a fractional threshold', () => {
-    expect(parseAllFilesCliArgs(['--threshold=0.75'])).toEqual({ kind: 'ok', threshold: 0.75, verbose: false })
+    expect(parseAllFilesCliArgs(['--threshold=0.75'])).toEqual({
+      kind: 'ok',
+      threshold: 0.75,
+      updateBaseline: false,
+      verbose: false,
+    })
   })
 
   test('accepts verbose mode', () => {
-    expect(parseAllFilesCliArgs(['--verbose'])).toEqual({ kind: 'ok', threshold: 0, verbose: true })
+    expect(parseAllFilesCliArgs(['--verbose'])).toEqual({
+      kind: 'ok',
+      threshold: 0,
+      updateBaseline: false,
+      verbose: true,
+    })
+  })
+
+  test('accepts --update-baseline', () => {
+    expect(parseAllFilesCliArgs(['--update-baseline'])).toEqual({
+      kind: 'ok',
+      threshold: 0,
+      updateBaseline: true,
+      verbose: false,
+    })
   })
 
   test('rejects unknown and positional arguments', () => {
@@ -106,6 +125,7 @@ describe('allFilesRun', () => {
         },
         perFile: [],
         skipped: [],
+        errored: [],
       }),
     )
     const deps: AllFilesDeps = {

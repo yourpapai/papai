@@ -92,12 +92,11 @@ export default {
     catalog: 'error',
   },
 
-  // @stryker-mutator/typescript-checker is loaded at runtime by Stryker, not
-  // imported. msw is the dev-only mock layer consumed exclusively by the
+  // msw is the dev-only mock layer consumed exclusively by the
   // Storybook story harness under client/stories/** (ignored below).
   // @crvy/strybk is imported by strybk.config.ts but knip-bun cannot resolve
   // the package (runtime CLI config consumer).
-  ignoreDependencies: ['@stryker-mutator/typescript-checker', 'msw', '@crvy/strybk'],
+  ignoreDependencies: ['msw', '@crvy/strybk'],
 
   ignoreIssues: {
     // Test-seam shims: exports exist only for tests; production modules keep

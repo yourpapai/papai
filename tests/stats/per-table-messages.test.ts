@@ -36,7 +36,6 @@ describe('messageMetadataForSubject', () => {
           authorId: 'u1',
           text: 'hello',
           timestamp: 1000,
-          expiresAt: 9000,
         },
         {
           contextId: 'u1',
@@ -44,7 +43,6 @@ describe('messageMetadataForSubject', () => {
           authorId: 'someone-else',
           text: 'world!',
           timestamp: 2000,
-          expiresAt: 9000,
         },
         {
           contextId: 'u1',
@@ -52,7 +50,6 @@ describe('messageMetadataForSubject', () => {
           authorId: 'u1',
           text: null,
           timestamp: 3000,
-          expiresAt: 9000,
         },
         {
           contextId: 'other',
@@ -60,7 +57,6 @@ describe('messageMetadataForSubject', () => {
           authorId: 'other',
           text: 'leak',
           timestamp: 9999,
-          expiresAt: 9999,
         },
       ])
       .run()

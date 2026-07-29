@@ -18,7 +18,7 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.3.13
@@ -61,7 +61,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.3.13
@@ -70,7 +70,7 @@ jobs:
       - name: Run security scan
         run: bun security:ci
       - name: Upload SARIF to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
+        uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
         if: always() && hashFiles('semgrep-results.sarif') != ''
         with:
           sarif_file: semgrep-results.sarif
@@ -80,7 +80,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.3.13
@@ -93,13 +93,21 @@ jobs:
           path: public/
       - name: Run all checks
         run: bun check:full
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-lcov
+          path: reports/coverage/lcov.info
+          if-no-files-found: warn
+          retention-days: 14
 
   stories:
     name: Hermetic Full-Stack Stories
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.3.13
@@ -110,10 +118,24 @@ jobs:
         with:
           name: build-output
           path: public/
+      - name: Verify Linux story sandbox
+        run: |
+          docker version
+          image="$(cat scripts/story/sandbox-image.txt)"
+          docker pull "$image"
+          docker run --rm --network none "$image" --version
+      - name: Prove process sandbox boundary
+        env:
+          PAPAI_REQUIRE_STORY_SANDBOX: '1'
+        run: bun test --path-ignore-patterns '' tests/stories/sandbox/process-boundary.test.ts
       - name: Run hermetic harness contracts
+        env:
+          PAPAI_REQUIRE_STORY_SANDBOX: '1'
         run: bun test:stories:contracts --reporter=junit --reporter-outfile=reports/stories/contracts-junit.xml
       - name: Run hermetic full-stack stories
-        run: bun test:stories
+        env:
+          PAPAI_REQUIRE_STORY_SANDBOX: '1'
+        run: bun test:stories:coverage
       - name: Upload story reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -126,8 +148,12 @@ jobs:
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
+    # Backstop for a hung Kaneo container or a runaway provider-real lane. The whole
+    # job (install + Docker + Kaneo bring-up + 66 tests) has been observed at ~62s on
+    # an isolated runner; 12m is a generous runaway guard, not a tight budget.
+    timeout-minutes: 12
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.3.13
@@ -141,21 +167,52 @@ jobs:
           echo "KANEO_AUTH_SECRET=test-auth-secret-for-ci-environment" >> .env
           echo "KANEO_CLIENT_URL=http://localhost:11337" >> .env
       - name: Run E2E tests
+        # Enforces Tier 1's declared wall-clock budget (Rule 5): the provider-real lane
+        # has a 132s ceiling (baseline ~42s; ~62s observed on this runner). 6m bounds the
+        # lane at well under 3x the ceiling so a genuine blow-up fails CI instead of
+        # silently regressing, while leaving ample headroom for runner jitter and image pulls.
+        timeout-minutes: 6
         run: bun test:e2e
         env:
           E2E_KANEO_URL: http://localhost:11337
 
+  smoke:
+    name: T2 Process-Real Smoke
+    runs-on: ubuntu-latest
+    # Backstop for a hung container or an unreachable host fake. The lane is two full
+    # boots + one fast-fail; replace the value below only if the runaway guard proves
+    # too tight after measurement (Step 2).
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.13
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          driver: docker
+      - name: Install dependencies
+        run: bun install
+      - name: Build papai:e2e image
+        run: docker build -t papai:e2e .
+      - name: Run T2 smoke lane
+        # Enforces the T2 measured wall-clock budget (Rule 5). The value below is the
+        # measured lane time rounded up to ~2x headroom (see Step 2); it is a real
+        # measurement, not a guess. host.docker.internal resolves via --add-host
+        # (--add-host=host.docker.internal:host-gateway is set by the harness).
+        timeout-minutes: 3
+        run: bun run test:smoke
+
   mutation-testing:
     name: Mutation Testing (paired, changed files)
     runs-on: ubuntu-latest
-    # Temporarily disabled while the paired mutation runner is calibrated.
-    # Re-enable with: if: ${{ github.event_name == 'pull_request' }}
-    if: ${{ false }}
-    # Warn-only during calibration. Flip continue-on-error to false once we
-    # have a stable score floor (see spec §5).
-    continue-on-error: true
+    # Blocking PR gate. A changed file fails only if it has a recorded baseline
+    # entry in scripts/mutation/baseline.json and drops below it. Files new to
+    # scope (first-touch) warn and are seeded by the master mutation-baseline job.
+    if: ${{ github.event_name == 'pull_request' }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # paired runner needs the base branch to diff against
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -175,3 +232,44 @@ jobs:
           path: reports/paired/
           if-no-files-found: ignore
           retention-days: 14
+
+  mutation-baseline:
+    name: Mutation Testing (changed-files baseline seed)
+    runs-on: ubuntu-latest
+    # On master merge: seed scripts/mutation/baseline.json with mutation scores for
+    # changed files (broad scope) using seedMerge; existing entries are preserved
+    # (per-key max), and first-touch files get seeded after merge. The committed
+    # baseline is the floor the PR gate enforces.
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # changed-files runner needs HEAD~1 (previous master) to diff against
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.13
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Seed baseline from changed files since previous master
+        run: bun test:mutate:changed --base=HEAD~1 --update-baseline
+      - name: Commit ratcheted baseline
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet scripts/mutation/baseline.json; then
+            echo "No baseline change; nothing to commit."
+          else
+            git add scripts/mutation/baseline.json
+            git commit -m "chore(mutation): ratchet baseline"
+            git push
+          fi
+      - name: Upload changed-files mutation reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-changed-files-reports
+          path: reports/paired/
+          if-no-files-found: ignore
+          retention-days: 30

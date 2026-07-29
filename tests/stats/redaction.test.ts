@@ -83,7 +83,6 @@ function seedForbiddenRows(): void {
       authorUsername: 'FORBIDDEN_AUTHOR_USERNAME_XYZ',
       text: 'message text FORBIDDEN_MESSAGE_TEXT_XYZ',
       timestamp: 1000,
-      expiresAt: 9999999,
     })
     .run()
 

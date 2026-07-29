@@ -115,7 +115,7 @@ describe('invokeModel run-control wiring', () => {
 
   test('active run: stopWhen includes step cap, no-progress guard, and a live stop condition; abortSignal present', async () => {
     const { reply } = createMockReply()
-    const run = runRegistry.begin('ctx-1', { turnId: 't1', reply })
+    const run = runRegistry.begin('ctx-1', { turnId: 't1', reply, originatingMessageIds: [] })
     const captured: { opts?: CapturedOpts } = {}
     await invokeModel(buildArgs(captured, () => Promise.resolve(okResult)))
 
@@ -134,7 +134,7 @@ describe('invokeModel run-control wiring', () => {
 
   test('active run: prepareStep injects queued steer messages', async () => {
     const { reply } = createMockReply()
-    const run = runRegistry.begin('ctx-1', { turnId: 't1', reply })
+    const run = runRegistry.begin('ctx-1', { turnId: 't1', reply, originatingMessageIds: [] })
     run.steerQueue.push({ text: 'only project X' })
     const captured: { opts?: CapturedOpts } = {}
     await invokeModel(buildArgs(captured, () => Promise.resolve(okResult)))
@@ -161,7 +161,7 @@ describe('invokeModel run-control wiring', () => {
 
   test('active run: onToolCallFinish records completed effects', async () => {
     const { reply } = createMockReply()
-    const run = runRegistry.begin('ctx-1', { turnId: 't1', reply })
+    const run = runRegistry.begin('ctx-1', { turnId: 't1', reply, originatingMessageIds: [] })
     const captured: { opts?: CapturedOpts } = {}
     await invokeModel(buildArgs(captured, () => Promise.resolve(okResult)))
 
@@ -173,7 +173,7 @@ describe('invokeModel run-control wiring', () => {
 
   test('force-abort: aborted signal turns AbortError into RunAbortedError carrying effects', async () => {
     const { reply } = createMockReply()
-    const run = runRegistry.begin('ctx-1', { turnId: 't1', reply })
+    const run = runRegistry.begin('ctx-1', { turnId: 't1', reply, originatingMessageIds: [] })
     run.completedEffects.push({ toolName: 'update_task' })
     const captured: { opts?: CapturedOpts } = {}
 
@@ -191,7 +191,7 @@ describe('invokeModel run-control wiring', () => {
   })
 
   test('non-abort errors pass through unchanged', async () => {
-    runRegistry.begin('ctx-1', { turnId: 't1', reply: createMockReply().reply })
+    runRegistry.begin('ctx-1', { turnId: 't1', reply: createMockReply().reply, originatingMessageIds: [] })
     const captured: { opts?: CapturedOpts } = {}
     const args = buildArgs(captured, () => Promise.reject(new Error('boom')))
     await expect(invokeModel(args)).rejects.toThrow('boom')

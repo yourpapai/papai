@@ -10,13 +10,19 @@ import path from 'node:path'
 import { findTestFile } from '../../.hooks/tdd/test-resolver.mjs'
 import { buildPairedConfig } from './config-builder.js'
 import type { StrykerConfig } from './config-builder.js'
+import { buildCoverageMap, createDefaultCoverageMapDeps } from './coverage-map.js'
+import type { CoverageMap } from './coverage-map.js'
 import { readJsonRecord, readStrykerReport } from './json-readers.js'
+import { parsePairedRunCliArgs, resolvePairedRunCliUsageExitCode, resolvePairedRunExitCode } from './paired-run-cli.js'
 import { appendProcessFailure } from './process-error.js'
 import { mergeReports } from './score-merger.js'
 import type { MergedScore, StrykerReport } from './score-merger.js'
 import { runStrykerWithCapturedFailure } from './stryker-run.js'
 import { loadOverrides as loadOverridesFile, resolveTestFiles } from './test-overrides.js'
 import type { OverridesMap } from './test-overrides.js'
+
+export { parsePairedRunCliArgs, resolvePairedRunCliUsageExitCode, resolvePairedRunExitCode } from './paired-run-cli.js'
+export type { PairedRunCliArgs } from './paired-run-cli.js'
 
 export interface PairedRunDeps {
   readonly readBaseConfig: (projectRoot: string) => StrykerConfig
@@ -25,6 +31,11 @@ export interface PairedRunDeps {
   readonly runStryker: (configPath: string, projectRoot: string, options: PairedRunStrykerOptions) => void
   readonly readReport: (reportPath: string) => StrykerReport
   readonly log: (message: string) => void
+  /**
+   * Build {sourceFile -> covering testFiles} once per batch. When omitted, pairedRun builds it
+   * lazily via `buildCoverageMap` with the production deps from `coverage-map.ts`.
+   */
+  readonly buildMap?: (sourceFiles: readonly string[]) => CoverageMap
 }
 
 export interface PairedRunInput {
@@ -52,20 +63,17 @@ export interface PairedRunFileResult {
   readonly merged: MergedScore
 }
 
+export interface ErroredFile {
+  readonly sourceFile: string
+  readonly error: string
+}
+
 export interface PairedRunResult {
   readonly merged: MergedScore
   readonly perFile: readonly PairedRunFileResult[]
   readonly skipped: readonly SkippedFile[]
+  readonly errored: readonly ErroredFile[]
 }
-
-export type PairedRunCliArgs =
-  | {
-      readonly kind: 'ok'
-      readonly sourceFiles: readonly string[]
-      readonly threshold: number
-      readonly verbose: boolean
-    }
-  | { readonly kind: 'usageError'; readonly reason: string }
 
 type CompletedFileRun = PairedRunFileResult & { readonly report: StrykerReport }
 
@@ -76,8 +84,6 @@ type BunLike = {
 
 const DEFAULT_REPORT_DIR = 'reports/paired'
 const STRYKER_TIMEOUT_MS = 30 * 60 * 1000
-const THRESHOLD_DECIMAL_PATTERN = /^(?:0(?:\.\d+)?|1(?:\.0+)?)$/u
-const THRESHOLD_RANGE_ERROR = 'threshold must be a decimal number between 0 and 1'
 
 const defaultDeps: PairedRunDeps = {
   readBaseConfig: (projectRoot) => {
@@ -142,12 +148,14 @@ const runOneFile = (
   base: StrykerConfig,
   overrides: OverridesMap,
   verbose: boolean,
+  discovered: readonly string[] | undefined,
 ): CompletedFileRun | SkippedFile => {
   const resolved = resolveTestFiles({
     srcFile,
     projectRoot: input.projectRoot,
     overrides,
     findTestFile: companionResolverFor(deps),
+    discovered,
   })
   if (resolved.kind === 'skip') return { sourceFile: srcFile, reason: resolved.reason }
 
@@ -188,6 +196,22 @@ const resolveDeps = (deps: PairedRunDeps | undefined): PairedRunDeps => {
   return deps
 }
 
+const defaultBuildMapFor = (projectRoot: string): ((sourceFiles: readonly string[]) => CoverageMap) => {
+  return (sourceFiles) => {
+    try {
+      return buildCoverageMap({
+        sourceFiles,
+        projectRoot,
+        deps: createDefaultCoverageMapDeps(projectRoot),
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error(`paired-run: coverage map build failed (${message}); falling back to companion-only selection`)
+      return {}
+    }
+  }
+}
+
 export const pairedRun = (input: PairedRunInput): Promise<PairedRunResult> => {
   const deps = resolveDeps(input.deps)
   const verbose = input.verbose === true
@@ -195,59 +219,36 @@ export const pairedRun = (input: PairedRunInput): Promise<PairedRunResult> => {
   const base = deps.readBaseConfig(input.projectRoot)
   const overrides = deps.loadOverrides(input.projectRoot)
   fs.mkdirSync(input.reportDir, { recursive: true })
+  const buildMap = deps.buildMap ?? defaultBuildMapFor(input.projectRoot)
+  const coverageMap = buildMap(sourceFiles)
 
-  const results = sourceFiles.map((srcFile, index) => {
+  const completed: CompletedFileRun[] = []
+  const skipped: SkippedFile[] = []
+  const errored: ErroredFile[] = []
+
+  sourceFiles.forEach((srcFile, index) => {
     deps.log(`Running paired mutation ${index + 1}/${sourceFiles.length}: ${srcFile}`)
-    const result = runOneFile(srcFile, input, deps, base, overrides, verbose)
-    if (!isSkippedFile(result)) deps.log(formatFileSummary(result))
-    return result
+    try {
+      const result = runOneFile(srcFile, input, deps, base, overrides, verbose, coverageMap[srcFile])
+      if (isSkippedFile(result)) skipped.push(result)
+      else {
+        deps.log(formatFileSummary(result))
+        completed.push(result)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      deps.log(`${srcFile}: ERROR ${message}`)
+      errored.push({ sourceFile: srcFile, error: message })
+    }
   })
-  const completed = results.filter((result): result is CompletedFileRun => !isSkippedFile(result))
   const perFile = completed.map(({ report: _report, ...result }) => result)
-  const skipped = results.filter((result) => isSkippedFile(result))
   const merged = mergeReports(completed.map((result) => result.report))
 
   deps.log(
-    `Paired mutation summary: files=${perFile.length} skipped=${skipped.length} killed=${merged.killed} survived=${merged.survived} pending=${merged.pending} score=${merged.score}`,
+    `Paired mutation summary: files=${perFile.length} skipped=${skipped.length} errored=${errored.length} killed=${merged.killed} survived=${merged.survived} pending=${merged.pending} score=${merged.score}`,
   )
-  return Promise.resolve({ merged, perFile, skipped })
+  return Promise.resolve({ merged, perFile, skipped, errored })
 }
-
-export const parsePairedRunCliArgs = (argv: readonly string[]): PairedRunCliArgs => {
-  const unknownArg = argv.find((arg) => arg.startsWith('-') && !arg.startsWith('--threshold=') && arg !== '--verbose')
-  if (unknownArg !== undefined) {
-    return { kind: 'usageError', reason: `unknown argument ${unknownArg}` }
-  }
-  const thresholdArgs = argv.filter((arg) => arg.startsWith('--threshold='))
-  if (thresholdArgs.length > 1) {
-    return { kind: 'usageError', reason: 'threshold must be provided at most once' }
-  }
-  const thresholdArg = thresholdArgs[0]
-  const thresholdText = thresholdArg === undefined ? undefined : thresholdArg.slice('--threshold='.length)
-  if (thresholdText === '') {
-    return { kind: 'usageError', reason: 'threshold must be a finite number' }
-  }
-  if (thresholdText !== undefined && !THRESHOLD_DECIMAL_PATTERN.test(thresholdText)) {
-    return { kind: 'usageError', reason: THRESHOLD_RANGE_ERROR }
-  }
-  const threshold = thresholdText === undefined ? 0 : Number(thresholdText)
-  if (!Number.isFinite(threshold)) {
-    return { kind: 'usageError', reason: 'threshold must be a finite number' }
-  }
-  const verbose = argv.includes('--verbose')
-  return {
-    kind: 'ok',
-    sourceFiles: argv.filter((arg) => !arg.startsWith('--threshold=') && arg !== '--verbose'),
-    threshold,
-    verbose,
-  }
-}
-
-export const resolvePairedRunCliUsageExitCode = (parsed: PairedRunCliArgs): number | null =>
-  parsed.kind === 'usageError' || parsed.sourceFiles.length === 0 ? 2 : null
-
-export const resolvePairedRunExitCode = (merged: MergedScore, threshold: number): number =>
-  merged.score < threshold ? 1 : 0
 
 const main = async (bun: BunLike): Promise<number> => {
   const parsed = parsePairedRunCliArgs(bun.argv.slice(2))

@@ -11,6 +11,7 @@ export const discordCapabilities: ReadonlySet<ChatCapability> = new Set<ChatCapa
   'messages.ephemeral',
   'messages.redact',
   'messages.reply-context',
+  'messages.edit.inbound',
   'users.resolve',
 ])
 

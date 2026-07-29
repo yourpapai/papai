@@ -11,11 +11,14 @@ import type { InstanceConfig, InstanceStatus, PlatformInstanceType } from '../in
 import type { ManagedChatInstance, ManagedChatInstanceSnapshot } from './router-types.js'
 import type {
   ChatCapability,
+  ChatProvider,
   ChatProviderTraits,
+  CommandHandler,
   ContextRendered,
   IncomingInteraction,
   IncomingMessage,
   ReplyFn,
+  ResolveUserContext,
   ThreadCapabilities,
 } from './types.js'
 
@@ -92,6 +95,15 @@ export const resolveGroupLabelForManagedInstance = (
   const instance = instances.get(settings.platformInstanceId)
   if (instance === undefined || instance.provider.resolveGroupLabel === undefined) return Promise.resolve(null)
   return instance.provider.resolveGroupLabel(groupId)
+}
+
+export const providerForResolveContextForManagedInstance = (
+  instances: Map<string, ManagedChatInstance>,
+  context: ResolveUserContext,
+): ChatProvider | null => {
+  const platformInstanceId =
+    context.platformInstanceId ?? getContextSettings(context.contextId)?.platformInstanceId ?? null
+  return platformInstanceId === null ? null : providerForManagedInstance(instances.get(platformInstanceId))
 }
 
 export const isGroupAdminForManagedInstance = (
@@ -171,6 +183,24 @@ export const registerInteractionHandlerForManagedInstance = (
   instance.provider.onInteraction((interaction, reply) =>
     handler({ ...interaction, platformInstanceId: instance.id }, reply),
   )
+}
+
+export const registerMessageEditHandlerForManagedInstance = (
+  instance: ManagedChatInstance,
+  handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>,
+): void => {
+  if (instance.provider.onMessageEdit === undefined) return
+  instance.provider.onMessageEdit(routedMessageHandler(instance.id, handler))
+}
+
+export const registerCommandForManagedInstance = (
+  instance: ManagedChatInstance,
+  name: string,
+  handler: CommandHandler,
+): void => {
+  instance.provider.registerCommand(name, async (msg, reply, auth) => {
+    await handler({ ...msg, platformInstanceId: instance.id }, reply, auth)
+  })
 }
 
 type FileDownloadingProvider = Readonly<{

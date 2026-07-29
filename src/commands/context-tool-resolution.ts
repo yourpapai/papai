@@ -9,6 +9,9 @@ import { getCachedTools } from '../cache.js'
 import { logger } from '../logger.js'
 import { defaultTaskProviderResolver } from '../providers/resolver.js'
 import type { TaskProvider } from '../providers/types.js'
+import { ALWAYS_ON_TOOL_NAMES } from '../tools/disclosure/core.js'
+import { LexicalToolRetriever } from '../tools/disclosure/tool-retriever.js'
+import { maybeApplyDisclosure } from '../tools/disclosure/wire.js'
 import { applyToolPreferences, buildProviderlessToolDescriptors, makeTools } from '../tools/index.js'
 
 const log = logger.child({ scope: 'commands:context-tool-resolution' })
@@ -38,6 +41,51 @@ export async function safeBuildProvider(contextId: string): Promise<TaskProvider
 
 export function resolveActiveToolDefinitions(resolvedToolSurface: ResolvedContextToolSurface): Record<string, unknown> {
   return resolvedToolSurface.definitions
+}
+
+/**
+ * Context id used only to build the disclosure preview. No real turn is running, so nothing
+ * is emitted against it — search_tools/load_tool are constructed for their schemas alone and
+ * never executed here.
+ */
+const DISCLOSURE_PREVIEW_CONTEXT_ID = 'context-view'
+
+/**
+ * Narrow the full tool catalog to the surface a live turn's first step actually exposes to
+ * the model under progressive disclosure: the always-on core tools plus the injected
+ * `search_tools`/`load_tool` meta tools (with their real schemas). This mirrors
+ * `maybeApplyDisclosure` + `DisclosureSession.activeToolNames()` in the orchestrator path so
+ * the `/context` view counts what a fresh turn loads (~4 tools), not the entire catalog whose
+ * schemas only enter context on demand via `load_tool`.
+ */
+export function resolveDisclosedToolDefinitions(
+  resolvedToolSurface: ResolvedContextToolSurface,
+): Record<string, unknown> {
+  const catalog = resolvedToolSurface.definitions
+  try {
+    const catalogToolSet: ToolSet = isToolSet(catalog) ? catalog : {}
+    const { tools: disclosed, disclosure } = maybeApplyDisclosure(
+      catalogToolSet,
+      DISCLOSURE_PREVIEW_CONTEXT_ID,
+      new LexicalToolRetriever(),
+    )
+    const active = new Set(disclosure.activeToolNames())
+    const definitions: Record<string, unknown> = {}
+    for (const [name, definition] of Object.entries(disclosed)) {
+      if (active.has(name)) definitions[name] = definition
+    }
+    return definitions
+  } catch (error) {
+    log.warn(
+      { error: error instanceof Error ? error.message : String(error) },
+      'Failed to compute disclosed tool surface; falling back to always-on catalog tools',
+    )
+    const definitions: Record<string, unknown> = {}
+    for (const [name, definition] of Object.entries(catalog)) {
+      if (ALWAYS_ON_TOOL_NAMES.has(name)) definitions[name] = definition
+    }
+    return definitions
+  }
 }
 
 export function buildInvocationToolSet(

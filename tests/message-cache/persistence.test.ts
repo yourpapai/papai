@@ -5,25 +5,18 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { and, eq, gt } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 
 import { messageMetadata } from '../../src/db/schema.js'
-import { scheduleMessagePersistence, cleanupExpiredMessages } from '../../src/message-cache/persistence.js'
+import { scheduleMessagePersistence } from '../../src/message-cache/persistence.js'
 import type { CachedMessage } from '../../src/message-cache/types.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
-
-const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000
 
 describe('Message Persistence', () => {
   let testDb: Awaited<ReturnType<typeof setupTestDb>>
 
   function loadMessages(contextId: string): CachedMessage[] {
-    const now = Date.now()
-    const rows = testDb
-      .select()
-      .from(messageMetadata)
-      .where(and(eq(messageMetadata.contextId, contextId), gt(messageMetadata.expiresAt, now)))
-      .all()
+    const rows = testDb.select().from(messageMetadata).where(eq(messageMetadata.contextId, contextId)).all()
 
     return rows.map((row) => ({
       messageId: row.messageId,
@@ -32,6 +25,7 @@ describe('Message Persistence', () => {
       authorUsername: row.authorUsername ?? undefined,
       text: row.text ?? undefined,
       replyToMessageId: row.replyToMessageId ?? undefined,
+      groupContextId: row.groupContextId ?? undefined,
       timestamp: row.timestamp,
     }))
   }
@@ -154,50 +148,24 @@ describe('Message Persistence', () => {
     expect(chat2Messages[0]?.text).toBe('In chat 2')
   })
 
-  test('should not load expired messages', async () => {
-    const expired = Date.now() - ONE_WEEK_MS - 1000
+  test('should persist groupContextId for group-wide scope', async () => {
+    const now = Date.now()
 
     scheduleMessagePersistence({
-      messageId: 'msg-old',
+      messageId: 'msg-g1',
       contextId: 'chat-1',
-      text: 'Expired',
-      timestamp: expired,
+      text: 'Group scoped',
+      groupContextId: 'group-1',
+      timestamp: now,
     })
 
     await new Promise((resolve) => {
       setTimeout(resolve, 10)
     })
-
-    const messages = loadMessages('chat-1')
-    expect(messages).toHaveLength(0)
-  })
-
-  test('should cleanup expired messages', async () => {
-    const expired = Date.now() - ONE_WEEK_MS - 1000
-
-    scheduleMessagePersistence({
-      messageId: 'msg-old',
-      contextId: 'chat-1',
-      text: 'Expired',
-      timestamp: expired,
-    })
-
-    scheduleMessagePersistence({
-      messageId: 'msg-new',
-      contextId: 'chat-1',
-      text: 'Fresh',
-      timestamp: Date.now(),
-    })
-
-    await new Promise((resolve) => {
-      setTimeout(resolve, 10)
-    })
-
-    cleanupExpiredMessages()
 
     const messages = loadMessages('chat-1')
     expect(messages).toHaveLength(1)
-    expect(messages[0]?.messageId).toBe('msg-new')
+    expect(messages[0]?.groupContextId).toBe('group-1')
   })
 
   test('should not collide on same messageId across different contexts', async () => {

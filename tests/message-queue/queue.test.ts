@@ -348,6 +348,40 @@ describe('MessageQueue', () => {
       assert(flushed !== null)
       expect(flushed.newAttachmentIds).toEqual(['att_1', 'att_2', 'att_3'])
     })
+
+    it('preserves originating messageIds through coalescing', () => {
+      queue.enqueue(
+        {
+          text: 'a',
+          userId: 'user123',
+          username: 'alice',
+          storageContextId: 'user123',
+          contextType: 'dm',
+          newAttachmentIds: [],
+          voiceStagedIds: [],
+          messageId: 'm1',
+        },
+        mockReply,
+      )
+      queue.enqueue(
+        {
+          text: 'b',
+          userId: 'user123',
+          username: 'alice',
+          storageContextId: 'user123',
+          contextType: 'dm',
+          newAttachmentIds: [],
+          voiceStagedIds: [],
+          messageId: 'm2',
+        },
+        mockReply,
+      )
+
+      const flushed = queue.forceFlush()
+      expect(flushed).not.toBeNull()
+      assert(flushed !== null)
+      expect(flushed.messageIds).toEqual(['m1', 'm2'])
+    })
   })
 
   describe('forceFlush', () => {

@@ -121,8 +121,8 @@ describe('activeSubjectCounts', () => {
     getDrizzleDb()
       .insert(messageMetadata)
       .values([
-        { contextId: 'g1', messageId: 'm1', timestamp: within30d, expiresAt: now + ONE_DAY },
-        { contextId: 'u1', messageId: 'm2', timestamp: within1d, expiresAt: now + ONE_DAY },
+        { contextId: 'g1', messageId: 'm1', timestamp: within30d },
+        { contextId: 'u1', messageId: 'm2', timestamp: within1d },
       ])
       .run()
 

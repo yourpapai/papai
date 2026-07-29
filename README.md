@@ -502,7 +502,7 @@ bun security
 bun security:ci
 
 # Testing
-bun build:client   # required once on a clean checkout: server tests serve public/ bundles
+bun build:client   # still required once before `bun run test` on a clean checkout (test:coverage and check:full below build it automatically if missing)
 bun run test       # parallel (one worker process per file); the local default (CI runs serially)
 bun test:serial    # serial run, for debugging isolation-sensitive failures
 bun test:client
@@ -562,13 +562,47 @@ bun test:e2e
 
 Runs the Docker-backed Kaneo end-to-end suite.
 
+### Hermetic Story Tests
+
+```bash
+bun test:stories
+```
+
+Runs deterministic full-stack user stories against the real in-process runtime with fake
+transports. Every run executes inside the pinned `oven/bun:1.3.13` Docker image (digest
+single-sourced in `scripts/story/sandbox-image.txt`) — on Linux,
+and on macOS via Docker Desktop — with no network, a read-only app snapshot, and a read-only
+bind-mounted dependency cache, so a working Docker daemon is required. Windows hosts are not
+supported yet: the launcher fails closed with an actionable error before any test spawns.
+There is no unsandboxed fallback: missing Docker or an image mismatch fails before any test
+spawns. The shared dependency cache (`~/.cache/papai-story-dependencies`, overridable via
+`PAPAI_STORY_DEPENDENCY_CACHE_ROOT`) is pruned after every successful acquire — the newest
+three entries by directory mtime are kept, plus the just-acquired key; set
+`PAPAI_STORY_DEPENDENCY_CACHE_KEEP` (positive integer) to change the keep count. Pruning is
+best-effort and never fails a run. See
+`docs/architecture/commands.md` for the story tiers, contracts, stress lane, and refactor
+compatibility mode.
+
 ### Mutation Testing
 
 ```bash
-bun test:mutate:changed
+bun test:mutate:changed          # PR gate: changed files vs base branch
+bun test:mutate                  # full paired run over the configured scope
+bun test:mutate --update-baseline  # full run; ratchet scripts/mutation/baseline.json up
 ```
 
-Runs changed-file paired mutation testing with Stryker. Full paired mutation runs are available via `bun test:mutate`.
+Runs paired, per-file mutation testing with Stryker (`ignoreStatic: false`, each
+source file paired with the test set that actually covers it — coverage-derived
+via `scripts/mutation/coverage-map.ts`, with the companion as fallback). The CI
+`mutation-testing` job is a
+**blocking per-file ratchet** on PRs: a changed file fails only if it has a
+recorded entry in `scripts/mutation/baseline.json` and its score drops below it;
+files with no recorded entry (new or never-baselined) are not regressions. The
+`mutation-baseline` job seeds the baseline from files changed since the previous
+master commit (`test:mutate:changed --base=HEAD~1 --update-baseline`; broad
+scope, `seedMerge` preserves existing entries — not a full run) on push to
+`master`. See `scripts/mutation/README.md` for flags (`--no-ratchet`), the
+override/companion resolution, and the one-time migration catch-up note.
 
 ---
 

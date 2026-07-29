@@ -106,12 +106,24 @@ export const mapTaskSearchResult = (t: TaskSearchMappingInput, url: string): Tas
   url,
 })
 
-/** Map Kaneo project to common Project type. */
+/** Map Kaneo project to common Project type. Omits `description` when Kaneo has no
+ *  value for it, so a project created without a description round-trips to the same
+ *  minimal shape MemoryTaskProvider produces (see tests/stories/harness/parity/
+ *  expectations.ts SCN-parity-project-crud). Kaneo returns `null` for "no description"
+ *  from the create endpoint but `""` from the update endpoint when description isn't
+ *  part of the patch (verified against Kaneo 2.7.2) — both are treated as absent.
+ *  Asymmetry note: a caller that explicitly sets `description: ''` (clearing it) sees
+ *  the field omitted here but present-and-empty from MemoryTaskProvider, which only
+ *  omits on `undefined`. No parity group exercises an explicit empty-string
+ *  description, so the divergence is unobservable today; flagged for whoever extends
+ *  SCN-parity-project-crud to a clear-description case. */
 export const mapProject = (p: { id: string; name: string; description?: string | null }, url: string): Project => ({
   id: p.id,
   name: p.name,
-  description: p.description,
   url,
+  ...(p.description === null || p.description === undefined || p.description === ''
+    ? {}
+    : { description: p.description }),
 })
 
 /** Map Kaneo comment to common Comment type. */

@@ -6,7 +6,8 @@
 import type { Context } from 'grammy'
 
 import { logger } from '../../logger.js'
-import type { ReplyFn, ReplyOptions, StatusHandle } from '../types.js'
+import type { ReplyFn, ReplyOptions, ReplyTarget, StatusHandle } from '../types.js'
+import { formatLlmOutput } from './format.js'
 import { buildTelegramPromptHandle, type TelegramBotEditApi } from './prompt-handle-builder.js'
 import {
   createReplyParamsBuilder,
@@ -24,6 +25,28 @@ const log = logger.child({ scope: 'chat:telegram' })
 const ignoreTelegramTypingError = (): null => null
 
 export type CallbackAnswerState = { answered: boolean }
+
+type TelegramReplyRef = { messageId: number; chatId: number }
+
+const asTelegramReplyRef = (ref: unknown): TelegramReplyRef | undefined => {
+  if (typeof ref !== 'object' || ref === null || !('messageId' in ref) || !('chatId' in ref)) {
+    return undefined
+  }
+  const { messageId, chatId } = ref as Record<string, unknown>
+  if (typeof messageId !== 'number' || typeof chatId !== 'number') return undefined
+  return { messageId, chatId }
+}
+
+const buildTelegramEditReply =
+  (api: TelegramBotEditApi) =>
+  async (target: ReplyTarget, markdown: string): Promise<void> => {
+    const ref = asTelegramReplyRef(target.ref)
+    if (ref === undefined) return
+    const formatted = formatLlmOutput(markdown)
+    await api
+      .editMessageText(ref.chatId, ref.messageId, formatted.text, { entities: formatted.entities })
+      .catch(() => undefined)
+  }
 
 async function buildStatusHandle(
   ctx: Context,
@@ -85,10 +108,13 @@ export function buildTelegramReplyFn(
   const chatId = chat === undefined ? undefined : chat.id
   const messageId = message === undefined ? undefined : message.message_id
   const buildReplyParams = createReplyParamsBuilder(ctx, threadId)
+  let lastReplyTarget: ReplyTarget | undefined
   const replyFn: ReplyFn = {
     text: (content: string, ...rest: [] | [ReplyOptions]) => sendTextReply(ctx, content, buildReplyParams, rest[0]),
-    formatted: (markdown: string, ...rest: [] | [ReplyOptions]) =>
-      sendFormattedReply(ctx, markdown, buildReplyParams, rest[0]),
+    formatted: async (markdown: string, ...rest: [] | [ReplyOptions]) => {
+      const sent = await sendFormattedReply(ctx, markdown, buildReplyParams, rest[0])
+      lastReplyTarget = { platform: 'telegram', ref: sent }
+    },
     file: (chatFile, ...rest: [] | [ReplyOptions]) => sendFileReply(ctx, chatFile, buildReplyParams, rest[0]),
     typing: () => {
       void ctx.replyWithChatAction('typing').catch(ignoreTelegramTypingError)
@@ -108,6 +134,8 @@ export function buildTelegramReplyFn(
       return buildTelegramPromptHandle(api, sent.chat.id, sent.message_id)
     },
     createStatus: (initialText: string) => buildStatusHandle(ctx, api, initialText, buildReplyParams()),
+    editReply: buildTelegramEditReply(api),
+    lastReplyTarget: () => lastReplyTarget,
   }
   if (allowReplacement) {
     attachReplacementMethods(replyFn, ctx, callbackAnswerState)

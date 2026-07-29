@@ -59,7 +59,6 @@ describe('distributionsGlobal', () => {
         contextId: id,
         messageId: `${id}-msg-${String(k)}`,
         timestamp: 1000 + k,
-        expiresAt: 9999,
       })),
     )
     getDrizzleDb().insert(messageMetadata).values(messageRows).run()

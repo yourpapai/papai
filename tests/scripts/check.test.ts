@@ -75,7 +75,22 @@ beforeAll(() => {
   sharedBinDir = mkdtempSync(path.join(tmpdir(), 'check-script-bin-'))
   writeExecutable(
     path.join(sharedBinDir, 'bun'),
-    ['#!/bin/bash', 'set -euo pipefail', 'printf "bun %s\\n" "$*" >> "$CHECK_LOG_FILE"', 'exit 0', ''].join('\n'),
+    [
+      '#!/bin/bash',
+      'set -euo pipefail',
+      'printf "bun %s\\n" "$*" >> "$CHECK_LOG_FILE"',
+      // CHECK_FAIL_MATCH lets a test make one specific bun invocation fail
+      // (matched as a substring of the argv) while the rest still succeed.
+      'if [ -n "${CHECK_FAIL_MATCH:-}" ]; then',
+      '  case "$*" in',
+      '    *"$CHECK_FAIL_MATCH"*)',
+      '      exit 1',
+      '      ;;',
+      '  esac',
+      'fi',
+      'exit 0',
+      '',
+    ].join('\n'),
   )
   writeExecutable(
     path.join(sharedBinDir, 'bunx'),
@@ -303,6 +318,72 @@ describe('check.sh full mode', () => {
       const calls = readFileSync(logFile, 'utf8')
       expect(calls).toContain('bun test')
       expect(calls).not.toContain('bun test --parallel')
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+
+  test('gates on the coverage ratchet after a passing CI coverage run', () => {
+    const { repoDir, binDir, logFile } = createTempRepo()
+
+    try {
+      const env = createEnv({
+        PATH: `${binDir}:${basePath}`,
+        CHECK_LOG_FILE: logFile,
+        CI: 'true',
+      })
+      const result = runCommand(repoDir, ['bash', 'scripts/check.sh'], env)
+
+      expect(result.exitCode).toBe(0)
+
+      // bun's own coverageThreshold is a per-file rule and cannot express the
+      // aggregate floor, so the ratchet — not `bun test --coverage` — is the gate.
+      const calls = readFileSync(logFile, 'utf8')
+      expect(calls).toContain('bun test --coverage')
+      expect(calls).toContain('bun coverage:ratchet')
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+
+  test('fails the check when the coverage ratchet fails', () => {
+    const { repoDir, binDir, logFile } = createTempRepo()
+
+    try {
+      const env = createEnv({
+        PATH: `${binDir}:${basePath}`,
+        CHECK_LOG_FILE: logFile,
+        CI: 'true',
+        CHECK_FAIL_MATCH: 'coverage:ratchet',
+      })
+      const result = runCommand(repoDir, ['bash', 'scripts/check.sh'], env)
+
+      // The ratchet's exit status must reach the job; a below-floor run cannot
+      // be reported as a passing check.
+      expect(result.exitCode).not.toBe(0)
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+
+  test('skips the coverage ratchet when the CI test run itself fails', () => {
+    const { repoDir, binDir, logFile } = createTempRepo()
+
+    try {
+      const env = createEnv({
+        PATH: `${binDir}:${basePath}`,
+        CHECK_LOG_FILE: logFile,
+        CI: 'true',
+        CHECK_FAIL_MATCH: 'test --coverage',
+      })
+      const result = runCommand(repoDir, ['bash', 'scripts/check.sh'], env)
+
+      expect(result.exitCode).not.toBe(0)
+
+      // A partial run's lcov would report a meaningless number, and the test
+      // failure is its own diagnostic.
+      const calls = readFileSync(logFile, 'utf8')
+      expect(calls).not.toContain('bun coverage:ratchet')
     } finally {
       rmSync(repoDir, { recursive: true, force: true })
     }

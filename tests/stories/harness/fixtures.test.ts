@@ -7,10 +7,12 @@ import { afterEach, describe, expect, test } from 'bun:test'
 
 import { isAuthorizedGroup } from '../../../src/authorized-groups.js'
 import { isGroupMember } from '../../../src/groups.js'
+import { isAdmin, isSuperAdmin } from '../../../src/instances/admin-store.js'
 import { getContextSettings } from '../../../src/instances/context-store.js'
 import { getPlatformInstance } from '../../../src/instances/platform-store.js'
 import { getTaskInstance } from '../../../src/instances/task-store.js'
 import { getAdminRoleBindings } from '../../../src/llm-providers/store.js'
+import { mcpPool } from '../../../src/mcp/client-pool.js'
 import { pluginRegistry } from '../../../src/plugins/registry.js'
 import { getPluginAdminState } from '../../../src/plugins/store.js'
 import {
@@ -23,6 +25,8 @@ import { TaskProviderResolver } from '../../../src/providers/resolver.js'
 import { SESSION_COOKIE_NAME } from '../../../src/settings/cookies.js'
 import { CSRF_HEADER } from '../../../src/settings/request-auth.js'
 import { isAuthorized } from '../../../src/users.js'
+import { createScenarioEvents } from './events.js'
+import { createFakeMcpServer } from './fake-mcp-server.js'
 import {
   SCENARIO_CONTEXT_ID,
   SCENARIO_GROUP_ID,
@@ -33,12 +37,15 @@ import {
   createSettingsSessionVault,
 } from './fixtures.js'
 import { MemoryTaskProvider } from './memory-task-provider.js'
+import { executeScenario } from './scenario.js'
+import { answer, callCapability } from './scripted-llm.js'
+import { createStrictHttpDispatcher } from './strict-http.js'
 
 describe('scenario fixtures', () => {
   const fixtures = createScenarioFixtures({ taskProvider: new MemoryTaskProvider() })
 
-  afterEach(() => {
-    fixtures.teardown()
+  afterEach(async () => {
+    await fixtures.teardown()
   })
 
   test('seeds platform and task instances retrievable through production stores', async () => {
@@ -85,7 +92,7 @@ describe('scenario fixtures', () => {
 
       expect([...descriptor!.capabilities]).toEqual(['comments.read'])
     } finally {
-      configuredFixtures.teardown()
+      await configuredFixtures.teardown()
     }
   })
 
@@ -93,8 +100,8 @@ describe('scenario fixtures', () => {
     await fixtures.setupDatabase()
     fixtures.registerTaskProvider()
     expect(getTaskProviderDescriptor('kaneo')?.source).toEqual({ plugin: 'scenario-memory-provider' })
-    fixtures.teardown()
-    fixtures.teardown()
+    await fixtures.teardown()
+    await fixtures.teardown()
     expect(getTaskProviderDescriptor('kaneo')).toBeUndefined()
     fixtures.registerTaskProvider()
     expect(getTaskProviderDescriptor('kaneo')).toBeDefined()
@@ -120,7 +127,7 @@ describe('scenario fixtures', () => {
       expect(getTaskProviderDescriptor('kaneo')?.source).toEqual({ plugin: 'other-owner' })
       expect(createProvider('kaneo', {})).toBe(foreignProvider)
 
-      fixtures.teardown()
+      await fixtures.teardown()
       expect(getTaskProviderDescriptor('kaneo')?.source).toEqual({ plugin: 'other-owner' })
       expect(createProvider('kaneo', {})).toBe(foreignProvider)
     } finally {
@@ -138,6 +145,18 @@ describe('scenario fixtures', () => {
     expect(isAuthorized(SCENARIO_USER_ID, SCENARIO_PLATFORM_INSTANCE_ID)).toBe(true)
     expect(isAuthorizedGroup(SCENARIO_GROUP_ID)).toBe(true)
     expect(isGroupMember(SCENARIO_GROUP_ID, SCENARIO_USER_ID)).toBe(true)
+  })
+
+  test('seedAdmin grants platform and super admin roles', async () => {
+    await fixtures.setupDatabase()
+    fixtures.seedPlatformInstance()
+
+    expect(isAdmin('carol', SCENARIO_PLATFORM_INSTANCE_ID)).toBe(false)
+    fixtures.seedAdmin({ userId: 'carol' })
+    expect(isAdmin('carol', SCENARIO_PLATFORM_INSTANCE_ID)).toBe(true)
+    expect(isSuperAdmin('carol')).toBe(false)
+    fixtures.seedAdmin({ userId: 'carol', superAdmin: true })
+    expect(isSuperAdmin('carol')).toBe(true)
   })
 
   test('seeds a complete central LLM configuration', async () => {
@@ -205,5 +224,57 @@ describe('scenario fixtures', () => {
     )
 
     await expect(parsing).rejects.toThrow(`Missing ${SESSION_COOKIE_NAME} cookie`)
+  })
+
+  test('given.groupAdmin marks the member as a group admin for command auth', async () => {
+    await executeScenario('group admin fixture', async ({ given, when, then }) => {
+      const carol = given.user('carol')
+      const team = given.group('team')
+      given.member(team, carol)
+      given.groupAdmin(team, carol)
+
+      await when.message(carol, team, '/config')
+
+      then.replyIn(team).contains('Open a DM with me and run /config')
+    })
+  })
+
+  test('given.attachment seeds the relay and upload_attachment consumes it', async () => {
+    await executeScenario('attachment relay fixture', async ({ given, when, then }) => {
+      const alice = given.user('alice')
+      const dm = given.dm(alice)
+      const instance = given.taskInstance()
+      given.assign(dm, instance)
+      given.taskCapabilities(['attachments.list', 'attachments.upload'])
+      const file = await given.attachment(dm, { filename: 'spec.txt', content: 'hello relay' })
+      given.llm([
+        callCapability('tasks.create', { projectId: 'proj-1', title: 'Documented' }),
+        callCapability('tasks.attachments.upload', { taskId: 'task-1', attachmentId: file.id }),
+        answer('Uploaded “spec.txt”.'),
+      ])
+
+      await when.message(alice, dm, 'Attach spec.txt to a new task')
+
+      then.replyTo(alice).equals('Uploaded “spec.txt”.')
+    })
+  })
+
+  test('teardown shuts the MCP pool down so no idle timer leaks', async () => {
+    const events = createScenarioEvents('pool-isolation')
+    const http = createStrictHttpDispatcher(events)
+    const server = createFakeMcpServer({ http, events, url: 'https://mcp.invalid/rpc' })
+    server.expectConnect()
+    const originalFetch = globalThis.fetch
+    Reflect.set(globalThis, 'fetch', http.fetch)
+    try {
+      await mcpPool.getOrCreateFromUser({ id: 's1', url: 'https://mcp.invalid/rpc', enabled: true })
+      expect(mcpPool.getServerInfos().length).toBeGreaterThan(0)
+
+      const scenarioFixtures = createScenarioFixtures()
+      await scenarioFixtures.teardown()
+      expect(mcpPool.getServerInfos().length).toBe(0)
+    } finally {
+      Reflect.set(globalThis, 'fetch', originalFetch)
+    }
   })
 })

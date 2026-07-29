@@ -7,13 +7,37 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { z } from 'zod'
 
+import { addAuthorizedGroup } from '../../../src/authorized-groups.js'
+import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import { handleIdentityRoutes } from '../../../src/debug/settings/identity-routes.js'
+import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../../../src/group-settings/registry.js'
+import { getIdentityMapping } from '../../../src/identity/mapping.js'
 import { setContextSettings } from '../../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../../src/instances/task-store.js'
 import { resolveSettingsPrincipal } from '../../../src/settings/principal.js'
 import { addUser } from '../../../src/users.js'
 import { mockLogger, seedTestPlatformInstance, setupTestDb } from '../../utils/test-helpers.js'
 import { authHeaders, establishSession, type SettingsSession } from './helpers.js'
+
+/** Seed a manageable group for the test principal and return its contextId. */
+function seedManageableGroup(): string {
+  const scopedGroupId = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'grp-1' })
+  upsertKnownGroupContext({
+    contextId: scopedGroupId,
+    provider: 'telegram',
+    displayName: 'Test Group',
+    parentName: null,
+  })
+  upsertGroupAdminObservation({
+    contextId: scopedGroupId,
+    provider: 'telegram',
+    userId: 'u-1',
+    username: 'u-1',
+    isAdmin: true,
+  })
+  addAuthorizedGroup(scopedGroupId, 'u-1')
+  return scopedGroupId
+}
 
 describe('settings identity routes', () => {
   let session: SettingsSession
@@ -40,6 +64,7 @@ describe('settings identity routes', () => {
       new URL('https://x/settings/api/identity'),
     )
     expect(put.status).toBe(200)
+    expect(getIdentityMapping('u-1', 'kaneo')?.providerUserId).toBe('kaneo-42')
 
     const get = await handleIdentityRoutes(
       new Request('https://x/settings/api/identity', { headers: authHeaders(session) }),
@@ -79,6 +104,7 @@ describe('settings identity routes', () => {
       new URL('https://x/settings/api/identity'),
     )
     expect(del.status).toBe(200)
+    expect(getIdentityMapping('u-1', 'kaneo')?.providerUserId).toBeNull()
 
     const get = await handleIdentityRoutes(
       new Request('https://x/settings/api/identity', { headers: authHeaders(session) }),
@@ -89,6 +115,24 @@ describe('settings identity routes', () => {
       .object({ mapping: z.object({ providerUserId: z.string().nullable() }).nullable() })
       .parse(await get.json())
     expect(body.mapping?.providerUserId).toBeNull()
+  })
+
+  test('PUT with a group contextId stores under the caller id, never the group scope', async () => {
+    const groupContextId = seedManageableGroup()
+    insertTaskInstance({ id: 'ti-group', type: 'youtrack', config: {}, status: 'active' })
+    setContextSettings({ contextId: groupContextId, taskInstanceId: 'ti-group', platformInstanceId: 'pi-1' })
+
+    const put = await handleIdentityRoutes(
+      new Request('https://x/settings/api/identity', {
+        method: 'PUT',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ providerUserId: 'yt-7', contextId: groupContextId }),
+      }),
+      new URL('https://x/settings/api/identity'),
+    )
+    expect(put.status).toBe(200)
+    expect(getIdentityMapping('u-1', 'youtrack')?.providerUserId).toBe('yt-7')
+    expect(getIdentityMapping(groupContextId, 'youtrack')).toBeNull()
   })
 
   test('PUT without CSRF is 403', async () => {

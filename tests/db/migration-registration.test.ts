@@ -23,8 +23,18 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('051_legacy_context_id_backfill')
   })
 
-  test('072_memory_profile_contaminated_at is the last migration', () => {
+  test('includes migration 070_message_metadata_history_search', () => {
+    const ids = MIGRATIONS.map((m) => m.id)
+    expect(ids).toContain('070_message_metadata_history_search')
+  })
+
+  test('includes migration 071_message_embeddings', () => {
+    const ids = MIGRATIONS.map((m) => m.id)
+    expect(ids).toContain('071_message_embeddings')
+  })
+
+  test('076_memory_profile_contaminated_at is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('072_memory_profile_contaminated_at')
+    expect(lastMigration.id).toBe('076_memory_profile_contaminated_at')
   })
 })

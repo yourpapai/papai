@@ -188,17 +188,18 @@ export const messageMetadata = sqliteTable(
     authorUsername: text('author_username'),
     text: text('text'),
     replyToMessageId: text('reply_to_message_id'),
+    groupContextId: text('group_context_id'),
     timestamp: integer('timestamp').notNull(),
-    expiresAt: integer('expires_at').notNull(),
   },
   (table) => [
     primaryKey({ columns: [table.contextId, table.messageId] }),
-    index('idx_message_metadata_expires_at').on(table.expiresAt),
+    index('idx_message_metadata_group_ctx').on(table.groupContextId),
     index('idx_message_metadata_reply_to').on(table.contextId, table.replyToMessageId),
   ],
 )
 
 export { memos, memoLinks } from './memos-schema.js'
+export { messageEmbeddings } from './message-embeddings-schema.js'
 export const userIdentityMappings = sqliteTable(
   'user_identity_mappings',
   {

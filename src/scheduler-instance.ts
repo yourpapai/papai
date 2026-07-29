@@ -15,8 +15,7 @@ import { sweepDirtyContexts } from './long-term-memory/capture-sweep.js'
 import { runEmbeddingBackfill } from './long-term-memory/embedding-backfill.js'
 import { runMemoryMaintenance } from './long-term-memory/maintenance.js'
 import { sweepPromotions } from './long-term-memory/promotion-sweep.js'
-import { sweepExpiredMessages } from './message-cache/cache.js'
-import { cleanupExpiredMessages } from './message-cache/persistence.js'
+import { runMessageEmbeddingSweep } from './message-embedding-sweep.js'
 import { cleanupExpiredQueues } from './message-queue/index.js'
 import { createScheduler } from './utils/scheduler.js'
 import type { ErrorEvent, FatalErrorEvent } from './utils/scheduler.types.js'
@@ -31,30 +30,19 @@ export const scheduler = createScheduler({
 
 export const DEFAULT_SCHEDULER_TASK_NAMES = [
   'user-cache-cleanup',
-  'message-cache-sweep',
-  'message-cleanup',
   'message-queue-cleanup',
   'staged-files-purge',
   'long-term-memory-maintenance',
   'memory-capture-sweep',
   'memory-promotion-sweep',
   'memory-embedding-backfill',
+  'message-embedding-sweep',
 ] as const
 
 function registerImmediateDefaultTasks(): void {
   scheduler.register('user-cache-cleanup', {
     interval: 5 * 60 * 1000,
     handler: cleanupExpiredCaches,
-    options: { immediate: true },
-  })
-  scheduler.register('message-cache-sweep', {
-    interval: 24 * 60 * 60 * 1000,
-    handler: sweepExpiredMessages,
-    options: { immediate: true },
-  })
-  scheduler.register('message-cleanup', {
-    interval: 60 * 60 * 1000,
-    handler: cleanupExpiredMessages,
     options: { immediate: true },
   })
   scheduler.register('message-queue-cleanup', {
@@ -97,6 +85,13 @@ function registerDeferredDefaultTasks(): void {
     interval: 30 * 60 * 1000,
     handler: () => {
       void sweepPromotions()
+    },
+    options: { immediate: false },
+  })
+  scheduler.register('message-embedding-sweep', {
+    interval: 5 * 60 * 1000,
+    handler: () => {
+      void runMessageEmbeddingSweep()
     },
     options: { immediate: false },
   })

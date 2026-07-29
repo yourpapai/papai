@@ -10,7 +10,7 @@ import type { ExecutionMetadata, ScheduledPrompt } from './types.js'
 
 const log = logger.child({ scope: 'deferred:poller:scheduled' })
 
-export function mergeExecutionMetadata(prompts: ScheduledPrompt[]): ExecutionMetadata {
+export function mergeExecutionMetadata(prompts: Array<{ executionMetadata: ExecutionMetadata }>): ExecutionMetadata {
   const briefs: string[] = []
   const snapshots: string[] = []
 

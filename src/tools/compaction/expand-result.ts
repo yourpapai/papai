@@ -8,7 +8,7 @@ import { z } from 'zod'
 
 import { logger } from '../../logger.js'
 import type { ToolFailureResult } from '../../tool-failure.js'
-import { EXPAND_DEFAULT_LIMIT_BYTES } from './constants.js'
+import { EXPAND_DEFAULT_LIMIT_CHARS, EXPAND_MAX_OFFSET_CHARS } from './constants.js'
 import { getResultPage } from './result-store.js'
 
 const log = logger.child({ scope: 'tool:expand-result' })
@@ -19,19 +19,25 @@ export function makeExpandResultTool(contextId: string): Tool {
       'Page through the full raw content of a previously compacted tool result. Pass the handle from a _compacted result. Use offset/limit to read in windows.',
     inputSchema: z.object({
       handle: z.string().min(1).describe('The handle from the compacted result envelope, e.g. res_ab12'),
-      offset: z.number().int().min(0).default(0).describe('Character offset to start from'),
+      offset: z
+        .number()
+        .int()
+        .min(0)
+        .max(EXPAND_MAX_OFFSET_CHARS)
+        .default(0)
+        .describe('Character offset to start from'),
       limit: z
         .number()
         .int()
         .min(1)
         .max(16_000)
-        .default(EXPAND_DEFAULT_LIMIT_BYTES)
+        .default(EXPAND_DEFAULT_LIMIT_CHARS)
         .describe('Maximum characters to return'),
     }),
     execute: ({ handle, offset, limit }, opts) => {
       // getToolExecutor and some SDK paths bypass schema parsing, so defaults are applied here too
       const resolvedOffset = offset ?? 0
-      const resolvedLimit = limit ?? EXPAND_DEFAULT_LIMIT_BYTES
+      const resolvedLimit = limit ?? EXPAND_DEFAULT_LIMIT_CHARS
       const page = getResultPage(contextId, handle, resolvedOffset, resolvedLimit)
       if (!page.found) {
         log.warn({ contextId, handle }, 'expand_result handle not found (expired or evicted)')

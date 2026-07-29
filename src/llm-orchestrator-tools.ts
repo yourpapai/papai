@@ -19,7 +19,7 @@ import { logger } from './logger.js'
 import type { TaskProvider } from './providers/types.js'
 import { toolCapabilityCatalog } from './runtime/capability-catalog.js'
 import { applyResultCompaction } from './tools/compaction/wrap-compaction.js'
-import { registerOfferedCoreToolCapabilities } from './tools/core-capabilities.js'
+import { registerMcpToolCapabilities, registerOfferedCoreToolCapabilities } from './tools/core-capabilities.js'
 import { getToolRetriever } from './tools/disclosure/embedding-tool-retriever.js'
 import type { DisclosureSession } from './tools/disclosure/registry.js'
 import { maybeApplyDisclosure } from './tools/disclosure/wire.js'
@@ -220,6 +220,7 @@ const buildFullToolSet = async (
   const gatedTools =
     pi === undefined ? prefTools : applyWhoMayUseFilter(prefTools, resolveCodingGuardrails(pi).whoMayUse, chatUserId)
   registerOfferedCoreToolCapabilities(gatedTools, toolCapabilityCatalog)
+  registerMcpToolCapabilities(gatedTools, toolCapabilityCatalog)
   const { tools: disclosedTools, disclosure } = applyCompactionAndDisclosure(
     gatedTools,
     contextId,
@@ -228,6 +229,7 @@ const buildFullToolSet = async (
     userText,
     deps,
   )
+  toolCapabilityCatalog.register('meta.search-tools', 'search_tools')
   log.debug(
     { contextId, toolCount: Object.keys(disclosedTools).length, gated: gatedTools !== prefTools },
     'Prepared tool set for LLM invocation',

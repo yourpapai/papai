@@ -64,6 +64,19 @@ function makeOnInteractionCreateRouter(
   }
 }
 
+function makeOnEventListenerCollector(
+  collectors: Map<string, GenericListener[]>,
+): (event: string, listener: GenericListener) => void {
+  return (event: string, listener: GenericListener): void => {
+    const bucket = collectors.get(event)
+    if (bucket === undefined) {
+      collectors.set(event, [listener])
+    } else {
+      bucket.push(listener)
+    }
+  }
+}
+
 describe('DiscordChatProvider', () => {
   beforeEach(async () => {
     mockLogger()
@@ -917,6 +930,219 @@ describe('DiscordChatProvider', () => {
 
       expect(msg.text).toBe('test:btn')
       expect(msg.user.id).toBe('u5')
+    })
+
+    test('registers a messageUpdate listener alongside messageCreate', async () => {
+      const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
+
+      const registeredEvents: string[] = []
+      const readyListeners: ReadyListener[] = []
+
+      const fakeClient = {
+        destroy: (): Promise<void> => Promise.resolve(),
+        user: null,
+        on: (event: string, _listener: GenericListener): void => {
+          registeredEvents.push(event)
+        },
+        once: makeOnceReadyRouter(readyListeners),
+        login: (_token: string): Promise<string> => Promise.resolve('fake-token-123'),
+      }
+
+      const factory: DiscordClientFactory = () => fakeClient
+      const provider = new DiscordChatProvider({
+        clientFactory: factory,
+        token: 'fake-discord-token',
+        platformInstanceId: TEST_PLATFORM_ID,
+      })
+      const startPromise = provider.start()
+      await Promise.resolve()
+      readyListeners[0]!({ user: { id: 'bot-42', username: 'testbot' } })
+      await startPromise
+
+      expect(registeredEvents).toContain('messageUpdate')
+    })
+
+    test('messageUpdate delivers edited message to onMessageEdit with editedAt and stable messageId', async () => {
+      const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
+
+      const listeners = new Map<string, GenericListener[]>()
+      const readyListeners: ReadyListener[] = []
+
+      const fakeClient = {
+        destroy: (): Promise<void> => Promise.resolve(),
+        user: { id: 'bot_id', username: 'testbot' },
+        on: makeOnEventListenerCollector(listeners),
+        once: makeOnceReadyRouter(readyListeners),
+        login: (_token: string): Promise<string> => Promise.resolve('fake-token-123'),
+      }
+
+      const factory: DiscordClientFactory = () => fakeClient
+      const provider = new DiscordChatProvider({
+        clientFactory: factory,
+        token: 'fake-discord-token',
+        platformInstanceId: TEST_PLATFORM_ID,
+      })
+
+      let resolveEdit!: (msg: IncomingMessage) => void
+      const editReceived = new Promise<IncomingMessage>((res) => {
+        resolveEdit = res
+      })
+      provider.onMessageEdit((msg): Promise<void> => {
+        resolveEdit(msg)
+        return Promise.resolve()
+      })
+
+      const startPromise = provider.start()
+      await Promise.resolve()
+      readyListeners[0]!({ user: { id: 'bot_id', username: 'testbot' } })
+      await startPromise
+
+      const updateListeners = listeners.get('messageUpdate')!
+      expect(updateListeners).toHaveLength(1)
+
+      const fakeOld = {
+        id: 'msg-edit-1',
+        author: { id: 'u-edit', username: 'editor', bot: false },
+        content: 'original text',
+        channel: {
+          id: 'dm-chan-edit',
+          type: 1,
+          send: (): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> =>
+            Promise.resolve({
+              id: 'o',
+              edit: (): Promise<void> => Promise.resolve(),
+              delete: (): Promise<void> => Promise.resolve(),
+            }),
+          sendTyping: (): Promise<void> => Promise.resolve(),
+        },
+        mentions: { has: (_id: string): boolean => false },
+        reference: null,
+        type: 0,
+      }
+      const fakeNew = { ...fakeOld, content: 'edited text' }
+
+      updateListeners[0]!(fakeOld, fakeNew)
+      const msg = await editReceived
+
+      expect(msg.text).toBe('edited text')
+      expect(msg.messageId).toBe('msg-edit-1')
+      expect(typeof msg.editedAt).toBe('number')
+      expect(msg.editedAt).toBeGreaterThan(0)
+    })
+
+    test('messageUpdate ignores edits authored by bots', async () => {
+      const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
+
+      const listeners = new Map<string, GenericListener[]>()
+      const readyListeners: ReadyListener[] = []
+
+      const fakeClient = {
+        destroy: (): Promise<void> => Promise.resolve(),
+        user: { id: 'bot_id', username: 'testbot' },
+        on: makeOnEventListenerCollector(listeners),
+        once: makeOnceReadyRouter(readyListeners),
+        login: (_token: string): Promise<string> => Promise.resolve('fake-token-123'),
+      }
+
+      const factory: DiscordClientFactory = () => fakeClient
+      const provider = new DiscordChatProvider({
+        clientFactory: factory,
+        token: 'fake-discord-token',
+        platformInstanceId: TEST_PLATFORM_ID,
+      })
+
+      const edits: IncomingMessage[] = []
+      provider.onMessageEdit((msg): Promise<void> => {
+        edits.push(msg)
+        return Promise.resolve()
+      })
+
+      const startPromise = provider.start()
+      await Promise.resolve()
+      readyListeners[0]!({ user: { id: 'bot_id', username: 'testbot' } })
+      await startPromise
+
+      const updateListeners = listeners.get('messageUpdate')!
+      expect(updateListeners).toHaveLength(1)
+
+      const botEdit = {
+        id: 'msg-bot-edit',
+        author: { id: 'bot_id', username: 'testbot', bot: true },
+        content: 'edited status',
+        channel: {
+          id: 'chan-bot',
+          type: 0,
+          send: (): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> =>
+            Promise.resolve({
+              id: 'o',
+              edit: (): Promise<void> => Promise.resolve(),
+              delete: (): Promise<void> => Promise.resolve(),
+            }),
+          sendTyping: (): Promise<void> => Promise.resolve(),
+        },
+        mentions: { has: (): boolean => false },
+        reference: null,
+        type: 0,
+      }
+
+      updateListeners[0]!(botEdit, botEdit)
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0)
+      })
+
+      expect(edits).toHaveLength(0)
+    })
+
+    test('messageUpdate is a no-op when no edit handler is registered', async () => {
+      const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
+
+      const listeners = new Map<string, GenericListener[]>()
+      const readyListeners: ReadyListener[] = []
+
+      const fakeClient = {
+        destroy: (): Promise<void> => Promise.resolve(),
+        user: { id: 'bot_id', username: 'testbot' },
+        on: makeOnEventListenerCollector(listeners),
+        once: makeOnceReadyRouter(readyListeners),
+        login: (_token: string): Promise<string> => Promise.resolve('fake-token-123'),
+      }
+
+      const factory: DiscordClientFactory = () => fakeClient
+      const provider = new DiscordChatProvider({
+        clientFactory: factory,
+        token: 'fake-discord-token',
+        platformInstanceId: TEST_PLATFORM_ID,
+      })
+
+      const startPromise = provider.start()
+      await Promise.resolve()
+      readyListeners[0]!({ user: { id: 'bot_id', username: 'testbot' } })
+      await startPromise
+
+      const updateListeners = listeners.get('messageUpdate')!
+      expect(updateListeners).toHaveLength(1)
+
+      const userEdit = {
+        id: 'msg-no-handler',
+        author: { id: 'u-edit', username: 'editor', bot: false },
+        content: 'edited text',
+        channel: {
+          id: 'dm-no-handler',
+          type: 1,
+          send: (): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> =>
+            Promise.resolve({
+              id: 'o',
+              edit: (): Promise<void> => Promise.resolve(),
+              delete: (): Promise<void> => Promise.resolve(),
+            }),
+          sendTyping: (): Promise<void> => Promise.resolve(),
+        },
+        mentions: { has: (): boolean => false },
+        reference: null,
+        type: 0,
+      }
+
+      await expect(updateListeners[0]!(userEdit, userEdit)).toBeUndefined()
     })
   })
 

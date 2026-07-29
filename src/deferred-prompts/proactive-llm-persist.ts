@@ -7,6 +7,7 @@ import type { ModelMessage } from 'ai'
 
 import { runTrimInBackground, shouldTriggerTrim } from '../conversation.js'
 import { appendHistory } from '../history.js'
+import { collectTurnMessages, type TurnMessagesResult } from '../llm-orchestrator-messages.js'
 import { logger } from '../logger.js'
 import { runMemoryExtractionInBackground } from '../long-term-memory/runner.js'
 import { extractFactToolCalls, extractFactToolResults } from '../memory-tool-steps.js'
@@ -24,8 +25,7 @@ export const toolCallCount = (result: unknown): number | undefined => {
   return toolCalls.length
 }
 
-type LlmResult = {
-  finalStep: { response: { messages: ModelMessage[] } }
+type LlmResult = TurnMessagesResult & {
   text: string
   toolCalls: unknown[] | undefined
 }
@@ -47,7 +47,7 @@ export function persistProactiveResults(
       'Facts persisted from proactive results',
     )
 
-  const msgs = result.finalStep.response.messages
+  const msgs = collectTurnMessages(result)
   if (msgs.length > 0) {
     appendHistory(storageContextId, msgs)
     const updated = [...history, ...msgs]

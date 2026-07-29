@@ -27,6 +27,10 @@ export const CONTEXT_OWNED_COLUMNS: readonly ContextOwnedColumn[] = [
   { table: 'message_metadata', column: 'context_id', conflictColumns: ['message_id'], threadScoped: true },
   { table: 'user_instructions', column: 'context_id', conflictColumns: null, threadScoped: true },
   { table: 'memos', column: 'user_id', conflictColumns: null, threadScoped: true },
+  // Historical: migrations 043/051 rewrote legacy context-keyed identity rows into
+  // scoped form. The live keyspace is the raw platform user id ('user' scope, see
+  // src/chat/context-scope.ts); migration 067 deletes the orphaned scoped rows. Do not
+  // add user-scoped tables to this list.
   { table: 'user_identity_mappings', column: 'context_id', conflictColumns: ['provider_name'], threadScoped: true },
   { table: 'known_group_contexts', column: 'context_id', conflictColumns: ['provider'], threadScoped: false },
   {
