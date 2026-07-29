@@ -24,6 +24,7 @@ Spec: `docs/superpowers/specs/2026-07-29-memory-gate0-acceptance-harness-design.
 - **Never** add a lint-disable or type-ignore comment — a hook blocks the commit. Fix the underlying issue.
 - Every source file starts with the four-line BUSL SPDX header (copy it from any neighbouring file); a `license-headers` check runs on commit.
 - **Nothing under `src/` changes.** This plan adds test files, test data, and one script.
+- **No module reachable from `scripts/memory-acceptance.ts` may import a `*.test.ts` file.** The script runs under plain `bun run`, where calling `describe()`/`test()` outside the test runner throws. Each criterion's `CASES` table therefore lives in a plain `<criterion>.cases.ts` sibling that both its `.test.ts` and `coverage.ts` import.
 - Corpus data is **synthetic only**. Never add real conversation content.
 - `oxlint` forbids conditionals inside `test()` bodies — narrow optionals in helpers declared outside the test, as `durable-erasure.golden.test.ts` does.
 - Scope types are exactly `'personal' | 'group'` (`MemoryScopeType`). There is no `thread` scope type; thread isolation is expressed through the `threadContextId` field.
@@ -689,14 +690,34 @@ git commit -m "test(memory): add the Gate 0 synthetic acceptance corpus"
 
 **Files:**
 
+- Create: `tests/long-term-memory/acceptance/scope-isolation.cases.ts`
 - Create: `tests/long-term-memory/acceptance/scope-isolation.test.ts`
 
 **Interfaces:**
 
 - Consumes: `PERSONAL`, `OTHER_PERSONAL`, `GROUP`, `ALL_STATUSES`, `seedMultilingual`, `seedMultiParty` from Task 2.
-- Produces: `export const CASES: Partial<Record<ShapeKey, string>>` — the shape cells this suite covers. Task 8 cross-checks it.
+- Produces: `CASES: Partial<Record<ShapeKey, string>>` from `scope-isolation.cases.ts` — the shape cells this suite covers. Task 8 cross-checks it.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the cases table**
+
+Create `tests/long-term-memory/acceptance/scope-isolation.cases.ts`:
+
+```ts
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import type { ShapeKey } from './registry.js'
+
+/** Declared cells for the scope-isolation criterion. Read by the suite AND by coverage.ts. */
+export const CASES: Partial<Record<ShapeKey, string>> = {
+  multilingual: 'bilingual records in one personal scope never surface in another',
+  'multi-party': 'personal, group, and thread-scoped records stay in their own scope',
+}
+```
+
+- [ ] **Step 2: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -709,13 +730,8 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { searchLexical } from '../../../src/long-term-memory/lexical-search.js'
 import { listMemoryRecords } from '../../../src/long-term-memory/store.js'
 import { setupTestDb } from '../../utils/test-helpers.js'
+import { CASES } from './scope-isolation.cases.js'
 import { ALL_STATUSES, GROUP, OTHER_PERSONAL, PERSONAL, seedMultiParty, seedMultilingual } from './corpus.js'
-import type { ShapeKey } from './registry.js'
-
-export const CASES: Partial<Record<ShapeKey, string>> = {
-  multilingual: 'bilingual records in one personal scope never surface in another',
-  'multi-party': 'personal, group, and thread-scoped records stay in their own scope',
-}
 
 const lexicalIds = (scope: typeof PERSONAL, query: string): readonly string[] =>
   searchLexical({ ...scope, query, statuses: ALL_STATUSES, limit: 8 }).map((r) => r.id)
@@ -765,20 +781,19 @@ describe('acceptance: scope-isolation', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Step 3: Run the test and confirm the assertions bite**
 
 Run: `bun test tests/long-term-memory/acceptance/scope-isolation.test.ts`
-Expected: FAIL initially only if the corpus is missing; if Task 2 is complete this suite should pass on first run. If it passes immediately, confirm by temporarily changing one `not.toContain` to `toContain`, observing the failure, then reverting.
+Expected: PASS, 3 tests. (The behaviour under test already exists; this suite registers it as a contract term.)
 
-- [ ] **Step 3: Run the test to verify it passes**
-
-Run: `bun test tests/long-term-memory/acceptance/scope-isolation.test.ts`
-Expected: PASS, 3 tests.
+Because it passes on first run, prove it is not vacuous: temporarily change
+`expect(listedIds(PERSONAL)).not.toContain('acc-mp-other')` to `.toContain(...)`, re-run, observe
+the failure, then revert and re-run to green.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add tests/long-term-memory/acceptance/scope-isolation.test.ts
+git add tests/long-term-memory/acceptance/scope-isolation.cases.ts tests/long-term-memory/acceptance/scope-isolation.test.ts
 git commit -m "test(memory): assert the Gate 0 scope-isolation criterion"
 ```
 
@@ -790,14 +805,34 @@ Restates the guarantee `durable-erasure.golden.test.ts` already proves, as a reg
 
 **Files:**
 
+- Create: `tests/long-term-memory/acceptance/erasure.cases.ts`
 - Create: `tests/long-term-memory/acceptance/erasure.test.ts`
 
 **Interfaces:**
 
 - Consumes: `PERSONAL`, `ALL_STATUSES`, `VEC`, `VERSION`, `BILINGUAL`, `acceptanceRecord`, `seedAdversarialErasure` from Task 2.
-- Produces: `CASES` covering `multilingual` and `adversarial-erasure`.
+- Produces: `CASES` from `erasure.cases.ts` covering `multilingual` and `adversarial-erasure`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the cases table**
+
+Create `tests/long-term-memory/acceptance/erasure.cases.ts`:
+
+```ts
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import type { ShapeKey } from './registry.js'
+
+/** Declared cells for the erasure criterion. Read by the suite AND by coverage.ts. */
+export const CASES: Partial<Record<ShapeKey, string>> = {
+  multilingual: 'a purged bilingual record is unreachable through every channel',
+  'adversarial-erasure': 'purging sweeps a provisional twin and refuses recapture of the same content',
+}
+```
+
+- [ ] **Step 2: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -813,13 +848,8 @@ import { rankRecordsBySimilarity } from '../../../src/long-term-memory/semantic-
 import { listMemoryRecords, saveMemoryRecord } from '../../../src/long-term-memory/store.js'
 import { isContentTombstoned } from '../../../src/long-term-memory/tombstone.js'
 import { setupTestDb } from '../../utils/test-helpers.js'
+import { CASES } from './erasure.cases.js'
 import { ALL_STATUSES, BILINGUAL, PERSONAL, VEC, VERSION, acceptanceRecord, seedAdversarialErasure } from './corpus.js'
-import type { ShapeKey } from './registry.js'
-
-export const CASES: Partial<Record<ShapeKey, string>> = {
-  multilingual: 'a purged bilingual record is unreachable through every channel',
-  'adversarial-erasure': 'purging sweeps a provisional twin and refuses recapture of the same content',
-}
 
 const PURGE_TIME = '2026-07-24T00:00:00.000Z'
 
@@ -881,15 +911,15 @@ describe('acceptance: erasure', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test to verify it fails, then passes**
+- [ ] **Step 3: Run the test**
 
 Run: `bun test tests/long-term-memory/acceptance/erasure.test.ts`
 Expected: PASS, 3 tests. If any assertion fails, that is a genuine erasure regression — stop and report it rather than weakening the assertion.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add tests/long-term-memory/acceptance/erasure.test.ts
+git add tests/long-term-memory/acceptance/erasure.cases.ts tests/long-term-memory/acceptance/erasure.test.ts
 git commit -m "test(memory): assert the Gate 0 erasure criterion"
 ```
 
@@ -899,14 +929,34 @@ git commit -m "test(memory): assert the Gate 0 erasure criterion"
 
 **Files:**
 
+- Create: `tests/long-term-memory/acceptance/provenance.cases.ts`
 - Create: `tests/long-term-memory/acceptance/provenance.test.ts`
 
 **Interfaces:**
 
 - Consumes: `PERSONAL`, `ALL_STATUSES`, `seedToolResult`, `seedMultilingual` from Task 2.
-- Produces: `CASES` covering `tool-result` and `multilingual`.
+- Produces: `CASES` from `provenance.cases.ts` covering `tool-result` and `multilingual`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the cases table**
+
+Create `tests/long-term-memory/acceptance/provenance.cases.ts`:
+
+```ts
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import type { ShapeKey } from './registry.js'
+
+/** Declared cells for the provenance criterion. Read by the suite AND by coverage.ts. */
+export const CASES: Partial<Record<ShapeKey, string>> = {
+  'tool-result': 'a record captured from a tool result carries its source and resolvable evidence',
+  multilingual: 'every recalled bilingual record resolves to a stored record with a source',
+}
+```
+
+- [ ] **Step 2: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -920,13 +970,8 @@ import { searchLexical } from '../../../src/long-term-memory/lexical-search.js'
 import { listMemoryRecords } from '../../../src/long-term-memory/store.js'
 import type { MemoryRecord } from '../../../src/long-term-memory/types.js'
 import { setupTestDb } from '../../utils/test-helpers.js'
+import { CASES } from './provenance.cases.js'
 import { ALL_STATUSES, PERSONAL, seedMultilingual, seedToolResult } from './corpus.js'
-import type { ShapeKey } from './registry.js'
-
-export const CASES: Partial<Record<ShapeKey, string>> = {
-  'tool-result': 'a record captured from a tool result carries its source and resolvable evidence',
-  multilingual: 'every recalled bilingual record resolves to a stored record with a source',
-}
 
 /** Narrows outside the test body — oxlint forbids conditionals inside `test()`. */
 const requireRecord = (record: MemoryRecord | undefined, id: string): MemoryRecord => {
@@ -974,15 +1019,15 @@ describe('acceptance: provenance', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test**
+- [ ] **Step 3: Run the test**
 
 Run: `bun test tests/long-term-memory/acceptance/provenance.test.ts`
 Expected: PASS, 2 tests.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add tests/long-term-memory/acceptance/provenance.test.ts
+git add tests/long-term-memory/acceptance/provenance.cases.ts tests/long-term-memory/acceptance/provenance.test.ts
 git commit -m "test(memory): assert the Gate 0 provenance criterion"
 ```
 
@@ -992,14 +1037,34 @@ git commit -m "test(memory): assert the Gate 0 provenance criterion"
 
 **Files:**
 
+- Create: `tests/long-term-memory/acceptance/capture-idempotency.cases.ts`
 - Create: `tests/long-term-memory/acceptance/capture-idempotency.test.ts`
 
 **Interfaces:**
 
 - Consumes: `PERSONAL`, `ALL_STATUSES`, `seedDuplicateOutOfOrder`, `seedContradiction` from Task 2; `contentHash`, `normalizeForHash` from `src/long-term-memory/tombstone.js`.
-- Produces: `CASES` covering `duplicate-out-of-order` and `contradiction`.
+- Produces: `CASES` from `capture-idempotency.cases.ts` covering `duplicate-out-of-order` and `contradiction`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the cases table**
+
+Create `tests/long-term-memory/acceptance/capture-idempotency.cases.ts`:
+
+```ts
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import type { ShapeKey } from './registry.js'
+
+/** Declared cells for the capture-idempotency criterion. Read by the suite AND by coverage.ts. */
+export const CASES: Partial<Record<ShapeKey, string>> = {
+  'duplicate-out-of-order': 'identical content hashes identically regardless of arrival order or spacing',
+  contradiction: 'a superseded record is retained as contradicted while its replacement is active',
+}
+```
+
+- [ ] **Step 2: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -1012,13 +1077,8 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { listMemoryRecords } from '../../../src/long-term-memory/store.js'
 import { contentHash, normalizeForHash } from '../../../src/long-term-memory/tombstone.js'
 import { setupTestDb } from '../../utils/test-helpers.js'
+import { CASES } from './capture-idempotency.cases.js'
 import { PERSONAL, seedContradiction, seedDuplicateOutOfOrder } from './corpus.js'
-import type { ShapeKey } from './registry.js'
-
-export const CASES: Partial<Record<ShapeKey, string>> = {
-  'duplicate-out-of-order': 'identical content hashes identically regardless of arrival order or spacing',
-  contradiction: 'a superseded record is retained as contradicted while its replacement is active',
-}
 
 describe('acceptance: capture-idempotency', () => {
   beforeEach(async () => {
@@ -1057,15 +1117,15 @@ describe('acceptance: capture-idempotency', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test**
+- [ ] **Step 3: Run the test**
 
 Run: `bun test tests/long-term-memory/acceptance/capture-idempotency.test.ts`
 Expected: PASS, 2 tests.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add tests/long-term-memory/acceptance/capture-idempotency.test.ts
+git add tests/long-term-memory/acceptance/capture-idempotency.cases.ts tests/long-term-memory/acceptance/capture-idempotency.test.ts
 git commit -m "test(memory): assert the Gate 0 capture-idempotency criterion"
 ```
 
@@ -1075,14 +1135,34 @@ git commit -m "test(memory): assert the Gate 0 capture-idempotency criterion"
 
 **Files:**
 
+- Create: `tests/long-term-memory/acceptance/reproducibility.cases.ts`
 - Create: `tests/long-term-memory/acceptance/reproducibility.test.ts`
 
 **Interfaces:**
 
 - Consumes: `PERSONAL`, `ALL_STATUSES`, `VEC`, `VERSION`, `seedMultilingual`, `seedMissingEmbedding` from Task 2.
-- Produces: `CASES` covering `missing-embedding` and `multilingual`.
+- Produces: `CASES` from `reproducibility.cases.ts` covering `missing-embedding` and `multilingual`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the cases table**
+
+Create `tests/long-term-memory/acceptance/reproducibility.cases.ts`:
+
+```ts
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import type { ShapeKey } from './registry.js'
+
+/** Declared cells for the reproducibility criterion. Read by the suite AND by coverage.ts. */
+export const CASES: Partial<Record<ShapeKey, string>> = {
+  multilingual: 'repeated identical queries return identically ordered results',
+  'missing-embedding': 'a record without embedding identity stays lexically recallable and out of the dense channel',
+}
+```
+
+- [ ] **Step 2: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -1095,13 +1175,8 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { searchLexical } from '../../../src/long-term-memory/lexical-search.js'
 import { rankRecordsBySimilarity } from '../../../src/long-term-memory/semantic-search.js'
 import { setupTestDb } from '../../utils/test-helpers.js'
+import { CASES } from './reproducibility.cases.js'
 import { ALL_STATUSES, PERSONAL, VEC, VERSION, seedMissingEmbedding, seedMultilingual } from './corpus.js'
-import type { ShapeKey } from './registry.js'
-
-export const CASES: Partial<Record<ShapeKey, string>> = {
-  multilingual: 'repeated identical queries return identically ordered results',
-  'missing-embedding': 'a record without embedding identity stays lexically recallable and out of the dense channel',
-}
 
 const lexicalIds = (query: string): readonly string[] =>
   searchLexical({ ...PERSONAL, query, statuses: ALL_STATUSES, limit: 8 }).map((r) => r.id)
@@ -1144,15 +1219,15 @@ describe('acceptance: reproducibility', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test**
+- [ ] **Step 3: Run the test**
 
 Run: `bun test tests/long-term-memory/acceptance/reproducibility.test.ts`
 Expected: PASS, 2 tests.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add tests/long-term-memory/acceptance/reproducibility.test.ts
+git add tests/long-term-memory/acceptance/reproducibility.cases.ts tests/long-term-memory/acceptance/reproducibility.test.ts
 git commit -m "test(memory): assert the Gate 0 reproducibility criterion"
 ```
 
@@ -1183,18 +1258,21 @@ Create `tests/long-term-memory/acceptance/coverage.ts`:
 // See LICENSE in the project root for details.
 
 /**
- * Aggregates each criterion suite's exported CASES table so the registry's declared
- * criterion x scenario cells can be cross-checked against what the suites actually run.
- * Importing the suites here is deliberate: the coupling is a real import that typechecks,
- * rather than a naming convention that rots.
+ * Aggregates each criterion's CASES table so the registry's declared criterion x scenario
+ * cells can be cross-checked against what the suites actually run. The coupling is a real
+ * import that typechecks, rather than a naming convention that rots.
+ *
+ * These import the `.cases.ts` siblings, never the `.test.ts` suites: this module is reachable
+ * from `scripts/memory-acceptance.ts`, which runs outside the test runner where `describe()`
+ * throws.
  */
 
-import { CASES as captureIdempotency } from './capture-idempotency.test.js'
-import { CASES as erasure } from './erasure.test.js'
-import { CASES as provenance } from './provenance.test.js'
+import { CASES as captureIdempotency } from './capture-idempotency.cases.js'
+import { CASES as erasure } from './erasure.cases.js'
+import { CASES as provenance } from './provenance.cases.js'
 import type { CriterionKey, ShapeKey } from './registry.js'
-import { CASES as reproducibility } from './reproducibility.test.js'
-import { CASES as scopeIsolation } from './scope-isolation.test.js'
+import { CASES as reproducibility } from './reproducibility.cases.js'
+import { CASES as scopeIsolation } from './scope-isolation.cases.js'
 
 export const CASE_TABLES: Readonly<Partial<Record<CriterionKey, Partial<Record<ShapeKey, string>>>>> = {
   'scope-isolation': scopeIsolation,
