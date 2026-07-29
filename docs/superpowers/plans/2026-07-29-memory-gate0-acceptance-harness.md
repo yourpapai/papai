@@ -26,7 +26,7 @@ Spec: `docs/superpowers/specs/2026-07-29-memory-gate0-acceptance-harness-design.
 - **Nothing under `src/` changes.** This plan adds test files, test data, and one script.
 - **No module reachable from `scripts/memory-acceptance.ts` may import a `*.test.ts` file.** The script runs under plain `bun run`, where calling `describe()`/`test()` outside the test runner throws. Each criterion's `CASES` table therefore lives in a plain `<criterion>.cases.ts` sibling that both its `.test.ts` and `coverage.ts` import.
 - Corpus data is **synthetic only**. Never add real conversation content.
-- `oxlint` forbids conditionals inside `test()` bodies — narrow optionals in helpers declared outside the test, as `durable-erasure.golden.test.ts` does.
+- `oxlint`'s `vitest/no-conditional-in-test` forbids conditionals inside `test()` bodies. Verified empirically against this repo's config: **`??` IS flagged; `?.` is NOT.** So optional chaining is fine inside a test, but any nullish-coalescing default must move into a helper declared at module scope, as `durable-erasure.golden.test.ts` does. Never reach for a lint-disable.
 - Scope types are exactly `'personal' | 'group'` (`MemoryScopeType`). There is no `thread` scope type; thread isolation is expressed through the `threadContextId` field.
 - `MemoryEvidence` fields are exactly `messageIds`, `actorIds`, `timestamps`, `contextId`, `threads`, `promotionRejectedAt`. Do not invent evidence fields.
 - `MemorySource` values are exactly `'background' | 'explicit' | 'tool_result' | 'admin_edit'`.
@@ -397,6 +397,7 @@ Create `tests/long-term-memory/acceptance/corpus.test.ts`:
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { listMemoryRecords } from '../../../src/long-term-memory/store.js'
+import type { MemoryRecord } from '../../../src/long-term-memory/types.js'
 import { setupTestDb } from '../../utils/test-helpers.js'
 import {
   ALL_STATUSES,
@@ -414,6 +415,9 @@ import {
 
 const idsIn = (scope: typeof PERSONAL): readonly string[] =>
   ALL_STATUSES.flatMap((status) => listMemoryRecords({ ...scope, status }).map((r) => r.id))
+
+/** `??` is banned inside `test()` bodies, so the null-normalizing lives here. */
+const embeddingIdentity = (record: MemoryRecord | undefined): string | null => record?.embeddingVersion ?? null
 
 describe('acceptance corpus', () => {
   beforeEach(async () => {
@@ -442,7 +446,7 @@ describe('acceptance corpus', () => {
     expect(ids).toHaveLength(1)
     const written = listMemoryRecords({ ...PERSONAL, status: 'active' }).find((r) => r.id === ids[0])
     expect(written?.source).toBe('tool_result')
-    expect(written?.evidence.messageIds ?? []).not.toHaveLength(0)
+    expect(written?.evidence.messageIds).toEqual(['msg-tool-1'])
   })
 
   test('contradiction seeds a superseded record and its replacement', () => {
@@ -456,7 +460,7 @@ describe('acceptance corpus', () => {
     const ids = seedMissingEmbedding(PERSONAL)
     expect(ids).toHaveLength(1)
     const written = listMemoryRecords({ ...PERSONAL, status: 'active' }).find((r) => r.id === ids[0])
-    expect(written?.embeddingVersion ?? null).toBeNull()
+    expect(embeddingIdentity(written)).toBeNull()
   })
 
   test('duplicate-out-of-order seeds identical content twice with reversed timestamps', () => {
@@ -868,6 +872,9 @@ const lexicalIds = (query: string): readonly string[] =>
 const listedIds = (): readonly string[] =>
   ALL_STATUSES.flatMap((status) => listMemoryRecords({ ...PERSONAL, status }).map((r) => r.id))
 
+/** `??` is banned inside `test()` bodies, so the id default lives here. */
+const purge = (id: string | undefined): boolean => purgeMemoryRecord(PERSONAL, id ?? '', PURGE_TIME)
+
 describe('acceptance: erasure', () => {
   beforeEach(async () => {
     await setupTestDb()
@@ -881,7 +888,7 @@ describe('acceptance: erasure', () => {
       expect(lexicalIds(entry.term)).toContain(id)
       expect(semanticIds()).toContain(id)
 
-      expect(purgeMemoryRecord(PERSONAL, id, PURGE_TIME)).toBe(true)
+      expect(purge(id)).toBe(true)
 
       expect(lexicalIds(entry.term)).not.toContain(id)
       expect(semanticIds()).not.toContain(id)
@@ -895,7 +902,7 @@ describe('acceptance: erasure', () => {
 
     expect(listedIds()).toContain(twinId)
 
-    expect(purgeMemoryRecord(PERSONAL, activeId ?? '', PURGE_TIME)).toBe(true)
+    expect(purge(activeId)).toBe(true)
 
     // the content-hash sweep takes the provisional twin with it
     expect(listedIds()).not.toContain(twinId)
@@ -974,16 +981,11 @@ import { CASES } from './provenance.cases.js'
 import { ALL_STATUSES, PERSONAL, seedMultilingual, seedToolResult } from './corpus.js'
 
 /** Narrows outside the test body — oxlint forbids conditionals inside `test()`. */
-const requireRecord = (record: MemoryRecord | undefined, id: string): MemoryRecord => {
-  if (record === undefined) throw new Error(`record ${id} not found`)
+const activeById = (id: string | undefined): MemoryRecord => {
+  const record = listMemoryRecords({ ...PERSONAL, status: 'active' }).find((r) => r.id === id)
+  if (record === undefined) throw new Error(`no active record with id ${String(id)}`)
   return record
 }
-
-const activeById = (id: string): MemoryRecord =>
-  requireRecord(
-    listMemoryRecords({ ...PERSONAL, status: 'active' }).find((r) => r.id === id),
-    id,
-  )
 
 describe('acceptance: provenance', () => {
   beforeEach(async () => {
@@ -992,12 +994,12 @@ describe('acceptance: provenance', () => {
 
   test(`tool-result — ${CASES['tool-result']}`, () => {
     const [id] = seedToolResult(PERSONAL)
-    const record = activeById(id ?? '')
+    const record = activeById(id)
 
     expect(record.source).toBe('tool_result')
-    expect(record.evidence.messageIds ?? []).not.toHaveLength(0)
+    expect(record.evidence.messageIds).toEqual(['msg-tool-1'])
     expect(record.evidence.contextId).toBe(PERSONAL.scopeId)
-    expect(record.evidence.timestamps ?? []).not.toHaveLength(0)
+    expect(record.evidence.timestamps).toHaveLength(1)
   })
 
   test(`multilingual — ${CASES.multilingual}`, () => {
@@ -1110,7 +1112,7 @@ describe('acceptance: capture-idempotency', () => {
     expect(active[0]?.content).toBe('User lives in Hamburg')
     // history is preserved rather than destructively replaced: two distinct rows, not one edited row
     expect(contradicted[0]?.id).not.toBe(active[0]?.id)
-    expect(contradicted[0]?.evidence.timestamps ?? []).not.toHaveLength(0)
+    expect(contradicted[0]?.evidence.timestamps).toHaveLength(1)
     // and the superseded content is no longer active
     expect(active.map((r) => r.content)).not.toContain('User lives in Berlin')
   })
