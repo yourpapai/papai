@@ -52,6 +52,13 @@ retention/erasure boundary for legacy conversation history and `memory_facts`.
 **Exit:** the scenarios, expected outcomes, and pass/fail gates are versioned before canonical
 capture code is written.
 
+**Status (2026-07-29):** the contract is versioned and executable —
+`docs/superpowers/specs/2026-07-29-memory-gate0-acceptance-harness-design.md`,
+`tests/long-term-memory/acceptance/`, `bun run memory:acceptance`. Four criteria and five
+scenario shapes are implemented; seven criteria and four shapes are declared with named blockers.
+Each unmet criterion's pass predicate must be authored in its own follow-on spec before its
+implementation begins. Gate 1 may begin.
+
 ### Gate 1: Canonical capture in dark mode
 
 Introduce exactly scoped canonical events, durable tombstones, provenance, version identities, and
