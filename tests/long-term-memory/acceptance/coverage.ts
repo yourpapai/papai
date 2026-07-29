@@ -27,6 +27,15 @@ export const CASE_TABLES: Readonly<Partial<Record<CriterionKey, Partial<Record<S
   reproducibility,
 }
 
+/**
+ * Filters the frozen SHAPE_KEYS rather than reading the table's own keys, because narrowing
+ * `Object.keys()` to `ShapeKey[]` needs a type assertion that `no-unsafe-type-assertion` rejects.
+ * The consequence: a key on a CASES table that is not a valid ShapeKey is dropped here rather
+ * than surfaced to the "every exported case is declared in the registry" cross-check. That drift
+ * is caught one layer earlier instead — each `.cases.ts` annotates its table as
+ * `Partial<Record<ShapeKey, string>>`, so an excess property fails the blocking typecheck. Keep
+ * that annotation on every case table; it is what makes this filter safe.
+ */
 export function coveredShapes(key: CriterionKey): readonly ShapeKey[] {
   const table = CASE_TABLES[key]
   if (table === undefined) return []
