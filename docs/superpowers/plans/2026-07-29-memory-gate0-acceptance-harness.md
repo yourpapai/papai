@@ -79,7 +79,8 @@ describe('acceptance registry contract', () => {
 
   test('an implemented criterion carries a pass predicate and no blocker', () => {
     for (const criterion of CRITERIA.filter((c) => c.status === 'implemented')) {
-      expect(criterion.passPredicate ?? '').not.toBe('')
+      expect(criterion.passPredicate).not.toBeNull()
+      expect(criterion.passPredicate).not.toBe('')
       expect(criterion.blocker).toBeNull()
       expect(criterion.predicateRule).toBeNull()
     }
@@ -88,8 +89,10 @@ describe('acceptance registry contract', () => {
   test('a declared-unmet criterion carries a blocker and a predicate rule, never a predicate', () => {
     for (const criterion of CRITERIA.filter((c) => c.status === 'declared-unmet')) {
       expect(criterion.passPredicate).toBeNull()
-      expect(criterion.blocker ?? '').not.toBe('')
-      expect(criterion.predicateRule ?? '').not.toBe('')
+      expect(criterion.blocker).not.toBeNull()
+      expect(criterion.blocker).not.toBe('')
+      expect(criterion.predicateRule).not.toBeNull()
+      expect(criterion.predicateRule).not.toBe('')
     }
   })
 
@@ -116,7 +119,8 @@ describe('acceptance registry contract', () => {
 
   test('an unimplemented shape names its blocker', () => {
     for (const shape of SHAPES.filter((s) => s.status === 'declared-unimplemented')) {
-      expect(shape.blocker ?? '').not.toBe('')
+      expect(shape.blocker).not.toBeNull()
+      expect(shape.blocker).not.toBe('')
     }
   })
 })
