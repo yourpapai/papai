@@ -342,7 +342,7 @@ aggregate publication.
 | ClassifyDeliveryInput.grantKey required | tests/analytics/delivery + withdrawal-race green | c3f39ddd1 | 2026-07-29 |
 | Release execution route | tests/debug/settings/admin/analytics-routes green (deny matrix, execute, idempotency, sink gating) | af2eae8ec | 2026-07-29 |
 | Stage B report CLI | tests/analytics/jobs/stage-b-report + stage-b-assess green; zero-write proof; smoke run recorded | 86c82e1db | 2026-07-29 |
-- Final-review fix wave (day-scoped delta classification + four hardenings) | tests/analytics/jobs + tests/debug/settings/admin + tests/analytics/delivery green; re-review all six findings resolved | 5ad46b7ce | 2026-07-29 |
+| Final-review fix wave (day-scoped delta classification + four hardenings) | tests/analytics/jobs + tests/debug/settings/admin + tests/analytics/delivery green; re-review all six findings resolved | 5ad46b7ce | 2026-07-29 |
 
 ## Message-edit analytics coverage (post-rebase analysis, 2026-07-29)
 
