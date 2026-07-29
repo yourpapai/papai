@@ -70,8 +70,10 @@ Verified at HEAD on the date above.
   `scripts/memory-shadow-funnel.ts`; the pre-registered go/no-go gate is not yet evaluated because
   no deployment has opted in to collect.
 - **Gate 0 acceptance harness** — landed 2026-07-29. `bun run memory:acceptance` renders the
-  frozen eleven-criterion contract; four criteria pass, seven are declared-unmet with named
-  blockers (capture idempotency, races, crash recovery, migration, backup/restore, load, reader
+  frozen eleven-criterion contract; four criteria pass, three (capture idempotency, races, crash
+  recovery) are predicate-registered per
+  [`../../superpowers/specs/2026-07-29-memory-gate1-predicate-registration-design.md`](../../superpowers/specs/2026-07-29-memory-gate1-predicate-registration-design.md),
+  and four are declared-unmet with named blockers (migration, backup/restore, load, reader
   quality). The harness reporting `production ready = NO` is its intended output, not a defect.
 
 ## Maintenance

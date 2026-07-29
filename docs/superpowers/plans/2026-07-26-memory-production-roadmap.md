@@ -69,6 +69,15 @@ canonical evidence.
 **Exit:** capture counts, scopes, payload identities, lag, failures, and erasure state reconcile
 with the current path; forget-versus-ingest and crash/replay tests fail closed.
 
+**Status (2026-07-29):** the pass predicates for this gate's exit criteria — `capture-idempotency`,
+`races`, and `crash-recovery` — are frozen before design, per
+`docs/superpowers/specs/2026-07-29-memory-gate1-predicate-registration-design.md`. They are held in
+the append-only `tests/long-term-memory/acceptance/predicate-registrations.ts` and asserted verbatim
+against the registry, so a promotion commit cannot soften them. The predicates cite six required
+observables and five fault/interleave boundaries; those are binding on this gate's design. A
+predicate that proves unimplementable as written is superseded by an appended amendment with a
+stated reason — never edited in place, and never amended merely to let this gate exit.
+
 ### Gate 2: Rebuildable hybrid projections
 
 Rebuild lexical and dense projections from canonical events, retaining the delivered hybrid logic
