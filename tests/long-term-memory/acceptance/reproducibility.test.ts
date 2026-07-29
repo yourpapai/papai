@@ -102,6 +102,17 @@ describe('acceptance: reproducibility', () => {
     const liveDenseId = mustSave(
       acceptanceRecord({ ...PERSONAL, id: `${PERSONAL.scopeId}-acc-live-dense-1`, content: 'User owns a bicycle' }),
     )
+    // a second live dense record with a different (non-tied) cosine similarity to VEC, so the
+    // determinism check below runs over a real ordering (length >= 2) rather than a single-element
+    // list any order would satisfy
+    const extraDenseId = mustSave(
+      acceptanceRecord({
+        ...PERSONAL,
+        id: `${PERSONAL.scopeId}-acc-live-dense-1-extra`,
+        content: 'User owns a skateboard',
+        embedding: new Float32Array([0.6, 0.8, 0]),
+      }),
+    )
     const [rawId] = seedMissingEmbedding(PERSONAL)
     const noEmbedId = requireId(rawId)
 
@@ -113,6 +124,10 @@ describe('acceptance: reproducibility', () => {
     expect(denseIds()).not.toContain(noEmbedId)
     // and the exclusion is deterministic across repeated calls
     const firstDense = denseIds()
+    expect(firstDense.length).toBeGreaterThanOrEqual(2)
+    // the live-dense control's embedding is an exact VEC match (cosine 1.0); the extra record's
+    // is not (cosine 0.6) — a real score gap, so the fixed rank order below is not a coin flip
+    expect(firstDense.indexOf(liveDenseId)).toBeLessThan(firstDense.indexOf(extraDenseId))
     expect(firstDense).toEqual([...denseIds()])
     expect(firstDense).toEqual([...denseIds()])
   })
@@ -123,6 +138,17 @@ describe('acceptance: reproducibility', () => {
     // dead channel
     const liveDenseId = mustSave(
       acceptanceRecord({ ...PERSONAL, id: `${PERSONAL.scopeId}-acc-live-dense-2`, content: 'User owns a scooter' }),
+    )
+    // a second live dense record with a different (non-tied) cosine similarity to VEC, so the
+    // determinism check below runs over a real ordering (length >= 2) rather than a single-element
+    // list any order would satisfy
+    const extraDenseId = mustSave(
+      acceptanceRecord({
+        ...PERSONAL,
+        id: `${PERSONAL.scopeId}-acc-live-dense-2-extra`,
+        content: 'User owns a moped',
+        embedding: new Float32Array([0.6, 0.8, 0]),
+      }),
     )
     const wrongModelId = mustSave(
       acceptanceRecord({
@@ -154,6 +180,10 @@ describe('acceptance: reproducibility', () => {
     expect(denseIds()).not.toContain(wrongDimensionId)
     // and the exclusion is deterministic across repeated calls
     const firstDense = denseIds()
+    expect(firstDense.length).toBeGreaterThanOrEqual(2)
+    // the live-dense control's embedding is an exact VEC match (cosine 1.0); the extra record's
+    // is not (cosine 0.6) — a real score gap, so the fixed rank order below is not a coin flip
+    expect(firstDense.indexOf(liveDenseId)).toBeLessThan(firstDense.indexOf(extraDenseId))
     expect(firstDense).toEqual([...denseIds()])
     expect(firstDense).toEqual([...denseIds()])
   })
