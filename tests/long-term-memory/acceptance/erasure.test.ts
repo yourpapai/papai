@@ -5,10 +5,20 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { getDrizzleDb } from '../../../src/db/drizzle.js'
+import { memoryProfiles, memorySummary } from '../../../src/db/schema.js'
 import { searchLexical } from '../../../src/long-term-memory/lexical-search.js'
+import { visibleProfileText } from '../../../src/long-term-memory/profile-visibility.js'
 import { purgeMemoryRecord } from '../../../src/long-term-memory/purge.js'
+import { profileScopeCondition } from '../../../src/long-term-memory/record-conditions.js'
 import { rankRecordsBySimilarity } from '../../../src/long-term-memory/semantic-search.js'
-import { listMemoryRecords, saveMemoryRecord } from '../../../src/long-term-memory/store.js'
+import { rowToProfile } from '../../../src/long-term-memory/serialization.js'
+import {
+  getMemoryProfile,
+  listMemoryRecords,
+  saveMemoryProfile,
+  saveMemoryRecord,
+} from '../../../src/long-term-memory/store.js'
 import { isContentTombstoned } from '../../../src/long-term-memory/tombstone.js'
 import { setupTestDb } from '../../utils/test-helpers.js'
 import { ALL_STATUSES, BILINGUAL, PERSONAL, VEC, VERSION, acceptanceRecord, seedAdversarialErasure } from './corpus.js'
@@ -44,6 +54,16 @@ const requireId = (id: string | undefined): string => {
   return id
 }
 
+/**
+ * Reads and narrows the raw profile row outside the test body (oxlint forbids conditionals
+ * inside `test()`), mirroring `contaminatedAtOf` in the durable-erasure golden.
+ */
+const profileContaminatedAt = (): string | null => {
+  const row = getDrizzleDb().select().from(memoryProfiles).where(profileScopeCondition(PERSONAL)).get()
+  if (row === undefined) throw new Error('profile row missing after purge')
+  return rowToProfile(row).contaminatedAt
+}
+
 describe('acceptance: erasure', () => {
   beforeEach(async () => {
     await setupTestDb()
@@ -67,6 +87,31 @@ describe('acceptance: erasure', () => {
       expect(listedIds()).not.toContain(id)
     })
   }
+
+  test('multilingual/EN — purge withholds profile prose and deletes the rolling summary', () => {
+    const entry = BILINGUAL[0]
+    const id = `${PERSONAL.scopeId}-${entry.id}`
+    saveMemoryProfile(PERSONAL, entry.content, '2026-07-01T00:00:00.000Z')
+    getDrizzleDb()
+      .insert(memorySummary)
+      .values({ userId: PERSONAL.scopeId, summary: entry.content, updatedAt: '2026-07-01T00:00:00.000Z' })
+      .run()
+    saveMemoryRecord(acceptanceRecord({ ...PERSONAL, id, content: entry.content }))
+
+    // positive control: the profile is visible before the purge
+    expect(visibleProfileText(getMemoryProfile(PERSONAL))).toBe(entry.content)
+    // positive control: the rolling summary exists before the purge
+    expect(getDrizzleDb().select().from(memorySummary).all()).toHaveLength(1)
+
+    expect(purge(id)).toBe(true)
+
+    // profile channel: prose is withheld from every reader, but the raw row survives, flagged
+    expect(visibleProfileText(getMemoryProfile(PERSONAL))).toBeNull()
+    expect(profileContaminatedAt()).toBe(PURGE_TIME)
+
+    // summary channel: the rolling summary is deleted outright
+    expect(getDrizzleDb().select().from(memorySummary).all()).toHaveLength(0)
+  })
 
   test(`adversarial-erasure — ${CASES['adversarial-erasure']}`, () => {
     const [rawActiveId, rawTwinId] = seedAdversarialErasure(PERSONAL)
