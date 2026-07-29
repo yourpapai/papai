@@ -342,3 +342,21 @@ aggregate publication.
 | ClassifyDeliveryInput.grantKey required | tests/analytics/delivery + withdrawal-race green | c3f39ddd1 | 2026-07-29 |
 | Release execution route | tests/debug/settings/admin/analytics-routes green (deny matrix, execute, idempotency, sink gating) | af2eae8ec | 2026-07-29 |
 | Stage B report CLI | tests/analytics/jobs/stage-b-report + stage-b-assess green; zero-write proof; smoke run recorded | 86c82e1db | 2026-07-29 |
+- Final-review fix wave (day-scoped delta classification + four hardenings) | tests/analytics/jobs + tests/debug/settings/admin + tests/analytics/delivery green; re-review all six findings resolved | 5ad46b7ce | 2026-07-29 |
+
+## Message-edit analytics coverage (post-rebase analysis, 2026-07-29)
+
+Master's message-edit feature (`src/message-edit/`, landed between
+9e6760773 and be67c2227) was analyzed for analytics coverage after the
+Stage B readiness rebase. Decisions (product-owner call, 2026-07-29):
+
+| Edit path | Decision | Rationale |
+|---|---|---|
+| Baseline (W3 + metadata/history correction) | Stays silent — correct by design | The message was counted at original receipt; counting the edit would double-count accepted messages |
+| W1 (edit arrives during an active run) | **Covered**: emits the existing `turn_steered` fact through the shared mid-run steering boundary (commit 1acd7319a; same event, same semantics, shared per-run ordinal sequence; no `chat_message_accepted` — a correction is not a newly accepted message) | Friction Signature v1 steering component stays complete for edit-steers |
+| W2 (regen turn after edit of the last message) | **v1 exclusion, pending spec amendment**: the regen turn surfaces only in LLM/tool-level events (`invocation_mode: 'normal'`); no `turn_started`/`turn_completed`/`chat_message_accepted` facts | Turn-level coverage needs new vocabulary (`'edit'` invocation mode or a regen fact family) — a 02-metric-catalog amendment through the governance path (08 sign-off rules), not a silent code definition. Follow-up: propose the amendment before or during Stage C planning |
+| Auth boundary for edits | No `auth_checked` fact — consistent | Edits are not new accepted messages |
+
+Gate evidence for 1acd7319a: tests/message-edit 35 pass / 0 fail (incl. the
+W1 `turn_steered` fact + no-double-count assertions), typecheck/lint/format
+clean.
