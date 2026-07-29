@@ -472,6 +472,39 @@ describe('W2 regen funnel facts (Task 3)', () => {
     expect(completed.durationMs).toBeGreaterThanOrEqual(0)
   })
 
+  test('adjust without a wired processMessage emits history_only (no regen_started)', async () => {
+    const ctxId = scopedDm('w2-adj-noproc-user')
+    addUser({ userId: 'w2-adj-noproc-user', platformInstanceId: PLATFORM_ID, addedBy: ADMIN_ID })
+    const original: IncomingMessage = { ...createDmMessage('w2-adj-noproc-user'), text: 'do thing', messageId: 'm1' }
+    cacheObservedIncomingMessage(original, authFor(ctxId))
+    await flushPendingWrites()
+    appendHistory(ctxId, [makeUserTurn('m1', 'do thing')])
+    const replyTarget: ReplyTarget = { platform: 'telegram', ref: { messageId: 7 } }
+    lastTurnRegistry.record(ctxId, {
+      originatingMessageIds: ['m1'],
+      completedEffects: [{ toolName: 'create_task' }],
+      replyTarget,
+      finishedAt: Date.now(),
+    })
+    const { reply, buttonCalls } = buildCapturingReply()
+    const { observer, facts } = recordFacts()
+    const edited: IncomingMessage = {
+      ...createDmMessage('w2-adj-noproc-user'),
+      text: 'do better thing',
+      messageId: 'm1',
+      editedAt: 2,
+    }
+    await onIncomingEdit(chat, edited, reply, {
+      analyticsObserver: observer,
+    })
+    const adjustButton = buttonCalls[0]!.options.buttons!.find((b) => b.callbackData.startsWith('edit:adjust:'))!
+    const prompt = peekEditPrompt(adjustButton.callbackData.replace('edit:adjust:', ''))
+    expect(prompt).toBeDefined()
+    await prompt!.onAdjust()
+    expect(regenPhases(facts)).toEqual(['prompt_shown', 'prompt_adjust', 'history_only'])
+    expect(regenPhases(facts)).not.toContain('regen_started')
+  })
+
   test('note emits prompt_note and never regens', async () => {
     const ctxId = scopedDm('w2-note-facts-user')
     addUser({ userId: 'w2-note-facts-user', platformInstanceId: PLATFORM_ID, addedBy: ADMIN_ID })
