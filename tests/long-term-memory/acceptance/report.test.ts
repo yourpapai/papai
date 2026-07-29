@@ -27,7 +27,30 @@ describe('acceptance report', () => {
   test('states that the contract is versioned and production readiness is not established', () => {
     const output = renderAcceptanceReport()
     expect(output).toContain('contract versioned = YES')
-    expect(output).toContain('production ready = NO (7 unmet)')
+    expect(output).toContain('production ready = NO (4 implemented, 3 predicate-registered, 4 unmet)')
+  })
+
+  test('marks predicate-registered criteria with a distinct glyph', () => {
+    const line = renderAcceptanceReport()
+      .split('\n')
+      .find((row) => row.includes('crash-recovery'))
+    expect(line).toStartWith('  [~]')
+  })
+
+  test('renders registered cells distinctly from executed cells', () => {
+    const output = renderAcceptanceReport()
+    const registered = output.split('\n').find((row) => row.includes('capture-idempotency'))
+    const executed = output.split('\n').find((row) => row.includes('scope-isolation'))
+    expect(registered).toContain('registered cells: duplicate-out-of-order, long-horizon')
+    expect(executed).toContain('shapes: multilingual, multi-party')
+    expect(registered).not.toContain('shapes:')
+  })
+
+  test('still names the blocker of a predicate-registered criterion', () => {
+    const line = renderAcceptanceReport()
+      .split('\n')
+      .find((row) => row.includes('crash-recovery'))
+    expect(line).toContain('Needs fault injection')
   })
 
   test('renders the unimplemented shapes with their blockers', () => {

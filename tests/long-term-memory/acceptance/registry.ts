@@ -12,10 +12,12 @@
  * `docs/superpowers/plans/2026-07-26-memory-production-roadmap.md`.
  *
  * Promotion rule: a criterion may only reach `implemented` by satisfying a pass predicate
- * written BEFORE its implementation began. Unmet criteria therefore carry a `predicateRule`
- * instead of a predicate — their predicate must be authored in their own follow-on spec.
- * Promotion also appends a drift-log entry naming the predicate satisfied, matching the
- * append-only pattern the executed memory plans already use.
+ * written BEFORE its implementation began. A `declared-unmet` criterion therefore carries a
+ * `predicateRule` instead of a predicate. Once that predicate is authored in the criterion's
+ * own follow-on spec it is appended to `predicate-registrations.ts` and the criterion becomes
+ * `predicate-registered`: the bar is frozen, the evidence is still absent. Promotion to
+ * `implemented` must satisfy that exact registered predicate — asserted verbatim in
+ * `registry.test.ts`.
  * Adding or removing a key here is a deliberate, reviewable edit to a frozen contract.
  */
 
@@ -71,15 +73,22 @@ export const SHAPE_KEYS: readonly ShapeKey[] = [
 
 export type Criterion = Readonly<{
   key: CriterionKey
-  status: 'implemented' | 'declared-unmet'
-  /** Required iff implemented. The standard this criterion is held to. */
+  status: 'implemented' | 'predicate-registered' | 'declared-unmet'
+  /** Required iff implemented or predicate-registered. The standard this criterion is held to. */
   passPredicate: string | null
-  /** Required iff declared-unmet. Why no test body exists yet. */
+  /** Required unless implemented. Why no test body exists yet. */
   blocker: string | null
   /** Required iff declared-unmet. When its predicate must be authored. */
   predicateRule: string | null
-  /** Declared criterion x scenario cells. Empty iff declared-unmet. */
+  /** Executed criterion x scenario cells. Non-empty iff implemented. */
   shapes: readonly ShapeKey[]
+  /**
+   * Cells a frozen predicate demands that have no case yet. Non-empty iff predicate-registered.
+   * These MAY name shapes that are still `declared-unimplemented`: registering a cell is a
+   * promise to build the fixture, not a claim that it exists. Promotion moves keys from here
+   * into `shapes`.
+   */
+  registeredShapes: readonly ShapeKey[]
 }>
 
 export type Shape = Readonly<{
@@ -100,6 +109,7 @@ export const CRITERIA: readonly Criterion[] = [
     blocker: null,
     predicateRule: null,
     shapes: ['multilingual', 'multi-party'],
+    registeredShapes: [],
   },
   {
     key: 'erasure',
@@ -109,6 +119,7 @@ export const CRITERIA: readonly Criterion[] = [
     blocker: null,
     predicateRule: null,
     shapes: ['multilingual', 'adversarial-erasure'],
+    registeredShapes: [],
   },
   {
     key: 'provenance',
@@ -118,15 +129,18 @@ export const CRITERIA: readonly Criterion[] = [
     blocker: null,
     predicateRule: null,
     shapes: ['tool-result', 'multilingual'],
+    registeredShapes: [],
   },
   {
     key: 'capture-idempotency',
-    status: 'declared-unmet',
-    passPredicate: null,
+    status: 'predicate-registered',
+    passPredicate:
+      'Replaying an identical capture input, repeatedly and with ingest order reversed relative to event time, yields exactly one canonical event per idempotency identity, and the projection snapshot after N replays is byte-identical to the snapshot after one. Supersession and validity resolve by event time, never by ingest order. Every suppressed replay is observable as a duplicate suppression, never as a silent success.',
     blocker:
       'no content-hash-keyed dedup at the write boundary; content collapse exists only in the LLM-gated group-promotion path',
-    predicateRule: PREDICATE_RULE,
+    predicateRule: null,
     shapes: [],
+    registeredShapes: ['duplicate-out-of-order', 'long-horizon'],
   },
   {
     key: 'reproducibility',
@@ -136,22 +150,27 @@ export const CRITERIA: readonly Criterion[] = [
     blocker: null,
     predicateRule: null,
     shapes: ['missing-embedding', 'multilingual'],
+    registeredShapes: [],
   },
   {
     key: 'races',
-    status: 'declared-unmet',
-    passPredicate: null,
+    status: 'predicate-registered',
+    passPredicate:
+      'For every interleaving of an erasure request with an in-flight capture of the same subject or evidence, held at B1–B5, the terminal state is erased: no canonical event, outbox item, projection row, or index entry for the tombstoned identity survives, and the losing writer reports a tombstoned suppression or a failure, never success. Concurrent captures of one idempotency identity produce exactly one canonical event. No interleaving reaches a state that neither serial order can reach.',
     blocker: 'Needs a concurrency harness; forget-versus-ingest interleavings were never executed (05 §Security).',
-    predicateRule: PREDICATE_RULE,
+    predicateRule: null,
     shapes: [],
+    registeredShapes: ['adversarial-erasure', 'multi-party'],
   },
   {
     key: 'crash-recovery',
-    status: 'declared-unmet',
-    passPredicate: null,
+    status: 'predicate-registered',
+    passPredicate:
+      'B1 is unreachable: no fault can leave a canonical event without its outbox item, or the reverse. For faults at B2–B5, restart converges the projection snapshot to the fault-free snapshot for the same input; canonical evidence committed before the fault is still enumerable; every outbox item is either complete or pending with its retry visible, never silently dropped; tombstones registered before the fault still suppress recapture after restart; and at-least-once redelivery produces no duplicate canonical event.',
     blocker: 'Needs fault injection between canonical and derivative writes (05 §Crash).',
-    predicateRule: PREDICATE_RULE,
+    predicateRule: null,
     shapes: [],
+    registeredShapes: ['long-horizon', 'duplicate-out-of-order'],
   },
   {
     key: 'migration',
@@ -160,6 +179,7 @@ export const CRITERIA: readonly Criterion[] = [
     blocker: 'Needs schema/embedding/tokenizer version fixtures and a rollback path (05 §Crash).',
     predicateRule: PREDICATE_RULE,
     shapes: [],
+    registeredShapes: [],
   },
   {
     key: 'backup-restore',
@@ -168,6 +188,7 @@ export const CRITERIA: readonly Criterion[] = [
     blocker: 'The 06 §6 retention and later-erasure policy for WAL, backups, and replicas is undefined.',
     predicateRule: PREDICATE_RULE,
     shapes: [],
+    registeredShapes: [],
   },
   {
     key: 'load',
@@ -176,6 +197,7 @@ export const CRITERIA: readonly Criterion[] = [
     blocker: 'Needs a production-shaped SQLite profile; the 100k evidence is a serial fresh-worker workload.',
     predicateRule: PREDICATE_RULE,
     shapes: [],
+    registeredShapes: [],
   },
   {
     key: 'reader-quality',
@@ -184,6 +206,7 @@ export const CRITERIA: readonly Criterion[] = [
     blocker: 'Gated on the P1 shadow-log screen; no live reader, extractor, or judge exists.',
     predicateRule: PREDICATE_RULE,
     shapes: [],
+    registeredShapes: [],
   },
 ]
 
@@ -202,13 +225,14 @@ export const SHAPES: readonly Shape[] = [
     key: 'duplicate-out-of-order',
     status: 'declared-unimplemented',
     blocker:
-      'Belongs to capture-idempotency, demoted to declared-unmet; no write-boundary content dedup exists to exercise.',
+      'Registered as a Gate 1 cell for capture-idempotency and crash-recovery; unimplemented until Gate 1 exposes canonical events with idempotency identities and an at-least-once outbox.',
   },
   { key: 'adversarial-erasure', status: 'implemented', blocker: null },
   {
     key: 'long-horizon',
     status: 'declared-unimplemented',
-    blocker: 'Needs the canonical event log (Gate 1); a fixture-bounded version would overstate coverage.',
+    blocker:
+      'Registered as a Gate 1 cell for capture-idempotency and crash-recovery; unimplemented until Gate 1 exposes the canonical event log. A fixture-bounded version would overstate coverage.',
   },
   {
     key: 'abstention',
@@ -229,4 +253,8 @@ export function implementedCriteria(): readonly Criterion[] {
 
 export function implementedShapes(): readonly Shape[] {
   return SHAPES.filter((s) => s.status === 'implemented')
+}
+
+export function registeredCriteria(): readonly Criterion[] {
+  return CRITERIA.filter((c) => c.status === 'predicate-registered')
 }

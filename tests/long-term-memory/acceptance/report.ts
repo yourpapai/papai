@@ -10,17 +10,25 @@
 
 import { CORPUS_VERSION } from './corpus.js'
 import { coveredShapes } from './coverage.js'
-import { CRITERIA, SHAPES } from './registry.js'
+import { type Criterion, CRITERIA, SHAPES } from './registry.js'
+
+const CRITERION_MARKS: Readonly<Record<Criterion['status'], string>> = {
+  implemented: 'x',
+  'predicate-registered': '~',
+  'declared-unmet': '!',
+}
+
+const criterionDetail = (criterion: Criterion): string => {
+  if (criterion.status === 'implemented') return `shapes: ${coveredShapes(criterion.key).join(', ')}`
+  const blocker = `blocker: ${criterion.blocker ?? ''}`
+  if (criterion.status === 'declared-unmet') return blocker
+  return `registered cells: ${criterion.registeredShapes.join(', ')} — ${blocker}`
+}
 
 const criterionLines = (): readonly string[] =>
-  CRITERIA.map((criterion) => {
-    const mark = criterion.status === 'implemented' ? 'x' : '!'
-    const detail =
-      criterion.status === 'implemented'
-        ? `shapes: ${coveredShapes(criterion.key).join(', ')}`
-        : `blocker: ${criterion.blocker ?? ''}`
-    return `  [${mark}] ${criterion.key.padEnd(22)} ${detail}`
-  })
+  CRITERIA.map(
+    (criterion) => `  [${CRITERION_MARKS[criterion.status]}] ${criterion.key.padEnd(22)} ${criterionDetail(criterion)}`,
+  )
 
 const shapeLines = (): readonly string[] =>
   SHAPES.map((shape) => {
@@ -30,6 +38,8 @@ const shapeLines = (): readonly string[] =>
   })
 
 export function renderAcceptanceReport(): string {
+  const implemented = CRITERIA.filter((c) => c.status === 'implemented').length
+  const registered = CRITERIA.filter((c) => c.status === 'predicate-registered').length
   const unmet = CRITERIA.filter((c) => c.status === 'declared-unmet').length
   return [
     'Memory Gate 0 — production acceptance contract',
@@ -42,10 +52,12 @@ export function renderAcceptanceReport(): string {
     ...shapeLines(),
     '',
     'contract versioned = YES',
-    `production ready = NO (${unmet} unmet)`,
+    `production ready = NO (${implemented} implemented, ${registered} predicate-registered, ${unmet} unmet)`,
     '',
     'This report is informational. Criterion enforcement lives in',
     'tests/long-term-memory/acceptance/. A criterion is promoted only by satisfying a pass',
     'predicate written before its implementation began — see the design doc.',
+    'A [~] criterion has a frozen predicate and no evidence: the cells it lists are promised,',
+    'not executed.',
   ].join('\n')
 }

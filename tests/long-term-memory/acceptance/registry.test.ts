@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { CASE_TABLES, coveredShapes } from './coverage.js'
-import { CRITERIA, CRITERION_KEYS, SHAPE_KEYS, SHAPES } from './registry.js'
+import { CRITERIA, CRITERION_KEYS, criterionByKey, registeredCriteria, SHAPE_KEYS, SHAPES } from './registry.js'
 
 describe('acceptance registry contract', () => {
   test('criteria cover the frozen key list exactly', () => {
@@ -41,7 +41,46 @@ describe('acceptance registry contract', () => {
     }
   })
 
-  test('only implemented criteria declare scenario cells', () => {
+  test('the three Gate 1 exit criteria are predicate-registered', () => {
+    for (const key of ['capture-idempotency', 'races', 'crash-recovery'] as const) {
+      expect(criterionByKey(key).status).toBe('predicate-registered')
+    }
+  })
+
+  test('a predicate-registered criterion carries a predicate and its blocker, and no predicate rule', () => {
+    const registered = CRITERIA.filter((c) => c.status === 'predicate-registered')
+    expect(registered.length).toBeGreaterThan(0)
+    for (const criterion of registered) {
+      expect(criterion.passPredicate).not.toBeNull()
+      expect(criterion.passPredicate).not.toBe('')
+      expect(criterion.blocker).not.toBeNull()
+      expect(criterion.blocker).not.toBe('')
+      expect(criterion.predicateRule).toBeNull()
+    }
+  })
+
+  test('a predicate-registered criterion declares registered cells and no executed cells', () => {
+    for (const criterion of CRITERIA.filter((c) => c.status === 'predicate-registered')) {
+      expect(criterion.registeredShapes.length).toBeGreaterThan(0)
+      expect(criterion.shapes).toEqual([])
+    }
+  })
+
+  test('only a predicate-registered criterion declares registered cells', () => {
+    for (const criterion of CRITERIA.filter((c) => c.status !== 'predicate-registered')) {
+      expect(criterion.registeredShapes).toEqual([])
+    }
+  })
+
+  test('registeredCriteria returns exactly the predicate-registered criteria', () => {
+    expect(
+      registeredCriteria()
+        .map((c) => c.key)
+        .toSorted(),
+    ).toEqual(['capture-idempotency', 'crash-recovery', 'races'])
+  })
+
+  test('only implemented criteria declare executed scenario cells', () => {
     for (const criterion of CRITERIA) {
       const expectedNonEmpty = criterion.status === 'implemented'
       expect(criterion.shapes.length > 0).toBe(expectedNonEmpty)
