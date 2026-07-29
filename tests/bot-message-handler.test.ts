@@ -56,6 +56,8 @@ function createCoalesced(replyText: (text: string) => Promise<void>, seed?: Auth
     voiceStagedIds: [],
     reply: { ...createMockReply().reply, text: replyText },
     turnId: 'turn-1',
+    messageIds: [],
+    segments: [],
     analyticsTurnSeed: seed,
   }
 }

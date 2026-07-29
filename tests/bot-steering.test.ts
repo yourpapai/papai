@@ -171,7 +171,7 @@ describe('mid-run steering analytics', () => {
     addUser(userId, ADMIN_ID)
     const storageContextId = scopedDm(userId)
     const { reply: runReply } = createMockReply()
-    runRegistry.begin(storageContextId, { turnId: 't-steer-1', reply: runReply })
+    runRegistry.begin(storageContextId, { turnId: 't-steer-1', reply: runReply, originatingMessageIds: [] })
 
     const messageHandler = getMessageHandler()
     assert.ok(messageHandler !== null)

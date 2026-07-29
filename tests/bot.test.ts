@@ -50,6 +50,7 @@ import { addAdmin } from '../src/instances/admin-store.js'
 import { getContextSettings, setContextSettings } from '../src/instances/context-store.js'
 import { setOpenDmAccess } from '../src/instances/platform-store.js'
 import { getTaskInstance, insertTaskInstance } from '../src/instances/task-store.js'
+import type { CoalescedItem } from '../src/message-queue/index.js'
 import { contributionRegistry } from '../src/plugins/contributions.js'
 import { PLUGIN_API_VERSION, type PluginManifest } from '../src/plugins/types.js'
 import { runRegistry } from '../src/run-control/registry.js'
@@ -145,23 +146,27 @@ const checkAuthorizationExtended = (
     TEST_PLATFORM_ID,
   )
 
+type EnqueueItem = Parameters<NonNullable<BotDeps['enqueueMessage']>>[0]
+
+const buildSyncCoalescedItem = (item: EnqueueItem, reply: ReplyFn, turnId: string): CoalescedItem => ({
+  text: item.text,
+  userId: item.userId,
+  username: item.username,
+  storageContextId: item.storageContextId,
+  configContextId: item.configContextId,
+  contextType: item.contextType,
+  newAttachmentIds: item.newAttachmentIds,
+  voiceStagedIds: item.voiceStagedIds,
+  reply,
+  turnId,
+  messageIds: item.messageId === undefined ? [] : [item.messageId],
+  segments:
+    item.messageId === undefined ? [] : [{ messageId: item.messageId, text: item.text, username: item.username }],
+  analyticsTurnSeed: item.analyticsTurnSeed,
+})
+
 const enqueueMessageSynchronously: NonNullable<BotDeps['enqueueMessage']> = (item, reply, handler): void => {
-  void handler({
-    text: item.text,
-    userId: item.userId,
-    username: item.username,
-    storageContextId: item.storageContextId,
-    configContextId: item.configContextId,
-    contextType: item.contextType,
-    newAttachmentIds: item.newAttachmentIds,
-    voiceStagedIds: item.voiceStagedIds,
-    reply,
-    turnId: 'test-turn-id',
-    messageIds: item.messageId === undefined ? [] : [item.messageId],
-    segments:
-      item.messageId === undefined ? [] : [{ messageId: item.messageId, text: item.text, username: item.username }],
-    analyticsTurnSeed: item.analyticsTurnSeed,
-  }).catch(() => {})
+  void handler(buildSyncCoalescedItem(item, reply, 'test-turn-id')).catch(() => {})
 }
 
 const withSynchronousQueue = (deps: Readonly<Omit<BotDeps, 'enqueueMessage'>>): BotDeps => ({
@@ -2484,19 +2489,7 @@ describe('Analytics observation (setupBot)', () => {
         await reply.text('guest reply')
       },
       enqueueMessage: (item, reply, handler): void => {
-        turnPromise = handler({
-          text: item.text,
-          userId: item.userId,
-          username: item.username,
-          storageContextId: item.storageContextId,
-          configContextId: item.configContextId,
-          contextType: item.contextType,
-          newAttachmentIds: item.newAttachmentIds,
-          voiceStagedIds: item.voiceStagedIds,
-          reply,
-          turnId: 'guest-turn-id',
-          analyticsTurnSeed: item.analyticsTurnSeed,
-        })
+        turnPromise = handler(buildSyncCoalescedItem(item, reply, 'guest-turn-id'))
       },
       analyticsObserver: observer,
     })

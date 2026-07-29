@@ -86,7 +86,7 @@ describe('production analytics dependency injection', () => {
     const harness = setupProductionAnalyticsBot()
     const storageContextId = getThreadScopedStorageContextId('di-user', 'dm', undefined, TEST_PLATFORM_ID)
     const { reply: runReply } = createMockReply()
-    runRegistry.begin(storageContextId, { turnId: 't-di-run', reply: runReply })
+    runRegistry.begin(storageContextId, { turnId: 't-di-run', reply: runReply, originatingMessageIds: [] })
 
     const messageHandler = harness.getMessageHandler()
     assert.ok(messageHandler !== null)

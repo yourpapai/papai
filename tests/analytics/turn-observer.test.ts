@@ -176,8 +176,8 @@ describe('steering and stop fact builders', () => {
 
   test('steer ordinals are monotonic per run and reset across runs', () => {
     const registry = new RunRegistry()
-    const runA = registry.begin('ctx-a', { turnId: 'a', reply: createMockReply().reply })
-    const runB = registry.begin('ctx-b', { turnId: 'b', reply: createMockReply().reply })
+    const runA = registry.begin('ctx-a', { turnId: 'a', reply: createMockReply().reply, originatingMessageIds: [] })
+    const runB = registry.begin('ctx-b', { turnId: 'b', reply: createMockReply().reply, originatingMessageIds: [] })
     expect(nextSteerOrdinal(runA)).toBe(1)
     expect(nextSteerOrdinal(runA)).toBe(2)
     expect(nextSteerOrdinal(runB)).toBe(1)

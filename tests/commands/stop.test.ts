@@ -115,7 +115,7 @@ describe('/stop command analytics', () => {
   test('first graceful request emits exactly one turn_stop_requested with stage graceful', async () => {
     const { observer, facts } = createFactRecorder()
     const handler = getObservedHandler(observer)
-    runRegistry.begin('user-1', { turnId: 't-grace', reply: createMockReply().reply })
+    runRegistry.begin('user-1', { turnId: 't-grace', reply: createMockReply().reply, originatingMessageIds: [] })
 
     await handler(createDmMessage('user-1'), createMockReply().reply, createAuth('user-1'))
 
@@ -129,7 +129,11 @@ describe('/stop command analytics', () => {
   test('subsequent forced request emits exactly one turn_stop_requested with stage forced', async () => {
     const { observer, facts } = createFactRecorder()
     const handler = getObservedHandler(observer)
-    const run = runRegistry.begin('user-1', { turnId: 't-forced', reply: createMockReply().reply })
+    const run = runRegistry.begin('user-1', {
+      turnId: 't-forced',
+      reply: createMockReply().reply,
+      originatingMessageIds: [],
+    })
     run.stopRequested = true
 
     await handler(createDmMessage('user-1'), createMockReply().reply, createAuth('user-1'))
@@ -143,7 +147,7 @@ describe('/stop command analytics', () => {
   test('graceful then forced emits exactly one fact per stage', async () => {
     const { observer, facts } = createFactRecorder()
     const handler = getObservedHandler(observer)
-    runRegistry.begin('user-1', { turnId: 't-both', reply: createMockReply().reply })
+    runRegistry.begin('user-1', { turnId: 't-both', reply: createMockReply().reply, originatingMessageIds: [] })
 
     await handler(createDmMessage('user-1'), createMockReply().reply, createAuth('user-1'))
     await handler(createDmMessage('user-1'), createMockReply().reply, createAuth('user-1'))
