@@ -343,7 +343,7 @@ aggregate publication.
 | Release execution route | tests/debug/settings/admin/analytics-routes green (deny matrix, execute, idempotency, sink gating) | af2eae8ec | 2026-07-29 |
 | Stage B report CLI | tests/analytics/jobs/stage-b-report + stage-b-assess green; zero-write proof; smoke run recorded | 86c82e1db | 2026-07-29 |
 | Final-review fix wave (day-scoped delta classification + four hardenings) | tests/analytics/jobs + tests/debug/settings/admin + tests/analytics/delivery green; re-review all six findings resolved | 5ad46b7ce | 2026-07-29 |
-| Message-edit analytics (edit_classified/edit_regen registration, emission, funnel card) | registry-driven sweeps green (contracts, closure, privacy-contract, eligibility, snapshot props/schema); tests/message-edit + tests/analytics/edit-observer + metabase-models green; typecheck/lint/knip clean | 369473878, ea232ac6b, 2c8890af4, 0e69a9177, THIS_COMMIT | 2026-07-29 |
+| Message-edit analytics (edit_classified/edit_regen registration, emission, funnel card) | registry-driven sweeps green (contracts, closure, privacy-contract, eligibility, snapshot props/schema); tests/message-edit + tests/analytics/edit-observer + metabase-models green; typecheck/lint/knip clean | 369473878, ea232ac6b, 2c8890af4, 0e69a9177, 35b0fb2ee | 2026-07-29 |
 
 ## Message-edit analytics coverage (post-rebase analysis, 2026-07-29)
 
@@ -355,7 +355,7 @@ Stage B readiness rebase. Decisions (product-owner call, 2026-07-29):
 |---|---|---|
 | Baseline (W3 + metadata/history correction) | Stays silent — correct by design | The message was counted at original receipt; counting the edit would double-count accepted messages |
 | W1 (edit arrives during an active run) | **Covered**: emits the existing `turn_steered` fact through the shared mid-run steering boundary (commit 1acd7319a; same event, same semantics, shared per-run ordinal sequence; no `chat_message_accepted` — a correction is not a newly accepted message) | Friction Signature v1 steering component stays complete for edit-steers |
-| W2 (regen turn after edit of the last message) | **Covered via amendment** (catalog §14.1): edit_classified + edit_regen standalone friction companions; no turn/session/outcome semantics (reserved for a future RQ3 amendment) (impl: 369473878, ea232ac6b, 2c8890af4, 0e69a9177, THIS_COMMIT) | Turn-level coverage needs new vocabulary (`'edit'` invocation mode or a regen fact family) — a 02-metric-catalog amendment through the governance path (08 sign-off rules), not a silent code definition. Follow-up: propose the amendment before or during Stage C planning |
+| W2 (regen turn after edit of the last message) | **Covered via amendment** (catalog §14.1): edit_classified + edit_regen standalone friction companions; no turn/session/outcome semantics (reserved for a future RQ3 amendment) (impl: 369473878, ea232ac6b, 2c8890af4, 0e69a9177, 35b0fb2ee) | Turn-level coverage needs new vocabulary (`'edit'` invocation mode or a regen fact family) — a 02-metric-catalog amendment through the governance path (08 sign-off rules), not a silent code definition. Follow-up: propose the amendment before or during Stage C planning |
 | Auth boundary for edits | No `auth_checked` fact — consistent | Edits are not new accepted messages |
 
 Gate evidence for 1acd7319a: tests/message-edit 35 pass / 0 fail (incl. the
