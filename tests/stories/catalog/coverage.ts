@@ -357,11 +357,17 @@ export const PHASE3_UNCATALOGUED_CLUSTER_IDS = [
   'SCN-plugin-deny-gating',
 ] as const satisfies readonly CatalogScenarioId[]
 
+const PURE_HELPER_SCENARIO_IDS = new Set<CatalogScenarioId>([
+  'SCN-memory-tool-pairing',
+  'SCN-scheduler-execution-tracking',
+  'SCN-changelog-version-section',
+])
+
 const GAP_SCENARIO_IDS = new Set<CatalogScenarioId>([
   'SCN-coding-nerv-steer',
   'SCN-supervise-self-review',
   'SCN-cmd-announce',
-  ...PHASE3_UNCATALOGUED_CLUSTER_IDS,
+  ...PHASE3_UNCATALOGUED_CLUSTER_IDS.filter((scenarioId) => !PURE_HELPER_SCENARIO_IDS.has(scenarioId)),
 ])
 
 const FORWARD_ONLY_SCENARIO_IDS = new Set<CatalogScenarioId>([
@@ -392,6 +398,24 @@ type ExecutableStoryMapping = Readonly<{
 }>
 
 const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableStoryMapping>> = {
+  'SCN-memory-tool-pairing': {
+    verifiedAt: '2026-07-29',
+    storyIds: [
+      'tests/stories/pure-helpers/pure-helpers.story.test.ts#SCN-memory-tool-pairing: retained history keeps tool exchanges whole',
+    ],
+  },
+  'SCN-scheduler-execution-tracking': {
+    verifiedAt: '2026-07-29',
+    storyIds: [
+      'tests/stories/pure-helpers/pure-helpers.story.test.ts#SCN-scheduler-execution-tracking: active execution tracking clears fulfilled and rejected work',
+    ],
+  },
+  'SCN-changelog-version-section': {
+    verifiedAt: '2026-07-29',
+    storyIds: [
+      'tests/stories/pure-helpers/pure-helpers.story.test.ts#SCN-changelog-version-section: version lookup returns only the requested changelog section',
+    ],
+  },
   'SCN-coding-acp-command': {
     verifiedAt: '2026-07-13',
     storyIds: [
@@ -1428,10 +1452,6 @@ const blocked = (family: StoryFamily, rationale: string): AuditRecord =>
 
 export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
   // Phase 3 — uncatalogued runtime cluster; catalog-only until each record has a literal story mapping.
-  'SCN-memory-tool-pairing': ready(
-    'F3',
-    'Pure retained-history normalization can be proven directly; no Tier-0 fixture seam is missing.',
-  ),
   'SCN-queue-coalescing': ready(
     'F1',
     'The existing queue runtime can prove same-actor batching and output ordering without a new seam.',
@@ -1475,14 +1495,6 @@ export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
   'SCN-stats-aggregate-window': ready(
     'F4',
     'The existing stats query runtime can prove internally consistent windowed aggregates.',
-  ),
-  'SCN-scheduler-execution-tracking': ready(
-    'F5',
-    'Pure promise tracking can be proven directly for both fulfilled and rejected executions.',
-  ),
-  'SCN-changelog-version-section': ready(
-    'F1',
-    'Pure changelog section extraction can be proven directly for a matched version, next header, and absent version.',
   ),
   'SCN-plugin-deny-gating': ready(
     'F7',
