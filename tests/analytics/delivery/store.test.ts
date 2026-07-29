@@ -188,6 +188,7 @@ describe('analytics delivery store', () => {
         {
           eventId: 'event-1',
           sinkVersionId: 'sv-1',
+          grantKey: GRANT.grantKey,
           nowMs: NOW + 20,
           outcome: 'delivered',
           remoteReceiptHash: 'receipt-1',
@@ -209,6 +210,7 @@ describe('analytics delivery store', () => {
         {
           eventId: 'event-1',
           sinkVersionId: 'sv-1',
+          grantKey: GRANT.grantKey,
           nowMs: NOW + 20,
           outcome: 'retryable',
           errorClass: 'http_5xx',
@@ -230,7 +232,14 @@ describe('analytics delivery store', () => {
     toSending()
     expect(
       classifyDelivery(
-        { eventId: 'event-1', sinkVersionId: 'sv-1', nowMs: NOW + 500, outcome: 'delivered', remoteReceiptHash: 'r' },
+        {
+          eventId: 'event-1',
+          sinkVersionId: 'sv-1',
+          grantKey: GRANT.grantKey,
+          nowMs: NOW + 500,
+          outcome: 'delivered',
+          remoteReceiptHash: 'r',
+        },
         deps,
       ),
     ).toBe('lease_expired')
@@ -242,7 +251,14 @@ describe('analytics delivery store', () => {
     enqueueDelivery({ eventId: 'event-1', sinkVersionId: 'sv-1', grant: GRANT, nowMs: NOW }, deps)
     expect(
       classifyDelivery(
-        { eventId: 'event-1', sinkVersionId: 'sv-1', nowMs: NOW, outcome: 'delivered', remoteReceiptHash: 'r' },
+        {
+          eventId: 'event-1',
+          sinkVersionId: 'sv-1',
+          grantKey: GRANT.grantKey,
+          nowMs: NOW,
+          outcome: 'delivered',
+          remoteReceiptHash: 'r',
+        },
         deps,
       ),
     ).toBe('not_sending')
@@ -272,7 +288,14 @@ describe('analytics delivery store', () => {
 
     expect(
       classifyDelivery(
-        { eventId: 'event-1', sinkVersionId: 'sv-1', nowMs: NOW + 20, outcome: 'delivered', remoteReceiptHash: 'r' },
+        {
+          eventId: 'event-1',
+          sinkVersionId: 'sv-1',
+          grantKey: GRANT.grantKey,
+          nowMs: NOW + 20,
+          outcome: 'delivered',
+          remoteReceiptHash: 'r',
+        },
         mutexDeps,
       ),
     ).toBe('classified')
@@ -396,6 +419,7 @@ describe('analytics delivery store', () => {
         {
           eventId: 'event-1',
           sinkVersionId: 'sv-1',
+          grantKey: GRANT.grantKey,
           nowMs: NOW + 20,
           outcome: 'retryable',
           errorClass: 'http_5xx',
@@ -430,7 +454,17 @@ describe('analytics delivery store', () => {
     expect(DELIVERY_ERROR_CLASSES).toContain(errorClass)
 
     toSending()
-    classifyDelivery({ eventId: 'event-1', sinkVersionId: 'sv-1', nowMs: NOW + 20, outcome: 'dead', errorClass }, deps)
+    classifyDelivery(
+      {
+        eventId: 'event-1',
+        sinkVersionId: 'sv-1',
+        grantKey: GRANT.grantKey,
+        nowMs: NOW + 20,
+        outcome: 'dead',
+        errorClass,
+      },
+      deps,
+    )
     const row = getDelivery(db, 'event-1', 'sv-1')
     expect(row?.state).toBe('dead')
     expect(row?.lastErrorClass).toBe(errorClass)

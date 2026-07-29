@@ -6,12 +6,16 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import {
+  classifyDelivery,
   classifySendError,
   recoverOrphanedSends,
   reconcileAmbiguous,
 } from '../../../src/analytics/delivery/store-outcomes.js'
+import { resolveGrantSendMutex } from '../../../src/analytics/delivery/store.js'
 import type { DeliveryStoreDeps } from '../../../src/analytics/delivery/store.js'
 import { setupTestDb } from '../../utils/test-helpers.js'
+
+const NOW = 1_700_000_000_000
 
 describe('analytics delivery store outcomes', () => {
   let deps: DeliveryStoreDeps
@@ -35,5 +39,17 @@ describe('analytics delivery store outcomes', () => {
     expect(classifySendError(undefined)).toBe('unknown')
     expect(classifySendError(null)).toBe('unknown')
     expect(classifySendError(42)).toBe('unknown')
+  })
+
+  test('classifying a missing row releases the caller-held grant mutex (no send_in_progress wedge)', () => {
+    const mutex = resolveGrantSendMutex(deps)
+    const key = 'grant-wedge-1'
+    expect(mutex.tryAcquire(key)).not.toBeNull()
+    const result = classifyDelivery(
+      { eventId: 'evt-missing', sinkVersionId: 'sv-1', grantKey: key, nowMs: NOW, outcome: 'delivered' },
+      deps,
+    )
+    expect(result).toBe('not_sending')
+    expect(mutex.isHeld(key)).toBe(false)
   })
 })

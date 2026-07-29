@@ -19,7 +19,7 @@ export type ClassifyDeliveryInput = Readonly<{
   sinkVersionId: string
   nowMs: number
   outcome: 'delivered' | 'retryable' | 'ambiguous' | 'dead'
-  grantKey?: string
+  grantKey: string
   remoteReceiptHash?: string
   errorClass?: DeliveryErrorClass
   retryAtMs?: number
@@ -72,7 +72,7 @@ export const classifyDelivery = (
         )
         .get()
       if (row === undefined || row.state !== 'sending') {
-        if (row === undefined && input.grantKey !== undefined && mutex.isHeld(input.grantKey)) {
+        if (row === undefined && mutex.isHeld(input.grantKey)) {
           heldGrantKey = input.grantKey
         }
         return 'not_sending'
