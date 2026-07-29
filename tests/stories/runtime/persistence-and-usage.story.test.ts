@@ -73,6 +73,13 @@ test('SCN-message-cache-persistence: persisted messages retain context and reply
 
       const chain = buildReplyChain('thread-A', 'm-2')
       expect(chain).toMatchObject({ chain: ['m-1', 'm-2'], isComplete: true })
+      expect(getMessage({ kind: 'group', groupContextId: 'group-B' }, 'm-1')).toMatchObject({
+        messageId: 'm-1',
+        contextId: 'thread-B',
+        groupContextId: 'group-B',
+        text: 'other root',
+        timestamp: 3,
+      })
       expect(getMessage({ kind: 'group', groupContextId: 'group-B' }, 'm-2')).toBeUndefined()
       expect(getMessageContext({ kind: 'group', groupContextId: 'group-B' }, 'm-2', 1, 1, 'reply_chain')).toEqual({
         target: undefined,

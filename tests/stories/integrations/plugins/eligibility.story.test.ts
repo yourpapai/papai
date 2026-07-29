@@ -6,6 +6,7 @@
 import { expect, mock, test } from 'bun:test'
 
 import { toScopedContextId } from '../../../../src/chat/scoped-context.js'
+import { namespacedToolName } from '../../../../src/plugins/contribution-names.js'
 import { contributionRegistry } from '../../../../src/plugins/contributions.js'
 import { discoverPlugins } from '../../../../src/plugins/discovery.js'
 import { getActivatedPluginIds } from '../../../../src/plugins/loader.js'
@@ -21,6 +22,7 @@ import { executeScenario } from '../../harness/scenario.js'
 const BASE_PLUGIN_ID = 'synthetic-web-search'
 const CONSTRAINED_PLUGIN_ID = 'synthetic-needs-user-resolution'
 const TOOL_NAME = 'plugin_synthetic_web_search__search'
+const CONSTRAINED_TOOL_NAME = namespacedToolName(CONSTRAINED_PLUGIN_ID, 'search')
 
 function createMockProvider(getTask: TaskProvider['getTask']): TaskProvider {
   const provider = new MemoryTaskProvider()
@@ -116,6 +118,7 @@ test('SCN-plugin-deny-gating: unavailable plugin capabilities are removed before
       expect(pluginRegistry.getEntry(CONSTRAINED_PLUGIN_ID)?.state).toBe('incompatible')
       expect(getActivatedPluginIds()).not.toContain(CONSTRAINED_PLUGIN_ID)
       expect(await toolNames(contextId, alice.id)).not.toContain(TOOL_NAME)
+      expect(await toolNames(contextId, alice.id)).not.toContain(CONSTRAINED_TOOL_NAME)
 
       const getTask = mock(() =>
         Promise.resolve({ id: 'task-1', title: 'ignored', status: 'todo', url: 'https://example.test/task-1' }),
