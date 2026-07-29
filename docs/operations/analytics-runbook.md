@@ -234,13 +234,15 @@ Deferred external-lane items triaged from the Stage A whole-branch review.
 Every item is **gating**: none of the external lanes (Stage D/E) may be
 enabled until all boxes are checked.
 
-- [ ] `resolveSinkForSend` matches the event/aggregate `egressMode` to the
-  delivery lane before any external lane is enabled (today it only checks the
-  sink is `enabled`, never the row's lane).
-- [ ] The release path has a production caller: `assessReleaseRequest` runs
-  only as an assessment sidecar of the reconcile route, and
-  `buildDailyAggregateRelease` is not wired to any release API.
-- [ ] `ClassifyDeliveryInput.grantKey` is a required field, not optional.
+- [x] `resolveSinkForSend` matches the event/aggregate `egressMode` to the
+  delivery lane before any external lane is enabled (fixed: lane parameter
+  required at send resolution, commit 6933360d6).
+- [x] The release path has a production caller: the reconcile route's
+  `release` block accepts `sinkVersionId` + `execute` and runs
+  `buildDailyAggregateRelease` after a passing assessment (commit
+  af2eae8ec).
+- [x] `ClassifyDeliveryInput.grantKey` is a required field (commit
+  c3f39ddd1).
 
 ## Recurring schedule
 
@@ -253,7 +255,11 @@ enabled until all boxes are checked.
   purge, censor maturity, backfill/reconcile as configured — all
   cutover-fence admitted and expiry-guarded.
 - Review: reconciliation status, rejects, restart gaps, delivery
-  `sending`/`ambiguous` counts, snapshot freshness.
+  `sending`/`ambiguous` counts, snapshot freshness. During Stage B, collect
+  the day record with
+  `DB_PATH=... bun run scripts/analytics-stage-b-report.ts --log /var/lib/papai/stage-b.jsonl`
+  (read-only; cron-safe; see the Stage B design spec) and paste the printed
+  window-log row into the evidence doc.
 
 ### Weekly (45 minutes; product/UX + engineering, privacy/security when gated)
 

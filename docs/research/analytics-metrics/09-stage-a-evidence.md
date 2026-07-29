@@ -113,6 +113,11 @@ aggregate publication.
 - Window end (UTC):
 - Restart/suppressed days (`unreconciled_restart_gap`):
 
+### Daily log (report CLI rows)
+
+| Day (UTC) | Eligible | Reason | Freshness | Recon delta | Rejects | Overflow | Expiry | Notes |
+|---|---|---|---|---|---|---|---|---|
+
 | Week | Freshness | Reconciliation delta | Rejects | Overflow | Expiry check | Notes |
 |---|---|---|---|---|---|---|
 | 1 | | | | | | |
@@ -327,3 +332,12 @@ aggregate publication.
   in CI per the both-modes expectation in tests/CLAUDE.md:9 — locally green
   only serially (review-loop 5s timeouts under contention; not a branch
   defect, reproduced without the branch).
+
+## Stage B readiness evidence (pre-merge fixes)
+
+| Item | Gate result | Commit | Date |
+|---|---|---|---|
+| resolveSinkForSend egressMode matching | tests/analytics/delivery green (worker-send + worker crossed-lane) | 6933360d6 | 2026-07-29 |
+| ClassifyDeliveryInput.grantKey required | tests/analytics/delivery + withdrawal-race green | c3f39ddd1 | 2026-07-29 |
+| Release execution route | tests/debug/settings/admin/analytics-routes green (deny matrix, execute, idempotency, sink gating) | af2eae8ec | 2026-07-29 |
+| Stage B report CLI | tests/analytics/jobs/stage-b-report + stage-b-assess green; zero-write proof; smoke run recorded | <task-4-hash> | 2026-07-29 |
