@@ -103,7 +103,7 @@ export type CatalogCoverage =
     }>
 
 export const CATALOG_SOURCE =
-  'scenario-catalog snapshot supplied 2026-07-13; extended 2026-07-23 with 12 SCN-parity-* provider-real (@1) ids (tier1-provider-real-parity); extended 2026-07-24 with 17 SCN-parity-* domain-retrofit (@1) ids (tier1b-e2e-parity-retrofit); extended 2026-07-24 with 8 SCN-* process-real smoke (@2) ids (tier2-process-smoke); extended 2026-07-27 with 10 real-YouTrack (@0) ids (t0-real-youtrack-provider); extended 2026-07-28 with 18 previously uncataloged story ids (story-catalog-census)' as const
+  'scenario-catalog snapshot supplied 2026-07-13; extended 2026-07-23 with 12 SCN-parity-* provider-real (@1) ids (tier1-provider-real-parity); extended 2026-07-24 with 17 SCN-parity-* domain-retrofit (@1) ids (tier1b-e2e-parity-retrofit); extended 2026-07-24 with 8 SCN-* process-real smoke (@2) ids (tier2-process-smoke); extended 2026-07-27 with 10 real-YouTrack (@0) ids (t0-real-youtrack-provider); extended 2026-07-28 with 18 previously uncataloged story ids (story-catalog-census); extended 2026-07-29 with 21 uncatalogued-cluster behavior ids (@0/@3/@4) (phase3-catalog-foundation)' as const
 
 export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-task-create-update',
@@ -309,12 +309,59 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-plugin-context-eligibility',
   'SCN-plugin-contribution-isolation',
   'SCN-http-mattermost-action-bad-signature',
+  // Phase 3 — uncatalogued runtime cluster (catalog foundation)
+  'SCN-memory-tool-pairing',
+  'SCN-queue-coalescing',
+  'SCN-queue-group-serialization',
+  'SCN-attachments-staged-scope-search',
+  'SCN-attachments-staged-resolution',
+  'SCN-byok-context-credentials',
+  'SCN-byok-unreadable-credentials',
+  'SCN-message-cache-persistence',
+  'SCN-usage-accounting',
+  'SCN-announcement-delivery-fanout',
+  'SCN-stats-anonymity',
+  'SCN-stats-aggregate-window',
+  'SCN-scheduler-execution-tracking',
+  'SCN-changelog-version-section',
+  'SCN-interaction-discord-command-routing',
+  'SCN-interaction-discord-format-chunking',
+  'SCN-interaction-discord-response-lifecycle',
+  'SCN-interaction-kontur-reply-formatting',
+  'SCN-interaction-telegram-admin-authorization',
+  'SCN-deferred-poller-lifecycle',
+  'SCN-plugin-deny-gating',
 ] as const)
+
+export const PHASE3_UNCATALOGUED_CLUSTER_IDS = [
+  'SCN-memory-tool-pairing',
+  'SCN-queue-coalescing',
+  'SCN-queue-group-serialization',
+  'SCN-attachments-staged-scope-search',
+  'SCN-attachments-staged-resolution',
+  'SCN-byok-context-credentials',
+  'SCN-byok-unreadable-credentials',
+  'SCN-message-cache-persistence',
+  'SCN-usage-accounting',
+  'SCN-announcement-delivery-fanout',
+  'SCN-stats-anonymity',
+  'SCN-stats-aggregate-window',
+  'SCN-scheduler-execution-tracking',
+  'SCN-changelog-version-section',
+  'SCN-interaction-discord-command-routing',
+  'SCN-interaction-discord-format-chunking',
+  'SCN-interaction-discord-response-lifecycle',
+  'SCN-interaction-kontur-reply-formatting',
+  'SCN-interaction-telegram-admin-authorization',
+  'SCN-deferred-poller-lifecycle',
+  'SCN-plugin-deny-gating',
+] as const satisfies readonly CatalogScenarioId[]
 
 const GAP_SCENARIO_IDS = new Set<CatalogScenarioId>([
   'SCN-coding-nerv-steer',
   'SCN-supervise-self-review',
   'SCN-cmd-announce',
+  ...PHASE3_UNCATALOGUED_CLUSTER_IDS,
 ])
 
 const FORWARD_ONLY_SCENARIO_IDS = new Set<CatalogScenarioId>([
@@ -1374,10 +1421,109 @@ const needs = (
   unblockedByTier: StoryTier,
   rationale: string,
 ): AuditRecord => auditRecord({ state: 'needs-seam', seams, unblockedByTier }, family, rationale)
+const ready = (family: StoryFamily, rationale: string): AuditRecord =>
+  auditRecord({ state: 'executable-as-is' }, family, rationale)
 const blocked = (family: StoryFamily, rationale: string): AuditRecord =>
   auditRecord({ state: 'blocked', blocker: 'missing-implementation' }, family, rationale)
 
 export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
+  // Phase 3 — uncatalogued runtime cluster; catalog-only until each record has a literal story mapping.
+  'SCN-memory-tool-pairing': ready(
+    'F3',
+    'Pure retained-history normalization can be proven directly; no Tier-0 fixture seam is missing.',
+  ),
+  'SCN-queue-coalescing': ready(
+    'F1',
+    'The existing queue runtime can prove same-actor batching and output ordering without a new seam.',
+  ),
+  'SCN-queue-group-serialization': ready(
+    'F1',
+    'The existing queue runtime can prove actor-change flushing and one-run-per-thread serialization without a new seam.',
+  ),
+  'SCN-attachments-staged-scope-search': ready(
+    'F2',
+    'The existing database-backed attachment runtime can prove context and group search isolation without a new seam.',
+  ),
+  'SCN-attachments-staged-resolution': ready(
+    'F2',
+    'The existing attachment relay runtime can prove single-use resolution, terminal failure, and intentional re-send behavior.',
+  ),
+  'SCN-byok-context-credentials': ready(
+    'F1',
+    'The existing encrypted configuration store can prove per-context merge and clear behavior while assertions omit secret values.',
+  ),
+  'SCN-byok-unreadable-credentials': ready(
+    'F1',
+    'The existing encrypted configuration store can prove unreadable data fails closed without a new runtime seam.',
+  ),
+  'SCN-message-cache-persistence': ready(
+    'F3',
+    'The existing message-cache persistence runtime can prove eligible persistence and chain/context retrieval boundaries.',
+  ),
+  'SCN-usage-accounting': ready(
+    'F4',
+    'The existing usage recorder and query runtime can prove idempotent event identity and window-scoped reads.',
+  ),
+  'SCN-announcement-delivery-fanout': ready(
+    'F1',
+    'The existing announcement broadcast dependency injection can prove independent fan-out success and failure accounting.',
+  ),
+  'SCN-stats-anonymity': ready(
+    'F4',
+    'The existing stats aggregation and salt test helpers can prove that raw subject identity is not returned.',
+  ),
+  'SCN-stats-aggregate-window': ready(
+    'F4',
+    'The existing stats query runtime can prove internally consistent windowed aggregates.',
+  ),
+  'SCN-scheduler-execution-tracking': ready(
+    'F5',
+    'Pure promise tracking can be proven directly for both fulfilled and rejected executions.',
+  ),
+  'SCN-changelog-version-section': ready(
+    'F1',
+    'Pure changelog section extraction can be proven directly for a matched version, next header, and absent version.',
+  ),
+  'SCN-plugin-deny-gating': ready(
+    'F7',
+    'The existing plugin capability runtime can prove denied capabilities are absent before execution without a new seam.',
+  ),
+  'SCN-interaction-discord-command-routing': needs(
+    'F8',
+    ['platform-adapter-fakes'],
+    '3',
+    'This verifies the discord.js command wire above the runtime boundary and needs a fake Discord client.',
+  ),
+  'SCN-interaction-discord-format-chunking': needs(
+    'F8',
+    ['platform-adapter-fakes'],
+    '3',
+    'This verifies Discord transport formatting and chunk boundaries, which needs a fake Discord client.',
+  ),
+  'SCN-interaction-discord-response-lifecycle': needs(
+    'F8',
+    ['platform-adapter-fakes'],
+    '3',
+    'This verifies discord.js deferred and replied interaction lifecycle behavior above the runtime boundary.',
+  ),
+  'SCN-interaction-kontur-reply-formatting': needs(
+    'F8',
+    ['platform-adapter-fakes'],
+    '3',
+    'This verifies Kontur Talk platform reply formatting and chunk boundaries above the runtime boundary.',
+  ),
+  'SCN-interaction-telegram-admin-authorization': needs(
+    'F8',
+    ['platform-adapter-fakes'],
+    '3',
+    'This verifies the grammY platform-admin helper wire and needs a fake Telegram API.',
+  ),
+  'SCN-deferred-poller-lifecycle': needs(
+    'F5',
+    ['scheduler-due-seed', 'scheduler-chat-di'],
+    '4',
+    'This verifies timer lifecycle and controlled polling, requiring the operational virtual-clock lane.',
+  ),
   // F1 — tool assembly, disclosure, and command surface (refactor-risk first)
   'SCN-cmd-nerv': blocked(
     'F1',

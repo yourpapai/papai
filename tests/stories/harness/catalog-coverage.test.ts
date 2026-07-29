@@ -13,12 +13,12 @@ import {
   CATALOG_SCENARIO_IDS,
   catalogCoverage,
   LIVE_STORY_TIERS,
+  PHASE3_UNCATALOGUED_CLUSTER_IDS,
   STORY_FAMILIES,
   STORY_SEAM_IDS,
   STORY_TIERS,
   TIER_SUITE_ROOTS,
   toPendingReason,
-  type AuditReadiness,
   type StoryFamily,
   type StorySeamId,
 } from '../catalog/coverage.js'
@@ -89,8 +89,17 @@ const ACP_CATALOG_STORY_IDS = {
 
 const pendingCoverage = catalogCoverage.filter((coverage) => coverage.kind === 'pending')
 
+const phase3UncataloguedClusterIdSet: ReadonlySet<string> = new Set(PHASE3_UNCATALOGUED_CLUSTER_IDS)
+
 const auditSeams = (coverage: (typeof catalogCoverage)[number]): readonly StorySeamId[] =>
   coverage.kind === 'pending' && coverage.audit.readiness.state === 'needs-seam' ? coverage.audit.readiness.seams : []
+
+function pendingNeedsSeamTierProjections(coverage: readonly (typeof catalogCoverage)[number][]): readonly string[] {
+  return coverage.flatMap((entry) => {
+    if (entry.kind !== 'pending' || entry.audit.readiness.state !== 'needs-seam') return []
+    return [`${entry.scenarioId}@${entry.audit.readiness.unblockedByTier}`]
+  })
+}
 
 const FAMILY_QUEUE_EXPECTATIONS: ReadonlyArray<readonly [string, StoryFamily]> = [
   ['SCN-meta-', 'F1'],
@@ -107,6 +116,16 @@ const FAMILY_QUEUE_EXPECTATIONS: ReadonlyArray<readonly [string, StoryFamily]> =
   ['SCN-reminder-', 'F5'],
   ['SCN-web-fetch', 'F6'],
   ['SCN-settings-admin-mcp-', 'F7'],
+  ['SCN-queue-', 'F1'],
+  ['SCN-attachments-', 'F2'],
+  ['SCN-byok-', 'F1'],
+  ['SCN-message-cache-', 'F3'],
+  ['SCN-usage-', 'F4'],
+  ['SCN-announcement-', 'F1'],
+  ['SCN-stats-', 'F4'],
+  ['SCN-scheduler-', 'F5'],
+  ['SCN-changelog-', 'F1'],
+  ['SCN-plugin-', 'F7'],
   ['SCN-interaction-', 'F8'],
   ['SCN-coding-nerv-', 'unqueued'],
   ['SCN-supervise-', 'unqueued'],
@@ -125,20 +144,56 @@ describe('scenario catalog coverage', () => {
   test('classifies every catalog scenario exactly once', () => {
     const ledgerIds = catalogCoverage.map(({ scenarioId }) => scenarioId)
 
-    expect(CATALOG_SCENARIO_IDS).toHaveLength(192)
-    expect(new Set(CATALOG_SCENARIO_IDS).size).toBe(192)
+    expect(CATALOG_SCENARIO_IDS).toHaveLength(215)
+    expect(new Set(CATALOG_SCENARIO_IDS).size).toBe(215)
     expect(sorted(ledgerIds)).toEqual(sorted(CATALOG_SCENARIO_IDS))
+  })
+
+  test('catalogs every Phase 3 uncatalogued behavior as a pending gap at its lowest proving tier', () => {
+    expect(PHASE3_UNCATALOGUED_CLUSTER_IDS).toEqual([
+      'SCN-memory-tool-pairing',
+      'SCN-queue-coalescing',
+      'SCN-queue-group-serialization',
+      'SCN-attachments-staged-scope-search',
+      'SCN-attachments-staged-resolution',
+      'SCN-byok-context-credentials',
+      'SCN-byok-unreadable-credentials',
+      'SCN-message-cache-persistence',
+      'SCN-usage-accounting',
+      'SCN-announcement-delivery-fanout',
+      'SCN-stats-anonymity',
+      'SCN-stats-aggregate-window',
+      'SCN-scheduler-execution-tracking',
+      'SCN-changelog-version-section',
+      'SCN-interaction-discord-command-routing',
+      'SCN-interaction-discord-format-chunking',
+      'SCN-interaction-discord-response-lifecycle',
+      'SCN-interaction-kontur-reply-formatting',
+      'SCN-interaction-telegram-admin-authorization',
+      'SCN-deferred-poller-lifecycle',
+      'SCN-plugin-deny-gating',
+    ])
+
+    const phase3Coverage = catalogCoverage.filter(({ scenarioId }) => phase3UncataloguedClusterIdSet.has(scenarioId))
+    expect(phase3Coverage).toHaveLength(21)
+    expect(phase3Coverage.every(({ catalogStatus }) => catalogStatus === 'gap')).toBe(true)
+    expect(phase3Coverage.every(({ kind }) => kind === 'pending')).toBe(true)
   })
 
   test('marks only platform-adapter interaction scenarios as forward-only', () => {
     const interactionCoverage = catalogCoverage.filter(({ scenarioId }) => scenarioId.startsWith('SCN-interaction-'))
 
-    expect(interactionCoverage).toHaveLength(4)
+    expect(interactionCoverage).toHaveLength(9)
     expect(interactionCoverage.map(({ catalogStatus }) => catalogStatus)).toEqual([
       'forward-only',
       'forward-only',
       'forward-only',
       'confirmed',
+      'gap',
+      'gap',
+      'gap',
+      'gap',
+      'gap',
     ])
     expect(
       interactionCoverage.find(({ scenarioId }) => scenarioId === 'SCN-interaction-permission-decision')?.kind,
@@ -324,7 +379,7 @@ describe('scenario catalog coverage', () => {
   test('audit records cover exactly the pending scenarios', () => {
     const pendingIds = pendingCoverage.map(({ scenarioId }) => scenarioId)
 
-    expect(pendingIds).toHaveLength(25)
+    expect(pendingIds).toHaveLength(46)
     expect(sorted(Object.keys(AUDIT_RECORDS))).toEqual(sorted(pendingIds))
   })
 
@@ -351,27 +406,25 @@ describe('scenario catalog coverage', () => {
   })
 
   test('names the tier that unblocks every seam-pending scenario', () => {
-    const seamPending = pendingCoverage.filter((coverage) => coverage.audit.readiness.state === 'needs-seam')
-    const seamReadiness = seamPending
-      .map((coverage) => coverage.audit.readiness)
-      .filter(
-        (readiness): readiness is Extract<AuditReadiness, { state: 'needs-seam' }> => readiness.state === 'needs-seam',
-      )
-    const unblockingTiers = seamReadiness.map((readiness) => readiness.unblockedByTier)
-
-    expect(sorted(seamPending.map(({ scenarioId }) => scenarioId))).toEqual([
-      'SCN-interaction-discord-router-wrapped',
-      'SCN-interaction-discord-standalone-fallback',
-      'SCN-interaction-telegram-callback',
+    const seamPendingByTier = pendingNeedsSeamTierProjections(pendingCoverage)
+    expect(seamPendingByTier.toSorted()).toEqual([
+      'SCN-deferred-poller-lifecycle@4',
+      'SCN-interaction-discord-command-routing@3',
+      'SCN-interaction-discord-format-chunking@3',
+      'SCN-interaction-discord-response-lifecycle@3',
+      'SCN-interaction-discord-router-wrapped@3',
+      'SCN-interaction-discord-standalone-fallback@3',
+      'SCN-interaction-kontur-reply-formatting@3',
+      'SCN-interaction-telegram-admin-authorization@3',
+      'SCN-interaction-telegram-callback@3',
     ])
-    expect(unblockingTiers).toEqual(['3', '3', '3'])
   })
 
   test('audit readiness totals match the audit outcome', () => {
     const states = pendingCoverage.map((coverage) => coverage.audit.readiness.state)
 
-    expect(states.filter((state) => state === 'executable-as-is')).toHaveLength(0)
-    expect(states.filter((state) => state === 'needs-seam')).toHaveLength(3)
+    expect(states.filter((state) => state === 'executable-as-is')).toHaveLength(15)
+    expect(states.filter((state) => state === 'needs-seam')).toHaveLength(9)
     expect(states.filter((state) => state === 'blocked')).toHaveLength(22)
   })
 
