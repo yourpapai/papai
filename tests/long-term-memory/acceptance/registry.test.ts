@@ -6,7 +6,17 @@
 import { describe, expect, test } from 'bun:test'
 
 import { CASE_TABLES, coveredShapes } from './coverage.js'
-import { CRITERIA, CRITERION_KEYS, criterionByKey, registeredCriteria, SHAPE_KEYS, SHAPES } from './registry.js'
+import { PREDICATE_REGISTRATIONS, type PredicateRegistration, registrationFor } from './predicate-registrations.js'
+import {
+  CRITERIA,
+  CRITERION_KEYS,
+  type CriterionKey,
+  criterionByKey,
+  GATE0_IMPLEMENTED,
+  registeredCriteria,
+  SHAPE_KEYS,
+  SHAPES,
+} from './registry.js'
 
 describe('acceptance registry contract', () => {
   test('criteria cover the frozen key list exactly', () => {
@@ -94,10 +104,10 @@ describe('acceptance registry contract', () => {
     }
   })
 
-  test('no unimplemented shape is claimed by any criterion', () => {
-    const declared = new Set(CRITERIA.flatMap((c) => c.shapes))
+  test('no unimplemented shape is claimed as an executed cell', () => {
+    const executed = new Set(CRITERIA.flatMap((c) => c.shapes))
     for (const shape of SHAPES.filter((s) => s.status === 'declared-unimplemented')) {
-      expect(declared.has(shape.key)).toBe(false)
+      expect(executed.has(shape.key)).toBe(false)
     }
   })
 
@@ -116,8 +126,8 @@ describe('acceptance registry coverage cross-check', () => {
     }
   })
 
-  test('no declared-unmet criterion exports a case table', () => {
-    for (const criterion of CRITERIA.filter((c) => c.status === 'declared-unmet')) {
+  test('only an implemented criterion exports a case table', () => {
+    for (const criterion of CRITERIA.filter((c) => c.status !== 'implemented')) {
       expect(CASE_TABLES[criterion.key]).toBeUndefined()
     }
   })
@@ -144,6 +154,63 @@ describe('acceptance registry coverage cross-check', () => {
       for (const description of Object.values(table)) {
         expect(description).not.toBe('')
       }
+    }
+  })
+
+  test('a registered cell has no matching case', () => {
+    for (const criterion of CRITERIA) {
+      const covered = coveredShapes(criterion.key)
+      for (const shape of criterion.registeredShapes) {
+        expect(covered).not.toContain(shape)
+      }
+    }
+  })
+
+  test('a registered cell may name a shape with no fixture builder yet', () => {
+    const registered = new Set(CRITERIA.flatMap((c) => c.registeredShapes))
+    expect(registered).toContain('long-horizon')
+    expect(SHAPES.find((s) => s.key === 'long-horizon')?.status).toBe('declared-unimplemented')
+  })
+})
+
+const GATE0_IMPLEMENTED_SET = new Set<CriterionKey>(GATE0_IMPLEMENTED)
+
+function isPredicateCheckable(criterion: { key: CriterionKey; passPredicate: string | null }): boolean {
+  return criterion.passPredicate !== null && !GATE0_IMPLEMENTED_SET.has(criterion.key)
+}
+
+function predicateOf(registration: PredicateRegistration | undefined): string | null {
+  return registration === undefined ? null : registration.predicate
+}
+
+describe('acceptance registry predicate binding', () => {
+  test('every criterion holding a predicate matches its registration verbatim', () => {
+    for (const criterion of CRITERIA.filter(isPredicateCheckable)) {
+      const registration = registrationFor(criterion.key)
+      expect(registration).toBeDefined()
+      expect(criterion.passPredicate).toBe(predicateOf(registration))
+    }
+  })
+
+  test('the grandfather exemption is exactly the four Gate 0 criteria', () => {
+    expect([...GATE0_IMPLEMENTED].toSorted()).toEqual(['erasure', 'provenance', 'reproducibility', 'scope-isolation'])
+  })
+
+  test('every exempt criterion was implemented under the Gate 0 spec', () => {
+    for (const key of GATE0_IMPLEMENTED) {
+      expect(criterionByKey(key).status).toBe('implemented')
+    }
+  })
+
+  test('no exempt criterion also carries a registration', () => {
+    for (const key of GATE0_IMPLEMENTED) {
+      expect(registrationFor(key)).toBeUndefined()
+    }
+  })
+
+  test('every registration names a criterion that carries its predicate', () => {
+    for (const entry of PREDICATE_REGISTRATIONS) {
+      expect(criterionByKey(entry.criterion).passPredicate).toBe(entry.predicate)
     }
   })
 })

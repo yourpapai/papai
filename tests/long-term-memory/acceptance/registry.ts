@@ -71,6 +71,23 @@ export const SHAPE_KEYS: readonly ShapeKey[] = [
   'abstention',
 ]
 
+/**
+ * The four criteria whose predicates were authored in the Gate 0 spec itself, where the promotion
+ * rule permitted it because the outcome was already known and uncontested. They have no entry in
+ * `predicate-registrations.ts` and are exempt from the verbatim check.
+ *
+ * Backdating registrations for them was rejected: it would fabricate a pre-registration that never
+ * happened, in the one artifact whose entire value is that it does not lie. This list is itself a
+ * frozen contract term — `registry.test.ts` asserts its exact contents, so growing it to smuggle a
+ * criterion past the verbatim check fails CI.
+ */
+export const GATE0_IMPLEMENTED: readonly CriterionKey[] = [
+  'scope-isolation',
+  'erasure',
+  'provenance',
+  'reproducibility',
+]
+
 export type Criterion = Readonly<{
   key: CriterionKey
   status: 'implemented' | 'predicate-registered' | 'declared-unmet'
