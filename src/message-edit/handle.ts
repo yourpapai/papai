@@ -233,8 +233,5 @@ async function handleW2(
     if (observer !== undefined && editSeed !== undefined) observeEditRegen(observer, editSeed, 'history_only')
     return
   }
-  const observer = deps.analyticsObserver
-  if (observer !== undefined && editSeed !== undefined) observeEditRegen(observer, editSeed, 'regen_started')
   await regenerateFromEditedText(msg, reply, auth, last, deps)
-  if (observer !== undefined && editSeed !== undefined) observeEditRegen(observer, editSeed, 'regen_completed')
 }
