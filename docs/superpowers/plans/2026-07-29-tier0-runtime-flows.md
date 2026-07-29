@@ -68,12 +68,12 @@ See LICENSE in the project root for details.
 
   In the serialization scenario, install a handler that pushes `start:` plus the coalesced text and `end:` plus the coalesced text, increments/decrements `active`, records `maxActive`, and waits only when handling Alice's item. Enqueue Alice then Bob, resolve Alice's deferred promise, and use `waitFor` to wait for two completed handler invocations. Assert `['start:[@alice]: one', 'end:[@alice]: one', 'start:[@bob]: two', 'end:[@bob]: two']` and `maxActive === 1`. Add a second controlled run where Alice rejects; assert Bob completes after it and the handler chain is not deadlocked.
 
-- [ ] **Step 2: Run the new story file to verify the catalog census fails before mapping**
+- [ ] **Step 2: Run story contracts to verify the catalog census fails before mapping**
 
   Run:
 
   ```sh
-  bun test:stories
+  bun test:stories:contracts
   ```
 
   Expected: FAIL because the two new literal scenario IDs are not yet claimed by the bidirectional catalog census. Do not alter the queue runtime to address this failure.
@@ -151,12 +151,12 @@ See LICENSE in the project root for details.
 
   Assert the recent aggregate's input/output tokens and tool count exactly. Emit a malformed `llm:end` and a non-user event, then assert no extra usage row was written and a separately subscribed listener still received the malformed event. Always call `resetUsageRecorderForTesting()` in `finally` so no subscriber crosses scenario teardown.
 
-- [ ] **Step 3: Run the new story file to verify the catalog census fails before mapping**
+- [ ] **Step 3: Run story contracts to verify the catalog census fails before mapping**
 
   Run:
 
   ```sh
-  bun test:stories
+  bun test:stories:contracts
   ```
 
   Expected: FAIL only because these two literal scenarios are unclaimed. The runtime assertions should otherwise be valid; do not solve a catalog failure with a supporting-story exemption.
@@ -207,12 +207,12 @@ See LICENSE in the project root for details.
 
   Add a focused denied-facade assertion in that scenario. Build a manifest with no `tasks.read` permission, use a provider spy/mocked provider whose `getTask` records calls, then call `runtime.taskProvider?.getTask('task-1')`. Assert the permission error and zero provider calls. Keep the assertion at the facade boundary; do not expose or call a raw provider from plugin code.
 
-- [ ] **Step 2: Run the plugin story to verify the catalog census fails before mapping**
+- [ ] **Step 2: Run story contracts to verify the catalog census fails before mapping**
 
   Run:
 
   ```sh
-  bun test:stories
+  bun test:stories:contracts
   ```
 
   Expected: FAIL because the new literal plugin-denial scenario is unclaimed. Existing `SCN-plugin-context-eligibility` and `SCN-plugin-contribution-isolation` mappings must remain unchanged.
