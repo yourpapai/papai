@@ -5,8 +5,11 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { memoryRecords, memorySummary } from '../../src/db/schema.js'
 import { evaluatePromotion } from '../../src/long-term-memory/promotion.js'
 import { saveMemoryRecord, listMemoryRecords } from '../../src/long-term-memory/store.js'
+import { isContentTombstoned } from '../../src/long-term-memory/tombstone.js'
 import type { MemoryRecord, MemoryRecordInput } from '../../src/long-term-memory/types.js'
 import { setupTestDb } from '../utils/test-helpers.js'
 
@@ -77,5 +80,51 @@ describe('evaluatePromotion', () => {
     })
     expect(promoted).toBe(false)
     expect(load('m1').evidence.promotionRejectedAt).toBe('2026-06-16T00:00:00.000Z')
+  })
+
+  test('dedup losers are destroyed, not archived', async () => {
+    saveMemoryRecord(prov('m1', 't-a'))
+    saveMemoryRecord(prov('m2', 't-b'))
+    saveMemoryRecord(prov('m3', 't-c'))
+
+    const promoted = await evaluatePromotion({ scopeId: 'g', scopeType: 'group' }, load('m1'), {
+      confirmDurable: () => Promise.resolve(true),
+      now: () => '2026-06-16T00:00:00.000Z',
+    })
+    expect(promoted).toBe(true)
+
+    const rows = getDrizzleDb().select().from(memoryRecords).all()
+    expect(rows.map((r) => r.id)).toEqual(['m1'])
+    expect(rows.some((r) => r.status === 'archived')).toBe(false)
+  })
+
+  test('dedup does not tombstone the fact the survivor still holds', async () => {
+    saveMemoryRecord(prov('m1', 't-a'))
+    saveMemoryRecord(prov('m2', 't-b'))
+    saveMemoryRecord(prov('m3', 't-c'))
+
+    await evaluatePromotion({ scopeId: 'g', scopeType: 'group' }, load('m1'), {
+      confirmDurable: () => Promise.resolve(true),
+      now: () => '2026-06-16T00:00:00.000Z',
+    })
+
+    expect(isContentTombstoned({ scopeId: 'g', scopeType: 'group' }, 'Deploys on Fridays.')).toBe(false)
+  })
+
+  test('dedup does not wipe the scope summary', async () => {
+    getDrizzleDb()
+      .insert(memorySummary)
+      .values({ userId: 'g', summary: 'Ongoing session context.', updatedAt: '2026-06-11T00:00:00.000Z' })
+      .run()
+    saveMemoryRecord(prov('m1', 't-a'))
+    saveMemoryRecord(prov('m2', 't-b'))
+    saveMemoryRecord(prov('m3', 't-c'))
+
+    await evaluatePromotion({ scopeId: 'g', scopeType: 'group' }, load('m1'), {
+      confirmDurable: () => Promise.resolve(true),
+      now: () => '2026-06-16T00:00:00.000Z',
+    })
+
+    expect(getDrizzleDb().select().from(memorySummary).all()).toHaveLength(1)
   })
 })

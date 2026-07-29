@@ -3,19 +3,27 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { randomUUID } from 'node:crypto'
+
 import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
-import { memoryProfiles, memoryRecords } from '../db/schema.js'
-import { recordScopeCondition } from './record-conditions.js'
+import { memoryProfiles, memoryRecallShadowLog, memoryRecords } from '../db/schema.js'
+import { logger } from '../logger.js'
+import { profileScopeCondition, recordScopeCondition, recordValidityCondition } from './record-conditions.js'
 import { rowToProfile, rowToRecord, sanitizeFtsQuery, serializeEmbedding } from './serialization.js'
+import type { ShadowLogRow } from './shadow-log-row.js'
+import { isContentTombstoned } from './tombstone.js'
 import type { MemoryKind, MemoryProfile, MemoryRecord, MemoryRecordInput, MemoryScope, MemoryStatus } from './types.js'
+
+const log = logger.child({ scope: 'long-term-memory:store' })
 
 export type ListMemoryRecordsFilter = Readonly<{
   status?: MemoryStatus
   statuses?: readonly MemoryStatus[]
   kind?: MemoryKind
   limit?: number
+  now?: string
 }> &
   MemoryScope
 
@@ -24,6 +32,7 @@ export type SearchMemoryRecordsFilter = Readonly<{
   includeStale?: boolean
   kind?: MemoryKind
   limit?: number
+  now?: string
 }> &
   MemoryScope
 
@@ -39,6 +48,8 @@ export {
   promoteProvisionalToActive,
   type ListProvisionalFilter,
 } from './provisional-store.js'
+export { clearMemoryScope } from './scope-clear.js'
+export { deleteMemoryRecord, purgeMemoryRecord } from './purge.js'
 
 const inputToRecordValues = (input: MemoryRecordInput): MemoryRecordValues => ({
   id: input.id,
@@ -60,10 +71,11 @@ const inputToRecordValues = (input: MemoryRecordInput): MemoryRecordValues => ({
   validUntil: input.validUntil ?? null,
   expiresAt: input.expiresAt ?? null,
   embedding: serializeEmbedding(input.embedding),
+  embeddingModel: input.embeddingModel ?? null,
+  embeddingDimension: input.embeddingDimension ?? null,
+  embeddingVersion: input.embeddingVersion ?? null,
+  embeddedAt: input.embeddedAt ?? null,
 })
-
-const profileScopeCondition = (scope: MemoryScope): SQL | undefined =>
-  and(eq(memoryProfiles.scopeId, scope.scopeId), eq(memoryProfiles.scopeType, scope.scopeType))
 
 const loadProfile = (scope: MemoryScope): MemoryProfile => {
   const row = getDrizzleDb().select().from(memoryProfiles).where(profileScopeCondition(scope)).get()
@@ -89,11 +101,22 @@ export function getMemoryProfile(scope: MemoryScope): MemoryProfile | null {
 export function saveMemoryProfile(scope: MemoryScope, profile: string, now: string): MemoryProfile {
   getDrizzleDb()
     .insert(memoryProfiles)
-    .values({ scopeId: scope.scopeId, scopeType: scope.scopeType, profile, enabled: true, version: 1, updatedAt: now })
+    .values({
+      scopeId: scope.scopeId,
+      scopeType: scope.scopeType,
+      profile,
+      enabled: true,
+      contaminatedAt: null,
+      version: 1,
+      updatedAt: now,
+    })
     .onConflictDoUpdate({
       target: [memoryProfiles.scopeType, memoryProfiles.scopeId],
       set: {
         profile,
+        // The replacement was written without the contaminated prose in scope, so it
+        // is trustworthy again.
+        contaminatedAt: null,
         version: sql`${memoryProfiles.version} + 1`,
         updatedAt: now,
       },
@@ -118,7 +141,49 @@ export function setMemoryCaptureEnabled(scope: MemoryScope, enabled: boolean, no
   return loadProfile(scope)
 }
 
-export function saveMemoryRecord(input: MemoryRecordInput): MemoryRecord {
+export function setMemoryRecordInjectionEnabled(scope: MemoryScope, enabled: boolean, now: string): MemoryProfile {
+  getDrizzleDb()
+    .insert(memoryProfiles)
+    .values({
+      scopeId: scope.scopeId,
+      scopeType: scope.scopeType,
+      profile: '',
+      injectRecords: enabled,
+      version: 1,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [memoryProfiles.scopeType, memoryProfiles.scopeId],
+      set: {
+        injectRecords: enabled,
+        version: sql`${memoryProfiles.version} + 1`,
+        updatedAt: now,
+      },
+    })
+    .run()
+  return loadProfile(scope)
+}
+
+/**
+ * Writes a record unless its content has been forgotten in this scope.
+ *
+ * The tombstone check lives here rather than at the capture and extraction call sites so
+ * that a write path added later inherits the suppression instead of having to remember it.
+ * Explicit saves are never gated: `remember_memory` is a deliberate user override that
+ * clears the matching tombstone immediately after.
+ *
+ * Returns null when the write was suppressed.
+ */
+export function saveMemoryRecord(input: MemoryRecordInput): MemoryRecord | null {
+  const scope: MemoryScope = { scopeId: input.scopeId, scopeType: input.scopeType }
+  if (input.source !== 'explicit' && isContentTombstoned(scope, input.content)) {
+    log.info(
+      { scopeId: input.scopeId, scopeType: input.scopeType, source: input.source },
+      'Memory write suppressed by tombstone',
+    )
+    return null
+  }
+
   const values = inputToRecordValues(input)
 
   getDrizzleDb()
@@ -133,7 +198,11 @@ export function saveMemoryRecord(input: MemoryRecordInput): MemoryRecord {
 }
 
 export function listMemoryRecords(filter: ListMemoryRecordsFilter): readonly MemoryRecord[] {
-  const conditions: SQL[] = [eq(memoryRecords.scopeId, filter.scopeId), eq(memoryRecords.scopeType, filter.scopeType)]
+  const conditions: SQL[] = [
+    eq(memoryRecords.scopeId, filter.scopeId),
+    eq(memoryRecords.scopeType, filter.scopeType),
+    recordValidityCondition(filter.now ?? new Date().toISOString()),
+  ]
   if (filter.statuses !== undefined && filter.statuses.length > 0) {
     conditions.push(inArray(memoryRecords.status, [...filter.statuses]))
   } else if (filter.status !== undefined) {
@@ -161,6 +230,7 @@ export function searchMemoryRecords(filter: SearchMemoryRecordsFilter): readonly
     eq(memoryRecords.scopeId, filter.scopeId),
     eq(memoryRecords.scopeType, filter.scopeType),
     statusFilter,
+    recordValidityCondition(filter.now ?? new Date().toISOString()),
     sql`${memoryRecords.id} IN (
       SELECT m.id
       FROM memory_records m
@@ -182,22 +252,17 @@ export function searchMemoryRecords(filter: SearchMemoryRecordsFilter): readonly
     .map(rowToRecord)
 }
 
-export function archiveMemoryRecord(scope: MemoryScope, recordId: string, now: string): boolean {
-  const rows = getDrizzleDb()
-    .update(memoryRecords)
-    .set({ status: 'archived', updatedAt: now })
-    .where(recordScopeCondition(scope, recordId))
-    .returning({ id: memoryRecords.id })
-    .all()
-  return rows.length > 0
-}
-
 export function updateMemoryRecord(
   scope: MemoryScope,
   recordId: string,
   patch: Readonly<{ status?: MemoryStatus; content?: string; confidence?: number }>,
   now: string,
 ): MemoryRecord | null {
+  if (patch.content !== undefined && isContentTombstoned(scope, patch.content)) {
+    log.info({ scopeId: scope.scopeId, scopeType: scope.scopeType, recordId }, 'Memory update suppressed by tombstone')
+    return null
+  }
+
   const rows = getDrizzleDb()
     .update(memoryRecords)
     .set({
@@ -213,17 +278,14 @@ export function updateMemoryRecord(
   return rows[0] === undefined ? null : rowToRecord(rows[0])
 }
 
-export function clearMemoryScope(scope: MemoryScope): { profileDeleted: number; recordsDeleted: number } {
-  const db = getDrizzleDb()
-  const deletedRecords = db
-    .delete(memoryRecords)
-    .where(and(eq(memoryRecords.scopeId, scope.scopeId), eq(memoryRecords.scopeType, scope.scopeType)))
-    .returning({ id: memoryRecords.id })
-    .all()
-  const deletedProfiles = db
-    .delete(memoryProfiles)
-    .where(profileScopeCondition(scope))
-    .returning({ scopeId: memoryProfiles.scopeId })
-    .all()
-  return { profileDeleted: deletedProfiles.length, recordsDeleted: deletedRecords.length }
+/**
+ * Appends a shadow-log row to `memory_recall_shadow_log`. Accepts only `ShadowLogRow`
+ * (hashes/counts/enums) — never the raw `ShadowOutcome` — so raw memory content is
+ * structurally unable to reach this table. `id`/`createdAt` are assigned here.
+ */
+export function insertShadowLogRow(row: ShadowLogRow): void {
+  getDrizzleDb()
+    .insert(memoryRecallShadowLog)
+    .values({ id: randomUUID(), createdAt: Date.now(), ...row })
+    .run()
 }

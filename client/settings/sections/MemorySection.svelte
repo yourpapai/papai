@@ -22,6 +22,7 @@
     clearMemory,
     fetchMemory,
     setMemoryCapture,
+    setMemoryRecordInjection,
     updateMemoryProfile,
   } from '../fetchers.js'
 
@@ -38,13 +39,21 @@
   let loading = $state(false)
   let savingProfile = $state(false)
   let togglingCapture = $state(false)
+  let togglingInjection = $state(false)
   let archivingId: string | null = $state(null)
+  let pendingArchiveId: string | null = $state(null)
   let loadedContextId: string | null = $state(null)
   let pendingClear = $state(false)
   let clearing = $state(false)
   let clearError: string | null = $state(null)
 
   const currentMemory = $derived(loadedContextId === contextId ? memory : null)
+  // One "mutation in flight" signal shared by every header action, so they all disable together
+  // while any write — or the reload that follows it — is pending. Keeps the guards from drifting
+  // apart (a new toggle only has to join this predicate) and stops a second mutation racing the first.
+  const mutating = $derived(
+    loading || savingProfile || togglingCapture || togglingInjection || clearing || archivingId !== null,
+  )
   const scopeSub = $derived(
     currentMemory?.scopeType === 'group'
       ? "Durable facts learned from this group's chats, shared across all threads."
@@ -114,6 +123,21 @@
     }
   }
 
+  async function toggleRecordInjection(): Promise<void> {
+    if (currentMemory === null) return
+    error = null
+    status = null
+    togglingInjection = true
+    try {
+      await setMemoryRecordInjection({ contextId, enabled: !currentMemory.injectRecords })
+      await load(contextId)
+    } catch (err) {
+      error = messageFrom(err)
+    } finally {
+      togglingInjection = false
+    }
+  }
+
   async function saveProfile(): Promise<void> {
     error = null
     status = null
@@ -154,6 +178,7 @@
     archivingId = id
     try {
       await archiveMemoryRecord(contextId, id)
+      pendingArchiveId = null
       await load(contextId)
     } catch (err) {
       error = messageFrom(err)
@@ -180,7 +205,7 @@
         <Btn
           variant="danger"
           size="sm"
-          disabled={currentMemory === null || togglingCapture || clearing || archivingId !== null}
+          disabled={currentMemory === null || mutating}
           testid="memory-clear"
           onClick={() => {
             pendingClear = true
@@ -191,10 +216,20 @@
         <Btn
           variant={currentMemory?.enabled ? 'outline' : 'primary'}
           size="sm"
-          disabled={currentMemory === null || loading || togglingCapture}
+          disabled={currentMemory === null || mutating}
           testid="memory-capture-toggle"
           onClick={() => void toggleCapture()}>
           {#snippet children()}{currentMemory?.enabled ? 'Disable capture' : 'Enable capture'}{/snippet}
+        </Btn>
+        <Btn
+          variant={currentMemory?.injectRecords ? 'outline' : 'primary'}
+          size="sm"
+          disabled={currentMemory === null || mutating}
+          testid="memory-record-injection-toggle"
+          onClick={() => void toggleRecordInjection()}>
+          {#snippet children()}{currentMemory?.injectRecords
+              ? 'Stop injecting records'
+              : 'Inject records each turn'}{/snippet}
         </Btn>
       </div>
     {/snippet}
@@ -211,6 +246,12 @@
         to remove it.
       </p>
       <div class="settings-memory__profile">
+        {#if currentMemory.profileContaminated}
+          <p class="settings-memory__note" data-testid="memory-profile-contaminated">
+            The profile is hidden because a memory was deleted and the prose may have repeated it. It is
+            rewritten automatically from the remaining memories; saving here replaces it immediately.
+          </p>
+        {/if}
         <Field label="Pinned profile">
           <Input
             value={profileDraft}
@@ -255,8 +296,11 @@
             busy={archivingId === record.id}
             disabled={archivingId !== null}
             testid={`memory-archive-${record.id}`}
-            onClick={() => void archiveRecord(record.id)}>
-            {#snippet children()}Archive{/snippet}
+            onClick={() => {
+              pendingArchiveId = record.id
+              error = null
+            }}>
+            {#snippet children()}Delete permanently{/snippet}
           </Btn>
         </li>
       {/snippet}
@@ -275,7 +319,7 @@
                 <Btn
                   variant="primary"
                   size="sm"
-                  disabled={currentMemory === null || loading || togglingCapture}
+                  disabled={currentMemory === null || mutating}
                   testid="memory-empty-enable"
                   onClick={() => void toggleCapture()}>
                   {#snippet children()}Enable capture{/snippet}
@@ -300,7 +344,8 @@
           <h3 class="settings-memory__pending-title">Pending (provisional)</h3>
           <p class="settings-memory__pending-hint">
             Captured from individual threads. Facts seen across several threads are promoted to
-            shared group memory automatically — no action needed. Archive to discard.
+            shared group memory automatically — no action needed. Delete permanently to discard;
+            this can't be undone and the fact won't be re-learned from later chats.
           </p>
           <ul class="settings-memory__records">
             {#each pendingRecords as record (record.id)}
@@ -325,6 +370,22 @@
     {#snippet body()}
       <p>Clear the memory profile and all memory records for this context? This cannot be undone.</p>
       {#if clearError !== null}<p class="status-error">{clearError}</p>{/if}
+    {/snippet}
+  </Confirm>
+
+  <Confirm
+    open={pendingArchiveId !== null}
+    title="Delete this memory permanently"
+    danger
+    busy={archivingId !== null}
+    confirmLabel="Delete permanently"
+    onCancel={() => (pendingArchiveId = null)}
+    onConfirm={() => {
+      if (pendingArchiveId !== null) void archiveRecord(pendingArchiveId)
+    }}>
+    {#snippet body()}
+      <p>Permanently delete this memory? This can't be undone and it won't be re-learned.</p>
+      {#if error !== null}<p class="status-error">{error}</p>{/if}
     {/snippet}
   </Confirm>
 </section>

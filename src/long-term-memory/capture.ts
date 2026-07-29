@@ -16,6 +16,7 @@ import { logger } from '../logger.js'
 import { saveMemoryRecordWithEmbedding } from './embedding-writer.js'
 import { markExtracted } from './extraction-state.js'
 import { extractMemoryPatch, type MemoryPatch } from './extractor.js'
+import { visibleProfileText } from './profile-visibility.js'
 import { resolveMemoryScope } from './scope.js'
 import { getMemoryProfile } from './store.js'
 import type { MemoryRecordInput } from './types.js'
@@ -110,7 +111,9 @@ export async function runMemoryCapture(
   try {
     patch = await deps.extractMemoryPatch({
       history: input.history,
-      profile: profile?.profile ?? '',
+      // Never feed contaminated prose back into extraction: the LLM would copy the
+      // erased fact into the replacement profile and make it durable again.
+      profile: visibleProfileText(profile) ?? '',
       configContextId: input.configContextId,
     })
   } catch (error) {
@@ -125,12 +128,14 @@ export async function runMemoryCapture(
   const records = patch.records.map((candidate) =>
     buildRecord({ candidate, scope, storageContextId: input.storageContextId, now, id: deps.randomUUID() }),
   )
-  await Promise.all(
+  const saved = await Promise.all(
     records.map((record) =>
       saveMemoryRecordWithEmbedding(record, input.configContextId, { getEmbedding: deps.getEmbedding }),
     ),
   )
+  const captured = saved.filter((record) => record !== null).length
+  const suppressed = saved.length - captured
 
   markExtracted(input.storageContextId, input.history.length, now)
-  log.debug({ contextId: input.storageContextId, captured: patch.records.length }, 'Memory capture complete')
+  log.debug({ contextId: input.storageContextId, captured, suppressed }, 'Memory capture complete')
 }

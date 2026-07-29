@@ -8,6 +8,8 @@ import assert from 'node:assert/strict'
 
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { listMemoryRecords, saveMemoryRecord } from '../../src/long-term-memory/store.js'
+import { isContentTombstoned } from '../../src/long-term-memory/tombstone.js'
+import { insertTombstone } from '../../src/long-term-memory/tombstone.testing.js'
 import type { MemoryRecordInput } from '../../src/long-term-memory/types.js'
 import {
   makeForgetMemoryTool,
@@ -86,6 +88,16 @@ describe('memory tools', () => {
     })
   })
 
+  test('explicit remember clears a matching tombstone', async () => {
+    const scope = { scopeId: 'user-1', scopeType: 'personal' as const }
+    insertTombstone(scope, 'Call me Alex', '2026-07-24T00:00:00.000Z')
+    const tool = makeRememberMemoryTool({ storageContextId: 'user-1', contextType: 'dm' })
+
+    await getToolExecutor(tool)({ content: 'Call me Alex', kind: 'preference' })
+
+    expect(isContentTombstoned(scope, 'Call me Alex')).toBe(false)
+  })
+
   test('remember_memory rejects too many tags and oversized tag strings', () => {
     const tool = makeRememberMemoryTool({ storageContextId: 'user-1', contextType: 'dm' })
     const baseInput = {
@@ -134,38 +146,92 @@ describe('memory tools', () => {
     expect(result.records.map((record) => record.id)).toEqual(['mem-active'])
   })
 
-  test('forget_memory archives a memory by id in the current scope', async () => {
+  test('forget_memory purges a memory by id in the current scope', async () => {
     saveMemoryRecord(memoryRecordInput({ id: 'mem-target', scopeId: 'user-1' }))
     const tool = makeForgetMemoryTool({ storageContextId: 'user-1', contextType: 'dm' })
 
-    const result = await getToolExecutor(tool)({ memory_id: 'mem-target' })
+    const result = await getToolExecutor(tool)({ memory_id: 'mem-target', confidence: 1 })
 
     expect(result).toEqual({ status: 'forgotten', id: 'mem-target' })
     expect(listMemoryRecords({ scopeId: 'user-1', scopeType: 'personal', status: 'active' })).toEqual([])
     expect(
       listMemoryRecords({ scopeId: 'user-1', scopeType: 'personal', status: 'archived' }).map((r) => r.id),
-    ).toEqual(['mem-target'])
+    ).toEqual([])
   })
 
   test('forget_memory rejects oversized memory ids', () => {
     const tool = makeForgetMemoryTool({ storageContextId: 'user-1', contextType: 'dm' })
 
-    expect(schemaValidates(tool, { memory_id: 'a'.repeat(128) })).toBe(true)
-    expect(schemaValidates(tool, { memory_id: 'a'.repeat(129) })).toBe(false)
+    expect(schemaValidates(tool, { memory_id: 'a'.repeat(128), confidence: 1 })).toBe(true)
+    expect(schemaValidates(tool, { memory_id: 'a'.repeat(129), confidence: 1 })).toBe(false)
   })
 
-  test('forget_memory archives a query match only in the current scope', async () => {
+  test('forget_memory purges a query match only in the current scope', async () => {
     saveMemoryRecord(memoryRecordInput({ id: 'mem-personal', scopeId: 'shared', scopeType: 'personal' }))
     saveMemoryRecord(memoryRecordInput({ id: 'mem-group', scopeId: 'shared', scopeType: 'group' }))
     const tool = makeForgetMemoryTool({ storageContextId: 'shared', contextType: 'dm' })
 
-    const result = await getToolExecutor(tool)({ query: 'release checklist' })
+    const result = await getToolExecutor(tool)({ query: 'release checklist', confidence: 1 })
 
     expect(result).toEqual({ status: 'forgotten', id: 'mem-personal' })
     expect(listMemoryRecords({ scopeId: 'shared', scopeType: 'personal', status: 'active' })).toEqual([])
     expect(listMemoryRecords({ scopeId: 'shared', scopeType: 'group', status: 'active' }).map((r) => r.id)).toEqual([
       'mem-group',
     ])
+  })
+
+  test('forget_memory blocks a by-id purge below the confidence threshold', async () => {
+    saveMemoryRecord(memoryRecordInput({ id: 'mem-target', scopeId: 'user-1' }))
+    const tool = makeForgetMemoryTool({ storageContextId: 'user-1', contextType: 'dm' })
+
+    const result = await getToolExecutor(tool)({ memory_id: 'mem-target', confidence: 0.5 })
+
+    expect(result).toEqual({
+      status: 'confirmation_required',
+      message:
+        'Permanently delete this memory (recent chat messages are not edited)? This action is irreversible — please confirm.',
+    })
+    expect(listMemoryRecords({ scopeId: 'user-1', scopeType: 'personal', status: 'active' }).map((r) => r.id)).toEqual([
+      'mem-target',
+    ])
+    expect(isContentTombstoned({ scopeId: 'user-1', scopeType: 'personal' }, memoryRecordInput({}).content)).toBe(false)
+  })
+
+  const forgetDescription = (): string => {
+    const { description } = makeForgetMemoryTool({ storageContextId: 'user-1', contextType: 'dm' })
+    return typeof description === 'string' ? description : ''
+  }
+
+  test('forget_memory states what it erases and what it does not', () => {
+    const description = forgetDescription()
+
+    expect(description).toContain('profile')
+    expect(description).toContain('summary')
+    expect(description).toContain('does not edit')
+  })
+
+  test('forget_memory blocks a by-query purge below the confidence threshold', async () => {
+    saveMemoryRecord(memoryRecordInput({ id: 'mem-target', scopeId: 'user-1' }))
+    const tool = makeForgetMemoryTool({ storageContextId: 'user-1', contextType: 'dm' })
+
+    const result = await getToolExecutor(tool)({ query: 'release checklist' })
+
+    expect(result).toMatchObject({ status: 'confirmation_required' })
+    expect(listMemoryRecords({ scopeId: 'user-1', scopeType: 'personal', status: 'active' }).map((r) => r.id)).toEqual([
+      'mem-target',
+    ])
+  })
+
+  test('forget_memory purges by id and tombstones the content once confidence is sufficient', async () => {
+    saveMemoryRecord(memoryRecordInput({ id: 'mem-target', scopeId: 'user-1' }))
+    const scope = { scopeId: 'user-1', scopeType: 'personal' as const }
+    const tool = makeForgetMemoryTool({ storageContextId: 'user-1', contextType: 'dm' })
+
+    const result = await getToolExecutor(tool)({ memory_id: 'mem-target', confidence: 0.95 })
+
+    expect(result).toEqual({ status: 'forgotten', id: 'mem-target' })
+    expect(listMemoryRecords({ ...scope, status: 'active' })).toEqual([])
+    expect(isContentTombstoned(scope, memoryRecordInput({}).content)).toBe(true)
   })
 
   test('group thread context writes and searches parent group memory scope', async () => {

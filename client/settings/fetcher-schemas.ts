@@ -116,7 +116,9 @@ export const MemoryResponseSchema = z.object({
   contextId: z.string(),
   scopeType: z.enum(['personal', 'group']),
   enabled: z.boolean(),
+  injectRecords: z.boolean(),
   profile: z.string(),
+  profileContaminated: z.boolean().default(false),
   records: z.array(MemoryRecordSchema),
 })
 export type MemoryRecordView = z.infer<typeof MemoryRecordSchema>

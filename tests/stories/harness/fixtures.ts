@@ -497,7 +497,11 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
       return { id: memo.id }
     },
     seedMemoryRecord(input): MemoryRecord {
-      return saveMemoryRecord(input)
+      const record = saveMemoryRecord(input)
+      if (record === null) {
+        throw new Error(`Seeding memory record '${input.id}' was suppressed by a tombstone in its scope`)
+      }
+      return record
     },
     seedDirtyContext(input): void {
       seedTestConversationHistory({

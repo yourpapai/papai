@@ -158,6 +158,9 @@ export const updateMemoryProfile = (input: { contextId: string; profile: string 
 export const setMemoryCapture = (input: { contextId: string; enabled: boolean }): Promise<unknown> =>
   writeJson('/settings/api/memory/capture', 'PATCH', input, (b) => b)
 
+export const setMemoryRecordInjection = (input: { contextId: string; enabled: boolean }): Promise<unknown> =>
+  writeJson('/settings/api/memory/record-injection', 'PATCH', input, (b) => b)
+
 export const clearMemory = (input: { contextId: string }): Promise<unknown> =>
   writeJson('/settings/api/memory/clear', 'POST', input, (b) => b)
 

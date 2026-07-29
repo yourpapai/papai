@@ -14,12 +14,14 @@ import { logger } from '../logger.js'
 import { runRecallCascade, type RecallHit } from '../long-term-memory/recall-cascade.js'
 import { resolveMemoryScope } from '../long-term-memory/scope.js'
 import {
-  archiveMemoryRecord,
   listMemoryRecords,
+  purgeMemoryRecord,
   saveMemoryRecord,
   searchMemoryRecords,
 } from '../long-term-memory/store.js'
+import { deleteMatchingTombstone } from '../long-term-memory/tombstone.js'
 import { MemoryKindSchema, MemoryStatusSchema, type MemoryRecord, type MemoryScope } from '../long-term-memory/types.js'
+import { checkConfidence, confidenceField } from './confirmation-gate.js'
 
 const log = logger.child({ scope: 'tool:memory' })
 
@@ -109,6 +111,9 @@ export function makeRememberMemoryTool(input: MemoryToolContext): Tool {
         lastSeenAt: now,
         expiresAt: expiresAt ?? null,
       })
+      // Unreachable: the gate in saveMemoryRecord never suppresses an explicit save.
+      if (record === null) throw new Error('Explicit memory save was unexpectedly suppressed by a tombstone')
+      deleteMatchingTombstone(scope, content)
       log.info(
         { scopeId: scope.scopeId, scopeType: scope.scopeType, memoryId: record.id, kind },
         'Memory saved via tool',
@@ -178,37 +183,48 @@ export function makeListMemoryTool(input: MemoryToolContext): Tool {
 
 export function makeForgetMemoryTool(input: MemoryToolContext): Tool {
   return tool({
-    description: 'Archive one long-term memory in the current user or group scope by memory ID or keyword query.',
+    description:
+      'Permanently delete one long-term memory in the current user or group scope, by memory ID or keyword query. ' +
+      'This is irreversible: the memory is erased from long-term storage, its search indexes, the derived user ' +
+      'profile, and the running session summary, and it will not be re-learned. It does not edit the recent ' +
+      'conversation itself — tell the user to clear the conversation if they also want the original messages gone.',
     inputSchema: z.object({
-      memory_id: z.string().max(128).optional().describe('Exact memory record ID to archive'),
+      memory_id: z.string().max(128).optional().describe('Exact memory record ID to permanently delete'),
       query: z.string().min(1).max(500).optional().describe('Keyword query used when memory_id is not available'),
+      confidence: confidenceField,
     }),
-    execute: ({ memory_id: memoryId, query }) => {
+    execute: ({ memory_id: memoryId, query, confidence }) => {
+      const gate = checkConfidence(confidence, 'Permanently delete this memory (recent chat messages are not edited)')
+      if (gate !== null) {
+        log.warn({ memoryId, confidence }, 'forget_memory blocked — confirmation required')
+        return gate
+      }
+
       const scope = memoryScope(input)
       const now = nowIso()
       if (memoryId !== undefined) {
-        const archived = archiveMemoryRecord(scope, memoryId, now)
+        const purged = purgeMemoryRecord(scope, memoryId, now)
         log.info(
-          { scopeId: scope.scopeId, scopeType: scope.scopeType, memoryId, archived },
-          'Memory archive by ID requested via tool',
+          { scopeId: scope.scopeId, scopeType: scope.scopeType, memoryId, purged },
+          'Memory purge by ID requested via tool',
         )
-        return archived ? { status: 'forgotten', id: memoryId } : { status: 'not_found' }
+        return purged ? { status: 'forgotten', id: memoryId } : { status: 'not_found' }
       }
       if (query === undefined) return { status: 'not_found' }
 
       const matches = searchMemoryRecords({ ...scope, query, includeStale: true })
       const match = matches.find((record) => sameText(record.content, query)) ?? matches[0]
       if (match === undefined) {
-        log.info({ scopeId: scope.scopeId, scopeType: scope.scopeType }, 'Memory archive by query found no match')
+        log.info({ scopeId: scope.scopeId, scopeType: scope.scopeType }, 'Memory purge by query found no match')
         return { status: 'not_found' }
       }
 
-      const archived = archiveMemoryRecord(scope, match.id, now)
+      const purged = purgeMemoryRecord(scope, match.id, now)
       log.info(
-        { scopeId: scope.scopeId, scopeType: scope.scopeType, memoryId: match.id, archived },
-        'Memory archive by query requested via tool',
+        { scopeId: scope.scopeId, scopeType: scope.scopeType, memoryId: match.id, purged },
+        'Memory purge by query requested via tool',
       )
-      return archived ? { status: 'forgotten', id: match.id } : { status: 'not_found' }
+      return purged ? { status: 'forgotten', id: match.id } : { status: 'not_found' }
     },
   })
 }

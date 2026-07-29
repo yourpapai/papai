@@ -5,8 +5,12 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { and, eq } from 'drizzle-orm'
+
+import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { memoryRecords } from '../../src/db/schema.js'
 import { runMemoryMaintenance } from '../../src/long-term-memory/maintenance.js'
-import { listMemoryRecords, saveMemoryRecord } from '../../src/long-term-memory/store.js'
+import { rowToRecord, saveMemoryRecord } from '../../src/long-term-memory/store.js'
 import type { MemoryRecord, MemoryRecordInput, MemoryScope } from '../../src/long-term-memory/types.js'
 import { setupTestDb } from '../utils/test-helpers.js'
 
@@ -35,8 +39,25 @@ const memoryRecordInput = (overrides: Partial<MemoryRecordInput>): MemoryRecordI
   ...overrides,
 })
 
-const recordById = (scope: MemoryScope, status: MemoryRecordInput['status'], id: string): MemoryRecord | null =>
-  listMemoryRecords({ ...scope, status, limit: 20 }).find((record) => record.id === id) ?? null
+// Reads the raw row directly, bypassing query-time validity filtering: this helper verifies
+// the maintenance job's own writes (status/updatedAt), including on records whose expiresAt
+// has already passed -- exactly the rows that recordValidityCondition now excludes from
+// listMemoryRecords, so listMemoryRecords cannot be used here.
+const recordById = (scope: MemoryScope, status: MemoryRecordInput['status'], id: string): MemoryRecord | null => {
+  const row = getDrizzleDb()
+    .select()
+    .from(memoryRecords)
+    .where(
+      and(
+        eq(memoryRecords.scopeId, scope.scopeId),
+        eq(memoryRecords.scopeType, scope.scopeType),
+        eq(memoryRecords.status, status),
+        eq(memoryRecords.id, id),
+      ),
+    )
+    .get()
+  return row === undefined ? null : rowToRecord(row)
+}
 
 describe('long-term memory maintenance', () => {
   beforeEach(async () => {

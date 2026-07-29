@@ -9,6 +9,7 @@ import { emitLlmEnd, emitLlmStart } from './llm-orchestrator-events.js'
 import { buildToolCallFinishHandler, buildToolCallStartHandler } from './llm-orchestrator-tool-events.js'
 import type { GenerateArgs, InvokeModelArgs, LlmOrchestratorDeps, ToolCallContext } from './llm-orchestrator-types.js'
 import { logger } from './logger.js'
+import { scheduleShadowRecallLog } from './long-term-memory/shadow-log.js'
 import { withReplyTypingHeartbeat } from './reply-typing-heartbeat.js'
 import { createNoProgressCondition } from './run-control/no-progress-condition.js'
 import { runRegistry } from './run-control/registry.js'
@@ -83,6 +84,25 @@ const callGenerateText = async (a: GenerateArgs): ReturnType<LlmOrchestratorDeps
   }
 }
 
+// Off hot path: schedules the memory-recall shadow-logging study (default OFF, sampled)
+// in a `queueMicrotask`; returns synchronously and never delays or alters this turn.
+const scheduleShadowLogForTurn = (
+  args: Pick<InvokeModelArgs, 'contextId' | 'configId' | 'contextType' | 'messages'>,
+  mainModel: string,
+  turnId: string,
+  result: Awaited<ReturnType<LlmOrchestratorDeps['generateText']>>,
+): void => {
+  scheduleShadowRecallLog({
+    contextId: args.contextId,
+    configId: args.configId,
+    contextType: args.contextType,
+    readerModelId: mainModel,
+    turnRef: turnId,
+    messages: args.messages,
+    steps: result.steps,
+  })
+}
+
 export const invokeModel = async (
   args: InvokeModelArgs & { reply: ReplyFn | undefined; turnId: string },
 ): ReturnType<LlmOrchestratorDeps['generateText']> => {
@@ -125,6 +145,7 @@ export const invokeModel = async (
     ctx,
   })
   emitLlmEnd(contextId, chatUserId, contextType, mainModel, result, start, messages, tools, turnId)
+  scheduleShadowLogForTurn(args, mainModel, turnId, result)
   return result
 }
 

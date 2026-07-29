@@ -122,13 +122,10 @@ const callLlm = async (args: CallLlmArgs): Promise<CallLlmResult> => {
     if (shouldBackstopGroupMembership(contextType, actorRole))
       maybeEnsureGroupMembership(configId, chatUserId, username)
   }
-  const invocationOpts = buildLlmInvocationOpts(args, configId, provider, deps.stagedDownloadFn)
-  const invocationOptsWithResolver = {
-    ...invocationOpts,
+  const { tools, validatedMessages, enabledToolNames, disclosure } = await prepareLlmInvocation({
+    ...buildLlmInvocationOpts(args, configId, provider, deps.stagedDownloadFn),
     chatParticipantResolver: deps.chatParticipantResolver,
-  }
-  const { tools, validatedMessages, enabledToolNames, disclosure } =
-    await prepareLlmInvocation(invocationOptsWithResolver)
+  })
   const progressReporter = createProgressReporterForContext(reply, contextId)
   const liveStatusEnabled = getAiOutputSettings(resolveAiOutputSettingsContextId(contextId)).liveStatus === 'on'
   return invokeWithLiveStatus({
@@ -136,6 +133,7 @@ const callLlm = async (args: CallLlmArgs): Promise<CallLlmResult> => {
     liveStatusEnabled,
     invokeArgs: {
       contextId,
+      configId,
       chatUserId,
       contextType,
       mainModel,

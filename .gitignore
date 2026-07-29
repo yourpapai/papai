@@ -68,3 +68,7 @@ client/assets
 # opencode local config
 .opencode/
 opencode.json
+
+# agent-memory research data — too large for git; lives in ~/Projects/yourpapai/docs/papai
+docs/research/agent-memory/raw/
+docs/research/agent-memory/04-results.json

@@ -7,11 +7,11 @@ import { describe, expect, test } from 'bun:test'
 
 import type { HttpHandler } from 'msw'
 
+import { memoryHandlers } from '../../../../client/stories/msw/settings-handlers-personal-2.js'
 import {
   codingCredentialsHandlers,
   identityHandlers,
   mcpHandlers,
-  memoryHandlers,
   pluginsHandlers,
 } from '../../../../client/stories/msw/settings-handlers-personal.js'
 

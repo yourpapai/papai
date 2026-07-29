@@ -50,6 +50,8 @@ export const rowToProfile = (row: MemoryProfileRow): MemoryProfile => ({
   scopeType: row.scopeType,
   profile: row.profile,
   enabled: row.enabled,
+  injectRecords: row.injectRecords,
+  contaminatedAt: row.contaminatedAt,
   version: row.version,
   updatedAt: row.updatedAt,
 })
@@ -74,4 +76,8 @@ export const rowToRecord = (row: MemoryRecordRow): MemoryRecord => ({
   validUntil: row.validUntil,
   expiresAt: row.expiresAt,
   embedding: deserializeEmbedding(row.embedding),
+  embeddingModel: row.embeddingModel,
+  embeddingDimension: row.embeddingDimension,
+  embeddingVersion: row.embeddingVersion,
+  embeddedAt: row.embeddedAt,
 })

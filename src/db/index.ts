@@ -82,6 +82,11 @@ import { migration068IdentityScopedKeyCleanup } from './migrations/068_identity_
 import { migration069AlertMatchedTaskIds } from './migrations/069_alert_matched_task_ids.js'
 import { migration070MessageMetadataHistorySearch } from './migrations/070_message_metadata_history_search.js'
 import { migration071MessageEmbeddings } from './migrations/071_message_embeddings.js'
+import { migration072MemoryEmbeddingIdentity } from './migrations/072_memory_embedding_identity.js'
+import { migration073MemoryTombstones } from './migrations/073_memory_tombstones.js'
+import { migration074MemoryRecordInjection } from './migrations/074_memory_record_injection.js'
+import { migration075MemoryRecallShadowLog } from './migrations/075_memory_recall_shadow_log.js'
+import { migration076MemoryProfileContaminatedAt } from './migrations/076_memory_profile_contaminated_at.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -188,6 +193,11 @@ export const MIGRATIONS: readonly Migration[] = [
   migration069AlertMatchedTaskIds,
   migration070MessageMetadataHistorySearch,
   migration071MessageEmbeddings,
+  migration072MemoryEmbeddingIdentity,
+  migration073MemoryTombstones,
+  migration074MemoryRecordInjection,
+  migration075MemoryRecallShadowLog,
+  migration076MemoryProfileContaminatedAt,
 ]
 
 export const initDb = (): void => {

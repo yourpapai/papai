@@ -13,6 +13,7 @@ import { handleMemoryRoutes } from '../../../src/debug/settings/memory-routes.js
 import {
   getMemoryProfile,
   listMemoryRecords,
+  purgeMemoryRecord,
   saveMemoryProfile,
   saveMemoryRecord,
 } from '../../../src/long-term-memory/store.js'
@@ -34,7 +35,9 @@ const GetMemoryResponseSchema = z.object({
   contextId: z.string(),
   scopeType: z.enum(['personal', 'group']),
   enabled: z.boolean(),
+  injectRecords: z.boolean(),
   profile: z.string(),
+  profileContaminated: z.boolean(),
   records: z.array(MemoryRecordViewSchema),
 })
 
@@ -52,9 +55,16 @@ const CapturePatchResponseSchema = z.object({
   enabled: z.boolean(),
 })
 
+const RecordInjectionPatchResponseSchema = z.object({
+  ok: z.literal(true),
+  contextId: z.string(),
+  scopeType: z.enum(['personal', 'group']),
+  injectRecords: z.boolean(),
+})
+
 const DeleteRecordResponseSchema = z.object({
   ok: z.literal(true),
-  status: z.enum(['archived', 'not_found']),
+  status: z.enum(['forgotten', 'not_found']),
 })
 
 const ClearResponseSchema = z.object({
@@ -63,6 +73,9 @@ const ClearResponseSchema = z.object({
   scopeType: z.enum(['personal', 'group']),
   profileDeleted: z.number(),
   recordsDeleted: z.number(),
+  workingMemoryKeysCleared: z.number(),
+  extractionStateDeleted: z.number(),
+  tombstonesDeleted: z.number(),
 })
 
 const PLATFORM_INSTANCE_ID = 'pi-1'
@@ -131,6 +144,26 @@ describe('settings memory routes', () => {
     expect(body.enabled).toBe(true)
     expect(body.profile).toBe('## Preferences\n- Keep answers concise')
     expect(body.records.map((record) => record.id)).toEqual(['active-1'])
+  })
+
+  test('GET withholds profile prose contaminated by a purge, and serves it again after a rewrite', async () => {
+    saveMemoryProfile(personalScope, 'User lives in Berlin', '2026-06-11T00:00:00.000Z')
+    saveMemoryRecord(memoryRecordInput({ id: 'berlin', scopeId: personalContextId, content: 'User lives in Berlin' }))
+    purgeMemoryRecord(personalScope, 'berlin', '2026-06-12T00:00:00.000Z')
+
+    const url = new URL('https://x/settings/api/memory')
+    const suppressed = GetMemoryResponseSchema.parse(
+      await (await handleMemoryRoutes(request('/settings/api/memory', session), url)).json(),
+    )
+    expect(suppressed.profile).toBe('')
+    expect(suppressed.profileContaminated).toBe(true)
+
+    saveMemoryProfile(personalScope, 'User prefers short answers', '2026-06-13T00:00:00.000Z')
+    const rewritten = GetMemoryResponseSchema.parse(
+      await (await handleMemoryRoutes(request('/settings/api/memory', session), url)).json(),
+    )
+    expect(rewritten.profile).toBe('User prefers short answers')
+    expect(rewritten.profileContaminated).toBe(false)
   })
 
   test('GET returns active and provisional records but excludes archived and stale', async () => {
@@ -233,7 +266,31 @@ describe('settings memory routes', () => {
     expect(getMemoryProfile(personalScope)?.enabled).toBe(false)
   })
 
-  test('DELETE archives only records in authorized full scope', async () => {
+  test('PATCH /memory/record-injection toggles inject flag and GET reflects it', async () => {
+    const patch = await handleMemoryRoutes(
+      request('/settings/api/memory/record-injection', session, {
+        method: 'PATCH',
+        csrf: true,
+        body: { enabled: true },
+      }),
+      new URL('https://x/settings/api/memory/record-injection'),
+    )
+
+    expect(patch.status).toBe(200)
+    const patchBody = RecordInjectionPatchResponseSchema.parse(await patch.json())
+    expect(patchBody.contextId).toBe(personalContextId)
+    expect(patchBody.injectRecords).toBe(true)
+    expect(getMemoryProfile(personalScope)?.injectRecords).toBe(true)
+
+    const get = await handleMemoryRoutes(
+      request('/settings/api/memory', session),
+      new URL('https://x/settings/api/memory'),
+    )
+    const getBody = GetMemoryResponseSchema.parse(await get.json())
+    expect(getBody.injectRecords).toBe(true)
+  })
+
+  test('DELETE purges only records in authorized full scope', async () => {
     saveMemoryRecord(memoryRecordInput({ id: 'personal-record', scopeId: personalContextId, scopeType: 'personal' }))
     saveMemoryRecord(
       memoryRecordInput({ id: 'group-record', scopeId: personalContextId, scopeType: 'group', kind: 'decision' }),
@@ -249,7 +306,7 @@ describe('settings memory routes', () => {
     )
 
     expect(res.status).toBe(200)
-    expect(DeleteRecordResponseSchema.parse(await res.json()).status).toBe('archived')
+    expect(DeleteRecordResponseSchema.parse(await res.json()).status).toBe('forgotten')
     expect(listMemoryRecords({ scopeId: personalContextId, scopeType: 'personal', status: 'active' })).toEqual([])
     expect(
       listMemoryRecords({ scopeId: personalContextId, scopeType: 'group', status: 'active' }).map((r) => r.id),
@@ -300,6 +357,9 @@ describe('settings memory routes', () => {
     const body = ClearResponseSchema.parse(await res.json())
     expect(body.profileDeleted).toBe(1)
     expect(body.recordsDeleted).toBe(1)
+    expect(body.workingMemoryKeysCleared).toBe(0)
+    expect(body.extractionStateDeleted).toBe(0)
+    expect(body.tombstonesDeleted).toBe(0)
     expect(getMemoryProfile(personalScope)).toBeNull()
     expect(getMemoryProfile({ scopeId: personalContextId, scopeType: 'group' })?.profile).toBe('Group profile')
     expect(

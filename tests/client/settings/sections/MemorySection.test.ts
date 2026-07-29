@@ -40,6 +40,7 @@ const memoryPayload = {
   contextId: 'user:1',
   scopeType: 'personal',
   enabled: true,
+  injectRecords: false,
   profile: 'Pinned profile facts for this context.',
   records: [
     {
@@ -75,6 +76,7 @@ const emptyMemoryPayload = {
   contextId: 'user:1',
   scopeType: 'personal',
   enabled: false,
+  injectRecords: false,
   profile: '',
   records: [],
 }
@@ -169,6 +171,30 @@ const routeClearFailure =
   (): ((url: string, init: RequestInit) => Promise<Response>) =>
   (url): Promise<Response> => {
     if (url === '/settings/api/memory/clear') return Promise.resolve(new Response('clear failed', { status: 500 }))
+    if (url.startsWith('/settings/api/memory?')) return Promise.resolve(json(memoryPayload))
+    return Promise.resolve(json({ ok: true }))
+  }
+
+interface PendingInjectionState {
+  resolve: ((response: Response) => void) | null
+}
+
+const routePendingRecordInjection =
+  (state: PendingInjectionState): ((url: string, init: RequestInit) => Promise<Response>) =>
+  (url): Promise<Response> => {
+    if (url === '/settings/api/memory/record-injection') {
+      return new Promise<Response>((resolve) => {
+        state.resolve = resolve
+      })
+    }
+    return Promise.resolve(json(memoryPayload))
+  }
+
+const routeArchiveFailure =
+  (): ((url: string, init: RequestInit) => Promise<Response>) =>
+  (url): Promise<Response> => {
+    if (url === '/settings/api/memory/records/rec%2Falpha')
+      return Promise.resolve(new Response('archive failed', { status: 500 }))
     if (url.startsWith('/settings/api/memory?')) return Promise.resolve(json(memoryPayload))
     return Promise.resolve(json({ ok: true }))
   }
@@ -279,6 +305,60 @@ describe('MemorySection', () => {
     void unmount(component)
   })
 
+  test('record injection toggle sends the next enabled state and reloads', async () => {
+    setCsrfToken('c')
+    const calls: CapturedCall[] = []
+    setMockFetch((url, init) => {
+      captureCall(calls, url, init)
+      return Promise.resolve(json(memoryPayload))
+    })
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MemorySection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    expect(target.querySelector('[data-testid="memory-record-injection-toggle"]')?.textContent).toContain(
+      'Inject records each turn',
+    )
+    target.querySelector<HTMLButtonElement>('[data-testid="memory-record-injection-toggle"]')!.click()
+    await drain()
+
+    const write = calls.find((call) => call.url === '/settings/api/memory/record-injection')
+    expect(write?.method).toBe('PATCH')
+    expect(write?.body).toEqual({ contextId: 'user:1', enabled: true })
+    expect(calls.filter((call) => call.url.startsWith('/settings/api/memory?')).length).toBe(2)
+    void unmount(component)
+  })
+
+  test('header actions disable together while a record-injection toggle is in flight', async () => {
+    setCsrfToken('c')
+    const pending: PendingInjectionState = { resolve: null }
+    setMockFetch(routePendingRecordInjection(pending))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MemorySection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    const clear = target.querySelector<HTMLButtonElement>('[data-testid="memory-clear"]')!
+    const capture = target.querySelector<HTMLButtonElement>('[data-testid="memory-capture-toggle"]')!
+    expect(clear.disabled).toBe(false)
+
+    target.querySelector<HTMLButtonElement>('[data-testid="memory-record-injection-toggle"]')!.click()
+    await drain()
+
+    // The write is pending: every header action — not just the injection toggle — is disabled.
+    expect(clear.disabled).toBe(true)
+    expect(capture.disabled).toBe(true)
+
+    pending.resolve!(json(memoryPayload))
+    await drain()
+    await drain()
+
+    expect(clear.disabled).toBe(false)
+    expect(capture.disabled).toBe(false)
+    void unmount(component)
+  })
+
   test('save profile sends PATCH with contextId and profile', async () => {
     setCsrfToken('c')
     const calls: CapturedCall[] = []
@@ -322,7 +402,7 @@ describe('MemorySection', () => {
     void unmount(component)
   })
 
-  test('archive record sends DELETE to encoded record path with body contextId and reloads', async () => {
+  test('archive record requires confirmation before DELETE and reloads after confirmation', async () => {
     setCsrfToken('c')
     const calls: CapturedCall[] = []
     setMockFetch((url, init) => {
@@ -337,10 +417,64 @@ describe('MemorySection', () => {
     target.querySelector<HTMLButtonElement>('[data-testid="memory-archive-rec/alpha"]')!.click()
     await drain()
 
+    expect(calls.find((call) => call.url === '/settings/api/memory/records/rec%2Falpha')).toBeUndefined()
+    expect(target.textContent).toContain('Delete this memory permanently')
+    expect(target.textContent).toContain("Permanently delete this memory? This can't be undone")
+
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
+    await drain()
+
     const write = calls.find((call) => call.url === '/settings/api/memory/records/rec%2Falpha')
     expect(write?.method).toBe('DELETE')
     expect(write?.body).toEqual({ contextId: 'user:1' })
     expect(calls.filter((call) => call.url.startsWith('/settings/api/memory?')).length).toBe(2)
+    expect(target.querySelector('.modal')).toBeNull()
+    void unmount(component)
+  })
+
+  test('archive record cancel closes the dialog without deleting', async () => {
+    setCsrfToken('c')
+    const calls: CapturedCall[] = []
+    setMockFetch((url, init) => {
+      captureCall(calls, url, init)
+      return Promise.resolve(json(memoryPayload))
+    })
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MemorySection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="memory-archive-rec/alpha"]')!.click()
+    await drain()
+    expect(target.querySelector('.modal')).not.toBeNull()
+
+    const cancelButtons = Array.from(target.querySelectorAll<HTMLButtonElement>('.modal button')).filter((button) =>
+      button.textContent?.includes('Cancel'),
+    )
+    cancelButtons.at(-1)!.click()
+    await drain()
+
+    expect(target.querySelector('.modal')).toBeNull()
+    expect(calls.find((call) => call.url === '/settings/api/memory/records/rec%2Falpha')).toBeUndefined()
+    void unmount(component)
+  })
+
+  test('archive record dialog stays open with inline error when the delete request fails', async () => {
+    setCsrfToken('c')
+    setMockFetch(routeArchiveFailure())
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MemorySection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="memory-archive-rec/alpha"]')!.click()
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
+    await drain()
+
+    expect(target.querySelector('.modal')).not.toBeNull()
+    expect(target.querySelector('.modal .status-error')).not.toBeNull()
     void unmount(component)
   })
 

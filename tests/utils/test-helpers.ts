@@ -125,6 +125,18 @@ async function buildMigratedSnapshot(migrations: MigrationSet): Promise<Uint8Arr
   return snapshot
 }
 
+/**
+ * Writes a fully-migrated SQLite database **file** at `path`.
+ *
+ * `setupTestDb()` installs an in-memory database, which a spawned subprocess cannot see.
+ * Use this when a test must hand a real on-disk database to a child process -- e.g. an
+ * operator script spawned with `DB_PATH` pointed at it.
+ */
+export async function createMigratedDbFile(path: string): Promise<void> {
+  const snapshot = await buildMigratedSnapshot(MIGRATIONS)
+  await Bun.write(path, snapshot)
+}
+
 async function setupMigratedTestDb(migrations: MigrationSet): Promise<ReturnType<typeof drizzle<typeof schema>>> {
   // Clear the in-memory user cache to prevent config/session bleed between tests
   const { userCachesForTesting } = await import('../../src/cache.js')

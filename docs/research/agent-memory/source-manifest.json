@@ -1,0 +1,401 @@
+{
+  "source_freeze_date": "2026-07-23",
+  "manifest_version": "2",
+  "replication_status": "not_run",
+  "notes": "Version 2 adds AM21-AM28 as primary evidence inputs. Publication identifiers pin the cited evidence artifact. Code and data repositories are discovery links only when their version is unknown; they must be pinned before any replication run. This bibliography update does not change the frozen memory-scenario-manifest-v3 corpus or the preregistered score and gates.",
+  "sources": [
+    {
+      "source_id": "AM01",
+      "title": "Cognitive Architectures for Language Agents",
+      "canonical_url": "https://openreview.net/forum?id=1i6ZCvflQJ",
+      "artifact_type": "peer_reviewed_paper",
+      "pinned_version": "OpenReview:1i6ZCvflQJ; TMLR 2024",
+      "accessed_date": "2026-07-23",
+      "license": "unknown",
+      "code_or_data": {
+        "availability": "supplemental_index_available",
+        "url": "https://github.com/ysymyth/awesome-language-agents",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM02",
+      "title": "Transformer-XL: Attentive Language Models Beyond a Fixed-Length Context",
+      "canonical_url": "https://aclanthology.org/P19-1285/",
+      "artifact_type": "peer_reviewed_paper",
+      "pinned_version": "ACL Anthology:P19-1285; DOI:10.18653/v1/P19-1285",
+      "accessed_date": "2026-07-23",
+      "license": "CC BY 4.0",
+      "code_or_data": {
+        "availability": "code_available",
+        "url": "https://github.com/kimiyoung/transformer-xl",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM03",
+      "title": "MemGPT: Towards LLMs as Operating Systems",
+      "canonical_url": "https://arxiv.org/abs/2310.08560v1",
+      "artifact_type": "preprint",
+      "pinned_version": "arXiv:2310.08560v1",
+      "accessed_date": "2026-07-23",
+      "license": "unknown",
+      "code_or_data": {
+        "availability": "evolved_project_available",
+        "url": "https://github.com/letta-ai/letta",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM04",
+      "title": "Augmenting Language Models with Long-Term Memory",
+      "canonical_url": "https://proceedings.neurips.cc/paper_files/paper/2023/hash/ebd82705f44793b6f9ade5a669d0f0bf-Abstract-Conference.html",
+      "artifact_type": "peer_reviewed_paper",
+      "pinned_version": "NeurIPS 2023 proceedings:ebd82705f44793b6f9ade5a669d0f0bf",
+      "accessed_date": "2026-07-23",
+      "license": "unknown",
+      "code_or_data": {
+        "availability": "code_available",
+        "url": "https://github.com/microsoft/unilm/tree/master/longmem",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM05",
+      "title": "Generative Agents: Interactive Simulacra of Human Behavior",
+      "canonical_url": "https://doi.org/10.1145/3586183.3606763",
+      "artifact_type": "peer_reviewed_paper",
+      "pinned_version": "DOI:10.1145/3586183.3606763; UIST 2023",
+      "accessed_date": "2026-07-23",
+      "license": "unknown",
+      "code_or_data": {
+        "availability": "code_available",
+        "url": "https://github.com/joonspk-research/generative_agents",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM06",
+      "title": "Reflexion: Language Agents with Verbal Reinforcement Learning",
+      "canonical_url": "https://proceedings.neurips.cc/paper_files/paper/2023/hash/1b44b878bb782e6954cd888628510e90-Abstract-Conference.html",
+      "artifact_type": "peer_reviewed_paper",
+      "pinned_version": "NeurIPS 2023 proceedings:1b44b878bb782e6954cd888628510e90",
+      "accessed_date": "2026-07-23",
+      "license": "unknown",
+      "code_or_data": {
+        "availability": "code_available",
+        "url": "https://github.com/noahshinn/reflexion",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM07",
+      "title": "A-Mem: Agentic Memory for LLM Agents",
+      "canonical_url": "https://proceedings.neurips.cc/paper_files/paper/2025/hash/19909c36f51abc4856b4560aff3d36d6-Abstract-Conference.html",
+      "artifact_type": "peer_reviewed_paper",
+      "pinned_version": "NeurIPS 2025 proceedings:19909c36f51abc4856b4560aff3d36d6",
+      "accessed_date": "2026-07-23",
+      "license": "unknown",
+      "code_or_data": {
+        "availability": "code_available",
+        "url": "https://github.com/agiresearch/A-mem",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM08",
+      "title": "Agentic Memory: Learning Unified Long-Term and Short-Term Memory Management for Large Language Model Agents",
+      "canonical_url": "https://aclanthology.org/2026.acl-long.981/",
+      "artifact_type": "peer_reviewed_paper",
+      "pinned_version": "ACL Anthology:2026.acl-long.981; DOI:10.18653/v1/2026.acl-long.981",
+      "accessed_date": "2026-07-23",
+      "license": "CC BY 4.0",
+      "code_or_data": {
+        "availability": "unknown",
+        "url": "unknown",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM09",
+      "title": "Reciprocal Rank Fusion Outperforms Condorcet and Individual Rank Learning Methods",
+      "canonical_url": "https://doi.org/10.1145/1571941.1572114",
+      "artifact_type": "peer_reviewed_paper",
+      "pinned_version": "DOI:10.1145/1571941.1572114; SIGIR 2009",
+      "accessed_date": "2026-07-23",
+      "license": "unknown",
+      "code_or_data": {
+        "availability": "unknown",
+        "url": "unknown",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM10",
+      "title": "RAPTOR: Recursive Abstractive Processing for Tree-Organized Retrieval",
+      "canonical_url": "https://openreview.net/forum?id=GN921JHCRw",
+      "artifact_type": "peer_reviewed_paper",
+      "pinned_version": "OpenReview:GN921JHCRw; ICLR 2024",
+      "accessed_date": "2026-07-23",
+      "license": "unknown",
+      "code_or_data": {
+        "availability": "code_available",
+        "url": "https://github.com/parthsarthi03/raptor",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM11",
+      "title": "HippoRAG: Neurobiologically Inspired Long-Term Memory for Large Language Models",
+      "canonical_url": "https://openreview.net/forum?id=hkujvAPVsg",
+      "artifact_type": "peer_reviewed_paper",
+      "pinned_version": "OpenReview:hkujvAPVsg; NeurIPS 2024; DOI:10.52202/079017-1902",
+      "accessed_date": "2026-07-23",
+      "license": "unknown",
+      "code_or_data": {
+        "availability": "code_and_data_available",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM12",
+      "title": "From Local to Global: A Graph RAG Approach to Query-Focused Summarization",
+      "canonical_url": "https://arxiv.org/abs/2404.16130v1",
+      "artifact_type": "preprint",
+      "pinned_version": "arXiv:2404.16130v1",
+      "accessed_date": "2026-07-23",
+      "license": "unknown",
+      "code_or_data": {
+        "availability": "code_available",
+        "url": "https://github.com/microsoft/graphrag",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM13",
+      "title": "Zep: A Temporal Knowledge Graph Architecture for Agent Memory",
+      "canonical_url": "https://arxiv.org/abs/2501.13956v1",
+      "artifact_type": "vendor_preprint",
+      "pinned_version": "arXiv:2501.13956v1",
+      "accessed_date": "2026-07-23",
+      "license": "unknown",
+      "code_or_data": {
+        "availability": "code_available",
+        "url": "https://github.com/getzep/graphiti",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM14",
+      "title": "LongMemEval: Benchmarking Chat Assistants on Long-Term Interactive Memory",
+      "canonical_url": "https://openreview.net/forum?id=wIonk5yTDq",
+      "artifact_type": "peer_reviewed_benchmark",
+      "pinned_version": "OpenReview:wIonk5yTDq; ICLR 2025",
+      "accessed_date": "2026-07-23",
+      "license": "CC BY-SA 4.0",
+      "code_or_data": {
+        "availability": "code_and_data_available",
+        "url": "https://github.com/xiaowu0162/LongMemEval",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM15",
+      "title": "Evaluating Very Long-Term Conversational Memory of LLM Agents",
+      "canonical_url": "https://aclanthology.org/2024.acl-long.747/",
+      "artifact_type": "peer_reviewed_benchmark",
+      "pinned_version": "ACL Anthology:2024.acl-long.747; DOI:10.18653/v1/2024.acl-long.747",
+      "accessed_date": "2026-07-23",
+      "license": "CC BY 4.0",
+      "code_or_data": {
+        "availability": "code_and_data_available",
+        "url": "https://github.com/snap-research/locomo",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM16",
+      "title": "Evaluating Memory in LLM Agents via Incremental Multi-Turn Interactions",
+      "canonical_url": "https://openreview.net/forum?id=DT7JyQC3MR",
+      "artifact_type": "peer_reviewed_benchmark",
+      "pinned_version": "OpenReview:DT7JyQC3MR; ICLR 2026; arXiv:2507.05257v4",
+      "accessed_date": "2026-07-23",
+      "license": "unknown",
+      "code_or_data": {
+        "availability": "code_and_data_available",
+        "url": "https://github.com/HUST-AI-HYZ/MemoryAgentBench",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM17",
+      "title": "MemBench: Towards More Comprehensive Evaluation on the Memory of LLM-based Agents",
+      "canonical_url": "https://aclanthology.org/2025.findings-acl.989/",
+      "artifact_type": "peer_reviewed_benchmark",
+      "pinned_version": "ACL Anthology:2025.findings-acl.989; DOI:10.18653/v1/2025.findings-acl.989",
+      "accessed_date": "2026-07-23",
+      "license": "CC BY 4.0",
+      "code_or_data": {
+        "availability": "code_and_data_available",
+        "url": "https://github.com/import-myself/Membench",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM18",
+      "title": "Dense Passage Retrieval for Open-Domain Question Answering",
+      "canonical_url": "https://aclanthology.org/2020.emnlp-main.550/",
+      "artifact_type": "peer_reviewed_paper",
+      "pinned_version": "ACL Anthology:2020.emnlp-main.550; DOI:10.18653/v1/2020.emnlp-main.550",
+      "accessed_date": "2026-07-23",
+      "license": "CC BY 4.0",
+      "code_or_data": {
+        "availability": "code_and_models_available",
+        "url": "https://github.com/facebookresearch/DPR",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM19",
+      "title": "SQLite FTS5 Extension",
+      "canonical_url": "https://www.sqlite.org/fts5.html",
+      "artifact_type": "official_project_documentation",
+      "pinned_version": "unknown",
+      "accessed_date": "2026-07-23",
+      "license": "public_domain",
+      "code_or_data": {
+        "availability": "source_available",
+        "url": "https://www.sqlite.org/src/dir?ci=trunk&name=ext/fts5",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM20",
+      "title": "Locating and Editing Factual Associations in GPT",
+      "canonical_url": "https://proceedings.neurips.cc/paper_files/paper/2022/hash/6f1d43d5a82a37e89b0665b33bf3a182-Abstract-Conference.html",
+      "artifact_type": "peer_reviewed_paper",
+      "pinned_version": "NeurIPS 2022 proceedings:6f1d43d5a82a37e89b0665b33bf3a182",
+      "accessed_date": "2026-07-23",
+      "license": "unknown",
+      "code_or_data": {
+        "availability": "code_and_data_available",
+        "url": "https://github.com/kmeng01/rome",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM21",
+      "title": "AgentPoison: Red-teaming LLM Agents via Poisoning Memory or Knowledge Bases",
+      "canonical_url": "https://proceedings.neurips.cc/paper_files/paper/2024/hash/eb113910e9c3f6242541c1652e30dfd6-Abstract-Conference.html",
+      "artifact_type": "peer_reviewed_security_paper",
+      "pinned_version": "NeurIPS 2024 proceedings:eb113910e9c3f6242541c1652e30dfd6",
+      "accessed_date": "2026-07-23",
+      "license": "unknown",
+      "code_or_data": {
+        "availability": "code_available",
+        "url": "https://github.com/AI-secure/AgentPoison",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM22",
+      "title": "How Memory Management Impacts LLM Agents: An Empirical Study of Experience-Following Behavior",
+      "canonical_url": "https://aclanthology.org/2026.acl-long.27/",
+      "artifact_type": "peer_reviewed_paper",
+      "pinned_version": "ACL Anthology:2026.acl-long.27; DOI:10.18653/v1/2026.acl-long.27",
+      "accessed_date": "2026-07-23",
+      "license": "CC BY 4.0",
+      "code_or_data": {
+        "availability": "partial_code_available",
+        "url": "https://github.com/yuplin2333/agent_memory_manage",
+        "pinned_version": "unknown",
+        "limitations": "The released artifact covers only the AgentDriver patches and setting, depends on separately obtained AgentDriver code and data, and does not provide the paper's other settings."
+      }
+    },
+    {
+      "source_id": "AM23",
+      "title": "Mem2ActBench: A Benchmark for Evaluating Long-Term Memory Utilization in Task-Oriented Autonomous Agents",
+      "canonical_url": "https://aclanthology.org/2026.acl-long.370/",
+      "artifact_type": "peer_reviewed_benchmark",
+      "pinned_version": "ACL Anthology:2026.acl-long.370; DOI:10.18653/v1/2026.acl-long.370",
+      "accessed_date": "2026-07-23",
+      "license": "CC BY 4.0",
+      "code_or_data": {
+        "availability": "code_and_data_available",
+        "url": "https://github.com/Cantaloupe-M/Mem2ActBench",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM24",
+      "title": "GroupMemBench: Benchmarking LLM Agent Memory in Multi-Party Conversations",
+      "canonical_url": "https://arxiv.org/abs/2605.14498v2",
+      "artifact_type": "preprint_benchmark",
+      "pinned_version": "arXiv:2605.14498v2",
+      "accessed_date": "2026-07-23",
+      "license": "CC BY 4.0",
+      "code_or_data": {
+        "availability": "dataset_available",
+        "url": "https://huggingface.co/datasets/kimperyang/GroupMemBench",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM25",
+      "title": "Beyond a Million Tokens: Benchmarking and Enhancing Long-Term Memory in LLMs",
+      "canonical_url": "https://arxiv.org/abs/2510.27246v2",
+      "artifact_type": "peer_reviewed_benchmark",
+      "pinned_version": "arXiv:2510.27246v2; ICLR 2026 poster:10006595",
+      "accessed_date": "2026-07-23",
+      "license": "CC BY 4.0",
+      "code_or_data": {
+        "availability": "code_and_data_available",
+        "url": "https://github.com/mohammadtavakoli78/BEAM",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM26",
+      "title": "PM-Bench: Evaluating Prospective Memory in LLM Agents",
+      "canonical_url": "https://arxiv.org/abs/2607.12385v1",
+      "artifact_type": "peer_reviewed_benchmark",
+      "pinned_version": "arXiv:2607.12385v1; COLM 2026 conference paper",
+      "accessed_date": "2026-07-23",
+      "license": "CC BY 4.0",
+      "code_or_data": {
+        "availability": "code_and_data_available",
+        "url": "https://github.com/genglinliu/PMBench",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM27",
+      "title": "Dissecting GraphRAG: A Modular Analysis of Knowledge Structuring for Factoid Question Answering",
+      "canonical_url": "https://aclanthology.org/2026.tacl-1.29/",
+      "artifact_type": "peer_reviewed_paper",
+      "pinned_version": "ACL Anthology:2026.tacl-1.29; DOI:10.1162/tacl.a.615; TACL volume 14",
+      "accessed_date": "2026-07-23",
+      "license": "CC BY 4.0",
+      "code_or_data": {
+        "availability": "code_and_data_available",
+        "url": "https://github.com/norikinishida/kapipe",
+        "pinned_version": "unknown"
+      }
+    },
+    {
+      "source_id": "AM28",
+      "title": "Mem0: Building Production-Ready AI Agents with Scalable Long-Term Memory",
+      "canonical_url": "https://arxiv.org/abs/2504.19413v1",
+      "artifact_type": "vendor_preprint",
+      "pinned_version": "arXiv:2504.19413v1",
+      "accessed_date": "2026-07-23",
+      "license": "unknown",
+      "code_or_data": {
+        "availability": "evolved_code_and_evaluation_available",
+        "url": "https://github.com/mem0ai/mem0",
+        "pinned_version": "unknown"
+      }
+    }
+  ]
+}

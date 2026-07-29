@@ -13,6 +13,7 @@ import { resolveLlmConfig } from '../llm-providers/resolver.js'
 import type { EffectiveLlmConfig, LlmConfigResult } from '../llm-providers/types.js'
 import { logger } from '../logger.js'
 import { extractMemoryPatch, type MemoryPatch } from './extractor.js'
+import { visibleProfileText } from './profile-visibility.js'
 import { resolveMemoryScope } from './scope.js'
 import {
   getMemoryProfile,
@@ -111,36 +112,44 @@ const logConfigFailure = (
   )
 }
 
-const insertRecords = (scope: MemoryScope, patch: MemoryPatch, deps: RunMemoryExtractionDeps): number => {
+type SuppressibleCount = Readonly<{ count: number; suppressed: number }>
+
+const insertRecords = (scope: MemoryScope, patch: MemoryPatch, deps: RunMemoryExtractionDeps): SuppressibleCount => {
   const now = deps.now()
-  return patch.records.reduce((count, record) => {
-    saveMemoryRecord({
-      id: deps.randomUUID(),
-      ...scope,
-      kind: record.kind,
-      content: record.content,
-      summary: record.summary,
-      tags: record.tags,
-      confidence: record.confidence,
-      status: 'active',
-      source: 'background',
-      evidence: record.evidence,
-      createdAt: now,
-      updatedAt: now,
-      lastSeenAt: now,
-      validFrom: canonicalIsoOrNull(record.validFrom),
-      validUntil: canonicalIsoOrNull(record.validUntil),
-      expiresAt: canonicalIsoOrNull(record.expiresAt),
-    })
-    return count + 1
-  }, 0)
+  return patch.records.reduce<SuppressibleCount>(
+    (acc, record) => {
+      const saved = saveMemoryRecord({
+        id: deps.randomUUID(),
+        ...scope,
+        kind: record.kind,
+        content: record.content,
+        summary: record.summary,
+        tags: record.tags,
+        confidence: record.confidence,
+        status: 'active',
+        source: 'background',
+        evidence: record.evidence,
+        createdAt: now,
+        updatedAt: now,
+        lastSeenAt: now,
+        validFrom: canonicalIsoOrNull(record.validFrom),
+        validUntil: canonicalIsoOrNull(record.validUntil),
+        expiresAt: canonicalIsoOrNull(record.expiresAt),
+      })
+      return saved === null ? { ...acc, suppressed: acc.suppressed + 1 } : { ...acc, count: acc.count + 1 }
+    },
+    { count: 0, suppressed: 0 },
+  )
 }
 
-const applyUpdates = (scope: MemoryScope, patch: MemoryPatch, now: string): number =>
-  patch.updates.reduce((count, update) => {
-    const updated = updateMemoryRecord(scope, update.id, update, now)
-    return updated === null ? count : count + 1
-  }, 0)
+const applyUpdates = (scope: MemoryScope, patch: MemoryPatch, now: string): SuppressibleCount =>
+  patch.updates.reduce<SuppressibleCount>(
+    (acc, update) => {
+      const updated = updateMemoryRecord(scope, update.id, update, now)
+      return updated === null ? { ...acc, suppressed: acc.suppressed + 1 } : { ...acc, count: acc.count + 1 }
+    },
+    { count: 0, suppressed: 0 },
+  )
 
 const shouldResolveModel = (input: RunMemoryExtractionInput): boolean =>
   input.deps?.extractMemoryPatch === undefined || input.deps.buildModel !== undefined
@@ -157,6 +166,28 @@ const resolveModel = (
     return null
   }
   return deps.buildModel(resolvedConfig)
+}
+
+const logExtractionComplete = (
+  input: RunMemoryExtractionInput,
+  scope: MemoryScope,
+  patch: MemoryPatch,
+  insertResult: SuppressibleCount,
+  updateResult: SuppressibleCount,
+): void => {
+  log.info(
+    {
+      storageContextId: input.storageContextId,
+      configContextId: input.configContextId,
+      scopeId: scope.scopeId,
+      scopeType: scope.scopeType,
+      inserted: insertResult.count,
+      updated: updateResult.count,
+      suppressed: insertResult.suppressed + updateResult.suppressed,
+      profileUpdated: patch.profile !== null,
+    },
+    'Long-term memory extraction complete',
+  )
 }
 
 const performExtraction = async (
@@ -182,7 +213,9 @@ const performExtraction = async (
     contextType: input.contextType,
     scope,
     history: input.history,
-    profile: profile?.profile ?? null,
+    // Never feed contaminated prose back into extraction: the LLM would copy the
+    // erased fact into the replacement profile and make it durable again.
+    profile: visibleProfileText(profile),
     records,
     model,
   })
@@ -191,21 +224,9 @@ const performExtraction = async (
   if (patch.profile !== null) {
     saveMemoryProfile(scope, patch.profile, now)
   }
-  const inserted = insertRecords(scope, patch, deps)
-  const updated = applyUpdates(scope, patch, now)
-
-  log.info(
-    {
-      storageContextId: input.storageContextId,
-      configContextId: input.configContextId,
-      scopeId: scope.scopeId,
-      scopeType: scope.scopeType,
-      inserted,
-      updated,
-      profileUpdated: patch.profile !== null,
-    },
-    'Long-term memory extraction complete',
-  )
+  const insertResult = insertRecords(scope, patch, deps)
+  const updateResult = applyUpdates(scope, patch, now)
+  logExtractionComplete(input, scope, patch, insertResult, updateResult)
 }
 
 export async function runMemoryExtractionInBackground(input: RunMemoryExtractionInput): Promise<void> {

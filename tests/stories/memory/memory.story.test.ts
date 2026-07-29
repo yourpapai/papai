@@ -55,8 +55,13 @@ scenario('SCN-memory-forget: forgets a stored memory by query', async ({ given, 
   then.replyTo(alice).equals('Noted.')
 
   // forget_memory resolves the target through a direct FTS lookup (searchMemoryRecords), not the
-  // embedding-backed recall cascade, so no /embeddings call is expected here.
-  given.llm([callCapability('memory.forget', { query: 'office is on 3rd street' }), answer('Forgotten.')])
+  // embedding-backed recall cascade, so no /embeddings call is expected here. The purge is
+  // irreversible, so it also sits behind the confidence gate: 0.9 is the direct-unambiguous-command
+  // band, which "Forget where my office is" falls in.
+  given.llm([
+    callCapability('memory.forget', { query: 'office is on 3rd street', confidence: 0.9 }),
+    answer('Forgotten.'),
+  ])
   await when.message(alice, dm, 'Forget where my office is')
   then.replyTo(alice).equals('Forgotten.')
 

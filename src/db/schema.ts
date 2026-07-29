@@ -78,8 +78,20 @@ export const memoryFacts = sqliteTable(
     index('idx_memory_facts_user_lastseen').on(table.userId, table.lastSeen),
   ],
 )
-export { memoryProfiles, memoryRecords, memoryExtractionState } from './long-term-memory-schema.js'
-export type { MemoryProfileRow, MemoryRecordRow, MemoryExtractionStateRow } from './long-term-memory-schema.js'
+export {
+  memoryProfiles,
+  memoryRecords,
+  memoryExtractionState,
+  memoryTombstones,
+  memoryRecallShadowLog,
+} from './long-term-memory-schema.js'
+export type {
+  MemoryProfileRow,
+  MemoryRecordRow,
+  MemoryExtractionStateRow,
+  MemoryTombstoneRow,
+  MemoryRecallShadowLogRow,
+} from './long-term-memory-schema.js'
 export { versionAnnouncements, announcementDeliveries } from './announcement-schema.js'
 export const groupMembers = sqliteTable(
   'group_members',

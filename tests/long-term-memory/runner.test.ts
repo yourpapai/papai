@@ -16,6 +16,7 @@ import {
   saveMemoryRecord,
   setMemoryCaptureEnabled,
 } from '../../src/long-term-memory/store.js'
+import { insertTombstone } from '../../src/long-term-memory/tombstone.testing.js'
 import type { MemoryRecordInput } from '../../src/long-term-memory/types.js'
 import { setupTestDb } from '../utils/test-helpers.js'
 
@@ -128,7 +129,10 @@ describe('runMemoryExtractionInBackground', () => {
       },
     })
 
-    const [record] = listMemoryRecords({ scopeId: 'ctx-1', scopeType: 'personal' })
+    // Query at the same clock the extraction ran with (deps.now above), so the record's
+    // expiresAt of 2026-06-13 -- one day out -- is still inside the validity window;
+    // the real wall-clock default would already be past it.
+    const [record] = listMemoryRecords({ scopeId: 'ctx-1', scopeType: 'personal', now: '2026-06-12T00:00:00.000Z' })
     expect(record?.source).toBe('background')
     expect(record?.expiresAt).toBe('2026-06-13T00:00:00.000Z')
     expect(record?.validFrom).toBeNull()
@@ -192,6 +196,75 @@ describe('runMemoryExtractionInBackground', () => {
     expect(calls).toBe(1)
     releaseFirst({ profile: null, records: [], updates: [] })
     await first
+  })
+
+  test('background extraction skips tombstoned content', async () => {
+    insertTombstone(
+      { scopeId: 'ctx-tomb', scopeType: 'personal' },
+      'Budget approved for Q3',
+      '2026-07-24T00:00:00.000Z',
+    )
+
+    const tombstonedPatch: MemoryPatch = {
+      profile: null,
+      records: [
+        {
+          kind: 'fact',
+          content: 'budget  APPROVED for q3',
+          summary: null,
+          tags: [],
+          confidence: 0.9,
+          source: 'background',
+          evidence: {},
+        },
+      ],
+      updates: [],
+    }
+
+    await runMemoryExtractionInBackground({
+      storageContextId: 'ctx-tomb',
+      configContextId: 'cfg-1',
+      contextType: 'dm',
+      history,
+      deps: {
+        extractMemoryPatch: () => Promise.resolve(tombstonedPatch),
+        now: () => '2026-07-24T01:00:00.000Z',
+        randomUUID: () => 'mem-tomb',
+      },
+    })
+
+    expect(listMemoryRecords({ scopeId: 'ctx-tomb', scopeType: 'personal' })).toEqual([])
+  })
+
+  test('background update skips reintroducing tombstoned content', async () => {
+    saveMemoryRecord(memoryRecordInput({ id: 'mem-existing', scopeId: 'ctx-tomb-update', scopeType: 'personal' }))
+    insertTombstone(
+      { scopeId: 'ctx-tomb-update', scopeType: 'personal' },
+      'Budget approved for Q3',
+      '2026-07-24T00:00:00.000Z',
+    )
+
+    const updatePatch: MemoryPatch = {
+      profile: null,
+      records: [],
+      updates: [{ id: 'mem-existing', content: 'budget  APPROVED for q3' }],
+    }
+
+    await runMemoryExtractionInBackground({
+      storageContextId: 'ctx-tomb-update',
+      configContextId: 'cfg-1',
+      contextType: 'dm',
+      history,
+      deps: {
+        extractMemoryPatch: () => Promise.resolve(updatePatch),
+        now: () => '2026-07-24T01:00:00.000Z',
+      },
+    })
+
+    const updated = listMemoryRecords({ scopeId: 'ctx-tomb-update', scopeType: 'personal' }).find(
+      (record) => record.id === 'mem-existing',
+    )
+    expect(updated?.content).toBe('Old release note process.')
   })
 
   test('group thread context resolves to parent group scope', async () => {

@@ -13,8 +13,9 @@ import { toScopedContextId, toScopedThreadContextId } from '../src/chat/scoped-c
 import { shouldTriggerTrim, buildMessagesWithMemory, runTrimInBackground } from '../src/conversation.js'
 import { clearLlmAdminCacheForTesting } from '../src/llm-providers/store.testing.js'
 import { logger } from '../src/logger.js'
+import { purgeMemoryRecord } from '../src/long-term-memory/purge.js'
 import * as longTermMemoryStore from '../src/long-term-memory/store.js'
-import { saveMemoryProfile, saveMemoryRecord } from '../src/long-term-memory/store.js'
+import { saveMemoryProfile, saveMemoryRecord, setMemoryRecordInjectionEnabled } from '../src/long-term-memory/store.js'
 import type { MemoryRecordInput } from '../src/long-term-memory/types.js'
 import { flushMicrotasks, seedAdminLlmBinding, setupTestDb } from './utils/test-helpers.js'
 
@@ -266,6 +267,7 @@ describe('buildMessagesWithMemory', () => {
   })
 
   test('loads at most three active long-term memory records', () => {
+    setMemoryRecordInjectionEnabled({ scopeId: 'user-1', scopeType: 'personal' }, true, '2026-06-12T00:00:00.000Z')
     const listMemoryRecordsSpy = spyOn(longTermMemoryStore, 'listMemoryRecords')
 
     try {
@@ -304,6 +306,7 @@ describe('buildMessagesWithMemory', () => {
         summary: 'Friday release notes',
       }),
     )
+    setMemoryRecordInjectionEnabled({ scopeId: parent, scopeType: 'group' }, true, '2026-06-12T00:00:01.000Z')
 
     const result = buildMessagesWithMemory(thread, [], 'group')
 
@@ -322,6 +325,48 @@ describe('buildMessagesWithMemory', () => {
 
     expect(history).toHaveLength(originalLength)
     expect(history[0]).toEqual({ role: 'user', content: 'Hello' })
+  })
+
+  test('does not inject records when injectRecords flag is off (default)', () => {
+    const scope = { scopeId: 'user-inject-off', scopeType: 'personal' as const }
+    saveMemoryProfile(scope, 'Prefers dark mode', '2026-07-24T00:00:00.000Z')
+    saveMemoryRecord(
+      memoryRecordInput({
+        id: 'mem-inject-off',
+        ...scope,
+        content: 'Likes espresso',
+        summary: null,
+        tags: [],
+        source: 'tool_result',
+      }),
+    )
+
+    const listSpy = spyOn(longTermMemoryStore, 'listMemoryRecords')
+    const result = buildMessagesWithMemory('user-inject-off', [])
+    expect(result.memoryMsg?.content).not.toContain('Likes espresso')
+    // profile is still injected even when record injection is off
+    expect(result.memoryMsg?.content).toContain('Prefers dark mode')
+    expect(listSpy).not.toHaveBeenCalled()
+    listSpy.mockRestore()
+  })
+
+  test('injects records when injectRecords flag is on', () => {
+    const scope = { scopeId: 'user-inject-on', scopeType: 'personal' as const }
+    saveMemoryProfile(scope, 'Prefers dark mode', '2026-07-24T00:00:00.000Z')
+    saveMemoryRecord(
+      memoryRecordInput({
+        id: 'mem-inject-on',
+        ...scope,
+        content: 'Likes espresso',
+        summary: null,
+        tags: [],
+        source: 'tool_result',
+      }),
+    )
+    setMemoryRecordInjectionEnabled(scope, true, '2026-07-24T00:00:01.000Z')
+
+    const result = buildMessagesWithMemory('user-inject-on', [])
+    expect(result.memoryMsg?.content).toContain('Likes espresso')
   })
 })
 
@@ -738,5 +783,44 @@ describe('Story 5: Summary injected into context', () => {
     const systemMsg = result.messages[0]!
     expect(systemMsg.content).toContain('Fix login bug')
     expect(systemMsg.content).toContain('#42')
+  })
+})
+
+describe('buildMessagesWithMemory — contaminated profile', () => {
+  beforeEach(async () => {
+    await setupTestDb()
+  })
+
+  const memoryMsgContent = (result: { memoryMsg: { content: string } | null }): string =>
+    result.memoryMsg?.content ?? ''
+
+  const seedRecord = (): MemoryRecordInput => ({
+    id: 'mem-1',
+    scopeId: 'dm-9',
+    scopeType: 'personal',
+    kind: 'fact',
+    content: 'User lives in Berlin',
+    summary: null,
+    tags: [],
+    confidence: 1,
+    status: 'active',
+    source: 'explicit',
+    evidence: {},
+    createdAt: '2026-07-01T00:00:00.000Z',
+    updatedAt: '2026-07-01T00:00:00.000Z',
+    lastSeenAt: '2026-07-01T00:00:00.000Z',
+  })
+
+  test('omits profile prose after a purge, with no worker run', () => {
+    saveMemoryProfile({ scopeId: 'dm-9', scopeType: 'personal' }, 'User lives in Berlin', '2026-07-01T00:00:00.000Z')
+    saveMemoryRecord(seedRecord())
+
+    const before = buildMessagesWithMemory('dm-9', [], 'dm')
+    expect(memoryMsgContent(before)).toContain('Berlin')
+
+    purgeMemoryRecord({ scopeId: 'dm-9', scopeType: 'personal' }, 'mem-1', '2026-07-25T12:00:00.000Z')
+
+    const after = buildMessagesWithMemory('dm-9', [], 'dm')
+    expect(memoryMsgContent(after)).not.toContain('Berlin')
   })
 })
