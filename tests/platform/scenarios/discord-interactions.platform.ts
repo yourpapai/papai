@@ -58,14 +58,12 @@ function createProvider(fake: FakeDiscordClient): DiscordChatProvider {
   })
 }
 
-async function flushEventDelivery(): Promise<void> {
-  for (let index = 0; index < 6; index++) await Promise.resolve()
-}
-
 async function startProvider(fake: FakeDiscordClient, provider: DiscordChatProvider): Promise<void> {
   const started = provider.start()
   fake.emitReady()
+  const flushed = fake.flush()
   await started
+  await flushed
 }
 
 async function replyToMentionedMessage(
@@ -75,7 +73,7 @@ async function replyToMentionedMessage(
 ): Promise<void> {
   provider.onMessage((_incoming, reply) => reply.formatted(markdown))
   fake.emitMessage(mentionedMessage('@papai format this', fake))
-  await flushEventDelivery()
+  await fake.flush()
 }
 
 describe('T3 Discord — interaction adapters', () => {
@@ -113,7 +111,7 @@ describe('T3 Discord — interaction adapters', () => {
 
     await startProvider(fake, provider)
     fake.emitMessage(mentionedMessage('/help retained-args', fake))
-    await flushEventDelivery()
+    await fake.flush()
 
     expect(received).toHaveLength(1)
     expect(received[0]!.commandMatch).toBe('retained-args')
@@ -136,8 +134,8 @@ describe('T3 Discord — interaction adapters', () => {
     })
 
     await startProvider(fake, provider)
-    await fake.emitButton(buttonInteraction())
-    await flushEventDelivery()
+    fake.emitButton(buttonInteraction())
+    await fake.flush()
 
     expect(fake.deferUpdateCalls()).toHaveLength(1)
     expect(fake.followUpCalls()).toEqual([{ content: 'saved', flags: 64 }])

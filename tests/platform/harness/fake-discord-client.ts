@@ -13,6 +13,7 @@ import type { SendableChannel } from '../../../src/chat/discord/reply-helpers.js
 
 type Listener = (...args: unknown[]) => void
 type InteractionResponse = 'deferUpdate' | 'followUp'
+type QueuedEvent = { listener: Listener; args: unknown[] }
 
 type ChannelCall =
   | { method: 'send'; content: string | undefined }
@@ -30,7 +31,8 @@ export type FakeDiscordClient = {
   login(token: string): Promise<string>
   emitReady(): void
   emitMessage(message: DispatchableMessage): void
-  emitButton(overrides?: Partial<ButtonInteractionLike>): Promise<void>
+  emitButton(overrides?: Partial<ButtonInteractionLike>): void
+  flush(): Promise<void>
   button(overrides?: Partial<ButtonInteractionLike>): ButtonInteractionLike
   sentContents(): readonly string[]
   channelCalls(): readonly ChannelCall[]
@@ -45,14 +47,14 @@ export type FakeDiscordClientOptions = {
   rejectInteractionResponse?: InteractionResponse
 }
 
-const emitListeners = (listeners: Map<string, Set<Listener>>, event: string, args: unknown[]): void => {
-  for (const listener of listeners.get(event) ?? []) listener(...args)
+const listenersFor = (listeners: Map<string, Set<Listener>>, event: string): readonly Listener[] => {
+  return [...(listeners.get(event) ?? [])]
 }
 
-const emitOnceListeners = (listeners: Map<string, Set<Listener>>, event: string, args: unknown[]): void => {
+const onceListenersFor = (listeners: Map<string, Set<Listener>>, event: string): readonly Listener[] => {
   const oneShot = listeners.get(event)
   listeners.delete(event)
-  for (const listener of oneShot ?? []) listener(...args)
+  return [...(oneShot ?? [])]
 }
 
 export function createFakeDiscordClient(options: FakeDiscordClientOptions): FakeDiscordClient {
@@ -62,6 +64,7 @@ export function createFakeDiscordClient(options: FakeDiscordClientOptions): Fake
   const calls: ChannelCall[] = []
   const deferred: undefined[] = []
   const followUps: Array<{ content: string; flags?: number; ephemeral?: boolean }> = []
+  const eventQueue: QueuedEvent[] = []
   const pendingInteractionResponses = new Set<Promise<unknown>>()
   let sentCount = 0
   let destroyed = false
@@ -73,6 +76,18 @@ export function createFakeDiscordClient(options: FakeDiscordClientOptions): Fake
       () => pendingInteractionResponses.delete(response),
     )
     return response
+  }
+
+  const enqueueEvent = (listener: Listener, args: unknown[]): void => {
+    eventQueue.push({ listener, args })
+  }
+
+  const enqueueListeners = (event: string, args: unknown[]): void => {
+    for (const listener of listenersFor(listeners, event)) enqueueEvent(listener, args)
+  }
+
+  const enqueueOnceListeners = (event: string, args: unknown[]): void => {
+    for (const listener of onceListenersFor(onceListeners, event)) enqueueEvent(listener, args)
   }
 
   const channel: FakeChannel = {
@@ -158,15 +173,25 @@ export function createFakeDiscordClient(options: FakeDiscordClientOptions): Fake
     emitReady() {
       client.user = { id: options.botId, username: options.username }
       const payload = { user: { id: options.botId, username: options.username } }
-      emitListeners(listeners, 'ready', [payload])
-      emitOnceListeners(onceListeners, 'ready', [payload])
+      enqueueListeners('ready', [payload])
+      enqueueOnceListeners('ready', [payload])
     },
     emitMessage(message) {
-      emitListeners(listeners, 'messageCreate', [message])
+      enqueueListeners('messageCreate', [message])
     },
-    emitButton(overrides): Promise<void> {
-      emitListeners(listeners, 'interactionCreate', [createButton(overrides)])
-      return Promise.resolve()
+    emitButton(overrides): void {
+      enqueueListeners('interactionCreate', [createButton(overrides)])
+    },
+    async flush(): Promise<void> {
+      while (eventQueue.length > 0) {
+        const event = eventQueue.shift()
+        if (event === undefined) continue
+        event.listener(...event.args)
+        await new Promise<void>((resolve) => {
+          setImmediate(resolve)
+        })
+      }
+      await Promise.allSettled(pendingInteractionResponses)
     },
     button: createButton,
     sentContents: () => sends.slice(),
@@ -176,6 +201,7 @@ export function createFakeDiscordClient(options: FakeDiscordClientOptions): Fake
     assertClean() {
       if (!destroyed) throw new Error('fake Discord client was not destroyed')
       if (listeners.size !== 0 || onceListeners.size !== 0) throw new Error('fake Discord client still has listeners')
+      if (eventQueue.length > 0) throw new Error('fake Discord client has queued events')
       if (pendingInteractionResponses.size > 0)
         throw new Error('fake Discord client has a pending interaction response')
     },

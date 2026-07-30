@@ -31,6 +31,7 @@ describe('fake Discord client', () => {
 
     const started = fake.login('discord-test-token')
     fake.emitReady()
+    await fake.flush()
     await started
     fake.emitReady()
     await fake.channel.send({ content: 'first' })
@@ -42,7 +43,7 @@ describe('fake Discord client', () => {
     fake.assertClean()
   })
 
-  test('emits messages and button interactions through the registered listeners', async () => {
+  test('delivers queued messages and button interactions when flushed', async () => {
     const fake = createFakeDiscordClient({ botId: 'discord-bot', username: 'papai' })
     const received: string[] = []
     fake.client.on('messageCreate', (message) => recordMessageId(message, received))
@@ -57,7 +58,11 @@ describe('fake Discord client', () => {
       reference: null,
       type: 0,
     })
-    await fake.emitButton({ customId: 'approve' })
+    fake.emitButton({ customId: 'approve' })
+
+    expect(received).toEqual([])
+
+    await fake.flush()
 
     expect(received).toEqual(['message-1', 'approve'])
     expect(fake.deferUpdateCalls()).toEqual([undefined])
@@ -81,10 +86,11 @@ describe('fake Discord client', () => {
 
     const started = provider.start()
     fake.emitReady()
+    const flushed = fake.flush()
     await started
-    await fake.emitButton({ customId: 'approve' })
-    await Promise.resolve()
-    await Promise.resolve()
+    await flushed
+    fake.emitButton({ customId: 'approve' })
+    await fake.flush()
 
     expect(receivedCustomIds).toEqual(['approve'])
     expect(fake.deferUpdateCalls()).toEqual([undefined])
