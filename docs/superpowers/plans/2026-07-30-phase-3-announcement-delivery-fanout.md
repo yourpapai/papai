@@ -214,10 +214,10 @@ tests/stories/settings/announcement-delivery.story.test.ts#SCN-announcement-deli
 
 - [ ] **Step 1: Create the story**
 
-Use one `scenario(...)` with the literal title above. Its setup must create a super-admin, a non-admin, two subscribed DMs, one unsubscribed DM, one subscribed group, and one unsubscribed group. Seed:
+Use one `scenario(...)` with the literal title above. Import `packageJson` from the root `package.json` with a JSON import attribute so the fixture uses the same current version as the route. Its setup must create a super-admin, a non-admin, two subscribed DMs, one unsubscribed DM, one subscribed group, and one unsubscribed group. Seed:
 
 ```ts
-given.announcementDraft({ version: '9.9.9', body: 'Release notes for fan-out verification.' })
+given.announcementDraft({ version: packageJson.version, body: 'Release notes for fan-out verification.' })
 given.proactiveDelivery([
   { contextId: sentUser.id, outcomes: ['sent'] },
   { contextId: failedUser.id, outcomes: ['throws', 'sent'] },
@@ -231,7 +231,7 @@ Use `POST`, JSON content type, and `{ action: 'broadcast' }` for each valid requ
 
 ```ts
 {
-  version: '9.9.9',
+  version: packageJson.version,
   broadcast: { sent: 2, failed: 1, skipped: 0 },
   counts: { dm: 2, group: 1 },
 }
