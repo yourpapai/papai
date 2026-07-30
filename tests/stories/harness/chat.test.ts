@@ -140,6 +140,30 @@ describe('scenario chat', () => {
     expect(chat.allReplies()[1]).toMatchObject({ threadId: 'thread-7' })
   })
 
+  test('records every proactive attempt while consuming scripted outcomes', async () => {
+    const events = createScenarioEvents('proactive-outcomes')
+    const chat = createScenarioChat('proactive-outcomes', events)
+    chat.configureProactiveDelivery([
+      { contextId: 'dm-ok', outcomes: ['sent'] },
+      { contextId: 'group-retry', outcomes: ['failed', 'sent'] },
+      { contextId: 'dm-throws', outcomes: ['throws'] },
+    ])
+    await chat.start()
+
+    expect(await chat.sendMessage('scenario-platform', dmTarget('dm-ok'), 'release')).toBe(true)
+    expect(await chat.sendMessage('scenario-platform', dmTarget('group-retry'), 'release')).toBe(false)
+    await expect(chat.sendMessage('scenario-platform', dmTarget('dm-throws'), 'release')).rejects.toThrow(
+      'Scripted proactive delivery failure',
+    )
+    expect(await chat.sendMessage('scenario-platform', dmTarget('group-retry'), 'release')).toBe(true)
+    expect(
+      chat
+        .proactiveAttempts()
+        .map(({ contextId }) => contextId)
+        .toSorted(),
+    ).toEqual(['dm-ok', 'dm-throws', 'group-retry', 'group-retry'])
+  })
+
   test('dispatches interactions through the registered interaction handler', async () => {
     const events = createScenarioEvents('interaction')
     const chat = createScenarioChat('interaction', events)
