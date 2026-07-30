@@ -167,6 +167,11 @@ export function captureCanonicalEvent(
 ): CaptureOutcome | null {
   if (!isCanonicalCaptureEnabled()) return null
 
+  // These three run outside the try below, so the never-throws guarantee is structural: it
+  // holds because they are pure over a TypeScript-enforced `MemoryRecordInput`, not because
+  // anything catches them. Adding I/O, parsing, or validation that can throw to
+  // `toCanonicalPayload` or `idempotencyIdentity` would break dark mode — move the call
+  // inside the try if that ever changes.
   const scope: MemoryScope = { scopeId: input.scopeId, scopeType: input.scopeType }
   const payload = toCanonicalPayload(input)
   const identity = idempotencyIdentity(scope, input.content)

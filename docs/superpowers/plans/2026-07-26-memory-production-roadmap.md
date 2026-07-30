@@ -90,6 +90,13 @@ reconciliation against the current path, which is this gate's exit. There is no 
 migration records a cutover marker, and 1d scopes its reconciliation to records created at or after
 it.
 
+**Named gap carried into 1c/1d:** O1's suppressed-attempt coverage is asymmetric. A tombstone-
+suppressed *save* records a `suppressed-tombstoned` attempt, but a tombstone-suppressed *update*
+(`updateMemoryRecord`'s early return) records nothing — that path holds only a scope, a record id,
+and a candidate string, so 1a would have to fabricate a payload to log it. 1c introduces canonical
+tombstones and can record the suppression properly. This is deliberate and tested, not an oversight;
+1d must not read the missing attempt rows as a reconciliation discrepancy.
+
 ### Gate 2: Rebuildable hybrid projections
 
 Rebuild lexical and dense projections from canonical events, retaining the delivered hybrid logic
