@@ -85,6 +85,18 @@ describe('canonicalJson', () => {
   test('encodes nulls explicitly rather than dropping the key', () => {
     expect(canonicalJson(payload({ summary: null }))).toContain('"summary":null')
   })
+
+  test('encodes nested provenance contents rather than erasing them', () => {
+    const json = canonicalJson(payload())
+    expect(json).toContain('"messageIds":["m-1"]')
+    expect(json).toContain('"contextId":"ctx-1"')
+  })
+
+  test('is stable under provenance array reordering', () => {
+    const forward = payload({ provenance: { messageIds: ['m-1', 'm-2'], threads: [], contextId: 'ctx-1' } })
+    const reversed = payload({ provenance: { messageIds: ['m-2', 'm-1'], threads: [], contextId: 'ctx-1' } })
+    expect(canonicalJson(forward)).toBe(canonicalJson(reversed))
+  })
 })
 
 describe('contentIdentity', () => {
@@ -97,5 +109,11 @@ describe('contentIdentity', () => {
 
   test('is deterministic for an identical payload', () => {
     expect(contentIdentity(payload())).toBe(contentIdentity(payload()))
+  })
+
+  test('two payloads differing only in provenance get different content identities', () => {
+    const base = payload()
+    const other = payload({ provenance: { messageIds: ['m-2'], threads: [], contextId: 'ctx-1' } })
+    expect(contentIdentity(base)).not.toBe(contentIdentity(other))
   })
 })
