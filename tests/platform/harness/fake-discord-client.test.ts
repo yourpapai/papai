@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { DiscordChatProvider } from '../../../src/chat/discord/index.js'
 import { createFakeDiscordClient } from './fake-discord-client.js'
 
 const recordMessageId = (message: unknown, received: string[]): void => {
@@ -62,6 +63,33 @@ describe('fake Discord client', () => {
     expect(fake.deferUpdateCalls()).toEqual([undefined])
 
     await fake.client.destroy()
+    fake.assertClean()
+  })
+
+  test('dispatches an emitted button through a started Discord provider', async () => {
+    const fake = createFakeDiscordClient({ botId: 'discord-bot', username: 'papai' })
+    const provider = new DiscordChatProvider({
+      clientFactory: fake.factory,
+      token: 'discord-test-token',
+      platformInstanceId: 'discord-test',
+    })
+    const receivedCustomIds: string[] = []
+    provider.onInteraction((interaction) => {
+      receivedCustomIds.push(interaction.callbackData)
+      return Promise.resolve()
+    })
+
+    const started = provider.start()
+    fake.emitReady()
+    await started
+    await fake.emitButton({ customId: 'approve' })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(receivedCustomIds).toEqual(['approve'])
+    expect(fake.deferUpdateCalls()).toEqual([undefined])
+
+    await provider.stop()
     fake.assertClean()
   })
 

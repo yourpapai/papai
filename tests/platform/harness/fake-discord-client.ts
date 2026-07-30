@@ -21,6 +21,7 @@ type ChannelCall =
   | { method: 'sendTyping' }
 
 type FakeChannel = SendableChannel & { type: number }
+type RuntimeButtonInteraction = ButtonInteractionLike & { type: 3; componentType: 2 }
 
 export type FakeDiscordClient = {
   client: LiveDiscordClient
@@ -124,7 +125,9 @@ export function createFakeDiscordClient(options: FakeDiscordClientOptions): Fake
     },
   }
 
-  const createButton = (overrides: Partial<ButtonInteractionLike> = {}): ButtonInteractionLike => ({
+  const createButton = (overrides: Partial<ButtonInteractionLike> = {}): RuntimeButtonInteraction => ({
+    type: 3,
+    componentType: 2,
     user: { id: 'user-1', username: 'Ada' },
     customId: 'button-1',
     channelId: channel.id,
