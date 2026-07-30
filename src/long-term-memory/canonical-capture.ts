@@ -117,6 +117,32 @@ const captureNew = (
 }
 
 /**
+ * Records a rolled-back attempt in its own transaction.
+ *
+ * A `failed` outcome means the main transaction rolled back, which would have taken its own
+ * attempt row with it — so the failure is written separately. If even this write fails there
+ * is nowhere durable left to put it, and the log line is the last resort.
+ */
+const recordFailure = (identity: string, payload: CanonicalPayload, ingestTime: string, error: unknown): void => {
+  const message = error instanceof Error ? error.message : String(error)
+  try {
+    getDrizzleDb().transaction((tx) => {
+      insertAttempt(tx, { identity, payload, ingestTime, outcome: 'failed', eventId: null })
+    })
+    log.warn(
+      { scopeType: payload.scopeType, scopeId: payload.scopeId, identity, error: message },
+      'Canonical capture failed; attempt recorded',
+    )
+  } catch (recordingError) {
+    const recordingMessage = recordingError instanceof Error ? recordingError.message : String(recordingError)
+    log.error(
+      { scopeType: payload.scopeType, scopeId: payload.scopeId, identity, error: message, recordingMessage },
+      'Canonical capture failed and the failure could not be recorded',
+    )
+  }
+}
+
+/**
  * Records one capture attempt in the canonical log.
  *
  * The whole write is one synchronous transaction, which is what makes boundary B1 — a state
@@ -129,6 +155,10 @@ const captureNew = (
  * forget-versus-ingest interleavings compare.
  *
  * Returns `null` when the kill switch is off — no attempt was made, so there is no outcome.
+ *
+ * Never throws: any failure of the canonical write is caught, recorded as a `failed` attempt
+ * in its own transaction (see `recordFailure`), and reported as `'failed'` — the caller is
+ * never affected by a canonical-capture fault.
  */
 export function captureCanonicalEvent(
   input: MemoryRecordInput,
@@ -141,24 +171,30 @@ export function captureCanonicalEvent(
   const payload = toCanonicalPayload(input)
   const identity = idempotencyIdentity(scope, input.content)
 
-  const outcome = getDrizzleDb().transaction((tx): CaptureOutcome => {
-    if (input.source !== 'explicit' && isContentTombstoned(scope, input.content)) {
-      insertAttempt(tx, { identity, payload, ingestTime: now, outcome: 'suppressed-tombstoned', eventId: null })
-      return 'suppressed-tombstoned'
-    }
+  let outcome: CaptureOutcome
+  try {
+    outcome = getDrizzleDb().transaction((tx): CaptureOutcome => {
+      if (input.source !== 'explicit' && isContentTombstoned(scope, input.content)) {
+        insertAttempt(tx, { identity, payload, ingestTime: now, outcome: 'suppressed-tombstoned', eventId: null })
+        return 'suppressed-tombstoned'
+      }
 
-    const existing = tx
-      .select({ eventId: memoryCanonicalEvents.eventId, lastObservedAt: memoryCanonicalEvents.lastObservedAt })
-      .from(memoryCanonicalEvents)
-      .where(eq(memoryCanonicalEvents.idempotencyIdentity, identity))
-      .get()
+      const existing = tx
+        .select({ eventId: memoryCanonicalEvents.eventId, lastObservedAt: memoryCanonicalEvents.lastObservedAt })
+        .from(memoryCanonicalEvents)
+        .where(eq(memoryCanonicalEvents.idempotencyIdentity, identity))
+        .get()
 
-    // Monotonic max over event time: a replay of the same input advances nothing, while a
-    // genuinely later observation advances even if it arrives out of ingest order.
-    if (existing !== undefined) return captureDuplicate(tx, existing, { identity, payload, now })
+      // Monotonic max over event time: a replay of the same input advances nothing, while a
+      // genuinely later observation advances even if it arrives out of ingest order.
+      if (existing !== undefined) return captureDuplicate(tx, existing, { identity, payload, now })
 
-    return captureNew(tx, { identity, payload, input, now, recordId })
-  })
+      return captureNew(tx, { identity, payload, input, now, recordId })
+    })
+  } catch (error) {
+    recordFailure(identity, payload, now, error)
+    outcome = 'failed'
+  }
 
   log.debug({ scopeType: input.scopeType, scopeId: input.scopeId, identity, outcome }, 'Canonical capture attempt')
   return outcome
