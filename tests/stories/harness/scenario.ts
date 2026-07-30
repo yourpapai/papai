@@ -7,6 +7,11 @@ import { expect, test } from 'bun:test'
 
 import { and, eq } from 'drizzle-orm'
 
+import {
+  setGroupAnnounceSubscribed,
+  setUserAnnounceSubscribed,
+  upsertAnnouncementDraft,
+} from '../../../src/announcements/store.js'
 import { getThreadScopedStorageContextId } from '../../../src/auth.js'
 import { getCachedHistory } from '../../../src/cache.js'
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
@@ -22,7 +27,7 @@ import {
 } from '../../../src/coding-sessions/store.js'
 import { issueClaim } from '../../../src/dashboard-auth/index.js'
 import { getDrizzleDb } from '../../../src/db/drizzle.js'
-import { memoryRecords } from '../../../src/db/schema.js'
+import { announcementDeliveries, memoryRecords } from '../../../src/db/schema.js'
 import { pollAlertsOnce, pollScheduledOnce } from '../../../src/deferred-prompts/poller.js'
 import { sweepDirtyContexts, type SweepDeps } from '../../../src/long-term-memory/capture-sweep.js'
 import { runMemoryCapture, type RunMemoryCaptureDeps } from '../../../src/long-term-memory/capture.js'
@@ -46,6 +51,7 @@ import { defaultTaskProviderResolver } from '../../../src/providers/resolver.js'
 import type { TaskCapability, TaskProvider } from '../../../src/providers/types.js'
 import { tick } from '../../../src/scheduler.js'
 import { setToolPrefs, type ToolPrefs } from '../../../src/tools/tool-preferences.js'
+import type { ScenarioProactiveDeliveryPlan } from './chat.js'
 import { MATCH_EMBEDDING } from './embeddings.js'
 import { SCENARIO_PLATFORM_INSTANCE_ID, type DashboardSessionHandle, type SettingsSessionHandle } from './fixtures.js'
 import { runWithScenarioIoGuard } from './io-guard.js'
@@ -127,6 +133,9 @@ type ScenarioGiven = Readonly<{
   providerUser(identity: Readonly<{ id: string; login: string; name?: string }>): void
   dm(user: UserHandle): DmHandle
   thread(group: GroupHandle, id: string): ThreadHandle
+  announcementSubscription(context: DmHandle | GroupHandle, enabled: boolean): void
+  announcementDraft(input: Readonly<{ version: string; body: string }>): void
+  proactiveDelivery(plans: readonly ScenarioProactiveDeliveryPlan[]): void
   attachment(
     context: ContextHandle,
     file: Readonly<{ filename: string; content: string; mimeType?: string }>,
@@ -283,11 +292,20 @@ type CodingSessionsAssertion = Readonly<{
 }>
 
 type ResponseJsonAssertion = Readonly<{ contains(needle: string): void; equals(expected: unknown): void }>
+type ProactiveAttemptsAssertion = Readonly<{ equal(expectedContextIds: readonly string[]): void }>
+type AnnouncementDelivery = Readonly<{
+  contextId: string
+  contextType: 'dm' | 'group'
+  status: 'sent' | 'failed'
+}>
+type AnnouncementDeliveriesAssertion = Readonly<{ equal(expected: readonly AnnouncementDelivery[]): void }>
 
 type ScenarioThen = Readonly<{
   replyTo(user: UserHandle): ReplyAssertion
   repliesTo(user: UserHandle): ReplyHistoryAssertion
   replyIn(context: ContextHandle): ReplyAssertion
+  proactiveAttempts(): ProactiveAttemptsAssertion
+  announcementDeliveries(version: string): AnnouncementDeliveriesAssertion
   codingSessions(context: ContextHandle): CodingSessionsAssertion
   task(title: string): TaskAssertion
   responseStatus(response: Response, expected: number): void
@@ -527,6 +545,22 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
     },
     dm: makeDmHandle,
     thread: makeThreadHandle,
+    announcementSubscription(context, enabled): void {
+      prerequisite('given.announcementSubscription')
+      if (context.kind === 'dm') {
+        setUserAnnounceSubscribed(context.platformInstanceId, context.user.id, enabled)
+        return
+      }
+      setGroupAnnounceSubscribed(scopedGroupId(context), enabled)
+    },
+    announcementDraft({ version, body }): void {
+      prerequisite('given.announcementDraft')
+      upsertAnnouncementDraft({ version, rawBody: body, humanizedBody: body })
+    },
+    proactiveDelivery(plans): void {
+      prerequisite('given.proactiveDelivery')
+      world.chat.configureProactiveDelivery(plans)
+    },
     attachment(context, file): Promise<AttachmentHandle> {
       prerequisite('given.attachment')
       return world.fixtures.seedRelayAttachment({ contextId: scopedStorageContextId(context), ...file })
@@ -906,6 +940,44 @@ function createThen(world: ScenarioWorld): ScenarioThen {
       replyAssertion(world, () =>
         context.kind === 'thread' ? repliesForThread(world, context) : repliesForContext(world, contextId(context)),
       ),
+    proactiveAttempts: (): ProactiveAttemptsAssertion => ({
+      equal(expectedContextIds): void {
+        const actualContextIds = world.chat
+          .proactiveAttempts()
+          .map((attempt) => attempt.contextId)
+          .sort()
+        tracedAssertion(world, () => expect(actualContextIds).toEqual([...expectedContextIds].sort()))
+      },
+    }),
+    announcementDeliveries: (version): AnnouncementDeliveriesAssertion => ({
+      equal(expected): void {
+        tracedAssertion(world, () => {
+          const actual = getDrizzleDb()
+            .select({
+              contextId: announcementDeliveries.contextId,
+              contextType: announcementDeliveries.contextType,
+              status: announcementDeliveries.status,
+            })
+            .from(announcementDeliveries)
+            .where(eq(announcementDeliveries.version, version))
+            .all()
+            .map((delivery): AnnouncementDelivery => {
+              const { contextId: deliveryContextId, contextType, status } = delivery
+              if (contextType !== 'dm' && contextType !== 'group') {
+                throw new Error(`Unexpected announcement delivery context type: ${contextType}`)
+              }
+              if (status !== 'sent' && status !== 'failed') {
+                throw new Error(`Unexpected announcement delivery status: ${status}`)
+              }
+              return { contextId: deliveryContextId, contextType, status }
+            })
+            .sort((left, right) => left.contextId.localeCompare(right.contextId))
+          const sortedExpected = [...expected].sort((left, right) => left.contextId.localeCompare(right.contextId))
+
+          expect(actual).toEqual(sortedExpected)
+        })
+      },
+    }),
     task: (title) => ({
       async exists(): Promise<void> {
         const matches = await world.tasks.searchTasks({ query: title })
