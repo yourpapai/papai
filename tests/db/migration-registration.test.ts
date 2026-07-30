@@ -33,8 +33,8 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('071_message_embeddings')
   })
 
-  test('076_memory_profile_contaminated_at is the last migration', () => {
+  test('077_memory_canonical_capture is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('076_memory_profile_contaminated_at')
+    expect(lastMigration.id).toBe('077_memory_canonical_capture')
   })
 })

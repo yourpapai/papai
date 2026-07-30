@@ -92,6 +92,18 @@ export type {
   MemoryTombstoneRow,
   MemoryRecallShadowLogRow,
 } from './long-term-memory-schema.js'
+export {
+  memoryCanonicalEvents,
+  memoryProjectionOutbox,
+  memoryCanonicalCaptureAttempts,
+  memoryCanonicalState,
+} from './memory-canonical-schema.js'
+export type {
+  MemoryCanonicalEventRow,
+  MemoryProjectionOutboxRow,
+  MemoryCanonicalCaptureAttemptRow,
+  MemoryCanonicalStateRow,
+} from './memory-canonical-schema.js'
 export { versionAnnouncements, announcementDeliveries } from './announcement-schema.js'
 export const groupMembers = sqliteTable(
   'group_members',
