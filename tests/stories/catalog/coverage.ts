@@ -1331,6 +1331,41 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
       'tests/platform/scenarios/mattermost-http-action.platform.ts#rejects a context signed with the wrong secret (seam gates)',
     ],
   },
+  'SCN-interaction-discord-command-routing': {
+    verifiedAt: '2026-07-30',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/discord-interactions.platform.ts#routes a Discord command through the provider adapter',
+    ],
+  },
+  'SCN-interaction-discord-format-chunking': {
+    verifiedAt: '2026-07-30',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/discord-interactions.platform.ts#splits oversized formatted Discord replies into balanced chunks',
+    ],
+  },
+  'SCN-interaction-discord-response-lifecycle': {
+    verifiedAt: '2026-07-30',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/discord-interactions.platform.ts#preserves the Discord interaction response lifecycle after defer failure',
+    ],
+  },
+  'SCN-interaction-kontur-reply-formatting': {
+    verifiedAt: '2026-07-30',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/kontur-talk-replies.platform.ts#formats Kontur Talk replies with thread overrides',
+    ],
+  },
+  'SCN-interaction-telegram-admin-authorization': {
+    verifiedAt: '2026-07-30',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/telegram-admin-authorization.platform.ts#authorizes Telegram group admins through the Bot API',
+    ],
+  },
   'SCN-task-youtrack-real-create': {
     verifiedAt: '2026-07-27',
     storyIds: [
@@ -1529,36 +1564,6 @@ export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
   'SCN-stats-aggregate-window': ready(
     'F4',
     'The existing stats query runtime can prove internally consistent windowed aggregates.',
-  ),
-  'SCN-interaction-discord-command-routing': needs(
-    'F8',
-    ['platform-adapter-fakes'],
-    '3',
-    'This verifies the discord.js command wire above the runtime boundary and needs a fake Discord client.',
-  ),
-  'SCN-interaction-discord-format-chunking': needs(
-    'F8',
-    ['platform-adapter-fakes'],
-    '3',
-    'This verifies Discord transport formatting and chunk boundaries, which needs a fake Discord client.',
-  ),
-  'SCN-interaction-discord-response-lifecycle': needs(
-    'F8',
-    ['platform-adapter-fakes'],
-    '3',
-    'This verifies discord.js deferred and replied interaction lifecycle behavior above the runtime boundary.',
-  ),
-  'SCN-interaction-kontur-reply-formatting': needs(
-    'F8',
-    ['platform-adapter-fakes'],
-    '3',
-    'This verifies Kontur Talk platform reply formatting and chunk boundaries above the runtime boundary.',
-  ),
-  'SCN-interaction-telegram-admin-authorization': needs(
-    'F8',
-    ['platform-adapter-fakes'],
-    '3',
-    'This verifies the grammY platform-admin helper wire and needs a fake Telegram API.',
   ),
   'SCN-deferred-poller-lifecycle': needs(
     'F5',

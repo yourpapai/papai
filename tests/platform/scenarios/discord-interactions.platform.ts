@@ -10,6 +10,7 @@ import { DiscordChatProvider, type DispatchableMessage } from '../../../src/chat
 import type { IncomingMessage } from '../../../src/chat/types.js'
 import { mockLogger, setupTestDb } from '../../utils/test-helpers.js'
 import { createFakeDiscordClient, type FakeDiscordClient } from '../harness/fake-discord-client.js'
+import { PLATFORM_STORIES } from './catalog.js'
 
 const PLATFORM_INSTANCE_ID = 'discord-platform'
 const BOT_ID = 'discord-bot'
@@ -17,7 +18,7 @@ const CHANNEL_ID = 'channel-42'
 const MEMBER_ID = 'member-7'
 const MESSAGE_ID = 'message-9'
 const CODE_LINE = 'const retained = true;\n'
-const title = (scenarioId: string): string => scenarioId
+const title = (scenarioId: keyof typeof PLATFORM_STORIES): string => PLATFORM_STORIES[scenarioId].title
 
 const oversizedFencedMarkdown = `\`\`\`typescript\n${CODE_LINE.repeat(87)}\`\`\``
 const expectedDiscordChunks = [

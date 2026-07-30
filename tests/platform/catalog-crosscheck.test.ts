@@ -19,7 +19,17 @@ describe('@3 catalog crosscheck', () => {
     )
     const t3 = executable.filter((coverage) => coverage.provingTier === '3')
 
-    expect(t3).toHaveLength(3)
+    expect(t3).toHaveLength(8)
+    const platformStoryScenarioIds: string[] = Object.keys(PLATFORM_STORIES)
+    for (const scenarioId of [
+      'SCN-interaction-discord-command-routing',
+      'SCN-interaction-discord-format-chunking',
+      'SCN-interaction-discord-response-lifecycle',
+      'SCN-interaction-kontur-reply-formatting',
+      'SCN-interaction-telegram-admin-authorization',
+    ]) {
+      expect(platformStoryScenarioIds).toContain(scenarioId)
+    }
     const byScenario: Map<string, readonly string[]> = new Map(
       t3.map((coverage) => [coverage.scenarioId, coverage.storyIds]),
     )

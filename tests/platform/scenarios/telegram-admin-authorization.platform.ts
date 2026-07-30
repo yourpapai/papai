@@ -8,9 +8,10 @@ import { describe, expect, test } from 'bun:test'
 import { TelegramChatProvider } from '../../../src/chat/telegram/index.js'
 import { mockLogger } from '../../utils/test-helpers.js'
 import { createFakeTelegramBot, type FakeTelegramBot } from '../harness/fake-telegram-bot.js'
+import { PLATFORM_STORIES } from './catalog.js'
 
 const PLATFORM_INSTANCE_ID = 'telegram-platform'
-const title = (scenarioId: string): string => scenarioId
+const title = (scenarioId: keyof typeof PLATFORM_STORIES): string => PLATFORM_STORIES[scenarioId].title
 
 type MembershipOutcome = { status: string } | Error
 

@@ -8,6 +8,9 @@ export type PlatformStory = { scenarioId: string; title: string; file: string }
 
 const FETCH_CHAT_LINK = 'tests/platform/scenarios/mattermost-fetch-chat-link.platform.ts'
 const HTTP_ACTION = 'tests/platform/scenarios/mattermost-http-action.platform.ts'
+const DISCORD_INTERACTIONS = 'tests/platform/scenarios/discord-interactions.platform.ts'
+const KONTUR_TALK_REPLIES = 'tests/platform/scenarios/kontur-talk-replies.platform.ts'
+const TELEGRAM_ADMIN_AUTHORIZATION = 'tests/platform/scenarios/telegram-admin-authorization.platform.ts'
 
 export const PLATFORM_STORIES = {
   'SCN-fetch-chat-link': {
@@ -24,6 +27,31 @@ export const PLATFORM_STORIES = {
     scenarioId: 'SCN-http-mattermost-action-bad-signature',
     title: 'rejects a context signed with the wrong secret (seam gates)',
     file: HTTP_ACTION,
+  },
+  'SCN-interaction-discord-command-routing': {
+    scenarioId: 'SCN-interaction-discord-command-routing',
+    title: 'routes a Discord command through the provider adapter',
+    file: DISCORD_INTERACTIONS,
+  },
+  'SCN-interaction-discord-format-chunking': {
+    scenarioId: 'SCN-interaction-discord-format-chunking',
+    title: 'splits oversized formatted Discord replies into balanced chunks',
+    file: DISCORD_INTERACTIONS,
+  },
+  'SCN-interaction-discord-response-lifecycle': {
+    scenarioId: 'SCN-interaction-discord-response-lifecycle',
+    title: 'preserves the Discord interaction response lifecycle after defer failure',
+    file: DISCORD_INTERACTIONS,
+  },
+  'SCN-interaction-kontur-reply-formatting': {
+    scenarioId: 'SCN-interaction-kontur-reply-formatting',
+    title: 'formats Kontur Talk replies with thread overrides',
+    file: KONTUR_TALK_REPLIES,
+  },
+  'SCN-interaction-telegram-admin-authorization': {
+    scenarioId: 'SCN-interaction-telegram-admin-authorization',
+    title: 'authorizes Telegram group admins through the Bot API',
+    file: TELEGRAM_ADMIN_AUTHORIZATION,
   },
 } as const satisfies Record<string, PlatformStory>
 

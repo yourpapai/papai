@@ -9,3 +9,6 @@
 // use a non-discovered suffix so the default `bun test` never runs this Docker lane.
 import './scenarios/mattermost-fetch-chat-link.platform.js'
 import './scenarios/mattermost-http-action.platform.js'
+import './scenarios/discord-interactions.platform.js'
+import './scenarios/kontur-talk-replies.platform.js'
+import './scenarios/telegram-admin-authorization.platform.js'

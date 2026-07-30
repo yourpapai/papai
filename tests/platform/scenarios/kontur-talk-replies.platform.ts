@@ -9,12 +9,13 @@ import { KonturTalkChatProvider } from '../../../src/chat/kontur-talk/index.js'
 import type { ReplyFn } from '../../../src/chat/types.js'
 import { mockLogger } from '../../utils/test-helpers.js'
 import { startFakeKonturTalkServer, type FakeKonturTalkServer } from '../harness/fake-kontur-talk-server.js'
+import { PLATFORM_STORIES } from './catalog.js'
 
 const PLATFORM_INSTANCE_ID = 'kontur-platform'
 const JWT_TOKEN = 'header.eyJzdWIiOiJrb250dXItYm90In0.signature'
 const ROOM_ID = '!room:example'
 const DEFAULT_THREAD_ID = '$thread-default'
-const title = (scenarioId: string): string => scenarioId
+const title = (scenarioId: keyof typeof PLATFORM_STORIES): string => PLATFORM_STORIES[scenarioId].title
 
 function createProvider(fake: FakeKonturTalkServer): KonturTalkChatProvider {
   return new KonturTalkChatProvider({
