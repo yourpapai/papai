@@ -668,6 +668,20 @@ const join = (...parts: readonly string[]): string => parts.join('\u0000')
 export const idempotencyIdentity = (scope: MemoryScope, content: string): string =>
   sha256(join(scope.scopeType, scope.scopeId, contentHash(content)))
 
+/**
+ * Deterministic JSON: keys sorted at every level, array element order preserved.
+ *
+ * Deliberately not `JSON.stringify(value, Object.keys(value).sort())` — an array
+ * replacer is a *recursive* property whitelist, so a list of top-level key names
+ * erases every nested object's contents instead of ordering them.
+ */
+const stableStringify = (value: unknown): string => {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null'
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  const entries = Object.entries(value).sort(([left], [right]) => (left < right ? -1 : 1))
+  return `{${entries.map(([key, nested]) => `${JSON.stringify(key)}:${stableStringify(nested)}`).join(',')}}`
+}
+
 /** Sorted keys, sorted tags, explicit nulls — so encoding order can never change an identity. */
 export const canonicalJson = (payload: CanonicalPayload): string => {
   const ordered = {
@@ -691,7 +705,7 @@ export const canonicalJson = (payload: CanonicalPayload): string => {
     validFrom: payload.validFrom,
     validUntil: payload.validUntil,
   }
-  return JSON.stringify(ordered, Object.keys(ordered).sort())
+  return stableStringify(ordered)
 }
 
 /**
