@@ -241,7 +241,7 @@ Assert target IDs are exactly the two subscribed DMs and subscribed group; asser
 
 - [ ] **Step 2: Verify the story**
 
-Run: `bun test:stories -- tests/stories/settings/announcement-delivery.story.test.ts`
+Run: `bun test:stories -- --fixture tests/stories/settings/announcement-delivery.story.test.ts`
 
 Expected: PASS with one logical scenario. The first broadcast proves a thrown delivery is counted and isolated; the second proves successful deliveries are skipped and a prior failure can retry.
 
