@@ -42,9 +42,12 @@ describe('fake Kontur Talk server', () => {
 
     const held = fetch(`${fake.baseUrl}/bot/test/get_updates?timeout=30`)
     await fake.whenPollPending()
-    await fake.stop()
+    const stopping = fake.stop()
 
+    expect(() => fake.assertClean()).toThrow('pending poll')
+    await stopping
     await expect(held).resolves.toMatchObject({ ok: true })
+    await fake.whenPollSettled()
     fake.assertClean()
   })
 

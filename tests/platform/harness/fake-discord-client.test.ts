@@ -92,4 +92,21 @@ describe('fake Discord client', () => {
     await fake.client.destroy()
     fake.assertClean()
   })
+
+  test('records a rejected defer attempt and waits for response settlement before cleanup', async () => {
+    const fake = createFakeDiscordClient({
+      botId: 'discord-bot',
+      username: 'papai',
+      rejectInteractionResponse: 'deferUpdate',
+    })
+
+    const deferred = fake.button().deferUpdate()
+    expect(fake.deferUpdateCalls()).toEqual([undefined])
+
+    const destroyed = fake.client.destroy()
+    expect(() => fake.assertClean()).toThrow('pending interaction response')
+    await expect(deferred).rejects.toThrow('configured deferUpdate rejection')
+    await destroyed
+    fake.assertClean()
+  })
 })

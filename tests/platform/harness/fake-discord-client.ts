@@ -61,8 +61,18 @@ export function createFakeDiscordClient(options: FakeDiscordClientOptions): Fake
   const calls: ChannelCall[] = []
   const deferred: undefined[] = []
   const followUps: Array<{ content: string; flags?: number; ephemeral?: boolean }> = []
+  const pendingInteractionResponses = new Set<Promise<unknown>>()
   let sentCount = 0
   let destroyed = false
+
+  const trackInteractionResponse = <T>(response: Promise<T>): Promise<T> => {
+    pendingInteractionResponses.add(response)
+    void response.then(
+      () => pendingInteractionResponses.delete(response),
+      () => pendingInteractionResponses.delete(response),
+    )
+    return response
+  }
 
   const channel: FakeChannel = {
     id: 'channel-1',
@@ -121,18 +131,18 @@ export function createFakeDiscordClient(options: FakeDiscordClientOptions): Fake
     channel,
     message: { id: 'message-1' },
     deferUpdate(): Promise<void> {
-      if (options.rejectInteractionResponse === 'deferUpdate') {
-        return Promise.reject(new Error('configured deferUpdate rejection'))
-      }
       deferred.push(undefined)
-      return Promise.resolve()
+      if (options.rejectInteractionResponse === 'deferUpdate') {
+        return trackInteractionResponse(Promise.reject(new Error('configured deferUpdate rejection')))
+      }
+      return trackInteractionResponse(Promise.resolve())
     },
     followUp(payload): Promise<unknown> {
       followUps.push(payload)
       if (options.rejectInteractionResponse === 'followUp') {
-        return Promise.reject(new Error('configured followUp rejection'))
+        return trackInteractionResponse(Promise.reject(new Error('configured followUp rejection')))
       }
-      return Promise.resolve()
+      return trackInteractionResponse(Promise.resolve())
     },
     ...overrides,
   })
@@ -163,6 +173,8 @@ export function createFakeDiscordClient(options: FakeDiscordClientOptions): Fake
     assertClean() {
       if (!destroyed) throw new Error('fake Discord client was not destroyed')
       if (listeners.size !== 0 || onceListeners.size !== 0) throw new Error('fake Discord client still has listeners')
+      if (pendingInteractionResponses.size > 0)
+        throw new Error('fake Discord client has a pending interaction response')
     },
   }
 }

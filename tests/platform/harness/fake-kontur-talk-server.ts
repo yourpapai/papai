@@ -11,6 +11,7 @@ export type FakeKonturTalkServer = {
   baseUrl: string
   enqueueUpdates(updates: readonly KonturTalkUpdate[]): void
   whenPollPending(): Promise<void>
+  whenPollSettled(): Promise<void>
   requests(): readonly RecordedRequest[]
   sentRequests(): readonly unknown[]
   stop(): Promise<void>
@@ -28,13 +29,16 @@ export function startFakeKonturTalkServer(): Promise<FakeKonturTalkServer> {
   const pollPending = new Promise<void>((resolve) => {
     markPollPending = resolve
   })
+  let markPollSettled: () => void = () => {}
+  const pollSettled = new Promise<void>((resolve) => {
+    markPollSettled = resolve
+  })
   let resolveHeldPoll: ((response: Response) => void) | null = null
   let stopped = false
 
   const server = Bun.serve({
     hostname: '127.0.0.1',
     port: 0,
-    idleTimeout: 1,
     async fetch(request) {
       const url = new URL(request.url)
       if (request.method === 'GET' && isBotEndpoint(url.pathname, 'get_updates')) {
@@ -45,6 +49,9 @@ export function startFakeKonturTalkServer(): Promise<FakeKonturTalkServer> {
         return new Promise<Response>((resolve) => {
           resolveHeldPoll = resolve
           markPollPending()
+        }).finally(() => {
+          resolveHeldPoll = null
+          markPollSettled()
         })
       }
       if (request.method === 'POST' && isBotEndpoint(url.pathname, 'send_message')) {
@@ -63,13 +70,13 @@ export function startFakeKonturTalkServer(): Promise<FakeKonturTalkServer> {
       updateBatches.push([...updates])
     },
     whenPollPending: () => pollPending,
+    whenPollSettled: () => pollSettled,
     requests: () => recordedRequests.slice(),
     sentRequests: () => sends.slice(),
     stop(): Promise<void> {
       if (stopped) return Promise.resolve()
       stopped = true
       resolveHeldPoll?.(Response.json({ updates: [] }))
-      resolveHeldPoll = null
       return server.stop()
     },
     assertClean() {
