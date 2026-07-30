@@ -454,6 +454,13 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
       'tests/stories/runtime/persistence-and-usage.story.test.ts#SCN-usage-accounting: idempotent request and tool events remain window-queryable',
     ],
   },
+  'SCN-announcement-delivery-fanout': {
+    verifiedAt: '2026-07-30',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/settings/announcement-delivery.story.test.ts#SCN-announcement-delivery-fanout: eligible release subscribers receive independent best-effort delivery accounting',
+    ],
+  },
   'SCN-memory-tool-pairing': {
     verifiedAt: '2026-07-29',
     storyIds: [
@@ -1515,10 +1522,6 @@ const blocked = (family: StoryFamily, rationale: string): AuditRecord =>
 
 export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
   // Phase 3 — uncatalogued runtime cluster; catalog-only until each record has a literal story mapping.
-  'SCN-announcement-delivery-fanout': ready(
-    'F1',
-    'The existing announcement broadcast dependency injection can prove independent fan-out success and failure accounting.',
-  ),
   'SCN-stats-anonymity': ready(
     'F4',
     'The existing stats aggregation and salt test helpers can prove that raw subject identity is not returned.',

@@ -107,6 +107,8 @@ const PROMOTED_PHASE3_CATALOG_STORY_IDS = {
     'tests/stories/runtime/persistence-and-usage.story.test.ts#SCN-message-cache-persistence: persisted messages retain context and reply-chain boundaries',
   'SCN-usage-accounting':
     'tests/stories/runtime/persistence-and-usage.story.test.ts#SCN-usage-accounting: idempotent request and tool events remain window-queryable',
+  'SCN-announcement-delivery-fanout':
+    'tests/stories/settings/announcement-delivery.story.test.ts#SCN-announcement-delivery-fanout: eligible release subscribers receive independent best-effort delivery accounting',
   'SCN-scheduler-execution-tracking':
     'tests/stories/pure-helpers/pure-helpers.story.test.ts#SCN-scheduler-execution-tracking: active execution tracking clears fulfilled and rejected work',
   'SCN-changelog-version-section':
@@ -155,13 +157,6 @@ function phase3AuditProjection(coverage: PendingCatalogCoverage): Phase3AuditPro
 }
 
 const PHASE3_AUDIT_PROJECTION: Phase3AuditProjection[] = [
-  {
-    scenarioId: 'SCN-announcement-delivery-fanout',
-    family: 'F1',
-    readiness: 'executable-as-is',
-    seams: [],
-    unblockedByTier: null,
-  },
   { scenarioId: 'SCN-stats-anonymity', family: 'F4', readiness: 'executable-as-is', seams: [], unblockedByTier: null },
   {
     scenarioId: 'SCN-stats-aggregate-window',
@@ -314,8 +309,9 @@ describe('scenario catalog coverage', () => {
       '0',
       '0',
       '0',
+      '0',
     ])
-    expect(pending).toHaveLength(9)
+    expect(pending).toHaveLength(8)
     expect(pending.every(({ catalogStatus }) => catalogStatus === 'gap')).toBe(true)
     expect(pending.every(({ kind }) => kind === 'pending')).toBe(true)
   })
@@ -441,7 +437,7 @@ describe('scenario catalog coverage', () => {
   })
 
   test('tracks the executable coverage total', () => {
-    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(181)
+    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(182)
   })
 
   test('stamps every executable record with a live proving tier', () => {
@@ -450,7 +446,7 @@ describe('scenario catalog coverage', () => {
       .filter((coverage) => !LIVE_STORY_TIERS.includes(coverage.provingTier))
       .map(({ scenarioId, provingTier }) => `${scenarioId} -> T${provingTier}`)
 
-    expect(executable).toHaveLength(181)
+    expect(executable).toHaveLength(182)
     expect(offLaneTiers).toEqual([])
     expect(new Set(executable.map((coverage) => coverage.provingTier))).toEqual(new Set(['0', '1', '2', '3']))
   })
@@ -530,7 +526,7 @@ describe('scenario catalog coverage', () => {
   test('audit records cover exactly the pending scenarios', () => {
     const pendingIds = pendingCoverage.map(({ scenarioId }) => scenarioId)
 
-    expect(pendingIds).toHaveLength(34)
+    expect(pendingIds).toHaveLength(33)
     expect(sorted(Object.keys(AUDIT_RECORDS))).toEqual(sorted(pendingIds))
   })
 
@@ -574,7 +570,7 @@ describe('scenario catalog coverage', () => {
   test('audit readiness totals match the audit outcome', () => {
     const states = pendingCoverage.map((coverage) => coverage.audit.readiness.state)
 
-    expect(states.filter((state) => state === 'executable-as-is')).toHaveLength(3)
+    expect(states.filter((state) => state === 'executable-as-is')).toHaveLength(2)
     expect(states.filter((state) => state === 'needs-seam')).toHaveLength(9)
     expect(states.filter((state) => state === 'blocked')).toHaveLength(22)
   })
