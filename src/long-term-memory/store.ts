@@ -10,6 +10,7 @@ import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { memoryProfiles, memoryRecallShadowLog, memoryRecords } from '../db/schema.js'
 import { logger } from '../logger.js'
+import { captureCanonicalEvent, captureUpdateEvent } from './canonical-capture.js'
 import { profileScopeCondition, recordScopeCondition, recordValidityCondition } from './record-conditions.js'
 import { rowToProfile, rowToRecord, sanitizeFtsQuery, serializeEmbedding } from './serialization.js'
 import type { ShadowLogRow } from './shadow-log-row.js'
@@ -181,6 +182,9 @@ export function saveMemoryRecord(input: MemoryRecordInput): MemoryRecord | null 
       { scopeId: input.scopeId, scopeType: input.scopeType, source: input.source },
       'Memory write suppressed by tombstone',
     )
+    // Dark capture: the suppression itself is canonical evidence, and the outcome is
+    // discarded so it cannot alter what this function returns.
+    captureCanonicalEvent(input, null)
     return null
   }
 
@@ -194,7 +198,9 @@ export function saveMemoryRecord(input: MemoryRecordInput): MemoryRecord | null 
       set: values,
     })
     .run()
-  return loadRecord(input.id)
+  const saved = loadRecord(input.id)
+  captureCanonicalEvent(input, saved.id)
+  return saved
 }
 
 export function listMemoryRecords(filter: ListMemoryRecordsFilter): readonly MemoryRecord[] {
@@ -275,7 +281,9 @@ export function updateMemoryRecord(
     .where(recordScopeCondition(scope, recordId))
     .returning()
     .all()
-  return rows[0] === undefined ? null : rowToRecord(rows[0])
+  const updated = rows[0] === undefined ? null : rowToRecord(rows[0])
+  captureUpdateEvent(updated, patch.content !== undefined)
+  return updated
 }
 
 /**

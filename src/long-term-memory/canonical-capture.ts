@@ -14,7 +14,7 @@ import { isCanonicalCaptureEnabled } from './canonical-capture-config.js'
 import { laterIso, toCanonicalPayload, toEventValues } from './canonical-event-values.js'
 import { CAPTURE_VERSION, type CanonicalPayload, contentIdentity, idempotencyIdentity } from './canonical-identity.js'
 import { isContentTombstoned } from './tombstone.js'
-import type { MemoryRecordInput, MemoryScope } from './types.js'
+import type { MemoryRecord, MemoryRecordInput, MemoryScope } from './types.js'
 
 const log = logger.child({ scope: 'long-term-memory:canonical-capture' })
 
@@ -198,4 +198,14 @@ export function captureCanonicalEvent(
 
   log.debug({ scopeType: input.scopeType, scopeId: input.scopeId, identity, outcome }, 'Canonical capture attempt')
   return outcome
+}
+
+/**
+ * Captures the update side of the dual-write hook: a content-changing update is a real
+ * capture; a status- or confidence-only update is not, so `contentChanged` gates the call.
+ */
+export function captureUpdateEvent(updated: MemoryRecord | null, contentChanged: boolean): void {
+  if (updated !== null && contentChanged) {
+    captureCanonicalEvent({ ...updated, embedding: null }, updated.id)
+  }
 }
