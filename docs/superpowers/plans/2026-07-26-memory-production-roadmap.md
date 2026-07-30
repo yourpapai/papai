@@ -78,6 +78,18 @@ observables and five fault/interleave boundaries; those are binding on this gate
 predicate that proves unimplementable as written is superseded by an appended amendment with a
 stated reason — never edited in place, and never amended merely to let this gate exit.
 
+**Status (2026-07-30):** Gate 1 is being executed as four specs. **1a — canonical capture spine** is
+implemented per `docs/superpowers/specs/2026-07-30-memory-gate1a-canonical-capture-spine-design.md`:
+the canonical event log, the projection outbox, the durable attempt log, the identity model, and the
+dark-mode dual write at `saveMemoryRecord`. It satisfies observables O1, O3, and O6 and makes
+boundary B1 unreachable by construction. It promotes no criterion — `capture-idempotency`'s predicate
+compares projection snapshots, and no projection exists until 1b. Remaining: **1b** dark projection,
+checkpoint, idempotent apply, repair (O2, O4; B2–B4; promotes `capture-idempotency`); **1c** canonical
+tombstones and the concurrency harness (O5; B5; promotes `races` and `crash-recovery`); **1d**
+reconciliation against the current path, which is this gate's exit. There is no backfill: the
+migration records a cutover marker, and 1d scopes its reconciliation to records created at or after
+it.
+
 ### Gate 2: Rebuildable hybrid projections
 
 Rebuild lexical and dense projections from canonical events, retaining the delivered hybrid logic

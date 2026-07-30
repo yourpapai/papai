@@ -75,6 +75,12 @@ Verified at HEAD on the date above.
   [`../../superpowers/specs/2026-07-29-memory-gate1-predicate-registration-design.md`](../../superpowers/specs/2026-07-29-memory-gate1-predicate-registration-design.md),
   and four are declared-unmet with named blockers (migration, backup/restore, load, reader
   quality). The harness reporting `production ready = NO` is its intended output, not a defect.
+- **Gate 1a canonical capture spine** — landed 2026-07-30. `memory_canonical_events`,
+  `memory_projection_outbox`, `memory_canonical_capture_attempts`, and the `memory_canonical_state`
+  cutover marker, written in dark mode from `saveMemoryRecord` behind `MEMORY_CANONICAL_CAPTURE`
+  (default on, `'off'` disables). Nothing reads these tables yet; no reader answer changed and no
+  acceptance criterion promoted. Design:
+  `docs/superpowers/specs/2026-07-30-memory-gate1a-canonical-capture-spine-design.md`.
 
 ## Maintenance
 
