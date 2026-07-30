@@ -28,11 +28,25 @@ const ByokStateSchema = z.object({
 
 type ByokField = z.infer<typeof ByokStateSchema>['fields'][number]
 
+const emptyByokState = {
+  enabled: false,
+  complete: false,
+  missing: [],
+  fields: [],
+  providers: [],
+  roles: { main: { providerId: '', model: '' }, small: null, embedding: null },
+}
+
 const field = (state: z.infer<typeof ByokStateSchema>, key: string): ByokField => {
   const value = state.fields.find((candidate) => candidate.key === key)
   expect(value).toBeDefined()
   if (value === undefined) throw new Error(`Missing BYOK field: ${key}`)
   return value
+}
+
+const expectResponseOmits = async (response: Response, sentinels: readonly string[]): Promise<void> => {
+  const responseText = await response.clone().text()
+  for (const sentinel of sentinels) expect(responseText).not.toContain(sentinel)
 }
 
 scenario(
@@ -45,11 +59,13 @@ scenario(
     const aliceSession = await given.settingsSession(alice)
     const bobSession = await when.settingsSession(bob)
     const opaqueCredential = ['opaque', 'non-production', 'credential'].join('-')
+    const sentinels = [opaqueCredential]
 
     const bobInitial = await when.settingsRequest(bobSession, '/settings/api/byok')
     then.responseStatus(bobInitial, 200)
+    await expectResponseOmits(bobInitial, sentinels)
     const bobInitialState = ByokStateSchema.parse(await bobInitial.json())
-    expect(bobInitialState).toMatchObject({ enabled: false, complete: false, missing: [], fields: [] })
+    expect(bobInitialState).toEqual(emptyByokState)
 
     const enabled = await when.settingsRequest(aliceSession, '/settings/api/byok', {
       method: 'PATCH',
@@ -57,6 +73,7 @@ scenario(
       body: JSON.stringify({ action: 'enable' }),
     })
     then.responseStatus(enabled, 200)
+    await expectResponseOmits(enabled, sentinels)
 
     const saved = await when.settingsRequest(aliceSession, '/settings/api/byok', {
       method: 'PATCH',
@@ -71,18 +88,18 @@ scenario(
       }),
     })
     then.responseStatus(saved, 200)
-    expect(await saved.clone().text()).not.toContain(opaqueCredential)
+    await expectResponseOmits(saved, sentinels)
     const changed = await when.settingsRequest(aliceSession, '/settings/api/byok', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ values: { main_model: 'second-main-model', small_model: '' } }),
     })
     then.responseStatus(changed, 200)
-    expect(await changed.clone().text()).not.toContain(opaqueCredential)
+    await expectResponseOmits(changed, sentinels)
 
     const aliceReadback = await when.settingsRequest(aliceSession, '/settings/api/byok')
     then.responseStatus(aliceReadback, 200)
-    expect(await aliceReadback.clone().text()).not.toContain(opaqueCredential)
+    await expectResponseOmits(aliceReadback, sentinels)
     const aliceState = ByokStateSchema.parse(await aliceReadback.json())
     expect(aliceState).toMatchObject({ enabled: true, complete: true })
     expect(field(aliceState, 'main_model')).toMatchObject({ hasValue: true, value: 'second-main-model' })
@@ -90,12 +107,8 @@ scenario(
 
     const bobReadback = await when.settingsRequest(bobSession, '/settings/api/byok')
     then.responseStatus(bobReadback, 200)
-    expect(ByokStateSchema.parse(await bobReadback.json())).toMatchObject({
-      enabled: false,
-      complete: false,
-      missing: [],
-      fields: [],
-    })
+    await expectResponseOmits(bobReadback, sentinels)
+    expect(ByokStateSchema.parse(await bobReadback.json())).toEqual(emptyByokState)
     expect(JSON.stringify(world.events.all())).not.toContain(opaqueCredential)
     expect(world.scopedStorageContextId(aliceDm)).not.toBe(world.scopedStorageContextId(given.dm(bob)))
   },
@@ -112,6 +125,7 @@ scenario(
     const unreadableSession = await when.settingsSession(unreadable)
     const opaqueCredential = ['opaque', 'readable', 'credential'].join('-')
     const unreadableMarker = ['opaque', 'unreadable', 'marker'].join('-')
+    const sentinels = [opaqueCredential, unreadableMarker]
 
     const enabled = await when.settingsRequest(aliceSession, '/settings/api/byok', {
       method: 'PATCH',
@@ -119,6 +133,7 @@ scenario(
       body: JSON.stringify({ action: 'enable' }),
     })
     then.responseStatus(enabled, 200)
+    await expectResponseOmits(enabled, sentinels)
     const saved = await when.settingsRequest(aliceSession, '/settings/api/byok', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -131,7 +146,7 @@ scenario(
       }),
     })
     then.responseStatus(saved, 200)
-    expect(await saved.clone().text()).not.toContain(opaqueCredential)
+    await expectResponseOmits(saved, sentinels)
 
     const unreadableContextId = world.scopedStorageContextId(unreadableDm)
     getDrizzleDb()
@@ -147,7 +162,7 @@ scenario(
 
     const unreadableReadback = await when.settingsRequest(unreadableSession, '/settings/api/byok')
     then.responseStatus(unreadableReadback, 200)
-    expect(await unreadableReadback.clone().text()).not.toContain(unreadableMarker)
+    await expectResponseOmits(unreadableReadback, sentinels)
     const unreadableState = ByokStateSchema.parse(await unreadableReadback.json())
     expect(unreadableState).toMatchObject({
       enabled: true,
@@ -169,6 +184,7 @@ scenario(
 
     const aliceReadback = await when.settingsRequest(aliceSession, '/settings/api/byok')
     then.responseStatus(aliceReadback, 200)
+    await expectResponseOmits(aliceReadback, sentinels)
     expect(ByokStateSchema.parse(await aliceReadback.json())).toMatchObject({ enabled: true, complete: true })
   },
 )

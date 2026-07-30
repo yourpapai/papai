@@ -116,10 +116,13 @@ scenario(
       if (!('attachmentId' in resolved)) throw new Error('Expected the re-staged file to resolve to an attachment')
       const attachmentId = resolved.attachmentId
 
-      const alreadyResolved = await resolveStagedFile(restaged.stagedId, contextId, () =>
-        Promise.resolve(Buffer.from('unused')),
-      )
+      let successfulTerminalDownloads = 0
+      const alreadyResolved = await resolveStagedFile(restaged.stagedId, contextId, () => {
+        successfulTerminalDownloads++
+        return Promise.resolve(Buffer.from('unused'))
+      })
       expect(alreadyResolved).toMatchObject({ status: 'already_resolved', attachmentId })
+      expect(successfulTerminalDownloads).toBe(0)
       expect(
         getDrizzleDb().select().from(attachments).where(eq(attachments.attachmentId, attachmentId)).all(),
       ).toHaveLength(1)
