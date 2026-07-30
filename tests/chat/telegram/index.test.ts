@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { extractFilesFromContext } from '../../../src/chat/telegram/file-helpers.js'
-import { TelegramChatProvider } from '../../../src/chat/telegram/index.js'
+import { TelegramChatProvider, type TelegramBotFactory } from '../../../src/chat/telegram/index.js'
 import {
   extractContextInfo,
   extractMessageIds,
@@ -140,6 +140,33 @@ describe('TelegramChatProvider', () => {
     expect(() => new TelegramChatProvider({ token: 'test-token', platformInstanceId: '   ' })).toThrow(
       'platformInstanceId is required',
     )
+  })
+
+  test('uses the injected bot factory for Bot API membership lookup', async () => {
+    const calls: Array<[number, number]> = []
+    const botFactory: TelegramBotFactory = (token) => {
+      expect(token).toBe('telegram-test-token')
+      return {
+        on: () => undefined,
+        command: () => undefined,
+        start: () => Promise.resolve(),
+        stop: () => Promise.resolve(),
+        api: {
+          getChatMember: (chatId: number, userId: number) => {
+            calls.push([chatId, userId])
+            return Promise.resolve({ status: 'administrator' })
+          },
+        },
+      }
+    }
+    const provider = new TelegramChatProvider({
+      token: 'telegram-test-token',
+      platformInstanceId: 'telegram-platform',
+      botFactory,
+    })
+
+    await expect(provider.isGroupAdmin('telegram-platform', '-100', '42')).resolves.toBe(true)
+    expect(calls).toEqual([[-100, 42]])
   })
 
   test('provider has correct name', () => {
