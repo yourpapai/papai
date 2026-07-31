@@ -64,11 +64,18 @@ For each source file, `pairedRun` resolves the test set in this priority:
      a same-package `index.test.ts` exercises the impl through a re-exporting
      barrel rather than importing it directly.
 
-   Each candidate is then run once with `bun test --coverage`, and the source
-   is attributed the candidates whose lcov shows `lines-hit > 0`. A 24h
+   Each candidate is then run once with `bun test --coverage` (lane-aware, see
+   `scripts/mutation/coverage-runner.ts`): tests under `tests/client/**` run
+   with the `test:client` preset (`--conditions=browser --preload
+./tests/client-setup.ts --path-ignore-patterns ''`) because bunfig's
+   `pathIgnorePatterns` otherwise hides them from discovery; `tests/e2e/**` and
+   `tests/stories/**` are excluded from the candidate universe entirely (Docker
+   / sandboxed story runner — not spawnable per-file). The source is
+   attributed the candidates whose lcov shows `lines-hit > 0`. A 24h
    content-keyed cache (`reports/paired/coverage-map.cache.json`) amortizes
    coverage runs across batches; the cache never throws — a malformed file or
-   entry is treated as a miss.
+   entry is treated as a miss — and failed runs are never cached, so transient
+   spawn failures stay retryable.
 
 2. **Overrides (additive)** — `scripts/mutation/overrides.json` is unioned onto
    the coverage-derived set (or used alone if no covering test was found). Use
