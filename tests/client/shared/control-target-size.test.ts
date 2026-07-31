@@ -7,6 +7,8 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
+import { Glob } from 'bun'
+
 /** WCAG 2.2 AA SC 2.5.8 (Target Size, Minimum). */
 const MIN_TARGET_PX = 24
 
@@ -24,9 +26,32 @@ const CONTROL_TOKEN = /--control-h-([a-z]+):\s*(\d+(?:\.\d+)?)px/gu
 /** Primitives whose whole box is the click target — their height must come from the scale. */
 const INTERACTIVE = ['Btn.svelte', 'IconButton.svelte', 'Seg.svelte', 'SegmentedControl.svelte']
 
+/**
+ * Files allowed to hardcode a px height because the value is not a click target.
+ * Adding an entry is a deliberate act and must carry a reason.
+ */
+const EXEMPT: Record<string, string> = {
+  'Checkbox.svelte': '16px box sits inside a clickable <label>, which is the actual target',
+  'EmptyState.svelte': 'min-height on a layout container, not a target',
+  'ErrorState.svelte': 'min-height on a layout container, not a target',
+  'Meter.svelte': '5px progress bar, non-interactive',
+}
+
 const readUi = (file: string): string => readFileSync(`${UI_DIR}${file}`, 'utf8')
 
 const literalHeights = (css: string): string[] => [...css.matchAll(HEIGHT_PX)].map((m) => m[0])
+
+/** Every `.svelte` primitive (excluding stories and known-interactive) that hardcodes a height. */
+const findHeightOffenders = async (): Promise<string[]> => {
+  const glob = new Glob('*.svelte')
+  const offenders: string[] = []
+  for await (const file of glob.scan({ cwd: UI_DIR })) {
+    if (file.endsWith('.stories.svelte')) continue
+    if (INTERACTIVE.includes(file)) continue
+    if (literalHeights(readUi(file)).length > 0) offenders.push(file)
+  }
+  return offenders
+}
 
 describe('control target size', () => {
   test('the height scanner sees real declarations and ignores look-alikes', () => {
@@ -50,5 +75,10 @@ describe('control target size', () => {
       expect({ file, literals: literalHeights(css) }).toEqual({ file, literals: [] })
       expect({ file, usesScale: css.includes('var(--control-h-') }).toEqual({ file, usesScale: true })
     }
+  })
+
+  test('no shared primitive hardcodes a height outside the interactive set or the exemption list', async () => {
+    const offenders = await findHeightOffenders()
+    expect(offenders.sort()).toEqual(Object.keys(EXEMPT).sort())
   })
 })
