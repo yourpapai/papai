@@ -33,7 +33,7 @@ See LICENSE in the project root for details.
 | --- | --- |
 | `plugins/task-provider-kaneo/index.ts` | Capture `providerRuntime.httpFetch` at plugin activation and close over it in the registered provider factory. |
 | `plugins/task-provider-kaneo/entry-runtime.ts` | Accept an optional callable transport and place it on `KaneoConfig`. |
-| `plugins/task-provider-kaneo/plugin.json` | Declare runtime HTTP permission and dynamic configured-host admission for the real Kaneo provider. |
+| `plugins/task-provider-kaneo/plugin.json` | Declare the runtime HTTP permission required to expose `providerRuntime.httpFetch`. |
 | `tests/plugins/task-provider-kaneo/index.test.ts` | Prove plugin-created providers receive the runtime transport. |
 | `tests/stories/harness/fake-kaneo/state.ts` | Fake resource state, deterministic IDs, and response projection helpers. |
 | `tests/stories/harness/fake-kaneo/router.ts` | Route matching, request validation, mutations, search/list projections, and error responses. |
@@ -102,10 +102,10 @@ export function createKaneoProvider(config: Record<string, string>, fetch?: Kane
 
 Extend `PluginContextLike` with `providerRuntime: { httpFetch: KaneoHttpFetch }`, remove the stale known-gap comment, and register `factory: (config) => createKaneoProvider(config, ctx.providerRuntime.httpFetch)`.
 
-Add the `http` permission and the existing configured-host admission field to
-`plugin.json`, using the provider's instance `baseUrl` config as the dynamic
-host source. This is required before `ctx.providerRuntime.httpFetch` can be
-made available to the plugin or admit `kaneo.invalid` in T0.
+Add the `http` permission to `plugin.json` so `ctx.providerRuntime.httpFetch`
+is available. Do not add `providerAllowedHostsFromConfig`: its current dynamic
+host mechanism only reads admin/context requirements, while Kaneo's `baseUrl`
+is instance-scoped. Instance-config host admission is outside this task.
 
 - [ ] **Step 4: Run focused tests and static checks**
 
