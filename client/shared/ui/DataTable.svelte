@@ -151,6 +151,9 @@
   }
   .ui-datatable__sort {
     all: unset;
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--control-h-sm);
     cursor: pointer;
     font: inherit;
     letter-spacing: inherit;
