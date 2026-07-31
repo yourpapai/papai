@@ -23,6 +23,11 @@ See LICENSE in the project root for details.
 | `<DB_PATH>` | `/var/lib/papai/papai.db` | SQLite DB path (same as the bot's `DB_PATH`) |
 | `<SNAPSHOT_DIR>` | `/var/lib/papai/snapshots` | `ANALYTICS_SNAPSHOT_DIR` |
 
+**docker compose deployments:** the operator CLIs ship inside the image at
+`/app/scripts/`; run them as `docker compose exec papai bun run /app/scripts/<name>.ts`
+(`DB_PATH` is already set by the compose `environment:`, and the CLI opens the DB
+read-only). No host checkout is needed; use `docker compose exec -T` from cron.
+
 **Never during the window:** deploy or restart the bot (an unclean restart =
 `unreconciled_restart_gap` day = the two-week counter restarts); amend an
 evidence commit (corrections land as new commits); estimate or backfill a
@@ -80,6 +85,7 @@ sink.
 
   ```bash
   DB_PATH=<DB_PATH> bun run <PAPAI_DIR>/scripts/analytics-stage-b-report.ts
+  # docker compose: docker compose exec papai bun run /app/scripts/analytics-stage-b-report.ts
   # expect: day=<yesterday> eligible=... summary + a window-log-row; exit 0
   ```
 
