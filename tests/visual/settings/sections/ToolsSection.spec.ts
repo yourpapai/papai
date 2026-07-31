@@ -45,3 +45,9 @@ test('Tools — grouped, expanded, narrow', async ({ sharedPage }) => {
   await sharedPage.getByTestId('domain-expand-plugin').click()
   await expect(sharedPage).toHaveScreenshot()
 })
+
+test('Tools — populated, expanded, per-tool segmented control', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-toolssection--populated')
+  await sharedPage.getByTestId('domain-expand-tasks').click()
+  await expect(sharedPage).toHaveScreenshot()
+})
