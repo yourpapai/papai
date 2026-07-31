@@ -50,8 +50,9 @@ are tracked separately and are not addressed here:
 
 C is independent of A, B, and D. It is sequenced **first**, because it changes control
 heights and therefore invalidates every screenshot baseline; landing it before A, B, and D
-means their baselines are captured once at final control sizes rather than being re-shot
-afterward.
+means their shots are read once at final control sizes rather than being re-shot afterward.
+Note this costs review attention, not repository churn: `.storybook-shots/**` is gitignored
+and always rewritten via `--update-snapshots`, so no baseline diff is ever committed.
 
 ## Design
 
