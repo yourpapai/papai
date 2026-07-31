@@ -113,6 +113,16 @@ const PROMOTED_PHASE3_CATALOG_STORY_IDS = {
     'tests/stories/pure-helpers/pure-helpers.story.test.ts#SCN-scheduler-execution-tracking: active execution tracking clears fulfilled and rejected work',
   'SCN-changelog-version-section':
     'tests/stories/pure-helpers/pure-helpers.story.test.ts#SCN-changelog-version-section: version lookup returns only the requested changelog section',
+  'SCN-interaction-discord-command-routing':
+    'tests/platform/scenarios/discord-interactions.platform.ts#routes a Discord command through the provider adapter',
+  'SCN-interaction-discord-format-chunking':
+    'tests/platform/scenarios/discord-interactions.platform.ts#splits oversized formatted Discord replies into balanced chunks',
+  'SCN-interaction-discord-response-lifecycle':
+    'tests/platform/scenarios/discord-interactions.platform.ts#preserves the Discord interaction response lifecycle after defer failure',
+  'SCN-interaction-kontur-reply-formatting':
+    'tests/platform/scenarios/kontur-talk-replies.platform.ts#formats Kontur Talk replies with thread overrides',
+  'SCN-interaction-telegram-admin-authorization':
+    'tests/platform/scenarios/telegram-admin-authorization.platform.ts#authorizes Telegram group admins through the Bot API',
   'SCN-plugin-deny-gating':
     'tests/stories/integrations/plugins/eligibility.story.test.ts#SCN-plugin-deny-gating: unavailable plugin capabilities are removed before execution',
 } as const
@@ -164,41 +174,6 @@ const PHASE3_AUDIT_PROJECTION: Phase3AuditProjection[] = [
     readiness: 'executable-as-is',
     seams: [],
     unblockedByTier: null,
-  },
-  {
-    scenarioId: 'SCN-interaction-discord-command-routing',
-    family: 'F8',
-    readiness: 'needs-seam',
-    seams: ['platform-adapter-fakes'],
-    unblockedByTier: '3',
-  },
-  {
-    scenarioId: 'SCN-interaction-discord-format-chunking',
-    family: 'F8',
-    readiness: 'needs-seam',
-    seams: ['platform-adapter-fakes'],
-    unblockedByTier: '3',
-  },
-  {
-    scenarioId: 'SCN-interaction-discord-response-lifecycle',
-    family: 'F8',
-    readiness: 'needs-seam',
-    seams: ['platform-adapter-fakes'],
-    unblockedByTier: '3',
-  },
-  {
-    scenarioId: 'SCN-interaction-kontur-reply-formatting',
-    family: 'F8',
-    readiness: 'needs-seam',
-    seams: ['platform-adapter-fakes'],
-    unblockedByTier: '3',
-  },
-  {
-    scenarioId: 'SCN-interaction-telegram-admin-authorization',
-    family: 'F8',
-    readiness: 'needs-seam',
-    seams: ['platform-adapter-fakes'],
-    unblockedByTier: '3',
   },
   {
     scenarioId: 'SCN-deferred-poller-lifecycle',
@@ -309,9 +284,14 @@ describe('scenario catalog coverage', () => {
       '0',
       '0',
       '0',
+      '3',
+      '3',
+      '3',
+      '3',
+      '3',
       '0',
     ])
-    expect(pending).toHaveLength(8)
+    expect(pending).toHaveLength(3)
     expect(pending.every(({ catalogStatus }) => catalogStatus === 'gap')).toBe(true)
     expect(pending.every(({ kind }) => kind === 'pending')).toBe(true)
   })
@@ -437,7 +417,7 @@ describe('scenario catalog coverage', () => {
   })
 
   test('tracks the executable coverage total', () => {
-    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(182)
+    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(187)
   })
 
   test('stamps every executable record with a live proving tier', () => {
@@ -446,7 +426,7 @@ describe('scenario catalog coverage', () => {
       .filter((coverage) => !LIVE_STORY_TIERS.includes(coverage.provingTier))
       .map(({ scenarioId, provingTier }) => `${scenarioId} -> T${provingTier}`)
 
-    expect(executable).toHaveLength(182)
+    expect(executable).toHaveLength(187)
     expect(offLaneTiers).toEqual([])
     expect(new Set(executable.map((coverage) => coverage.provingTier))).toEqual(new Set(['0', '1', '2', '3']))
   })
@@ -526,7 +506,7 @@ describe('scenario catalog coverage', () => {
   test('audit records cover exactly the pending scenarios', () => {
     const pendingIds = pendingCoverage.map(({ scenarioId }) => scenarioId)
 
-    expect(pendingIds).toHaveLength(33)
+    expect(pendingIds).toHaveLength(28)
     expect(sorted(Object.keys(AUDIT_RECORDS))).toEqual(sorted(pendingIds))
   })
 
@@ -556,13 +536,8 @@ describe('scenario catalog coverage', () => {
     const seamPendingByTier = pendingNeedsSeamTierProjections(pendingCoverage)
     expect(seamPendingByTier.toSorted()).toEqual([
       'SCN-deferred-poller-lifecycle@4',
-      'SCN-interaction-discord-command-routing@3',
-      'SCN-interaction-discord-format-chunking@3',
-      'SCN-interaction-discord-response-lifecycle@3',
       'SCN-interaction-discord-router-wrapped@3',
       'SCN-interaction-discord-standalone-fallback@3',
-      'SCN-interaction-kontur-reply-formatting@3',
-      'SCN-interaction-telegram-admin-authorization@3',
       'SCN-interaction-telegram-callback@3',
     ])
   })
@@ -571,7 +546,7 @@ describe('scenario catalog coverage', () => {
     const states = pendingCoverage.map((coverage) => coverage.audit.readiness.state)
 
     expect(states.filter((state) => state === 'executable-as-is')).toHaveLength(2)
-    expect(states.filter((state) => state === 'needs-seam')).toHaveLength(9)
+    expect(states.filter((state) => state === 'needs-seam')).toHaveLength(4)
     expect(states.filter((state) => state === 'blocked')).toHaveLength(22)
   })
 
