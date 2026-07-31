@@ -293,6 +293,23 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0288](0288-multi-llm-providers-ui.md)                                                       | Multi-Provider LLM Configuration — Settings UI (Admin Providers/Models Sections and Generalized Personal BYOK) | 2026-07-15 | Implemented (with divergence)                               |                                                   |
 | [0289](0289-review-loop-live-progress.md)                                                    | Review-Loop Live Progress Reporting                                                    | 2026-07-15 | Implemented (with divergence)                               |                                                   |
 | [0290](0290-review-loop-simplification.md)                                                   | Review-Loop Simplification — Replace ACP Orchestration With Shell-Invoked opencode Agents | 2026-07-15 | Implemented (with divergence)                               |                                                   |
+| [0291](0291-review-loop-prompt-and-trace-improvements.md) | Review-Loop Prompt, Correctness, Trace, and Metrics Improvements | 2026-07-16 | Implemented (with divergence) |  |
+| [0292](0292-knip-ignore-cleanup.md) | Knip Ignore-List Cleanup — Convert to `knip.config.ts` With a Svelte Compiler and the `*.testing.ts` Seam Convention | 2026-07-17 | Implemented (with divergence) |  |
+| [0293](0293-settings-story-family.md) | Settings HTTP Story Family — Tier 0 Qualification Coverage for Settings Write Paths | 2026-07-18 | Implemented (with divergence) |  |
+| [0294](0294-behavior-audit-close-the-loop.md) | Behavior Audit — Close the Loop (Tier 1): Nightly CI Orchestration, Gateway Preflight, and Orphan-Branch Snapshot Publishing | 2026-07-19 | Implemented (with divergence) |  |
+| [0295](0295-behavior-audit-concurrency-grep.md) | Behavior Audit — Configurable Concurrency and Pure-JS Grep Replacement (Tier 2) | 2026-07-19 | Implemented (with divergence) |  |
+| [0296](0296-behavior-audit-relative-scoring-closure.md) | Behavior Audit — Relative Scoring + Codeindex Closure Check (Tier 3) | 2026-07-19 | Implemented (with divergence) |  |
+| [0297](0297-f1-command-meta-story-family.md) | F1 Command-Surface and Meta-Tools Story Family — Behavioral Coverage for the Command Surface and the Tool-Disclosure/Meta-Tool Path | 2026-07-19 | Implemented (with divergence) |  |
+| [0298](0298-f2a-task-lifecycle-story-family.md) | F2a Task-Lifecycle and Policy Story Family — Behavioral Coverage for Task Create/Update/Delete, History, Comments, Labels, and the Tool-Permission Policy Path | 2026-07-19 | Implemented (with divergence) |  |
+| [0299](0299-f2b1-task-provider-surface-story-family.md) | F2b-1 Task Provider-Surface Story Family — Behavioral Coverage for Task Relations, Statuses, Projects, Project Team, Worklog, Sprints, and Saved Queries | 2026-07-19 | Implemented (with divergence) |  |
+| [0300](0300-f2b2-task-integration-surface-story-family.md) | F2b-2 Task Integration-Surface Story Family — Behavioral Coverage for Collaboration, Identity, Attachments, and YouTrack Commands | 2026-07-19 | Implemented (with divergence) |  |
+| [0301](0301-harness-hygiene.md) | Hermetic Story Harness Hygiene Batch — Catalog Stamps, Windows Fail-Closed, Sandbox Image Single-Sourcing, Dependency-Cache Eviction, and Compatibility-Proof Documentation | 2026-07-19 | Implemented (with divergence) |  |
+| [0302](0302-remove-deferred-prompt-modes.md) | Remove Deferred-Prompt Execution Modes — Unify the Proactive Firing Path With Progressive Disclosure | 2026-07-19 | Implemented (with divergence) |  |
+| [0303](0303-review-loop-parallel-fixes-inspector.md) | Review-Loop Parallel Fixes and Post-Fix Diff Inspection — Worker Pool and Inspector Gate | 2026-07-19 | Implemented (with divergence) |  |
+| [0304](0304-story-catalog-audit.md) | Story Catalog Audit — Structured Machine-Checked Pending Records | 2026-07-19 | Implemented (with divergence) |  |
+| [0305](0305-f3-memory-story-family.md) | F3 Memory Story Family — Behavioral Coverage for Memos, Long-Term Memory, Instructions, and Group-History Lookup | 2026-07-20 | Implemented (with divergence) |  |
+| [0306](0306-f4-http-story-family.md) | F4 HTTP-Surfaces Story Family — Behavioral Coverage for the Auth-Claim Exchange, Dashboard/Admin, Stats, Notify-Bearer, and Transcript-Proxy HTTP Domains | 2026-07-20 | Implemented (with divergence) |  |
+| [0307](0307-f5-scheduling-story-family.md) | F5 Scheduling Story Family — Behavioral Coverage for Recurring Tasks, Deferred Scheduled Prompts, and Condition-Driven Alerts | 2026-07-21 | Implemented (with divergence) |  |
 
 ## ADR Status Legend
 
