@@ -68,6 +68,8 @@ export function createFakeDiscordClient(options: FakeDiscordClientOptions): Fake
   const pendingInteractionResponses = new Set<Promise<unknown>>()
   let sentCount = 0
   let destroyed = false
+  let loginToken: string | null = null
+  let resolveLogin: ((token: string) => void) | null = null
 
   const trackInteractionResponse = <T>(response: Promise<T>): Promise<T> => {
     pendingInteractionResponses.add(response)
@@ -130,7 +132,10 @@ export function createFakeDiscordClient(options: FakeDiscordClientOptions): Fake
       return client
     },
     login(token) {
-      return Promise.resolve(token)
+      loginToken = token
+      return new Promise<string>((resolve) => {
+        resolveLogin = resolve
+      })
     },
     destroy() {
       listeners.clear()
@@ -172,6 +177,10 @@ export function createFakeDiscordClient(options: FakeDiscordClientOptions): Fake
     login: (token) => client.login(token),
     emitReady() {
       client.user = { id: options.botId, username: options.username }
+      if (loginToken !== null && resolveLogin !== null) {
+        resolveLogin(loginToken)
+        resolveLogin = null
+      }
       const payload = { user: { id: options.botId, username: options.username } }
       enqueueListeners('ready', [payload])
       enqueueOnceListeners('ready', [payload])

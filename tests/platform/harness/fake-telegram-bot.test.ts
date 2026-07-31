@@ -8,6 +8,13 @@ import { describe, expect, test } from 'bun:test'
 import { createFakeTelegramBot } from './fake-telegram-bot.js'
 
 describe('fake Telegram bot', () => {
+  test('uses a plain structural bot without constructing grammY', () => {
+    const fake = createFakeTelegramBot({ getChatMember: () => Promise.resolve({ status: 'member' }) })
+
+    expect(Object.getPrototypeOf(fake.bot)).toBe(Object.prototype)
+    fake.assertClean()
+  })
+
   test('records numeric membership lookup and exposes no polling timer', async () => {
     const fake = createFakeTelegramBot({ getChatMember: () => Promise.resolve({ status: 'member' }) })
 

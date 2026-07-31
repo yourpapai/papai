@@ -20,6 +20,7 @@ import type {
   ResolveUserContext,
 } from '../types.js'
 import { isTelegramGroupAdmin } from './admin-helpers.js'
+import type { TelegramBotFactory, TelegramBotLike } from './bot-factory.js'
 import { registerTelegramCommands } from './commands.js'
 import { renderTelegramContext } from './context-renderer.js'
 import { createTelegramFileFetcher } from './file-fetcher.js'
@@ -44,9 +45,8 @@ import {
   telegramIsBotMentioned,
 } from './reply-helpers.js'
 export { extractReplyContext } from './message-extraction.js'
+export type { TelegramBotApiLike, TelegramBotFactory, TelegramBotLike } from './bot-factory.js'
 const log = logger.child({ scope: 'chat:telegram' })
-export type TelegramBotLike = Bot
-export type TelegramBotFactory = (token: string) => TelegramBotLike
 export type TelegramConstructorConfig = {
   readonly token?: string
   readonly platformInstanceId: string

@@ -3,8 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { Bot } from 'grammy'
-
 import type { TelegramBotFactory, TelegramBotLike } from '../../../src/chat/telegram/index.js'
 
 export type FakeTelegramBotOptions = {
@@ -21,22 +19,37 @@ export type FakeTelegramBot = {
 
 export function createFakeTelegramBot(options: FakeTelegramBotOptions): FakeTelegramBot {
   const calls: Array<[number, number]> = []
-  const bot = new Bot('fake-telegram-token')
   let pollingTimer: object | null = null
 
-  Reflect.set(bot.api, 'getChatMember', (chatId: number, userId: number) => {
-    calls.push([chatId, userId])
-    return options.getChatMember(chatId, userId)
-  })
-  Reflect.set(bot, 'start', (startOptions?: { onStart?: (botInfo: { username: string }) => void }) => {
-    pollingTimer = { owner: 'fake-telegram-poller' }
-    startOptions?.onStart?.({ username: 'papai' })
-    return Promise.resolve()
-  })
-  Reflect.set(bot, 'stop', () => {
-    pollingTimer = null
-    return Promise.resolve()
-  })
+  const bot: TelegramBotLike = {
+    api: {
+      sendMessage: () => Promise.resolve(),
+      getChat: () => Promise.resolve({ id: 0 }),
+      getChatMember(chatId, userId) {
+        const numericChatId = Number(chatId)
+        calls.push([numericChatId, userId])
+        return options.getChatMember(numericChatId, userId)
+      },
+      getChatAdministrators: () => Promise.resolve([]),
+      getFile: () => Promise.resolve({}),
+      createForumTopic: () => Promise.resolve({ message_thread_id: 1 }),
+      editMessageText: () => Promise.resolve(),
+      deleteMessage: () => Promise.resolve(),
+      setMyCommands: () => Promise.resolve(),
+      deleteMyCommands: () => Promise.resolve(),
+    },
+    on: () => undefined,
+    command: () => undefined,
+    start(startOptions) {
+      pollingTimer = { owner: 'fake-telegram-poller' }
+      startOptions?.onStart?.({ username: 'papai' })
+      return Promise.resolve()
+    },
+    stop() {
+      pollingTimer = null
+      return Promise.resolve()
+    },
+  }
 
   const assertClean = (): void => {
     if (pollingTimer !== null) throw new Error('fake Telegram bot is still polling')

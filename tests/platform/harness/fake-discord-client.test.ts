@@ -30,9 +30,17 @@ describe('fake Discord client', () => {
     const fake = createFakeDiscordClient({ botId: 'discord-bot', username: 'papai' })
 
     const started = fake.login('discord-test-token')
+    let loginSettled = false
+    void started.then(() => {
+      loginSettled = true
+    })
+    await Promise.resolve()
+
+    expect(loginSettled).toBeFalse()
+
     fake.emitReady()
     await fake.flush()
-    await started
+    await expect(started).resolves.toBe('discord-test-token')
     fake.emitReady()
     await fake.channel.send({ content: 'first' })
     await fake.channel.send({ content: 'second' })

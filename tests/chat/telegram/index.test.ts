@@ -10,10 +10,12 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { Bot } from 'grammy'
-
 import { extractFilesFromContext } from '../../../src/chat/telegram/file-helpers.js'
-import { TelegramChatProvider, type TelegramBotFactory } from '../../../src/chat/telegram/index.js'
+import {
+  TelegramChatProvider,
+  type TelegramBotFactory,
+  type TelegramBotLike,
+} from '../../../src/chat/telegram/index.js'
 import {
   extractContextInfo,
   extractMessageIds,
@@ -149,15 +151,29 @@ describe('TelegramChatProvider', () => {
     const registeredCommands: string[] = []
     const botFactory: TelegramBotFactory = (token) => {
       expect(token).toBe('telegram-test-token')
-      const bot = new Bot(token)
-      Reflect.set(bot, 'command', (name: string) => {
-        registeredCommands.push(name)
-        return bot
-      })
-      Reflect.set(bot.api, 'getChatMember', (chatId: number, userId: number) => {
-        calls.push([chatId, userId])
-        return Promise.resolve({ status: 'administrator' })
-      })
+      const bot: TelegramBotLike = {
+        api: {
+          sendMessage: () => Promise.resolve(),
+          getChat: () => Promise.resolve({ id: 0 }),
+          getChatMember(chatId, userId) {
+            calls.push([Number(chatId), userId])
+            return Promise.resolve({ status: 'administrator' })
+          },
+          getChatAdministrators: () => Promise.resolve([]),
+          getFile: () => Promise.resolve({}),
+          createForumTopic: () => Promise.resolve({ message_thread_id: 1 }),
+          editMessageText: () => Promise.resolve(),
+          deleteMessage: () => Promise.resolve(),
+          setMyCommands: () => Promise.resolve(),
+          deleteMyCommands: () => Promise.resolve(),
+        },
+        on: () => undefined,
+        command(name) {
+          registeredCommands.push(name)
+        },
+        start: () => Promise.resolve(),
+        stop: () => Promise.resolve(),
+      }
       return bot
     }
     const provider = new TelegramChatProvider({

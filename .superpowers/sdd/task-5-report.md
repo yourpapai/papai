@@ -22,11 +22,13 @@ three checks with 30 assertions.
   Mattermost and all five new fake-boundary scenarios).
 - `bun run typecheck` — pass.
 - `bun security` — pass outside the sandbox with Semgrep via Docker.
-- `bun test:mutate:changed` — sandboxed execution could not bind Stryker's
-  local logging server; an approved rerun started and completed the first
-  target (`src/chat/kontur-talk/config.ts`, score 0.9210526315789473) before
-  the command-session handle was lost. No baseline was changed.
+- `bun test:mutate:changed` — pass outside the sandbox: all three changed
+  production targets completed with no skipped or errored files
+  (`src/chat/kontur-talk/config.ts` 0.9210526315789473,
+  `src/chat/kontur-talk/index.ts` 0.5439560439560439,
+  `src/chat/telegram/index.ts` 0.546448087431694; aggregate
+  0.5806451612903226). No baseline was changed.
 
-The sandbox also blocks `Bun.serve(port: 0)`, so the Kontur scenario cannot run
-there; the approved platform-lane rerun proved this was environmental and passed
-the real lane.
+The sandbox blocks `Bun.serve(port: 0)` and Stryker's local logging socket, so
+the approved platform-lane and mutation reruns proved those failures were
+environmental and completed the real lanes.
