@@ -13,6 +13,7 @@ import type { PerFileScore } from '../../../scripts/mutation/baseline.js'
 import {
   changedFilesRun,
   parseChangedFilesCliArgs,
+  runUpdateBaseline,
   seedBaseline,
   selectChangedMutationTargets,
   type ChangedFilesDeps,
@@ -408,5 +409,24 @@ describe('seedBaseline', () => {
     const count = seedBaseline(baselinePath, [unscored('src/empty.ts')])
 
     expect(count).toBe(0)
+  })
+})
+
+describe('runUpdateBaseline', () => {
+  test('seeds the baseline and writes the scores file consumed by the CI re-seed step', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'papai-update-baseline-'))
+    const reportDir = path.join(dir, 'reports', 'paired')
+    const baselinePath = path.join(dir, 'baseline.json')
+    fs.writeFileSync(baselinePath, JSON.stringify({ 'src/old.ts': 0.6 }))
+
+    const count = runUpdateBaseline({
+      baselinePath,
+      reportDir,
+      perFile: [scored('src/a.ts', 0.5), unscored('src/u.ts')],
+    })
+
+    expect(count).toBe(2)
+    expect(readBaseline(baselinePath)).toEqual({ 'src/a.ts': 0.5, 'src/old.ts': 0.6 })
+    expect(readBaseline(path.join(reportDir, 'scores.json'))).toEqual({ 'src/a.ts': 0.5 })
   })
 })

@@ -236,6 +236,13 @@ jobs:
   mutation-baseline:
     name: Mutation Testing (changed-files baseline seed)
     runs-on: ubuntu-latest
+    # Serialize baseline seeds across CI runs. queue: max keeps every merge's job
+    # alive: the default (single) lets a newer run cancel a pending one, which
+    # would silently lose that merge's seed. Group is workflow-scoped because
+    # concurrency groups are shared across all workflows in the repo.
+    concurrency:
+      group: ${{ github.workflow }}-mutation-baseline
+      queue: max
     # On master merge: seed scripts/mutation/baseline.json with mutation scores for
     # changed files (broad scope) using seedMerge; existing entries are preserved
     # (per-key max), and first-touch files get seeded after merge. The committed
@@ -255,16 +262,34 @@ jobs:
       - name: Seed baseline from changed files since previous master
         run: bun test:mutate:changed --base=HEAD~1 --update-baseline
       - name: Commit ratcheted baseline
+        env:
+          RUN_SHA: ${{ github.sha }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet scripts/mutation/baseline.json; then
-            echo "No baseline change; nothing to commit."
-          else
+          # Master can move while mutation testing runs (e.g. a release bump push),
+          # which rejects a naive push and loses the seed. Instead regenerate the
+          # commit from the persisted scores on top of the fresh remote tip on every
+          # attempt: seedMerge is per-key max, so retries never conflict and never
+          # lose entries from concurrent seeds. --fresh-base drops scores for files
+          # that changed on master since this run's checkout.
+          for attempt in 1 2 3 4 5; do
+            git fetch origin master
+            git reset --hard origin/master
+            bun test:mutate:seed --scores=reports/paired/scores.json --fresh-base="$RUN_SHA"
+            if git diff --quiet scripts/mutation/baseline.json; then
+              echo "No baseline change; nothing to commit."
+              exit 0
+            fi
             git add scripts/mutation/baseline.json
             git commit -m "chore(mutation): ratchet baseline"
-            git push
-          fi
+            if git push; then
+              exit 0
+            fi
+            echo "Push rejected because master moved; re-seeding on fresh master (attempt $attempt)."
+          done
+          echo "Failed to push ratcheted baseline after 5 attempts."
+          exit 1
       - name: Upload changed-files mutation reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
