@@ -25,9 +25,22 @@ const answeredNamespaces = async (handlers: HttpHandler[]): Promise<string[]> =>
   return answered
 }
 
-/** Namespaces a handler set answers, excluding its own — must always be empty. */
-const foreignNamespaces = async (handlers: HttpHandler[], own: string): Promise<string[]> =>
-  (await answeredNamespaces(handlers)).filter((ns) => ns !== own)
+/**
+ * Namespaces a handler set answers other than its own — must always be empty.
+ *
+ * Deliberately does NOT call answeredNamespaces and filter: the `loading` families delay
+ * for NEVER_RESOLVE_MS on their own namespace, so probing it would stall the test for a
+ * full minute. Only the foreign namespaces are requested, and each must fall through
+ * immediately. A guard placed after the delay turns this into a test timeout.
+ */
+const foreignNamespaces = async (handlers: HttpHandler[], own: string): Promise<string[]> => {
+  const answered: string[] = []
+  for (const namespace of NAMESPACES.filter((ns) => ns !== own)) {
+    const response = await getResponse(handlers, request(namespace))
+    if (response !== undefined) answered.push(namespace)
+  }
+  return answered
+}
 
 const RESPONDING: { name: string; handlers: HttpHandler[]; own: string }[] = [
   { name: 'agent-provider populated', handlers: codingCredentialsHandlers.populated, own: 'agent-provider' },
@@ -36,8 +49,7 @@ const RESPONDING: { name: string; handlers: HttpHandler[]; own: string }[] = [
 ]
 
 // The `loading` families delay past any test timeout for their own namespace, so they are
-// asserted negatively: they must fall through for the other two namespaces. A guard placed
-// after the `delay()` would hang here instead of falling through, which fails as a timeout.
+// asserted negatively via foreignNamespaces, which never requests the own namespace.
 const LOADING: { name: string; handlers: HttpHandler[]; own: string }[] = [
   { name: 'agent-provider loading', handlers: codingCredentialsHandlers.loading, own: 'agent-provider' },
 ]
