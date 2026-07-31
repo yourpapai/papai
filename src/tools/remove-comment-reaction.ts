@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:remove-comment-reaction' })
 
@@ -23,19 +24,10 @@ export function makeRemoveCommentReactionTool(provider: TaskProvider): Tool {
     execute: async ({ taskId, commentId, reactionId }) => {
       try {
         const result = await provider.removeCommentReaction!(taskId, commentId, reactionId)
-        log.info({ taskId, commentId, reactionId }, 'Comment reaction removed via tool')
+        log.info('Comment reaction removed via tool')
         return result
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            commentId,
-            reactionId,
-            tool: 'remove_comment_reaction',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('remove_comment_reaction', error), 'Tool execution failed')
         throw error
       }
     },

@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:update-comment' })
 
@@ -24,14 +25,7 @@ export function makeUpdateCommentTool(provider: TaskProvider): Tool {
       try {
         return await provider.updateComment!({ taskId, commentId: activityId, body: comment })
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            activityId,
-            tool: 'update_comment',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('update_comment', error), 'Tool execution failed')
         throw error
       }
     },

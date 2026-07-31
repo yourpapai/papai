@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import { fetchAndExtract as defaultFetchAndExtract } from '../web/fetch-extract.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:web-fetch' })
 const webFetchInputSchema = z.object({
@@ -40,15 +41,11 @@ const defaultDeps: WebFetchToolDeps = {
 
 function logWebFetchSuccess(
   storageContextId: string,
-  actorUserId: string | undefined,
   result: Awaited<ReturnType<WebFetchToolDeps['fetchAndExtract']>>,
 ): void {
   log.info(
     {
       storageContextId,
-      actorUserId,
-      url: result.url,
-      title: result.title,
       contentType: result.contentType,
       truncated: result.truncated,
     },
@@ -67,7 +64,7 @@ function createWebFetchExecutor(
 ) => Promise<Awaited<ReturnType<WebFetchToolDeps['fetchAndExtract']>>> {
   return async ({ url, goal }: WebFetchToolInput, { abortSignal }: ToolExecutionOptions) => {
     try {
-      log.debug({ storageContextId, actorUserId, url, hasGoal: goal !== undefined }, 'Executing web_fetch')
+      log.debug({ storageContextId, hasGoal: goal !== undefined }, 'Executing web_fetch')
       const result = await deps.fetchAndExtract({
         storageContextId,
         actorUserId,
@@ -76,19 +73,10 @@ function createWebFetchExecutor(
         goal,
         abortSignal,
       })
-      logWebFetchSuccess(storageContextId, actorUserId, result)
+      logWebFetchSuccess(storageContextId, result)
       return result
     } catch (error) {
-      log.error(
-        {
-          storageContextId,
-          actorUserId,
-          url,
-          error: error instanceof Error ? error.message : String(error),
-          tool: 'web_fetch',
-        },
-        'Tool execution failed',
-      )
+      log.error({ storageContextId, ...toolFailureMeta('web_fetch', error) }, 'Tool execution failed')
       throw error
     }
   }

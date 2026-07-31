@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { executeCancel } from '../deferred-prompts/tool-handlers.js'
 import { logger } from '../logger.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:cancel-deferred-prompt' })
 
@@ -20,13 +21,7 @@ export function makeCancelDeferredPromptTool(userId: string): Tool {
       try {
         return executeCancel(userId, input)
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            tool: 'cancel_deferred_prompt',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('cancel_deferred_prompt', error), 'Tool execution failed')
         throw error
       }
     },

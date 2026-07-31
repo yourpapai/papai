@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { observeActiveFeatureUsed, observeActiveUnconfiguredReply } from '../../src/analytics/feature-observer.js'
 import {
   asObject,
   asPositiveInt,
@@ -38,27 +39,95 @@ function resolveStartSessionAccess(
   prNumber: number | null,
 ): StartSessionAccess {
   const secrets = codingSecrets.resolve()
-  if (secrets === null)
+  if (secrets === null) {
+    observeActiveUnconfiguredReply({ missing: 'coding_credentials', surface: 'coding' })
     return {
       error: 'not_configured',
       message:
         "You haven't set up your coding credentials. DM me and open settings → Coding sessions to configure your AI provider key (and code host).",
     }
+  }
   const forgeToken = codingSecrets.resolveForgeToken()
   const resolvedAgent = codingSecrets.resolveAgent() ?? 'claude'
-  if (codingSecrets.resolveForge() === null && !canDeriveForge(repo.repoUrl))
+  if (codingSecrets.resolveForge() === null && !canDeriveForge(repo.repoUrl)) {
+    observeActiveUnconfiguredReply({ missing: 'forge_credentials', surface: 'coding' })
     return {
       error: 'not_configured',
       message:
         'This repository is on a self-hosted code host. Open settings → Coding sessions and set your Code host (kind, instance URL, and token) before starting a session.',
     }
-  if (prNumber !== null && forgeToken === null)
+  }
+  if (prNumber !== null && forgeToken === null) {
+    observeActiveUnconfiguredReply({ missing: 'forge_credentials', surface: 'coding' })
     return {
       error: 'not_configured',
       message:
         "You haven't connected your code host. DM me and open settings → Coding sessions to add your code host token before starting a session on a PR.",
     }
+  }
   return { secrets, forgeToken, resolvedAgent }
+}
+
+const observeStartOutcome = (result: unknown, project: string): void => {
+  const resultObj = asObject(result)
+  if (typeof resultObj['error'] === 'string') {
+    observeActiveFeatureUsed({ feature: 'coding', operation: 'start', outcome: 'failure', codingProjectRawId: project })
+    return
+  }
+  const sessionId = asString(resultObj, 'sessionId')
+  observeActiveFeatureUsed({
+    feature: 'coding',
+    operation: 'start',
+    outcome: 'success',
+    codingProjectRawId: project,
+    ...(sessionId === null ? {} : { codingSessionRawId: sessionId }),
+  })
+}
+
+const executeStartSession = async (
+  httpFetch: HttpFetch | undefined,
+  input: unknown,
+  runtimeContext: RuntimeContext,
+): Promise<unknown> => {
+  const cfg = readMagiConfig(runtimeContext.adminConfig)
+  if (cfg === null || httpFetch === undefined) return NOT_CONFIGURED
+  const args = asObject(input)
+  const project = asString(args, 'project')
+  const prompt = asString(args, 'prompt')
+  const prNumber = asPositiveInt(args, 'prNumber')
+  if (project === null || prompt === null) return { error: 'invalid_input', message: 'project and prompt are required' }
+  const repo = runtimeContext.codingRepos.get(project)
+  if (repo === null)
+    return {
+      error: 'not_found',
+      message: `No repository named "${project}". Add it in settings → Repositories.`,
+    }
+  const agent = optionalString(args, 'agent') ?? DEFAULT_AGENT
+  const access = resolveStartSessionAccess(repo, runtimeContext.codingSecrets, prNumber)
+  if ('error' in access) return access
+  const { secrets, forgeToken, resolvedAgent } = access
+  const mcpResult = runtimeContext.codingSecrets.resolveMcpServers()
+  if (!mcpResult.ok) {
+    return { error: 'mcp_unavailable', message: mcpResult.error }
+  }
+  const projectSpec = buildSessionProjectSpec(repo, resolvedAgent, runtimeContext.codingSecrets, mcpResult.servers)
+  const mcpTokens = runtimeContext.codingSecrets.resolveMcpTokens()
+  const result = await callMagi(httpFetch, cfg, 'POST', '/sessions', {
+    agent,
+    contextId: runtimeContext.storageContextId,
+    prompt,
+    secrets,
+    ...(forgeToken === null ? {} : { forgeToken }),
+    ...(prNumber === null ? {} : { prNumber }),
+    projectSpec,
+    ...(Object.keys(mcpTokens).length === 0 ? {} : { mcpTokens }),
+  }).catch((error: unknown) => {
+    observeActiveFeatureUsed({ feature: 'coding', operation: 'start', outcome: 'failure', codingProjectRawId: project })
+    throw error
+  })
+  recordStartedSession(runtimeContext, result, project, prompt, prNumber ?? undefined)
+  observeStartOutcome(result, project)
+  return result
 }
 
 export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
@@ -70,44 +139,8 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
       'existing PR/MR (to review it or work on its branch); the project permission policy decides whether ' +
       'the agent can edit and push back.',
     inputSchema: startSessionSchema,
-    execute: async (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
-      const cfg = readMagiConfig(runtimeContext.adminConfig)
-      if (cfg === null || httpFetch === undefined) return NOT_CONFIGURED
-      const args = asObject(input)
-      const project = asString(args, 'project')
-      const prompt = asString(args, 'prompt')
-      const prNumber = asPositiveInt(args, 'prNumber')
-      if (project === null || prompt === null)
-        return { error: 'invalid_input', message: 'project and prompt are required' }
-      const repo = runtimeContext.codingRepos.get(project)
-      if (repo === null)
-        return {
-          error: 'not_found',
-          message: `No repository named "${project}". Add it in settings → Repositories.`,
-        }
-      const agent = optionalString(args, 'agent') ?? DEFAULT_AGENT
-      const access = resolveStartSessionAccess(repo, runtimeContext.codingSecrets, prNumber)
-      if ('error' in access) return access
-      const { secrets, forgeToken, resolvedAgent } = access
-      const mcpResult = runtimeContext.codingSecrets.resolveMcpServers()
-      if (!mcpResult.ok) {
-        return { error: 'mcp_unavailable', message: mcpResult.error }
-      }
-      const projectSpec = buildSessionProjectSpec(repo, resolvedAgent, runtimeContext.codingSecrets, mcpResult.servers)
-      const mcpTokens = runtimeContext.codingSecrets.resolveMcpTokens()
-      const result = await callMagi(httpFetch, cfg, 'POST', '/sessions', {
-        agent,
-        contextId: runtimeContext.storageContextId,
-        prompt,
-        secrets,
-        ...(forgeToken === null ? {} : { forgeToken }),
-        ...(prNumber === null ? {} : { prNumber }),
-        projectSpec,
-        ...(Object.keys(mcpTokens).length === 0 ? {} : { mcpTokens }),
-      })
-      recordStartedSession(runtimeContext, result, project, prompt, prNumber ?? undefined)
-      return result
-    },
+    execute: (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> =>
+      executeStartSession(httpFetch, input, runtimeContext),
   }
 }
 
@@ -162,11 +195,13 @@ export function finishSessionTool(httpFetch: HttpFetch | undefined): Tool {
       const cfg = readMagiConfig(runtimeContext.adminConfig)
       if (cfg === null || httpFetch === undefined) return Promise.resolve(NOT_CONFIGURED)
       const forgeToken = runtimeContext.codingSecrets.resolveForgeToken()
-      if (forgeToken === null)
+      if (forgeToken === null) {
+        observeActiveUnconfiguredReply({ missing: 'forge_credentials', surface: 'coding' })
         return Promise.resolve({
           error: 'not_configured',
           message: 'Connect a code host in settings → Coding sessions before pushing or opening a PR.',
         })
+      }
       const args = asObject(input)
       const sessionId = asString(args, 'sessionId')
       const action = asString(args, 'action')

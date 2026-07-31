@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
 import { checkConfidence, confidenceField } from './confirmation-gate.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:remove-attachment' })
 
@@ -27,26 +28,18 @@ export function makeRemoveAttachmentTool(provider: TaskProvider): Tool {
       confidence: confidenceField,
     }),
     execute: async ({ taskId, attachmentId, label, confidence }) => {
-      log.debug({ taskId, attachmentId, confidence }, 'remove_attachment called')
+      log.debug({ confidence }, 'remove_attachment called')
       const gate = checkConfidence(confidence, `Remove attachment "${label ?? attachmentId}"`)
       if (gate !== null) {
-        log.warn({ taskId, attachmentId, confidence }, 'remove_attachment blocked — confirmation required')
+        log.warn({ confidence }, 'remove_attachment blocked — confirmation required')
         return gate
       }
       try {
         const result = await provider.deleteAttachment!(taskId, attachmentId)
-        log.info({ taskId, attachmentId }, 'Attachment removed')
+        log.info('Attachment removed')
         return result
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            attachmentId,
-            tool: 'remove_attachment',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('remove_attachment', error), 'Tool execution failed')
         throw error
       }
     },

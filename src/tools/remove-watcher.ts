@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { resolveMeReference } from '../identity/resolver.js'
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:remove-watcher' })
 
@@ -41,18 +42,10 @@ export function makeRemoveWatcherTool(provider: TaskProvider, contextUserId?: st
         }
 
         const result = await provider.removeWatcher(taskId, resolvedUserId)
-        log.info({ taskId, userId: userIdParam, resolvedUserId }, 'Watcher removed via tool')
+        log.info('Watcher removed via tool')
         return result
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            userId: userIdParam,
-            tool: 'remove_watcher',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('remove_watcher', error), 'Tool execution failed')
         throw error
       }
     },

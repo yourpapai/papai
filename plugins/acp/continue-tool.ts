@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { observeActiveUnconfiguredReply } from '../../src/analytics/feature-observer.js'
 import {
   asObject,
   asPositiveInt,
@@ -24,18 +25,22 @@ type AccessOk = { secrets: Record<string, string>; forgeToken: string; mcpTokens
 
 function checkAccess(runtimeContext: RuntimeContext): AccessError | AccessOk {
   const secrets = runtimeContext.codingSecrets.resolve()
-  if (secrets === null)
+  if (secrets === null) {
+    observeActiveUnconfiguredReply({ missing: 'coding_credentials', surface: 'coding' })
     return {
       error: 'not_configured',
       message:
         "You haven't set up your coding credentials. DM me and open settings → Coding sessions to configure your AI provider key (and code host).",
     }
+  }
   const forgeToken = runtimeContext.codingSecrets.resolveForgeToken()
-  if (forgeToken === null)
+  if (forgeToken === null) {
+    observeActiveUnconfiguredReply({ missing: 'forge_credentials', surface: 'coding' })
     return {
       error: 'not_configured',
       message: 'Connect a code host in settings → Coding sessions before continuing a session.',
     }
+  }
   // The follow-up endpoint never resends mcp[]; resolveMcpServers() here is purely a fail-closed
   // gate (refuse to continue if the MCP set no longer resolves) — its .servers is intentionally
   // unused. Do not "fix" this into resending the MCP spec.

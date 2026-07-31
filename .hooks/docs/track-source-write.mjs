@@ -6,7 +6,7 @@
 import path from 'node:path'
 
 /** @type {string[]} */
-export const TRACKED_PREFIXES = ['src/', 'client/', 'plugins/', 'scripts/']
+export const TRACKED_PREFIXES = ['src/', 'client/', 'plugins/', 'scripts/', 'review-loop/']
 
 /**
  * Check if a file path should be tracked for doc review.

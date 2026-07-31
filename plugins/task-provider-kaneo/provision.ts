@@ -3,8 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { z } from 'zod'
-
 import { clearCachedToolsByPrefix } from '../../src/cache.js'
 import type { ReplyFn } from '../../src/chat/types.js'
 import { getConfigValue, setConfigValue } from '../../src/config.js'
@@ -17,24 +15,12 @@ import {
   formatKaneoProvisionFailureMessage,
   KANEO_REGISTRATION_DISABLED_MESSAGE,
 } from './provision-messages.js'
+import { provisionKaneoUser } from './provision-requests.js'
 
 const log = logger.child({ scope: 'kaneo:provision' })
 
-// Provision-specific schemas kept local as they are for auth endpoints, not Kaneo API
-const SignUpResponseSchema = z.object({
-  user: z.object({ id: z.string() }),
-  token: z.string(),
-})
-const OrgResponseSchema = z.object({ id: z.string(), slug: z.string() })
-const ApiKeyResponseSchema = z.object({ key: z.string() })
-
-type ProvisionResult = {
-  email: string
-  password: string
-  /** Better Auth API key (preferred) or session cookie (fallback). */
-  kaneoKey: string
-  workspaceId: string
-}
+export { provisionKaneoUser } from './provision-requests.js'
+export type { ProvisionResult } from './provision-requests.js'
 
 type NormalizedProvisionConfig = Readonly<{ publicUrl: string; internalUrl: string | undefined }>
 
@@ -48,11 +34,6 @@ function getTaskInstanceInternalUrl(config: Readonly<Record<string, string>>): s
   return config['internalUrl']
 }
 
-function generatePassword(): string {
-  const uuid = crypto.randomUUID().replaceAll('-', '')
-  return `${uuid.slice(0, 20)}Aa1!`
-}
-
 function isRegistrationDisabledErrorMessage(message: string): boolean {
   const normalizedMessage = message.toLowerCase()
   return REGISTRATION_DISABLED_MARKERS.some((marker) => normalizedMessage.includes(marker))
@@ -60,126 +41,6 @@ function isRegistrationDisabledErrorMessage(message: string): boolean {
 
 function clearProvisionedContextToolCaches(contextId: string): void {
   clearCachedToolsByPrefix(contextId)
-}
-
-async function doSignUp(
-  baseUrl: string,
-  publicUrl: string,
-  email: string,
-  password: string,
-  name: string,
-): Promise<string> {
-  log.debug({ email }, 'Kaneo sign-up')
-  const res = await fetch(`${baseUrl}/api/auth/sign-up/email`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, name }),
-  })
-  if (!res.ok) {
-    throw new Error(`Sign-up failed (${res.status}): ${await res.text()}`)
-  }
-  const rawData: unknown = await res.json()
-  const parsed = SignUpResponseSchema.safeParse(rawData)
-  if (!parsed.success) throw new Error('Sign-up returned invalid data')
-  log.debug({ userId: parsed.data.user.id }, 'Kaneo sign-up complete')
-
-  const setCookies = res.headers.getSetCookie()
-  // In HTTPS deployments better-auth prefixes the cookie name with __Secure-,
-  // so match on substring rather than exact prefix.
-  const sessionHeader = setCookies.find((h) => h.includes('better-auth.session_token='))
-  if (sessionHeader !== undefined) {
-    // Extract just the name=value pair (drop Secure/HttpOnly/Path/Max-Age attrs).
-    // Keep the full cookie name including any __Secure- prefix — the name must
-    // match exactly when sent back in the Cookie header.
-    return sessionHeader.split(';')[0]!
-  }
-
-  // better-auth may not set a cookie when called from a server-side context
-  // (e.g. behind a reverse proxy with no client IP). Fall back to constructing
-  // the cookie from the token returned in the JSON body.
-  // Use the public/auth-facing URL to decide whether better-auth would emit a
-  // secure-prefixed cookie. Internal API traffic may be HTTP behind a proxy.
-  const cookieName = publicUrl.startsWith('https://')
-    ? '__Secure-better-auth.session_token'
-    : 'better-auth.session_token'
-  log.debug({ email, cookieName }, 'No session cookie in sign-up response; constructing from JSON token')
-  return `${cookieName}=${parsed.data.token}`
-}
-
-async function doCreateWorkspace(
-  baseUrl: string,
-  trustedOrigin: string,
-  sessionCookie: string,
-  name: string,
-  slug: string,
-): Promise<string> {
-  log.debug({ name }, 'Creating Kaneo workspace')
-  const res = await fetch(`${baseUrl}/api/auth/organization/create`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Cookie: sessionCookie,
-      Origin: trustedOrigin,
-    },
-    body: JSON.stringify({ name, slug }),
-  })
-  if (!res.ok) {
-    throw new Error(`Workspace creation failed (${res.status}): ${await res.text()}`)
-  }
-  const rawData: unknown = await res.json()
-  const parsed = OrgResponseSchema.safeParse(rawData)
-  if (!parsed.success) throw new Error('Workspace creation returned invalid data')
-  return parsed.data.id
-}
-
-async function doCreateApiKey(baseUrl: string, trustedOrigin: string, sessionCookie: string): Promise<string> {
-  const res = await fetch(`${baseUrl}/api/auth/api-key/create`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Cookie: sessionCookie, Origin: trustedOrigin },
-    body: JSON.stringify({ name: 'papai-bot' }),
-  })
-  if (!res.ok) throw new Error(`API key creation failed (${res.status}): ${await res.text()}`)
-  const rawData: unknown = await res.json()
-  const parsed = ApiKeyResponseSchema.safeParse(rawData)
-  if (!parsed.success) throw new Error('API key response invalid')
-  return parsed.data.key
-}
-
-/**
- * Provisions a new Kaneo account for a Telegram user:
- * signs up, creates a workspace, and generates an API key (falling back to
- * the session token if the API key endpoint is unavailable).
- */
-export async function provisionKaneoUser(
-  /** Internal API base URL (e.g. http://kaneo-api:1337) */
-  baseUrl: string,
-  /** Public-facing web client URL — used as the trusted Origin for all auth requests. */
-  publicUrl: string,
-  platformUserId: string,
-  username: string | null,
-): Promise<ProvisionResult> {
-  const uniqueSuffix = crypto.randomUUID().replaceAll('-', '').slice(0, 8)
-  const email = username === null ? `${platformUserId}-${uniqueSuffix}@pap.ai` : `${username}-${uniqueSuffix}@pap.ai`
-  const password = generatePassword()
-  const name = username === null ? `User ${platformUserId}` : `@${username}`
-  const slug = `papai-${platformUserId}-${uniqueSuffix}`
-
-  log.info({ platformUserId, email }, 'Provisioning Kaneo user account')
-  const trustedOrigin = publicUrl === '' ? baseUrl : publicUrl
-  const sessionCookie = await doSignUp(baseUrl, publicUrl, email, password, name)
-  const workspaceId = await doCreateWorkspace(baseUrl, trustedOrigin, sessionCookie, name, slug)
-
-  let kaneoKey = sessionCookie
-  try {
-    kaneoKey = await doCreateApiKey(baseUrl, trustedOrigin, sessionCookie)
-    log.info({ platformUserId }, 'Created API key for provisioned user')
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err)
-    log.warn({ platformUserId, error: msg }, 'API key endpoint unavailable — using session token as key')
-  }
-
-  log.info({ platformUserId, workspaceId }, 'Kaneo user provisioned')
-  return { email, password, kaneoKey, workspaceId }
 }
 
 export type ProvisionOutcome =
@@ -241,7 +102,7 @@ export async function provisionAndConfigure(
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
-    log.warn({ userId, error: msg }, 'Kaneo provisioning failed')
+    log.warn({ userId, errorClass: 'provision_failed' }, 'Kaneo provisioning failed')
     if (isRegistrationDisabledErrorMessage(msg)) return { status: 'registration_disabled' }
     return { status: 'failed', error: msg }
   }
@@ -289,6 +150,6 @@ export async function maybeProvisionKaneo(
   }
 
   await reply.text(formatKaneoProvisionFailureMessage(outcome.error))
-  provLog.error({ contextId, error: outcome.error }, 'Kaneo auto-provisioning failed')
+  provLog.error({ contextId, errorClass: 'auto_provision_failed' }, 'Kaneo auto-provisioning failed')
   return true
 }

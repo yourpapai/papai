@@ -5,6 +5,7 @@
 
 import pLimit from 'p-limit'
 
+import type { ProviderRequestScope } from '../../analytics/provider-request-scope.js'
 import { getDrizzleDb } from '../../db/drizzle.js'
 import { groupMembers } from '../../db/schema.js'
 import { logger } from '../../logger.js'
@@ -13,8 +14,10 @@ import type { MemberOutcome } from './ensure-member.js'
 const log = logger.child({ scope: 'providers:membership:backfill' })
 
 export interface BackfillDeps {
+  /** Explicit analytics scope for every bounded ensure call; startup passes NO_ANALYTICS_SCOPE. */
+  scope: ProviderRequestScope
   listAllGroupMembers(): Array<{ groupId: string; userId: string }>
-  ensure(groupContextId: string, chatUserId: string): Promise<MemberOutcome>
+  ensure(groupContextId: string, chatUserId: string, scope: ProviderRequestScope): Promise<MemberOutcome>
 }
 
 export type BackfillResult = {
@@ -34,9 +37,11 @@ function defaultListAllGroupMembers(): Array<{ groupId: string; userId: string }
  * One-shot idempotent backfill: ensures every existing group member is provisioned.
  * Safe to call on startup and re-run from admin UI.
  */
-export async function runMembershipBackfill(deps?: Partial<BackfillDeps>): Promise<BackfillResult> {
-  const listFn = deps?.listAllGroupMembers ?? defaultListAllGroupMembers
-  const ensureFn = deps?.ensure ?? ((): Promise<MemberOutcome> => Promise.resolve('skipped' as const))
+export async function runMembershipBackfill(
+  deps: Partial<BackfillDeps> & Pick<BackfillDeps, 'scope'>,
+): Promise<BackfillResult> {
+  const listFn = deps.listAllGroupMembers ?? defaultListAllGroupMembers
+  const ensureFn = deps.ensure ?? ((): Promise<MemberOutcome> => Promise.resolve('skipped' as const))
 
   log.info('Starting membership backfill')
   const members = listFn().filter((m) => !m.userId.startsWith('placeholder-'))
@@ -46,7 +51,7 @@ export async function runMembershipBackfill(deps?: Partial<BackfillDeps>): Promi
   await Promise.all(
     members.map((m) =>
       limit(async () => {
-        const outcome = await ensureFn(m.groupId, m.userId)
+        const outcome = await ensureFn(m.groupId, m.userId, deps.scope)
         result[outcome]++
       }),
     ),

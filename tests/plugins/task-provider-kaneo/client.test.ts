@@ -242,3 +242,134 @@ describe('kaneoFetch', () => {
     await expect(promise).rejects.toThrow()
   })
 })
+
+describe('kaneoFetch boundary observation', () => {
+  const CANARY_PATH = '/tasks/canary-task-1'
+  const CANARY_BODY = 'canary-kaneo-body'
+  const CANARY_ERROR = 'canary-kaneo-error-body'
+  const CANARY_KEY = 'canary-api-key'
+  const config = { apiKey: CANARY_KEY, baseUrl: 'https://kaneo.canary.example' }
+
+  const makeSource = (): import('../../../src/analytics/source-facts.js').AnalyticsSourceContext => ({
+    platform: 'telegram',
+    platformInstanceId: 'pi-1',
+    chatUserId: 'user-1',
+    nativeContextId: 'chat-1',
+    storageContextId: 'pi-1:chat-1',
+    configContextId: 'pi-1:chat-1',
+    contextType: 'dm',
+    actorRole: 'member',
+    taskInstanceId: 'ti-1',
+    taskProvider: 'kaneo',
+    invocationMode: 'normal',
+    rawTurnId: 'turn-1',
+  })
+
+  type ProviderObservation = import('../../../src/analytics/provider-observer.js').ProviderRequestObservation
+  type ProviderContext = import('../../../src/analytics/provider-observer.js').AnalyticsRequestContext
+  const createRecorder = (): {
+    observations: ProviderObservation[]
+    observe: (ctx: ProviderContext, observation: ProviderObservation) => void
+  } => {
+    const observations: import('../../../src/analytics/provider-observer.js').ProviderRequestObservation[] = []
+    return {
+      observations,
+      observe: (
+        _ctx: import('../../../src/analytics/provider-observer.js').AnalyticsRequestContext,
+        observation: import('../../../src/analytics/provider-observer.js').ProviderRequestObservation,
+      ): void => {
+        observations.push(observation)
+      },
+    }
+  }
+
+  const actorScopeOf = async (
+    recorder: ReturnType<typeof createRecorder>,
+  ): Promise<ReturnType<typeof createActorProviderRequestScope>> => {
+    const { createActorProviderRequestScope } = await import('../../../src/analytics/provider-request-scope.js')
+    return createActorProviderRequestScope({
+      requestContext: { source: makeSource(), sourceEventId: 'turn-1:test' },
+      observeProviderRequest: recorder.observe,
+    })
+  }
+
+  const jsonResponse = (body: unknown, status = 200): Response =>
+    new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+
+  afterEach(() => {
+    restoreFetch()
+  })
+
+  test('observes success and failure with controlled fields; no canary in observation or error text', async () => {
+    const { runWithProviderRequestScope } = await import('../../../src/analytics/provider-request-scope.js')
+    const recorder = createRecorder()
+    const scope = await actorScopeOf(recorder)
+
+    setMockFetch(() => Promise.resolve(jsonResponse(createMockTask({ id: '1', number: 1 }))))
+    await runWithProviderRequestScope(scope, () =>
+      kaneoFetch(config, 'GET', CANARY_PATH, undefined, {}, KaneoTaskResponseSchema),
+    )
+    expect(recorder.observations[0]).toMatchObject({
+      provider: 'kaneo',
+      operation: 'read',
+      outcome: 'success',
+      statusClass: '2xx',
+      retryable: null,
+    })
+
+    setMockFetch(() => Promise.resolve(new Response(CANARY_ERROR, { status: 500 })))
+    const caught = await runWithProviderRequestScope(scope, () =>
+      kaneoFetch(config, 'POST', CANARY_PATH, { title: CANARY_BODY }, {}, EmptyResponseSchema).catch(
+        (error: unknown) => error,
+      ),
+    )
+    assert(caught instanceof KaneoApiError)
+    expect(caught.message).not.toContain(CANARY_PATH)
+    expect(caught.message).not.toContain(CANARY_ERROR)
+    expect(recorder.observations[1]).toMatchObject({
+      provider: 'kaneo',
+      operation: 'create',
+      outcome: 'failure',
+      statusClass: '5xx',
+      retryable: true,
+    })
+    expect(JSON.stringify(recorder.observations)).not.toContain(CANARY_PATH)
+    expect(JSON.stringify(recorder.observations)).not.toContain(CANARY_KEY)
+    expect(JSON.stringify(recorder.observations)).not.toContain('kaneo.canary.example')
+  })
+
+  test('observes validation failures without leaking validation details or body', async () => {
+    const { runWithProviderRequestScope } = await import('../../../src/analytics/provider-request-scope.js')
+    const recorder = createRecorder()
+    const scope = await actorScopeOf(recorder)
+    setMockFetch(() => Promise.resolve(jsonResponse({ unexpected: CANARY_BODY })))
+    const caught = await runWithProviderRequestScope(scope, () =>
+      kaneoFetch(config, 'GET', CANARY_PATH, undefined, {}, KaneoTaskResponseSchema).catch((error: unknown) => error),
+    )
+    assert(caught instanceof KaneoValidationError)
+    expect(caught.message).not.toContain(CANARY_PATH)
+    expect(recorder.observations[0]).toMatchObject({ outcome: 'failure', statusClass: 'other' })
+  })
+
+  test('omitted scope fails before fetch; NO_ANALYTICS_SCOPE fetches without observation', async () => {
+    const {
+      NO_ANALYTICS_SCOPE,
+      ProviderScopeMissingError,
+      runWithoutProviderRequestScope,
+      runWithProviderRequestScope,
+    } = await import('../../../src/analytics/provider-request-scope.js')
+    const fetchMock = mock(() => Promise.resolve(jsonResponse(createMockTask({ id: '1', number: 1 }))))
+    setMockFetch(fetchMock)
+    await runWithoutProviderRequestScope(async () => {
+      await expect(kaneoFetch(config, 'GET', CANARY_PATH, undefined, {}, KaneoTaskResponseSchema)).rejects.toThrow(
+        ProviderScopeMissingError,
+      )
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    await runWithProviderRequestScope(NO_ANALYTICS_SCOPE, () =>
+      kaneoFetch(config, 'GET', CANARY_PATH, undefined, {}, KaneoTaskResponseSchema),
+    )
+    expect(fetchMock).toHaveBeenCalled()
+  })
+})

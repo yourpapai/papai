@@ -3,10 +3,15 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { KeyringState } from '../analytics/identity/keyring.js'
+import { NO_ANALYTICS_SCOPE, type ProviderRequestScope } from '../analytics/provider-request-scope.js'
+import type { AnalyticsObserver } from '../analytics/runtime.js'
+import { getActiveAnalyticsRuntime, startAnalytics, stopAnalytics } from '../analytics/start-analytics.js'
+import type { AuthorizedTurnContextRegistry } from '../analytics/turn-context.js'
 import { announceNewVersion } from '../announcements.js'
 import { isS3Configured } from '../attachments/index.js'
 import { createStagedDownloader } from '../attachments/staged-download.js'
-import { setupBot, type BotDeps } from '../bot.js'
+import { setupBot, withRephraseCapture, type BotDeps } from '../bot.js'
 import { seedMattermostActionSigningSecretFromEnv } from '../chat/mattermost/action-secret.js'
 import { resolveChatParticipant } from '../chat/participants/roster.js'
 import { createChatProviderFromConfig } from '../chat/registry.js'
@@ -35,17 +40,25 @@ import { initUsageRecorder } from '../usage/index.js'
 import { toolCapabilityCatalog } from './capability-catalog.js'
 import type { ProductionBackgroundHandle } from './production-background.js'
 import { startProductionExtensions, type ProductionExtensionState } from './production-extensions.js'
+import { resolveProductionRephrase } from './production-rephrase.js'
 import type { PapaiRuntimeDeps, PartialRuntimeDeps } from './types.js'
 
 const log = logger.child({ scope: 'main' })
 const INGRESS_ERROR = 'Programmatic ingress is available only when configured'
 
+type ProductionAnalyticsRuntime = Readonly<{
+  observer: AnalyticsObserver
+  registry: AuthorizedTurnContextRegistry
+  keyring?: KeyringState
+}>
+
 type ProductionState = ProductionExtensionState & {
   background: ProductionBackgroundHandle | null
   disposeMembershipSubscriber: (() => void) | null
+  analytics: ProductionAnalyticsRuntime | null
 }
 
-function startDatabase(): void {
+function startDatabase(state: ProductionState): void {
   try {
     initDb()
   } catch (error) {
@@ -61,9 +74,21 @@ function startDatabase(): void {
     log.warn('admin LLM role bindings are not configured; the bot will reply "misconfigured" until a provider is set')
   }
   initUsageRecorder()
+  try {
+    startAnalytics()
+    state.analytics ??= getActiveAnalyticsRuntime()
+  } catch (error) {
+    log.error({ error: error instanceof Error ? error.message : String(error) }, 'Analytics runtime start failed')
+  }
 }
 
-function stopDatabase(): void {
+async function stopDatabase(): Promise<void> {
+  await stopAnalytics().catch((error: unknown) => {
+    log.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      'Analytics runtime stop failed; continuing database close',
+    )
+  })
   closeDrizzleDb()
   closeMigrationDbInstance()
 }
@@ -74,8 +99,12 @@ function configureMembership(router: ChatRouter, state: ProductionState): void {
     resolveUserLabel: (userId: string, groupContextId: string, platformInstanceId: string): Promise<string | null> =>
       router.resolveUserLabel(userId, { contextId: groupContextId, contextType: 'group', platformInstanceId }),
   }
-  const ensure = (groupContextId: string, chatUserId: string): ReturnType<typeof ensureWorkspaceMember> =>
-    ensureWorkspaceMember(groupContextId, chatUserId, membershipDeps)
+  const ensure = (
+    groupContextId: string,
+    chatUserId: string,
+    scope: ProviderRequestScope,
+  ): ReturnType<typeof ensureWorkspaceMember> =>
+    ensureWorkspaceMember(groupContextId, chatUserId, scope, membershipDeps)
   state.disposeMembershipSubscriber?.()
   state.disposeMembershipSubscriber = null
   state.disposeMembershipSubscriber = registerMembershipSubscriber({
@@ -85,7 +114,7 @@ function configureMembership(router: ChatRouter, state: ProductionState): void {
       return Promise.resolve()
     },
   })
-  void runMembershipBackfill({ ensure })
+  void runMembershipBackfill({ ensure, scope: NO_ANALYTICS_SCOPE })
     .then((result) => {
       log.info(result, 'Startup membership backfill finished')
     })
@@ -107,7 +136,7 @@ function createProductionRouter(): ChatRouter {
   return new ChatRouter((id, type, config) => createChatProviderFromConfig(id, type, config))
 }
 
-function setupProductionBot(router: ChatRouter, adminUserId: string): void {
+function setupProductionBot(state: ProductionState, router: ChatRouter, adminUserId: string): void {
   log.info(
     {
       adminUserConfigured: Boolean(adminUserId),
@@ -127,13 +156,28 @@ function setupProductionBot(router: ChatRouter, adminUserId: string): void {
       (userId) => router.resolveUserLabel(userId, { contextId, contextType: 'group' }),
       limit,
     )
-  setupBot(router, adminUserId, { processMessage, stagedDownloadFn, chatParticipantResolver })
+  const analytics = state.analytics
+  const rephrase = resolveProductionRephrase(analytics)
+  setupBot(
+    router,
+    adminUserId,
+    withRephraseCapture({
+      processMessage,
+      stagedDownloadFn,
+      chatParticipantResolver,
+      analyticsObserver: analytics?.observer,
+      analyticsTurnRegistry: analytics?.registry,
+      rephrase: rephrase?.boundary,
+    }),
+  )
 }
 
 function createApplicationDeps(state: ProductionState): PapaiRuntimeDeps['application'] {
   return {
     initializeStores: () => undefined,
-    setupBot: setupProductionBot,
+    setupBot: (router, adminUserId) => {
+      setupProductionBot(state, router, adminUserId)
+    },
     registerCommandMenu: async (router, adminUserId) => {
       await registerCommandMenuIfSupported(router, adminUserId)
     },
@@ -165,11 +209,19 @@ function createBackgroundDeps(state: ProductionState): PapaiRuntimeDeps['backgro
   }
 }
 
-export type ProductionRuntimeOptions = Readonly<{ pluginProviderRuntimeDeps?: ProviderRuntimeDeps }>
+export type ProductionRuntimeOptions = Readonly<{
+  pluginProviderRuntimeDeps?: ProviderRuntimeDeps
+  analytics?: ProductionAnalyticsRuntime
+}>
 
 function createDefaultDeps(state: ProductionState, options: ProductionRuntimeOptions): PapaiRuntimeDeps {
   return {
-    database: { start: startDatabase, stop: stopDatabase },
+    database: {
+      start: (): void => {
+        startDatabase(state)
+      },
+      stop: stopDatabase,
+    },
     chat: {
       createRouter: createProductionRouter,
       ingress: {
@@ -220,6 +272,7 @@ export function createProductionRuntimeDeps(
       activePlatforms: [],
       background: null,
       disposeMembershipSubscriber: null,
+      analytics: options.analytics ?? null,
       populateRouterFromInstances: overrides.chat?.createRouter === undefined,
     },
     options,

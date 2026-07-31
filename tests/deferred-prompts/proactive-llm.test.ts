@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import type { ModelMessage } from 'ai'
 
+import { NO_ANALYTICS_SCOPE } from '../../src/analytics/provider-request-scope.js'
 import { updateByokLlmConfig } from '../../src/byok-llm/store.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { setConfig } from '../../src/config.testing.js'
@@ -41,6 +42,7 @@ type GenerateTextCall = {
   instructions: string
   messages: ModelMessage[]
   tools: unknown
+  toolsContext?: Record<string, unknown>
   stopWhen?: unknown
   prepareStep?: (arg: { stepNumber: number; steps?: readonly unknown[] }) => { activeTools?: string[] }
 }
@@ -53,6 +55,21 @@ function messageIncludesText(msgs: readonly ModelMessage[], text: string): boole
 
 function toolNamesOf(tools: unknown): string[] {
   return typeof tools === 'object' && tools !== null ? Object.keys(tools) : []
+}
+
+type ToolDescriptorProbe = { contextSchema?: unknown; execute?: unknown }
+
+function toolDescriptorsOf(tools: unknown): Record<string, ToolDescriptorProbe> {
+  if (typeof tools !== 'object' || tools === null) return {}
+  const entries = Object.entries(tools).map(([name, descriptor]): readonly [string, ToolDescriptorProbe] => {
+    const probe: ToolDescriptorProbe = {}
+    if (typeof descriptor === 'object' && descriptor !== null) {
+      probe.contextSchema = Reflect.get(descriptor, 'contextSchema')
+      probe.execute = Reflect.get(descriptor, 'execute')
+    }
+    return [name, probe]
+  })
+  return Object.fromEntries(entries)
 }
 
 const containsFact = (
@@ -612,6 +629,95 @@ describe('dispatchExecution', () => {
       // After the fix: prompt uses delivery storageContextId prefs -> "Unavailable tools" line present.
       // With the bug: prompt uses creator userId prefs (empty) -> no unavailable line.
       expect(instructions).toContain('Unavailable tools')
+    })
+  })
+
+  describe('provider request scope closure', () => {
+    const scopeMetadata: ExecutionMetadata = {
+      delivery_brief: 'Check overdue tasks',
+      context_snapshot: null,
+    }
+
+    const makeExecCtxFor = (userId: string): DeferredExecutionContext => ({
+      createdByUserId: userId,
+      deliveryTarget: {
+        contextId: userId,
+        contextType: 'dm',
+        threadId: null,
+        audience: 'personal',
+        mentionUserIds: [],
+        createdByUserId: userId,
+        createdByUsername: null,
+      },
+    })
+
+    test('passes a toolsContext record keyed by every name in the final ToolSet', async () => {
+      setupUserConfig()
+      const provider = createMockProvider()
+      await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', scopeMetadata, () => provider)
+
+      const call = generateTextCalls[generateTextCalls.length - 1]!
+      const toolsContext = call.toolsContext
+      expect(toolsContext).toBeDefined()
+      const toolNames = toolNamesOf(call.tools)
+      expect(Object.keys(toolsContext!).toSorted()).toEqual(toolNames.toSorted())
+      // Every value references the same scope object.
+      const scopes = new Set(Object.values(toolsContext!))
+      expect(scopes.size).toBe(1)
+    })
+
+    test('attaches the strict provider scope contextSchema to every executable tool', async () => {
+      setupUserConfig()
+      const provider = createMockProvider()
+      await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', scopeMetadata, () => provider)
+
+      const call = generateTextCalls[generateTextCalls.length - 1]!
+      const tools = toolDescriptorsOf(call.tools)
+      const executables = Object.entries(tools).filter(([, descriptor]) => descriptor.execute !== undefined)
+      expect(executables.length).toBeGreaterThan(0)
+      for (const [name, descriptor] of executables) {
+        expect(descriptor.contextSchema, name).toBeDefined()
+      }
+    })
+
+    test('consecutive owners never share a scope object', async () => {
+      setupUserConfig()
+      const provider = createMockProvider()
+      const scopeInputs: string[] = []
+      let scopeCounter = 0
+      const deps = {
+        resolveScope: (input: { createdByUserId: string }): typeof NO_ANALYTICS_SCOPE => {
+          scopeInputs.push(input.createdByUserId)
+          scopeCounter += 1
+          return NO_ANALYTICS_SCOPE
+        },
+      }
+
+      await dispatchExecution(
+        makeExecCtxFor('owner-a'),
+        'scheduled',
+        'a',
+        scopeMetadata,
+        () => provider,
+        undefined,
+        deps,
+      )
+      await dispatchExecution(
+        makeExecCtxFor('owner-b'),
+        'scheduled',
+        'b',
+        scopeMetadata,
+        () => provider,
+        undefined,
+        deps,
+      )
+
+      expect(scopeInputs).toEqual(['owner-a', 'owner-b'])
+      expect(scopeCounter).toBe(2)
+      // Each execution built its own toolsContext record (per-call scope resolution).
+      const first = generateTextCalls[0]!.toolsContext
+      const second = generateTextCalls[1]!.toolsContext
+      expect(first).not.toBe(second)
     })
   })
 })

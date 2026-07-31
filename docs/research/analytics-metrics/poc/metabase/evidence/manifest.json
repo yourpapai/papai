@@ -1,0 +1,227 @@
+{
+  "evidence_version": 1,
+  "synthetic_only": true,
+  "generated_at": "2026-07-23T19:40:56.681Z",
+  "fixture_contract": "papai-analytics-fixture-v1",
+  "metabase_url": "http://127.0.0.1:4300",
+  "database_id": 2,
+  "source_access": "read-only SQLite snapshot",
+  "models": [
+    {
+      "key": "activation",
+      "id": 111,
+      "name": "[SYNTHETIC ONLY] Activation actors",
+      "source_file": "sql/01-activation.sql",
+      "query_validation": {
+        "rowCount": 200,
+        "columnCount": 25
+      }
+    },
+    {
+      "key": "engagement",
+      "id": 110,
+      "name": "[SYNTHETIC ONLY] Retention and engagement",
+      "source_file": "sql/02-retention-engagement.sql",
+      "query_validation": {
+        "rowCount": 622,
+        "columnCount": 29
+      }
+    },
+    {
+      "key": "intents",
+      "id": 112,
+      "name": "[SYNTHETIC ONLY] Intents, tools, and features",
+      "source_file": "sql/03-intents-features.sql",
+      "query_validation": {
+        "rowCount": 2000,
+        "columnCount": 27
+      }
+    },
+    {
+      "key": "reliability",
+      "id": 113,
+      "name": "[SYNTHETIC ONLY] Reliability, friction, and performance",
+      "source_file": "sql/04-reliability-friction-performance.sql",
+      "query_validation": {
+        "rowCount": 2000,
+        "columnCount": 34
+      }
+    }
+  ],
+  "dashboards": [
+    {
+      "key": "activation",
+      "id": 23,
+      "name": "Activation - [SYNTHETIC ONLY]",
+      "url": "http://127.0.0.1:4300/dashboard/23",
+      "cards": [
+        {
+          "id": 115,
+          "name": "[SYNTHETIC ONLY] Activation funnel",
+          "display": "bar",
+          "result_columns": [
+            "step_order",
+            "step",
+            "actors"
+          ],
+          "query_validation": {
+            "rowCount": 5,
+            "columnCount": 3
+          }
+        },
+        {
+          "id": 116,
+          "name": "[SYNTHETIC ONLY] Activation rate by platform",
+          "display": "bar",
+          "result_columns": [
+            "platform",
+            "eligible_actors",
+            "activated_actors",
+            "activation_rate_pct"
+          ],
+          "query_validation": {
+            "rowCount": 4,
+            "columnCount": 4
+          }
+        }
+      ],
+      "pdf_file": "activation.pdf",
+      "pdf_sha256": "23aaea69c54ff19f5fcca252986b7d7b34af968921c81594782de0529d2db3ac",
+      "pdf_bytes": 110191
+    },
+    {
+      "key": "retention",
+      "id": 24,
+      "name": "Retention - [SYNTHETIC ONLY]",
+      "url": "http://127.0.0.1:4300/dashboard/24",
+      "cards": [
+        {
+          "id": 114,
+          "name": "[SYNTHETIC ONLY] Exact-day retention",
+          "display": "bar",
+          "result_columns": [
+            "retention_window",
+            "retained_actors",
+            "eligible_actors",
+            "retention_rate_pct"
+          ],
+          "query_validation": {
+            "rowCount": 3,
+            "columnCount": 4
+          }
+        },
+        {
+          "id": 117,
+          "name": "[SYNTHETIC ONLY] Daily engagement by modeled dimensions",
+          "display": "line",
+          "result_columns": [
+            "metric_date",
+            "dimension_grain_dau",
+            "sessions",
+            "completed_turns"
+          ],
+          "query_validation": {
+            "rowCount": 46,
+            "columnCount": 4
+          }
+        }
+      ],
+      "pdf_file": "retention.pdf",
+      "pdf_sha256": "114bc30cb71ab900c8b89ab829b34c6f36f91097d51a0db2affe23c6d2b0fb7e",
+      "pdf_bytes": 111148
+    },
+    {
+      "key": "intents",
+      "id": 25,
+      "name": "Intents - [SYNTHETIC ONLY]",
+      "url": "http://127.0.0.1:4300/dashboard/25",
+      "cards": [
+        {
+          "id": 118,
+          "name": "[SYNTHETIC ONLY] Top primary intents",
+          "display": "bar",
+          "result_columns": [
+            "intent",
+            "classified_turns",
+            "successful_turns"
+          ],
+          "query_validation": {
+            "rowCount": 12,
+            "columnCount": 3
+          }
+        },
+        {
+          "id": 119,
+          "name": "[SYNTHETIC ONLY] Feature adoption among eligible actors",
+          "display": "bar",
+          "result_columns": [
+            "feature",
+            "eligible_actors",
+            "adopted_actors",
+            "adoption_rate_pct"
+          ],
+          "query_validation": {
+            "rowCount": 11,
+            "columnCount": 4
+          }
+        }
+      ],
+      "pdf_file": "intents.pdf",
+      "pdf_sha256": "643888c60146ed67867374c204ab54d50dd48132a484abcd888a1f3e53f5374c",
+      "pdf_bytes": 175595
+    },
+    {
+      "key": "reliability",
+      "id": 26,
+      "name": "Reliability - [SYNTHETIC ONLY]",
+      "url": "http://127.0.0.1:4300/dashboard/26",
+      "cards": [
+        {
+          "id": 120,
+          "name": "[SYNTHETIC ONLY] Error taxonomy",
+          "display": "bar",
+          "result_columns": [
+            "error_class",
+            "failures",
+            "opportunities",
+            "failure_rate_pct"
+          ],
+          "query_validation": {
+            "rowCount": 7,
+            "columnCount": 4
+          }
+        },
+        {
+          "id": 121,
+          "name": "[SYNTHETIC ONLY] Friction Signature distribution",
+          "display": "bar",
+          "result_columns": [
+            "component_count",
+            "mature_sessions"
+          ],
+          "query_validation": {
+            "rowCount": 7,
+            "columnCount": 2
+          }
+        },
+        {
+          "id": 122,
+          "name": "[SYNTHETIC ONLY] P95 performance trends",
+          "display": "line",
+          "result_columns": [
+            "metric_date",
+            "metric_name",
+            "dimension_mean_p95_ms"
+          ],
+          "query_validation": {
+            "rowCount": 344,
+            "columnCount": 3
+          }
+        }
+      ],
+      "pdf_file": "reliability.pdf",
+      "pdf_sha256": "e1c7bdc38f4c2352d5e711730cdc464c38ecc15c6b8113e37830722061beaa07",
+      "pdf_bytes": 341604
+    }
+  ]
+}

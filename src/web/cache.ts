@@ -17,18 +17,18 @@ const log = logger.child({ scope: 'web:cache' })
 const hashUrl = (normalizedUrl: string): string => createHash('sha256').update(normalizedUrl).digest('hex')
 
 export function getCachedWebFetch(normalizedUrl: string, nowMs: number = Date.now()): WebFetchResult | null {
-  log.debug({ normalizedUrl, nowMs }, 'getCachedWebFetch called')
+  log.debug({ nowMs }, 'getCachedWebFetch called')
 
   const urlHash = hashUrl(normalizedUrl)
   const row = getDrizzleDb().select().from(webCache).where(eq(webCache.urlHash, urlHash)).get()
 
   if (row === undefined) {
-    log.info({ normalizedUrl }, 'Web cache miss')
+    log.info('Web cache miss')
     return null
   }
 
   if (row.expiresAt <= nowMs) {
-    log.info({ normalizedUrl, expiresAt: row.expiresAt, nowMs }, 'Web cache entry expired')
+    log.info({ expiresAt: row.expiresAt, nowMs }, 'Web cache entry expired')
     return null
   }
 
@@ -43,15 +43,13 @@ export function getCachedWebFetch(normalizedUrl: string, nowMs: number = Date.no
     fetchedAt: row.fetchedAt,
   }
 
-  log.info({ normalizedUrl, fetchedAt: row.fetchedAt, expiresAt: row.expiresAt }, 'Web cache hit')
+  log.info({ fetchedAt: row.fetchedAt, expiresAt: row.expiresAt }, 'Web cache hit')
   return result
 }
 
 export function putCachedWebFetch(normalizedUrl: string, result: WebFetchResult, expiresAt: number): void {
   log.debug(
     {
-      normalizedUrl,
-      finalUrl: result.url,
       fetchedAt: result.fetchedAt,
       expiresAt,
       truncated: result.truncated,
@@ -91,5 +89,5 @@ export function putCachedWebFetch(normalizedUrl: string, result: WebFetchResult,
     })
     .run()
 
-  log.info({ normalizedUrl, finalUrl: result.url, expiresAt }, 'Stored web cache entry')
+  log.info({ expiresAt }, 'Stored web cache entry')
 }

@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:list-agiles' })
 
@@ -22,10 +23,7 @@ export function makeListAgilesTool(provider: Readonly<TaskProvider>): Tool {
         log.info({ count: agiles.length }, 'Agiles listed via tool')
         return agiles
       } catch (error) {
-        log.error(
-          { error: error instanceof Error ? error.message : String(error), tool: 'list_agiles' },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('list_agiles', error), 'Tool execution failed')
         throw error
       }
     },

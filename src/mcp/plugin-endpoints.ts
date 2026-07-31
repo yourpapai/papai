@@ -6,6 +6,8 @@
 import type { ToolSet } from 'ai'
 import pLimit from 'p-limit'
 
+import { classifyProviderError, createProviderRequestClock } from '../analytics/provider-observer.js'
+import { type ProviderRequestScope, requireProviderRequestScope } from '../analytics/provider-request-scope.js'
 import { logger } from '../logger.js'
 import { convertMcpToolsToToolSet } from './tool-adapter.js'
 import type { McpPluginConfig } from './types.js'
@@ -80,12 +82,55 @@ type PoolLike = {
   }>
 }
 
+/** Emits the controlled listTools observation; never throws, never carries server URLs or tool names. */
+const observeListTools = (
+  scope: ProviderRequestScope,
+  clock: Readonly<{ elapsedMs: () => number }>,
+  caught: unknown,
+): void => {
+  if (scope.kind !== 'actor') return
+  const classification =
+    caught === null ? { statusClass: '2xx' as const, retryable: null } : classifyProviderError(caught)
+  try {
+    scope.observeProviderRequest(scope.requestContext, {
+      provider: 'mcp',
+      operation: 'read',
+      durationMs: clock.elapsedMs(),
+      outcome: caught === null ? 'success' : 'failure',
+      statusClass: classification.statusClass,
+      retryable: classification.retryable,
+    })
+  } catch {
+    // Observation must never change MCP behavior.
+  }
+}
+
+type PluginPoolClient = Awaited<ReturnType<PoolLike['getOrCreateFromPlugin']>>['client']
+
+const listToolsObserved = async (
+  scope: ProviderRequestScope,
+  client: PluginPoolClient,
+): ReturnType<PluginPoolClient['listTools']> => {
+  const clock = createProviderRequestClock()
+  let caught: unknown = null
+  try {
+    return await client.listTools()
+  } catch (error) {
+    caught = error
+    throw error
+  } finally {
+    observeListTools(scope, clock, caught)
+  }
+}
+
 export async function buildPluginMcpToolSet(
   activePluginIds: readonly string[],
   pluginDescriptors: Map<string, PluginMcpDescriptor>,
   pool: PoolLike,
 ): Promise<ToolSet> {
+  // No endpoints means no I/O — no provider request scope is required.
   if (activePluginIds.length === 0) return {}
+  const scope = requireProviderRequestScope()
 
   const limit = pLimit(3)
   const merged: ToolSet = {}
@@ -105,11 +150,11 @@ export async function buildPluginMcpToolSet(
 
         try {
           const { client } = await pool.getOrCreateFromPlugin(pluginId, resolved)
-          const { tools } = await client.listTools()
+          const { tools } = await listToolsObserved(scope, client)
           return { pluginId, tools, client, toolFilter: resolved.toolFilter }
         } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err)
-          logger.warn({ pluginId, error: msg }, 'Skipping plugin MCP: connection failed')
+          const errorClass = classifyProviderError(err).statusClass
+          logger.warn({ pluginId, errorClass }, 'Skipping plugin MCP: connection failed')
           return null
         }
       }),

@@ -11,6 +11,7 @@ import { getConfig } from '../config.js'
 import { logger } from '../logger.js'
 import { getMemo, addMemoLink, archiveMemos } from '../memos.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolErrorClass } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:memo' })
 
@@ -32,7 +33,7 @@ export function makePromoteMemoTool(provider: Readonly<TaskProvider>, userId: st
         ),
     }),
     execute: ({ memoId, projectId, title, dueDate }) => {
-      log.debug({ userId, memoId, projectId }, 'promote_memo called')
+      log.debug('promote_memo called')
       return promoteToTask(provider, userId, memoId, projectId, title, dueDate)
     },
   })
@@ -48,7 +49,7 @@ async function promoteToTask(
 ): Promise<Record<string, unknown>> {
   const memo = getMemo(userId, memoId)
   if (memo === null) {
-    log.warn({ userId, memo_id: memoId }, 'Memo not found for promotion')
+    log.warn('Memo not found for promotion')
     return { status: 'error', message: `Memo "${memoId}" not found.` }
   }
 
@@ -65,10 +66,7 @@ async function promoteToTask(
       dueDate: resolvedDueDate,
     })
   } catch (error) {
-    log.error(
-      { userId, memoId, error: error instanceof Error ? error.message : String(error) },
-      'Failed to create task from memo',
-    )
+    log.error({ errorClass: toolErrorClass(error) }, 'Failed to create task from memo')
     return {
       status: 'error',
       message: `Failed to create task: ${error instanceof Error ? error.message : String(error)}`,
@@ -77,7 +75,7 @@ async function promoteToTask(
 
   addMemoLink(memoId, task.id, 'action_for')
   archiveMemos(userId, { memoIds: [memoId] })
-  log.info({ userId, memo_id: memoId, taskId: task.id }, 'Memo promoted to task')
+  log.info('Memo promoted to task')
 
   return {
     status: 'promoted',

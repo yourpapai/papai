@@ -1,0 +1,56 @@
+{
+  "schema": "papai.metabase.poc.visual-qa.v1",
+  "synthetic_only": true,
+  "renderer": {
+    "name": "pdftoppm",
+    "version": "26.07.0",
+    "dpi": 150,
+    "format": "png",
+    "single_file": true
+  },
+  "images": [
+    {
+      "key": "activation",
+      "source_pdf": "output/pdf/analytics-metrics/metabase/activation.pdf",
+      "source_pdf_sha256": "23aaea69c54ff19f5fcca252986b7d7b34af968921c81594782de0529d2db3ac",
+      "png": "docs/research/analytics-metrics/poc/metabase/evidence/screenshots/activation.png",
+      "png_sha256": "5bbeea51338c740c53d849385f3b83a61ae83d3c9dc628291398bf9f5c38ff6b",
+      "width_px": 1241,
+      "height_px": 1754
+    },
+    {
+      "key": "retention",
+      "source_pdf": "output/pdf/analytics-metrics/metabase/retention.pdf",
+      "source_pdf_sha256": "114bc30cb71ab900c8b89ab829b34c6f36f91097d51a0db2affe23c6d2b0fb7e",
+      "png": "docs/research/analytics-metrics/poc/metabase/evidence/screenshots/retention.png",
+      "png_sha256": "87ca0833a0450f9c377a72d150ed0e6c0d938788a133a19a540fcb0b7276d244",
+      "width_px": 1241,
+      "height_px": 1754
+    },
+    {
+      "key": "intents",
+      "source_pdf": "output/pdf/analytics-metrics/metabase/intents.pdf",
+      "source_pdf_sha256": "643888c60146ed67867374c204ab54d50dd48132a484abcd888a1f3e53f5374c",
+      "png": "docs/research/analytics-metrics/poc/metabase/evidence/screenshots/intents.png",
+      "png_sha256": "3f23f0dba5c4aefcfac196ceb8c5a2940d9f3fa5d6b7f6a1d0778d99e7b90c54",
+      "width_px": 1241,
+      "height_px": 1754
+    },
+    {
+      "key": "reliability",
+      "source_pdf": "output/pdf/analytics-metrics/metabase/reliability.pdf",
+      "source_pdf_sha256": "e1c7bdc38f4c2352d5e711730cdc464c38ecc15c6b8113e37830722061beaa07",
+      "png": "docs/research/analytics-metrics/poc/metabase/evidence/screenshots/reliability.png",
+      "png_sha256": "394a0324ab06a2178c216ee94871ceb940e6ddcb6e08743f0953f9e4321901b0",
+      "width_px": 1241,
+      "height_px": 1754
+    }
+  ],
+  "inspection": {
+    "overlap": false,
+    "clipped_data_marks": false,
+    "broken_glyphs": false,
+    "missing_synthetic_marker": false
+  },
+  "limitation": "These PNGs are Poppler rasterizations of Metabase server-rendered PDFs, not browser or native UI screenshots."
+}

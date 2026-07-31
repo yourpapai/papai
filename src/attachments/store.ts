@@ -7,6 +7,7 @@ import { createHash, randomUUID } from 'node:crypto'
 
 import { eq, and, or } from 'drizzle-orm'
 
+import { observeActiveFeatureUsed } from '../analytics/feature-observer.js'
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { attachments } from '../db/schema.js'
@@ -39,14 +40,13 @@ const toSourceProvider = (value: string): AttachmentSourceProvider => SOURCE_BY_
 
 const log = logger.child({ scope: 'attachments:store' })
 
-export async function saveAttachment(input: SaveAttachmentInput): Promise<AttachmentRef> {
-  const attachmentId = `att_${randomUUID()}`
-  const createdAt = new Date().toISOString()
-  const checksum = createHash('sha256').update(input.content).digest('hex')
-  const blobKey = buildBlobKey(input.contextId, attachmentId)
-
-  await getBlobStore().put(blobKey, input.content, input.mimeType)
-
+const insertAttachmentRow = (
+  input: SaveAttachmentInput,
+  attachmentId: string,
+  createdAt: string,
+  checksum: string,
+  blobKey: string,
+): void => {
   getDrizzleDb()
     .insert(attachments)
     .values({
@@ -70,9 +70,9 @@ export async function saveAttachment(input: SaveAttachmentInput): Promise<Attach
       forwardedFrom: input.forwardedFrom ?? null,
     })
     .run()
+}
 
-  log.info({ attachmentId, contextId: input.contextId, filename: input.filename, blobKey }, 'Attachment stored')
-
+const buildAttachmentRef = (input: SaveAttachmentInput, attachmentId: string): AttachmentRef => {
   const ref: AttachmentRef = {
     attachmentId,
     contextId: input.contextId,
@@ -82,6 +82,28 @@ export async function saveAttachment(input: SaveAttachmentInput): Promise<Attach
   if (input.mimeType !== undefined) ref.mimeType = input.mimeType
   if (input.size !== undefined) ref.size = input.size
   return ref
+}
+
+export async function saveAttachment(input: SaveAttachmentInput): Promise<AttachmentRef> {
+  try {
+    const attachmentId = `att_${randomUUID()}`
+    const createdAt = new Date().toISOString()
+    const checksum = createHash('sha256').update(input.content).digest('hex')
+    const blobKey = buildBlobKey(input.contextId, attachmentId)
+
+    await getBlobStore().put(blobKey, input.content, input.mimeType)
+    insertAttachmentRow(input, attachmentId, createdAt, checksum, blobKey)
+
+    observeActiveFeatureUsed({ feature: 'attachment', operation: 'create', outcome: 'success' })
+    log.info(
+      { contextId: input.contextId, hasFilename: input.filename !== undefined, size: input.size ?? null },
+      'Attachment stored',
+    )
+    return buildAttachmentRef(input, attachmentId)
+  } catch (error) {
+    observeActiveFeatureUsed({ feature: 'attachment', operation: 'create', outcome: 'failure' })
+    throw error
+  }
 }
 
 export async function loadAttachmentRecord(

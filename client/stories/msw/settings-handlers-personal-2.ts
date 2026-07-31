@@ -195,3 +195,47 @@ export const codingMcpInternalAvailableHandlers: HttpHandler[] = [
 export const codingMcpInternalSelectedHandlers: HttpHandler[] = [
   http.get('/settings/api/coding-credentials', () => HttpResponse.json(codingMcpInternalSelected)),
 ]
+
+// --- Analytics preferences (GET /settings/api/analytics/preferences) ---
+// AnalyticsPreferencesResponseSchema: { notice, preference, explanation, subjectRightsAvailable }
+
+const analyticsPreferencesPopulated = {
+  notice: {
+    policyVersion: 1,
+    noticeVersion: 1,
+    purpose: 'product improvement',
+    controllerContact: 'privacy@example.com',
+    lawfulBasisMode: 'consent',
+    policyEffectiveAtMs: null,
+  },
+  preference: { localLongitudinal: 'unknown', externalPseudonymous: 'unknown', effectiveAtMs: null },
+  explanation:
+    'Aggregate analytics count events in daily totals that never identify you. ' +
+    'Pseudonymous analytics link events to a rotating pseudonym derived from your account.',
+  subjectRightsAvailable: true,
+}
+
+const analyticsPreferencesAllow = {
+  ...analyticsPreferencesPopulated,
+  preference: { localLongitudinal: 'allow', externalPseudonymous: 'deny', effectiveAtMs: 1_800_000_000_000 },
+}
+
+export const analyticsPreferencesHandlers: HandlerFamily = {
+  populated: [http.get('/settings/api/analytics/preferences', () => HttpResponse.json(analyticsPreferencesPopulated))],
+  empty: [http.get('/settings/api/analytics/preferences', () => HttpResponse.json(analyticsPreferencesAllow))],
+  error: [http.get('/settings/api/analytics/preferences', boom)],
+  loading: [
+    http.get('/settings/api/analytics/preferences', async () => {
+      await delay(NEVER_RESOLVE_MS)
+      return HttpResponse.json(analyticsPreferencesPopulated)
+    }),
+  ],
+}
+
+// Delete returns a queued in_progress status; the section reports it without actor identity.
+export const analyticsWithdrawalInProgressHandlers: HttpHandler[] = [
+  http.get('/settings/api/analytics/preferences', () => HttpResponse.json(analyticsPreferencesPopulated)),
+  http.post('/settings/api/analytics/delete', () =>
+    HttpResponse.json({ status: 'in_progress', coverage: 'analytics_only' }),
+  ),
+]

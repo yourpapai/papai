@@ -119,6 +119,24 @@ describe('makeTools async + MCP integration', () => {
     expect(Object.keys(tools)).toContain('create_task')
   })
 
+  test('builtin, MCP, and plugin descriptors all stay scope-free and unwrapped', async () => {
+    buildMcpToolSetSpy.mockResolvedValueOnce({
+      mcp_server1__remote_search: {
+        description: 'Search via MCP',
+        inputSchema: jsonSchema({ type: 'object' as const, properties: {} }),
+        execute: () => Promise.resolve('result'),
+      },
+    })
+
+    const provider = createMockProvider()
+    const tools = await makeTools(provider, { storageContextId: CONTEXT, chatUserId: CONTEXT, contextType: 'dm' })
+
+    expect(tools['mcp_server1__remote_search']).toBeDefined()
+    for (const [name, descriptor] of Object.entries(tools)) {
+      expect(descriptor.contextSchema, name).toBeUndefined()
+    }
+  })
+
   test('makeTools still exposes provider-backed plugin MCP tools', async () => {
     const providerBackedMcpPlugin: DiscoveredPlugin = {
       manifest: {

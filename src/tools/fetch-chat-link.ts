@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { resolveChatLink as defaultResolveChatLink } from '../chat/mattermost/link-resolver.js'
 import { logger } from '../logger.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:fetch-chat-link' })
 
@@ -37,18 +38,10 @@ export function makeFetchChatLinkTool(
     inputSchema,
     execute: async ({ url, scope }) => {
       try {
-        log.debug({ platformInstanceId, requesterUserId, scope }, 'Executing fetch_chat_link')
+        log.debug({ platformInstanceId, scope }, 'Executing fetch_chat_link')
         return await deps.resolveChatLink({ platformInstanceId, requesterUserId, url, scope })
       } catch (error) {
-        log.error(
-          {
-            platformInstanceId,
-            requesterUserId,
-            error: error instanceof Error ? error.message : String(error),
-            tool: 'fetch_chat_link',
-          },
-          'Tool execution failed',
-        )
+        log.error({ platformInstanceId, ...toolFailureMeta('fetch_chat_link', error) }, 'Tool execution failed')
         throw error
       }
     },

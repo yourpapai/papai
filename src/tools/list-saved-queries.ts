@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:list-saved-queries' })
 
@@ -22,13 +23,7 @@ export function makeListSavedQueriesTool(provider: Readonly<TaskProvider>): Tool
         log.info({ count: queries.length }, 'Saved queries listed via tool')
         return queries
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            tool: 'list_saved_queries',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('list_saved_queries', error), 'Tool execution failed')
         throw error
       }
     },

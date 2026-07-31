@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { ProviderRuntimeDeps } from '../plugins/provider-runtime.js'
+import { handleAdminAnalyticsRoutes } from './settings/admin/analytics-routes.js'
 import { handleAdminByokRoutes } from './settings/admin/byok-routes.js'
 import { handleAdminCodingGuardrailsRoutes } from './settings/admin/coding-guardrails-routes.js'
 import { handleAdminInstancesRoutes } from './settings/admin/instances-routes.js'
@@ -16,6 +17,7 @@ import { handleAdminReleaseNotesRoutes } from './settings/admin/release-notes-ro
 import { handleAdminRosterPluginsRoutes } from './settings/admin/roster-plugins-routes.js'
 import { handleAdminSystemAccessRoutes } from './settings/admin/system-access-routes.js'
 import { handleAdminToolDefaultsRoutes } from './settings/admin/tool-defaults-routes.js'
+import { handleAnalyticsRoutes } from './settings/analytics-routes.js'
 import { handleByokRoutes } from './settings/byok-routes.js'
 import { handleCodingCredentialsModelsRoute } from './settings/coding-credentials-models-route.js'
 import { handleCodingCredentialsRoutes } from './settings/coding-credentials-routes.js'
@@ -59,6 +61,13 @@ function routeAdminApi(req: Request, url: URL, options: SettingsApiRouteOptions)
     return handleAdminRosterPluginsRoutes(req, url, p, options)
   if (p === '/settings/api/admin/plugin-config') return handleAdminPluginConfigRoutes(req, url, p)
   if (p === '/settings/api/admin/byok') return handleAdminByokRoutes(req, url)
+  if (
+    p === '/settings/api/admin/analytics' ||
+    p === '/settings/api/admin/analytics/reconcile' ||
+    p === '/settings/api/admin/analytics/sinks' ||
+    p.startsWith('/settings/api/admin/analytics/sinks/')
+  )
+    return handleAdminAnalyticsRoutes(req, url)
   if (p === '/settings/api/admin/tool-defaults') return handleAdminToolDefaultsRoutes(req, url, p)
   if (p === '/settings/api/admin/coding-guardrails') return handleAdminCodingGuardrailsRoutes(req, url, p)
   if (p === '/settings/api/admin/mcp-catalog') return handleAdminMcpCatalogRoutes(req, url, p)
@@ -92,7 +101,14 @@ export function routeSettingsApi(
     const adminResult = routeAdminApi(req, url, options)
     if (adminResult !== null) return adminResult
   }
-  if (url.pathname === '/settings/api/byok') return handleByokRoutes(req, url)
+  if (url.pathname === '/settings/api/byok') return Promise.resolve(handleByokRoutes(req, url))
+  if (
+    url.pathname === '/settings/api/analytics/preferences' ||
+    url.pathname === '/settings/api/analytics/export' ||
+    url.pathname === '/settings/api/analytics/withdraw' ||
+    url.pathname === '/settings/api/analytics/delete'
+  )
+    return handleAnalyticsRoutes(req, url)
   if (url.pathname === '/settings/api/coding-credentials/models') return handleCodingCredentialsModelsRoute(req, url)
   if (url.pathname === '/settings/api/coding-credentials') return handleCodingCredentialsRoutes(req, url)
   if (url.pathname === '/settings/api/coding-repos') return handleCodingReposRoutes(req, url)

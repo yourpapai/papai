@@ -259,3 +259,179 @@ describe('reply typing heartbeat', () => {
     expect(textCalls).toEqual(['done'])
   })
 })
+
+type HeartbeatEvents = {
+  capabilities: Array<{ supported: boolean }>
+  starts: Array<{ outcome: string; latencyMs: number }>
+  stops: number
+}
+
+function makeHeartbeatObserver(): {
+  analytics: {
+    onCapability: (event: { supported: boolean }) => void
+    onStart: (event: { outcome: 'success' | 'failed'; latencyMs: number }) => void
+    onStop: () => void
+  }
+  events: HeartbeatEvents
+} {
+  const events: HeartbeatEvents = { capabilities: [], starts: [], stops: 0 }
+  return {
+    analytics: {
+      onCapability: (event) => {
+        events.capabilities.push(event)
+      },
+      onStart: (event) => {
+        events.starts.push(event)
+      },
+      onStop: () => {
+        events.stops += 1
+      },
+    },
+    events,
+  }
+}
+
+describe('analytics heartbeat observer', () => {
+  beforeEach(() => {
+    mockLogger()
+  })
+
+  test('reports capability, a successful start with latency, and one stop', async () => {
+    const typingCalls: number[] = []
+    const textCalls: string[] = []
+    const reply = createReply(typingCalls, textCalls)
+    const { analytics, events } = makeHeartbeatObserver()
+    let clock = 1000
+
+    await withReplyTypingHeartbeat(
+      reply,
+      async (wrappedReply) => {
+        await wrappedReply.text('done')
+      },
+      {
+        intervalMs: 20,
+        analytics,
+        now: () => {
+          const value = clock
+          clock += 250
+          return value
+        },
+      },
+    )
+
+    expect(events.capabilities).toEqual([{ supported: true }])
+    expect(events.starts).toHaveLength(1)
+    expect(events.starts[0]!.outcome).toBe('success')
+    expect(events.starts[0]!.latencyMs).toBeGreaterThanOrEqual(0)
+    expect(events.stops).toBe(1)
+  })
+
+  test('a synchronous typing throw reports a failed start', async () => {
+    const textCalls: string[] = []
+    const reply: ReplyFn = {
+      text: (content: string): Promise<void> => {
+        textCalls.push(content)
+        return Promise.resolve()
+      },
+      formatted: (): Promise<void> => Promise.resolve(),
+      typing: (): void => {
+        throw new Error('Sync typing error')
+      },
+      buttons: (): Promise<undefined> => Promise.resolve(undefined),
+    }
+    const { analytics, events } = makeHeartbeatObserver()
+
+    await withReplyTypingHeartbeat(
+      reply,
+      async (wrappedReply) => {
+        await wrappedReply.text('done')
+      },
+      { intervalMs: 20, analytics },
+    )
+
+    expect(events.starts).toHaveLength(1)
+    expect(events.starts[0]!.outcome).toBe('failed')
+    expect(textCalls).toEqual(['done'])
+  })
+
+  test('an async typing rejection reports a failed start', async () => {
+    const textCalls: string[] = []
+    const reply: ReplyFn = {
+      text: (content: string): Promise<void> => {
+        textCalls.push(content)
+        return Promise.resolve()
+      },
+      formatted: (): Promise<void> => Promise.resolve(),
+      typing: ((): unknown => Promise.reject(new Error('async typing error'))) as () => void,
+      buttons: (): Promise<undefined> => Promise.resolve(undefined),
+    }
+    const { analytics, events } = makeHeartbeatObserver()
+
+    await withReplyTypingHeartbeat(
+      reply,
+      async (wrappedReply) => {
+        await waitFor(() => events.starts.length >= 1)
+        await wrappedReply.text('done')
+      },
+      { intervalMs: 20, analytics },
+    )
+
+    expect(events.starts[0]!.outcome).toBe('failed')
+    expect(textCalls).toEqual(['done'])
+  })
+
+  test('a throwing observer never breaks the heartbeat', async () => {
+    const textCalls: string[] = []
+    const reply: ReplyFn = {
+      text: (content: string): Promise<void> => {
+        textCalls.push(content)
+        return Promise.resolve()
+      },
+      formatted: (): Promise<void> => Promise.resolve(),
+      typing: (): void => {},
+      buttons: (): Promise<undefined> => Promise.resolve(undefined),
+    }
+
+    await withReplyTypingHeartbeat(
+      reply,
+      async (wrappedReply) => {
+        await wrappedReply.text('done')
+      },
+      {
+        intervalMs: 20,
+        analytics: {
+          onCapability: () => {
+            throw new Error('observer boom')
+          },
+          onStart: () => {
+            throw new Error('observer boom')
+          },
+          onStop: () => {
+            throw new Error('observer boom')
+          },
+        },
+      },
+    )
+
+    expect(textCalls).toEqual(['done'])
+  })
+
+  test('observer payloads never carry message content or provider responses', async () => {
+    const typingCalls: number[] = []
+    const textCalls: string[] = []
+    const reply = createReply(typingCalls, textCalls)
+    const { analytics, events } = makeHeartbeatObserver()
+
+    await withReplyTypingHeartbeat(
+      reply,
+      async (wrappedReply) => {
+        await wrappedReply.text('secret reply body')
+      },
+      { intervalMs: 20, analytics },
+    )
+
+    const payload = JSON.stringify(events)
+    expect(payload).not.toContain('secret reply body')
+    expect(payload).not.toContain('typing failed')
+  })
+})

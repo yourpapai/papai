@@ -12,6 +12,7 @@ import {
 } from '../recurring-occurrences.js'
 import type { RecurringTaskRecord } from '../recurring.js'
 import { markExecuted as defaultMarkExecuted } from '../recurring.js'
+import { toolErrorClass } from './tool-logging.js'
 
 const log = logger.child({ scope: 'completion-hook' })
 
@@ -44,14 +45,13 @@ const applyLabels = async (provider: TaskProvider, taskId: string, labels: reado
   for (let i = 0; i < results.length; i++) {
     const result = results[i]!
     if (result.status === 'rejected') {
-      log.warn({ taskId, labelId: labels[i], error: result.reason }, 'Failed to apply label')
+      log.warn({ errorClass: 'label_apply_failed' }, 'Failed to apply label')
     }
   }
 }
 
 const createNextOccurrence = async (
   template: RecurringTaskRecord,
-  taskId: string,
   provider: TaskProvider,
   deps: CompletionHookDeps,
 ): Promise<void> => {
@@ -69,19 +69,9 @@ const createNextOccurrence = async (
     deps.recordOccurrence(template.id, created.id)
     deps.markExecuted(template.id)
 
-    log.info(
-      { templateId: template.id, createdTaskId: created.id, title: template.title },
-      'On-complete recurring task instance created',
-    )
+    log.info('On-complete recurring task instance created')
   } catch (error) {
-    log.error(
-      {
-        templateId: template.id,
-        taskId,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      'Failed to create on_complete recurring task instance',
-    )
+    log.error({ errorClass: toolErrorClass(error) }, 'Failed to create on_complete recurring task instance')
   }
 }
 
@@ -97,24 +87,24 @@ export const completionHook: CompletionHookFn = async (
 ): Promise<void> => {
   if (!deps.isCompletionStatus(newStatus)) return
 
-  log.debug({ taskId, newStatus }, 'Completion status detected, checking for recurring template')
+  log.debug('Completion status detected, checking for recurring template')
 
   const template = deps.findTemplateByTaskId(taskId)
   if (template === null) {
-    log.debug({ taskId }, 'No recurring template found for completed task')
+    log.debug('No recurring template found for completed task')
     return
   }
 
   if (template.triggerType !== 'on_complete') {
-    log.debug({ taskId, templateId: template.id, triggerType: template.triggerType }, 'Template is not on_complete')
+    log.debug({ triggerType: template.triggerType }, 'Template is not on_complete')
     return
   }
 
   if (!template.enabled) {
-    log.debug({ taskId, templateId: template.id }, 'Template is paused, skipping on_complete fire')
+    log.debug('Template is paused, skipping on_complete fire')
     return
   }
 
-  log.info({ taskId, templateId: template.id, title: template.title }, 'Firing on_complete recurring task')
-  await createNextOccurrence(template, taskId, provider, deps)
+  log.info({ triggerType: template.triggerType }, 'Firing on_complete recurring task')
+  await createNextOccurrence(template, provider, deps)
 }

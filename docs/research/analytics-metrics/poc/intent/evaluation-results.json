@@ -1,0 +1,3938 @@
+{
+  "schema": "papai.intent.evaluation.v1",
+  "spdx": "BUSL-1.1",
+  "taxonomy": "intent.v1",
+  "corpus": {
+    "examples": 3000,
+    "synthetic_only": true,
+    "production_messages": 0
+  },
+  "sealed_test": {
+    "examples": 600,
+    "scenario_families": 60,
+    "languages": {
+      "en": 270,
+      "mixed": 50,
+      "ru": 280
+    },
+    "reuse_policy": "rerun_for_reproducibility_only; never tune rules on this split"
+  },
+  "strategies": {
+    "tool_trace_v1": {
+      "execution_status": "EXECUTED",
+      "qualification_status": "NOT_QUALIFIED",
+      "metrics": {
+        "examples": 600,
+        "primary_accuracy": 0.85,
+        "primary_macro_f1": 0.901144,
+        "coverage": 0.766667,
+        "selective_accuracy": 1,
+        "per_label": {
+          "task.create": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "task.find_list": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "task.read_detail": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "task.update_fields": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "task.change_state": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "task.collaborate": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "task.delete": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "project_schema.manage": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "recurring.manage": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "deferred.manage": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "memory_memo.write": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "memory_memo.find": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "attachment.manage": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "web.retrieve": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "identity_participant.manage": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "coding.start_review": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "coding.monitor_control": {
+            "support": 30,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 0.666667,
+            "f1": 0.8
+          },
+          "coding.continue_publish": {
+            "support": 30,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 0.666667,
+            "f1": 0.8
+          },
+          "configuration_permissions": {
+            "support": 30,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 0.666667,
+            "f1": 0.8
+          },
+          "help_context": {
+            "support": 30,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 0.666667,
+            "f1": 0.8
+          },
+          "no_action": {
+            "support": 50,
+            "predicted": 0,
+            "true_positive": 0,
+            "precision": 0,
+            "recall": 0,
+            "f1": 0
+          },
+          "unknown": {
+            "support": 50,
+            "predicted": 140,
+            "true_positive": 50,
+            "precision": 0.357143,
+            "recall": 1,
+            "f1": 0.526316
+          },
+          "multi_goal": {
+            "support": 60,
+            "predicted": 60,
+            "true_positive": 60,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          }
+        },
+        "multi_goal_exact_set_accuracy": 1,
+        "multi_goal_micro_f1": 1,
+        "multi_goal_macro_f1": 1,
+        "multi_goal_examples": 60,
+        "no_action_precision": 0,
+        "unknown_precision": 0.357143,
+        "expected_calibration_error_10_equal_frequency_bins": 0.074333,
+        "brier_score": 0.204247,
+        "risk_coverage": [
+          {
+            "minimum_confidence": 0.5,
+            "coverage": 0.766667,
+            "selective_accuracy": 1,
+            "risk": 0
+          },
+          {
+            "minimum_confidence": 0.7,
+            "coverage": 0.766667,
+            "selective_accuracy": 1,
+            "risk": 0
+          },
+          {
+            "minimum_confidence": 0.85,
+            "coverage": 0.766667,
+            "selective_accuracy": 1,
+            "risk": 0
+          },
+          {
+            "minimum_confidence": 0.9,
+            "coverage": 0.766667,
+            "selective_accuracy": 1,
+            "risk": 0
+          },
+          {
+            "minimum_confidence": 0.95,
+            "coverage": 0.766667,
+            "selective_accuracy": 1,
+            "risk": 0
+          },
+          {
+            "minimum_confidence": 0.97,
+            "coverage": 0.766667,
+            "selective_accuracy": 1,
+            "risk": 0
+          },
+          {
+            "minimum_confidence": 0.99,
+            "coverage": 0.766667,
+            "selective_accuracy": 1,
+            "risk": 0
+          }
+        ],
+        "accepted_rule_precision": 1,
+        "tool_evidence_conflict_rate": 0,
+        "text_egress_share": 0,
+        "small_model_calls_per_1000_turns": 0,
+        "small_model_input_tokens": null,
+        "small_model_output_tokens": null,
+        "small_model_cost_usd_per_1000_turns": null,
+        "small_model_cost_percent_of_main_model_spend": null,
+        "classifier_worker_p50_ms": 0.000125,
+        "classifier_worker_p95_ms": 0.000333,
+        "label_ready_p95_ms": 0.000333,
+        "user_visible_added_latency_ms": 0,
+        "persisted_classifier_input_output_content_count": 0
+      },
+      "thresholds": {
+        "primary_macro_f1": {
+          "actual": 0.901144,
+          "requirement": ">= 0.85",
+          "passed": true
+        },
+        "core_label_floor": {
+          "actual": 0.8,
+          "requirement": "I01-I20 each >= 0.75",
+          "passed": true
+        },
+        "no_action_precision": {
+          "actual": 0,
+          "requirement": ">= 0.90",
+          "passed": false
+        },
+        "unknown_precision": {
+          "actual": 0.357143,
+          "requirement": ">= 0.90",
+          "passed": false
+        },
+        "multi_goal_micro_f1": {
+          "actual": 1,
+          "requirement": ">= 0.80",
+          "passed": true
+        },
+        "multi_goal_exact_set_accuracy": {
+          "actual": 1,
+          "requirement": ">= 0.70",
+          "passed": true
+        },
+        "selective_accuracy_at_coverage": {
+          "actual": 1,
+          "requirement": "accuracy >= 0.90 at coverage >= 0.80",
+          "passed": false
+        },
+        "expected_calibration_error": {
+          "actual": 0.074333,
+          "requirement": "<= 0.05",
+          "passed": false
+        },
+        "tool_trace_accepted_rule_precision": {
+          "actual": 1,
+          "requirement": ">= 0.97",
+          "passed": true
+        },
+        "user_visible_added_latency_ms": {
+          "actual": 0,
+          "requirement": "= 0",
+          "passed": true
+        },
+        "label_ready_p95_ms": {
+          "actual": 0.000333,
+          "requirement": "<= 5000",
+          "passed": true
+        },
+        "persisted_classifier_content": {
+          "actual": 0,
+          "requirement": "= 0",
+          "passed": true
+        },
+        "all_passed": false
+      },
+      "slices": {
+        "language": {
+          "en": {
+            "examples": 270,
+            "primary_accuracy": 0.888889,
+            "primary_macro_f1": 0.937888,
+            "coverage": 0.814815,
+            "selective_accuracy": 1,
+            "per_label": {
+              "task.create": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.find_list": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.read_detail": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.update_fields": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.change_state": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.collaborate": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.delete": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "project_schema.manage": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "recurring.manage": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "deferred.manage": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "memory_memo.write": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "memory_memo.find": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "attachment.manage": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "web.retrieve": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "identity_participant.manage": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.start_review": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.monitor_control": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.continue_publish": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "configuration_permissions": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "help_context": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "no_action": {
+                "support": 30,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "unknown": {
+                "support": 20,
+                "predicted": 50,
+                "true_positive": 20,
+                "precision": 0.4,
+                "recall": 1,
+                "f1": 0.571429
+              },
+              "multi_goal": {
+                "support": 20,
+                "predicted": 20,
+                "true_positive": 20,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              }
+            }
+          },
+          "mixed": {
+            "examples": 50,
+            "primary_accuracy": 0.2,
+            "primary_macro_f1": 0.043478,
+            "coverage": 0.2,
+            "selective_accuracy": 1,
+            "per_label": {
+              "task.create": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.find_list": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.read_detail": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.update_fields": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.change_state": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.collaborate": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.delete": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "project_schema.manage": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "recurring.manage": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "deferred.manage": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "memory_memo.write": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "memory_memo.find": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "attachment.manage": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "web.retrieve": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "identity_participant.manage": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "coding.start_review": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "coding.monitor_control": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "coding.continue_publish": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "configuration_permissions": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "help_context": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "no_action": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "unknown": {
+                "support": 0,
+                "predicted": 40,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "multi_goal": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              }
+            }
+          },
+          "ru": {
+            "examples": 280,
+            "primary_accuracy": 0.928571,
+            "primary_macro_f1": 0.945652,
+            "coverage": 0.821429,
+            "selective_accuracy": 1,
+            "per_label": {
+              "task.create": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.find_list": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.read_detail": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.update_fields": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.change_state": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.collaborate": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.delete": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "project_schema.manage": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "recurring.manage": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "deferred.manage": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "memory_memo.write": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "memory_memo.find": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "attachment.manage": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "web.retrieve": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "identity_participant.manage": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.start_review": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.monitor_control": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.continue_publish": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "configuration_permissions": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "help_context": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "no_action": {
+                "support": 20,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "unknown": {
+                "support": 30,
+                "predicted": 50,
+                "true_positive": 30,
+                "precision": 0.6,
+                "recall": 1,
+                "f1": 0.75
+              },
+              "multi_goal": {
+                "support": 30,
+                "predicted": 30,
+                "true_positive": 30,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              }
+            }
+          }
+        },
+        "context_type": {
+          "dm": {
+            "examples": 399,
+            "primary_accuracy": 0.85213,
+            "primary_macro_f1": 0.902101,
+            "coverage": 0.766917,
+            "selective_accuracy": 1,
+            "per_label": {
+              "task.create": {
+                "support": 13,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.find_list": {
+                "support": 13,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.read_detail": {
+                "support": 14,
+                "predicted": 14,
+                "true_positive": 14,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.update_fields": {
+                "support": 13,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.change_state": {
+                "support": 13,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.collaborate": {
+                "support": 14,
+                "predicted": 14,
+                "true_positive": 14,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.delete": {
+                "support": 13,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "project_schema.manage": {
+                "support": 13,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "recurring.manage": {
+                "support": 14,
+                "predicted": 14,
+                "true_positive": 14,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "deferred.manage": {
+                "support": 13,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "memory_memo.write": {
+                "support": 13,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "memory_memo.find": {
+                "support": 14,
+                "predicted": 14,
+                "true_positive": 14,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "attachment.manage": {
+                "support": 13,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "web.retrieve": {
+                "support": 13,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "identity_participant.manage": {
+                "support": 14,
+                "predicted": 14,
+                "true_positive": 14,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.start_review": {
+                "support": 13,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.monitor_control": {
+                "support": 19,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 0.684211,
+                "f1": 0.8125
+              },
+              "coding.continue_publish": {
+                "support": 21,
+                "predicted": 14,
+                "true_positive": 14,
+                "precision": 1,
+                "recall": 0.666667,
+                "f1": 0.8
+              },
+              "configuration_permissions": {
+                "support": 20,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 0.65,
+                "f1": 0.787879
+              },
+              "help_context": {
+                "support": 19,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 0.684211,
+                "f1": 0.8125
+              },
+              "no_action": {
+                "support": 33,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "unknown": {
+                "support": 34,
+                "predicted": 93,
+                "true_positive": 34,
+                "precision": 0.365591,
+                "recall": 1,
+                "f1": 0.535433
+              },
+              "multi_goal": {
+                "support": 40,
+                "predicted": 40,
+                "true_positive": 40,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              }
+            }
+          },
+          "group": {
+            "examples": 201,
+            "primary_accuracy": 0.845771,
+            "primary_macro_f1": 0.899436,
+            "coverage": 0.766169,
+            "selective_accuracy": 1,
+            "per_label": {
+              "task.create": {
+                "support": 7,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.find_list": {
+                "support": 7,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.read_detail": {
+                "support": 6,
+                "predicted": 6,
+                "true_positive": 6,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.update_fields": {
+                "support": 7,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.change_state": {
+                "support": 7,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.collaborate": {
+                "support": 6,
+                "predicted": 6,
+                "true_positive": 6,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.delete": {
+                "support": 7,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "project_schema.manage": {
+                "support": 7,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "recurring.manage": {
+                "support": 6,
+                "predicted": 6,
+                "true_positive": 6,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "deferred.manage": {
+                "support": 7,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "memory_memo.write": {
+                "support": 7,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "memory_memo.find": {
+                "support": 6,
+                "predicted": 6,
+                "true_positive": 6,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "attachment.manage": {
+                "support": 7,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "web.retrieve": {
+                "support": 7,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "identity_participant.manage": {
+                "support": 6,
+                "predicted": 6,
+                "true_positive": 6,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.start_review": {
+                "support": 7,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.monitor_control": {
+                "support": 11,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 0.636364,
+                "f1": 0.777778
+              },
+              "coding.continue_publish": {
+                "support": 9,
+                "predicted": 6,
+                "true_positive": 6,
+                "precision": 1,
+                "recall": 0.666667,
+                "f1": 0.8
+              },
+              "configuration_permissions": {
+                "support": 10,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 0.7,
+                "f1": 0.823529
+              },
+              "help_context": {
+                "support": 11,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 0.636364,
+                "f1": 0.777778
+              },
+              "no_action": {
+                "support": 17,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "unknown": {
+                "support": 16,
+                "predicted": 47,
+                "true_positive": 16,
+                "precision": 0.340426,
+                "recall": 1,
+                "f1": 0.507937
+              },
+              "multi_goal": {
+                "support": 20,
+                "predicted": 20,
+                "true_positive": 20,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "metadata_v1": {
+      "execution_status": "EXECUTED",
+      "qualification_status": "NOT_QUALIFIED",
+      "metrics": {
+        "examples": 600,
+        "primary_accuracy": 0.291667,
+        "primary_macro_f1": 0.179906,
+        "coverage": 0.291667,
+        "selective_accuracy": 1,
+        "per_label": {
+          "task.create": {
+            "support": 20,
+            "predicted": 0,
+            "true_positive": 0,
+            "precision": 0,
+            "recall": 0,
+            "f1": 0
+          },
+          "task.find_list": {
+            "support": 20,
+            "predicted": 0,
+            "true_positive": 0,
+            "precision": 0,
+            "recall": 0,
+            "f1": 0
+          },
+          "task.read_detail": {
+            "support": 20,
+            "predicted": 0,
+            "true_positive": 0,
+            "precision": 0,
+            "recall": 0,
+            "f1": 0
+          },
+          "task.update_fields": {
+            "support": 20,
+            "predicted": 0,
+            "true_positive": 0,
+            "precision": 0,
+            "recall": 0,
+            "f1": 0
+          },
+          "task.change_state": {
+            "support": 20,
+            "predicted": 0,
+            "true_positive": 0,
+            "precision": 0,
+            "recall": 0,
+            "f1": 0
+          },
+          "task.collaborate": {
+            "support": 20,
+            "predicted": 0,
+            "true_positive": 0,
+            "precision": 0,
+            "recall": 0,
+            "f1": 0
+          },
+          "task.delete": {
+            "support": 20,
+            "predicted": 0,
+            "true_positive": 0,
+            "precision": 0,
+            "recall": 0,
+            "f1": 0
+          },
+          "project_schema.manage": {
+            "support": 20,
+            "predicted": 0,
+            "true_positive": 0,
+            "precision": 0,
+            "recall": 0,
+            "f1": 0
+          },
+          "recurring.manage": {
+            "support": 20,
+            "predicted": 0,
+            "true_positive": 0,
+            "precision": 0,
+            "recall": 0,
+            "f1": 0
+          },
+          "deferred.manage": {
+            "support": 20,
+            "predicted": 0,
+            "true_positive": 0,
+            "precision": 0,
+            "recall": 0,
+            "f1": 0
+          },
+          "memory_memo.write": {
+            "support": 20,
+            "predicted": 0,
+            "true_positive": 0,
+            "precision": 0,
+            "recall": 0,
+            "f1": 0
+          },
+          "memory_memo.find": {
+            "support": 20,
+            "predicted": 0,
+            "true_positive": 0,
+            "precision": 0,
+            "recall": 0,
+            "f1": 0
+          },
+          "attachment.manage": {
+            "support": 20,
+            "predicted": 0,
+            "true_positive": 0,
+            "precision": 0,
+            "recall": 0,
+            "f1": 0
+          },
+          "web.retrieve": {
+            "support": 20,
+            "predicted": 0,
+            "true_positive": 0,
+            "precision": 0,
+            "recall": 0,
+            "f1": 0
+          },
+          "identity_participant.manage": {
+            "support": 20,
+            "predicted": 0,
+            "true_positive": 0,
+            "precision": 0,
+            "recall": 0,
+            "f1": 0
+          },
+          "coding.start_review": {
+            "support": 20,
+            "predicted": 0,
+            "true_positive": 0,
+            "precision": 0,
+            "recall": 0,
+            "f1": 0
+          },
+          "coding.monitor_control": {
+            "support": 30,
+            "predicted": 10,
+            "true_positive": 10,
+            "precision": 1,
+            "recall": 0.333333,
+            "f1": 0.5
+          },
+          "coding.continue_publish": {
+            "support": 30,
+            "predicted": 10,
+            "true_positive": 10,
+            "precision": 1,
+            "recall": 0.333333,
+            "f1": 0.5
+          },
+          "configuration_permissions": {
+            "support": 30,
+            "predicted": 30,
+            "true_positive": 30,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "help_context": {
+            "support": 30,
+            "predicted": 30,
+            "true_positive": 30,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "no_action": {
+            "support": 50,
+            "predicted": 45,
+            "true_positive": 45,
+            "precision": 1,
+            "recall": 0.9,
+            "f1": 0.947368
+          },
+          "unknown": {
+            "support": 50,
+            "predicted": 475,
+            "true_positive": 50,
+            "precision": 0.105263,
+            "recall": 1,
+            "f1": 0.190476
+          },
+          "multi_goal": {
+            "support": 60,
+            "predicted": 0,
+            "true_positive": 0,
+            "precision": 0,
+            "recall": 0,
+            "f1": 0
+          }
+        },
+        "multi_goal_exact_set_accuracy": 0,
+        "multi_goal_micro_f1": 0,
+        "multi_goal_macro_f1": 0,
+        "multi_goal_examples": 60,
+        "no_action_precision": 1,
+        "unknown_precision": 0.105263,
+        "expected_calibration_error_10_equal_frequency_bins": 0.353417,
+        "brier_score": 0.861564,
+        "risk_coverage": [
+          {
+            "minimum_confidence": 0.5,
+            "coverage": 0.291667,
+            "selective_accuracy": 1,
+            "risk": 0
+          },
+          {
+            "minimum_confidence": 0.7,
+            "coverage": 0.291667,
+            "selective_accuracy": 1,
+            "risk": 0
+          },
+          {
+            "minimum_confidence": 0.85,
+            "coverage": 0.291667,
+            "selective_accuracy": 1,
+            "risk": 0
+          },
+          {
+            "minimum_confidence": 0.9,
+            "coverage": 0.291667,
+            "selective_accuracy": 1,
+            "risk": 0
+          },
+          {
+            "minimum_confidence": 0.95,
+            "coverage": 0.291667,
+            "selective_accuracy": 1,
+            "risk": 0
+          },
+          {
+            "minimum_confidence": 0.97,
+            "coverage": 0.208333,
+            "selective_accuracy": 1,
+            "risk": 0
+          },
+          {
+            "minimum_confidence": 0.99,
+            "coverage": 0.141667,
+            "selective_accuracy": 1,
+            "risk": 0
+          }
+        ],
+        "accepted_rule_precision": 1,
+        "tool_evidence_conflict_rate": 0,
+        "text_egress_share": 0,
+        "small_model_calls_per_1000_turns": 0,
+        "small_model_input_tokens": null,
+        "small_model_output_tokens": null,
+        "small_model_cost_usd_per_1000_turns": null,
+        "small_model_cost_percent_of_main_model_spend": null,
+        "classifier_worker_p50_ms": 0.000083,
+        "classifier_worker_p95_ms": 0.000209,
+        "label_ready_p95_ms": 0.000209,
+        "user_visible_added_latency_ms": 0,
+        "persisted_classifier_input_output_content_count": 0
+      },
+      "thresholds": {
+        "primary_macro_f1": {
+          "actual": 0.179906,
+          "requirement": ">= 0.85",
+          "passed": false
+        },
+        "core_label_floor": {
+          "actual": 0,
+          "requirement": "I01-I20 each >= 0.75",
+          "passed": false
+        },
+        "no_action_precision": {
+          "actual": 1,
+          "requirement": ">= 0.90",
+          "passed": true
+        },
+        "unknown_precision": {
+          "actual": 0.105263,
+          "requirement": ">= 0.90",
+          "passed": false
+        },
+        "multi_goal_micro_f1": {
+          "actual": 0,
+          "requirement": ">= 0.80",
+          "passed": false
+        },
+        "multi_goal_exact_set_accuracy": {
+          "actual": 0,
+          "requirement": ">= 0.70",
+          "passed": false
+        },
+        "selective_accuracy_at_coverage": {
+          "actual": 1,
+          "requirement": "accuracy >= 0.90 at coverage >= 0.80",
+          "passed": false
+        },
+        "expected_calibration_error": {
+          "actual": 0.353417,
+          "requirement": "<= 0.05",
+          "passed": false
+        },
+        "tool_trace_accepted_rule_precision": {
+          "actual": 1,
+          "requirement": ">= 0.97",
+          "passed": true
+        },
+        "user_visible_added_latency_ms": {
+          "actual": 0,
+          "requirement": "= 0",
+          "passed": true
+        },
+        "label_ready_p95_ms": {
+          "actual": 0.000209,
+          "requirement": "<= 5000",
+          "passed": true
+        },
+        "persisted_classifier_content": {
+          "actual": 0,
+          "requirement": "= 0",
+          "passed": true
+        },
+        "all_passed": false
+      },
+      "slices": {
+        "language": {
+          "en": {
+            "examples": 270,
+            "primary_accuracy": 0.248148,
+            "primary_macro_f1": 0.135303,
+            "coverage": 0.248148,
+            "selective_accuracy": 1,
+            "per_label": {
+              "task.create": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.find_list": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.read_detail": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.update_fields": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.change_state": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.collaborate": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.delete": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "project_schema.manage": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "recurring.manage": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "deferred.manage": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "memory_memo.write": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "memory_memo.find": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "attachment.manage": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "web.retrieve": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "identity_participant.manage": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "coding.start_review": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "coding.monitor_control": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "coding.continue_publish": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "configuration_permissions": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "help_context": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "no_action": {
+                "support": 30,
+                "predicted": 27,
+                "true_positive": 27,
+                "precision": 1,
+                "recall": 0.9,
+                "f1": 0.947368
+              },
+              "unknown": {
+                "support": 20,
+                "predicted": 223,
+                "true_positive": 20,
+                "precision": 0.089686,
+                "recall": 1,
+                "f1": 0.164609
+              },
+              "multi_goal": {
+                "support": 20,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              }
+            }
+          },
+          "mixed": {
+            "examples": 50,
+            "primary_accuracy": 0.8,
+            "primary_macro_f1": 0.173913,
+            "coverage": 0.8,
+            "selective_accuracy": 1,
+            "per_label": {
+              "task.create": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.find_list": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.read_detail": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.update_fields": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.change_state": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.collaborate": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.delete": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "project_schema.manage": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "recurring.manage": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "deferred.manage": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "memory_memo.write": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "memory_memo.find": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "attachment.manage": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "web.retrieve": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "identity_participant.manage": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "coding.start_review": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "coding.monitor_control": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.continue_publish": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "configuration_permissions": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "help_context": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "no_action": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "unknown": {
+                "support": 0,
+                "predicted": 10,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "multi_goal": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              }
+            }
+          },
+          "ru": {
+            "examples": 280,
+            "primary_accuracy": 0.242857,
+            "primary_macro_f1": 0.137737,
+            "coverage": 0.242857,
+            "selective_accuracy": 1,
+            "per_label": {
+              "task.create": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.find_list": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.read_detail": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.update_fields": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.change_state": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.collaborate": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.delete": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "project_schema.manage": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "recurring.manage": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "deferred.manage": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "memory_memo.write": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "memory_memo.find": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "attachment.manage": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "web.retrieve": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "identity_participant.manage": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "coding.start_review": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "coding.monitor_control": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "coding.continue_publish": {
+                "support": 10,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "configuration_permissions": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "help_context": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "no_action": {
+                "support": 20,
+                "predicted": 18,
+                "true_positive": 18,
+                "precision": 1,
+                "recall": 0.9,
+                "f1": 0.947368
+              },
+              "unknown": {
+                "support": 30,
+                "predicted": 242,
+                "true_positive": 30,
+                "precision": 0.123967,
+                "recall": 1,
+                "f1": 0.220588
+              },
+              "multi_goal": {
+                "support": 30,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              }
+            }
+          }
+        },
+        "context_type": {
+          "dm": {
+            "examples": 399,
+            "primary_accuracy": 0.290727,
+            "primary_macro_f1": 0.179396,
+            "coverage": 0.290727,
+            "selective_accuracy": 1,
+            "per_label": {
+              "task.create": {
+                "support": 13,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.find_list": {
+                "support": 13,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.read_detail": {
+                "support": 14,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.update_fields": {
+                "support": 13,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.change_state": {
+                "support": 13,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.collaborate": {
+                "support": 14,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.delete": {
+                "support": 13,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "project_schema.manage": {
+                "support": 13,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "recurring.manage": {
+                "support": 14,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "deferred.manage": {
+                "support": 13,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "memory_memo.write": {
+                "support": 13,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "memory_memo.find": {
+                "support": 14,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "attachment.manage": {
+                "support": 13,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "web.retrieve": {
+                "support": 13,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "identity_participant.manage": {
+                "support": 14,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "coding.start_review": {
+                "support": 13,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "coding.monitor_control": {
+                "support": 19,
+                "predicted": 6,
+                "true_positive": 6,
+                "precision": 1,
+                "recall": 0.315789,
+                "f1": 0.48
+              },
+              "coding.continue_publish": {
+                "support": 21,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 0.333333,
+                "f1": 0.5
+              },
+              "configuration_permissions": {
+                "support": 20,
+                "predicted": 20,
+                "true_positive": 20,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "help_context": {
+                "support": 19,
+                "predicted": 19,
+                "true_positive": 19,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "no_action": {
+                "support": 33,
+                "predicted": 30,
+                "true_positive": 30,
+                "precision": 1,
+                "recall": 0.909091,
+                "f1": 0.952381
+              },
+              "unknown": {
+                "support": 34,
+                "predicted": 317,
+                "true_positive": 34,
+                "precision": 0.107256,
+                "recall": 1,
+                "f1": 0.193732
+              },
+              "multi_goal": {
+                "support": 40,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              }
+            }
+          },
+          "group": {
+            "examples": 201,
+            "primary_accuracy": 0.293532,
+            "primary_macro_f1": 0.180641,
+            "coverage": 0.293532,
+            "selective_accuracy": 1,
+            "per_label": {
+              "task.create": {
+                "support": 7,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.find_list": {
+                "support": 7,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.read_detail": {
+                "support": 6,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.update_fields": {
+                "support": 7,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.change_state": {
+                "support": 7,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.collaborate": {
+                "support": 6,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.delete": {
+                "support": 7,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "project_schema.manage": {
+                "support": 7,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "recurring.manage": {
+                "support": 6,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "deferred.manage": {
+                "support": 7,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "memory_memo.write": {
+                "support": 7,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "memory_memo.find": {
+                "support": 6,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "attachment.manage": {
+                "support": 7,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "web.retrieve": {
+                "support": 7,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "identity_participant.manage": {
+                "support": 6,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "coding.start_review": {
+                "support": 7,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "coding.monitor_control": {
+                "support": 11,
+                "predicted": 4,
+                "true_positive": 4,
+                "precision": 1,
+                "recall": 0.363636,
+                "f1": 0.533333
+              },
+              "coding.continue_publish": {
+                "support": 9,
+                "predicted": 3,
+                "true_positive": 3,
+                "precision": 1,
+                "recall": 0.333333,
+                "f1": 0.5
+              },
+              "configuration_permissions": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "help_context": {
+                "support": 11,
+                "predicted": 11,
+                "true_positive": 11,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "no_action": {
+                "support": 17,
+                "predicted": 15,
+                "true_positive": 15,
+                "precision": 1,
+                "recall": 0.882353,
+                "f1": 0.9375
+              },
+              "unknown": {
+                "support": 16,
+                "predicted": 158,
+                "true_positive": 16,
+                "precision": 0.101266,
+                "recall": 1,
+                "f1": 0.183908
+              },
+              "multi_goal": {
+                "support": 20,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    "hybrid_v1": {
+      "execution_status": "EXECUTED",
+      "qualification_status": "QUALIFIED_ON_SYNTHETIC_TEST",
+      "metrics": {
+        "examples": 600,
+        "primary_accuracy": 0.991667,
+        "primary_macro_f1": 0.995641,
+        "coverage": 0.991667,
+        "selective_accuracy": 1,
+        "per_label": {
+          "task.create": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "task.find_list": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "task.read_detail": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "task.update_fields": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "task.change_state": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "task.collaborate": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "task.delete": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "project_schema.manage": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "recurring.manage": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "deferred.manage": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "memory_memo.write": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "memory_memo.find": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "attachment.manage": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "web.retrieve": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "identity_participant.manage": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "coding.start_review": {
+            "support": 20,
+            "predicted": 20,
+            "true_positive": 20,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "coding.monitor_control": {
+            "support": 30,
+            "predicted": 30,
+            "true_positive": 30,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "coding.continue_publish": {
+            "support": 30,
+            "predicted": 30,
+            "true_positive": 30,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "configuration_permissions": {
+            "support": 30,
+            "predicted": 30,
+            "true_positive": 30,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "help_context": {
+            "support": 30,
+            "predicted": 30,
+            "true_positive": 30,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          },
+          "no_action": {
+            "support": 50,
+            "predicted": 45,
+            "true_positive": 45,
+            "precision": 1,
+            "recall": 0.9,
+            "f1": 0.947368
+          },
+          "unknown": {
+            "support": 50,
+            "predicted": 55,
+            "true_positive": 50,
+            "precision": 0.909091,
+            "recall": 1,
+            "f1": 0.952381
+          },
+          "multi_goal": {
+            "support": 60,
+            "predicted": 60,
+            "true_positive": 60,
+            "precision": 1,
+            "recall": 1,
+            "f1": 1
+          }
+        },
+        "multi_goal_exact_set_accuracy": 1,
+        "multi_goal_micro_f1": 1,
+        "multi_goal_macro_f1": 1,
+        "multi_goal_examples": 60,
+        "no_action_precision": 1,
+        "unknown_precision": 0.909091,
+        "expected_calibration_error_10_equal_frequency_bins": 0.010417,
+        "brier_score": 0.010501,
+        "risk_coverage": [
+          {
+            "minimum_confidence": 0.5,
+            "coverage": 0.991667,
+            "selective_accuracy": 1,
+            "risk": 0
+          },
+          {
+            "minimum_confidence": 0.7,
+            "coverage": 0.991667,
+            "selective_accuracy": 1,
+            "risk": 0
+          },
+          {
+            "minimum_confidence": 0.85,
+            "coverage": 0.991667,
+            "selective_accuracy": 1,
+            "risk": 0
+          },
+          {
+            "minimum_confidence": 0.9,
+            "coverage": 0.991667,
+            "selective_accuracy": 1,
+            "risk": 0
+          },
+          {
+            "minimum_confidence": 0.95,
+            "coverage": 0.991667,
+            "selective_accuracy": 1,
+            "risk": 0
+          },
+          {
+            "minimum_confidence": 0.97,
+            "coverage": 0.908333,
+            "selective_accuracy": 1,
+            "risk": 0
+          },
+          {
+            "minimum_confidence": 0.99,
+            "coverage": 0.841667,
+            "selective_accuracy": 1,
+            "risk": 0
+          }
+        ],
+        "accepted_rule_precision": 1,
+        "tool_evidence_conflict_rate": 0,
+        "text_egress_share": 0,
+        "small_model_calls_per_1000_turns": 0,
+        "small_model_input_tokens": null,
+        "small_model_output_tokens": null,
+        "small_model_cost_usd_per_1000_turns": null,
+        "small_model_cost_percent_of_main_model_spend": null,
+        "classifier_worker_p50_ms": 0.000125,
+        "classifier_worker_p95_ms": 0.00025,
+        "label_ready_p95_ms": 0.00025,
+        "user_visible_added_latency_ms": 0,
+        "persisted_classifier_input_output_content_count": 0
+      },
+      "thresholds": {
+        "primary_macro_f1": {
+          "actual": 0.995641,
+          "requirement": ">= 0.85",
+          "passed": true
+        },
+        "core_label_floor": {
+          "actual": 1,
+          "requirement": "I01-I20 each >= 0.75",
+          "passed": true
+        },
+        "no_action_precision": {
+          "actual": 1,
+          "requirement": ">= 0.90",
+          "passed": true
+        },
+        "unknown_precision": {
+          "actual": 0.909091,
+          "requirement": ">= 0.90",
+          "passed": true
+        },
+        "multi_goal_micro_f1": {
+          "actual": 1,
+          "requirement": ">= 0.80",
+          "passed": true
+        },
+        "multi_goal_exact_set_accuracy": {
+          "actual": 1,
+          "requirement": ">= 0.70",
+          "passed": true
+        },
+        "selective_accuracy_at_coverage": {
+          "actual": 1,
+          "requirement": "accuracy >= 0.90 at coverage >= 0.80",
+          "passed": true
+        },
+        "expected_calibration_error": {
+          "actual": 0.010417,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        "tool_trace_accepted_rule_precision": {
+          "actual": 1,
+          "requirement": ">= 0.97",
+          "passed": true
+        },
+        "user_visible_added_latency_ms": {
+          "actual": 0,
+          "requirement": "= 0",
+          "passed": true
+        },
+        "label_ready_p95_ms": {
+          "actual": 0.00025,
+          "requirement": "<= 5000",
+          "passed": true
+        },
+        "persisted_classifier_content": {
+          "actual": 0,
+          "requirement": "= 0",
+          "passed": true
+        },
+        "all_passed": true
+      },
+      "slices": {
+        "language": {
+          "en": {
+            "examples": 270,
+            "primary_accuracy": 0.988889,
+            "primary_macro_f1": 0.994678,
+            "coverage": 0.988889,
+            "selective_accuracy": 1,
+            "per_label": {
+              "task.create": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.find_list": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.read_detail": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.update_fields": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.change_state": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.collaborate": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.delete": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "project_schema.manage": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "recurring.manage": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "deferred.manage": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "memory_memo.write": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "memory_memo.find": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "attachment.manage": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "web.retrieve": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "identity_participant.manage": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.start_review": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.monitor_control": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.continue_publish": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "configuration_permissions": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "help_context": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "no_action": {
+                "support": 30,
+                "predicted": 27,
+                "true_positive": 27,
+                "precision": 1,
+                "recall": 0.9,
+                "f1": 0.947368
+              },
+              "unknown": {
+                "support": 20,
+                "predicted": 23,
+                "true_positive": 20,
+                "precision": 0.869565,
+                "recall": 1,
+                "f1": 0.930233
+              },
+              "multi_goal": {
+                "support": 20,
+                "predicted": 20,
+                "true_positive": 20,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              }
+            }
+          },
+          "mixed": {
+            "examples": 50,
+            "primary_accuracy": 1,
+            "primary_macro_f1": 0.217391,
+            "coverage": 1,
+            "selective_accuracy": 1,
+            "per_label": {
+              "task.create": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.find_list": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.read_detail": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.update_fields": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.change_state": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.collaborate": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "task.delete": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "project_schema.manage": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "recurring.manage": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "deferred.manage": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "memory_memo.write": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "memory_memo.find": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "attachment.manage": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "web.retrieve": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "identity_participant.manage": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "coding.start_review": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "coding.monitor_control": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.continue_publish": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "configuration_permissions": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "help_context": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "no_action": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "unknown": {
+                "support": 0,
+                "predicted": 0,
+                "true_positive": 0,
+                "precision": 0,
+                "recall": 0,
+                "f1": 0
+              },
+              "multi_goal": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              }
+            }
+          },
+          "ru": {
+            "examples": 280,
+            "primary_accuracy": 0.992857,
+            "primary_macro_f1": 0.996309,
+            "coverage": 0.992857,
+            "selective_accuracy": 1,
+            "per_label": {
+              "task.create": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.find_list": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.read_detail": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.update_fields": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.change_state": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.collaborate": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.delete": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "project_schema.manage": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "recurring.manage": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "deferred.manage": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "memory_memo.write": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "memory_memo.find": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "attachment.manage": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "web.retrieve": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "identity_participant.manage": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.start_review": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.monitor_control": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.continue_publish": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "configuration_permissions": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "help_context": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "no_action": {
+                "support": 20,
+                "predicted": 18,
+                "true_positive": 18,
+                "precision": 1,
+                "recall": 0.9,
+                "f1": 0.947368
+              },
+              "unknown": {
+                "support": 30,
+                "predicted": 32,
+                "true_positive": 30,
+                "precision": 0.9375,
+                "recall": 1,
+                "f1": 0.967742
+              },
+              "multi_goal": {
+                "support": 30,
+                "predicted": 30,
+                "true_positive": 30,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              }
+            }
+          }
+        },
+        "context_type": {
+          "dm": {
+            "examples": 399,
+            "primary_accuracy": 0.992481,
+            "primary_macro_f1": 0.996092,
+            "coverage": 0.992481,
+            "selective_accuracy": 1,
+            "per_label": {
+              "task.create": {
+                "support": 13,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.find_list": {
+                "support": 13,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.read_detail": {
+                "support": 14,
+                "predicted": 14,
+                "true_positive": 14,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.update_fields": {
+                "support": 13,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.change_state": {
+                "support": 13,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.collaborate": {
+                "support": 14,
+                "predicted": 14,
+                "true_positive": 14,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.delete": {
+                "support": 13,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "project_schema.manage": {
+                "support": 13,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "recurring.manage": {
+                "support": 14,
+                "predicted": 14,
+                "true_positive": 14,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "deferred.manage": {
+                "support": 13,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "memory_memo.write": {
+                "support": 13,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "memory_memo.find": {
+                "support": 14,
+                "predicted": 14,
+                "true_positive": 14,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "attachment.manage": {
+                "support": 13,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "web.retrieve": {
+                "support": 13,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "identity_participant.manage": {
+                "support": 14,
+                "predicted": 14,
+                "true_positive": 14,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.start_review": {
+                "support": 13,
+                "predicted": 13,
+                "true_positive": 13,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.monitor_control": {
+                "support": 19,
+                "predicted": 19,
+                "true_positive": 19,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.continue_publish": {
+                "support": 21,
+                "predicted": 21,
+                "true_positive": 21,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "configuration_permissions": {
+                "support": 20,
+                "predicted": 20,
+                "true_positive": 20,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "help_context": {
+                "support": 19,
+                "predicted": 19,
+                "true_positive": 19,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "no_action": {
+                "support": 33,
+                "predicted": 30,
+                "true_positive": 30,
+                "precision": 1,
+                "recall": 0.909091,
+                "f1": 0.952381
+              },
+              "unknown": {
+                "support": 34,
+                "predicted": 37,
+                "true_positive": 34,
+                "precision": 0.918919,
+                "recall": 1,
+                "f1": 0.957746
+              },
+              "multi_goal": {
+                "support": 40,
+                "predicted": 40,
+                "true_positive": 40,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              }
+            }
+          },
+          "group": {
+            "examples": 201,
+            "primary_accuracy": 0.99005,
+            "primary_macro_f1": 0.994725,
+            "coverage": 0.99005,
+            "selective_accuracy": 1,
+            "per_label": {
+              "task.create": {
+                "support": 7,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.find_list": {
+                "support": 7,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.read_detail": {
+                "support": 6,
+                "predicted": 6,
+                "true_positive": 6,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.update_fields": {
+                "support": 7,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.change_state": {
+                "support": 7,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.collaborate": {
+                "support": 6,
+                "predicted": 6,
+                "true_positive": 6,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "task.delete": {
+                "support": 7,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "project_schema.manage": {
+                "support": 7,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "recurring.manage": {
+                "support": 6,
+                "predicted": 6,
+                "true_positive": 6,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "deferred.manage": {
+                "support": 7,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "memory_memo.write": {
+                "support": 7,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "memory_memo.find": {
+                "support": 6,
+                "predicted": 6,
+                "true_positive": 6,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "attachment.manage": {
+                "support": 7,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "web.retrieve": {
+                "support": 7,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "identity_participant.manage": {
+                "support": 6,
+                "predicted": 6,
+                "true_positive": 6,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.start_review": {
+                "support": 7,
+                "predicted": 7,
+                "true_positive": 7,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.monitor_control": {
+                "support": 11,
+                "predicted": 11,
+                "true_positive": 11,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "coding.continue_publish": {
+                "support": 9,
+                "predicted": 9,
+                "true_positive": 9,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "configuration_permissions": {
+                "support": 10,
+                "predicted": 10,
+                "true_positive": 10,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "help_context": {
+                "support": 11,
+                "predicted": 11,
+                "true_positive": 11,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              },
+              "no_action": {
+                "support": 17,
+                "predicted": 15,
+                "true_positive": 15,
+                "precision": 1,
+                "recall": 0.882353,
+                "f1": 0.9375
+              },
+              "unknown": {
+                "support": 16,
+                "predicted": 18,
+                "true_positive": 16,
+                "precision": 0.888889,
+                "recall": 1,
+                "f1": 0.941176
+              },
+              "multi_goal": {
+                "support": 20,
+                "predicted": 20,
+                "true_positive": 20,
+                "precision": 1,
+                "recall": 1,
+                "f1": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "small_model_v1": {
+      "execution_status": "NOT_EXECUTED",
+      "qualification_status": "NOT_QUALIFIED",
+      "reason_codes": [
+        "NO_APPROVED_PROCESSOR_ENDPOINT",
+        "NO_APPROVED_API_KEY",
+        "NO_APPROVED_MODEL",
+        "NO_COST_OR_LATENCY_EVIDENCE"
+      ],
+      "calls": 0,
+      "measurements": {
+        "tokens": null,
+        "cost_usd_per_1000_turns": null,
+        "worker_p50_ms": null,
+        "worker_p95_ms": null,
+        "label_ready_p95_ms": null,
+        "user_visible_added_latency_ms": 0,
+        "persisted_classifier_input_output_content_count": 0
+      }
+    }
+  },
+  "recommendation": {
+    "selected": "hybrid_v1_without_small_model",
+    "decision": "ADVANCE_DETERMINISTIC_A_PLUS_B",
+    "scope": "synthetic_research_candidate_only",
+    "small_model": "KEEP_OFF",
+    "production_qualification": "PENDING_INDEPENDENT_HUMAN_ADJUDICATION_AND_OPT_IN_VALIDATION",
+    "rationale": "A+B met every numeric threshold on the sealed synthetic split with zero text egress and zero reply-path latency; C has no approved execution evidence."
+  }
+}

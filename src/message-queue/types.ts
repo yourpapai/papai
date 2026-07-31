@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { AuthorizedTurnSeed } from '../analytics/bot-observer.js'
 import type { ActorRole, ContextType, ReplyFn } from '../chat/types.js'
 import type { MessageSegment } from '../message-edit/segments.js'
 
@@ -13,6 +14,13 @@ type QueueContextInfo = Readonly<{
 type QueueConfigContextInfo = Partial<
   Readonly<{
     configContextId: string | undefined
+  }>
+>
+
+type QueueAnalyticsInfo = Partial<
+  Readonly<{
+    /** In-memory only; the raw source context and source event ID never leave the process. */
+    analyticsTurnSeed: AuthorizedTurnSeed
   }>
 >
 
@@ -27,7 +35,8 @@ export type QueueItem = Readonly<{
   messageId?: string
 }> &
   QueueContextInfo &
-  QueueConfigContextInfo
+  QueueConfigContextInfo &
+  QueueAnalyticsInfo
 
 export type CoalescedItem = Readonly<{
   text: string
@@ -43,4 +52,5 @@ export type CoalescedItem = Readonly<{
   segments: readonly MessageSegment[]
 }> &
   QueueContextInfo &
-  QueueConfigContextInfo
+  QueueConfigContextInfo &
+  QueueAnalyticsInfo

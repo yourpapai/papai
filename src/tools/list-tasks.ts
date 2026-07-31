@@ -12,6 +12,7 @@ import { getConfig } from '../config.js'
 import { resolveMeReference } from '../identity/resolver.js'
 import { logger } from '../logger.js'
 import type { ListTasksParams, TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:list-tasks' })
 
@@ -89,7 +90,7 @@ export function makeListTasksTool(provider: TaskProvider, userId?: string, stora
 
         const normalizedParams = provider.normalizeListTaskParams(resolvedParams)
         const tasks = await provider.listTasks(projectId, normalizedParams)
-        log.info({ projectId, taskCount: tasks.length, filters: rest }, 'Tasks listed via tool')
+        log.info({ taskCount: tasks.length }, 'Tasks listed via tool')
         // Timezone is stored under the (thread-stripped) config-context id; storageContextId may
         // be thread-scoped in a group thread, so strip it before the lookup (DM/non-thread: no-op).
         // Falls back to userId, then UTC.
@@ -103,14 +104,7 @@ export function makeListTasksTool(provider: TaskProvider, userId?: string, stora
           dueDate: provider.formatDueDateOutput(task.dueDate, timezone),
         }))
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            projectId,
-            tool: 'list_tasks',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('list_tasks', error), 'Tool execution failed')
         throw error
       }
     },

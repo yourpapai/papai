@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto'
 
 import type { ModelMessage } from 'ai'
 
+import { observeActiveFeatureUsed } from '../analytics/feature-observer.js'
 import { hasThreadContextId } from '../chat/scoped-context.js'
 import type { ActorRole, ContextType } from '../chat/types.js'
 import { getEmbeddingForContext } from '../embeddings.js'
@@ -114,6 +115,7 @@ export async function runMemoryCapture(
       configContextId: input.configContextId,
     })
   } catch (error) {
+    observeActiveFeatureUsed({ feature: 'memory_write', operation: 'update', outcome: 'failure' })
     log.warn(
       { contextId: input.storageContextId, error: error instanceof Error ? error.message : String(error) },
       'Capture extraction failed',
@@ -132,5 +134,6 @@ export async function runMemoryCapture(
   )
 
   markExtracted(input.storageContextId, input.history.length, now)
+  observeActiveFeatureUsed({ feature: 'memory_write', operation: 'update', outcome: 'success' })
   log.debug({ contextId: input.storageContextId, captured: patch.records.length }, 'Memory capture complete')
 }

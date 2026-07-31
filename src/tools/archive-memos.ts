@@ -29,7 +29,7 @@ export function makeArchiveMemosTool(userId: string): Tool {
       confidence: confidenceField,
     }),
     execute: ({ tag, beforeDate, memoIds, confidence }) => {
-      log.debug({ userId, tag, beforeDate, memoIdCount: memoIds?.length, confidence }, 'archive_memos called')
+      log.debug({ memoIdCount: memoIds?.length, confidence }, 'archive_memos called')
 
       const filterCount =
         (tag === undefined ? 0 : 1) +
@@ -37,7 +37,7 @@ export function makeArchiveMemosTool(userId: string): Tool {
         (memoIds === undefined || memoIds.length === 0 ? 0 : 1)
 
       if (filterCount === 0) {
-        log.warn({ userId }, 'archive_memos rejected — no filter provided')
+        log.warn('archive_memos rejected — no filter provided')
         return {
           status: 'error',
           message: 'Exactly one filter (tag, beforeDate, or memoIds) is required.',
@@ -45,7 +45,7 @@ export function makeArchiveMemosTool(userId: string): Tool {
       }
 
       if (filterCount > 1) {
-        log.warn({ userId, tag, beforeDate, memoIdCount: memoIds?.length }, 'archive_memos rejected — multiple filters')
+        log.warn({ memoIdCount: memoIds?.length }, 'archive_memos rejected — multiple filters')
         return {
           status: 'error',
           message: 'Exactly one filter (tag, beforeDate, or memoIds) must be provided.',
@@ -56,13 +56,13 @@ export function makeArchiveMemosTool(userId: string): Tool {
       if (!isIdBased) {
         const gate = checkConfidence(confidence, buildDescription(tag, beforeDate, memoIds))
         if (gate !== null) {
-          log.warn({ userId, confidence }, 'archive_memos blocked — confirmation required')
+          log.warn({ confidence }, 'archive_memos blocked — confirmation required')
           return gate
         }
       }
 
       const count = archiveMemos(userId, { tag, beforeDate, memoIds })
-      log.info({ userId, count, tag, beforeDate }, 'Memos archived via tool')
+      log.info({ count }, 'Memos archived via tool')
       return { status: 'archived', count }
     },
   })

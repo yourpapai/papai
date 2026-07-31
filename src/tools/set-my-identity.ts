@@ -12,6 +12,7 @@ import { setIdentityMapping as defaultSetIdentityMapping, type IdentityMappingDe
 import { extractIdentityClaim } from '../identity/nl-detection.js'
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolErrorClass } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:set-my-identity' })
 
@@ -31,7 +32,7 @@ interface SuccessResult {
 
 function validateResolver(provider: TaskProvider): ErrorResult | null {
   if (provider.identityResolver === undefined) {
-    log.warn({ providerName: provider.name }, 'Provider has no identity resolver')
+    log.warn('Provider has no identity resolver')
     return {
       status: 'error',
       message: 'Identity resolution not supported for this provider.',
@@ -43,7 +44,7 @@ function validateResolver(provider: TaskProvider): ErrorResult | null {
 function parseClaim(claim: string): { result: ErrorResult | null; login: string | null } {
   const claimedLogin = extractIdentityClaim(claim)
   if (claimedLogin === null) {
-    log.warn({ claim }, 'Could not extract identity from claim')
+    log.warn('Could not extract identity from claim')
     return {
       result: {
         status: 'error',
@@ -106,7 +107,7 @@ function storeIdentity(
     confidence: 100,
   })
 
-  log.info({ chatUserId, login: matched.login }, 'Identity set via NL')
+  log.info('Identity set via NL')
   return {
     status: 'success',
     message: `Linked you to ${matched.login} (${matched.name ?? matched.login}) in ${providerName}.`,
@@ -132,7 +133,7 @@ async function executeSetMyIdentity(
   claim: string,
   deps: SetMyIdentityDeps,
 ): Promise<ErrorResult | SuccessResult> {
-  log.debug({ chatUserId, claim }, 'set_my_identity called')
+  log.debug('set_my_identity called')
 
   const resolverError = validateResolver(provider)
   if (resolverError !== null) return resolverError
@@ -146,7 +147,7 @@ async function executeSetMyIdentity(
     const matched = await findUser(resolver, login, provider.name)
 
     if (matched === null) {
-      log.warn({ claimedLogin: login }, 'User not found in provider')
+      log.warn('User not found in provider')
       return {
         status: 'error',
         message: `I couldn't find user '${login}' in ${provider.name}. Check the username and try again.`,
@@ -157,14 +158,7 @@ async function executeSetMyIdentity(
       deps.setIdentityMapping(params, deps)
     })
   } catch (error) {
-    log.error(
-      {
-        error: error instanceof Error ? error.message : String(error),
-        chatUserId,
-        claimedLogin: login,
-      },
-      'Failed to set identity',
-    )
+    log.error({ errorClass: toolErrorClass(error) }, 'Failed to set identity')
     return {
       status: 'error',
       message: 'Failed to set identity. Please try again.',

@@ -23,7 +23,7 @@ export function makeSaveInstructionTool(contextId: string): Tool {
       log.debug({ contextId }, 'save_instruction tool called')
       const result = saveInstruction(contextId, text)
       if (result.status === 'saved') {
-        log.info({ contextId, id: result.instruction.id }, 'Instruction saved via tool')
+        log.info({ contextId }, 'Instruction saved via tool')
       }
       return result
     },
@@ -51,9 +51,9 @@ export function makeDeleteInstructionTool(contextId: string): Tool {
       id: z.string().describe('The instruction ID to delete'),
     }),
     execute: ({ id }) => {
-      log.debug({ contextId, id }, 'delete_instruction tool called')
+      log.debug({ contextId }, 'delete_instruction tool called')
       const result = deleteInstruction(contextId, id)
-      log.info({ contextId, id, status: result.status }, 'delete_instruction completed')
+      log.info({ contextId, status: result.status }, 'delete_instruction completed')
       return result
     },
   })

@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:remove-comment' })
 
@@ -23,15 +24,7 @@ export function makeRemoveCommentTool(provider: TaskProvider): Tool {
       try {
         return await provider.removeComment!({ taskId, commentId })
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            commentId,
-            tool: 'remove_comment',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('remove_comment', error), 'Tool execution failed')
         throw error
       }
     },

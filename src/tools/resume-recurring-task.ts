@@ -14,6 +14,7 @@ import type { ResumeResult } from '../recurring.js'
 import { createMissedTasks as defaultCreateMissedTasks } from '../scheduler.js'
 import type { RecurringTaskRecord } from '../types/recurring.js'
 import { utcToLocal } from '../utils/datetime.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:resume-recurring-task' })
 
@@ -47,11 +48,11 @@ const describeSchedule = (record: RecurringTaskRecord): string => {
 
 async function executeResume(input: Input, deps: ResumeRecurringTaskDeps): Promise<unknown> {
   const { recurringTaskId, createMissed } = input
-  log.debug({ recurringTaskId, createMissed }, 'Resuming recurring task')
+  log.debug({ createMissed }, 'Resuming recurring task')
   const result = deps.resumeRecurringTask(recurringTaskId, createMissed ?? false)
 
   if (result === null) {
-    log.warn({ recurringTaskId }, 'Recurring task not found for resume')
+    log.warn('Recurring task not found for resume')
     return { error: 'Recurring task not found' }
   }
 
@@ -60,10 +61,7 @@ async function executeResume(input: Input, deps: ResumeRecurringTaskDeps): Promi
 
   const schedule = describeSchedule(record)
 
-  log.info(
-    { id: record.id, title: record.title, createMissed, missedCreated: createdCount },
-    'Recurring task resumed via tool',
-  )
+  log.info({ createMissed, missedCreated: createdCount }, 'Recurring task resumed via tool')
   return {
     id: record.id,
     title: record.title,
@@ -83,13 +81,7 @@ export function makeResumeRecurringTaskTool(deps: ResumeRecurringTaskDeps = defa
       try {
         return await executeResume(input, deps)
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            tool: 'resume_recurring_task',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('resume_recurring_task', error), 'Tool execution failed')
         throw error
       }
     },

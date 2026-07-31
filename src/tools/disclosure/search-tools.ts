@@ -57,7 +57,10 @@ export function makeSearchToolsTool(
         return { results, hint }
       } catch (error) {
         const failure = buildToolFailureResult(error, 'search_tools', opts?.toolCallId ?? '')
-        log.error({ contextId, tool: 'search_tools', error: failure.error }, 'search_tools execution failed')
+        log.error(
+          { contextId, tool: 'search_tools', errorType: failure.errorType, errorCode: failure.errorCode },
+          'search_tools execution failed',
+        )
         return failure
       }
     },

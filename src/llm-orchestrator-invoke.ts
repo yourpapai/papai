@@ -3,9 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { createTtftClock, wrapModelForTtft } from './analytics/performance-clocks.js'
 import type { ReplyFn } from './chat/types.js'
 import { hoistSystemMessages } from './llm-message-utils.js'
 import { emitLlmEnd, emitLlmStart } from './llm-orchestrator-events.js'
+import type { LlmAttemptAnalytics } from './llm-orchestrator-events.js'
 import { buildToolCallFinishHandler, buildToolCallStartHandler } from './llm-orchestrator-tool-events.js'
 import type { GenerateArgs, InvokeModelArgs, LlmOrchestratorDeps, ToolCallContext } from './llm-orchestrator-types.js'
 import { logger } from './logger.js'
@@ -17,6 +19,7 @@ import { createStopRequestedCondition } from './run-control/stop-condition.js'
 import { RunAbortedError } from './run-control/types.js'
 import { buildProviderlessSystemPrompt, buildSystemPrompt } from './system-prompt.js'
 import { createDisclosurePrepareStep } from './tools/disclosure/prepare-step.js'
+import { buildToolsContextRecord } from './tools/wrap-tool-execution.js'
 
 // Re-exported for existing importers/tests that reach these through this module.
 export {
@@ -36,6 +39,40 @@ const log = logger.child({ scope: 'llm-orchestrator:invoke' })
  */
 const AGENT_MAX_STEPS = 50
 
+/**
+ * Per-turn LLM attempt ordinals. One turn may drive several outbound attempts
+ * (retries, follow-up invocations); the ordinal is the controlled field that
+ * keeps each attempt's start/terminal identity distinct downstream. Bounded so
+ * a long-lived process cannot accumulate unbounded turn entries.
+ */
+const MAX_TRACKED_TURNS = 4096
+const attemptOrdinals = new Map<string, number>()
+
+const nextAttemptOrdinal = (turnId: string): number => {
+  const ordinal = (attemptOrdinals.get(turnId) ?? -1) + 1
+  attemptOrdinals.delete(turnId)
+  attemptOrdinals.set(turnId, ordinal)
+  if (attemptOrdinals.size > MAX_TRACKED_TURNS) {
+    const oldest = attemptOrdinals.keys().next().value
+    if (oldest !== undefined) attemptOrdinals.delete(oldest)
+  }
+  return ordinal
+}
+
+/**
+ * Reads the current attempt ordinal for a turn without consuming the next one,
+ * so terminal failure reporting can reference the attempt that actually ran.
+ * Returns null when no attempt has started yet (failure during resolution).
+ */
+export const peekAttemptOrdinal = (turnId: string): number | null => attemptOrdinals.get(turnId) ?? null
+
+/** Controlled analytics inputs the invoke boundary accepts from its caller. */
+export type LlmInvokeAnalytics = Readonly<{
+  providerBinding?: 'global' | 'byok' | 'mixed'
+}>
+
+type InvokeArgs = InvokeModelArgs & { reply: ReplyFn | undefined; turnId: string; analytics?: LlmInvokeAnalytics }
+
 export const resolveSystemPrompt = (
   args: Pick<InvokeModelArgs, 'provider' | 'contextId' | 'enabledToolNames' | 'disclosure' | 'contextType'>,
 ): string => {
@@ -47,7 +84,7 @@ export const resolveSystemPrompt = (
 }
 
 const callGenerateText = async (a: GenerateArgs): ReturnType<LlmOrchestratorDeps['generateText']> => {
-  const { contextId, turnId, model, systemPrompt, messages, tools, deps, disclosure, ctx } = a
+  const { contextId, turnId, model, systemPrompt, messages, tools, toolsContext, deps, disclosure, ctx } = a
   const run = runRegistry.get(contextId)
   const disclosureStep =
     disclosure === undefined ? undefined : createDisclosurePrepareStep(disclosure, contextId, turnId)
@@ -60,7 +97,12 @@ const callGenerateText = async (a: GenerateArgs): ReturnType<LlmOrchestratorDeps
       : [deps.stepCountIs(AGENT_MAX_STEPS), createNoProgressCondition(), createStopRequestedCondition(run)]
   const finishHandler = buildToolCallFinishHandler(ctx)
   try {
-    return await deps.generateText({
+    // `toolsContext` is keyed by every name in the final ToolSet. The generic
+    // `ToolSet` options type declares `toolsContext?: undefined`; typing the
+    // base options as the full union first lets Object.assign produce an
+    // intersection whose `toolsContext` collapses to `never` — assignable with
+    // no type assertion.
+    const baseOptions: Parameters<LlmOrchestratorDeps['generateText']>[0] = {
       model,
       ...hoistSystemMessages(systemPrompt, messages),
       tools,
@@ -73,7 +115,8 @@ const callGenerateText = async (a: GenerateArgs): ReturnType<LlmOrchestratorDeps
         finishHandler?.(event)
       },
       ...(prepareStep === undefined ? {} : { prepareStep }),
-    })
+    }
+    return await deps.generateText(Object.assign({}, baseOptions, { toolsContext }))
   } catch (error) {
     if (run !== undefined && run.abortController.signal.aborted) {
       log.info({ contextId, turnId }, 'Run force-aborted by user')
@@ -83,9 +126,13 @@ const callGenerateText = async (a: GenerateArgs): ReturnType<LlmOrchestratorDeps
   }
 }
 
-export const invokeModel = async (
-  args: InvokeModelArgs & { reply: ReplyFn | undefined; turnId: string },
-): ReturnType<LlmOrchestratorDeps['generateText']> => {
+const buildAttempt = (args: InvokeArgs): LlmAttemptAnalytics => ({
+  attemptOrdinal: nextAttemptOrdinal(args.turnId),
+  modelRole: 'main',
+  ...(args.analytics?.providerBinding === undefined ? {} : { providerBinding: args.analytics.providerBinding }),
+})
+
+export const invokeModel = async (args: InvokeArgs): ReturnType<LlmOrchestratorDeps['generateText']> => {
   const {
     contextId,
     chatUserId,
@@ -102,7 +149,11 @@ export const invokeModel = async (
   } = args
   const start = Date.now()
   const systemPrompt = resolveSystemPrompt({ provider, contextId, enabledToolNames, disclosure, contextType })
-  emitLlmStart(contextId, mainModel, messages, tools, turnId)
+  const attempt = buildAttempt(args)
+  const ttft = createTtftClock()
+  ttft.start()
+  const timedModel = wrapModelForTtft(model, ttft)
+  emitLlmStart(contextId, mainModel, messages, tools, turnId, attempt)
   const ctx: ToolCallContext = {
     contextId,
     chatUserId,
@@ -116,21 +167,25 @@ export const invokeModel = async (
   const result = await callGenerateText({
     contextId,
     turnId,
-    model,
+    model: timedModel,
     systemPrompt,
     messages,
     tools,
+    toolsContext: buildToolsContextRecord(tools, args.providerRequestScope),
     deps,
     disclosure,
     ctx,
   })
-  emitLlmEnd(contextId, chatUserId, contextType, mainModel, result, start, messages, tools, turnId)
+  emitLlmEnd(contextId, chatUserId, contextType, mainModel, result, start, messages, tools, turnId, {
+    ...attempt,
+    timeToFirstTokenMs: ttft.read(),
+  })
   return result
 }
 
 export const invokeModelWithTyping = (
   reply: ReplyFn,
-  args: InvokeModelArgs & { turnId: string },
+  args: InvokeModelArgs & { turnId: string; analytics?: LlmInvokeAnalytics },
 ): ReturnType<LlmOrchestratorDeps['generateText']> => {
   return withReplyTypingHeartbeat(reply, (typingReply) => invokeModel({ ...args, reply: typingReply }), {
     intervalMs: undefined,

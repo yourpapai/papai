@@ -5,6 +5,7 @@
 
 import { clearCachedConfig, clearCachedToolsByPrefix, getCachedConfig, setCachedConfig } from '../cache.js'
 import { logger } from '../logger.js'
+import { toolErrorClass } from './tool-logging.js'
 import { getToolMetadata, TOOL_DOMAINS, type ToolDomain, type ToolRisk } from './tool-metadata.js'
 
 const log = logger.child({ scope: 'tools:preferences' })
@@ -126,7 +127,7 @@ export function parseToolPrefs(raw: string | null): ToolPrefs {
       toolOverrides: parseToolOverrides(parsed),
     }
   } catch (error) {
-    log.warn({ error: error instanceof Error ? error.message : String(error) }, 'Corrupt tool_prefs; using empty prefs')
+    log.warn({ errorClass: toolErrorClass(error) }, 'Corrupt tool_prefs; using empty prefs')
     return emptyPrefs()
   }
 }

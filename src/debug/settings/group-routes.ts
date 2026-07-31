@@ -6,6 +6,8 @@
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 
+import { getFeatureObserver } from '../../analytics/feature-observer.js'
+import { buildSettingsActorRequestContext } from '../../analytics/provider-scope-factory.js'
 import { getGroupAnnounceSubscribed, setGroupAnnounceSubscribed } from '../../announcements/store.js'
 import {
   getGroupCodingIdentity,
@@ -113,6 +115,20 @@ async function handleGuestModePatch(req: Request, authed: AuthenticatedSettingsR
   if (!outcome.ok) return outcome.response
   setGuestMode(outcome.group.contextId, body.data.enabled)
   log.info({ contextId: outcome.group.contextId, enabled: body.data.enabled }, 'Settings group guest mode updated')
+  if (body.data.enabled) {
+    // A group-setting event performed by the authenticated admin — never a guest actor event.
+    const observer = getFeatureObserver()
+    const requestContext = buildSettingsActorRequestContext({
+      platformInstanceId: authed.principal.platformInstanceId,
+      platformUserId: authed.principal.platformUserId,
+      configContextId: outcome.group.contextId,
+      contextType: 'group',
+      actorRole: authed.principal.isBotAdmin || authed.principal.isSuperAdmin ? 'admin' : 'member',
+    })
+    if (observer !== null && requestContext !== null) {
+      observer.featureUsed(requestContext, { feature: 'guest_mode', operation: 'enable', outcome: 'success' })
+    }
+  }
   return settingsJson(200, { ok: true, contextId: outcome.group.contextId, enabled: body.data.enabled })
 }
 
@@ -217,11 +233,20 @@ async function handleTaskInstancePatch(req: Request, authed: AuthenticatedSettin
     return settingsJson(422, { error: 'inactive task instance' })
   }
   const existing = getContextSettings(outcome.group.contextId)
-  setContextSettings({
-    contextId: outcome.group.contextId,
-    taskInstanceId: body.data.taskInstanceId,
-    platformInstanceId: existing?.platformInstanceId ?? authed.principal.platformInstanceId,
-  })
+  setContextSettings(
+    {
+      contextId: outcome.group.contextId,
+      taskInstanceId: body.data.taskInstanceId,
+      platformInstanceId: existing?.platformInstanceId ?? authed.principal.platformInstanceId,
+    },
+    buildSettingsActorRequestContext({
+      platformInstanceId: authed.principal.platformInstanceId,
+      platformUserId: authed.principal.platformUserId,
+      configContextId: outcome.group.contextId,
+      contextType: 'group',
+      actorRole: authed.principal.isBotAdmin || authed.principal.isSuperAdmin ? 'admin' : 'member',
+    }),
+  )
   log.info(
     { contextId: outcome.group.contextId, taskInstanceId: body.data.taskInstanceId },
     'Settings group task instance set',

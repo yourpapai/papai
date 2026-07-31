@@ -12,6 +12,7 @@ import { describeCompiledRecurrence } from '../recurrence.js'
 import { listRecurringTasks as defaultListRecurringTasks } from '../recurring.js'
 import type { RecurringTaskRecord } from '../types/recurring.js'
 import { utcToLocal } from '../utils/datetime.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:list-recurring-tasks' })
 
@@ -41,9 +42,9 @@ export function makeListRecurringTasksTool(userId: string, deps: ListRecurringTa
     inputSchema: z.object({}),
     execute: () => {
       try {
-        log.debug({ userId }, 'Listing recurring tasks')
+        log.debug('Listing recurring tasks')
         const tasks = deps.listRecurringTasks(userId)
-        log.info({ userId, count: tasks.length }, 'Recurring tasks listed via tool')
+        log.info({ count: tasks.length }, 'Recurring tasks listed via tool')
 
         return tasks.map((t) => ({
           id: t.id,
@@ -61,13 +62,7 @@ export function makeListRecurringTasksTool(userId: string, deps: ListRecurringTa
           catchUp: t.catchUp,
         }))
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            tool: 'list_recurring_tasks',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('list_recurring_tasks', error), 'Tool execution failed')
         throw error
       }
     },

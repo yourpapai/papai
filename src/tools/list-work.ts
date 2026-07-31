@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:list-work' })
 
@@ -21,25 +22,16 @@ export function makeListWorkTool(provider: TaskProvider): Tool {
       offset: z.number().int().min(0).optional().describe('Number of work items to skip before returning results'),
     }),
     execute: async ({ taskId, limit, offset }) => {
-      log.debug({ taskId, limit, offset }, 'list_work called')
+      log.debug({ limit, offset }, 'list_work called')
       try {
         const result =
           limit !== undefined || offset !== undefined
             ? await provider.listWorkItems!(taskId, { limit, offset })
             : await provider.listWorkItems!(taskId)
-        log.info({ taskId, count: result.length }, 'Work items listed')
+        log.info({ count: result.length }, 'Work items listed')
         return result
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            limit,
-            offset,
-            tool: 'list_work',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('list_work', error), 'Tool execution failed')
         throw error
       }
     },

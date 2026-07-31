@@ -15,6 +15,7 @@ import {
   listWorkspaceLabels,
   usesSeparateLabelReadApi,
 } from './kaneo-label-helpers.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:add-task-label' })
 
@@ -125,16 +126,7 @@ export function makeAddTaskLabelTool(provider: Readonly<TaskProvider>): Tool {
         const resolvedLabelId = await resolveWorkspaceLabelId(provider, labelId, labelName)
         return await provider.addTaskLabel!(taskId, resolvedLabelId)
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            labelId,
-            labelName,
-            tool: 'add_task_label',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('add_task_label', error), 'Tool execution failed')
         throw error
       }
     },

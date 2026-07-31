@@ -3,163 +3,81 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { toSourceProvider, type StagedFileDownloadFn } from './attachments/types.js'
+import { buildAnalyticsSourceContext, buildAuthCheckedFact } from './analytics/bot-observer.js'
+import type { RephraseBoundaryDeps } from './analytics/rephrase/handoff.js'
+import { toSourceProvider } from './attachments/types.js'
 import { checkAuthorizationExtended, getThreadScopedStorageContextId } from './auth.js'
-import { findVoiceStagedIds, resolveMessageAttachments, stageGroupFileCandidates } from './bot-attachments.js'
-import { processCoalescedMessage } from './bot-coalesced-processing.js'
+import { stageGroupFileCandidates } from './bot-attachments.js'
+import { registerCommands } from './bot-command-wiring.js'
 import { recordGroupObservation } from './bot-group-observation.js'
-import { resolveMessageAuth, shouldIgnoreGroupMessage } from './bot-guards.js'
+import { resolveMessageAuth } from './bot-guards.js'
 import { cacheObservedIncomingMessage } from './bot-message-caching.js'
+import { handleAuthorizedMessage, type BotDeps } from './bot-message-handler.js'
 import { emitReplyCompletedIfNeeded, trackReplyUsage } from './bot-reply-tracking.js'
 import { replyToUnauthorized } from './bot-unauthorized-reply.js'
 import { supportsFileReplies } from './chat/capabilities.js'
-import { userManagesAuthorizedGroupLive } from './chat/group-admin-live.js'
 import { routeInteraction } from './chat/interaction-router.js'
-import type { ChatParticipantResolver } from './chat/participants/roster.js'
 import { willQueueAuthorizedMessage } from './chat/queue-policy.js'
-import { maybeSeedContextAssignment } from './chat/seed-context-assignment.js'
 import { resolveSourceProviderName } from './chat/source-instance.js'
-import type { AuthorizationResult, ChatProvider, IncomingInteraction, IncomingMessage, ReplyFn } from './chat/types.js'
-import {
-  registerClearCommand,
-  registerConfigCommand,
-  registerContextCommand,
-  registerDashboardCommand,
-  registerHelpCommand,
-  registerStartCommand,
-  registerStopCommand,
-} from './commands/index.js'
+import type { ChatProvider, IncomingInteraction, IncomingMessage, ReplyFn } from './chat/types.js'
 import { emitUser } from './debug/event-bus.js'
 import type { ProcessMessageFn } from './llm-orchestrator-process-args.js'
 import { processMessage as defaultProcessMessage } from './llm-orchestrator.js'
 import { logger } from './logger.js'
 import { onIncomingEdit } from './message-edit/handle.js'
 import { enqueueMessage } from './message-queue/index.js'
-import { registerPluginCommands } from './plugins/command-contributions.js'
-import { buildPromptWithReplyContext } from './reply-context.js'
-import { runRegistry } from './run-control/registry.js'
 
 const initializedChats = new WeakSet<ChatProvider>()
-export type BotDeps = Readonly<{ processMessage: ProcessMessageFn }> &
-  Readonly<
-    Partial<
-      Record<'stagedDownloadFn', StagedFileDownloadFn> &
-        Record<'enqueueMessage', typeof enqueueMessage> &
-        Record<'chatParticipantResolver', ChatParticipantResolver>
-    >
-  >
-const defaultBotDeps: BotDeps = { processMessage: defaultProcessMessage, enqueueMessage }
+export type { BotDeps } from './bot-message-handler.js'
+const defaultBotDeps: BotDeps = {
+  processMessage: defaultProcessMessage,
+  enqueueMessage,
+}
 const log = logger.child({ scope: 'bot' })
-export { checkAuthorizationExtended, getThreadScopedStorageContextId }
-// A denied DM user who can manage a group (auth.configCommandAllowed) is still
-// allowed to launch the settings UI via /config, but nothing else.
-function isConfigLaunchBypass(commandName: string, auth: AuthorizationResult): boolean {
-  return commandName === 'config' && auth.configCommandAllowed === true
-}
-// Cold-DM fallback: the local observation check found nothing, so ask the platform
-// whether this DM user administers any authorized group before denying /config.
-async function resolveCommandAuth(
-  chat: ChatProvider,
-  commandName: string,
-  msg: IncomingMessage,
-): Promise<AuthorizationResult> {
-  const auth = resolveMessageAuth(msg)
-  if (auth.allowed || isConfigLaunchBypass(commandName, auth)) return auth
-  if (commandName !== 'config' || msg.contextType !== 'dm') return auth
-  const canManage = await userManagesAuthorizedGroupLive(chat, msg.user.id, msg.platformInstanceId)
-  return canManage ? { ...auth, configCommandAllowed: true } : auth
-}
-function createObservedCommandHandler(
-  chat: ChatProvider,
-  commandName: string,
-  handler: (m: IncomingMessage, r: ReplyFn, a: AuthorizationResult) => Promise<void>,
-): (m: IncomingMessage, r: ReplyFn, a: AuthorizationResult) => Promise<void> {
-  return async (msg, reply, _auth): Promise<void> => {
-    const start = Date.now()
-    const tracked = trackReplyUsage(reply, supportsFileReplies(chat))
-    const auth = await resolveCommandAuth(chat, commandName, msg)
-    if (!auth.allowed && !isConfigLaunchBypass(commandName, auth)) {
-      await replyToUnauthorized(tracked.reply, auth, msg.contextId)
-      emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
-      return
+
+function captureRephraseText(
+  rephrase: RephraseBoundaryDeps,
+  contextId: string,
+  chatUserId: string,
+  userText: string,
+  turnId: string,
+  actorRole: string,
+): void {
+  try {
+    const keys = rephrase.deriveKeys({ storageContextId: contextId, chatUserId, rawTurnId: turnId, actorRole })
+    if (keys === null) return
+    if (rephrase.noteTurnSource !== undefined) {
+      rephrase.noteTurnSource(keys.turnKey, turnId)
     }
-    if (msg.contextType === 'group' && auth.isGroupAdmin) recordGroupObservation(chat, msg)
-    await handler(msg, tracked.reply, auth)
-    emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
-  }
-}
-function createObservedChatProvider(chat: ChatProvider): ChatProvider {
-  const registerCommand = chat.registerCommand.bind(chat)
-  return new Proxy(chat, {
-    get(target, prop: keyof ChatProvider) {
-      if (prop === 'registerCommand') {
-        return (name: string, handler: (m: IncomingMessage, r: ReplyFn, a: AuthorizationResult) => Promise<void>) => {
-          registerCommand(name, createObservedCommandHandler(chat, name, handler))
-        }
-      }
-      return target[prop]
-    },
-  })
-}
-function registerCommands(chat: ChatProvider, adminUserId: string): void {
-  const observedChat = createObservedChatProvider(chat)
-  registerHelpCommand(observedChat)
-  registerStartCommand(observedChat)
-  registerConfigCommand(observedChat)
-  registerContextCommand(observedChat)
-  registerClearCommand(observedChat, undefined, adminUserId)
-  registerDashboardCommand(observedChat)
-  registerStopCommand(observedChat)
-  registerPluginCommands(observedChat)
-}
-async function handleMessage(
-  chat: ChatProvider,
-  msg: IncomingMessage,
-  reply: ReplyFn,
-  auth: AuthorizationResult,
-  deps: BotDeps,
-): Promise<void> {
-  if (!auth.allowed) {
-    if (msg.isMentioned) await replyToUnauthorized(reply, auth, msg.contextId)
-    return
-  }
-  if (shouldIgnoreGroupMessage(msg)) return
-  maybeSeedContextAssignment(auth, msg.platformInstanceId)
-  const voiceStagedIds = msg.contextType === 'group' ? findVoiceStagedIds(auth.storageContextId, msg.messageId) : []
-  const { newAttachmentIds, activeAttachments } = await resolveMessageAttachments(chat, msg, auth.storageContextId)
-  const newAttachmentIdSet = new Set(newAttachmentIds)
-  const messageAttachments = activeAttachments.filter((ref) => newAttachmentIdSet.has(ref.attachmentId))
-  const steerText = buildPromptWithReplyContext(msg, messageAttachments, auth.storageContextId)
-
-  const activeRun = runRegistry.get(auth.storageContextId)
-  if (activeRun !== undefined) {
-    activeRun.steerQueue.push({ text: steerText })
-    log.debug(
-      { storageContextId: auth.storageContextId, turnId: activeRun.turnId },
-      'Mid-run message routed to steer queue',
+    rephrase.handoff.captureText({
+      actorKey: keys.actorKey,
+      conversationKey: keys.conversationKey,
+      turnKey: keys.turnKey,
+      capturedAtMs: (rephrase.nowMs ?? Date.now)(),
+      text: userText,
+    })
+  } catch (error: unknown) {
+    log.warn(
+      { error: error instanceof Error ? error.message : String(error) },
+      'rephrase capture failed; continuing the turn',
     )
-    await reply.text('✋ folding that into the current run…')
-    return
   }
-
-  const queueMessage = deps.enqueueMessage ?? enqueueMessage
-  queueMessage(
-    {
-      text: steerText,
-      userId: msg.user.id,
-      username: msg.user.username,
-      storageContextId: auth.storageContextId,
-      configContextId: auth.configContextId,
-      contextType: msg.contextType,
-      newAttachmentIds,
-      voiceStagedIds,
-      actorRole: auth.isGuest === true ? 'guest' : 'member',
-      messageId: msg.messageId,
-    },
-    reply,
-    (coalescedItem): Promise<void> => processCoalescedMessage(coalescedItem, deps),
-  )
 }
+
+export function withRephraseCapture(deps: BotDeps): BotDeps {
+  const rephrase = deps.rephrase
+  if (rephrase === undefined) return deps
+  const processMessage: ProcessMessageFn = (reply, contextId, chatUserId, username, userText, contextType, ...rest) => {
+    const turnId = rest[3]
+    const actorRole = rest[4]
+    if (turnId !== undefined && !userText.startsWith('/') && actorRole !== 'guest') {
+      captureRephraseText(rephrase, contextId, chatUserId, userText, turnId, actorRole ?? 'member')
+    }
+    return deps.processMessage(reply, contextId, chatUserId, username, userText, contextType, ...rest)
+  }
+  return { ...deps, processMessage }
+}
+export { checkAuthorizationExtended, getThreadScopedStorageContextId }
 function tryStageGroupCandidates(chat: ChatProvider, msg: IncomingMessage, storageContextId: string): void {
   if (msg.contextType !== 'group' || msg.fileCandidates === undefined || msg.fileCandidates.length === 0) return
   try {
@@ -203,10 +121,15 @@ async function onIncomingMessage(
     isGroupAdmin: auth.isGroupAdmin,
     storageContextId: auth.storageContextId,
   })
+  const observer = deps.analyticsObserver
+  if (observer !== undefined) {
+    const source = buildAnalyticsSourceContext(msg, auth, 'normal', null)
+    if (source !== null) observer.observe(buildAuthCheckedFact(source, auth))
+  }
   if (auth.allowed) recordGroupObservation(chat, msg)
   cacheObservedIncomingMessage(msg, auth)
   tryStageGroupCandidates(chat, msg, auth.storageContextId)
-  await handleMessage(chat, msg, tracked.reply, auth, deps)
+  await handleAuthorizedMessage(chat, msg, tracked.reply, auth, deps)
   if (!willQueueAuthorizedMessage(msg, auth))
     emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
 }
@@ -243,7 +166,7 @@ export function setupBot(chat: ChatProvider, adminUserId: string, depsInput: Bot
 export function setupBot(chat: ChatProvider, adminUserId: string, ...rest: [] | [BotDeps]): void {
   const deps = rest.length === 0 ? defaultBotDeps : rest[0]
   if (initializedChats.has(chat)) return
-  registerCommands(chat, adminUserId)
+  registerCommands(chat, adminUserId, deps.analyticsObserver)
   chat.onMessage((msg, reply): Promise<void> => onIncomingMessage(chat, msg, reply, deps))
   if (chat.onMessageEdit !== undefined)
     chat.onMessageEdit((msg, reply): Promise<void> => onIncomingEdit(chat, msg, reply, deps))

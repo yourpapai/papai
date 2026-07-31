@@ -52,7 +52,7 @@ export const DocReview: Plugin = ({ client, directory }) => {
       const changedFiles = state.getChangedSourceFiles()
       if (changedFiles.length === 0) return Promise.resolve()
 
-      const docPaths = mapFilesToDocs(changedFiles)
+      const docPaths = mapFilesToDocs(changedFiles, directory)
       const prompt = buildDocReviewPrompt(changedFiles, docPaths)
 
       state.setDocReviewSuggested(true)

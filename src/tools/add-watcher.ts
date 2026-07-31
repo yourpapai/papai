@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { resolveMeReference } from '../identity/resolver.js'
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:add-watcher' })
 
@@ -41,18 +42,10 @@ export function makeAddWatcherTool(provider: TaskProvider, contextUserId?: strin
         }
 
         const result = await provider.addWatcher(taskId, resolvedUserId)
-        log.info({ taskId, userId: userIdParam, resolvedUserId }, 'Watcher added via tool')
+        log.info('Watcher added via tool')
         return result
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            userId: userIdParam,
-            tool: 'add_watcher',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('add_watcher', error), 'Tool execution failed')
         throw error
       }
     },

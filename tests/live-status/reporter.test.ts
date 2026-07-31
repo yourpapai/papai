@@ -296,3 +296,206 @@ describe('createLiveStatusReporter', () => {
     expect(rec.dismissed).toBe(0)
   })
 })
+
+type OpportunityEvent = { eligible: boolean; reason: string }
+type LifecycleEvent = { stage: string; outcome: string; latencyFromTurnStartMs: number; ordinal: number }
+
+function makeAnalyticsRecorder(): {
+  analytics: { onOpportunity: (event: OpportunityEvent) => void; onLifecycle: (event: LifecycleEvent) => void }
+  opportunities: OpportunityEvent[]
+  lifecycle: LifecycleEvent[]
+} {
+  const opportunities: OpportunityEvent[] = []
+  const lifecycle: LifecycleEvent[] = []
+  return {
+    analytics: {
+      onOpportunity: (event) => {
+        opportunities.push(event)
+      },
+      onLifecycle: (event) => {
+        lifecycle.push(event)
+      },
+    },
+    opportunities,
+    lifecycle,
+  }
+}
+
+describe('analytics lifecycle', () => {
+  test('disabled reporter emits one disabled opportunity and no lifecycle facts', async () => {
+    const rec = makeReply()
+    const { analytics, opportunities, lifecycle } = makeAnalyticsRecorder()
+    const reporter = createLiveStatusReporter(rec.reply, { enabled: false, analytics })
+    await reporter.start()
+    await reporter.dismiss()
+    expect(opportunities).toEqual([{ eligible: false, reason: 'disabled' }])
+    expect(lifecycle).toEqual([])
+  })
+
+  test('a platform without createStatus emits one platform_unsupported opportunity', async () => {
+    const rec = makeReply({ createStatus: undefined })
+    const { analytics, opportunities, lifecycle } = makeAnalyticsRecorder()
+    const reporter = createLiveStatusReporter(rec.reply, { analytics })
+    await reporter.start()
+    await reporter.dismiss()
+    expect(opportunities).toEqual([{ eligible: false, reason: 'platform_unsupported' }])
+    expect(lifecycle).toEqual([])
+  })
+
+  test('a createStatus resolving undefined records a failed create and no_status_surface', async () => {
+    const rec = makeReply({ createStatus: () => Promise.resolve(undefined) })
+    const { analytics, opportunities, lifecycle } = makeAnalyticsRecorder()
+    const timers = makeFakeTimers()
+    timers.advance(1000)
+    const reporter = createLiveStatusReporter(rec.reply, {
+      analytics,
+      now: timers.now,
+      schedule: timers.schedule,
+      turnStartedAtMs: 500,
+    })
+    await reporter.start()
+    expect(lifecycle).toEqual([{ stage: 'create', outcome: 'failed', latencyFromTurnStartMs: 500, ordinal: 0 }])
+    expect(opportunities).toEqual([{ eligible: false, reason: 'no_status_surface' }])
+  })
+
+  test('a rejecting createStatus records a failed create and no_status_surface', async () => {
+    const rec = makeReply({ createStatus: () => Promise.reject(new Error('boom')) })
+    const { analytics, opportunities, lifecycle } = makeAnalyticsRecorder()
+    const reporter = createLiveStatusReporter(rec.reply, { analytics })
+    await reporter.start()
+    expect(lifecycle).toHaveLength(1)
+    expect(lifecycle[0]).toMatchObject({ stage: 'create', outcome: 'failed', ordinal: 0 })
+    expect(opportunities).toEqual([{ eligible: false, reason: 'no_status_surface' }])
+  })
+
+  test('a status visible at least one second resolves as eligible with create and dismiss facts', async () => {
+    const rec = makeReply()
+    const { analytics, opportunities, lifecycle } = makeAnalyticsRecorder()
+    const timers = makeFakeTimers()
+    timers.advance(2000)
+    const reporter = createLiveStatusReporter(rec.reply, {
+      analytics,
+      now: timers.now,
+      schedule: timers.schedule,
+      turnStartedAtMs: 1000,
+    })
+    await reporter.start()
+    expect(opportunities).toEqual([])
+    expect(lifecycle).toEqual([{ stage: 'create', outcome: 'success', latencyFromTurnStartMs: 1000, ordinal: 0 }])
+
+    timers.advance(1500)
+    await reporter.dismiss()
+    expect(opportunities).toEqual([{ eligible: true, reason: 'eligible' }])
+    expect(lifecycle).toEqual([
+      { stage: 'create', outcome: 'success', latencyFromTurnStartMs: 1000, ordinal: 0 },
+      { stage: 'dismiss', outcome: 'success', latencyFromTurnStartMs: 2500, ordinal: 0 },
+    ])
+  })
+
+  test('a status dismissed within one second of creation resolves as turn_too_short', async () => {
+    const rec = makeReply()
+    const { analytics, opportunities } = makeAnalyticsRecorder()
+    const timers = makeFakeTimers()
+    timers.advance(2000)
+    const reporter = createLiveStatusReporter(rec.reply, {
+      analytics,
+      now: timers.now,
+      schedule: timers.schedule,
+      turnStartedAtMs: 1000,
+    })
+    await reporter.start()
+    timers.advance(500)
+    await reporter.dismiss()
+    expect(opportunities).toEqual([{ eligible: false, reason: 'turn_too_short' }])
+  })
+
+  test('updates are recorded in order with per-stage ordinals and turn-start latency', async () => {
+    const rec = makeReply()
+    const { analytics, lifecycle } = makeAnalyticsRecorder()
+    const timers = makeFakeTimers()
+    timers.advance(2000)
+    const reporter = createLiveStatusReporter(rec.reply, {
+      analytics,
+      now: timers.now,
+      schedule: timers.schedule,
+      turnStartedAtMs: 1000,
+      minLabelMs: 0,
+    })
+    await reporter.start()
+    timers.advance(100)
+    reporter.onToolStart({ toolName: 'create_task', input: {} })
+    await flushMicrotasks()
+    timers.advance(100)
+    reporter.onToolFinish()
+    await flushMicrotasks()
+    timers.advance(100)
+    reporter.onToolStart({ toolName: 'delete_task', input: {} })
+    await flushMicrotasks()
+
+    const updates = lifecycle.filter((event) => event.stage === 'update')
+    expect(updates.map((event) => event.ordinal)).toEqual([0, 1, 2])
+    expect(updates.map((event) => event.latencyFromTurnStartMs)).toEqual([1100, 1200, 1300])
+    expect(updates.every((event) => event.outcome === 'success')).toBe(true)
+  })
+
+  test('a rejecting update records a failed update stage without breaking the reporter', async () => {
+    const rec = makeReply()
+    const { analytics, lifecycle } = makeAnalyticsRecorder()
+    const failingHandle: StatusHandle = {
+      update: () => Promise.reject(new Error('edit failed')),
+      dismiss: () => Promise.resolve(),
+    }
+    const failing = makeReply({ createStatus: () => Promise.resolve(failingHandle) })
+    void rec
+    const reporter = createLiveStatusReporter(failing.reply, { analytics, minLabelMs: 0 })
+    await reporter.start()
+    reporter.onToolStart({ toolName: 'create_task', input: {} })
+    await flushMicrotasks()
+
+    const updates = lifecycle.filter((event) => event.stage === 'update')
+    expect(updates).toHaveLength(1)
+    expect(updates[0]).toMatchObject({ outcome: 'failed', ordinal: 0 })
+  })
+
+  test('a rejecting dismiss records a failed dismiss stage and still resolves the opportunity', async () => {
+    const failingHandle: StatusHandle = {
+      update: () => Promise.resolve(),
+      dismiss: () => Promise.reject(new Error('delete failed')),
+    }
+    const rec = makeReply({ createStatus: () => Promise.resolve(failingHandle) })
+    const { analytics, opportunities, lifecycle } = makeAnalyticsRecorder()
+    const timers = makeFakeTimers()
+    timers.advance(5000)
+    const reporter = createLiveStatusReporter(rec.reply, {
+      analytics,
+      now: timers.now,
+      schedule: timers.schedule,
+      turnStartedAtMs: 1000,
+    })
+    await reporter.start()
+    timers.advance(2000)
+    await reporter.dismiss()
+
+    const dismissals = lifecycle.filter((event) => event.stage === 'dismiss')
+    expect(dismissals).toEqual([{ stage: 'dismiss', outcome: 'failed', latencyFromTurnStartMs: 6000, ordinal: 0 }])
+    expect(opportunities).toEqual([{ eligible: true, reason: 'eligible' }])
+  })
+
+  test('a throwing observer never breaks the reporter', async () => {
+    const rec = makeReply()
+    const reporter = createLiveStatusReporter(rec.reply, {
+      analytics: {
+        onOpportunity: () => {
+          throw new Error('observer boom')
+        },
+        onLifecycle: () => {
+          throw new Error('observer boom')
+        },
+      },
+    })
+    await reporter.start()
+    reporter.onToolStart({ toolName: 'create_task', input: {} })
+    await reporter.dismiss()
+    expect(rec.dismissed).toBe(1)
+  })
+})

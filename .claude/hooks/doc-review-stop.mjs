@@ -26,7 +26,7 @@ try {
     process.exit(0)
   }
 
-  const docPaths = mapFilesToDocs(changedFiles)
+  const docPaths = mapFilesToDocs(changedFiles, cwd)
   const prompt = buildDocReviewPrompt(changedFiles, docPaths)
 
   state.setDocReviewSuggested(true)

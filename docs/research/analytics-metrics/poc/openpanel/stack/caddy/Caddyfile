@@ -1,0 +1,9 @@
+:80 {
+	encode gzip
+
+	handle_path /api* {
+		reverse_proxy op-api:3000
+	}
+
+	reverse_proxy /* op-dashboard:3000
+}

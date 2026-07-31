@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { eq, sql } from 'drizzle-orm'
 
+import { NO_ANALYTICS_SCOPE } from '../../src/analytics/provider-request-scope.js'
 import { ChatRouter } from '../../src/chat/router.js'
 import type { ChatCapability } from '../../src/chat/types.js'
 import { getDrizzleDb } from '../../src/db/drizzle.js'
@@ -36,6 +37,7 @@ import type { DiscoveredPlugin, PluginContributions, PluginManifest } from '../.
 import { pluginManifestSchema } from '../../src/plugins/types.js'
 import { createToolCapabilityCatalog } from '../../src/runtime/capability-catalog.js'
 import { scheduler } from '../../src/scheduler-instance.js'
+import { finalizeProviderScopedTools } from '../../src/tools/wrap-tool-execution.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import {
   createAuth,
@@ -1178,14 +1180,16 @@ describe('buildPluginToolSet', () => {
       },
       manifest,
     )
-    const tools = buildPluginToolSet(['test-plugin'], new Set(), {
-      provider: createMockProvider(),
-      storageContextId: 'ctx-1',
-      chatUserId: 'user-1',
-    })
+    const tools = finalizeProviderScopedTools(
+      buildPluginToolSet(['test-plugin'], new Set(), {
+        provider: createMockProvider(),
+        storageContextId: 'ctx-1',
+        chatUserId: 'user-1',
+      }),
+    )
     const execute = getToolExecutor(tools['plugin_test_plugin__my_tool'])
 
-    const result = await execute({}, { toolCallId: 'call-1' })
+    const result = await execute({}, { toolCallId: 'call-1', messages: [], context: NO_ANALYTICS_SCOPE })
 
     expect(result).toMatchObject({
       success: false,
@@ -1215,14 +1219,16 @@ describe('buildPluginToolSet', () => {
       },
       manifest,
     )
-    const tools = buildPluginToolSet(['test-plugin'], new Set(), {
-      provider: createMockProvider(),
-      storageContextId: 'ctx-1',
-      chatUserId: 'user-1',
-    })
+    const tools = finalizeProviderScopedTools(
+      buildPluginToolSet(['test-plugin'], new Set(), {
+        provider: createMockProvider(),
+        storageContextId: 'ctx-1',
+        chatUserId: 'user-1',
+      }),
+    )
     const execute = getToolExecutor(tools['plugin_test_plugin__my_tool'])
 
-    const result = await execute({}, { toolCallId: 'call-1' })
+    const result = await execute({}, { toolCallId: 'call-1', messages: [], context: NO_ANALYTICS_SCOPE })
 
     expect(result).toMatchObject({
       success: false,
