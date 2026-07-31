@@ -268,7 +268,7 @@ operational enqueue boundary, and normalization discards it.
 
 **Files:**
 
-- Create: `docs/adr/0226-analytics-governance-and-delivery-lanes.md`
+- Create: `docs/adr/0308-analytics-governance-and-delivery-lanes.md`
 - Modify: `docs/adr/README.md`
 - Create: `src/analytics/contracts.ts`
 - Create: `src/analytics/registry.ts`
@@ -310,19 +310,19 @@ operational enqueue boundary, and normalization discards it.
 - [ ] Add strict `AnalyticsAggregateV1Schema`, counter/histogram enums, and
       fixed bucket definitions; test that identity/correlation keys cannot parse
       as aggregate fields.
-- [ ] Write ADR 0226 with the two local lanes, two external gates, event-bus
+- [ ] Write ADR 0308 with the two local lanes, two external gates, event-bus
       adapter boundary, dedicated HMAC keys, separate delivery ledger, Metabase
       snapshot, OpenPanel failed pseudonymous gate, and additive migration
       rollback posture.
-- [ ] Add ADR 0226 to the ordered index in `docs/adr/README.md` and run
-      `rg -n '0226-analytics-governance-and-delivery-lanes' docs/adr/README.md`;
+- [ ] Add ADR 0308 to the ordered index in `docs/adr/README.md` and run
+      `rg -n '0308-analytics-governance-and-delivery-lanes' docs/adr/README.md`;
       expect exactly one row.
 - [ ] Run
       `bun test tests/analytics/contracts.test.ts tests/analytics/registry-closure.test.ts`
       and expect all assertions to pass.
 - [ ] Run `bun run typecheck`; expect no contract or discriminated-union error.
 - [ ] Commit with
-      `git add docs/adr/0226-analytics-governance-and-delivery-lanes.md docs/adr/README.md src/analytics/contracts.ts src/analytics/registry.ts tests/analytics/contracts.test.ts tests/analytics/registry-closure.test.ts knip.config.ts && git commit -m "feat(analytics): freeze strict event contracts"`.
+      `git add docs/adr/0308-analytics-governance-and-delivery-lanes.md docs/adr/README.md src/analytics/contracts.ts src/analytics/registry.ts tests/analytics/contracts.test.ts tests/analytics/registry-closure.test.ts knip.config.ts && git commit -m "feat(analytics): freeze strict event contracts"`.
 
 ## Task 2: Add additive analytics storage and migration registration
 

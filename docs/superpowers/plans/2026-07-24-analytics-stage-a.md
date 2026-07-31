@@ -57,7 +57,7 @@ Every task implicitly includes all of the following (exact values from 02/03/06/
 
 **Steps:** 06 §Task 1 verbatim.
 **Files:**
-- Create: `src/analytics/contracts.ts`, `src/analytics/registry.ts`, `docs/adr/0226-analytics-governance-and-delivery-lanes.md`
+- Create: `src/analytics/contracts.ts`, `src/analytics/registry.ts`, `docs/adr/0308-analytics-governance-and-delivery-lanes.md`
 - Modify: `docs/adr/README.md`, `knip.config.ts`
 - Test: `tests/analytics/contracts.test.ts`, `tests/analytics/registry-closure.test.ts`
 
@@ -66,7 +66,7 @@ Every task implicitly includes all of the following (exact values from 02/03/06/
 - Produces: `AnalyticsEventV1`, `AnalyticsAggregateV1`, `EventNameV1`, `PropsByEventName`, branded `Pseudonym`, the immutable registry (event name ↔ props schema ↔ privacy class ↔ aggregate mapping ↔ source family ↔ RQ coverage) — every later task imports these.
 
 **Named gate:** `bun test tests/analytics/contracts.test.ts tests/analytics/registry-closure.test.ts`
-**Review focus:** strict `additionalProperties: false` everywhere; registry closure test fails CI on any unlisted event/prop; ADR 0226 matches 00's executive decisions; knip config admits dormant analytics modules.
+**Review focus:** strict `additionalProperties: false` everywhere; registry closure test fails CI on any unlisted event/prop; ADR 0308 matches 00's executive decisions; knip config admits dormant analytics modules.
 **Commit:** `feat(analytics): freeze strict event contracts` (exact add list in 06)
 
 ### Task 2: Add additive analytics storage and migration registration
