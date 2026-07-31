@@ -5,6 +5,142 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.12.0] - 2026-07-31
+
+### Added
+
+- **analytics:** Freeze strict event contracts
+- **analytics:** Add canonical and aggregate storage
+- **analytics:** Add purpose-separated identity keys
+- **analytics:** Enforce governance eligibility
+- **analytics:** Add fail-closed local runtime
+- **analytics:** Observe authorized turn lifecycle
+- **analytics:** Observe llm tool and feedback outcomes
+- **analytics:** Add provider request scope plumbing
+- **analytics:** Observe provider and feature boundaries
+- **analytics:** Add independent delivery ledger
+- **analytics:** Add governed deterministic intent
+- **analytics:** Materialize sessions outcomes and friction
+- **analytics:** Add governed usage backfill
+- **analytics:** Enforce lifecycle and subject rights
+- **analytics:** Add planned rekey workflow
+- **analytics:** Publish curated metabase snapshot
+- **analytics:** Add thresholded aggregate delivery
+- **settings:** Add analytics governance controls
+- **analytics:** Schedule bounded lifecycle jobs
+- **hooks:** Add analytics-review stop hook, discovery-based doc mapping
+- **analytics:** Wire aggregate release execution to the admin reconcile route
+- **analytics:** Add read-only Stage B evidence report CLI
+- **analytics:** Observe W1 edit-steer boundary
+- **analytics:** Register edit_classified and edit_regen events
+- **analytics:** Emit edit_classified across edit windows
+- **analytics:** Emit W2 regen funnel facts
+- **analytics:** Add edit funnel to metabase model 04 and catalog amendment
+
+### Documentation
+
+- **research:** Add deep research plan for product & UX analytics coverage
+- **research:** Add executed analytics-metrics research reports and PoC evidence
+- **research:** Record governance sign-off for analytics catalog and privacy design
+- **spec:** Add analytics Stage A-B execution design
+- **plan:** Add analytics Stage A-B execution plan
+- **research:** Initialize analytics Stage A evidence log
+- **research:** Log analytics Tasks 1-2 gate evidence
+- **research:** Sync analytics migration numbering to 070-073 after master rebase
+- **research:** Log analytics Tasks 3-4 gate evidence, restore Task 1 rows
+- **research:** Log analytics Task 5 gate evidence
+- **research:** Finalize analytics Task 5 gate evidence
+- **research:** Log analytics Task 6 gate evidence
+- **research:** Log analytics Task 7 gate evidence
+- **bot:** Document message-handler and command-wiring extraction
+- **research:** Finalize analytics Task 7 gate evidence
+- **analytics:** Document permission observer and tool classification
+- **research:** Log analytics Task 8A gate evidence
+- **research:** Log analytics Task 8 gate evidence, annotate vacuous MCP policy-block
+- **research:** Record Task 8 milestone rebase
+- **research:** Log analytics Task 9 gate evidence, update control 9 store parts
+- **research:** Finalize analytics Task 9 gate evidence
+- **research:** Record analytics Task 10 gate evidence
+- **research:** Finalize analytics Task 10 gate evidence
+- **research:** Record analytics Task 11 gate evidence
+- Mention analytics materialization layer in module map
+- **research:** Finalize analytics Task 11 gate evidence
+- **research:** Record analytics Task 12 gate evidence
+- Mention analytics backfill and reconciliation in module map
+- **research:** Finalize analytics Task 12 gate evidence
+- **readme:** Extend analytics module description for lifecycle
+- **research:** Log analytics Task 13A gate evidence
+- **readme:** Note analytics rekey workflow
+- **research:** Log analytics Task 13B gate evidence
+- **research:** Sync analytics migration numbering to 072-075 after master rebase
+- **analytics:** Record task 14 snapshot evidence
+- **research:** Finalize analytics Task 14 gate evidence
+- **research:** Finalize analytics Task 15 gate evidence
+- **readme:** Note analytics aggregate delivery outbox in module map
+- **research:** Finalize analytics Task 15 gate evidence
+- **research:** Log analytics Task 16 gate evidence
+- **readme:** Note scheduled analytics lifecycle jobs
+- **research:** Log analytics Task 17 gate evidence
+- **analytics:** Add rollout and incident runbooks
+- **research:** Log analytics Task 18 gate evidence
+- **claude:** Index analytics operations runbooks
+- **research:** Finalize analytics Task 18 gate evidence, all 17 controls green
+- **research:** Record final whole-branch review and Stage A exit evidence
+- **specs:** Add analytics Stage B readiness and rollout operations design
+- **plans:** Add analytics Stage B readiness implementation plan
+- **research:** Fill Stage B readiness Task 4 evidence hash
+- **research:** Log Stage B readiness rebase milestone onto be67c2227
+- **research:** Record message-edit analytics coverage decisions
+- **research:** Fix readiness table row format
+- **specs:** Add message-edit analytics design (edit windows + W2 regen funnel)
+- **plans:** Add message-edit analytics implementation plan
+- **research:** Fill message-edit analytics Task 4 evidence hash
+- **operations:** Add Stage A to Stage B execution checklist
+- **research:** Sign Stage A evidence log after sign-off re-verification
+
+### Fixed
+
+- **analytics:** Close epoch-recovery and runtime wiring gaps
+- **analytics:** Key external tools by per-tool pseudonym
+- **analytics:** Tolerate non-V4 models in TTFT wrapper
+- **analytics:** Close boundary instrumentation gaps
+- **analytics:** Clear stale send-start on delivery retry
+- **acp:** Load analytics-consuming modules behind import.meta.require
+- **analytics:** Close backfill approval, high-water, and ineligible gaps
+- **analytics:** Close lifecycle guard, mutex, settlement, and resume gaps
+- **analytics:** Resolve knip duplicate export in snapshot schema
+- **analytics:** Complete engagement/intents models and fence-admitted generation resolution
+- **analytics:** Drain aggregate sends across rekey cutover
+- **analytics:** Admit reconcile to cutover fence, wire epoch overflow
+- **analytics:** Close live-rejection accounting, derive atomicity, and turn_key sentinel
+- **analytics:** Match sink egress mode to delivery lane at send resolution
+- **analytics:** Require grant key for delivery classification
+- **analytics:** Day-scope Stage B delta classification and harden release path
+- **analytics:** Integrate message-edit boundaries after master rebase
+
+### Miscellaneous
+
+- **knip:** Admit generated analytics tool slugs module
+- **analytics:** Ignore Stage A intent/rephrase/jobs seam in knip
+- **knip:** Ignore acp require-bridge module exports
+- **analytics:** Regenerate tool slugs after master tool additions
+- **settings:** Drop unused analytics notice type export
+
+### Styling
+
+- **tests:** Sort imports in auto-provision analytics tests
+
+### Testing
+
+- **analytics:** Cover disclosure fallback-open provider scope
+- **analytics:** Assert aggregate-local intent exclusion and capture latency
+- **analytics:** Complete rekey delta-survival and retirement fixtures
+- **analytics:** Cover adjust-path history_only funnel fact
+- **analytics:** Pin edit_funnel aggregate-only availability
+
+### Ci
+
+- **deploy:** Forward ANALYTICS_KILL_SWITCH from GitHub env vars to remote .env
 ## [6.11.0] - 2026-07-29
 
 ### Added
