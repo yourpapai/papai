@@ -140,8 +140,8 @@ the same pass.
 
 ## Stage B window log (post-merge, operational)
 
-- Deploy date / version:
-- Window start (UTC):
+- Deploy date / version: 2026-07-31 / 0368bcc1d67bd9d79ae95ac20663aa836a5f9063
+- Window start (UTC): 2026-08-01
 - Window end (UTC):
 - Restart/suppressed days (`unreconciled_restart_gap`):
 
