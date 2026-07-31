@@ -80,11 +80,14 @@ that the simulator received at least one request unless explicitly exempted.
 
 ### Runtime transport propagation
 
-The Kaneo plugin activation captures `ctx.providerRuntime.httpFetch`. Its
-registered provider factory passes that callable through entry-runtime into
-`KaneoConfig.fetch`, and `kaneoFetch()` uses it when supplied. The transport
-type is the callable provider-runtime contract, not `typeof fetch`, so it does
-not require Bun-specific static properties such as `preconnect`.
+The Kaneo plugin activation captures a provider-runtime facade. Its registered
+factory derives an instance-scoped `httpFetch` from the factory configuration,
+then passes that callable through entry-runtime into `KaneoConfig.fetch`.
+Kaneo declares `baseUrl` as its instance host key; the facade validates that
+configured URL host before creating the callable, so tool input never changes
+the allowlist. `kaneoFetch()` uses the injected callable when supplied. The
+transport type is the callable provider-runtime contract, not `typeof fetch`,
+so it does not require Bun-specific static properties such as `preconnect`.
 
 ### T0 coverage
 

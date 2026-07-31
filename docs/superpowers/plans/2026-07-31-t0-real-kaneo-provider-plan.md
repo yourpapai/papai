@@ -11,7 +11,7 @@ See LICENSE in the project root for details.
 
 **Goal:** Exercise the real Kaneo plugin in hermetic T0 stories through a stateful fake REST API, all 29 shared parity groups, and four chat-loop proofs.
 
-**Architecture:** Keep real-provider selection as a pre-start scenario option and extend it to Kaneo. A new stateful fake Kaneo router is registered with `StrictHttpDispatcher.serveHost()`, while the Kaneo plugin factory passes the restricted runtime HTTP callable to `KaneoConfig.fetch`. The existing memory Kaneo provider stays the default for every ordinary story.
+**Architecture:** Keep real-provider selection as a pre-start scenario option and extend it to Kaneo. A new stateful fake Kaneo router is registered with `StrictHttpDispatcher.serveHost()`, while the Kaneo plugin factory derives an instance-host-validated runtime HTTP callable and passes it to `KaneoConfig.fetch`. The existing memory Kaneo provider stays the default for every ordinary story.
 
 **Tech Stack:** Bun, TypeScript, Bun test, Zod v4, existing story sandbox and `StrictHttpDispatcher`.
 
@@ -22,6 +22,7 @@ See LICENSE in the project root for details.
 - Use `StrictHttpDispatcher.serveHost()` for stateful unordered provider traffic. Do not add `expectAnyOrder`.
 - Kaneo conformance executes every one of the 29 existing `PARITY_GROUPS`; no exclusions.
 - Fake routes fail loudly for unknown paths, unsupported methods, and malformed bodies.
+- A factory may derive runtime HTTP only from manifest-declared instance host keys; task-tool inputs never affect host admission.
 - Use `.js` import extensions, strict TypeScript, ASCII, and no lint/type suppression comments.
 - Every production behavior change follows red-green-refactor and lands with its focused tests.
 
@@ -246,6 +247,10 @@ git commit -m "test(stories): complete fake Kaneo parity routes"
 ### Task 4: Register Real Kaneo In The Scenario World
 
 **Files:**
+- Modify: `src/plugins/types.ts`
+- Modify: `src/plugins/manifest-validation.ts`
+- Modify: `src/plugins/context-facade-builders.ts`
+- Modify: `src/plugins/context.ts`
 - Modify: `tests/stories/harness/fixtures.ts`
 - Modify: `tests/stories/harness/world.ts`
 - Modify: `tests/stories/harness/scenario.ts`
@@ -255,18 +260,21 @@ git commit -m "test(stories): complete fake Kaneo parity routes"
 **Interfaces:**
 - Produces: `ScenarioOptions.realTaskProvider?: 'youtrack' | 'kaneo'`.
 - Consumes: `createFakeKaneoResponder()` and existing `createFakeYouTrackResponder()`.
+- Produces: `PluginProviderRuntime.forInstance(config: Record<string, string>): (url: string, init?: RequestInit) => Promise<Response>` for manifests that declare instance host keys.
 
-- [ ] **Step 1: Write failing fixture and world tests**
+- [ ] **Step 1: Write failing instance-host and world tests**
 
-Add one fixture test proving `approveRealTaskProviderPlugin('kaneo')` activates a descriptor owned by `task-provider-kaneo` when no memory fake is registered. Add one world test that constructs `{ realTaskProvider: 'kaneo' }`, assigns a Kaneo task instance, starts the world, resolves the provider, and observes `provider.name === 'kaneo'` after a `listProjects()` request.
+Add a provider-runtime test that a manifest declaring `providerAllowedInstanceHostsFromConfig: ['baseUrl']` receives a callable that permits only the hostname parsed from the factory config and rejects a different host. Add manifest-validation tests rejecting keys that are not instance-scoped `providerConfigSchema` keys. Add one fixture test proving `approveRealTaskProviderPlugin('kaneo')` activates a descriptor owned by `task-provider-kaneo` when no memory fake is registered. Add one world test that constructs `{ realTaskProvider: 'kaneo' }`, assigns a Kaneo task instance, starts the world, resolves the provider, and observes `provider.name === 'kaneo'` after a `listProjects()` request.
 
 - [ ] **Step 2: Run targeted contracts and verify failure**
 
 Run: `bun test tests/stories/harness/fixtures.test.ts tests/stories/harness/world.test.ts`
 
-Expected: TypeScript rejects `'kaneo'` as `realTaskProvider`, or the memory registration owns the type.
+Expected: the instance-host runtime method and manifest declaration do not exist; TypeScript also rejects `'kaneo'` as `realTaskProvider`, or the memory registration owns the type.
 
-- [ ] **Step 3: Implement provider descriptors and conflict-free ordering**
+- [ ] **Step 3: Implement per-instance admission, then provider descriptors and conflict-free ordering**
+
+Add `providerAllowedInstanceHostsFromConfig` to the plugin manifest schema and validate every key against `providerConfigSchema` entries with `scope: 'instance'`. Extend the runtime facade with `forInstance(config)`: it parses only the manifest-declared config URL values into a fresh allowlist and returns an `httpFetch` callable using the existing guarded provider runtime. The returned callable must reject hosts not in that derived set. Declare Kaneo's `baseUrl` in this new manifest field and change its plugin factory to use `ctx.providerRuntime.forInstance(config)`.
 
 Create a typed descriptor map in `world.ts`:
 
@@ -292,7 +300,7 @@ Expected: selected unit tests and all story contracts pass.
 - [ ] **Step 5: Commit world registration**
 
 ```bash
-git add tests/stories/harness/fixtures.ts tests/stories/harness/world.ts tests/stories/harness/scenario.ts tests/stories/harness/fixtures.test.ts tests/stories/harness/world.test.ts
+git add src/plugins/types.ts src/plugins/manifest-validation.ts src/plugins/context-facade-builders.ts src/plugins/context.ts plugins/task-provider-kaneo/index.ts plugins/task-provider-kaneo/plugin.json tests/plugins tests/stories/harness/fixtures.ts tests/stories/harness/world.ts tests/stories/harness/scenario.ts tests/stories/harness/fixtures.test.ts tests/stories/harness/world.test.ts
 git commit -m "test(stories): register real Kaneo provider worlds"
 ```
 
