@@ -36,6 +36,7 @@ import {
   adminProvidersHandlers,
   adminToolDefaultsHandlers,
 } from './settings-handlers-admin.js'
+import { codingCredentialsHandlers } from './settings-handlers-coding.js'
 import {
   codingIdentityHandlers,
   groupMembersHandlers,
@@ -56,7 +57,6 @@ import {
   releaseSubscriptionMutationErrorHandlers,
 } from './settings-handlers-personal-2.js'
 import {
-  codingCredentialsHandlers,
   identityGatedHandlers,
   identityHandlers,
   mcpHandlers,
