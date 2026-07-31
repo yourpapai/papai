@@ -59,6 +59,27 @@ describe('kaneoFetch', () => {
     expect(capturedHeaders['Content-Type']).toBe('application/json')
   })
 
+  test('uses the injected runtime fetch instead of the global transport', async () => {
+    let requests = 0
+    const runtimeFetch = (): Promise<Response> => {
+      requests += 1
+      return Promise.resolve(
+        new Response(JSON.stringify(createMockTask({ id: 'runtime-task', number: 1 })), { status: 200 }),
+      )
+    }
+
+    await kaneoFetch(
+      { ...mockConfig, fetch: runtimeFetch },
+      'GET',
+      '/tasks/runtime-task',
+      undefined,
+      undefined,
+      KaneoTaskResponseSchema,
+    )
+
+    expect(requests).toBe(1)
+  })
+
   test('throws KaneoApiError on non-ok response', async () => {
     setMockFetch(() => Promise.resolve(new Response('Not found', { status: 404 })))
 
