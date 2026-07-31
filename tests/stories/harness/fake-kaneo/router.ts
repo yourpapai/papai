@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import {
+  COMMENT_AUTHOR_USER_ID,
   type FakeKaneoCtx,
   type FakeKaneoState,
   DEFAULT_COLUMN_NAME,
@@ -11,7 +12,10 @@ import {
   nextTimestamp,
   slugify,
   type StoredColumn,
+  type StoredComment,
+  type StoredLabel,
   type StoredProject,
+  type StoredRelation,
   type StoredTask,
 } from './state.js'
 
@@ -23,6 +27,12 @@ export const json = (body: unknown, status = 200): Response =>
 export const errorResponse = (status: number, message: string): Response => json({ error: message }, status)
 
 const noContent = (): Response => new Response(null, { status: 204 })
+
+const jsonWithHeaders = (body: unknown, status: number, headers: Record<string, string>): Response =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json', ...headers },
+  })
 
 // ---------- Path matcher ----------
 
@@ -93,6 +103,40 @@ const listTaskProjection = (t: StoredTask): Record<string, unknown> => ({
   externalLinks: [],
 })
 
+const commentProjection = (c: StoredComment): Record<string, unknown> => ({
+  id: c.id,
+  taskId: c.taskId,
+  userId: c.userId,
+  content: c.content,
+  createdAt: c.createdAt,
+  updatedAt: c.updatedAt,
+})
+
+const labelProjection = (l: StoredLabel): Record<string, unknown> => ({
+  id: l.id,
+  name: l.name,
+  color: l.color,
+  createdAt: l.createdAt,
+  taskId: l.taskId,
+  workspaceId: l.workspaceId,
+})
+
+const relationProjection = (r: StoredRelation): Record<string, unknown> => ({
+  id: r.id,
+  sourceTaskId: r.sourceTaskId,
+  targetTaskId: r.targetTaskId,
+  relationType: r.relationType,
+  createdAt: r.createdAt,
+})
+
+const memberProjection = (m: { id: string; name: string; email: string; role: string }): Record<string, unknown> => ({
+  id: m.id,
+  name: m.name,
+  email: m.email,
+  image: null,
+  role: m.role,
+})
+
 const columnsFor = (state: FakeKaneoState, projectId: string): StoredColumn[] => {
   const project = state.projects.get(projectId)
   if (project === undefined) return []
@@ -120,11 +164,35 @@ const createDefaultColumn = (state: FakeKaneoState, project: StoredProject): Sto
 
 // ---------- Body coercion helpers ----------
 
-const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object'
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value)
 
 const asObject = (body: unknown): Record<string, unknown> => (isRecord(body) ? body : {})
 
 const asString = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined)
+
+/** Strict per-pattern dispatcher: the first rule whose pattern matches the
+ *  path wins. If its method set does not include the request method, return
+ *  405 instead of falling through — the fake models exact client route shapes,
+ *  not a permissive catch-all. */
+type RouteParams = Record<string, string>
+type RouteRule = Readonly<{
+  pattern: string
+  allowed: ReadonlySet<string>
+  run: (ctx: FakeKaneoCtx, params: RouteParams) => Response
+}>
+
+const dispatchRules = (ctx: FakeKaneoCtx, rules: ReadonlyArray<RouteRule>): Response | undefined => {
+  for (const rule of rules) {
+    const params = matchPath(rule.pattern, ctx.path)
+    if (params === null) continue
+    if (!rule.allowed.has(ctx.method)) {
+      return errorResponse(405, `method ${ctx.method} not allowed for ${ctx.path}`)
+    }
+    return rule.run(ctx, params)
+  }
+  return undefined
+}
 
 // ---------- Project handler ----------
 
@@ -378,12 +446,283 @@ const handleSearch = (ctx: FakeKaneoCtx): Response | undefined => {
   return json({ tasks, projects: [], workspaces: [], comments: [], activities: [] })
 }
 
+// ---------- Comment handler ----------
+
+const handleComments = (ctx: FakeKaneoCtx): Response | undefined =>
+  dispatchRules(ctx, [
+    {
+      pattern: '/api/comment/:id',
+      allowed: new Set(['POST', 'GET', 'PUT', 'DELETE']),
+      run: (c, params): Response => {
+        const id = params['id'] ?? ''
+        if (c.method === 'POST') {
+          if (!isRecord(c.body)) return errorResponse(400, 'comment body must be a JSON object')
+          const content = asString(c.body['content'])
+          if (content === undefined) return errorResponse(400, 'comment content is required')
+          const commentId = nextId(c.state, 'comment')
+          const now = nextTimestamp(c.state)
+          const comment: StoredComment = {
+            id: commentId,
+            taskId: id,
+            userId: COMMENT_AUTHOR_USER_ID,
+            content,
+            createdAt: now,
+            updatedAt: now,
+          }
+          c.state.comments.set(commentId, comment)
+          return json(commentProjection(comment))
+        }
+        if (c.method === 'GET') {
+          const list = [...c.state.comments.values()].filter((cm) => cm.taskId === id).map(commentProjection)
+          return json(list)
+        }
+        if (c.method === 'PUT') {
+          const existing = c.state.comments.get(id)
+          if (existing === undefined) return errorResponse(404, 'comment not found')
+          if (!isRecord(c.body)) return errorResponse(400, 'comment body must be a JSON object')
+          const content = asString(c.body['content'])
+          if (content === undefined) return errorResponse(400, 'comment content is required')
+          existing.content = content
+          existing.updatedAt = nextTimestamp(c.state)
+          return json(commentProjection(existing))
+        }
+        const toDelete = c.state.comments.get(id)
+        if (toDelete === undefined) return errorResponse(404, 'comment not found')
+        c.state.comments.delete(id)
+        return json(commentProjection(toDelete))
+      },
+    },
+  ])
+
+// ---------- Label handler ----------
+
+const handleLabels = (ctx: FakeKaneoCtx): Response | undefined =>
+  dispatchRules(ctx, [
+    {
+      pattern: '/api/label',
+      allowed: new Set(['POST']),
+      run: (c): Response => {
+        if (!isRecord(c.body)) return errorResponse(400, 'label body must be a JSON object')
+        const workspaceId = asString(c.body['workspaceId']) ?? ''
+        const name = asString(c.body['name']) ?? ''
+        const id = nextId(c.state, 'label')
+        const label: StoredLabel = {
+          id,
+          workspaceId,
+          name,
+          color: asString(c.body['color']) ?? '#6b7280',
+          createdAt: nextTimestamp(c.state),
+          taskId: null,
+        }
+        c.state.labels.set(id, label)
+        return json(labelProjection(label))
+      },
+    },
+    {
+      pattern: '/api/label/workspace/:workspaceId',
+      allowed: new Set(['GET']),
+      run: (c, params): Response => {
+        const workspaceId = params['workspaceId'] ?? ''
+        const list = [...c.state.labels.values()].filter((l) => l.workspaceId === workspaceId).map(labelProjection)
+        return json(list)
+      },
+    },
+    {
+      pattern: '/api/label/task/:taskId',
+      allowed: new Set(['GET']),
+      run: (c, params): Response => {
+        const taskId = params['taskId'] ?? ''
+        const list = [...c.state.labels.values()].filter((l) => l.taskId === taskId).map(labelProjection)
+        return json(list)
+      },
+    },
+    {
+      pattern: '/api/label/:labelId/task',
+      allowed: new Set(['PUT', 'DELETE']),
+      run: (c, params): Response => {
+        const labelId = params['labelId'] ?? ''
+        const label = c.state.labels.get(labelId)
+        if (label === undefined) return errorResponse(404, 'label not found')
+        if (!isRecord(c.body)) return errorResponse(400, 'label task body must be a JSON object')
+        const taskId = asString(c.body['taskId'])
+        if (taskId === undefined) return errorResponse(400, 'taskId is required')
+        if (c.method === 'DELETE') {
+          label.taskId = null
+          return json(labelProjection(label))
+        }
+        label.taskId = taskId
+        return json(labelProjection(label))
+      },
+    },
+    {
+      pattern: '/api/label/:labelId',
+      allowed: new Set(['GET', 'PUT', 'DELETE']),
+      run: (c, params): Response => {
+        const labelId = params['labelId'] ?? ''
+        const label = c.state.labels.get(labelId)
+        if (label === undefined) return errorResponse(404, 'label not found')
+        if (c.method === 'GET') return json(labelProjection(label))
+        if (c.method === 'DELETE') {
+          c.state.labels.delete(labelId)
+          return json(labelProjection(label))
+        }
+        if (!isRecord(c.body)) return errorResponse(400, 'label body must be a JSON object')
+        const name = asString(c.body['name'])
+        if (name !== undefined) label.name = name
+        const color = asString(c.body['color'])
+        if (color !== undefined) label.color = color
+        return json(labelProjection(label))
+      },
+    },
+  ])
+
+// ---------- Task relation handler ----------
+
+const handleRelations = (ctx: FakeKaneoCtx): Response | undefined =>
+  dispatchRules(ctx, [
+    {
+      pattern: '/api/task-relation',
+      allowed: new Set(['POST']),
+      run: (c): Response => {
+        if (!isRecord(c.body)) return errorResponse(400, 'task-relation body must be a JSON object')
+        const sourceTaskId = asString(c.body['sourceTaskId'])
+        const targetTaskId = asString(c.body['targetTaskId'])
+        const relationType = asString(c.body['relationType'])
+        if (sourceTaskId === undefined || targetTaskId === undefined || relationType === undefined) {
+          return errorResponse(400, 'sourceTaskId, targetTaskId, and relationType are required')
+        }
+        const id = nextId(c.state, 'relation')
+        const relation: StoredRelation = {
+          id,
+          sourceTaskId,
+          targetTaskId,
+          relationType,
+          createdAt: nextTimestamp(c.state),
+        }
+        c.state.relations.set(id, relation)
+        return json(relationProjection(relation))
+      },
+    },
+    {
+      pattern: '/api/task-relation/:id',
+      allowed: new Set(['GET', 'DELETE']),
+      run: (c, params): Response => {
+        const id = params['id'] ?? ''
+        if (c.method === 'GET') {
+          const list = [...c.state.relations.values()]
+            .filter((r) => r.sourceTaskId === id || r.targetTaskId === id)
+            .map(relationProjection)
+          return json(list)
+        }
+        const toDelete = c.state.relations.get(id)
+        if (toDelete === undefined) return errorResponse(404, 'relation not found')
+        c.state.relations.delete(id)
+        return json(relationProjection(toDelete))
+      },
+    },
+  ])
+
+// ---------- Workspace member handler ----------
+
+const handleMembers = (ctx: FakeKaneoCtx): Response | undefined =>
+  dispatchRules(ctx, [
+    {
+      pattern: '/api/workspace/:workspaceId/members',
+      allowed: new Set(['GET']),
+      run: (c, params): Response => {
+        const workspaceId = params['workspaceId'] ?? ''
+        const list = [...c.state.members.values()].filter((m) => m.organizationId === workspaceId).map(memberProjection)
+        return json(list)
+      },
+    },
+  ])
+
+// ---------- Auth handler (Better Auth sign-up / sign-in / invite / accept) ----------
+
+const handleAuth = (ctx: FakeKaneoCtx): Response | undefined =>
+  dispatchRules(ctx, [
+    {
+      pattern: '/api/auth/sign-up/email',
+      allowed: new Set(['POST']),
+      run: (c): Response => {
+        if (!isRecord(c.body)) return errorResponse(400, 'sign-up body must be a JSON object')
+        const email = asString(c.body['email'])
+        const name = asString(c.body['name']) ?? email ?? ''
+        if (email === undefined) return errorResponse(400, 'email is required')
+        const id = nextId(c.state, 'user')
+        c.state.users.set(id, { id, name, email })
+        c.state.userIndex.set(email, id)
+        return authSessionResponse(c.state, id)
+      },
+    },
+    {
+      pattern: '/api/auth/sign-in/email',
+      allowed: new Set(['POST']),
+      run: (c): Response => {
+        if (!isRecord(c.body)) return errorResponse(400, 'sign-in body must be a JSON object')
+        const email = asString(c.body['email'])
+        if (email === undefined) return errorResponse(400, 'email is required')
+        const userId = c.state.userIndex.get(email)
+        if (userId === undefined) return errorResponse(401, 'invalid credentials')
+        return authSessionResponse(c.state, userId)
+      },
+    },
+    {
+      pattern: '/api/auth/organization/invite-member',
+      allowed: new Set(['POST']),
+      run: (c): Response => {
+        if (!isRecord(c.body)) return errorResponse(400, 'invite body must be a JSON object')
+        const email = asString(c.body['email'])
+        const organizationId = asString(c.body['organizationId']) ?? ''
+        const role = asString(c.body['role']) ?? 'member'
+        if (email === undefined) return errorResponse(400, 'email is required')
+        const id = nextId(c.state, 'invitation')
+        const userId = c.state.userIndex.get(email)
+        c.state.invitations.set(id, { id, email, organizationId, role, userId })
+        return json({ id })
+      },
+    },
+    {
+      pattern: '/api/auth/organization/accept-invitation',
+      allowed: new Set(['POST']),
+      run: (c): Response => {
+        if (!isRecord(c.body)) return errorResponse(400, 'accept body must be a JSON object')
+        const invitationId = asString(c.body['invitationId'])
+        if (invitationId === undefined) return errorResponse(400, 'invitationId is required')
+        const invitation = c.state.invitations.get(invitationId)
+        if (invitation === undefined) return errorResponse(404, 'invitation not found')
+        const userId = invitation.userId ?? nextId(c.state, 'member')
+        const user = c.state.users.get(userId)
+        c.state.members.set(`${invitation.organizationId}:${userId}`, {
+          id: userId,
+          organizationId: invitation.organizationId,
+          name: user?.name ?? invitation.email,
+          email: invitation.email,
+          role: invitation.role,
+        })
+        return json({ success: true })
+      },
+    },
+  ])
+
+const authSessionResponse = (state: FakeKaneoState, userId: string): Response => {
+  const token = nextId(state, 'token')
+  return jsonWithHeaders({ user: { id: userId }, token }, 200, {
+    'Set-Cookie': `better-auth.session_token=${token}; Path=/`,
+  })
+}
+
 // ---------- Handler chain ----------
 
 const handlers: ReadonlyArray<(ctx: FakeKaneoCtx) => Response | undefined> = [
   handleProjects,
   handleColumns,
   handleTasks,
+  handleComments,
+  handleLabels,
+  handleRelations,
+  handleMembers,
+  handleAuth,
   handleSearch,
 ]
 

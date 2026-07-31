@@ -11,8 +11,9 @@
  * lane proves request-building + response-mapping + contract conformance,
  * never drift against a live Kaneo.
  *
- * Task scope: core project/column/task/search routes only. Comments, labels,
- * relations, and member/auth routes land in a later slice.
+ * Covers the full parity surface: project/column/task/search core routes plus
+ * comment, label, task-relation, workspace-member, and Better Auth routes that
+ * the Kaneo client and member-provisioning flow invoke.
  */
 
 // ---------- Stored entities ----------
@@ -54,14 +55,65 @@ export type StoredTask = {
   createdAt: string
 }
 
+export type StoredComment = {
+  id: string
+  taskId: string
+  userId: string
+  content: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type StoredLabel = {
+  id: string
+  workspaceId: string
+  name: string
+  color: string
+  createdAt: string
+  taskId: string | null
+}
+
+export type StoredRelation = {
+  id: string
+  sourceTaskId: string
+  targetTaskId: string
+  relationType: string
+  createdAt: string
+}
+
+export type StoredUser = {
+  id: string
+  name: string
+  email: string
+}
+
+export type StoredInvitation = {
+  id: string
+  email: string
+  organizationId: string
+  role: string
+  userId: string | undefined
+}
+
+export type StoredMember = {
+  id: string
+  organizationId: string
+  name: string
+  email: string
+  role: string
+}
+
 export type FakeKaneoState = {
   projects: Map<string, StoredProject>
   columns: Map<string, StoredColumn>
   tasks: Map<string, StoredTask>
-  comments: Map<string, unknown>
-  labels: Map<string, unknown>
-  relations: Map<string, unknown>
-  members: Map<string, unknown>
+  comments: Map<string, StoredComment>
+  labels: Map<string, StoredLabel>
+  relations: Map<string, StoredRelation>
+  members: Map<string, StoredMember>
+  users: Map<string, StoredUser>
+  userIndex: Map<string, string>
+  invitations: Map<string, StoredInvitation>
   seq: number
 }
 
@@ -83,6 +135,9 @@ export const createFakeKaneoState = (): FakeKaneoState => ({
   labels: new Map(),
   relations: new Map(),
   members: new Map(),
+  users: new Map(),
+  userIndex: new Map(),
+  invitations: new Map(),
   seq: 0,
 })
 
@@ -94,6 +149,9 @@ export const resetFakeKaneoState = (state: FakeKaneoState): void => {
   state.labels.clear()
   state.relations.clear()
   state.members.clear()
+  state.users.clear()
+  state.userIndex.clear()
+  state.invitations.clear()
   state.seq = 0
 }
 
@@ -120,3 +178,7 @@ export const slugify = (name: string): string =>
 /** Every new project gets a default `To Do` column so the provider's
  *  validateStatus() resolves the `to-do` slug without an extra round trip. */
 export const DEFAULT_COLUMN_NAME = 'To Do'
+
+/** Kaneo derives a comment's author from the session; the fake has no auth on
+ *  comment routes, so every comment is attributed to this fixed author id. */
+export const COMMENT_AUTHOR_USER_ID = 'user-1'
