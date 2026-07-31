@@ -6,6 +6,7 @@
 import { HttpResponse, delay, http } from 'msw'
 import type { HttpHandler } from 'msw'
 
+import { isNamespace } from './namespace.js'
 import type { HandlerFamily } from './settings-handlers-personal.js'
 
 const NEVER_RESOLVE_MS = 60_000
@@ -173,11 +174,23 @@ const codingMcpInternalSelected = {
 }
 
 export const codingMcpHandlers: HandlerFamily = {
-  populated: [http.get('/settings/api/coding-credentials', () => HttpResponse.json(codingMcpPopulated))],
-  empty: [http.get('/settings/api/coding-credentials', () => HttpResponse.json(codingMcpEmpty))],
-  error: [http.get('/settings/api/coding-credentials', boom)],
+  populated: [
+    http.get('/settings/api/coding-credentials', ({ request }) =>
+      isNamespace(request, 'mcp') ? HttpResponse.json(codingMcpPopulated) : undefined,
+    ),
+  ],
+  empty: [
+    http.get('/settings/api/coding-credentials', ({ request }) =>
+      isNamespace(request, 'mcp') ? HttpResponse.json(codingMcpEmpty) : undefined,
+    ),
+  ],
+  error: [
+    http.get('/settings/api/coding-credentials', ({ request }) => (isNamespace(request, 'mcp') ? boom() : undefined)),
+  ],
   loading: [
-    http.get('/settings/api/coding-credentials', async () => {
+    http.get('/settings/api/coding-credentials', async ({ request }) => {
+      // Guard before the delay: a foreign namespace must fall through immediately.
+      if (!isNamespace(request, 'mcp')) return undefined
       await delay(NEVER_RESOLVE_MS)
       return HttpResponse.json(codingMcpEmpty)
     }),
@@ -185,15 +198,21 @@ export const codingMcpHandlers: HandlerFamily = {
 }
 
 export const codingMcpNoCatalogHandlers: HttpHandler[] = [
-  http.get('/settings/api/coding-credentials', () => HttpResponse.json(codingMcpNoCatalog)),
+  http.get('/settings/api/coding-credentials', ({ request }) =>
+    isNamespace(request, 'mcp') ? HttpResponse.json(codingMcpNoCatalog) : undefined,
+  ),
 ]
 
 export const codingMcpInternalAvailableHandlers: HttpHandler[] = [
-  http.get('/settings/api/coding-credentials', () => HttpResponse.json(codingMcpInternalAvailable)),
+  http.get('/settings/api/coding-credentials', ({ request }) =>
+    isNamespace(request, 'mcp') ? HttpResponse.json(codingMcpInternalAvailable) : undefined,
+  ),
 ]
 
 export const codingMcpInternalSelectedHandlers: HttpHandler[] = [
-  http.get('/settings/api/coding-credentials', () => HttpResponse.json(codingMcpInternalSelected)),
+  http.get('/settings/api/coding-credentials', ({ request }) =>
+    isNamespace(request, 'mcp') ? HttpResponse.json(codingMcpInternalSelected) : undefined,
+  ),
 ]
 
 // --- Analytics preferences (GET /settings/api/analytics/preferences) ---

@@ -9,6 +9,12 @@ import { getResponse } from 'msw'
 import type { HttpHandler } from 'msw'
 
 import { codingCredentialsHandlers } from '../../../../client/stories/msw/settings-handlers-coding.js'
+import {
+  codingMcpHandlers,
+  codingMcpInternalAvailableHandlers,
+  codingMcpInternalSelectedHandlers,
+  codingMcpNoCatalogHandlers,
+} from '../../../../client/stories/msw/settings-handlers-personal-2.js'
 
 const NAMESPACES = ['agent-provider', 'forge', 'mcp'] as const
 
@@ -46,12 +52,19 @@ const RESPONDING: { name: string; handlers: HttpHandler[]; own: string }[] = [
   { name: 'agent-provider populated', handlers: codingCredentialsHandlers.populated, own: 'agent-provider' },
   { name: 'agent-provider empty', handlers: codingCredentialsHandlers.empty, own: 'agent-provider' },
   { name: 'agent-provider error', handlers: codingCredentialsHandlers.error, own: 'agent-provider' },
+  { name: 'mcp populated', handlers: codingMcpHandlers.populated, own: 'mcp' },
+  { name: 'mcp empty', handlers: codingMcpHandlers.empty, own: 'mcp' },
+  { name: 'mcp error', handlers: codingMcpHandlers.error, own: 'mcp' },
+  { name: 'mcp no-catalog', handlers: codingMcpNoCatalogHandlers, own: 'mcp' },
+  { name: 'mcp internal-available', handlers: codingMcpInternalAvailableHandlers, own: 'mcp' },
+  { name: 'mcp internal-selected', handlers: codingMcpInternalSelectedHandlers, own: 'mcp' },
 ]
 
 // The `loading` families delay past any test timeout for their own namespace, so they are
 // asserted negatively via foreignNamespaces, which never requests the own namespace.
 const LOADING: { name: string; handlers: HttpHandler[]; own: string }[] = [
   { name: 'agent-provider loading', handlers: codingCredentialsHandlers.loading, own: 'agent-provider' },
+  { name: 'mcp loading', handlers: codingMcpHandlers.loading, own: 'mcp' },
 ]
 
 test.each(RESPONDING)('$name answers only its own namespace', async ({ handlers, own }) => {
