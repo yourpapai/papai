@@ -49,14 +49,14 @@ test('CodeHostSection — save hover (disabled primary)', async ({ sharedPage })
 
 test('CodeHostSection — replace secret open', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'settings-sections-codehostsection--populated')
-  await sharedPage.getByTestId('coding-replace-provider_api_key').click()
+  await sharedPage.getByTestId('coding-replace-forge_token').click()
   await expect(sharedPage).toHaveScreenshot()
 })
 
 test('CodeHostSection — dirty form, primary enabled', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'settings-sections-codehostsection--populated')
-  await sharedPage.getByTestId('coding-replace-provider_api_key').click()
-  await sharedPage.getByTestId('coding-input-provider_api_key').fill('ghp_new_token_value')
+  await sharedPage.getByTestId('coding-replace-forge_token').click()
+  await sharedPage.getByTestId('coding-input-forge_token').fill('ghp_new_token_value')
   await expect(sharedPage).toHaveScreenshot()
 })
 
@@ -69,8 +69,15 @@ test('CodeHostSection — clear confirm dialog', async ({ sharedPage }) => {
 test('CodeHostSection — long value overflow', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'settings-sections-codehostsection--populated')
   await sharedPage.setViewportSize({ width: 640, height: 900 })
+  await sharedPage.getByTestId('coding-select-kind').selectOption('gitlab-self-hosted')
   await sharedPage
-    .getByTestId('coding-input-provider_base_url')
+    .getByTestId('coding-input-instance_url')
     .fill('https://gitlab.self-hosted.internal.example.company.com/api/v4/very/long/path/segment')
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('CodeHostSection — self-hosted kind reveals Instance URL', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-codehostsection--populated')
+  await sharedPage.getByTestId('coding-select-kind').selectOption('gitlab-self-hosted')
   await expect(sharedPage).toHaveScreenshot()
 })
