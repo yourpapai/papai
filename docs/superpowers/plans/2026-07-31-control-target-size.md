@@ -24,6 +24,11 @@ See LICENSE in the project root for details.
 - The formatter is **oxfmt** (`bun run format`), not prettier. Run it before committing.
 - **Never add lint-disable or type-ignore comments** — a hook blocks them. Fix the underlying issue.
 - Test runner is `bun:test`. No Jest, no Vitest.
+- **Tests under `tests/client/` need the browser-conditions invocation** — a plain `bun test <path>` does not match this repo's client-test discovery config. Run a single client test file with:
+  ```bash
+  bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' <path>
+  ```
+  (`bun test:client` is the same invocation over the whole `tests/client/` directory.)
 - Screenshot baselines under `.storybook-shots/**` are **gitignored and always regenerated** with `--update-snapshots`. They are an agent visual-feedback loop, not a committed regression gate — never `git add` them.
 - Only `sm`-sized controls change rendered size. `md` and `lg` are refactors at identical values and must produce no visual difference.
 
@@ -72,7 +77,7 @@ In `tests/client/shared/tokens.test.ts`, add three entries to the end of the arr
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `bun test tests/client/shared/tokens.test.ts`
+Run: `bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/shared/tokens.test.ts`
 
 Expected: FAIL on `defines layout + sizing tokens` — `expect(received).toContain("--control-h-sm:")`, because `tokens.css` has no such declaration.
 
@@ -89,7 +94,7 @@ In `client/shared/tokens.css`, inside `:root`, add the three declarations immedi
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `bun test tests/client/shared/tokens.test.ts`
+Run: `bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/shared/tokens.test.ts`
 
 Expected: PASS — 4 pass, 0 fail.
 
@@ -183,7 +188,7 @@ describe('control target size', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `bun test tests/client/shared/control-target-size.test.ts`
+Run: `bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/shared/control-target-size.test.ts`
 
 Expected: FAIL — 2 pass, 1 fail. The scanner and token tests pass (Task 1 added the tokens); `interactive primitives take their height from the control-height scale` fails on the first offender, `Btn.svelte`, reporting `literals: ["height: 22px"]` against the expected `[]`.
 
@@ -252,7 +257,7 @@ A native `<button>` centers its content vertically, so no flex properties are ne
 
 - [ ] **Step 7: Run the test to verify it passes**
 
-Run: `bun test tests/client/shared/control-target-size.test.ts`
+Run: `bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/shared/control-target-size.test.ts`
 
 Expected: PASS — 3 pass, 0 fail.
 
@@ -262,7 +267,7 @@ Temporarily lower the floor and confirm the test catches it:
 
 ```bash
 sed -i '' 's/--control-h-sm: 24px/--control-h-sm: 22px/' client/shared/tokens.css
-bun test tests/client/shared/control-target-size.test.ts
+bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/shared/control-target-size.test.ts
 ```
 
 Expected: FAIL on `every --control-h-* token clears the WCAG minimum` — `expect(22).toBeGreaterThanOrEqual(24)`.
@@ -271,7 +276,7 @@ Restore it:
 
 ```bash
 sed -i '' 's/--control-h-sm: 22px/--control-h-sm: 24px/' client/shared/tokens.css
-bun test tests/client/shared/control-target-size.test.ts
+bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/shared/control-target-size.test.ts
 ```
 
 Expected: PASS — 3 pass, 0 fail.
@@ -336,7 +341,7 @@ Exact equality, not a subset check: it fails on an unknown offender *and* on an 
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `bun test tests/client/shared/control-target-size.test.ts`
+Run: `bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/shared/control-target-size.test.ts`
 
 Expected: FAIL on the new test — received `["Checkbox.svelte", "EmptyState.svelte", "ErrorState.svelte", "Meter.svelte"]`, expected `[]`.
 
@@ -359,7 +364,7 @@ const EXEMPT: Record<string, string> = {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `bun test tests/client/shared/control-target-size.test.ts`
+Run: `bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/shared/control-target-size.test.ts`
 
 Expected: PASS — 4 pass, 0 fail.
 
@@ -367,7 +372,7 @@ Expected: PASS — 4 pass, 0 fail.
 
 ```bash
 printf '\n<style>\n  .probe { height: 20px; }\n</style>\n' >> client/shared/ui/Dot.svelte
-bun test tests/client/shared/control-target-size.test.ts
+bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/shared/control-target-size.test.ts
 ```
 
 Expected: FAIL — received includes `"Dot.svelte"`, which is in neither `INTERACTIVE` nor `EXEMPT`.
@@ -376,7 +381,7 @@ Revert the probe and re-run:
 
 ```bash
 git checkout client/shared/ui/Dot.svelte
-bun test tests/client/shared/control-target-size.test.ts
+bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/shared/control-target-size.test.ts
 ```
 
 Expected: PASS — 4 pass, 0 fail. Confirm `git status --short client/shared/ui/Dot.svelte` prints nothing.
@@ -466,7 +471,7 @@ Expected: `4/4 checks passed, 0 failed` (lint, typecheck, format:check, license-
 Then the test suite:
 
 ```bash
-bun test tests/client/shared/
+bun test:client
 ```
 
 Expected: PASS — both `tokens.test.ts` and `control-target-size.test.ts` green.
