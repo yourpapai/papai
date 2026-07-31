@@ -8,7 +8,7 @@ import { expect, test } from 'bun:test'
 import { getResponse } from 'msw'
 import type { HttpHandler } from 'msw'
 
-import { codingCredentialsHandlers } from '../../../../client/stories/msw/settings-handlers-coding.js'
+import { codingCredentialsHandlers, forgeHandlers } from '../../../../client/stories/msw/settings-handlers-coding.js'
 import {
   codingMcpHandlers,
   codingMcpInternalAvailableHandlers,
@@ -58,6 +58,9 @@ const RESPONDING: { name: string; handlers: HttpHandler[]; own: string }[] = [
   { name: 'mcp no-catalog', handlers: codingMcpNoCatalogHandlers, own: 'mcp' },
   { name: 'mcp internal-available', handlers: codingMcpInternalAvailableHandlers, own: 'mcp' },
   { name: 'mcp internal-selected', handlers: codingMcpInternalSelectedHandlers, own: 'mcp' },
+  { name: 'forge populated', handlers: forgeHandlers.populated, own: 'forge' },
+  { name: 'forge empty', handlers: forgeHandlers.empty, own: 'forge' },
+  { name: 'forge error', handlers: forgeHandlers.error, own: 'forge' },
 ]
 
 // The `loading` families delay past any test timeout for their own namespace, so they are
@@ -65,6 +68,7 @@ const RESPONDING: { name: string; handlers: HttpHandler[]; own: string }[] = [
 const LOADING: { name: string; handlers: HttpHandler[]; own: string }[] = [
   { name: 'agent-provider loading', handlers: codingCredentialsHandlers.loading, own: 'agent-provider' },
   { name: 'mcp loading', handlers: codingMcpHandlers.loading, own: 'mcp' },
+  { name: 'forge loading', handlers: forgeHandlers.loading, own: 'forge' },
 ]
 
 test.each(RESPONDING)('$name answers only its own namespace', async ({ handlers, own }) => {

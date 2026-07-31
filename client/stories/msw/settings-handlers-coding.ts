@@ -112,3 +112,71 @@ export const codingCredentialsHandlers: HandlerFamily = {
     }),
   ],
 }
+
+// --- Forge (namespace: 'forge') ---
+// Mirrors FIELDS_META.forge in src/debug/settings/coding-credentials-fields-meta.ts:63-79.
+// The route attaches allowedAgents only for 'agent-provider' and the catalog keys only for
+// 'mcp', so a forge body carries neither.
+
+const FORGE_KIND_OPTIONS = ['github', 'github-enterprise', 'gitlab', 'gitlab-self-hosted']
+
+function forgeFields(hasValue: boolean): FixtureField[] {
+  return [
+    credentialField('kind', 'Code host', {
+      required: true,
+      hasValue,
+      // A SaaS kind, so instance_url starts hidden and the reveal interaction is observable.
+      value: hasValue ? 'github' : '',
+      control: 'select',
+      options: FORGE_KIND_OPTIONS,
+    }),
+    credentialField('instance_url', 'Instance URL (enterprise / self-hosted)'),
+    credentialField('forge_token', 'Access token', {
+      required: true,
+      sensitive: true,
+      hasValue,
+      value: hasValue ? '****cd34' : '',
+    }),
+  ]
+}
+
+const forgePopulated = {
+  namespace: 'forge',
+  configured: true,
+  complete: true,
+  missing: [],
+  fields: forgeFields(true),
+}
+
+// `missing` follows allRequiredFields (src/coding-credentials/store.ts:60): both required fields.
+const forgeEmpty = {
+  namespace: 'forge',
+  configured: false,
+  complete: false,
+  missing: ['kind', 'forge_token'],
+  fields: forgeFields(false),
+}
+
+export const forgeHandlers: HandlerFamily = {
+  populated: [
+    http.get('/settings/api/coding-credentials', ({ request }) =>
+      isNamespace(request, 'forge') ? HttpResponse.json(forgePopulated) : undefined,
+    ),
+  ],
+  empty: [
+    http.get('/settings/api/coding-credentials', ({ request }) =>
+      isNamespace(request, 'forge') ? HttpResponse.json(forgeEmpty) : undefined,
+    ),
+  ],
+  error: [
+    http.get('/settings/api/coding-credentials', ({ request }) => (isNamespace(request, 'forge') ? boom() : undefined)),
+  ],
+  loading: [
+    http.get('/settings/api/coding-credentials', async ({ request }) => {
+      // Guard before the delay: a foreign namespace must fall through immediately.
+      if (!isNamespace(request, 'forge')) return undefined
+      await delay(NEVER_RESOLVE_MS)
+      return HttpResponse.json(forgeEmpty)
+    }),
+  ],
+}
