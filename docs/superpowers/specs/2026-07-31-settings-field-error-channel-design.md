@@ -142,9 +142,27 @@ The getter is required, not a convenience: it is what makes the descendant contr
 shell's live `error` prop rather than its value at init.
 
 The `footer` snippet stays for arbitrary content. The shell's own `.settings-field__error` and
-`.settings-field__hint` rules match `Field`'s (10px; `--danger` and `--fg-hint`) and absorb the
-two ad-hoc classes now living in consumers (`ConfigFieldRow.svelte:195`,
-`CodingCredentialsSection.svelte:392`).
+`.settings-field__hint` rules absorb the two ad-hoc classes now living in consumers
+(`ConfigFieldRow.svelte:195`, `CodingCredentialsSection.svelte:392`).
+
+Those rules follow the **settings** type scale, not `Field`'s: `font-size: 12px` with
+`--text-muted` for the hint and `--danger` for the error, plus `margin: 0`. `Field` uses 10px
+`--fg-hint`, but both settings consumers already use 12px `--text-muted`
+(`ConfigFieldRow.svelte:195`, `CodingCredentialsSection.svelte:392`), and adopting `Field`'s
+scale would restyle every migrated hint for no reason. Parity here means the same *channel*,
+not the same pixels — the two shells serve different SPAs with different scales.
+
+`margin: 0` is deliberate: the shell is a `display: grid` with `gap: var(--gap-tight)`
+(`:50`–`51`), so a default paragraph margin would double the spacing. Only
+`CodingCredentialsSection`'s hint already zeroes it, so `ConfigFieldRow`'s hint will lose a
+default `<p>` margin — a visible, intended baseline change.
+
+Its *error* changes a little more. `ConfigFieldRow` renders errors with the global
+`.status-error`, which sets `color: var(--danger)` and nothing else
+(`client/settings/settings.css:91`), leaving the text at the inherited body size with a default
+paragraph margin. Under the shell's rule it keeps the danger colour but adopts 12px and
+`margin: 0` — which is the point: the error finally matches the hint sitting beside it. See
+acceptance 5.
 
 Migrations that follow from this: the byte-identical error blocks at
 `ConfigFieldRow.svelte:134` and `:174` collapse into the `error` prop, and
@@ -238,8 +256,10 @@ so the absent guard reads as deliberate rather than forgotten.
 3. A 422 with no `field`, or one naming a hidden or unknown field, still renders in the top
    banner.
 4. No message rendered under a field label repeats that field's column name.
-5. `ConfigFieldRow` and `CodingCredentialsSection` baselines are unchanged by the migration
-   off their hand-rolled error and hint markup.
+5. `CodingCredentialsSection`'s baselines are unchanged by the migration off its hand-rolled
+   hint, whose style the shell reproduces exactly. `ConfigFieldRow`'s baselines do change: its
+   hint loses a default `<p>` margin, and its error additionally drops to 12px. The regenerated
+   shots are read, and those are the only differences.
 
 ## What this does not fix
 
