@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, mock, test } from 'bun:test'
 
 import factory from '../../../plugins/task-provider-kaneo/index.js'
 import manifestJson from '../../../plugins/task-provider-kaneo/plugin.json' with { type: 'json' }
@@ -87,6 +87,7 @@ describe('task-provider-kaneo activation', () => {
     }
 
     const mockCtx: RegistrationContext = {
+      providerRuntime: { httpFetch: mock<(url: string, init?: RequestInit) => Promise<Response>>() },
       registration: stubRegistration,
     }
 

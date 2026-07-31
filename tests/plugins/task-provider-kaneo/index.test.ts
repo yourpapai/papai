@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 
 import { z } from 'zod'
 
+import factory from '../../../plugins/task-provider-kaneo/index.js'
 import { KaneoProvider } from '../../../plugins/task-provider-kaneo/provider.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
@@ -369,5 +370,57 @@ describe('KaneoProvider', () => {
       const result = provider.normalizeListTaskParams(params)
       expect(result).toEqual(params)
     })
+  })
+})
+
+type KaneoActivationContext = Parameters<ReturnType<typeof factory>['activate']>[0]
+type KaneoRegisterInput = Parameters<KaneoActivationContext['registration']['registerTaskProviderType']>[1]
+
+function kaneoFactoryFromRegistration(
+  input: KaneoRegisterInput,
+): (config: Record<string, string>) => { readonly name: string } {
+  return typeof input === 'function' ? input : input.factory
+}
+
+describe('plugin factory transport', () => {
+  beforeEach(() => {
+    mockLogger()
+    mock.restore()
+  })
+
+  test('routes listProjects through the runtime httpFetch transport', async () => {
+    const httpFetch = mock<(url: string, init?: RequestInit) => Promise<Response>>(() =>
+      Promise.resolve(new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } })),
+    )
+
+    let capturedFactory: ReturnType<typeof kaneoFactoryFromRegistration> | undefined
+
+    const ctx: KaneoActivationContext = {
+      providerRuntime: { httpFetch },
+      registration: {
+        registerTaskProviderType(_type, input) {
+          capturedFactory = kaneoFactoryFromRegistration(input)
+        },
+      },
+    }
+
+    factory().activate(ctx)
+
+    assert(capturedFactory !== undefined, 'Expected kaneo factory to be registered')
+
+    const provider = capturedFactory({
+      baseUrl: 'https://kaneo.invalid',
+      credential: 'key',
+      workspaceId: 'workspace-1',
+    })
+    assert(provider instanceof KaneoProvider)
+
+    await provider.listProjects()
+
+    expect(httpFetch).toHaveBeenCalledWith(
+      'https://kaneo.invalid/api/project?workspaceId=workspace-1',
+      expect.any(Object),
+    )
+    expect(httpFetch).toHaveBeenCalledTimes(1)
   })
 })
