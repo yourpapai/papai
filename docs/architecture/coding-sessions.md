@@ -29,7 +29,7 @@ ceiling to admit it.
 
 ## Sandbox MCP broker (Phases 1-3B)
 
-Lets a sandboxed coding agent use a credential-bearing upstream MCP server without the credential ever entering the sandbox or widening the agent's egress (design D; spec `docs/superpowers/specs/2026-07-05-sandbox-mcp-broker-design.md`).
+Lets a sandboxed coding agent use a credential-bearing upstream MCP server without the credential ever entering the sandbox or widening the agent's egress (design D; spec `docs/archive/2026-07-05-sandbox-mcp-broker-design.md`; ADRs 0260/0264/0274/0275/0276).
 
 **Transport (Phase 1).** When MCP is enabled for a session, the agent's ACP `mcpServers` config declares a dumb `mcp-tunnel` binary that the agent spawns itself; the tunnel dials a bind-mounted host unix socket (`--mcp-mount` → `/run/magi/mcp.sock` inside the sandbox), which magi-main's mediator accepts on the host side. Because this relies on a bind-mounted socket, magi and the sandbox must share a kernel — native Linux/CI only, not VM-backed docker (e.g. macOS Docker Desktop).
 
