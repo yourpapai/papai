@@ -3,7 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -12,6 +11,8 @@ import { Glob } from 'bun'
 
 import { openCoverageCache } from './coverage-cache.js'
 import type { CoverageCache } from './coverage-cache.js'
+import { classifyTestLane, spawnAndParseLcov } from './coverage-runner.js'
+import type { SpawnAndParse, SpawnCoverageOptions } from './coverage-runner.js'
 
 export type CoverageMap = Record<string, string[]>
 
@@ -55,7 +56,10 @@ const DEFAULT_CACHE_PATH = 'reports/paired/coverage-map.cache.json'
 const DEFAULT_CACHE_TTL_MS = 24 * 60 * 60 * 1000
 const DEFAULT_COVERAGE_DIR = 'reports/coverage'
 const DEFAULT_LCOV_NAME = 'lcov.info'
-const DEFAULT_TIMEOUT_MS = 30_000
+// A single-file coverage run is usually a few seconds, but meta-tests like
+// tests/analytics/privacy-contract.test.ts re-spawn ~30 nested `bun test` fixture runs and
+// take ~40s locally; CI runners are slower still. 120s absorbs that without masking a hang.
+const DEFAULT_TIMEOUT_MS = 120_000
 const TEST_SCAN_PATTERN = 'tests/**/*.test.ts'
 
 export interface DefaultCoverageMapDepsOptions {
@@ -77,8 +81,12 @@ interface CandidateContext {
  * two heuristics unioned together: (a) tests whose text directly imports the source (mirrors the
  * TDD write-hook's `testFileImportsImpl`), AND (b) tests in the same package directory as the
  * source's companion (catches transitive coverage where a same-package index test exercises the
- * source indirectly through a re-exporting barrel). `runCoverage` spawns `bun test --coverage`,
- * parses the lcov, and consults a content-keyed TTL cache. Never throws — fails open to empty.
+ * source indirectly through a re-exporting barrel). External-lane tests (tests/e2e/**,
+ * tests/stories/**) are excluded from the universe — they need Docker / the sandboxed story
+ * runner and cannot be spawned per-file. `runCoverage` spawns a per-lane `bun test --coverage`
+ * (tests/client/** runs with the `test:client` preset so bun's pathIgnorePatterns don't hide
+ * it), parses the lcov, and consults a content-keyed TTL cache; failures are never cached.
+ * Never throws — fails open to empty.
  */
 export function createDefaultCoverageMapDeps(
   projectRoot: string,
@@ -136,7 +144,9 @@ const listCandidateTests = (srcFile: string, projectRoot: string, ctx: Candidate
 
 const scanTestFiles = (projectRoot: string): string[] => {
   try {
-    return [...new Glob(TEST_SCAN_PATTERN).scanSync({ cwd: projectRoot, onlyFiles: true })].sort()
+    return [...new Glob(TEST_SCAN_PATTERN).scanSync({ cwd: projectRoot, onlyFiles: true })]
+      .filter((testRel) => classifyTestLane(testRel) !== 'external')
+      .sort()
   } catch {
     return []
   }
@@ -168,7 +178,6 @@ const samePackageTestDir = (srcRel: string): string => {
   }
   return 'tests'
 }
-export { samePackageTestDir as _samePackageTestDirForTest }
 
 /**
  * Mirror of `.hooks/tdd/test-resolver.mjs`'s `testFileImportsImpl`, accepting pre-read content so
@@ -184,13 +193,12 @@ const scanImportsInContent = (content: string, testAbs: string, implAbs: string)
   return content.includes(withJs) || content.includes(`${noExt}'`) || content.includes(`${noExt}"`)
 }
 
-interface RunCoverageOptions {
-  readonly coverageDir: string
-  readonly lcovName: string
-  readonly timeoutMs: number
+interface RunCoverageOptions extends SpawnCoverageOptions {
   readonly cache: CoverageCache
   readonly cacheTtlMs: number
   readonly readTestContent: (testAbs: string) => string
+  /** Test seam: replaces the real bun spawn. Production callers leave it undefined. */
+  readonly spawnAndParse?: SpawnAndParse
 }
 
 const runCoverageFor = (
@@ -202,60 +210,13 @@ const runCoverageFor = (
   const key = cacheKeyForTest(testAbs, opts.readTestContent)
   const cached = opts.cache.get(key, opts.cacheTtlMs)
   if (cached !== undefined) return cached
-  const fresh = spawnAndParseLcov(testFile, projectRoot, opts)
+  const spawn = opts.spawnAndParse ?? spawnAndParseLcov
+  const fresh = spawn(testFile, projectRoot, opts)
+  // Fail open to empty WITHOUT caching: a transient spawn failure (timeout, runner hiccup)
+  // must not poison the 24h content-keyed cache and stick until the test file changes.
+  if (fresh === null) return new Map()
   opts.cache.set(key, fresh)
   return fresh
-}
-
-const spawnAndParseLcov = (
-  testFile: string,
-  projectRoot: string,
-  opts: Pick<RunCoverageOptions, 'coverageDir' | 'lcovName' | 'timeoutMs'>,
-): Map<string, number> => {
-  let spawned = true
-  try {
-    execFileSync('bun', ['test', testFile, '--coverage', '--coverage-reporter=lcov'], {
-      cwd: projectRoot,
-      stdio: 'pipe',
-      timeout: opts.timeoutMs,
-      maxBuffer: 20 * 1024 * 1024,
-    })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    console.error(`coverage-map: bun coverage failed for ${testFile}: ${message}`)
-    spawned = false
-  }
-  if (!spawned) return new Map()
-  const lcovPath = path.join(projectRoot, opts.coverageDir, opts.lcovName)
-  if (!fs.existsSync(lcovPath)) {
-    console.error(`coverage-map: lcov missing at ${lcovPath} for ${testFile}`)
-    return new Map()
-  }
-  try {
-    return parseLcovAll(lcovPath, projectRoot)
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    console.error(`coverage-map: lcov parse failed for ${lcovPath}: ${message}`)
-    return new Map()
-  }
-}
-
-/** Parse lcov into project-relative `sourceFile -> lines-hit` (keys match requested sourceFiles). */
-const parseLcovAll = (lcovPath: string, projectRoot: string): Map<string, number> => {
-  const content = fs.readFileSync(lcovPath, 'utf8')
-  const out = new Map<string, number>()
-  for (const section of content.split('end_of_record')) {
-    const sfMatch = section.match(/^SF:(.+)$/mu)
-    const lhMatch = section.match(/^LH:(\d+)$/mu)
-    if (sfMatch === null || lhMatch === null) continue
-    const sfPath = sfMatch[1]
-    const lhText = lhMatch[1]
-    if (sfPath === undefined || lhText === undefined) continue
-    const abs = path.resolve(projectRoot, sfPath.trim())
-    const linesHit = Number.parseInt(lhText, 10)
-    if (Number.isFinite(linesHit)) out.set(path.relative(projectRoot, abs), linesHit)
-  }
-  return out
 }
 
 const cacheKeyForTest = (testAbs: string, readContent: (testAbs: string) => string): string => {
@@ -263,3 +224,5 @@ const cacheKeyForTest = (testAbs: string, readContent: (testAbs: string) => stri
   const hash = createHash('sha256').update(content).digest('hex').slice(0, 16)
   return `${testAbs}:${hash}`
 }
+
+export { samePackageTestDir as _samePackageTestDirForTest, runCoverageFor as _runCoverageForTest }
