@@ -48,6 +48,11 @@ Spec: [`docs/superpowers/specs/2026-07-31-story-fixture-namespace-design.md`](..
 | `client/stories/msw/scenarios.ts` (modify) | Re-points the coding-credentials imports and adds four `settings-code-host-*` keys. |
 | `client/settings/sections/CodeHostSection.stories.svelte` (modify) | Retargets its four stories to the forge scenarios. |
 | `tests/client/stories/msw/coding-credentials-namespace.test.ts` (create) | The guard regression test. |
+| `tests/client/stories/msw/namespace.test.ts` (create) | Unit coverage of `isNamespace` — match, mismatch, and missing-param. |
+| `tests/client/stories/msw/settings-handlers-coding.test.ts` (create) | Mirror test for the new fixture module; receives the assertions trimmed out of `settings-handlers-personal.test.ts`. |
+| `tests/client/stories/msw/settings-handlers-personal.test.ts` (modify) | Loses its `codingCredentialsHandlers` assertions, which move to the mirror test above. |
+
+**The repo's TDD write hook requires an exact-name mirror test before it will let you write a new source file.** Creating `client/stories/msw/namespace.ts` requires `tests/client/stories/msw/namespace.test.ts` to exist first; the same holds for `settings-handlers-coding.ts`. Task 1 discovered this. Task 3 adds `forgeHandlers` to `settings-handlers-coding.ts`, so extend that module's mirror test in the same task rather than treating the guard test as its only coverage.
 | `tests/visual/settings/sections/CodeHostSection.spec.ts` (modify) | Three manual states retarget from agent-provider testids to forge ones, and the self-hosted reveal state is added. |
 
 ---
