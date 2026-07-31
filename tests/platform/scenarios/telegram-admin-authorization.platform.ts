@@ -5,12 +5,20 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { clearGroupAdminLiveCache, userManagesAuthorizedGroupLive } from '../../../src/chat/group-admin-live.js'
+import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import { TelegramChatProvider } from '../../../src/chat/telegram/index.js'
 import { mockLogger } from '../../utils/test-helpers.js'
 import { createFakeTelegramBot, type FakeTelegramBot } from '../harness/fake-telegram-bot.js'
 import { PLATFORM_STORIES } from './catalog.js'
 
 const PLATFORM_INSTANCE_ID = 'telegram-platform'
+const NATIVE_GROUP_ID = '-100'
+const NATIVE_USER_ID = '42'
+const AUTHORIZED_GROUP_ID = toScopedContextId({
+  platformInstanceId: PLATFORM_INSTANCE_ID,
+  nativeContextId: NATIVE_GROUP_ID,
+})
 const title = (scenarioId: keyof typeof PLATFORM_STORIES): string => PLATFORM_STORIES[scenarioId].title
 
 type MembershipOutcome = { status: string } | Error
@@ -36,17 +44,46 @@ describe('T3 Telegram — live group authorization', () => {
       { outcome: { status: 'creator' }, expected: true },
       { outcome: { status: 'administrator' }, expected: true },
       { outcome: { status: 'member' }, expected: false },
-      { outcome: new Error('fake Bot API unavailable'), expected: null },
     ] as const) {
       const { fake, provider } = createProvider(row.outcome)
 
-      await expect(provider.isGroupAdmin(PLATFORM_INSTANCE_ID, '-100', '42')).resolves.toBe(row.expected)
+      await provider.start()
+      await expect(provider.isGroupAdmin(PLATFORM_INSTANCE_ID, NATIVE_GROUP_ID, NATIVE_USER_ID)).resolves.toBe(
+        row.expected,
+      )
+      await provider.stop()
       expect(fake.membershipCalls()).toEqual([[-100, 42]])
       fake.assertClean()
     }
 
+    const unavailable = createProvider(new Error('fake Bot API unavailable'))
+    await unavailable.provider.start()
+    await expect(
+      unavailable.provider.isGroupAdmin(PLATFORM_INSTANCE_ID, NATIVE_GROUP_ID, NATIVE_USER_ID),
+    ).resolves.toBeNull()
+    clearGroupAdminLiveCache()
+    await expect(
+      userManagesAuthorizedGroupLive(
+        { isGroupAdmin: unavailable.provider.isGroupAdmin.bind(unavailable.provider) },
+        NATIVE_USER_ID,
+        PLATFORM_INSTANCE_ID,
+        {
+          listAuthorizedGroupIds: () => [AUTHORIZED_GROUP_ID],
+          now: () => 0,
+        },
+      ),
+    ).resolves.toBe(false)
+    await unavailable.provider.stop()
+    expect(unavailable.fake.membershipCalls()).toEqual([
+      [-100, 42],
+      [-100, 42],
+    ])
+    unavailable.fake.assertClean()
+
     const { fake, provider } = createProvider({ status: 'creator' })
+    await provider.start()
     await expect(provider.isGroupAdmin(PLATFORM_INSTANCE_ID, 'not-a-number', '42')).resolves.toBeNull()
+    await provider.stop()
     expect(fake.membershipCalls()).toEqual([])
     fake.assertClean()
   })

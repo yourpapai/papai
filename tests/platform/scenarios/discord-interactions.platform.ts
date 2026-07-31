@@ -18,25 +18,32 @@ const CHANNEL_ID = 'channel-42'
 const MEMBER_ID = 'member-7'
 const MESSAGE_ID = 'message-9'
 const CODE_LINE = 'const retained = true;\n'
+const INTRO_PARAGRAPH = 'Intro paragraph stays before the code block.\n\n'
+const CLOSING_PARAGRAPH = '\n\nClosing paragraph stays after the code block.'
 const title = (scenarioId: keyof typeof PLATFORM_STORIES): string => PLATFORM_STORIES[scenarioId].title
 
-const oversizedFencedMarkdown = `\`\`\`typescript\n${CODE_LINE.repeat(87)}\`\`\``
+const oversizedFencedMarkdown = `${INTRO_PARAGRAPH}\`\`\`typescript\n${CODE_LINE.repeat(87)}\`\`\`${CLOSING_PARAGRAPH}`
 const expectedDiscordChunks = [
+  INTRO_PARAGRAPH,
   `\`\`\`typescript\n${CODE_LINE.repeat(86)}\n\`\`\``,
-  `\`\`\`typescript\n${CODE_LINE}\`\`\``,
+  `\`\`\`typescript\n${CODE_LINE}\`\`\`${CLOSING_PARAGRAPH}`,
 ]
 
 function hasBalancedFences(chunk: string): boolean {
   return (chunk.match(/```/gu)?.length ?? 0) % 2 === 0
 }
 
-function mentionedMessage(content: string, fake: FakeDiscordClient): DispatchableMessage {
+function mentionedMessage(
+  content: string,
+  fake: FakeDiscordClient,
+  options: { mentioned?: boolean; messageId?: string } = {},
+): DispatchableMessage {
   return {
-    id: MESSAGE_ID,
+    id: options.messageId ?? MESSAGE_ID,
     author: { id: MEMBER_ID, username: 'member-seven', bot: false },
     content,
     channel: fake.channel,
-    mentions: { has: (id: string) => id === BOT_ID },
+    mentions: { has: (id: string) => id === BOT_ID && options.mentioned !== false },
     reference: null,
     type: 0,
   }
@@ -113,9 +120,28 @@ describe('T3 Discord — interaction adapters', () => {
     await startProvider(fake, provider)
     fake.emitMessage(mentionedMessage('/help retained-args', fake))
     await fake.flush()
+    fake.emitMessage(
+      mentionedMessage('/help should-not-route', fake, {
+        mentioned: false,
+        messageId: 'message-control',
+      }),
+    )
+    await fake.flush()
 
     expect(received).toHaveLength(1)
-    expect(received[0]!.commandMatch).toBe('retained-args')
+    expect(received[0]).toMatchObject({
+      commandMatch: 'retained-args',
+      contextId: CHANNEL_ID,
+      contextType: 'group',
+      isMentioned: true,
+      messageId: MESSAGE_ID,
+      platformInstanceId: PLATFORM_INSTANCE_ID,
+      text: '/help retained-args',
+      user: {
+        id: MEMBER_ID,
+        username: 'member-seven',
+      },
+    })
     expect(ordinaryMessages).toBe(0)
   })
 
@@ -130,14 +156,28 @@ describe('T3 Discord — interaction adapters', () => {
   })
 
   test(title('SCN-interaction-discord-response-lifecycle'), async () => {
+    const lifecycle: string[] = []
     provider.onInteraction(async (_incoming, reply) => {
+      lifecycle.push('route')
       await reply.ephemeralConfirm?.('saved')
     })
 
     await startProvider(fake, provider)
-    fake.emitButton(buttonInteraction())
+    const trackedButton = fake.button(buttonInteraction())
+    fake.emitButton({
+      ...buttonInteraction(),
+      deferUpdate: async () => {
+        lifecycle.push('acknowledge')
+        await trackedButton.deferUpdate()
+      },
+      followUp: (payload) => {
+        lifecycle.push('outcome')
+        return trackedButton.followUp(payload)
+      },
+    })
     await fake.flush()
 
+    expect(lifecycle).toEqual(['acknowledge', 'route', 'outcome'])
     expect(fake.deferUpdateCalls()).toHaveLength(1)
     expect(fake.followUpCalls()).toEqual([{ content: 'saved', flags: 64 }])
   })

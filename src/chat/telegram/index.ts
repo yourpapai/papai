@@ -45,15 +45,7 @@ import {
 } from './reply-helpers.js'
 export { extractReplyContext } from './message-extraction.js'
 const log = logger.child({ scope: 'chat:telegram' })
-export type TelegramBotLike = {
-  on: (...args: readonly unknown[]) => unknown
-  command: (...args: readonly unknown[]) => unknown
-  start: (...args: readonly unknown[]) => Promise<void>
-  stop: (...args: readonly unknown[]) => Promise<void>
-  api: {
-    getChatMember: (chatId: number, userId: number) => Promise<{ status: string }>
-  }
-}
+export type TelegramBotLike = Bot
 export type TelegramBotFactory = (token: string) => TelegramBotLike
 export type TelegramConstructorConfig = {
   readonly token?: string
@@ -74,8 +66,7 @@ export class TelegramChatProvider implements ChatProvider {
   readonly capabilities = telegramCapabilities
   readonly traits = telegramTraits
   readonly configRequirements = telegramConfigRequirements
-  private readonly bot: Bot
-  private readonly groupMemberApi: TelegramBotLike['api']
+  private readonly bot: TelegramBotLike
   private readonly token: string
   private readonly platformInstanceId: string
   private botUsername: string | null = null
@@ -89,9 +80,7 @@ export class TelegramChatProvider implements ChatProvider {
     }
     this.token = token
     this.platformInstanceId = platformInstanceId
-    const membershipBot = config.botFactory?.(token) ?? new Bot(token)
-    this.groupMemberApi = membershipBot.api
-    this.bot = membershipBot instanceof Bot ? membershipBot : new Bot(token)
+    this.bot = config.botFactory?.(token) ?? new Bot(token)
     log.debug({ platformInstanceId: this.platformInstanceId }, 'TelegramChatProvider constructed')
     this.bot.on('callback_query:data', (ctx) => this.dispatchCallbackQuery(ctx))
   }
@@ -190,7 +179,7 @@ export class TelegramChatProvider implements ChatProvider {
     return resolveTelegramUserLabel((chatId, uid) => this.bot.api.getChatMember(chatId, uid), userId, context)
   }
   isGroupAdmin(_platformInstanceId: string, groupId: string, userId: string): Promise<boolean | null> {
-    return isTelegramGroupAdmin((chatId, uid) => this.groupMemberApi.getChatMember(chatId, uid), groupId, userId)
+    return isTelegramGroupAdmin((chatId, uid) => this.bot.api.getChatMember(chatId, uid), groupId, userId)
   }
   async setCommands(adminUserId: string): Promise<void> {
     await registerTelegramCommands(this.bot, adminUserId)

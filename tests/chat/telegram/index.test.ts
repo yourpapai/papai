@@ -10,6 +10,8 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { Bot } from 'grammy'
+
 import { extractFilesFromContext } from '../../../src/chat/telegram/file-helpers.js'
 import { TelegramChatProvider, type TelegramBotFactory } from '../../../src/chat/telegram/index.js'
 import {
@@ -144,20 +146,19 @@ describe('TelegramChatProvider', () => {
 
   test('uses the injected bot factory for Bot API membership lookup', async () => {
     const calls: Array<[number, number]> = []
+    const registeredCommands: string[] = []
     const botFactory: TelegramBotFactory = (token) => {
       expect(token).toBe('telegram-test-token')
-      return {
-        on: () => undefined,
-        command: () => undefined,
-        start: () => Promise.resolve(),
-        stop: () => Promise.resolve(),
-        api: {
-          getChatMember: (chatId: number, userId: number) => {
-            calls.push([chatId, userId])
-            return Promise.resolve({ status: 'administrator' })
-          },
-        },
-      }
+      const bot = new Bot(token)
+      Reflect.set(bot, 'command', (name: string) => {
+        registeredCommands.push(name)
+        return bot
+      })
+      Reflect.set(bot.api, 'getChatMember', (chatId: number, userId: number) => {
+        calls.push([chatId, userId])
+        return Promise.resolve({ status: 'administrator' })
+      })
+      return bot
     }
     const provider = new TelegramChatProvider({
       token: 'telegram-test-token',
@@ -165,7 +166,9 @@ describe('TelegramChatProvider', () => {
       botFactory,
     })
 
+    provider.registerCommand('help', () => Promise.resolve())
     await expect(provider.isGroupAdmin('telegram-platform', '-100', '42')).resolves.toBe(true)
+    expect(registeredCommands).toEqual(['help'])
     expect(calls).toEqual([[-100, 42]])
   })
 

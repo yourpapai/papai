@@ -27,4 +27,24 @@ describe('fake Telegram bot', () => {
     fake.assertClean()
     fake.assertClean()
   })
+
+  test('tracks factory lifecycle and fails cleanup while polling is active', async () => {
+    const fake = createFakeTelegramBot({ getChatMember: () => Promise.resolve({ status: 'member' }) })
+    let startedUsername: string | undefined
+
+    const bot = fake.factory('telegram-test-token')
+    await bot.start({
+      onStart: (botInfo) => {
+        startedUsername = botInfo.username
+      },
+    })
+
+    expect(startedUsername).toBe('papai')
+    expect(fake.pollingTimer()).not.toBeNull()
+    expect(() => fake.assertClean()).toThrow('still polling')
+
+    await bot.stop()
+    expect(fake.pollingTimer()).toBeNull()
+    fake.assertClean()
+  })
 })
