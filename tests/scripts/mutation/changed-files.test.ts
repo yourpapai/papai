@@ -429,4 +429,17 @@ describe('runUpdateBaseline', () => {
     expect(readBaseline(baselinePath)).toEqual({ 'src/a.ts': 0.5, 'src/old.ts': 0.6 })
     expect(readBaseline(path.join(reportDir, 'scores.json'))).toEqual({ 'src/a.ts': 0.5 })
   })
+
+  test('writes an empty scores file and preserves the baseline when no files were measured', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'papai-update-baseline-'))
+    const reportDir = path.join(dir, 'reports', 'paired')
+    const baselinePath = path.join(dir, 'baseline.json')
+    fs.writeFileSync(baselinePath, JSON.stringify({ 'src/old.ts': 0.6 }))
+
+    const count = runUpdateBaseline({ baselinePath, reportDir, perFile: [] })
+
+    expect(count).toBe(1)
+    expect(readBaseline(baselinePath)).toEqual({ 'src/old.ts': 0.6 })
+    expect(readBaseline(path.join(reportDir, 'scores.json'))).toEqual({})
+  })
 })
