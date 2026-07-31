@@ -38,6 +38,9 @@ describe('design tokens', () => {
       '--radius-control',
       '--radius-pill',
       '--row-h',
+      '--control-h-sm',
+      '--control-h-md',
+      '--control-h-lg',
     ]) {
       expect(css).toContain(`${t}:`)
     }

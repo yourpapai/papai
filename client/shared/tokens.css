@@ -54,6 +54,9 @@
   --radius-control: 2px;
   --radius-pill: 999px;
   --row-h: 44px;
+  --control-h-sm: 24px; /* WCAG 2.2 AA SC 2.5.8 target-size floor */
+  --control-h-md: 28px;
+  --control-h-lg: 34px;
 
   /* ---- spacing scale (4px base, legacy) ---- */
   --s1: 4px;
