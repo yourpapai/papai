@@ -23,3 +23,13 @@ test.describe('shared/ui/Checkbox', () => {
   })
 })
 // @generated-end auto-screenshots
+
+// The 16px input box is exempt from the WCAG 2.2 AA SC 2.5.8 floor
+// (tests/client/shared/control-target-size.test.ts) on the grounds that it sits inside a
+// clickable <label> that is the actual pointer target. Measure the label's rendered click
+// area directly so that claim is verified, not just plausible from reading the CSS.
+test('Checkbox — label click-target clears the WCAG 2.2 AA SC 2.5.8 floor', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'shared-ui-checkbox--on')
+  const height = await sharedPage.locator('label.ui-checkbox').evaluate((el) => el.getBoundingClientRect().height)
+  expect(height).toBeGreaterThanOrEqual(24)
+})
