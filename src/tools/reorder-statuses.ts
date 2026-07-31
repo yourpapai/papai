@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:reorder-statuses' })
 
@@ -31,20 +32,13 @@ export function makeReorderStatusesTool(provider: TaskProvider): Tool {
       try {
         const result = await provider.reorderStatuses!(projectId, statuses, confirm)
         if (result !== undefined && 'status' in result && result.status === 'confirmation_required') {
-          log.warn({ projectId }, 'reorder_statuses blocked — shared bundle confirmation required')
+          log.warn('reorder_statuses blocked — shared bundle confirmation required')
           return result
         }
-        log.info({ projectId, statusCount: statuses.length }, 'Statuses reordered via tool')
+        log.info({ statusCount: statuses.length }, 'Statuses reordered via tool')
         return { success: true }
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            projectId,
-            tool: 'reorder_statuses',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('reorder_statuses', error), 'Tool execution failed')
         throw error
       }
     },

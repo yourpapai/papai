@@ -109,6 +109,7 @@ jobs:
           MAIN_MODEL: ${{ vars.MAIN_MODEL }}
           SMALL_MODEL: ${{ vars.SMALL_MODEL }}
           EMBEDDING_MODEL: ${{ vars.EMBEDDING_MODEL }}
+          ANALYTICS_KILL_SWITCH: ${{ vars.ANALYTICS_KILL_SWITCH }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/id_rsa
@@ -152,6 +153,7 @@ jobs:
             [ -n "${MAIN_MODEL}" ] && printf 'MAIN_MODEL=%s\n' "${MAIN_MODEL}"
             [ -n "${SMALL_MODEL}" ] && printf 'SMALL_MODEL=%s\n' "${SMALL_MODEL}"
             [ -n "${EMBEDDING_MODEL}" ] && printf 'EMBEDDING_MODEL=%s\n' "${EMBEDDING_MODEL}"
+            [ -n "${ANALYTICS_KILL_SWITCH}" ] && printf 'ANALYTICS_KILL_SWITCH=%s\n' "${ANALYTICS_KILL_SWITCH}"
           } > .env
           chmod 600 .env
 

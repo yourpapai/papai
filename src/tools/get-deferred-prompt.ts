@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { executeGet } from '../deferred-prompts/tool-handlers.js'
 import { logger } from '../logger.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:get-deferred-prompt' })
 
@@ -20,13 +21,7 @@ export function makeGetDeferredPromptTool(userId: string): Tool {
       try {
         return executeGet(userId, input)
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            tool: 'get_deferred_prompt',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('get_deferred_prompt', error), 'Tool execution failed')
         throw error
       }
     },

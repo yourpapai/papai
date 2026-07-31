@@ -22,7 +22,7 @@ export function makeSearchStagedFilesTool(contextId: string, groupContextId?: st
       limit: z.number().min(1).max(20).optional().describe('Maximum results to return (default: 10)'),
     }),
     execute: ({ query, limit }) => {
-      log.debug({ contextId, query, limit }, 'search_staged_files called')
+      log.debug({ contextId, limit }, 'search_staged_files called')
       const results = searchStagedFiles(contextId, query, { groupContextId, limit })
       return results.map((ref) => ({
         stagedId: ref.stagedId,
@@ -48,7 +48,7 @@ export function makeResolveStagedFileTool(
       stagedId: z.string().describe('The staged file ID (starts with stg_) to resolve'),
     }),
     execute: async ({ stagedId }) => {
-      log.debug({ contextId, stagedId }, 'resolve_staged_file called')
+      log.debug({ contextId }, 'resolve_staged_file called')
       const result = await resolveStagedFile(
         stagedId,
         contextId,

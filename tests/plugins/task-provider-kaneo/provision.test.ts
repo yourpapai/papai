@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { kaneoProvision } from '../../../plugins/task-provider-kaneo/auto-provision.js'
@@ -16,6 +16,11 @@ import {
   provisionAndConfigure,
   provisionKaneoUser,
 } from '../../../plugins/task-provider-kaneo/provision.js'
+import {
+  NO_ANALYTICS_SCOPE,
+  ProviderScopeMissingError,
+  requireProviderRequestScope,
+} from '../../../src/analytics/provider-request-scope.js'
 import { userCachesForTesting, getCachedTools, setCachedTools } from '../../../src/cache.js'
 import { getConfigValue } from '../../../src/config.js'
 import { setContextSettings } from '../../../src/instances/context-store.js'
@@ -674,6 +679,7 @@ describe('kaneoProvision', () => {
       username: 'alice',
       publicUrl: 'https://k.example.com',
       internalUrl: 'https://k-internal.example.com',
+      scope: NO_ANALYTICS_SCOPE,
     })
 
     assertProvisioned(outcome)
@@ -683,5 +689,42 @@ describe('kaneoProvision', () => {
     expect(capturedUrls.length).toBeGreaterThan(0)
     expect(capturedUrls.every((u) => u.startsWith('https://k-internal.example.com/'))).toBe(true)
     expect(getConfigValue('ctx-1', KANEO_PLUGIN_WORKSPACE_KEY)).toBe('ws-1')
+  })
+
+  test('the explicit scope is active during provisioning fetch I/O', async () => {
+    const capturedScopes: unknown[] = []
+    setMockFetch((url) => {
+      capturedScopes.push(requireProviderRequestScope())
+      return routeKaneoProvisionHook(url)
+    })
+
+    const outcome = await kaneoProvision({
+      contextId: 'ctx-1',
+      username: 'alice',
+      publicUrl: 'https://k.example.com',
+      internalUrl: 'https://k-internal.example.com',
+      scope: NO_ANALYTICS_SCOPE,
+    })
+
+    assertProvisioned(outcome)
+    expect(capturedScopes.length).toBeGreaterThan(0)
+    expect(capturedScopes.every((scope) => scope === NO_ANALYTICS_SCOPE)).toBe(true)
+  })
+
+  test('an omitted scope fails before any provisioning fetch I/O', async () => {
+    const fetchMock = mock(() => Promise.resolve(new Response('{}', { status: 200 })))
+    setMockFetch(fetchMock)
+
+    const omittedScopes: Parameters<typeof kaneoProvision>[0]['scope'][] = []
+    await expect(
+      kaneoProvision({
+        contextId: 'ctx-1',
+        username: 'alice',
+        publicUrl: 'https://k.example.com',
+        internalUrl: 'https://k-internal.example.com',
+        scope: omittedScopes[0]!,
+      }),
+    ).rejects.toThrow(ProviderScopeMissingError)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })

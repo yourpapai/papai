@@ -4,9 +4,14 @@
 // See LICENSE in the project root for details.
 
 import { randomUUID } from 'node:crypto'
+import { performance } from 'node:perf_hooks'
 
+import type { AuthorizedTurnSeed } from '../analytics/bot-observer.js'
+import { buildEditSeed, observeEditRegen, type EditRegenPhase } from '../analytics/edit-observer.js'
+import type { AnalyticsObserver } from '../analytics/runtime.js'
 import type { AuthorizationResult, IncomingMessage, PromptHandle, ReplyFn } from '../chat/types.js'
 import { trimTurnForRegeneration } from '../history.js'
+import type { LlmOrchestratorDeps } from '../llm-orchestrator-types.js'
 import { defaultDeps } from '../llm-orchestrator.js'
 import { logger } from '../logger.js'
 import type { LastTurn } from '../run-control/last-turn-registry.js'
@@ -15,6 +20,37 @@ import { registerEditPrompt, type PendingEditPrompt } from './edit-prompt-store.
 import type { EditHandlerDeps } from './handle.js'
 
 const log = logger.child({ scope: 'message-edit:w2-regen' })
+
+type EditFunnel = {
+  observer: AnalyticsObserver | undefined
+  editSeed: AuthorizedTurnSeed | undefined
+}
+
+function resolveEditFunnel(deps: EditHandlerDeps, msg: IncomingMessage, auth: AuthorizationResult): EditFunnel {
+  const observer = deps.analyticsObserver
+  const editSeed = observer === undefined ? undefined : buildEditSeed(msg, auth)
+  return { observer, editSeed }
+}
+
+function emitEditRegen(funnel: EditFunnel, phase: EditRegenPhase, durationMs?: number): void {
+  if (funnel.observer !== undefined && funnel.editSeed !== undefined) {
+    observeEditRegen(funnel.observer, funnel.editSeed, phase, durationMs)
+  }
+}
+
+function buildOrchestratorDeps(deps: EditHandlerDeps): LlmOrchestratorDeps {
+  return {
+    ...defaultDeps,
+    ...(deps.stagedDownloadFn === undefined ? {} : { stagedDownloadFn: deps.stagedDownloadFn }),
+    ...(deps.chatParticipantResolver === undefined ? {} : { chatParticipantResolver: deps.chatParticipantResolver }),
+  }
+}
+
+async function supersedePriorReply(reply: ReplyFn, last: LastTurn): Promise<void> {
+  if (reply.editReply !== undefined && last.replyTarget !== undefined) {
+    await reply.editReply(last.replyTarget, '⟲ Superseded by your edit.').catch((): undefined => undefined)
+  }
+}
 
 /**
  * Shared corrective-regen path used by both the no-side-effects branch
@@ -39,12 +75,8 @@ export async function regenerateFromEditedText(
       { storageContextId: auth.storageContextId, messageId: msg.messageId },
       'W2 regeneration requested but processMessage is not wired into deps; skipping',
     )
+    emitEditRegen(resolveEditFunnel(deps, msg, auth), 'history_only')
     return
-  }
-  const orchestratorDeps = {
-    ...defaultDeps,
-    ...(deps.stagedDownloadFn === undefined ? {} : { stagedDownloadFn: deps.stagedDownloadFn }),
-    ...(deps.chatParticipantResolver === undefined ? {} : { chatParticipantResolver: deps.chatParticipantResolver }),
   }
   // `applyEditToHistory` (run in `onIncomingEdit`) rewrote the originating user
   // turn in place; drop that rewritten turn + its trailing assistant/tool
@@ -54,22 +86,29 @@ export async function regenerateFromEditedText(
   if (msg.messageId !== undefined) {
     trimTurnForRegeneration(auth.storageContextId, msg.messageId)
   }
-  await processMessage(
-    reply,
-    auth.storageContextId,
-    msg.user.id,
-    msg.user.username,
-    msg.text,
-    msg.contextType,
-    auth.configContextId,
-    orchestratorDeps,
-    [],
-    undefined,
-    auth.isGuest === true ? 'guest' : 'member',
-  )
-  if (reply.editReply !== undefined && last.replyTarget !== undefined) {
-    await reply.editReply(last.replyTarget, '⟲ Superseded by your edit.').catch((): undefined => undefined)
+  const funnel = resolveEditFunnel(deps, msg, auth)
+  const startedMonotonicMs = performance.now()
+  emitEditRegen(funnel, 'regen_started')
+  try {
+    await processMessage(
+      reply,
+      auth.storageContextId,
+      msg.user.id,
+      msg.user.username,
+      msg.text,
+      msg.contextType,
+      auth.configContextId,
+      buildOrchestratorDeps(deps),
+      [],
+      undefined,
+      auth.isGuest === true ? 'guest' : 'member',
+    )
+  } catch (error) {
+    emitEditRegen(funnel, 'regen_failed', Math.max(0, Math.round(performance.now() - startedMonotonicMs)))
+    throw error
   }
+  await supersedePriorReply(reply, last)
+  emitEditRegen(funnel, 'regen_completed', Math.max(0, Math.round(performance.now() - startedMonotonicMs)))
 }
 
 /**
@@ -91,12 +130,16 @@ export async function handleW2WithSideEffects(
   const promptText = buildSideEffectsPromptText(last.completedEffects, msg.text)
   registerEditPrompt(promptId, buildEditPromptHandlers(msg, reply, auth, last, deps))
   const handle = await postSideEffectsPrompt(reply, auth, msg, promptText, promptId)
+  const funnel = resolveEditFunnel(deps, msg, auth)
   if (handle === undefined) {
     log.debug(
       { storageContextId: auth.storageContextId, messageId: msg.messageId },
       'Platform has no buttons for the W2 side-effects prompt; edit left as history-only',
     )
+    emitEditRegen(funnel, 'history_only')
+    return
   }
+  emitEditRegen(funnel, 'prompt_shown')
 }
 
 function buildSideEffectsPromptText(effects: LastTurn['completedEffects'], editedText: string): string {
@@ -115,10 +158,12 @@ function buildEditPromptHandlers(
     contextId: auth.storageContextId,
     editedText: msg.text,
     onAdjust: async (): Promise<void> => {
+      emitEditRegen(resolveEditFunnel(deps, msg, auth), 'prompt_adjust')
       await sendEphemeralAck(reply, auth, '✏️ Adjusting…')
       await regenerateFromEditedText(msg, reply, auth, last, deps)
     },
     onNote: async (): Promise<void> => {
+      emitEditRegen(resolveEditFunnel(deps, msg, auth), 'prompt_note')
       await sendEphemeralAck(reply, auth, '✏️ Noted')
     },
   }

@@ -25,9 +25,49 @@ interface ClassificationContext {
   labelName?: string
 }
 
+const resourceClassOf = (error: KaneoApiError, messageLower: string): string =>
+  error.resourceClass ??
+  (messageLower.includes('label') || messageLower.includes('/label/')
+    ? 'label'
+    : messageLower.includes('task-relation') || messageLower.includes('/task-relation/')
+      ? 'task-relation'
+      : messageLower.includes('task') || messageLower.includes('/task/')
+        ? 'task'
+        : messageLower.includes('project') || messageLower.includes('/project/')
+          ? 'project'
+          : messageLower.includes('comment') ||
+              messageLower.includes('/activity/') ||
+              messageLower.includes('/comment/')
+            ? 'comment'
+            : 'other')
+
+const classifyNotFound = (error: KaneoApiError, context?: ClassificationContext): KaneoClassifiedError => {
+  const { message } = error
+  const resource = resourceClassOf(error, message.toLowerCase())
+  if (resource === 'label') {
+    return new KaneoClassifiedError(message, providerError.labelNotFound(context?.labelName ?? 'unknown'))
+  }
+  if (resource === 'task-relation') {
+    return new KaneoClassifiedError(
+      message,
+      providerError.relationNotFound(context?.taskId ?? 'unknown', context?.relatedTaskId ?? 'unknown'),
+    )
+  }
+  if (resource === 'task') {
+    return new KaneoClassifiedError(message, providerError.taskNotFound(context?.taskId ?? 'unknown'))
+  }
+  if (resource === 'project') {
+    return new KaneoClassifiedError(message, providerError.projectNotFound(context?.projectId ?? 'unknown'))
+  }
+  if (resource === 'comment') {
+    return new KaneoClassifiedError(message, providerError.commentNotFound(context?.commentId ?? 'unknown'))
+  }
+  // Unknown resource type — avoid misreporting as task-not-found
+  return new KaneoClassifiedError(message, providerError.unknown(error))
+}
+
 const classifyApiError = (error: KaneoApiError, context?: ClassificationContext): KaneoClassifiedError => {
   const { statusCode, message } = error
-  const messageLower = message.toLowerCase()
 
   if (statusCode === 401 || statusCode === 403) {
     return new KaneoClassifiedError(message, providerError.authFailed())
@@ -36,26 +76,7 @@ const classifyApiError = (error: KaneoApiError, context?: ClassificationContext)
     return new KaneoClassifiedError(message, providerError.rateLimited())
   }
   if (statusCode === 404) {
-    if (messageLower.includes('label') || messageLower.includes('/label/')) {
-      return new KaneoClassifiedError(message, providerError.labelNotFound(context?.labelName ?? 'unknown'))
-    }
-    if (messageLower.includes('task-relation') || messageLower.includes('/task-relation/')) {
-      return new KaneoClassifiedError(
-        message,
-        providerError.relationNotFound(context?.taskId ?? 'unknown', context?.relatedTaskId ?? 'unknown'),
-      )
-    }
-    if (messageLower.includes('task') || messageLower.includes('/task/')) {
-      return new KaneoClassifiedError(message, providerError.taskNotFound(context?.taskId ?? 'unknown'))
-    }
-    if (messageLower.includes('project') || messageLower.includes('/project/')) {
-      return new KaneoClassifiedError(message, providerError.projectNotFound(context?.projectId ?? 'unknown'))
-    }
-    if (messageLower.includes('comment') || messageLower.includes('/activity/') || messageLower.includes('/comment/')) {
-      return new KaneoClassifiedError(message, providerError.commentNotFound(context?.commentId ?? 'unknown'))
-    }
-    // Unknown resource type — avoid misreporting as task-not-found
-    return new KaneoClassifiedError(message, providerError.unknown(error))
+    return classifyNotFound(error, context)
   }
   if (statusCode === 400) {
     return new KaneoClassifiedError(message, providerError.validationFailed('unknown', message))

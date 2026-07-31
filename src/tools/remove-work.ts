@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
 import { checkConfidence, confidenceField } from './confirmation-gate.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:remove-work' })
 
@@ -27,26 +28,18 @@ export function makeRemoveWorkTool(provider: TaskProvider): Tool {
       confidence: confidenceField,
     }),
     execute: async ({ taskId, workItemId, label, confidence }) => {
-      log.debug({ taskId, workItemId, confidence }, 'remove_work called')
+      log.debug({ confidence }, 'remove_work called')
       const gate = checkConfidence(confidence, `Remove work item "${label ?? workItemId}"`)
       if (gate !== null) {
-        log.warn({ taskId, workItemId, confidence }, 'remove_work blocked — confirmation required')
+        log.warn({ confidence }, 'remove_work blocked — confirmation required')
         return gate
       }
       try {
         const result = await provider.deleteWorkItem!(taskId, workItemId)
-        log.info({ taskId, workItemId }, 'Work item removed')
+        log.info('Work item removed')
         return result
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            workItemId,
-            tool: 'remove_work',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('remove_work', error), 'Tool execution failed')
         throw error
       }
     },

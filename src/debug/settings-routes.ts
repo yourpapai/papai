@@ -5,8 +5,10 @@
 
 import { z } from 'zod'
 
+import { getFeatureObserver } from '../analytics/feature-observer.js'
+import { buildSettingsActorRequestContext } from '../analytics/provider-scope-factory.js'
 import { logger } from '../logger.js'
-import { consumeAuthCode } from '../settings/auth-code-store.js'
+import { consumeAuthCode, peekAuthCodePrincipal } from '../settings/auth-code-store.js'
 import { listAvailableContexts } from '../settings/contexts.js'
 import { buildSessionCookie, clearSessionCookie } from '../settings/cookies.js'
 import { resolveSettingsPrincipal } from '../settings/principal.js'
@@ -52,6 +54,26 @@ function principalDisplay(platformInstanceId: string, platformUserId: string): s
   return username !== null && username !== undefined && username.length > 0 ? username : platformUserId
 }
 
+/** Emits settings_opened for a resolvable principal; never stores the code, link, cookie, IP, or user agent. */
+const observeSettingsOpened = (
+  principal: { platformInstanceId: string; platformUserId: string },
+  entry: 'config_link' | 'existing_session',
+  result: 'success' | 'expired' | 'invalid',
+): void => {
+  const observer = getFeatureObserver()
+  if (observer === null) return
+  const resolved = resolveSettingsPrincipal(principal.platformInstanceId, principal.platformUserId)
+  const requestContext = buildSettingsActorRequestContext({
+    platformInstanceId: principal.platformInstanceId,
+    platformUserId: principal.platformUserId,
+    configContextId: resolved.personalConfigContextId,
+    contextType: 'dm',
+    actorRole: resolved.isBotAdmin || resolved.isSuperAdmin ? 'admin' : 'member',
+  })
+  if (requestContext === null) return
+  observer.settingsOpened(requestContext, { entry, result })
+}
+
 export async function handleSettingsExchange(
   req: Request,
   nowMs: number = settingsRequestNowMs(req),
@@ -72,13 +94,20 @@ export async function handleSettingsExchange(
   if (!parsed.success) return jsonResponse(400, { error: 'invalid request' })
 
   const authPrincipal = consumeAuthCode(parsed.data.code, nowMs)
-  if (authPrincipal === null) return jsonResponse(401, { error: 'invalid or expired code' })
+  if (authPrincipal === null) {
+    // A known-but-unusable code (expired or already used) is attributable; an
+    // unknown code has no actor and emits nothing.
+    const peeked = peekAuthCodePrincipal(parsed.data.code)
+    if (peeked !== null) observeSettingsOpened(peeked, 'config_link', 'expired')
+    return jsonResponse(401, { error: 'invalid or expired code' })
+  }
 
   const created = createSession(authPrincipal, nowMs)
   const resolved = resolveSettingsPrincipal(authPrincipal.platformInstanceId, authPrincipal.platformUserId)
   const maxAgeSec = Math.max(0, Math.floor((created.expiresAt - nowMs) / 1000))
 
   log.info({ platformInstanceId: authPrincipal.platformInstanceId }, 'Settings session established')
+  observeSettingsOpened(authPrincipal, 'config_link', 'success')
   return jsonResponse(
     200,
     {
@@ -104,6 +133,7 @@ export function handleSettingsBootstrap(req: Request, nowMs: number = settingsRe
   const csrfToken = rotateSessionCsrf(authed.sessionId, nowMs)
   if (csrfToken === null) return jsonResponse(401, { error: 'unauthenticated' })
 
+  observeSettingsOpened(authed.principal, 'existing_session', 'success')
   return jsonResponse(200, {
     csrfToken,
     display: principalDisplay(authed.principal.platformInstanceId, authed.principal.platformUserId),

@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:list-labels' })
 
@@ -20,10 +21,7 @@ export function makeListLabelsTool(provider: TaskProvider): Tool {
       try {
         return await provider.listLabels!()
       } catch (error) {
-        log.error(
-          { error: error instanceof Error ? error.message : String(error), tool: 'list_labels' },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('list_labels', error), 'Tool execution failed')
         throw error
       }
     },

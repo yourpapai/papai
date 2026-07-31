@@ -5,6 +5,7 @@
 
 import { z } from 'zod'
 
+import { buildSettingsActorRequestContext } from '../../analytics/provider-scope-factory.js'
 import { getContextSettings, setContextSettings } from '../../instances/context-store.js'
 import { getTaskInstance, listTaskInstancesSafe } from '../../instances/task-store.js'
 import { logger } from '../../logger.js'
@@ -84,11 +85,20 @@ async function handlePatch(req: Request, authed: AuthenticatedSettingsRequest): 
   }
 
   const existing = getContextSettings(scope.scope.contextId)
-  setContextSettings({
-    contextId: scope.scope.contextId,
-    taskInstanceId: body.data.taskInstanceId,
-    platformInstanceId: existing?.platformInstanceId ?? authed.principal.platformInstanceId,
-  })
+  setContextSettings(
+    {
+      contextId: scope.scope.contextId,
+      taskInstanceId: body.data.taskInstanceId,
+      platformInstanceId: existing?.platformInstanceId ?? authed.principal.platformInstanceId,
+    },
+    buildSettingsActorRequestContext({
+      platformInstanceId: authed.principal.platformInstanceId,
+      platformUserId: authed.principal.platformUserId,
+      configContextId: scope.scope.contextId,
+      contextType: scope.scope.kind === 'group' ? 'group' : 'dm',
+      actorRole: authed.principal.isBotAdmin || authed.principal.isSuperAdmin ? 'admin' : 'member',
+    }),
+  )
   log.info(
     { contextId: scope.scope.contextId, taskInstanceId: body.data.taskInstanceId },
     'Settings context task instance set',

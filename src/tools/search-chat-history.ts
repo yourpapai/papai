@@ -111,7 +111,10 @@ async function executeSearch(
   embeddingCtx: EmbeddingCallContext,
   input: SearchChatHistoryInput,
 ): Promise<SearchChatHistoryOutput> {
-  log.debug({ query: input.query, mode: input.mode, limit: input.limit }, 'search_chat_history called')
+  log.debug(
+    { queryLengthChars: input.query.length, mode: input.mode, limit: input.limit },
+    'search_chat_history called',
+  )
   if (input.mode === 'keyword') return doKeywordSearch(scope, input, 'keyword')
 
   const queryVec = await getEmbeddingForContext(input.query, configContextId, embeddingCtx)

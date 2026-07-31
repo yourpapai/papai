@@ -5,6 +5,8 @@
 
 import path from 'node:path'
 
+import { classifyProviderError } from '../analytics/provider-observer.js'
+import { NO_ANALYTICS_SCOPE, runWithProviderRequestScope } from '../analytics/provider-request-scope.js'
 import { logger } from '../logger.js'
 import { getPluginAdminConfig } from '../plugins/store.js'
 
@@ -38,15 +40,15 @@ export async function proxyTranscriptHistory(
   const target = `${cfg.baseUrl}/t/${encodeURIComponent(token)}/transcript${qs === '' ? '' : `?${qs}`}`
   let upstream: Response
   try {
-    upstream = await fetchImpl(target, {
-      headers: { Authorization: `Bearer ${cfg.token}`, Accept: 'application/json' },
-      signal: AbortSignal.any([clientSignal, AbortSignal.timeout(15_000)]),
-    })
-  } catch (error) {
-    log.warn(
-      { error: error instanceof Error ? error.message : String(error) },
-      'transcript history upstream fetch failed',
+    // Operational viewer path — deliberately excluded from actor attribution.
+    upstream = await runWithProviderRequestScope(NO_ANALYTICS_SCOPE, () =>
+      fetchImpl(target, {
+        headers: { Authorization: `Bearer ${cfg.token}`, Accept: 'application/json' },
+        signal: AbortSignal.any([clientSignal, AbortSignal.timeout(15_000)]),
+      }),
     )
+  } catch (error) {
+    log.warn({ errorClass: classifyProviderError(error).statusClass }, 'transcript history upstream fetch failed')
     return new Response('upstream unavailable', { status: 502 })
   }
   return new Response(upstream.body, {
@@ -64,15 +66,15 @@ export async function proxyTranscriptStream(
   const target = `${cfg.baseUrl}/t/${encodeURIComponent(token)}/stream`
   let upstream: Response
   try {
-    upstream = await fetchImpl(target, {
-      headers: { Authorization: `Bearer ${cfg.token}`, Accept: 'text/event-stream' },
-      signal: clientSignal,
-    })
-  } catch (error) {
-    log.warn(
-      { error: error instanceof Error ? error.message : String(error) },
-      'transcript stream upstream fetch failed',
+    // Operational viewer path — deliberately excluded from actor attribution.
+    upstream = await runWithProviderRequestScope(NO_ANALYTICS_SCOPE, () =>
+      fetchImpl(target, {
+        headers: { Authorization: `Bearer ${cfg.token}`, Accept: 'text/event-stream' },
+        signal: clientSignal,
+      }),
     )
+  } catch (error) {
+    log.warn({ errorClass: classifyProviderError(error).statusClass }, 'transcript stream upstream fetch failed')
     return new Response('upstream unavailable', { status: 502 })
   }
   if (!upstream.ok || upstream.body === null) {

@@ -35,6 +35,20 @@ See LICENSE in the project root for details.
 
 **`NOTIFY_TOKEN`** — optional bearer token guarding the proactive-notify endpoint (`POST /api/notify`, `src/debug/notify-route.ts`). Lazily seeded once into the `notify_token` `system_config` key on first read (`src/notify-token.ts`), then cached for the process lifetime, so **rotating it requires a restart**. When unset, `/api/notify` returns `503`. Consumed by an external ACP control service to push coding-session milestones into chat.
 
+**Analytics HMAC keyrings (required only for the pseudonymous longitudinal lane):**
+
+- `ANALYTICS_HMAC_KEYRING` — product-analytics pseudonym keyring. Format: `v1:<64-hex-chars>[;v2:<64-hex-chars>...]`. The active key is always `v1`; additional semicolon-separated versions are retained for rekeying. Keys must be at least 32 bytes (64 hex characters). Example redacted value:
+  `ANALYTICS_HMAC_KEYRING=v1:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f`
+- `ANALYTICS_GOVERNANCE_HMAC_KEYRING` — separate operational keyring for collection-eligibility refs and consent/withdrawal fences. Same format.
+
+Both keyrings are parsed into typed states and are never logged or echoed. Aggregate-local mode (the default shipping tier) needs no HMAC keyring.
+
+**Analytics runtime/governance env** (operator flows in `docs/operations/analytics-runbook.md`):
+
+- `ANALYTICS_KILL_SWITCH` — deployment-level kill switch. When set to `1`/`true`/`on` (trimmed, case-insensitive), `resolveEffectiveLanes` (`src/analytics/governance/policy-store.ts`) forces every lane off regardless of the stored `analytics_policy` row: local mode resolves to `off` and both external lanes disable. Unset or any other value is inactive. No migration or policy write is needed, but a running process re-reads it at each lanes resolution — keep it set for Stage A and reach for it first in incident response (`docs/operations/analytics-incident-runbook.md`).
+- `ANALYTICS_SNAPSHOT_DIR` — absolute directory holding published Metabase snapshot files (`<snapshotId>.db`). The rekey CLI's BI coordination requires it; without it the SnapshotConsumerCoordinator stays fail-closed and any coordinator action throws. Snapshot files themselves are built via `scripts/analytics-snapshot.ts --output <abs path>`.
+- `ANALYTICS_BACKFILL_APPROVED_AT_MS` — operator approval timestamp (ms since epoch), required only when `analytics_policy.lawful_basis_mode = 'legitimate_interest'`: the backfill CLI refuses with `approval_required` when it is missing/invalid and otherwise uses it as the policy cutoff. In consent mode the cutoff derives from `policy_effective_at_ms` instead.
+
 **File attachments (S3-compatible):** required to receive/persist/attach files. `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` (required); `S3_ENDPOINT` (required for non-AWS: MinIO/R2/B2), `S3_REGION`, `S3_PREFIX`, `S3_FORCE_PATH_STYLE=true` for MinIO (optional).
 
 **Dashboard (`DEBUG_SERVER=true`):** the dashboard requires a session cookie minted via the bot — DM `/dashboard` for a one-time sign-in link. `DASHBOARD_BASE_URL` (default `SETTINGS_PUBLIC_BASE_URL`, else `http://{DEBUG_HOSTNAME}:{DEBUG_PORT}`), `DASHBOARD_SESSION_TTL_SECONDS` (default `28800`), `DASHBOARD_CLAIM_TTL_SECONDS` (default `300`). See `docs/deployment/dashboard-access.md`.

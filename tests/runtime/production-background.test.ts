@@ -65,6 +65,36 @@ describe('production background composition', () => {
     ])
   })
 
+  test('registers analytics jobs with the default scheduler lifecycle and unregisters them before defaults', async () => {
+    const events: string[] = []
+    const deps = fixture(events)
+    deps.registerAnalyticsJobs = (): void => {
+      events.push('analytics:register')
+    }
+    deps.unregisterAnalyticsJobs = (): void => {
+      events.push('analytics:unregister')
+    }
+    const background = await startProductionBackground(router(), deps)
+
+    await background.stop()
+
+    expect(events).toEqual([
+      'tasks:register',
+      'analytics:register',
+      'recurring:start',
+      'pollers:start',
+      'tasks:start',
+      'sweeper:start',
+      'tasks:stop',
+      'tasks:drain',
+      'recurring:stop',
+      'pollers:stop',
+      'analytics:unregister',
+      'tasks:unregister',
+      'sweeper:stop',
+    ])
+  })
+
   test('rolls back acquired services when startup fails', async () => {
     const events: string[] = []
     const deps = fixture(events)

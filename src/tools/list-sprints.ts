@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:list-sprints' })
 
@@ -21,17 +22,10 @@ export function makeListSprintsTool(provider: Readonly<TaskProvider>): Tool {
     execute: async ({ agileId }) => {
       try {
         const sprints = await provider.listSprints!(agileId)
-        log.info({ agileId, count: sprints.length }, 'Sprints listed via tool')
+        log.info({ count: sprints.length }, 'Sprints listed via tool')
         return sprints
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            agileId,
-            tool: 'list_sprints',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('list_sprints', error), 'Tool execution failed')
         throw error
       }
     },

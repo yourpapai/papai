@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { loadAttachmentRecord } from '../attachments/index.js'
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:upload-attachment' })
 
@@ -29,7 +30,7 @@ async function executeUpload(
   )
 
   if (record === null) {
-    log.warn({ taskId, attachmentId }, 'upload_attachment: attachmentId not found in workspace')
+    log.warn('upload_attachment: attachmentId not found in workspace')
     return {
       status: 'attachment_not_found',
       message: `Attachment "${attachmentId}" is not available in this context. Ask the user to resend the file.`,
@@ -41,7 +42,7 @@ async function executeUpload(
     content: record.content,
     mimeType: record.mimeType,
   })
-  log.info({ taskId, attachmentId: result.id, filename: record.filename }, 'Attachment uploaded')
+  log.info('Attachment uploaded')
   return result
 }
 
@@ -56,19 +57,11 @@ export function makeUploadAttachmentTool(provider: TaskProvider, contextId: stri
         .describe('Stable papai attachment ID from the current conversation context (e.g. att_<uuid>)'),
     }),
     execute: async ({ taskId, attachmentId }) => {
-      log.debug({ taskId, attachmentId, contextId }, 'upload_attachment called')
+      log.debug({ contextId }, 'upload_attachment called')
       try {
         return await executeUpload(provider, contextId, taskId, attachmentId, groupContextId)
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            attachmentId,
-            tool: 'upload_attachment',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('upload_attachment', error), 'Tool execution failed')
         throw error
       }
     },

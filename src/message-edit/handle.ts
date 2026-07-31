@@ -3,8 +3,15 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { performance } from 'node:perf_hooks'
+
 import { and, eq, gt, ne } from 'drizzle-orm'
 
+import { buildAnalyticsSourceContext, createAuthorizedTurnSeed } from '../analytics/bot-observer.js'
+import type { AuthorizedTurnSeed } from '../analytics/bot-observer.js'
+import { buildEditSeed, observeEditClassified, observeEditRegen } from '../analytics/edit-observer.js'
+import type { AnalyticsObserver } from '../analytics/runtime.js'
+import { buildTurnSteeredFact, nextSteerOrdinal } from '../analytics/turn-observer.js'
 import type { StagedFileDownloadFn } from '../attachments/types.js'
 import { resolveMessageAuth, shouldIgnoreGroupMessage } from '../bot-guards.js'
 import { cacheObservedIncomingMessage } from '../bot-message-caching.js'
@@ -20,6 +27,7 @@ import { lastTurnRegistry, type LastTurn } from '../run-control/last-turn-regist
 import { runRegistry } from '../run-control/registry.js'
 import type { RunControl } from '../run-control/types.js'
 import { classifyEdit } from './classify.js'
+import type { EditWindow } from './classify.js'
 import { handleW2WithSideEffects, regenerateFromEditedText } from './w2-regen.js'
 
 const log = logger.child({ scope: 'message-edit' })
@@ -65,6 +73,8 @@ export type EditHandlerDeps = {
   stagedDownloadFn?: StagedFileDownloadFn
   /** Optional bot-level DI forwarded into the orchestrator deps, mirroring `BotDeps`. */
   chatParticipantResolver?: ChatParticipantResolver
+  /** Optional analytics observer for the W1 edit-steer boundary, mirroring `BotDeps`. */
+  analyticsObserver?: AnalyticsObserver
 } & Record<string, unknown>
 
 /**
@@ -111,6 +121,8 @@ export async function onIncomingEdit(
     laterUserMessageExists: later,
   })
 
+  const editSeed = observeEditClassification(deps, msg, auth, window)
+
   log.debug(
     {
       storageContextId: auth.storageContextId,
@@ -121,24 +133,71 @@ export async function onIncomingEdit(
   )
 
   if (window === 'w1' && activeRun !== undefined) {
-    await pushW1SteerAndAck(activeRun, msg, reply)
+    await pushW1SteerAndAck(activeRun, msg, reply, auth, deps)
     return
   }
   if (window === 'w2' && lastTurn !== undefined) {
-    await handleW2(chat, msg, reply, auth, lastTurn, deps)
+    await handleW2(chat, msg, reply, auth, lastTurn, deps, editSeed)
   }
   // w3: baseline-only (history + metadata already corrected above).
 }
 
 /**
+ * Builds the edit analytics seed at the classification boundary and emits the
+ * `edit_classified` fact (window only). Returns the seed so the W2 path can
+ * reuse it for its regen-funnel emissions without rebuilding the source.
+ * No observer or unknown platform instance → returns undefined (silent).
+ */
+function observeEditClassification(
+  deps: EditHandlerDeps,
+  msg: IncomingMessage,
+  auth: AuthorizationResult,
+  window: EditWindow,
+): AuthorizedTurnSeed | undefined {
+  const observer = deps.analyticsObserver
+  if (observer === undefined) return undefined
+  const editSeed = buildEditSeed(msg, auth)
+  if (editSeed === undefined) return undefined
+  observeEditClassified(observer, editSeed, window)
+  return editSeed
+}
+
+/**
  * W1 dispatch: inject the edited text into the live run's `steerQueue` (the
  * orchestrator picks it up at the next tool-step boundary) and ack the user.
+ * An edit-steer is the same mid-run steering boundary as a manual steer, so it
+ * emits the same `turn_steered` fact; the edit itself is a correction, not a
+ * newly accepted message, so no accepted/turn facts are produced here.
  */
-async function pushW1SteerAndAck(run: RunControl, msg: IncomingMessage, reply: ReplyFn): Promise<void> {
-  run.steerQueue.push({
-    text: `⟲ Your earlier message was edited. New version:\n\n${msg.text}`,
-  })
+async function pushW1SteerAndAck(
+  run: RunControl,
+  msg: IncomingMessage,
+  reply: ReplyFn,
+  auth: AuthorizationResult,
+  deps: EditHandlerDeps,
+): Promise<void> {
+  const steerText = `⟲ Your earlier message was edited. New version:\n\n${msg.text}`
+  run.steerQueue.push({ text: steerText })
   await reply.text('✋ folding that into the current run…')
+  const observer = deps.analyticsObserver
+  if (observer === undefined) return
+  const source = buildAnalyticsSourceContext(msg, auth, 'normal', null)
+  if (source === null) return
+  const seed = createAuthorizedTurnSeed(source, msg, 0, {
+    nowMs: () => Date.now(),
+    nowMonotonicMs: () => performance.now(),
+  })
+  observer.observe(
+    buildTurnSteeredFact(
+      { ...seed.source, rawTurnId: run.turnId },
+      {
+        sourceEventId: `${seed.sourceEventId}:steered`,
+        ordinal: nextSteerOrdinal(run),
+        steerLengthChars: steerText.length,
+        ackSent: true,
+      },
+    ),
+  )
 }
 
 /**
@@ -159,6 +218,7 @@ async function handleW2(
   auth: AuthorizationResult,
   last: LastTurn,
   deps: EditHandlerDeps,
+  editSeed: AuthorizedTurnSeed | undefined,
 ): Promise<void> {
   if (last.completedEffects.length > 0) {
     await handleW2WithSideEffects(msg, reply, auth, last, deps)
@@ -169,6 +229,8 @@ async function handleW2(
       { storageContextId: auth.storageContextId, messageId: msg.messageId },
       'W2 regeneration requested but processMessage is not wired into deps; skipping',
     )
+    const observer = deps.analyticsObserver
+    if (observer !== undefined && editSeed !== undefined) observeEditRegen(observer, editSeed, 'history_only')
     return
   }
   await regenerateFromEditedText(msg, reply, auth, last, deps)

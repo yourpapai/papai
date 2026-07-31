@@ -3,12 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { createHash } from 'node:crypto'
-
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 
+import type { McpAvailabilityOrigin } from '../analytics/feature-observer.js'
+import { classifyProviderError, createProviderRequestClock } from '../analytics/provider-observer.js'
+import { type ProviderRequestScope, requireProviderRequestScope } from '../analytics/provider-request-scope.js'
 import { logger } from '../logger.js'
+import { endpointHash, observeMcpConnect, pluginHash } from './connect-observation.js'
 import type { McpEndpointConfig, McpPluginConfig, McpServerInfo, McpServerStatus } from './types.js'
 
 // 10 minutes
@@ -21,12 +23,15 @@ type PoolEntry = {
   status: McpServerStatus
   label: string | null
   toolCount: number
+  /** Controlled status class only ('network'|'timeout'|'auth'|'4xx'|'5xx'|'other') — never raw upstream messages. */
   lastError: string | null
   lastConnectedAt: number | null
   idleTimer: ReturnType<typeof setTimeout> | null
   idleTimeoutMs: number
   url: string
   headers?: Record<string, string>
+  availabilityOrigin: McpAvailabilityOrigin
+  serverRawId: string
 }
 
 function buildClientAndTransport(
@@ -38,33 +43,6 @@ function buildClientAndTransport(
     requestInit: headers ? { headers } : undefined,
   })
   return { client, transport }
-}
-
-function computeHash(parts: Record<string, unknown>): string {
-  const sorted = Object.keys(parts)
-    .sort()
-    .map((k) => `${k}=${JSON.stringify(parts[k])}`)
-    .join('&')
-  return createHash('sha256').update(sorted).digest('hex')
-}
-
-function endpointHash(endpoint: McpEndpointConfig): string {
-  return computeHash({
-    transport: 'streamable-http',
-    url: endpoint.url,
-    headers: endpoint.headers ?? {},
-  })
-}
-
-function pluginHash(pluginId: string, mcp: McpPluginConfig): string {
-  return computeHash({
-    transport: mcp.transport,
-    url: mcp.url ?? '',
-    headers: mcp.headers ?? {},
-    command: mcp.command ?? '',
-    args: mcp.args ?? [],
-    pluginId,
-  })
 }
 
 export class McpConnectionPool {
@@ -79,20 +57,28 @@ export class McpConnectionPool {
    * skip the server for that invocation.
    */
   async getOrCreateFromUser(endpoint: McpEndpointConfig): Promise<{ hash: string; client: Client }> {
+    const scope = requireProviderRequestScope()
     const hash = endpointHash(endpoint)
     const existing = this.entries.get(hash)
     if (existing) {
       if (existing.status === 'idle' || existing.status === 'error') {
-        await this.reconnectEntry(existing)
+        await this.reconnectEntry(existing, scope)
       }
       return { hash, client: existing.client }
     }
 
     const label = endpoint.label ?? endpoint.id
-    const entry = await this.createEntry(hash, label, {
-      url: endpoint.url,
-      headers: endpoint.headers,
-    })
+    const entry = await this.createEntry(
+      hash,
+      label,
+      {
+        url: endpoint.url,
+        headers: endpoint.headers,
+      },
+      'user_endpoint',
+      endpoint.id,
+      scope,
+    )
     return { hash, client: entry.client }
   }
 
@@ -105,11 +91,12 @@ export class McpConnectionPool {
    * skip the server for that invocation.
    */
   async getOrCreateFromPlugin(pluginId: string, mcp: McpPluginConfig): Promise<{ hash: string; client: Client }> {
+    const scope = requireProviderRequestScope()
     const hash = pluginHash(pluginId, mcp)
     const existing = this.entries.get(hash)
     if (existing) {
       if (existing.status === 'idle' || existing.status === 'error') {
-        await this.reconnectEntry(existing)
+        await this.reconnectEntry(existing, scope)
       }
       return { hash, client: existing.client }
     }
@@ -120,11 +107,18 @@ export class McpConnectionPool {
     }
 
     const label = pluginId
-    const entry = await this.createEntry(hash, label, {
-      url: mcp.url!,
-      headers: mcp.headers,
-      idleTimeoutMs: mcp.idleTimeoutMs,
-    })
+    const entry = await this.createEntry(
+      hash,
+      label,
+      {
+        url: mcp.url!,
+        headers: mcp.headers,
+        idleTimeoutMs: mcp.idleTimeoutMs,
+      },
+      'plugin_endpoint',
+      pluginId,
+      scope,
+    )
     return { hash, client: entry.client }
   }
 
@@ -180,6 +174,9 @@ export class McpConnectionPool {
     hash: string,
     label: string,
     opts: { url: string; headers?: Record<string, string>; idleTimeoutMs?: number },
+    availabilityOrigin: McpAvailabilityOrigin,
+    serverRawId: string,
+    scope: ProviderRequestScope,
   ): Promise<PoolEntry> {
     const { client, transport } = buildClientAndTransport(opts.url, opts.headers)
 
@@ -196,11 +193,13 @@ export class McpConnectionPool {
       idleTimeoutMs: opts.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS,
       url: opts.url,
       headers: opts.headers,
+      availabilityOrigin,
+      serverRawId,
     }
 
     this.entries.set(hash, entry)
     try {
-      await this.connectWithRetry(entry)
+      await this.connectWithRetry(entry, scope)
     } catch (err) {
       this.entries.delete(hash)
       throw err
@@ -208,36 +207,42 @@ export class McpConnectionPool {
     return entry
   }
 
-  private async reconnectEntry(entry: PoolEntry): Promise<void> {
+  private async reconnectEntry(entry: PoolEntry, scope: ProviderRequestScope): Promise<void> {
     const { client, transport } = buildClientAndTransport(entry.url, entry.headers)
 
     entry.client = client
     entry.transport = transport
     entry.status = 'connecting'
     try {
-      await this.connectWithRetry(entry)
+      await this.connectWithRetry(entry, scope)
     } catch (err) {
       this.entries.delete(entry.hash)
       throw err
     }
   }
 
-  private async connectWithRetry(entry: PoolEntry): Promise<void> {
+  private async connectWithRetry(entry: PoolEntry, scope: ProviderRequestScope): Promise<void> {
+    const clock = createProviderRequestClock()
     try {
       await entry.client.connect(entry.transport)
       this.markConnected(entry)
+      observeMcpConnect(scope, clock, entry, null)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      logger.warn({ hash: entry.hash, error: msg }, 'MCP connection failed, retrying once')
+      logger.warn(
+        { hash: entry.hash, errorClass: classifyProviderError(err).statusClass },
+        'MCP connection failed, retrying once',
+      )
       try {
         await entry.client.connect(entry.transport)
         this.markConnected(entry)
+        observeMcpConnect(scope, clock, entry, null)
       } catch (retryErr) {
-        const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr)
+        const errorClass = classifyProviderError(retryErr).statusClass
         entry.status = 'error'
-        entry.lastError = retryMsg
-        logger.error({ hash: entry.hash, error: retryMsg }, 'MCP connection failed after retry')
-        throw new Error(`MCP connection failed for "${entry.label}": ${retryMsg}`, { cause: retryErr })
+        entry.lastError = errorClass
+        observeMcpConnect(scope, clock, entry, retryErr)
+        logger.error({ hash: entry.hash, errorClass }, 'MCP connection failed after retry')
+        throw new Error(`MCP connection failed (${errorClass})`, { cause: retryErr })
       }
     }
   }

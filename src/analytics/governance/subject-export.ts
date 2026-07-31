@@ -1,0 +1,214 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { and, asc, gte, inArray } from 'drizzle-orm'
+
+import { getDrizzleDb as defaultGetDrizzleDb } from '../../db/drizzle.js'
+import { analyticsPolicyAudit, analyticsPreferences, analyticsSessions } from '../../db/schema.js'
+import { listDeliveryRowsForEvents } from '../delivery/settlement.js'
+import { listUnexpiredEventsByActor } from '../storage/event-store.js'
+import { SUBJECT_RIGHTS_LOOKUP_HORIZON_DAYS, resolveActive } from './generation-store.js'
+import type { FlatSubjectKeys } from './subject-keys.js'
+
+const DAY_MS = 86_400_000
+
+export type SubjectExportDeps = Readonly<{ getDrizzleDb: typeof defaultGetDrizzleDb }>
+
+export type SubjectExportEvent = Readonly<{
+  eventId: string
+  eventName: string
+  eventVersion: number
+  occurredAtMs: number
+  storageGeneration: string
+  keyVersion: string
+  platform: string
+  contextType: string
+  actorRole: string
+  taskProvider: string
+  invocationMode: string
+  appVersion: string
+  policyVersion: number
+  propsJson: string
+}>
+
+export type SubjectExportSession = Readonly<{
+  sessionKey: string
+  startMs: number
+  endMs: number
+  durationMs: number
+  activityCount: number
+  turnCount: number
+}>
+
+export type SubjectExportDelivery = Readonly<{
+  sinkVersionId: string
+  state: string
+  deliveredAtMs: number | null
+}>
+
+export type SubjectExportPreference = Readonly<{
+  localLongitudinal: string
+  externalPseudonymous: string
+}>
+
+export type SubjectExportAuditRow = Readonly<{
+  auditId: string
+  action: string
+  policyVersion: number
+  occurredAt: number
+  result: string
+}>
+
+export type SubjectExport = Readonly<{
+  productAnalytics: Readonly<{
+    events: readonly SubjectExportEvent[]
+    sessions: readonly SubjectExportSession[]
+    deliveries: readonly SubjectExportDelivery[]
+  }>
+  governance: Readonly<{
+    preference: SubjectExportPreference | null
+    audit: readonly SubjectExportAuditRow[]
+  }>
+  outOfScope: string
+}>
+
+export const SUBJECT_EXPORT_OUT_OF_SCOPE =
+  'This export covers analytics data only; chat history, memory, and other operational stores are outside this analytics-only export.'
+
+type SourceKeyedEvent = SubjectExportEvent & Readonly<{ sourceKind: string; sourceRefKey: string }>
+
+const dedupeBySourceOpportunity = (
+  events: readonly SourceKeyedEvent[],
+  activeGeneration: string,
+): readonly SubjectExportEvent[] => {
+  const rank = (event: SourceKeyedEvent): number => (event.storageGeneration === activeGeneration ? 0 : 1)
+  const chosen = new Map<string, SourceKeyedEvent>()
+  for (const event of events) {
+    const groupKey = `${event.sourceKind}\0${event.sourceRefKey}\0${event.eventName}`
+    const existing = chosen.get(groupKey)
+    if (existing === undefined || rank(event) < rank(existing)) chosen.set(groupKey, event)
+  }
+  return [...chosen.values()]
+    .sort((a, b) => a.occurredAtMs - b.occurredAtMs || a.eventId.localeCompare(b.eventId))
+    .map(({ sourceKind: _sourceKind, sourceRefKey: _sourceRefKey, ...event }) => event)
+}
+
+type Db = ReturnType<typeof defaultGetDrizzleDb>
+
+const listSubjectEvents = (
+  keys: FlatSubjectKeys,
+  deps: SubjectExportDeps,
+  nowMs: number,
+  horizonStartMs: number,
+): readonly SubjectExportEvent[] => {
+  const rows = listUnexpiredEventsByActor({ actorKeys: keys.analyticsActorKeys, nowMs }, deps).filter(
+    (row) => row.occurredAtMs >= horizonStartMs,
+  )
+  const activeGeneration = resolveActive(deps).generation
+  const events: readonly SourceKeyedEvent[] = rows.map((row) => ({
+    eventId: row.eventId,
+    sourceKind: row.sourceKind,
+    sourceRefKey: row.sourceRefKey,
+    eventName: row.eventName,
+    eventVersion: row.eventVersion,
+    occurredAtMs: row.occurredAtMs,
+    storageGeneration: row.storageGeneration,
+    keyVersion: row.keyVersion,
+    platform: row.platform,
+    contextType: row.contextType,
+    actorRole: row.actorRole,
+    taskProvider: row.taskProvider,
+    invocationMode: row.invocationMode,
+    appVersion: row.appVersion,
+    policyVersion: row.policyVersion,
+    propsJson: row.propsJson,
+  }))
+  return dedupeBySourceOpportunity(events, activeGeneration)
+}
+
+const listSubjectSessions = (
+  db: Db,
+  actorKeys: readonly string[],
+  eventIds: readonly string[],
+): readonly SubjectExportSession[] => {
+  if (actorKeys.length === 0) return []
+  return db
+    .select()
+    .from(analyticsSessions)
+    .where(inArray(analyticsSessions.actorKey, [...actorKeys]))
+    .orderBy(asc(analyticsSessions.startMs))
+    .all()
+    .filter((row) => eventIds.includes(row.firstEventId) || eventIds.includes(row.lastEventId))
+    .map((row) => ({
+      sessionKey: row.sessionKey,
+      startMs: row.startMs,
+      endMs: row.endMs,
+      durationMs: row.durationMs,
+      activityCount: row.activityCount,
+      turnCount: row.turnCount,
+    }))
+}
+
+const currentPreference = (db: Db, governanceActorKeys: readonly string[]): SubjectExportPreference | null => {
+  if (governanceActorKeys.length === 0) return null
+  const rows = db
+    .select()
+    .from(analyticsPreferences)
+    .where(inArray(analyticsPreferences.governanceActorKey, [...governanceActorKeys]))
+    .orderBy(asc(analyticsPreferences.updatedAt))
+    .all()
+  const latest = rows.at(-1)
+  if (latest === undefined) return null
+  return { localLongitudinal: latest.localLongitudinal, externalPseudonymous: latest.externalPseudonymous }
+}
+
+const listSubjectAudit = (
+  db: Db,
+  governanceActorKeys: readonly string[],
+  horizonStartMs: number,
+): readonly SubjectExportAuditRow[] => {
+  if (governanceActorKeys.length === 0) return []
+  return db
+    .select()
+    .from(analyticsPolicyAudit)
+    .where(
+      and(
+        inArray(analyticsPolicyAudit.governanceActorKey, [...governanceActorKeys]),
+        gte(analyticsPolicyAudit.occurredAt, horizonStartMs),
+      ),
+    )
+    .orderBy(asc(analyticsPolicyAudit.occurredAt), asc(analyticsPolicyAudit.auditId))
+    .all()
+    .map((row) => ({
+      auditId: row.auditId,
+      action: row.action,
+      policyVersion: row.policyVersion,
+      occurredAt: row.occurredAt,
+      result: row.result,
+    }))
+}
+
+export const buildSubjectExport = (keys: FlatSubjectKeys, deps: SubjectExportDeps, nowMs: number): SubjectExport => {
+  const db = deps.getDrizzleDb()
+  const horizonStartMs = nowMs - SUBJECT_RIGHTS_LOOKUP_HORIZON_DAYS * DAY_MS
+  const events = listSubjectEvents(keys, deps, nowMs, horizonStartMs)
+  const eventIds = events.map((event) => event.eventId)
+  return {
+    productAnalytics: {
+      events,
+      sessions: listSubjectSessions(db, keys.analyticsActorKeys, eventIds),
+      deliveries: listDeliveryRowsForEvents(db, eventIds).map((row) => ({
+        sinkVersionId: row.sinkVersionId,
+        state: row.state,
+        deliveredAtMs: row.deliveredAtMs,
+      })),
+    },
+    governance: {
+      preference: currentPreference(db, keys.governanceActorKeys),
+      audit: listSubjectAudit(db, keys.governanceActorKeys, horizonStartMs),
+    },
+    outOfScope: SUBJECT_EXPORT_OUT_OF_SCOPE,
+  }
+}

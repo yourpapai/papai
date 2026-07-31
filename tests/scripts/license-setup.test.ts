@@ -56,6 +56,15 @@ describe('license setup', () => {
     expect(dockerfile).toMatch(/FROM base AS final[\s\S]*COPY LICENSE \.\/LICENSE/u)
   })
 
+  test('copies operator scripts into the final Docker image', () => {
+    // The Stage B runbook CLIs (scripts/analytics-*.ts) must be runnable via
+    // `docker compose exec papai bun run /app/scripts/<name>.ts` — without this COPY the
+    // prod image has no scripts/ tree and the checklist commands fail with "file not found".
+    const dockerfile = readRepoFile('Dockerfile')
+
+    expect(dockerfile).toMatch(/FROM base AS final[\s\S]*COPY scripts \.\/scripts/u)
+  })
+
   test('keeps the BSL text separate from the standalone patent grant', () => {
     const license = readRepoFile('LICENSE')
 

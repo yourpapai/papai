@@ -6,6 +6,8 @@
 import { describe, expect, it, beforeEach, mock } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import type { AuthorizedTurnSeed } from '../../src/analytics/bot-observer.js'
+import type { AnalyticsSourceContext } from '../../src/analytics/source-facts.js'
 import type { ReplyFn } from '../../src/chat/types.js'
 import { MessageQueue, type QueueEmitDeps } from '../../src/message-queue/queue.js'
 import type { CoalescedItem, QueueItem } from '../../src/message-queue/types.js'
@@ -1008,6 +1010,104 @@ describe('MessageQueue', () => {
       expect(turnEndEvent.turnId).toBeString()
       expect(turnEndEvent.data['status']).toBe('error')
       expect(turnEndEvent.data['error']).toBe('handler boom')
+    })
+  })
+
+  describe('analytics turn seed', () => {
+    function seedSource(overrides: Partial<AnalyticsSourceContext> = {}): AnalyticsSourceContext {
+      return {
+        platform: 'telegram',
+        platformInstanceId: 'test-instance',
+        chatUserId: 'user123',
+        nativeContextId: 'user123',
+        storageContextId: 'user123',
+        configContextId: 'user123',
+        contextType: 'dm',
+        actorRole: 'member',
+        taskInstanceId: null,
+        taskProvider: 'none',
+        invocationMode: 'normal',
+        rawTurnId: null,
+        ...overrides,
+      }
+    }
+
+    function seedOf(overrides: Partial<AuthorizedTurnSeed> = {}): AuthorizedTurnSeed {
+      return {
+        sourceEventId: 'seed-1',
+        acceptedAtMs: 1000,
+        acceptedAtMonotonicMs: 100,
+        source: seedSource(),
+        inputCount: 1,
+        inputLength: 5,
+        attachmentCount: 0,
+        ...overrides,
+      }
+    }
+
+    function itemWithSeed(seed: AuthorizedTurnSeed, text: string): QueueItem {
+      return {
+        text,
+        userId: 'user123',
+        username: 'alice',
+        storageContextId: 'user123',
+        contextType: 'dm',
+        newAttachmentIds: [],
+        voiceStagedIds: [],
+        analyticsTurnSeed: seed,
+      }
+    }
+
+    it('should carry no seed when items have none', () => {
+      queue.enqueue(
+        {
+          text: 'Hello',
+          userId: 'user123',
+          username: 'alice',
+          storageContextId: 'user123',
+          contextType: 'dm',
+          newAttachmentIds: [],
+          voiceStagedIds: [],
+        },
+        mockReply,
+      )
+      const flushed = queue.forceFlush()
+      assert(flushed !== null)
+      expect(flushed.analyticsTurnSeed).toBeUndefined()
+    })
+
+    it('should retain the last actor source, sum input and attachment counts, and keep the earliest monotonic accept', () => {
+      const first = seedOf({
+        sourceEventId: 'seed-a',
+        acceptedAtMs: 1000,
+        acceptedAtMonotonicMs: 100,
+        source: seedSource({ chatUserId: 'first-user', actorRole: 'member' }),
+        inputLength: 5,
+        attachmentCount: 1,
+      })
+      const last = seedOf({
+        sourceEventId: 'seed-b',
+        acceptedAtMs: 1400,
+        acceptedAtMonotonicMs: 300,
+        source: seedSource({ chatUserId: 'last-user', actorRole: 'admin' }),
+        inputLength: 7,
+        attachmentCount: 2,
+      })
+
+      queue.enqueue(itemWithSeed(first, 'First'), mockReply)
+      queue.enqueue(itemWithSeed(last, 'Second'), mockReply)
+
+      const flushed = queue.forceFlush()
+      assert(flushed !== null)
+      const merged = flushed.analyticsTurnSeed
+      assert(merged !== undefined)
+      expect(merged.source).toBe(last.source)
+      expect(merged.sourceEventId).toBe('seed-b')
+      expect(merged.inputCount).toBe(2)
+      expect(merged.inputLength).toBe(12)
+      expect(merged.attachmentCount).toBe(3)
+      expect(merged.acceptedAtMs).toBe(1000)
+      expect(merged.acceptedAtMonotonicMs).toBe(100)
     })
   })
 })

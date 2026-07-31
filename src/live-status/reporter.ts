@@ -3,17 +3,22 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { observeActiveFeatureUsed } from '../analytics/feature-observer.js'
 import type { ReplyFn, StatusHandle } from '../chat/types.js'
+import { logger } from '../logger.js'
+import { createStatusEngine, THINKING } from './status-engine.js'
+import type { StatusEngine } from './status-engine.js'
 import { formatToolStatus } from './tool-status-labels.js'
 
-const THINKING = '💭 Thinking…'
+const log = logger.child({ scope: 'live-status:reporter' })
+
 /**
  * Placeholder shown once the model's tool phase ends, held in place while the final answer is
  * prepared/verified and until the first reply message is actually sent — closes the visible gap
  * between deleting the tool status and posting the reply.
  */
 export const PREPARING_RESPONSE = '💬 Preparing response…'
-/** A tool label is held at least this long before reverting to {@link THINKING}, to avoid flicker on fast tools. */
+/** A tool label is held at least this long before reverting to "Thinking…", to avoid flicker on fast tools. */
 const DEFAULT_MIN_LABEL_MS = 1000
 
 /** Owns a single ephemeral status message for one turn. All methods are best-effort and never throw. */
@@ -43,7 +48,40 @@ export type LiveStatusReporterOptions = {
   now?: () => number
   /** Injectable one-shot timer returning a cancel fn; defaults to {@link setTimeout}/{@link clearTimeout}. */
   schedule?: (fn: () => void, ms: number) => () => void
+  /** Content-free lifecycle observer; receives bounded stage/opportunity events only. */
+  analytics?: LiveStatusAnalyticsObserver
+  /** Monotonic turn-start anchor used for lifecycle latencies; defaults to reporter creation time. */
+  turnStartedAtMs?: number
 }
+
+export type LiveStatusOpportunityReason =
+  | 'eligible'
+  | 'platform_unsupported'
+  | 'disabled'
+  | 'turn_too_short'
+  | 'no_status_surface'
+
+export type LiveStatusLifecycleStage = 'create' | 'update' | 'dismiss'
+
+/**
+ * Content-free observer for the live-status surface. Payloads carry only bounded
+ * stage/reason/outcome values, per-stage ordinals, and turn-relative latency —
+ * never status text, tool names, or message content.
+ */
+export type LiveStatusAnalyticsObserver = Readonly<{
+  onOpportunity: (event: Readonly<{ eligible: boolean; reason: LiveStatusOpportunityReason }>) => void
+  onLifecycle: (
+    event: Readonly<{
+      stage: LiveStatusLifecycleStage
+      outcome: 'success' | 'failed'
+      latencyFromTurnStartMs: number
+      ordinal: number
+    }>,
+  ) => void
+}>
+
+/** A status dismissed faster than this after creation never became meaningful feedback. */
+const TOO_SHORT_MS = 1000
 
 const defaultSchedule = (fn: () => void, ms: number): (() => void) => {
   const id = setTimeout(fn, ms)
@@ -52,141 +90,166 @@ const defaultSchedule = (fn: () => void, ms: number): (() => void) => {
   }
 }
 
-type StatusEngineDeps = {
-  /** Send a (deduped) text to the live status message; a no-op when no message is active. */
-  emit: (text: string) => void
-  /** Whether a status message currently exists; gates whether work is scheduled at all. */
-  isActive: () => boolean
-  minLabelMs: number
-  now: () => number
-  schedule: (fn: () => void, ms: number) => () => void
+type MutableReporterState = {
+  handle: StatusHandle | undefined
+  /** Once frozen (placeholder shown), tool-driven engine emits are ignored so the placeholder never flickers. */
+  frozen: boolean
+  createdAtMs: number | undefined
 }
 
-type StatusEngine = {
-  onToolStart: (label: string) => void
-  onToolFinish: () => void
-  /** Re-baseline the rendered text to Thinking once the status message exists. */
-  reset: () => void
-  /** Cancel any pending Thinking revert. */
-  stop: () => void
-}
+type AnalyticsRecorder = Readonly<{
+  recordLifecycle: (stage: LiveStatusLifecycleStage, outcome: 'success' | 'failed') => void
+  emitOpportunity: (eligible: boolean, reason: LiveStatusOpportunityReason) => void
+  /** Observe one status-text update attempt, recording its bounded outcome. */
+  recordUpdate: (update: Promise<void>) => void
+}>
 
-type EngineState = {
-  inFlight: number
-  lastStartLabel: string
-  lastRendered: string | undefined
-  /** When the currently-rendered tool label was first shown; anchors the minimum-hold window. */
-  labelShownAt: number
-  cancelPending: (() => void) | undefined
-}
-
-const stopTimer = (state: EngineState): void => {
-  state.cancelPending?.()
-  state.cancelPending = undefined
-}
-
-const pushText = (state: EngineState, deps: StatusEngineDeps, text: string): void => {
-  if (text === state.lastRendered) return
-  state.lastRendered = text
-  if (text !== THINKING) state.labelShownAt = deps.now()
-  deps.emit(text)
-}
-
-const activeText = (state: EngineState): string =>
-  state.inFlight === 1 ? state.lastStartLabel : `${state.lastStartLabel} (+${state.inFlight - 1})`
-
-/** Reconcile the rendered text with the in-flight count, deferring the Thinking revert by the minimum hold. */
-const applyState = (state: EngineState, deps: StatusEngineDeps): void => {
-  if (!deps.isActive()) return
-  if (state.inFlight >= 1) {
-    stopTimer(state)
-    pushText(state, deps, activeText(state))
-    return
-  }
-  // No tool in flight: revert to Thinking, but hold a live tool label minLabelMs to avoid fast-tool flicker.
-  if (state.lastRendered !== undefined && state.lastRendered !== THINKING) {
-    const remaining = deps.minLabelMs - (deps.now() - state.labelShownAt)
-    if (remaining > 0) {
-      state.cancelPending ??= deps.schedule((): void => {
-        state.cancelPending = undefined
-        if (state.inFlight <= 0) pushText(state, deps, THINKING)
-      }, remaining)
-      return
+const createAnalyticsRecorder = (
+  analytics: LiveStatusAnalyticsObserver | undefined,
+  clock: () => number,
+  turnAnchorMs: number,
+): AnalyticsRecorder => {
+  let opportunityEmitted = false
+  const stageOrdinals: Record<LiveStatusLifecycleStage, number> = { create: 0, update: 0, dismiss: 0 }
+  const notify = (fn: () => void): void => {
+    try {
+      fn()
+    } catch (error) {
+      log.warn(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Live-status analytics observer failed',
+      )
     }
   }
-  stopTimer(state)
-  pushText(state, deps, THINKING)
-}
-
-/** Drives the in-flight count → status text, holding a tool label for `minLabelMs` before reverting to Thinking. */
-const createStatusEngine = (deps: StatusEngineDeps): StatusEngine => {
-  const state: EngineState = {
-    inFlight: 0,
-    lastStartLabel: THINKING,
-    lastRendered: undefined,
-    labelShownAt: 0,
-    cancelPending: undefined,
+  const recordLifecycle = (stage: LiveStatusLifecycleStage, outcome: 'success' | 'failed'): void => {
+    if (analytics === undefined) return
+    const ordinal = stageOrdinals[stage]
+    stageOrdinals[stage] += 1
+    const latencyFromTurnStartMs = Math.max(0, Math.round(clock() - turnAnchorMs))
+    notify(() => {
+      analytics.onLifecycle({ stage, outcome, latencyFromTurnStartMs, ordinal })
+    })
   }
   return {
-    onToolStart: (label): void => {
-      state.inFlight += 1
-      state.lastStartLabel = label
-      applyState(state, deps)
+    recordLifecycle,
+    emitOpportunity: (eligible, reason) => {
+      if (analytics === undefined || opportunityEmitted) return
+      opportunityEmitted = true
+      notify(() => {
+        analytics.onOpportunity({ eligible, reason })
+      })
     },
-    onToolFinish: (): void => {
-      state.inFlight = Math.max(0, state.inFlight - 1)
-      applyState(state, deps)
+    recordUpdate: (update) => {
+      void update.then(
+        () => {
+          recordLifecycle('update', 'success')
+        },
+        () => {
+          recordLifecycle('update', 'failed')
+        },
+      )
     },
-    reset: (): void => {
-      state.lastRendered = THINKING
+  }
+}
+
+const startStatus = async (
+  reply: ReplyFn,
+  enabled: boolean,
+  state: MutableReporterState,
+  engine: StatusEngine,
+  recorder: AnalyticsRecorder,
+  clock: () => number,
+): Promise<void> => {
+  if (!enabled) {
+    recorder.emitOpportunity(false, 'disabled')
+    return
+  }
+  if (reply.createStatus === undefined) {
+    observeActiveFeatureUsed({ feature: 'live_status', operation: 'create', outcome: 'blocked' })
+    recorder.emitOpportunity(false, 'platform_unsupported')
+    return
+  }
+  const created = await reply.createStatus(THINKING).catch(() => undefined)
+  if (created === undefined) {
+    observeActiveFeatureUsed({ feature: 'live_status', operation: 'create', outcome: 'failure' })
+    recorder.recordLifecycle('create', 'failed')
+    recorder.emitOpportunity(false, 'no_status_surface')
+    return
+  }
+  state.handle = created
+  state.createdAtMs = clock()
+  observeActiveFeatureUsed({ feature: 'live_status', operation: 'create', outcome: 'success' })
+  recorder.recordLifecycle('create', 'success')
+  engine.reset()
+}
+
+const placeholderStatus = async (
+  text: string,
+  state: MutableReporterState,
+  engine: StatusEngine,
+  recorder: AnalyticsRecorder,
+): Promise<void> => {
+  engine.stop()
+  state.frozen = true
+  if (state.handle === undefined) return
+  const current = state.handle
+  await current.update(text).then(
+    () => {
+      recorder.recordLifecycle('update', 'success')
     },
-    stop: (): void => {
-      stopTimer(state)
+    () => {
+      recorder.recordLifecycle('update', 'failed')
     },
+  )
+}
+
+const dismissStatus = async (
+  state: MutableReporterState,
+  engine: StatusEngine,
+  recorder: AnalyticsRecorder,
+  clock: () => number,
+): Promise<void> => {
+  engine.stop()
+  if (state.handle === undefined) return
+  const current = state.handle
+  state.handle = undefined
+  let ok = true
+  await current.dismiss().catch(() => {
+    ok = false
+  })
+  recorder.recordLifecycle('dismiss', ok ? 'success' : 'failed')
+  if (state.createdAtMs !== undefined) {
+    const visibleMs = Math.max(0, clock() - state.createdAtMs)
+    const eligible = visibleMs >= TOO_SHORT_MS
+    recorder.emitOpportunity(eligible, eligible ? 'eligible' : 'turn_too_short')
   }
 }
 
 export function createLiveStatusReporter(reply: ReplyFn, options?: LiveStatusReporterOptions): LiveStatusReporter {
   const enabled = options?.enabled !== false
-  let handle: StatusHandle | undefined
-  /** Once frozen (placeholder shown), tool-driven engine emits are ignored so the placeholder never flickers. */
-  let frozen = false
+  const clock = options?.now ?? ((): number => Date.now())
+  const recorder = createAnalyticsRecorder(options?.analytics, clock, options?.turnStartedAtMs ?? clock())
+  const state: MutableReporterState = { handle: undefined, frozen: false, createdAtMs: undefined }
   const engine = createStatusEngine({
     emit: (text): void => {
-      if (frozen) return
-      void handle?.update(text).catch(() => undefined)
+      if (state.frozen || state.handle === undefined) return
+      recorder.recordUpdate(state.handle.update(text))
     },
-    isActive: (): boolean => handle !== undefined,
+    isActive: (): boolean => state.handle !== undefined,
     minLabelMs: options?.minLabelMs ?? DEFAULT_MIN_LABEL_MS,
-    now: options?.now ?? ((): number => Date.now()),
+    now: clock,
     schedule: options?.schedule ?? defaultSchedule,
   })
 
   return {
-    start: async (): Promise<void> => {
-      if (!enabled) return
-      if (reply.createStatus === undefined) return
-      handle = await reply.createStatus(THINKING).catch(() => undefined)
-      if (handle !== undefined) engine.reset()
-    },
+    start: () => startStatus(reply, enabled, state, engine, recorder, clock),
     onToolStart: (event): void => {
       engine.onToolStart(formatToolStatus(event.toolName, event.input))
     },
     onToolFinish: (): void => {
       engine.onToolFinish()
     },
-    placeholder: async (text: string): Promise<void> => {
-      engine.stop()
-      frozen = true
-      if (handle === undefined) return
-      await handle.update(text).catch(() => undefined)
-    },
-    dismiss: async (): Promise<void> => {
-      engine.stop()
-      if (handle === undefined) return
-      const current = handle
-      handle = undefined
-      await current.dismiss().catch(() => undefined)
-    },
+    placeholder: (text) => placeholderStatus(text, state, engine, recorder),
+    dismiss: () => dismissStatus(state, engine, recorder, clock),
   }
 }

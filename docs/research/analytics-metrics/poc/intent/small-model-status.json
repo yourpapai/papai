@@ -1,0 +1,25 @@
+{
+  "schema": "papai.intent.small-model-experiment-status.v1",
+  "spdx": "BUSL-1.1",
+  "taxonomy": "intent.v1",
+  "strategy": "small_model_v1",
+  "execution_status": "NOT_EXECUTED",
+  "qualification_status": "NOT_QUALIFIED",
+  "reason_codes": [
+    "NO_APPROVED_PROCESSOR_ENDPOINT",
+    "NO_APPROVED_API_KEY",
+    "NO_APPROVED_MODEL",
+    "NO_COST_OR_LATENCY_EVIDENCE"
+  ],
+  "fabricated_measurements": false,
+  "input_content_persisted": 0,
+  "output_content_persisted": 0,
+  "calls": 0,
+  "input_tokens": null,
+  "output_tokens": null,
+  "cost_usd_per_1000_turns": null,
+  "worker_latency_p50_ms": null,
+  "worker_latency_p95_ms": null,
+  "label_ready_p95_ms": null,
+  "user_visible_added_latency_ms": 0
+}

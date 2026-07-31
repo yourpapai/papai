@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:run-saved-query' })
 
@@ -21,17 +22,10 @@ export function makeRunSavedQueryTool(provider: Readonly<TaskProvider>): Tool {
     execute: async ({ queryId }) => {
       try {
         const tasks = await provider.runSavedQuery!(queryId)
-        log.info({ queryId, count: tasks.length }, 'Saved query executed via tool')
+        log.info({ count: tasks.length }, 'Saved query executed via tool')
         return tasks
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            queryId,
-            tool: 'run_saved_query',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('run_saved_query', error), 'Tool execution failed')
         throw error
       }
     },

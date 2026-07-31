@@ -14,6 +14,7 @@
   import { useScrollSpy } from './scrollspy.js'
   import { activeContext, settingsSession } from './session.svelte.js'
   import ProfileSection from './sections/ProfileSection.svelte'
+  import AnalyticsPreferencesSection from './sections/AnalyticsPreferencesSection.svelte'
   import MemorySection from './sections/MemorySection.svelte'
   import TaskProviderSection from './sections/TaskProviderSection.svelte'
   import AiOutputSection from './sections/AiOutputSection.svelte'
@@ -47,6 +48,7 @@
   import AdminMcpCatalogSection from './sections/admin/AdminMcpCatalogSection.svelte'
   import AdminMcpPluginServersSection from './sections/admin/AdminMcpPluginServersSection.svelte'
   import AdminToolDefaultsSection from './sections/admin/AdminToolDefaultsSection.svelte'
+  import AdminAnalyticsSection from './sections/admin/AdminAnalyticsSection.svelte'
 
   type SidebarItem = SidebarGroup['items'][number]
 
@@ -81,6 +83,7 @@
         { id: 'groups', label: 'Groups' },
         { id: 'announce', label: 'Announce' },
         { id: 'release-notes', label: 'Release notes' },
+        { id: 'analytics-admin', label: 'Analytics' },
       )
     }
     // super admins are always bot admins, so items already has the bot-admin entries here
@@ -108,6 +111,7 @@
           { id: 'profile', label: 'Profile' },
           { id: 'task-provider', label: 'Task provider' },
           { id: 'tools', label: 'Tools' },
+          { id: 'analytics', label: 'Analytics' },
           ...(isGroup
             ? [
                 { id: 'members', label: 'Members' },
@@ -216,6 +220,7 @@
             <TaskProviderSection contextId={ctx} />
             <ToolsSection contextId={ctx} />
             <ReleaseSubscriptionSection scope="personal" contextId={ctx} />
+            <AnalyticsPreferencesSection />
             {#if isGroup}
               <MembersSection contextId={ctx} />
               <GroupProviderSection contextId={ctx} />
@@ -268,6 +273,7 @@
                 <AdminGroupsSection />
                 <AdminAnnounceSection />
                 <AdminReleaseNotesSection />
+                <AdminAnalyticsSection />
               {/if}
               {#if settingsSession.isSuperAdmin}
                 <AdminAdminsSection />

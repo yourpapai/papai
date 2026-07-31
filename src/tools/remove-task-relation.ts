@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:remove-task-relation' })
 
@@ -23,15 +24,7 @@ export function makeRemoveTaskRelationTool(provider: TaskProvider): Tool {
       try {
         return await provider.removeRelation!(taskId, relatedTaskId)
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            relatedTaskId,
-            tool: 'remove_task_relation',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('remove_task_relation', error), 'Tool execution failed')
         throw error
       }
     },

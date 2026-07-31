@@ -5,6 +5,7 @@
 
 import { and, eq, isNotNull } from 'drizzle-orm'
 
+import { runWithProviderRequestScope, type ProviderRequestScope } from '../../analytics/provider-request-scope.js'
 import { getDrizzleDb as defaultGetDrizzleDb } from '../../db/drizzle.js'
 import { kaneoWorkspaceMembers } from '../../db/schema.js'
 import { setProvisionedIdentityMapping } from '../../identity/mapping.js'
@@ -158,11 +159,11 @@ async function provisionAndPersist(
   username: string | null,
   provider: TaskProvider,
   existingOpts: ExistingOpts | undefined,
+  scope: ProviderRequestScope,
 ): Promise<MemberOutcome> {
   try {
-    const { providerUserId, login, password } = await provider.provisionWorkspaceMember!(
-      { chatUserId, displayName, username },
-      existingOpts,
+    const { providerUserId, login, password } = await runWithProviderRequestScope(scope, () =>
+      provider.provisionWorkspaceMember!({ chatUserId, displayName, username }, existingOpts),
     )
     writeMemberRow(groupContextId, chatUserId, providerUserId, login, 'active', encryptInstanceConfig({ password }))
     setProvisionedIdentityMapping({
@@ -198,6 +199,7 @@ async function provisionAndPersist(
 export async function ensureWorkspaceMember(
   groupContextId: string,
   chatUserId: string,
+  scope: ProviderRequestScope,
   deps: MembershipDeps = defaultMembershipDeps,
   opts?: { username?: string | null },
 ): Promise<MemberOutcome> {
@@ -226,7 +228,15 @@ export async function ensureWorkspaceMember(
     chatUserId,
     deps.decryptPassword === undefined ? undefined : (enc: string): string => deps.decryptPassword!(enc),
   )
-  return provisionAndPersist(groupContextId, chatUserId, displayName, opts?.username ?? null, provider, existingOpts)
+  return provisionAndPersist(
+    groupContextId,
+    chatUserId,
+    displayName,
+    opts?.username ?? null,
+    provider,
+    existingOpts,
+    scope,
+  )
 }
 
 /**

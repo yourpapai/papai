@@ -12,6 +12,7 @@ import { openCoverageCache } from '../../../scripts/mutation/coverage-cache.js'
 import {
   buildCoverageMap,
   createDefaultCoverageMapDeps,
+  _runCoverageForTest as runCoverageFor,
   _samePackageTestDirForTest as samePackageTestDir,
 } from '../../../scripts/mutation/coverage-map.js'
 
@@ -159,6 +160,87 @@ describe('createDefaultCoverageMapDeps — listCandidateTests widening', () => {
     const deps = createDefaultCoverageMapDeps(root)
     const candidates = [...deps.listCandidateTests('src/history.ts')].sort()
     expect(candidates).toEqual(['tests/history-edit.test.ts', 'tests/history.test.ts'].sort())
+  })
+})
+
+describe('createDefaultCoverageMapDeps — external lanes are never candidates', () => {
+  it('excludes tests/e2e and tests/stories even when they import the source directly', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cov-map-lanes-'))
+    fs.mkdirSync(path.join(root, 'src', 'analytics'), { recursive: true })
+    fs.writeFileSync(path.join(root, 'src', 'analytics', 'thing.ts'), 'export const t = 1\n')
+    fs.mkdirSync(path.join(root, 'tests', 'analytics'), { recursive: true })
+    fs.writeFileSync(path.join(root, 'tests', 'analytics', 'thing.test.ts'), `import '../../src/analytics/thing.js'\n`)
+    fs.mkdirSync(path.join(root, 'tests', 'e2e'), { recursive: true })
+    fs.writeFileSync(path.join(root, 'tests', 'e2e', 'thing.test.ts'), `import '../../src/analytics/thing.js'\n`)
+    fs.mkdirSync(path.join(root, 'tests', 'stories', 'analytics'), { recursive: true })
+    fs.writeFileSync(
+      path.join(root, 'tests', 'stories', 'analytics', 'thing.story.test.ts'),
+      `import '../../../src/analytics/thing.js'\n`,
+    )
+    const deps = createDefaultCoverageMapDeps(root)
+    expect(deps.listCandidateTests('src/analytics/thing.ts')).toEqual(['tests/analytics/thing.test.ts'])
+  })
+})
+
+describe('runCoverageFor — failure handling', () => {
+  const makeOpts = (
+    cachePath: string,
+    spawn: () => Map<string, number> | null,
+  ): {
+    readonly coverageDir: string
+    readonly lcovName: string
+    readonly timeoutMs: number
+    readonly cache: ReturnType<typeof openCoverageCache>
+    readonly cacheTtlMs: number
+    readonly readTestContent: () => string
+    readonly spawnAndParse: () => Map<string, number> | null
+  } => ({
+    coverageDir: 'reports/coverage',
+    lcovName: 'lcov.info',
+    timeoutMs: 1000,
+    cache: openCoverageCache(cachePath),
+    cacheTtlMs: 60_000,
+    readTestContent: (): string => 'test file content',
+    spawnAndParse: spawn,
+  })
+
+  // Sequencer kept outside the test callbacks: oxlint's no-conditional-in-test forbids
+  // branching inside it() bodies.
+  const spawnSequence = (
+    results: ReadonlyArray<Map<string, number> | null>,
+  ): { readonly spawn: () => Map<string, number> | null; readonly calls: () => number } => {
+    let calls = 0
+    return {
+      spawn: () => {
+        calls += 1
+        return results[calls - 1] ?? null
+      },
+      calls: () => calls,
+    }
+  }
+
+  it('fails open to an empty map without caching the failure (transient errors stay retryable)', () => {
+    const cachePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cov-run-fail-')), 'cache.json')
+    const success = new Map([['src/a.ts', 3]])
+    // Third entry is defensive: the third call must be served from cache, never reaching spawn
+    // (the calls() assertion below pins that).
+    const seq = spawnSequence([null, success, success])
+    const opts = makeOpts(cachePath, seq.spawn)
+    expect([...runCoverageFor('tests/a.test.ts', '/proj', opts).entries()]).toEqual([])
+    // Second call must re-spawn (failure was not cached) and now succeeds...
+    expect(runCoverageFor('tests/a.test.ts', '/proj', opts).get('src/a.ts')).toBe(3)
+    // ...and the third call is served from the cache.
+    expect(runCoverageFor('tests/a.test.ts', '/proj', opts).get('src/a.ts')).toBe(3)
+    expect(seq.calls()).toBe(2)
+  })
+
+  it('caches successful runs (including legitimately empty coverage)', () => {
+    const cachePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cov-run-ok-')), 'cache.json')
+    const seq = spawnSequence([new Map()])
+    const opts = makeOpts(cachePath, seq.spawn)
+    expect([...runCoverageFor('tests/a.test.ts', '/proj', opts).entries()]).toEqual([])
+    expect([...runCoverageFor('tests/a.test.ts', '/proj', opts).entries()]).toEqual([])
+    expect(seq.calls()).toBe(1)
   })
 })
 

@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { ProviderRequestScope } from '../analytics/provider-request-scope.js'
 import type { ReplyFn } from '../chat/types.js'
 import type { TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
@@ -19,6 +20,8 @@ export type TaskProviderAutoProvisionContext = {
   chatUserId: string
   username: string | null
   reply: ReplyFn
+  /** Explicit analytics scope for the triggering path; hooks wrap provider I/O in it, never infer an actor. */
+  scope: ProviderRequestScope
 }
 
 export type TaskProviderAutoProvision = (context: TaskProviderAutoProvisionContext) => Promise<boolean> | boolean
@@ -28,6 +31,8 @@ export type TaskProviderProvisionContext = Readonly<{
   username: string | null
   publicUrl: string | undefined
   internalUrl: string | undefined
+  /** Explicit analytics scope for the authenticated settings route; hooks wrap provider I/O in it. */
+  scope: ProviderRequestScope
 }>
 
 export type TaskProviderProvisionOutcome =

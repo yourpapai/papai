@@ -310,6 +310,7 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0305](0305-f3-memory-story-family.md) | F3 Memory Story Family — Behavioral Coverage for Memos, Long-Term Memory, Instructions, and Group-History Lookup | 2026-07-20 | Implemented (with divergence) |  |
 | [0306](0306-f4-http-story-family.md) | F4 HTTP-Surfaces Story Family — Behavioral Coverage for the Auth-Claim Exchange, Dashboard/Admin, Stats, Notify-Bearer, and Transcript-Proxy HTTP Domains | 2026-07-20 | Implemented (with divergence) |  |
 | [0307](0307-f5-scheduling-story-family.md) | F5 Scheduling Story Family — Behavioral Coverage for Recurring Tasks, Deferred Scheduled Prompts, and Condition-Driven Alerts | 2026-07-21 | Implemented (with divergence) |  |
+| [0308](0308-analytics-governance-and-delivery-lanes.md) | Analytics Governance and Delivery Lanes | 2026-07-24 | Accepted | - |
 
 ## ADR Status Legend
 

@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:remove-vote' })
 
@@ -21,17 +22,10 @@ export function makeRemoveVoteTool(provider: TaskProvider): Tool {
     execute: async ({ taskId }) => {
       try {
         const result = await provider.removeVote!(taskId)
-        log.info({ taskId }, 'Vote removed via tool')
+        log.info('Vote removed via tool')
         return result
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            tool: 'remove_vote',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('remove_vote', error), 'Tool execution failed')
         throw error
       }
     },

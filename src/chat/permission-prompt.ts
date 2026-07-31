@@ -82,12 +82,47 @@ export function formatArguments(args: Record<string, unknown>): string {
 
 export type PermissionDecision = 'allow' | 'deny'
 
+export type ConfirmationLifecycleDecision = 'granted' | 'denied' | 'ignored' | 'prompt_failed'
+
+/**
+ * Content-free lifecycle observer for the confirmation flow. Payloads carry only
+ * timing and the bounded decision — never the reason, args, callback id, source
+ * message text, or the raw tool name.
+ */
+export type ConfirmationLifecycleObserver = Readonly<{
+  onRequested: (event: Readonly<{ timeoutMs: number }>) => void
+  onResolved: (event: Readonly<{ decision: ConfirmationLifecycleDecision; decisionLatencyMs: number }>) => void
+}>
+
+export type AskPermissionOptions = Readonly<{
+  analytics?: ConfirmationLifecycleObserver
+  timeoutMs?: number
+  now?: () => number
+}>
+
 interface PendingRequest {
   contextId: string
   toolName: string
   resolve: (decision: PermissionDecision) => void
   timer: ReturnType<typeof setTimeout>
   handle?: PromptHandle
+  analytics?: ConfirmationLifecycleObserver
+  now: () => number
+  startedAtMs: number
+}
+
+const notifyObserver = (fn: () => void): void => {
+  try {
+    fn()
+  } catch (error) {
+    log.warn({ error: error instanceof Error ? error.message : String(error) }, 'Permission analytics observer failed')
+  }
+}
+
+const notifyResolved = (entry: PendingRequest, decision: ConfirmationLifecycleDecision): void => {
+  if (entry.analytics === undefined) return
+  const latencyMs = Math.max(0, Math.round(entry.now() - entry.startedAtMs))
+  notifyObserver(() => entry.analytics?.onResolved({ decision, decisionLatencyMs: latencyMs }))
 }
 
 const pending = new Map<string, PendingRequest>()
@@ -125,13 +160,55 @@ export function formatDecisionConfirmation(toolName: string, decision: Permissio
   return decision === 'allow' ? `Allowed ${toolName} ✅` : `Denied ${toolName} 🚫`
 }
 
+const sendPromptButtons = (
+  reply: ReplyFn,
+  id: string,
+  body: string,
+  contextId: string,
+  toolName: string,
+  timeoutMs: number,
+): void => {
+  void reply
+    .buttons(body, {
+      buttons: [
+        { text: '✅ Allow', callbackData: `perm:a:${id}`, style: 'primary' },
+        { text: '🚫 Deny', callbackData: `perm:d:${id}`, style: 'secondary' },
+      ],
+    })
+    .then((handle) => {
+      const entry = pending.get(id)
+      if (entry !== undefined) {
+        entry.handle = handle
+        if (entry.analytics !== undefined) {
+          notifyObserver(() => entry.analytics?.onRequested({ timeoutMs }))
+        }
+      }
+    })
+    .catch((error: unknown) => {
+      log.warn(
+        { contextId, toolName, id, error: error instanceof Error ? error.message : String(error) },
+        'Failed to send permission prompt buttons',
+      )
+      const entry = pending.get(id)
+      if (entry === undefined) return
+      pending.delete(id)
+      clearTimeout(entry.timer)
+      notifyResolved(entry, 'prompt_failed')
+      entry.resolve('deny')
+    })
+}
+
 export function askPermissionViaChat(
   reply: ReplyFn,
   contextId: string,
   req: { toolName: string; reason: string; args: Record<string, unknown> },
+  options?: AskPermissionOptions,
 ): Promise<PermissionDecision> {
   const id = generateRequestId()
   const body = formatPrompt(req.toolName, req.reason, req.args)
+  const timeoutMs = options?.timeoutMs ?? PERMISSION_TIMEOUT_MS
+  const now = options?.now ?? Date.now
+  const startedAtMs = now()
   return new Promise<PermissionDecision>((resolve) => {
     const timer = setTimeout(() => {
       const entry = pending.get(id)
@@ -139,38 +216,24 @@ export function askPermissionViaChat(
       pending.delete(id)
       log.warn({ contextId, toolName: req.toolName, id }, 'Permission prompt timed out; denying')
       void redactExpiredPrompt(entry, contextId, req.toolName, id)
+      notifyResolved(entry, 'ignored')
       entry.resolve('deny')
-    }, PERMISSION_TIMEOUT_MS)
+    }, timeoutMs)
     // Register before sending so a fast click (or a synchronously-resolving send)
     // can always find the entry in `resolvePermissionRequest`/the timeout handler.
     // The handle is patched in once the send resolves; a send failure denies
-    // immediately (below) because without a visible prompt the user cannot
-    // respond, so hanging for the full timeout would silently block the tool.
-    pending.set(id, { contextId, toolName: req.toolName, resolve, timer })
-    void reply
-      .buttons(body, {
-        buttons: [
-          { text: '✅ Allow', callbackData: `perm:a:${id}`, style: 'primary' },
-          { text: '🚫 Deny', callbackData: `perm:d:${id}`, style: 'secondary' },
-        ],
-      })
-      .then((handle) => {
-        const entry = pending.get(id)
-        if (entry !== undefined) {
-          entry.handle = handle
-        }
-      })
-      .catch((error: unknown) => {
-        log.warn(
-          { contextId, toolName: req.toolName, id, error: error instanceof Error ? error.message : String(error) },
-          'Failed to send permission prompt buttons',
-        )
-        const entry = pending.get(id)
-        if (entry === undefined) return
-        pending.delete(id)
-        clearTimeout(entry.timer)
-        entry.resolve('deny')
-      })
+    // immediately because without a visible prompt the user cannot respond, so
+    // hanging for the full timeout would silently block the tool.
+    pending.set(id, {
+      contextId,
+      toolName: req.toolName,
+      resolve,
+      timer,
+      analytics: options?.analytics,
+      now,
+      startedAtMs,
+    })
+    sendPromptButtons(reply, id, body, contextId, req.toolName, timeoutMs)
   })
 }
 
@@ -199,6 +262,7 @@ export function resolvePermissionRequest(
   if (entry === undefined) return { resolved: false }
   pending.delete(id)
   clearTimeout(entry.timer)
+  notifyResolved(entry, decision === 'allow' ? 'granted' : 'denied')
   entry.resolve(decision)
   return entry.handle === undefined ? { resolved: true } : { resolved: true, handle: entry.handle }
 }

@@ -115,4 +115,15 @@ describe('maybeAddCollaborationTaskTools', () => {
       'set_visibility',
     ])
   })
+
+  test('registers scope-free descriptors (contextSchema is attached only by the finalize pass)', () => {
+    const tools: ToolSet = {}
+    const provider = providerWith(new Set<TaskCapability>(['tasks.watchers', 'tasks.votes', 'tasks.visibility']), {
+      identityResolver: STUB_IDENTITY_RESOLVER,
+    })
+    maybeAddCollaborationTaskTools(tools, provider, CHAT_USER_ID)
+    for (const name of Object.keys(tools)) {
+      expect(tools[name]?.contextSchema, name).toBeUndefined()
+    }
+  })
 })

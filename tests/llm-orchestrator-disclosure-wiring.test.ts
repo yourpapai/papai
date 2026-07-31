@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it } from 'bun:test'
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 
+import { NO_ANALYTICS_SCOPE } from '../src/analytics/provider-request-scope.js'
 import { prepareLlmInvocation, type PrepareLlmInvocationDeps } from '../src/llm-orchestrator-tools.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
@@ -32,6 +33,7 @@ const optsFor = (contextId: string, userText: string): Parameters<typeof prepare
   userText,
   stagedDownloadFn: undefined,
   askPermission: undefined,
+  providerRequestScope: NO_ANALYTICS_SCOPE,
 })
 
 describe('prepareLlmInvocation disclosure wiring', () => {

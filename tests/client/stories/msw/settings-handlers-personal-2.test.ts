@@ -8,6 +8,8 @@ import { describe, expect, test } from 'bun:test'
 import type { HttpHandler } from 'msw'
 
 import {
+  analyticsPreferencesHandlers,
+  analyticsWithdrawalInProgressHandlers,
   configHandlers,
   releaseSubscriptionHandlers,
   releaseSubscriptionMutatingHandlers,
@@ -59,5 +61,27 @@ describe('personal settings msw handlers (part 2)', () => {
   test('releaseSubscriptionMutationErrorHandlers covers GET and PATCH for /settings/api/release-subscription', () => {
     const paths = pathsOf(releaseSubscriptionMutationErrorHandlers)
     expect(paths.filter((p) => p.includes('/settings/api/release-subscription')).length).toBe(2)
+  })
+
+  // --- analyticsPreferencesHandlers ---
+
+  test('analyticsPreferencesHandlers has all four variants with at least one handler each', () => {
+    expect(Array.isArray(analyticsPreferencesHandlers.populated)).toBe(true)
+    expect(Array.isArray(analyticsPreferencesHandlers.empty)).toBe(true)
+    expect(Array.isArray(analyticsPreferencesHandlers.error)).toBe(true)
+    expect(Array.isArray(analyticsPreferencesHandlers.loading)).toBe(true)
+    expect(analyticsPreferencesHandlers.populated.length).toBeGreaterThan(0)
+  })
+
+  test('analyticsPreferencesHandlers populated covers /settings/api/analytics/preferences', () => {
+    expect(
+      pathsOf(analyticsPreferencesHandlers.populated).some((p) => p.includes('/settings/api/analytics/preferences')),
+    ).toBe(true)
+  })
+
+  test('analyticsWithdrawalInProgressHandlers covers preferences GET and delete POST', () => {
+    const paths = pathsOf(analyticsWithdrawalInProgressHandlers)
+    expect(paths.some((p) => p.includes('/settings/api/analytics/preferences'))).toBe(true)
+    expect(paths.some((p) => p.includes('/settings/api/analytics/delete'))).toBe(true)
   })
 })

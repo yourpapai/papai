@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:log-work' })
 
@@ -29,7 +30,7 @@ export function makeLogWorkTool(provider: TaskProvider): Tool {
       author: z.string().optional().describe('Author login. Defaults to the authenticated user.'),
     }),
     execute: async ({ taskId, duration, date, description, type, author }) => {
-      log.debug({ taskId, duration, date }, 'log_work called')
+      log.debug({ duration, date }, 'log_work called')
       try {
         const result = await provider.createWorkItem!(taskId, {
           duration,
@@ -38,17 +39,10 @@ export function makeLogWorkTool(provider: TaskProvider): Tool {
           type,
           author,
         })
-        log.info({ taskId, workItemId: result.id, duration }, 'Work item created')
+        log.info({ duration }, 'Work item created')
         return result
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            tool: 'log_work',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('log_work', error), 'Tool execution failed')
         throw error
       }
     },

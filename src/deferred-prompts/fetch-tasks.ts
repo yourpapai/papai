@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { runWithProviderRequestScope } from '../analytics/provider-request-scope.js'
+import type { ProviderRequestScope } from '../analytics/provider-request-scope.js'
 import { logger } from '../logger.js'
 import type { Task, TaskProvider } from '../providers/types.js'
 import type { AlertCondition } from './types.js'
@@ -83,14 +85,18 @@ async function fetchViaSearch(provider: TaskProvider): Promise<Task[]> {
 }
 
 /** Fetch all tasks for alert evaluation. Uses listProjects+listTasks if available, searchTasks as fallback. */
-export function fetchAllTasks(provider: TaskProvider): Promise<Task[]> {
-  if (provider.listProjects !== undefined && provider.capabilities.has('projects.list')) {
-    return fetchViaProjects(provider)
-  }
-  return fetchViaSearch(provider)
+export function fetchAllTasks(provider: TaskProvider, scope: ProviderRequestScope): Promise<Task[]> {
+  // Every task-list request settles inside the scope lease; a malformed scope
+  // fails (via runWithProviderRequestScope) before any provider method runs.
+  return runWithProviderRequestScope(scope, () => {
+    if (provider.listProjects !== undefined && provider.capabilities.has('projects.list')) {
+      return fetchViaProjects(provider)
+    }
+    return fetchViaSearch(provider)
+  })
 }
 
 /** Enrich lightweight tasks with full details via getTask. Rejects if any getTask fails. */
-export function enrichTasks(provider: TaskProvider, tasks: Task[]): Promise<Task[]> {
-  return Promise.all(tasks.map((t) => provider.getTask(t.id)))
+export function enrichTasks(provider: TaskProvider, tasks: Task[], scope: ProviderRequestScope): Promise<Task[]> {
+  return runWithProviderRequestScope(scope, () => Promise.all(tasks.map((t) => provider.getTask(t.id))))
 }

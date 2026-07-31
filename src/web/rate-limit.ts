@@ -51,7 +51,7 @@ export function consumeQuota(
 
     if (updated !== undefined) {
       const remaining = limit - updated.count
-      log.debug({ actorKey, windowStart, count: updated.count, remaining }, 'Consumed quota')
+      log.debug({ windowStart, count: updated.count, remaining }, 'Consumed quota')
       return { allowed: true, remaining }
     }
 
@@ -62,7 +62,7 @@ export function consumeQuota(
       .where(and(eq(webRateLimit.actorId, actorKey), eq(webRateLimit.windowStart, windowStart)))
       .get()
 
-    log.warn({ actorKey, windowStart, count: existing?.count ?? limit, retryAfterSec }, 'Quota exceeded')
+    log.warn({ windowStart, count: existing?.count ?? limit, retryAfterSec }, 'Quota exceeded')
     return { allowed: false, remaining: 0, retryAfterSec }
   })
 }

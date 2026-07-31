@@ -5,6 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { NO_ANALYTICS_SCOPE } from '../../../src/analytics/provider-request-scope.js'
 import { getDrizzleDb } from '../../../src/db/drizzle.js'
 import { groupMembers } from '../../../src/db/schema.js'
 import { runMembershipBackfill } from '../../../src/providers/membership/backfill.js'
@@ -28,6 +29,7 @@ describe('runMembershipBackfill', () => {
 
     const ensureCalls: string[] = []
     await runMembershipBackfill({
+      scope: NO_ANALYTICS_SCOPE,
       listAllGroupMembers: () =>
         db.select({ groupId: groupMembers.groupId, userId: groupMembers.userId }).from(groupMembers).all(),
       ensure: (g, u) => {
@@ -51,6 +53,7 @@ describe('runMembershipBackfill', () => {
 
     const ensureCalls: string[] = []
     await runMembershipBackfill({
+      scope: NO_ANALYTICS_SCOPE,
       listAllGroupMembers: () =>
         db.select({ groupId: groupMembers.groupId, userId: groupMembers.userId }).from(groupMembers).all(),
       ensure: (g, u) => {
@@ -70,6 +73,7 @@ describe('runMembershipBackfill', () => {
       .run()
 
     const result = await runMembershipBackfill({
+      scope: NO_ANALYTICS_SCOPE,
       listAllGroupMembers: () =>
         db.select({ groupId: groupMembers.groupId, userId: groupMembers.userId }).from(groupMembers).all(),
       ensure: () => Promise.resolve('exists' as MemberOutcome),
@@ -78,5 +82,23 @@ describe('runMembershipBackfill', () => {
     expect(result.total).toBe(1)
     expect(result.skipped).toBe(0)
     expect(result.exists).toBe(1)
+  })
+
+  test('forwards the explicit scope to every bounded ensure call', async () => {
+    const scopes: unknown[] = []
+    await runMembershipBackfill({
+      scope: NO_ANALYTICS_SCOPE,
+      listAllGroupMembers: () => [
+        { groupId: 'g-9', userId: 'u-9' },
+        { groupId: 'g-9', userId: 'u-10' },
+      ],
+      ensure: (_g, _u, scope) => {
+        scopes.push(scope)
+        return Promise.resolve('skipped' as MemberOutcome)
+      },
+    })
+
+    expect(scopes).toHaveLength(2)
+    expect(scopes.every((scope) => scope === NO_ANALYTICS_SCOPE)).toBe(true)
   })
 })

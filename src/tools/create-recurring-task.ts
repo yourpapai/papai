@@ -7,6 +7,7 @@ import { tool } from 'ai'
 import type { Tool } from 'ai'
 import { z } from 'zod'
 
+import { observeActiveFeatureUsed } from '../analytics/feature-observer.js'
 import { rruleInputSchema } from '../deferred-prompts/types.js'
 import { logger } from '../logger.js'
 import { describeCompiledRecurrence, recurrenceSpecToRrule, type CompiledRecurrence } from '../recurrence.js'
@@ -15,6 +16,7 @@ import type { RecurrenceSpec } from '../types/recurrence.js'
 import type { RecurringTaskInput, RecurringTaskRecord, TriggerType } from '../types/recurring.js'
 import { getUserTimezoneOrDefault } from '../utils/config-timezone.js'
 import { localDatetimeToUtc, midnightUtcForTimezone, utcToLocal } from '../utils/datetime.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 export interface CreateRecurringTaskDeps {
   createRecurringTask: (input: RecurringTaskInput) => RecurringTaskRecord
@@ -63,7 +65,7 @@ const inputSchema = z
 type Input = z.infer<typeof inputSchema>
 
 function executeCreate(userId: string, input: Input, deps: CreateRecurringTaskDeps): unknown {
-  log.debug({ userId, title: input.title, triggerType: input.triggerType }, 'Creating recurring task')
+  log.debug({ triggerType: input.triggerType }, 'Creating recurring task')
 
   const userTimezone = getUserTimezoneOrDefault(userId)
 
@@ -94,7 +96,7 @@ function executeCreate(userId: string, input: Input, deps: CreateRecurringTaskDe
   })
 
   const result = buildRecurringTaskResult(record)
-  log.info({ id: record.id, title: input.title, schedule: result.schedule }, 'Recurring task created via tool')
+  log.info({ triggerType: input.triggerType }, 'Recurring task created via tool')
   return result
 }
 
@@ -134,15 +136,12 @@ export function makeCreateRecurringTaskTool(userId: string, deps: CreateRecurrin
     inputSchema,
     execute: (input) => {
       try {
-        return executeCreate(userId, input, deps)
+        const result = executeCreate(userId, input, deps)
+        observeActiveFeatureUsed({ feature: 'recurring', operation: 'create', outcome: 'success' })
+        return result
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            tool: 'create_recurring_task',
-          },
-          'Tool execution failed',
-        )
+        observeActiveFeatureUsed({ feature: 'recurring', operation: 'create', outcome: 'failure' })
+        log.error(toolFailureMeta('create_recurring_task', error), 'Tool execution failed')
         throw error
       }
     },

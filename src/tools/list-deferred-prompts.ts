@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { executeList, type ListInput } from '../deferred-prompts/tool-handlers.js'
 import { logger } from '../logger.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:list-deferred-prompts' })
 
@@ -23,13 +24,7 @@ export function makeListDeferredPromptsTool(userId: string): Tool {
       try {
         return executeList(userId, input)
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            tool: 'list_deferred_prompts',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('list_deferred_prompts', error), 'Tool execution failed')
         throw error
       }
     },

@@ -11,6 +11,7 @@ import { logger } from '../logger.js'
 import { skipNextOccurrence as defaultSkipNextOccurrence } from '../recurring.js'
 import type { RecurringTaskRecord } from '../types/recurring.js'
 import { utcToLocal } from '../utils/datetime.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:skip-recurring-task' })
 
@@ -31,15 +32,15 @@ export function makeSkipRecurringTaskTool(deps: SkipRecurringTaskDeps = defaultD
     }),
     execute: ({ recurringTaskId }) => {
       try {
-        log.debug({ recurringTaskId }, 'Skipping next recurring task occurrence')
+        log.debug('Skipping next recurring task occurrence')
         const result = deps.skipNextOccurrence(recurringTaskId)
 
         if (result === null) {
-          log.warn({ recurringTaskId }, 'Recurring task not found for skip')
+          log.warn('Recurring task not found for skip')
           return { error: 'Recurring task not found' }
         }
 
-        log.info({ id: result.id, title: result.title, nextRun: result.nextRun }, 'Next occurrence skipped via tool')
+        log.info({ nextRun: result.nextRun }, 'Next occurrence skipped via tool')
         return {
           id: result.id,
           title: result.title,
@@ -47,14 +48,7 @@ export function makeSkipRecurringTaskTool(deps: SkipRecurringTaskDeps = defaultD
           status: 'skipped — next occurrence updated',
         }
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            recurringTaskId,
-            tool: 'skip_recurring_task',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('skip_recurring_task', error), 'Tool execution failed')
         throw error
       }
     },

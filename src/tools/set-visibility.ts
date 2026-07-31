@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { SetTaskVisibilityParams, TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:set-visibility' })
 
@@ -69,18 +70,10 @@ export function makeSetVisibilityTool(provider: TaskProvider): Tool {
       const visibilityParams = toVisibilityParams(input)
       try {
         const result = await provider.setVisibility!(taskId, visibilityParams)
-        log.info({ taskId, visibility: visibilityParams.kind }, 'Task visibility updated via tool')
+        log.info({ visibility: visibilityParams.kind }, 'Task visibility updated via tool')
         return result
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            visibility: visibilityParams.kind,
-            tool: 'set_visibility',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('set_visibility', error), 'Tool execution failed')
         throw error
       }
     },

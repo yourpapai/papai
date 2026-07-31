@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { z } from 'zod'
 
+import { NO_ANALYTICS_SCOPE } from '../../src/analytics/provider-request-scope.js'
 import type { TaskCommandResult } from '../../src/providers/types.js'
 import { isToolFailureResult } from '../../src/tool-failure.js'
 import { makeApplyYouTrackCommandTool } from '../../src/tools/apply-youtrack-command.js'
@@ -81,7 +82,7 @@ const executeWrappedTool = (tool: unknown, input: unknown): Promise<unknown> => 
     options: { toolCallId: string; messages: unknown[] },
   ) => Promise<unknown>
   const wrappedExecute = wrapToolExecution(execute, 'apply_youtrack_command')
-  return wrappedExecute(input, { toolCallId: 'call-1', messages: [], context: {} })
+  return wrappedExecute(input, { toolCallId: 'call-1', messages: [], context: NO_ANALYTICS_SCOPE })
 }
 
 const getInputFieldDescription = (schema: unknown, fieldName: string): string | undefined => {

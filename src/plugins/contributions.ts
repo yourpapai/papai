@@ -12,7 +12,6 @@ import type { TaskProvider } from '../providers/types.js'
 import { toolCapabilityCatalog } from '../runtime/capability-catalog.js'
 import type { ToolCapabilityCatalog } from '../runtime/capability-catalog.js'
 import { scheduler } from '../scheduler-instance.js'
-import { wrapToolExecution } from '../tools/wrap-tool-execution.js'
 import {
   getValidAttachmentTransformers,
   getValidCommands,
@@ -206,6 +205,40 @@ function registerToolCapability(
   capabilityCatalog.register(pluginTool.capabilityId, namespacedName)
 }
 
+const recordToolNameCollision = (pluginId: string, namespacedName: string): void => {
+  const message = `Tool contribution '${namespacedName}' skipped because the name already exists`
+  const collisionKey = `${pluginId}:${namespacedName}`
+  log.warn({ pluginId, toolName: namespacedName }, 'Plugin tool name collision — skipping')
+  if (!recordedToolCollisionEvents.has(collisionKey)) {
+    recordedToolCollisionEvents.add(collisionKey)
+    recordRuntimeEvent(pluginId, 'skipped', message)
+  }
+}
+
+type PluginToolContribution = PluginContributions['tools'][number]
+
+const buildPluginToolDescriptor = (
+  pluginId: string,
+  pluginTool: PluginToolContribution,
+  manifest: PluginManifest,
+  runtime: PluginToolSetRuntime,
+): ToolSet[string] => {
+  const schema = getPluginToolInputSchema(pluginTool)
+  // Assembled plugin descriptors stay scope-free; the single
+  // finalizeProviderScopedTools pass attaches the outer execution wrapper.
+  const execute = (
+    input: unknown,
+    options: Parameters<NonNullable<ToolSet[string]['execute']>>[1],
+  ): Promise<unknown> => {
+    return pluginTool.execute(input, buildPluginToolRuntimeContext(pluginId, manifest, runtime), options)
+  }
+  return tool({
+    description: pluginTool.description,
+    inputSchema: schema,
+    execute,
+  })
+}
+
 export function buildPluginToolSet(
   activePluginIds: string[],
   existingToolNames: ReadonlySet<string>,
@@ -223,33 +256,13 @@ export function buildPluginToolSet(
       const namespacedName = namespacedToolName(pluginId, pluginTool.name)
 
       if (usedNames.has(namespacedName)) {
-        const message = `Tool contribution '${namespacedName}' skipped because the name already exists`
-        const collisionKey = `${pluginId}:${namespacedName}`
-        log.warn({ pluginId, toolName: namespacedName }, 'Plugin tool name collision — skipping')
-        if (!recordedToolCollisionEvents.has(collisionKey)) {
-          recordedToolCollisionEvents.add(collisionKey)
-          recordRuntimeEvent(pluginId, 'skipped', message)
-        }
+        recordToolNameCollision(pluginId, namespacedName)
         continue
       }
 
       usedNames.add(namespacedName)
       registerToolCapability(pluginTool, namespacedName, capabilityCatalog)
-
-      const schema = getPluginToolInputSchema(pluginTool)
-      const wrappedExecute = wrapToolExecution((input, options) => {
-        return pluginTool.execute(
-          input,
-          buildPluginToolRuntimeContext(pluginId, contributions.manifest, runtime),
-          options,
-        )
-      }, namespacedName)
-
-      pluginTools[namespacedName] = tool({
-        description: pluginTool.description,
-        inputSchema: schema,
-        execute: wrappedExecute,
-      })
+      pluginTools[namespacedName] = buildPluginToolDescriptor(pluginId, pluginTool, contributions.manifest, runtime)
     }
   }
 

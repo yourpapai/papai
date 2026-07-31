@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { logger } from '../logger.js'
 import { pauseRecurringTask as defaultPauseRecurringTask } from '../recurring.js'
 import type { RecurringTaskRecord } from '../types/recurring.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:pause-recurring-task' })
 
@@ -29,25 +30,18 @@ export function makePauseRecurringTaskTool(deps: PauseRecurringTaskDeps = defaul
     }),
     execute: ({ recurringTaskId }) => {
       try {
-        log.debug({ recurringTaskId }, 'Pausing recurring task')
+        log.debug('Pausing recurring task')
         const paused = deps.pauseRecurringTask(recurringTaskId)
 
         if (paused === null) {
-          log.warn({ recurringTaskId }, 'Recurring task not found for pause')
+          log.warn('Recurring task not found for pause')
           return { error: 'Recurring task not found' }
         }
 
-        log.info({ id: paused.id, title: paused.title }, 'Recurring task paused via tool')
+        log.info('Recurring task paused via tool')
         return { id: paused.id, title: paused.title, enabled: paused.enabled, status: 'paused' }
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            recurringTaskId,
-            tool: 'pause_recurring_task',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('pause_recurring_task', error), 'Tool execution failed')
         throw error
       }
     },

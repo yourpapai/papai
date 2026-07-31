@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:get-comments' })
 
@@ -24,14 +25,7 @@ export function makeGetCommentsTool(provider: TaskProvider): Tool {
       try {
         return await provider.getComments!(taskId, { limit, offset })
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            tool: 'get_comments',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('get_comments', error), 'Tool execution failed')
         throw error
       }
     },

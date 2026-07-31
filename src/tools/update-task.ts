@@ -14,6 +14,7 @@ import { logger } from '../logger.js'
 import { providerError, ProviderClassifiedError } from '../providers/errors.js'
 import type { TaskProvider } from '../providers/types.js'
 import type { CompletionHookFn } from './completion-hook.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:update-task' })
 
@@ -124,7 +125,7 @@ async function executeUpdateTask(params: z.infer<typeof inputSchema>, deps: Upda
       assignee: resolvedAssignee,
       customFields,
     })
-    log.info({ taskId }, 'Task updated via tool')
+    log.info('Task updated via tool')
 
     if (completionHook !== undefined && task.status !== undefined) {
       await completionHook(taskId, task.status, provider)
@@ -132,14 +133,7 @@ async function executeUpdateTask(params: z.infer<typeof inputSchema>, deps: Upda
 
     return { ...task, dueDate: provider.formatDueDateOutput(task.dueDate, timezone) }
   } catch (error) {
-    log.error(
-      {
-        error: error instanceof Error ? error.message : String(error),
-        taskId,
-        tool: 'update_task',
-      },
-      'Tool execution failed',
-    )
+    log.error(toolFailureMeta('update_task', error), 'Tool execution failed')
     throw error
   }
 }

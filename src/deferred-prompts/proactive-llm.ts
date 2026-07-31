@@ -5,6 +5,10 @@
 
 import { generateText, isStepCount, type LanguageModel } from 'ai'
 
+import { runWithProviderRequestScope } from '../analytics/provider-request-scope.js'
+import type { ProviderRequestScope } from '../analytics/provider-request-scope.js'
+import { resolveProactiveProviderRequestScope } from '../analytics/provider-scope-factory.js'
+import type { ProactiveScopeInput } from '../analytics/provider-scope-factory.js'
 import { getCachedHistory } from '../cache.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
 import { hoistSystemMessages } from '../llm-message-utils.js'
@@ -12,6 +16,7 @@ import { buildChatModel } from '../llm-model-builder.js'
 import { collectTurnMessages } from '../llm-orchestrator-messages.js'
 import { logger } from '../logger.js'
 import { createDisclosurePrepareStep } from '../tools/disclosure/prepare-step.js'
+import { buildToolsContextRecord } from '../tools/wrap-tool-execution.js'
 import { getLlmConfig, type LlmConfig } from './proactive-llm-config.js'
 import { buildFullMessages, buildFullToolSet } from './proactive-llm-full.js'
 import {
@@ -39,6 +44,8 @@ export interface ProactiveLlmDeps {
   generateText: typeof generateText
   stepCountIs: typeof isStepCount
   buildModel: (config: { apiKey: string; baseURL: string }, modelId: string) => LanguageModel
+  /** Scope factory seam: production resolves from the active analytics runtime; tests inject fakes. */
+  resolveScope?: (input: ProactiveScopeInput) => ProviderRequestScope
 }
 
 const defaultProactiveLlmDeps: ProactiveLlmDeps = {
@@ -46,10 +53,13 @@ const defaultProactiveLlmDeps: ProactiveLlmDeps = {
   stepCountIs: (...args) => isStepCount(...args),
   buildModel: (config, modelId) => buildChatModel(config.apiKey, config.baseURL, modelId),
 }
-type DispatchExecutionArgs = ProactiveLlmDispatchArgs<ProactiveLlmDeps, BuildProviderFn>
+type DispatchExecutionArgs = ProactiveLlmDispatchArgs<Partial<ProactiveLlmDeps>, BuildProviderFn>
 export type { BuildProviderFn }
 
-const resolveDeps = (deps: ProactiveLlmDeps | undefined): ProactiveLlmDeps => deps ?? defaultProactiveLlmDeps
+const resolveDeps = (deps: Partial<ProactiveLlmDeps> | undefined): ProactiveLlmDeps => ({
+  ...defaultProactiveLlmDeps,
+  ...deps,
+})
 
 async function prepareFullGenerationInput(
   execCtx: DeferredExecutionContext,
@@ -81,33 +91,51 @@ async function prepareFullGenerationInput(
   return { storageContextId, tools, systemPrompt, messages, disclosure }
 }
 
-async function runFullGeneration(
-  execCtx: DeferredExecutionContext,
-  type: 'scheduled' | 'alert',
-  prompt: string,
-  metadata: ExecutionMetadata,
-  matchedTasksSummary: string | undefined,
-  config: LlmConfig,
-  configContextId: string,
-  provider: Awaited<ReturnType<BuildProviderFn>>,
-  deps: ProactiveLlmDeps,
-): Promise<string> {
+type ScopedGenerationArgs = Readonly<{
+  execCtx: DeferredExecutionContext
+  type: 'scheduled' | 'alert'
+  prompt: string
+  metadata: ExecutionMetadata
+  matchedTasksSummary: string | undefined
+  config: LlmConfig
+  configContextId: string
+  provider: Awaited<ReturnType<BuildProviderFn>>
+  deps: ProactiveLlmDeps
+  model: LanguageModel
+  scope: Parameters<typeof runWithProviderRequestScope>[0]
+}>
+
+const runScopedGeneration = async (args: ScopedGenerationArgs): Promise<string> => {
+  const { execCtx, config, configContextId, deps, model, scope } = args
   const { createdByUserId } = execCtx
-  const model = deps.buildModel(config, config.mainModel)
-  const prepared = await prepareFullGenerationInput(execCtx, type, prompt, metadata, matchedTasksSummary, provider)
+  const prepared = await prepareFullGenerationInput(
+    execCtx,
+    args.type,
+    args.prompt,
+    args.metadata,
+    args.matchedTasksSummary,
+    args.provider,
+  )
+  const tools = prepared.tools
   const turnId = `proactive:${prepared.storageContextId}:${String(Date.now())}`
   log.debug(
     { userId: createdByUserId, mainModel: config.mainModel, historyLength: prepared.messages.length },
     'generateText',
   )
-  const result = await deps.generateText({
+  // Keyed toolsContext record: every name in the final ToolSet maps to the
+  // same immutable scope (see llm-orchestrator-invoke.ts for the Object.assign
+  // intersection rationale).
+  const baseOptions: Parameters<ProactiveLlmDeps['generateText']>[0] = {
     model,
     ...hoistSystemMessages(prepared.systemPrompt, prepared.messages),
-    tools: prepared.tools,
+    tools,
     stopWhen: deps.stepCountIs(25),
     timeout: 1_200_000,
     prepareStep: createDisclosurePrepareStep(prepared.disclosure, prepared.storageContextId, turnId),
-  })
+  }
+  const result = await deps.generateText(
+    Object.assign({}, baseOptions, { toolsContext: buildToolsContextRecord(tools, scope) }),
+  )
   const previousHistory = getCachedHistory(prepared.storageContextId)
   const assistantMessages = collectTurnMessages(result)
   persistProactiveResults(
@@ -122,7 +150,43 @@ async function runFullGeneration(
   return finalizeAndLog(
     result,
     createdByUserId,
-    buildProactiveVerification(deps, model, prepared.tools, [...prepared.messages, ...assistantMessages]),
+    buildProactiveVerification(deps, model, tools, [...prepared.messages, ...assistantMessages], scope),
+  )
+}
+
+function runFullGeneration(
+  execCtx: DeferredExecutionContext,
+  type: 'scheduled' | 'alert',
+  prompt: string,
+  metadata: ExecutionMetadata,
+  matchedTasksSummary: string | undefined,
+  config: LlmConfig,
+  configContextId: string,
+  provider: Awaited<ReturnType<BuildProviderFn>>,
+  deps: ProactiveLlmDeps,
+): Promise<string> {
+  const { createdByUserId } = execCtx
+  const model = deps.buildModel(config, config.mainModel)
+  // One independent immutable proactive scope per execution, established before
+  // descriptor construction. Never reuses a normal-turn or prior-owner scope.
+  const scope = (deps.resolveScope ?? resolveProactiveProviderRequestScope)({
+    createdByUserId,
+    deliveryTarget: execCtx.deliveryTarget,
+  })
+  return runWithProviderRequestScope(scope, () =>
+    runScopedGeneration({
+      execCtx,
+      type,
+      prompt,
+      metadata,
+      matchedTasksSummary,
+      config,
+      configContextId,
+      provider,
+      deps,
+      model,
+      scope,
+    }),
   )
 }
 

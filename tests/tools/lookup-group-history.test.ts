@@ -143,7 +143,7 @@ describe('executeLookupGroupHistory', () => {
     const { executeLookupGroupHistory } = await import('../../src/tools/lookup-group-history.js')
 
     const mockGetHistory = (): readonly ModelMessage[] => []
-    const result = await executeLookupGroupHistory('user123', 'group456', ['test query'], {
+    const result = await executeLookupGroupHistory('group456', ['test query'], {
       getCachedHistory: mockGetHistory,
       generateText: generateTextImpl,
       getSmallModel: () => null,
@@ -190,7 +190,7 @@ describe('executeLookupGroupHistory with history', () => {
       { role: 'assistant', content: 'We decided to use REST' },
     ]
 
-    const result = await executeLookupGroupHistory('user123', 'group456', ['API decision'], {
+    const result = await executeLookupGroupHistory('group456', ['API decision'], {
       getCachedHistory: () => mockHistory,
       generateText: generateTextImpl,
       getSmallModel: () => 'test-model' as LanguageModel,
@@ -214,7 +214,7 @@ describe('executeLookupGroupHistory with history', () => {
     )
     appendHistory(groupId, [{ role: 'user', content: 'The group picked REST.' }])
 
-    const result = await executeLookupGroupHistory('user123', groupId, ['API decision'])
+    const result = await executeLookupGroupHistory(groupId, ['API decision'])
 
     expect(result).toBe('The team decided to use REST for the API.')
     expect(builtModelCalls).toEqual([
@@ -229,7 +229,7 @@ describe('executeLookupGroupHistory with history', () => {
   it('should return error when LLM not configured', async () => {
     const { executeLookupGroupHistory } = await import('../../src/tools/lookup-group-history.js')
 
-    const result = await executeLookupGroupHistory('user123', 'group456', ['test'], {
+    const result = await executeLookupGroupHistory('group456', ['test'], {
       getCachedHistory: () => [{ role: 'user', content: 'test' }],
       generateText: generateTextImpl,
       getSmallModel: () => null,
@@ -242,7 +242,7 @@ describe('executeLookupGroupHistory with history', () => {
 
     generateTextImpl = (): Promise<GenerateTextResult> => Promise.reject(new Error('LLM error'))
 
-    const result = await executeLookupGroupHistory('user123', 'group456', ['test'], {
+    const result = await executeLookupGroupHistory('group456', ['test'], {
       getCachedHistory: () => [{ role: 'user', content: 'test' }],
       generateText: generateTextImpl,
       getSmallModel: () => 'test-model' as LanguageModel,

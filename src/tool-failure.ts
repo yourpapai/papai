@@ -5,6 +5,7 @@
 
 import type { JSONValue } from 'ai'
 
+import { PROVIDER_SCOPE_MISSING_MESSAGE, ProviderScopeMissingError } from './analytics/provider-request-scope.js'
 import {
   extractAppError,
   getAgentGuidance,
@@ -15,7 +16,7 @@ import {
 } from './errors.js'
 
 export type ToolFailureType = AppError['type'] | 'tool-execution'
-export type ToolFailureCode = AppError['code'] | 'interrupted' | 'unknown' | 'expired'
+export type ToolFailureCode = AppError['code'] | 'interrupted' | 'unknown' | 'expired' | 'provider_scope_missing'
 
 export interface ToolFailureResult {
   [key: string]: JSONValue | undefined
@@ -89,12 +90,33 @@ function maybeEmitClassified(emitFn: EmitFailureClassifiedFn | undefined, result
   })
 }
 
+export function createProviderScopeMissingFailureResult(toolName: string, toolCallId: string): ToolFailureResult {
+  return {
+    success: false,
+    error: PROVIDER_SCOPE_MISSING_MESSAGE,
+    toolName,
+    toolCallId,
+    timestamp: new Date().toISOString(),
+    errorType: 'tool-execution',
+    errorCode: 'provider_scope_missing',
+    userMessage: 'That action failed: an internal analytics scope was missing. Please try again.',
+    agentMessage:
+      'The tool call was rejected before any provider I/O because the controlled provider_scope_missing failure was raised. Do not retry the same call; report the trace to the operator.',
+    retryable: false,
+  }
+}
+
 export function buildToolFailureResult(
   ...args:
     | [error: unknown, toolName: string, toolCallId: string]
     | [error: unknown, toolName: string, toolCallId: string, emitFailureClassified: EmitFailureClassifiedFn]
 ): ToolFailureResult {
   const [error, toolName, toolCallId, emitFailureClassified] = args
+  if (error instanceof ProviderScopeMissingError) {
+    const result = createProviderScopeMissingFailureResult(toolName, toolCallId)
+    maybeEmitClassified(emitFailureClassified, result)
+    return result
+  }
   const errorMessage = getErrorMessage(error)
   const appError = extractAppError(error)
 

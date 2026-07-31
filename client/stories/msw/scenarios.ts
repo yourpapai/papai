@@ -20,6 +20,14 @@ import {
   adminReleaseNotesHandlers,
 } from './settings-handlers-admin-2.js'
 import {
+  adminAnalyticsFailedSinkHandlers,
+  adminAnalyticsGovernedLocalPilotHandlers,
+  adminAnalyticsHandlers,
+  adminAnalyticsIncompleteGovernanceHandlers,
+  adminAnalyticsKillSwitchHandlers,
+  adminAnalyticsReconciledHealthyHandlers,
+} from './settings-handlers-admin-3.js'
+import {
   adminAdminsHandlers,
   adminByokHandlers,
   adminGroupsHandlers,
@@ -36,6 +44,8 @@ import {
   guestModeHandlers,
 } from './settings-handlers-group.js'
 import {
+  analyticsPreferencesHandlers,
+  analyticsWithdrawalInProgressHandlers,
   codingMcpHandlers,
   codingMcpInternalAvailableHandlers,
   codingMcpInternalSelectedHandlers,
@@ -246,6 +256,20 @@ export const scenarios = {
   'settings-coding-identity-empty': [...codingIdentityHandlers.empty],
   'settings-coding-identity-error': [...codingIdentityHandlers.error],
   'settings-coding-identity-loading': [...codingIdentityHandlers.loading],
+  'settings-analytics-populated': [...analyticsPreferencesHandlers.populated],
+  'settings-analytics-empty': [...analyticsPreferencesHandlers.empty],
+  'settings-analytics-error': [...analyticsPreferencesHandlers.error],
+  'settings-analytics-loading': [...analyticsPreferencesHandlers.loading],
+  'settings-analytics-withdrawal-in-progress': [...analyticsWithdrawalInProgressHandlers],
+  'settings-admin-analytics-populated': [...adminAnalyticsHandlers.populated],
+  'settings-admin-analytics-empty': [...adminAnalyticsHandlers.empty],
+  'settings-admin-analytics-error': [...adminAnalyticsHandlers.error],
+  'settings-admin-analytics-loading': [...adminAnalyticsHandlers.loading],
+  'settings-admin-analytics-incomplete-governance': [...adminAnalyticsIncompleteGovernanceHandlers],
+  'settings-admin-analytics-governed-local-pilot': [...adminAnalyticsGovernedLocalPilotHandlers],
+  'settings-admin-analytics-kill-switch': [...adminAnalyticsKillSwitchHandlers],
+  'settings-admin-analytics-failed-sink': [...adminAnalyticsFailedSinkHandlers],
+  'settings-admin-analytics-reconciled-healthy': [...adminAnalyticsReconciledHealthyHandlers],
 } satisfies Record<string, readonly HttpHandler[]>
 
 export type ScenarioName = keyof typeof scenarios

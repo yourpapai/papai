@@ -68,7 +68,7 @@ describe('SettingsApp', () => {
     seed({})
     const component = mountApp()
     await drain()
-    for (const id of ['profile', 'task-provider', 'tools']) {
+    for (const id of ['profile', 'task-provider', 'tools', 'analytics']) {
       expect(document.querySelector(`#${id}`)).not.toBeNull()
     }
     // Advanced is collapsed by default → its sections are not mounted.
@@ -113,6 +113,7 @@ describe('SettingsApp', () => {
       'announce',
       'admins',
       'plugin-approval',
+      'analytics-admin',
     ]) {
       expect(document.querySelector(`#${id}`)).not.toBeNull()
     }

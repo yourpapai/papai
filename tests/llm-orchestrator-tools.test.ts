@@ -17,6 +17,14 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 
+import { NO_ANALYTICS_SCOPE } from '../src/analytics/provider-request-scope.js'
+import {
+  createActorProviderRequestScope,
+  requireProviderRequestScope,
+  runWithoutProviderRequestScope,
+  type ProviderRequestScope,
+} from '../src/analytics/provider-request-scope.js'
+import type { AnalyticsSourceContext } from '../src/analytics/source-facts.js'
 import type { StagedFileDownloadFn } from '../src/attachments/types.js'
 import { userCachesForTesting } from '../src/cache.js'
 import type { LlmInvocationOptions, InvocationSource } from '../src/llm-orchestrator-tools.js'
@@ -72,6 +80,7 @@ const baseOpts = (
   userText: overrides.userText ?? 'hello',
   stagedDownloadFn: NO_STAGED_DOWNLOAD,
   askPermission: undefined,
+  providerRequestScope: NO_ANALYTICS_SCOPE,
 })
 
 describe('llm-orchestrator-tools / getOrCreateDescriptors cache behaviour', () => {
@@ -150,6 +159,7 @@ describe('llm-orchestrator-tools / getOrCreateDescriptors cache behaviour', () =
       userText: 'remember this note',
       stagedDownloadFn: NO_STAGED_DOWNLOAD,
       askPermission: undefined,
+      providerRequestScope: NO_ANALYTICS_SCOPE,
     })
 
     expect(buildToolDescriptorsSpy).toHaveBeenCalledTimes(1)
@@ -182,6 +192,124 @@ describe('llm-orchestrator-tools / getOrCreateDescriptors cache behaviour', () =
     expect(withoutDownload.enabledToolNames.has('search_staged_files')).toBe(true)
     expect(withoutDownload.enabledToolNames.has('resolve_staged_file')).toBe(false)
     expect(withDownload.enabledToolNames.has('resolve_staged_file')).toBe(true)
+  })
+})
+
+describe('llm-orchestrator-tools / two-actor cached descriptor attribution', () => {
+  let provider: TaskProvider
+
+  const actorScope = (turnId: string, chatUserId: string): ProviderRequestScope => {
+    const source: AnalyticsSourceContext = {
+      platform: 'telegram',
+      platformInstanceId: 'pi-cache',
+      chatUserId,
+      nativeContextId: 'chat-cache',
+      storageContextId: CTX_ID,
+      configContextId: CTX_ID,
+      contextType: 'dm',
+      actorRole: 'member',
+      taskInstanceId: null,
+      taskProvider: 'none',
+      invocationMode: 'normal',
+      rawTurnId: turnId,
+    }
+    return createActorProviderRequestScope({
+      requestContext: { source, sourceEventId: `${turnId}:scope` },
+      observeProviderRequest: () => {},
+    })
+  }
+
+  beforeEach(async () => {
+    void mock.module('../src/tools/index.js', () => ({
+      buildToolDescriptors: buildToolDescriptorsSpy,
+      buildProviderlessToolDescriptors: buildProviderlessToolDescriptorsSpy,
+      applyToolPreferences: (tools: ToolSet): ToolSet => tools,
+      applyGuestReadOnlyFilter,
+    }))
+    mockLogger()
+    await setupTestDb()
+    userCachesForTesting.clear()
+    toolCapabilityCatalog.clear()
+    buildToolDescriptorsSpy.mockClear()
+    buildProviderlessToolDescriptorsSpy.mockClear()
+
+    provider = createMockProvider()
+  })
+
+  test('descriptor build on miss runs inside actor A scope; cached descriptors execute as actor B with no A retention', async () => {
+    const scopeA = actorScope('turn-a', 'user-a')
+    const scopeB = actorScope('turn-b', 'user-b')
+    const buildScopeSeen: ProviderRequestScope[] = []
+    const execScopeSeen: ProviderRequestScope[] = []
+
+    buildToolDescriptorsSpy.mockImplementation((_p, _o) => {
+      // Simulates an MCP connect/listTools on a cache miss: the current
+      // ephemeral scope must be visible inside the build.
+      buildScopeSeen.push(requireProviderRequestScope())
+      return Promise.resolve({
+        cached_probe: tool({
+          description: 'records the active scope at execution time',
+          inputSchema: z.object({}),
+          execute: () => {
+            execScopeSeen.push(requireProviderRequestScope())
+            return Promise.resolve('ok')
+          },
+        }),
+      })
+    })
+
+    // Actor A: cache miss — descriptors built and cached.
+    const invocationA = await prepareLlmInvocation({ ...baseOpts(provider), providerRequestScope: scopeA })
+    // Actor B: same cache key — cached descriptors reused, no rebuild.
+    const invocationB = await prepareLlmInvocation({ ...baseOpts(provider), providerRequestScope: scopeB })
+
+    expect(buildToolDescriptorsSpy).toHaveBeenCalledTimes(1)
+    expect(buildScopeSeen).toEqual([scopeA])
+    // Cached descriptors are the same object across actors.
+    const descriptorA = invocationA.tools['cached_probe']
+    const descriptorB = invocationB.tools['cached_probe']
+    expect(descriptorA).toBeDefined()
+    expect(descriptorB).toBeDefined()
+
+    // Actor B executes its finalized descriptor; actor A's overlapping
+    // execution completes second (reverse-order completion).
+    const opts = (
+      scope: ProviderRequestScope,
+      toolCallId: string,
+    ): { toolCallId: string; messages: []; context: ProviderRequestScope } => ({
+      toolCallId,
+      messages: [],
+      context: scope,
+    })
+    const pendingB: unknown = descriptorB!.execute!({}, opts(scopeB, 'call-b'))
+    const pendingA: unknown = descriptorA!.execute!({}, opts(scopeA, 'call-a'))
+    const [resultB, resultA] = await Promise.all([pendingB, pendingA])
+
+    expect(resultB).toBe('ok')
+    expect(resultA).toBe('ok')
+    // Exact per-call attribution: each execution saw only its own call's scope.
+    expect(execScopeSeen).toEqual([scopeB, scopeA])
+    // No actor-A retention: the descriptor's contextSchema/wrapper carries no
+    // captured scope — only ToolExecutionOptions.context drives attribution.
+    expect(descriptorA!.contextSchema).toBe(descriptorB!.contextSchema)
+  })
+
+  test('cache-hit path does not expose actor scope to descriptor construction', async () => {
+    const scopeA = actorScope('turn-a', 'user-a')
+    const scopeB = actorScope('turn-b', 'user-b')
+
+    buildToolDescriptorsSpy.mockResolvedValue({
+      cached_probe: tool({ description: 'x', inputSchema: z.object({}), execute: () => Promise.resolve('ok') }),
+    })
+
+    await prepareLlmInvocation({ ...baseOpts(provider), providerRequestScope: scopeA })
+    await prepareLlmInvocation({ ...baseOpts(provider), providerRequestScope: scopeB })
+
+    expect(buildToolDescriptorsSpy).toHaveBeenCalledTimes(1)
+    // requireProviderRequestScope outside any lease fails closed — no stale A frame.
+    runWithoutProviderRequestScope(() => {
+      expect(() => requireProviderRequestScope()).toThrow()
+    })
   })
 })
 
@@ -223,6 +351,7 @@ describe('llm-orchestrator-tools / prepareLlmInvocation enabledToolNames', () =>
       userText: 'remember this note',
       stagedDownloadFn: NO_STAGED_DOWNLOAD,
       askPermission: undefined,
+      providerRequestScope: NO_ANALYTICS_SCOPE,
     })
 
     expect(result.enabledToolNames instanceof Set).toBe(true)
@@ -250,6 +379,7 @@ describe('llm-orchestrator-tools / prepareLlmInvocation enabledToolNames', () =>
       userText: 'remember this note',
       stagedDownloadFn: NO_STAGED_DOWNLOAD,
       askPermission: undefined,
+      providerRequestScope: NO_ANALYTICS_SCOPE,
     })
 
     expect(buildProviderlessToolDescriptorsSpy).toHaveBeenCalledTimes(1)
@@ -281,6 +411,7 @@ describe('llm-orchestrator-tools / prepareLlmInvocation enabledToolNames', () =>
       userText: 'What is our release note cadence?',
       stagedDownloadFn: NO_STAGED_DOWNLOAD,
       askPermission: undefined,
+      providerRequestScope: NO_ANALYTICS_SCOPE,
     })
 
     const systemMessage = result.validatedMessages[0]
@@ -336,6 +467,7 @@ describe('buildFullToolSet / guest actorRole branch', () => {
       userText: 'what tasks are there?',
       stagedDownloadFn: NO_STAGED_DOWNLOAD,
       askPermission: undefined,
+      providerRequestScope: NO_ANALYTICS_SCOPE,
       actorRole: 'guest',
     })
 
@@ -365,19 +497,19 @@ describe('buildLlmInvocationOpts / actorRole threading', () => {
 
   test('copies actorRole guest from InvocationSource into LlmInvocationOptions', () => {
     const src = makeSource({ actorRole: 'guest' })
-    const opts = buildLlmInvocationOpts(src, 'cfg-1', null, undefined)
+    const opts = buildLlmInvocationOpts(src, 'cfg-1', null, undefined, NO_ANALYTICS_SCOPE)
     expect(opts.actorRole).toBe('guest')
   })
 
   test('copies actorRole member from InvocationSource into LlmInvocationOptions', () => {
     const src = makeSource({ actorRole: 'member' })
-    const opts = buildLlmInvocationOpts(src, 'cfg-1', null, undefined)
+    const opts = buildLlmInvocationOpts(src, 'cfg-1', null, undefined, NO_ANALYTICS_SCOPE)
     expect(opts.actorRole).toBe('member')
   })
 
   test('actorRole is undefined in LlmInvocationOptions when not set on InvocationSource', () => {
     const src = makeSource()
-    const opts = buildLlmInvocationOpts(src, 'cfg-1', null, undefined)
+    const opts = buildLlmInvocationOpts(src, 'cfg-1', null, undefined, NO_ANALYTICS_SCOPE)
     expect(opts.actorRole).toBeUndefined()
   })
 })

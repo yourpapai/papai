@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { ProviderRequestScope } from '../analytics/provider-request-scope.js'
 import type { ReplyFn } from '../chat/types.js'
 import { getContextSettings } from '../instances/context-store.js'
 import { getTaskInstance } from '../instances/task-store.js'
@@ -13,6 +14,7 @@ export async function maybeAutoProvisionProvider(
   contextId: string,
   chatUserId: string,
   username: string | null,
+  scope: ProviderRequestScope,
 ): Promise<boolean> {
   const settings = getContextSettings(contextId)
   if (settings === null) return false
@@ -24,7 +26,7 @@ export async function maybeAutoProvisionProvider(
   if (descriptor === undefined || descriptor.autoProvision === undefined) return false
 
   try {
-    return await descriptor.autoProvision({ contextId, chatUserId, username, reply })
+    return await descriptor.autoProvision({ contextId, chatUserId, username, reply, scope })
   } catch {
     return false
   }

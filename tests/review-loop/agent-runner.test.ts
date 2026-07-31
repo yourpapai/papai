@@ -9,7 +9,13 @@ import path from 'node:path'
 
 import { z } from 'zod'
 
-import { AgentRunError, agentWritePath, runAgent, type SpawnFn } from '../../review-loop/src/agent-runner.js'
+import {
+  AgentRunError,
+  agentWritePath,
+  createLineHandler,
+  runAgent,
+  type SpawnFn,
+} from '../../review-loop/src/agent-runner.js'
 import { ReviewerIssuesSchema } from '../../review-loop/src/issue-schema.js'
 import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
 import { cleanupTempDirs, makeTempDir } from './test-helpers.js'
@@ -379,6 +385,33 @@ function asAgentRunError(value: unknown): AgentRunError {
   }
   return value
 }
+
+describe('createLineHandler log draining', () => {
+  test('dispose resolves only after every queued log write has hit disk', async () => {
+    // Regression: onLine used to fire `void appendFile(...)` and forget it. The floating write
+    // could still be queued when the suite's afterEach cleanup removed the temp dir, rejecting
+    // with ENOENT and failing an unrelated test (CI flake: "concurrent runAgent calls ... do not
+    // race" / "timeout throw carries accumulated usage"). dispose must drain the queue so no
+    // write outlives runAgent's finally.
+    const cwd = makeTempDir('agent-log-drain-')
+    const logPath = path.join(cwd, 'agent.log')
+    const handler = createLineHandler({
+      spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+      model: 'm',
+      cwd,
+      prompt: 'p',
+      outputPath: path.join(cwd, 'result.json'),
+      outputSchema: z.object({ ok: z.boolean() }),
+      label: 'drain',
+      logPath,
+      extraArgs: [],
+    })
+    handler.onLine('first')
+    handler.onLine('second')
+    await handler.dispose()
+    expect(readFileSync(logPath, 'utf8')).toBe('first\nsecond\n')
+  })
+})
 
 describe('runAgent return type', () => {
   test('returns AgentRunResult with value and usage', async () => {

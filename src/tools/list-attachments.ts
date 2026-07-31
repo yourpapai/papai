@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:list-attachments' })
 
@@ -19,20 +20,13 @@ export function makeListAttachmentsTool(provider: TaskProvider): Tool {
       taskId: z.string().describe('Task ID to list attachments for'),
     }),
     execute: async ({ taskId }) => {
-      log.debug({ taskId }, 'list_attachments called')
+      log.debug('list_attachments called')
       try {
         const result = await provider.listAttachments!(taskId)
-        log.info({ taskId, count: result.length }, 'Attachments listed')
+        log.info({ count: result.length }, 'Attachments listed')
         return result
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            tool: 'list_attachments',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('list_attachments', error), 'Tool execution failed')
         throw error
       }
     },

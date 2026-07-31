@@ -25,6 +25,9 @@ COPY --from=build /app/public ./public
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY plugins ./plugins
 COPY src ./src
+# Operator CLIs (runbook: analytics-stage-b-report/backfill/snapshot/rekey) run inside the
+# container via `docker compose exec papai bun run /app/scripts/<name>.ts`.
+COPY scripts ./scripts
 COPY package.json tsconfig.json CHANGELOG.md ./
 COPY LICENSE ./LICENSE
 
