@@ -105,17 +105,17 @@
   .ui-btn--sm {
     padding: 3px 8px;
     font-size: 11px;
-    height: 22px;
+    height: var(--control-h-sm);
   }
   .ui-btn--md {
     padding: 5px 12px;
     font-size: 12px;
-    height: 28px;
+    height: var(--control-h-md);
   }
   .ui-btn--lg {
     padding: 8px 16px;
     font-size: 13px;
-    height: 34px;
+    height: var(--control-h-lg);
   }
 
   .ui-btn--primary:hover:not(:disabled) {

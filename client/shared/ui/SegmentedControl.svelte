@@ -62,7 +62,7 @@
     font-family: var(--font-mono);
     font-size: 11px;
     padding: 0 10px;
-    height: 22px;
+    height: var(--control-h-sm);
   }
   .ui-seg__opt:last-child { border-right: 0; }
   .ui-seg__opt:focus-visible {

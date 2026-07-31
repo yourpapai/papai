@@ -37,6 +37,7 @@
     font-size: 11px;
     font-weight: 500;
     padding: 4px 10px;
+    min-height: var(--control-h-sm);
     color: var(--fg3);
     background: transparent;
     border: 1px solid transparent;
