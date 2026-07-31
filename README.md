@@ -609,6 +609,7 @@ compatibility mode.
 bun test:mutate:changed          # PR gate: changed files vs base branch
 bun test:mutate                  # full paired run over the configured scope
 bun test:mutate --update-baseline  # full run; ratchet scripts/mutation/baseline.json up
+bun test:mutate:seed --scores=reports/paired/scores.json  # re-apply persisted scores (CI commit step; lost-seed recovery)
 ```
 
 Runs paired, per-file mutation testing with Stryker (`ignoreStatic: false`, each
@@ -621,7 +622,9 @@ files with no recorded entry (new or never-baselined) are not regressions. The
 `mutation-baseline` job seeds the baseline from files changed since the previous
 master commit (`test:mutate:changed --base=HEAD~1 --update-baseline`; broad
 scope, `seedMerge` preserves existing entries — not a full run) on push to
-`master`. See `scripts/mutation/README.md` for flags (`--no-ratchet`), the
+`master`; its commit step replays the persisted per-file scores onto the latest
+master (`test:mutate:seed`), so a master update landing mid-run cannot lose the
+seed. See `scripts/mutation/README.md` for flags (`--no-ratchet`), the
 override/companion resolution, and the one-time migration catch-up note.
 
 ---

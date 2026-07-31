@@ -123,7 +123,18 @@ A committed per-file baseline of mutation scores backs a monotonic ratchet:
   (unlike the full-run `ratchetMerge`, which drops keys no longer in scope).
   First-touch files — new or never-baselined — get seeded after merge, so the
   baseline accumulates floors for every touched file over time. The committed
-  baseline is the floor the PR gate enforces.
+  baseline is the floor the PR gate enforces. The run also writes its per-file
+  scores to `reports/paired/scores.json` so the commit step can re-seed without
+  re-running Stryker.
+- **Commit-step re-seed** (`test:mutate:seed --scores=reports/paired/scores.json
+[--fresh-base=SHA]`): master can move while mutation testing runs (e.g. a
+  release bump push), which would reject a naive push and lose the seed. The CI
+  commit step instead loops: reset to the fresh `origin/master`, re-apply the
+  persisted scores via `seedMerge` (per-key max, so retries never conflict and
+  never lose entries from concurrent seeds), commit, push. `--fresh-base` drops
+  scores for files that changed on master since the run's checkout, so a score
+  is never recorded for content master no longer has; those files are seeded by
+  the commit that changed them.
 
 Re-generate the baseline from scratch (discards history) by deleting
 `scripts/mutation/baseline.json` and running `bun test:mutate --update-baseline`

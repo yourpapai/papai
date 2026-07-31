@@ -11,6 +11,7 @@ import { buildBaselineFromPerFile, loadBaseline, resolveRatchet, seedMerge, writ
 import type { BaselineMap, PerFileScore } from './baseline.js'
 import { pairedRun, resolvePairedRunExitCode } from './paired-run.js'
 import type { PairedRunInput, PairedRunResult } from './paired-run.js'
+import { SCORES_FILE, writeScoresFile } from './seed-from.js'
 
 export interface ChangedFilesDeps {
   readonly runGit: (args: readonly string[]) => string
@@ -184,6 +185,23 @@ export const seedBaseline = (baselinePath: string, perFile: readonly PerFileScor
   return Object.keys(merged).length
 }
 
+/**
+ * Master seed flow: ratchet the baseline from the run's per-file scores and
+ * persist those scores next to the paired reports. The CI commit step replays
+ * the scores file onto a fresh master tip whenever the initial push races a
+ * concurrent master update, so the Stryker run never has to be repeated.
+ * Returns the seeded baseline entry count.
+ */
+export const runUpdateBaseline = (input: {
+  readonly baselinePath: string
+  readonly reportDir: string
+  readonly perFile: readonly PerFileScore[]
+}): number => {
+  const count = seedBaseline(input.baselinePath, input.perFile)
+  writeScoresFile(path.join(input.reportDir, SCORES_FILE), input.perFile)
+  return count
+}
+
 const main = async (bun: BunLike): Promise<number> => {
   const parsed = parseChangedFilesCliArgs(bun.argv.slice(2))
   if (parsed.kind === 'usageError') {
@@ -196,10 +214,11 @@ const main = async (bun: BunLike): Promise<number> => {
 
   const projectRoot = process.cwd()
   const baselinePath = path.join(projectRoot, BASELINE_FILE)
+  const reportDir = path.join(projectRoot, DEFAULT_REPORT_DIR)
   const baseline = loadBaseline(baselinePath) ?? {}
   const result = await changedFilesRun({
     projectRoot,
-    reportDir: path.join(projectRoot, DEFAULT_REPORT_DIR),
+    reportDir,
     baseRef: parsed.baseRef,
     baseline,
     verbose: parsed.verbose,
@@ -210,7 +229,7 @@ const main = async (bun: BunLike): Promise<number> => {
   }
 
   if (parsed.updateBaseline) {
-    const count = seedBaseline(baselinePath, result.perFile)
+    const count = runUpdateBaseline({ baselinePath, reportDir, perFile: result.perFile })
     console.log(`Seeded baseline written to ${BASELINE_FILE} (${count} files)`)
     return 0
   }
