@@ -190,7 +190,7 @@ export function executeGet(userId: string, input: { id: string }): GetResult {
   if (scheduled !== null) return scheduled
   const alert = getAlertPrompt(input.id, userId)
   if (alert !== null) return alert
-  return { error: 'Deferred prompt not found.' }
+  return { error: 'Reminder or alert not found.' }
 }
 
 function updateScheduledFields(id: string, userId: string, input: UpdateInput): UpdateResult {
@@ -208,7 +208,7 @@ function updateScheduledFields(id: string, userId: string, input: UpdateInput): 
     if (parseResult.success) updates.executionMetadata = parseResult.data
   }
   const result = updateScheduledPrompt(id, userId, updates)
-  if (result === null) return { error: 'Deferred prompt not found.' }
+  if (result === null) return { error: 'Reminder or alert not found.' }
   log.info({ id, userId }, 'Scheduled prompt updated via tool')
   return { ...result, status: 'updated' as const }
 }
@@ -234,7 +234,7 @@ function updateAlertFields(id: string, userId: string, input: UpdateInput): Upda
     if (parseResult.success) updates.executionMetadata = parseResult.data
   }
   const result = updateAlertPrompt(id, userId, updates)
-  if (result === null) return { error: 'Deferred prompt not found.' }
+  if (result === null) return { error: 'Reminder or alert not found.' }
   log.info({ id, userId }, 'Alert prompt updated via tool')
   return { ...result, status: 'updated' as const }
 }
@@ -244,7 +244,7 @@ export function executeUpdate(userId: string, input: UpdateInput): UpdateResult 
   const scheduled = getScheduledPrompt(input.id, userId)
   if (scheduled === null) {
     const alert = getAlertPrompt(input.id, userId)
-    if (alert === null) return { error: 'Deferred prompt not found.' }
+    if (alert === null) return { error: 'Reminder or alert not found.' }
     const result = updateAlertFields(input.id, userId, input)
     if ('id' in result && !('error' in result)) emitUser('deferred:updated', userId, { promptId: result.id })
     return result
@@ -266,5 +266,5 @@ export function executeCancel(userId: string, input: { id: string }): CancelResu
     emitUser('deferred:cancelled', userId, { promptId: input.id })
     return { status: 'cancelled', id: input.id }
   }
-  return { error: 'Deferred prompt not found.' }
+  return { error: 'Reminder or alert not found.' }
 }

@@ -94,6 +94,11 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('get_current_time')
   })
 
+  test('includes the always-on USER-FACING WORDS anti-leak rule', () => {
+    const prompt = buildSystemPrompt(provider, 'frag-user-facing-words')
+    expect(prompt).toContain('USER-FACING WORDS')
+  })
+
   test('is static between calls (no dynamic content)', () => {
     const prompt1 = buildSystemPrompt(provider, 'user-1')
     // Small delay to ensure any dynamic content would differ
