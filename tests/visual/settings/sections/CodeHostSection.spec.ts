@@ -40,6 +40,16 @@ test.describe('settings/sections/CodeHostSection', () => {
     await switchStory(sharedPage, 'settings-sections-codehostsection--save-validation-error')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('Incomplete', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-codehostsection--incomplete')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('Self hosted', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-codehostsection--self-hosted')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots
 

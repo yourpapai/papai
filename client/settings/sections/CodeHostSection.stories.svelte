@@ -47,3 +47,15 @@
   args={{ contextId: CONTEXT_ID }}
   parameters={{ fixtures: 'settings-code-host-save-error' }}
 />
+
+<Story
+  name="Incomplete"
+  args={{ contextId: CONTEXT_ID }}
+  parameters={{ fixtures: 'settings-code-host-incomplete' }}
+/>
+
+<Story
+  name="Self hosted"
+  args={{ contextId: CONTEXT_ID }}
+  parameters={{ fixtures: 'settings-code-host-self-hosted' }}
+/>

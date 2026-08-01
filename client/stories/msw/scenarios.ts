@@ -36,7 +36,13 @@ import {
   adminProvidersHandlers,
   adminToolDefaultsHandlers,
 } from './settings-handlers-admin.js'
-import { codingCredentialsHandlers, forgeHandlers, forgeSaveErrorHandlers } from './settings-handlers-coding.js'
+import {
+  codingCredentialsHandlers,
+  forgeHandlers,
+  forgeIncompleteHandlers,
+  forgeSaveErrorHandlers,
+  forgeSelfHostedHandlers,
+} from './settings-handlers-coding.js'
 import {
   codingIdentityHandlers,
   groupMembersHandlers,
@@ -213,6 +219,8 @@ export const scenarios = {
   'settings-code-host-error': [...forgeHandlers.error],
   'settings-code-host-loading': [...forgeHandlers.loading],
   'settings-code-host-save-error': [...forgeSaveErrorHandlers],
+  'settings-code-host-incomplete': [...forgeIncompleteHandlers],
+  'settings-code-host-self-hosted': [...forgeSelfHostedHandlers],
   'settings-coding-mcp-populated': [...codingMcpHandlers.populated],
   'settings-coding-mcp-empty': [...codingMcpHandlers.empty],
   'settings-coding-mcp-no-catalog': [...codingMcpNoCatalogHandlers],

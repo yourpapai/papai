@@ -11,7 +11,9 @@ import type { HttpHandler } from 'msw'
 import {
   codingCredentialsHandlers,
   forgeHandlers,
+  forgeIncompleteHandlers,
   forgeSaveErrorHandlers,
+  forgeSelfHostedHandlers,
 } from '../../../../client/stories/msw/settings-handlers-coding.js'
 import {
   codingMcpHandlers,
@@ -65,6 +67,8 @@ const RESPONDING: { name: string; handlers: HttpHandler[]; own: string }[] = [
   { name: 'forge populated', handlers: forgeHandlers.populated, own: 'forge' },
   { name: 'forge empty', handlers: forgeHandlers.empty, own: 'forge' },
   { name: 'forge error', handlers: forgeHandlers.error, own: 'forge' },
+  { name: 'forge incomplete', handlers: forgeIncompleteHandlers, own: 'forge' },
+  { name: 'forge self-hosted', handlers: forgeSelfHostedHandlers, own: 'forge' },
 ]
 
 // The `loading` families delay past any test timeout for their own namespace, so they are

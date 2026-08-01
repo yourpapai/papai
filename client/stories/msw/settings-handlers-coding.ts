@@ -158,6 +158,66 @@ const forgeEmpty = {
   fields: forgeFields(false),
 }
 
+// Configured but incomplete: the token is absent, so the header reports `pending` and names
+// the host, and the first-setup helper renders.
+const forgeIncomplete = {
+  namespace: 'forge',
+  configured: true,
+  complete: false,
+  missing: ['forge_token'],
+  fields: [
+    credentialField('kind', 'Host type', {
+      required: true,
+      hasValue: true,
+      value: 'github',
+      control: 'select',
+      options: FORGE_KIND_OPTIONS,
+    }),
+    credentialField('instance_url', 'Instance URL'),
+    credentialField('forge_token', 'Access token', { required: true, sensitive: true }),
+  ],
+}
+
+// A complete self-hosted record, so instance_url is visible with its required marker and hint
+// on first paint — no interaction needed to reach that state.
+const forgeSelfHosted = {
+  namespace: 'forge',
+  configured: true,
+  complete: true,
+  missing: [],
+  fields: [
+    credentialField('kind', 'Host type', {
+      required: true,
+      hasValue: true,
+      value: 'gitlab-self-hosted',
+      control: 'select',
+      options: FORGE_KIND_OPTIONS,
+    }),
+    credentialField('instance_url', 'Instance URL', {
+      hasValue: true,
+      value: 'https://gitlab.internal.example.com',
+    }),
+    credentialField('forge_token', 'Access token', {
+      required: true,
+      sensitive: true,
+      hasValue: true,
+      value: '****cd34',
+    }),
+  ],
+}
+
+export const forgeIncompleteHandlers: HttpHandler[] = [
+  http.get('/settings/api/coding-credentials', ({ request }) =>
+    isNamespace(request, 'forge') ? HttpResponse.json(forgeIncomplete) : undefined,
+  ),
+]
+
+export const forgeSelfHostedHandlers: HttpHandler[] = [
+  http.get('/settings/api/coding-credentials', ({ request }) =>
+    isNamespace(request, 'forge') ? HttpResponse.json(forgeSelfHosted) : undefined,
+  ),
+]
+
 // Save-validation family: GET serves the populated forge record, PATCH always rejects with the
 // route's real 422 for a self-hosted kind and no instance URL
 // (src/debug/settings/coding-credentials-routes.ts:113-120).
