@@ -5,7 +5,13 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { errorMessageFrom, FetchError, readBody, requireOk } from '../../../client/shared/fetcher-helpers.js'
+import {
+  errorFieldFrom,
+  errorMessageFrom,
+  FetchError,
+  readBody,
+  requireOk,
+} from '../../../client/shared/fetcher-helpers.js'
 
 function assertIsFetchError(err: unknown): asserts err is FetchError {
   if (!(err instanceof FetchError)) throw err
@@ -64,6 +70,39 @@ describe('fetcher-helpers', () => {
       assertIsFetchError(err)
       expect(err.status).toBe(503)
       expect(err.message).toBe('request failed with status 503')
+    }
+  })
+
+  test('errorFieldFrom extracts the field key when present', () => {
+    expect(errorFieldFrom({ error: 'unsupported code host', field: 'kind' })).toBe('kind')
+  })
+
+  test('errorFieldFrom yields undefined when the body carries no field', () => {
+    expect(errorFieldFrom({ error: 'incompatible agent/provider' })).toBeUndefined()
+    expect(errorFieldFrom(null)).toBeUndefined()
+  })
+
+  test('requireOk throws a FetchError carrying the field key', () => {
+    const res = new Response(null, { status: 422 })
+    try {
+      requireOk(res, { error: 'unsupported code host', field: 'kind' })
+      throw new Error('expected requireOk to throw')
+    } catch (err) {
+      assertIsFetchError(err)
+      expect(err.status).toBe(422)
+      expect(err.message).toBe('unsupported code host')
+      expect(err.field).toBe('kind')
+    }
+  })
+
+  test('requireOk leaves field undefined for an unattributed error', () => {
+    const res = new Response(null, { status: 422 })
+    try {
+      requireOk(res, { error: 'incompatible agent/provider' })
+      throw new Error('expected requireOk to throw')
+    } catch (err) {
+      assertIsFetchError(err)
+      expect(err.field).toBeUndefined()
     }
   })
 })
