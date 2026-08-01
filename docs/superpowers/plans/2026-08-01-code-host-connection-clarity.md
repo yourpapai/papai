@@ -801,10 +801,9 @@ Wrap the setup hint and the fields grid. The region from the unreadable banner t
       <p class="placeholder" data-testid="code-host-no-fields">No code host fields available — try Refresh.</p>
     {:else}
       {#if !currentData.complete}
-        <p class="placeholder" data-testid="code-host-setup-hint">
-          Coding sessions push branches and open pull requests as you. Create a personal access token that can read and
-          write repository contents and pull requests, then paste it below — it is encrypted and never shown again.
-        </p>
+        <!-- Keep this on ONE source line. Wrapping it injects a newline plus indentation into
+             textContent, which breaks the Task 3 substring assertions. -->
+        <p class="placeholder" data-testid="code-host-setup-hint">Coding sessions push branches and open pull requests as you. Create a personal access token that can read and write repository contents and pull requests, then paste it below — it is encrypted and never shown again.</p>
       {/if}
 
       <div class="settings-byok-fields">
