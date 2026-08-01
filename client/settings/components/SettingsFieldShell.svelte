@@ -11,7 +11,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte'
 
-  import { setFieldLabelId } from '../../shared/ui/field-context.js'
+  import { setFieldError, setFieldLabelId } from '../../shared/ui/field-context.js'
 
   interface Props {
     label: string
@@ -20,18 +20,31 @@
     // Whether to render the editor slot. Consumers pass their own open/closed logic
     // (masked-resting secret fields render `head` only). Defaults to true.
     editorOpen?: boolean
+    // Inline validation message for this field; suppresses `hint` while set.
+    error?: string
+    hint?: string
     head?: Snippet
     editor?: Snippet<[string]>
     footer?: Snippet
   }
 
-  let { label, required = false, testid, editorOpen = true, head, editor, footer }: Props = $props()
+  let { label, required = false, testid, editorOpen = true, error, hint, head, editor, footer }: Props = $props()
 
   // Publish the label element id so an Input rendered in the `editor` snippet gets an
   // accessible name (aria-labelledby) — restoring what the old Field wrapper provided,
   // now pointing at the real field name instead of a generic "Value"/"New value".
-  const labelId = `settings-field-${++seq}`
+  const uid = ++seq
+  const labelId = `settings-field-${uid}`
+  const errorId = `settings-field-err-${uid}`
   setFieldLabelId(labelId)
+  // Getter, not a snapshot: this is what makes the descendant control track the live
+  // `error` prop rather than its value at init.
+  setFieldError({
+    errorId,
+    get invalid() {
+      return error !== undefined && error !== ''
+    },
+  })
 </script>
 
 <div class="settings-field" data-testid={testid}>
@@ -42,6 +55,8 @@
   {#if editor && editorOpen}
     <div class="settings-field__editor">{@render editor(labelId)}</div>
   {/if}
+  {#if error}<p class="settings-field__error" id={errorId} role="alert">{error}</p>
+  {:else if hint}<p class="settings-field__hint">{hint}</p>{/if}
   {@render footer?.()}
 </div>
 
@@ -79,5 +94,15 @@
   .settings-field__editor :global(.ui-input) {
     flex: 1;
     min-width: 200px;
+  }
+  .settings-field__error {
+    margin: 0;
+    color: var(--danger);
+    font-size: 12px;
+  }
+  .settings-field__hint {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 12px;
   }
 </style>

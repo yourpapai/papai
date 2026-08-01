@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { createRawSnippet, flushSync, mount, unmount } from 'svelte'
 
 import SettingsFieldShell from '../../../../client/settings/components/SettingsFieldShell.svelte'
+import ShellInputFixture from './ShellInputFixture.svelte'
 
 const render = (props: Record<string, unknown>): { component: ReturnType<typeof mount>; target: HTMLElement } => {
   document.body.innerHTML = '<div id="root"></div>'
@@ -79,6 +80,55 @@ describe('SettingsFieldShell', () => {
     flushSync()
     expect(target.querySelector('.settings-field__head [data-testid="hd"]')).not.toBeNull()
     expect(target.querySelector('[data-testid="ft"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('renders the error with role=alert when error is set', () => {
+    const { component, target } = render({ label: 'Instance URL', error: 'must start with https://' })
+    flushSync()
+    const el = target.querySelector<HTMLElement>('.settings-field__error')!
+    expect(el.textContent).toContain('must start with https://')
+    expect(el.getAttribute('role')).toBe('alert')
+    void unmount(component)
+  })
+
+  test('renders the hint when there is no error', () => {
+    const { component, target } = render({ label: 'Model', hint: 'Leave blank for the agent default.' })
+    flushSync()
+    expect(target.querySelector('.settings-field__hint')!.textContent).toContain('Leave blank')
+    expect(target.querySelector('.settings-field__error')).toBeNull()
+    void unmount(component)
+  })
+
+  test('error wins over hint when both are supplied', () => {
+    const { component, target } = render({ label: 'Model', hint: 'a hint', error: 'too long (max 200 characters)' })
+    flushSync()
+    expect(target.querySelector('.settings-field__error')!.textContent).toContain('too long')
+    expect(target.querySelector('.settings-field__hint')).toBeNull()
+    void unmount(component)
+  })
+
+  test('publishes the error to an Input in the editor snippet', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ShellInputFixture, { target, props: { error: 'must start with https://' } })
+    flushSync()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="fixture-input"]')!
+    const err = target.querySelector<HTMLElement>('.settings-field__error')!
+    expect(err.id).toBeTruthy()
+    expect(input.getAttribute('aria-invalid')).toBe('true')
+    expect(input.getAttribute('aria-describedby')).toBe(err.id)
+    void unmount(component)
+  })
+
+  test('leaves an Input valid when the shell has no error', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ShellInputFixture, { target, props: {} })
+    flushSync()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="fixture-input"]')!
+    expect(input.getAttribute('aria-invalid')).toBeNull()
+    expect(input.getAttribute('aria-describedby')).toBeNull()
     void unmount(component)
   })
 })
