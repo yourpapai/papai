@@ -5,10 +5,6 @@
 
 import { test, expect, switchStory } from '@crvy/strybk'
 
-import { pinDefaultViewport } from '../../support/viewport.js'
-
-pinDefaultViewport()
-
 // @generated-begin auto-screenshots
 test.describe('settings/sections/ByokSection', () => {
   test('Secret set', async ({ sharedPage }) => {
@@ -37,6 +33,10 @@ test.describe('settings/sections/ByokSection', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
 
 test('Missing required — narrow 640', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'settings-sections-byoksection--missing-required')

@@ -5,10 +5,6 @@
 
 import { test, expect, switchStory } from '@crvy/strybk'
 
-import { pinDefaultViewport } from '../../support/viewport.js'
-
-pinDefaultViewport()
-
 // @generated-begin auto-screenshots
 test.describe('settings/sections/IdentitySection', () => {
   test('Populated', async ({ sharedPage }) => {
@@ -37,6 +33,10 @@ test.describe('settings/sections/IdentitySection', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
 
 test.describe('settings/sections/IdentitySection — manual', () => {
   test('Populated — narrow 640', async ({ sharedPage }) => {

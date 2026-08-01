@@ -5,10 +5,6 @@
 
 import { test, expect, switchStory } from '@crvy/strybk'
 
-import { pinDefaultViewport } from '../../support/viewport.js'
-
-pinDefaultViewport()
-
 // @generated-begin auto-screenshots
 test.describe('settings/sections/MemorySection', () => {
   test('Populated', async ({ sharedPage }) => {
@@ -42,6 +38,10 @@ test.describe('settings/sections/MemorySection', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
 
 test.describe('settings/sections/MemorySection — manual', () => {
   test('Populated — narrow 640', async ({ sharedPage }) => {

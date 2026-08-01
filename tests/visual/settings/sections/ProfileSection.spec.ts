@@ -5,10 +5,6 @@
 
 import { test, expect, switchStory } from '@crvy/strybk'
 
-import { pinDefaultViewport } from '../../support/viewport.js'
-
-pinDefaultViewport()
-
 // @generated-begin auto-screenshots
 test.describe('settings/sections/ProfileSection', () => {
   test('Populated', async ({ sharedPage }) => {
@@ -32,6 +28,10 @@ test.describe('settings/sections/ProfileSection', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
 
 test('ProfileSection — populated, narrow', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'settings-sections-profilesection--populated')
