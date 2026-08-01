@@ -104,10 +104,14 @@ export const featureOpportunitySnapshot = (surface: FeatureOpportunitySurface): 
 }
 
 /**
- * Named producer registry: every registered feature maps to exactly one named
- * success/failure/blocked producer site plus one opportunity producer. The
- * closure test asserts this map stays complete; adding a boundary producer
- * without registering it here fails the audit.
+ * Named producer registry: every registered feature maps to one representative
+ * named success/failure/blocked producer site plus one opportunity producer.
+ * The list is representative, not exhaustive: a feature may have additional
+ * co-producers emitting the same observeActiveFeatureUsed call (e.g. 'deferred'
+ * is also produced by src/tools/create-alert.ts alongside create-reminder.ts
+ * after the reminder/alert split). The closure test asserts this map stays
+ * shape-complete (one entry per feature with the four slots); it does not
+ * reverse-audit every emit site.
  */
 export const FEATURE_PRODUCERS: Readonly<
   Record<FeatureV1, Readonly<{ opportunity: string; success: string; failure: string; blocked: string }>>
