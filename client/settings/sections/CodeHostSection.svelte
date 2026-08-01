@@ -80,8 +80,11 @@
   )
   const unreadableError = $derived(currentData?.unreadable === true ? currentData.error : null)
 
-  // Whole-record save is meaningful only when a field's draft differs from its stored value.
-  const formDirty = $derived(fields.filter(shouldShowField).some((f) => (drafts[f.key] ?? '') !== (f.sensitive ? '' : f.value)))
+  // Whole-record save is meaningful only when a field's draft differs from the baseline the
+  // field visibly shows on first render (see displayedValue) — not the raw stored value,
+  // which would flag an untouched empty select as dirty (its first option renders, but its
+  // stored value is '').
+  const formDirty = $derived(fields.filter(shouldShowField).some((f) => (drafts[f.key] ?? '') !== displayedValue(f)))
 
   // Compute whether instance_url field should be shown based on selected kind
   const kindField = $derived(fields.find((f) => f.key === 'kind'))
@@ -111,16 +114,18 @@
     return host === null ? name : `${name} · ${host}`
   })
 
+  // The baseline value a field visibly shows before any edits, shared by initialDrafts (what
+  // the draft starts as) and formDirty (what an untouched draft is compared against) so the
+  // two can never drift apart: a sensitive field always starts blank (masked when stored,
+  // empty when not — mirroring the display, which never shows the real secret), and an empty
+  // select defaults to its first option because a browser <select> cannot render blank.
+  function displayedValue(f: CodingCredentialField): string {
+    if (f.sensitive) return ''
+    if (f.control === 'select' && (f.value ?? '') === '') return f.options?.[0] ?? ''
+    return f.value
+  }
   function initialDrafts(nextFields: CodingCredentialField[]): Record<string, string> {
-    return Object.fromEntries(
-      nextFields.map((f) => {
-        if (f.sensitive && f.hasValue) return [f.key, '']
-        // Default an empty select to its first option so the persisted value matches
-        // what the dropdown visibly shows (an empty <select> renders the first option).
-        if (f.control === 'select' && (f.value ?? '') === '') return [f.key, f.options?.[0] ?? '']
-        return [f.key, f.value]
-      }),
-    )
+    return Object.fromEntries(nextFields.map((f) => [f.key, displayedValue(f)]))
   }
   function displaySecret(value: string): string {
     return value.includes('*') ? maskSecret(value) : '••••••••'

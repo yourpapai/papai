@@ -560,6 +560,27 @@ describe('CodeHostSection', () => {
     void unmount(component)
   })
 
+  test('the whole-record Save is disabled until a field changes (unconfigured typed forge)', async () => {
+    setMockFetch(() => Promise.resolve(json(typedForgeUnconfigured)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodeHostSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1' },
+    })
+    await drain()
+    const save = target.querySelector<HTMLButtonElement>('[data-testid="code-host-save"]')!
+    // kind is an empty control:select field — the dropdown visibly renders its first option
+    // even though nothing has been chosen yet, so Save must start disabled, not enabled.
+    expect(save.disabled).toBe(true)
+    const token = target.querySelector<HTMLInputElement>('[data-testid="coding-input-forge_token"]')!
+    token.value = 'ghp_new'
+    token.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    expect(save.disabled).toBe(false)
+    void unmount(component)
+  })
+
   test('a failed initial load renders ErrorState with a retry control', async () => {
     setMockFetch(() => Promise.resolve(new Response('boom', { status: 500 })))
     document.body.innerHTML = '<div id="root"></div>'
