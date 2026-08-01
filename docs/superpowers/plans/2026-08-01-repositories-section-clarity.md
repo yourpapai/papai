@@ -201,9 +201,16 @@ Replace the entire `Permission preset` and `Additional egress domains` `Field` b
 - [ ] **Step 5: Delete the three obsolete style rules**
 
 Delete `.settings-repos__preset-select`, `.settings-repos__egress-input`, and
-`.settings-repos__egress-help` from the `<style>` block. After this the block ends with
-`.settings-repos__add-label`. Leaving them in place is a Svelte "unused CSS selector"
-warning, not an error, so verify by eye that all three are gone.
+`.settings-repos__egress-help` from the `<style>` block — they are the last three rules in
+it. After this the block ends with the `.settings-repos__add-form :global(.ui-field)` rule.
+Leaving them in place is a Svelte "unused CSS selector" warning, not an error, so verify by
+eye that all three are gone:
+
+```bash
+grep -c "settings-repos__preset-select\|settings-repos__egress-input\|settings-repos__egress-help" client/settings/sections/ReposSection.svelte
+```
+
+Expected: `0`.
 
 - [ ] **Step 6: Run the tests to verify they pass**
 
