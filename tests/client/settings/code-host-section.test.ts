@@ -163,6 +163,45 @@ const typedForgeUnconfigured = {
   ],
 }
 
+// Configured but incomplete, with a known kind: the header can name the host.
+const typedForgeIncomplete = {
+  namespace: 'forge',
+  configured: true,
+  complete: false,
+  missing: ['forge_token'],
+  fields: [
+    {
+      key: 'kind',
+      label: 'Host type',
+      required: true,
+      sensitive: false,
+      hasValue: true,
+      value: 'github',
+      control: 'select' as const,
+      options: ['github', 'github-enterprise', 'gitlab', 'gitlab-self-hosted'],
+    },
+    { key: 'instance_url', label: 'Instance URL', required: false, sensitive: false, hasValue: false, value: '' },
+    { key: 'forge_token', label: 'Access token', required: true, sensitive: true, hasValue: false, value: '' },
+  ],
+}
+
+// Configured but the kind itself is missing: there is no host to name, so no sub line.
+const typedForgeIncompleteNoKind = {
+  ...typedForgeIncomplete,
+  missing: ['kind', 'forge_token'],
+  fields: [
+    { ...typedForgeIncomplete.fields[0]!, hasValue: false, value: '' },
+    typedForgeIncomplete.fields[1]!,
+    typedForgeIncomplete.fields[2]!,
+  ],
+}
+
+const typedForgeUnreadable = {
+  ...typedForgeIncompleteNoKind,
+  unreadable: true,
+  error: 'stored credentials are unreadable',
+}
+
 const errorJson = (payload: { error: string; field?: string }): Response =>
   new Response(JSON.stringify(payload), { status: 422, headers: { 'Content-Type': 'application/json' } })
 
@@ -703,5 +742,73 @@ describe('CodeHostSection', () => {
     expect(banner!.textContent).toContain('Something went wrong.')
     expect(target.querySelector('.settings-field__error')).toBeNull()
     void unmount(component)
+  })
+
+  const mountWith = async (payload: unknown): Promise<HTMLElement> => {
+    setMockFetch(() => Promise.resolve(json(payload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+    return target
+  }
+
+  const pillText = (target: HTMLElement): string | null =>
+    target.querySelector('.ui-page-header__action .ui-pill')?.textContent?.trim() ?? null
+
+  const subText = (target: HTMLElement): string | null =>
+    target.querySelector('.ui-page-header__sub')?.textContent?.trim() ?? null
+
+  test('renders no status pill while the first load is still in flight', async () => {
+    setMockFetch(() => new Promise<Response>(() => {}))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+
+    expect(pillText(target)).toBeNull()
+    expect(subText(target)).toBeNull()
+  })
+
+  test('shows "not connected" and no sub when the forge vault is unconfigured', async () => {
+    const target = await mountWith(typedForgeUnconfigured)
+
+    expect(pillText(target)).toBe('not connected')
+    expect(subText(target)).toBeNull()
+  })
+
+  test('shows "pending" and no sub when the stored kind itself is missing', async () => {
+    const target = await mountWith(typedForgeIncompleteNoKind)
+
+    expect(pillText(target)).toBe('pending')
+    expect(subText(target)).toBeNull()
+  })
+
+  test('shows "pending" and names the host when only the token is missing', async () => {
+    const target = await mountWith(typedForgeIncomplete)
+
+    expect(pillText(target)).toBe('pending')
+    expect(subText(target)).toBe('GitHub · needs an access token')
+  })
+
+  test('shows "connected" and the SaaS host when the record is complete', async () => {
+    const target = await mountWith(typedForgePayloadSaas)
+
+    expect(pillText(target)).toBe('connected')
+    expect(subText(target)).toBe('GitHub · github.com')
+  })
+
+  test('shows "connected" and the derived host for a self-hosted instance URL', async () => {
+    const target = await mountWith(typedForgePayloadSelfHosted)
+
+    expect(pillText(target)).toBe('connected')
+    expect(subText(target)).toBe('GitLab (self-hosted) · gitlab.corp.com')
+  })
+
+  test('shows "error" and no sub when the stored record is unreadable', async () => {
+    const target = await mountWith(typedForgeUnreadable)
+
+    expect(pillText(target)).toBe('error')
+    expect(subText(target)).toBeNull()
   })
 })

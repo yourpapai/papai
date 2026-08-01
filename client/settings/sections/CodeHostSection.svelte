@@ -15,6 +15,7 @@
   import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Secret from '../../shared/ui/Secret.svelte'
   import Select from '../../shared/ui/Select.svelte'
+  import StatusPill from '../../shared/ui/StatusPill.svelte'
   import SettingsFieldShell from '../components/SettingsFieldShell.svelte'
   import type { CodingCredentialField, CodingCredentialsResponse } from '../fetcher-schemas.js'
   import { clearCodingCredentials, fetchCodingCredentials, patchCodingCredentials } from '../coding-credentials-fetchers.js'
@@ -23,6 +24,34 @@
   // Client-side mirror of src/coding-credentials/types.ts `needsInstanceUrl`
   function needsInstanceUrl(kind: string): boolean {
     return kind === 'github-enterprise' || kind === 'gitlab-self-hosted'
+  }
+
+  // Client-side mirror of FORGE_KINDS in src/coding-credentials/types.ts. Display names only —
+  // the wire values remain exactly what the server sends.
+  const FORGE_DISPLAY_NAMES: Record<string, string> = {
+    github: 'GitHub',
+    'github-enterprise': 'GitHub Enterprise',
+    gitlab: 'GitLab',
+    'gitlab-self-hosted': 'GitLab (self-hosted)',
+  }
+
+  // Client-side mirror of the fixed SaaS hosts deriveApiBaseUrl uses
+  // (src/coding-credentials/types.ts:74-75). Self-hosted kinds derive from the instance URL.
+  const FORGE_SAAS_HOSTS: Record<string, string> = {
+    github: 'github.com',
+    gitlab: 'gitlab.com',
+  }
+
+  function forgeHost(kind: string, instanceUrl: string): string | null {
+    const saas = FORGE_SAAS_HOSTS[kind]
+    if (saas !== undefined) return saas
+    if (instanceUrl === '') return null
+    try {
+      return new URL(instanceUrl).host
+    } catch {
+      // A malformed stored value degrades to something readable rather than throwing.
+      return instanceUrl
+    }
   }
 
   interface Props {
@@ -56,6 +85,29 @@
   const kindField = $derived(fields.find((f) => f.key === 'kind'))
   const currentKind = $derived(drafts['kind'] ?? kindField?.value ?? '')
   const showInstanceUrl = $derived(needsInstanceUrl(currentKind))
+
+  // Header status reports SAVED state, never drafts — otherwise the pill and sub would
+  // flicker as the user edits a form they have not submitted.
+  const savedKind = $derived(fields.find((f) => f.key === 'kind')?.value ?? '')
+  const savedInstanceUrl = $derived(fields.find((f) => f.key === 'instance_url')?.value ?? '')
+
+  const statusPill = $derived.by((): string | null => {
+    if (currentData === null) return null
+    if (currentData.unreadable === true) return 'error'
+    if (!currentData.configured) return 'not connected'
+    return currentData.complete ? 'connected' : 'pending'
+  })
+
+  const headerSub = $derived.by((): string | undefined => {
+    if (currentData === null || currentData.unreadable === true || !currentData.configured) return undefined
+    // An unknown or absent stored kind (the `missing` array contains 'kind') leaves nothing
+    // to name, so the sub is omitted rather than rendering a bare separator.
+    const name = FORGE_DISPLAY_NAMES[savedKind]
+    if (name === undefined) return undefined
+    if (!currentData.complete) return `${name} · needs an access token`
+    const host = forgeHost(savedKind, savedInstanceUrl)
+    return host === null ? name : `${name} · ${host}`
+  })
 
   function initialDrafts(nextFields: CodingCredentialField[]): Record<string, string> {
     return Object.fromEntries(
@@ -181,8 +233,9 @@
 </script>
 
 <section id="code-host" class="settings-section">
-  <PageHeader eyebrow="Coding sessions" title="Code host">
+  <PageHeader eyebrow="Coding sessions" title="Code host" sub={headerSub}>
     {#snippet action()}
+      {#if statusPill !== null}<StatusPill status={statusPill} />{/if}
       <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load(contextId)} testid="code-host-refresh" />
     {/snippet}
   </PageHeader>
