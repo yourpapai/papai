@@ -25,8 +25,21 @@ import { toPendingReason, type PendingReason } from './coverage.js'
  * (coverage.ts keeps every executable story under its provingTier root) also
  * forbids attaching these `tests/stories/` ids to the @1 records whose root is
  * `tests/e2e/`.
+ *
+ * The real-Kaneo chat-loop stories (create/fields/error) attach to the existing
+ * YouTrack real-provider records because they prove the same abstract behaviors
+ * (real-plugin activation + create, field mapping, error translation) for a
+ * second provider. The gating story is the complementary case — it proves the
+ * POSITIVE members.provision path (capability advertised + a workspace-member
+ * row persisted) where the YouTrack gating record proves only the negative
+ * (capability absent → no row). That is a distinct proof, not the same behavior,
+ * and it does not fit an existing record, so it is supported here rather than
+ * overloading the YouTrack negative-gating record or the in-memory
+ * SCN-task-identity provisioning record.
  */
 const RATIONALES: Readonly<Record<string, string>> = Object.freeze({
+  'tests/stories/tasks/kaneo-real.story.test.ts#SCN-task-kaneo-real-gating: provisions a workspace member for a provider with members.provision':
+    'Provider-wiring coverage: proves the positive members.provision capability path through the real Kaneo plugin (capability advertised, fire-and-forget backstop persists an active kaneoWorkspaceMembers row). Complementary to the YouTrack real-gating record, which proves only the negative (capability absent) side, so it does not attach there.',
   'tests/stories/tasks/kaneo-conformance.story.test.ts#SCN-kaneo-conformance-tasks: real Kaneo provider satisfies the shared task groups':
     'Provider-wiring coverage: re-runs the shared task parity groups through the real Kaneo plugin against a stateful fake API, proving transport propagation and response mapping rather than a new behavior.',
   'tests/stories/tasks/kaneo-conformance.story.test.ts#SCN-kaneo-conformance-search: real Kaneo provider satisfies the shared search groups':

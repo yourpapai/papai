@@ -103,7 +103,7 @@ export type CatalogCoverage =
     }>
 
 export const CATALOG_SOURCE =
-  'scenario-catalog snapshot supplied 2026-07-13; extended 2026-07-23 with 12 SCN-parity-* provider-real (@1) ids (tier1-provider-real-parity); extended 2026-07-24 with 17 SCN-parity-* domain-retrofit (@1) ids (tier1b-e2e-parity-retrofit); extended 2026-07-24 with 8 SCN-* process-real smoke (@2) ids (tier2-process-smoke); extended 2026-07-27 with 10 real-YouTrack (@0) ids (t0-real-youtrack-provider); extended 2026-07-28 with 18 previously uncataloged story ids (story-catalog-census); extended 2026-07-29 with 21 uncatalogued-cluster behavior ids (@0/@3/@4) (phase3-catalog-foundation)' as const
+  'scenario-catalog snapshot supplied 2026-07-13; extended 2026-07-23 with 12 SCN-parity-* provider-real (@1) ids (tier1-provider-real-parity); extended 2026-07-24 with 17 SCN-parity-* domain-retrofit (@1) ids (tier1b-e2e-parity-retrofit); extended 2026-07-24 with 8 SCN-* process-real smoke (@2) ids (tier2-process-smoke); extended 2026-07-27 with 10 real-YouTrack (@0) ids (t0-real-youtrack-provider); extended 2026-07-28 with 18 previously uncataloged story ids (story-catalog-census); extended 2026-07-29 with 21 uncatalogued-cluster behavior ids (@0/@3/@4) (phase3-catalog-foundation); extended 2026-08-01 with 3 real-Kaneo (@0) chat-loop story ids attached to the YouTrack real-provider records (t0-real-kaneo-provider)' as const
 
 export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-task-create-update',
@@ -1370,18 +1370,21 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     verifiedAt: '2026-07-27',
     storyIds: [
       'tests/stories/tasks/youtrack-real.story.test.ts#SCN-task-youtrack-real-create: activates the real YouTrack plugin and creates a project over fake REST',
+      'tests/stories/tasks/kaneo-real.story.test.ts#SCN-task-kaneo-real-create: activates the real Kaneo plugin and creates a project over fake REST',
     ],
   },
   'SCN-task-youtrack-real-fields': {
     verifiedAt: '2026-07-27',
     storyIds: [
       'tests/stories/tasks/youtrack-real.story.test.ts#SCN-task-youtrack-real-fields: maps YouTrack custom fields through the real provider',
+      'tests/stories/tasks/kaneo-real.story.test.ts#SCN-task-kaneo-real-fields: maps task status and priority fields through the real provider',
     ],
   },
   'SCN-task-youtrack-real-error': {
     verifiedAt: '2026-07-27',
     storyIds: [
       'tests/stories/tasks/youtrack-real.story.test.ts#SCN-task-youtrack-real-error: translates a YouTrack 404 into a tool failure the model can report',
+      'tests/stories/tasks/kaneo-real.story.test.ts#SCN-task-kaneo-real-error: translates a Kaneo 404 into a tool failure the model can report',
     ],
   },
   'SCN-task-youtrack-real-gating': {
