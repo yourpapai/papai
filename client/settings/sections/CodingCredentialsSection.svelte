@@ -400,5 +400,11 @@
   .settings-field__actions {
     display: flex;
     justify-content: flex-end;
+    gap: var(--gap-tight);
+    /* Same geometry as CodeHostSection: an identical .settings-byok-fields grid of
+       SettingsFieldShell cards, so the row's right edge lands on the cards' content edge at
+       the same measured 14px. See CodeHostSection.svelte for why this is measured, not
+       derived from the token arithmetic. */
+    padding-inline: 14px;
   }
 </style>

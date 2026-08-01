@@ -5,14 +5,9 @@
 
 import { test, expect, switchStory } from '@crvy/strybk'
 
-// The sharedPage fixture from @crvy/strybk is worker-scoped: its viewport is set once
-// by browser.newContext and the reset helpers (resetSharedPage / restoreSharedPageBaseline)
-// never restore it. Without this, any test that calls setViewportSize leaks that viewport
-// into every test that runs after it in the same worker. Pin the project default here so
-// every test in this file starts from a known viewport regardless of execution order.
-test.beforeEach(async ({ sharedPage }) => {
-  await sharedPage.setViewportSize({ width: 1280, height: 720 })
-})
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
 
 // @generated-begin auto-screenshots
 test.describe('settings/sections/ProfileSection', () => {

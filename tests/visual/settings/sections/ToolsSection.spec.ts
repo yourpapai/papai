@@ -5,6 +5,10 @@
 
 import { test, expect, switchStory } from '@crvy/strybk'
 
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
+
 // @generated-begin auto-screenshots
 test.describe('settings/sections/ToolsSection', () => {
   test('Populated', async ({ sharedPage }) => {

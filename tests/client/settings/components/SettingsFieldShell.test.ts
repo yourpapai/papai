@@ -131,4 +131,25 @@ describe('SettingsFieldShell', () => {
     expect(input.getAttribute('aria-describedby')).toBeNull()
     void unmount(component)
   })
+
+  // Emptiness is expressed two ways in the component: the markup guards the error <p> with a
+  // falsy `{#if error}`, while the field-error context checks `error !== undefined && error !== ''`
+  // explicitly. An empty string is the one input where those two spellings could diverge, so pin
+  // that both treat it as "no error" -- otherwise a stray '' would announce an empty role=alert.
+  test('treats an empty error string as no error, in both the markup and the context', () => {
+    const { component, target } = render({ label: 'Model', hint: 'a hint', error: '' })
+    flushSync()
+    expect(target.querySelector('.settings-field__error')).toBeNull()
+    expect(target.querySelector('.settings-field__hint')!.textContent).toContain('a hint')
+    void unmount(component)
+
+    document.body.innerHTML = '<div id="root"></div>'
+    const fixtureTarget = document.querySelector<HTMLElement>('#root')!
+    const fixture = mount(ShellInputFixture, { target: fixtureTarget, props: { error: '' } })
+    flushSync()
+    const input = fixtureTarget.querySelector<HTMLInputElement>('[data-testid="fixture-input"]')!
+    expect(input.getAttribute('aria-invalid')).toBeNull()
+    expect(input.getAttribute('aria-describedby')).toBeNull()
+    void unmount(fixture)
+  })
 })

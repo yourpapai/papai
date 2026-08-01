@@ -91,4 +91,51 @@ describe('coding settings msw handlers', () => {
       ],
     })
   })
+
+  test('forgeHandlers empty response reports both required fields as missing', async () => {
+    const response = await getResponse(
+      forgeHandlers.empty,
+      new Request('http://localhost/settings/api/coding-credentials?contextId=ctx-personal-1&namespace=forge'),
+    )
+    expect(response).toBeDefined()
+    const body: unknown = await response?.json()
+    // Same full deep equality as the populated case. `missing` is the load-bearing part:
+    // CodeHostSection derives its "not connected" header state from it, and the list must
+    // track allRequiredFields (src/coding-credentials/store.ts) -- kind and forge_token,
+    // never instance_url, which is only conditionally required.
+    expect(body).toEqual({
+      namespace: 'forge',
+      configured: false,
+      complete: false,
+      missing: ['kind', 'forge_token'],
+      fields: [
+        {
+          key: 'kind',
+          label: 'Host type',
+          required: true,
+          sensitive: false,
+          hasValue: false,
+          value: '',
+          control: 'select',
+          options: ['github', 'github-enterprise', 'gitlab', 'gitlab-self-hosted'],
+        },
+        {
+          key: 'instance_url',
+          label: 'Instance URL',
+          required: false,
+          sensitive: false,
+          hasValue: false,
+          value: '',
+        },
+        {
+          key: 'forge_token',
+          label: 'Access token',
+          required: true,
+          sensitive: true,
+          hasValue: false,
+          value: '',
+        },
+      ],
+    })
+  })
 })

@@ -105,4 +105,15 @@ describe('fetcher-helpers', () => {
       expect(err.field).toBeUndefined()
     }
   })
+
+  // The optional third constructor parameter is otherwise only reached through requireOk,
+  // which always passes errorFieldFrom's result explicitly. Construct it directly so the
+  // two-argument form's default is pinned on its own.
+  test('FetchError constructed without a field leaves field undefined', () => {
+    const err = new FetchError(500, 'boom')
+    expect(err.status).toBe(500)
+    expect(err.message).toBe('boom')
+    expect(err.field).toBeUndefined()
+    expect(err.name).toBe('FetchError')
+  })
 })

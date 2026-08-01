@@ -82,6 +82,15 @@ describe('control target size', () => {
     expect(literalHeights('.a { height: var(--control-h-sm); }')).toEqual([])
   })
 
+  test('the width scanner sees real declarations and ignores look-alikes', () => {
+    expect(literalWidths('.a { width: 22px; }')).toEqual(['width: 22px'])
+    expect(literalWidths('.a {\n  min-width: 120px;\n}')).toEqual(['min-width: 120px'])
+    // max-width caps a box, border-width is not a target dimension: the lookbehind must
+    // keep both out, or the square-control guard below starts reporting false offenders.
+    expect(literalWidths('.a { max-width: 40px; border-width: 2px; }')).toEqual([])
+    expect(literalWidths('.a { width: var(--control-h-sm); }')).toEqual([])
+  })
+
   test('every --control-h-* token clears the WCAG minimum', () => {
     const found = [...TOKENS.matchAll(CONTROL_TOKEN)].map((m) => ({ name: m[1], px: Number(m[2]) }))
     expect(found.map((t) => t.name)).toEqual(['sm', 'md', 'lg'])
