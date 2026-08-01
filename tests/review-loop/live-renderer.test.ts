@@ -11,6 +11,7 @@ import {
   formatStepFooter,
   formatToolArg,
   LiveRenderer,
+  type RendererStream,
 } from '../../review-loop/src/live-renderer.js'
 
 describe('formatDuration', () => {
@@ -76,8 +77,8 @@ describe('formatStepFooter', () => {
 })
 
 function makeStream(opts: { isTTY?: boolean; columns?: number } = {}): {
+  stream: RendererStream
   output: string[]
-  stream: { write(s: string): boolean; isTTY?: boolean; columns?: number }
 } {
   const output: string[] = []
   return {
@@ -162,5 +163,91 @@ describe('LiveRenderer', () => {
     r.live(['line 1', 'line 2'])
     expect(captured.join('')).toContain('line 1')
     expect(captured.join('')).toContain('line 2')
+  })
+})
+
+describe('formatLiveLine status suffix', () => {
+  test('appends status after tool count when provided', () => {
+    const line = formatLiveLine('fixer', 'read', 'cli.ts', 5000, 3, 'round 1/3 · issues: 2 open')
+    expect(line).toContain('3 tools · round 1/3 · issues: 2 open')
+  })
+  test('omits suffix segment when status is empty', () => {
+    const line = formatLiveLine('fixer', 'read', 'cli.ts', 5000, 3)
+    expect(line).toContain('3 tools')
+    expect(line).not.toContain('round')
+  })
+})
+
+describe('LiveRenderer.issue', () => {
+  test('found events print an indented plus line', () => {
+    const { stream, output } = makeStream()
+    const renderer = new LiveRenderer(stream)
+    renderer.issue({
+      type: 'found',
+      id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+      severity: 'high',
+      file: 'src/auth/login.ts',
+      line: 42,
+      title: 'Token refresh race on 401',
+    })
+    expect(output).toContain('  + #a1b2c3d4 [high]     src/auth/login.ts:42 — Token refresh race on 401\n')
+  })
+
+  test('decided events print a mark line with note', () => {
+    const { stream, output } = makeStream()
+    const renderer = new LiveRenderer(stream)
+    renderer.issue({
+      type: 'decided',
+      id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+      verdict: 'needs_human',
+      title: 't',
+      note: 'merge conflict',
+    })
+    expect(output).toContain('! #a1b2c3d4 → needs human (merge conflict)\n')
+  })
+})
+
+describe('LiveRenderer.statusSuffix', () => {
+  test('is empty before any events', () => {
+    const { stream } = makeStream()
+    expect(new LiveRenderer(stream).statusSuffix()).toBe('')
+  })
+
+  test('shows round after a round event', () => {
+    const { stream } = makeStream()
+    const renderer = new LiveRenderer(stream)
+    renderer.issue({ type: 'round', round: 2, maxRounds: 5 })
+    expect(renderer.statusSuffix()).toBe('round 2/5')
+  })
+
+  test('counts found and decided issues, omitting zero segments', () => {
+    const { stream } = makeStream()
+    const renderer = new LiveRenderer(stream)
+    renderer.issue({ type: 'round', round: 1, maxRounds: 3 })
+    renderer.issue({
+      type: 'found',
+      id: 'aaaaaaaa-0000-0000-0000-000000000000',
+      severity: 'low',
+      file: 'a.ts',
+      line: 1,
+      title: 'A',
+    })
+    renderer.issue({
+      type: 'found',
+      id: 'bbbbbbbb-0000-0000-0000-000000000000',
+      severity: 'low',
+      file: 'b.ts',
+      line: 2,
+      title: 'B',
+    })
+    renderer.issue({ type: 'decided', id: 'aaaaaaaa-0000-0000-0000-000000000000', verdict: 'fixed', title: 'A' })
+    expect(renderer.statusSuffix()).toBe('round 1/3 · issues: 1 open · 1 fixed')
+  })
+
+  test('decided on an empty pending count does not go negative', () => {
+    const { stream } = makeStream()
+    const renderer = new LiveRenderer(stream)
+    renderer.issue({ type: 'decided', id: 'aaaaaaaa-0000-0000-0000-000000000000', verdict: 'invalid', title: 'A' })
+    expect(renderer.statusSuffix()).toBe('issues: 1 rejected')
   })
 })

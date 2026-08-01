@@ -39,7 +39,7 @@ function renderLive(ctx: LiveCtx): void {
     return
   }
   const elapsed = ctx.startedAt === 0 ? 0 : Date.now() - ctx.startedAt
-  reporter.live([formatLiveLine(ctx.label, ctx.tool, ctx.arg, elapsed, ctx.toolCount)])
+  reporter.live([formatLiveLine(ctx.label, ctx.tool, ctx.arg, elapsed, ctx.toolCount, reporter.statusSuffix?.() ?? '')])
 }
 
 function applyEvent(evt: OpencodeEvent, ctx: LiveCtx): void {

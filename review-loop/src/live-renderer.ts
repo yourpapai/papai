@@ -5,7 +5,8 @@
 
 import path from 'node:path'
 
-import type { ProgressReporter } from './progress-log.js'
+import { formatDecidedLine, formatFoundLine } from './issue-format.js'
+import type { IssueProgressEvent, ProgressReporter } from './progress-log.js'
 
 const ELLIPSIS = '\u2026'
 const ARROW = '\u25B6'
@@ -84,10 +85,18 @@ export function formatToolArg(tool: string, input: unknown): string {
   }
 }
 
-export function formatLiveLine(label: string, tool: string, arg: string, elapsedMs: number, toolCount: number): string {
+export function formatLiveLine(
+  label: string,
+  tool: string,
+  arg: string,
+  elapsedMs: number,
+  toolCount: number,
+  status = '',
+): string {
   const toolPart = tool === '' ? 'thinking' : arg === '' ? tool : `${tool} ${arg}`
   const tools = `${toolCount} tool${toolCount === 1 ? '' : 's'}`
-  return `  ${label.padEnd(10)} ${ARROW} ${toolPart} ${MIDDLE_DOT} ${formatDuration(elapsedMs)} ${MIDDLE_DOT} ${tools}`
+  const suffix = status === '' ? '' : ` ${MIDDLE_DOT} ${status}`
+  return `  ${label.padEnd(10)} ${ARROW} ${toolPart} ${MIDDLE_DOT} ${formatDuration(elapsedMs)} ${MIDDLE_DOT} ${tools}${suffix}`
 }
 
 export function formatStepFooter(
@@ -110,7 +119,9 @@ export async function withLivePhase<T>(
   let timer: ReturnType<typeof setInterval> | null = null
   if (reporter.dynamic) {
     timer = setInterval(() => {
-      reporter.live([`[${label}] ${formatDuration(Date.now() - start)}...`])
+      const status = reporter.statusSuffix?.() ?? ''
+      const suffix = status === '' ? '' : ` ${MIDDLE_DOT} ${status}`
+      reporter.live([`[${label}] ${formatDuration(Date.now() - start)}...${suffix}`])
     }, 1000)
   }
   try {
@@ -128,10 +139,44 @@ export class LiveRenderer implements ProgressReporter {
   readonly dynamic: boolean
   private readonly stream: RendererStream
   private liveActive = false
+  private round = 0
+  private maxRounds = 0
+  private readonly counts = { open: 0, fixed: 0, rejected: 0, needsHuman: 0 }
 
   constructor(stream: RendererStream) {
     this.stream = stream
     this.dynamic = stream.isTTY === true
+  }
+
+  issue(event: IssueProgressEvent): void {
+    switch (event.type) {
+      case 'round':
+        this.round = event.round
+        this.maxRounds = event.maxRounds
+        return
+      case 'found':
+        this.counts.open += 1
+        this.event(formatFoundLine(event))
+        return
+      case 'decided':
+        this.counts.open = Math.max(0, this.counts.open - 1)
+        if (event.verdict === 'fixed') this.counts.fixed += 1
+        else if (event.verdict === 'invalid') this.counts.rejected += 1
+        else if (event.verdict === 'needs_human' || event.verdict === 'plan_drift') this.counts.needsHuman += 1
+        this.event(formatDecidedLine(event))
+    }
+  }
+
+  statusSuffix(): string {
+    const parts: string[] = []
+    if (this.round > 0) parts.push(`round ${this.round}/${this.maxRounds}`)
+    const segments: string[] = []
+    if (this.counts.open > 0) segments.push(`${this.counts.open} open`)
+    if (this.counts.fixed > 0) segments.push(`${this.counts.fixed} fixed`)
+    if (this.counts.rejected > 0) segments.push(`${this.counts.rejected} rejected`)
+    if (this.counts.needsHuman > 0) segments.push(`${this.counts.needsHuman} needs human`)
+    if (segments.length > 0) parts.push(`issues: ${segments.join(' · ')}`)
+    return parts.join(' · ')
   }
 
   event(message: string): void {
