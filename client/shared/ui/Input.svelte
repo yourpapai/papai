@@ -56,6 +56,7 @@
       {rows}
       aria-labelledby={labelId}
       aria-invalid={fieldError.invalid ? 'true' : undefined}
+      aria-required={fieldError.required ? 'true' : undefined}
       aria-describedby={fieldError.describedBy}
       data-testid={testid}
       oninput={handleInput}
@@ -72,6 +73,7 @@
       {readonly}
       aria-labelledby={labelId}
       aria-invalid={fieldError.invalid ? 'true' : undefined}
+      aria-required={fieldError.required ? 'true' : undefined}
       aria-describedby={fieldError.describedBy}
       data-testid={testid}
       oninput={handleInput}

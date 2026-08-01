@@ -5,11 +5,13 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { mount, unmount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
 
 import { getFieldLabelId } from '../../../../client/shared/ui/field-context.js'
 import Select from '../../../../client/shared/ui/Select.svelte'
+import { requiredHarnessState } from './field-required-harness.svelte.js'
 import FieldHintFixture from './FieldHintFixture.svelte'
+import FieldRequiredRaceFixture from './FieldRequiredRaceFixture.svelte'
 import FieldSelectFixture from './FieldSelectFixture.svelte'
 
 describe('field-context', () => {
@@ -66,6 +68,58 @@ describe('field-context', () => {
     const c = mount(FieldHintFixture, { target, props: {} })
     const input = target.querySelector<HTMLInputElement>('[data-testid="hint-input"]')!
     expect(input.getAttribute('aria-describedby')).toBeNull()
+    void unmount(c)
+  })
+
+  test('sets aria-required on the control when the Field is required', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(FieldHintFixture, { target, props: { required: true } })
+    const input = target.querySelector<HTMLInputElement>('[data-testid="hint-input"]')!
+    expect(input.getAttribute('aria-required')).toBe('true')
+    void unmount(c)
+  })
+
+  test('omits aria-required when the Field is optional', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(FieldHintFixture, { target, props: {} })
+    const input = target.querySelector<HTMLInputElement>('[data-testid="hint-input"]')!
+    expect(input.getAttribute('aria-required')).toBeNull()
+    void unmount(c)
+  })
+
+  test('hides the required glyph from the accessibility tree', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(FieldHintFixture, { target, props: { required: true } })
+    expect(target.querySelector('.ui-field__req')!.getAttribute('aria-hidden')).toBe('true')
+    void unmount(c)
+  })
+
+  // Task 1 left `invalid`/`hasHint` reactivity to structural analogy with no direct proof;
+  // this closes that gap for all three getters at once by driving `required` and `hint`
+  // through a reactive ($state) prop pair after the Field has already mounted, rather than
+  // only ever passing them at mount time.
+  test('tracks required and hint props that change after the Field has mounted', () => {
+    requiredHarnessState.required = false
+    requiredHarnessState.hint = ''
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(FieldRequiredRaceFixture, { target, props: {} })
+    const input = target.querySelector<HTMLInputElement>('[data-testid="hint-input"]')!
+    expect(input.getAttribute('aria-required')).toBeNull()
+    expect(input.getAttribute('aria-describedby')).toBeNull()
+
+    requiredHarnessState.required = true
+    requiredHarnessState.hint = 'https only'
+    flushSync()
+
+    expect(input.getAttribute('aria-required')).toBe('true')
+    const hint = target.querySelector<HTMLElement>('.ui-field__hint')!
+    expect(hint.textContent).toContain('https only')
+    expect(input.getAttribute('aria-describedby')).toBe(hint.id)
+
     void unmount(c)
   })
 })

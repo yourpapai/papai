@@ -164,4 +164,14 @@ describe('SettingsFieldShell', () => {
     expect(input.getAttribute('aria-describedby')).toBe(hint.id)
     void unmount(c)
   })
+
+  test('sets aria-required on the editor control and hides the required glyph', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(ShellInputFixture, { target, props: { required: true } })
+    const input = target.querySelector<HTMLInputElement>('[data-testid="fixture-input"]')!
+    expect(input.getAttribute('aria-required')).toBe('true')
+    expect(target.querySelector('.settings-field__req')!.getAttribute('aria-hidden')).toBe('true')
+    void unmount(c)
+  })
 })

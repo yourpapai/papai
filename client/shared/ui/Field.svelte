@@ -36,12 +36,15 @@
     get hasHint() {
       return hint !== undefined && hint !== ''
     },
+    get required() {
+      return required
+    },
   })
 </script>
 
 <div class="ui-field">
   <span class="ui-field__label" id={labelId}>
-    {label}{#if required}<span class="ui-field__req">*</span>{/if}
+    {label}{#if required}<span class="ui-field__req" aria-hidden="true">*</span>{/if}
   </span>
   {@render children()}
   {#if error}<span class="ui-field__error" id={errorId} role="alert">{error}</span>{:else if hint}<span

@@ -27,6 +27,8 @@ export interface FieldErrorContext {
   readonly invalid: boolean
   /** Getter so the control tracks a `hint` that appears or disappears after init. */
   readonly hasHint: boolean
+  /** Getter so the control tracks a `required` prop that changes after init. */
+  readonly required: boolean
 }
 
 /** Called by Field during init to publish its error state to descendant controls. */
@@ -43,6 +45,7 @@ export function getFieldError(): FieldErrorContext | undefined {
 export interface FieldInvalidState {
   readonly invalid: boolean
   readonly describedBy: string | undefined
+  readonly required: boolean
 }
 
 /**
@@ -62,6 +65,9 @@ export function useFieldInvalid(): FieldInvalidState {
       if (ctx === undefined) return undefined
       if (ctx.invalid) return ctx.errorId
       return ctx.hasHint ? ctx.hintId : undefined
+    },
+    get required() {
+      return ctx?.required ?? false
     },
   }
 }

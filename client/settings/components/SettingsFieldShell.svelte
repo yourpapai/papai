@@ -49,12 +49,15 @@
     get hasHint() {
       return hint !== undefined && hint !== ''
     },
+    get required() {
+      return required
+    },
   })
 </script>
 
 <div class="settings-field" data-testid={testid}>
   <div class="settings-field__head">
-    <span class="settings-field__label" id={labelId}>{label}{#if required}<span class="settings-field__req">*</span>{/if}</span>
+    <span class="settings-field__label" id={labelId}>{label}{#if required}<span class="settings-field__req" aria-hidden="true">*</span>{/if}</span>
     <!-- Mirrors the `editor(labelId)` pattern above: a `head`-rendered control (e.g. a
          SegmentedControl) can't reach the field-error context set below, since Svelte
          context published here isn't visible in the parent's snippet scope. Pass the
