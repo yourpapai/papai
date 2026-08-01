@@ -50,7 +50,6 @@ See LICENSE in the project root for details.
   - `GROUP_LABEL: Record<IssueGroup, string>` — `{ needsHuman: 'needs human', fixed: 'fixed', rejected: 'rejected', alreadyFixed: 'already fixed', open: 'open' }`.
   - `GROUP_MARK: Record<IssueGroup, string>` — `{ needsHuman: '!', fixed: '✓', rejected: '✗', alreadyFixed: '·', open: '·' }`.
   - `groupForStatus(status: LedgerIssueStatus): IssueGroup` — `needs_human→needsHuman`, `closed→fixed`, `rejected→rejected`, `already_fixed→alreadyFixed`, everything else (`discovered`, `verified`, `fixed_pending_review`, `reopened`)→`open`.
-  - `isOpenStatus(status: LedgerIssueStatus): boolean` — true unless status is `closed`/`rejected`/`already_fixed`/`needs_human`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -69,7 +68,6 @@ import {
   formatFoundLine,
   formatIssueRef,
   groupForStatus,
-  isOpenStatus,
   shortIssueId,
 } from '../../review-loop/src/issue-format.js'
 
@@ -134,21 +132,6 @@ describe('groupForStatus', () => {
     expect(groupForStatus('verified')).toBe('open')
     expect(groupForStatus('fixed_pending_review')).toBe('open')
     expect(groupForStatus('reopened')).toBe('open')
-  })
-})
-
-describe('isOpenStatus', () => {
-  test('terminal statuses are not open', () => {
-    expect(isOpenStatus('closed')).toBe(false)
-    expect(isOpenStatus('rejected')).toBe(false)
-    expect(isOpenStatus('already_fixed')).toBe(false)
-    expect(isOpenStatus('needs_human')).toBe(false)
-  })
-  test('non-terminal statuses are open', () => {
-    expect(isOpenStatus('discovered')).toBe(true)
-    expect(isOpenStatus('verified')).toBe(true)
-    expect(isOpenStatus('fixed_pending_review')).toBe(true)
-    expect(isOpenStatus('reopened')).toBe(true)
   })
 })
 ```
@@ -238,17 +221,6 @@ export const GROUP_MARK: Record<IssueGroup, string> = {
   rejected: CROSS,
   alreadyFixed: DOT,
   open: DOT,
-}
-
-const TERMINAL_REPORT_STATUSES: ReadonlySet<LedgerIssueStatus> = new Set([
-  'closed',
-  'rejected',
-  'already_fixed',
-  'needs_human',
-])
-
-export function isOpenStatus(status: LedgerIssueStatus): boolean {
-  return !TERMINAL_REPORT_STATUSES.has(status)
 }
 
 export function groupForStatus(status: LedgerIssueStatus): IssueGroup {
@@ -842,7 +814,7 @@ git commit -m "feat(review-loop): stream per-issue found/decided events instead 
 - Test: `tests/review-loop/cli.test.ts` (two assertion updates)
 
 **Interfaces:**
-- Consumes: `formatIssueRef`, `GROUP_LABEL`, `GROUP_MARK`, `GROUP_ORDER`, `groupForStatus`, `isOpenStatus`, `IssueGroup` from `./issue-format.js` (Task 1); `formatDuration` from `./live-renderer.js`; `IssueLedgerSnapshot`, `LedgerIssueRecord` from `./issue-ledger.js`.
+- Consumes: `formatIssueRef`, `GROUP_LABEL`, `GROUP_MARK`, `GROUP_ORDER`, `groupForStatus`, `IssueGroup` from `./issue-format.js` (Task 1); `formatDuration` from `./live-renderer.js`; `IssueLedgerSnapshot`, `LedgerIssueRecord` from `./issue-ledger.js`.
 - Produces:
   - `SummaryInput` — `{ doneReason: ReviewLoopResult['doneReason']; rounds: number; metrics: readonly RoundMetric[]; ledger: IssueLedgerSnapshot; runDir: string; options: SummaryOptions }`.
   - `buildSummary(input: SummaryInput): string` — NEW signature (positional args gone).
@@ -1383,7 +1355,7 @@ export function buildMetricsJson(
 
 Notes for the implementer:
 - `StatusCounts`, `computeStatusLines`, and `computeObservabilityLines` are deleted; their information now lives in the verdict line, the timing line, and the inspector line.
-- `isOpenStatus` from Task 1 is not used by `summary.ts` (open counting goes through `groupForStatus`); it exists for symmetry and is covered by its own Task 1 tests.
+- Open counting goes through `groupForStatus`; there is deliberately no separate `isOpenStatus` helper (removed pre-dispatch as unused, YAGNI).
 
 - [ ] **Step 4: Wire the new signature in cli.ts**
 
