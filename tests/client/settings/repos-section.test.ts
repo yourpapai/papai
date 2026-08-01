@@ -208,4 +208,46 @@ describe('ReposSection', () => {
     })
     void unmount(component)
   })
+
+  test('the preset control renders through the shared Select primitive and is labelled', async () => {
+    setMockFetch(() => Promise.resolve(json(emptyPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const preset = target.querySelector<HTMLSelectElement>('[data-testid="repos-add-preset"]')!
+    expect(preset.closest('.ui-select')).not.toBeNull()
+    expect(preset.getAttribute('aria-labelledby')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('the egress control renders through the shared multiline Input and is labelled', async () => {
+    setMockFetch(() => Promise.resolve(json(emptyPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const egress = target.querySelector<HTMLTextAreaElement>('[data-testid="repos-add-egress"]')!
+    expect(egress.closest('.ui-input--multiline')).not.toBeNull()
+    expect(egress.getAttribute('aria-labelledby')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('preset options run from most to least restricted', async () => {
+    setMockFetch(() => Promise.resolve(json(emptyPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const preset = target.querySelector<HTMLSelectElement>('[data-testid="repos-add-preset"]')!
+    expect([...preset.options].map((o) => o.value)).toEqual(['readonly', 'cautious', 'autonomous'])
+    expect(preset.value).toBe('cautious')
+    void unmount(component)
+  })
 })

@@ -9,6 +9,7 @@
   import IconButton from '../../shared/ui/IconButton.svelte'
   import Input from '../../shared/ui/Input.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
+  import Select from '../../shared/ui/Select.svelte'
   import type { RepoRecord } from '../fetcher-schemas-repos.js'
   import { addRepo, deleteRepo, fetchRepos } from '../repos-fetchers.js'
 
@@ -31,6 +32,12 @@
   let addBranch = $state('')
   let addPreset = $state('cautious')
   let addEgress = $state('')
+
+  const PRESET_OPTIONS = [
+    { value: 'readonly', label: 'readonly' },
+    { value: 'cautious', label: 'cautious' },
+    { value: 'autonomous', label: 'autonomous' },
+  ]
 
   const parseEgress = (raw: string): string[] => {
     const seen = new Set<string>()
@@ -162,28 +169,23 @@
             placeholder="main"
             testid="repos-add-branch" />
         </Field>
-        <Field label="Permission preset">
-          <select
-            class="settings-repos__preset-select"
-            data-testid="repos-add-preset"
+        <Field label="Permission preset" hint="readonly is the most restricted, autonomous the least.">
+          <Select
             value={addPreset}
-            onchange={(e) => (addPreset = (e.target as HTMLSelectElement).value)}>
-            <option value="autonomous">autonomous</option>
-            <option value="cautious">cautious</option>
-            <option value="readonly">readonly</option>
-          </select>
+            options={PRESET_OPTIONS}
+            onChange={(v) => (addPreset = v)}
+            testid="repos-add-preset" />
         </Field>
-        <Field label="Additional egress domains">
-          <textarea
-            class="settings-repos__egress-input"
-            data-testid="repos-add-egress"
+        <Field
+          label="Additional egress domains"
+          hint="Extra domains this project's sessions may reach, added to the defaults. One per line or comma-separated. A domain may still be blocked if your operator's egress policy doesn't include it.">
+          <Input
             value={addEgress}
-            oninput={(e) => (addEgress = (e.target as HTMLTextAreaElement).value)}
-            placeholder="pypi.org, files.pythonhosted.org"></textarea>
-          <p class="settings-repos__egress-help">
-            Extra domains this project's sessions may reach, added to the defaults. One per line or comma-separated. A
-            domain may still be blocked if your operator's egress policy doesn't include it.
-          </p>
+            onInput={(v) => (addEgress = v)}
+            multiline={true}
+            rows={3}
+            placeholder="pypi.org, files.pythonhosted.org"
+            testid="repos-add-egress" />
         </Field>
         <Btn
           variant="primary"
@@ -258,30 +260,5 @@
   }
   .settings-repos__add-form :global(.ui-field) {
     min-width: 180px;
-  }
-  .settings-repos__preset-select {
-    width: 100%;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    padding: 6px 8px;
-    border: 1px solid var(--border);
-    background: var(--bg);
-    color: var(--fg1);
-  }
-  .settings-repos__egress-input {
-    width: 100%;
-    min-height: 52px;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    padding: 6px 8px;
-    border: 1px solid var(--border);
-    background: var(--bg);
-    color: var(--fg1);
-    resize: vertical;
-  }
-  .settings-repos__egress-help {
-    font-size: 11px;
-    color: var(--fg3);
-    margin: 4px 0 0;
   }
 </style>
