@@ -162,7 +162,7 @@ describe('ReposSection', () => {
     void unmount(component)
   })
 
-  test('delete button issues DELETE with repoId', async () => {
+  test('the row delete button opens a confirm dialog without issuing DELETE', async () => {
     setCsrfToken('csrf-t')
     setMockFetch(routeMock)
     document.body.innerHTML = '<div id="root"></div>'
@@ -174,8 +174,50 @@ describe('ReposSection', () => {
     target.querySelector<HTMLButtonElement>('[data-testid="repos-delete-r1"]')!.click()
     await drain()
 
+    const modal = target.querySelector<HTMLElement>('.modal')!
+    expect(modal.textContent).toContain('Delete repository')
+    expect(modal.textContent).toContain('demo')
+    expect(capturedDeleteUrl).toBe('')
+    void unmount(component)
+  })
+
+  test('confirming the dialog issues DELETE with repoId', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(routeMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="repos-delete-r1"]')!.click()
+    await drain()
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
+    await drain()
+
     expect(capturedDeleteUrl).toContain('repoId=r1')
     expect(capturedDeleteUrl).toContain('contextId=pi%3Atelegram%3Actx%3Au1')
+    expect(target.querySelector('.modal')).toBeNull()
+    void unmount(component)
+  })
+
+  test('cancelling the dialog leaves the repository in place', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(routeMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="repos-delete-r1"]')!.click()
+    await drain()
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--secondary')!.click()
+    await drain()
+
+    expect(capturedDeleteUrl).toBe('')
+    expect(target.querySelector('.modal')).toBeNull()
+    expect(target.querySelector('[data-testid="repos-row-r1"]')).not.toBeNull()
     void unmount(component)
   })
 

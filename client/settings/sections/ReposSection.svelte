@@ -4,6 +4,7 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
+  import Confirm from '../../shared/Confirm.svelte'
   import Btn from '../../shared/ui/Btn.svelte'
   import Field from '../../shared/ui/Field.svelte'
   import IconButton from '../../shared/ui/IconButton.svelte'
@@ -25,6 +26,7 @@
   let loading = $state(false)
   let adding = $state(false)
   let deletingId: string | null = $state(null)
+  let pendingDeleteId: string | null = $state(null)
 
   // Add form state
   let addName = $state('')
@@ -95,6 +97,7 @@
     deletingId = repoId
     try {
       await deleteRepo({ contextId, repoId })
+      pendingDeleteId = null
       await load(contextId)
       status = 'Repository removed.'
     } catch (err) {
@@ -134,11 +137,11 @@
                 : ''}</span>
           </div>
           <Btn
-            variant="ghost"
+            variant="danger"
             size="sm"
             testid={`repos-delete-${repo.repoId}`}
             disabled={deletingId === repo.repoId}
-            onClick={() => void handleDelete(repo.repoId)}>
+            onClick={() => (pendingDeleteId = repo.repoId)}>
             {#snippet children()}{deletingId === repo.repoId ? 'Removing…' : 'Delete'}{/snippet}
           </Btn>
         </div>
@@ -197,6 +200,26 @@
       </div>
     </div>
   {/if}
+
+  <Confirm
+    open={pendingDeleteId !== null}
+    title="Delete repository"
+    danger
+    busy={deletingId !== null}
+    confirmLabel="Delete"
+    onCancel={() => {
+      pendingDeleteId = null
+    }}
+    onConfirm={() => {
+      if (pendingDeleteId !== null) void handleDelete(pendingDeleteId)
+    }}>
+    {#snippet body()}
+      <p>
+        Delete {repos.find((r) => r.repoId === pendingDeleteId)?.name ?? 'this repository'}? Coding sessions in this
+        context will no longer be able to use it.
+      </p>
+    {/snippet}
+  </Confirm>
 </section>
 
 <style>
