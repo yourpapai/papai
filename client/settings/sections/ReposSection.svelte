@@ -155,8 +155,14 @@
     </div>
 
     <div class="settings-repos__add">
-      <p class="settings-repos__add-label">Add repository</p>
-      <div class="settings-repos__add-form">
+      <div class="settings-repos__add-head">
+        <p class="settings-repos__add-label">Add repository</p>
+        <p class="settings-repos__add-note">
+          Branch, preset and egress domains are fixed when a repository is added — change them by removing and
+          re-adding it.
+        </p>
+      </div>
+      <div class="settings-form">
         <Field label="Name" required>
           <Input
             value={addName}
@@ -231,16 +237,17 @@
 <style>
   .settings-repos {
     display: grid;
-    gap: 8px;
-    margin-bottom: 20px;
+    gap: var(--gap-tight);
+    margin-bottom: var(--gap-field);
   }
   .settings-repos__row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    padding: 10px 12px;
+    gap: var(--gap-inline);
+    padding: var(--gap-tight) var(--gap-inline);
     border: 1px solid var(--border);
+    border-radius: var(--radius-control);
     background: var(--surface);
   }
   .settings-repos__info {
@@ -266,28 +273,36 @@
   .settings-repos__meta {
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--fg3);
+    color: var(--fg-hint);
   }
   .settings-repos__add {
     display: grid;
-    gap: 12px;
-    padding: 12px;
+    gap: var(--gap-inline);
+    padding: var(--gap-inline);
     border: 1px solid var(--border);
+    border-radius: var(--radius-control);
     background: var(--surface);
+  }
+  .settings-repos__add-head {
+    display: grid;
+    gap: var(--s1);
   }
   .settings-repos__add-label {
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--fg3);
+    color: var(--fg-hint);
     margin: 0;
   }
-  .settings-repos__add-form {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    align-items: end;
+  .settings-repos__add-note {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-hint);
+    margin: 0;
   }
-  .settings-repos__add-form :global(.ui-field) {
-    min-width: 180px;
+  #repos .settings-form {
+    margin-bottom: 0;
+  }
+  #repos .settings-form :global(.ui-field) {
+    flex: 1 1 180px;
   }
 </style>

@@ -415,4 +415,18 @@ describe('ReposSection', () => {
     expect(status.textContent).toContain('Repository added.')
     void unmount(component)
   })
+
+  test('the add form uses the shared settings-form layout and states what is fixed at creation', async () => {
+    setMockFetch(() => Promise.resolve(json(emptyPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    expect(target.querySelector('.settings-form')).not.toBeNull()
+    expect(target.querySelector('.settings-repos__add-form')).toBeNull()
+    expect(target.textContent).toContain('fixed when a repository is added')
+    void unmount(component)
+  })
 })
