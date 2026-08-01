@@ -727,14 +727,18 @@ Storybook must be running (`bun storybook`); verify with
 `curl -s -o /dev/null -w "%{http_code}" http://localhost:6006`, which must print `200`.
 
 ```bash
-bun shoot -g PageHeader
-git status --short .storybook-shots/
+git checkout HEAD~1 -- client/ && sleep 2 && bun shoot -g PageHeader
+git checkout HEAD -- client/ && sleep 2 && bunx playwright test -g PageHeader
 ```
 
-Expected: the spec passes, and `git status` reports **no modified baselines**. A modified PNG
-means the UA heading margin leaked through — fix `margin: 0` rather than accepting the
-baseline. (`bun shoot` passes `--update-snapshots`, so a changed baseline is rewritten
-silently; `git status` is the only thing that will tell you.)
+Expected: the second command passes. It rebuilds the PageHeader baselines from the pre-task
+code, then compares this task's render against them in **strict** mode. A failure means the UA
+heading margin leaked through — fix `margin: 0` rather than accepting the baseline.
+
+Note what is *not* used here: `git status --short .storybook-shots/`. That directory is
+gitignored and wholly untracked, so the command is always empty and proves nothing. And note
+the absent flag — `bunx playwright test`, not `bun shoot`, because `bun shoot` passes
+`--update-snapshots` and would rewrite the evidence instead of failing on it.
 
 - [ ] **Step 8: Format and commit**
 
@@ -991,29 +995,110 @@ reviews call for it."
 
 ---
 
-### Task 5: Regenerate the visual baselines and prove nothing else moved
+### Task 5: Prove Tasks 1–3 moved no pixels, and baseline the one state that should
 
 Closes the spec's Testing section.
 
 **Files:**
 
 - Regenerate: `tests/visual/shared/ui/Input.spec.ts` — generated region only
-- Regenerate: `.storybook-shots/shared/ui/Input.spec.ts/*.png` — one new baseline
+- Regenerate: `.storybook-shots/**` — local, gitignored verification artifacts
 
 **Interfaces:**
 
 - Consumes: the `Disabled` story added by Task 4.
 - Produces: nothing.
 
-**Prerequisite:** Storybook must be running (`bun storybook`). Verify with
+**Prerequisite:** Storybook must be running. Verify with
 `curl -s -o /dev/null -w "%{http_code}" http://localhost:6006`, which must print `200`.
 
-**Note for the implementer:** the whole point of this task is the *negative* result. Tasks 1–3
-changed only semantics, so the only baseline that may legitimately change is the new disabled
-`Input`. `bun shoot` passes `--update-snapshots`, so it rewrites changed baselines without
-failing — `git status` is the only signal you have. Read it carefully.
+---
 
-- [ ] **Step 1: Regenerate the Input spec's generated region**
+**Read this before you start — the original gate for this task was wrong.**
+
+The plan told you to run `git status --short .storybook-shots/` and expect one added file and
+zero modified ones. That check is inert: `.storybook-shots/` is gitignored *and* entirely
+untracked (`git ls-files .storybook-shots/ | wc -l` returns `0`), so that command prints
+nothing no matter what changed. It cannot fail, which means it cannot pass either.
+
+Worse, `bun shoot` is `playwright test --update-snapshots`: it silently rewrites any baseline
+that differs instead of failing. Together those two facts mean the original procedure would
+have reported success against arbitrary visual regressions.
+
+The gate below replaces it. It works by building a reference baseline from the pre-sub-project
+code, then comparing the current code against it in **strict** mode (no `--update-snapshots`),
+so a moved pixel is a test failure rather than a silent rewrite.
+
+`BASE` for this task is `a1b418f23` — the commit before Task 1, i.e. the last state without
+any of sub-project F.
+
+---
+
+- [ ] **Step 1: Revert the sub-project's client code in the working tree**
+
+Do not commit anything in this step and do not touch `tests/`.
+
+```bash
+git checkout a1b418f23 -- client/
+git status --short
+```
+
+Expected: the `client/` files sub-project F touched are listed as modified (staged), and
+nothing under `tests/` appears. Give Vite two seconds to pick the change up before shooting.
+
+- [ ] **Step 2: Build the reference baseline from the pre-F code**
+
+```bash
+rm -rf .storybook-shots/test-results
+bun shoot
+```
+
+Expected: all specs pass. This rewrites every baseline PNG to what the code looked like
+*before* sub-project F. That is the reference the next step compares against.
+
+Note that `tests/visual/shared/ui/Input.spec.ts` has no `Disabled` test yet — `shoot:gen` has
+not run — so the reverted `Input.stories.svelte` lacking that story is consistent, not a
+problem.
+
+- [ ] **Step 3: Restore the sub-project's code**
+
+```bash
+git checkout HEAD -- client/
+git status --short
+```
+
+Expected: clean. Again give Vite a moment.
+
+- [ ] **Step 4: The gate — strict comparison, no snapshot updating**
+
+```bash
+bunx playwright test
+```
+
+Expected: **all specs pass.** Tasks 1–3 changed only semantics — an `id`, two ARIA
+attributes, a `div`→`h2` with `margin: 0`, and an absolutely-positioned hidden `h1` — so every
+baseline built in Step 2 must still match.
+
+Note the flag that is deliberately absent: this is `bunx playwright test`, not `bun shoot`.
+Without `--update-snapshots` a difference fails the run instead of overwriting the evidence.
+
+If anything fails, it is a defect in Tasks 1–3, not a baseline to accept:
+
+- Read the `*-diff.png` and `*-actual.png` Playwright writes under
+  `.storybook-shots/test-results/` to see what moved.
+- The two likely causes, in order: the UA heading margin leaking through (check
+  `margin: 0` really is on `.ui-page-header__title` in `client/shared/ui/PageHeader.svelte`),
+  and the hidden `<h1>` taking layout space (check `.settings-sr-only` in
+  `client/settings/settings.css` is absolutely positioned and 1×1px).
+- Fix the source, then re-run this step. Do **not** re-run `bun shoot` to make it go away —
+  that overwrites the reference and destroys the gate.
+- Report what you found and what you changed. A failure here is a genuine finding and is more
+  valuable than a clean run; do not hide it.
+
+Also expect `Input.spec.ts` to run only its pre-existing tests here — the `Disabled` test is
+added in the next step.
+
+- [ ] **Step 5: Generate the Disabled test into the Input spec**
 
 ```bash
 bun shoot:gen
@@ -1021,43 +1106,30 @@ git diff --stat tests/visual/
 ```
 
 Expected: `tests/visual/shared/ui/Input.spec.ts` gains a `Disabled` test inside the
-`@generated-begin` / `@generated-end` region. No other spec file changes. If another spec
-changed, a story elsewhere was touched by mistake — investigate before continuing.
+`@generated-begin` / `@generated-end` region, and **no other spec file changes**. If another
+spec changed, a story elsewhere was touched by mistake — investigate before continuing.
 
-- [ ] **Step 2: Shoot everything this branch could have moved**
-
-```bash
-bun shoot
-```
-
-Expected: all specs pass.
-
-- [ ] **Step 3: Read what changed — this is the gate**
+- [ ] **Step 6: Shoot the one new baseline**
 
 ```bash
-git status --short .storybook-shots/
+bun shoot -g Input
 ```
 
-Expected: exactly one new file,
-`.storybook-shots/shared/ui/Input.spec.ts/shared-ui-Input-Disabled-1.png`, and **zero
-modified** baselines.
+Expected: all Input specs pass, and the new file
+`.storybook-shots/shared/ui/Input.spec.ts/shared-ui-Input-Disabled-1.png` exists. Confirm with
+`ls .storybook-shots/shared/ui/Input.spec.ts/`.
 
-Any modified PNG is a defect from Tasks 1–3, not a baseline to accept. The likely culprits:
-the `h2` UA margin (fix `margin: 0` on `.ui-page-header__title`) or the hidden `h1` taking
-layout space (fix `.settings-sr-only`). Fix the source and re-shoot; do not commit a modified
-baseline.
+- [ ] **Step 7: Read the new baseline**
 
-- [ ] **Step 4: Read the new baseline**
+Read `.storybook-shots/shared/ui/Input.spec.ts/shared-ui-Input-Disabled-1.png` with the Read
+tool and confirm it shows a visibly dimmed input — distinct from the `Filled` baseline beside
+it, and reading as the same state `Select`'s disabled story shows. Say what you actually see;
+if it does not look disabled, that is a Task 4 defect worth reporting.
 
-Read `.storybook-shots/shared/ui/Input.spec.ts/shared-ui-Input-Disabled-1.png` and confirm it
-shows a dimmed input carrying `tg:1001` — visibly distinct from the `Filled` baseline beside
-it, and matching how `Select`'s disabled state reads.
+- [ ] **Step 8: Commit**
 
-- [ ] **Step 5: Commit**
-
-`.storybook-shots/` is gitignored (`.gitignore:56` — verified, not assumed), so the baselines
-are local-only and **only the spec file is committed**. Do not force-add the PNG and do not
-edit `.gitignore`; the shots are a local verification artifact, and sub-project E hit exactly
+`.storybook-shots/` is gitignored, so the PNGs are local-only and **only the spec file is
+committed**. Do not force-add a PNG and do not edit `.gitignore`; sub-project E hit exactly
 this and recorded it in its ledger.
 
 ```bash
@@ -1066,8 +1138,8 @@ git add tests/visual/shared/ui/Input.spec.ts
 git commit -m "test(visual): cover the disabled Input state
 
 The only new baseline this sub-project produces. Tasks 1-3 were
-semantics-only and a clean git status across every other shot is the
-assertion that they stayed that way."
+semantics-only, verified by rebuilding every baseline from the pre-F
+code and re-running Playwright in strict mode against it."
 ```
 
 ---
@@ -1079,8 +1151,7 @@ Run from the repository root with Storybook up:
 1. `bun run check:full` — lint, typecheck, format, knip and the full test suite pass.
 2. The full client suite passes:
    `bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' ./tests/client/`
-3. `bun shoot` passes, and `git status --short .storybook-shots/` shows exactly one added file
-   and no modified ones.
+3. The Step 4 strict Playwright run passed with no baseline updated.
 
 Then verify against the spec's own claims:
 
@@ -1096,8 +1167,8 @@ Then verify against the spec's own claims:
 - `grep -c '<h2 class="ui-page-header__title"' client/shared/ui/PageHeader.svelte` returns `1`,
   and `grep -rn "ui-page-header__title" client/ --include='*.svelte'` lists only
   `PageHeader.svelte` — no render site bypasses the primitive.
-- `ConfigFieldRow.svelte` is untouched **by this sub-project**: with `BASE` = the commit
-  before Task 1, `git diff BASE..HEAD --stat -- client/settings/components/ConfigFieldRow.svelte`
+- `ConfigFieldRow.svelte` is untouched **by this sub-project**:
+  `git diff a1b418f23..HEAD --stat -- client/settings/components/ConfigFieldRow.svelte`
   is empty. (It was legitimately modified earlier on this branch by sub-project E, so a
   `master...HEAD` diff is *not* the right check.)
 - No `level` prop was added to `PageHeader`.
