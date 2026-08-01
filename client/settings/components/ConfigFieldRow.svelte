@@ -197,6 +197,7 @@
 
 <style>
   .settings-field__hint {
+    margin: 0;
     color: var(--text-muted);
     font-size: 12px;
   }
