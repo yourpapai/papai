@@ -324,4 +324,29 @@ describe('ReposSection', () => {
     expect(preset.value).toBe('cautious')
     void unmount(component)
   })
+
+  test('a context with no repositories renders an empty state', async () => {
+    setMockFetch(() => Promise.resolve(json(emptyPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    expect(target.querySelector('.ui-empty')).not.toBeNull()
+    expect(target.textContent).toContain('No repositories connected')
+    void unmount(component)
+  })
+
+  test('a populated context renders no empty state', async () => {
+    setMockFetch(() => Promise.resolve(json(populatedPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    expect(target.querySelector('.ui-empty')).toBeNull()
+    void unmount(component)
+  })
 })

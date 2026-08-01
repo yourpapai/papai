@@ -6,6 +6,7 @@
 <script lang="ts">
   import Confirm from '../../shared/Confirm.svelte'
   import Btn from '../../shared/ui/Btn.svelte'
+  import EmptyState from '../../shared/ui/EmptyState.svelte'
   import Field from '../../shared/ui/Field.svelte'
   import IconButton from '../../shared/ui/IconButton.svelte'
   import Input from '../../shared/ui/Input.svelte'
@@ -145,6 +146,10 @@
             {#snippet children()}{deletingId === repo.repoId ? 'Removing…' : 'Delete'}{/snippet}
           </Btn>
         </div>
+      {:else}
+        <EmptyState
+          title="No repositories connected"
+          hint="Add one below to make it available to coding sessions in this context." />
       {/each}
     </div>
 
