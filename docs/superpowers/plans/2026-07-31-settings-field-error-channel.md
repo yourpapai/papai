@@ -650,19 +650,27 @@ git commit -m "feat(settings): give SettingsFieldShell an inline error and hint 
 
 **Files:**
 
-- Modify: `client/shared/ui/Select.svelte`, `client/shared/ui/Combobox.svelte`
+- Modify: `client/shared/ui/field-context.ts`, `client/shared/ui/Input.svelte`,
+  `client/shared/ui/Select.svelte`, `client/shared/ui/Combobox.svelte`
 - Create: `tests/client/shared/ui/FieldErrorFixture.svelte`
-- Test: `tests/client/shared/ui/Select.test.ts`, `tests/client/shared/ui/Combobox.test.ts`
+- Test: `tests/client/shared/ui/Select.test.ts`, `tests/client/shared/ui/Combobox.test.ts`,
+  `tests/client/shared/ui/Input.test.ts`
 
 **Interfaces:**
 
 - Consumes: `getFieldError()` from `client/shared/ui/field-context.ts:35`, published by both
   `Field` (`Field.svelte:29`) and, as of Task 3, `SettingsFieldShell`.
-- Produces: `aria-invalid` / `aria-describedby` / `.ui-select--invalid` / `.ui-combobox--invalid`
-  on both controls. Task 6 relies on these for `kind`, `agent`, `provider`, `auth_method`
-  (selects) and `model` (combobox) — five of the nine attributed errors.
+- Produces: `useFieldInvalid(): { readonly invalid: boolean; readonly describedBy: string | undefined }`
+  exported from `field-context.ts`, and `aria-invalid` / `aria-describedby` /
+  `.ui-select--invalid` / `.ui-combobox--invalid` on both controls. Task 6 relies on the
+  attributes for `kind`, `agent`, `provider`, `auth_method` (selects) and `model` (combobox) —
+  five of the nine attributed errors.
 
-`Input.svelte:37-40`, `:51`, `:60-61`, `:76-77`, `:97-99` is the exact pattern to mirror.
+`Input.svelte:37-40`, `:51`, `:60-61`, `:76-77`, `:97-99` is the pattern being generalized.
+Rather than making Select and Combobox a second and third verbatim copy of those four lines,
+this task extracts them into `useFieldInvalid()` and moves `Input` onto it too. The helper
+returns plain getters — no runes — so it lives in the existing `.ts` module and stays reactive
+because each getter reads through the context object's own `invalid` getter on access.
 
 - [ ] **Step 1: Write the fixture component**
 
@@ -754,31 +762,81 @@ In `tests/client/shared/ui/Combobox.test.ts`, the same pair against `err-combobo
 Run: `bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/shared/ui/Select.test.ts tests/client/shared/ui/Combobox.test.ts`
 Expected: FAIL — neither control sets `aria-invalid`.
 
-- [ ] **Step 4: Implement `Select`**
+- [ ] **Step 4: Add the shared helper**
 
-```svelte
-  import { getFieldError, getFieldLabelId } from './field-context.js'
-```
-
-after `const labelId = getFieldLabelId()`:
+Append to `client/shared/ui/field-context.ts`, below `getFieldError`:
 
 ```ts
-  const fieldError = getFieldError()
-  const invalid = $derived(fieldError?.invalid ?? false)
-  const describedBy = $derived(invalid ? fieldError?.errorId : undefined)
+/** What a control needs to render the enclosing Field's error state. */
+export interface FieldInvalidState {
+  readonly invalid: boolean
+  readonly describedBy: string | undefined
+}
+
+/**
+ * Called by Input/Select/Combobox during init. Getters, not a snapshot: each read goes
+ * through the context's own `invalid` getter, so a control tracks the Field's live `error`
+ * prop without needing a rune here.
+ */
+export function useFieldInvalid(): FieldInvalidState {
+  const ctx = getFieldError()
+  return {
+    get invalid() {
+      return ctx?.invalid ?? false
+    },
+    get describedBy() {
+      return ctx?.invalid === true ? ctx.errorId : undefined
+    },
+  }
+}
+```
+
+This has no direct unit test of its own: `getFieldError` calls `getContext`, which only works
+during component init, so the helper is exercised through the three components that call it.
+That is what the `FieldErrorFixture` tests in Step 2 and the existing `Input` tests cover.
+
+- [ ] **Step 5: Move `Input` onto the helper**
+
+`Input.svelte` currently holds the four lines being generalized. Replace `:38-40` with:
+
+```ts
+  const fieldError = useFieldInvalid()
+```
+
+and update the import at `:9` to `import { getFieldLabelId, useFieldInvalid } from './field-context.js'`,
+then the three markup references — `:51`, `:60-61`, `:76-77`:
+
+```svelte
+  class:ui-input--invalid={fieldError.invalid}
+```
+
+```svelte
+      aria-invalid={fieldError.invalid ? 'true' : undefined}
+      aria-describedby={fieldError.describedBy}
+```
+
+(the last pair appears twice — once on the `<textarea>`, once on the `<input>`). `Input`'s
+existing tests cover this move; they must keep passing untouched.
+
+- [ ] **Step 6: Implement `Select`**
+
+Import `useFieldInvalid` alongside `getFieldLabelId`, and after `const labelId = getFieldLabelId()`:
+
+```ts
+  const fieldError = useFieldInvalid()
 ```
 
 markup:
 
 ```svelte
-<div class="ui-select" class:ui-select--disabled={disabled} class:ui-select--invalid={invalid}>
+<div class="ui-select" class:ui-select--disabled={disabled} class:ui-select--invalid={fieldError.invalid}>
   <select
     {value}
     {disabled}
     onchange={handleChange}
     aria-labelledby={labelId}
-    aria-invalid={invalid ? 'true' : undefined}
-    aria-describedby={describedBy}
+    aria-invalid={fieldError.invalid ? 'true' : undefined}
+    aria-describedby={fieldError.describedBy}
     data-testid={testid}>
 ```
 
@@ -790,12 +848,13 @@ style:
   }
 ```
 
-- [ ] **Step 5: Implement `Combobox`**
+- [ ] **Step 7: Implement `Combobox`**
 
-The same three edits against `Combobox.svelte`: import `getFieldError` alongside
-`getFieldLabelId`, add the identical three derived bindings, put
-`class:ui-combobox--invalid={invalid}` on the wrapper and
-`aria-invalid` / `aria-describedby` on the `<input>`, and add:
+The same three edits against `Combobox.svelte`: import `useFieldInvalid` alongside
+`getFieldLabelId`, add `const fieldError = useFieldInvalid()`, put
+`class:ui-combobox--invalid={fieldError.invalid}` on the wrapper and
+`aria-invalid={fieldError.invalid ? 'true' : undefined}` /
+`aria-describedby={fieldError.describedBy}` on the `<input>`, and add:
 
 ```css
   .ui-combobox--invalid {
@@ -803,17 +862,17 @@ The same three edits against `Combobox.svelte`: import `getFieldError` alongside
   }
 ```
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [ ] **Step 8: Run the tests to verify they pass**
 
-Run: `bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/shared/ui/Select.test.ts tests/client/shared/ui/Combobox.test.ts tests/client/shared/ui/field-context.test.ts`
-Expected: PASS, all tests. `field-context.test.ts` is included because it mounts a bare
-`Select` outside any `Field` — that is the regression check that `getFieldError()` returning
-`undefined` is handled.
+Run: `bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/shared/ui/`
+Expected: PASS, all tests. The whole `ui/` directory is in scope here rather than the two new
+files, because Step 5 touched `Input`, and `field-context.test.ts` mounts a bare `Select`
+outside any `Field` — the regression check that a control with no field context still renders.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add client/shared/ui/Select.svelte client/shared/ui/Combobox.svelte tests/client/shared/ui/Select.test.ts tests/client/shared/ui/Combobox.test.ts tests/client/shared/ui/FieldErrorFixture.svelte
+git add client/shared/ui/field-context.ts client/shared/ui/Input.svelte client/shared/ui/Select.svelte client/shared/ui/Combobox.svelte tests/client/shared/ui/Select.test.ts tests/client/shared/ui/Combobox.test.ts tests/client/shared/ui/FieldErrorFixture.svelte
 git commit -m "feat(ui): give Select and Combobox the invalid state Input already had"
 ```
 
@@ -944,6 +1003,13 @@ git commit -m "refactor(settings): move consumers onto the shell's error and hin
 
 Both sections do the same three things: record the attributed field, resolve it against the
 fields actually on screen, and render either inline or in the banner — never both.
+
+The two blocks stay as parallel copies rather than a shared helper. This was decided
+deliberately, not overlooked: they differ in their visibility predicate (`shouldShowField` vs
+`!fieldHidden`), and `$state`/`$derived` only stay reactive inside a component or a `.svelte.ts`
+rune module — a pattern the settings SPA uses nowhere today. A new module for five lines used
+twice costs more than it saves. (Contrast Task 4, where the duplication *was* extracted: there
+the helper needed no runes, and the copy count was heading for three.)
 
 - [ ] **Step 1: Add the state and the resolution to `CodeHostSection`**
 
