@@ -113,9 +113,18 @@ scenario(
     then.responseJson(await scopes.json()).contains('[')
 
     then.responseStatus(await when.dashboardRequest(session, '/turns/not-found'), 404)
-    then.responseStatus(await when.dashboardRequest(session, `/recurring?userId=${userId}`), 200)
-    then.responseStatus(await when.dashboardRequest(session, `/deferred?userId=${userId}`), 200)
-    then.responseStatus(await when.dashboardRequest(session, `/memos?userId=${userId}`), 200)
+
+    const recurring = await when.dashboardRequest(session, `/recurring?userId=${userId}`)
+    then.responseStatus(recurring, 200)
+    then.responseJson(await recurring.json()).contains('Review routes')
+
+    const deferred = await when.dashboardRequest(session, `/deferred?userId=${userId}`)
+    then.responseStatus(deferred, 200)
+    then.responseJson(await deferred.json()).contains('Review routes')
+
+    const memos = await when.dashboardRequest(session, `/memos?userId=${userId}`)
+    then.responseStatus(memos, 200)
+    then.responseJson(await memos.json()).contains('Route memo')
     then.responseStatus(
       await when.dashboardRequest(session, `/identity?userId=${encodeURIComponent(alice.id)}&provider=kaneo`),
       200,
@@ -127,6 +136,8 @@ scenario(
 scenario(
   'SCN-http-dashboard-assets: dashboard assets are session-protected and non-empty',
   async ({ given, when, then }) => {
+    then.responseStatus(await when.request('/debug.js'), 401)
+
     const session = await given.dashboardSession()
     const assets = ['/debug.js', '/debug.css', '/admin.js', '/admin.css'] as const
     for (const path of assets) {
