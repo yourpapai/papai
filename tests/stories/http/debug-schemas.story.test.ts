@@ -6,8 +6,14 @@
 import { expect } from 'bun:test'
 
 import {
+  parseCacheEvent,
   parseLlmTrace,
   parseLogEntry,
+  parsePollerEvent,
+  parseSchedulerTickEvent,
+  parseStateInitEvent,
+  parseStateStatsEvent,
+  parseUserIdEvent,
   parseWizard,
   safeParseLlmTrace,
   safeParseNotification,
@@ -70,6 +76,17 @@ scenario('SCN-http-debug-schemas: debug payload parsers accept valid events and 
   expect(safeParseToolFailure({ timestamp: 1, scope, data: { toolName: 'tasks.create' } })).toMatchObject({
     data: { toolName: 'tasks.create' },
   })
+
+  expect(parseStateInitEvent({ sessions: [], wizards: [], recentLlm: [], recentTurns: [] })).toMatchObject({
+    sessions: [],
+  })
+  expect(parseStateStatsEvent({ startedAt: 1, totalMessages: 2, totalLlmCalls: 3, totalToolCalls: 4 })).toMatchObject({
+    totalToolCalls: 4,
+  })
+  expect(parseCacheEvent({ userId: 'alice', field: 'history' })).toMatchObject({ field: 'history' })
+  expect(parseUserIdEvent({ userId: 'alice' })).toMatchObject({ userId: 'alice' })
+  expect(parseSchedulerTickEvent({ running: true, tickCount: 2 })).toMatchObject({ tickCount: 2 })
+  expect(parsePollerEvent({ scheduledRunning: true, alertsRunning: false })).toMatchObject({ alertsRunning: false })
 
   expect(safeParseSession({ userId: 42 })).toBeNull()
   expect(safeParseWizard({ userId: 42 })).toBeNull()
