@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { expect } from 'bun:test'
+
 import { scenario } from '../harness/scenario.js'
 
 scenario(
@@ -78,6 +80,60 @@ scenario(
     const legacyDashboard = await when.dashboardRequest(session, '/dashboard')
     then.responseStatus(legacyDashboard, 301)
     then.responseJson({ location: legacyDashboard.headers.get('Location') }).contains('/debug')
+  },
+  { debugEnabled: true },
+)
+
+scenario(
+  'SCN-http-debug-route-family: a dashboard session reads every live diagnostic route',
+  async ({ given, when, then, world }) => {
+    const alice = given.user('debug-routes-alice')
+    const dm = given.dm(alice)
+    given.identity(alice, { providerUserId: 'provider-alice', login: 'alice', displayName: 'Alice' })
+    given.recurringTask(dm, { title: 'Review routes', nextRun: '2099-01-01T00:00:00.000Z' })
+    given.scheduledPrompt(dm, { prompt: 'Review routes', fireAt: '2099-01-01T00:00:00.000Z' })
+    given.memo({ userId: world.scopedStorageContextId(dm), content: 'Route memo' })
+    const session = await given.dashboardSession()
+    const userId = encodeURIComponent(world.scopedStorageContextId(dm))
+
+    const events = await when.dashboardRequest(session, '/events')
+    then.responseStatus(events, 200)
+    await events.body?.cancel()
+
+    const logs = await when.dashboardRequest(session, '/logs')
+    then.responseStatus(logs, 200)
+    then.responseJson(await logs.json()).contains('[')
+
+    const stats = await when.dashboardRequest(session, '/logs/stats')
+    then.responseStatus(stats, 200)
+    then.responseJson(await stats.json()).contains('count')
+
+    const scopes = await when.dashboardRequest(session, '/logs/scopes')
+    then.responseStatus(scopes, 200)
+    then.responseJson(await scopes.json()).contains('[')
+
+    then.responseStatus(await when.dashboardRequest(session, '/turns/not-found'), 404)
+    then.responseStatus(await when.dashboardRequest(session, `/recurring?userId=${userId}`), 200)
+    then.responseStatus(await when.dashboardRequest(session, `/deferred?userId=${userId}`), 200)
+    then.responseStatus(await when.dashboardRequest(session, `/memos?userId=${userId}`), 200)
+    then.responseStatus(
+      await when.dashboardRequest(session, `/identity?userId=${encodeURIComponent(alice.id)}&provider=kaneo`),
+      200,
+    )
+  },
+  { debugEnabled: true },
+)
+
+scenario(
+  'SCN-http-dashboard-assets: dashboard assets are session-protected and non-empty',
+  async ({ given, when, then }) => {
+    const session = await given.dashboardSession()
+    const assets = ['/debug.js', '/debug.css', '/admin.js', '/admin.css'] as const
+    for (const path of assets) {
+      const response = await when.dashboardRequest(session, path)
+      then.responseStatus(response, 200)
+      expect((await response.text()).length).toBeGreaterThan(0)
+    }
   },
   { debugEnabled: true },
 )

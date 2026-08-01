@@ -234,6 +234,8 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-http-billing-stats-readonly',
   'SCN-http-debug-live-panels',
   'SCN-http-debug-schemas',
+  'SCN-http-debug-route-family',
+  'SCN-http-dashboard-assets',
   'SCN-context-thread-scope',
   'SCN-context-group-identity',
   // @1 — provider-real parity lane (tier1-provider-real-parity)
@@ -969,6 +971,18 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     verifiedAt: '2026-07-20',
     storyIds: [
       'tests/stories/http/dashboard.story.test.ts#SCN-http-debug-live-panels: debug panels require both the world flag and the dashboard session',
+    ],
+  },
+  'SCN-http-debug-route-family': {
+    verifiedAt: '2026-08-01',
+    storyIds: [
+      'tests/stories/http/dashboard.story.test.ts#SCN-http-debug-route-family: a dashboard session reads every live diagnostic route',
+    ],
+  },
+  'SCN-http-dashboard-assets': {
+    verifiedAt: '2026-08-01',
+    storyIds: [
+      'tests/stories/http/dashboard.story.test.ts#SCN-http-dashboard-assets: dashboard assets are session-protected and non-empty',
     ],
   },
   'SCN-http-notify': {
