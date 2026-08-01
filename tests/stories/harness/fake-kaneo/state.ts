@@ -175,6 +175,11 @@ export const slugify = (name: string): string =>
     .replace(/[^a-z0-9]+/gu, '-')
     .replace(/^-|-$/gu, '')
 
+/** The default Kaneo board columns seeded on every new project, mirroring the
+ *  four columns real Kaneo creates at project creation (To Do, In Progress,
+ *  In Review, Done). validateStatus() resolves a status against these names. */
+export const DEFAULT_COLUMN_NAMES = ['To Do', 'In Progress', 'In Review', 'Done'] as const
+
 /** Every new project gets a default `To Do` column so the provider's
  *  validateStatus() resolves the `to-do` slug without an extra round trip. */
 export const DEFAULT_COLUMN_NAME = 'To Do'

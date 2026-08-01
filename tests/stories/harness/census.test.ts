@@ -111,6 +111,8 @@ describe('censusTier', () => {
     // Guards the wiring itself: an exemption filter that matched everything, or a claim
     // filter that matched nothing, would make every lane's census meaningless.
     expect(censusTier('0', []).claimed).toBeGreaterThan(100)
-    expect(censusTier('0', []).supporting).toBe(0)
+    // The Kaneo conformance sweep contributes 6 provider-wiring exemptions (see
+    // SUPPORTING_STORIES); the count tracks that live set, not a fixed zero.
+    expect(censusTier('0', []).supporting).toBe(Object.keys(SUPPORTING_STORIES).length)
   })
 })

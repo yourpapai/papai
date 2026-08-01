@@ -136,6 +136,30 @@ describe('createFakeKaneoResponder', () => {
     expect(toDo?.slug).toBe('to-do')
   })
 
+  test('seeds the four default Kaneo board columns on project creation', async () => {
+    const respond = createFakeKaneoResponder()
+    const projectId = await createProject(respond, 'Columns')
+
+    const columns = ColumnCompatSchema.array().parse(
+      await (await respond(new Request(`https://kaneo.invalid/api/column/${projectId}`))).json(),
+    )
+    expect(columns.map((column) => column.name)).toEqual(['To Do', 'In Progress', 'In Review', 'Done'])
+  })
+
+  test('search honors the limit query parameter', async () => {
+    const respond = createFakeKaneoResponder()
+    const projectId = await createProject(respond)
+    await createTask(respond, projectId, 'Limited A')
+    await createTask(respond, projectId, 'Limited B')
+    await createTask(respond, projectId, 'Limited C')
+
+    const res = await respond(
+      new Request('https://kaneo.invalid/api/search?q=Limited&type=tasks&workspaceId=workspace-1&limit=2'),
+    )
+    const parsed = GlobalSearchResponseSchema.parse(await res.json())
+    expect(parsed.tasks).toHaveLength(2)
+  })
+
   test('gives each responder independent state', async () => {
     const first = createFakeKaneoResponder()
     const second = createFakeKaneoResponder()
@@ -211,7 +235,8 @@ describe('fake Kaneo read-after-mutation (Task 2 handlers)', () => {
     expect(columnsBefore.length).toBeGreaterThan(0)
 
     const deleted = await respond(new Request(`https://kaneo.invalid/api/project/${projectId}`, { method: 'DELETE' }))
-    expect(deleted.status).toBe(204)
+    expect(deleted.status).toBe(200)
+    expect(z.object({ id: z.string() }).parse(await deleted.json()).id).toBe(projectId)
 
     const refetched = await respond(new Request(`https://kaneo.invalid/api/project/${projectId}`))
     expect(refetched.status).toBe(404)
@@ -259,10 +284,69 @@ describe('fake Kaneo read-after-mutation (Task 2 handlers)', () => {
     const taskId = await createTask(respond, projectId, 'Removable')
 
     const deleted = await respond(new Request(`https://kaneo.invalid/api/task/${taskId}`, { method: 'DELETE' }))
-    expect(deleted.status).toBe(204)
+    expect(deleted.status).toBe(200)
+    expect(z.object({ id: z.string() }).parse(await deleted.json()).id).toBe(taskId)
 
     const refetched = await respond(new Request(`https://kaneo.invalid/api/task/${taskId}`))
     expect(refetched.status).toBe(404)
+  })
+
+  test('task PUT normalizes date-only startDate and dueDate to full ISO datetimes', async () => {
+    const respond = createFakeKaneoResponder()
+    const projectId = await createProject(respond)
+    const taskId = await createTask(respond, projectId, 'Dated')
+
+    const updated = await respond(
+      jsonRequest('PUT', `/api/task/${taskId}`, { startDate: '2026-08-01', dueDate: '2026-08-15' }),
+    )
+    expect(updated.status).toBe(200)
+    const readBack = GetTaskSchema.parse(await updated.json())
+    expect(readBack.startDate).toBe('2026-08-01T00:00:00.000Z')
+    expect(readBack.dueDate).toBe('2026-08-15T00:00:00.000Z')
+  })
+
+  test('board listing honors sortBy and sortOrder', async () => {
+    const respond = createFakeKaneoResponder()
+    const projectId = await createProject(respond)
+    await createTask(respond, projectId, 'Sort B')
+    await createTask(respond, projectId, 'Sort C')
+    await createTask(respond, projectId, 'Sort A')
+
+    const board = await respond(
+      new Request(`https://kaneo.invalid/api/task/tasks/${projectId}?sortBy=title&sortOrder=asc`),
+    )
+    const parsed = ListTasksResponseSchema.parse(await board.json())
+    const titles = parsed.data.columns
+      .flatMap((column) => column.tasks)
+      .concat(parsed.data.plannedTasks)
+      .map((task) => task.title)
+    expect(titles).toEqual(['Sort A', 'Sort B', 'Sort C'])
+  })
+
+  test('board listing honors limit and page', async () => {
+    const respond = createFakeKaneoResponder()
+    const projectId = await createProject(respond)
+    await createTask(respond, projectId, 'Page A')
+    await createTask(respond, projectId, 'Page B')
+    await createTask(respond, projectId, 'Page C')
+
+    const first = await respond(new Request(`https://kaneo.invalid/api/task/tasks/${projectId}?limit=2&page=1`))
+    const firstParsed = ListTasksResponseSchema.parse(await first.json())
+    expect(
+      firstParsed.data.columns
+        .flatMap((column) => column.tasks)
+        .concat(firstParsed.data.plannedTasks)
+        .map((t) => t.title),
+    ).toEqual(['Page A', 'Page B'])
+
+    const second = await respond(new Request(`https://kaneo.invalid/api/task/tasks/${projectId}?limit=2&page=2`))
+    const secondParsed = ListTasksResponseSchema.parse(await second.json())
+    expect(
+      secondParsed.data.columns
+        .flatMap((column) => column.tasks)
+        .concat(secondParsed.data.plannedTasks)
+        .map((t) => t.title),
+    ).toEqual(['Page C'])
   })
 
   test('column reorder persists new positions on read-back', async () => {
@@ -325,6 +409,14 @@ describe('fake Kaneo comments', () => {
 
     const after = await respond(new Request(`https://kaneo.invalid/api/comment/${taskId}`))
     expect(CommentListResponseSchema.parse(await after.json())).toEqual([])
+  })
+
+  test('commenting on a missing task returns 404', async () => {
+    const respond = createFakeKaneoResponder()
+
+    const res = await respond(jsonRequest('POST', '/api/comment/no-such-task', { content: 'orphan note' }))
+
+    expect(res.status).toBe(404)
   })
 })
 
@@ -412,6 +504,22 @@ describe('fake Kaneo task relations', () => {
 
     const after = await respond(new Request(`https://kaneo.invalid/api/task-relation/${firstTaskId}`))
     expect(RelationSchema.array().parse(await after.json())).toEqual([])
+  })
+
+  test('relating a task to a missing target returns 404', async () => {
+    const respond = createFakeKaneoResponder()
+    const projectId = await createProject(respond)
+    const taskId = await createTask(respond, projectId, 'Source')
+
+    const res = await respond(
+      jsonRequest('POST', '/api/task-relation', {
+        sourceTaskId: taskId,
+        targetTaskId: 'no-such-target',
+        relationType: 'blocks',
+      }),
+    )
+
+    expect(res.status).toBe(404)
   })
 })
 

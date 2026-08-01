@@ -7,6 +7,7 @@ import {
   COMMENT_AUTHOR_USER_ID,
   type FakeKaneoCtx,
   type FakeKaneoState,
+  DEFAULT_COLUMN_NAMES,
   DEFAULT_COLUMN_NAME,
   nextId,
   nextTimestamp,
@@ -25,8 +26,6 @@ export const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 
 export const errorResponse = (status: number, message: string): Response => json({ error: message }, status)
-
-const noContent = (): Response => new Response(null, { status: 204 })
 
 const jsonWithHeaders = (body: unknown, status: number, headers: Record<string, string>): Response =>
   new Response(JSON.stringify(body), {
@@ -146,20 +145,21 @@ const columnsFor = (state: FakeKaneoState, projectId: string): StoredColumn[] =>
 const tasksFor = (state: FakeKaneoState, projectId: string): StoredTask[] =>
   [...state.tasks.values()].filter((t) => t.projectId === projectId)
 
-const createDefaultColumn = (state: FakeKaneoState, project: StoredProject): StoredColumn => {
-  const id = nextId(state, 'column')
-  const column: StoredColumn = {
-    id,
-    projectId: project.id,
-    name: DEFAULT_COLUMN_NAME,
-    slug: slugify(DEFAULT_COLUMN_NAME),
-    icon: undefined,
-    color: undefined,
-    isFinal: false,
-    position: 0,
-  }
-  state.columns.set(id, column)
-  return column
+const createDefaultColumns = (state: FakeKaneoState, project: StoredProject): void => {
+  DEFAULT_COLUMN_NAMES.forEach((name, index) => {
+    const id = nextId(state, 'column')
+    const column: StoredColumn = {
+      id,
+      projectId: project.id,
+      name,
+      slug: slugify(name),
+      icon: undefined,
+      color: undefined,
+      isFinal: index === DEFAULT_COLUMN_NAMES.length - 1,
+      position: index,
+    }
+    state.columns.set(id, column)
+  })
 }
 
 // ---------- Body coercion helpers ----------
@@ -170,6 +170,16 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const asObject = (body: unknown): Record<string, unknown> => (isRecord(body) ? body : {})
 
 const asString = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined)
+
+/** Real Kaneo normalizes a date-only input (e.g. '2026-08-01') into a full ISO
+ *  datetime before storing and echoing it; the fake must match so the provider's
+ *  z.iso.datetime() response schemas accept the value. Pass-through for values
+ *  that do not parse as dates. */
+const normalizeDate = (value: string | undefined): string | undefined => {
+  if (value === undefined) return undefined
+  const ms = Date.parse(value)
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : value
+}
 
 /** Strict per-pattern dispatcher: the first rule whose pattern matches the
  *  path wins. If its method set does not include the request method, return
@@ -219,7 +229,7 @@ const handleProjects = (ctx: FakeKaneoCtx): Response | undefined => {
       for (const column of [...state.columns.values()].filter((c) => c.projectId === id))
         state.columns.delete(column.id)
       for (const task of tasksFor(state, id)) state.tasks.delete(task.id)
-      return noContent()
+      return json({ id })
     }
   }
 
@@ -240,7 +250,7 @@ const handleProjects = (ctx: FakeKaneoCtx): Response | undefined => {
         createdAt: nextTimestamp(state),
       }
       state.projects.set(id, project)
-      createDefaultColumn(state, project)
+      createDefaultColumns(state, project)
       return json(projectProjection(project))
     }
     if (method === 'GET') {
@@ -319,7 +329,8 @@ const handleColumns = (ctx: FakeKaneoCtx): Response | undefined => {
       return json(columnProjection(column))
     }
     if (method === 'DELETE') {
-      return state.columns.delete(id) ? noContent() : errorResponse(404, 'column not found')
+      if (!state.columns.delete(id)) return errorResponse(404, 'column not found')
+      return json({ id })
     }
   }
 
@@ -335,7 +346,7 @@ const resolveTaskBySlug = (state: FakeKaneoState, projectId: string, status: str
 }
 
 const handleTasks = (ctx: FakeKaneoCtx): Response | undefined => {
-  const { method, path, state, body } = ctx
+  const { method, path, state, body, query } = ctx
 
   const board = matchPath('/api/task/tasks/:projectId', path)
   if (board !== null && method === 'GET') {
@@ -343,14 +354,41 @@ const handleTasks = (ctx: FakeKaneoCtx): Response | undefined => {
     const project = state.projects.get(projectId)
     if (project === undefined) return errorResponse(404, 'project not found')
     const columns = columnsFor(state, projectId)
-    const tasks = tasksFor(state, projectId)
+    const allTasks = tasksFor(state, projectId)
+    // The provider flattens columns then plannedTasks and does not sort or
+    // paginate client-side, so the board endpoint must honor sortBy/sortOrder
+    // and limit/page itself (mirroring real Kaneo's server-side handling).
+    let orderedTasks: StoredTask[] = [...allTasks]
+    if (query.get('sortBy') === 'title') {
+      const descending = query.get('sortOrder') === 'desc'
+      orderedTasks = [...orderedTasks].sort((a, b) =>
+        descending ? b.title.localeCompare(a.title) : a.title.localeCompare(b.title),
+      )
+    }
+    const limitToken = query.get('limit')
+    const pageToken = query.get('page')
+    let pageSize = orderedTasks.length
+    let pageNumber = 1
+    if (limitToken !== null) {
+      const limitNum = Number(limitToken)
+      if (Number.isFinite(limitNum) && limitNum > 0) {
+        const pageNum = Number(pageToken ?? '1')
+        pageNumber = Number.isFinite(pageNum) && pageNum > 0 ? pageNum : 1
+        pageSize = limitNum
+        const start = (pageNumber - 1) * pageSize
+        orderedTasks = orderedTasks.slice(start, start + pageSize)
+      }
+    }
     const columnsWithTasks = columns.map((column) => ({
       ...columnProjection(column),
-      tasks: tasks.filter((t) => resolveTaskBySlug(state, projectId, t.status) === column.slug).map(listTaskProjection),
+      tasks: orderedTasks
+        .filter((t) => resolveTaskBySlug(state, projectId, t.status) === column.slug)
+        .map(listTaskProjection),
     }))
-    const planned = tasks
+    const planned = orderedTasks
       .filter((t) => !columns.some((c) => c.slug === resolveTaskBySlug(state, projectId, t.status)))
       .map(listTaskProjection)
+    const totalPages = pageSize > 0 ? Math.max(1, Math.ceil(allTasks.length / pageSize)) : 1
     return json({
       data: {
         id: project.id,
@@ -364,7 +402,7 @@ const handleTasks = (ctx: FakeKaneoCtx): Response | undefined => {
         archivedTasks: [],
         plannedTasks: planned,
       },
-      pagination: { total: tasks.length, page: 1, pageSize: tasks.length, totalPages: 1 },
+      pagination: { total: allTasks.length, page: pageNumber, pageSize, totalPages },
     })
   }
 
@@ -380,15 +418,15 @@ const handleTasks = (ctx: FakeKaneoCtx): Response | undefined => {
       if (asString(payload['description']) !== undefined) task.description = asString(payload['description']) ?? ''
       if (asString(payload['status']) !== undefined) task.status = asString(payload['status']) ?? task.status
       if (asString(payload['priority']) !== undefined) task.priority = asString(payload['priority']) ?? task.priority
-      if (asString(payload['dueDate']) !== undefined) task.dueDate = asString(payload['dueDate'])
-      if (asString(payload['startDate']) !== undefined) task.startDate = asString(payload['startDate'])
+      if (asString(payload['dueDate']) !== undefined) task.dueDate = normalizeDate(asString(payload['dueDate']))
+      if (asString(payload['startDate']) !== undefined) task.startDate = normalizeDate(asString(payload['startDate']))
       if (asString(payload['userId']) !== undefined) task.userId = asString(payload['userId']) ?? null
       if (typeof payload['position'] === 'number') task.position = payload['position']
       return json(taskProjection(task))
     }
     if (method === 'DELETE') {
       state.tasks.delete(id)
-      return noContent()
+      return json({ id })
     }
   }
 
@@ -413,8 +451,8 @@ const handleTasks = (ctx: FakeKaneoCtx): Response | undefined => {
       description: asString(payload['description']) ?? '',
       status: resolvedStatus,
       priority: asString(payload['priority']) ?? 'no-priority',
-      startDate: asString(payload['startDate']),
-      dueDate: asString(payload['dueDate']),
+      startDate: normalizeDate(asString(payload['startDate'])),
+      dueDate: normalizeDate(asString(payload['dueDate'])),
       createdAt: nextTimestamp(state),
     }
     state.tasks.set(id, task)
@@ -434,16 +472,28 @@ const handleSearch = (ctx: FakeKaneoCtx): Response | undefined => {
   const workspaceId = query.get('workspaceId')
   const projectId = query.get('projectId')
 
-  const tasks = [...state.tasks.values()]
+  const matching = [...state.tasks.values()]
     .filter((t) => workspaceId === null || state.projects.get(t.projectId)?.workspaceId === workspaceId)
     .filter((t) => projectId === null || t.projectId === projectId)
     .filter(
       (t) =>
         needle.length === 0 || t.title.toLowerCase().includes(needle) || t.description.toLowerCase().includes(needle),
     )
-    .map(taskProjection)
 
-  return json({ tasks, projects: [], workspaces: [], comments: [], activities: [] })
+  // The provider only paginates assignee-filtered searches client-side; for
+  // every other search it forwards limit/offset and trusts the server slice.
+  const limitToken = query.get('limit')
+  const offsetToken = query.get('offset')
+  const offset = offsetToken !== null && Number.isFinite(Number(offsetToken)) ? Number(offsetToken) : 0
+  const start = Math.max(0, offset)
+  const sliced =
+    limitToken !== null && Number.isFinite(Number(limitToken)) && Number(limitToken) > 0
+      ? matching.slice(start, start + Number(limitToken))
+      : start > 0
+        ? matching.slice(start)
+        : matching
+
+  return json({ tasks: sliced.map(taskProjection), projects: [], workspaces: [], comments: [], activities: [] })
 }
 
 // ---------- Comment handler ----------
@@ -457,6 +507,7 @@ const handleComments = (ctx: FakeKaneoCtx): Response | undefined =>
         const id = params['id'] ?? ''
         if (c.method === 'POST') {
           if (!isRecord(c.body)) return errorResponse(400, 'comment body must be a JSON object')
+          if (c.state.tasks.get(id) === undefined) return errorResponse(404, 'task not found')
           const content = asString(c.body['content'])
           if (content === undefined) return errorResponse(400, 'comment content is required')
           const commentId = nextId(c.state, 'comment')
@@ -590,6 +641,9 @@ const handleRelations = (ctx: FakeKaneoCtx): Response | undefined =>
         const relationType = asString(c.body['relationType'])
         if (sourceTaskId === undefined || targetTaskId === undefined || relationType === undefined) {
           return errorResponse(400, 'sourceTaskId, targetTaskId, and relationType are required')
+        }
+        if (c.state.tasks.get(sourceTaskId) === undefined || c.state.tasks.get(targetTaskId) === undefined) {
+          return errorResponse(404, 'task not found')
         }
         const id = nextId(c.state, 'relation')
         const relation: StoredRelation = {
