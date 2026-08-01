@@ -261,6 +261,17 @@ const oauthOpenCodePayload = {
   ],
 }
 
+const errorJson = (payload: { error: string; field?: string }): Response =>
+  new Response(JSON.stringify(payload), { status: 422, headers: { 'Content-Type': 'application/json' } })
+
+const makeFieldErrorMock =
+  (errorPayload: { error: string; field?: string }, getPayload: unknown = withSelectsPayload) =>
+  (_url: string, init?: RequestInit): Promise<Response> => {
+    if (_url.includes('/settings/api/coding-credentials') && (init?.method ?? 'GET').toUpperCase() === 'PATCH')
+      return Promise.resolve(errorJson(errorPayload))
+    return Promise.resolve(json(getPayload))
+  }
+
 let capturedPatchBody = ''
 
 const clearErrorMock = (_url: string, init?: RequestInit): Promise<Response> => {
@@ -884,6 +895,81 @@ describe('CodingCredentialsSection', () => {
     expect(placeholder).not.toBeNull()
     expect(String(placeholder?.textContent)).toContain('No provider fields available')
     expect(target.querySelector('[data-testid="coding-credentials-save"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('a 422 naming a visible field renders inline under that field, not in the banner', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(makeFieldErrorMock({ error: 'Key looks invalid.', field: 'provider_api_key' }))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-replace-provider_api_key"]')!.click()
+    flushSync()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="coding-input-provider_api_key"]')!
+    input.value = 'sk-ant-bad'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-credentials-save"]')!.click()
+    await drain()
+
+    const row = target.querySelector<HTMLElement>('[data-testid="coding-row-provider_api_key"]')!
+    const inlineError = row.querySelector('.settings-field__error')
+    expect(inlineError).not.toBeNull()
+    expect(inlineError!.textContent).toContain('Key looks invalid.')
+    expect(target.querySelector('.status-error')).toBeNull()
+    void unmount(component)
+  })
+
+  test('a 422 naming a hidden field falls back to the banner, with no inline error', async () => {
+    setCsrfToken('csrf-t')
+    // oauthOpenCodePayload has auth_method=oauth-subscription, which hides provider_base_url.
+    setMockFetch(makeFieldErrorMock({ error: 'Base URL required.', field: 'provider_base_url' }, oauthOpenCodePayload))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+
+    expect(target.querySelector('[data-testid="coding-row-provider_base_url"]')).toBeNull()
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-replace-provider_api_key"]')!.click()
+    flushSync()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="coding-input-provider_api_key"]')!
+    input.value = 'sk-ant-oat01-new'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-credentials-save"]')!.click()
+    await drain()
+
+    const banner = target.querySelector('.status-error')
+    expect(banner).not.toBeNull()
+    expect(banner!.textContent).toContain('Base URL required.')
+    expect(target.querySelector('.settings-field__error')).toBeNull()
+    void unmount(component)
+  })
+
+  test('a 422 with no field key renders in the banner', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(makeFieldErrorMock({ error: 'Something went wrong.' }))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-replace-provider_api_key"]')!.click()
+    flushSync()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="coding-input-provider_api_key"]')!
+    input.value = 'sk-ant-new'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-credentials-save"]')!.click()
+    await drain()
+
+    const banner = target.querySelector('.status-error')
+    expect(banner).not.toBeNull()
+    expect(banner!.textContent).toContain('Something went wrong.')
+    expect(target.querySelector('.settings-field__error')).toBeNull()
     void unmount(component)
   })
 })

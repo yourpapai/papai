@@ -163,6 +163,17 @@ const typedForgeUnconfigured = {
   ],
 }
 
+const errorJson = (payload: { error: string; field?: string }): Response =>
+  new Response(JSON.stringify(payload), { status: 422, headers: { 'Content-Type': 'application/json' } })
+
+const makeFieldErrorMock =
+  (errorPayload: { error: string; field?: string }) =>
+  (_url: string, init?: RequestInit): Promise<Response> => {
+    if (_url.includes('/settings/api/coding-credentials') && (init?.method ?? 'GET').toUpperCase() === 'PATCH')
+      return Promise.resolve(errorJson(errorPayload))
+    return Promise.resolve(json(typedForgePayloadSaas))
+  }
+
 let capturedPatchBody = ''
 
 const clearErrorMock = (_url: string, init?: RequestInit): Promise<Response> => {
@@ -593,6 +604,80 @@ describe('CodeHostSection', () => {
     const labelEl = target.querySelector(`#${labelledBy}`)
     expect(labelEl).not.toBeNull()
     expect(labelEl!.textContent).toContain('Code host')
+    void unmount(component)
+  })
+
+  test('a 422 naming a visible field renders inline under that field, not in the banner', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(makeFieldErrorMock({ error: 'Token looks invalid.', field: 'forge_token' }))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-replace-forge_token"]')!.click()
+    flushSync()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="coding-input-forge_token"]')!
+    input.value = 'ghp_bad'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="code-host-save"]')!.click()
+    await drain()
+
+    const row = target.querySelector<HTMLElement>('[data-testid="coding-row-forge_token"]')!
+    const inlineError = row.querySelector('.settings-field__error')
+    expect(inlineError).not.toBeNull()
+    expect(inlineError!.textContent).toContain('Token looks invalid.')
+    expect(target.querySelector('.status-error')).toBeNull()
+    void unmount(component)
+  })
+
+  test('a 422 naming a hidden field falls back to the banner, with no inline error', async () => {
+    setCsrfToken('csrf-t')
+    // typedForgePayloadSaas has kind=github, which hides instance_url.
+    setMockFetch(makeFieldErrorMock({ error: 'Instance URL required.', field: 'instance_url' }))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-replace-forge_token"]')!.click()
+    flushSync()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="coding-input-forge_token"]')!
+    input.value = 'ghp_new'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="code-host-save"]')!.click()
+    await drain()
+
+    const banner = target.querySelector('.status-error')
+    expect(banner).not.toBeNull()
+    expect(banner!.textContent).toContain('Instance URL required.')
+    expect(target.querySelector('.settings-field__error')).toBeNull()
+    void unmount(component)
+  })
+
+  test('a 422 with no field key renders in the banner', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(makeFieldErrorMock({ error: 'Something went wrong.' }))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-replace-forge_token"]')!.click()
+    flushSync()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="coding-input-forge_token"]')!
+    input.value = 'ghp_new'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="code-host-save"]')!.click()
+    await drain()
+
+    const banner = target.querySelector('.status-error')
+    expect(banner).not.toBeNull()
+    expect(banner!.textContent).toContain('Something went wrong.')
+    expect(target.querySelector('.settings-field__error')).toBeNull()
     void unmount(component)
   })
 })

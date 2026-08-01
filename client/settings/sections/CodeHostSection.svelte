@@ -6,6 +6,7 @@
 <script lang="ts">
   import { untrack } from 'svelte'
 
+  import { FetchError } from '../../shared/fetcher-helpers.js'
   import Confirm from '../../shared/Confirm.svelte'
   import Btn from '../../shared/ui/Btn.svelte'
   import ErrorState from '../../shared/ui/ErrorState.svelte'
@@ -31,6 +32,9 @@
 
   let data: CodingCredentialsResponse | null = $state(null)
   let error: string | null = $state(null)
+  // The field the server blamed, when it named one. Resolved against the fields actually on
+  // screen so an unknown or hidden key falls back to the banner instead of vanishing.
+  let errorField: string | null = $state(null)
   let status: string | null = $state(null)
   let loading = $state(false)
   let saving = $state(false)
@@ -40,6 +44,9 @@
 
   const currentData = $derived(loadedContextId === contextId ? data : null)
   const fields = $derived(currentData?.fields ?? [])
+  const inlineField = $derived(
+    fields.some((f) => f.key === errorField && shouldShowField(f)) ? errorField : null,
+  )
   const unreadableError = $derived(currentData?.unreadable === true ? currentData.error : null)
 
   // Whole-record save is meaningful only when a field's draft differs from its stored value.
@@ -66,6 +73,7 @@
   }
   async function load(id: string): Promise<boolean> {
     error = null
+    errorField = null
     status = null
     loading = true
     try {
@@ -77,7 +85,10 @@
       replacing = {}
       return true
     } catch (err) {
-      if (id === contextId) error = err instanceof Error ? err.message : String(err)
+      if (id === contextId) {
+        error = err instanceof Error ? err.message : String(err)
+        errorField = err instanceof FetchError ? (err.field ?? null) : null
+      }
       return false
     } finally {
       if (id === contextId) loading = false
@@ -121,6 +132,7 @@
   async function saveAll(): Promise<void> {
     if (loading || saving || loadedContextId !== contextId) return
     error = null
+    errorField = null
     status = null
     saving = true
     try {
@@ -129,6 +141,7 @@
       if (ok) status = 'Code host saved.'
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
+      errorField = err instanceof FetchError ? (err.field ?? null) : null
     } finally {
       saving = false
     }
@@ -174,7 +187,7 @@
     {/snippet}
   </PageHeader>
 
-  {#if currentData !== null && error !== null}<p class="status-error" role="alert">{error}</p>{/if}
+  {#if currentData !== null && error !== null && inlineField === null}<p class="status-error" role="alert">{error}</p>{/if}
   {#if status !== null}<p class="status-success" role="status">{status}</p>{/if}
 
   {#if currentData === null && loading}
@@ -193,6 +206,7 @@
             label={field.label}
             required={field.required}
             editorOpen={editorOpen(field)}
+            error={inlineField === field.key ? (error ?? undefined) : undefined}
             testid={`coding-row-${field.key}`}>
             {#snippet head()}
               {#if field.sensitive && field.hasValue && !editorOpen(field)}
