@@ -105,10 +105,10 @@
         {/snippet}
       </Panel>
 
-      <Panel title="deferred prompts" count={deferred.length}>
+      <Panel title="Reminders & alerts" count={deferred.length}>
         {#snippet body()}
           {#if deferred.length === 0}
-            <p class="placeholder">No deferred reminders</p>
+            <p class="placeholder">No reminders or alerts yet</p>
           {:else}
             <ul class="reminders__list">
               {#each deferred as d (d.id)}
