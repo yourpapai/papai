@@ -65,6 +65,9 @@
         }
       }}>{collapsed ? '▶' : '▼'}</span>
     <span class="tree-bracket">{bracketOpen}</span>
+    {#if collapsed}
+      <span class="tree-bracket">{bracketClose}</span>
+    {/if}
     {#if !collapsed}
       {#if depth >= MAX_DEPTH}
         <span class="tree-bracket"> ... </span>
@@ -76,9 +79,11 @@
             </div>
           {/each}
         </span>
+        <div class="tree-row tree-closing" style="padding-left: {depth * 12 + 18}px">
+          <span class="tree-bracket">{bracketClose}</span>
+        </div>
       {/if}
     {/if}
-    <span class="tree-bracket">{bracketClose}</span>
   {/if}
 {:else}
   {#if label !== undefined}<span class="tree-key">{label}: </span>{/if}
