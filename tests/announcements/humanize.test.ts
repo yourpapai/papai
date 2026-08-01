@@ -7,7 +7,11 @@ import { describe, expect, test } from 'bun:test'
 
 import type { LanguageModel } from 'ai'
 
-import { humanizeChangelog, type HumanizeChangelogDeps } from '../../src/announcements/humanize.js'
+import {
+  classifiedEntriesSchema,
+  humanizeChangelog,
+  type HumanizeChangelogDeps,
+} from '../../src/announcements/humanize.js'
 
 const role = (model: string): { apiKey: string; baseUrl: string; model: string; source: 'global' } => ({
   apiKey: 'k',
@@ -24,11 +28,19 @@ const okConfig = {
   embedding: role('embed'),
 }
 
+const twoEntries = {
+  entries: [
+    { kind: 'new' as const, text: 'feat: edit a message to update the task' },
+    { kind: 'fix' as const, text: 'fix: stale memory results' },
+  ],
+}
+
 function deps(over: Partial<HumanizeChangelogDeps>): HumanizeChangelogDeps {
   return {
     resolveConfig: () => okConfig,
     buildModel: (): LanguageModel => 'test-model',
     generate: () => Promise.resolve({ text: 'Humanized!' }),
+    generateStructured: () => Promise.resolve(twoEntries),
     ...over,
   }
 }
@@ -83,5 +95,23 @@ describe('humanizeChangelog', () => {
   test('returns null when the model returns only whitespace', async () => {
     const result = await humanizeChangelog('raw', deps({ generate: () => Promise.resolve({ text: '   ' }) }))
     expect(result).toBeNull()
+  })
+})
+
+describe('classifiedEntriesSchema', () => {
+  test('accepts new, improvement, and fix kinds', () => {
+    const result = classifiedEntriesSchema.safeParse({
+      entries: [
+        { kind: 'new', text: 'a' },
+        { kind: 'improvement', text: 'b' },
+        { kind: 'fix', text: 'c' },
+      ],
+    })
+    expect(result.success).toBe(true)
+  })
+
+  test('rejects unknown kinds', () => {
+    const result = classifiedEntriesSchema.safeParse({ entries: [{ kind: 'chore', text: 'x' }] })
+    expect(result.success).toBe(false)
   })
 })

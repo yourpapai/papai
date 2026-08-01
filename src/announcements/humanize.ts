@@ -3,7 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { generateText, type LanguageModel } from 'ai'
+import { generateText, Output, type LanguageModel } from 'ai'
+import { z } from 'zod'
 
 import { buildChatModel } from '../llm-model-builder.js'
 import { resolveAdminLlmConfig } from '../llm-providers/resolver.js'
@@ -11,6 +12,17 @@ import type { LlmConfigResult } from '../llm-providers/types.js'
 import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'announcements:humanize' })
+
+export const classifiedEntriesSchema = z.object({
+  entries: z.array(
+    z.object({
+      kind: z.enum(['new', 'improvement', 'fix']),
+      text: z.string(),
+    }),
+  ),
+})
+
+export type ClassifiedEntries = z.infer<typeof classifiedEntriesSchema>
 
 const SYSTEM_PROMPT = [
   'You turn a raw software changelog into a short, friendly release announcement for end users of a chat bot.',
@@ -27,6 +39,7 @@ export interface HumanizeChangelogDeps {
   resolveConfig: () => LlmConfigResult
   buildModel: (apiKey: string, baseUrl: string, modelName: string) => LanguageModel
   generate: (opts: { model: LanguageModel; system: string; prompt: string }) => Promise<{ text: string }>
+  generateStructured: (opts: { model: LanguageModel; system: string; prompt: string }) => Promise<ClassifiedEntries>
 }
 
 const defaultDeps: HumanizeChangelogDeps = {
@@ -35,6 +48,10 @@ const defaultDeps: HumanizeChangelogDeps = {
   generate: async (opts) => {
     const result = await generateText(opts)
     return { text: result.text }
+  },
+  generateStructured: async (opts) => {
+    const result = await generateText({ ...opts, output: Output.object({ schema: classifiedEntriesSchema }) })
+    return result.output
   },
 }
 
