@@ -107,3 +107,10 @@ test('ReposSection — long content in the add form, narrow', async ({ sharedPag
     .fill('pypi.org, files.pythonhosted.org, registry.npmjs.org, objects.githubusercontent.com, proxy.golang.org')
   await expect(sharedPage).toHaveScreenshot()
 })
+
+test('ReposSection — delete confirm dialog', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-repossection--populated')
+  await sharedPage.getByTestId('repos-delete-repo_abc123').click()
+  await expect(sharedPage.getByText('Delete repository')).toBeVisible()
+  await expect(sharedPage).toHaveScreenshot()
+})
