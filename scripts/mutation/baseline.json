@@ -125,6 +125,7 @@
   "plugins/task-provider-youtrack/task-helpers.ts": 0.3090909090909091,
   "plugins/task-provider-youtrack/validate-config.ts": 0,
   "src/analytics/jobs/backfill.ts": 0.7741935483870968,
+  "src/announcements/humanize.ts": 0.3382352941176471,
   "src/chat/discord/dispatch-helpers.ts": 0.5,
   "src/chat/discord/index.ts": 0.6445783132530121,
   "src/chat/discord/metadata.ts": 0.8666666666666667,
