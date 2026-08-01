@@ -1044,3 +1044,13 @@
   gap: 12px;
   min-width: 0;
 }
+
+/* --- Shared row interaction states --- */
+
+.session-card:focus-visible,
+.trace-row:focus-visible,
+.failure-row:focus-visible,
+.log-entry:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
