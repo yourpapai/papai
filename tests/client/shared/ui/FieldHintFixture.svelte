@@ -4,20 +4,18 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
-  import SettingsFieldShell from '../../../../client/settings/components/SettingsFieldShell.svelte'
+  import Field from '../../../../client/shared/ui/Field.svelte'
   import Input from '../../../../client/shared/ui/Input.svelte'
 
   interface Props {
-    error?: string
     hint?: string
+    error?: string
     required?: boolean
   }
 
-  let { error, hint, required = false }: Props = $props()
+  let { hint, error, required = false }: Props = $props()
 </script>
 
-<SettingsFieldShell label="Instance URL" {error} {hint} {required}>
-  {#snippet editor()}
-    <Input value="" testid="fixture-input" />
-  {/snippet}
-</SettingsFieldShell>
+<Field label="Kaneo URL" {hint} {error} {required}>
+  <Input value="" testid="hint-input" />
+</Field>

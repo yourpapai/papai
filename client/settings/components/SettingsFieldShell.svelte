@@ -36,13 +36,18 @@
   const uid = ++seq
   const labelId = `settings-field-${uid}`
   const errorId = `settings-field-err-${uid}`
+  const hintId = `settings-field-hint-${uid}`
   setFieldLabelId(labelId)
   // Getter, not a snapshot: this is what makes the descendant control track the live
   // `error` prop rather than its value at init.
   setFieldError({
     errorId,
+    hintId,
     get invalid() {
       return error !== undefined && error !== ''
+    },
+    get hasHint() {
+      return hint !== undefined && hint !== ''
     },
   })
 </script>
@@ -62,7 +67,7 @@
     <div class="settings-field__editor">{@render editor(labelId)}</div>
   {/if}
   {#if error}<p class="settings-field__error" id={errorId} role="alert">{error}</p>
-  {:else if hint}<p class="settings-field__hint">{hint}</p>{/if}
+  {:else if hint}<p class="settings-field__hint" id={hintId}>{hint}</p>{/if}
   {@render footer?.()}
 </div>
 

@@ -152,4 +152,16 @@ describe('SettingsFieldShell', () => {
     expect(input.getAttribute('aria-describedby')).toBeNull()
     void unmount(fixture)
   })
+
+  test('points aria-describedby at the hint paragraph when the shell is valid', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(ShellInputFixture, { target, props: { hint: 'Needed for self-hosted hosts.' } })
+    const input = target.querySelector<HTMLInputElement>('[data-testid="fixture-input"]')!
+    const hint = target.querySelector<HTMLElement>('.settings-field__hint')!
+    expect(hint.id).toBeTruthy()
+    expect(hint.textContent).toContain('Needed for self-hosted hosts.')
+    expect(input.getAttribute('aria-describedby')).toBe(hint.id)
+    void unmount(c)
+  })
 })

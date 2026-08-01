@@ -19,11 +19,14 @@ export function getFieldLabelId(): string | undefined {
 
 const FIELD_ERROR = Symbol('field-error')
 
-/** Reactive error state a Field publishes to its descendant control. */
+/** Reactive field state a Field publishes to its descendant control. */
 export interface FieldErrorContext {
   errorId: string
+  hintId: string
   /** Getter so the control tracks the Field's live `error` prop. */
   readonly invalid: boolean
+  /** Getter so the control tracks a `hint` that appears or disappears after init. */
+  readonly hasHint: boolean
 }
 
 /** Called by Field during init to publish its error state to descendant controls. */
@@ -53,8 +56,12 @@ export function useFieldInvalid(): FieldInvalidState {
     get invalid() {
       return ctx?.invalid ?? false
     },
+    // The error and the hint render in exclusive branches of one {#if}, so exactly one
+    // id is ever live and aria-describedby never needs a space-separated list.
     get describedBy() {
-      return ctx?.invalid === true ? ctx.errorId : undefined
+      if (ctx === undefined) return undefined
+      if (ctx.invalid) return ctx.errorId
+      return ctx.hasHint ? ctx.hintId : undefined
     },
   }
 }

@@ -25,11 +25,16 @@
   const uid = ++seq
   const labelId = `ui-field-${uid}`
   const errorId = `ui-field-err-${uid}`
+  const hintId = `ui-field-hint-${uid}`
   setFieldLabelId(labelId)
   setFieldError({
     errorId,
+    hintId,
     get invalid() {
       return error !== undefined && error !== ''
+    },
+    get hasHint() {
+      return hint !== undefined && hint !== ''
     },
   })
 </script>
@@ -40,7 +45,7 @@
   </span>
   {@render children()}
   {#if error}<span class="ui-field__error" id={errorId} role="alert">{error}</span>{:else if hint}<span
-      class="ui-field__hint">{hint}</span>{/if}
+      class="ui-field__hint" id={hintId}>{hint}</span>{/if}
 </div>
 
 <style>
