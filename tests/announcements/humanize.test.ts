@@ -9,6 +9,7 @@ import type { LanguageModel } from 'ai'
 
 import {
   classifiedEntriesSchema,
+  EMPTY_RELEASE_NOTE,
   humanizeChangelog,
   type HumanizeChangelogDeps,
 } from '../../src/announcements/humanize.js'
@@ -46,9 +47,9 @@ function deps(over: Partial<HumanizeChangelogDeps>): HumanizeChangelogDeps {
 }
 
 describe('humanizeChangelog', () => {
-  test('returns trimmed model text and passes raw as prompt', async () => {
-    let seenPrompt = ''
-    let seenSystem = ''
+  test('classifies first, then writes from surviving entries only', async () => {
+    let classifyPrompt = ''
+    let writePrompt = ''
     const seenModel: { apiKey?: string; baseUrl?: string; model?: string } = {}
     const result = await humanizeChangelog(
       '### Added\n- thing',
@@ -59,17 +60,46 @@ describe('humanizeChangelog', () => {
           seenModel.model = model
           return 'test-model'
         },
+        generateStructured: (opts) => {
+          classifyPrompt = opts.prompt
+          return Promise.resolve(twoEntries)
+        },
         generate: (opts) => {
-          seenPrompt = opts.prompt
-          seenSystem = opts.system
+          writePrompt = opts.prompt
           return Promise.resolve({ text: '  ✨ New\n- Thing  ' })
         },
       }),
     )
     expect(result).toBe('✨ New\n- Thing')
-    expect(seenPrompt).toContain('### Added')
-    expect(seenSystem).toContain('announcement')
+    expect(classifyPrompt).toContain('### Added')
+    expect(writePrompt).not.toContain('### Added')
+    expect(writePrompt).toContain('stale memory results')
     expect(seenModel).toEqual({ apiKey: 'k', baseUrl: 'https://llm.example', model: 'main' })
+  })
+
+  test('returns the empty-release note when nothing survives classification', async () => {
+    const result = await humanizeChangelog('raw', deps({ generateStructured: () => Promise.resolve({ entries: [] }) }))
+    expect(result).toBe(EMPTY_RELEASE_NOTE)
+  })
+
+  test('does not call the write pass when nothing survives', async () => {
+    let writeCalled = false
+    await humanizeChangelog(
+      'raw',
+      deps({
+        generateStructured: () => Promise.resolve({ entries: [] }),
+        generate: () => {
+          writeCalled = true
+          return Promise.resolve({ text: 'x' })
+        },
+      }),
+    )
+    expect(writeCalled).toBe(false)
+  })
+
+  test('returns null when the classify pass throws', async () => {
+    const result = await humanizeChangelog('raw', deps({ generateStructured: () => Promise.reject(new Error('boom')) }))
+    expect(result).toBeNull()
   })
 
   test('returns null when LLM config is missing', async () => {

@@ -24,6 +24,18 @@ export const classifiedEntriesSchema = z.object({
 
 export type ClassifiedEntries = z.infer<typeof classifiedEntriesSchema>
 
+const CLASSIFY_SYSTEM_PROMPT = [
+  'You select which software changelog entries matter to end users of a chat bot.',
+  'Rules:',
+  '- Keep only changes a non-technical user would notice or benefit from: new capabilities, improvements to speed, reliability or usability, and bug fixes.',
+  '- Drop internal changes: build, ci, test, chore, refactor, deps, docs, formatting, and other internal plumbing.',
+  '- When in doubt, drop the entry.',
+  '- For each kept entry set kind: "new" for a new capability, "improvement" when something works better or faster now, "fix" when a problem is gone.',
+  '- Keep "text" close to the original entry. Do not rewrite for tone; that happens later.',
+].join('\n')
+
+export const EMPTY_RELEASE_NOTE = 'This release is all behind-the-scenes improvements — nothing new to learn.'
+
 const SYSTEM_PROMPT = [
   'You turn a raw software changelog into a short, friendly release announcement for end users of a chat bot.',
   'Rules:',
@@ -74,7 +86,13 @@ export async function humanizeChangelog(
   }
   try {
     const model = deps.buildModel(config.main.apiKey, config.main.baseUrl, config.main.model)
-    const { text } = await deps.generate({ model, system: SYSTEM_PROMPT, prompt: rawSection })
+    const classified = await deps.generateStructured({ model, system: CLASSIFY_SYSTEM_PROMPT, prompt: rawSection })
+    if (classified.entries.length === 0) return EMPTY_RELEASE_NOTE
+    const { text } = await deps.generate({
+      model,
+      system: SYSTEM_PROMPT,
+      prompt: JSON.stringify(classified.entries),
+    })
     const trimmed = text.trim()
     return trimmed.length === 0 ? null : trimmed
   } catch (error) {
