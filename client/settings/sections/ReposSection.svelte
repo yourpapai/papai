@@ -12,6 +12,7 @@
   import Input from '../../shared/ui/Input.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Select from '../../shared/ui/Select.svelte'
+  import { formatFetchError } from '../../shared/format-error.js'
   import type { RepoRecord } from '../fetcher-schemas-repos.js'
   import { addRepo, deleteRepo, fetchRepos } from '../repos-fetchers.js'
 
@@ -59,7 +60,7 @@
       if (id !== contextId) return
       repos = data.repos
     } catch (err) {
-      if (id === contextId) error = err instanceof Error ? err.message : String(err)
+      if (id === contextId) error = formatFetchError(err)
     } finally {
       if (id === contextId) loading = false
     }
@@ -86,7 +87,7 @@
       await load(contextId)
       status = 'Repository added.'
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = formatFetchError(err)
     } finally {
       adding = false
     }
@@ -101,7 +102,7 @@
       await load(contextId)
       status = 'Repository removed.'
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = formatFetchError(err)
     } finally {
       deletingId = null
       pendingDeleteId = null
@@ -120,8 +121,8 @@
     {/snippet}
   </PageHeader>
 
-  {#if error !== null}<p class="status-error">{error}</p>{/if}
-  {#if status !== null}<p class="status-success">{status}</p>{/if}
+  {#if error !== null}<p class="status-error" role="alert">{error}</p>{/if}
+  {#if status !== null}<p class="status-success" role="status">{status}</p>{/if}
 
   {#if loading && repos.length === 0}
     <p class="placeholder">Loading…</p>
@@ -156,21 +157,21 @@
     <div class="settings-repos__add">
       <p class="settings-repos__add-label">Add repository</p>
       <div class="settings-repos__add-form">
-        <Field label="Name">
+        <Field label="Name" required>
           <Input
             value={addName}
             onInput={(v) => (addName = v)}
             placeholder="my-project"
             testid="repos-add-name" />
         </Field>
-        <Field label="Repository URL (https)">
+        <Field label="Repository URL (https)" required>
           <Input
             value={addUrl}
             onInput={(v) => (addUrl = v)}
             placeholder="https://github.com/org/repo.git"
             testid="repos-add-url" />
         </Field>
-        <Field label="Base branch">
+        <Field label="Base branch" required>
           <Input
             value={addBranch}
             onInput={(v) => (addBranch = v)}

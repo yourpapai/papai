@@ -349,4 +349,70 @@ describe('ReposSection', () => {
     expect(target.querySelector('.ui-empty')).toBeNull()
     void unmount(component)
   })
+
+  test('the three mandatory fields are marked required and the optional ones are not', async () => {
+    setMockFetch(() => Promise.resolve(json(emptyPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const labelFor = (testid: string): HTMLElement =>
+      target
+        .querySelector<HTMLElement>(`[data-testid="${testid}"]`)!
+        .closest('.ui-field')!
+        .querySelector<HTMLElement>('.ui-field__label')!
+
+    expect(labelFor('repos-add-name').querySelector('.ui-field__req')).not.toBeNull()
+    expect(labelFor('repos-add-url').querySelector('.ui-field__req')).not.toBeNull()
+    expect(labelFor('repos-add-branch').querySelector('.ui-field__req')).not.toBeNull()
+    expect(labelFor('repos-add-preset').querySelector('.ui-field__req')).toBeNull()
+    expect(labelFor('repos-add-egress').querySelector('.ui-field__req')).toBeNull()
+    void unmount(component)
+  })
+
+  test('a failed load renders framed copy in an announced alert', async () => {
+    setMockFetch(() => Promise.resolve(new Response('{"error":"boom"}', { status: 500 })))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const alert = target.querySelector<HTMLElement>('.status-error')!
+    expect(alert.getAttribute('role')).toBe('alert')
+    expect(alert.textContent).toContain('Something went wrong on the server')
+    expect(alert.textContent).not.toContain('boom')
+    void unmount(component)
+  })
+
+  test('a successful add announces its status', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(routeMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const set = (testid: string, value: string): void => {
+      const el = target.querySelector<HTMLInputElement>(`[data-testid="${testid}"]`)!
+      el.value = value
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    set('repos-add-name', 'my-project')
+    set('repos-add-url', 'https://github.com/acme/my-project.git')
+    set('repos-add-branch', 'main')
+
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="repos-add-submit"]')!.click()
+    await drain()
+    await drain()
+
+    const status = target.querySelector<HTMLElement>('.status-success')!
+    expect(status.getAttribute('role')).toBe('status')
+    expect(status.textContent).toContain('Repository added.')
+    void unmount(component)
+  })
 })
