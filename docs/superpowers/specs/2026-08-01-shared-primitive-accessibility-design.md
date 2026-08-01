@@ -48,7 +48,8 @@ Four gaps, all confirmed against live source:
 
 ## Scope
 
-**In:** `client/shared/ui/Field.svelte`, `client/shared/ui/field-context.ts`,
+**In:** `client/shared/ui/Field.svelte`, `client/settings/components/SettingsFieldShell.svelte`,
+`client/shared/ui/field-context.ts`,
 `client/shared/ui/Input.svelte`, `client/shared/ui/Select.svelte`,
 `client/shared/ui/Combobox.svelte`, `client/shared/ui/PageHeader.svelte`, the `<h1>` root in
 `client/settings/SettingsApp.svelte`, and the single `Input disabled` consumer in
@@ -70,6 +71,21 @@ Four gaps, all confirmed against live source:
 
 ## Design
 
+### 0. There are two publishers of the field context, not one
+
+`Field.svelte` is not the only component calling `setFieldLabelId`/`setFieldError`.
+`client/settings/components/SettingsFieldShell.svelte:37`–`:45` publishes the same context
+for the settings sections that need a head/editor/footer layout — CodeHostSection,
+CodingCredentialsSection, ConfigFieldRow, AdminPluginsConfigSection — and carries the *same
+two defects*: a `*` at `:52` with no `aria-required`, and a hint `<p>` at `:65` with no id.
+
+Every context change below therefore lands in **both** publishers, in the same task, or half
+the SPA keeps the old behaviour while the other half changes — a worse state than today.
+`ConfigFieldRow.svelte:46`–`:56` already implements this pattern by hand for its own enum
+branch (a `hintId`, and a filtered id list because its hint and error can both be live at
+once); it is the in-repo precedent the shared implementation should match, and it keeps its
+local wiring because its two-live-ids case is genuinely different.
+
 ### 1. Required state travels as ARIA, not as text
 
 `field-context.ts` gains a `required: boolean` alongside the existing label id, published by
@@ -85,12 +101,13 @@ its name and then "required" again as its state. `aria-required` is the channel 
 for this, and once it carries the meaning the glyph is decoration. Recorded here so a
 reviewer reads this as a decision, not a miss.
 
-`Field` keeps its `required` prop and its visual `*` unchanged; nothing about the rendered
-pixels moves.
+`Field` and `SettingsFieldShell` both keep their `required` prop and their visual `*`
+unchanged; nothing about the rendered pixels moves.
 
 ### 2. The hint becomes the control's description when there is no error
 
 `Field` already mints `errorId`; it gains a parallel `hintId` and puts it on the hint span.
+`SettingsFieldShell` does the same for its hint `<p>`.
 `field-context.ts`'s `useFieldInvalid().describedBy` changes from
 
 - invalid → `errorId`, otherwise `undefined`
@@ -149,6 +166,9 @@ Component tests, one file per primitive touched, following the existing
   to the error's id when invalid; to nothing when neither is present. Assert the id
   *resolves to an element containing the expected text*, not merely that the attribute is
   non-empty — an id pointing at nothing is the failure mode this test exists to catch.
+- The same two assertions against `SettingsFieldShell`, through its existing
+  `tests/client/settings/components/ShellInputFixture.svelte` fixture — the second publisher
+  must satisfy the same contract, proven separately rather than assumed from `Field`.
 - `PageHeader` renders an `h2` carrying the title text.
 - `Input` with `disabled` renders a disabled control that does not emit `onInput`.
 - One `CodeHostSection` regression test: its text inputs are disabled while a save is in
