@@ -35,8 +35,10 @@
     'gitlab-self-hosted': 'GitLab (self-hosted)',
   }
 
-  // Client-side mirror of the fixed SaaS hosts deriveApiBaseUrl uses
-  // (src/coding-credentials/types.ts:74-75). Self-hosted kinds derive from the instance URL.
+  // Brand hosts shown to the user for the two SaaS kinds. Deliberately NOT the API bases
+  // deriveApiBaseUrl builds (src/coding-credentials/types.ts) — those are api.github.com and
+  // gitlab.com/api/v4, which name an endpoint rather than the host someone recognizes.
+  // Self-hosted kinds derive their host from the instance URL instead.
   const FORGE_SAAS_HOSTS: Record<string, string> = {
     github: 'github.com',
     gitlab: 'gitlab.com',
