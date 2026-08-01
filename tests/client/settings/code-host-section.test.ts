@@ -811,4 +811,26 @@ describe('CodeHostSection', () => {
     expect(pillText(target)).toBe('error')
     expect(subText(target)).toBeNull()
   })
+
+  test('shows the first-setup helper when the record is incomplete', async () => {
+    const target = await mountWith(typedForgeIncomplete)
+
+    const hint = target.querySelector('[data-testid="code-host-setup-hint"]')
+    expect(hint).not.toBeNull()
+    expect(hint!.textContent).toContain('push branches and open pull requests as you')
+    expect(hint!.textContent).toContain('read and write repository contents and pull requests')
+  })
+
+  test('hides the first-setup helper once the record is complete', async () => {
+    const target = await mountWith(typedForgePayloadSaas)
+
+    expect(target.querySelector('[data-testid="code-host-setup-hint"]')).toBeNull()
+  })
+
+  test('gives the access token a scope-describing placeholder', async () => {
+    const target = await mountWith(typedForgeIncomplete)
+
+    const input = target.querySelector<HTMLInputElement>('[data-testid="coding-input-forge_token"]')!
+    expect(input.placeholder).toBe('token with repo read/write access')
+  })
 })

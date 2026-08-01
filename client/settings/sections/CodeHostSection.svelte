@@ -162,6 +162,11 @@
     return !field.sensitive || replacing[field.key] === true || !field.hasValue
   }
 
+  function placeholderFor(field: CodingCredentialField): string {
+    if (field.key === 'forge_token') return 'token with repo read/write access'
+    return field.sensitive ? 'enter a new value' : ''
+  }
+
   function shouldShowField(field: CodingCredentialField): boolean {
     if (field.key === 'instance_url') return showInstanceUrl
     return true
@@ -252,6 +257,12 @@
       <p class="status-error" role="alert">Stored credentials are unreadable. Re-enter your token to repair this context.</p>
     {/if}
 
+    {#if !currentData.complete}
+      <p class="placeholder" data-testid="code-host-setup-hint">
+        Coding sessions push branches and open pull requests as you. Create a personal access token that can read and write repository contents and pull requests, then paste it below — it is encrypted and never shown again.
+      </p>
+    {/if}
+
     <div class="settings-byok-fields">
       {#each fields as field (field.key)}
         {#if shouldShowField(field)}
@@ -281,7 +292,7 @@
                 <Input
                   type={field.sensitive ? 'password' : 'text'}
                   value={drafts[field.key] ?? ''}
-                  placeholder={field.sensitive ? 'enter a new value' : ''}
+                  placeholder={placeholderFor(field)}
                   onInput={(value) => updateDraft(field.key, value)}
                   testid={`coding-input-${field.key}`} />
                 {#if field.sensitive && field.hasValue}
