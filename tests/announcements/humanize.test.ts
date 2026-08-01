@@ -126,6 +126,22 @@ describe('humanizeChangelog', () => {
     const result = await humanizeChangelog('raw', deps({ generate: () => Promise.resolve({ text: '   ' }) }))
     expect(result).toBeNull()
   })
+
+  test('write prompt demands plain benefit framing and the three sections', async () => {
+    let writeSystem = ''
+    await humanizeChangelog(
+      'raw',
+      deps({
+        generate: (opts) => {
+          writeSystem = opts.system
+          return Promise.resolve({ text: 'ok' })
+        },
+      }),
+    )
+    expect(writeSystem).toContain('⚡ Improvements')
+    expect(writeSystem).toContain('Example input')
+    expect(writeSystem).toContain('benefit')
+  })
 })
 
 describe('classifiedEntriesSchema', () => {

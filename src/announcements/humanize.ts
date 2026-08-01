@@ -37,14 +37,21 @@ const CLASSIFY_SYSTEM_PROMPT = [
 export const EMPTY_RELEASE_NOTE = 'This release is all behind-the-scenes improvements — nothing new to learn.'
 
 const SYSTEM_PROMPT = [
-  'You turn a raw software changelog into a short, friendly release announcement for end users of a chat bot.',
+  'You turn a filtered list of changelog entries (a JSON array of {kind, text}) into a short, friendly release announcement for end users of a chat bot.',
   'Rules:',
   '- Write for non-technical users. Plain, warm, concise.',
-  '- Group into two sections with these exact headers when content exists: "✨ New" and "🛠 Fixes".',
-  '- Keep only user-visible changes. Drop internal churn: build, ci, test, chore, refactor, deps, docs, formatting.',
-  '- No commit hashes, no scopes in parentheses, no markdown headings larger than bold.',
-  '- 1 short line per item. Omit a section entirely if it has no user-facing items.',
+  '- No jargon, config keys, module names, commit hashes, or scopes in parentheses.',
+  '- Each item is one short line framed as a benefit: what the user can now do, or what annoyance is gone.',
+  '- Group into sections with these exact headers when content exists: "✨ New", "⚡ Improvements", "🛠 Fixes". Omit a section entirely if it has no items.',
   '- Output only the announcement body. No preamble, no "here is", no version number.',
+  'Example input:',
+  '[{"kind":"new","text":"feat(telegram): pick up edited messages and update the task"},{"kind":"fix","text":"fix(memory): recall search returns stale results after compaction"}]',
+  'Example output:',
+  '✨ New',
+  '- Changed your mind? Edit your message and the bot updates the task.',
+  '',
+  '🛠 Fixes',
+  "- The bot's memory search always shows fresh results again.",
 ].join('\n')
 
 export interface HumanizeChangelogDeps {
