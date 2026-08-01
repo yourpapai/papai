@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { HttpResponse, delay, http } from 'msw'
+import type { HttpHandler } from 'msw'
 
 import { isNamespace } from './namespace.js'
 import type { HandlerFamily } from './settings-handlers-personal.js'
@@ -156,6 +157,28 @@ const forgeEmpty = {
   missing: ['kind', 'forge_token'],
   fields: forgeFields(false),
 }
+
+// Save-validation family: GET serves the populated forge record, PATCH always rejects with the
+// route's real 422 for a self-hosted kind and no instance URL
+// (src/debug/settings/coding-credentials-routes.ts:113-120).
+//
+// The PATCH carries `namespace` in its JSON body, not the query string, so the isNamespace
+// guard used on every GET here does not apply to it. That is safe because only one handler
+// family registers a PATCH per scenario — the absence of a guard is deliberate, not forgotten.
+export const forgeSaveErrorHandlers: HttpHandler[] = [
+  http.get('/settings/api/coding-credentials', ({ request }) =>
+    isNamespace(request, 'forge') ? HttpResponse.json(forgePopulated) : undefined,
+  ),
+  http.patch('/settings/api/coding-credentials', () =>
+    HttpResponse.json(
+      {
+        error: 'required for self-hosted code hosts, and must start with https://',
+        field: 'instance_url',
+      },
+      { status: 422 },
+    ),
+  ),
+]
 
 export const forgeHandlers: HandlerFamily = {
   populated: [

@@ -26,6 +26,11 @@ test.describe('settings/sections/CodeHostSection', () => {
     await switchStory(sharedPage, 'settings-sections-codehostsection--loading')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('Save validation error', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-codehostsection--save-validation-error')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots
 
@@ -79,5 +84,13 @@ test('CodeHostSection — long value overflow', async ({ sharedPage }) => {
 test('CodeHostSection — self-hosted kind reveals Instance URL', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'settings-sections-codehostsection--populated')
   await sharedPage.getByTestId('coding-select-kind').selectOption('gitlab-self-hosted')
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('CodeHostSection — inline error under the offending field', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-codehostsection--save-validation-error')
+  await sharedPage.getByTestId('coding-select-kind').selectOption('gitlab-self-hosted')
+  await sharedPage.getByTestId('code-host-save').click()
+  await expect(sharedPage.getByText('required for self-hosted code hosts')).toBeVisible()
   await expect(sharedPage).toHaveScreenshot()
 })

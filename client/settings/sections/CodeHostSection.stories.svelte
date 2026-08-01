@@ -41,3 +41,9 @@
   args={{ contextId: CONTEXT_ID }}
   parameters={{ fixtures: 'settings-code-host-loading' }}
 />
+
+<Story
+  name="Save validation error"
+  args={{ contextId: CONTEXT_ID }}
+  parameters={{ fixtures: 'settings-code-host-save-error' }}
+/>

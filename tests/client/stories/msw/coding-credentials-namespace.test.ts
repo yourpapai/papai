@@ -8,7 +8,11 @@ import { expect, test } from 'bun:test'
 import { getResponse } from 'msw'
 import type { HttpHandler } from 'msw'
 
-import { codingCredentialsHandlers, forgeHandlers } from '../../../../client/stories/msw/settings-handlers-coding.js'
+import {
+  codingCredentialsHandlers,
+  forgeHandlers,
+  forgeSaveErrorHandlers,
+} from '../../../../client/stories/msw/settings-handlers-coding.js'
 import {
   codingMcpHandlers,
   codingMcpInternalAvailableHandlers,
@@ -77,4 +81,9 @@ test.each(RESPONDING)('$name answers only its own namespace', async ({ handlers,
 
 test.each(LOADING)('$name falls through for foreign namespaces', async ({ handlers, own }) => {
   expect(await foreignNamespaces(handlers, own)).toEqual([])
+})
+
+test('forgeSaveErrorHandlers answers only the forge namespace on GET', async () => {
+  expect(await getResponse(forgeSaveErrorHandlers, request('forge'))).toBeDefined()
+  expect(await foreignNamespaces(forgeSaveErrorHandlers, 'forge')).toEqual([])
 })
