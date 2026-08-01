@@ -26,5 +26,10 @@ test.describe('shared/ui/Input', () => {
     await switchStory(sharedPage, 'shared-ui-input--readonly')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('Disabled', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-ui-input--disabled')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots
