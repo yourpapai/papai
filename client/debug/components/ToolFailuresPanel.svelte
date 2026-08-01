@@ -30,6 +30,10 @@
   }
 
   const filtered = $derived(dashboard.toolFailures.filter((f) => matchesScope(f.scope, dashboard.scopeFilter)))
+
+  const selectedFailureKey = $derived(
+    dashboard.selectedDetail?.kind === 'failure' ? JSON.stringify(dashboard.selectedDetail.payload) : '',
+  )
 </script>
 
 <Panel title="tool failures" count={dashboard.toolFailures.length}>
@@ -43,6 +47,7 @@
         {@const retriable = retriableLabel(f.data)}
         <div
           class="failure-row"
+          class:selected={selectedFailureKey !== '' && selectedFailureKey === JSON.stringify(f)}
           role="button"
           tabindex="0"
           onclick={() => onShowFailure(f)}

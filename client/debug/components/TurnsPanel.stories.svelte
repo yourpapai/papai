@@ -6,7 +6,7 @@
 <script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf'
 
-  import { makeDashboardState } from '../../stories/fixtures/debug.js'
+  import { makeDashboardState, SELECTED_TURN } from '../../stories/fixtures/debug.js'
   import TurnsPanel from './TurnsPanel.svelte'
 
   const { Story } = defineMeta({
@@ -20,3 +20,7 @@
 <Story name="Populated" args={{ dashboard: makeDashboardState(), onShowTurn: noop, onShowLogsForTurn: noop }} />
 
 <Story name="Empty" args={{ dashboard: makeDashboardState({ turns: [] }), onShowTurn: noop, onShowLogsForTurn: noop }} />
+
+<Story
+  name="Selected"
+  args={{ dashboard: makeDashboardState({ selectedDetail: SELECTED_TURN }), onShowTurn: noop, onShowLogsForTurn: noop }} />

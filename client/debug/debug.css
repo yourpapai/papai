@@ -1054,3 +1054,11 @@
   outline: var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
 }
+
+.session-card.selected,
+.trace-row.selected,
+.failure-row.selected,
+.log-entry.selected {
+  background: rgba(93, 217, 122, 0.06);
+  box-shadow: inset 2px 0 0 var(--accent);
+}

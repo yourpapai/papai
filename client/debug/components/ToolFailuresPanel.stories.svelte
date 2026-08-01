@@ -6,7 +6,7 @@
 <script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf'
 
-  import { makeDashboardState, makeToolFailure } from '../../stories/fixtures/debug.js'
+  import { makeDashboardState, makeToolFailure, SELECTED_FAILURE, SELECTED_FAILURE_LIST } from '../../stories/fixtures/debug.js'
   import ToolFailuresPanel from './ToolFailuresPanel.svelte'
 
   const { Story } = defineMeta({
@@ -25,3 +25,13 @@
 <Story name="Populated" args={{ dashboard: makeDashboardState({ toolFailures: failures }), onShowFailure: noop }} />
 
 <Story name="Empty" args={{ dashboard: makeDashboardState({ toolFailures: [] }), onShowFailure: noop }} />
+
+<Story
+  name="Selected"
+  args={{
+    dashboard: makeDashboardState({
+      toolFailures: SELECTED_FAILURE_LIST,
+      selectedDetail: SELECTED_FAILURE,
+    }),
+    onShowFailure: noop,
+  }} />

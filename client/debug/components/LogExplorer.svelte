@@ -165,6 +165,8 @@
         {#each filtered as fl, i (i)}
           <div
             class="log-entry {levelClass(fl.entry.level)}"
+            class:selected={dashboard.selectedDetail?.kind === 'log' &&
+              dashboard.selectedDetail.payload.index === fl.originalIndex}
             role="button"
             tabindex="0"
             onclick={() => onSelectLog(fl.entry, fl.originalIndex)}

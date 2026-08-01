@@ -158,4 +158,19 @@ describe('TurnsPanel', () => {
     expect(seen[0]?.turnId).toBe('t1')
     void unmount(component)
   })
+
+  test('marks the row matching selectedDetail as selected', () => {
+    const turn = makeTurn({ turnId: 't-2' })
+    const state = freshState([makeTurn(), turn])
+    state.selectedDetail = { kind: 'turn', payload: turn }
+    const { target, component } = render(state)
+    expect(target.querySelectorAll('tr.ui-datatable__tr--selected').length).toBe(1)
+    void unmount(component)
+  })
+
+  test('marks nothing when a different detail kind is selected', () => {
+    const { target, component } = render(freshState([makeTurn()]))
+    expect(target.querySelector('tr.ui-datatable__tr--selected')).toBeNull()
+    void unmount(component)
+  })
 })

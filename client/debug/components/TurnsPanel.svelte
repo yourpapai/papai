@@ -83,6 +83,10 @@
   const errors = $derived(dashboard.turns.filter((t) => t.status === 'error').length)
   const cancelled = $derived(dashboard.turns.filter((t) => t.status === 'cancelled').length)
 
+  const selectedTurnId = $derived(
+    dashboard.selectedDetail?.kind === 'turn' ? dashboard.selectedDetail.payload.turnId : undefined,
+  )
+
   function selectTurn(row: TurnRow): void {
     onShowTurn(row._turn)
   }
@@ -107,6 +111,7 @@
       {columns}
       rows={turnRows}
       rowKey="id"
+      selectedKey={selectedTurnId}
       cell={cellRender}
       onRowClick={selectTurn}>
       {#snippet empty()}

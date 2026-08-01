@@ -80,6 +80,20 @@ export function makeToolFailure(overrides: Partial<ToolFailure> = {}): ToolFailu
 
 export const SELECTED_TURN: SelectedDetail = { kind: 'turn', payload: makeTurn() }
 
+const SELECTED_TRACE_PAYLOAD: LlmTrace = makeLlmTrace()
+export const SELECTED_TRACE: SelectedDetail = { kind: 'trace', payload: SELECTED_TRACE_PAYLOAD }
+export const SELECTED_TRACE_LIST: LlmTrace[] = [
+  SELECTED_TRACE_PAYLOAD,
+  makeLlmTrace({ steps: 4, error: 'rate limited' }),
+]
+
+const SELECTED_FAILURE_PAYLOAD: ToolFailure = makeToolFailure()
+export const SELECTED_FAILURE: SelectedDetail = { kind: 'failure', payload: SELECTED_FAILURE_PAYLOAD }
+export const SELECTED_FAILURE_LIST: ToolFailure[] = [
+  SELECTED_FAILURE_PAYLOAD,
+  makeToolFailure({ data: { toolName: 'update_task', error: 'permission denied', errorType: 'auth' } }),
+]
+
 export function makeDashboardState(overrides: Partial<DashboardState> = {}): DashboardState {
   return {
     connected: true,

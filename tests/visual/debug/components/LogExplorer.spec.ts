@@ -16,5 +16,10 @@ test.describe('debug/components/LogExplorer', () => {
     await switchStory(sharedPage, 'debug-components-logexplorer--empty')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('Selected', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'debug-components-logexplorer--selected')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots

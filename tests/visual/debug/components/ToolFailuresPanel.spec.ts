@@ -16,5 +16,10 @@ test.describe('debug/components/ToolFailuresPanel', () => {
     await switchStory(sharedPage, 'debug-components-toolfailurespanel--empty')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('Selected', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'debug-components-toolfailurespanel--selected')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots

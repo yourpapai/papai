@@ -23,6 +23,8 @@
           {session}
           wizard={dashboard.wizards.get(userId)}
           isOperator={userId === dashboard.operatorUserId}
+          selected={dashboard.selectedDetail?.kind === 'session' &&
+            dashboard.selectedDetail.payload.userId === userId}
           onSelect={() => onSelect(userId, session)} />
       {/each}
     {/snippet}

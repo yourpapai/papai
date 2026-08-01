@@ -13,10 +13,11 @@ See LICENSE in the project root for details.
     session: Session
     wizard?: DashboardWizard
     isOperator?: boolean
+    selected?: boolean
     onSelect: () => void
   }
 
-  let { userId, session, wizard, isOperator = false, onSelect }: Props = $props()
+  let { userId, session, wizard, isOperator = false, selected = false, onSelect }: Props = $props()
 
   const isActive = $derived(Date.now() - session.lastAccessed < 300000)
 </script>
@@ -24,6 +25,7 @@ See LICENSE in the project root for details.
 <div
   class="session-card"
   class:active={isActive}
+  class:selected
   class:operator={isOperator}
   role="button"
   tabindex="0"
