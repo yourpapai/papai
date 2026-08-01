@@ -967,7 +967,13 @@ Read the regenerated PNGs. Expected, per spec acceptance 5:
 
 - `CodingCredentialsSection` — **unchanged**. The shell's hint rule (12px, `--text-muted`,
   `margin: 0`) reproduces the deleted `.field-hint` exactly.
-- `ConfigFieldRow` — two intended differences, both from moving the markup into the shell:
+- `ConfigFieldRow` — **no shots exist**. It has no stories file and no visual spec, and no
+  story renders it with a hint or an error, so `bun shoot -g ConfigFieldRow` matches nothing.
+  The two differences below are real in the CSS but cannot be observed; unit tests are the only
+  verification for this row. Cover the input/else branch explicitly — the enum branch keeps its
+  own footer and does not exercise the migrated props.
+
+  The (unobservable) differences from moving the markup into the shell:
   - **hint**: loses a default `<p>` margin (the local rule set colour and size but no margin),
     so vertical spacing tightens. Size and colour unchanged.
   - **error**: the row's `.status-error` sets `color: var(--danger)` and nothing else
@@ -976,8 +982,9 @@ Read the regenerated PNGs. Expected, per spec acceptance 5:
     same danger colour, smaller text, tighter spacing. That is the parity the sub-project is
     for: the error now matches the hint beside it.
 
-  Those two are the only permitted differences. Any change to colour, to field order, or to a
-  control's own geometry is a defect — stop and report it rather than accepting the baseline.
+  For `CodingCredentialsSection`, unchanged is the only acceptable outcome. Any change to
+  colour, to field order, or to a control's own geometry is a defect — stop and report it rather
+  than accepting the baseline.
 
 - [ ] **Step 6: Commit**
 
@@ -1265,6 +1272,14 @@ git commit -m "test(visual): cover the inline validation error on CodeHostSectio
    banner (Task 6 `inlineField` resolution; Task 1 Step 5 pins the unattributed case).
 4. No message rendered under a field label repeats that field's column name (Task 1 copy; Task 7
    Step 9 verifies it in the shot).
-5. `CodingCredentialsSection` baselines are unchanged; `ConfigFieldRow`'s change only by the
-   `<p>` margin normalization and by its error text adopting the 12px hint scale, confirmed by
-   reading the shots (Task 5 Step 5).
+5. `CodingCredentialsSection` baselines are unchanged, confirmed by reading the shots
+   (Task 5 Step 5).
+
+   `ConfigFieldRow`'s predicted differences — the `<p>` margin normalization and its error text
+   adopting the 12px hint scale — are **not visually verifiable**. `ConfigFieldRow` has no
+   stories file and no visual spec, and no story anywhere renders it with a hint or an error, so
+   no baseline exists that could show the change. The CSS difference is real; only the
+   observation was impossible. Unit tests in
+   `tests/client/settings/components/ConfigFieldRow.test.ts` therefore carry the whole
+   verification burden for this row, and must cover the input/else branch, not only the enum
+   branch. The absent story is logged as a Minor for the final review.

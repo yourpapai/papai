@@ -257,9 +257,15 @@ so the absent guard reads as deliberate rather than forgotten.
    banner.
 4. No message rendered under a field label repeats that field's column name.
 5. `CodingCredentialsSection`'s baselines are unchanged by the migration off its hand-rolled
-   hint, whose style the shell reproduces exactly. `ConfigFieldRow`'s baselines do change: its
-   hint loses a default `<p>` margin, and its error additionally drops to 12px. The regenerated
-   shots are read, and those are the only differences.
+   hint, whose style the shell reproduces exactly. The regenerated shots are read, and there are
+   no differences.
+
+   `ConfigFieldRow`'s styling does change — its hint loses a default `<p>` margin and its error
+   additionally drops to 12px — but that change is **not observable in any screenshot**:
+   `ConfigFieldRow` has no stories file and no visual spec, and no story renders it with a hint
+   or an error. Its verification is therefore unit-test-only, and must reach the input/else
+   branch as well as the enum branch. Adding the missing story is out of scope here and is
+   recorded as a follow-up.
 
 ## What this does not fix
 
