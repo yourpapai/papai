@@ -164,6 +164,7 @@
 
   function placeholderFor(field: CodingCredentialField): string {
     if (field.key === 'forge_token') return 'token with repo read/write access'
+    if (field.key === 'instance_url') return 'https://gitlab.example.com'
     return field.sensitive ? 'enter a new value' : ''
   }
 
@@ -266,11 +267,15 @@
     <div class="settings-byok-fields">
       {#each fields as field (field.key)}
         {#if shouldShowField(field)}
+          {@const instanceUrlShown = field.key === 'instance_url' && showInstanceUrl}
           <SettingsFieldShell
             label={field.label}
-            required={field.required}
+            required={field.required || instanceUrlShown}
             editorOpen={editorOpen(field)}
             error={inlineField === field.key ? (error ?? undefined) : undefined}
+            hint={instanceUrlShown
+              ? 'Needed because you chose a self-hosted code host. Your operator must also allow this host for coding sessions.'
+              : undefined}
             testid={`coding-row-${field.key}`}>
             {#snippet head()}
               {#if field.sensitive && field.hasValue && !editorOpen(field)}

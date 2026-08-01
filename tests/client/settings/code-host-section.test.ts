@@ -833,4 +833,48 @@ describe('CodeHostSection', () => {
     const input = target.querySelector<HTMLInputElement>('[data-testid="coding-input-forge_token"]')!
     expect(input.placeholder).toBe('token with repo read/write access')
   })
+
+  test('marks Instance URL required and hints it while a self-hosted kind is selected', async () => {
+    const target = await mountWith(typedForgePayloadSelfHosted)
+
+    const row = target.querySelector('[data-testid="coding-row-instance_url"]')!
+    expect(row.querySelector('.settings-field__req')).not.toBeNull()
+    expect(row.querySelector('.settings-field__hint')?.textContent).toContain(
+      'Needed because you chose a self-hosted code host.',
+    )
+    expect(row.querySelector('.settings-field__hint')?.textContent).toContain(
+      'Your operator must also allow this host for coding sessions.',
+    )
+    const input = target.querySelector<HTMLInputElement>('[data-testid="coding-input-instance_url"]')!
+    expect(input.placeholder).toBe('https://gitlab.example.com')
+  })
+
+  test('drops the Instance URL marker and hint when the kind switches back to SaaS', async () => {
+    const target = await mountWith(typedForgePayloadSelfHosted)
+
+    const select = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-kind"]')!
+    select.value = 'github'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    flushSync()
+    await drain()
+
+    // The whole row goes away with the field, taking the marker and hint with it.
+    expect(target.querySelector('[data-testid="coding-row-instance_url"]')).toBeNull()
+  })
+
+  test('reveals a required, hinted Instance URL when a self-hosted kind is chosen', async () => {
+    const target = await mountWith(typedForgePayloadSaas)
+
+    expect(target.querySelector('[data-testid="coding-row-instance_url"]')).toBeNull()
+
+    const select = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-kind"]')!
+    select.value = 'gitlab-self-hosted'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    flushSync()
+    await drain()
+
+    const row = target.querySelector('[data-testid="coding-row-instance_url"]')!
+    expect(row.querySelector('.settings-field__req')).not.toBeNull()
+    expect(row.querySelector('.settings-field__hint')?.textContent).toContain('self-hosted code host')
+  })
 })
