@@ -314,6 +314,7 @@
                     value={drafts[field.key] ?? ''}
                     placeholder={placeholderFor(field)}
                     onInput={(value) => updateDraft(field.key, value)}
+                    disabled={saving || loading}
                     testid={`coding-input-${field.key}`} />
                   {#if field.sensitive && field.hasValue}
                     <Btn variant="ghost" size="sm" testid={`coding-cancel-${field.key}`} onClick={() => cancelReplace(field.key)}>

@@ -256,6 +256,17 @@ const routeCodeHostMock = (_url: string, init?: RequestInit): Promise<Response> 
   return Promise.resolve(json(unconfiguredPayload))
 }
 
+let releaseSave: (() => void) | null = null
+
+const routeCodeHostMockDeferredSave = (_url: string, init?: RequestInit): Promise<Response> => {
+  if (_url.includes('/settings/api/coding-credentials') && (init?.method ?? 'GET').toUpperCase() === 'PATCH') {
+    return new Promise<Response>((resolve) => {
+      releaseSave = (): void => resolve(json({ ok: true }))
+    })
+  }
+  return Promise.resolve(json(unconfiguredPayload))
+}
+
 interface ReloadFailState {
   getCount: number
 }
@@ -978,5 +989,28 @@ describe('CodeHostSection', () => {
 
     const clear = target.querySelector('[data-testid="code-host-clear"]')!
     expect(clear.classList.contains('ui-btn--danger')).toBe(true)
+  })
+
+  test('locks the text inputs while a save is in flight', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(routeCodeHostMockDeferredSave)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const field = target.querySelector<HTMLInputElement>('[data-testid="coding-input-forge_token"]')!
+    field.value = 'ghp_secret'
+    field.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="code-host-save"]')!.click()
+    await drain()
+
+    expect(target.querySelector<HTMLInputElement>('[data-testid="coding-input-forge_token"]')!.disabled).toBe(true)
+
+    releaseSave?.()
+    await drain()
+    void unmount(component)
   })
 })

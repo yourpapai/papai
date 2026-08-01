@@ -110,4 +110,36 @@ describe('Input.svelte', () => {
     expect(seen).toBe('hi')
     void unmount(c)
   })
+
+  test('renders a disabled input that emits no onInput', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    let seen = ''
+    const c = mount(Input, {
+      target,
+      props: {
+        value: '',
+        disabled: true,
+        testid: 'locked',
+        onInput: (v: string) => {
+          seen = v
+        },
+      },
+    })
+    const input = target.querySelector<HTMLInputElement>('[data-testid="locked"]')!
+    expect(input.disabled).toBe(true)
+    input.value = 'typed'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(seen).toBe('')
+    void unmount(c)
+  })
+
+  test('marks the multiline wrapper disabled too', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(Input, { target, props: { value: '', multiline: true, disabled: true } })
+    expect(target.querySelector<HTMLTextAreaElement>('textarea')!.disabled).toBe(true)
+    expect(target.querySelector('.ui-input--disabled')).not.toBeNull()
+    void unmount(c)
+  })
 })

@@ -16,6 +16,7 @@
     onBlur?: () => void
     type?: 'text' | 'search' | 'password'
     readonly?: boolean
+    disabled?: boolean
     testid?: string
     multiline?: boolean
     rows?: number
@@ -29,6 +30,7 @@
     onBlur,
     type = 'text',
     readonly = false,
+    disabled = false,
     testid,
     multiline = false,
     rows = 3,
@@ -38,6 +40,7 @@
   const fieldError = useFieldInvalid()
 
   function handleInput(event: Event): void {
+    if (disabled) return
     const next = (event.target as HTMLInputElement | HTMLTextAreaElement).value
     onInput?.(next)
   }
@@ -46,6 +49,7 @@
 <div
   class="ui-input"
   class:ui-input--multiline={multiline}
+  class:ui-input--disabled={disabled}
   class:ui-input--invalid={fieldError.invalid}
 >
   {#if multiline}
@@ -53,6 +57,7 @@
       {placeholder}
       {value}
       {readonly}
+      {disabled}
       {rows}
       aria-labelledby={labelId}
       aria-invalid={fieldError.invalid ? 'true' : undefined}
@@ -71,6 +76,7 @@
       {placeholder}
       {value}
       {readonly}
+      {disabled}
       aria-labelledby={labelId}
       aria-invalid={fieldError.invalid ? 'true' : undefined}
       aria-required={fieldError.required ? 'true' : undefined}
@@ -96,6 +102,10 @@
   }
   .ui-input--invalid {
     border-color: var(--danger);
+  }
+  .ui-input--disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
   .ui-input__prefix {
     color: var(--fg3);
