@@ -120,8 +120,8 @@ export const FEATURE_PRODUCERS: Readonly<
   },
   deferred: {
     opportunity: 'src/tools/index.ts#observeFeatureOpportunities',
-    success: 'src/tools/create-deferred-prompt.ts#executeCreate',
-    failure: 'src/tools/create-deferred-prompt.ts#executeCreate',
+    success: 'src/tools/create-reminder.ts#executeCreate',
+    failure: 'src/tools/create-reminder.ts#executeCreate',
     blocked: 'src/tools/permission-gate.ts#gatedExecute',
   },
   memory_write: {
