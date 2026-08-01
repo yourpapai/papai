@@ -48,26 +48,29 @@
   <span class="tree-bracket">...</span>
 {:else}
 {#if isContainer}
-  {#if label !== undefined}<span class="tree-key">{label}: </span>{/if}
   {#if entries.length === 0}
+    {#if label !== undefined}<span class="tree-key">{label}: </span>{/if}
     <span class="tree-bracket">{bracketOpen}{bracketClose}</span>
   {:else}
-    <span
-      class="tree-toggle"
-      class:collapsed
-      role="button"
-      tabindex="0"
-      onclick={() => (collapsed = !collapsed)}
-      onkeydown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          collapsed = !collapsed
-        }
-      }}>{collapsed ? '▶' : '▼'}</span>
-    <span class="tree-bracket">{bracketOpen}</span>
-    {#if collapsed}
-      <span class="tree-bracket">{bracketClose}</span>
-    {/if}
+    <span class="tree-open">
+      {#if label !== undefined}<span class="tree-key">{label}: </span>{/if}
+      <span
+        class="tree-toggle"
+        class:collapsed
+        role="button"
+        tabindex="0"
+        onclick={() => (collapsed = !collapsed)}
+        onkeydown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            collapsed = !collapsed
+          }
+        }}>{collapsed ? '▶' : '▼'}</span>
+      <span class="tree-bracket">{bracketOpen}</span>
+      {#if collapsed}
+        <span class="tree-bracket">{bracketClose}</span>
+      {/if}
+    </span>
     {#if !collapsed}
       {#if depth >= MAX_DEPTH}
         <span class="tree-bracket"> ... </span>
@@ -93,9 +96,7 @@
 
 <style>
   .tree-row {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
+    display: block;
     padding: 2px 0;
     font-family: var(--font-mono);
     font-size: 12px;
@@ -104,6 +105,11 @@
   }
   .tree-key {
     color: var(--fg2);
+  }
+  .tree-open {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
   }
   .tree-toggle {
     display: inline-flex;
@@ -116,6 +122,7 @@
     color: var(--fg3);
   }
   .tree-children {
+    display: block;
     border-left: 1px dashed var(--hair);
   }
   .tree-string {

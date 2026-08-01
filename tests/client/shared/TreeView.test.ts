@@ -30,4 +30,16 @@ describe('TreeView.svelte', () => {
     expect(target.querySelector('.tree-closing')).toBeNull()
     void unmount(component)
   })
+
+  test('nested containers each render a block-sibling closing row', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(TreeView, { target, props: { value: { outer: { inner: 1 } } } })
+    const closings = target.querySelectorAll('.tree-closing')
+    expect(closings.length).toBe(2)
+    for (const closing of closings) {
+      expect(closing.previousElementSibling?.classList.contains('tree-children')).toBe(true)
+    }
+    void unmount(component)
+  })
 })
