@@ -37,10 +37,10 @@ Clean run (no issues):
 
 ```
 Review loop finished: clean — reviewer found no issues in round 1.
-Duration: 6m01s (review 178.3s) · Cost: $1.234 (in 120000 / out 8000 / reasoning 3000)
+Duration: 2m58s (review 178.3s) · Cost: $1.234 (in 120000 / out 8000 / reasoning 3000)
 
 Artifacts (.review-loop/runs/2026-08-01T12-00-00-000Z-abcd1234/):
-  summary.txt · metrics.json · ledger.json · trace.log · transcripts/
+  summary.txt · metrics.json · ledger.json · trace.jsonl · agent-output.log · state.json
 ```
 
 Run with issues:
@@ -68,8 +68,8 @@ Burndown:
 Rules:
 
 - **Verdict line** (first line) derived from `doneReason` + counts, in plain language. The mapping is total and explicit — every `doneReason` value has a defined rendering:
-  - No issues ever found (`clean`) → "clean — reviewer found no issues in round N."
-  - Issues found, none left open (`clean_after_rounds`, or `max_rounds`/`no_progress` with zero open) → "done — N issues: X fixed, Y needs human, Z rejected" (zero counts omitted).
+  - No issues ever found (`clean` in round 1) → "clean — reviewer found no issues in round N."
+  - Issues found, none left open (`clean` after round 1, or `max_rounds`/`no_progress` with zero open) → "done — N issues: X fixed, Y needs human, Z rejected" (zero counts omitted).
   - Issues left open (`max_rounds` / `no_progress`) → "issues remaining — N open (X fixed, Y needs human, Z rejected)".
 - **Zero suppression**:
   - Wall-clock phases with `0.0s` are dropped from the duration breakdown (at least one phase is always shown — the nonzero ones; if all are zero, show `0.0s` total only).
@@ -77,7 +77,7 @@ Rules:
   - The burndown table is omitted when there is exactly one round and every value in it is zero.
 - **Issue groups**: bucketed from `Object.values(ledger.issues)` by status, ordered `needs_human → closed (fixed) → rejected → already_fixed → open` (open bucket only appears when the loop stops with non-terminal issues). Each group is capped at 20 lines, then `…and N more (see ledger.json)`.
 - **Issue line format**: `<mark> #<shortId> [<severity>] <file>:<lineStart> — <title>`, taken from the `LedgerIssueRecord` (`id`, `issue.severity`, `issue.file`, `issue.lineStart`, `issue.title`). `shortId` is the first 8 characters of the ledger UUID (same convention as run ids); it is display-only — full ids live in `ledger.json`. Marks: `✓` fixed, `!` needs human, `✗` rejected, `·` already fixed/open.
-- **Artifacts block** always printed, listing the run dir plus the files the run wrote: `summary.txt`, `metrics.json`, `ledger.json`, the trace log (`runState.tracePath`), and the transcripts directory. No filesystem probing — the writer lists what it knows it wrote.
+- **Artifacts block** always printed, listing the run dir plus the files the run writes: `summary.txt`, `metrics.json`, `ledger.json`, `trace.jsonl` (`runState.tracePath`), `agent-output.log` (`runState.logPath`), and `state.json`. No filesystem probing — the writer lists what it knows it wrote.
 - **Size budget**: a typical report is ≤ 40 lines so harness elision does not hide the verdict; the verdict is the first line and the counts stay within the tail window.
 - `summary.txt` receives the identical text as the console. `metrics.json` schema is unchanged.
 
@@ -101,21 +101,23 @@ Fix/verify decisions already stream per issue; they are restyled to the same vis
 
 `LiveRenderer` keeps a counter bag `{ round, maxRounds, open, fixed, rejected, needsHuman }`, updated by the structured issue events; zero-count segments are omitted from the line.
 
-**The seam.** `ProgressReporter` gains one method:
+**The seam.** `ProgressReporter` gains one optional method plus an optional status accessor (optional so existing fakes/reporters don't break):
 
 ```ts
-issue(event: IssueProgressEvent): void
+issue?(event: IssueProgressEvent): void
+statusSuffix?(): string
 
 type IssueProgressEvent =
+  | { type: 'round'; round: number; maxRounds: number }
   | { type: 'found'; id: string; severity: Severity; file: string; line: number; title: string }
   | { type: 'decided'; id: string; verdict: string; title: string; note?: string }
 ```
 
-- `loop-controller` calls `issue({type: 'found', …})` per new ledger addition at the review boundary.
-- `issue-processor.ts` / `issue-processor-attempts.ts` / `commit-attempt.ts` call `issue({type: 'decided', …})` where they currently emit `[fix] "…"` string logs; the old strings are replaced, not duplicated.
-- `LiveRenderer.issue()` formats the line via `event()` and updates the status counters.
+- `loop-controller` emits `round` at each round start and `found` per new ledger addition at the review/match boundary.
+- `issue-processor.ts` / `issue-processor-attempts.ts` / `commit-attempt.ts` call `issue({type: 'decided', …})` where they currently emit `[fix] "…"` decision strings; those decision strings are replaced, not duplicated (purely informational `[fix]` logs like auto-commit and ledger-save-retry stay).
+- `LiveRenderer.issue()` formats the line via `event()` and updates the status counters; `LiveRenderer.statusSuffix()` renders `round N/M · issues: X open · Y fixed · …` (zero segments omitted) and is appended to the live tick by `line-handler.renderLive` and `withLivePhase`.
 - Non-TTY mode (`dynamic === false`) prints the same lines with no ticker — behavior otherwise unchanged.
-- Any other `ProgressReporter` implementations (test fakes, file loggers) implement `issue()` by formatting to text.
+- Test fakes that want to observe issue events implement `issue()` by formatting to text via the shared `issue-format.ts` helpers; fakes that don't care omit it.
 
 ## Data flow
 
