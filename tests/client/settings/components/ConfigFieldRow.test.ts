@@ -384,7 +384,9 @@ describe('ConfigFieldRow', () => {
     flushSync()
     target.querySelector<HTMLButtonElement>('[data-testid="cfg-seg-ai_output_detail_level-raw"]')!.click()
     await drain()
-    expect(target.querySelector('.settings-field__error')).not.toBeNull()
+    const errorEl = target.querySelector('.settings-field__error')
+    expect(errorEl).not.toBeNull()
+    expect(errorEl!.textContent).toBe('request failed with status 500')
     const sanitizedBtn = target.querySelector<HTMLButtonElement>(
       '[data-testid="cfg-seg-ai_output_detail_level-sanitized"]',
     )!
@@ -650,6 +652,94 @@ describe('ConfigFieldRow', () => {
     release(json({ ok: true, contextId: 'user:1' }))
     await drain()
     expect(rawBtn.disabled).toBe(false)
+    void unmount(component)
+  })
+
+  test('renders the hint paragraph through the shell for a non-enum field', () => {
+    setMockFetch(() => Promise.resolve(json({})))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'timezone',
+        storageKey: 'timezone',
+        label: 'Timezone',
+        required: false,
+        sensitive: false,
+        kind: 'preference',
+        hasValue: true,
+        value: 'UTC',
+      },
+      hint: 'Pick your local timezone for scheduling.',
+      onSaved: () => undefined,
+    })
+    flushSync()
+    const hintEl = target.querySelector('.settings-field__hint')
+    expect(hintEl).not.toBeNull()
+    expect(hintEl!.textContent).toBe('Pick your local timezone for scheduling.')
+    void unmount(component)
+  })
+
+  test('a non-enum field renders the save error through the shell when the PATCH fails', async () => {
+    setCsrfToken('c')
+    setMockFetch(() => Promise.resolve(json({ error: 'save failed' }, 500)))
+    let saved = false
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'timezone',
+        storageKey: 'timezone',
+        label: 'Timezone',
+        required: false,
+        sensitive: false,
+        kind: 'preference',
+        hasValue: true,
+        value: 'UTC',
+      },
+      onSaved: () => {
+        saved = true
+      },
+    })
+    flushSync()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="cfg-input-timezone"]')!
+    input.value = 'Europe/Berlin'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-save-timezone"]')!.click()
+    await drain()
+    const errorEl = target.querySelector('.settings-field__error')
+    expect(errorEl).not.toBeNull()
+    expect(errorEl!.textContent).toBe('save failed')
+    expect(saved).toBe(false)
+    void unmount(component)
+  })
+
+  test('a non-enum field renders the error instead of the hint when both are present', async () => {
+    setCsrfToken('c')
+    setMockFetch(() => Promise.resolve(json({ error: 'save failed' }, 500)))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'timezone',
+        storageKey: 'timezone',
+        label: 'Timezone',
+        required: false,
+        sensitive: false,
+        kind: 'preference',
+        hasValue: true,
+        value: 'UTC',
+      },
+      hint: 'Pick your local timezone for scheduling.',
+      onSaved: () => undefined,
+    })
+    flushSync()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="cfg-input-timezone"]')!
+    input.value = 'Europe/Berlin'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-save-timezone"]')!.click()
+    await drain()
+    expect(target.querySelector('.settings-field__error')).not.toBeNull()
+    expect(target.querySelector('.settings-field__hint')).toBeNull()
     void unmount(component)
   })
 })
