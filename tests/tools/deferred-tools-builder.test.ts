@@ -15,11 +15,20 @@ const CHAT_USER_ID = 'chat-user-1'
 const CONTEXT_ID = 'ctx-deferred-1'
 
 const EXPECTED_KEYS = [
-  'create_deferred_prompt',
-  'list_deferred_prompts',
-  'get_deferred_prompt',
-  'update_deferred_prompt',
-  'cancel_deferred_prompt',
+  'create_reminder',
+  'create_alert',
+  'list_reminders',
+  'get_reminder',
+  'update_reminder',
+  'cancel_reminder',
+] as const
+
+const EXPECTED_KEYS_NO_ALERT = [
+  'create_reminder',
+  'list_reminders',
+  'get_reminder',
+  'update_reminder',
+  'cancel_reminder',
 ] as const
 
 describe('addDeferredPromptTools', () => {
@@ -39,10 +48,17 @@ describe('addDeferredPromptTools', () => {
     expect(Object.keys(tools)).toEqual([])
   })
 
-  test('adds all five deferred-prompt tools on the happy path', () => {
+  test('adds all six reminder/alert tools on the happy path', () => {
     const tools: ToolSet = {}
     addDeferredPromptTools(tools, STORAGE_OWNER_ID, CHAT_USER_ID, CONTEXT_ID, 'dm', 'alice')
     expect(Object.keys(tools).toSorted()).toEqual([...EXPECTED_KEYS].toSorted())
+  })
+
+  test('omits create_alert when allowTaskConditions is false', () => {
+    const tools: ToolSet = {}
+    addDeferredPromptTools(tools, STORAGE_OWNER_ID, CHAT_USER_ID, CONTEXT_ID, 'dm', 'alice', false)
+    expect(Object.keys(tools).toSorted()).toEqual([...EXPECTED_KEYS_NO_ALERT].toSorted())
+    expect(Object.keys(tools)).not.toContain('create_alert')
   })
 
   test('falls back to storageOwnerId when contextId is undefined', () => {

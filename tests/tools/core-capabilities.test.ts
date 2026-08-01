@@ -134,11 +134,12 @@ describe('core tool capabilities', () => {
       ['recurring.resume', 'resume_recurring_task'],
       ['recurring.skip', 'skip_recurring_task'],
       ['recurring.delete', 'delete_recurring_task'],
-      ['deferred.create', 'create_deferred_prompt'],
-      ['deferred.list', 'list_deferred_prompts'],
-      ['deferred.get', 'get_deferred_prompt'],
-      ['deferred.update', 'update_deferred_prompt'],
-      ['deferred.cancel', 'cancel_deferred_prompt'],
+      ['deferred.create', 'create_reminder'],
+      ['deferred.create_alert', 'create_alert'],
+      ['deferred.list', 'list_reminders'],
+      ['deferred.get', 'get_reminder'],
+      ['deferred.update', 'update_reminder'],
+      ['deferred.cancel', 'cancel_reminder'],
       ['web.fetch', 'web_fetch'],
     ])
   })

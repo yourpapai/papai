@@ -159,11 +159,12 @@ export const TOOL_METADATA: Readonly<Record<string, ToolClassification>> = {
   skip_recurring_task: write('recurring', 'manage'),
   delete_recurring_task: destructive('recurring'),
 
-  create_deferred_prompt: write('deferred', 'create'),
-  list_deferred_prompts: read('deferred'),
-  get_deferred_prompt: read('deferred'),
-  update_deferred_prompt: write('deferred', 'update'),
-  cancel_deferred_prompt: destructive('deferred'),
+  create_reminder: write('deferred', 'create'),
+  create_alert: write('deferred', 'create'),
+  list_reminders: read('deferred'),
+  get_reminder: read('deferred'),
+  update_reminder: write('deferred', 'update'),
+  cancel_reminder: destructive('deferred'),
 
   save_instruction: write('instruction', 'create'),
   list_instructions: read('instruction'),

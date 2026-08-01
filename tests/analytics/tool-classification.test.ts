@@ -44,7 +44,8 @@ describe('classifyAnalyticsTool', () => {
     expect(classifyAnalyticsTool('save_memo').toolDomain).toBe('memo')
     expect(classifyAnalyticsTool('remember_memory').toolDomain).toBe('memo')
     expect(classifyAnalyticsTool('create_recurring_task').toolDomain).toBe('schedule')
-    expect(classifyAnalyticsTool('create_deferred_prompt').toolDomain).toBe('schedule')
+    expect(classifyAnalyticsTool('create_reminder').toolDomain).toBe('schedule')
+    expect(classifyAnalyticsTool('create_alert').toolDomain).toBe('schedule')
   })
 
   test('identity domains cover identity and collaboration registry entries', () => {

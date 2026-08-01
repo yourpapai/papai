@@ -41,8 +41,8 @@ import { prepareLlmInvocation } from '../../src/llm-orchestrator-tools.js'
 import { runMemoryCapture } from '../../src/long-term-memory/capture.js'
 import { searchMemoryRecords } from '../../src/long-term-memory/store.js'
 import { convertMcpToolsToToolSet } from '../../src/mcp/tool-adapter.js'
-import { makeCreateDeferredPromptTool } from '../../src/tools/create-deferred-prompt.js'
 import { makeCreateRecurringTaskTool } from '../../src/tools/create-recurring-task.js'
+import { makeCreateReminderTool } from '../../src/tools/create-reminder.js'
 import type { RecurringTaskRecord } from '../../src/types/recurring.js'
 import { fetchAndExtract } from '../../src/web/fetch-extract.js'
 import { activate, options, runtimeCtx } from '../plugins/acp/support.js'
@@ -315,7 +315,7 @@ describe('tool and memory features', () => {
 
   test('deferred prompt creation emits feature_used deferred/create', async () => {
     await setupTestDb()
-    const tool = makeCreateDeferredPromptTool('user-1', 'pi-1:chat-1', 'dm')
+    const tool = makeCreateReminderTool('user-1', 'pi-1:chat-1', 'dm')
     const executor = getToolExecutor(tool)
     const scope = makeActorScope()
     await runWithProviderRequestScope(scope, async () => {

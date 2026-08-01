@@ -179,12 +179,12 @@ describe('buildProviderlessSystemPrompt', () => {
   test('keeps scheduled deferred guidance but omits task-dependent alert guidance', () => {
     const prompt = buildProviderlessSystemPrompt(
       'ctx-providerless-deferred',
-      new Set(['create_deferred_prompt', 'list_deferred_prompts', 'get_current_time']),
+      new Set(['create_reminder', 'list_reminders', 'get_current_time']),
     )
 
-    expect(prompt).toContain('SCHEDULED PROMPTS')
-    expect(prompt).not.toContain('ALERTS:')
-    expect(prompt).not.toContain('condition to monitor task changes')
+    expect(prompt).toContain('REMINDERS')
+    expect(prompt).not.toContain('ALERTS (event-based)')
+    expect(prompt).not.toContain('watch for task changes')
     expect(prompt).not.toContain('task.status')
     expect(prompt).not.toContain('cooldown_minutes')
   })
@@ -337,15 +337,15 @@ describe('buildSystemPrompt fragment coherence', () => {
   test('omits the deferred-prompts fragment when no deferred tool is enabled', () => {
     const enabled = new Set(['create_task', 'get_current_time'])
     const prompt = buildSystemPrompt(provider, 'frag-deferred-off', enabled)
-    expect(prompt).not.toContain('DEFERRED PROMPTS')
+    expect(prompt).not.toContain('REMINDERS & ALERTS')
   })
 
   test('keeps alert guidance in provider-backed deferred prompts', () => {
-    const enabled = new Set(['create_deferred_prompt', 'list_deferred_prompts', 'get_current_time'])
+    const enabled = new Set(['create_reminder', 'list_reminders', 'get_current_time'])
     const prompt = buildSystemPrompt(provider, 'frag-deferred-alerts-on', enabled)
 
-    expect(prompt).toContain('ALERTS:')
-    expect(prompt).toContain('condition to monitor task changes')
+    expect(prompt).toContain('ALERTS (event-based)')
+    expect(prompt).toContain('watch for task changes')
     expect(prompt).toContain('task.status')
     expect(prompt).toContain('cooldown_minutes')
   })
@@ -353,7 +353,7 @@ describe('buildSystemPrompt fragment coherence', () => {
 
 describe('group deferred-prompt delivery guidance', () => {
   const provider = createMockProvider()
-  const deferredEnabled = new Set(['create_deferred_prompt', 'list_deferred_prompts', 'get_current_time'])
+  const deferredEnabled = new Set(['create_reminder', 'list_reminders', 'get_current_time'])
 
   beforeEach(async () => {
     mockLogger()
