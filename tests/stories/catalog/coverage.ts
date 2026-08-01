@@ -236,6 +236,7 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-http-debug-schemas',
   'SCN-http-debug-route-family',
   'SCN-http-dashboard-assets',
+  'SCN-http-operator-data-routes',
   'SCN-context-thread-scope',
   'SCN-context-group-identity',
   // @1 — provider-real parity lane (tier1-provider-real-parity)
@@ -983,6 +984,12 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     verifiedAt: '2026-08-01',
     storyIds: [
       'tests/stories/http/dashboard.story.test.ts#SCN-http-dashboard-assets: dashboard assets are session-protected and non-empty',
+    ],
+  },
+  'SCN-http-operator-data-routes': {
+    verifiedAt: '2026-08-01',
+    storyIds: [
+      'tests/stories/http/dashboard.story.test.ts#SCN-http-operator-data-routes: dashboard data routes preserve authentication and missing-subject contracts',
     ],
   },
   'SCN-http-notify': {

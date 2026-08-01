@@ -137,3 +137,26 @@ scenario(
   },
   { debugEnabled: true },
 )
+
+scenario(
+  'SCN-http-operator-data-routes: dashboard data routes preserve authentication and missing-subject contracts',
+  async ({ given, when, then }) => {
+    then.responseStatus(await when.request('/billing/subjects'), 401)
+    then.responseStatus(await when.request('/admin/subjects/unknown/recent-requests'), 401)
+
+    const session = await given.dashboardSession()
+    const subjects = await when.dashboardRequest(session, '/billing/subjects?window=all')
+    then.responseStatus(subjects, 200)
+    then.responseJson(await subjects.json()).contains('subjects')
+    then.responseStatus(await when.dashboardRequest(session, '/billing/subject/unknown?window=all'), 404)
+
+    const global = await when.dashboardRequest(session, '/stats/global?window=30d')
+    then.responseStatus(global, 200)
+    then.responseJson(await global.json()).contains('window')
+    then.responseStatus(await when.dashboardRequest(session, '/stats/subject/unknown'), 404)
+
+    const recent = await when.dashboardRequest(session, '/admin/subjects/unknown/recent-requests?limit=2')
+    then.responseStatus(recent, 200)
+    then.responseJson(await recent.json()).contains('requests')
+  },
+)
