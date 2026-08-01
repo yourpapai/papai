@@ -51,3 +51,23 @@ describe('formatToolStatus', () => {
     expect(formatToolStatus('search_memory', 'budget')).toBe('🔍 Searching memory…')
   })
 })
+
+describe('reminder/alert live-status labels', () => {
+  test('create_reminder renders a friendly reminder label', () => {
+    expect(formatToolStatus('create_reminder', { prompt: 'Check the gigachat model' })).toBe(
+      '⏰ Setting up a reminder: "Check the gigachat model"…',
+    )
+  })
+
+  test('create_alert renders a friendly alert label', () => {
+    expect(formatToolStatus('create_alert', { prompt: 'Ping me when done' })).toBe(
+      '🔔 Setting up an alert: "Ping me when done"…',
+    )
+  })
+
+  test('cancel_reminder renders a friendly label and never mentions "deferred"', () => {
+    const out = formatToolStatus('cancel_reminder', { id: 'abc' })
+    expect(out).not.toContain('deferred')
+    expect(out).toContain('Cancelling')
+  })
+})
