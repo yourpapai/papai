@@ -265,83 +265,85 @@
       <p class="status-error" role="alert">Stored credentials are unreadable. Re-enter your token to repair this context.</p>
     {/if}
 
-    {#if !currentData.complete}
-      <p class="placeholder" data-testid="code-host-setup-hint">
-        Coding sessions push branches and open pull requests as you. Create a personal access token that can read and write repository contents and pull requests, then paste it below — it is encrypted and never shown again.
-      </p>
-    {/if}
+    {#if fields.length === 0}
+      <p class="placeholder" data-testid="code-host-no-fields">No code host fields available — try Refresh.</p>
+    {:else}
+      {#if !currentData.complete}
+        <p class="placeholder" data-testid="code-host-setup-hint">Coding sessions push branches and open pull requests as you. Create a personal access token that can read and write repository contents and pull requests, then paste it below — it is encrypted and never shown again.</p>
+      {/if}
 
-    <div class="settings-byok-fields">
-      {#each fields as field (field.key)}
-        {#if shouldShowField(field)}
-          {@const instanceUrlShown = field.key === 'instance_url' && showInstanceUrl}
-          <SettingsFieldShell
-            label={field.label}
-            required={field.required || instanceUrlShown}
-            editorOpen={editorOpen(field)}
-            error={inlineField === field.key ? (error ?? undefined) : undefined}
-            hint={instanceUrlShown
-              ? 'Needed because you chose a self-hosted code host. Your operator must also allow this host for coding sessions.'
-              : undefined}
-            testid={`coding-row-${field.key}`}>
-            {#snippet head()}
-              {#if field.sensitive && field.hasValue && !editorOpen(field)}
-                <Secret value={displaySecret(field.value)} />
-                <Btn variant="secondary" size="sm" testid={`coding-replace-${field.key}`} onClick={() => replaceSecret(field.key)}>
-                  {#snippet children()}Replace{/snippet}
-                </Btn>
-              {/if}
-            {/snippet}
-            {#snippet editor(labelId)}
-              {#if field.control === 'select'}
-                <Select
-                  value={drafts[field.key] ?? ''}
-                  options={(field.options ?? []).map((o) => ({ value: o, label: o }))}
-                  onChange={(v) => updateDraft(field.key, v)}
-                  disabled={saving || loading}
-                  testid={`coding-select-${field.key}`} />
-              {:else}
-                <Input
-                  type={field.sensitive ? 'password' : 'text'}
-                  value={drafts[field.key] ?? ''}
-                  placeholder={placeholderFor(field)}
-                  onInput={(value) => updateDraft(field.key, value)}
-                  testid={`coding-input-${field.key}`} />
-                {#if field.sensitive && field.hasValue}
-                  <Btn variant="ghost" size="sm" testid={`coding-cancel-${field.key}`} onClick={() => cancelReplace(field.key)}>
-                    {#snippet children()}Cancel{/snippet}
+      <div class="settings-byok-fields">
+        {#each fields as field (field.key)}
+          {#if shouldShowField(field)}
+            {@const instanceUrlShown = field.key === 'instance_url' && showInstanceUrl}
+            <SettingsFieldShell
+              label={field.label}
+              required={field.required || instanceUrlShown}
+              editorOpen={editorOpen(field)}
+              error={inlineField === field.key ? (error ?? undefined) : undefined}
+              hint={instanceUrlShown
+                ? 'Needed because you chose a self-hosted code host. Your operator must also allow this host for coding sessions.'
+                : undefined}
+              testid={`coding-row-${field.key}`}>
+              {#snippet head()}
+                {#if field.sensitive && field.hasValue && !editorOpen(field)}
+                  <Secret value={displaySecret(field.value)} />
+                  <Btn variant="secondary" size="sm" testid={`coding-replace-${field.key}`} onClick={() => replaceSecret(field.key)}>
+                    {#snippet children()}Replace{/snippet}
                   </Btn>
                 {/if}
-              {/if}
-            {/snippet}
-          </SettingsFieldShell>
-        {/if}
-      {/each}
+              {/snippet}
+              {#snippet editor(labelId)}
+                {#if field.control === 'select'}
+                  <Select
+                    value={drafts[field.key] ?? ''}
+                    options={(field.options ?? []).map((o) => ({ value: o, label: o }))}
+                    onChange={(v) => updateDraft(field.key, v)}
+                    disabled={saving || loading}
+                    testid={`coding-select-${field.key}`} />
+                {:else}
+                  <Input
+                    type={field.sensitive ? 'password' : 'text'}
+                    value={drafts[field.key] ?? ''}
+                    placeholder={placeholderFor(field)}
+                    onInput={(value) => updateDraft(field.key, value)}
+                    testid={`coding-input-${field.key}`} />
+                  {#if field.sensitive && field.hasValue}
+                    <Btn variant="ghost" size="sm" testid={`coding-cancel-${field.key}`} onClick={() => cancelReplace(field.key)}>
+                      {#snippet children()}Cancel{/snippet}
+                    </Btn>
+                  {/if}
+                {/if}
+              {/snippet}
+            </SettingsFieldShell>
+          {/if}
+        {/each}
 
-      <div class="settings-field__actions">
-        {#if currentData.configured}
+        <div class="settings-field__actions">
+          {#if currentData.configured}
+            <Btn
+              variant="danger"
+              size="sm"
+              testid="code-host-clear"
+              disabled={saving || loading || clearing}
+              onClick={() => {
+                pendingClear = true
+                clearError = null
+              }}>
+              {#snippet children()}{clearing ? 'Clearing…' : 'Clear'}{/snippet}
+            </Btn>
+          {/if}
           <Btn
-            variant="ghost"
+            variant="primary"
             size="sm"
-            testid="code-host-clear"
-            disabled={saving || loading || clearing}
-            onClick={() => {
-              pendingClear = true
-              clearError = null
-            }}>
-            {#snippet children()}{clearing ? 'Clearing…' : 'Clear'}{/snippet}
+            testid="code-host-save"
+            disabled={!formDirty || saving || loading || clearing}
+            onClick={() => void saveAll()}>
+            {#snippet children()}{saving ? 'Saving…' : 'Save'}{/snippet}
           </Btn>
-        {/if}
-        <Btn
-          variant="primary"
-          size="sm"
-          testid="code-host-save"
-          disabled={!formDirty || saving || loading || clearing}
-          onClick={() => void saveAll()}>
-          {#snippet children()}{saving ? 'Saving…' : 'Save'}{/snippet}
-        </Btn>
+        </div>
       </div>
-    </div>
+    {/if}
   {/if}
 
   <Confirm

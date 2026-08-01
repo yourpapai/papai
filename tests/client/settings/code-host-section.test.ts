@@ -934,4 +934,28 @@ describe('CodeHostSection', () => {
     })
     void unmount(component)
   })
+
+  test('shows a recoverable message when the response carries no fields', async () => {
+    const target = await mountWith({
+      namespace: 'forge',
+      configured: false,
+      complete: false,
+      missing: ['kind', 'forge_token'],
+      fields: [],
+    })
+
+    const empty = target.querySelector('[data-testid="code-host-no-fields"]')
+    expect(empty).not.toBeNull()
+    expect(empty!.textContent).toContain('No code host fields available — try Refresh.')
+    // The setup helper is suppressed: it would contradict "no fields available".
+    expect(target.querySelector('[data-testid="code-host-setup-hint"]')).toBeNull()
+    expect(target.querySelector('[data-testid="code-host-save"]')).toBeNull()
+  })
+
+  test('renders the Clear trigger with the danger variant', async () => {
+    const target = await mountWith(typedForgePayloadSaas)
+
+    const clear = target.querySelector('[data-testid="code-host-clear"]')!
+    expect(clear.classList.contains('ui-btn--danger')).toBe(true)
+  })
 })
