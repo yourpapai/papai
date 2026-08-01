@@ -10,18 +10,18 @@ import { formatStoryCoverageTotals, storyCoverageTotals } from '../../scripts/st
 describe('storyCoverageTotals', () => {
   test('tallies the catalog ledger', () => {
     expect(storyCoverageTotals()).toEqual({
-      total: 215,
-      executable: 187,
+      total: 218,
+      executable: 190,
       pending: 28,
       readiness: { 'executable-as-is': 2, 'needs-seam': 4, blocked: 22 },
-      executableByTier: { '0': 142, '1': 29, '2': 8, '3': 8, '4': 0 },
+      executableByTier: { '0': 145, '1': 29, '2': 8, '3': 8, '4': 0 },
       pendingByUnblockingTier: { '0': 0, '1': 0, '2': 0, '3': 3, '4': 1 },
     })
   })
 
   test('formats a single summary line with per-tier tallies', () => {
     expect(formatStoryCoverageTotals()).toBe(
-      'story catalog: 187/215 executable (T0 142, T1 29, T2 8, T3 8, T4 0); ' +
+      'story catalog: 190/218 executable (T0 145, T1 29, T2 8, T3 8, T4 0); ' +
         'pending 28 (2 executable-as-is, 4 needs-seam, 22 blocked); ' +
         'pending unblocked by tier (T0 0, T1 0, T2 0, T3 3, T4 1)',
     )
