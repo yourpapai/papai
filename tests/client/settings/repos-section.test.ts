@@ -60,6 +60,15 @@ const routeMock = (_url: string, init?: RequestInit): Promise<Response> => {
   return Promise.resolve(json(emptyPayload))
 }
 
+const failDeleteMock = (_url: string, init?: RequestInit): Promise<Response> => {
+  const method = (init?.method ?? 'GET').toUpperCase()
+  const isCodingRepos = _url.includes('/settings/api/coding-repos')
+  const isFailingDelete = isCodingRepos && method === 'DELETE'
+  return isFailingDelete
+    ? Promise.resolve(new Response('nope', { status: 500 }))
+    : Promise.resolve(json(isCodingRepos ? populatedPayload : emptyPayload))
+}
+
 afterEach(() => {
   capturedPostBody = ''
   capturedDeleteUrl = ''
@@ -194,10 +203,33 @@ describe('ReposSection', () => {
     await drain()
     target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
     await drain()
+    await drain()
 
     expect(capturedDeleteUrl).toContain('repoId=r1')
     expect(capturedDeleteUrl).toContain('contextId=pi%3Atelegram%3Actx%3Au1')
     expect(target.querySelector('.modal')).toBeNull()
+    void unmount(component)
+  })
+
+  test('a failed DELETE closes the dialog and surfaces the error', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(failDeleteMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="repos-delete-r1"]')!.click()
+    await drain()
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
+    await drain()
+    await drain()
+
+    expect(target.querySelector('.modal')).toBeNull()
+    const errorEl = target.querySelector<HTMLElement>('.status-error')!
+    expect(errorEl).not.toBeNull()
+    expect(Boolean(errorEl.textContent)).toBe(true)
     void unmount(component)
   })
 

@@ -97,13 +97,13 @@
     deletingId = repoId
     try {
       await deleteRepo({ contextId, repoId })
-      pendingDeleteId = null
       await load(contextId)
       status = 'Repository removed.'
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
       deletingId = null
+      pendingDeleteId = null
     }
   }
 
