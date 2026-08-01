@@ -15,7 +15,12 @@ Increase Tier 0 coverage for `src/debug` by approximately four to five percentag
 
 The implementation changes only story tests, except for a production defect discovered while testing. It does not add route seams, alter production behavior, modify the frozen story harness, or weaken coverage gates.
 
-The coverage target includes the debug server, its settings and admin subrouters, public capability routes, and the otherwise-unloaded `src/debug/schemas.ts` module.
+The coverage target includes the debug server, its settings and admin subrouters, public capability routes, and the otherwise-unloaded `src/debug/schemas.ts` module. It explicitly completes the remaining `routeRequest` surface:
+
+- live diagnostics: `/events`, `/logs`, `/logs/stats`, `/logs/scopes`, `/turns/:id`, `/recurring`, `/deferred`, `/memos`, and `/identity`;
+- operator routes: `/billing/subjects`, `/billing/subject/:id`, `/stats/global`, `/stats/subject/:id`, and `/admin/subjects/:id/recent-requests`;
+- debug and operator assets: `/debug.js`, `/debug.css`, `/admin.js`, and `/admin.css`;
+- every exported parser in `src/debug/schemas.ts`, including the six state/event parsers that the current story does not invoke.
 
 ## Architecture
 
@@ -62,6 +67,7 @@ Verification runs the affected story files, the complete Tier 0 story suite, and
 - all stories remain hermetic and pass without retry;
 - the frozen story harness and its DI signature remain unchanged;
 - `src/debug` receives approximately four to five percentage points of additional coverage, including loading `schemas.ts`;
+- every route and parser enumerated in Scope executes through its intended trust domain or direct parser contract;
 - every added scenario asserts an observable product contract; and
 - no production code changes are required unless testing identifies a genuine defect, which is then handled as separately reviewed scope expansion.
 
