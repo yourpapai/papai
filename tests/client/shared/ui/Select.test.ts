@@ -8,6 +8,7 @@ import { describe, expect, test } from 'bun:test'
 import { mount, unmount } from 'svelte'
 
 import Select from '../../../../client/shared/ui/Select.svelte'
+import FieldErrorFixture from './FieldErrorFixture.svelte'
 
 describe('Select.svelte', () => {
   test('renders one <option> per option entry', () => {
@@ -124,5 +125,27 @@ describe('Select.svelte', () => {
     expect(first.hasAttribute('disabled')).toBe(true)
     expect(first.getAttribute('value')).toBe('')
     void unmount(component)
+  })
+
+  test('marks the select invalid and describes it when the Field carries an error', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(FieldErrorFixture, { target, props: { error: 'unsupported model provider' } })
+    const select = target.querySelector<HTMLSelectElement>('[data-testid="err-select"]')!
+    const err = target.querySelector<HTMLElement>('.ui-field__error')!
+    expect(select.getAttribute('aria-invalid')).toBe('true')
+    expect(select.getAttribute('aria-describedby')).toBe(err.id)
+    expect(target.querySelector('.ui-select--invalid')).not.toBeNull()
+    void unmount(c)
+  })
+
+  test('leaves the select valid when the Field carries no error', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(FieldErrorFixture, { target, props: {} })
+    const select = target.querySelector<HTMLSelectElement>('[data-testid="err-select"]')!
+    expect(select.getAttribute('aria-invalid')).toBeNull()
+    expect(target.querySelector('.ui-select--invalid')).toBeNull()
+    void unmount(c)
   })
 })

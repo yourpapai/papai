@@ -6,7 +6,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte'
 
-  import { getFieldError, getFieldLabelId } from './field-context.js'
+  import { getFieldLabelId, useFieldInvalid } from './field-context.js'
 
   interface Props {
     value: string
@@ -35,9 +35,7 @@
   }: Props = $props()
 
   const labelId = getFieldLabelId()
-  const fieldError = getFieldError()
-  const invalid = $derived(fieldError?.invalid ?? false)
-  const describedBy = $derived(invalid ? fieldError?.errorId : undefined)
+  const fieldError = useFieldInvalid()
 
   function handleInput(event: Event): void {
     const next = (event.target as HTMLInputElement | HTMLTextAreaElement).value
@@ -48,7 +46,7 @@
 <div
   class="ui-input"
   class:ui-input--multiline={multiline}
-  class:ui-input--invalid={invalid}
+  class:ui-input--invalid={fieldError.invalid}
 >
   {#if multiline}
     <textarea
@@ -57,8 +55,8 @@
       {readonly}
       {rows}
       aria-labelledby={labelId}
-      aria-invalid={invalid ? 'true' : undefined}
-      aria-describedby={describedBy}
+      aria-invalid={fieldError.invalid ? 'true' : undefined}
+      aria-describedby={fieldError.describedBy}
       data-testid={testid}
       oninput={handleInput}
       onblur={onBlur}
@@ -73,8 +71,8 @@
       {value}
       {readonly}
       aria-labelledby={labelId}
-      aria-invalid={invalid ? 'true' : undefined}
-      aria-describedby={describedBy}
+      aria-invalid={fieldError.invalid ? 'true' : undefined}
+      aria-describedby={fieldError.describedBy}
       data-testid={testid}
       oninput={handleInput}
       onblur={onBlur} />

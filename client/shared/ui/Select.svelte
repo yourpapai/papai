@@ -4,7 +4,7 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
-  import { getFieldLabelId } from './field-context.js'
+  import { getFieldLabelId, useFieldInvalid } from './field-context.js'
 
   interface Option {
     value: string
@@ -23,14 +23,22 @@
   let { value, options, onChange, testid, disabled = false, placeholder }: Props = $props()
 
   const labelId = getFieldLabelId()
+  const fieldError = useFieldInvalid()
 
   function handleChange(event: Event): void {
     onChange?.((event.target as HTMLSelectElement).value)
   }
 </script>
 
-<div class="ui-select" class:ui-select--disabled={disabled}>
-  <select {value} {disabled} onchange={handleChange} aria-labelledby={labelId} data-testid={testid}>
+<div class="ui-select" class:ui-select--disabled={disabled} class:ui-select--invalid={fieldError.invalid}>
+  <select
+    {value}
+    {disabled}
+    onchange={handleChange}
+    aria-labelledby={labelId}
+    aria-invalid={fieldError.invalid ? 'true' : undefined}
+    aria-describedby={fieldError.describedBy}
+    data-testid={testid}>
     {#if placeholder}
       <option value="" disabled>{placeholder}</option>
     {/if}
@@ -74,5 +82,8 @@
   .ui-select--disabled {
     opacity: 0.6;
     cursor: not-allowed;
+  }
+  .ui-select--invalid {
+    border-color: var(--danger);
   }
 </style>

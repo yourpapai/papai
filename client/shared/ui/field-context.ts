@@ -35,3 +35,26 @@ export function setFieldError(ctx: FieldErrorContext): void {
 export function getFieldError(): FieldErrorContext | undefined {
   return getContext<FieldErrorContext | undefined>(FIELD_ERROR)
 }
+
+/** What a control needs to render the enclosing Field's error state. */
+export interface FieldInvalidState {
+  readonly invalid: boolean
+  readonly describedBy: string | undefined
+}
+
+/**
+ * Called by Input/Select/Combobox during init. Getters, not a snapshot: each read goes
+ * through the context's own `invalid` getter, so a control tracks the Field's live `error`
+ * prop without needing a rune here.
+ */
+export function useFieldInvalid(): FieldInvalidState {
+  const ctx = getFieldError()
+  return {
+    get invalid() {
+      return ctx?.invalid ?? false
+    },
+    get describedBy() {
+      return ctx?.invalid === true ? ctx.errorId : undefined
+    },
+  }
+}
