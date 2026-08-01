@@ -174,7 +174,13 @@ documents `--fg-hint` as the ≈6:1 colour for exactly this text. `.settings-rep
 Copy changes:
 
 - The egress help `<p>` (`:183-186`) moves to the field's `hint` prop, gaining the field
-  width bound and `aria-describedby` wiring it never had.
+  width bound and the `--fg-hint` colour, and dropping a one-off rule.
+
+  **Correction to the source review.** Finding L12 claimed the hint would also gain
+  `aria-describedby`. It will not: `useFieldInvalid().describedBy` resolves to the *error*
+  id and only while the field is invalid (`field-context.ts:52-55`), and `Field` has no
+  hint-describedby wiring. Describing a control by its hint is a shared-primitive gap that
+  joins the three D already deferred; E does not close it and must not claim to.
 - The preset field gains `hint="readonly is the most restricted, autonomous the least."`
   This states the ordering only. This repo stores `permissionPreset` as an opaque string and
   forwards it to magi (`src/coding-repos/store.ts:42` validates the enum,
@@ -218,4 +224,6 @@ Recorded here so the next sub-project does not have to re-derive them from the r
 2. `PageHeader`'s title as a real heading element, plus D's two other deferred primitive
    gaps: a `disabled`/busy prop on `Input`, and a text alternative for `Field`'s required
    `*` with `aria-required` on the control.
-3. A PATCH route for coding repos and the per-row edit affordance it enables.
+3. `Field` hint-describedby wiring, so a control is programmatically described by its hint
+   and not only by its error (see the §5 correction).
+4. A PATCH route for coding repos and the per-row edit affordance it enables.
