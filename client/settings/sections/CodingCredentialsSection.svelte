@@ -284,6 +284,9 @@
               label={labelFor(field)}
               required={effectiveRequired}
               editorOpen={editorOpen(field)}
+              hint={field.control === 'combobox' && !hasSavedKey
+                ? 'Save your API key to load model suggestions.'
+                : undefined}
               testid={`coding-row-${field.key}`}>
               {#snippet head()}
                 {#if field.sensitive && field.hasValue && !editorOpen(field)}
@@ -327,11 +330,6 @@
                       {#snippet children()}Cancel{/snippet}
                     </Btn>
                   {/if}
-                {/if}
-              {/snippet}
-              {#snippet footer()}
-                {#if field.control === 'combobox' && !hasSavedKey}
-                  <p class="field-hint">Save your API key to load model suggestions.</p>
                 {/if}
               {/snippet}
             </SettingsFieldShell>
@@ -388,10 +386,5 @@
   .settings-field__actions {
     display: flex;
     justify-content: flex-end;
-  }
-  .field-hint {
-    margin: 0;
-    color: var(--text-muted);
-    font-size: 12px;
   }
 </style>

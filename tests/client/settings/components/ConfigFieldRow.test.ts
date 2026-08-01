@@ -384,7 +384,7 @@ describe('ConfigFieldRow', () => {
     flushSync()
     target.querySelector<HTMLButtonElement>('[data-testid="cfg-seg-ai_output_detail_level-raw"]')!.click()
     await drain()
-    expect(target.querySelector('.status-error')).not.toBeNull()
+    expect(target.querySelector('.settings-field__error')).not.toBeNull()
     const sanitizedBtn = target.querySelector<HTMLButtonElement>(
       '[data-testid="cfg-seg-ai_output_detail_level-sanitized"]',
     )!

@@ -114,7 +114,7 @@
 </script>
 
 {#if isEnum}
-  <SettingsFieldShell label={field.label} editorOpen={false} testid={`cfg-row-${field.key}`}>
+  <SettingsFieldShell label={field.label} editorOpen={false} error={error ?? undefined} testid={`cfg-row-${field.key}`}>
     {#snippet head()}
       <SegmentedControl
         options={field.options ?? []}
@@ -131,16 +131,19 @@
       {/if}
     {/snippet}
     {#snippet footer()}
-      {#if error !== null}
-        <p class="status-error">{error}</p>
-      {/if}
       {#if hint}
         <p class="settings-field__hint" id={hintId}>{hint}</p>
       {/if}
     {/snippet}
   </SettingsFieldShell>
 {:else}
-  <SettingsFieldShell label={field.label} required={field.required} editorOpen={editorOpen} testid={`cfg-row-${field.key}`}>
+  <SettingsFieldShell
+    label={field.label}
+    required={field.required}
+    editorOpen={editorOpen}
+    error={error ?? undefined}
+    {hint}
+    testid={`cfg-row-${field.key}`}>
     {#snippet head()}
       {#if field.sensitive && field.hasValue && !replacing}
         <Secret value={maskSecret(field.value)} />
@@ -168,14 +171,6 @@
         <Btn variant="ghost" size="sm" testid={`cfg-cancel-${field.key}`} onClick={() => { replacing = false; draft = '' }}>
           {#snippet children()}Cancel{/snippet}
         </Btn>
-      {/if}
-    {/snippet}
-    {#snippet footer()}
-      {#if error !== null}
-        <p class="status-error">{error}</p>
-      {/if}
-      {#if hint}
-        <p class="settings-field__hint" id={hintId}>{hint}</p>
       {/if}
     {/snippet}
   </SettingsFieldShell>
