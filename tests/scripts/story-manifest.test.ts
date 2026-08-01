@@ -523,6 +523,10 @@ describe('story manifest', () => {
     })
     expect(eligibility).toEqual([
       {
+        id: 'tests/stories/integrations/plugins/eligibility.story.test.ts#SCN-plugin-deny-gating: unavailable plugin capabilities are removed before execution',
+        checkpoints: [],
+      },
+      {
         id: 'tests/stories/integrations/plugins/eligibility.story.test.ts#plugin context eligibility',
         checkpoints: [],
       },
