@@ -365,7 +365,7 @@ SCN-task-kaneo-real-error
 SCN-task-kaneo-real-gating
 ```
 
-The create story calls `tasks.projects.create`. The fields story creates a project, then calls `tasks.create` with `status: 'to-do'` and `priority: 'high'`, resolving the real provider to assert the mapped values. The error story calls `tasks.create` with `projectId: 'no-such-project'`, asserts the model reply, then asserts the direct provider rejection is a `KaneoClassifiedError` with `task-not-found`, matching Kaneo's `/task/:projectId` create route classification. The group story includes a real group member, runs a project-create turn, asserts `members.provision` is advertised, and verifies a `kaneoWorkspaceMembers` row exists for that chat user.
+The create story calls `tasks.projects.create`. The fields story creates a project, then calls `tasks.create` with `status: 'to-do'` and `priority: 'high'`, resolving the real provider to assert the mapped values. The error story calls `tasks.create` with `projectId: 'no-such-project'`, asserts the model reply, then asserts the direct provider rejection is a `KaneoClassifiedError` with `project-not-found`: `createTask()` validates status by listing the missing project's columns before it can POST `/task/:projectId`. The group story includes a real group member, runs a project-create turn, asserts `members.provision` is advertised, and verifies a `kaneoWorkspaceMembers` row exists for that chat user.
 
 - [ ] **Step 2: Run the selected stories and verify failure**
 

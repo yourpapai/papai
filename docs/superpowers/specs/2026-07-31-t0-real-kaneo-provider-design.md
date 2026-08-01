@@ -102,8 +102,10 @@ Four additional real-Kaneo chat-loop stories prove:
 1. Manifest approval, activation, real provider resolution, and project
    creation through fake REST.
 2. Status and priority field mapping for a created task.
-3. A fake 404 translated through Kaneo's provider error handling into a
-   model-visible tool failure.
+3. A missing-project 404 translated through Kaneo's provider error handling
+   into the model-visible `project-not-found` tool failure. Status validation
+   reads the project's columns before task creation, so the task-create POST is
+   not reached for this input.
 4. Group-context member-provision capability advertisement and execution,
    proving the real Kaneo provider rather than the memory fake served the turn.
 
