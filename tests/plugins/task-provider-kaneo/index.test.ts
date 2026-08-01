@@ -396,7 +396,7 @@ describe('plugin factory transport', () => {
     let capturedFactory: ReturnType<typeof kaneoFactoryFromRegistration> | undefined
 
     const ctx: KaneoActivationContext = {
-      providerRuntime: { httpFetch },
+      providerRuntime: { forInstance: () => httpFetch },
       registration: {
         registerTaskProviderType(_type, input) {
           capturedFactory = kaneoFactoryFromRegistration(input)

@@ -87,7 +87,7 @@ describe('task-provider-kaneo activation', () => {
     }
 
     const mockCtx: RegistrationContext = {
-      providerRuntime: { httpFetch: mock<(url: string, init?: RequestInit) => Promise<Response>>() },
+      providerRuntime: { forInstance: () => mock<(url: string, init?: RequestInit) => Promise<Response>>() },
       registration: stubRegistration,
     }
 

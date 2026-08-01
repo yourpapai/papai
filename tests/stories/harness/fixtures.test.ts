@@ -303,6 +303,18 @@ describe('approveRealTaskProviderPlugin', () => {
       fixtures.registerTaskProvider()
     }).not.toThrow()
   })
+
+  test('approves the real Kaneo plugin so its type becomes resolvable without a memory fake', async () => {
+    const fixtures = createScenarioFixtures({ taskProvider: new MemoryTaskProvider() })
+    await fixtures.setupDatabase()
+
+    fixtures.approveRealTaskProviderPlugin('kaneo')
+    await activatePlugins(pluginRegistry.getApprovedCompatiblePlugins())
+
+    const descriptor = getTaskProviderDescriptor('kaneo')
+    expect(descriptor).toBeDefined()
+    expect(descriptor?.source).toEqual({ plugin: 'task-provider-kaneo' })
+  })
 })
 
 describe('seedTaskInstance config passthrough', () => {

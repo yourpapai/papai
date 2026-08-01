@@ -30,7 +30,9 @@ type TaskProviderProvisionLike = (context: {
 >
 
 type PluginContextLike = {
-  providerRuntime: { httpFetch: KaneoHttpFetch }
+  providerRuntime: {
+    forInstance: (config: Record<string, string>) => KaneoHttpFetch
+  }
   registration: {
     registerTaskProviderType(
       type: string,
@@ -85,7 +87,7 @@ const factory: PluginFactoryLike = () => ({
   activate(ctx: PluginContextLike): void {
     const provisionModule = getKaneoProvisionModule()
     ctx.registration.registerTaskProviderType('kaneo', {
-      factory: (config): TaskProviderLike => createKaneoProvider(config, ctx.providerRuntime.httpFetch),
+      factory: (config): TaskProviderLike => createKaneoProvider(config, ctx.providerRuntime.forInstance(config)),
       autoProvision: provisionModule.kaneoAutoProvision,
       provision: provisionModule.kaneoProvision,
     })

@@ -53,12 +53,20 @@ import { tick } from '../../../src/scheduler.js'
 import { setToolPrefs, type ToolPrefs } from '../../../src/tools/tool-preferences.js'
 import type { ScenarioProactiveDeliveryPlan } from './chat.js'
 import { MATCH_EMBEDDING } from './embeddings.js'
-import { SCENARIO_PLATFORM_INSTANCE_ID, type DashboardSessionHandle, type SettingsSessionHandle } from './fixtures.js'
+import {
+  SCENARIO_PLATFORM_INSTANCE_ID,
+  type DashboardSessionHandle,
+  type RealTaskProviderType,
+  type SettingsSessionHandle,
+} from './fixtures.js'
 import { runWithScenarioIoGuard } from './io-guard.js'
 import type { ScenarioRuntimeExtension } from './runtime-extension.js'
 import type { ModelDecision } from './scripted-llm.js'
 import {
   ADMIN_USER_ID,
+  REAL_KANEO_BASE_URL,
+  REAL_KANEO_CREDENTIAL,
+  REAL_KANEO_WORKSPACE_ID,
   REAL_YOUTRACK_BASE_URL,
   REAL_YOUTRACK_TOKEN,
   type ContextHandle,
@@ -322,7 +330,7 @@ export type ScenarioApi = Readonly<{
 
 type WorldFactory = (name: string) => Promise<ScenarioWorld>
 
-export type ScenarioOptions = Readonly<{ debugEnabled?: boolean; realTaskProvider?: 'youtrack' }>
+export type ScenarioOptions = Readonly<{ debugEnabled?: boolean; realTaskProvider?: RealTaskProviderType }>
 
 const contextId = (context: ContextHandle): string =>
   context.kind === 'dm' ? context.user.id : context.kind === 'thread' ? context.group.id : context.id
@@ -570,7 +578,12 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
       world.fixtures.seedTaskInstance({
         id,
         type: providerType,
-        ...(providerType === 'youtrack' ? { config: { baseUrl: REAL_YOUTRACK_BASE_URL } } : {}),
+        config:
+          providerType === 'youtrack'
+            ? { baseUrl: REAL_YOUTRACK_BASE_URL }
+            : providerType === 'kaneo'
+              ? { baseUrl: REAL_KANEO_BASE_URL }
+              : {},
       })
       return makeTaskInstanceHandle(id, providerType)
     },
@@ -591,6 +604,20 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
           pluginId: 'task-provider-youtrack',
           key: 'token',
           value: REAL_YOUTRACK_TOKEN,
+        })
+      }
+      if (taskInstance.providerType === 'kaneo') {
+        world.fixtures.seedProviderContextConfig({
+          contextId: scopedConfigContextId(context),
+          pluginId: 'task-provider-kaneo',
+          key: 'credential',
+          value: REAL_KANEO_CREDENTIAL,
+        })
+        world.fixtures.seedProviderContextConfig({
+          contextId: scopedConfigContextId(context),
+          pluginId: 'task-provider-kaneo',
+          key: 'workspaceId',
+          value: REAL_KANEO_WORKSPACE_ID,
         })
       }
     },

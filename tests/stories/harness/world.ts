@@ -22,8 +22,14 @@ import { createProductionRuntimeDeps } from '../../../src/runtime/production-dep
 import type { PapaiRuntime, PapaiRuntimeDeps } from '../../../src/runtime/types.js'
 import { createScenarioChat, type ScenarioChat, type ScenarioReply } from './chat.js'
 import { createScenarioEvents, type ScenarioEvent, type ScenarioEvents } from './events.js'
+import { createFakeKaneoResponder } from './fake-kaneo/responder.js'
 import { createFakeYouTrackResponder } from './fake-youtrack/responder.js'
-import { SCENARIO_PLATFORM_INSTANCE_ID, createScenarioFixtures, type ScenarioFixtures } from './fixtures.js'
+import {
+  SCENARIO_PLATFORM_INSTANCE_ID,
+  createScenarioFixtures,
+  type RealTaskProviderType,
+  type ScenarioFixtures,
+} from './fixtures.js'
 import { MemoryTaskProvider } from './memory-task-provider.js'
 import {
   createScenarioRuntimeExtensionLifecycle,
@@ -40,6 +46,34 @@ export const ADMIN_USER_ID = 'scenario-admin'
 const REAL_YOUTRACK_HOST = 'youtrack.invalid'
 export const REAL_YOUTRACK_BASE_URL = `https://${REAL_YOUTRACK_HOST}`
 export const REAL_YOUTRACK_TOKEN = 'fake-token'
+
+const REAL_KANEO_HOST = 'kaneo.invalid'
+export const REAL_KANEO_BASE_URL = `https://${REAL_KANEO_HOST}`
+export const REAL_KANEO_CREDENTIAL = 'fake-token'
+export const REAL_KANEO_WORKSPACE_ID = 'workspace-1'
+
+type RealProviderSetup = Readonly<{
+  instanceConfig: Record<string, string>
+  host: string
+  responder: () => (request: Request) => Promise<Response>
+}>
+
+const REAL_TASK_PROVIDER_SETUP: Readonly<Record<RealTaskProviderType, RealProviderSetup>> = {
+  youtrack: {
+    instanceConfig: { baseUrl: REAL_YOUTRACK_BASE_URL },
+    host: REAL_YOUTRACK_HOST,
+    responder: createFakeYouTrackResponder,
+  },
+  kaneo: {
+    instanceConfig: {
+      baseUrl: REAL_KANEO_BASE_URL,
+      credential: REAL_KANEO_CREDENTIAL,
+      workspaceId: REAL_KANEO_WORKSPACE_ID,
+    },
+    host: REAL_KANEO_HOST,
+    responder: createFakeKaneoResponder,
+  },
+}
 
 export type ScenarioClock = Readonly<{ now(): Date; advance(milliseconds: number): void }>
 export type ScenarioIds = Readonly<{ next(namespace: string): string }>
@@ -103,7 +137,7 @@ export type ScenarioWorldOptions = Readonly<{
   testHooks?: ScenarioWorldTestHooks
   tempRoot?: string
   debugEnabled?: boolean
-  realTaskProvider?: 'youtrack'
+  realTaskProvider?: RealTaskProviderType
 }>
 
 export type ScenarioWorld = Readonly<{
@@ -440,10 +474,20 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     fixtures.seedPlatformInstance()
     fixtures.seedSystemLlmConfig()
     resources.providerAttempted = true
-    fixtures.registerTaskProvider()
-    if (options.realTaskProvider === 'youtrack') {
-      fixtures.approveRealTaskProviderPlugin('youtrack')
-      http.serveHost(REAL_YOUTRACK_HOST, createFakeYouTrackResponder())
+    const realProviderType = options.realTaskProvider
+    // A real-Kaneo world lets the contributed task-provider-kaneo plugin own the 'kaneo' type;
+    // every other world (default and real-YouTrack) registers the in-memory fake so scenarios
+    // that drive task tools without a live provider stay hermetic.
+    if (realProviderType !== 'kaneo') {
+      fixtures.registerTaskProvider()
+    }
+    if (realProviderType !== undefined) {
+      const setup = REAL_TASK_PROVIDER_SETUP[realProviderType]
+      fixtures.approveRealTaskProviderPlugin(realProviderType)
+      http.serveHost(setup.host, setup.responder())
+      if (realProviderType === 'kaneo') {
+        fixtures.seedTaskInstance({ type: 'kaneo', config: setup.instanceConfig })
+      }
     }
     const pluginProviderRuntimeDeps = { fetch: http.fetch, assertPublicUrl: (): Promise<void> => Promise.resolve() }
     const productionDeps = createProductionRuntimeDeps(

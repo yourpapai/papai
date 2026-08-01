@@ -257,7 +257,12 @@ export type ScenarioFixturesOptions = Readonly<{
 }>
 
 /** Real, plugin-contributed task provider types the story lane can approve and activate. */
-const REAL_TASK_PROVIDER_PLUGIN_IDS: Readonly<Record<'youtrack', string>> = { youtrack: 'task-provider-youtrack' }
+const REAL_TASK_PROVIDER_PLUGIN_IDS: Readonly<Record<RealTaskProviderType, string>> = {
+  youtrack: 'task-provider-youtrack',
+  kaneo: 'task-provider-kaneo',
+}
+
+export type RealTaskProviderType = 'youtrack' | 'kaneo'
 
 export type ScenarioFixtures = Readonly<{
   taskProvider: TaskProvider
@@ -294,7 +299,7 @@ export type ScenarioFixtures = Readonly<{
   ): Promise<{ id: string }>
   issueSettingsAuthCode(input: Readonly<{ platformInstanceId: string; platformUserId: string }>, nowMs: number): string
   approvePlugin(plugin?: DiscoveredPlugin): DiscoveredPlugin
-  approveRealTaskProviderPlugin(type: 'youtrack'): void
+  approveRealTaskProviderPlugin(type: RealTaskProviderType): void
   seedProviderContextConfig(input: Readonly<{ contextId: string; pluginId: string; key: string; value: string }>): void
   registerTaskProvider(): void
   seedMemo(
@@ -333,6 +338,9 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
 
   const teardownRegistries = (): void => {
     unregisterContributedTaskProviderType(SCENARIO_PROVIDER_PLUGIN_ID)
+    for (const pluginId of Object.values(REAL_TASK_PROVIDER_PLUGIN_IDS)) {
+      unregisterContributedTaskProviderType(pluginId)
+    }
     pluginRegistry.clearForTesting()
   }
 

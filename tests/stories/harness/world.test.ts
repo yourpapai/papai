@@ -19,10 +19,11 @@ import type { DiscoveredPlugin } from '../../../src/plugins/types.js'
 import { defaultTaskProviderResolver } from '../../../src/providers/resolver.js'
 import { toolCapabilityCatalog } from '../../../src/runtime/capability-catalog.js'
 import { DEFAULT_SCHEDULER_TASK_NAMES, scheduler } from '../../../src/scheduler-instance.js'
+import { SCENARIO_TASK_INSTANCE_ID } from './fixtures.js'
 import { createScenarioRuntimeExtensionLifecycle } from './runtime-extension.js'
 import { answer, callCapability } from './scripted-llm.js'
 import type { DmHandle, GroupHandle, PluginHandle, TaskInstanceHandle, ThreadHandle, UserHandle } from './world.js'
-import { createScenarioWorld } from './world.js'
+import { createScenarioWorld, makeTaskInstanceHandle } from './world.js'
 
 const requireDiscoveredPlugin = (pluginId: string): DiscoveredPlugin => {
   const plugin = discoverPlugins('plugins').plugins.find(({ manifest }) => manifest.id === pluginId)
@@ -74,6 +75,27 @@ describe('scenario world', () => {
       world.api.then.replyTo(alice).equals('Hello Alice')
       expect(world.model.inspections()).toHaveLength(1)
       world.verify()
+    } finally {
+      await world.stop()
+    }
+  })
+
+  test('a real Kaneo world resolves the contributed kaneo provider over the fake responder', async () => {
+    const world = await createScenarioWorld('real kaneo provider', { realTaskProvider: 'kaneo' })
+
+    try {
+      const alice = world.api.given.user('alice')
+      const dm = world.api.given.dm(alice)
+      const instance = makeTaskInstanceHandle(SCENARIO_TASK_INSTANCE_ID, 'kaneo')
+      world.api.given.assign(dm, instance)
+
+      await world.start()
+
+      const provider = await world.api.resolveRealTaskProvider(dm)
+      expect(provider.name).toBe('kaneo')
+
+      const projects = await provider.listProjects?.()
+      expect(Array.isArray(projects)).toBe(true)
     } finally {
       await world.stop()
     }
