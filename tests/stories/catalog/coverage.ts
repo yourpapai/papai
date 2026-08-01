@@ -1562,6 +1562,18 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
       'tests/stories/integrations/plugins/eligibility.story.test.ts#SCN-plugin-deny-gating: unavailable plugin capabilities are removed before execution',
     ],
   },
+  'SCN-stats-anonymity': {
+    verifiedAt: '2026-08-01',
+    provingTier: '0',
+    storyIds: ['tests/stories/http/stats.story.test.ts#SCN-stats-anonymity: stats responses omit raw subject identity'],
+  },
+  'SCN-stats-aggregate-window': {
+    verifiedAt: '2026-08-01',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/http/stats.story.test.ts#SCN-stats-aggregate-window: global stats respect requested aggregation windows',
+    ],
+  },
 }
 
 function auditRecord(readiness: AuditReadiness, family: StoryFamily, rationale: string): AuditRecord {
@@ -1574,21 +1586,11 @@ const needs = (
   unblockedByTier: StoryTier,
   rationale: string,
 ): AuditRecord => auditRecord({ state: 'needs-seam', seams, unblockedByTier }, family, rationale)
-const ready = (family: StoryFamily, rationale: string): AuditRecord =>
-  auditRecord({ state: 'executable-as-is' }, family, rationale)
 const blocked = (family: StoryFamily, rationale: string): AuditRecord =>
   auditRecord({ state: 'blocked', blocker: 'missing-implementation' }, family, rationale)
 
 export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
   // Phase 3 — uncatalogued runtime cluster; catalog-only until each record has a literal story mapping.
-  'SCN-stats-anonymity': ready(
-    'F4',
-    'The existing stats aggregation and salt test helpers can prove that raw subject identity is not returned.',
-  ),
-  'SCN-stats-aggregate-window': ready(
-    'F4',
-    'The existing stats query runtime can prove internally consistent windowed aggregates.',
-  ),
   'SCN-deferred-poller-lifecycle': needs(
     'F5',
     ['scheduler-due-seed', 'scheduler-chat-di'],
