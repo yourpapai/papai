@@ -211,7 +211,7 @@
       <SettingsTopBar />
     {/snippet}
     {#snippet children()}
-      <h1 class="settings-sr-only">Settings</h1>
+      <h1 class="sr-only">Settings</h1>
       <SettingsJumpMenu {groups} {activeId} />
       <div class="settings-grid">
         <SettingsSidebar {groups} {activeId} onToggle={toggleAdvanced} />
