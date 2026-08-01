@@ -93,7 +93,7 @@ See LICENSE in the project root for details.
 
 - [ ] **Step 2: Run the focused story file against the production router**
 
-  Run: `bun test:stories -- tests/stories/http/dashboard.story.test.ts`
+  Run: `bun test:stories --fixture tests/stories/http/dashboard.story.test.ts`
 
   Expected: the command passes when the existing route contract is correct. If it fails, use the failure to distinguish bad fixture setup from a production defect; do not add a harness seam to make the test pass.
 
@@ -143,7 +143,7 @@ See LICENSE in the project root for details.
 
 - [ ] **Step 5: Run focused verification**
 
-  Run: `bun test:stories:contracts && bun test:stories -- tests/stories/http/dashboard.story.test.ts`
+  Run: `bun test:stories:contracts && bun test:stories --fixture tests/stories/http/dashboard.story.test.ts`
 
   Expected: catalog census passes and every dashboard HTTP story passes.
 
@@ -193,7 +193,7 @@ See LICENSE in the project root for details.
 
 - [ ] **Step 2: Run the focused story against the production router**
 
-  Run: `bun test:stories -- tests/stories/http/dashboard.story.test.ts`
+  Run: `bun test:stories --fixture tests/stories/http/dashboard.story.test.ts`
 
   Expected: the command passes when the existing route contracts are correct. If it fails, determine whether the scenario needs supported fixture setup or whether the production route is defective.
 
@@ -220,7 +220,7 @@ See LICENSE in the project root for details.
 
 - [ ] **Step 5: Run focused verification**
 
-  Run: `bun test:stories:contracts && bun test:stories -- tests/stories/http/dashboard.story.test.ts`
+  Run: `bun test:stories:contracts && bun test:stories --fixture tests/stories/http/dashboard.story.test.ts`
 
   Expected: the catalog census and all dashboard HTTP stories pass.
 
@@ -260,7 +260,7 @@ See LICENSE in the project root for details.
 
 - [ ] **Step 2: Run the focused parser story**
 
-  Run: `bun test:stories -- tests/stories/http/debug-schemas.story.test.ts`
+  Run: `bun test:stories --fixture tests/stories/http/debug-schemas.story.test.ts`
 
   Expected: the story passes after every new parser is imported and invoked, proving the existing parser contracts remain compatible with their public schemas.
 
@@ -270,7 +270,7 @@ See LICENSE in the project root for details.
 
 - [ ] **Step 4: Run focused verification**
 
-  Run: `bun test:stories -- tests/stories/http/debug-schemas.story.test.ts && bun test tests/debug/schemas.test.ts`
+  Run: `bun test:stories --fixture tests/stories/http/debug-schemas.story.test.ts && bun test tests/debug/schemas.test.ts`
 
   Expected: both the end-to-end coverage contract and the existing unit schema suite pass.
 
