@@ -333,6 +333,43 @@ describe('durable usage reconciliation', () => {
     expect(report.durableUsage.unexplainedDeltaTotal).toBe(0)
     expect(report.durableUsage.breakdowns.perToolDomain['task']).toBe(2)
   })
+
+  test('incremental backfill tick does not orphan prior contributions in reconciliation', () => {
+    db.insert(schema.llmUsageEvents)
+      .values(llmRow({ eventId: 'llm-old', occurredAt: BASE_MS }))
+      .run()
+    db.insert(schema.llmUsageEvents)
+      .values(llmRow({ eventId: 'llm-new', occurredAt: BASE_MS + 2 * DAY_MS }))
+      .run()
+    runBackfillJob(
+      {
+        source: 'llm',
+        batchSize: 100,
+        dryRun: false,
+        resume: false,
+        cutoffMs: 0,
+        key: KEY,
+        keyVersion: 'v1',
+        nowMs: BASE_MS + 3 * DAY_MS,
+      },
+      { getDrizzleDb: () => db },
+    )
+    runBackfillJob(
+      {
+        source: 'llm',
+        batchSize: 100,
+        dryRun: false,
+        resume: true,
+        cutoffMs: BASE_MS + 2 * DAY_MS,
+        key: KEY,
+        keyVersion: 'v1',
+        nowMs: BASE_MS + 3 * DAY_MS + 1,
+      },
+      { getDrizzleDb: () => db },
+    )
+    const report = runReconciliation({ nowMs: BASE_MS + 3 * DAY_MS + 2, apply: false }, { getDrizzleDb: () => db })
+    expect(report.durableUsage.unexplainedDeltaTotal).toBe(0)
+  })
 })
 
 describe('live epoch reconciliation', () => {
