@@ -23,7 +23,7 @@
     // Inline validation message for this field; suppresses `hint` while set.
     error?: string
     hint?: string
-    head?: Snippet
+    head?: Snippet<[string | undefined]>
     editor?: Snippet<[string]>
     footer?: Snippet
   }
@@ -50,7 +50,13 @@
 <div class="settings-field" data-testid={testid}>
   <div class="settings-field__head">
     <span class="settings-field__label" id={labelId}>{label}{#if required}<span class="settings-field__req">*</span>{/if}</span>
-    {@render head?.()}
+    <!-- Mirrors the `editor(labelId)` pattern above: a `head`-rendered control (e.g. a
+         SegmentedControl) can't reach the field-error context set below, since Svelte
+         context published here isn't visible in the parent's snippet scope. Pass the
+         error id explicitly instead, and only when the error `<p>` below actually
+         renders — otherwise the control would get an aria-describedby pointing at
+         nothing. -->
+    {@render head?.(error ? errorId : undefined)}
   </div>
   {#if editor && editorOpen}
     <div class="settings-field__editor">{@render editor(labelId)}</div>

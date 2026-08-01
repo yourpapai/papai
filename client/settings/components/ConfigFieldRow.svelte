@@ -45,6 +45,15 @@
 
   const hintId = $derived(`cfg-hint-${field.key}`)
 
+  // The enum branch's hint stays visible even when the shell shows an error (unlike
+  // the input branch, where the shell suppresses the hint), so both ids may be present
+  // at once — compose a space-separated aria-describedby token list, skipping whichever
+  // id is absent.
+  function segmentedDescribedBy(errorId: string | undefined): string | undefined {
+    const ids = [errorId, hint ? hintId : undefined].filter((id): id is string => id !== undefined)
+    return ids.length > 0 ? ids.join(' ') : undefined
+  }
+
   // Confirm-dialog copy for clearing. Only plugin/provider config makes a plugin ineligible;
   // a required preference/ai-output field simply reverts to its default.
   const clearWarning = $derived(
@@ -115,12 +124,12 @@
 
 {#if isEnum}
   <SettingsFieldShell label={field.label} editorOpen={false} error={error ?? undefined} testid={`cfg-row-${field.key}`}>
-    {#snippet head()}
+    {#snippet head(errorId)}
       <SegmentedControl
         options={field.options ?? []}
         value={current}
         ariaLabel={field.label}
-        ariaDescribedBy={hint ? hintId : undefined}
+        ariaDescribedBy={segmentedDescribedBy(errorId)}
         disabled={saving}
         onChange={(v) => void saveEnum(v)}
         testidPrefix={`cfg-seg-${field.key}`} />

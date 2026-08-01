@@ -616,6 +616,109 @@ describe('ConfigFieldRow', () => {
     void unmount(component)
   })
 
+  test('an enum field with a hint and no error describes the segmented control by the hint id only', () => {
+    setMockFetch(() => Promise.resolve(json({})))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'ai_output_detail_level',
+        storageKey: 'ai_output_detail_level',
+        label: 'Detail level',
+        required: false,
+        sensitive: false,
+        kind: 'ai-output',
+        control: 'select',
+        options: [
+          { value: 'sanitized', label: 'Standard' },
+          { value: 'raw', label: 'Raw' },
+        ],
+        hasValue: false,
+        value: 'sanitized',
+      },
+      hint: 'Raw detail shows unredacted tool inputs/outputs and reasoning in chat.',
+      onSaved: () => undefined,
+    })
+    flushSync()
+    const describedBy = target.querySelector('[role="radiogroup"]')!.getAttribute('aria-describedby')
+    expect(describedBy).toBe('cfg-hint-ai_output_detail_level')
+    expect(document.getElementById('cfg-hint-ai_output_detail_level')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('an enum field with a hint whose save fails describes the segmented control by both the error and hint ids', async () => {
+    setCsrfToken('c')
+    setMockFetch(() => Promise.resolve(new Response('nope', { status: 500 })))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'ai_output_detail_level',
+        storageKey: 'ai_output_detail_level',
+        label: 'Detail level',
+        required: false,
+        sensitive: false,
+        kind: 'ai-output',
+        control: 'select',
+        options: [
+          { value: 'sanitized', label: 'Standard' },
+          { value: 'raw', label: 'Raw' },
+        ],
+        hasValue: false,
+        value: 'sanitized',
+      },
+      hint: 'Raw detail shows unredacted tool inputs/outputs and reasoning in chat.',
+      onSaved: () => undefined,
+    })
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-seg-ai_output_detail_level-raw"]')!.click()
+    await drain()
+    const describedBy = target.querySelector('[role="radiogroup"]')!.getAttribute('aria-describedby')!
+    const ids = describedBy.split(' ')
+    expect(ids.length).toBe(2)
+    const [firstId, secondId] = ids
+    expect(document.getElementById(firstId!)).not.toBeNull()
+    expect(document.getElementById(secondId!)).not.toBeNull()
+    const errorEl = target.querySelector('.settings-field__error')
+    expect(errorEl).not.toBeNull()
+    expect(ids).toContain(errorEl!.id)
+    const hintEl = target.querySelector('#cfg-hint-ai_output_detail_level')
+    expect(hintEl).not.toBeNull()
+    expect(ids).toContain('cfg-hint-ai_output_detail_level')
+    void unmount(component)
+  })
+
+  test('an enum field with no hint whose save fails describes the segmented control by the error id only', async () => {
+    setCsrfToken('c')
+    setMockFetch(() => Promise.resolve(new Response('nope', { status: 500 })))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'ai_output_detail_level',
+        storageKey: 'ai_output_detail_level',
+        label: 'Detail level',
+        required: false,
+        sensitive: false,
+        kind: 'ai-output',
+        control: 'select',
+        options: [
+          { value: 'sanitized', label: 'Standard' },
+          { value: 'raw', label: 'Raw' },
+        ],
+        hasValue: false,
+        value: 'sanitized',
+      },
+      onSaved: () => undefined,
+    })
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-seg-ai_output_detail_level-raw"]')!.click()
+    await drain()
+    const errorEl = target.querySelector('.settings-field__error')
+    expect(errorEl).not.toBeNull()
+    const describedBy = target.querySelector('[role="radiogroup"]')!.getAttribute('aria-describedby')
+    expect(describedBy).toBe(errorEl!.id)
+    expect(document.getElementById(errorEl!.id)).not.toBeNull()
+    void unmount(component)
+  })
+
   test('disables the segmented control while an enum save is in flight', async () => {
     setCsrfToken('c')
     let release!: (r: Response) => void
