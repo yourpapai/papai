@@ -185,6 +185,13 @@
       if (field.sensitive && field.hasValue && replacing[field.key] !== true) continue
       values[field.key] = drafts[field.key] ?? ''
     }
+    // Submit-time invariant: a SaaS kind must not keep a stored self-hosted instance URL.
+    // The loop above skips hidden fields, so an omitted key would leave the stale value in
+    // place — the route merges submitted values over the stored record. Send '' explicitly.
+    // Guarded on the field existing so a legacy token-only record does not gain a new key.
+    if (fields.some((f) => f.key === 'instance_url') && !needsInstanceUrl(currentKind)) {
+      values['instance_url'] = ''
+    }
     return values
   }
   async function saveAll(): Promise<void> {

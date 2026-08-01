@@ -877,4 +877,61 @@ describe('CodeHostSection', () => {
     expect(row.querySelector('.settings-field__req')).not.toBeNull()
     expect(row.querySelector('.settings-field__hint')?.textContent).toContain('self-hosted code host')
   })
+
+  test('clears a stored instance URL when saving under a SaaS kind', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(routeCodeHostMockSelfHosted)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodeHostSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1' },
+    })
+
+    await drain()
+
+    // Stored record is gitlab-self-hosted + https://gitlab.corp.com. Switch to a SaaS kind,
+    // which hides the instance_url field, and save.
+    const select = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-kind"]')!
+    select.value = 'github'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    flushSync()
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="code-host-save"]')!.click()
+    await drain()
+
+    // Explicitly '' — not merely absent. An absent key leaves the stored URL in place;
+    // toMatchObject fails if the key is missing rather than treating it as a don't-care.
+    expect(JSON.parse(capturedPatchBody)).toMatchObject({
+      values: { kind: 'github', instance_url: '' },
+    })
+    void unmount(component)
+  })
+
+  test('keeps the instance URL in the payload when the kind still needs it', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(routeCodeHostMockSelfHosted)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodeHostSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1' },
+    })
+
+    await drain()
+
+    const instance = target.querySelector<HTMLInputElement>('[data-testid="coding-input-instance_url"]')!
+    instance.value = 'https://gitlab.corp.com/edited'
+    instance.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="code-host-save"]')!.click()
+    await drain()
+
+    expect(JSON.parse(capturedPatchBody)).toMatchObject({
+      values: { instance_url: 'https://gitlab.corp.com/edited' },
+    })
+    void unmount(component)
+  })
 })
