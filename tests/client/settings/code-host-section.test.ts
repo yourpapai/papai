@@ -657,6 +657,30 @@ describe('CodeHostSection', () => {
     void unmount(component)
   })
 
+  test('a 422 naming an unknown field falls back to the banner, with no inline error', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(makeFieldErrorMock({ error: 'Unknown field.', field: 'nonexistent_key' }))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-replace-forge_token"]')!.click()
+    flushSync()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="coding-input-forge_token"]')!
+    input.value = 'ghp_new'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="code-host-save"]')!.click()
+    await drain()
+
+    const banner = target.querySelector('.status-error')
+    expect(banner).not.toBeNull()
+    expect(banner!.textContent).toContain('Unknown field.')
+    expect(target.querySelector('.settings-field__error')).toBeNull()
+    void unmount(component)
+  })
+
   test('a 422 with no field key renders in the banner', async () => {
     setCsrfToken('csrf-t')
     setMockFetch(makeFieldErrorMock({ error: 'Something went wrong.' }))

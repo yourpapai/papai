@@ -949,6 +949,30 @@ describe('CodingCredentialsSection', () => {
     void unmount(component)
   })
 
+  test('a 422 naming an unknown field falls back to the banner, with no inline error', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(makeFieldErrorMock({ error: 'Unknown field.', field: 'nonexistent_key' }))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-replace-provider_api_key"]')!.click()
+    flushSync()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="coding-input-provider_api_key"]')!
+    input.value = 'sk-ant-new'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-credentials-save"]')!.click()
+    await drain()
+
+    const banner = target.querySelector('.status-error')
+    expect(banner).not.toBeNull()
+    expect(banner!.textContent).toContain('Unknown field.')
+    expect(target.querySelector('.settings-field__error')).toBeNull()
+    void unmount(component)
+  })
+
   test('a 422 with no field key renders in the banner', async () => {
     setCsrfToken('csrf-t')
     setMockFetch(makeFieldErrorMock({ error: 'Something went wrong.' }))
