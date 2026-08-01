@@ -369,5 +369,12 @@
   .settings-field__actions {
     display: flex;
     justify-content: flex-end;
+    gap: var(--gap-tight);
+    /* Land the row's right edge on the field cards' content edge: the cards inset their
+       contents by var(--gap-inline) plus their 1px border. Value confirmed against the
+       Populated baseline rather than derived, because the two did not agree: the card's
+       content edge sits 14px left of this row's un-padded right edge (viewport-flush),
+       not the 13px that padding+border alone would predict. */
+    padding-inline: 14px;
   }
 </style>
