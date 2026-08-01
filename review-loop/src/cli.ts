@@ -167,7 +167,14 @@ export async function writeRunArtifacts(
   options: { poolSize: number; inspect: boolean },
 ): Promise<void> {
   const closed = Object.values(result.ledger.issues).filter((r) => r.status === 'closed').length
-  const summary = buildSummary(result.doneReason, result.rounds, closed, result.metrics ?? [], options)
+  const summary = buildSummary({
+    doneReason: result.doneReason,
+    rounds: result.rounds,
+    metrics: result.metrics ?? [],
+    ledger: result.ledger,
+    runDir,
+    options,
+  })
   await writeFile(path.join(runDir, 'summary.txt'), `${summary}\n`)
   try {
     await writeFile(

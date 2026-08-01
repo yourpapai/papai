@@ -390,7 +390,7 @@ describe('runCli', () => {
     await fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath, '--pool-size', '5'])
 
     const summary = readFileSync(path.join(fixture.getRunDir(), 'summary.txt'), 'utf8')
-    expect(summary).toContain('Pool size: 5')
+    expect(summary).toContain('Pool: 5')
   })
 
   test('--no-inspect skips inspector calls', async () => {
@@ -530,7 +530,7 @@ describe('runCli', () => {
     // lose only the in-flight attempt, never the run).
     const runDir = fixture.getRunDir()
     const summary = readFileSync(path.join(runDir, 'summary.txt'), 'utf8')
-    expect(summary).toContain('needs_human')
+    expect(summary).toContain('needs human')
     const state = PersistedRunStateSchema.parse(JSON.parse(readFileSync(path.join(runDir, 'state.json'), 'utf8')))
     const worker1Path = path.join(fixture.workDir, 'worktrees', `${state.runId}-worker-1`)
     const worker2Path = path.join(fixture.workDir, 'worktrees', `${state.runId}-worker-2`)

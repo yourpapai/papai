@@ -335,7 +335,7 @@ describe('review-loop fake integration', () => {
     const runId = readdirSync(runRoot)[0]
     expect(runId).toBeDefined()
     const summary = readFileSync(path.join(runRoot, runId!, 'summary.txt'), 'utf8')
-    expect(summary).toContain('Done reason: clean')
+    expect(summary).toContain('Review loop finished: issues remaining')
   })
 })
 
@@ -373,7 +373,7 @@ describe('fake agent with pool + inspector', () => {
       ],
     })
 
-    expect(summary).toContain('Done reason: clean')
+    expect(summary).toContain('Review loop finished: done')
 
     const inspectEvents = trace.filter((e) => e.event === 'inspect_complete')
     expect(inspectEvents.length).toBe(3)
@@ -409,7 +409,7 @@ describe('fake agent with pool + inspector', () => {
       ],
     })
 
-    expect(summary).toContain('Done reason: clean')
+    expect(summary).toContain('Review loop finished: done')
 
     const inspectEvents = trace.filter((e) => e.event === 'inspect_complete')
     expect(inspectEvents.length).toBe(2)
@@ -447,7 +447,7 @@ describe('fake agent with pool + inspector', () => {
       fixerResults: [buildFixerResult()],
     })
 
-    expect(summary).toContain('Done reason: clean')
+    expect(summary).toContain('Review loop finished: done')
     expect(trace.some((e) => e.event === 'inspect_complete')).toBe(false)
     expect(existsSync(path.join(runRoot, runId, 'inspect.json'))).toBe(false)
 
