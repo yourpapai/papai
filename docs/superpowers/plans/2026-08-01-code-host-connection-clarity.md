@@ -671,10 +671,10 @@ Append inside `describe('CodeHostSection', ...)`:
     target.querySelector<HTMLButtonElement>('[data-testid="code-host-save"]')!.click()
     await drain()
 
-    const parsed = JSON.parse(capturedPatchBody) as { values: Record<string, string> }
-    expect(parsed.values['kind']).toBe('github')
-    // Explicitly '' — not merely absent. An absent key leaves the stored URL in place.
-    expect(parsed.values['instance_url']).toBe('')
+    // toMatchObject, not a cast: `JSON.parse(...) as {...}` trips no-unsafe-type-assertion.
+    // It still proves the point — a listed key that is ABSENT from the payload fails the
+    // match, so this distinguishes an explicit '' from an omitted key.
+    expect(JSON.parse(capturedPatchBody)).toMatchObject({ values: { kind: 'github', instance_url: '' } })
     void unmount(component)
   })
 
@@ -698,8 +698,7 @@ Append inside `describe('CodeHostSection', ...)`:
     target.querySelector<HTMLButtonElement>('[data-testid="code-host-save"]')!.click()
     await drain()
 
-    const parsed = JSON.parse(capturedPatchBody) as { values: Record<string, string> }
-    expect(parsed.values['instance_url']).toBe('https://gitlab.corp.com/edited')
+    expect(JSON.parse(capturedPatchBody)).toMatchObject({ values: { instance_url: 'https://gitlab.corp.com/edited' } })
     void unmount(component)
   })
 ```
