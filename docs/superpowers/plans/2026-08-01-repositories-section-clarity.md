@@ -363,7 +363,7 @@ Add to the `<script>` state block, directly after `let deletingId: string | null
   let pendingDeleteId: string | null = $state(null)
 ```
 
-- [ ] **Step 4: Clear the pending id when the delete resolves**
+- [ ] **Step 4: Clear the pending id when the delete settles**
 
 In `handleDelete`, change the `finally` block from:
 
@@ -381,6 +381,15 @@ to:
       pendingDeleteId = null
     }
 ```
+
+Both assignments belong in `finally`, not in the `try` body. Clearing `pendingDeleteId`
+right after the DELETE succeeds leaves it set on the failure path, which strands the dialog
+open with `busy` off and the error rendered behind the modal overlay where it cannot be
+read.
+
+Because `finally` runs only after `await load(contextId)` resolves, the dialog needs more
+than one `drain()` cycle to disappear — call `drain()` twice after clicking confirm in the
+tests below.
 
 - [ ] **Step 5: Re-point and re-weight the row button**
 
