@@ -11,23 +11,14 @@
   const { Story } = defineMeta({
     title: 'shared/TreeView',
     component: TreeView,
+    parameters: { layout: 'padded' },
   })
 </script>
 
-<Story name="Nested object">
-  <div style="padding: 20px; background: var(--bg); min-height: 200px;">
-    <TreeView label="payload" value={{ id: 1, ok: true, items: [{ k: 'a' }, { k: 'b' }], note: null }} />
-  </div>
-</Story>
+<Story
+  name="Nested object"
+  args={{ label: 'payload', value: { id: 1, ok: true, items: [{ k: 'a' }, { k: 'b' }], note: null } }} />
 
-<Story name="Array">
-  <div style="padding: 20px; background: var(--bg); min-height: 200px;">
-    <TreeView label="rows" value={[1, 2, 3, 'four']} />
-  </div>
-</Story>
+<Story name="Array" args={{ label: 'rows', value: [1, 2, 3, 'four'] }} />
 
-<Story name="Primitive">
-  <div style="padding: 20px; background: var(--bg); min-height: 200px;">
-    <TreeView label="count" value={42} />
-  </div>
-</Story>
+<Story name="Primitive" args={{ label: 'count', value: 42 }} />
