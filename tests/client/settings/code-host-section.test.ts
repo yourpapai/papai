@@ -65,7 +65,7 @@ const typedForgePayloadSaas = {
   fields: [
     {
       key: 'kind',
-      label: 'Code host',
+      label: 'Host type',
       required: true,
       sensitive: false,
       hasValue: true,
@@ -75,7 +75,7 @@ const typedForgePayloadSaas = {
     },
     {
       key: 'instance_url',
-      label: 'Instance URL (enterprise / self-hosted)',
+      label: 'Instance URL',
       required: false,
       sensitive: false,
       hasValue: false,
@@ -100,7 +100,7 @@ const typedForgePayloadSelfHosted = {
   fields: [
     {
       key: 'kind',
-      label: 'Code host',
+      label: 'Host type',
       required: true,
       sensitive: false,
       hasValue: true,
@@ -110,7 +110,7 @@ const typedForgePayloadSelfHosted = {
     },
     {
       key: 'instance_url',
-      label: 'Instance URL (enterprise / self-hosted)',
+      label: 'Instance URL',
       required: false,
       sensitive: false,
       hasValue: true,
@@ -136,7 +136,7 @@ const typedForgeUnconfigured = {
   fields: [
     {
       key: 'kind',
-      label: 'Code host',
+      label: 'Host type',
       required: true,
       sensitive: false,
       hasValue: false,
@@ -146,7 +146,7 @@ const typedForgeUnconfigured = {
     },
     {
       key: 'instance_url',
-      label: 'Instance URL (enterprise / self-hosted)',
+      label: 'Instance URL',
       required: false,
       sensitive: false,
       hasValue: false,
@@ -603,7 +603,7 @@ describe('CodeHostSection', () => {
     expect(labelledBy).not.toBeNull()
     const labelEl = target.querySelector(`#${labelledBy}`)
     expect(labelEl).not.toBeNull()
-    expect(labelEl!.textContent).toContain('Code host')
+    expect(labelEl!.textContent).toContain('Host type')
     void unmount(component)
   })
 

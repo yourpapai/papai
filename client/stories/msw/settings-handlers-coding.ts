@@ -123,7 +123,7 @@ const FORGE_KIND_OPTIONS = ['github', 'github-enterprise', 'gitlab', 'gitlab-sel
 
 function forgeFields(hasValue: boolean): FixtureField[] {
   return [
-    credentialField('kind', 'Code host', {
+    credentialField('kind', 'Host type', {
       required: true,
       hasValue,
       // A SaaS kind, so instance_url starts hidden and the reveal interaction is observable.
@@ -131,7 +131,7 @@ function forgeFields(hasValue: boolean): FixtureField[] {
       control: 'select',
       options: FORGE_KIND_OPTIONS,
     }),
-    credentialField('instance_url', 'Instance URL (enterprise / self-hosted)'),
+    credentialField('instance_url', 'Instance URL'),
     credentialField('forge_token', 'Access token', {
       required: true,
       sensitive: true,

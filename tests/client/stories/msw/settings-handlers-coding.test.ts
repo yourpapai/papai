@@ -64,7 +64,7 @@ describe('coding settings msw handlers', () => {
       fields: [
         {
           key: 'kind',
-          label: 'Code host',
+          label: 'Host type',
           required: true,
           sensitive: false,
           hasValue: true,
@@ -74,7 +74,7 @@ describe('coding settings msw handlers', () => {
         },
         {
           key: 'instance_url',
-          label: 'Instance URL (enterprise / self-hosted)',
+          label: 'Instance URL',
           required: false,
           sensitive: false,
           hasValue: false,
