@@ -9,6 +9,7 @@ import { recordNeedsHuman, saveIssueLedger, type IssueLedger, type LedgerIssueRe
 import { processIssueAttempt, type IssueWorker, type RetryReason } from './issue-processor-attempts.js'
 import type { FixerResult } from './issue-schema.js'
 import { emitFixComplete, tallyDecision, truncate, type RoundCollector } from './loop-trace.js'
+import { emitDecision } from './progress-log.js'
 import type { ProgressReporter } from './progress-log.js'
 import type { RunState } from './run-state.js'
 import type { TraceLogger } from './trace-log.js'
@@ -47,6 +48,19 @@ function fallbackFixerResult(reasoning: string): FixerResult {
     targetFiles: [],
     fixed: false,
   }
+}
+
+function recordProcessingFailure(
+  deps: IssueProcessorDeps,
+  round: number,
+  collector: RoundCollector,
+  record: LedgerIssueRecord,
+  msg: string,
+): void {
+  recordNeedsHuman(deps.ledger, deps.trace, round, record, `issue processing failed: ${msg}`, fallbackFixerResult(msg))
+  tallyDecision(collector, 'needs_human', false)
+  emitDecision(deps.log, record, 'needs_human', `issue processing failed: ${msg}`)
+  emitFixComplete(deps.trace, round, record.id, false, null, 1)
 }
 
 async function processIssue(
@@ -121,17 +135,7 @@ function makeDispatcher(args: {
       result = await processIssue(record, deps, worker, round, collector)
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
-      recordNeedsHuman(
-        deps.ledger,
-        deps.trace,
-        round,
-        record,
-        `issue processing failed: ${msg}`,
-        fallbackFixerResult(msg),
-      )
-      tallyDecision(collector, 'needs_human', false)
-      deps.log.log(`[fix] "${shortTitle(record)}" → needs_human (issue processing failed: ${msg})`)
-      emitFixComplete(deps.trace, round, record.id, false, null, 1)
+      recordProcessingFailure(deps, round, collector, record, msg)
     }
     try {
       await save(deps.ledger)

@@ -9,10 +9,11 @@ import path from 'node:path'
 
 import type { SpawnFn, SpawnResult } from '../../review-loop/src/agent-runner.js'
 import type { ShellExecFn } from '../../review-loop/src/build-checker.js'
+import { formatDecidedLine, formatFoundLine } from '../../review-loop/src/issue-format.js'
 import { createIssueLedger } from '../../review-loop/src/issue-ledger.js'
 import type { IssueMatch, ReviewerIssue } from '../../review-loop/src/issue-schema.js'
 import { runReviewLoop } from '../../review-loop/src/loop-controller.js'
-import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
+import type { IssueProgressEvent, ProgressReporter } from '../../review-loop/src/progress-log.js'
 import { createRunState } from '../../review-loop/src/run-state.js'
 import { execGit } from '../../review-loop/src/worktree.js'
 import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir, fakePool, silentTrace } from './test-helpers.js'
@@ -124,6 +125,18 @@ function createMockSpawn(handlers: {
 const passingExec: ShellExecFn = (_cwd?: string): Promise<{ exitCode: number; stdout: string; stderr: string }> =>
   Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
 
+function isFoundFooLine(line: string): boolean {
+  return line.startsWith('  + #') && line.includes('src/foo.ts:10 — Missing error handling')
+}
+
+function isFixedDecidedLine(line: string): boolean {
+  return line.startsWith('✓ #') && line.endsWith('→ fixed')
+}
+
+function isRejectedDecidedLine(line: string): boolean {
+  return line.startsWith('✗ #') && line.endsWith('→ rejected')
+}
+
 function makeReporter(messages: string[]): ProgressReporter {
   return {
     dynamic: false,
@@ -138,6 +151,13 @@ function makeReporter(messages: string[]): ProgressReporter {
     clearLive() {},
     log: (message: string): void => {
       messages.push(message)
+    },
+    issue: (event: IssueProgressEvent): void => {
+      if (event.type === 'found') {
+        messages.push(formatFoundLine(event))
+      } else if (event.type === 'decided') {
+        messages.push(formatDecidedLine(event))
+      }
     },
   }
 }
@@ -185,8 +205,8 @@ describe('progress logging', () => {
 
     expect(result.doneReason).toBe('clean')
     expect(messages).toContain('[round 1/5] Reviewing...')
-    expect(messages).toContain('[round 1] Found 1 issues')
-    expect(messages.some((m) => m.startsWith('[fix] "Missing error handling"'))).toBe(true)
+    expect(messages.some(isFoundFooLine)).toBe(true)
+    expect(messages.some(isFixedDecidedLine)).toBe(true)
     expect(messages).toContain('[round 1] Fixed 1/1 issues')
     expect(messages).toContain('[done] clean after 2 rounds')
     expect(messages.some((m) => m.startsWith('[build] passed'))).toBe(true)
@@ -228,7 +248,7 @@ describe('progress logging', () => {
     expect(messages).toContain('[done] no_progress')
   })
 
-  test('truncates long issue titles in log output', async () => {
+  test('decided lines stay short regardless of title length', async () => {
     const repoRoot = makeTempDir('review-loop-progress-')
     const config = createReviewLoopConfigFixture(repoRoot)
     const planPath = path.join(repoRoot, 'plan.md')
@@ -257,9 +277,9 @@ describe('progress logging', () => {
       inspect: true,
     })
 
-    const fixMessage = messages.find((m) => m.startsWith('[fix]'))
-    expect(fixMessage).toBeDefined()
-    expect(fixMessage!.length).toBeLessThan(longTitle.length + 40)
+    const decidedMessage = messages.find(isRejectedDecidedLine)
+    expect(decidedMessage).toBeDefined()
+    expect(decidedMessage!.length).toBeLessThan(40)
   })
 
   test('round summary denominator counts only actionable issues, excluding terminal matches', async () => {

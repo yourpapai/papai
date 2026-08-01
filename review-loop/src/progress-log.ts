@@ -19,3 +19,12 @@ export interface ProgressReporter {
   issue?(event: IssueProgressEvent): void
   statusSuffix?(): string
 }
+
+export function emitDecision(
+  log: ProgressReporter,
+  record: { id: string; issue: { title: string } },
+  verdict: string,
+  note?: string,
+): void {
+  log.issue?.({ id: record.id, title: record.issue.title, type: 'decided', verdict, note })
+}
