@@ -18,3 +18,7 @@ test.describe('admin/components/StatsPanel', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()

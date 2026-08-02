@@ -33,3 +33,7 @@ test.describe('transcript/TranscriptApp', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../support/viewport.js'
+
+pinDefaultViewport()

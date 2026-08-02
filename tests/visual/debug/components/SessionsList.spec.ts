@@ -18,3 +18,7 @@ test.describe('debug/components/SessionsList', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()

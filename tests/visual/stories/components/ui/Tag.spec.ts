@@ -6,24 +6,24 @@
 import { test, expect, switchStory } from '@crvy/strybk'
 
 // @generated-begin auto-screenshots
-test.describe('settings/sections/admin/AdminUsersSection', () => {
-  test('Populated', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'settings-sections-admin-adminuserssection--populated')
+test.describe('shared/ui/Tag', () => {
+  test('Required', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-ui-tag--required')
     await expect(sharedPage).toHaveScreenshot()
   })
 
-  test('Empty', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'settings-sections-admin-adminuserssection--empty')
+  test('Optional', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-ui-tag--optional')
     await expect(sharedPage).toHaveScreenshot()
   })
 
-  test('Error', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'settings-sections-admin-adminuserssection--error')
+  test('Neutral', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-ui-tag--neutral')
     await expect(sharedPage).toHaveScreenshot()
   })
 
-  test('Loading', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'settings-sections-admin-adminuserssection--loading')
+  test('Info', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-ui-tag--info')
     await expect(sharedPage).toHaveScreenshot()
   })
 })

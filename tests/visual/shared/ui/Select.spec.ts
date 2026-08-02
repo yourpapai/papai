@@ -17,9 +17,18 @@ test.describe('shared/ui/Select', () => {
     await expect(sharedPage).toHaveScreenshot()
   })
 
+  test('Disabled', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-ui-select--disabled')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
   test('Placeholder', async ({ sharedPage }) => {
     await switchStory(sharedPage, 'shared-ui-select--placeholder')
     await expect(sharedPage).toHaveScreenshot()
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()

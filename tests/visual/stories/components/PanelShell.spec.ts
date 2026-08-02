@@ -6,14 +6,24 @@
 import { test, expect, switchStory } from '@crvy/strybk'
 
 // @generated-begin auto-screenshots
-test.describe('debug/components/TraceList', () => {
-  test('Populated', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'debug-components-tracelist--populated')
+test.describe('shared/PanelShell', () => {
+  test('Default', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-panelshell--default')
     await expect(sharedPage).toHaveScreenshot()
   })
 
   test('Empty', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'debug-components-tracelist--empty')
+    await switchStory(sharedPage, 'shared-panelshell--empty')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('Populated', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-panelshell--populated')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('Long title edge', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-panelshell--long-title-edge')
     await expect(sharedPage).toHaveScreenshot()
   })
 })

@@ -6,19 +6,19 @@
 import { test, expect, switchStory } from '@crvy/strybk'
 
 // @generated-begin auto-screenshots
-test.describe('shared/Confirm', () => {
-  test('Default', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'shared-confirm--default')
+test.describe('shared/StatusDot', () => {
+  test('Connected', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-statusdot--connected')
     await expect(sharedPage).toHaveScreenshot()
   })
 
-  test('Custom labels', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'shared-confirm--custom-labels')
+  test('Disconnected', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-statusdot--disconnected')
     await expect(sharedPage).toHaveScreenshot()
   })
 })
 // @generated-end auto-screenshots
 
-import { pinDefaultViewport } from '../support/viewport.js'
+import { pinDefaultViewport } from '../../support/viewport.js'
 
 pinDefaultViewport()

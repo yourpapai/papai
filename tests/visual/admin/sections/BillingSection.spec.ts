@@ -28,3 +28,7 @@ test.describe('admin/sections/BillingSection', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()

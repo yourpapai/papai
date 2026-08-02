@@ -24,6 +24,10 @@ test.describe('shared/ui/Checkbox', () => {
 })
 // @generated-end auto-screenshots
 
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
+
 // The 16px input box is exempt from the WCAG 2.2 AA SC 2.5.8 floor
 // (tests/client/shared/control-target-size.test.ts) on the grounds that it sits inside a
 // clickable <label> that is the actual pointer target. Measure the label's rendered click

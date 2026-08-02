@@ -6,24 +6,24 @@
 import { test, expect, switchStory } from '@crvy/strybk'
 
 // @generated-begin auto-screenshots
-test.describe('settings/sections/admin/AdminUsersSection', () => {
+test.describe('settings/sections/admin/AdminModelsSection', () => {
   test('Populated', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'settings-sections-admin-adminuserssection--populated')
+    await switchStory(sharedPage, 'settings-sections-admin-adminmodelssection--populated')
     await expect(sharedPage).toHaveScreenshot()
   })
 
   test('Empty', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'settings-sections-admin-adminuserssection--empty')
+    await switchStory(sharedPage, 'settings-sections-admin-adminmodelssection--empty')
     await expect(sharedPage).toHaveScreenshot()
   })
 
   test('Error', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'settings-sections-admin-adminuserssection--error')
+    await switchStory(sharedPage, 'settings-sections-admin-adminmodelssection--error')
     await expect(sharedPage).toHaveScreenshot()
   })
 
   test('Loading', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'settings-sections-admin-adminuserssection--loading')
+    await switchStory(sharedPage, 'settings-sections-admin-adminmodelssection--loading')
     await expect(sharedPage).toHaveScreenshot()
   })
 })

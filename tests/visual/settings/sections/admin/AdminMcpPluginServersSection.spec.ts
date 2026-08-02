@@ -29,6 +29,10 @@ test.describe('settings/sections/admin/AdminMcpPluginServersSection', () => {
 })
 // @generated-end auto-screenshots
 
+import { pinDefaultViewport } from '../../../support/viewport.js'
+
+pinDefaultViewport()
+
 test.describe('settings/sections/admin/AdminMcpPluginServersSection behavior', () => {
   test('renders a row for the available plugin with secure-by-default values', async ({ sharedPage }) => {
     await switchStory(sharedPage, 'settings-sections-admin-adminmcppluginserverssection--populated')

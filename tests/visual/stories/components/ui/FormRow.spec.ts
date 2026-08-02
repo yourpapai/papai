@@ -6,19 +6,14 @@
 import { test, expect, switchStory } from '@crvy/strybk'
 
 // @generated-begin auto-screenshots
-test.describe('shared/Confirm', () => {
-  test('Default', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'shared-confirm--default')
-    await expect(sharedPage).toHaveScreenshot()
-  })
-
-  test('Custom labels', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'shared-confirm--custom-labels')
+test.describe('shared/ui/FormRow', () => {
+  test('Fields + action', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-ui-formrow--fields-action')
     await expect(sharedPage).toHaveScreenshot()
   })
 })
 // @generated-end auto-screenshots
 
-import { pinDefaultViewport } from '../support/viewport.js'
+import { pinDefaultViewport } from '../../../support/viewport.js'
 
 pinDefaultViewport()

@@ -18,3 +18,7 @@ test.describe('shared/ui/HR', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()

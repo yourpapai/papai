@@ -33,3 +33,7 @@ test.describe('shared/ui/Pill', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
