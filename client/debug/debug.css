@@ -400,30 +400,6 @@
   font-size: 10px;
 }
 
-/* --- Log turnId filter badge --- */
-
-.log-turnid-badge {
-  background: var(--info-soft);
-  border: 1px solid var(--info);
-  color: var(--info);
-  padding: 2px 6px;
-  border-radius: 2px;
-  font-size: 10px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.log-turnid-badge button {
-  background: none;
-  border: none;
-  color: var(--info);
-  cursor: pointer;
-  font-size: 12px;
-  padding: 0;
-  line-height: 1;
-}
-
 /* --- Three-column debug grid --- */
 
 .debug-grid {

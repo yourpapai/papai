@@ -6,7 +6,7 @@
 import type { DashboardState, DashboardWizard, SelectedDetail } from '../../debug/dashboard-types.js'
 import type { LlmTrace, LogEntry, Notification, Session, ToolFailure, Turn } from '../../shared/api-types.js'
 
-const FIXED_TS = Date.UTC(2026, 4, 20, 12, 0, 0)
+export const FIXED_TS = Date.UTC(2026, 4, 20, 12, 0, 0)
 
 export function makeSession(overrides: Partial<Session> = {}): Session {
   return {

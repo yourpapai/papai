@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { fmtBytes, fmtNum, formatDateTime, formatDuration } from '../../../client/shared/helpers'
+import { fmtBytes, fmtNum, formatDateTime, formatDuration } from '../../../client/shared/helpers.js'
 
 describe('fmtNum', () => {
   test('rounds to <=2dp by default and adds thousands separators', () => {

@@ -10,7 +10,7 @@
 </script>
 
 <div class="narrow-rail">
-  {@render children?.()}
+  {@render children()}
 </div>
 
 <style>
