@@ -463,6 +463,33 @@ describe('normalizer', () => {
     })
   })
 
+  test('execution family: tool_completed with a float durationMs bypassing the subscriber is still rejected', () => {
+    const result = normalize(
+      {
+        version: 1,
+        type: 'tool_completed',
+        sourceEventId: 'se-tc-float',
+        occurredAtMs: 1_700_000_000_900,
+        source: memberSource,
+        toolSlug: 'core_task_create',
+        toolOrigin: 'core',
+        toolDomain: 'task',
+        risk: 'write',
+        modelRole: 'main',
+        argsBytes: 300,
+        durationMs: 450.5,
+        executionOutcome: 'semantic_success',
+        resultBytes: 120,
+        errorClass: null,
+        statusClass: '2xx',
+        retryable: null,
+        recoveredSameTurn: false,
+      },
+      env,
+    )
+    expect(result).toEqual({ status: 'rejected', sourceEventType: 'tool_completed', reason: 'invalid_value' })
+  })
+
   test('execution family: confirmation_requested fixes the five-minute timeout literal', () => {
     const result = normalize(
       {

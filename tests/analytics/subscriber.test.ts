@@ -216,6 +216,33 @@ describe('analytics subscriber', () => {
     ])
   })
 
+  test('rounds float llm:error and tool durations to integers at the boundary', () => {
+    const { bus, observer, registry } = setup()
+    registry.register({ turnId: 'turn-1', source: memberSource })
+    bus.emit(busEvent('llm:error', { model: 'gpt-x', durationMs: 100.4 }, 'turn-1'))
+    bus.emit(
+      busEvent(
+        'tool:analytics_completed',
+        {
+          toolName: 'core_task_create',
+          toolCallId: 'tc-1',
+          argsBytes: 42,
+          durationMs: 55.6,
+          executionOutcome: 'semantic_success',
+          resultBytes: 120,
+          errorClass: null,
+          statusClass: '2xx',
+          retryable: null,
+          recoveredSameTurn: false,
+          modelRole: 'main',
+        },
+        'turn-1',
+      ),
+    )
+    expect(firstFactOfType(observer.facts, 'llm_failed').durationMs).toBe(100)
+    expect(firstFactOfType(observer.facts, 'tool_completed').durationMs).toBe(56)
+  })
+
   test('ignores the five categorically excluded sources', () => {
     const { bus, observer, registry } = setup()
     registry.register({ turnId: 'turn-1', source: memberSource })

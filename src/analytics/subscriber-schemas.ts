@@ -16,6 +16,10 @@ import { ErrorClassSchema, StatusClassSchema } from './controlled-types.js'
 import type { AnalyticsSourceContext } from './source-facts.js'
 
 export const NonNegativeInt = z.number().int().nonnegative()
+export const DurationMs = z
+  .number()
+  .nonnegative()
+  .transform((value) => Math.round(value))
 export const ModelRoleSchema = z.enum(['main', 'small'])
 export const ProviderBindingSchema = z.enum(['global', 'byok', 'mixed'])
 
@@ -77,7 +81,7 @@ export const LlmEndDataSchema = z.looseObject({
 
 export const LlmErrorDataSchema = z.looseObject({
   model: z.string().min(1),
-  durationMs: z.number().nonnegative(),
+  durationMs: DurationMs,
   phase: z.enum(['resolution', 'request', 'stream']).optional(),
   errorClass: ErrorClassSchema.optional(),
   retryable: z.boolean().nullable().optional(),
@@ -93,7 +97,7 @@ export const ToolIdentitySchema = z.looseObject({
 })
 
 export const ToolCompletedDataSchema = ToolIdentitySchema.extend({
-  durationMs: z.number().nonnegative(),
+  durationMs: DurationMs,
   executionOutcome: z.enum(['semantic_success', 'structured_failure', 'thrown_failure', 'permission_denied']),
   resultBytes: NonNegativeInt,
   errorClass: ErrorClassSchema.nullable(),
