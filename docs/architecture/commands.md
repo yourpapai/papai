@@ -36,6 +36,12 @@ Before parsing arguments, the parent removes only its standard `manifest.json` a
 
 Qualification freezes all of `tests/stories/**`, the listed enforcement scripts (including the `scripts/coverage/` modules they import: `normalize-lcov.ts`, `ratchet-lib.ts`, `story-coverage-gate.ts`), and the auxiliary Bun/test-support inputs byte-for-byte, not just files ending in `.story.test.ts`. A refactor may change production/runtime composition, but it must not change frozen harness, fixture, preload, story, launcher, manifest, guard, test setup, or test-helper bytes while claiming compatibility with a recorded baseline. The explicit baseline commit must already contain every frozen file; an older ref fails actionably by listing them as added candidate files.
 
+Chat-adapter transport is outside 0Q: `SCN-interaction-discord-router-wrapped`,
+`SCN-interaction-discord-standalone-fallback`, and
+`SCN-interaction-telegram-callback` remain `needs-seam@3`. Their Discord/grammY
+callback wires are reviewed manually or by the nightly Tier 3 platform-adapter
+lane; they are never a refactor-qualification gate.
+
 To establish a baseline on master:
 
 1. Run `bun test:stories:contracts` and `bun test:stories`, then commit the complete harness and enforcement scripts.
