@@ -861,7 +861,13 @@ const failTerminally = (tx: MemoryTx, position: number, attemptCount: number, no
  */
 export function applyOutboxItem(position: number, now = new Date().toISOString()): ApplyOutcome {
   const outcome = applyWithinTransaction(position, now)
-  log.debug({ position, outcome }, 'Projection apply attempt')
+  // `missing-event` writes the item to a terminal `failed` state, so it must be greppable
+  // apart from a routine apply. `failed` is already warned about inside `recordApplyFailure`.
+  if (outcome === 'missing-event') {
+    log.warn({ position, outcome }, 'Projection apply found no canonical event; outbox item failed terminally')
+  } else {
+    log.debug({ position, outcome }, 'Projection apply attempt')
+  }
   return outcome
 }
 
@@ -1126,7 +1132,13 @@ export function applyOutboxItem(position: number, now = new Date().toISOString()
     recordApplyFailure(position, now, error)
     outcome = 'failed'
   }
-  log.debug({ position, outcome }, 'Projection apply attempt')
+  // `missing-event` writes the item to a terminal `failed` state, so it must be greppable
+  // apart from a routine apply. `failed` is already warned about inside `recordApplyFailure`.
+  if (outcome === 'missing-event') {
+    log.warn({ position, outcome }, 'Projection apply found no canonical event; outbox item failed terminally')
+  } else {
+    log.debug({ position, outcome }, 'Projection apply attempt')
+  }
   return outcome
 }
 ```
