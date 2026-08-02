@@ -405,7 +405,9 @@ describe('token references', () => {
   test('the scan actually found references, so an empty result cannot pass vacuously', async () => {
     const { declared, referenced } = await scanClient()
 
-    expect(declared.size).toBeGreaterThan(50)
+    // Task 4 deletes the eight legacy aliases, dropping the true count from 57 to 49,
+    // so this floor lands at 40 once the whole plan has run.
+    expect(declared.size).toBeGreaterThan(40)
     expect(referenced.length).toBeGreaterThan(500)
   })
 })
