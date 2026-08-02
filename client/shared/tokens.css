@@ -18,7 +18,7 @@
   /* ---- foreground ---- */
   --text: #e6efe8;
   --text-muted: #9aa79d;
-  --text-dim: #6b766e;
+  --text-dim: #828d84; /* 4.70:1 on --surface-hover, 5.69:1 on --bg — WCAG SC 1.4.3 floor */
 
   /* ---- accent + semantic ---- */
   --accent: #52e08a;
@@ -82,6 +82,6 @@
   --fg: var(--text);
   --fg2: var(--text-muted);
   --fg3: var(--text-dim);
-  --fg4: #3a4248;
-  --fg-hint: #8b978c; /* instructional hint text — ≥4.5:1 on --surface-1/-2 (measures ~6:1) */
+  --fg4: var(--text-dim); /* was #3a4248 at 1.58:1 — below even the 3:1 non-text floor */
+  --fg-hint: var(--text-dim); /* redundant once --text-dim itself clears 4.5:1 */
 }
