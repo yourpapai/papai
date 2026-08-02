@@ -24,7 +24,7 @@
   <Panel title="llm trace" count={dashboard.llmTraces.length}>
     {#snippet body()}
       {#if dashboard.llmTraces.length === 0}
-        <EmptyState title="No traces" />
+        <EmptyState title="No traces" hint="LLM traces appear here after the next model call" />
       {:else}
         {#each dashboard.llmTraces as trace, i (i)}
           {@const isError = trace.error !== undefined && trace.error !== ''}

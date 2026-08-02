@@ -107,7 +107,7 @@
       cell={cellRender}
       onRowClick={selectTurn}>
       {#snippet empty()}
-        <EmptyState title="No turns" />
+        <EmptyState title="No turns" hint="turns appear here as messages are processed" />
       {/snippet}
     </DataTable>
   {/snippet}

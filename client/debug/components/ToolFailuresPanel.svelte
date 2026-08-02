@@ -44,7 +44,7 @@
 <Panel title="tool failures" count={panelCount(filtered.length, dashboard.toolFailures.length, dashboard.scopeFilter)}>
   {#snippet body()}
     {#if filtered.length === 0}
-      <EmptyState title="No failures" />
+      <EmptyState title="No failures" hint="no tool failures in the buffered window" />
     {:else}
       {#each filtered as f, i (i)}
         {@const toolName = typeof f.data['toolName'] === 'string' ? f.data['toolName'] : 'unknown'}

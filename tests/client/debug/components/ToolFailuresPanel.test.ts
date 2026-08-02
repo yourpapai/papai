@@ -76,4 +76,11 @@ describe('ToolFailuresPanel', () => {
     expect(target.querySelectorAll('.failure-row.selected').length).toBe(1)
     void unmount(component)
   })
+
+  test('empty state explains itself', () => {
+    const { target, component } = render(freshState())
+    expect(target.textContent).toContain('No failures')
+    expect(target.textContent).toContain('buffered window')
+    void unmount(component)
+  })
 })

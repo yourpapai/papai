@@ -44,7 +44,7 @@
 <Panel title="notifications" count={panelCount(filtered.length, dashboard.notifications.length, dashboard.scopeFilter)}>
   {#snippet body()}
     {#if filtered.length === 0}
-      <EmptyState title="No notifications" />
+      <EmptyState title="No notifications" hint="outbound replies and typing events appear here as they happen" />
     {:else}
       {#each filtered as n, i (i)}
         <div class="notification-row">
