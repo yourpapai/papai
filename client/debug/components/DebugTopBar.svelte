@@ -71,6 +71,7 @@
       <span class="debug-topbar__lbl">msg-cache</span>
       <span class="debug-topbar__stat">{dashboard.messageCache.size ?? 0} entries · {dashboard.messageCache.pendingWrites ?? 0} pending</span>
       <span class="debug-topbar__spacer"></span>
+      <span class="debug-topbar__lbl">activity scope</span>
       <Seg
         options={['all', 'dm', 'group']}
         value={dashboard.scopeFilter}
