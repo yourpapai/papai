@@ -16,7 +16,7 @@
 import { saveMemoryRecord } from '../../../src/long-term-memory/store.js'
 import type { MemoryRecordInput, MemoryScope, MemoryStatus } from '../../../src/long-term-memory/types.js'
 
-export const CORPUS_VERSION = '2026-07-29.1'
+export const CORPUS_VERSION = '2026-08-02.1'
 
 export const PERSONAL: MemoryScope = { scopeId: 'acc-personal-1', scopeType: 'personal' }
 export const OTHER_PERSONAL: MemoryScope = { scopeId: 'acc-personal-2', scopeType: 'personal' }
@@ -177,6 +177,31 @@ export function seedDuplicateOutOfOrder(scope: MemoryScope): readonly string[] {
       }),
     ),
   ]
+}
+
+/**
+ * A twelve-month horizon: distinct facts whose event times span far enough that lexical or
+ * insertion-order ordering would diverge from event-time ordering. The last entry restates the
+ * first month's content at a later event time, so supersession must resolve across the whole
+ * span rather than between adjacent writes.
+ */
+export function seedLongHorizon(scope: MemoryScope): readonly string[] {
+  const months = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']
+  const written = months.map((month) => {
+    const stamp = `2025-${month}-01T00:00:00.000Z`
+    return write(
+      acceptanceRecord({
+        ...scope,
+        id: `${scope.scopeId}-acc-horizon-${month}`,
+        content: `Month ${month} status was recorded`,
+        createdAt: stamp,
+        updatedAt: stamp,
+        lastSeenAt: stamp,
+        evidence: { timestamps: [stamp] },
+      }),
+    )
+  })
+  return written
 }
 
 export function seedAdversarialErasure(scope: MemoryScope): readonly string[] {

@@ -13,6 +13,7 @@
  * throws.
  */
 
+import { CASES as captureIdempotency } from './capture-idempotency.cases.js'
 import { CASES as erasure } from './erasure.cases.js'
 import { CASES as provenance } from './provenance.cases.js'
 import type { CriterionKey, ShapeKey } from './registry.js'
@@ -22,6 +23,7 @@ import { CASES as scopeIsolation } from './scope-isolation.cases.js'
 
 export const CASE_TABLES: Readonly<Partial<Record<CriterionKey, Partial<Record<ShapeKey, string>>>>> = {
   'scope-isolation': scopeIsolation,
+  'capture-idempotency': captureIdempotency,
   erasure,
   provenance,
   reproducibility,

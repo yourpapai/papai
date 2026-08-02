@@ -51,10 +51,15 @@ describe('acceptance registry contract', () => {
     }
   })
 
-  test('the three Gate 1 exit criteria are predicate-registered', () => {
-    for (const key of ['capture-idempotency', 'races', 'crash-recovery'] as const) {
+  test('the two remaining Gate 1 exit criteria are predicate-registered', () => {
+    for (const key of ['races', 'crash-recovery'] as const) {
       expect(criterionByKey(key).status).toBe('predicate-registered')
     }
+  })
+
+  test('capture-idempotency was promoted by Gate 1b and now carries executed cells', () => {
+    expect(criterionByKey('capture-idempotency').status).toBe('implemented')
+    expect(criterionByKey('capture-idempotency').shapes).toEqual(['duplicate-out-of-order', 'long-horizon'])
   })
 
   test('a predicate-registered criterion carries a predicate and its blocker, and no predicate rule', () => {
@@ -87,7 +92,7 @@ describe('acceptance registry contract', () => {
       registeredCriteria()
         .map((c) => c.key)
         .toSorted(),
-    ).toEqual(['capture-idempotency', 'crash-recovery', 'races'])
+    ).toEqual(['crash-recovery', 'races'])
   })
 
   test('only implemented criteria declare executed scenario cells', () => {
@@ -166,10 +171,10 @@ describe('acceptance registry coverage cross-check', () => {
     }
   })
 
-  test('a registered cell may name a shape with no fixture builder yet', () => {
+  test('a registered cell names a shape, whether or not that shape has a fixture yet', () => {
     const registered = new Set(CRITERIA.flatMap((c) => c.registeredShapes))
-    expect(registered).toContain('long-horizon')
-    expect(SHAPES.find((s) => s.key === 'long-horizon')?.status).toBe('declared-unimplemented')
+    expect(registered.size).toBeGreaterThan(0)
+    for (const shape of registered) expect(SHAPE_KEYS).toContain(shape)
   })
 })
 

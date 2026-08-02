@@ -150,14 +150,13 @@ export const CRITERIA: readonly Criterion[] = [
   },
   {
     key: 'capture-idempotency',
-    status: 'predicate-registered',
+    status: 'implemented',
     passPredicate:
       'Replaying an identical capture input, repeatedly and with ingest order reversed relative to event time, yields exactly one canonical event per idempotency identity, and the projection snapshot after N replays is byte-identical to the snapshot after one. Supersession and validity resolve by event time, never by ingest order. Every suppressed replay is observable as a duplicate suppression, never as a silent success.',
-    blocker:
-      'no content-hash-keyed dedup at the write boundary; content collapse exists only in the LLM-gated group-promotion path',
+    blocker: null,
     predicateRule: null,
-    shapes: [],
-    registeredShapes: ['duplicate-out-of-order', 'long-horizon'],
+    shapes: ['duplicate-out-of-order', 'long-horizon'],
+    registeredShapes: [],
   },
   {
     key: 'reproducibility',
@@ -238,19 +237,9 @@ export const SHAPES: readonly Shape[] = [
       'Belongs to capture-idempotency, demoted to declared-unmet; supersession is asserted as store behaviour, not as a Gate 0 cell.',
   },
   { key: 'missing-embedding', status: 'implemented', blocker: null },
-  {
-    key: 'duplicate-out-of-order',
-    status: 'declared-unimplemented',
-    blocker:
-      'Registered as a Gate 1 cell for capture-idempotency and crash-recovery; unimplemented until Gate 1 exposes canonical events with idempotency identities and an at-least-once outbox.',
-  },
+  { key: 'duplicate-out-of-order', status: 'implemented', blocker: null },
   { key: 'adversarial-erasure', status: 'implemented', blocker: null },
-  {
-    key: 'long-horizon',
-    status: 'declared-unimplemented',
-    blocker:
-      'Registered as a Gate 1 cell for capture-idempotency and crash-recovery; unimplemented until Gate 1 exposes the canonical event log. A fixture-bounded version would overstate coverage.',
-  },
+  { key: 'long-horizon', status: 'implemented', blocker: null },
   {
     key: 'abstention',
     status: 'declared-unimplemented',

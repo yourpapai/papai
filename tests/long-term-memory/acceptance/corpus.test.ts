@@ -16,6 +16,7 @@ import {
   seedAdversarialErasure,
   seedContradiction,
   seedDuplicateOutOfOrder,
+  seedLongHorizon,
   seedMissingEmbedding,
   seedMultiParty,
   seedMultilingual,
@@ -76,6 +77,11 @@ describe('acceptance corpus', () => {
   test('duplicate-out-of-order seeds identical content twice with reversed timestamps', () => {
     const ids = seedDuplicateOutOfOrder(PERSONAL)
     expect(ids).toHaveLength(2)
+  })
+
+  test('long-horizon seeds twelve months of distinct facts', () => {
+    const ids = seedLongHorizon(PERSONAL)
+    expect(ids).toHaveLength(12)
   })
 
   test('adversarial-erasure seeds an active record and a provisional twin of the same content', () => {

@@ -27,7 +27,7 @@ describe('acceptance report', () => {
   test('states that the contract is versioned and production readiness is not established', () => {
     const output = renderAcceptanceReport()
     expect(output).toContain('contract versioned = YES')
-    expect(output).toContain('production ready = NO (4 implemented, 3 predicate-registered, 4 unmet)')
+    expect(output).toContain('production ready = NO (5 implemented, 2 predicate-registered, 4 unmet)')
   })
 
   test('marks predicate-registered criteria with a distinct glyph', () => {
@@ -39,10 +39,10 @@ describe('acceptance report', () => {
 
   test('renders registered cells distinctly from executed cells', () => {
     const output = renderAcceptanceReport()
-    const registered = output.split('\n').find((row) => row.includes('capture-idempotency'))
-    const executed = output.split('\n').find((row) => row.includes('scope-isolation'))
-    expect(registered).toContain('registered cells: duplicate-out-of-order, long-horizon')
-    expect(executed).toContain('shapes: multilingual, multi-party')
+    const registered = output.split('\n').find((row) => row.includes('crash-recovery'))
+    const executed = output.split('\n').find((row) => row.includes('capture-idempotency'))
+    expect(registered).toContain('registered cells: long-horizon, duplicate-out-of-order')
+    expect(executed).toContain('shapes: duplicate-out-of-order, long-horizon')
     expect(registered).not.toContain('shapes:')
   })
 
@@ -55,7 +55,7 @@ describe('acceptance report', () => {
 
   test('renders the unimplemented shapes with their blockers', () => {
     const output = renderAcceptanceReport()
-    for (const key of ['long-horizon', 'abstention', 'duplicate-out-of-order', 'contradiction']) {
+    for (const key of ['abstention', 'contradiction']) {
       expect(output).toContain(key)
     }
   })
