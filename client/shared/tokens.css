@@ -54,7 +54,13 @@
   --radius-control: 2px;
   --radius-pill: 999px;
   --row-h: 44px;
-  --control-h-sm: 24px; /* WCAG 2.2 AA SC 2.5.8 target-size floor */
+  /*
+   * 24px is the height half of WCAG 2.2 AA SC 2.5.8 (24x24 CSS px). Height
+   * alone does not satisfy the criterion — the control must also be at least
+   * 24px wide, or be spaced so a 24px circle centred on it hits no neighbour.
+   * Check both when using this token on a narrow control.
+   */
+  --control-h-sm: 24px;
   --control-h-md: 28px;
   --control-h-lg: 34px;
 
