@@ -14,5 +14,5 @@
   })
 </script>
 
-<!-- Recurring/deferred prompts load on demand from an entered userId; render the form shell. -->
+<!-- Reminders (recurring/scheduled) load on demand from an entered userId; render the form shell. -->
 <Story name="Lookup form" />

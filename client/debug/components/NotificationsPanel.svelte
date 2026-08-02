@@ -6,6 +6,7 @@
 <script lang="ts">
   import { formatTime } from '../../shared/helpers.js'
   import type { Notification, DashboardState, ScopeFilter } from '../dashboard-types.js'
+  import { panelCount } from '../panel-count.js'
   import Panel from '../../shared/ui/Panel.svelte'
   import EmptyState from '../../shared/ui/EmptyState.svelte'
   import JsonCell from '../../shared/ui/JsonCell.svelte'
@@ -40,10 +41,10 @@
   const filtered = $derived(dashboard.notifications.filter((n) => matchesScope(n.scope, dashboard.scopeFilter)))
 </script>
 
-<Panel title="notifications" count={dashboard.notifications.length}>
+<Panel title="notifications" count={panelCount(filtered.length, dashboard.notifications.length, dashboard.scopeFilter)}>
   {#snippet body()}
     {#if filtered.length === 0}
-      <EmptyState title="No notifications" />
+      <EmptyState title="No notifications" hint="outbound replies and typing events appear here as they happen" />
     {:else}
       {#each filtered as n, i (i)}
         <div class="notification-row">
@@ -59,3 +60,33 @@
     {/if}
   {/snippet}
 </Panel>
+
+<style>
+  .notification-row {
+    border-left: 2px solid var(--border);
+    padding: 6px 8px;
+    margin-bottom: 4px;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .notification-row:nth-child(even) {
+    background: var(--surface-1);
+  }
+
+  .notification-time {
+    color: var(--text-dim);
+    margin-right: 8px;
+  }
+
+  .notification-type {
+    color: var(--accent);
+    margin-right: 8px;
+    font-weight: 600;
+  }
+
+  .notification-text {
+    color: var(--text-muted);
+    word-break: break-word;
+  }
+</style>

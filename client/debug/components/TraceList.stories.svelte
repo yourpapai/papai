@@ -6,7 +6,7 @@
 <script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf'
 
-  import { makeDashboardState, makeLlmTrace } from '../../stories/fixtures/debug.js'
+  import { makeDashboardState, makeLlmTrace, SELECTED_TRACE, SELECTED_TRACE_LIST } from '../../stories/fixtures/debug.js'
   import TraceList from './TraceList.svelte'
 
   const { Story } = defineMeta({
@@ -22,3 +22,10 @@
 <Story name="Populated" args={{ dashboard: makeDashboardState({ llmTraces: traces }), onSelect: noop }} />
 
 <Story name="Empty" args={{ dashboard: makeDashboardState({ llmTraces: [] }), onSelect: noop }} />
+
+<Story
+  name="Selected"
+  args={{
+    dashboard: makeDashboardState({ llmTraces: SELECTED_TRACE_LIST, selectedDetail: SELECTED_TRACE }),
+    onSelect: noop,
+  }} />

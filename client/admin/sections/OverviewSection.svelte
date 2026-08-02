@@ -98,7 +98,7 @@
     return [
       { label: 'memos', n: sm.subjectsWithMemos, total },
       { label: 'recurring', n: sm.subjectsWithRecurring, total },
-      { label: 'deferred', n: sm.subjectsWithDeferred, total },
+      { label: 'reminders', n: sm.subjectsWithDeferred, total },
       { label: 'instructions', n: sm.subjectsWithInstructions, total },
     ]
   })

@@ -11,17 +11,17 @@ import { executeGet } from '../deferred-prompts/tool-handlers.js'
 import { logger } from '../logger.js'
 import { toolFailureMeta } from './tool-logging.js'
 
-const log = logger.child({ scope: 'tool:get-deferred-prompt' })
+const log = logger.child({ scope: 'tool:get-reminder' })
 
-export function makeGetDeferredPromptTool(userId: string): Tool {
+export function makeGetReminderTool(userId: string): Tool {
   return tool({
-    description: 'Get full details of a deferred prompt by ID.',
-    inputSchema: z.object({ id: z.string().describe('The deferred prompt ID') }),
+    description: 'Get full details of a reminder or alert by ID.',
+    inputSchema: z.object({ id: z.string().describe('The reminder or alert ID') }),
     execute: (input: { id: string }) => {
       try {
         return executeGet(userId, input)
       } catch (error) {
-        log.error(toolFailureMeta('get_deferred_prompt', error), 'Tool execution failed')
+        log.error(toolFailureMeta('get_reminder', error), 'Tool execution failed')
         throw error
       }
     },

@@ -155,6 +155,33 @@ describe('resolveToolPermission', () => {
     const prefs: ToolPrefs = { domainDefaults: {}, toolOverrides: { plugin_foo__bar: 'deny' } }
     expect(resolveToolPermission(prefs, 'plugin_foo__bar')).toBe('deny')
   })
+
+  test('a legacy override on an old deferred-prompt name carries over to create_reminder', () => {
+    const prefs: ToolPrefs = {
+      riskDefaults: {},
+      domainDefaults: {},
+      toolOverrides: { create_deferred_prompt: 'deny' },
+    }
+    expect(resolveToolPermission(prefs, 'create_reminder')).toBe('deny')
+  })
+
+  test('a legacy override carries over to create_alert', () => {
+    const prefs: ToolPrefs = {
+      riskDefaults: {},
+      domainDefaults: {},
+      toolOverrides: { create_deferred_prompt: 'ask' },
+    }
+    expect(resolveToolPermission(prefs, 'create_alert')).toBe('ask')
+  })
+
+  test('a legacy override on list_deferred_prompts carries over to list_reminders', () => {
+    const prefs: ToolPrefs = {
+      riskDefaults: {},
+      domainDefaults: {},
+      toolOverrides: { list_deferred_prompts: 'deny' },
+    }
+    expect(resolveToolPermission(prefs, 'list_reminders')).toBe('deny')
+  })
 })
 
 describe('parseToolPrefs legacy migration', () => {

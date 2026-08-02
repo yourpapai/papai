@@ -24,3 +24,13 @@
 <Story name="Populated" args={{ dashboard: makeDashboardState({ logs: manyLogs }), onSelectLog: noop }} />
 
 <Story name="Empty" args={{ dashboard: makeDashboardState({ logs: [], logScopes: new Set() }), onSelectLog: noop }} />
+
+<Story
+  name="Selected"
+  args={{
+    dashboard: makeDashboardState({
+      logs: manyLogs,
+      selectedDetail: { kind: 'log', payload: { entry: makeLogEntry(), index: 0 } },
+    }),
+    onSelectLog: noop,
+  }} />

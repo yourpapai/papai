@@ -22,3 +22,8 @@ test.describe('debug/components/SessionsList', () => {
 import { pinDefaultViewport } from '../../support/viewport.js'
 
 pinDefaultViewport()
+test('SessionCard — keyboard focus ring', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'debug-components-sessioncard--default')
+  await sharedPage.keyboard.press('Tab')
+  await expect(sharedPage).toHaveScreenshot()
+})

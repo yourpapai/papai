@@ -11,17 +11,17 @@ import { executeCancel } from '../deferred-prompts/tool-handlers.js'
 import { logger } from '../logger.js'
 import { toolFailureMeta } from './tool-logging.js'
 
-const log = logger.child({ scope: 'tool:cancel-deferred-prompt' })
+const log = logger.child({ scope: 'tool:cancel-reminder' })
 
-export function makeCancelDeferredPromptTool(userId: string): Tool {
+export function makeCancelReminderTool(userId: string): Tool {
   return tool({
-    description: 'Cancel a deferred prompt by ID. Works for both scheduled prompts and alerts.',
-    inputSchema: z.object({ id: z.string().describe('The deferred prompt ID to cancel') }),
+    description: 'Cancel a reminder or alert by ID.',
+    inputSchema: z.object({ id: z.string().describe('The reminder or alert ID to cancel') }),
     execute: (input: { id: string }) => {
       try {
         return executeCancel(userId, input)
       } catch (error) {
-        log.error(toolFailureMeta('cancel_deferred_prompt', error), 'Tool execution failed')
+        log.error(toolFailureMeta('cancel_reminder', error), 'Tool execution failed')
         throw error
       }
     },

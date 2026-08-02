@@ -125,7 +125,9 @@ A committed per-file baseline of mutation scores backs a monotonic ratchet:
   baseline accumulates floors for every touched file over time. The committed
   baseline is the floor the PR gate enforces. The run also writes its per-file
   scores to `reports/paired/scores.json` so the commit step can re-seed without
-  re-running Stryker.
+  re-running Stryker. The scores file is always written — even when the run
+  measured no gateable files (e.g. a docs- or scripts-only merge) — so the
+  commit step no-ops gracefully instead of failing on a missing artifact.
 - **Commit-step re-seed** (`test:mutate:seed --scores=reports/paired/scores.json
 [--fresh-base=SHA]`): master can move while mutation testing runs (e.g. a
   release bump push), which would reject a naive push and lose the seed. The CI

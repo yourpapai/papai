@@ -26,11 +26,11 @@ const SCHEDULING_WIRE_NAMES = [
   'resume_recurring_task',
   'skip_recurring_task',
   'delete_recurring_task',
-  'create_deferred_prompt',
-  'list_deferred_prompts',
-  'get_deferred_prompt',
-  'update_deferred_prompt',
-  'cancel_deferred_prompt',
+  'create_reminder',
+  'list_reminders',
+  'get_reminder',
+  'update_reminder',
+  'cancel_reminder',
 ] as const
 
 describe('scheduling capability ids', () => {
@@ -42,8 +42,8 @@ describe('scheduling capability ids', () => {
     expect(catalog.resolve('recurring.create')).toBe('create_recurring_task')
     expect(catalog.resolve('recurring.pause')).toBe('pause_recurring_task')
     expect(catalog.resolve('recurring.delete')).toBe('delete_recurring_task')
-    expect(catalog.resolve('deferred.create')).toBe('create_deferred_prompt')
-    expect(catalog.resolve('deferred.cancel')).toBe('cancel_deferred_prompt')
+    expect(catalog.resolve('deferred.create')).toBe('create_reminder')
+    expect(catalog.resolve('deferred.cancel')).toBe('cancel_reminder')
   })
 
   test('the 12 scheduling ids are all present in the capability map', () => {

@@ -192,7 +192,6 @@ const reopenRun = (db: Db, input: BackfillJobInput, runId: string, highWaterRowK
     .set({
       status: 'running',
       highWaterRowKey,
-      policyCutoffMs: input.cutoffMs,
       startedAtMs: input.nowMs,
       completedAtMs: null,
       failedAtMs: null,

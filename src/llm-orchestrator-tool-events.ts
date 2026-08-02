@@ -198,7 +198,7 @@ const emitAnalyticsCompleted = (
       toolName: event.toolCall.toolName,
       toolCallId: event.toolCall.toolCallId,
       analyticsSourceId: analyticsSourceIdOf(ctx, event.toolCall.toolCallId),
-      durationMs: event.durationMs,
+      durationMs: Math.max(0, Math.round(event.durationMs)),
       executionOutcome: terminal.outcome,
       argsBytes: safeByteLength(event.toolCall.input),
       resultBytes: event.success ? (safeByteLength(event.output) ?? 0) : 0,

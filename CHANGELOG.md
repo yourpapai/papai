@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.12.4] - 2026-08-01
+
+### Fixed
+
+- **analytics:** Keep backfill policy_cutoff_ms stable across resume ticks
+## [6.12.3] - 2026-07-31
+
+### Documentation
+
+- **research:** Stage B window opened 2026-08-01
+
+### Ci
+
+- **deploy:** Wire analytics HMAC keyrings from GitHub secrets
+## [6.12.2] - 2026-07-31
+
+### Documentation
+
+- **adr:** Record ADRs 0226-0253 and archive source plans/specs
+- **adr:** Record ADRs 0254-0276 and archive source plans/specs
+- **adr:** Record ADRs 0277-0290 and archive source plans/specs
+- **adr:** Record ADRs 0291-0307 and archive source plans/specs
+- **adr:** Collapse ADRs 0101-0200 to index-only and drop source plans
+
+### Fixed
+
+- **mutation:** Always write scores.json on seed runs
+
+### Ci
+
+- **mutation:** Re-seed baseline from persisted scores when master moves mid-run
 ## [6.12.1] - 2026-07-31
 
 ### Fixed

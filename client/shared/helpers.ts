@@ -83,3 +83,9 @@ export function fmtBytes(b: number | null | undefined): string {
   } while (v >= 1024 && i < units.length - 1)
   return `${v.toFixed(v < 10 ? 1 : 0)} ${units[i]}`
 }
+
+export function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '—'
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  return `${fmtNum(ms / 1000, 1)}s`
+}

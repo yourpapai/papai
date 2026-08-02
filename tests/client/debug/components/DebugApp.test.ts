@@ -13,6 +13,7 @@ import DebugApp from '../../../../client/debug/DebugApp.svelte'
 function freshState(): DashboardState {
   return {
     connected: false,
+    hasConnectedOnce: false,
     stats: { startedAt: Date.now(), totalMessages: 0, totalLlmCalls: 0, totalToolCalls: 0 },
     sessions: new Map(),
     wizards: new Map(),
@@ -62,6 +63,32 @@ describe('DebugApp.svelte', () => {
     expect(html).not.toContain('Reminders')
     expect(html).not.toContain('Stats')
 
+    void unmount(component)
+  })
+
+  test('disconnect banner is hidden during the initial connecting state', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.getElementById('root')!
+    const dashboard = freshState()
+    dashboard.connected = false
+    dashboard.hasConnectedOnce = false
+
+    const component = mount(DebugApp, { target, props: { dashboard } })
+    expect(target.querySelector('.debug-banner')).toBeNull()
+    void unmount(component)
+  })
+
+  test('disconnect banner appears only after the stream has connected once', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.getElementById('root')!
+    const dashboard = freshState()
+    dashboard.connected = false
+    dashboard.hasConnectedOnce = true
+
+    const component = mount(DebugApp, { target, props: { dashboard } })
+    const banner = target.querySelector('.debug-banner')
+    expect(banner).not.toBeNull()
+    expect(banner?.textContent).toContain('stream disconnected')
     void unmount(component)
   })
 })

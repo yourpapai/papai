@@ -10,6 +10,7 @@ import { dashboard as state } from '../../../client/debug/debug.svelte.js'
 describe('debug.svelte', () => {
   test('initial state has expected shape', () => {
     expect(state.connected).toBe(false)
+    expect(state.hasConnectedOnce).toBe(false)
     expect(state.sessions).toBeInstanceOf(Map)
     expect(state.wizards).toBeInstanceOf(Map)
     expect(state.activeConfigEditors).toBeInstanceOf(Set)

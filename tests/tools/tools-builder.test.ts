@@ -118,7 +118,7 @@ describe('buildTools', () => {
     expect(listMemos(rawChatUserId).map((memo) => memo.content)).not.toContain('scoped memo')
     expect(listRecurringTasks(scopedContextId).map((task) => task.title)).toContain('Scoped recurring')
     expect(listRecurringTasks(rawChatUserId).map((task) => task.title)).not.toContain('Scoped recurring')
-    const deferredList = await getToolExecutor(tools['list_deferred_prompts'])({})
+    const deferredList = await getToolExecutor(tools['list_reminders'])({})
     expect(isDeferredListResult(deferredList)).toBe(true)
     assertDeferredListResult(deferredList)
     expect(deferredList.prompts.map((prompt) => prompt.prompt)).toContain('scoped owner alert')
@@ -150,7 +150,7 @@ describe('buildTools', () => {
       projectId: 'project-1',
       triggerType: 'on_complete',
     })
-    await getToolExecutor(tools['create_deferred_prompt'])({
+    await getToolExecutor(tools['create_alert'])({
       prompt: 'Check blocked tasks',
       condition: { field: 'task.status', op: 'eq', value: 'blocked' },
       execution: { delivery_brief: 'Report blocked tasks' },
@@ -394,8 +394,9 @@ describe('buildTools', () => {
     const provider = createMockProvider()
     const tools = buildTools(provider, 'user-123', 'user-123', 'normal')
 
-    expect(tools).toHaveProperty('create_deferred_prompt')
-    expect(tools).toHaveProperty('list_deferred_prompts')
+    expect(tools).toHaveProperty('create_reminder')
+    expect(tools).toHaveProperty('list_reminders')
+    expect(tools).toHaveProperty('create_alert')
   })
 
   it('should expose agile and sprint tools when phase-five capabilities are present', () => {
@@ -499,8 +500,8 @@ describe('buildTools', () => {
     const provider = createMockProvider()
     const tools = buildTools(provider, 'user-123', 'user-123', 'proactive')
 
-    expect(tools).not.toHaveProperty('create_deferred_prompt')
-    expect(tools).not.toHaveProperty('list_deferred_prompts')
+    expect(tools).not.toHaveProperty('create_reminder')
+    expect(tools).not.toHaveProperty('list_reminders')
   })
 
   it('should not add user-scoped tools when userId is undefined', () => {
@@ -553,8 +554,8 @@ describe('buildTools', () => {
     expect(tools).toHaveProperty('delete_instruction')
     expect(tools).toHaveProperty('lookup_group_history')
     expect(tools).toHaveProperty('web_fetch')
-    expect(tools).toHaveProperty('create_deferred_prompt')
-    expect(tools).toHaveProperty('list_deferred_prompts')
+    expect(tools).toHaveProperty('create_reminder')
+    expect(tools).toHaveProperty('list_reminders')
 
     expect(tools).not.toHaveProperty('create_task')
     expect(tools).not.toHaveProperty('update_task')
@@ -569,30 +570,24 @@ describe('buildTools', () => {
     expect(tools).not.toHaveProperty('promote_memo')
   })
 
-  it('exposes only schedule-based deferred prompt creation in providerless mode', async () => {
+  it('exposes only schedule-based reminder creation in providerless mode (no create_alert)', () => {
     const tools = buildProviderlessTools('user-123', 'group-456:thread-1', 'normal')
-    const createDeferredPrompt = tools['create_deferred_prompt']
+    const createReminder = tools['create_reminder']
 
-    expect(createDeferredPrompt).toBeDefined()
+    expect(createReminder).toBeDefined()
+    expect(tools).not.toHaveProperty('create_alert')
     expect(
-      schemaValidates(createDeferredPrompt!, {
+      schemaValidates(createReminder!, {
         prompt: 'Remind me later',
         schedule: { fire_at: { date: '2027-01-15', time: '09:00' } },
       }),
     ).toBe(true)
     expect(
-      schemaValidates(createDeferredPrompt!, {
+      schemaValidates(createReminder!, {
         prompt: 'Alert me when a task is blocked',
         condition: { field: 'task.status', op: 'eq', value: 'blocked' },
       }),
     ).toBe(false)
-
-    const result = await getToolExecutor(createDeferredPrompt!)({
-      prompt: 'Alert me when a task is blocked',
-      condition: { field: 'task.status', op: 'eq', value: 'blocked' },
-    })
-
-    expect(result).toEqual({ error: 'Task-dependent deferred alerts require a task provider.' })
   })
 
   it('should add lookup_group_history when contextId is a legacy thread', () => {

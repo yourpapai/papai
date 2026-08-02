@@ -16,13 +16,14 @@ import { getAlertPrompt } from '../../src/deferred-prompts/alerts.js'
 import { getStorageContextId } from '../../src/deferred-prompts/proactive-llm-helpers.js'
 import { getScheduledPrompt } from '../../src/deferred-prompts/scheduled.js'
 import {
-  makeCancelDeferredPromptTool,
-  makeCreateDeferredPromptTool,
-  makeGetDeferredPromptTool,
-  makeListDeferredPromptsTool,
-  makeUpdateDeferredPromptTool,
+  makeCancelReminderTool,
+  makeCreateAlertTool,
+  makeCreateReminderTool,
+  makeGetReminderTool,
+  makeListRemindersTool,
+  makeUpdateReminderTool,
 } from '../../src/deferred-prompts/tools.js'
-import { mockLogger, schemaValidates, setupTestDb } from '../utils/test-helpers.js'
+import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const USER_ID = 'user-1'
 const toolCtx = {
@@ -34,11 +35,12 @@ const toolCtx = {
 
 function getTools(): ToolSet {
   return {
-    create_deferred_prompt: makeCreateDeferredPromptTool(USER_ID, USER_ID, 'dm'),
-    list_deferred_prompts: makeListDeferredPromptsTool(USER_ID),
-    get_deferred_prompt: makeGetDeferredPromptTool(USER_ID),
-    update_deferred_prompt: makeUpdateDeferredPromptTool(USER_ID),
-    cancel_deferred_prompt: makeCancelDeferredPromptTool(USER_ID),
+    create_reminder: makeCreateReminderTool(USER_ID, USER_ID, 'dm'),
+    create_alert: makeCreateAlertTool(USER_ID, USER_ID, 'dm'),
+    list_reminders: makeListRemindersTool(USER_ID),
+    get_reminder: makeGetReminderTool(USER_ID),
+    update_reminder: makeUpdateReminderTool(USER_ID),
+    cancel_reminder: makeCancelReminderTool(USER_ID),
   }
 }
 
@@ -88,31 +90,32 @@ beforeEach(() => {
   mockLogger()
 })
 
-describe('makeDeferredPromptTools', () => {
+describe('makeReminderAndAlertTools', () => {
   beforeEach(async () => {
     await setupTestDb()
     setConfig(USER_ID, 'timezone', 'UTC')
   })
 
-  test('exposes all 5 tools', () => {
+  test('exposes all 6 tools', () => {
     const names = Object.keys(getTools())
-    expect(names).toContain('create_deferred_prompt')
-    expect(names).toContain('list_deferred_prompts')
-    expect(names).toContain('get_deferred_prompt')
-    expect(names).toContain('update_deferred_prompt')
-    expect(names).toContain('cancel_deferred_prompt')
-    expect(names).toHaveLength(5)
+    expect(names).toContain('create_reminder')
+    expect(names).toContain('create_alert')
+    expect(names).toContain('list_reminders')
+    expect(names).toContain('get_reminder')
+    expect(names).toContain('update_reminder')
+    expect(names).toContain('cancel_reminder')
+    expect(names).toHaveLength(6)
   })
 })
 
-describe('create_deferred_prompt', () => {
+describe('create_reminder', () => {
   beforeEach(async () => {
     await setupTestDb()
     setConfig(USER_ID, 'timezone', 'UTC')
   })
 
   test('creates with schedule (returns type scheduled)', async () => {
-    const t = getTools()['create_deferred_prompt']!
+    const t = getTools()['create_reminder']!
     assert.ok(t.execute)
     const result: unknown = await t.execute({ prompt: 'Remind me', schedule: { fire_at: futureFireAt() } }, toolCtx)
     expect(result).toHaveProperty('status', 'created')
@@ -122,7 +125,7 @@ describe('create_deferred_prompt', () => {
   })
 
   test('creates with rrule schedule', async () => {
-    const t = getTools()['create_deferred_prompt']!
+    const t = getTools()['create_reminder']!
     assert.ok(t.execute)
     const result: unknown = await t.execute(
       { prompt: 'Daily', schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0] } } },
@@ -134,7 +137,7 @@ describe('create_deferred_prompt', () => {
   })
 
   test('creates with condition (returns type alert)', async () => {
-    const t = getTools()['create_deferred_prompt']!
+    const t = getTools()['create_alert']!
     assert.ok(t.execute)
     const result: unknown = await t.execute(
       {
@@ -150,7 +153,7 @@ describe('create_deferred_prompt', () => {
   })
 
   test('rejects both schedule and condition', async () => {
-    const t = getTools()['create_deferred_prompt']!
+    const t = getTools()['create_reminder']!
     assert.ok(t.execute)
     const result: unknown = await t.execute(
       {
@@ -164,44 +167,14 @@ describe('create_deferred_prompt', () => {
   })
 
   test('rejects neither schedule nor condition', async () => {
-    const t = getTools()['create_deferred_prompt']!
+    const t = getTools()['create_reminder']!
     assert.ok(t.execute)
     const result: unknown = await t.execute({ prompt: 'X' }, toolCtx)
     expect(result).toHaveProperty('error')
   })
 
-  test('can disable task conditions for providerless creation', async () => {
-    const t = makeCreateDeferredPromptTool(USER_ID, USER_ID, 'dm', undefined, undefined, {
-      allowTaskConditions: false,
-    })
-    assert.ok(t.execute)
-
-    expect(
-      schemaValidates(t, {
-        prompt: 'Scheduled follow-up',
-        schedule: { fire_at: futureFireAt() },
-      }),
-    ).toBe(true)
-    expect(
-      schemaValidates(t, {
-        prompt: 'Alert me when a task is blocked',
-        condition: { field: 'task.status', op: 'eq', value: 'blocked' },
-      }),
-    ).toBe(false)
-
-    const result: unknown = await t.execute(
-      {
-        prompt: 'Alert me when a task is blocked',
-        condition: { field: 'task.status', op: 'eq', value: 'blocked' },
-      },
-      toolCtx,
-    )
-
-    expect(result).toEqual({ error: 'Task-dependent deferred alerts require a task provider.' })
-  })
-
   test('rejects past fire_at', async () => {
-    const t = getTools()['create_deferred_prompt']!
+    const t = getTools()['create_reminder']!
     assert.ok(t.execute)
     const result: unknown = await t.execute(
       { prompt: 'X', schedule: { fire_at: { date: '2020-01-01', time: '00:00' } } },
@@ -211,7 +184,7 @@ describe('create_deferred_prompt', () => {
   })
 
   test('creates with weekly rrule schedule and stores correct rrule string', async () => {
-    const t = getTools()['create_deferred_prompt']!
+    const t = getTools()['create_reminder']!
     assert.ok(t.execute)
     const result: unknown = await t.execute(
       {
@@ -226,7 +199,7 @@ describe('create_deferred_prompt', () => {
   })
 
   test('rejects empty schedule object', async () => {
-    const t = getTools()['create_deferred_prompt']!
+    const t = getTools()['create_reminder']!
     assert.ok(t.execute)
     const result: unknown = await t.execute({ prompt: 'X', schedule: {} }, toolCtx)
     expect(result).toHaveProperty('error')
@@ -234,7 +207,7 @@ describe('create_deferred_prompt', () => {
 
   test('converts structured fire_at from local time to UTC', async () => {
     setConfig(USER_ID, 'timezone', 'Asia/Karachi')
-    const t = getTools()['create_deferred_prompt']!
+    const t = getTools()['create_reminder']!
     assert.ok(t.execute)
 
     // Use a date far in the future to avoid "must be future" check
@@ -252,7 +225,7 @@ describe('create_deferred_prompt', () => {
   })
 })
 
-describe('list_deferred_prompts', () => {
+describe('list_reminders', () => {
   beforeEach(async () => {
     await setupTestDb()
     setConfig(USER_ID, 'timezone', 'UTC')
@@ -260,29 +233,33 @@ describe('list_deferred_prompts', () => {
 
   test('returns both types', async () => {
     const tools = getTools()
-    const create = tools['create_deferred_prompt']!
-    const list = tools['list_deferred_prompts']!
+    const create = tools['create_reminder']!
+    const list = tools['list_reminders']!
     assert.ok(create.execute)
     assert.ok(list.execute)
     await create.execute({ prompt: 'S', schedule: { fire_at: futureFireAt() } }, toolCtx)
-    await create.execute({ prompt: 'A', condition: { field: 'task.status', op: 'eq', value: 'done' } }, toolCtx)
+    const createAlert = tools['create_alert']!
+    assert.ok(createAlert.execute)
+    await createAlert.execute({ prompt: 'A', condition: { field: 'task.status', op: 'eq', value: 'done' } }, toolCtx)
     expect(extractPrompts(await list.execute({}, toolCtx))).toHaveLength(2)
   })
 
   test('filters by type', async () => {
     const tools = getTools()
-    const create = tools['create_deferred_prompt']!
-    const list = tools['list_deferred_prompts']!
+    const create = tools['create_reminder']!
+    const list = tools['list_reminders']!
     assert.ok(create.execute)
     assert.ok(list.execute)
     await create.execute({ prompt: 'S', schedule: { fire_at: futureFireAt() } }, toolCtx)
-    await create.execute({ prompt: 'A', condition: { field: 'task.status', op: 'eq', value: 'done' } }, toolCtx)
+    const createAlert = tools['create_alert']!
+    assert.ok(createAlert.execute)
+    await createAlert.execute({ prompt: 'A', condition: { field: 'task.status', op: 'eq', value: 'done' } }, toolCtx)
     expect(extractPrompts(await list.execute({ type: 'scheduled' }, toolCtx))).toHaveLength(1)
     expect(extractPrompts(await list.execute({ type: 'alert' }, toolCtx))).toHaveLength(1)
   })
 })
 
-describe('get_deferred_prompt', () => {
+describe('get_reminder', () => {
   beforeEach(async () => {
     await setupTestDb()
     setConfig(USER_ID, 'timezone', 'UTC')
@@ -290,8 +267,8 @@ describe('get_deferred_prompt', () => {
 
   test('retrieves a prompt by ID', async () => {
     const tools = getTools()
-    const create = tools['create_deferred_prompt']!
-    const get = tools['get_deferred_prompt']!
+    const create = tools['create_reminder']!
+    const get = tools['get_reminder']!
     assert.ok(create.execute)
     assert.ok(get.execute)
     const created: unknown = await create.execute(
@@ -304,13 +281,13 @@ describe('get_deferred_prompt', () => {
   })
 
   test('returns error for non-existent ID', async () => {
-    const get = getTools()['get_deferred_prompt']!
+    const get = getTools()['get_reminder']!
     assert.ok(get.execute)
     expect(await get.execute({ id: 'non-existent' }, toolCtx)).toHaveProperty('error')
   })
 })
 
-describe('update_deferred_prompt', () => {
+describe('update_reminder', () => {
   beforeEach(async () => {
     await setupTestDb()
     setConfig(USER_ID, 'timezone', 'UTC')
@@ -318,8 +295,8 @@ describe('update_deferred_prompt', () => {
 
   test('changes prompt text', async () => {
     const tools = getTools()
-    const create = tools['create_deferred_prompt']!
-    const update = tools['update_deferred_prompt']!
+    const create = tools['create_reminder']!
+    const update = tools['update_reminder']!
     assert.ok(create.execute)
     assert.ok(update.execute)
     const created: unknown = await create.execute(
@@ -333,8 +310,8 @@ describe('update_deferred_prompt', () => {
 
   test('changes alert prompt text', async () => {
     const tools = getTools()
-    const create = tools['create_deferred_prompt']!
-    const update = tools['update_deferred_prompt']!
+    const create = tools['create_alert']!
+    const update = tools['update_reminder']!
     assert.ok(create.execute)
     assert.ok(update.execute)
     const created: unknown = await create.execute(
@@ -348,8 +325,8 @@ describe('update_deferred_prompt', () => {
 
   test('rejects condition on scheduled prompt', async () => {
     const tools = getTools()
-    const create = tools['create_deferred_prompt']!
-    const update = tools['update_deferred_prompt']!
+    const create = tools['create_reminder']!
+    const update = tools['update_reminder']!
     assert.ok(create.execute)
     assert.ok(update.execute)
     const created: unknown = await create.execute({ prompt: 'S', schedule: { fire_at: futureFireAt() } }, toolCtx)
@@ -362,8 +339,8 @@ describe('update_deferred_prompt', () => {
 
   test('rejects schedule on alert prompt', async () => {
     const tools = getTools()
-    const create = tools['create_deferred_prompt']!
-    const update = tools['update_deferred_prompt']!
+    const create = tools['create_alert']!
+    const update = tools['update_reminder']!
     assert.ok(create.execute)
     assert.ok(update.execute)
     const created: unknown = await create.execute(
@@ -378,15 +355,15 @@ describe('update_deferred_prompt', () => {
   })
 
   test('returns error for non-existent ID', async () => {
-    const update = getTools()['update_deferred_prompt']!
+    const update = getTools()['update_reminder']!
     assert.ok(update.execute)
     expect(await update.execute({ id: 'missing', prompt: 'X' }, toolCtx)).toHaveProperty('error')
   })
 
   test('rejects past fire_at on update', async () => {
     const tools = getTools()
-    const create = tools['create_deferred_prompt']!
-    const update = tools['update_deferred_prompt']!
+    const create = tools['create_reminder']!
+    const update = tools['update_reminder']!
     assert.ok(create.execute)
     assert.ok(update.execute)
     const created: unknown = await create.execute({ prompt: 'S', schedule: { fire_at: futureFireAt() } }, toolCtx)
@@ -398,7 +375,7 @@ describe('update_deferred_prompt', () => {
   })
 })
 
-describe('cancel_deferred_prompt', () => {
+describe('cancel_reminder', () => {
   beforeEach(async () => {
     await setupTestDb()
     setConfig(USER_ID, 'timezone', 'UTC')
@@ -406,9 +383,9 @@ describe('cancel_deferred_prompt', () => {
 
   test('cancels a prompt', async () => {
     const tools = getTools()
-    const create = tools['create_deferred_prompt']!
-    const cancel = tools['cancel_deferred_prompt']!
-    const get = tools['get_deferred_prompt']!
+    const create = tools['create_reminder']!
+    const cancel = tools['cancel_reminder']!
+    const get = tools['get_reminder']!
     assert.ok(create.execute)
     assert.ok(cancel.execute)
     assert.ok(get.execute)
@@ -424,7 +401,7 @@ describe('cancel_deferred_prompt', () => {
   })
 
   test('returns error for non-existent ID', async () => {
-    const cancel = getTools()['cancel_deferred_prompt']!
+    const cancel = getTools()['cancel_reminder']!
     assert.ok(cancel.execute)
     expect(await cancel.execute({ id: 'non-existent' }, toolCtx)).toHaveProperty('error')
   })
@@ -437,7 +414,7 @@ describe('execution metadata', () => {
   })
 
   test('creates with execution metadata', async () => {
-    const t = getTools()['create_deferred_prompt']!
+    const t = getTools()['create_reminder']!
     assert.ok(t.execute)
     const result: unknown = await t.execute(
       {
@@ -451,7 +428,7 @@ describe('execution metadata', () => {
   })
 
   test('creates without execution metadata (backward compat)', async () => {
-    const t = getTools()['create_deferred_prompt']!
+    const t = getTools()['create_reminder']!
     assert.ok(t.execute)
     const result: unknown = await t.execute({ prompt: 'Remind me', schedule: { fire_at: futureFireAt() } }, toolCtx)
     expect(result).toHaveProperty('status', 'created')
@@ -459,8 +436,8 @@ describe('execution metadata', () => {
 
   test('persists execution metadata in scheduled prompt', async () => {
     const tools = getTools()
-    const create = tools['create_deferred_prompt']!
-    const get = tools['get_deferred_prompt']!
+    const create = tools['create_reminder']!
+    const get = tools['get_reminder']!
     assert.ok(create.execute)
     assert.ok(get.execute)
 
@@ -484,8 +461,8 @@ describe('execution metadata', () => {
 
   test('persists execution metadata in alert prompt', async () => {
     const tools = getTools()
-    const create = tools['create_deferred_prompt']!
-    const get = tools['get_deferred_prompt']!
+    const create = tools['create_alert']!
+    const get = tools['get_reminder']!
     assert.ok(create.execute)
     assert.ok(get.execute)
 
@@ -505,8 +482,8 @@ describe('execution metadata', () => {
 
   test('defaults to empty delivery brief when no execution provided', async () => {
     const tools = getTools()
-    const create = tools['create_deferred_prompt']!
-    const get = tools['get_deferred_prompt']!
+    const create = tools['create_reminder']!
+    const get = tools['get_reminder']!
     assert.ok(create.execute)
     assert.ok(get.execute)
 
@@ -519,9 +496,9 @@ describe('execution metadata', () => {
 
   test('updates execution metadata on scheduled prompt', async () => {
     const tools = getTools()
-    const create = tools['create_deferred_prompt']!
-    const update = tools['update_deferred_prompt']!
-    const get = tools['get_deferred_prompt']!
+    const create = tools['create_reminder']!
+    const update = tools['update_reminder']!
+    const get = tools['get_reminder']!
     assert.ok(create.execute)
     assert.ok(update.execute)
     assert.ok(get.execute)
@@ -544,7 +521,7 @@ describe('delivery classification persistence', () => {
   })
 
   test('group scheduled prompt with an explicit mention list persists personal audience and those mentions', async () => {
-    const tool = makeCreateDeferredPromptTool(USER_ID, '-1001:42', 'group')
+    const tool = makeCreateReminderTool(USER_ID, '-1001:42', 'group')
     assert.ok(tool.execute)
 
     const result: unknown = await tool.execute(
@@ -570,7 +547,7 @@ describe('delivery classification persistence', () => {
   })
 
   test('group scheduled prompt with omitted mention list defaults to @mentioning the creator', async () => {
-    const tool = makeCreateDeferredPromptTool(USER_ID, '-1001:42', 'group')
+    const tool = makeCreateReminderTool(USER_ID, '-1001:42', 'group')
     assert.ok(tool.execute)
 
     const result: unknown = await tool.execute(
@@ -591,7 +568,7 @@ describe('delivery classification persistence', () => {
   test('scoped dm scheduled prompt delivers to native user identity', async () => {
     const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
     setConfig(scopedUserId, 'timezone', 'UTC')
-    const tool = makeCreateDeferredPromptTool(scopedUserId, scopedUserId, 'dm', undefined, USER_ID)
+    const tool = makeCreateReminderTool(scopedUserId, scopedUserId, 'dm', undefined, USER_ID)
     assert.ok(tool.execute)
 
     const result: unknown = await tool.execute(
@@ -625,7 +602,7 @@ describe('delivery classification persistence', () => {
       nativeContextId: '-1001',
       threadId: '42',
     })
-    const tool = makeCreateDeferredPromptTool(scopedUserId, scopedThreadContextId, 'group', undefined, USER_ID)
+    const tool = makeCreateAlertTool(scopedUserId, scopedThreadContextId, 'group', undefined, USER_ID)
     assert.ok(tool.execute)
 
     const result: unknown = await tool.execute(
@@ -664,7 +641,7 @@ describe('delivery classification persistence', () => {
       threadId: '42',
     })
     setConfig(scopedMainGroupId, 'timezone', 'Europe/Berlin')
-    const tool = makeCreateDeferredPromptTool(scopedThreadContextId, scopedThreadContextId, 'group', undefined, USER_ID)
+    const tool = makeCreateReminderTool(scopedThreadContextId, scopedThreadContextId, 'group', undefined, USER_ID)
     assert.ok(tool.execute)
 
     const result: unknown = await tool.execute(
@@ -688,14 +665,8 @@ describe('delivery classification persistence', () => {
       threadId: '42',
     })
     setConfig(scopedMainGroupId, 'timezone', 'Europe/Berlin')
-    const create = makeCreateDeferredPromptTool(
-      scopedThreadContextId,
-      scopedThreadContextId,
-      'group',
-      undefined,
-      USER_ID,
-    )
-    const update = makeUpdateDeferredPromptTool(scopedThreadContextId)
+    const create = makeCreateReminderTool(scopedThreadContextId, scopedThreadContextId, 'group', undefined, USER_ID)
+    const update = makeUpdateReminderTool(scopedThreadContextId)
     assert.ok(create.execute)
     assert.ok(update.execute)
     const created: unknown = await create.execute(
@@ -717,11 +688,11 @@ describe('delivery classification persistence', () => {
   test('scoped owner can list get update and cancel scoped deferred rows', async () => {
     const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
     setConfig(scopedUserId, 'timezone', 'UTC')
-    const create = makeCreateDeferredPromptTool(scopedUserId, scopedUserId, 'dm', undefined, USER_ID)
-    const list = makeListDeferredPromptsTool(scopedUserId)
-    const get = makeGetDeferredPromptTool(scopedUserId)
-    const update = makeUpdateDeferredPromptTool(scopedUserId)
-    const cancel = makeCancelDeferredPromptTool(scopedUserId)
+    const create = makeCreateReminderTool(scopedUserId, scopedUserId, 'dm', undefined, USER_ID)
+    const list = makeListRemindersTool(scopedUserId)
+    const get = makeGetReminderTool(scopedUserId)
+    const update = makeUpdateReminderTool(scopedUserId)
+    const cancel = makeCancelReminderTool(scopedUserId)
     assert.ok(create.execute)
     assert.ok(list.execute)
     assert.ok(get.execute)
@@ -875,7 +846,7 @@ describe('delivery classification persistence', () => {
   })
 
   test('group alert with an explicit empty mention list persists shared audience and no mentions', async () => {
-    const tool = makeCreateDeferredPromptTool(USER_ID, 'chan-1', 'group')
+    const tool = makeCreateAlertTool(USER_ID, 'chan-1', 'group')
     assert.ok(tool.execute)
 
     const result: unknown = await tool.execute(
@@ -901,7 +872,7 @@ describe('delivery classification persistence', () => {
   })
 
   test('group alert uses an explicit multi-user mention list verbatim as personal audience', async () => {
-    const tool = makeCreateDeferredPromptTool(USER_ID, 'chan-1', 'group')
+    const tool = makeCreateAlertTool(USER_ID, 'chan-1', 'group')
     assert.ok(tool.execute)
 
     const result: unknown = await tool.execute(

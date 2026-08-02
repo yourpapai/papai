@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { fmtNum, formatTime, formatTokens } from '../../shared/helpers.js'
+  import { formatDuration, formatTime, formatTokens } from '../../shared/helpers.js'
   import type { LlmTrace, DashboardState } from '../dashboard-types.js'
   import EmptyState from '../../shared/ui/EmptyState.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
@@ -10,19 +10,28 @@
   }
 
   let { dashboard, onSelect }: Props = $props()
+
+  function traceKey(t: LlmTrace): string {
+    return `${t.timestamp}|${t.userId}|${t.model}`
+  }
+
+  const selectedTraceKey = $derived(
+    dashboard.selectedDetail?.kind === 'trace' ? traceKey(dashboard.selectedDetail.payload) : '',
+  )
 </script>
 
 <section id="llm-trace">
   <Panel title="llm trace" count={dashboard.llmTraces.length}>
     {#snippet body()}
       {#if dashboard.llmTraces.length === 0}
-        <EmptyState title="No traces" />
+        <EmptyState title="No traces" hint="LLM traces appear here after the next model call" />
       {:else}
         {#each dashboard.llmTraces as trace, i (i)}
           {@const isError = trace.error !== undefined && trace.error !== ''}
           <div
             class="trace-row"
             class:error={isError}
+            class:selected={selectedTraceKey === traceKey(trace)}
             role="button"
             tabindex="0"
             onclick={() => onSelect(trace)}
@@ -36,7 +45,7 @@
               <span class="trace-time">{formatTime(trace.timestamp)}</span>
               <span class="trace-user">{trace.userId}</span>
               <span class="trace-model">{trace.model}</span>
-              <span class="trace-duration">{fmtNum(trace.duration / 1000, 1)}s</span>
+              <span class="trace-duration">{formatDuration(trace.duration)}</span>
               <span>{trace.steps} steps · {formatTokens(trace.totalTokens.inputTokens)}↓</span>
             </div>
           </div>
@@ -45,3 +54,45 @@
     {/snippet}
   </Panel>
 </section>
+
+<style>
+  .trace-row {
+    border-left: 2px solid var(--border);
+    padding: 6px 8px;
+    margin-bottom: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .trace-row:hover {
+    background: var(--surface-2);
+  }
+
+  .trace-row.error {
+    border-left-color: var(--danger);
+  }
+
+  .trace-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    color: var(--text-muted);
+  }
+
+  .trace-summary .trace-time {
+    color: var(--text-dim);
+  }
+
+  .trace-summary .trace-user {
+    color: var(--text);
+  }
+
+  .trace-summary .trace-model {
+    color: var(--accent);
+  }
+
+  .trace-summary .trace-duration {
+    color: var(--warn);
+  }
+</style>

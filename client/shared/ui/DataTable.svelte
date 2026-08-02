@@ -80,6 +80,15 @@
       onRowClick?.(row)
     }
   }
+
+  function keyRow(row: Row): (event: KeyboardEvent) => void {
+    return (event: KeyboardEvent) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      if (event.target !== event.currentTarget) return
+      event.preventDefault()
+      onRowClick?.(row)
+    }
+  }
 </script>
 
 <table class="ui-datatable">
@@ -117,7 +126,9 @@
           class="ui-datatable__tr"
           class:ui-datatable__tr--selected={selectedKey !== undefined && selectedKey === key}
           class:ui-datatable__tr--clickable={onRowClick !== undefined}
-          onclick={onRowClick ? clickRow(row) : null}>
+          tabindex={onRowClick !== undefined ? 0 : null}
+          onclick={onRowClick ? clickRow(row) : null}
+          onkeydown={onRowClick ? keyRow(row) : null}>
           {#each columns as col (col.key)}
             <td class="ui-datatable__td ui-datatable__td--{col.align ?? 'left'}">
               {#if cell}
@@ -195,8 +206,13 @@
   .ui-datatable__tr--clickable:hover {
     background: rgba(255, 255, 255, 0.02);
   }
+  .ui-datatable__tr--clickable:focus-visible {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
   .ui-datatable__tr--selected {
     background: rgba(93, 217, 122, 0.06);
+    box-shadow: inset 2px 0 0 var(--accent);
   }
   .ui-datatable__empty {
     padding: 24px 12px;

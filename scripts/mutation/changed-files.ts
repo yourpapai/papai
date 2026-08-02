@@ -190,6 +190,8 @@ export const seedBaseline = (baselinePath: string, perFile: readonly PerFileScor
  * persist those scores next to the paired reports. The CI commit step replays
  * the scores file onto a fresh master tip whenever the initial push races a
  * concurrent master update, so the Stryker run never has to be repeated.
+ * Always writes the scores file even when `perFile` is empty (a seed run that
+ * measured no targets), so the re-seed step always has an artifact to read.
  * Returns the seeded baseline entry count.
  */
 export const runUpdateBaseline = (input: {
@@ -224,13 +226,14 @@ const main = async (bun: BunLike): Promise<number> => {
     verbose: parsed.verbose,
     deps: undefined,
   })
-  if (result === null) {
+  if (parsed.updateBaseline) {
+    const perFile = result === null ? [] : result.perFile
+    const count = runUpdateBaseline({ baselinePath, reportDir, perFile })
+    console.log(`Seeded baseline written to ${BASELINE_FILE} (${count} files)`)
     return 0
   }
 
-  if (parsed.updateBaseline) {
-    const count = runUpdateBaseline({ baselinePath, reportDir, perFile: result.perFile })
-    console.log(`Seeded baseline written to ${BASELINE_FILE} (${count} files)`)
+  if (result === null) {
     return 0
   }
 

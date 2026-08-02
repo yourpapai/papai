@@ -31,6 +31,7 @@
   }
 </script>
 
+<div class="scope-filter__hint">click to include · again to exclude · again to clear</div>
 <div class="scope-filter">
   {#each scopes as { scope, count } (scope)}
     <button
@@ -44,6 +45,12 @@
 </div>
 
 <style>
+  .scope-filter__hint {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    padding: 0 4px 4px;
+  }
   .scope-filter {
     display: flex;
     flex-wrap: wrap;

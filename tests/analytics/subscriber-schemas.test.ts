@@ -9,6 +9,7 @@ import {
   attemptIdentityOf,
   DisclosureFallbackDataSchema,
   LlmEndDataSchema,
+  LlmErrorDataSchema,
   ToolCompletedDataSchema,
   ToolIdentitySchema,
 } from '../../src/analytics/subscriber-schemas.js'
@@ -82,6 +83,49 @@ describe('subscriber event data schemas', () => {
       recoveredSameTurn: false,
     })
     expect(dynamicOutcome.success).toBe(false)
+  })
+
+  test('tool completed rounds float durationMs to the nearest integer (half up)', () => {
+    const base = {
+      toolName: 'create_task',
+      toolCallId: 'tc1',
+      argsBytes: 4,
+      executionOutcome: 'semantic_success',
+      resultBytes: 2,
+      errorClass: null,
+      statusClass: 'none',
+      retryable: null,
+      recoveredSameTurn: false,
+    }
+    const floor = ToolCompletedDataSchema.safeParse({ ...base, durationMs: 9.4 })
+    expect(floor.success).toBe(true)
+    expect(floor.data?.durationMs).toBe(9)
+    const half = ToolCompletedDataSchema.safeParse({ ...base, durationMs: 12.5 })
+    expect(half.success).toBe(true)
+    expect(half.data?.durationMs).toBe(13)
+  })
+
+  test('tool completed still rejects negative and NaN durationMs', () => {
+    const base = {
+      toolName: 'create_task',
+      toolCallId: 'tc1',
+      argsBytes: 4,
+      executionOutcome: 'semantic_success',
+      resultBytes: 2,
+      errorClass: null,
+      statusClass: 'none',
+      retryable: null,
+      recoveredSameTurn: false,
+    }
+    expect(ToolCompletedDataSchema.safeParse({ ...base, durationMs: -1 }).success).toBe(false)
+    expect(ToolCompletedDataSchema.safeParse({ ...base, durationMs: Number.NaN }).success).toBe(false)
+  })
+
+  test('llm:error rounds float durationMs and rejects negatives', () => {
+    const parsed = LlmErrorDataSchema.safeParse({ model: 'gpt-x', durationMs: 100.4 })
+    expect(parsed.success).toBe(true)
+    expect(parsed.data?.durationMs).toBe(100)
+    expect(LlmErrorDataSchema.safeParse({ model: 'gpt-x', durationMs: -1 }).success).toBe(false)
   })
 
   test('disclosure fallback rejects dynamic reasons', () => {

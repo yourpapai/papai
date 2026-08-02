@@ -42,7 +42,7 @@
 
 <TopBar page="debug">
   {#snippet statusRow()}
-    <div class="debug-topbar__status">
+    <div class="debug-topbar__status" class:stale={!dashboard.connected && dashboard.hasConnectedOnce}>
       {#if dashboard.connected}
         <Pill tone="accent" dot>{#snippet children()}connected{/snippet}</Pill>
       {:else}
@@ -66,11 +66,12 @@
       <span class="debug-topbar__lbl">scheduler</span>
       <Pill tone={dashboard.scheduler.running ? 'accent' : 'mute'} dot>{#snippet children()}{schedulerLabel}{/snippet}</Pill>
       <span class="debug-topbar__lbl">pollers</span>
-      <Pill tone={dashboard.pollers.scheduledRunning ? 'accent' : 'mute'} dot>{#snippet children()}scheduled{/snippet}</Pill>
-      <Pill tone={dashboard.pollers.alertsRunning ? 'accent' : 'mute'} dot>{#snippet children()}alerts{/snippet}</Pill>
+      <Pill tone={dashboard.pollers.scheduledRunning ? 'accent' : 'mute'} dot>{#snippet children()}scheduled · {dashboard.pollers.scheduledRunning ? 'on' : 'off'}{/snippet}</Pill>
+      <Pill tone={dashboard.pollers.alertsRunning ? 'accent' : 'mute'} dot>{#snippet children()}alerts · {dashboard.pollers.alertsRunning ? 'on' : 'off'}{/snippet}</Pill>
       <span class="debug-topbar__lbl">msg-cache</span>
       <span class="debug-topbar__stat">{dashboard.messageCache.size ?? 0} entries · {dashboard.messageCache.pendingWrites ?? 0} pending</span>
       <span class="debug-topbar__spacer"></span>
+      <span class="debug-topbar__lbl">activity scope</span>
       <Seg
         options={['all', 'dm', 'group']}
         value={dashboard.scopeFilter}
@@ -104,5 +105,17 @@
   }
   .debug-topbar__spacer {
     flex: 1;
+  }
+
+  @media (max-width: 720px) {
+    .debug-topbar__status,
+    .debug-topbar__secondary {
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+  }
+
+  .debug-topbar__status.stale .debug-topbar__stat {
+    color: var(--text-dim);
   }
 </style>

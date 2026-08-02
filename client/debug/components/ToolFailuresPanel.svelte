@@ -9,6 +9,7 @@
   import EmptyState from '../../shared/ui/EmptyState.svelte'
   import StatusPill from '../../shared/ui/StatusPill.svelte'
   import type { ToolFailure, DashboardState, ScopeFilter } from '../dashboard-types.js'
+  import { panelCount } from '../panel-count.js'
 
   interface Props {
     dashboard: DashboardState
@@ -30,12 +31,20 @@
   }
 
   const filtered = $derived(dashboard.toolFailures.filter((f) => matchesScope(f.scope, dashboard.scopeFilter)))
+
+  function failureKey(f: ToolFailure): string {
+    return `${f.timestamp}|${String(f.data['toolName'] ?? '')}|${String(f.data['error'] ?? '')}`
+  }
+
+  const selectedFailureKey = $derived(
+    dashboard.selectedDetail?.kind === 'failure' ? failureKey(dashboard.selectedDetail.payload) : '',
+  )
 </script>
 
-<Panel title="tool failures" count={dashboard.toolFailures.length}>
+<Panel title="tool failures" count={panelCount(filtered.length, dashboard.toolFailures.length, dashboard.scopeFilter)}>
   {#snippet body()}
     {#if filtered.length === 0}
-      <EmptyState title="No failures" />
+      <EmptyState title="No failures" hint="no tool failures in the buffered window" />
     {:else}
       {#each filtered as f, i (i)}
         {@const toolName = typeof f.data['toolName'] === 'string' ? f.data['toolName'] : 'unknown'}
@@ -43,6 +52,7 @@
         {@const retriable = retriableLabel(f.data)}
         <div
           class="failure-row"
+          class:selected={selectedFailureKey === failureKey(f)}
           role="button"
           tabindex="0"
           onclick={() => onShowFailure(f)}
@@ -65,3 +75,40 @@
     {/if}
   {/snippet}
 </Panel>
+
+<style>
+  .failure-row {
+    border-left: 2px solid var(--danger);
+    padding: 6px 8px;
+    margin-bottom: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .failure-row:hover {
+    background: var(--surface-2);
+  }
+
+  .failure-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    color: var(--text-muted);
+  }
+
+  .failure-time {
+    color: var(--text-dim);
+  }
+
+  .failure-tool {
+    color: var(--danger);
+    font-weight: 600;
+  }
+
+  .failure-error {
+    color: var(--text);
+    word-break: break-word;
+  }
+</style>

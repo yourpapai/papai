@@ -50,7 +50,7 @@
   {:else}
     <div class="debug-detail-rail__header">
       <span class="debug-detail-rail__label">{headerLabel}</span>
-      <Btn variant="ghost" size="sm" onClick={onClear}>{#snippet children()}✕{/snippet}</Btn>
+      <Btn variant="ghost" size="sm" ariaLabel="Close detail" onClick={onClear}>{#snippet children()}✕{/snippet}</Btn>
     </div>
     <div class="debug-detail-rail__body">
       {#if selected.kind === 'turn'}

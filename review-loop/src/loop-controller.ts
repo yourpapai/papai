@@ -16,7 +16,7 @@ import {
 import { matchIssues } from './issue-matcher.js'
 import { processPendingIssues } from './issue-processor.js'
 import { ReviewerIssuesSchema } from './issue-schema.js'
-import type { ReviewerIssue } from './issue-schema.js'
+import type { IssueMatch, ReviewerIssue } from './issue-schema.js'
 import {
   emitLoopEnd,
   emitMatchComplete,
@@ -111,6 +111,30 @@ function filterActionable(records: readonly LedgerIssueRecord[]): readonly Ledge
   return records.filter((r) => !TERMINAL_STATUSES.has(r.status))
 }
 
+function emitFoundEvents(
+  deps: ReviewLoopDeps,
+  matches: readonly IssueMatch[],
+  roundRecords: readonly LedgerIssueRecord[],
+): void {
+  for (const match of matches) {
+    if (match.existingId !== null) {
+      continue
+    }
+    const record = roundRecords[match.newIssueIndex]
+    if (record === undefined) {
+      continue
+    }
+    deps.log.issue?.({
+      type: 'found',
+      id: record.id,
+      severity: record.issue.severity,
+      file: record.issue.file,
+      line: record.issue.lineStart,
+      title: record.issue.title,
+    })
+  }
+}
+
 async function runReviewStep(deps: ReviewLoopDeps, collector: RoundCollector): Promise<readonly ReviewerIssue[]> {
   deps.log.log(`[round ${deps.runState.currentRound}/${deps.config.maxRounds}] Reviewing...`)
 
@@ -174,6 +198,8 @@ async function runMatchAndRecord(
   )
   await saveIssueLedger(deps.ledger)
 
+  emitFoundEvents(deps, matches, roundRecords)
+
   return { records: roundRecords, newCount, matchedCount }
 }
 
@@ -204,6 +230,7 @@ function runProcessPendingIssues(
 async function runRound(round: number, deps: ReviewLoopDeps, metrics: RoundMetric[]): Promise<ReviewLoopResult> {
   deps.runState.currentRound = round
   await saveRunState(deps.runState)
+  deps.log.issue?.({ type: 'round', round, maxRounds: deps.config.maxRounds })
   emitRoundStart(deps.trace, round, deps.config.maxRounds, deps.config.maxNoProgressRounds, deps.config.checkCommand)
   const collector = newCollector()
 
@@ -226,7 +253,6 @@ async function runRound(round: number, deps: ReviewLoopDeps, metrics: RoundMetri
     return finishRound(deps, metrics, round, matched.newCount, collector, 'clean')
   }
 
-  deps.log.log(`[round ${round}] Found ${newIssues.length} issues`)
   const pending = filterActionable(matched.records)
   const fixedThisRound = await runProcessPendingIssues(deps, round, collector, pending)
   deps.log.log(`[round ${round}] Fixed ${fixedThisRound}/${pending.length} issues`)

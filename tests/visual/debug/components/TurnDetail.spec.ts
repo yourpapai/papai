@@ -27,3 +27,8 @@ test.describe('debug/components/TurnDetail', () => {
 import { pinDefaultViewport } from '../../support/viewport.js'
 
 pinDefaultViewport()
+test('TurnDetail — raw expanded', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'debug-components-turndetail--completed')
+  await sharedPage.getByText('show raw').click()
+  await expect(sharedPage).toHaveScreenshot()
+})

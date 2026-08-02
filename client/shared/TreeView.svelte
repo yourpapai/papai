@@ -48,23 +48,29 @@
   <span class="tree-bracket">...</span>
 {:else}
 {#if isContainer}
-  {#if label !== undefined}<span class="tree-key">{label}: </span>{/if}
   {#if entries.length === 0}
+    {#if label !== undefined}<span class="tree-key">{label}: </span>{/if}
     <span class="tree-bracket">{bracketOpen}{bracketClose}</span>
   {:else}
-    <span
-      class="tree-toggle"
-      class:collapsed
-      role="button"
-      tabindex="0"
-      onclick={() => (collapsed = !collapsed)}
-      onkeydown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          collapsed = !collapsed
-        }
-      }}>{collapsed ? '▶' : '▼'}</span>
-    <span class="tree-bracket">{bracketOpen}</span>
+    <span class="tree-open">
+      {#if label !== undefined}<span class="tree-key">{label}: </span>{/if}
+      <span
+        class="tree-toggle"
+        class:collapsed
+        role="button"
+        tabindex="0"
+        onclick={() => (collapsed = !collapsed)}
+        onkeydown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            collapsed = !collapsed
+          }
+        }}>{collapsed ? '▶' : '▼'}</span>
+      <span class="tree-bracket">{bracketOpen}</span>
+      {#if collapsed}
+        <span class="tree-bracket">{bracketClose}</span>
+      {/if}
+    </span>
     {#if !collapsed}
       {#if depth >= MAX_DEPTH}
         <span class="tree-bracket"> ... </span>
@@ -76,9 +82,11 @@
             </div>
           {/each}
         </span>
+        <div class="tree-row tree-closing" style="padding-left: {depth * 12 + 18}px">
+          <span class="tree-bracket">{bracketClose}</span>
+        </div>
       {/if}
     {/if}
-    <span class="tree-bracket">{bracketClose}</span>
   {/if}
 {:else}
   {#if label !== undefined}<span class="tree-key">{label}: </span>{/if}
@@ -88,9 +96,7 @@
 
 <style>
   .tree-row {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
+    display: block;
     padding: 2px 0;
     font-family: var(--font-mono);
     font-size: 12px;
@@ -99,6 +105,11 @@
   }
   .tree-key {
     color: var(--text-muted);
+  }
+  .tree-open {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
   }
   .tree-toggle {
     display: inline-flex;
@@ -111,6 +122,7 @@
     color: var(--text-dim);
   }
   .tree-children {
+    display: block;
     border-left: 1px dashed var(--border);
   }
   .tree-string {
@@ -122,7 +134,8 @@
   .tree-boolean {
     color: var(--warn);
   }
-  .tree-null {
+  .tree-null,
+  .tree-undefined {
     color: var(--text-dim);
     font-style: italic;
   }

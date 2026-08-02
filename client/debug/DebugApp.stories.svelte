@@ -18,6 +18,23 @@
 <Story name="Default" args={{ dashboard: makeDashboardState() }} />
 
 <Story
+  name="Connecting"
+  args={{
+    dashboard: makeDashboardState({
+      connected: false,
+      hasConnectedOnce: false,
+      sessions: new Map(),
+      wizards: new Map(),
+      llmTraces: [],
+      logs: [],
+      logScopes: new Set(),
+      turns: [],
+      notifications: [],
+      toolFailures: [],
+    }),
+  }} />
+
+<Story
   name="Detail selected"
   args={{ dashboard: makeDashboardState({ selectedDetail: { kind: 'turn', payload: makeTurn() } }) }} />
 

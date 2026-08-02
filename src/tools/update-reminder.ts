@@ -17,15 +17,15 @@ import {
 import { logger } from '../logger.js'
 import { toolFailureMeta } from './tool-logging.js'
 
-const log = logger.child({ scope: 'tool:update-deferred-prompt' })
+const log = logger.child({ scope: 'tool:update-reminder' })
 
-export function makeUpdateDeferredPromptTool(userId: string): Tool {
+export function makeUpdateReminderTool(userId: string): Tool {
   return tool({
     description:
-      'Update a deferred prompt. For scheduled prompts, update prompt text or schedule. For alerts, update prompt text, condition, or cooldown.',
+      'Update a reminder or alert. For reminders, update the prompt text or schedule. For alerts, update the prompt text, condition, or cooldown.',
     inputSchema: z.object({
-      id: z.string().describe('The deferred prompt ID'),
-      prompt: z.string().optional().describe('Updated prompt text'),
+      id: z.string().describe('The reminder or alert ID'),
+      prompt: z.string().optional().describe('Updated action text'),
       schedule: scheduleSchema.optional().describe('Updated time-based trigger'),
       condition: alertConditionSchema.optional().describe('Updated event-based trigger condition'),
       cooldown_minutes: cooldownSchema,
@@ -35,7 +35,7 @@ export function makeUpdateDeferredPromptTool(userId: string): Tool {
       try {
         return executeUpdate(userId, input)
       } catch (error) {
-        log.error(toolFailureMeta('update_deferred_prompt', error), 'Tool execution failed')
+        log.error(toolFailureMeta('update_reminder', error), 'Tool execution failed')
         throw error
       }
     },

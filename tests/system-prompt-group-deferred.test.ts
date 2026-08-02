@@ -17,7 +17,7 @@ describe('GROUP_DEFERRED population procedure', () => {
 
   test('prompt includes resolve_chat_participant procedure when tool is enabled', () => {
     const provider = createMockProvider()
-    const enabled = new Set(['create_deferred_prompt', 'list_deferred_prompts', 'resolve_chat_participant'])
+    const enabled = new Set(['create_reminder', 'list_reminders', 'resolve_chat_participant'])
     const prompt = buildSystemPrompt(provider, 'ctx-group', enabled, {
       askPermissionAvailable: false,
       contextType: 'group',
@@ -29,7 +29,7 @@ describe('GROUP_DEFERRED population procedure', () => {
 
   test('prompt keeps base reminder rules when resolve_chat_participant absent', () => {
     const provider = createMockProvider()
-    const enabled = new Set(['create_deferred_prompt', 'list_deferred_prompts'])
+    const enabled = new Set(['create_reminder', 'list_reminders'])
     const prompt = buildSystemPrompt(provider, 'ctx-group', enabled, {
       askPermissionAvailable: false,
       contextType: 'group',
@@ -41,7 +41,7 @@ describe('GROUP_DEFERRED population procedure', () => {
 
   test('prompt does NOT contain resolve_chat_participant when tool is not enabled', () => {
     const provider = createMockProvider()
-    const enabled = new Set(['create_deferred_prompt', 'list_deferred_prompts'])
+    const enabled = new Set(['create_reminder', 'list_reminders'])
     const prompt = buildSystemPrompt(provider, 'ctx-group', enabled, {
       askPermissionAvailable: false,
       contextType: 'group',
@@ -51,7 +51,7 @@ describe('GROUP_DEFERRED population procedure', () => {
 
   test('prompt does NOT contain named-people procedure when resolve_chat_participant is not enabled', () => {
     const provider = createMockProvider()
-    const enabled = new Set(['create_deferred_prompt', 'list_deferred_prompts'])
+    const enabled = new Set(['create_reminder', 'list_reminders'])
     const prompt = buildSystemPrompt(provider, 'ctx-group', enabled, {
       askPermissionAvailable: false,
       contextType: 'group',

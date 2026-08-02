@@ -38,6 +38,7 @@ export function makeExampleTool(provider: Readonly<TaskProvider>): Tool {
   per-context tool permissions from `src/tools/tool-preferences.ts` as the final step. Each
   tool resolves to a three-state `Permission` (`allow` | `ask` | `deny`, default `allow`)
   via `resolveToolPermission`, most-specific-wins: `toolOverrides[name]` →
+  `toolOverrides[RENAMED_TOOL_ALIASES[name]]` (legacy name for renamed reminder/alert tools) →
   `domainDefaults[meta.domain]` → `riskDefaults[meta.risk]` → implicit `allow`. `deny` removes
   the tool from the returned `ToolSet` (cannot be invoked); `allow` exposes it unchanged; `ask`
   exposes it wrapped so each call requires user permission (the input schema gains
