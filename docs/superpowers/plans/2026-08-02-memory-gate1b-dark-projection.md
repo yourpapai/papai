@@ -1919,6 +1919,8 @@ In `knip.config.ts`, add to the `entry` array, immediately after the `'scripts/b
 
 Do not add an `ignore` or `ignoreIssues` line for this file.
 
+**Amended 2026-08-02 (Task 9 execution).** The entry declaration clears the *unused file* finding but not the *unused export* one: `knip.config.ts` sets `includeEntryExports: true`, so an entry file's own exports are still traced for a consumer. `projectionSnapshot` therefore still reports until Gate 1d's reconciliation imports it. An `ignoreIssues: ['exports']` entry with an inline justification is the sanctioned resolution — see the amendment note in Task 9, Step 5.
+
 - [ ] **Step 6: Prove the field-discipline test is load-bearing**
 
 Temporarily add `eventId: row.eventId,` to the `snapshotRow` object, run `bun test tests/long-term-memory/projection-snapshot.test.ts`, and confirm the "excludes the event id" and "a different ingest time yields the same snapshot" tests FAIL. Then remove that line and re-run to confirm PASS.
@@ -2630,6 +2632,10 @@ Expected: exit 0.
 Note that knip's `project` globs are production-only (`'src/**/*.ts!'`), so a module imported *only* by tests still reports as unused. Every Gate 1b module gains a production importer as the chain lands — except `projection-snapshot.ts`, whose only consumer is Gate 1d's reconciliation. That one clears via the entry declaration added in Task 6, Step 5b, not via an importer; if it is still reported unused here, confirm that declaration landed in `knip.config.ts`.
 
 For any other Gate 1b module still reported unused, it is genuinely unreachable — find the missing import rather than adding an ignore. `knip.config.ts` states that new ignores require an inline justification naming a dynamic mechanism knip cannot trace; an unwired module is not that.
+
+**Amended 2026-08-02 (Task 9 execution), decided by the human partner.** The rule above governs unused *files*, and no Gate 1b file reported unused once the scheduler registration landed. What did remain were three unused *exports*: `projectionCheckpoint` and `repairFailedProjections` in `projection-drain.ts`, whose only consumers today are tests, and `projectionSnapshot`, whose entry declaration does not exempt it under `includeEntryExports: true`. Their production consumers are Gate 1c and 1d tooling that does not yet exist, so there is no import to find and no honest way to wire them without expanding this gate's scope.
+
+Two scoped `ignoreIssues: [...]: ['exports']` entries with inline justifications are the accepted resolution. This follows five existing precedents in the same config — `scripts/behavior-audit/publish-snapshot.ts`, `tools.ts`, `consolidate-agent.ts`, `src/tools/index.ts`, `src/debug/server-route-options.ts` — each of which records the same category: a real consumer knip's production-only project scope cannot see. Both entries must be removed as Gate 1c and 1d land their consumers.
 
 - [ ] **Step 6: Update the roadmap**
 
