@@ -21,6 +21,7 @@
     "build:storybook": "bun storybook:prepare && storybook build -o storybook-static",
     "shoot:gen": "crvy-strybk generate --config ./strybk.config.ts && bun run format >/dev/null && bun run license:headers >/dev/null",
     "shoot": "playwright test --update-snapshots",
+    "visual:audit": "VISUAL_AUDIT=1 playwright test",
     "check:bundle-isolation": "bun build:client && bun run scripts/check-bundle-isolation.ts",
     "start": "bun build:client && bun run src/index.ts",
     "start:debug": "bun build:client && DEBUG_SERVER=true bun run src/index.ts",

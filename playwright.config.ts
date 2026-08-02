@@ -6,6 +6,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 const STORYBOOK_URL = 'http://localhost:6006'
+const AUDIT = process.env['VISUAL_AUDIT'] === '1'
 
 export default defineConfig({
   testDir: 'tests/visual',
@@ -27,6 +28,15 @@ export default defineConfig({
     baseURL: STORYBOOK_URL,
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  expect: {
+    toHaveScreenshot: {
+      // pixelmatch's per-pixel cutoff is 35215 × threshold². The default 0.2 gives 1408.6,
+      // which silently passes any dim-on-dark color change under ~1400 YIQ delta — sub-project
+      // G's --fg3 change measured 264.7 and was invisible to all 111 specs. Audit mode's 0.02
+      // gives 14.09. Opt in with `bun run visual:audit`; the default path is unchanged.
+      threshold: AUDIT ? 0.02 : 0.2,
+    },
+  },
   webServer: {
     command: 'bun storybook',
     url: `${STORYBOOK_URL}/index.json`,
