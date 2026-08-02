@@ -267,7 +267,7 @@ describe('dispatchExecution', () => {
       await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
       expect(generateTextCalls[0]!.tools).toBeDefined()
       // Proactive delivery excludes deferred-prompt tools
-      expect(generateTextCalls[0]!.tools).not.toHaveProperty('create_deferred_prompt')
+      expect(generateTextCalls[0]!.tools).not.toHaveProperty('create_reminder')
       expect(generateTextCalls[0]!.tools).toHaveProperty('create_task')
       expect(generateTextCalls[0]!.tools).toHaveProperty('search_tasks')
       expect(generateTextCalls[0]!.tools).not.toHaveProperty('papai_tool')

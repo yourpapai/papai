@@ -69,7 +69,7 @@ export function buildScheduleUpdates(
   }
   if (schedule.rrule !== undefined) {
     const existing = getScheduledPrompt(id, userId)
-    if (existing === null) return { error: 'Deferred prompt not found.' }
+    if (existing === null) return { error: 'Reminder or alert not found.' }
     const { startDate, startTime, ...scheduleRest } = schedule.rrule
     const anchor =
       startDate === undefined

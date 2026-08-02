@@ -30,12 +30,12 @@ export function getLlmConfig(configContextId: string, deps: LlmConfigDeps = defa
       'Missing LLM config for deferred prompt',
     )
     if (resolved.source === 'global') {
-      return 'Deferred prompt skipped: the bot is not fully configured. The administrator has been notified.'
+      return 'I could not deliver a scheduled reminder or alert — the bot is not fully configured. The administrator has been notified.'
     }
     if (resolved.type === 'missing') {
-      return 'Deferred prompt skipped: BYOK is enabled for this context, but required LLM settings are missing. Use /config to complete setup.'
+      return 'I could not deliver a scheduled reminder or alert — BYOK is enabled for this context, but the required LLM settings are missing. Use /config to complete setup.'
     }
-    return 'Deferred prompt skipped: BYOK credentials for this context are unreadable. Use /config to re-enter the BYOK LLM credentials in the settings web UI.'
+    return 'I could not deliver a scheduled reminder or alert — the BYOK credentials for this context are unreadable. Use /config to re-enter the BYOK LLM credentials in the settings web UI.'
   }
   return {
     apiKey: resolved.main.apiKey,

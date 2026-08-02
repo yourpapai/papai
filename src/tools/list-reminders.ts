@@ -11,20 +11,20 @@ import { executeList, type ListInput } from '../deferred-prompts/tool-handlers.j
 import { logger } from '../logger.js'
 import { toolFailureMeta } from './tool-logging.js'
 
-const log = logger.child({ scope: 'tool:list-deferred-prompts' })
+const log = logger.child({ scope: 'tool:list-reminders' })
 
-export function makeListDeferredPromptsTool(userId: string): Tool {
+export function makeListRemindersTool(userId: string): Tool {
   return tool({
-    description: 'List deferred prompts (scheduled tasks and monitoring alerts). Optionally filter by type or status.',
+    description: "List the user's active reminders and alerts. Optionally filter by type or status.",
     inputSchema: z.object({
-      type: z.enum(['scheduled', 'alert']).optional().describe('Filter by prompt type'),
+      type: z.enum(['scheduled', 'alert']).optional().describe('Filter by type: scheduled (reminder) or alert'),
       status: z.enum(['active', 'completed', 'cancelled']).optional().describe('Filter by status'),
     }),
     execute: (input: ListInput) => {
       try {
         return executeList(userId, input)
       } catch (error) {
-        log.error(toolFailureMeta('list_deferred_prompts', error), 'Tool execution failed')
+        log.error(toolFailureMeta('list_reminders', error), 'Tool execution failed')
         throw error
       }
     },

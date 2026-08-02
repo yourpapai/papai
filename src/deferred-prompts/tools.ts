@@ -3,8 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-export { makeCancelDeferredPromptTool } from '../tools/cancel-deferred-prompt.js'
-export { makeCreateDeferredPromptTool } from '../tools/create-deferred-prompt.js'
-export { makeGetDeferredPromptTool } from '../tools/get-deferred-prompt.js'
-export { makeListDeferredPromptsTool } from '../tools/list-deferred-prompts.js'
-export { makeUpdateDeferredPromptTool } from '../tools/update-deferred-prompt.js'
+export { makeCancelReminderTool } from '../tools/cancel-reminder.js'
+export { makeCreateAlertTool } from '../tools/create-alert.js'
+export { makeCreateReminderTool } from '../tools/create-reminder.js'
+export { makeGetReminderTool } from '../tools/get-reminder.js'
+export { makeListRemindersTool } from '../tools/list-reminders.js'
+export { makeUpdateReminderTool } from '../tools/update-reminder.js'

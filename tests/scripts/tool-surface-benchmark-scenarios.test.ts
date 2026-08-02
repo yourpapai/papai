@@ -136,7 +136,7 @@ describe('tool-surface benchmark scenarios', () => {
         tasks: seededTasks,
         recurringEntries: [],
         deferredEntries: [{ id: 'deferred-1', prompt: 'Review benchmark results', when: 'tomorrow 09:00' }],
-        toolCalls: ['create_deferred_prompt'],
+        toolCalls: ['create_reminder'],
       }),
     ).toEqual({ success: true, failureCategory: null })
   })
@@ -274,7 +274,7 @@ describe('tool-surface benchmark scenarios', () => {
         tasks: [{ ...seededTasks[0], deleted: true }, seededTasks[1], seededTasks[2]],
         recurringEntries: [{ id: 'recurring-1', title: 'Unexpected recurring task', cadence: 'weekly' }],
         deferredEntries: [{ id: 'deferred-1', prompt: 'Unexpected prompt', when: 'tomorrow 09:00' }],
-        toolCalls: ['get_current_time', 'web_fetch', 'delete_task', 'create_recurring_task', 'create_deferred_prompt'],
+        toolCalls: ['get_current_time', 'web_fetch', 'delete_task', 'create_recurring_task', 'create_reminder'],
       }),
     ).toEqual({ success: false, failureCategory: 'validation_failed' })
   })
@@ -285,7 +285,7 @@ describe('tool-surface benchmark scenarios', () => {
         tasks: [{ ...seededTasks[0], status: 'in_progress' }, seededTasks[1], seededTasks[2]],
         recurringEntries: [],
         deferredEntries: [{ id: 'deferred-1', prompt: 'Review benchmark results', when: 'tomorrow 09:00' }],
-        toolCalls: ['create_deferred_prompt', 'update_task'],
+        toolCalls: ['create_reminder', 'update_task'],
       }),
     ).toEqual({ success: false, failureCategory: 'validation_failed' })
   })
@@ -305,7 +305,7 @@ describe('tool-surface benchmark scenarios', () => {
     const setup = toolsForMode('direct_full', 'Remind me tomorrow about benchmark results.', store)
 
     expect(setup.exposedToolCount).toBe(setup.fullToolCount)
-    expect(setup.tools).toHaveProperty('create_deferred_prompt')
+    expect(setup.tools).toHaveProperty('create_reminder')
     expect(setup.tools).toHaveProperty('get_current_time')
     expect(setup.tools).toHaveProperty('create_recurring_task')
   })

@@ -44,7 +44,7 @@ describe('tool metadata', () => {
 
   test('covers representative high-pollution tool clusters', () => {
     for (const name of [
-      'create_deferred_prompt',
+      'create_reminder',
       'pause_recurring_task',
       'add_comment_reaction',
       'assign_task_to_sprint',

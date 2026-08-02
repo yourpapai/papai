@@ -23,13 +23,13 @@ describe('buildProactiveTrigger', () => {
 
   test('systemContext includes delivery mode instructions', () => {
     const trigger = buildProactiveTrigger('scheduled', 'Test prompt', 'UTC')
-    expect(trigger.systemContext).toContain('DELIVER the result to the user now')
-    expect(trigger.systemContext).toContain('NOT as a new user request')
+    expect(trigger.systemContext).toContain('deliver the result')
+    expect(trigger.systemContext).toContain('not as a new message from the user')
   })
 
   test('systemContext includes anti-recursion rule', () => {
     const trigger = buildProactiveTrigger('scheduled', 'Test prompt', 'UTC')
-    expect(trigger.systemContext).toContain('Do NOT create new deferred prompts')
+    expect(trigger.systemContext).toContain("Don't set up new reminders or alerts")
   })
 
   test('systemContext includes trigger type', () => {
@@ -39,16 +39,16 @@ describe('buildProactiveTrigger', () => {
 
   test('userContent wraps prompt with spotlighting delimiters', () => {
     const trigger = buildProactiveTrigger('scheduled', 'Check the gigachat model', 'UTC')
-    expect(trigger.userContent).toContain('===DEFERRED_TASK===')
+    expect(trigger.userContent).toContain('===REMINDER===')
     expect(trigger.userContent).toContain('Check the gigachat model')
-    expect(trigger.userContent).toContain('===END_DEFERRED_TASK===')
+    expect(trigger.userContent).toContain('===END_REMINDER===')
   })
 
   test('userContent includes matched tasks summary for alerts', () => {
     const trigger = buildProactiveTrigger('alert', 'Report overdue tasks', 'UTC', 'Task A\nTask B')
-    expect(trigger.userContent).toContain('===DEFERRED_TASK===')
+    expect(trigger.userContent).toContain('===REMINDER===')
     expect(trigger.userContent).toContain('Report overdue tasks')
-    expect(trigger.userContent).toContain('===END_DEFERRED_TASK===')
+    expect(trigger.userContent).toContain('===END_REMINDER===')
     expect(trigger.userContent).toContain('Matched tasks:')
     expect(trigger.userContent).toContain('Task A\nTask B')
   })
@@ -72,19 +72,19 @@ describe('buildSystemPrompt — deferred prompt sections', () => {
 
   const provider = createMockProvider()
 
-  test('includes PROMPT CONTENT guidance in DEFERRED PROMPTS section', () => {
+  test('includes ACTION TEXT guidance in REMINDERS & ALERTS section', () => {
     const prompt = buildSystemPrompt(provider, 'user-1')
-    expect(prompt).toContain('PROMPT CONTENT')
-    expect(prompt).toContain('deliverable action, not the scheduling')
+    expect(prompt).toContain('ACTION TEXT')
+    expect(prompt).toContain('Write it as the action itself')
   })
 
   test('PROACTIVE MODE references spotlighting delimiters', () => {
     const prompt = buildSystemPrompt(provider, 'user-1')
-    expect(prompt).toContain('===DEFERRED_TASK===')
+    expect(prompt).toContain('===REMINDER===')
   })
 
   test('PROACTIVE MODE includes anti-recursion rule', () => {
     const prompt = buildSystemPrompt(provider, 'user-1')
-    expect(prompt).toContain('Never create new deferred prompts during proactive execution')
+    expect(prompt).toContain("Don't set up new reminders or alerts during this")
   })
 })

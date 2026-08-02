@@ -240,7 +240,7 @@ const evaluators: Readonly<Record<string, ScenarioEvaluator>> = {
       ? ok()
       : validationFailed(),
   deferred_prompt_creation: (snapshot) =>
-    hasCall(snapshot, 'create_deferred_prompt') &&
+    hasCall(snapshot, 'create_reminder') &&
     hasUnchangedSeededTasks(snapshot) &&
     hasOnlyExpectedDeferredEntry(snapshot, 'Review benchmark results', 'tomorrow 09:00')
       ? ok()

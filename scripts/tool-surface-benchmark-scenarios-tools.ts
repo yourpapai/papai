@@ -24,7 +24,7 @@ type BenchmarkToolName =
   | 'web_fetch'
   | 'delete_task'
   | 'create_recurring_task'
-  | 'create_deferred_prompt'
+  | 'create_reminder'
 type ToolInput = Readonly<Record<string, unknown>>
 type ToolExecutor = (store: BenchmarkStore, input: ToolInput) => unknown
 
@@ -39,7 +39,7 @@ const toolNames: readonly BenchmarkToolName[] = [
   'web_fetch',
   'delete_task',
   'create_recurring_task',
-  'create_deferred_prompt',
+  'create_reminder',
 ] as const
 const toolSchemas: Readonly<Record<BenchmarkToolName, z.ZodType<ToolInput>>> = {
   create_task: z.object({
@@ -77,7 +77,7 @@ const toolSchemas: Readonly<Record<BenchmarkToolName, z.ZodType<ToolInput>>> = {
     title: z.string().describe('Recurring task title.'),
     cadence: z.string().describe('Recurring cadence such as daily or weekly.'),
   }),
-  create_deferred_prompt: z.object({
+  create_reminder: z.object({
     prompt: z.string().describe('Reminder prompt to schedule.'),
     when: z.string().describe('When the reminder should trigger.'),
   }),
@@ -177,7 +177,7 @@ const executors: Readonly<Record<BenchmarkToolName, ToolExecutor>> = {
   web_fetch: webFetch,
   delete_task: deleteTask,
   create_recurring_task: createRecurringTask,
-  create_deferred_prompt: createDeferredPrompt,
+  create_reminder: createDeferredPrompt,
 }
 
 export const buildDirectTools = (store: BenchmarkStore): ToolSet =>

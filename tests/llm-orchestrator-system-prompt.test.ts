@@ -41,7 +41,7 @@ describe('buildInstructionsBlock', () => {
 
 describe('resolveSystemPrompt context propagation', () => {
   const provider = createMockProvider()
-  const enabledToolNames = new Set(['create_deferred_prompt', 'list_deferred_prompts', 'get_current_time'])
+  const enabledToolNames = new Set(['create_reminder', 'list_reminders', 'get_current_time'])
 
   beforeEach(async () => {
     mockLogger()
