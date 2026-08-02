@@ -479,7 +479,7 @@ Measures `src/history.ts` through the official path (`bun test:mutate:file`, whi
 - Modify: `scripts/mutation/baseline.json` (the `"src/history.ts"` entry, currently `0.21052631578947367`)
 
 **Interfaces:**
-- Consumes: `mergeReports` from `scripts/mutation/score-merger.ts`; `loadBaseline`, `writeBaseline` from `scripts/mutation/baseline.ts`; Stryker report at `reports/paired/src__history.ts.json` (written by the paired run)
+- Consumes: `mergeReports` from `scripts/mutation/score-merger.ts`; `loadBaseline`, `writeBaseline` from `scripts/mutation/baseline.ts`; Stryker report at `reports/paired/src__history.ts.stryker-report.json` (written by the paired run)
 - Produces: updated `scripts/mutation/baseline.json`
 
 - [ ] **Step 1: Run the official paired measurement**
@@ -493,7 +493,7 @@ Expected: a final summary line like `Paired mutation summary: files=1 skipped=0 
 bun -e '
 import { loadBaseline, writeBaseline } from "./scripts/mutation/baseline.js"
 import { mergeReports } from "./scripts/mutation/score-merger.js"
-const report = await Bun.file("reports/paired/src__history.ts.json").json()
+const report = await Bun.file("reports/paired/src__history.ts.stryker-report.json").json()
 const merged = mergeReports([report])
 const baseline = loadBaseline("scripts/mutation/baseline.json") ?? {}
 const current = baseline["src/history.ts"] ?? 0
@@ -506,7 +506,7 @@ console.log(`src/history.ts: ${current} -> ${merged.score}`)
 
 Expected output: `src/history.ts: 0.21052631578947367 -> 1` (or the measured value if below 1).
 
-If the measured score is below 1, do **not** lower expectations silently: go back to Task 4 Step 3 diagnostics (this time against `reports/paired/src__history.ts.json`), kill the survivors, re-run Task 5 Step 1.
+If the measured score is below 1, do **not** lower expectations silently: go back to Task 4 Step 3 diagnostics (this time against `reports/paired/src__history.ts.stryker-report.json`), kill the survivors, re-run Task 5 Step 1.
 
 - [ ] **Step 3: Regression — root test batch + lint + typecheck**
 
