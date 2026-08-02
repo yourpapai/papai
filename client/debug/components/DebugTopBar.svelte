@@ -66,8 +66,8 @@
       <span class="debug-topbar__lbl">scheduler</span>
       <Pill tone={dashboard.scheduler.running ? 'accent' : 'mute'} dot>{#snippet children()}{schedulerLabel}{/snippet}</Pill>
       <span class="debug-topbar__lbl">pollers</span>
-      <Pill tone={dashboard.pollers.scheduledRunning ? 'accent' : 'mute'} dot>{#snippet children()}scheduled{/snippet}</Pill>
-      <Pill tone={dashboard.pollers.alertsRunning ? 'accent' : 'mute'} dot>{#snippet children()}alerts{/snippet}</Pill>
+      <Pill tone={dashboard.pollers.scheduledRunning ? 'accent' : 'mute'} dot>{#snippet children()}scheduled · {dashboard.pollers.scheduledRunning ? 'on' : 'off'}{/snippet}</Pill>
+      <Pill tone={dashboard.pollers.alertsRunning ? 'accent' : 'mute'} dot>{#snippet children()}alerts · {dashboard.pollers.alertsRunning ? 'on' : 'off'}{/snippet}</Pill>
       <span class="debug-topbar__lbl">msg-cache</span>
       <span class="debug-topbar__stat">{dashboard.messageCache.size ?? 0} entries · {dashboard.messageCache.pendingWrites ?? 0} pending</span>
       <span class="debug-topbar__spacer"></span>

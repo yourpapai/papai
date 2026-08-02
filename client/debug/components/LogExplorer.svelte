@@ -210,6 +210,9 @@
     padding: 2px 8px;
     cursor: pointer;
     border-left: 2px solid transparent;
+    font-size: 11px;
+    line-height: 1.4;
+    transition: background 0.15s ease;
   }
 
   .log-entry:hover {
@@ -262,7 +265,7 @@
   }
 
   .log-history__note {
-    color: var(--fg4);
+    color: var(--fg3);
     font-size: 11px;
     padding: 4px;
   }
