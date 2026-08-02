@@ -62,3 +62,11 @@ export function platformStoryId(story: PlatformStory): string {
 export const PLATFORM_STORY_IDS: Record<string, string> = Object.fromEntries(
   Object.entries(PLATFORM_STORIES).map(([scenarioId, story]) => [scenarioId, platformStoryId(story)]),
 )
+
+export const PLATFORM_COVERAGE_FILES: readonly string[] = [
+  'src/chat/discord/commands.ts',
+  'src/chat/discord/format-chunking.ts',
+  'src/chat/discord/interaction-helpers.ts',
+  'src/chat/kontur-talk/reply-helpers.ts',
+  'src/chat/telegram/admin-helpers.ts',
+]

@@ -9,7 +9,7 @@ import { describe, expect, test } from 'bun:test'
 import { repoRoot } from '../smoke/harness/docker.js'
 import { censusMarkedLane } from '../smoke/harness/lane-census.js'
 import { catalogCoverage } from '../stories/catalog/coverage.js'
-import { PLATFORM_STORIES, PLATFORM_STORY_IDS } from './scenarios/catalog.js'
+import { PLATFORM_COVERAGE_FILES, PLATFORM_STORIES, PLATFORM_STORY_IDS } from './scenarios/catalog.js'
 
 describe('@3 catalog crosscheck', () => {
   test('every @3 catalog record maps one-to-one to a PLATFORM_STORIES id', () => {
@@ -57,5 +57,15 @@ describe('@3 catalog crosscheck', () => {
     expect(violations).toEqual([])
     expect(census.orphans).toEqual([])
     expect(census.dangling).toEqual([])
+  })
+
+  test('PLATFORM_COVERAGE_FILES declares every @3 adapter source the coverage gate enforces', () => {
+    expect(PLATFORM_COVERAGE_FILES).toEqual([
+      'src/chat/discord/commands.ts',
+      'src/chat/discord/format-chunking.ts',
+      'src/chat/discord/interaction-helpers.ts',
+      'src/chat/kontur-talk/reply-helpers.ts',
+      'src/chat/telegram/admin-helpers.ts',
+    ])
   })
 })
