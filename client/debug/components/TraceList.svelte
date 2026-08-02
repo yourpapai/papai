@@ -11,8 +11,12 @@
 
   let { dashboard, onSelect }: Props = $props()
 
+  function traceKey(t: LlmTrace): string {
+    return `${t.timestamp}|${t.userId}|${t.model}`
+  }
+
   const selectedTraceKey = $derived(
-    dashboard.selectedDetail?.kind === 'trace' ? JSON.stringify(dashboard.selectedDetail.payload) : '',
+    dashboard.selectedDetail?.kind === 'trace' ? traceKey(dashboard.selectedDetail.payload) : '',
   )
 </script>
 
@@ -27,7 +31,7 @@
           <div
             class="trace-row"
             class:error={isError}
-            class:selected={selectedTraceKey !== '' && selectedTraceKey === JSON.stringify(trace)}
+            class:selected={selectedTraceKey === traceKey(trace)}
             role="button"
             tabindex="0"
             onclick={() => onSelect(trace)}

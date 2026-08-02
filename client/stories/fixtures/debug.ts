@@ -84,7 +84,9 @@ const SELECTED_TRACE_PAYLOAD: LlmTrace = makeLlmTrace()
 export const SELECTED_TRACE: SelectedDetail = { kind: 'trace', payload: SELECTED_TRACE_PAYLOAD }
 export const SELECTED_TRACE_LIST: LlmTrace[] = [
   SELECTED_TRACE_PAYLOAD,
-  makeLlmTrace({ steps: 4, error: 'rate limited' }),
+  // Distinct `model` so the narrowed trace signature (timestamp+userId+model)
+  // highlights only the selected row in the "Selected" story.
+  makeLlmTrace({ model: 'gpt-4o', steps: 4, error: 'rate limited' }),
 ]
 
 const SELECTED_FAILURE_PAYLOAD: ToolFailure = makeToolFailure()
