@@ -1960,10 +1960,14 @@ Create `tests/long-term-memory/projection-replay.test.ts`:
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { eq } from 'drizzle-orm'
+
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import {
   memoryCanonicalEvents,
   type MemoryCanonicalEventRow,
+  memoryProjectionOutbox,
+  type MemoryProjectionOutboxRow,
   memoryProjectionRecords,
   type MemoryProjectionRecordRow,
 } from '../../src/db/schema.js'
@@ -1998,6 +2002,30 @@ const input = (overrides: Partial<MemoryRecordInput> = {}): MemoryRecordInput =>
 
 const events = (): MemoryCanonicalEventRow[] => getDrizzleDb().select().from(memoryCanonicalEvents).all()
 const shadow = (): MemoryProjectionRecordRow[] => getDrizzleDb().select().from(memoryProjectionRecords).all()
+
+/**
+ * The outbox item that produced a shadow row, joined on `event_id` — the shadow row records the
+ * winning event, and `applyOutboxItem` writes exactly one outbox item per canonical event, so
+ * the join is 1:1. Throws rather than returning `undefined` so a missing item is a loud failure
+ * (`no-conditional-in-test` bars an `if`/`??` inside the `test()` body that would otherwise
+ * express this).
+ */
+const outboxItemFor = (eventId: string): MemoryProjectionOutboxRow => {
+  const item = getDrizzleDb()
+    .select()
+    .from(memoryProjectionOutbox)
+    .where(eq(memoryProjectionOutbox.eventId, eventId))
+    .get()
+  if (item === undefined) throw new Error(`no outbox item for event ${eventId}`)
+  return item
+}
+
+/** Same throw-on-missing shape as `outboxItemFor`, for the checkpoint the B4 test compares against. */
+const requireCheckpoint = (): number => {
+  const checkpoint = projectionCheckpoint()
+  if (checkpoint === null) throw new Error('no projection checkpoint')
+  return checkpoint
+}
 
 const captureTimes = (times: number, ingest: string): void => {
   for (let attempt = 0; attempt < times; attempt += 1) captureCanonicalEvent(input(), 'rec-1', ingest)
@@ -2059,6 +2087,12 @@ describe('projection replay', () => {
     )
     const forward = settle()
 
+    // Load-bearing: the two orders must agree on the *correct* winner, not merely on each
+    // other. A fold that resolves by ingest order rather than event time is still a
+    // deterministic function of event time under both orderings, so it would converge on the
+    // same wrong winner in both and the bare equality below would stay green.
+    expect(shadow()[0]?.content).toBe('likes light mode')
+
     await setupTestDb()
     captureCanonicalEvent(
       input({ content: 'likes light mode', evidence: { timestamps: [LATE] } }),
@@ -2068,6 +2102,7 @@ describe('projection replay', () => {
     captureCanonicalEvent(input({ evidence: { timestamps: [EARLY] } }), 'rec-1', '2026-08-03T00:00:00.000Z')
 
     expect(settle()).toBe(forward)
+    expect(shadow()[0]?.content).toBe('likes light mode')
   })
 
   test('draining after each capture yields the same snapshot as draining once at the end', async () => {
@@ -2109,8 +2144,14 @@ describe('projection replay', () => {
     captureCanonicalEvent(input({ id: 'rec-2', content: 'prefers metric units' }), 'rec-2', '2026-08-02T00:00:00.000Z')
     settle()
 
-    expect(shadow()).toHaveLength(2)
-    expect(projectionCheckpoint()).not.toBeNull()
+    const rows = shadow()
+    expect(rows).toHaveLength(2)
+    const checkpoint = requireCheckpoint()
+    for (const row of rows) {
+      const item = outboxItemFor(row.eventId)
+      expect(item.state).toBe('complete')
+      expect(item.position).toBeLessThanOrEqual(checkpoint)
+    }
   })
 
   test('B2 is holdable: capture without a drain leaves the snapshot empty', () => {
@@ -2127,7 +2168,20 @@ describe('projection replay', () => {
 Run: `bun test tests/long-term-memory/projection-replay.test.ts`
 Expected: PASS if Tasks 1-6 are correct. This is a characterization suite over already-built behavior, so a green first run is the expected outcome — it is not evidence of a vacuous test.
 
-To confirm the suite is load-bearing, temporarily change `winsAgainst` in `src/long-term-memory/projection-fold.ts` so the final comparison reads `return left < right` instead of `return left > right`, run the suite, and confirm "the later event time wins regardless of which arrived first" and "reversing ingest order…" FAIL. Then revert and confirm `git diff --exit-code src/long-term-memory/projection-fold.ts` produces no output.
+To confirm the suite is load-bearing, temporarily change `winsAgainst` in `src/long-term-memory/projection-fold.ts` so the final comparison reads `return left < right` instead of `return left > right`, run `bun test tests/long-term-memory/` (not just this file), and confirm it goes from 473 pass / 0 fail to 465 pass / 8 fail. As actually observed on this inversion, the 8 failures are:
+
+- `winsAgainst > a later event time wins even when its identity sorts later`
+- `winsAgainst > an earlier event time loses even when its identity sorts earlier`
+- `applyOutboxItem > a later-event-time update replaces the shadow row for the same record`
+- `applyOutboxItem > an earlier event applied after a later one loses and changes nothing`
+- `drainProjectionOutbox > a superseded item is counted separately from an applied one`
+- `projectionSnapshot > the snapshot changes when content changes`
+- `projection replay > the later event time wins regardless of which arrived first`
+- `projection replay > reversing ingest order relative to event time yields the same settled snapshot`
+
+Of the two `projection-replay.test.ts` failures, only one is this round's addition: the bare `expect(settle()).toBe(forward)` equality in "reversing ingest order…" does **not** by itself fail under this inversion — a wrong-but-order-independent fold still agrees with itself across both ingest orders, so that line alone would stay green. It is the added `expect(shadow()[0]?.content).toBe('likes light mode')` lines (both the mid-test one after `forward` and the final one) that catch it. Then revert and confirm `git diff --exit-code src/long-term-memory/projection-fold.ts` produces no output and `bun test tests/long-term-memory/` is back to 473 pass / 0 fail.
+
+**Why the B4 assertion joins instead of just checking non-null:** `projectionCheckpoint()` is `max(position)` over `memory_projection_outbox` rows in state `complete` — it is computed entirely from the outbox table and never looks at `memory_projection_records` (the shadow table). `expect(shadow()).toHaveLength(2)` and `expect(projectionCheckpoint()).not.toBeNull()` are therefore two independent, unrelated facts: nothing ties a given shadow row to the outbox item that produced it, so this pair would pass even with a stale/unrelated checkpoint or with shadow rows written by a path that never touched the outbox. The fix joins each shadow row to its producing outbox item on `event_id` (`applyOutboxItem` writes exactly one outbox item per canonical event, so the join is 1:1) and asserts that item's `state` is `complete` and its `position` is `<= projectionCheckpoint()`. Do not simplify this back to independent non-null checks; that reintroduces exactly the gap this round closed.
 
 - [ ] **Step 3: Run the whole memory suite**
 

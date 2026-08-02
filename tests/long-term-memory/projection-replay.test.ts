@@ -5,10 +5,14 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { eq } from 'drizzle-orm'
+
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import {
   memoryCanonicalEvents,
   type MemoryCanonicalEventRow,
+  memoryProjectionOutbox,
+  type MemoryProjectionOutboxRow,
   memoryProjectionRecords,
   type MemoryProjectionRecordRow,
 } from '../../src/db/schema.js'
@@ -43,6 +47,30 @@ const input = (overrides: Partial<MemoryRecordInput> = {}): MemoryRecordInput =>
 
 const events = (): MemoryCanonicalEventRow[] => getDrizzleDb().select().from(memoryCanonicalEvents).all()
 const shadow = (): MemoryProjectionRecordRow[] => getDrizzleDb().select().from(memoryProjectionRecords).all()
+
+/**
+ * The outbox item that produced a shadow row, joined on `event_id` — the shadow row records the
+ * winning event, and `applyOutboxItem` writes exactly one outbox item per canonical event, so
+ * the join is 1:1. Throws rather than returning `undefined` so a missing item is a loud failure
+ * (`no-conditional-in-test` bars an `if`/`??` inside the `test()` body that would otherwise
+ * express this).
+ */
+const outboxItemFor = (eventId: string): MemoryProjectionOutboxRow => {
+  const item = getDrizzleDb()
+    .select()
+    .from(memoryProjectionOutbox)
+    .where(eq(memoryProjectionOutbox.eventId, eventId))
+    .get()
+  if (item === undefined) throw new Error(`no outbox item for event ${eventId}`)
+  return item
+}
+
+/** Same throw-on-missing shape as `outboxItemFor`, for the checkpoint the B4 test compares against. */
+const requireCheckpoint = (): number => {
+  const checkpoint = projectionCheckpoint()
+  if (checkpoint === null) throw new Error('no projection checkpoint')
+  return checkpoint
+}
 
 const captureTimes = (times: number, ingest: string): void => {
   for (let attempt = 0; attempt < times; attempt += 1) captureCanonicalEvent(input(), 'rec-1', ingest)
@@ -104,6 +132,12 @@ describe('projection replay', () => {
     )
     const forward = settle()
 
+    // Load-bearing: the two orders must agree on the *correct* winner, not merely on each
+    // other. A fold that resolves by ingest order rather than event time is still a
+    // deterministic function of event time under both orderings, so it would converge on the
+    // same wrong winner in both and the bare equality below would stay green.
+    expect(shadow()[0]?.content).toBe('likes light mode')
+
     await setupTestDb()
     captureCanonicalEvent(
       input({ content: 'likes light mode', evidence: { timestamps: [LATE] } }),
@@ -113,6 +147,7 @@ describe('projection replay', () => {
     captureCanonicalEvent(input({ evidence: { timestamps: [EARLY] } }), 'rec-1', '2026-08-03T00:00:00.000Z')
 
     expect(settle()).toBe(forward)
+    expect(shadow()[0]?.content).toBe('likes light mode')
   })
 
   test('draining after each capture yields the same snapshot as draining once at the end', async () => {
@@ -154,8 +189,14 @@ describe('projection replay', () => {
     captureCanonicalEvent(input({ id: 'rec-2', content: 'prefers metric units' }), 'rec-2', '2026-08-02T00:00:00.000Z')
     settle()
 
-    expect(shadow()).toHaveLength(2)
-    expect(projectionCheckpoint()).not.toBeNull()
+    const rows = shadow()
+    expect(rows).toHaveLength(2)
+    const checkpoint = requireCheckpoint()
+    for (const row of rows) {
+      const item = outboxItemFor(row.eventId)
+      expect(item.state).toBe('complete')
+      expect(item.position).toBeLessThanOrEqual(checkpoint)
+    }
   })
 
   test('B2 is holdable: capture without a drain leaves the snapshot empty', () => {
