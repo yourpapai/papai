@@ -28,3 +28,15 @@ test('TaskProvider — narrow', async ({ sharedPage }) => {
   await sharedPage.setViewportSize({ width: 640, height: 900 })
   await expect(sharedPage).toHaveScreenshot()
 })
+
+test('TaskProvider — select focused', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-taskprovidersection--populated')
+  await sharedPage.getByTestId('context-task-instance').focus()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('TaskProvider — bind hovered', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-taskprovidersection--populated')
+  await sharedPage.getByTestId('context-task-instance-save').hover()
+  await expect(sharedPage).toHaveScreenshot()
+})

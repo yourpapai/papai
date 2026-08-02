@@ -7,31 +7,32 @@ See LICENSE in the project root for details.
 
 # UX Review — ReleaseSubscriptionSection
 
-**Date:** 2026-07-03
+**Date:** 2026-08-03
 **Reviewed:** `client/settings/sections/ReleaseSubscriptionSection.svelte`
-**States captured:** Subscribed, Unsubscribed, Error, Loading, primary-hover, primary-focus, outline-hover · desktop + ~640px
+**States captured:** Subscribed, Unsubscribed, Error, Loading, Mutating (busy), MutationError, primary-hover, primary-focus, outline-hover · desktop + ~640px
 **Rubric:** [`RUBRIC.md`](./RUBRIC.md)
 
 > Report-only. This document contains no code changes and no change-plan. Each finding
 > carries a one-line described fix; acting on it is a separate human decision.
 
-Selected as the next-most-valuable review target: it is the only unreviewed section in the
-**top-level Personal nav** (rendered for every user, outside the collapsed "Advanced" group),
-alongside the already-reviewed Profile, Task-provider, and Tools sections.
+Re-review: 4 of 5 findings from the 2026-07-03 pass are fixed by a dedicated follow-up
+sub-project (`9ab5ee40c` design spec → `1108fa170` plan → `42adf1202`, `75e6b5ac6`,
+`62d0a4f03`, `fcf272983` implementation commits, plus `f81de6498`/`d1825ffd9` in `Btn`). One
+finding is narrowed to a residual edge case rather than closed outright.
 
 ## Scorecard
 
-| Dimension                       | Score | Rationale (one line)                                                                                      |
-| ------------------------------- | ----- | --------------------------------------------------------------------------------------------------------- |
-| 1. Visual hierarchy & scanning  | pass  | Standard `PageHeader` eyebrow/title/caption rhythm, consistent with sibling sections.                     |
-| 2. Affordance & signifiers      | warn  | Subscription state is signalled only by the toggle's label/variant; no explicit "Subscribed" indicator.   |
-| 3. Consistency w/ design system | pass  | Reuses `PageHeader` + `Btn`; matches the header-with-action pattern used across settings.                 |
-| 4. Feedback & state             | fail  | Loading is visually identical to Unsubscribed; no in-flight feedback; load error dead-ends with no retry. |
-| 5. Content & language           | warn  | Caption is clear, but load failures surface the raw backend string with no framing.                       |
-| 6. Accessibility                | pass  | Real `<button>` with a green `:focus-visible` ring inherited in-app; caption contrast within app norms.   |
-| 7. Responsive / layout          | pass  | Header reflows cleanly at ~640px; button stays inline and unclipped; caption wraps.                       |
-| 8. Spacing, alignment & sizing  | warn  | Error `<p>` has only a color, no spacing token — it crowds the caption when present.                      |
-| 9. Interaction & micro-states   | warn  | No busy state on toggle; disabled is opacity-only; primitive focus ring is ancestor-dependent.            |
+| Dimension                       | Score | Rationale (one line)                                                                                                    |
+| -------------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------- |
+| 1. Visual hierarchy & scanning  | pass  | Standard `PageHeader` eyebrow/title/caption rhythm, consistent with sibling sections.                                    |
+| 2. Affordance & signifiers      | pass  | Label+variant toggle (`Subscribe`/primary ↔ `Unsubscribe`/outline) is a pattern shared with `ByokSection`/`MemorySection`, not a one-off. |
+| 3. Consistency w/ design system | pass  | Reuses `PageHeader`, `Btn`, `ErrorState`; matches the header-with-action and load/retry patterns used across settings.   |
+| 4. Feedback & state             | warn  | Loading, initial load error, and mutation are all now clearly signalled; a background reload failure still surfaces unframed with no retry affordance. |
+| 5. Content & language           | pass  | Caption states channel + cadence (DM, per-release, no resend); the initial load error is now framed ("Couldn't load subscription"). |
+| 6. Accessibility                | pass  | Real `<button>`; `Btn` now owns its own `:focus-visible` ring; caption/error contrast within app norms.                  |
+| 7. Responsive / layout          | pass  | Header and `ErrorState` reflow cleanly at ~640px; button stays inline and unclipped; caption wraps.                      |
+| 8. Spacing, alignment & sizing  | warn  | The mutation-error line now has a token margin, but the reload-failure inline line still has no margin token.           |
+| 9. Interaction & micro-states   | pass  | Toggle shows a "Subscribing…/Unsubscribing…" busy label; `Btn` carries an intrinsic `:focus-visible` ring.               |
 
 ## Findings
 
@@ -40,49 +41,47 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [High] Loading is indistinguishable from "unsubscribed", and defaults to the green Subscribe CTA before state is known
 
 - **Id:** release-subscription-loading-looks-unsubscribed
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `42adf1202` ("fix(settings): gate release-subscription toggle behind load state, add retry + busy feedback"). The toggle is now gated by `showToggle = $derived(enabled !== null)` (`client/settings/sections/ReleaseSubscriptionSection.svelte:62`), and while `enabled === null` the template renders a bare `<p class="placeholder">Loading…</p>` (`:88`) with no button at all — confirmed in the `Loading` story shot (`.storybook-shots/settings/sections/ReleaseSubscriptionSection.spec.ts/settings-sections-ReleaseSubscriptionSection-Loading-1.png`), which shows only the header and "Loading…", never the green Subscribe CTA.
 - **Dimension:** 4. Feedback & state
-- **Where visible:** `Loading` vs `Unsubscribed` (desktop) — the two frames are near-identical: both show the green primary **Subscribe** button and the full caption, with no skeleton or spinner.
-- **Detail:** `enabled` starts `null`, and the label is `enabled ? 'Unsubscribe' : 'Subscribe'`, so during every page load the control renders the inviting green **Subscribe** CTA (merely disabled via `Btn`'s `opacity: 0.5`). A user whose account is actually _subscribed_ is briefly shown "Subscribe", i.e. the opposite of their real state, and a slow or momentarily-failed load reads as a settled "you are not subscribed" screen.
-- **Source:** `client/settings/sections/ReleaseSubscriptionSection.svelte:75` (label derives only from `enabled`), `:72` (disabled while `enabled === null`)
-- **Suggested fix:** While `enabled === null`, render a neutral loading affordance (skeleton or "…") for the action instead of the default green Subscribe CTA, so the resting state is never impersonated before it is known.
+- **Where visible:** `Loading` (desktop) — now a distinct frame from `Unsubscribed`, with no button rendered.
+- **Detail (historical):** Previously `enabled` started `null` and the label derived only from `enabled`, so the disabled-but-visible green Subscribe CTA rendered during every load. That code path no longer exists.
+- **Source:** `client/settings/sections/ReleaseSubscriptionSection.svelte:62` (`showToggle`), `:87-88` (loading placeholder)
 
 ### [Med] Load error dead-ends: raw backend string, no retry, toggle stays disabled
 
 - **Id:** release-subscription-load-error-dead-end
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `42adf1202` + `fcf272983`. The initial-load failure path (`loadError !== null && enabled === null`) now renders the shared `ErrorState` with a framed title, the raw message, and a working retry button: `<ErrorState title="Couldn't load subscription" message={loadError} onRetry={() => void load(contextId)} />` (`client/settings/sections/ReleaseSubscriptionSection.svelte:86`). Confirmed in the `Error` story shot — "Couldn't load subscription" heading, red "boom" message, and a "Try again" button are all present and centered, not a bare disabled toggle.
 - **Dimension:** 4. Feedback & state / 5. Content & language
-- **Where visible:** `Error` (desktop + ~640px) — a bare red "boom" appears between title and caption while the button remains a disabled green "Subscribe".
-- **Detail:** `load()` failures assign the raw thrown message straight into the template (`{error}`), so users see unframed developer text with no "Couldn't load subscription" context and no icon. Because a load error leaves `enabled === null`, the toggle stays disabled — there is no in-UI way to re-attempt short of reloading the whole settings page.
-- **Source:** `client/settings/sections/ReleaseSubscriptionSection.svelte:80` (renders raw `error`), `:39-43` (load-failure path leaves `enabled` null)
-- **Suggested fix:** Present load failures as a friendly section-scoped message with a **Retry** affordance; reserve pass-through of the raw message for mutation failures where the user's action is the trigger.
+- **Where visible:** `Error` (desktop + ~640px).
+- **Detail (historical):** Previously the raw thrown message rendered inline with no framing and no retry path; `fcf272983` additionally split out a narrower residual case — see the new Low finding below for what's left of it.
+- **Source:** `client/settings/sections/ReleaseSubscriptionSection.svelte:85-86`
 
 ### [Med] Toggle gives no in-flight feedback
 
 - **Id:** release-subscription-toggle-no-feedback
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `f81de6498` ("feat(ui): add busy affordance and intrinsic focus ring to Btn") + `42adf1202`. The button now derives a `busyLabel` (`enabled ? 'Unsubscribing…' : 'Subscribing…'`) shown while `mutating` (`client/settings/sections/ReleaseSubscriptionSection.svelte:61,79`), and `Btn` renders `aria-busy` plus a dimmed, pointer-events-disabled `.ui-btn--busy` style (`client/shared/ui/Btn.svelte:46,49,73-76`). Confirmed in the `Mutating — busy toggle` spec shot: the button reads "Subscribing…" during the in-flight request, not a frozen "Subscribe".
 - **Dimension:** 9. Interaction & micro-states
-- **Where visible:** Not capturable as a stable frame (async), confirmed in source.
-- **Detail:** On click, `mutating` only disables the button; the label depends solely on `enabled`, so it keeps reading "Subscribe"/"Unsubscribe" during the request. A slow network call shows a frozen, dimmed button with no "Subscribing…"/spinner, which reads as unresponsive and invites a second-click perception.
-- **Source:** `client/settings/sections/ReleaseSubscriptionSection.svelte:46-59` (toggle sets `mutating` but not label), `:75` (label ignores `mutating`)
-- **Suggested fix:** Reflect `mutating` in the control — a busy label ("Subscribing…"/"Updating…") or spinner — so the async work is visibly acknowledged.
+- **Where visible:** `Mutating — busy toggle` spec case — button text visibly changes to "Subscribing…" during the click.
+- **Source:** `client/settings/sections/ReleaseSubscriptionSection.svelte:61` (`busyLabel`), `:79` (label swap); `client/shared/ui/Btn.svelte:46,73-76` (busy styling)
 
-### [Low] Error text has no dedicated spacing and disrupts the header → caption rhythm
+### [Low] Reload-failure inline error line has no spacing token and is unframed
 
 - **Id:** release-subscription-error-text-spacing
 - **Status:** open
-- **Dimension:** 8. Spacing, alignment & sizing
-- **Where visible:** `Error` (desktop + ~640px) — "boom" sits tight against the caption with no intentional separation.
-- **Detail:** The shared `.status-error` class sets only `color`; the error `<p>` therefore inherits ad-hoc block spacing and is injected between `PageHeader` (which owns the `4px 0 14px` header rhythm) and the caption, crowding the caption and shifting layout when it appears/disappears.
-- **Source:** `client/settings/sections/ReleaseSubscriptionSection.svelte:80`; `client/settings/settings.css:91` (`.status-error` is color-only)
-- **Suggested fix:** Give the inline error a consistent margin from the spacing scale (or a reserved slot) so the caption keeps a stable position whether or not an error is present.
+- **Dimension:** 8. Spacing, alignment & sizing / 4. Feedback & state
+- **Where visible:** Not story-captured (requires a successful initial load followed by a failing background reload, i.e. a failed mutation's post-toggle `load()` call while `enabled` is already known) — confirmed in source only.
+- **Detail:** The original finding (raw "boom" crowding the caption in the top-level `Error` state) is gone: that state now renders the fully-spaced `ErrorState` component (see above). What remains is narrower — `fcf272983` deliberately kept a lighter-weight inline path for a reload failure that happens *after* `enabled` is already known (`{#if loadError !== null}<p class="status-error" role="alert" ...>{loadError}</p>{/if}`, `client/settings/sections/ReleaseSubscriptionSection.svelte:91`). Unlike the sibling `.settings-section__action-error` class used for mutation errors, which now has an explicit `margin: var(--gap-inline) 0 0` (`:117`), the shared `.status-error` class is still color-only (`client/settings/settings.css:91-93`), so this line's vertical spacing comes only from the browser's UA default `<p>` margin rather than the spacing scale, and the caption's position shifts by that unstyled amount whenever the line appears/disappears.
+- **Source:** `client/settings/sections/ReleaseSubscriptionSection.svelte:91` (unstyled reload-error `<p>`); `client/settings/settings.css:91-93` (`.status-error` is color-only); contrast `client/settings/sections/ReleaseSubscriptionSection.svelte:116-119` (`.settings-section__action-error` — the sibling class that *does* use a token margin)
+- **Suggested fix:** Give the reload-error `<p>` the same token-driven margin the mutation-error line already has (or reuse `.settings-section__action-error` for both), so no path relies on UA default spacing.
 
 ### [Low] Focus ring is ancestor-provided, not carried by the `Btn` primitive
 
 - **Id:** release-subscription-focus-ring-not-owned
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `f81de6498` ("feat(ui): add busy affordance and intrinsic focus ring to Btn"), building on `d1825ffd9` ("refactor(ui): add --focus-ring token and adopt in shared controls"). `Btn` now defines its own `.ui-btn:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-ring-offset); }` (`client/shared/ui/Btn.svelte:77-80`), independent of the `.settings-grid :focus-visible` ancestor rule (`client/settings/settings.css:111-114`), which still exists but is now redundant rather than load-bearing. Confirmed in the `Unsubscribed — primary button focus` shot: the green ring renders on the button itself.
 - **Dimension:** 9. Interaction & micro-states / 6. Accessibility
-- **Where visible:** `primary-focus` — in the story harness the focused Subscribe button shows the **UA default blue** outline, not the theme green.
-- **Detail:** In the real settings app the button gets a green ring only because it descends from `.settings-grid :focus-visible` (`settings.css:111`). `Btn` itself defines no `:focus-visible`, so the correct ring does not travel with the primitive; any placement outside that ancestor (or a future host) falls back to the mismatched UA outline. In-app behaviour is currently fine — this is a robustness/consistency note.
-- **Source:** `client/shared/ui/Btn.svelte` (no `:focus-visible` rule); `client/settings/settings.css:111` (ancestor-scoped ring)
-- **Suggested fix:** Move a `:focus-visible` ring onto `Btn` so focus styling is intrinsic to the primitive rather than dependent on a specific ancestor.
+- **Where visible:** `primary-focus` — focused Subscribe button now shows the theme green ring.
+- **Source:** `client/shared/ui/Btn.svelte:77-80` (intrinsic `:focus-visible`); `client/shared/tokens.css:39-40` (`--focus-ring` / `--focus-ring-offset` tokens)
