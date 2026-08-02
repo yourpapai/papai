@@ -134,7 +134,8 @@
   .tree-boolean {
     color: var(--warn);
   }
-  .tree-null {
+  .tree-null,
+  .tree-undefined {
     color: var(--fg4);
     font-style: italic;
   }

@@ -75,3 +75,40 @@
     {/if}
   {/snippet}
 </Panel>
+
+<style>
+  .failure-row {
+    border-left: 2px solid var(--danger);
+    padding: 6px 8px;
+    margin-bottom: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .failure-row:hover {
+    background: var(--raised);
+  }
+
+  .failure-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    color: var(--fg2);
+  }
+
+  .failure-time {
+    color: var(--fg3);
+  }
+
+  .failure-tool {
+    color: var(--danger);
+    font-weight: 600;
+  }
+
+  .failure-error {
+    color: var(--fg);
+    word-break: break-word;
+  }
+</style>

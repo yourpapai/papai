@@ -60,3 +60,33 @@
     {/if}
   {/snippet}
 </Panel>
+
+<style>
+  .notification-row {
+    border-left: 2px solid var(--border);
+    padding: 6px 8px;
+    margin-bottom: 4px;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .notification-row:nth-child(even) {
+    background: var(--surface);
+  }
+
+  .notification-time {
+    color: var(--fg3);
+    margin-right: 8px;
+  }
+
+  .notification-type {
+    color: var(--accent);
+    margin-right: 8px;
+    font-weight: 600;
+  }
+
+  .notification-text {
+    color: var(--fg2);
+    word-break: break-word;
+  }
+</style>

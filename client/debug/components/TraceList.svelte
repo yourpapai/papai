@@ -54,3 +54,45 @@
     {/snippet}
   </Panel>
 </section>
+
+<style>
+  .trace-row {
+    border-left: 2px solid var(--border);
+    padding: 6px 8px;
+    margin-bottom: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .trace-row:hover {
+    background: var(--raised);
+  }
+
+  .trace-row.error {
+    border-left-color: var(--danger);
+  }
+
+  .trace-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    color: var(--fg2);
+  }
+
+  .trace-summary .trace-time {
+    color: var(--fg3);
+  }
+
+  .trace-summary .trace-user {
+    color: var(--fg);
+  }
+
+  .trace-summary .trace-model {
+    color: var(--accent);
+  }
+
+  .trace-summary .trace-duration {
+    color: var(--warn);
+  }
+</style>

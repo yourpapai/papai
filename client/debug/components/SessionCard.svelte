@@ -54,16 +54,40 @@ See LICENSE in the project root for details.
 <style>
   .session-card {
     display: block;
+    border-left: 2px solid var(--border);
     padding: 10px 12px;
+    margin-bottom: 6px;
     border-bottom: 1px solid var(--hair);
+    font-size: 11px;
     line-height: 1.45;
     cursor: pointer;
+    transition: background 0.15s ease;
   }
 
-  .session-detail,
+  .session-card:hover {
+    background: var(--raised);
+  }
+
+  .session-card.active {
+    border-left-color: var(--accent);
+  }
+
+  .user-id {
+    color: var(--fg);
+    font-weight: 600;
+  }
+
+  .session-detail {
+    display: block;
+    margin-top: 2px;
+    color: var(--fg3);
+  }
+
   .wizard-badge {
     display: block;
     margin-top: 2px;
+    color: var(--warn);
+    font-size: 10px;
   }
 
   .operator-badge {

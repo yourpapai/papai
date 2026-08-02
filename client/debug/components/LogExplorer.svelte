@@ -229,6 +229,32 @@
     white-space: nowrap;
   }
 
+  .log-debug .log-meta,
+  .log-debug .log-msg {
+    color: var(--fg4);
+  }
+
+  .log-info .log-meta {
+    color: var(--accent);
+  }
+  .log-info .log-msg {
+    color: var(--fg);
+  }
+
+  .log-warn .log-meta {
+    color: var(--warn);
+  }
+  .log-warn .log-msg {
+    color: var(--fg);
+  }
+
+  .log-error .log-meta {
+    color: var(--danger);
+  }
+  .log-error .log-msg {
+    color: var(--fg);
+  }
+
   .log-history {
     display: flex;
     justify-content: center;
