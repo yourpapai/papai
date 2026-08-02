@@ -180,6 +180,6 @@
   }
   .status-error {
     padding: 12px;
-    color: var(--red, #e25);
+    color: var(--danger);
   }
 </style>

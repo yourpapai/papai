@@ -367,12 +367,14 @@ const CLIENT_DIR = fileURLToPath(new URL('../../../client/', import.meta.url))
 // A custom-property declaration: `--name:`. The colon must follow the name directly (modulo
 // whitespace), which is what keeps `style:color={dim ? 'var(--fg4)' : 'var(--fg3)'}` from
 // reading as a declaration — there, the colon is separated from the name by `)` and a quote.
-const DECLARATION = /(--[a-z0-9-]+)\s*:/giu
+// The name itself must start at a real declaration boundary — start of line, `{`, or `;` — before
+// optional whitespace, which is what keeps a BEM modifier class glued to a pseudo-class (e.g.
+// `.ui-btn--primary:hover:not(:disabled)`) from reading as a declaration of `--primary`.
+const DECLARATION = /(?:^|[{;])\s*(--[a-z0-9-]+)\s*:/gimu
 
-// A reference. Only the plain `var(--name)` form occurs in this codebase — there are no
-// `var(--name, fallback)` uses — and including the closing paren is what makes the match exact
-// rather than a prefix match.
-const REFERENCE = /var\((--[a-z0-9-]+)\)/giu
+// A reference. Both `var(--name)` and `var(--name, fallback)` occur in this codebase, so the name
+// is followed by optional whitespace and then either `,` or the closing paren.
+const REFERENCE = /var\((--[a-z0-9-]+)\s*[,)]/giu
 
 const scanClient = async (): Promise<{ declared: Set<string>; referenced: { name: string; file: string }[] }> => {
   const declared = new Set<string>()
@@ -380,9 +382,9 @@ const scanClient = async (): Promise<{ declared: Set<string>; referenced: { name
 
   for await (const relativePath of new Glob('**/*.{css,svelte,ts}').scan({ cwd: CLIENT_DIR })) {
     const text = await Bun.file(`${CLIENT_DIR}${relativePath}`).text()
-    for (const match of text.matchAll(DECLARATION)) declared.add(match[1] as string)
+    for (const match of text.matchAll(DECLARATION)) declared.add(match[1]!)
     for (const match of text.matchAll(REFERENCE)) {
-      referenced.push({ name: match[1] as string, file: relativePath })
+      referenced.push({ name: match[1]!, file: relativePath })
     }
   }
 
