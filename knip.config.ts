@@ -44,6 +44,10 @@ export default {
     // Tier 1 orchestration scripts (nightly CI helpers — not in package.json).
     'scripts/behavior-audit/preflight.ts!',
     'scripts/behavior-audit/publish-snapshot.ts!',
+    // Observable O2 of the memory canonical-capture gate: a deterministic projection
+    // snapshot with no production importer until Gate 1d's reconciliation consumes it.
+    // Declared an entry rather than ignored so its own exports stay traced.
+    'src/long-term-memory/projection-snapshot.ts!',
     // Stable production/public compatibility boundaries consumed by the
     // plugin-core-separation refactor.
     'src/coding-sessions/configure.ts!',

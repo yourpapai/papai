@@ -68,7 +68,7 @@ export const idempotencyIdentity = (scope: MemoryScope, content: string): string
  * replacer is a *recursive* property whitelist, so a list of top-level key names
  * erases every nested object's contents instead of ordering them.
  */
-const stableStringify = (value: unknown): string => {
+export const stableStringify = (value: unknown): string => {
   if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null'
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
   const entries = Object.entries(value).sort(([left], [right]) => (left < right ? -1 : 1))
