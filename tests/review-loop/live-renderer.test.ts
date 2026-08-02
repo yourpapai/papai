@@ -5,79 +5,12 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import {
-  formatDuration,
-  formatLiveLine,
-  formatStepFooter,
-  formatToolArg,
-  LiveRenderer,
-} from '../../review-loop/src/live-renderer.js'
-
-describe('formatDuration', () => {
-  test('formats seconds under a minute', () => {
-    expect(formatDuration(0)).toBe('0s')
-    expect(formatDuration(42000)).toBe('42s')
-  })
-  test('formats minutes and seconds', () => {
-    expect(formatDuration(125000)).toBe('2m05s')
-  })
-})
-
-describe('formatToolArg', () => {
-  test('read/edit/write use basename of filePath', () => {
-    expect(formatToolArg('read', { filePath: '/a/b/cli.ts' })).toBe('cli.ts')
-    expect(formatToolArg('edit', { path: '/a/b/src/x.ts' })).toBe('x.ts')
-  })
-  test('bash truncates command', () => {
-    expect(formatToolArg('bash', { command: 'echo hi' })).toBe('echo hi')
-    const long = 'x'.repeat(60)
-    expect(formatToolArg('bash', { command: long })).toHaveLength(40)
-  })
-  test('grep/glob use pattern', () => {
-    expect(formatToolArg('grep', { pattern: 'TODO' })).toBe('TODO')
-  })
-  test('task uses description then subagent_type', () => {
-    expect(formatToolArg('task', { description: 'find files' })).toBe('find files')
-    expect(formatToolArg('task', { subagent_type: 'explore' })).toBe('explore')
-  })
-  test('fallback uses first string value', () => {
-    expect(formatToolArg('custom', { a: 'hello', b: 'world' })).toBe('hello')
-  })
-  test('empty input yields empty string', () => {
-    expect(formatToolArg('read', {})).toBe('')
-    expect(formatToolArg('mystery', {})).toBe('')
-  })
-})
-
-describe('formatLiveLine', () => {
-  test('renders label, tool, arg, elapsed, count', () => {
-    const line = formatLiveLine('fixer', 'edit', 'cli.ts', 42000, 3)
-    expect(line).toContain('fixer')
-    expect(line).toContain('edit cli.ts')
-    expect(line).toContain('42s')
-    expect(line).toContain('3 tools')
-  })
-  test('singular tool count', () => {
-    expect(formatLiveLine('reviewer', 'read', 'a.ts', 1000, 1)).toContain('1 tool')
-  })
-  test('no tool yet shows thinking', () => {
-    expect(formatLiveLine('reviewer', '', '', 2000, 0)).toContain('thinking')
-  })
-})
-
-describe('formatStepFooter', () => {
-  test('renders summary with tokens', () => {
-    const footer = formatStepFooter('reviewer', 18000, 4, { input: 13373, output: 31 })
-    expect(footer).toContain('reviewer')
-    expect(footer).toContain('18s')
-    expect(footer).toContain('4 tools')
-    expect(footer).toContain('in 13373 / out 31')
-  })
-})
+import { LiveRenderer, type RendererStream, withLivePhase } from '../../review-loop/src/live-renderer.js'
+import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
 
 function makeStream(opts: { isTTY?: boolean; columns?: number } = {}): {
+  stream: RendererStream
   output: string[]
-  stream: { write(s: string): boolean; isTTY?: boolean; columns?: number }
 } {
   const output: string[] = []
   return {
@@ -162,5 +95,223 @@ describe('LiveRenderer', () => {
     r.live(['line 1', 'line 2'])
     expect(captured.join('')).toContain('line 1')
     expect(captured.join('')).toContain('line 2')
+  })
+})
+
+describe('LiveRenderer.issue', () => {
+  test('found events print an indented plus line', () => {
+    const { stream, output } = makeStream()
+    const renderer = new LiveRenderer(stream)
+    renderer.issue({
+      type: 'found',
+      id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+      severity: 'high',
+      file: 'src/auth/login.ts',
+      line: 42,
+      title: 'Token refresh race on 401',
+    })
+    expect(output).toContain('  + #a1b2c3d4 [high]     src/auth/login.ts:42 — Token refresh race on 401\n')
+  })
+
+  test('decided events print a mark line with note', () => {
+    const { stream, output } = makeStream()
+    const renderer = new LiveRenderer(stream)
+    renderer.issue({
+      type: 'decided',
+      id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+      verdict: 'needs_human',
+      title: 't',
+      note: 'merge conflict',
+    })
+    expect(output).toContain('! #a1b2c3d4 → needs human (merge conflict)\n')
+  })
+})
+
+describe('LiveRenderer.statusSuffix', () => {
+  test('is empty before any events', () => {
+    const { stream } = makeStream()
+    expect(new LiveRenderer(stream).statusSuffix()).toBe('')
+  })
+
+  test('shows round after a round event', () => {
+    const { stream } = makeStream()
+    const renderer = new LiveRenderer(stream)
+    renderer.issue({ type: 'round', round: 2, maxRounds: 5 })
+    expect(renderer.statusSuffix()).toBe('round 2/5')
+  })
+
+  test('counts found and decided issues, omitting zero segments', () => {
+    const { stream } = makeStream()
+    const renderer = new LiveRenderer(stream)
+    renderer.issue({ type: 'round', round: 1, maxRounds: 3 })
+    renderer.issue({
+      type: 'found',
+      id: 'aaaaaaaa-0000-0000-0000-000000000000',
+      severity: 'low',
+      file: 'a.ts',
+      line: 1,
+      title: 'A',
+    })
+    renderer.issue({
+      type: 'found',
+      id: 'bbbbbbbb-0000-0000-0000-000000000000',
+      severity: 'low',
+      file: 'b.ts',
+      line: 2,
+      title: 'B',
+    })
+    renderer.issue({ type: 'decided', id: 'aaaaaaaa-0000-0000-0000-000000000000', verdict: 'fixed', title: 'A' })
+    expect(renderer.statusSuffix()).toBe('round 1/3 · issues: 1 open · 1 fixed')
+  })
+
+  test('decided on an empty pending count does not go negative', () => {
+    const { stream } = makeStream()
+    const renderer = new LiveRenderer(stream)
+    renderer.issue({ type: 'decided', id: 'aaaaaaaa-0000-0000-0000-000000000000', verdict: 'invalid', title: 'A' })
+    expect(renderer.statusSuffix()).toBe('issues: 1 rejected')
+  })
+})
+
+describe('LiveRenderer slots', () => {
+  test('non-TTY slot is a no-op', () => {
+    const { stream, output } = makeStream()
+    const r = new LiveRenderer(stream)
+    r.slot('fixer-w1', '  fixer-w1 ▶ edit a.ts')
+    expect(output).toEqual([])
+  })
+
+  test('TTY slot renders the block with the slot line', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.slot('fixer-w1', '  fixer-w1 ▶ edit a.ts')
+    expect(output).toHaveLength(1)
+    expect(output[0]).toContain('fixer-w1 ▶ edit a.ts')
+  })
+
+  test('redraw after a multi-line block moves the cursor up to the block top', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.slot('a', 'line-a')
+    r.slot('b', 'line-b')
+    r.slot('c', 'line-c')
+    const redraw = output[2]!
+    // statusLine renders one block line above the slots, so the block is now 4 lines
+    // ([status, line-a, line-b, line-c]) and the third redraw moves the cursor up 2.
+    expect(redraw.startsWith('\r\u001b[2A')).toBe(true)
+    expect(redraw).toContain('line-a')
+    expect(redraw).toContain('line-c')
+  })
+
+  test('shrinking the block erases the leftover lines below', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.slot('a', 'line-a')
+    r.slot('b', 'line-b')
+    r.slot('b', null)
+    const shrink = output[output.length - 1]!
+    // old block was 3 lines (status + a + b), new block is 2 (status + a):
+    // after writing the 2 new lines, the third line must be erased and the
+    // cursor returned to the new block bottom.
+    expect(shrink.endsWith('\n\u001b[2K\u001b[1A')).toBe(true)
+  })
+
+  test('clearing the last slot erases the whole block', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.slot('a', 'line-a')
+    r.slot('a', null)
+    const cleared = output[1]!
+    expect(cleared.startsWith('\r')).toBe(true)
+    expect(cleared).not.toContain('line-a')
+  })
+
+  test('event clears the block, prints, and redraws it', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.issue({ type: 'round', round: 1, maxRounds: 2 })
+    r.slot('fixer-w1', 'line-fix')
+    const before = output.length
+    r.event('hello')
+    expect(output[before]).toContain('\u001b[2K')
+    expect(output[before + 1]).toBe('hello\n')
+    expect(output[before + 2]).toContain('line-fix')
+    expect(output[before + 2]).toContain('round 1/2')
+  })
+
+  test('a throwing stream downgrades the renderer and never rethrows', () => {
+    const stream: RendererStream = {
+      write(): boolean {
+        throw Object.assign(new Error('write EPIPE'), { code: 'EPIPE' })
+      },
+      isTTY: true,
+    }
+    const r = new LiveRenderer(stream)
+    expect(r.dynamic).toBe(true)
+    expect(() => r.event('x')).not.toThrow()
+    expect(r.dynamic).toBe(false)
+    expect(() => r.slot('a', 'line')).not.toThrow()
+  })
+})
+
+describe('status line', () => {
+  test('combines round, activity, issues, and tokens', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 200 })
+    const r = new LiveRenderer(stream)
+    r.issue({ type: 'round', round: 1, maxRounds: 2 })
+    r.issue({
+      type: 'found',
+      id: 'aaaaaaaa-0000-0000-0000-000000000000',
+      severity: 'low',
+      file: 'a.ts',
+      line: 1,
+      title: 'A',
+    })
+    r.usage({ input: 228819, output: 9824, reasoning: 49844, cost: 0 })
+    r.slot('fixer-w1', 'x')
+    r.slot('fixer-w2-retry', 'y')
+    const status = output[output.length - 1]!.split('\n')[0]!
+    expect(status).toContain('status')
+    expect(status).toContain('round 1/2')
+    expect(status).toContain('fix×2')
+    expect(status).toContain('issues: 1 open')
+    expect(status).toContain('in 228.8k / out 9.8k')
+  })
+
+  test('maps slot keys to activity verbs', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 200 })
+    const r = new LiveRenderer(stream)
+    r.slot('reviewer', 'x')
+    const status = output[output.length - 1]!.split('\n')[0]!
+    expect(status).toContain('review')
+    expect(status).not.toContain('reviewer')
+  })
+
+  test('accumulates usage across calls', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 200 })
+    const r = new LiveRenderer(stream)
+    r.usage({ input: 500, output: 0, reasoning: 0, cost: 0 })
+    r.usage({ input: 600, output: 100, reasoning: 0, cost: 0 })
+    r.slot('a', 'x')
+    const status = output[output.length - 1]!.split('\n')[0]!
+    expect(status).toContain('in 1.1k / out 100')
+  })
+})
+
+describe('withLivePhase', () => {
+  test('clears its slot when the phase ends', async () => {
+    const slots: Array<readonly [string, string | null]> = []
+    const reporter: ProgressReporter = {
+      dynamic: true,
+      event: () => {},
+      live: () => {},
+      clearLive: () => {},
+      log: () => {},
+      slot: (key, line) => {
+        slots.push([key, line] as const)
+      },
+    }
+    const { result } = await withLivePhase(reporter, 'build', () => Promise.resolve('done'))
+    expect(result).toBe('done')
+    expect(slots[slots.length - 1]).toEqual(['build', null])
   })
 })
