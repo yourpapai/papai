@@ -15,6 +15,7 @@ import {
   setBlobStoreForTesting,
   stageFileMetadata,
 } from '../../../src/attachments/index.js'
+import { createStagedDownloader } from '../../../src/attachments/staged-download.js'
 import type { StagedFileRef } from '../../../src/attachments/types.js'
 import { getDrizzleDb } from '../../../src/db/drizzle.js'
 import { attachments } from '../../../src/db/schema.js'
@@ -90,28 +91,34 @@ scenario(
       const thread = given.thread(group, 'thread-1')
       const contextId = world.scopedStorageContextId(thread)
       const staged = stage(thread, contextId, 'retry-me.txt', 'telegram-retry-me', 'first-message')
-      let downloads = 0
+      let failedAttempts = 0
 
       const failed = await resolveStagedFile(staged.stagedId, contextId, () => {
-        downloads++
+        failedAttempts++
         return Promise.resolve(null)
       })
       expect(failed).toMatchObject({ status: 'download_failed' })
 
       const terminal = await resolveStagedFile(staged.stagedId, contextId, () => {
-        downloads++
+        failedAttempts++
         return Promise.resolve(Buffer.from('must-not-download'))
       })
       expect(terminal).toMatchObject({ status: 'download_failed' })
-      expect(downloads).toBe(1)
+      expect(failedAttempts).toBe(1)
       expect(getDrizzleDb().select().from(attachments).all()).toHaveLength(0)
 
       const restaged = stage(thread, contextId, 'retry-me.txt', 'telegram-retry-me', 'second-message')
       expect(restaged).toMatchObject({ stagedId: staged.stagedId, status: 'staged' })
 
-      const resolved = await resolveStagedFile(restaged.stagedId, contextId, () =>
-        Promise.resolve(Buffer.from('fixed-bytes')),
-      )
+      const downloads: Array<readonly [string, string, string]> = []
+      const downloader = createStagedDownloader({
+        downloadFileFromInstance: (platformInstanceId, sourceProvider, fileId) => {
+          downloads.push([platformInstanceId, sourceProvider, fileId])
+          return Promise.resolve(Buffer.from('fixed-bytes'))
+        },
+      })
+      const resolved = await resolveStagedFile(restaged.stagedId, contextId, downloader)
+      expect(downloads).toEqual([[thread.platformInstanceId, 'telegram', 'telegram-retry-me']])
       expect(resolved).toMatchObject({ status: 'available' })
       if (!('attachmentId' in resolved)) throw new Error('Expected the re-staged file to resolve to an attachment')
       const attachmentId = resolved.attachmentId
