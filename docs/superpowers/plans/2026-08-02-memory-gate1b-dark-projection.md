@@ -583,6 +583,11 @@ const positionAt = (index: number): number => {
   return row.position
 }
 
+const requireEvent = (row: MemoryCanonicalEventRow | undefined): MemoryCanonicalEventRow => {
+  if (row === undefined) throw new Error('no canonical event')
+  return row
+}
+
 const orphanOutboxRow = (): number => {
   getDrizzleDb()
     .insert(memoryProjectionOutbox)
@@ -626,13 +631,13 @@ describe('applyOutboxItem', () => {
     )
     applyOutboxItem(firstPosition(), NOW)
 
-    const event = events()[0]
+    const event = requireEvent(events()[0])
     expect(shadow()[0]).toEqual({
       projectionKey: 'rec-1',
       recordId: 'rec-1',
-      eventId: event?.eventId ?? null,
-      idempotencyIdentity: event?.idempotencyIdentity ?? null,
-      contentIdentity: event?.contentIdentity ?? null,
+      eventId: event.eventId,
+      idempotencyIdentity: event.idempotencyIdentity,
+      contentIdentity: event.contentIdentity,
       scopeId: 'user-1',
       scopeType: 'personal',
       threadContextId: 'thread-a',
