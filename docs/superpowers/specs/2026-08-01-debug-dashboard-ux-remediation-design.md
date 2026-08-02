@@ -26,7 +26,7 @@ the findings it closes.
 | Shared-component blast radius | Fix in `client/shared/` directly; settings/admin stories re-shot each phase to prove no regression |
 | Per-phase verification | New/updated stories + `bun shoot` re-shoot + explicit finding checkoff |
 | M7 (scope filter on sessions/traces) | Relabel the Seg as activity-scoped; do **not** add scope fields to server trace/session events (rejected: server-side blast radius in `src/debug/` for a labeling problem — `LlmTrace` carries only `userId`, sessions are keyed by `userId`; neither can distinguish dm vs group threads) |
-| Selected-row identity | turns → `turnId`; sessions → `userId`; logs → index; traces/failures → object identity (no stable id exists) |
+| Selected-row identity | turns → `turnId`; sessions → `userId`; logs → index; traces → narrowed value-signature `timestamp+userId+model`; failures → `timestamp+toolName+error` (amended during implementation: `===` identity breaks under Storybook args deep-cloning and SSE array rebuilds) |
 | Focus-ring verification | Keyboard `Tab` navigation in manual visual-spec tests (programmatic `.focus()` does not trigger `:focus-visible`) |
 
 ## Finding → phase map
