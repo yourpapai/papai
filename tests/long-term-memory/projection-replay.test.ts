@@ -49,11 +49,15 @@ const events = (): MemoryCanonicalEventRow[] => getDrizzleDb().select().from(mem
 const shadow = (): MemoryProjectionRecordRow[] => getDrizzleDb().select().from(memoryProjectionRecords).all()
 
 /**
- * The outbox item that produced a shadow row, joined on `event_id` — the shadow row records the
- * winning event, and `applyOutboxItem` writes exactly one outbox item per canonical event, so
- * the join is 1:1. Throws rather than returning `undefined` so a missing item is a loud failure
- * (`no-conditional-in-test` bars an `if`/`??` inside the `test()` body that would otherwise
- * express this).
+ * The outbox item that produced a shadow row, joined on `event_id`. Outbox rows are inserted by
+ * `enqueue()` in `canonical-capture.ts`, from two call sites: `captureNew` (one row, a fresh
+ * `eventId`) and `captureDuplicate` (a second row against an *existing* `eventId` when a
+ * re-observation advances `lastObservedAt`) — so `event_id` is not unique on the outbox in
+ * general, and `.get()` would pick an arbitrary match. The join is 1:1 here only because this
+ * suite captures each record exactly once and never re-observes it; a test that does must make
+ * this helper deterministic (e.g. order by `position`) first. Throws rather than returning
+ * `undefined` so a missing item is a loud failure (`no-conditional-in-test` bars an `if`/`??`
+ * inside the `test()` body that would otherwise express this).
  */
 const outboxItemFor = (eventId: string): MemoryProjectionOutboxRow => {
   const item = getDrizzleDb()
