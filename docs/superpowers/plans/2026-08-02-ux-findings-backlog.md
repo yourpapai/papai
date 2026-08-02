@@ -831,11 +831,13 @@ All four batches follow one procedure; only the section list differs. Batches ar
 
 ### Per-section steps (repeat for each section in the batch)
 
-- [ ] **Step 1: Re-shoot the section**
+- [ ] **Step 1: Verify the section's existing baselines are current**
 
-Run: `bun shoot -g <Section>`
+Run: `bun run visual:audit -g <Section>`
 
-This overwrites existing baselines, which is correct here: the audit floor is re-established at the end of the batch, and nothing under test is being changed by the review itself.
+Expected: all pass. The baselines are already green at the 458/0 floor, and a re-review changes nothing under test, so they should still match.
+
+**Do not run `bun shoot -g <Section>` here.** Blanket re-shooting would overwrite the baselines that make Step 8 a real check, turning the batch's audit into a tautology. Shooting is for genuinely new stories only (Step 2). If this step fails, something drifted independently of this review — investigate and report it rather than re-baselining past it.
 
 - [ ] **Step 2: Add any missing states**
 
