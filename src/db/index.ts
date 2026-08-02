@@ -88,6 +88,7 @@ import { migration074MemoryRecordInjection } from './migrations/074_memory_recor
 import { migration075MemoryRecallShadowLog } from './migrations/075_memory_recall_shadow_log.js'
 import { migration076MemoryProfileContaminatedAt } from './migrations/076_memory_profile_contaminated_at.js'
 import { migration077MemoryCanonicalCapture } from './migrations/077_memory_canonical_capture.js'
+import { migration078MemoryProjectionRecords } from './migrations/078_memory_projection_records.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -200,6 +201,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration075MemoryRecallShadowLog,
   migration076MemoryProfileContaminatedAt,
   migration077MemoryCanonicalCapture,
+  migration078MemoryProjectionRecords,
 ]
 
 export const initDb = (): void => {

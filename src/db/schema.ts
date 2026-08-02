@@ -104,6 +104,8 @@ export type {
   MemoryCanonicalCaptureAttemptRow,
   MemoryCanonicalStateRow,
 } from './memory-canonical-schema.js'
+export { memoryProjectionRecords } from './memory-projection-schema.js'
+export type { MemoryProjectionRecordRow } from './memory-projection-schema.js'
 export { versionAnnouncements, announcementDeliveries } from './announcement-schema.js'
 export const groupMembers = sqliteTable(
   'group_members',
