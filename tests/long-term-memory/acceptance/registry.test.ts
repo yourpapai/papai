@@ -8,6 +8,7 @@ import { describe, expect, test } from 'bun:test'
 import { CASE_TABLES, coveredShapes } from './coverage.js'
 import { PREDICATE_REGISTRATIONS, type PredicateRegistration, registrationFor } from './predicate-registrations.js'
 import {
+  type Criterion,
   CRITERIA,
   CRITERION_KEYS,
   type CriterionKey,
@@ -17,6 +18,24 @@ import {
   SHAPE_KEYS,
   SHAPES,
 } from './registry.js'
+import { criterionDetail } from './report.js'
+
+/**
+ * No live `predicate-registered` criterion currently names a `declared-unimplemented` shape in
+ * its `registeredShapes` (the one example was consumed when `capture-idempotency` was promoted).
+ * The rule that permits it — registering a cell is a promise to build the fixture, not a claim
+ * the fixture exists — is still real: `Criterion.registeredShapes` in `registry.ts` is explicitly
+ * documented to allow it. This witness proves that against the one real consumer of
+ * `registeredShapes` outside the registry itself: `criterionDetail` in `report.ts`, which renders
+ * registered cells into the human-readable acceptance report. It is built from a real
+ * `declared-unimplemented` shape drawn from the frozen `SHAPES` data, not fabricated — not by
+ * restating the type.
+ */
+function requireDeclaredUnimplementedShape(): (typeof SHAPES)[number] {
+  const shape = SHAPES.find((s) => s.status === 'declared-unimplemented')
+  if (shape === undefined) throw new Error('expected at least one declared-unimplemented shape in SHAPES')
+  return shape
+}
 
 describe('acceptance registry contract', () => {
   test('criteria cover the frozen key list exactly', () => {
@@ -175,6 +194,13 @@ describe('acceptance registry coverage cross-check', () => {
     const registered = new Set(CRITERIA.flatMap((c) => c.registeredShapes))
     expect(registered.size).toBeGreaterThan(0)
     for (const shape of registered) expect(SHAPE_KEYS).toContain(shape)
+  })
+
+  test('the report names a registered cell even when it has no fixture yet', () => {
+    const unimplementedShape = requireDeclaredUnimplementedShape()
+    const witness: Criterion = { ...criterionByKey('races'), registeredShapes: [unimplementedShape.key] }
+
+    expect(criterionDetail(witness)).toContain(unimplementedShape.key)
   })
 })
 

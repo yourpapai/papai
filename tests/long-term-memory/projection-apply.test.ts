@@ -60,6 +60,12 @@ const positionAt = (index: number): number => {
   return row.position
 }
 
+const attemptCountAt = (index: number): number => {
+  const row = outbox()[index]
+  if (row === undefined) throw new Error(`no outbox row at index ${index}`)
+  return row.attemptCount
+}
+
 const requireEvent = (row: MemoryCanonicalEventRow | undefined): MemoryCanonicalEventRow => {
   if (row === undefined) throw new Error('no canonical event')
   return row
@@ -186,9 +192,11 @@ describe('applyOutboxItem', () => {
     const position = firstPosition()
     applyOutboxItem(position, NOW)
     const afterFirst = shadow()
+    const attemptCountAfterFirst = attemptCountAt(0)
 
     expect(applyOutboxItem(position, NOW)).toBe('applied')
     expect(shadow()).toEqual(afterFirst)
+    expect(attemptCountAt(0)).toBe(attemptCountAfterFirst + 1)
   })
 
   test('an event with no record id projects under its idempotency identity', () => {

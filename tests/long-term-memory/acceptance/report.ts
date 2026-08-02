@@ -18,7 +18,7 @@ const CRITERION_MARKS: Readonly<Record<Criterion['status'], string>> = {
   'declared-unmet': '!',
 }
 
-const criterionDetail = (criterion: Criterion): string => {
+export const criterionDetail = (criterion: Criterion): string => {
   if (criterion.status === 'implemented') return `shapes: ${coveredShapes(criterion.key).join(', ')}`
   const blocker = `blocker: ${criterion.blocker ?? ''}`
   if (criterion.status === 'declared-unmet') return blocker
