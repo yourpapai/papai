@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { burndownBlock, burndownIsEmpty } from '../../review-loop/src/summary-burndown.js'
+import { burndownBlock } from '../../review-loop/src/summary-burndown.js'
 import type { RoundMetric } from '../../review-loop/src/trace-log.js'
 
 function zeroMetric(round: number): RoundMetric {
@@ -31,23 +31,36 @@ function zeroMetric(round: number): RoundMetric {
   }
 }
 
-describe('burndownIsEmpty', () => {
-  test('true when every round is entirely zero', () => {
-    expect(burndownIsEmpty([zeroMetric(1), zeroMetric(2)])).toBe(true)
-  })
-
-  test('false as soon as any field is non-zero', () => {
-    const metric = zeroMetric(1)
-    metric.decisions.fixed = 1
-    expect(burndownIsEmpty([metric])).toBe(false)
-  })
-})
+function busyMetric(round: number): RoundMetric {
+  const metric = zeroMetric(round)
+  metric.newIssues = 4
+  metric.cumulativeOpen = 2
+  metric.decisions.fixed = 2
+  metric.decisions.invalid = 1
+  metric.reviewerSeverity = { critical: 0, high: 1, medium: 2, low: 1 }
+  metric.fixerSeverity = { critical: 0, high: 1, medium: 1, low: 1 }
+  metric.phaseMs = { review: 178_300, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 }
+  metric.usage = { inputTokens: 120_000, outputTokens: 8_000, reasoningTokens: 3_000, costUsd: 1.234 }
+  return metric
+}
 
 describe('burndownBlock', () => {
-  test('renders header and one row per round', () => {
-    const block = burndownBlock([zeroMetric(1)])
-    expect(block).toContain('Burndown:')
-    expect(block).toContain('round')
-    expect(block.split('\n')).toHaveLength(3)
+  test('returns empty string when every round has zero activity', () => {
+    expect(burndownBlock([zeroMetric(1), zeroMetric(2)])).toBe('')
+  })
+
+  test('renders header aligned with row columns', () => {
+    const block = burndownBlock([busyMetric(1)])
+    const lines = block.split('\n')
+    expect(lines[0]).toBe('Burndown:')
+    expect(lines[1]).toBe('  round new open fixed rejected needs_human plan_drift insp_rej avgRev avgFix')
+    expect(lines[2]).toBe('  1     4   2    2     1        0           0          0        2.0    2.0')
+  })
+
+  test('drops zero-activity rows but keeps active ones', () => {
+    const block = burndownBlock([busyMetric(1), zeroMetric(2)])
+    const lines = block.split('\n')
+    expect(lines).toHaveLength(3)
+    expect(block).not.toContain('  2     0')
   })
 })

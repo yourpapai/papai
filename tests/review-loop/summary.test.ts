@@ -141,6 +141,12 @@ describe('buildSummary zero suppression', () => {
     expect(summary).toContain('Burndown:')
     expect(summary).toContain('round')
   })
+
+  test('drops zero-activity rounds from a multi-round burndown', () => {
+    const summary = buildSummary(inputOf({ metrics: [busyMetric(1), zeroMetric(2)] }))
+    expect(summary).toContain('Burndown:')
+    expect(summary).not.toContain('  2     0')
+  })
 })
 
 describe('buildSummary timing and cost', () => {

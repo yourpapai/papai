@@ -14,7 +14,7 @@ import {
 import type { IssueLedgerSnapshot, LedgerIssueRecord } from './issue-ledger.js'
 import { formatDuration } from './live-renderer.js'
 import type { ReviewLoopResult } from './loop-controller.js'
-import { burndownBlock, burndownIsEmpty } from './summary-burndown.js'
+import { burndownBlock } from './summary-burndown.js'
 import type { PhaseMs, RoundMetric, UsageTotals } from './trace-log.js'
 
 const PHASE_KEYS: (keyof PhaseMs)[] = ['review', 'match', 'verify', 'build', 'inspect', 'fix']
@@ -215,9 +215,8 @@ export function buildSummary(input: SummaryInput): string {
   const issues = issuesBlock(input.ledger)
   if (issues.length > 0) lines.push('', ...issues)
 
-  if (input.metrics.length > 0 && (input.metrics.length > 1 || !burndownIsEmpty(input.metrics))) {
-    lines.push('', burndownBlock(input.metrics))
-  }
+  const burndown = burndownBlock(input.metrics)
+  if (burndown !== '') lines.push('', burndown)
 
   lines.push('', ...artifactsBlock(input.runDir))
   return lines.join('\n')
