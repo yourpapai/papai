@@ -7,6 +7,7 @@
   import { untrack } from 'svelte'
 
   import { FetchError } from '../../shared/fetcher-helpers.js'
+  import { formatFetchError } from '../../shared/format-error.js'
   import Confirm from '../../shared/Confirm.svelte'
   import Btn from '../../shared/ui/Btn.svelte'
   import ErrorState from '../../shared/ui/ErrorState.svelte'
@@ -145,7 +146,7 @@
       return true
     } catch (err) {
       if (id === contextId) {
-        error = err instanceof Error ? err.message : String(err)
+        error = formatFetchError(err)
         errorField = err instanceof FetchError ? (err.field ?? null) : null
       }
       return false
@@ -212,7 +213,7 @@
       const ok = await load(contextId)
       if (ok) status = 'Code host saved.'
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = formatFetchError(err)
       errorField = err instanceof FetchError ? (err.field ?? null) : null
     } finally {
       saving = false
@@ -233,7 +234,7 @@
       await clearCodingCredentials({ contextId, namespace: 'forge' })
       ok = true
     } catch (err) {
-      clearError = err instanceof Error ? err.message : String(err)
+      clearError = formatFetchError(err)
     } finally {
       clearing = false
     }

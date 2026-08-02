@@ -605,6 +605,20 @@ describe('CodeHostSection', () => {
     void unmount(component)
   })
 
+  test('a dropped connection on load shows the friendly unreachable-server message', async () => {
+    setMockFetch(() => Promise.reject(new TypeError('Failed to fetch')))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodeHostSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1' },
+    })
+    await drain()
+    const message = target.querySelector('.ui-error__message')
+    expect(message?.textContent).toBe("Couldn't reach the server. Check your connection and try again.")
+    void unmount(component)
+  })
+
   test('a save success line is announced via role="status"', async () => {
     setCsrfToken('csrf-t')
     setMockFetch(routeCodeHostMock)

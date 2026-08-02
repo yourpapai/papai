@@ -787,6 +787,40 @@ describe('CodingCredentialsSection', () => {
     void unmount(component)
   })
 
+  test('Save stays disabled on load even if a sensitive field reports hasValue:false with a non-empty value', async () => {
+    // Regression guard: initialDrafts and formDirty must agree on the baseline an untouched
+    // sensitive field is compared against. If they use different rules (e.g. one keys off
+    // hasValue, the other off sensitive alone), a payload where hasValue is false but value is
+    // non-empty makes the two disagree, and Save comes up enabled with no user edit.
+    setMockFetch(() =>
+      Promise.resolve(
+        json({
+          namespace: 'agent-provider',
+          configured: true,
+          complete: false,
+          missing: [],
+          fields: [
+            {
+              key: 'provider_api_key',
+              label: 'Anthropic API Key',
+              required: true,
+              sensitive: true,
+              hasValue: false,
+              value: 'stale-leftover-value',
+            },
+          ],
+        }),
+      ),
+    )
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+    const save = target.querySelector<HTMLButtonElement>('[data-testid="coding-credentials-save"]')!
+    expect(save.disabled).toBe(true)
+    void unmount(component)
+  })
+
   test('a failed initial load renders ErrorState with a retry control', async () => {
     setMockFetch(() => Promise.resolve(new Response('boom', { status: 500 })))
     document.body.innerHTML = '<div id="root"></div>'
@@ -794,6 +828,17 @@ describe('CodingCredentialsSection', () => {
     const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
     await drain()
     expect(target.querySelector('[data-testid="error-retry"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('a dropped connection on load shows the friendly unreachable-server message', async () => {
+    setMockFetch(() => Promise.reject(new TypeError('Failed to fetch')))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+    const message = target.querySelector('.ui-error__message')
+    expect(message?.textContent).toBe("Couldn't reach the server. Check your connection and try again.")
     void unmount(component)
   })
 

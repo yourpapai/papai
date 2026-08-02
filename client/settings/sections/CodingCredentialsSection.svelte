@@ -7,6 +7,7 @@
   import { untrack } from 'svelte'
 
   import { FetchError } from '../../shared/fetcher-helpers.js'
+  import { formatFetchError } from '../../shared/format-error.js'
   import Confirm from '../../shared/Confirm.svelte'
   import Btn from '../../shared/ui/Btn.svelte'
   import Combobox from '../../shared/ui/Combobox.svelte'
@@ -60,9 +61,11 @@
   )
   const unreadableError = $derived(currentData?.unreadable === true ? currentData.error : null)
 
-  // Whole-record save is meaningful only when at least one field's draft differs from its
-  // stored value. A sensitive field's editor baseline is '' (untouched secret).
-  const formDirty = $derived(fields.filter((f) => !fieldHidden(f)).some((f) => (drafts[f.key] ?? '') !== (f.sensitive ? '' : f.value)))
+  // Whole-record save is meaningful only when at least one field's draft differs from the
+  // baseline the field visibly shows on first render (see displayedValue) — not the raw
+  // stored value, which would flag an untouched sensitive field as dirty even though its
+  // editor always starts blank.
+  const formDirty = $derived(fields.filter((f) => !fieldHidden(f)).some((f) => (drafts[f.key] ?? '') !== displayedValue(f)))
 
   // Track current agent draft for filtering provider options
   const agentField = $derived(fields.find((f) => f.key === 'agent'))
@@ -106,8 +109,15 @@
     return opts
   }
 
+  // The baseline value a field visibly shows before any edits, shared by initialDrafts (what
+  // the draft starts as) and formDirty (what an untouched draft is compared against) so the
+  // two can never drift apart: a sensitive field always starts blank (its editor never shows
+  // the real secret), regardless of whether the server reports a stored value.
+  function displayedValue(f: CodingCredentialField): string {
+    return f.sensitive ? '' : f.value
+  }
   function initialDrafts(nextFields: CodingCredentialField[]): Record<string, string> {
-    return Object.fromEntries(nextFields.map((f) => [f.key, f.sensitive && f.hasValue ? '' : f.value]))
+    return Object.fromEntries(nextFields.map((f) => [f.key, displayedValue(f)]))
   }
   function displaySecret(value: string): string {
     return value.includes('*') ? maskSecret(value) : '••••••••'
@@ -127,7 +137,7 @@
       return true
     } catch (err) {
       if (id === contextId) {
-        error = err instanceof Error ? err.message : String(err)
+        error = formatFetchError(err)
         errorField = err instanceof FetchError ? (err.field ?? null) : null
       }
       return false
@@ -198,7 +208,7 @@
       const ok = await load(contextId)
       if (ok) status = 'AI provider saved.'
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = formatFetchError(err)
       errorField = err instanceof FetchError ? (err.field ?? null) : null
     } finally {
       saving = false
@@ -219,7 +229,7 @@
       await clearCodingCredentials({ contextId })
       ok = true
     } catch (err) {
-      clearError = err instanceof Error ? err.message : String(err)
+      clearError = formatFetchError(err)
     } finally {
       clearing = false
     }
