@@ -13,7 +13,7 @@ export type StoryTier = (typeof STORY_TIERS)[number]
  * never speculatively: an executable record may only claim a live tier, so a
  * planned tier can never be mistaken for coverage that exists.
  */
-export const LIVE_STORY_TIERS: readonly StoryTier[] = Object.freeze(['0', '1', '2', '3'])
+export const LIVE_STORY_TIERS: readonly StoryTier[] = Object.freeze(['0', '1', '2', '3', '4'])
 
 /**
  * Repository-relative suite root each tier's stories live under. A record's story
@@ -1574,6 +1574,13 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
       'tests/stories/http/stats.story.test.ts#SCN-stats-aggregate-window: global stats respect requested aggregation windows',
     ],
   },
+  'SCN-deferred-poller-lifecycle': {
+    verifiedAt: '2026-08-01',
+    provingTier: '4',
+    storyIds: [
+      'tests/operational/scenarios/deferred-poller-lifecycle.operational.ts#starts, runs, and stops deferred pollers without residual scheduler tasks',
+    ],
+  },
 }
 
 function auditRecord(readiness: AuditReadiness, family: StoryFamily, rationale: string): AuditRecord {
@@ -1590,13 +1597,6 @@ const blocked = (family: StoryFamily, rationale: string): AuditRecord =>
   auditRecord({ state: 'blocked', blocker: 'missing-implementation' }, family, rationale)
 
 export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
-  // Phase 3 — uncatalogued runtime cluster; catalog-only until each record has a literal story mapping.
-  'SCN-deferred-poller-lifecycle': needs(
-    'F5',
-    ['scheduler-due-seed', 'scheduler-chat-di'],
-    '4',
-    'This verifies timer lifecycle and controlled polling, requiring the operational virtual-clock lane.',
-  ),
   // F1 — tool assembly, disclosure, and command surface (refactor-risk first)
   'SCN-cmd-nerv': blocked(
     'F1',
