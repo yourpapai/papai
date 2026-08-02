@@ -23,6 +23,18 @@
 
   const filtered = $derived(dashboard.logs.map((entry, originalIndex) => ({ entry, originalIndex })))
 
+  // Match the selected row by content identity, not positional index: `loadOlder`
+  // prepends entries via `unshift`, which shifts every existing index. A content
+  // key keeps the highlight pinned to the clicked row, mirroring `traceKey`/
+  // `failureKey` in the sibling lists.
+  function logKey(entry: LogEntry): string {
+    return `${entry.time}|${entry.msg}|${entry.scope ?? ''}`
+  }
+
+  const selectedLogKey = $derived(
+    dashboard.selectedDetail?.kind === 'log' ? logKey(dashboard.selectedDetail.payload.entry) : '',
+  )
+
   let autoScroll = $state(true)
   let entriesEl: HTMLDivElement | null = $state(null)
 
@@ -165,8 +177,7 @@
         {#each filtered as fl, i (i)}
           <div
             class="log-entry {levelClass(fl.entry.level)}"
-            class:selected={dashboard.selectedDetail?.kind === 'log' &&
-              dashboard.selectedDetail.payload.index === fl.originalIndex}
+            class:selected={selectedLogKey === logKey(fl.entry)}
             role="button"
             tabindex="0"
             onclick={() => onSelectLog(fl.entry, fl.originalIndex)}

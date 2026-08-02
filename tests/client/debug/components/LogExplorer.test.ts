@@ -10,6 +10,7 @@ import { mount, unmount } from 'svelte'
 import LogExplorer from '../../../../client/debug/components/LogExplorer.svelte'
 import type { DashboardState } from '../../../../client/debug/dashboard-types.js'
 import type { LogFilter } from '../../../../client/debug/log-filter-url.js'
+import type { LogEntry } from '../../../../client/shared/api-types.js'
 
 function makeDashboard(overrides: Partial<LogFilter> = {}): DashboardState {
   return {
@@ -54,6 +55,28 @@ describe('LogExplorer.svelte', () => {
     const dashboard = { ...makeDashboard(), logsError: 'initial log load failed' }
     const c = mount(LogExplorer, { target, props: { dashboard, onSelectLog: () => {} } })
     expect(target.textContent).toContain('initial log load failed')
+    void unmount(c)
+  })
+
+  test('highlights the selected row by content identity, not a stale positional index', () => {
+    // Reproduces the load-older desync: after `unshift` shifts every index, the
+    // stored `selectedDetail.payload.index` no longer matches the clicked row's
+    // current position. Here the payload entry is the second row but its index
+    // points at the first row's position.
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const entryA: LogEntry = { time: 1, level: 30, msg: 'message processed', scope: 'bot' }
+    const entryB: LogEntry = { time: 2, level: 40, msg: 'degraded provider response', scope: 'bot' }
+    const dashboard: DashboardState = {
+      ...makeDashboard(),
+      logs: [entryA, entryB],
+      selectedDetail: { kind: 'log', payload: { entry: entryB, index: 0 } },
+    }
+    const c = mount(LogExplorer, { target, props: { dashboard, onSelectLog: () => {} } })
+    const rows = target.querySelectorAll<HTMLElement>('.log-entry')
+    expect(rows.length).toBe(2)
+    expect(rows[0]!.classList.contains('selected')).toBe(false)
+    expect(rows[1]!.classList.contains('selected')).toBe(true)
     void unmount(c)
   })
 })
