@@ -5,6 +5,8 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { asc } from 'drizzle-orm'
+
 import { getDrizzleDb } from '../../../src/db/drizzle.js'
 import {
   memoryCanonicalCaptureAttempts,
@@ -32,8 +34,13 @@ const attempts = (): MemoryCanonicalCaptureAttemptRow[] =>
  * snapshot). Anchoring at least one assertion per byte-identity claim to a concrete row count
  * and concrete content here is what makes that claim load-bearing rather than a comparison of
  * two empty strings.
+ *
+ * Ordered by projection key, matching `projectionSnapshot`. Without it the `shadow()[0]` content
+ * assertions below would be correct only by coincidence — SQLite returns rowid order absent an
+ * `ORDER BY`, which happens to agree with month order on a freshly reset table.
  */
-const shadow = (): MemoryProjectionRecordRow[] => getDrizzleDb().select().from(memoryProjectionRecords).all()
+const shadow = (): MemoryProjectionRecordRow[] =>
+  getDrizzleDb().select().from(memoryProjectionRecords).orderBy(asc(memoryProjectionRecords.projectionKey)).all()
 
 const settle = (): string => {
   drainProjectionOutbox(DRAIN_AT)
