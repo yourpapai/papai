@@ -4,7 +4,7 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
-  import { formatTime } from '../../shared/helpers.js'
+  import { formatDuration, formatTime } from '../../shared/helpers.js'
   import type { Turn, DashboardState, ScopeFilter } from '../dashboard-types.js'
   import { panelCount } from '../panel-count.js'
   import DataTable from '../../shared/ui/DataTable.svelte'
@@ -139,7 +139,7 @@
       </span>
     {/if}
   {:else if col.key === 'durationMs'}
-    {row.durationMs}ms
+    {formatDuration(row.durationMs)}
   {:else if col.key === 'time'}
     {row.time}
   {:else if col.key === 'scope'}

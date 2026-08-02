@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { fmtNum, formatTime, formatTokens } from '../../shared/helpers.js'
+  import { formatDuration, formatTime, formatTokens } from '../../shared/helpers.js'
   import type { LlmTrace, DashboardState } from '../dashboard-types.js'
   import EmptyState from '../../shared/ui/EmptyState.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
@@ -45,7 +45,7 @@
               <span class="trace-time">{formatTime(trace.timestamp)}</span>
               <span class="trace-user">{trace.userId}</span>
               <span class="trace-model">{trace.model}</span>
-              <span class="trace-duration">{fmtNum(trace.duration / 1000, 1)}s</span>
+              <span class="trace-duration">{formatDuration(trace.duration)}</span>
               <span>{trace.steps} steps · {formatTokens(trace.totalTokens.inputTokens)}↓</span>
             </div>
           </div>
