@@ -48,7 +48,7 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 - **Resolved:** `2ab790294` ("fix(debug): 720px responsive collapse for dashboard grid and top bar")
 - **Dimension:** 7. Responsive / layout
 - **Where visible:** `DebugApp — narrow 640px` screenshot — single-column stacked layout, top bar wraps to two rows, no overlap or 1-char wrapping
-- **Source:** `client/debug/debug.css:347` (`@media (max-width: 720px)` collapses `.debug-grid`/`.debug-grid__center-row` to `minmax(0, 1fr)`); `client/debug/components/DebugTopBar.svelte:110` (`flex-wrap: wrap` on both top-bar rows at the same breakpoint)
+- **Source:** `client/debug/debug.css:347` (`@media (max-width: 720px)` collapses `.debug-grid`/`.debug-grid__center-row` to `minmax(0, 1fr)`); `client/debug/components/DebugTopBar.svelte:113` (`flex-wrap: wrap` on both top-bar rows at the same breakpoint)
 - **Suggested fix:** ~~Add a breakpoint that collapses the three columns into a single stacked flow (rail last or as an overlay) and lets the top bar wrap.~~ Done.
 
 ### [High] Keyboard focus is invisible on every clickable row

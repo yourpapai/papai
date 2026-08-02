@@ -134,7 +134,7 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
   active)` (a friendly name), but the fixture's second, unbound option
   (`{ id: 'inst_bare', type: 'youtrack', status: 'active' }`, no `name`) would still render as
   the raw id `inst_bare (youtrack · active)` if selected/opened
-  (`client/stories/msw/settings-handlers-group.ts:85`).
+  (`client/stories/msw/settings-handlers-group.ts:86`).
 - **Source:** `client/settings/sections/GroupProviderSection.svelte:97`
   (`` label: `${o.name ?? o.id} (${o.type} · ${o.status})` ``) — the schema's `name` field is
   optional (`client/settings/fetcher-schemas.ts:204-209`, `TaskInstanceOptionSchema.name:

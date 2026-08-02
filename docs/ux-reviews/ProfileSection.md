@@ -16,7 +16,7 @@ See LICENSE in the project root for details.
 > carries a one-line described fix; acting on it is a separate human decision.
 
 **Why this section:** `profile` is the default landing view for every settings visit
-(`SettingsApp.svelte:81`, `activeId = initialHash || 'profile'`) and sits at the top of the
+(`SettingsApp.svelte:100`, `activeId = initialHash || 'profile'`) and sits at the top of the
 primary "Personal" group. The populated view renders a single field: ProfileSection filters to
 `field.kind === 'preference'` (`ProfileSection.svelte:25`), so the fixture's `ai-output` field
 is excluded and only `display_name` shows.

@@ -64,6 +64,15 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 - **Source:** `client/settings/components/ConfigFieldRow.svelte:107-122` (`saveEnum`), `:133` (`disabled={saving}` on `SegmentedControl`), `client/shared/ui/SegmentedControl.svelte:73-76` (`:disabled { opacity: 0.5 }`, no distinct busy state) vs. `client/settings/components/ConfigFieldRow.svelte:177` (`{saving ? 'Saving…' : 'Save'}` on the text-field `Save` button, showing the pattern exists elsewhere but isn't applied to the segmented control)
 - **Suggested fix:** Give the segmented control a busy visual distinct from plain-disabled (e.g. a subtle pulsing accent on the selected segment) while `saving`, mirroring the text-field Save button's "Saving…" label.
 
+### [Low] No positive confirmation that a save actually succeeded
+
+- **Id:** ai-output-no-save-confirmation
+- **Status:** open
+- **Dimension:** 4. Feedback & state
+- **Where visible:** Not capturable in a single frame — behaviour confirmed in source: after `saveEnum` resolves, the segmented control simply stops being disabled and shows the newly-selected option; there is no toast, inline "Saved" text, or other transient signal distinguishing a completed save from the control having just never been touched.
+- **Source:** `client/settings/components/ConfigFieldRow.svelte:114-115` — `await patchConfig({ key: field.key, value: next, contextId })` is immediately followed by `onSaved()` (`AiOutputSection.svelte:82`'s `() => void load(contextId)`), which only re-fetches fields; neither call surfaces any success indicator to the user.
+- **Suggested fix:** Show a brief, auto-dismissing "Saved" confirmation (e.g. next to the control or via a shared toast) when `saveEnum` resolves successfully.
+
 ### [Low] Controls in the field row don't share a height baseline or radius
 
 - **Id:** ai-output-controls-misaligned

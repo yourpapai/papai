@@ -39,6 +39,13 @@ const ANCHOR = /`(?<anchor>[^`]+?:\d+)`/u
  * The markdown license header exactly as `scripts/add-license-headers.ts` emits it.
  * `_BACKLOG.md` is both generated and stamped; if these two disagree by a byte the
  * stamper and the currency test rewrite each other forever.
+ *
+ * Known limitation: this only holds within a calendar year. `normalizeMdCopyrightLine`
+ * (`scripts/add-license-headers.ts:188-202`) rewrites a single-year line into a
+ * `startYear-currentYear` range once `currentYear > endYear`, whereas the single line here
+ * only ever emits one year. If `bun run license:headers` stamps `_BACKLOG.md` in a year after
+ * it was last regenerated, it produces a range and the currency test reports the file stale —
+ * `bun run ux:backlog` reruns and resolves it, so this converges rather than looping forever.
  */
 export const LICENSE_HEADER_LINES = [
   '<!--',

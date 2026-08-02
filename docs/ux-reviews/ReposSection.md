@@ -92,7 +92,7 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 - **Status:** open
 - **Dimension:** 6. Accessibility (also 4. Feedback & state)
 - **Where visible:** `ReposSection — added, success status` — "Repository added." now carries `role="status"` (error carries `role="alert"`), so both are announced; but the message still renders at the very top of the section, above any existing repo rows, and stays there indefinitely.
-- **Source:** `client/settings/sections/ReposSection.svelte:124-125` (`role="alert"` / `role="status"` added — the accessibility gap from the prior review is closed), `:88,103` (`status` is only cleared at the start of the next `handleAdd`/`handleDelete`, never on a timer or on navigating away).
+- **Source:** `client/settings/sections/ReposSection.svelte:124-125` (`role="alert"` / `role="status"` added — the accessibility gap from the prior review is closed), `:71,98` (`status` is only cleared at the start of the next `handleAdd`/`handleDelete`, never on a timer or on navigating away).
 - **Suggested fix:** Move the add-form outcome next to the add form (or scroll it into view), and time out the success message after a few seconds.
 - **Note:** narrowed from the original finding — the "never announced" half is fixed (`7d3a331b9`); only placement and auto-clear remain.
 
@@ -102,7 +102,7 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 - **Status:** fixed
 - **Resolved:** `e6e223424` ("refactor(settings): put the repo add form on the shared layout and tokens") — moved the 11px meta/label/help text from `--fg3` to `--fg-hint`.
 - **Dimension:** 6. Accessibility
-- **Source:** `client/settings/sections/ReposSection.svelte:275-279` (`.settings-repos__meta`), `:293-303` (`.settings-repos__add-label`, `.settings-repos__add-note`) all use `var(--text-dim)` (the `--fg-hint` alias post-token-migration in `09f46aa3c`); `--text-dim` (`#828d84`) on `--surface-1` (`#111512`) computes to ≈5.3:1, clearing the 4.5:1 AA floor (token comment in `tokens.css:21` documents ≈5.69:1 on `--bg`).
+- **Source:** `client/settings/sections/ReposSection.svelte:275-279` (`.settings-repos__meta`), `:292,298` (`.settings-repos__add-label`, `.settings-repos__add-note`) all use `var(--text-dim)` (the `--fg-hint` alias post-token-migration in `09f46aa3c`); `--text-dim` (`#828d84`) on `--surface-1` (`#111512`) computes to ≈5.3:1, clearing the 4.5:1 AA floor (token comment in `tokens.css:21` documents ≈5.69:1 on `--bg`).
 
 ### [Low] A repository can only be added or deleted, never edited
 
