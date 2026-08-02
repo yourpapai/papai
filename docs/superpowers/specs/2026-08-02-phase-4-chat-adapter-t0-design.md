@@ -73,7 +73,8 @@ not edited to claim a target increase.
 
 ## Documentation
 
-Add the following policy to the refactor checklist or its canonical equivalent:
+Add the following policy to `docs/architecture/commands.md` under `Hermetic story
+qualification`:
 
 > Chat adapter transport is Tier 3 evidence. It is a nightly/manual-review
 > responsibility and cannot qualify a refactor through 0Q.
