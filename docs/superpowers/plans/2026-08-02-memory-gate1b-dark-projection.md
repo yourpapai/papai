@@ -386,12 +386,14 @@ describe('projectionKeyFor', () => {
 })
 
 describe('winsAgainst', () => {
-  test('a later event time wins', () => {
-    expect(winsAgainst(at(LATE), at(EARLY))).toBe(true)
+  // Both sides carry distinct identities, chosen so the identity tie-break would push the
+  // opposite way: these assert that event time dominates it, not merely that something wins.
+  test('a later event time wins even when its identity sorts later', () => {
+    expect(winsAgainst(at(LATE, 'ident-z'), at(EARLY, 'ident-a'))).toBe(true)
   })
 
-  test('an earlier event time loses, whichever order it is applied in', () => {
-    expect(winsAgainst(at(EARLY), at(LATE))).toBe(false)
+  test('an earlier event time loses even when its identity sorts earlier', () => {
+    expect(winsAgainst(at(EARLY, 'ident-a'), at(LATE, 'ident-z'))).toBe(false)
   })
 
   test('equal event times break on idempotency identity ascending', () => {
@@ -1604,6 +1606,7 @@ git commit -m "feat(memory): drain the projection outbox with a derived checkpoi
 **Files:**
 - Modify: `src/long-term-memory/canonical-identity.ts` (export the existing `stableStringify` — add `export` to its declaration at ~line 71; change nothing else)
 - Create: `src/long-term-memory/projection-snapshot.ts`
+- Modify: `knip.config.ts` (declare the snapshot an entry — see Step 5b)
 - Test: `tests/long-term-memory/projection-snapshot.test.ts`
 
 **Interfaces:**
@@ -1842,6 +1845,23 @@ export function projectionSnapshot(scope: MemoryScope): string {
 Run: `bun test tests/long-term-memory/projection-snapshot.test.ts`
 Expected: PASS, 9 tests.
 
+- [ ] **Step 5b: Declare the snapshot a knip entry point**
+
+Every other Gate 1b module gains a production importer as the chain lands — `projection-fold` from `projection-apply`, `projection-apply` and `projection-config` from `projection-drain`, `projection-drain` from the scheduler in Task 9. `projection-snapshot` does not: knip's project scope is production-only (`src/**/*.ts!`), so its test importers do not count, and its next production consumer is Gate 1d's reconciliation. Without a declaration it stays permanently unused and Task 9's knip step cannot pass.
+
+`knip.config.ts` states its own preference for this case: *"prefer targeted fixes (`*.testing.ts` shims, entry declarations) over new ignore lines."* An entry declaration is the sanctioned mechanism, and `src/coding-sessions/*.ts!` are existing precedent for declaring a stable boundary an entry. This is **not** an ignore, and it does not suppress a finding — the file is still fully type-checked, linted, and traced for its own unused exports.
+
+In `knip.config.ts`, add to the `entry` array, immediately after the `'scripts/behavior-audit/reset.ts!'` group or alongside the `src/coding-sessions/` block — wherever the surrounding comment style fits best:
+
+```typescript
+    // Observable O2 of the memory canonical-capture gate: a deterministic projection
+    // snapshot with no production importer until Gate 1d's reconciliation consumes it.
+    // Declared an entry rather than ignored so its own exports stay traced.
+    'src/long-term-memory/projection-snapshot.ts!',
+```
+
+Do not add an `ignore` or `ignoreIssues` line for this file.
+
 - [ ] **Step 6: Prove the field-discipline test is load-bearing**
 
 Temporarily add `eventId: row.eventId,` to the `snapshotRow` object, run `bun test tests/long-term-memory/projection-snapshot.test.ts`, and confirm the "excludes the event id" and "a different ingest time yields the same snapshot" tests FAIL. Then remove that line and re-run to confirm PASS.
@@ -1854,7 +1874,7 @@ This step exists because Gate 1a shipped an equality assertion that a same-type 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/long-term-memory/canonical-identity.ts src/long-term-memory/projection-snapshot.ts tests/long-term-memory/projection-snapshot.test.ts
+git add src/long-term-memory/canonical-identity.ts src/long-term-memory/projection-snapshot.ts knip.config.ts tests/long-term-memory/projection-snapshot.test.ts
 git commit -m "feat(memory): add the deterministic projection snapshot"
 ```
 
@@ -2452,7 +2472,11 @@ Expected: PASS. If `tests/scheduler-instance.test.ts` does not exist, run only t
 - [ ] **Step 5: Confirm knip now passes**
 
 Run: `bun knip`
-Expected: exit 0. If any Gate 1b module is still reported unused, it is genuinely unreachable — find the missing import rather than adding an ignore. `knip.config.ts` states that new ignores require an inline justification naming a dynamic mechanism knip cannot trace; an unwired module is not that.
+Expected: exit 0.
+
+Note that knip's `project` globs are production-only (`'src/**/*.ts!'`), so a module imported *only* by tests still reports as unused. Every Gate 1b module gains a production importer as the chain lands — except `projection-snapshot.ts`, whose only consumer is Gate 1d's reconciliation. That one clears via the entry declaration added in Task 6, Step 5b, not via an importer; if it is still reported unused here, confirm that declaration landed in `knip.config.ts`.
+
+For any other Gate 1b module still reported unused, it is genuinely unreachable — find the missing import rather than adding an ignore. `knip.config.ts` states that new ignores require an inline justification naming a dynamic mechanism knip cannot trace; an unwired module is not that.
 
 - [ ] **Step 6: Update the roadmap**
 
