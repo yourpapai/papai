@@ -7,7 +7,7 @@ See LICENSE in the project root for details.
 
 # UX Review — KaneoAccessSection
 
-**Date:** 2026-07-08
+**Date:** 2026-08-03
 **Reviewed:** `client/settings/sections/KaneoAccessSection.svelte`
 **States captured:** Populated, Not provisioned, Error, Loading, password-revealed, reveal-button hover · desktop + ~640px narrow
 **Rubric:** [`RUBRIC.md`](./RUBRIC.md)
@@ -17,26 +17,28 @@ See LICENSE in the project root for details.
 
 ## Summary
 
-This section is a clear outlier: it renders raw `<h2>`, `<button>`, `<dl>`, `<a>`, and a
-one-off `.error` class with **zero shared design-system primitives**, while every sibling
-settings section composes `PageHeader` / `Btn` / `Field` / `EmptyState` / `.status-error`.
-The result is UA-default styling (grey native button, default-blue links, browser `dl`
-margins) on a core, security-sensitive surface — the one-time Kaneo password reveal. Most
-findings below trace back to that single root cause.
+Re-review: commit `75b762a5a` ("recompose KaneoAccessSection onto design-system
+primitives", 2026-07-08) rewrote the section from raw `<h2>`/`<button>`/`<dl>`/`<a>` +
+undefined `.error` onto `PageHeader`, `KV`, `StatusPill`, `ErrorState`, `EmptyState`,
+`Code`, and `CopyButton`. Its own commit message names 9 resolved findings; verification
+below confirms 8 of the original 9 are actually fixed against current source/screenshots.
+The one residual: the revealed password still cannot be re-hidden (copy affordance itself
+is now present via `CopyButton`), so that finding is narrowed rather than closed. This is
+no longer an outlier section — it now matches sibling composition patterns.
 
 ## Scorecard
 
-| Dimension                       | Score | Rationale (one line)                                                                                            |
-| ------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------- |
-| 1. Visual hierarchy & scanning  | fail  | Label and value tiers collapse to one flat mono size; no eyebrow/title rhythm that `PageHeader` gives siblings. |
-| 2. Affordance & signifiers      | warn  | Native button reads as clickable, but no active/selected treatment and inconsistent with app buttons.           |
-| 3. Consistency w/ design system | fail  | Uses no shared primitives at all — raw `h2`/`button`/`dl`/`a` + undefined `.error` class vs. every sibling.     |
-| 4. Feedback & state             | fail  | Error uses an unstyled `.error` class → renders as tiny default-grey text, not alarming; loading is bare.       |
-| 5. Content & language           | warn  | "Not provisioned" is an actionable-less dead-end; labels themselves are clear.                                  |
-| 6. Accessibility                | fail  | Workspace URL uses browser-default link blue (`#0000EE`), very low contrast on the near-black theme.            |
-| 7. Responsive / layout          | warn  | Stacks fine, but long monospace URLs have no wrap/overflow treatment at ~640px.                                 |
-| 8. Spacing, alignment & sizing  | fail  | Browser-default `dl`/`dt`/`dd` margins; no `--gap-*` tokens; cramped, uneven vertical rhythm.                   |
-| 9. Interaction & micro-states   | warn  | Busy "Revealing…" + disabled-in-flight is good; but no hover/active on native button, no re-hide, no copy.      |
+| Dimension                       | Score | Rationale (one line)                                                                                                  |
+| ------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------- |
+| 1. Visual hierarchy & scanning  | pass  | `PageHeader` gives eyebrow/title rhythm; `KV` distinguishes label (`--text-dim`) from value (`--text`) as siblings do. |
+| 2. Affordance & signifiers      | pass  | `Btn`/`IconButton`/`CopyButton` give hover/focus states consistent with the app's shared controls.                     |
+| 3. Consistency w/ design system | pass  | Composes `PageHeader`/`KV`/`StatusPill`/`ErrorState`/`EmptyState`/`Code`/`CopyButton`/`Btn` — no raw elements remain.  |
+| 4. Feedback & state             | pass  | `ErrorState` renders a danger-colored, alert-role message; loading uses shared `.placeholder`; busy button disables.   |
+| 5. Content & language           | warn  | "No Kaneo access yet" hint is informative but still has no action/link — `EmptyState`'s `action` slot is unused.       |
+| 6. Accessibility                | pass  | Workspace URL now uses `var(--accent)` (green) instead of UA-default link blue; contrast is no longer suspect.         |
+| 7. Responsive / layout          | pass  | `.kaneo-url__link { overflow-wrap: anywhere }` plus a `KV` value override let long URLs wrap instead of overflowing.   |
+| 8. Spacing, alignment & sizing  | pass  | Rows use `--gap-inline`/`--gap-field` tokens; no more UA-default `dl` margins.                                         |
+| 9. Interaction & micro-states   | warn  | Busy "Revealing…" + disabled-in-flight and a working copy button exist; the revealed password still can't be re-hidden. |
 
 ## Findings
 
@@ -45,80 +47,88 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [High] Section bypasses the design system entirely
 
 - **Id:** kaneo-access-bypasses-design-system
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `75b762a5a` ("feat(settings): recompose KaneoAccessSection onto design-system primitives", 2026-07-08)
 - **Dimension:** 3. Consistency with the design system
 - **Where visible:** all states (Populated, Error, Loading, Not provisioned)
-- **Source:** `client/settings/sections/KaneoAccessSection.svelte:71` (raw `<section>`), `:72` (`<h2>`), `:80` (`<dl>`), `:95` (`<button>`)
-- **Suggested fix:** Recompose with `PageHeader` (title "My Kaneo access"), `Field`/`Btn` primitives, and `.settings-section`, matching sibling sections instead of raw elements — this is the root cause of most findings below.
+- **Source:** `client/settings/sections/KaneoAccessSection.svelte:81` (`PageHeader`), `:95` (`EmptyState`), `:99` (`ErrorState`), `:102`/`:116` (`KV`+`StatusPill`), `:132` (`Btn`) — no raw `<h2>`/`<dl>`/native `<button>` remain.
+- **Suggested fix:** n/a — resolved.
 
 ### [High] Error state does not read as an error
 
 - **Id:** kaneo-access-error-not-legible
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `75b762a5a`
 - **Dimension:** 4. Feedback & state · 6. Accessibility
-- **Where visible:** Error state (the word "boom" renders as tiny default-grey text, indistinguishable from normal body copy)
-- **Source:** `client/settings/sections/KaneoAccessSection.svelte:78` — `<p class="error">`; `.error` is undefined in the settings scope (only `.status-error` exists, `settings.css:91`)
-- **Suggested fix:** Use the shared `.status-error` (danger-colored) class so failures are visibly alarming, as siblings do.
+- **Where visible:** Error state
+- **Source:** `client/settings/sections/KaneoAccessSection.svelte:99` — now `<ErrorState message={error} onRetry={...} />`; `ErrorState.svelte:20` (`role="alert"`) and `:55` (`.ui-error__message { color: var(--danger) }`) render the message in alarm-red with a warning icon, confirmed in `.storybook-shots/settings/sections/KaneoAccessSection.spec.ts/settings-sections-KaneoAccessSection-Error-1.png`.
+- **Suggested fix:** n/a — resolved.
 
-### [High] One-time revealed password has no copy affordance and cannot be re-hidden
+### [Low] Revealed password cannot be re-hidden
 
 - **Id:** kaneo-access-password-no-copy-rehide
 - **Status:** open
-- **Dimension:** 9. Interaction & micro-states · 5. Content & language
-- **Where visible:** Populated — password revealed (password shown as small inline `<code>`, no button, no container)
-- **Source:** `client/settings/sections/KaneoAccessSection.svelte:92`
-- **Suggested fix:** Present the once-only secret with a copy-to-clipboard control (and optional show/hide toggle) in a clearly delimited container, since manual selection of tiny monospace text invites transcription errors for a value shown exactly once.
+- **Dimension:** 9. Interaction & micro-states
+- **Where visible:** Populated — password revealed
+- **Source:** `client/settings/sections/KaneoAccessSection.svelte:121`–`129` — once `revealedPassword !== null`, there is no control to clear it back to the "Reveal password" button state for the rest of the session
+- **Resolved (partial — narrowed, stays open):** `75b762a5a` added a `CopyButton` (`:126`) next to the `Code`-contained secret, closing the original "no copy affordance, manual selection of tiny text" complaint and downgrading this from High. Narrowed to the residue: there is still no re-hide/clear affordance if the tab is left open after reveal.
+- **Suggested fix:** Add a small "Hide" control next to the copy button that resets `revealedPassword` to `null`, so a user can clear the secret from screen without navigating away.
 
 ### [Med] Workspace URL link is low-contrast on the dark theme
 
 - **Id:** kaneo-access-url-link-low-contrast
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `75b762a5a`
 - **Dimension:** 6. Accessibility
-- **Where visible:** Populated / password-revealed (URL renders in browser-default `#0000EE` blue)
-- **Source:** `client/settings/sections/KaneoAccessSection.svelte:85` — bare `<a>` with no design-system link styling
-- **Suggested fix:** Style the link with a theme token (e.g. accent/link color used elsewhere) so it meets contrast against `--bg`.
+- **Where visible:** Populated / password-revealed
+- **Source:** `client/settings/sections/KaneoAccessSection.svelte:158`–`161` — `.kaneo-url__link { color: var(--accent); overflow-wrap: anywhere; }`; screenshot shows the URL in the app's green accent, not UA-default blue.
+- **Suggested fix:** n/a — resolved.
 
 ### [Med] Flat visual hierarchy — label and value tiers collapse
 
 - **Id:** kaneo-access-flat-hierarchy
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `75b762a5a`
 - **Dimension:** 1. Visual hierarchy & scanning
-- **Where visible:** Populated (Login email / Workspace URL / Status labels sit at nearly the same size/weight as their values)
-- **Source:** `client/settings/sections/KaneoAccessSection.svelte:80`–`89`
-- **Suggested fix:** Adopt the `Field` label/value rhythm (uppercase caption label + `.t-mono-data` value) so labels and values are visually distinct tiers.
+- **Where visible:** Populated
+- **Source:** `client/settings/sections/KaneoAccessSection.svelte:102`,`105`,`116` now render through the shared `KV` component; `KV.svelte:20`–`21` colors the label `var(--text-dim)` and the value `var(--text)`, the same label/value tiering used by every other `KV`-based sibling section (no longer a one-off pattern).
+- **Suggested fix:** n/a — resolved.
 
 ### [Med] Spacing not drawn from the shared scale
 
 - **Id:** kaneo-access-hardcoded-spacing
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `75b762a5a`
 - **Dimension:** 8. Spacing, alignment & sizing
-- **Where visible:** Populated (cramped, zero-gap rows using browser-default `dl` margins)
-- **Source:** `client/settings/sections/KaneoAccessSection.svelte:80`–`89` (no styles defined; UA defaults apply)
-- **Suggested fix:** Lay out rows with the `--gap-field` / `--gap-inline` tokens (via `Field`/flex layout) instead of relying on default `dl`/`dt`/`dd` margins.
+- **Where visible:** Populated
+- **Source:** `client/settings/sections/KaneoAccessSection.svelte:149`–`150` (`gap: var(--gap-inline)`, `margin-top: var(--gap-field)`) and `:166`,`:183` (further `--gap-field` uses) — no default `dl`/`dt`/`dd` margins remain.
+- **Suggested fix:** n/a — resolved.
 
-### [Low] "Not provisioned" empty state is an actionless dead-end
+### [Low] "Not provisioned" empty state still has no next step
 
 - **Id:** kaneo-access-empty-state-dead-end
 - **Status:** open
 - **Dimension:** 5. Content & language
-- **Where visible:** Not provisioned (single sentence, no component, no next step)
-- **Source:** `client/settings/sections/KaneoAccessSection.svelte:76`
-- **Suggested fix:** Use `EmptyState` with an actionable hint (e.g. a link/route to request access) rather than a bare "contact your group admin" line.
+- **Where visible:** Not provisioned
+- **Source:** `client/settings/sections/KaneoAccessSection.svelte:95`–`97` — now composed via `EmptyState` (fixing the "no component" half of the original finding), but no `action` snippet is passed even though `EmptyState` supports one (`EmptyState.svelte:13`,`:23`). The hint text ("ask a group admin to add you") is still the dead end; there is no link or button.
+- **Suggested fix:** Pass an `action` snippet to `EmptyState` (e.g. a link to the members/admin contact) instead of relying on prose alone.
 
 ### [Low] Loading state is unstyled bare text
 
 - **Id:** kaneo-access-loading-unstyled
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `75b762a5a`
 - **Dimension:** 4. Feedback & state
-- **Where visible:** Loading ("Loading…" in default text color)
-- **Source:** `client/settings/sections/KaneoAccessSection.svelte:74`
-- **Suggested fix:** Apply the shared `.placeholder` class (muted color) used by sibling loading states.
+- **Where visible:** Loading
+- **Source:** `client/settings/sections/KaneoAccessSection.svelte:93` — `<p class="placeholder">Loading…</p>`; `.placeholder` is defined at `settings/settings.css:97` (`color: var(--text-muted)`), confirmed muted in the Loading screenshot.
+- **Suggested fix:** n/a — resolved.
 
 ### [Low] Long workspace URL has no wrap/overflow handling
 
 - **Id:** kaneo-access-url-no-wrap-handling
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `75b762a5a`
 - **Dimension:** 7. Responsive / layout
-- **Where visible:** Populated — narrow (~640px); a long monospace URL can overrun its line
-- **Source:** `client/settings/sections/KaneoAccessSection.svelte:85`
-- **Suggested fix:** Allow the URL to wrap/break (word-break/overflow-wrap) so long workspace hosts don't overflow at narrow widths.
+- **Where visible:** Populated — narrow (~640px)
+- **Source:** `client/settings/sections/KaneoAccessSection.svelte:152`–`161` — a `:global(.ui-kv__v)` override sets `white-space: normal; overflow: visible; text-overflow: clip;` for `.kaneo-url`, and `.kaneo-url__link { overflow-wrap: anywhere; }` lets long hosts break instead of overflow.
+- **Suggested fix:** n/a — resolved.

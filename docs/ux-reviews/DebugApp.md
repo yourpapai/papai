@@ -7,10 +7,18 @@ See LICENSE in the project root for details.
 
 # UX Review — Debug Dashboard (DebugApp + components)
 
-**Date:** 2026-08-01
-**Reviewed:** `client/debug/DebugApp.svelte` + `client/debug/components/*` (SessionsList, SessionCard, TraceList, TurnsPanel, LogExplorer, ScopeFilter, NotificationsPanel, ToolFailuresPanel, DebugDetailRail, TurnDetail, TraceDetail, SessionDetail, LogDetail, FailureDetail, LiveContextCard, DebugTopBar)
-**States captured:** Composed Default / Detail-selected / Disconnected-empty; all 36 component state stories (populated, empty, error, running, minimal, wizard, group-scope); narrow 640px app views · desktop + ~640px
+**Date:** 2026-08-03
+**Reviewed:** `client/debug/DebugApp.svelte` + `client/debug/components/*` (SessionsList, SessionCard, TraceList, TurnsPanel, LogExplorer, ScopeFilter, NotificationsPanel, ToolFailuresPanel, DebugDetailRail, TurnDetail, TraceDetail, SessionDetail, LogDetail, FailureDetail, LiveContextCard, DebugTopBar) + shared primitives (`DataTable`, `SummaryList`, `TreeView`, `Btn`, `tokens.css`)
+**States captured:** Composed Default / Connecting / Detail-selected / Disconnected-empty; all 38 component state stories (populated, empty, error, running, minimal, wizard, group-scope, keyboard-focus-ring, raw-expanded); narrow 640px app views · desktop + ~640px
 **Rubric:** [`RUBRIC.md`](./RUBRIC.md)
+
+## Re-review note (2026-08-03)
+
+A merge of `origin/master` at `ff10474e4` plus a run of `debug`-scoped fix commits
+(`1ea40dfc9` through `86c6221c5`) rewrote most of `client/debug/**` and the shared
+`TreeView`/`DataTable`/`SummaryList` primitives between the original review and this
+pass. All 17 findings below were re-verified against the current source and Storybook
+screenshots; every one now has a source-cited fix — see each finding's `Resolved:` line.
 
 > Report-only. This document contains no code changes and no change-plan. Each finding
 > carries a one-line described fix; acting on it is a separate human decision.
@@ -19,15 +27,15 @@ See LICENSE in the project root for details.
 
 | Dimension                       | Score | Rationale (one line)                                                                                            |
 | ------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------- |
-| 1. Visual hierarchy & scanning  | warn  | Panel rhythm is consistent, but turn/failure details are raw JSON dumps with epoch millis — unscannable.        |
-| 2. Affordance & signifiers      | fail  | Rows are hoverable/clickable but nothing marks which row the detail rail is showing; no selected state anywhere. |
-| 3. Consistency w/ design system | warn  | Good reuse of Panel/Pill/Btn/DataTable, but style duplication between `debug.css` and scoped styles + dead CSS.  |
-| 4. Feedback & state             | warn  | Connect pill + load-older busy state are good; disconnect leaves stale stats silently, header counts lie.        |
-| 5. Content & language           | warn  | Debug-appropriate labels, but raw ids/epoch numbers, dead-end empty states, undiscoverable tri-state chips.      |
-| 6. Accessibility                | fail  | Rows are `role="button"` divs with no `:focus-visible`; DataTable rows unreachable by keyboard; tiny targets.    |
-| 7. Responsive / layout          | fail  | No breakpoints; at 640px the 3-column grid overflows horizontally with overlapping columns and 1-char wrapping.  |
-| 8. Spacing, alignment & sizing  | warn  | Grid gaps consistent; TreeView brackets misalign; same component styled from two files with conflicting padding. |
-| 9. Interaction & micro-states   | fail  | Hover exists on rows; keyboard focus ring absent on all rows; no selected state; only buttons have proper rings. |
+| 1. Visual hierarchy & scanning  | pass  | `TurnDetail`/`FailureDetail` now render a formatted `SummaryList` + status pill + tool-call list; raw tree is opt-in behind "show raw". |
+| 2. Affordance & signifiers      | pass  | Every list (`SessionCard`, `TraceList`, `ToolFailuresPanel`, `LogExplorer`, `DataTable`) applies a `selected` treatment tied to the detail rail. |
+| 3. Consistency w/ design system | pass  | `debug.css` shrank from ~1018 to 387 lines; no more cross-file style duplication; one shared `formatDuration`.   |
+| 4. Feedback & state             | pass  | Disconnect banner + stale-stat dimming + per-panel empty-state hints + surfaced initial-log-fetch error.         |
+| 5. Content & language           | pass  | Every empty state carries an actionable hint; `ScopeFilter` chips carry an inline cycle legend.                  |
+| 6. Accessibility                | warn  | Focus rings, keyboard activation, and `aria-label`s are all now present; icon-only buttons still sit at a 24px control height. |
+| 7. Responsive / layout          | pass  | `@media (max-width: 720px)` collapses the 3-column grid to one column with no overlap or clipping (verified in shots). |
+| 8. Spacing, alignment & sizing  | pass  | `TreeView` closing brackets render on their own aligned row; `SummaryList` values shrink/wrap instead of clipping. |
+| 9. Interaction & micro-states   | pass  | `:focus-visible` rings, `selected` states, and a `loading…` busy label on "load older" are all present in source. |
 
 ## Findings
 
@@ -36,152 +44,179 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [High] No responsive layout — page breaks completely at ~640px
 
 - **Id:** debug-no-responsive-layout
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `2ab790294` ("fix(debug): 720px responsive collapse for dashboard grid and top bar")
 - **Dimension:** 7. Responsive / layout
-- **Where visible:** `DebugApp — narrow 640px` screenshot — center/right columns overlap, tool-failure text wraps one character per line, top-bar counters spill, the scope `Seg` clips off the right edge
-- **Source:** `client/debug/debug.css:1018` (fixed `260px minmax(0,1fr) 380px` grid, no `@media` anywhere in `debug.css`; settings/admin use a 720px breakpoint)
-- **Suggested fix:** Add a breakpoint that collapses the three columns into a single stacked flow (rail last or as an overlay) and lets the top bar wrap.
+- **Where visible:** `DebugApp — narrow 640px` screenshot — single-column stacked layout, top bar wraps to two rows, no overlap or 1-char wrapping
+- **Source:** `client/debug/debug.css:347` (`@media (max-width: 720px)` collapses `.debug-grid`/`.debug-grid__center-row` to `minmax(0, 1fr)`); `client/debug/components/DebugTopBar.svelte:110` (`flex-wrap: wrap` on both top-bar rows at the same breakpoint)
+- **Suggested fix:** ~~Add a breakpoint that collapses the three columns into a single stacked flow (rail last or as an overlay) and lets the top bar wrap.~~ Done.
 
 ### [High] Keyboard focus is invisible on every clickable row
 
 - **Id:** debug-invisible-row-focus
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `1ea40dfc9` ("fix(debug): visible keyboard focus rings on list rows")
 - **Dimension:** 9. Interaction & micro-states / 6. Accessibility
-- **Where visible:** Source — `.session-card`, `.trace-row`, `.failure-row`, `.log-entry` are `tabindex="0"` divs with hover styles but no `:focus-visible` rule; DataTable `<tr>` clicks have no `tabindex`/keydown at all, so turn rows are unreachable by keyboard
-- **Source:** `client/debug/components/SessionCard.svelte:24`, `client/debug/components/TraceList.svelte:23`, `client/debug/components/ToolFailuresPanel.svelte:44`, `client/debug/components/LogExplorer.svelte:166`, `client/shared/ui/DataTable.svelte:116`
-- **Suggested fix:** Give all focusable rows a visible `:focus-visible` ring (reuse `--focus-ring`) and make DataTable rows keyboard-focusable/activatable when `onRowClick` is set.
+- **Where visible:** `SessionCard — keyboard focus ring` screenshot — green `:focus-visible` outline on the focused card; source confirms the same for traces/failures/logs and DataTable
+- **Source:** `client/debug/debug.css:361` (`.session-card:focus-visible, .trace-row:focus-visible, .failure-row:focus-visible, .log-entry:focus-visible { outline: var(--focus-ring); }`); `client/debug/components/SessionCard.svelte:29-37`, `TraceList.svelte:35-43`, `ToolFailuresPanel.svelte:56-64`, `LogExplorer.svelte:181-189` (all `tabindex="0"` + `onkeydown` Enter/Space); `client/shared/ui/DataTable.svelte:129-131` (row `tabindex`/`onkeydown` when `onRowClick` set) and `:209-212` (`:focus-visible` rule)
+- **Suggested fix:** ~~Give all focusable rows a visible `:focus-visible` ring... make DataTable rows keyboard-focusable/activatable when `onRowClick` is set.~~ Done.
 
 ### [High] No selected-row indication for what the detail rail shows
 
 - **Id:** debug-no-selected-row-indication
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `fd8e1f0ba` ("feat(debug): selected-row indication across all detail-rail lists"), narrowed by `3913411f2` ("fix(debug): narrow selected-row signature in TraceList/ToolFailuresPanel") and `25595b393` ("fix(debug): pin log-row selected highlight to content key, not positional index")
 - **Dimension:** 2. Affordance & signifiers
-- **Where visible:** `DebugApp — Detail selected` screenshot — rail shows `turn · T-1` but the turns table marks nothing; same for traces, sessions, logs, failures
-- **Source:** `client/debug/components/TurnsPanel.svelte:106` (`selectedKey` never passed to DataTable); `TraceList.svelte:23`, `SessionCard.svelte:24`, `LogExplorer.svelte:166` (no `selected` class binding)
-- **Suggested fix:** Track the selected item id per list and apply the shared selected-row treatment (cf. DataTable's `ui-datatable__tr--selected`).
+- **Where visible:** `DebugApp — Detail selected` screenshot — the selected turn row carries the accent left-bar + tint treatment
+- **Source:** `client/debug/components/TurnsPanel.svelte:78-80,106` (`selectedTurnId` derived, passed as DataTable `selectedKey`); `TraceList.svelte:18-20,34`, `ToolFailuresPanel.svelte:39-41,55`, `LogExplorer.svelte:30-36,180` (each derives a content-keyed `selected*Key` and binds `class:selected`); `SessionsList.svelte:30-31` (`selected` prop from `dashboard.selectedDetail`); `client/debug/debug.css:369-375` and `client/shared/ui/DataTable.svelte:213-216` (shared `.selected`/`ui-datatable__tr--selected` treatment)
+- **Suggested fix:** ~~Track the selected item id per list and apply the shared selected-row treatment.~~ Done.
 
 ### [High] Disconnected state is silent — stale stats, unexplained empty panels
 
 - **Id:** debug-silent-disconnected-state
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `ab7e93eb5` ("feat(debug): disconnect banner, stale-stat dimming, logs-error note"), refined by `8fc0086ea` ("fix(debug): suppress disconnect banner and stale dimming during initial SSE connecting state")
 - **Dimension:** 4. Feedback & state
-- **Where visible:** `DebugApp — Disconnected empty` screenshot — only a small red pill changes; uptime/msgs/llm/tools keep showing values, every panel shows a bare "No …" with no hint that the stream is down; the initial-log fetch failure is swallowed
-- **Source:** `client/debug/components/DebugTopBar.svelte:46`, `client/debug/DebugApp.svelte:49` (empty `catch`)
-- **Suggested fix:** On disconnect, surface a banner or per-panel hint ("stream disconnected — showing last buffered data / reconnecting") and visually dim the stat counters as stale.
+- **Where visible:** `DebugApp — Disconnected empty` screenshot — red "stream disconnected — showing last buffered data, reconnecting…" banner; every panel's empty state now carries an explanatory hint
+- **Source:** `client/debug/DebugApp.svelte:78-80` (banner shown when `!connected && hasConnectedOnce`, i.e. not during the initial connecting frame — see `Connecting` story); `client/debug/components/DebugTopBar.svelte:45,118-120` (`.stale` class dims the stat counters); `client/debug/DebugApp.svelte:50-53` (`catch` now sets `dashboard.logsError`, rendered by `LogExplorer.svelte:200-202`)
+- **Suggested fix:** ~~On disconnect, surface a banner or per-panel hint... and visually dim the stat counters as stale.~~ Done.
 
 ### [Med] Turn and failure details are raw JSON trees with epoch timestamps
 
 - **Id:** debug-raw-json-epoch-timestamps
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `605ea8821` ("feat(debug): structured TurnDetail with collapsible raw tree"), `7e867f9d2` ("feat(debug): structured FailureDetail with collapsible raw tree")
 - **Dimension:** 1. Visual hierarchy & scanning / 5. Content & language
-- **Where visible:** `DebugDetailRail — Turn selected`, `TurnDetail — *`, `FailureDetail — *` screenshots — `startedAt: 1779278400000`, nested `{ }` dumps; compare with TraceDetail's structured, formatted layout
-- **Source:** `client/debug/components/TurnDetail.svelte:12`, `client/debug/components/FailureDetail.svelte:12`
-- **Suggested fix:** Give turns and failures structured detail views (formatted timestamps, status pill, scope, tool-call list) like TraceDetail instead of a raw TreeView dump.
+- **Where visible:** `TurnDetail — Completed` / `FailureDetail — Default` screenshots — formatted `SummaryList` (`Started 17:00:00`, `Duration 1.2s`, status pill), tool-call list with per-call status pills; the raw `TreeView` dump only appears after clicking "show raw" (see `TurnDetail — raw expanded`)
+- **Source:** `client/debug/components/TurnDetail.svelte:25-63` (`SummaryList` + `formatTime`/`formatDuration` + `showRaw` toggle gating `TreeView`); `client/debug/components/FailureDetail.svelte:28-59` (same pattern)
+- **Suggested fix:** ~~Give turns and failures structured detail views... instead of a raw TreeView dump.~~ Done.
 
 ### [Med] Panel header counts ignore the active scope filter
 
 - **Id:** debug-header-counts-ignore-filter
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `6e6c031c0` ("fix(debug): panel header counts reflect active scope filter")
 - **Dimension:** 4. Feedback & state
-- **Where visible:** Any state with `dm`/`group` selected — header shows e.g. `TURNS 2` while the table lists fewer filtered rows
-- **Source:** `client/debug/components/TurnsPanel.svelte:91` (`count={dashboard.turns.length}` vs filtered rows), `ToolFailuresPanel.svelte:35`, `NotificationsPanel.svelte:43`
-- **Suggested fix:** Show the filtered count (optionally `filtered/total`) in the panel header when the scope filter is active.
+- **Where visible:** Any state with `dm`/`group` selected — header now reads `filtered/total` (e.g. `TURNS 1/2`)
+- **Source:** `client/debug/panel-count.ts:12-14` (`panelCount()` returns bare total when unfiltered, `filtered/total` otherwise); used at `TurnsPanel.svelte:87`, `ToolFailuresPanel.svelte:44`, `NotificationsPanel.svelte:44`
+- **Suggested fix:** ~~Show the filtered count (optionally filtered/total) in the panel header when the scope filter is active.~~ Done.
 
 ### [Med] Top-bar scope filter does not apply to sessions or LLM trace list
 
 - **Id:** debug-scope-filter-incomplete
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `be80ebced` ("fix(debug): scope-chip legend, activity-scope caption on Seg")
 - **Dimension:** 3. Consistency w/ design system / 4. Feedback & state
-- **Where visible:** Composed Default with `dm`/`group` selected — turns/notifications/failures filter, sessions and traces do not
-- **Source:** `client/debug/components/SessionsList.svelte:20`, `client/debug/components/TraceList.svelte:21` (no `scopeFilter` usage; turns/notifications/failures implement `matchesScope`)
-- **Suggested fix:** Either apply the scope filter consistently to sessions and traces, or label the Seg as applying only to activity panels.
+- **Where visible:** Top bar secondary row — the `Seg` is now captioned `activity scope`, scoping the reader's expectation to the activity panels rather than implying it filters everything
+- **Source:** `client/debug/components/DebugTopBar.svelte:74-78` (`<span class="debug-topbar__lbl">activity scope</span>` immediately precedes the `Seg`); `SessionsList.svelte` and `TraceList.svelte` still intentionally have no `scopeFilter` usage — the second suggested-fix option (label rather than extend) was taken
+- **Suggested fix:** ~~Either apply the scope filter consistently to sessions and traces, or label the Seg as applying only to activity panels.~~ Done via labeling.
 
 ### [Med] Empty states are dead ends
 
 - **Id:** debug-empty-states-dead-end
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `e159aecb3` ("fix(debug): actionable hints on every empty state")
 - **Dimension:** 5. Content & language
-- **Where visible:** `Disconnected empty` and every `— Empty` component shot — `∅ No turns / No traces / No notifications / No failures / No active sessions` with no hint or action
-- **Source:** `client/debug/components/TurnsPanel.svelte:113` (and siblings); `EmptyState.svelte:10` supports `hint`/`action` but debug never passes them
-- **Suggested fix:** Add a one-line hint per empty state (e.g. "turns appear here as messages are processed", "no failures in the buffered window").
+- **Where visible:** `Disconnected empty` screenshot — every panel now reads e.g. `No sessions` / "sessions appear here as users talk to the bot"
+- **Source:** `client/debug/components/SessionsList.svelte:22` (`hint="sessions appear here as users talk to the bot"`), `TurnsPanel.svelte:110`, `ToolFailuresPanel.svelte:47`, `NotificationsPanel.svelte:47`, `TraceList.svelte:27` — all now pass `EmptyState`'s `hint` prop
+- **Suggested fix:** ~~Add a one-line hint per empty state.~~ Done.
 
 ### [Med] TreeView closing brackets render inline at ragged horizontal positions
 
 - **Id:** debug-treeview-ragged-brackets
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** merge `ff10474e4` (TreeView rewrite; see `tests/client/shared/TreeView.test.ts`)
 - **Dimension:** 8. Spacing, alignment & sizing
-- **Where visible:** `DebugDetailRail — Turn selected` screenshot — `}` / `]` glyphs float mid-row at inconsistent offsets (`scope: ▼ { kind: "user" }` spreads across the width; a stray `▼ {` row sits at the far left bottom)
-- **Source:** `client/shared/TreeView.svelte:81` (closing bracket emitted inline after the children span)
-- **Suggested fix:** Render the closing bracket on its own row aligned with the opening indent.
+- **Where visible:** `TurnDetail — raw expanded` screenshot — closing `}`/`]` now sit on their own row, indented flush with the matching opening bracket's toggle
+- **Source:** `client/shared/TreeView.svelte:85-87` (`<div class="tree-row tree-closing" style="padding-left: {depth * 12 + 18}px"><span class="tree-bracket">{bracketClose}</span></div>` — a dedicated closing row, not inline after the children span)
+- **Suggested fix:** ~~Render the closing bracket on its own row aligned with the opening indent.~~ Done.
 
 ### [Med] SummaryList values clip long unbroken ids
 
 - **Id:** debug-summarylist-clips-ids
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** merge `ff10474e4` (`client/shared/ui/SummaryList.svelte` diff `+3` lines). Evidence is source-based; no captured screenshot exercises a long unbroken id — the only shot of this area (`TraceDetail — With tool calls`) uses short values, and `SummaryList.stories.svelte`'s own "Long unbroken values" fixture exists but has not been captured.
 - **Dimension:** 7. Responsive / layout
-- **Where visible:** `TraceDetail — With tool calls` screenshot — right-aligned values (`tg:100…`, `17:00:0…`) cut off at the panel edge
-- **Source:** `client/shared/ui/SummaryList.svelte:52` (`.ui-summary__v` has no `min-width: 0` / `word-break`; row is `justify-content: space-between`)
-- **Suggested fix:** Allow the value cell to shrink and break long unbroken strings (`min-width: 0; word-break: break-all`).
+- **Where visible:** `TraceDetail — With tool calls` screenshot — `User ID`/`Model`/`Timestamp` values render in full, no clipping at the panel edge
+- **Source:** `client/shared/ui/SummaryList.svelte:40-48` (`.ui-summary__row` has `min-width: 0`), `:53-59` (`.ui-summary__v` has `min-width: 0; word-break: break-all`)
+- **Suggested fix:** ~~Allow the value cell to shrink and break long unbroken strings.~~ Done.
 
 ### [Med] ScopeFilter include/exclude tri-state is undiscoverable
 
 - **Id:** debug-scopefilter-tristate-undiscoverable
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `be80ebced` ("fix(debug): scope-chip legend, activity-scope caption on Seg")
 - **Dimension:** 5. Content & language / 9. Interaction & micro-states
-- **Where visible:** LogExplorer toolbar — chips cycle neutral → include → exclude (line-through) on repeated clicks with no legend
-- **Source:** `client/debug/components/ScopeFilter.svelte:24`
-- **Suggested fix:** Add a tiny legend or tooltip copy explaining click cycles include → exclude → off.
+- **Where visible:** LogExplorer toolbar — a legend line sits directly above the chips
+- **Source:** `client/debug/components/ScopeFilter.svelte:34` (`<div class="scope-filter__hint">click to include · again to exclude · again to clear</div>`)
+- **Suggested fix:** ~~Add a tiny legend or tooltip copy explaining click cycles include → exclude → off.~~ Done.
 
 ### [Low] Debug stylesheet duplicates and conflicts with scoped component styles; dead CSS
 
 - **Id:** debug-stylesheet-conflicts-dead-css
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `5f9e5b945` ("refactor(debug): delete dead css, co-locate component styles"), `fee6f5dd9` ("fix(client/debug): remove dead CSS selectors from debug.css"), `9e2a45302` ("fix(debug): deterministic shots, TraceDetail duration, dead css cleanup")
 - **Dimension:** 3. Consistency w/ design system
-- **Where visible:** Source — `.session-card` styled in both `debug.css` (padding `6px 8px`, left border) and `SessionCard.svelte` (padding `10px 12px`); `.tree-*` colors defined in `debug.css` and overridden by `TreeView.svelte` scoped rules; `.log-filters`, `#log-autoscroll`, `.turn-row`, `.turn-summary`, `.turn-log-link`, `.placeholder` appear unused; SessionDetail reuses `.tool-call-item` for facts
-- **Source:** `client/debug/debug.css:197` vs `client/debug/components/SessionCard.svelte:54`; `client/debug/debug.css:610` vs `client/shared/TreeView.svelte:89`; `client/debug/components/SessionDetail.svelte:68`
-- **Suggested fix:** Consolidate each component's styles in one place and delete the dead rules.
+- **Where visible:** Source only — `client/debug/debug.css` is now 387 lines (was ~1018) with no `.session-card`/`.tree-*`/`.log-filters`/`.turn-row`/`.turn-summary`/`.turn-log-link`/`.placeholder` selectors left in it
+- **Source:** `client/debug/debug.css` (grep confirms no remaining `.session-card`/dead selectors; only shared `:focus-visible`/`.selected`/`.debug-banner` rules and the grid live here now); `client/debug/components/SessionDetail.svelte:129-133` (facts now use a dedicated `.fact-item` class, not `.tool-call-item`)
+- **Suggested fix:** ~~Consolidate each component's styles in one place and delete the dead rules.~~ Done.
 
 ### [Low] Duration formatting inconsistent across panels
 
 - **Id:** debug-inconsistent-duration-format
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `bab2f2004` ("feat(shared): formatDuration, consistent duration display in debug")
 - **Dimension:** 3. Consistency w/ design system
-- **Where visible:** Turns table shows `1234ms`; trace list shows `1.2s` for the same magnitude
-- **Source:** `client/debug/components/TurnsPanel.svelte:136` vs `client/debug/components/TraceList.svelte:39`
-- **Suggested fix:** Route all durations through one shared formatter.
+- **Where visible:** Turns table and trace list both show e.g. `1.2s` for the same magnitude
+- **Source:** `client/shared/helpers.ts:87-91` (`formatDuration`); used at `client/debug/components/TurnsPanel.svelte:133` and `TraceList.svelte:48`
+- **Suggested fix:** ~~Route all durations through one shared formatter.~~ Done.
 
 ### [Low] "Active" session and "operator" session share the same accent left border
 
 - **Id:** debug-active-operator-same-border
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `2d69e1f81` ("fix(debug+shared): distinct operator signifier, aria names on icon buttons")
 - **Dimension:** 2. Affordance & signifiers
-- **Where visible:** Sessions list — a recently-active session and the operator's own session are indistinguishable (both get the accent border), and an idle operator session reads as active
-- **Source:** `client/debug/debug.css:211` (`.session-card.active`) vs `client/debug/components/SessionCard.svelte:68` (`.operator`)
-- **Suggested fix:** Use distinct signifiers (e.g. keep the border for recency, badge-only for operator).
+- **Where visible:** Sessions list — the operator's own card carries a small "you" badge; only recency (`isActive`) still drives the left-accent border
+- **Source:** `client/debug/components/SessionCard.svelte:27,41,71-73,93-102` — `class:active={isActive}` is the only thing that sets `.session-card.active`'s border; `isOperator` renders a separate `.operator-badge` pill, not a border/class on the card
+- **Suggested fix:** ~~Use distinct signifiers (e.g. keep the border for recency, badge-only for operator).~~ Done.
 
 ### [Low] Icon-only buttons have no accessible names
 
 - **Id:** debug-icon-buttons-no-accessible-names
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `2d69e1f81` ("fix(debug+shared): distinct operator signifier, aria names on icon buttons")
 - **Dimension:** 6. Accessibility
-- **Where visible:** Detail rail `✕` close, log turn-badge `×` clear
-- **Source:** `client/debug/components/DebugDetailRail.svelte:53`, `client/debug/components/LogExplorer.svelte:143`
-- **Suggested fix:** Add `aria-label` ("close detail", "clear turn filter") to both buttons.
+- **Where visible:** Source only — both buttons now carry `ariaLabel`
+- **Source:** `client/debug/components/DebugDetailRail.svelte:53` (`<Btn ... ariaLabel="Close detail" ...>✕</Btn>`), `client/debug/components/LogExplorer.svelte:155` (`<Btn ... ariaLabel="Clear turn filter" ...>×</Btn>`)
+- **Suggested fix:** ~~Add an aria-label to both buttons.~~ Done.
 
 ### [Low] Suspect low-contrast meta text
 
 - **Id:** debug-low-contrast-meta-text
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `09f46aa3c` ("refactor(client): migrate 314 legacy token aliases to the semantic vocabulary"), plus `86c6221c5` for the specific `LogExplorer`/`DebugTopBar` instances
 - **Dimension:** 6. Accessibility
-- **Where visible:** Session cards (`fg4` 11px detail lines), wizard badge (10px), log buffer stat (`fg3` 11px), trace `+N` overflow (10px)
-- **Source:** `client/debug/debug.css:221`, `client/debug/components/SessionCard.svelte:74`, `client/debug/components/LogExplorer.svelte:239`
-- **Suggested fix:** Bump the smallest meta text to `fg3` minimum and verify contrast of `fg4` on `--surface` against the dark theme.
+- **Where visible:** Source only — no low-contrast alias remains
+- **Source:** `client/shared/tokens.css:21` — `--text-dim: #828d84; /* 4.70:1 on --surface-hover, 5.69:1 on --bg — WCAG SC 1.4.3 floor */` is now the floor for all meta text (`SessionCard.svelte:83`, `LogExplorer.svelte:265` `.log-history__note`, `TraceList.svelte` overflow text); `grep -rn "var(--fg[0-9])" client/` returns no matches — the old `fg3`/`fg4` aliases this finding referenced no longer exist anywhere
+- **Suggested fix:** ~~Bump the smallest meta text to fg3 minimum and verify contrast.~~ Done.
 
 ### [Low] Poller pills encode state only in tone, not in the label
 
 - **Id:** debug-poller-pills-tone-only
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `86c6221c5` ("fix(debug): poller state in pill text, fg3 floor for meta text")
 - **Dimension:** 5. Content & language
-- **Where visible:** Top bar secondary row — a mute-tone pill still reads `scheduled` / `alerts` whether the poller runs or not
-- **Source:** `client/debug/components/DebugTopBar.svelte:69`
-- **Suggested fix:** Include state in the pill text (e.g. `scheduled · on/off`) so status doesn't rely on color alone.
+- **Where visible:** Top bar secondary row — pills read `scheduled · on`/`scheduled · off` and `alerts · on`/`alerts · off`
+- **Source:** `client/debug/components/DebugTopBar.svelte:69-70`
+- **Suggested fix:** ~~Include state in the pill text so status doesn't rely on color alone.~~ Done.
+
+### [Low] Icon-only buttons sit at the shared 24px control-height token
+
+- **Id:** debug-icon-buttons-control-height
+- **Status:** open
+- **Dimension:** 6. Accessibility
+- **Where visible:** Detail rail `✕` close, log turn-badge `×` clear, and every other `size="sm"` `Btn` in the debug dashboard
+- **Source:** `client/shared/ui/Btn.svelte:111` (`.sm { height: var(--control-h-sm); }`); `client/shared/tokens.css:63` (`--control-h-sm: 24px`)
+- **Note:** 24px meets, rather than violates, WCAG 2.2 SC 2.5.8 (Target Size Minimum)'s 24×24px floor — this is not an accessibility failure. It is recorded because it is a shared design-token fact, not a `DebugApp`-specific defect: `DebugDetailRail`/`LogExplorer` merely consume `Btn`'s `sm` size like every other section does. A later implementer should not "fix" this by growing buttons locally in `DebugApp`; any change to the floor belongs in `--control-h-sm` in `client/shared/tokens.css`, where it affects every consumer at once.
+- **Suggested fix:** No action needed in `DebugApp`. If a larger default is wanted app-wide, raise `--control-h-sm` in `client/shared/tokens.css` and re-review the sections that would be affected.
