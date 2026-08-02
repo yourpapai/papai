@@ -23,3 +23,9 @@ test.describe('debug/components/TurnDetail', () => {
   })
 })
 // @generated-end auto-screenshots
+
+test('TurnDetail — raw expanded', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'debug-components-turndetail--completed')
+  await sharedPage.getByText('show raw').click()
+  await expect(sharedPage).toHaveScreenshot()
+})

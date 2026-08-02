@@ -54,6 +54,17 @@ describe('ScopeFilter', () => {
     expect(states[2]).toEqual({ include: [], exclude: [] })
   })
 
+  test('renders the tri-state legend', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(ScopeFilter, {
+      target,
+      props: { scopes: [{ scope: 'bot', count: 3 }], include: [], exclude: [], onChange: () => {} },
+    })
+    expect(target.textContent).toContain('click to include')
+    void unmount(c)
+  })
+
   test('renders chips for each scope with count', () => {
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.body.querySelector<HTMLElement>('#root')!

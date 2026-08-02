@@ -126,4 +126,45 @@ describe('DataTable.svelte', () => {
     expect(bodyText(target)).toEqual(['a', 'b'])
     void unmount(component)
   })
+
+  test('clickable rows are keyboard-focusable and Enter fires onRowClick', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const clicks: Row[] = []
+    const rows: Row[] = [{ id: 'r1', name: 'one', count: 1 }]
+    const component = mount(DataTable, {
+      target,
+      props: { columns, rows, onRowClick: (row: Row) => clicks.push(row) },
+    })
+    const tr = target.querySelector<HTMLTableRowElement>('tbody tr')!
+    expect(tr.tabIndex).toBe(0)
+    tr.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    expect(clicks).toEqual([{ id: 'r1', name: 'one', count: 1 }])
+    void unmount(component)
+  })
+
+  test('Space fires onRowClick', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const clicks: Row[] = []
+    const rows: Row[] = [{ id: 'r1', name: 'one', count: 1 }]
+    const component = mount(DataTable, {
+      target,
+      props: { columns, rows, onRowClick: (row: Row) => clicks.push(row) },
+    })
+    const tr = target.querySelector<HTMLTableRowElement>('tbody tr')!
+    tr.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }))
+    expect(clicks).toEqual([{ id: 'r1', name: 'one', count: 1 }])
+    void unmount(component)
+  })
+
+  test('non-clickable rows are not focusable', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const rows: Row[] = [{ id: 'r1', name: 'one', count: 1 }]
+    const component = mount(DataTable, { target, props: { columns, rows } })
+    const tr = target.querySelector<HTMLTableRowElement>('tbody tr')!
+    expect(tr.tabIndex).toBe(-1)
+    void unmount(component)
+  })
 })

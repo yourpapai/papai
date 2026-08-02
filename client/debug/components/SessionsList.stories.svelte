@@ -6,7 +6,7 @@
 <script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf'
 
-  import { makeDashboardState } from '../../stories/fixtures/debug.js'
+  import { makeDashboardState, makeSession } from '../../stories/fixtures/debug.js'
   import SessionsList from './SessionsList.svelte'
 
   const { Story } = defineMeta({
@@ -20,3 +20,12 @@
 <Story name="Populated" args={{ dashboard: makeDashboardState(), onSelect: noop }} />
 
 <Story name="Empty" args={{ dashboard: makeDashboardState({ sessions: new Map() }), onSelect: noop }} />
+
+<Story
+  name="Selected"
+  args={{
+    dashboard: makeDashboardState({
+      selectedDetail: { kind: 'session', payload: { userId: 'tg:1001', session: makeSession() } },
+    }),
+    onSelect: noop,
+  }} />

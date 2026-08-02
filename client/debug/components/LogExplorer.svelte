@@ -23,6 +23,18 @@
 
   const filtered = $derived(dashboard.logs.map((entry, originalIndex) => ({ entry, originalIndex })))
 
+  // Match the selected row by content identity, not positional index: `loadOlder`
+  // prepends entries via `unshift`, which shifts every existing index. A content
+  // key keeps the highlight pinned to the clicked row, mirroring `traceKey`/
+  // `failureKey` in the sibling lists.
+  function logKey(entry: LogEntry): string {
+    return `${entry.time}|${entry.msg}|${entry.scope ?? ''}`
+  }
+
+  const selectedLogKey = $derived(
+    dashboard.selectedDetail?.kind === 'log' ? logKey(dashboard.selectedDetail.payload.entry) : '',
+  )
+
   let autoScroll = $state(true)
   let entriesEl: HTMLDivElement | null = $state(null)
 
@@ -140,7 +152,7 @@
         {#if dashboard.activeLogFilter.turnId !== undefined}
           <div class="log-turnid-badge">
             <span>turn:{dashboard.activeLogFilter.turnId.slice(0, 8)}</span>
-            <Btn variant="ghost" size="sm" onClick={clearTurnFilter}>{#snippet children()}×{/snippet}</Btn>
+            <Btn variant="ghost" size="sm" ariaLabel="Clear turn filter" onClick={clearTurnFilter}>{#snippet children()}×{/snippet}</Btn>
           </div>
         {/if}
         <Btn variant="ghost" size="sm" onClick={clearLogs}>{#snippet children()}clear{/snippet}</Btn>
@@ -165,6 +177,7 @@
         {#each filtered as fl, i (i)}
           <div
             class="log-entry {levelClass(fl.entry.level)}"
+            class:selected={selectedLogKey === logKey(fl.entry)}
             role="button"
             tabindex="0"
             onclick={() => onSelectLog(fl.entry, fl.originalIndex)}
@@ -183,6 +196,9 @@
         <span class="log-bufferstat">
           showing {filtered.length} · {bufferStats.matchingCount ?? dashboard.logs.length} match filter of {bufferStats.count} buffered (cap {bufferStats.capacity})
         </span>
+      {/if}
+      {#if dashboard.logsError !== undefined}
+        <span class="log-bufferstat log-bufferstat--error">{dashboard.logsError}</span>
       {/if}
       {#if !autoScroll}
         <Btn variant="secondary" size="sm" onClick={jumpToBottom}>{#snippet children()}▼ auto-scroll{/snippet}</Btn>
@@ -205,6 +221,9 @@
     padding: 2px 8px;
     cursor: pointer;
     border-left: 2px solid transparent;
+    font-size: 11px;
+    line-height: 1.4;
+    transition: background 0.15s ease;
   }
 
   .log-entry:hover {
@@ -224,6 +243,32 @@
     white-space: nowrap;
   }
 
+  .log-debug .log-meta,
+  .log-debug .log-msg {
+    color: var(--fg4);
+  }
+
+  .log-info .log-meta {
+    color: var(--accent);
+  }
+  .log-info .log-msg {
+    color: var(--fg);
+  }
+
+  .log-warn .log-meta {
+    color: var(--warn);
+  }
+  .log-warn .log-msg {
+    color: var(--fg);
+  }
+
+  .log-error .log-meta {
+    color: var(--danger);
+  }
+  .log-error .log-msg {
+    color: var(--fg);
+  }
+
   .log-history {
     display: flex;
     justify-content: center;
@@ -231,7 +276,7 @@
   }
 
   .log-history__note {
-    color: var(--fg4);
+    color: var(--fg3);
     font-size: 11px;
     padding: 4px;
   }
@@ -243,6 +288,10 @@
     font-family: var(--font-mono);
     font-size: 11px;
     border-top: 1px solid var(--border);
+  }
+
+  .log-bufferstat--error {
+    color: var(--warn);
   }
 
   .log-turnid-badge {

@@ -27,4 +27,22 @@ describe('TraceDetail', () => {
     expect(target.querySelector('.ui-pill')).not.toBeNull()
     void unmount(c)
   })
+
+  test('formats trace and tool-call durations via formatDuration', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const trace = {
+      userId: 'u1',
+      timestamp: 0,
+      model: 'm',
+      duration: 1234,
+      steps: 1,
+      totalTokens: { inputTokens: 10, outputTokens: 5 },
+      toolCalls: [{ toolName: 't', durationMs: 80, success: true }],
+    }
+    const c = mount(TraceDetail, { target, props: { trace } })
+    expect(target.textContent).toContain('1.2s')
+    expect(target.textContent).toContain('80ms')
+    void unmount(c)
+  })
 })

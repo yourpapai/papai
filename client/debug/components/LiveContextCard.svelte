@@ -23,7 +23,7 @@
     <div class="context-panel-sections">
       <div class="context-panel-section">
         {#if editorIds.length === 0 && wizards.length === 0}
-          <EmptyState title="No active sessions" />
+          <EmptyState title="No active sessions" hint="config editors and setup wizards appear here while active" />
         {:else}
           <div class="context-section">
             {#each editorIds as userId (userId)}

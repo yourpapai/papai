@@ -125,4 +125,12 @@ describe('Btn.svelte', () => {
     const source = await Bun.file(url).text()
     expect(source).toContain('.ui-btn:focus-visible')
   })
+
+  test('renders aria-label when ariaLabel is provided', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(Btn, { target, props: { ariaLabel: 'Close detail', children: textSnippet('x') } })
+    expect(target.querySelector('button')?.getAttribute('aria-label')).toBe('Close detail')
+    void unmount(c)
+  })
 })

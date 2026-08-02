@@ -86,4 +86,26 @@ describe('SessionCard', () => {
     expect(idlePill?.textContent?.trim()).toBe('idle')
     void unmount(idleComponent)
   })
+
+  test('applies the selected class when selected is true', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.getElementById('root')!
+    const component = mount(SessionCard, {
+      target,
+      props: { userId: 'u1', session: baseSession(), selected: true, onSelect: () => {} },
+    })
+    expect(target.querySelector('.session-card.selected')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('no selected class by default', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.getElementById('root')!
+    const component = mount(SessionCard, {
+      target,
+      props: { userId: 'u1', session: baseSession(), onSelect: () => {} },
+    })
+    expect(target.querySelector('.session-card.selected')).toBeNull()
+    void unmount(component)
+  })
 })

@@ -11,6 +11,7 @@ import { fixturesLoader } from '../client/stories/decorators/withFixtures.js'
 import { assertFixturesMatchSchemas } from '../client/stories/fixtures/schemas.js'
 import { installIntersectionObserverStub } from '../client/stories/stubs/intersection-observer.js'
 import { installSseStub } from '../client/stories/stubs/sse.js'
+import { installTimeStub } from '../client/stories/stubs/time.js'
 
 // Fail fast at preview boot if any fixture has drifted from its live schema.
 assertFixturesMatchSchemas()
@@ -18,6 +19,7 @@ assertFixturesMatchSchemas()
 initialize({ onUnhandledRequest: 'bypass' })
 installSseStub()
 installIntersectionObserverStub()
+installTimeStub()
 
 // Each story loads base+tokens + only its own app's CSS, matching what the real app
 // serves. `storybook:prepare` (package.json) generates one `storybook-<area>.css` per

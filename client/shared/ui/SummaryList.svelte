@@ -44,6 +44,7 @@
     gap: 16px;
     padding: 8px 0;
     border-bottom: 1px solid var(--hair);
+    min-width: 0;
   }
   .ui-summary__k {
     font-size: 12px;
@@ -53,5 +54,7 @@
     font-size: 12px;
     color: var(--fg);
     text-align: right;
+    min-width: 0;
+    word-break: break-all;
   }
 </style>

@@ -19,6 +19,7 @@
     disabled?: boolean
     busy?: boolean
     testid?: string
+    ariaLabel?: string
   }
 
   let {
@@ -31,6 +32,7 @@
     disabled = false,
     busy = false,
     testid,
+    ariaLabel,
   }: Props = $props()
 
   function handleClick(): void {
@@ -45,6 +47,7 @@
   {type}
   {disabled}
   aria-busy={busy}
+  aria-label={ariaLabel}
   onclick={handleClick}
   data-testid={testid}
 >

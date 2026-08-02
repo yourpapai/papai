@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { fmtNum, formatTime, formatTokens } from '../../shared/helpers.js'
+  import { formatDuration, formatTime, formatTokens } from '../../shared/helpers.js'
   import StatusPill from '../../shared/ui/StatusPill.svelte'
   import SummaryList from '../../shared/ui/SummaryList.svelte'
   import type { LlmTrace } from '../dashboard-types.js'
@@ -20,7 +20,7 @@
     ]
     if (trace.actualModel !== undefined && trace.actualModel !== '')
       items.push({ k: 'Actual Model', v: trace.actualModel })
-    items.push({ k: 'Duration', v: `${fmtNum(trace.duration / 1000, 2)}s` })
+    items.push({ k: 'Duration', v: formatDuration(trace.duration) })
     items.push({ k: 'Steps', v: String(trace.steps) })
     if (trace.finishReason !== undefined && trace.finishReason !== '')
       items.push({ k: 'Finish Reason', v: trace.finishReason })
@@ -120,7 +120,7 @@
         <div class="tool-call-item" class:error={!tc.success}>
           <div class="tool-call-summary">
             <span class="tool-name">{tc.toolName}</span>
-            <span class="tool-duration">{tc.durationMs}ms</span>
+            <span class="tool-duration">{formatDuration(tc.durationMs)}</span>
             <StatusPill status={tc.success ? 'ok' : 'failed'} />
           </div>
           {#if tc.toolCallId !== undefined}

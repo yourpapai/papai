@@ -13,10 +13,11 @@ See LICENSE in the project root for details.
     session: Session
     wizard?: DashboardWizard
     isOperator?: boolean
+    selected?: boolean
     onSelect: () => void
   }
 
-  let { userId, session, wizard, isOperator = false, onSelect }: Props = $props()
+  let { userId, session, wizard, isOperator = false, selected = false, onSelect }: Props = $props()
 
   const isActive = $derived(Date.now() - session.lastAccessed < 300000)
 </script>
@@ -24,7 +25,7 @@ See LICENSE in the project root for details.
 <div
   class="session-card"
   class:active={isActive}
-  class:operator={isOperator}
+  class:selected
   role="button"
   tabindex="0"
   onclick={onSelect}
@@ -53,21 +54,40 @@ See LICENSE in the project root for details.
 <style>
   .session-card {
     display: block;
+    border-left: 2px solid var(--border);
     padding: 10px 12px;
+    margin-bottom: 6px;
     border-bottom: 1px solid var(--hair);
+    font-size: 11px;
     line-height: 1.45;
     cursor: pointer;
+    transition: background 0.15s ease;
   }
 
-  .session-detail,
+  .session-card:hover {
+    background: var(--raised);
+  }
+
+  .session-card.active {
+    border-left-color: var(--accent);
+  }
+
+  .user-id {
+    color: var(--fg);
+    font-weight: 600;
+  }
+
+  .session-detail {
+    display: block;
+    margin-top: 2px;
+    color: var(--fg3);
+  }
+
   .wizard-badge {
     display: block;
     margin-top: 2px;
-  }
-
-  .session-card.operator {
-    border-left: 2px solid var(--accent);
-    background: rgba(93, 217, 122, 0.05);
+    color: var(--warn);
+    font-size: 10px;
   }
 
   .operator-badge {
