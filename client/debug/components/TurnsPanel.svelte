@@ -6,6 +6,7 @@
 <script lang="ts">
   import { formatTime } from '../../shared/helpers.js'
   import type { Turn, DashboardState, ScopeFilter } from '../dashboard-types.js'
+  import { panelCount } from '../panel-count.js'
   import DataTable from '../../shared/ui/DataTable.svelte'
   import EmptyState from '../../shared/ui/EmptyState.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
@@ -92,7 +93,7 @@
   }
 </script>
 
-<Panel title="turns" count={dashboard.turns.length}>
+<Panel title="turns" count={panelCount(filtered.length, dashboard.turns.length, dashboard.scopeFilter)}>
   {#snippet action()}
     <div class="turns__summary">
       {#if running > 0}

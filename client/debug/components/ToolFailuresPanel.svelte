@@ -9,6 +9,7 @@
   import EmptyState from '../../shared/ui/EmptyState.svelte'
   import StatusPill from '../../shared/ui/StatusPill.svelte'
   import type { ToolFailure, DashboardState, ScopeFilter } from '../dashboard-types.js'
+  import { panelCount } from '../panel-count.js'
 
   interface Props {
     dashboard: DashboardState
@@ -40,7 +41,7 @@
   )
 </script>
 
-<Panel title="tool failures" count={dashboard.toolFailures.length}>
+<Panel title="tool failures" count={panelCount(filtered.length, dashboard.toolFailures.length, dashboard.scopeFilter)}>
   {#snippet body()}
     {#if filtered.length === 0}
       <EmptyState title="No failures" />

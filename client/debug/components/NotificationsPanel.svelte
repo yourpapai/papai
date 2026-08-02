@@ -6,6 +6,7 @@
 <script lang="ts">
   import { formatTime } from '../../shared/helpers.js'
   import type { Notification, DashboardState, ScopeFilter } from '../dashboard-types.js'
+  import { panelCount } from '../panel-count.js'
   import Panel from '../../shared/ui/Panel.svelte'
   import EmptyState from '../../shared/ui/EmptyState.svelte'
   import JsonCell from '../../shared/ui/JsonCell.svelte'
@@ -40,7 +41,7 @@
   const filtered = $derived(dashboard.notifications.filter((n) => matchesScope(n.scope, dashboard.scopeFilter)))
 </script>
 
-<Panel title="notifications" count={dashboard.notifications.length}>
+<Panel title="notifications" count={panelCount(filtered.length, dashboard.notifications.length, dashboard.scopeFilter)}>
   {#snippet body()}
     {#if filtered.length === 0}
       <EmptyState title="No notifications" />
