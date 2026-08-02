@@ -96,7 +96,9 @@ batch sweeps (this is per-section, human-triggered).
    section-prefixed, assigned by hand, never derived from the heading, and never reused. `Status` is
    `open`, `fixed`, or `superseded`; the latter two require a `**Resolved:**` line naming the commit
    or sub-project. There is no `partial` — a partially-fixed finding stays `open` with its text
-   narrowed to the residue, keeping its id.
+   narrowed to the residue, keeping its id. Narrowing to the residue forces you to say what
+   specifically remains, which is what a later implementer needs; a `partial` status would let
+   you defer that and leave the finding as vague as it was.
 
 6. **Format and hand off.** `bun run format` (the repo formatter is `oxfmt`, not prettier),
    then report the path to the user. Do not commit unless asked. Stop — implementation is a
