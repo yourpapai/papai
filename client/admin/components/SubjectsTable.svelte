@@ -142,7 +142,7 @@
     font-size: 11px;
     font-weight: 500;
     color: var(--fg4);
-    background: var(--surface2);
+    background: var(--surface-2);
     padding: 1px 6px;
     border-radius: 10px;
   }

@@ -261,7 +261,7 @@
   .settings-repos__name {
     font-family: var(--font-mono);
     font-size: 13px;
-    color: var(--fg1);
+    color: var(--text);
     font-weight: 600;
   }
   .settings-repos__url {

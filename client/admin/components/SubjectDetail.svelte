@@ -169,7 +169,7 @@
     font-size: 11px;
     font-weight: 500;
     color: var(--fg4);
-    background: var(--surface2);
+    background: var(--surface-2);
     padding: 1px 6px;
     border-radius: 10px;
   }
@@ -178,7 +178,7 @@
     padding: 6px 10px;
     font-size: 11px;
     color: var(--fg3);
-    background: var(--surface2);
+    background: var(--surface-2);
     border-radius: 6px;
   }
   .subject-detail__chart {
@@ -237,7 +237,7 @@
     padding: 8px 12px;
     font-size: 11px;
     color: var(--fg2);
-    background: var(--surface2);
+    background: var(--surface-2);
     border-radius: 6px;
     overflow-x: auto;
     white-space: pre;
