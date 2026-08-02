@@ -6,14 +6,14 @@
 import { test, expect, switchStory } from '@crvy/strybk'
 
 // @generated-begin auto-screenshots
-test.describe('debug/components/TraceList', () => {
-  test('Populated', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'debug-components-tracelist--populated')
+test.describe('shared/StatusDot', () => {
+  test('Connected', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-statusdot--connected')
     await expect(sharedPage).toHaveScreenshot()
   })
 
-  test('Empty', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'debug-components-tracelist--empty')
+  test('Disconnected', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-statusdot--disconnected')
     await expect(sharedPage).toHaveScreenshot()
   })
 })

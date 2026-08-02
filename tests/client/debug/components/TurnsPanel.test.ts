@@ -13,6 +13,7 @@ import type { DashboardState, Turn } from '../../../../client/debug/dashboard-ty
 function freshState(turns: Turn[] = []): DashboardState {
   return {
     connected: false,
+    hasConnectedOnce: false,
     stats: { startedAt: 0, totalMessages: 0, totalLlmCalls: 0, totalToolCalls: 0 },
     sessions: new Map(),
     wizards: new Map(),

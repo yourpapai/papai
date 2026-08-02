@@ -110,6 +110,13 @@ export type SelectedDetail =
 
 export interface DashboardState {
   connected: boolean
+  /**
+   * Whether the SSE stream has ever opened. Until the first successful `open`,
+   * the dashboard is "connecting" rather than "disconnected" — there is no prior
+   * connection to reconnect from and no buffered data to flag as stale, so the
+   * disconnect banner and stale-stat dimming are suppressed.
+   */
+  hasConnectedOnce: boolean
   stats: DashboardStats
   sessions: Map<string, Session>
   wizards: Map<string, DashboardWizard>

@@ -7,6 +7,11 @@ import { test, expect, switchStory } from '@crvy/strybk'
 
 // @generated-begin auto-screenshots
 test.describe('debug/DebugApp', () => {
+  test('Connecting', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'debug-debugapp--connecting')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
   test('Default', async ({ sharedPage }) => {
     await switchStory(sharedPage, 'debug-debugapp--default')
     await expect(sharedPage).toHaveScreenshot()

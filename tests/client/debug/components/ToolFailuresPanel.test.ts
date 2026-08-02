@@ -13,6 +13,7 @@ import type { DashboardState, ToolFailure } from '../../../../client/debug/dashb
 function freshState(failures: ToolFailure[] = []): DashboardState {
   return {
     connected: false,
+    hasConnectedOnce: false,
     stats: { startedAt: 0, totalMessages: 0, totalLlmCalls: 0, totalToolCalls: 0 },
     sessions: new Map(),
     wizards: new Map(),

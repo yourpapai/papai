@@ -99,6 +99,7 @@ export const SELECTED_FAILURE_LIST: ToolFailure[] = [
 export function makeDashboardState(overrides: Partial<DashboardState> = {}): DashboardState {
   return {
     connected: true,
+    hasConnectedOnce: true,
     stats: { startedAt: FIXED_TS, totalMessages: 42, totalLlmCalls: 30, totalToolCalls: 18 },
     sessions: new Map([
       ['tg:1001', makeSession()],

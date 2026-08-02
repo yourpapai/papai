@@ -21,5 +21,15 @@ test.describe('settings/components/SettingsFieldShell', () => {
     await switchStory(sharedPage, 'settings-components-settingsfieldshell--optional-with-footer-hint')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('Inline error', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-components-settingsfieldshell--inline-error')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('Hint prop', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-components-settingsfieldshell--hint-prop')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots

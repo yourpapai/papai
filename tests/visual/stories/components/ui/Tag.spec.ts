@@ -6,24 +6,24 @@
 import { test, expect, switchStory } from '@crvy/strybk'
 
 // @generated-begin auto-screenshots
-test.describe('shared/ui/Select', () => {
-  test('Default', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'shared-ui-select--default')
+test.describe('shared/ui/Tag', () => {
+  test('Required', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-ui-tag--required')
     await expect(sharedPage).toHaveScreenshot()
   })
 
-  test('Single option', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'shared-ui-select--single-option')
+  test('Optional', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-ui-tag--optional')
     await expect(sharedPage).toHaveScreenshot()
   })
 
-  test('Disabled', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'shared-ui-select--disabled')
+  test('Neutral', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-ui-tag--neutral')
     await expect(sharedPage).toHaveScreenshot()
   })
 
-  test('Placeholder', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'shared-ui-select--placeholder')
+  test('Info', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-ui-tag--info')
     await expect(sharedPage).toHaveScreenshot()
   })
 })

@@ -7,6 +7,7 @@ import type { DashboardState, SelectedDetail } from './dashboard-types.js'
 
 export const dashboard = $state<DashboardState>({
   connected: false,
+  hasConnectedOnce: false,
   stats: { startedAt: Date.now(), totalMessages: 0, totalLlmCalls: 0, totalToolCalls: 0 },
   sessions: new Map(),
   wizards: new Map(),

@@ -57,6 +57,7 @@
       dashboard,
       (connected) => {
         dashboard.connected = connected
+        if (connected) dashboard.hasConnectedOnce = true
       },
       query,
     )
@@ -74,7 +75,7 @@
     <DebugTopBar {dashboard} />
   {/snippet}
   {#snippet children()}
-    {#if !dashboard.connected}
+    {#if !dashboard.connected && dashboard.hasConnectedOnce}
       <div class="debug-banner" role="status">stream disconnected — showing last buffered data, reconnecting…</div>
     {/if}
     <div class="debug-grid">

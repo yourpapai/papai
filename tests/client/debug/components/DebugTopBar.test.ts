@@ -13,6 +13,7 @@ import type { DashboardState } from '../../../../client/debug/dashboard-types.js
 function makeState(overrides: Partial<DashboardState> = {}): DashboardState {
   return {
     connected: true,
+    hasConnectedOnce: true,
     stats: { startedAt: Date.now(), totalMessages: 0, totalLlmCalls: 0, totalToolCalls: 0 },
     sessions: new Map(),
     wizards: new Map(),

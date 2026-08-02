@@ -6,14 +6,9 @@
 import { test, expect, switchStory } from '@crvy/strybk'
 
 // @generated-begin auto-screenshots
-test.describe('debug/components/TraceList', () => {
-  test('Populated', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'debug-components-tracelist--populated')
-    await expect(sharedPage).toHaveScreenshot()
-  })
-
-  test('Empty', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'debug-components-tracelist--empty')
+test.describe('shared/ui/FormRow', () => {
+  test('Fields + action', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-ui-formrow--fields-action')
     await expect(sharedPage).toHaveScreenshot()
   })
 })

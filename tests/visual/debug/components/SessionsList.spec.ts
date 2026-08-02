@@ -16,11 +16,6 @@ test.describe('debug/components/SessionsList', () => {
     await switchStory(sharedPage, 'debug-components-sessionslist--empty')
     await expect(sharedPage).toHaveScreenshot()
   })
-
-  test('Selected', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'debug-components-sessionslist--selected')
-    await expect(sharedPage).toHaveScreenshot()
-  })
 })
 // @generated-end auto-screenshots
 

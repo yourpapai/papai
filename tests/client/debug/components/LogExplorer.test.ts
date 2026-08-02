@@ -14,6 +14,7 @@ import type { LogFilter } from '../../../../client/debug/log-filter-url.js'
 function makeDashboard(overrides: Partial<LogFilter> = {}): DashboardState {
   return {
     connected: false,
+    hasConnectedOnce: false,
     stats: { startedAt: 0, totalMessages: 0, totalLlmCalls: 0, totalToolCalls: 0 },
     sessions: new Map(),
     wizards: new Map(),

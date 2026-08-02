@@ -42,7 +42,7 @@
 
 <TopBar page="debug">
   {#snippet statusRow()}
-    <div class="debug-topbar__status" class:stale={!dashboard.connected}>
+    <div class="debug-topbar__status" class:stale={!dashboard.connected && dashboard.hasConnectedOnce}>
       {#if dashboard.connected}
         <Pill tone="accent" dot>{#snippet children()}connected{/snippet}</Pill>
       {:else}
