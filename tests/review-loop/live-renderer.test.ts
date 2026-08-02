@@ -5,7 +5,8 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { LiveRenderer, type RendererStream } from '../../review-loop/src/live-renderer.js'
+import { LiveRenderer, type RendererStream, withLivePhase } from '../../review-loop/src/live-renderer.js'
+import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
 
 function makeStream(opts: { isTTY?: boolean; columns?: number } = {}): {
   stream: RendererStream
@@ -280,5 +281,24 @@ describe('status line', () => {
     r.slot('a', 'x')
     const status = output[output.length - 1]!.split('\n')[0]!
     expect(status).toContain('in 1.1k / out 100')
+  })
+})
+
+describe('withLivePhase', () => {
+  test('clears its slot when the phase ends', async () => {
+    const slots: Array<readonly [string, string | null]> = []
+    const reporter: ProgressReporter = {
+      dynamic: true,
+      event: () => {},
+      live: () => {},
+      clearLive: () => {},
+      log: () => {},
+      slot: (key, line) => {
+        slots.push([key, line] as const)
+      },
+    }
+    const { result } = await withLivePhase(reporter, 'build', () => Promise.resolve('done'))
+    expect(result).toBe('done')
+    expect(slots[slots.length - 1]).toEqual(['build', null])
   })
 })

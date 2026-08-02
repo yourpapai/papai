@@ -39,7 +39,12 @@ function renderLive(ctx: LiveCtx): void {
     return
   }
   const elapsed = ctx.startedAt === 0 ? 0 : Date.now() - ctx.startedAt
-  reporter.live([formatLiveLine(ctx.label, ctx.tool, ctx.arg, elapsed, ctx.toolCount, reporter.statusSuffix?.() ?? '')])
+  const line = formatLiveLine(ctx.label, ctx.tool, ctx.arg, elapsed, ctx.toolCount)
+  if (reporter.slot === undefined) {
+    reporter.live([line])
+  } else {
+    reporter.slot(ctx.label, line)
+  }
 }
 
 function applyEvent(evt: OpencodeEvent, ctx: LiveCtx): void {
@@ -71,6 +76,12 @@ function applyEvent(evt: OpencodeEvent, ctx: LiveCtx): void {
       ctx.usage.reasoningTokens += evt.tokens.reasoning
       ctx.usage.costUsd += evt.cost
       if (reporter !== undefined) {
+        reporter.usage?.({
+          input: evt.tokens.input,
+          output: evt.tokens.output,
+          reasoning: evt.tokens.reasoning,
+          cost: evt.cost,
+        })
         reporter.clearLive()
         reporter.event(
           formatStepFooter(ctx.label, ctx.startedAt === 0 ? 0 : Date.now() - ctx.startedAt, ctx.toolCount, evt.tokens),
@@ -110,7 +121,11 @@ export function createLineHandler<T>(options: RunAgentOptions<T>): LineHandler {
     }
     const reporter = ctx.reporter
     if (reporter !== undefined) {
-      reporter.clearLive()
+      if (reporter.slot === undefined) {
+        reporter.clearLive()
+      } else {
+        reporter.slot(ctx.label, null)
+      }
     }
     await ctx.logChain
   }

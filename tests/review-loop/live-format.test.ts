@@ -84,15 +84,3 @@ describe('formatTokenCount', () => {
     expect(formatTokenCount(1500000)).toBe('1.50M')
   })
 })
-
-describe('formatLiveLine status suffix', () => {
-  test('appends status after tool count when provided', () => {
-    const line = formatLiveLine('fixer', 'read', 'cli.ts', 5000, 3, 'round 1/3 · issues: 2 open')
-    expect(line).toContain('3 tools · round 1/3 · issues: 2 open')
-  })
-  test('omits suffix segment when status is empty', () => {
-    const line = formatLiveLine('fixer', 'read', 'cli.ts', 5000, 3)
-    expect(line).toContain('3 tools')
-    expect(line).not.toContain('round')
-  })
-})

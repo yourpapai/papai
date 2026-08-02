@@ -30,9 +30,12 @@ export async function withLivePhase<T>(
   let timer: ReturnType<typeof setInterval> | null = null
   if (reporter.dynamic) {
     timer = setInterval(() => {
-      const status = reporter.statusSuffix?.() ?? ''
-      const suffix = status === '' ? '' : ` ${MIDDLE_DOT} ${status}`
-      reporter.live([`[${label}] ${formatDuration(Date.now() - start)}...${suffix}`])
+      const line = `[${label}] ${formatDuration(Date.now() - start)}...`
+      if (reporter.slot === undefined) {
+        reporter.live([line])
+      } else {
+        reporter.slot(label, line)
+      }
     }, 1000)
   }
   try {
@@ -42,7 +45,11 @@ export async function withLivePhase<T>(
     if (timer !== null) {
       clearInterval(timer)
     }
-    reporter.clearLive()
+    if (reporter.slot === undefined) {
+      reporter.clearLive()
+    } else {
+      reporter.slot(label, null)
+    }
   }
 }
 

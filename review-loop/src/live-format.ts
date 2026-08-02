@@ -75,18 +75,10 @@ export function formatToolArg(tool: string, input: unknown): string {
   }
 }
 
-export function formatLiveLine(
-  label: string,
-  tool: string,
-  arg: string,
-  elapsedMs: number,
-  toolCount: number,
-  status = '',
-): string {
+export function formatLiveLine(label: string, tool: string, arg: string, elapsedMs: number, toolCount: number): string {
   const toolPart = tool === '' ? 'thinking' : arg === '' ? tool : `${tool} ${arg}`
   const tools = `${toolCount} tool${toolCount === 1 ? '' : 's'}`
-  const suffix = status === '' ? '' : ` ${MIDDLE_DOT} ${status}`
-  return `  ${label.padEnd(10)} ${ARROW} ${toolPart} ${MIDDLE_DOT} ${formatDuration(elapsedMs)} ${MIDDLE_DOT} ${tools}${suffix}`
+  return `  ${label.padEnd(10)} ${ARROW} ${toolPart} ${MIDDLE_DOT} ${formatDuration(elapsedMs)} ${MIDDLE_DOT} ${tools}`
 }
 
 export function formatStepFooter(
