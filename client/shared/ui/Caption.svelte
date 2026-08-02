@@ -26,6 +26,6 @@
     font-family: var(--font-mono);
     font-size: 10px;
     font-weight: 600;
-    color: var(--fg3);
+    color: var(--text-dim);
   }
 </style>

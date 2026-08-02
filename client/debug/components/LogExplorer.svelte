@@ -208,17 +208,17 @@
   }
 
   .log-entry:hover {
-    background: var(--raised);
+    background: var(--surface-2);
   }
 
   .log-meta {
-    color: var(--fg3);
+    color: var(--text-dim);
     white-space: nowrap;
     flex-shrink: 0;
   }
 
   .log-msg {
-    color: var(--fg);
+    color: var(--text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -231,7 +231,7 @@
   }
 
   .log-history__note {
-    color: var(--fg4);
+    color: var(--text-dim);
     font-size: 11px;
     padding: 4px;
   }
@@ -239,7 +239,7 @@
   .log-bufferstat {
     display: block;
     padding: 4px 8px;
-    color: var(--fg3);
+    color: var(--text-dim);
     font-family: var(--font-mono);
     font-size: 11px;
     border-top: 1px solid var(--border);
@@ -249,12 +249,12 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    background: var(--raised);
+    background: var(--surface-2);
     border: 1px solid var(--border);
     border-radius: 2px;
     padding: 2px 6px;
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--fg2);
+    color: var(--text-muted);
   }
 </style>

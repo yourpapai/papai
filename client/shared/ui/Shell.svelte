@@ -22,7 +22,7 @@
 <style>
   .ui-shell {
     background: var(--bg);
-    color: var(--fg);
+    color: var(--text);
     font-family: var(--font-mono);
     height: 100vh;
     display: flex;

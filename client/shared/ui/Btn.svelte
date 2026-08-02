@@ -82,18 +82,18 @@
     border-color: var(--accent);
   }
   .ui-btn--secondary {
-    background: var(--raised);
-    color: var(--fg);
+    background: var(--surface-2);
+    color: var(--text);
     border-color: var(--border);
   }
   .ui-btn--outline {
     background: transparent;
-    color: var(--fg);
+    color: var(--text);
     border-color: var(--border);
   }
   .ui-btn--ghost {
     background: transparent;
-    color: var(--fg2);
+    color: var(--text-muted);
     border-color: transparent;
   }
   .ui-btn--danger {
@@ -126,10 +126,10 @@
     background: var(--strong);
   }
   .ui-btn--outline:hover:not(:disabled) {
-    background: var(--raised);
+    background: var(--surface-2);
   }
   .ui-btn--ghost:hover:not(:disabled) {
-    background: var(--raised);
+    background: var(--surface-2);
   }
   .ui-btn--danger:hover:not(:disabled) {
     background: var(--danger-soft);

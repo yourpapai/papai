@@ -196,7 +196,7 @@
     line-height: 1.3;
   }
   .member-cell__raw {
-    color: var(--fg3);
+    color: var(--text-dim);
     font-size: 11px;
   }
 </style>

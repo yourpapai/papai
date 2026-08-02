@@ -44,12 +44,12 @@
     font-family: var(--font-mono);
     font-size: 20px;
     font-weight: 700;
-    color: var(--fg);
+    color: var(--text);
     letter-spacing: -0.02em;
   }
   .ui-page-header__sub {
     font-size: 11px;
-    color: var(--fg3);
+    color: var(--text-dim);
     margin-top: 4px;
   }
   .ui-page-header__action {

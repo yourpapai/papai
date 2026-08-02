@@ -196,16 +196,16 @@
     font-family: var(--font-mono);
     font-size: 13px;
     font-weight: 600;
-    color: var(--fg);
+    color: var(--text);
   }
   .mcp-plugin-servers-row__description {
     font-size: 12px;
-    color: var(--fg2);
+    color: var(--text-muted);
   }
   .mcp-plugin-servers-row__tools {
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--fg3);
+    color: var(--text-dim);
   }
   .mcp-plugin-servers-row__tools-empty {
     font-style: italic;
@@ -221,11 +221,11 @@
     gap: 6px;
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--fg2);
+    color: var(--text-muted);
   }
   .mcp-plugin-servers-row__field select {
-    background: var(--surface);
-    color: var(--fg);
+    background: var(--surface-1);
+    color: var(--text);
     border: 1px solid var(--border);
     padding: 6px 8px;
     font-family: var(--font-mono);

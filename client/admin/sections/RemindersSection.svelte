@@ -150,7 +150,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 10px 12px;
-    border-bottom: 1px solid var(--hair);
+    border-bottom: 1px solid var(--border);
     font-family: var(--font-mono);
     font-size: 12px;
   }
@@ -164,16 +164,16 @@
     min-width: 0;
   }
   .reminders__title {
-    color: var(--fg);
+    color: var(--text);
   }
   .reminders__sub {
-    color: var(--fg3);
+    color: var(--text-dim);
     font-size: 11px;
   }
   .placeholder {
     margin: 0;
     padding: 24px;
-    color: var(--fg3);
+    color: var(--text-dim);
     font-family: var(--font-mono);
     font-size: 12px;
     text-align: center;

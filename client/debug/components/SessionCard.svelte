@@ -54,7 +54,7 @@ See LICENSE in the project root for details.
   .session-card {
     display: block;
     padding: 10px 12px;
-    border-bottom: 1px solid var(--hair);
+    border-bottom: 1px solid var(--border);
     line-height: 1.45;
     cursor: pointer;
   }

@@ -32,15 +32,15 @@
   .ui-secret__value {
     font-family: var(--font-mono);
     font-size: 12px;
-    color: var(--fg2);
+    color: var(--text-muted);
     letter-spacing: 0.1em;
     background: var(--inset);
-    border: 1px solid var(--hair);
+    border: 1px solid var(--border);
     padding: 3px 10px;
     border-radius: 2px;
   }
   .ui-secret__hint {
     font-size: 10px;
-    color: var(--fg4);
+    color: var(--text-dim);
   }
 </style>

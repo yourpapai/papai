@@ -53,7 +53,7 @@
     gap: 6px;
   }
   .settings-topbar__lbl {
-    color: var(--fg3);
+    color: var(--text-dim);
     font-family: var(--font-mono);
     font-size: 11px;
   }

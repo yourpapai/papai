@@ -111,7 +111,7 @@
     margin-right: 8px;
   }
   .settings-byok-admin__error {
-    color: var(--fg3);
+    color: var(--text-dim);
     font-size: 12px;
   }
 </style>

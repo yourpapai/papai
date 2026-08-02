@@ -5,7 +5,7 @@
 
 .eyebrow {
   margin-bottom: 4px;
-  color: var(--fg3);
+  color: var(--text-dim);
   font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -17,7 +17,7 @@
   gap: 4px;
   padding: 14px;
   border-right: 1px solid var(--border);
-  background: var(--surface);
+  background: var(--surface-1);
   position: sticky;
   top: 0;
   align-self: start;
@@ -29,15 +29,15 @@
   padding: 10px 12px;
   border: 1px solid transparent;
   border-radius: 2px;
-  color: var(--fg2);
+  color: var(--text-muted);
   text-decoration: none;
 }
 
 .admin-sidebar a:hover,
 .admin-sidebar a.active {
   border-color: var(--strong);
-  background: var(--raised);
-  color: var(--fg);
+  background: var(--surface-2);
+  color: var(--text);
 }
 
 .admin-section-header {
@@ -50,7 +50,7 @@
 
 .admin-data-section,
 .admin-subsection-grid section {
-  color: var(--fg);
+  color: var(--text);
 }
 
 .admin-filter-form {
@@ -71,7 +71,7 @@
 .admin-subsection-grid h3,
 .admin-table th,
 .admin-key-value-list dt {
-  color: var(--fg2);
+  color: var(--text-muted);
 }
 
 .admin-filter-form input,
@@ -82,7 +82,7 @@
   border: 1px solid var(--strong);
   border-radius: 2px;
   background: var(--bg);
-  color: var(--fg);
+  color: var(--text);
 }
 
 .admin-filter-form button:disabled {
@@ -122,7 +122,7 @@
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 0;
-  background: var(--surface);
+  background: var(--surface-1);
 }
 
 .status-error {
@@ -130,7 +130,7 @@
 }
 
 .placeholder {
-  color: var(--fg2);
+  color: var(--text-muted);
 }
 
 .admin-grid {
@@ -176,18 +176,18 @@
 
 .masked-value {
   background: var(--inset);
-  border: 1px solid var(--hair);
+  border: 1px solid var(--border);
   padding: 4px 10px;
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--fg3);
+  color: var(--text-dim);
   letter-spacing: 0.04em;
 }
 
 .masked-hint {
   font-family: var(--font-mono);
   font-size: 10px;
-  color: var(--fg4);
+  color: var(--text-dim);
   margin-left: 6px;
   text-transform: uppercase;
   letter-spacing: 0.08em;

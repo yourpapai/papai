@@ -170,11 +170,11 @@
     gap: 4px;
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--fg2);
+    color: var(--text-muted);
   }
   .mcp-catalog-entry__field select {
-    background: var(--surface);
-    color: var(--fg);
+    background: var(--surface-1);
+    color: var(--text);
     border: 1px solid var(--border);
     padding: 6px 8px;
     font-family: var(--font-mono);
@@ -187,7 +187,7 @@
   .mcp-catalog-entry__tool-policy-heading {
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--fg2);
+    color: var(--text-muted);
     margin: 0;
   }
   .mcp-catalog-entry__tool-policy-row {
@@ -196,8 +196,8 @@
     gap: 8px;
   }
   .mcp-catalog-entry__tool-policy-row select {
-    background: var(--surface);
-    color: var(--fg);
+    background: var(--surface-1);
+    color: var(--text);
     border: 1px solid var(--border);
     padding: 6px 8px;
     font-family: var(--font-mono);
@@ -210,7 +210,7 @@
   .mcp-catalog-entry__posture {
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--fg2);
+    color: var(--text-muted);
     margin: 0;
   }
 </style>

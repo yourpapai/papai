@@ -171,7 +171,7 @@
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--fg3);
+    color: var(--text-dim);
   }
   .kaneo-pw__row {
     display: flex;

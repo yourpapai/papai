@@ -55,13 +55,13 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    background: var(--raised);
+    background: var(--surface-2);
     border: 1px solid var(--border);
     padding: 4px 8px 4px 10px;
     border-radius: 2px;
     font-family: var(--font-mono);
     font-size: 12px;
-    color: var(--fg);
+    color: var(--text);
   }
   .ui-select:focus-within {
     outline: 2px solid rgba(82, 224, 138, 0.4);
@@ -71,12 +71,12 @@
     background: transparent;
     border: 0;
     outline: 0;
-    color: var(--fg);
+    color: var(--text);
     font: inherit;
     appearance: none;
   }
   .ui-select__caret {
-    color: var(--fg3);
+    color: var(--text-dim);
     font-size: 10px;
     pointer-events: none;
   }

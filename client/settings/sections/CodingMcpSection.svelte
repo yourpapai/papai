@@ -301,7 +301,7 @@
     padding: var(--gap-inline);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    background: var(--surface);
+    background: var(--surface-1);
   }
   .settings-mcp__field {
     min-width: 0;

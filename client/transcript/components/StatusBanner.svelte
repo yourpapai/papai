@@ -22,7 +22,7 @@
     padding: 0.4rem 0.7rem;
     border-radius: 6px;
     background: var(--surface-1);
-    color: var(--fg);
+    color: var(--text);
     display: inline-block;
   }
   .tx-banner--live {

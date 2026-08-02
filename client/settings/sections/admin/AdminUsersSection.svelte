@@ -263,7 +263,7 @@
   .pending-badge,
   .source-badge {
     font-size: 10px;
-    color: var(--fg2);
+    color: var(--text-muted);
     border: 1px solid var(--border);
     padding: 1px 4px;
     border-radius: 2px;
@@ -280,7 +280,7 @@
   }
   .open-access-hint {
     font-size: 12px;
-    color: var(--fg2);
+    color: var(--text-muted);
     margin: 2px 0 0;
   }
 </style>

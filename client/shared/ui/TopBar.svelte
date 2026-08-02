@@ -51,7 +51,7 @@
     font-family: var(--font-mono);
     font-size: 14px;
     font-weight: 700;
-    color: var(--fg);
+    color: var(--text);
     letter-spacing: -0.01em;
   }
   .ui-topbar__brand-page {
@@ -68,9 +68,9 @@
     align-items: center;
     gap: 16px;
     padding: 8px 16px;
-    border-top: 1px solid var(--hair);
+    border-top: 1px solid var(--border);
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--fg2);
+    color: var(--text-muted);
   }
 </style>

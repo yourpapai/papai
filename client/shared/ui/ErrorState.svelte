@@ -48,7 +48,7 @@
   }
   .ui-error__title {
     font-size: 13px;
-    color: var(--fg2);
+    color: var(--text-muted);
   }
   .ui-error__message {
     font-size: 11px;

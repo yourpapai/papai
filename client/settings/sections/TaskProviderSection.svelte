@@ -203,7 +203,7 @@
     font-size: 12px;
   }
   .settings-provision__secret-label {
-    color: var(--fg3);
+    color: var(--text-dim);
     min-width: 80px;
   }
 </style>

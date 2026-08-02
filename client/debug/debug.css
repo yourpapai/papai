@@ -31,7 +31,7 @@
 }
 
 .turn-row:hover {
-  background: var(--raised);
+  background: var(--surface-2);
 }
 
 .turn-row.status-running {
@@ -55,11 +55,11 @@
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  color: var(--fg2);
+  color: var(--text-muted);
 }
 
 .turn-summary .turn-time {
-  color: var(--fg3);
+  color: var(--text-dim);
 }
 
 .turn-summary .turn-scope.scope-user {
@@ -71,7 +71,7 @@
 }
 
 .turn-summary .turn-scope.scope-global {
-  color: var(--fg2);
+  color: var(--text-muted);
 }
 
 .turn-summary .turn-status.status-running {
@@ -95,7 +95,7 @@
 }
 
 .turn-summary .turn-tools {
-  color: var(--fg4);
+  color: var(--text-dim);
 }
 
 /* --- Notification rows --- */
@@ -109,11 +109,11 @@
 }
 
 .notification-row:nth-child(even) {
-  background: var(--surface);
+  background: var(--surface-1);
 }
 
 .notification-time {
-  color: var(--fg3);
+  color: var(--text-dim);
   margin-right: 8px;
 }
 
@@ -124,7 +124,7 @@
 }
 
 .notification-text {
-  color: var(--fg2);
+  color: var(--text-muted);
   word-break: break-word;
 }
 
@@ -140,7 +140,7 @@
 }
 
 .failure-row:hover {
-  background: var(--raised);
+  background: var(--surface-2);
 }
 
 .failure-summary {
@@ -148,11 +148,11 @@
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  color: var(--fg2);
+  color: var(--text-muted);
 }
 
 .failure-time {
-  color: var(--fg3);
+  color: var(--text-dim);
 }
 
 .failure-tool {
@@ -161,7 +161,7 @@
 }
 
 .failure-error {
-  color: var(--fg);
+  color: var(--text);
   word-break: break-word;
 }
 
@@ -187,7 +187,7 @@
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  color: var(--fg3);
+  color: var(--text-dim);
   margin-bottom: 8px;
   letter-spacing: 0.05em;
 }
@@ -205,7 +205,7 @@
 }
 
 .session-card:hover {
-  background: var(--raised);
+  background: var(--surface-2);
 }
 
 .session-card.active {
@@ -213,12 +213,12 @@
 }
 
 .session-card .user-id {
-  color: var(--fg);
+  color: var(--text);
   font-weight: 600;
 }
 
 .session-card .session-detail {
-  color: var(--fg4);
+  color: var(--text-dim);
 }
 
 .session-card .wizard-badge {
@@ -238,7 +238,7 @@
 }
 
 .trace-row:hover {
-  background: var(--raised);
+  background: var(--surface-2);
 }
 
 .trace-row.error {
@@ -249,15 +249,15 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  color: var(--fg2);
+  color: var(--text-muted);
 }
 
 .trace-summary .trace-time {
-  color: var(--fg3);
+  color: var(--text-dim);
 }
 
 .trace-summary .trace-user {
-  color: var(--fg);
+  color: var(--text);
 }
 
 .trace-summary .trace-model {
@@ -284,7 +284,7 @@
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  color: var(--fg3);
+  color: var(--text-dim);
   letter-spacing: 0.05em;
   margin-right: 8px;
 }
@@ -299,8 +299,8 @@
 .log-filters select,
 .log-filters input,
 .log-filters button {
-  background: var(--raised);
-  color: var(--fg);
+  background: var(--surface-2);
+  color: var(--text);
   border: 1px solid var(--border);
   padding: 3px 6px;
   font-family: inherit;
@@ -338,15 +338,15 @@
 }
 
 .log-entry:nth-child(even) {
-  background: var(--surface);
+  background: var(--surface-1);
 }
 
 .log-entry:hover {
-  background: var(--raised);
+  background: var(--surface-2);
 }
 
 .log-entry:nth-child(even):hover {
-  background: var(--raised);
+  background: var(--surface-2);
 }
 
 .log-entry .log-meta {
@@ -361,35 +361,35 @@
 
 .log-debug .log-meta,
 .log-debug .log-msg {
-  color: var(--fg4);
+  color: var(--text-dim);
 }
 
 .log-info .log-meta {
   color: var(--accent);
 }
 .log-info .log-msg {
-  color: var(--fg);
+  color: var(--text);
 }
 
 .log-warn .log-meta {
   color: var(--warn);
 }
 .log-warn .log-msg {
-  color: var(--fg);
+  color: var(--text);
 }
 
 .log-error .log-meta {
   color: var(--danger);
 }
 .log-error .log-msg {
-  color: var(--fg);
+  color: var(--text);
 }
 
 #log-autoscroll {
   position: absolute;
   bottom: 8px;
   right: 8px;
-  background: var(--raised);
+  background: var(--surface-2);
   color: var(--accent);
   border: 1px solid var(--border);
   padding: 4px 8px;
@@ -425,25 +425,25 @@
 }
 
 .session-detail-item {
-  background: var(--surface);
+  background: var(--surface-1);
   padding: 8px 12px;
   border-radius: 2px;
 }
 
 .session-detail-item .label {
-  color: var(--fg3);
+  color: var(--text-dim);
   font-size: 10px;
   margin-bottom: 2px;
 }
 
 .session-detail-item .value {
-  color: var(--fg);
+  color: var(--text);
   font-size: 11px;
   word-break: break-all;
 }
 
 .session-detail-item .value.null {
-  color: var(--fg4);
+  color: var(--text-dim);
   font-style: italic;
 }
 
@@ -455,21 +455,21 @@
 }
 
 .instruction-item {
-  background: var(--surface);
+  background: var(--surface-1);
   padding: 8px 12px;
   border-radius: 2px;
   border-left: 2px solid var(--warn);
 }
 
 .instruction-item .instruction-text {
-  color: var(--fg);
+  color: var(--text);
   font-size: 11px;
   white-space: pre-wrap;
   margin-bottom: 4px;
 }
 
 .instruction-item .instruction-meta {
-  color: var(--fg3);
+  color: var(--text-dim);
   font-size: 10px;
 }
 
@@ -488,12 +488,12 @@
 }
 
 .config-table th {
-  color: var(--fg3);
+  color: var(--text-dim);
   font-weight: 600;
 }
 
 .config-table td {
-  color: var(--fg);
+  color: var(--text);
 }
 
 .config-table td.value {
@@ -502,7 +502,7 @@
 }
 
 .config-table td.value.null {
-  color: var(--fg4);
+  color: var(--text-dim);
   font-style: italic;
 }
 
@@ -514,7 +514,7 @@
 }
 
 .history-item {
-  background: var(--surface);
+  background: var(--surface-1);
   padding: 10px 12px;
   border-radius: 2px;
   border-left: 2px solid transparent;
@@ -540,12 +540,12 @@
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
-  color: var(--fg3);
+  color: var(--text-dim);
   margin-bottom: 4px;
 }
 
 .history-item .history-content {
-  color: var(--fg);
+  color: var(--text);
   font-size: 11px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -556,7 +556,7 @@
   padding-top: 6px;
   border-top: 1px solid var(--border);
   font-size: 10px;
-  color: var(--fg4);
+  color: var(--text-dim);
 }
 
 /* Log entry details */
@@ -581,30 +581,30 @@
 }
 
 .log-detail-meta-item {
-  background: var(--surface);
+  background: var(--surface-1);
   padding: 8px 12px;
   border-radius: 2px;
 }
 
 .log-detail-meta-item .label {
-  color: var(--fg3);
+  color: var(--text-dim);
   font-size: 10px;
   margin-bottom: 2px;
 }
 
 .log-detail-meta-item .value {
-  color: var(--fg);
+  color: var(--text);
   font-size: 11px;
 }
 
 .log-detail-msg {
-  background: var(--surface);
+  background: var(--surface-1);
   padding: 12px;
   border-radius: 2px;
   white-space: pre-wrap;
   word-break: break-word;
   font-size: 11px;
-  color: var(--fg);
+  color: var(--text);
 }
 
 /* --- Tree View --- */
@@ -627,18 +627,18 @@
 }
 
 .tree-key-cell {
-  color: var(--fg3);
+  color: var(--text-dim);
   width: 150px;
   font-weight: 600;
   white-space: nowrap;
 }
 
 .tree-value-cell {
-  color: var(--fg);
+  color: var(--text);
 }
 
 .tree-empty {
-  color: var(--fg4);
+  color: var(--text-dim);
   font-style: italic;
   padding: 12px;
 }
@@ -651,7 +651,7 @@
   text-align: center;
   cursor: pointer;
   user-select: none;
-  color: var(--fg2);
+  color: var(--text-muted);
   font-size: 10px;
   margin-right: 4px;
 }
@@ -670,7 +670,7 @@
 }
 
 .tree-bracket {
-  color: var(--fg2);
+  color: var(--text-muted);
 }
 
 .tree-key {
@@ -678,7 +678,7 @@
 }
 
 .tree-string {
-  color: var(--fg);
+  color: var(--text);
 }
 
 .tree-number {
@@ -691,13 +691,13 @@
 
 .tree-null,
 .tree-undefined {
-  color: var(--fg4);
+  color: var(--text-dim);
   font-style: italic;
 }
 
 .tree-array,
 .tree-object {
-  color: var(--fg2);
+  color: var(--text-muted);
 }
 
 /* Trace Detail Modal */
@@ -720,20 +720,20 @@
 }
 
 .trace-detail-item {
-  background: var(--raised);
+  background: var(--surface-2);
   padding: 10px 12px;
   border-radius: 2px;
 }
 
 .trace-detail-item .label {
-  color: var(--fg3);
+  color: var(--text-dim);
   font-size: 11px;
   text-transform: uppercase;
   margin-bottom: 4px;
 }
 
 .trace-detail-item .value {
-  color: var(--fg);
+  color: var(--text);
   font-size: 13px;
   word-break: break-word;
 }
@@ -750,7 +750,7 @@
 }
 
 .tool-call-item {
-  background: var(--raised);
+  background: var(--surface-2);
   border-left: 3px solid var(--accent);
   padding: 12px;
 }
@@ -781,7 +781,7 @@
 }
 
 .tool-call-id {
-  color: var(--fg3);
+  color: var(--text-dim);
   font-size: 11px;
   margin-bottom: 8px;
   word-break: break-all;
@@ -792,18 +792,18 @@
 }
 
 .tool-section .label {
-  color: var(--fg3);
+  color: var(--text-dim);
   font-size: 11px;
   text-transform: uppercase;
   margin-bottom: 4px;
 }
 
 .tool-json {
-  background: var(--surface);
+  background: var(--surface-1);
   padding: 8px;
   border-radius: 2px;
   font-size: 11px;
-  color: var(--fg);
+  color: var(--text);
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-word;
@@ -821,7 +821,7 @@
 }
 
 .step-item {
-  background: var(--raised);
+  background: var(--surface-2);
   padding: 12px;
   border-radius: 2px;
 }
@@ -836,7 +836,7 @@
 
 .step-finish-reason {
   font-weight: normal;
-  color: var(--fg2);
+  color: var(--text-muted);
   font-size: 11px;
   margin-left: 6px;
 }
@@ -846,19 +846,19 @@
 }
 
 .step-section .label {
-  color: var(--fg3);
+  color: var(--text-dim);
   font-size: 11px;
   text-transform: uppercase;
   margin-bottom: 4px;
 }
 
 .step-text {
-  background: var(--surface);
+  background: var(--surface-1);
   padding: 8px;
   border-radius: 2px;
   font-size: 11px;
   line-height: 1.5;
-  color: var(--fg);
+  color: var(--text);
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 300px;
@@ -874,7 +874,7 @@
 
 .step-tool-call {
   padding: 8px;
-  background: var(--surface);
+  background: var(--surface-1);
   border-left: 2px solid var(--border);
   border-radius: 2px;
 }
@@ -897,7 +897,7 @@
 }
 
 .step-tool-call-header .tool-id {
-  color: var(--fg3);
+  color: var(--text-dim);
   font-size: 10px;
   word-break: break-all;
 }
@@ -906,18 +906,18 @@
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--border);
-  color: var(--fg3);
+  color: var(--text-dim);
   font-size: 12px;
 }
 
 /* Generated text */
 .generated-text {
-  background: var(--raised);
+  background: var(--surface-2);
   padding: 16px;
   border-radius: 2px;
   font-size: 13px;
   line-height: 1.6;
-  color: var(--fg);
+  color: var(--text);
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 400px;
@@ -957,16 +957,16 @@
 }
 
 .context-key {
-  color: var(--fg);
+  color: var(--text);
   font-weight: 600;
 }
 
 .context-value {
-  color: var(--fg2);
+  color: var(--text-muted);
 }
 
 .context-meta {
-  color: var(--fg4);
+  color: var(--text-dim);
   font-size: 10px;
 }
 

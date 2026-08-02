@@ -18,8 +18,8 @@
 </script>
 
 <div class="ui-kv" class:ui-kv--stacked={sub !== undefined}>
-  <span class="ui-kv__k" style:color={dim ? 'var(--fg4)' : 'var(--fg3)'}>{k}</span>
-  <span class="ui-kv__v" style:color={vColor ?? 'var(--fg)'}>
+  <span class="ui-kv__k" style:color={dim ? 'var(--text-dim)' : 'var(--text-dim)'}>{k}</span>
+  <span class="ui-kv__v" style:color={vColor ?? 'var(--text)'}>
     {#if typeof v === 'function'}
       {@render (v as Snippet)()}
     {:else}
@@ -55,7 +55,7 @@
   .ui-kv__sub {
     flex: 1 0 100%;
     text-align: right;
-    color: var(--fg4);
+    color: var(--text-dim);
     font-size: 10px;
     letter-spacing: 0.04em;
     text-transform: uppercase;

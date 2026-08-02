@@ -60,6 +60,6 @@
   .tx-plan,
   .tx-raw {
     white-space: pre-wrap;
-    color: var(--fg3);
+    color: var(--text-dim);
   }
 </style>

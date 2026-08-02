@@ -97,6 +97,6 @@
 <style>
   .provider-form { display: grid; gap: var(--gap-inline); }
   .provider-form__field { display: grid; gap: 4px; }
-  .provider-form__label { font-size: 11px; color: var(--fg3); font-family: var(--font-mono); }
+  .provider-form__label { font-size: 11px; color: var(--text-dim); font-family: var(--font-mono); }
   .provider-form__actions { display: flex; gap: 8px; }
 </style>

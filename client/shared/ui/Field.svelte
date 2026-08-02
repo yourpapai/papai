@@ -64,7 +64,7 @@
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--fg3);
+    color: var(--text-dim);
   }
   .ui-field__req {
     color: var(--accent);
@@ -72,7 +72,7 @@
   }
   .ui-field__hint {
     font-size: 10px;
-    color: var(--fg-hint);
+    color: var(--text-dim);
   }
   .ui-field__error {
     font-size: 10px;

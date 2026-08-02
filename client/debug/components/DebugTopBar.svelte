@@ -90,10 +90,10 @@
   .debug-topbar__stat {
     font-family: var(--font-mono);
     font-size: 12px;
-    color: var(--fg);
+    color: var(--text);
   }
   .debug-topbar__lbl {
-    color: var(--fg3);
+    color: var(--text-dim);
     font-family: var(--font-mono);
     font-size: 11px;
   }

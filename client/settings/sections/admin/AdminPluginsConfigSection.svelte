@@ -171,7 +171,7 @@
   .plugin-block__id {
     font-family: var(--font-mono);
     font-size: 13px;
-    color: var(--fg2);
+    color: var(--text-muted);
     margin: 0 0 8px 0;
   }
   .settings-field-list {
@@ -180,7 +180,7 @@
   }
   .badge-required {
     font-size: 10px;
-    color: var(--fg2);
+    color: var(--text-muted);
     border: 1px solid var(--border);
     padding: 1px 4px;
     border-radius: 2px;

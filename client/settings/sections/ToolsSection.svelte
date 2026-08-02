@@ -326,7 +326,7 @@
   }
   .settings-tools__domain {
     border: 1px solid var(--border);
-    background: var(--surface);
+    background: var(--surface-1);
   }
   .settings-tools__domain-head {
     display: flex;
@@ -337,7 +337,7 @@
   .settings-tools__expand {
     background: none;
     border: none;
-    color: var(--fg);
+    color: var(--text);
     font-family: var(--font-mono);
     font-size: 12px;
     cursor: pointer;
@@ -371,7 +371,7 @@
   .settings-tools__group-name {
     font-family: var(--font-mono);
     font-size: 12px;
-    color: var(--fg2);
+    color: var(--text-muted);
   }
   .settings-tools__group-toggle {
     margin-left: auto;
@@ -390,7 +390,7 @@
   .settings-tools__presets-label {
     font-family: var(--font-mono);
     font-size: 12px;
-    color: var(--fg2);
+    color: var(--text-muted);
   }
   .settings-tools__presets-active {
     margin-left: auto;
@@ -398,7 +398,7 @@
   .settings-tools__presets-hint {
     margin: 0 0 12px;
     font-size: 11px;
-    color: var(--fg3);
+    color: var(--text-dim);
   }
   .settings-tools__confirm {
     display: flex;
@@ -408,7 +408,7 @@
     padding: 8px 10px;
     margin-bottom: 12px;
     border: 1px solid var(--border);
-    background: var(--surface);
+    background: var(--surface-1);
     font-size: 12px;
   }
   .settings-tools__clear-row {

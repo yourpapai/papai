@@ -72,7 +72,7 @@
   .debug-detail-rail {
     display: flex;
     flex-direction: column;
-    background: var(--surface);
+    background: var(--surface-1);
     border: 1px solid var(--border);
     min-height: 0;
     min-width: 0;
@@ -84,7 +84,7 @@
     gap: 8px;
   }
   .debug-detail-rail__hint {
-    color: var(--fg3);
+    color: var(--text-dim);
     font-family: var(--font-mono);
     font-size: 12px;
     margin: 0;
@@ -94,12 +94,12 @@
     align-items: center;
     justify-content: space-between;
     padding: 10px 14px;
-    border-bottom: 1px solid var(--hair);
+    border-bottom: 1px solid var(--border);
   }
   .debug-detail-rail__label {
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--fg2);
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.08em;
   }

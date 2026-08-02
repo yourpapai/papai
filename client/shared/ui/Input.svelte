@@ -91,7 +91,7 @@
   .ui-input {
     display: flex;
     align-items: center;
-    background: var(--raised);
+    background: var(--surface-2);
     border: 1px solid var(--border);
     padding: 0 10px;
     border-radius: var(--radius-control);
@@ -108,7 +108,7 @@
     cursor: not-allowed;
   }
   .ui-input__prefix {
-    color: var(--fg3);
+    color: var(--text-dim);
     font-family: var(--font-mono);
     font-size: 12px;
     margin-right: 8px;
@@ -117,7 +117,7 @@
     background: transparent;
     border: 0;
     outline: 0;
-    color: var(--fg);
+    color: var(--text);
     font-family: var(--font-mono);
     font-size: 12px;
     flex: 1;
@@ -130,7 +130,7 @@
     background: transparent;
     border: 0;
     outline: 0;
-    color: var(--fg);
+    color: var(--text);
     font-family: var(--font-mono);
     font-size: 12px;
     flex: 1;

@@ -250,7 +250,7 @@
     padding: var(--gap-tight) var(--gap-inline);
     border: 1px solid var(--border);
     border-radius: var(--radius-control);
-    background: var(--surface);
+    background: var(--surface-1);
   }
   .settings-repos__info {
     display: flex;
@@ -267,7 +267,7 @@
   .settings-repos__url {
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--fg2);
+    color: var(--text-muted);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -275,7 +275,7 @@
   .settings-repos__meta {
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--fg-hint);
+    color: var(--text-dim);
   }
   .settings-repos__add {
     display: grid;
@@ -283,7 +283,7 @@
     padding: var(--gap-inline);
     border: 1px solid var(--border);
     border-radius: var(--radius-control);
-    background: var(--surface);
+    background: var(--surface-1);
   }
   .settings-repos__add-head {
     display: grid;
@@ -292,13 +292,13 @@
   .settings-repos__add-label {
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--fg-hint);
+    color: var(--text-dim);
     margin: 0;
   }
   .settings-repos__add-note {
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--fg-hint);
+    color: var(--text-dim);
     margin: 0;
   }
   #repos .settings-form {

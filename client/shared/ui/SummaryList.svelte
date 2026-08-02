@@ -43,15 +43,15 @@
     align-items: center;
     gap: 16px;
     padding: 8px 0;
-    border-bottom: 1px solid var(--hair);
+    border-bottom: 1px solid var(--border);
   }
   .ui-summary__k {
     font-size: 12px;
-    color: var(--fg3);
+    color: var(--text-dim);
   }
   .ui-summary__v {
     font-size: 12px;
-    color: var(--fg);
+    color: var(--text);
     text-align: right;
   }
 </style>

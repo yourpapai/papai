@@ -61,7 +61,7 @@
     align-items: center;
     flex: 1;
     min-width: 200px;
-    background: var(--raised);
+    background: var(--surface-2);
     border: 1px solid var(--border);
     padding: 0 10px;
     border-radius: var(--radius-control);
@@ -74,7 +74,7 @@
     background: transparent;
     border: 0;
     outline: 0;
-    color: var(--fg);
+    color: var(--text);
     font-family: var(--font-mono);
     font-size: 12px;
     flex: 1;

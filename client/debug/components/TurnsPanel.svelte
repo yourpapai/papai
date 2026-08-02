@@ -160,12 +160,12 @@
   }
 
   .turns__no-tools {
-    color: var(--fg4);
+    color: var(--text-dim);
     font-size: 11px;
   }
 
   .turns__overflow {
     font-size: 10px;
-    color: var(--fg3);
+    color: var(--text-dim);
   }
 </style>
