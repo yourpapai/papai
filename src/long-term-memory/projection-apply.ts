@@ -80,6 +80,42 @@ const failTerminally = (tx: MemoryTx, position: number, attemptCount: number, no
 }
 
 /**
+ * Records a rolled-back apply in its own transaction.
+ *
+ * The main transaction rolled back, taking its own attempt bookkeeping with it, so the retry
+ * state is written separately — the same reason canonical capture records a failed attempt
+ * outside its transaction. At the attempt bound the item goes terminal: retrying a poison row
+ * forever would make outbox depth ambiguous between a backlog and one stuck item.
+ */
+const recordApplyFailure = (position: number, now: string, error: unknown): void => {
+  const message = error instanceof Error ? error.message : String(error)
+  try {
+    getDrizzleDb().transaction((tx) => {
+      const item = tx
+        .select({ attemptCount: memoryProjectionOutbox.attemptCount })
+        .from(memoryProjectionOutbox)
+        .where(eq(memoryProjectionOutbox.position, position))
+        .get()
+      if (item === undefined) return
+      const attemptCount = item.attemptCount + 1
+      tx.update(memoryProjectionOutbox)
+        .set({
+          attemptCount,
+          lastAttemptAt: now,
+          lastError: message,
+          state: attemptCount >= MAX_PROJECTION_ATTEMPTS ? 'failed' : 'pending',
+        })
+        .where(eq(memoryProjectionOutbox.position, position))
+        .run()
+    })
+    log.warn({ position, error: message }, 'Projection apply failed; retry state recorded')
+  } catch (recordingError) {
+    const recordingMessage = recordingError instanceof Error ? recordingError.message : String(recordingError)
+    log.error({ position, error: message, recordingMessage }, 'Projection apply failed and could not be recorded')
+  }
+}
+
+/**
  * Applies one outbox item to the shadow projection.
  *
  * The shadow upsert and the outbox state change are one transaction, which is what makes
@@ -91,9 +127,20 @@ const failTerminally = (tx: MemoryTx, position: number, attemptCount: number, no
  * Apply reads the canonical event rather than branching on the outbox `op`, so `capture` and
  * `observe` share one path and re-driving any position converges on the same state. `op`
  * survives as an O3 observability field.
+ *
+ * Never throws: any failure of the apply transaction is caught, recorded as a rolled-back
+ * attempt in its own transaction (see `recordApplyFailure`), and reported as `'failed'`.
  */
 export function applyOutboxItem(position: number, now = new Date().toISOString()): ApplyOutcome {
-  const outcome = applyWithinTransaction(position, now)
+  let outcome: ApplyOutcome
+  try {
+    outcome = applyWithinTransaction(position, now)
+  } catch (error) {
+    recordApplyFailure(position, now, error)
+    outcome = 'failed'
+  }
+  // `missing-event` writes the item to a terminal `failed` state, so it must be greppable
+  // apart from a routine apply. `failed` is already warned about inside `recordApplyFailure`.
   if (outcome === 'missing-event') {
     log.warn({ position, outcome }, 'Projection apply found no canonical event; outbox item failed terminally')
   } else {
