@@ -6,6 +6,7 @@
 <script lang="ts">
   import { formatDuration, formatTime } from '../../shared/helpers.js'
   import type { Turn, DashboardState, ScopeFilter } from '../dashboard-types.js'
+  import { formatScope } from '../scope-label.js'
   import { panelCount } from '../panel-count.js'
   import DataTable from '../../shared/ui/DataTable.svelte'
   import EmptyState from '../../shared/ui/EmptyState.svelte'
@@ -27,16 +28,6 @@
     if (status === 'error') return 'danger'
     if (status === 'cancelled') return 'warn'
     return 'accent'
-  }
-
-  function scopeLabel(turn: Turn): string {
-    const { kind, userId, groupId, threadId } = turn.scope
-    if (kind === 'user') return userId ? `dm:${userId}` : 'dm'
-    if (kind === 'group') {
-      const base = groupId ? `group:${groupId}` : 'group'
-      return threadId ? `${base}/${threadId}` : base
-    }
-    return 'global'
   }
 
   function matchesScope(turn: Turn, scope: ScopeFilter): boolean {
@@ -72,7 +63,7 @@
       id: t.turnId,
       time: formatTime(t.startedAt),
       status: t.status,
-      scope: scopeLabel(t),
+      scope: formatScope(t.scope),
       durationMs: (t.endedAt ?? Date.now()) - t.startedAt,
       msgs: t.incomingMessageCount,
       toolList: t.toolCalls.map((tc) => tc.name),
