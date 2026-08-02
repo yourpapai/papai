@@ -201,8 +201,10 @@ describe('ReposSection', () => {
 
     target.querySelector<HTMLButtonElement>('[data-testid="repos-delete-r1"]')!.click()
     await drain()
-    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
+    target.querySelector<HTMLButtonElement>('[data-testid="confirm-accept"]')!.click()
     await drain()
+    // Second drain: the first resolves the DELETE, this one flushes the list
+    // reload it chains into — the modal only closes once that settles.
     await drain()
 
     expect(capturedDeleteUrl).toContain('repoId=r1')
@@ -222,14 +224,13 @@ describe('ReposSection', () => {
 
     target.querySelector<HTMLButtonElement>('[data-testid="repos-delete-r1"]')!.click()
     await drain()
-    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
-    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="confirm-accept"]')!.click()
     await drain()
 
     expect(target.querySelector('.modal')).toBeNull()
     const errorEl = target.querySelector<HTMLElement>('.status-error')!
     expect(errorEl).not.toBeNull()
-    expect(Boolean(errorEl.textContent)).toBe(true)
+    expect(errorEl.textContent).toContain('Something went wrong on the server')
     void unmount(component)
   })
 
