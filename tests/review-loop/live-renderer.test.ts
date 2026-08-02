@@ -251,3 +251,69 @@ describe('LiveRenderer.statusSuffix', () => {
     expect(renderer.statusSuffix()).toBe('issues: 1 rejected')
   })
 })
+
+describe('LiveRenderer slots', () => {
+  test('non-TTY slot is a no-op', () => {
+    const { stream, output } = makeStream()
+    const r = new LiveRenderer(stream)
+    r.slot('fixer-w1', '  fixer-w1 ▶ edit a.ts')
+    expect(output).toEqual([])
+  })
+
+  test('TTY slot renders the block with the slot line', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.slot('fixer-w1', '  fixer-w1 ▶ edit a.ts')
+    expect(output).toHaveLength(1)
+    expect(output[0]).toContain('fixer-w1 ▶ edit a.ts')
+  })
+
+  test('redraw after a multi-line block moves the cursor up to the block top', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.slot('a', 'line-a')
+    r.slot('b', 'line-b')
+    r.slot('c', 'line-c')
+    const redraw = output[2]!
+    expect(redraw.startsWith('\r\u001b[1A')).toBe(true)
+    expect(redraw).toContain('line-a')
+    expect(redraw).toContain('line-c')
+  })
+
+  test('clearing the last slot erases the whole block', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.slot('a', 'line-a')
+    r.slot('a', null)
+    const cleared = output[1]!
+    expect(cleared.startsWith('\r')).toBe(true)
+    expect(cleared).not.toContain('line-a')
+  })
+
+  test('event clears the block, prints, and redraws it', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.issue({ type: 'round', round: 1, maxRounds: 2 })
+    r.slot('fixer-w1', 'line-fix')
+    const before = output.length
+    r.event('hello')
+    expect(output[before]).toContain('\u001b[2K')
+    expect(output[before + 1]).toBe('hello\n')
+    expect(output[before + 2]).toContain('line-fix')
+    expect(output[before + 2]).toContain('round 1/2')
+  })
+
+  test('a throwing stream downgrades the renderer and never rethrows', () => {
+    const stream: RendererStream = {
+      write(): boolean {
+        throw Object.assign(new Error('write EPIPE'), { code: 'EPIPE' })
+      },
+      isTTY: true,
+    }
+    const r = new LiveRenderer(stream)
+    expect(r.dynamic).toBe(true)
+    expect(() => r.event('x')).not.toThrow()
+    expect(r.dynamic).toBe(false)
+    expect(() => r.slot('a', 'line')).not.toThrow()
+  })
+})

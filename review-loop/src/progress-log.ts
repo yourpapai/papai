@@ -10,6 +10,13 @@ export type IssueProgressEvent =
   | { type: 'found'; id: string; severity: Severity; file: string; line: number; title: string }
   | { type: 'decided'; id: string; verdict: string; title: string; note?: string }
 
+export interface UsageDelta {
+  input: number
+  output: number
+  reasoning: number
+  cost: number
+}
+
 export interface ProgressReporter {
   readonly dynamic: boolean
   event(message: string): void
@@ -18,6 +25,8 @@ export interface ProgressReporter {
   log(message: string): void
   issue?(event: IssueProgressEvent): void
   statusSuffix?(): string
+  slot?(key: string, line: string | null): void
+  usage?(delta: UsageDelta): void
 }
 
 export function emitDecision(
