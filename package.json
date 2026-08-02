@@ -45,6 +45,7 @@
     "test:coverage": "bun scripts/ensure-client-built.ts && bun test --coverage",
     "coverage:ratchet": "bun scripts/coverage/ratchet.ts",
     "coverage:ratchet:stories": "bun scripts/coverage/ratchet-stories.ts",
+    "ux:backlog": "bun scripts/ux-backlog.ts",
     "test:mutate": "bun scripts/mutation/all-files.ts",
     "test:mutate:changed": "bun scripts/mutation/changed-files.ts",
     "test:mutate:file": "bun scripts/mutation/paired-run.ts",

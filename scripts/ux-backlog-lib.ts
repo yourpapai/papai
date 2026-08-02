@@ -29,7 +29,10 @@ const isStatus = (value: string): value is FindingStatus => (STATUSES as readonl
 
 const HEADING = /^### \[(?<severity>[^\]]*)\] (?<title>.+)$/u
 const FIELD = /^- \*\*(?<key>[A-Za-z]+):\*\* (?<value>.*)$/u
-const DATE = /^\*\*Date:\*\* (?<date>\d{4}-\d{2}-\d{2})\s*$/u
+// Trailing prose after the date is allowed: several documents annotate the line
+// (e.g. "2026-07-02 (re-review against the expanded 9-dimension rubric)"). The date
+// itself is still pinned to the start, which is what the roll-up reads.
+const DATE = /^\*\*Date:\*\* (?<date>\d{4}-\d{2}-\d{2})\b/u
 const ANCHOR = /`(?<anchor>[^`]+?:\d+)`/u
 
 /**

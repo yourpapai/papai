@@ -5,7 +5,8 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { parseFindings, renderBacklog } from '../../scripts/ux-backlog-lib.js'
+import { LICENSE_HEADER_LINES, parseFindings, renderBacklog, resolveHeaderYear } from '../../scripts/ux-backlog-lib.js'
+import { collectReviews, isReviewDocument } from '../../scripts/ux-backlog.js'
 
 const header = ['# UX Review — Members', '', '**Date:** 2026-07-03', ''].join('\n')
 
@@ -24,6 +25,9 @@ const replaceLine = (lines: readonly string[], prefix: string, replacement: stri
   lines.map((line) => (line.startsWith(prefix) ? replacement : line))
 
 const withStatus = (status: string): string[] => replaceLine(VALID, '- **Status:** open', `- **Status:** ${status}`)
+
+const isLiteralHeaderLine = (line: string): boolean =>
+  line !== '<!--' && line !== '-->' && !line.startsWith('Copyright')
 
 describe('parseFindings', () => {
   test('extracts the section, date, and one fully-formed finding', () => {
@@ -142,5 +146,37 @@ describe('renderBacklog', () => {
       'MemorySection.md',
     )
     expect(renderBacklog([a, b], 2026)).toBe(renderBacklog([b, a], 2026))
+  })
+})
+
+describe('the checked-in backlog', () => {
+  test('is current — regenerating in memory reproduces it exactly', async () => {
+    const expected = renderBacklog(await collectReviews(), resolveHeaderYear())
+    const actual = await Bun.file('docs/ux-reviews/_BACKLOG.md').text()
+    expect(actual).toBe(expected)
+  })
+
+  test('covers every review document', async () => {
+    const reviews = await collectReviews()
+    expect(reviews).toHaveLength(18)
+    expect(reviews.every((review) => review.findings.length > 0)).toBe(true)
+  })
+
+  test('excludes reference and generated files', () => {
+    expect(isReviewDocument('MembersSection.md')).toBe(true)
+    expect(isReviewDocument('RUBRIC.md')).toBe(false)
+    expect(isReviewDocument('_TEMPLATE.md')).toBe(false)
+    expect(isReviewDocument('_BACKLOG.md')).toBe(false)
+  })
+})
+
+describe('license header byte-identity', () => {
+  test('matches the literals the stamper builds its markdown header from', async () => {
+    const stamper = await Bun.file('scripts/add-license-headers.ts').text()
+    const literalLines = LICENSE_HEADER_LINES.filter(isLiteralHeaderLine)
+    for (const line of literalLines) {
+      expect(stamper).toContain(`'${line}'`)
+    }
+    expect(stamper).toContain('`Copyright (c) ${year} ${COPYRIGHT_HOLDER}`')
   })
 })
