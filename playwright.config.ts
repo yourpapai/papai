@@ -10,9 +10,12 @@ const AUDIT = process.env['VISUAL_AUDIT'] === '1'
 
 export default defineConfig({
   testDir: 'tests/visual',
-  // Baselines double as the agent's "current render": gitignored and always
-  // (re)written via `--update-snapshots`. {testFilePath} mirrors the story tree
-  // and {arg} is the story name, so PNGs are easy to locate by hand.
+  // Baselines double as the agent's "current render": gitignored and rewritten by
+  // `bun shoot`, which passes `--update-snapshots=all`. The bare flag presets to mode
+  // "changed", which only rewrites baselines the comparator already considers different —
+  // that silently strands sub-threshold drift, so do not drop the `=all`.
+  // {testFilePath} mirrors the story tree and {arg} is the story name, so PNGs are easy
+  // to locate by hand.
   snapshotPathTemplate: '.storybook-shots/{testFilePath}/{arg}{ext}',
   outputDir: '.storybook-shots/test-results',
   // Regenerates public/storybook-*.css per run. A warm server would otherwise serve the
