@@ -42,6 +42,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] Removing a member revokes access with no confirmation
 
+- **Id:** members-delete-no-confirm
+- **Status:** open
 - **Dimension:** 4. Feedback & state (also 3. Consistency)
 - **Where visible:** Populated — each row's right-aligned "Remove".
 - **Source:** `client/settings/sections/MembersSection.svelte:107` (`Btn … onClick={() => void remove(row.user_id)}`) calls `remove()` (`:52`) immediately; there is no interstitial. Eight-plus sibling sections (`MemorySection`, `CodeHostSection`, `CodingCredentialsSection`, `PluginsSection`, several `admin/*`) gate destructive actions behind the shared `Confirm` component — this one does not.
@@ -49,6 +51,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Loading state is indistinguishable from Empty
 
+- **Id:** members-loading-looks-empty
+- **Status:** open
 - **Dimension:** 4. Feedback & state
 - **Where visible:** Loading vs Empty — the two screenshots are pixel-identical; the table shows "No members" while the fetch is still in flight.
 - **Source:** `MembersSection.svelte:62-64` (`$effect` → `load`) sets `loading = true` (`:29`) but the body still renders `memberRows` (empty during the initial load), so `DataTable` falls through to its `empty` snippet "No members" (`:115`). The only loading signal is the header `IconButton busy` (`:87`), a faint glyph most users won't notice.
@@ -56,6 +60,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Add gives no in-flight feedback and allows double-submit
 
+- **Id:** members-add-no-feedback-double-submit
+- **Status:** open
 - **Dimension:** 9. Interaction & micro-states
 - **Where visible:** Not a single frame — the interval after pressing "Add member" (button stays green, enabled, and unchanged while the request runs).
 - **Source:** `MembersSection.svelte:39-50` (`add()` is async but sets no pending flag); the button (`:99-101`) has no `disabled`/busy binding, so it neither disables nor shows an "Adding…" state — a second click before `load()` returns re-submits.
@@ -63,6 +69,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Error is detached from the action that caused it and crowds the field label
 
+- **Id:** members-error-detached-crowds-label
+- **Status:** open
 - **Dimension:** 4. Feedback & state (also 8. Spacing)
 - **Where visible:** Error — "boom" sits directly above the "USER ID OR @USERNAME" label with no breathing room, between the header and the form.
 - **Source:** `MembersSection.svelte:91` renders the error `<p class="status-error">` at the top for _all_ failures; a Remove failure originates in the table far below (`:52`), so the message lands nowhere near its trigger. `.status-error` (`settings.css:91-93`) is a bare `color` rule with no margin, so it crowds the following label.
@@ -70,6 +78,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] `added_at` is a raw ISO timestamp and bypasses the shared formatter
 
+- **Id:** members-added-at-raw-timestamp
+- **Status:** open
 - **Dimension:** 5. Content & language (also 3. Consistency)
 - **Where visible:** Populated — the "Added at" column reads `2026-05-01T00:00:00Z`.
 - **Source:** `MembersSection.svelte:73` passes `m.added_at` through unchanged and `:111` stringifies it verbatim; `client/shared/helpers.ts:41` exports `formatDateTime()` for exactly this, used by other data tables.
@@ -77,6 +87,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] "Remove" and the refresh control read as non-interactive at rest
 
+- **Id:** members-remove-refresh-low-affordance
+- **Status:** open
 - **Dimension:** 2. Affordance & signifiers (also 6. Accessibility)
 - **Where visible:** Populated (both "Remove" cells look like label text until hover); all states (the faint header `⟳`).
 - **Source:** `MembersSection.svelte:107` uses `variant="ghost"` (`Btn.svelte:77-81`: transparent bg, `--fg2` text, transparent border) for a _destructive_ action; the refresh `IconButton` (`:87`) uses `--text-muted` on transparent (`IconButton.svelte:38`), running low-contrast on the dark theme.
@@ -84,6 +96,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Add-form alignment rule is inert; the primary button is undersized under a full-width input
 
+- **Id:** members-add-form-alignment-inert
+- **Status:** open
 - **Dimension:** 8. Spacing, alignment & sizing
 - **Where visible:** Populated (desktop + narrow) — the full-width input, then a small "Add member" button dropped onto its own line below the hint.
 - **Source:** `settings.css:38-44` (`.settings-form` `flex-wrap: wrap; align-items: end`) is written for an inline input-plus-button row, but the `Field` (`:93-98`) spans the row width so the `md` button (`:99`) wraps below — leaving `align-items: end` with nothing to align and the primary action visually small next to the input.
@@ -91,6 +105,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Empty state dead-ends on "No members"
 
+- **Id:** members-empty-state-dead-end
+- **Status:** open
 - **Dimension:** 5. Content & language
 - **Where visible:** Empty — the table body reads only "No members".
 - **Source:** `MembersSection.svelte:115` (`{#snippet empty()}No members{/snippet}`); the add form directly above partly mitigates, but the copy offers no next step.

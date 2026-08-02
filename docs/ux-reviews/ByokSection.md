@@ -35,6 +35,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] Active BYOK state is not explicitly indicated — inferred only from an inverse-labeled toggle
 
+- **Id:** byok-active-state-not-indicated
+- **Status:** open
 - **Dimension:** 2. Affordance & signifiers / 4. Feedback & state
 - **Where visible:** "Secret set" (enabled+complete) and "Disabled" states
 - **Source:** `client/settings/sections/ByokSection.svelte:141-155` (PageHeader eyebrow `Personal` / title `BYOK LLM`, toggle button label is the inverse action)
@@ -43,6 +45,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Load-error state drops the primary control and shows the raw server message
 
+- **Id:** byok-load-error-raw-message
+- **Status:** open
 - **Dimension:** 4. Feedback & state / 5. Content & language
 - **Where visible:** "Error" state (`boom` in red)
 - **Source:** `client/settings/sections/ByokSection.svelte:143` (toggle only rendered when `currentData !== null`), `:157` (`{error}` printed verbatim), `:68` / `:103` / `:118` (raw `err.message`)
@@ -51,6 +55,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Redundant double label on every field
 
+- **Id:** byok-redundant-double-label
+- **Status:** open
 - **Dimension:** 1. Visual hierarchy & scanning / 5. Content & language
 - **Where visible:** "Missing required" — `Anthropic API Key *` then `NEW VALUE`; `Model` then `VALUE`
 - **Source:** `client/settings/sections/ByokSection.svelte:178` (custom field-name label) + `:189` (`Field label={field.sensitive ? 'New value' : 'Value'}`)
@@ -59,6 +65,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Section status/error not announced to assistive tech
 
+- **Id:** byok-status-not-announced
+- **Status:** open
 - **Dimension:** 6. Accessibility
 - **Where visible:** "Error", "Missing required", and post-save success (not screenshot-visible)
 - **Source:** `client/settings/sections/ByokSection.svelte:157-158` (`<p class="status-error">` / `status-success`), `:170-172` (missing-fields error)
@@ -67,6 +75,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Card spacing and radius are hardcoded, off the shared scale
 
+- **Id:** byok-hardcoded-spacing
+- **Status:** open
 - **Dimension:** 8. Spacing, alignment & sizing / 3. Consistency w/ design system
 - **Where visible:** all populated states (field cards)
 - **Source:** `client/settings/sections/ByokSection.svelte:221-252` (`gap: 12px`, `gap: 8px`, `gap: 10px`, `padding: 12px`, `min-width: 200px`; no `border-radius`)
@@ -75,6 +85,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Required marker is hand-rolled and low-emphasis
 
+- **Id:** byok-required-marker-low-emphasis
+- **Status:** open
 - **Dimension:** 3. Consistency w/ design system / 2. Affordance & signifiers
 - **Where visible:** "Secret set" / "Missing required" — `Anthropic API Key *`
 - **Source:** `client/settings/sections/ByokSection.svelte:178` (`{field.required ? ' *' : ''}` in muted label color)
@@ -83,6 +95,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Non-sensitive field has no dirty state — Save always active
 
+- **Id:** byok-no-dirty-state
+- **Status:** open
 - **Dimension:** 9. Interaction & micro-states / 4. Feedback & state
 - **Where visible:** "Missing required" — `Model` row (pre-filled `claude-opus-4-5`, Save enabled)
 - **Source:** `client/settings/sections/ByokSection.svelte:89-91` (`editorOpen` true for non-sensitive) + `:199-206` (Save disabled only during in-flight)

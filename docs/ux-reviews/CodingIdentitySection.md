@@ -35,6 +35,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] Load failure leaves an editable form defaulting to "Initiator" — the real policy can be silently overwritten
 
+- **Id:** coding-identity-load-failure-silent-overwrite
+- **Status:** open
 - **Dimension:** 4. Feedback & state
 - **Where visible:** `Error` state (small red "boom" above POLICY; policy select + Save remain fully enabled)
 - **Source:** `client/settings/sections/CodingIdentitySection.svelte:107` (error `<p>`), `:93`–`:135` (form always rendered), `:61`–`:73` (`save`)
@@ -43,6 +45,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] Designated "Member" dropdown shows raw user ids instead of human labels
 
+- **Id:** coding-identity-raw-user-ids
+- **Status:** open
 - **Dimension:** 5. Content & language
 - **Where visible:** `designated-policy` state — the MEMBER select lists `u1` / `u2`
 - **Source:** `client/settings/sections/CodingIdentitySection.svelte:131` (`<option>{member.user_id}</option>`)
@@ -51,6 +55,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Loading state is a fully-formed control with a placeholder value, not a load affordance
 
+- **Id:** coding-identity-loading-looks-interactive
+- **Status:** open
 - **Dimension:** 4. Feedback & state
 - **Where visible:** `Loading` state — visually near-identical to Populated, only a faint opacity dim
 - **Source:** `client/settings/sections/CodingIdentitySection.svelte:28` (init `'initiator'`), `:114`/`:127` (`disabled={loading || mutating}`), `:88`–`:90`
@@ -59,6 +65,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Raw one-off `<select>` diverges from the shared `Select` primitive and its focus treatment
 
+- **Id:** coding-identity-raw-select-diverges
+- **Status:** open
 - **Dimension:** 3. Consistency w/ design system · 9. Interaction & micro-states
 - **Where visible:** `policy-select focused` state (blue browser outline); compare vs `TaskProviderSection` / `GroupProviderSection`
 - **Source:** `client/settings/sections/CodingIdentitySection.svelte:111`–`:133` (raw markup), `:153`–`:166` (one-off styles); cf. `client/shared/ui/Select.svelte:52` (green `:focus-within` ring)
@@ -67,6 +75,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] No success confirmation and no "Saving…" busy state on Save
 
+- **Id:** coding-identity-no-save-feedback
+- **Status:** open
 - **Dimension:** 4. Feedback & state · 9. Interaction & micro-states
 - **Where visible:** all states — Save label is static; no post-save toast/flash
 - **Source:** `client/settings/sections/CodingIdentitySection.svelte:96`–`:104` (static "Save"), `:61`–`:73` (`save` reloads silently)
@@ -75,6 +85,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] "Designated" can be saved with no member selected
 
+- **Id:** coding-identity-designated-no-member-required
+- **Status:** open
 - **Dimension:** 4. Feedback & state
 - **Where visible:** `Empty` state → switch policy to Designated (member list empty)
 - **Source:** `client/settings/sections/CodingIdentitySection.svelte:65` (`designated:${designatedUserId}`), `:80` (`members[0]?.user_id ?? ''`)
@@ -83,6 +95,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Errors are not announced to assistive tech and show raw messages
 
+- **Id:** coding-identity-errors-not-announced
+- **Status:** open
 - **Dimension:** 6. Accessibility · 5. Content & language
 - **Where visible:** `Error` state (literal "boom")
 - **Source:** `client/settings/sections/CodingIdentitySection.svelte:107` (plain `<p class="status-error">`), `:35`–`:37` (`messageFrom`); cf. `TaskProviderSection.svelte:119` (`formatFetchError`)
@@ -91,6 +105,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Hardcoded spacing/sizing drifts from the token scale
 
+- **Id:** coding-identity-hardcoded-spacing
+- **Status:** open
 - **Dimension:** 8. Spacing, alignment & sizing
 - **Where visible:** all states; error text sits directly on top of the POLICY label
 - **Source:** `client/settings/sections/CodingIdentitySection.svelte:146`–`:166` (`gap: 8px`, `margin-bottom: 12px`, `border-radius: 4px`, `padding: 5px 8px`, `font-size: 13px`)

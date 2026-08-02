@@ -51,6 +51,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] All four stories serve the `agent-provider` fixture — the forge form has zero screenshot coverage
 
+- **Id:** code-host-forge-form-uncovered
+- **Status:** open
 - **Dimension:** 4. Feedback & state (+ review fidelity)
 - **Where visible:** Populated, Empty, Error, Loading, and every manual state — all render _Coding agent / Model provider / Auth method / API key / Base URL / Model_ under the "Code host" title
 - **Source:** `CodeHostSection.svelte:72` requests `'forge'`; the handler ignores the namespace and returns `namespace: 'agent-provider'` unconditionally (`client/stories/msw/settings-handlers-personal.ts:64`, `:73`, `:90`); the real field set is at `src/debug/settings/coding-credentials-fields-meta.ts:63`
@@ -59,6 +61,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] Nothing tells the user whether a code host is connected — `complete` and `missing` are never rendered
 
+- **Id:** code-host-connection-state-hidden
+- **Status:** open
 - **Dimension:** 1. Visual hierarchy & scanning (also 4. feedback & state)
 - **Where visible:** Populated and Empty — both are an undifferentiated stack of field cards; only the presence of a Clear button hints at configured state
 - **Source:** `CodeHostSection.svelte:232` consumes `currentData.configured` solely to gate the Clear button; the response's `complete` and `missing` fields are never read, and `PageHeader`'s `sub` slot is unused (`:171`, `client/shared/ui/PageHeader.svelte:16`)
@@ -67,6 +71,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] The empty / first-setup state gives no guidance at all
 
+- **Id:** code-host-empty-state-no-guidance
+- **Status:** open
 - **Dimension:** 5. Content & language
 - **Where visible:** Empty, Empty — narrow 640: field cards and a disabled Save, with no explanatory copy anywhere
 - **Source:** `CodeHostSection.svelte:184`–`189` renders straight into the field loop with no helper block; the sibling emits a first-setup paragraph when `!complete` (`CodingCredentialsSection.svelte:273`–`277`) and per-field hints through the shell's `footer` snippet (`:332`–`336`)
@@ -75,6 +81,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] The revealed Instance URL is neither marked required nor hinted, yet the server rejects it blank
 
+- **Id:** code-host-instance-url-unmarked-required
+- **Status:** open
 - **Dimension:** 4. Feedback & state (also 5. content)
 - **Where visible:** Selecting `github-enterprise` or `gitlab-self-hosted` (source; not reachable in the current fixtures)
 - **Source:** field meta declares `required: false` (`src/debug/settings/coding-credentials-fields-meta.ts:72`) and `CodeHostSection.svelte:192`–`196` passes `required={field.required}` verbatim, with no `effectiveRequired` equivalent to the sibling's (`CodingCredentialsSection.svelte:282`); the route returns 422 when it is blank or non-`https://` (`src/debug/settings/coding-credentials-routes.ts:113`–`120`)
@@ -83,6 +91,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Validation surfaces only as a top banner carrying raw server text — the field shell has no inline error channel
 
+- **Id:** code-host-validation-no-inline-channel
+- **Status:** open
 - **Dimension:** 4. Feedback & state (also 6. accessibility)
 - **Where visible:** Any 422 (e.g. blank Instance URL) — the message lands above the form, far from the offending field
 - **Source:** errors render as a single `.status-error` paragraph (`CodeHostSection.svelte:177`); `SettingsFieldShell` publishes only a label id and never calls `setFieldError` (`client/settings/components/SettingsFieldShell.svelte:30`–`34`), unlike `Field.svelte:29` — so the `aria-invalid` / `aria-describedby` / invalid-border support already built into `Input` (`client/shared/ui/Input.svelte:39`–`40`, `:97`) is unreachable from this section
@@ -91,6 +101,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Switching back to a SaaS kind leaves a stale stored Instance URL
 
+- **Id:** code-host-stale-instance-url-on-saas
+- **Status:** open
 - **Dimension:** 4. Feedback & state
 - **Where visible:** Choosing `gitlab-self-hosted`, saving, then switching to `github` and saving (source)
 - **Source:** `shouldShowField` hides `instance_url` (`CodeHostSection.svelte:102`–`105`) and `collectValues` skips every hidden field (`:113`), while the route merges the submitted values over the stored record (`coding-credentials-routes.ts:106`–`107`); the sibling handles precisely this class of bug by zeroing hidden fields at submit time, with a comment naming it (`CodingCredentialsSection.svelte:168`–`176`)
@@ -99,6 +111,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] No guard when the field list comes back empty
 
+- **Id:** code-host-no-empty-field-list-guard
+- **Status:** open
 - **Dimension:** 4. Feedback & state
 - **Where visible:** Not reproducible in the current fixtures; the shipped fallback would be an empty card stack above a lone Save button
 - **Source:** `{#each fields}` has no `{:else}` branch (`CodeHostSection.svelte:190`–`229`), and the actions row renders unconditionally (`:231`); the sibling emits "No provider fields available — try Refresh." (`CodingCredentialsSection.svelte:270`–`271`)
@@ -106,6 +120,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Text inputs stay editable during save and refresh, then get overwritten
 
+- **Id:** code-host-inputs-editable-during-save
+- **Status:** open
 - **Dimension:** 9. Interaction & micro-states
 - **Where visible:** The in-flight window after pressing Save or Refresh (Save reads "Saving…", but every text field stays live)
 - **Source:** `Select` receives `disabled={saving || loading}` (`CodeHostSection.svelte:211`) while `Input` gets no equivalent — the primitive exposes no `disabled` prop at all (`client/shared/ui/Input.svelte:11`–`22`); `saveAll` reloads on success and `load` replaces `drafts` wholesale (`CodeHostSection.svelte:128`, `:76`)
@@ -114,6 +130,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Every control in the section is 22px tall — below the minimum target size
 
+- **Id:** code-host-controls-below-min-target-size
+- **Status:** open
 - **Dimension:** 6. Accessibility (also 8. sizing)
 - **Where visible:** Populated, Populated — narrow 640, replace-secret open: Replace, Cancel, Clear, and Save
 - **Source:** all four pass `size="sm"`, which is `height: 22px` (`client/shared/ui/Btn.svelte:105`–`109`; usages at `CodeHostSection.svelte:200`, `:221`, `:235`, `:246`)
@@ -122,6 +140,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] The destructive Clear is the quietest control on the page
 
+- **Id:** code-host-clear-low-affordance
+- **Status:** open
 - **Dimension:** 2. Affordance & signifiers
 - **Where visible:** Populated — "Clear" renders as flat muted text beside the filled green Save
 - **Source:** `variant="ghost"` on the clear trigger (`CodeHostSection.svelte:234`), while the confirmation dialog it opens is correctly `danger` (`:260`)
@@ -130,6 +150,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] The actions row has no gap token and no shared alignment edge with the fields
 
+- **Id:** code-host-actions-row-no-gap-token
+- **Status:** open
 - **Dimension:** 8. Spacing, alignment & sizing
 - **Where visible:** Populated (measured: field inputs end at x=1256, Save ends at x=1280) and Populated — narrow 640 (inputs end at 616, Save at 640, flush to the edge)
 - **Source:** `.settings-field__actions` declares only `display:flex; justify-content:flex-end` (`CodeHostSection.svelte:277`–`280`) — no `gap`, so the space between Clear and Save is collapsed markup whitespace rather than `--gap-tight`; the field cards inset their contents by `--gap-inline` (`client/settings/components/SettingsFieldShell.svelte:52`) while the actions row does not
@@ -137,6 +159,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Required is signalled by a bare `*`, and the section has no heading element
 
+- **Id:** code-host-bare-required-marker-no-heading
+- **Status:** open
 - **Dimension:** 6. Accessibility
 - **Where visible:** Populated — a green `*` after "Coding agent", "Model provider", "API key"
 - **Source:** the marker is an unlabelled `<span>` (`client/settings/components/SettingsFieldShell.svelte:39`, `:69`) with no `aria-required` on the control and no text alternative; `PageHeader` renders its title as a `<div>`, not an `<h*>` (`client/shared/ui/PageHeader.svelte:24`)
@@ -145,6 +169,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] "Code host" names both the section and its first field, and the Instance URL label carries its qualifier inline
 
+- **Id:** code-host-label-naming-collision
+- **Status:** open
 - **Dimension:** 5. Content & language
 - **Where visible:** Source (the forge fixture is not screenshotted — see H1)
 - **Source:** section title "Code host" (`CodeHostSection.svelte:171`) duplicates the `kind` field label "Code host", and `instance_url` is labelled "Instance URL (enterprise / self-hosted)" (`src/debug/settings/coding-credentials-fields-meta.ts:66`, `:74`)

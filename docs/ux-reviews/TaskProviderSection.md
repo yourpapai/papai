@@ -44,6 +44,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] Task-instance `<select>` has no programmatic label
 
+- **Id:** task-provider-select-no-label
+- **Status:** open
 - **Dimension:** 6. Accessibility
 - **Where visible:** Populated and narrow screenshots — visually the grey "TASK INSTANCE"
   caption sits directly above the dropdown, but this is a layout relationship only.
@@ -60,6 +62,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Task-instance options are labeled with a raw internal id
 
+- **Id:** task-provider-raw-id-options
+- **Status:** open
 - **Dimension:** 5. Content & language
 - **Where visible:** Populated and narrow screenshots — the only bind option reads
   `inst_abc (kaneo · active)`, an opaque database id concatenated with provider type and status.
@@ -72,6 +76,8 @@ to, per the`ContextTaskInstanceResponse` shape consumed here.
 
 ### [Med] Errors are shown to users as raw exception/HTTP text
 
+- **Id:** task-provider-raw-error-text
+- **Status:** open
 - **Dimension:** 4. Feedback & state
 - **Where visible:** Error screenshot — `request failed with status 404` rendered directly as
   the page's only content besides the header.
@@ -85,6 +91,8 @@ to, per the`ContextTaskInstanceResponse` shape consumed here.
 
 ### [Low] Password-reveal label/hint use low-contrast tokens (not visible this run)
 
+- **Id:** task-provider-reveal-low-contrast
+- **Status:** open
 - **Dimension:** 6. Accessibility
 - **Where visible:** not captured — no story sets `canProvision: true`, so the provisioned
   secret block never rendered in this review; this is a source-only inference.
@@ -102,6 +110,8 @@ to, per the`ContextTaskInstanceResponse` shape consumed here.
 
 ### [Low] Three of five component states are unverified by any Storybook fixture
 
+- **Id:** task-provider-states-unverified
+- **Status:** open
 - **Dimension:** 7. Responsive / layout
 - **Where visible:** not captured — both `Populated` and `Error` stories use
   `taskInstanceId: null, canProvision: false`.

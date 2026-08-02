@@ -56,6 +56,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] Current on/off state has no signifier and the color emphasis is inverted
 
+- **Id:** guest-mode-state-no-signifier-inverted
+- **Status:** open
 - **Dimension:** 2. Affordance & signifiers (also 1. Visual hierarchy)
 - **Where visible:** Compare the `Enabled` vs `Disabled` shots. When guest access is **off** (safe
   default) the control is a bright filled-green **primary** button reading "Enable guest mode" — the
@@ -75,6 +77,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] Load error is a raw-text dead-end with no retry
 
+- **Id:** guest-mode-load-error-no-retry
+- **Status:** open
 - **Dimension:** 4. Feedback & state (also 5. Content & language)
 - **Where visible:** `Error` shot — the body is the single red word "boom" above the caption, and the
   toggle is a dimmed green "Enable guest mode" that cannot be clicked. There is no retry, no refresh,
@@ -91,6 +95,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Loading flashes the opposite label and shows no placeholder
 
+- **Id:** guest-mode-loading-flashes-opposite-label
+- **Status:** open
 - **Dimension:** 4. Feedback & state (also 9. Interaction & micro-states)
 - **Where visible:** `Loading` shot — the body renders the full caption and a dimmed green
   "Enable guest mode" button; only the ~0.5 button opacity distinguishes it from a real, usable
@@ -106,6 +112,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Toggle gives no in-flight feedback (disabled, not busy)
 
+- **Id:** guest-mode-toggle-no-feedback
+- **Status:** open
 - **Dimension:** 9. Interaction & micro-states (also 4. Feedback & state)
 - **Where visible:** not shootable as a stable frame — during the PATCH the button dims via
   `disabled` but keeps its resting label, making the in-flight frame visually identical to the
@@ -120,6 +128,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Binary toggle state is not exposed to assistive tech
 
+- **Id:** guest-mode-toggle-not-exposed-a11y
+- **Status:** open
 - **Dimension:** 6. Accessibility
 - **Where visible:** source-only (screen-reader / keyboard). The control is a real `<button>` with a
   visible `:focus-visible` ring (good), but its accessible name is just the imperative verb.
@@ -133,6 +143,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Caption re-implements a muted help style locally instead of a shared token
 
+- **Id:** guest-mode-caption-local-style
+- **Status:** open
 - **Dimension:** 3. Consistency with the design system (also 8. Spacing/sizing)
 - **Where visible:** all shots — the help line under the title.
 - **Source:** `client/settings/sections/GuestModeSection.svelte:80-86` defines a one-off

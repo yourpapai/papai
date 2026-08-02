@@ -35,6 +35,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] Deleting a repository is immediate and irreversible, with no confirmation
 
+- **Id:** repos-delete-no-confirmation
+- **Status:** open
 - **Dimension:** 4. Feedback & state (also 2. Affordance & signifiers)
 - **Where visible:** `Populated`, `ReposSection — delete hover on a row` — one click on "Delete" removes the repo; no dialog, no undo.
 - **Source:** `client/settings/sections/ReposSection.svelte:128` (delete `Btn`) → `:88` (`handleDelete`, straight to `deleteRepo`)
@@ -42,6 +44,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] The permission select and egress textarea have no accessible name
 
+- **Id:** repos-inputs-no-accessible-name
+- **Status:** open
 - **Dimension:** 6. Accessibility
 - **Where visible:** Not visible in any screenshot — source-only; `ReposSection — preset select focused`, `ReposSection — egress textarea focused` show the affected controls.
 - **Source:** `client/settings/sections/ReposSection.svelte:166` (raw `<select>`), `:177` (raw `<textarea>`) — `Field` publishes its label only as a `<span id>` consumed via `aria-labelledby` (`client/shared/ui/Field.svelte:38`), which `Input`/`Select` read but these raw controls do not.
@@ -49,6 +53,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] A context with no repositories renders no empty state
 
+- **Id:** repos-no-empty-state
+- **Status:** open
 - **Dimension:** 4. Feedback & state (also 5. Content & language)
 - **Where visible:** `Empty` (desktop and narrow) — the list area collapses to nothing and the page opens straight onto the add form, with no confirmation that the fetch succeeded and nothing was there.
 - **Source:** `client/settings/sections/ReposSection.svelte:118-138` — the `{#each}` has no `{:else}` branch.
@@ -56,6 +62,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] "Add" is disabled with no indication of which fields are required
 
+- **Id:** repos-add-disabled-no-indication
+- **Status:** open
 - **Dimension:** 4. Feedback & state
 - **Where visible:** `Empty`, `ReposSection — add submit disabled, hover` — the button is dimmed at rest and hovering changes nothing; all five labels look identical, and the one optional field is indistinguishable from the three mandatory ones.
 - **Source:** `client/settings/sections/ReposSection.svelte:191` (disabled on `addName`/`addUrl`/`addBranch` being blank); `Field` exposes an unused `required` prop at `client/shared/ui/Field.svelte:20`.
@@ -63,6 +71,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Raw select and textarea visibly break from the sibling inputs
 
+- **Id:** repos-raw-inputs-visual-break
+- **Status:** open
 - **Dimension:** 3. Consistency w/ design system (also 8. Spacing, alignment & sizing)
 - **Where visible:** `Populated`, `Empty` — the preset control renders as a native OS select (system arrow, brighter text) and both it and the textarea sit on `--bg`, visibly darker than the `--raised` fill of the three inputs beside them.
 - **Source:** `client/settings/sections/ReposSection.svelte:262-281` (`--bg` background, 6px 8px padding, no `--radius-control`) vs `client/shared/ui/Input.svelte` / `Select.svelte`, which use `--raised` and `--radius-control`.
@@ -70,6 +80,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] The destructive action is styled as the least prominent control on the row
 
+- **Id:** repos-delete-low-affordance
+- **Status:** open
 - **Dimension:** 2. Affordance & signifiers
 - **Where visible:** `Populated` — "Delete" is borderless muted text at the far right of each row; it reads as a caption until hovered.
 - **Source:** `client/settings/sections/ReposSection.svelte:128-130` — `variant="ghost" size="sm"` (`--fg2`, transparent border, 24px tall).
@@ -77,6 +89,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Status and error messages are never announced and never clear
 
+- **Id:** repos-status-not-announced-never-clears
+- **Status:** open
 - **Dimension:** 6. Accessibility (also 4. Feedback & state)
 - **Where visible:** `ReposSection — added, success status` — "Repository added." appears at the very top of the section, ~380px above the button that was pressed, and stays there indefinitely.
 - **Source:** `client/settings/sections/ReposSection.svelte:112-113` — plain `<p>` elements with no `role="status"` / `aria-live`.
@@ -84,6 +98,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Meta and helper text fall below the AA contrast floor
 
+- **Id:** repos-helper-text-low-contrast
+- **Status:** open
 - **Dimension:** 6. Accessibility
 - **Where visible:** `Populated` — the `main · cautious · egress: pypi.org` line and the "Add repository" label.
 - **Source:** `client/settings/sections/ReposSection.svelte:235-241` (`--fg3` on `--surface`), `:247-252`, `:282-286` — `--fg3` (`#6b766e`) on `--surface-1` (`#111512`) measures ≈3.96:1 at 11px, under the 4.5:1 AA floor; `tokens.css:79` documents `--fg-hint` as the ≈6:1 colour intended for exactly this text.
@@ -91,6 +107,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] A repository can only be added or deleted, never edited
 
+- **Id:** repos-no-edit-capability
+- **Status:** open
 - **Dimension:** 4. Feedback & state (also 2. Affordance & signifiers)
 - **Where visible:** `Populated` — each row shows branch, preset and egress domains as static text with no way to change them.
 - **Source:** `client/settings/repos-fetchers.ts:16-34` — only `addRepo` and `deleteRepo` exist, so changing a preset means deleting the repo and re-adding it.
@@ -98,6 +116,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Add-form fields never use the available width
 
+- **Id:** repos-add-form-narrow-fields
+- **Status:** open
 - **Dimension:** 7. Responsive / layout
 - **Where visible:** `ReposSection — long content in the add form, narrow` — at 640px the three inputs stay ~180px and truncate ("https://gitlab.self-ho", "release/2026-08-long-l") while ~250px of empty row sits to their right and the textarea below them spans the full width.
 - **Source:** `client/settings/sections/ReposSection.svelte:259-261` (`min-width: 180px` with no `flex: 1`), `:253-258` (`flex-wrap` row).
@@ -105,6 +125,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Load failures surface the raw backend string with no recovery affordance
 
+- **Id:** repos-load-error-no-recovery
+- **Status:** open
 - **Dimension:** 5. Content & language (also 4. Feedback & state)
 - **Where visible:** `Error` — the section shows a bare red `boom` under the title; the only retry is the unlabelled `⟳` glyph in the far top-right corner.
 - **Source:** `client/settings/sections/ReposSection.svelte:52` (raw `err.message`), rendered at `:112`.
@@ -112,6 +134,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] The add form's spacing and sizing are all hardcoded px
 
+- **Id:** repos-hardcoded-spacing
+- **Status:** open
 - **Dimension:** 8. Spacing, alignment & sizing
 - **Where visible:** `Populated` — the 2px offset between the `PERMISSION PRESET` label and its three neighbours, and the square repo rows against the rounded inputs.
 - **Source:** `client/settings/sections/ReposSection.svelte:201-286` — `gap: 8px`, `margin-bottom: 20px`, `padding: 10px 12px`, `padding: 12px`, `gap: 12px` and a `border-radius`-less row, none drawn from `--gap-tight` / `--gap-field` / `--gap-inline` / `--radius-control`; the native select's 30px box against the 28px `--control-h-md` inputs is what makes the label row ragged under `align-items: end`.
@@ -119,6 +143,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] The egress help text is the widest, least readable line in the section
 
+- **Id:** repos-egress-help-text-unreadable
+- **Status:** open
 - **Dimension:** 1. Visual hierarchy & scanning (also 6. Accessibility)
 - **Where visible:** `Populated`, `Empty` — a single ~1230px unbroken sentence spanning the whole section at desktop width.
 - **Source:** `client/settings/sections/ReposSection.svelte:183-186` — a hand-rolled `<p>` inside the field's children rather than `Field`'s `hint` slot (`client/shared/ui/Field.svelte:22`), so it is neither width-bounded nor referenced by the textarea's `aria-describedby`.
@@ -126,6 +152,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] The three permission presets are unexplained on a security-relevant choice
 
+- **Id:** repos-permission-presets-unexplained
+- **Status:** open
 - **Dimension:** 5. Content & language
 - **Where visible:** `Populated` — the select offers `autonomous` / `cautious` / `readonly` and rows print the chosen value bare, with no statement of what each grants.
 - **Source:** `client/settings/sections/ReposSection.svelte:169-171`
@@ -133,6 +161,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Egress input is silently normalised
 
+- **Id:** repos-egress-silently-normalised
+- **Status:** open
 - **Dimension:** 4. Feedback & state
 - **Where visible:** Not visible in the screenshots — source-only.
 - **Source:** `client/settings/sections/ReposSection.svelte:32-40` — `parseEgress` lowercases, trims and dedupes; the form then clears, so a user who typed `PyPI.org` twice never sees what was actually stored.
@@ -140,6 +170,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] The section has no heading element
 
+- **Id:** repos-no-heading-element
+- **Status:** open
 - **Dimension:** 6. Accessibility
 - **Where visible:** Not visible — source-only.
 - **Source:** `client/shared/ui/PageHeader.svelte:25` renders the title as a `<div>`; `client/settings/sections/ReposSection.svelte:142` renders "Add repository" as a `<p>`.

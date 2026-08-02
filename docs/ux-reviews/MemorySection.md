@@ -35,6 +35,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] Record meta text (`--fg4`) is effectively invisible
 
+- **Id:** memory-meta-text-invisible
+- **Status:** open
 - **Dimension:** 6. Accessibility
 - **Where visible:** Populated / narrow-640 — the "last 2026-06-01" date and the "lang" tag chip are barely perceptible against the card
 - **Source:** `client/settings/sections/MemorySection.svelte:376-378` (`.settings-memory__seen { color: var(--fg4) }`) and `:392-396` (`.settings-memory__tag { color: var(--fg4) }`); `--fg4` = `#3a4248` (`client/shared/tokens.css:72`) on `--surface` `#111512` ≈ 1.8:1
@@ -42,6 +44,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] No explanatory copy for a privacy-sensitive capture feature
 
+- **Id:** memory-no-privacy-explanation
+- **Status:** open
 - **Dimension:** 5. Content & language
 - **Where visible:** Populated (no note on what "capture" records or retains); Empty (empty state gives a generic hint and never says capture is currently **off**, while the "Enable capture" CTA sits detached in the header)
 - **Source:** `client/settings/sections/MemorySection.svelte:171-182` (`PageHeader` carries no description; toggle has no helper text) and `:252-255` (`EmptyState` hint is generic; `EmptyState` supports an `action` snippet that is unused)
@@ -49,6 +53,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Error state hides the whole section behind a raw server string with no retry
 
+- **Id:** memory-error-hides-section
+- **Status:** open
 - **Dimension:** 4. Feedback & state (also 3. Consistency, 5. Content)
 - **Where visible:** Error — a bare red `boom` line renders alone; the profile card, records, and any recovery path all disappear
 - **Source:** `client/settings/sections/MemorySection.svelte:184` (`<p class="status-error">{error}</p>`) with the body gated on `:189` (`{:else if currentMemory !== null}`), so a load failure renders nothing else; contrast the sibling `client/settings/sections/AiOutputSection.svelte:65-66` (`ErrorState` + `onRetry`)
@@ -56,6 +62,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Section-wide "Clear memory" is mis-scoped inside the profile card
 
+- **Id:** memory-clear-mis-scoped
+- **Status:** open
 - **Dimension:** 1. Visual hierarchy & scanning (also 2. Affordance)
 - **Where visible:** Populated — "Clear memory" sits in the profile card's action row directly beside "Save profile", implying it only affects the profile, though it wipes the profile **and** every record
 - **Source:** `client/settings/sections/MemorySection.svelte:209-219` (`Clear memory` inside `.settings-memory__profile-actions`, `:191`) alongside the profile-only `Save profile` at `:201-208`
@@ -63,6 +71,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Record's only action "Archive" is a low-affordance ghost button
 
+- **Id:** memory-archive-low-affordance
+- **Status:** open
 - **Dimension:** 2. Affordance & signifiers
 - **Where visible:** Populated / narrow-640 — "Archive" reads as static muted text with no border or background until hover; at 640px it drops to an orphaned text link under the record body
 - **Source:** `client/settings/sections/MemorySection.svelte:241-248` (`variant="ghost"`) → ghost styling `client/shared/ui/Btn.svelte:94-97` (`background: transparent; color: var(--fg2); border-color: transparent`)
@@ -70,6 +80,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Source label (`--fg3`) contrast is borderline at 11px
 
+- **Id:** memory-source-label-low-contrast
+- **Status:** open
 - **Dimension:** 6. Accessibility
 - **Where visible:** Populated — the "chat" source token is dim and small
 - **Source:** `client/settings/sections/MemorySection.svelte:368-371` (`.settings-memory__source { color: var(--fg3); font-size: 11px }`); `--fg3` = `#6b766e` on `--surface` ≈ 3.9:1, under the 4.5:1 small-text threshold
@@ -77,6 +89,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Active records list has no heading, unlike the pending group
 
+- **Id:** memory-active-list-no-heading
+- **Status:** open
 - **Dimension:** 1. Visual hierarchy & scanning
 - **Where visible:** Populated — the active records appear directly under the profile card with no label, while the provisional group below carries an "Pending (provisional)" heading and hint
 - **Source:** `client/settings/sections/MemorySection.svelte:256-262` (bare `<ul>` for active records) vs. `:264-276` (pending block with `<h3>` + hint)
@@ -84,6 +98,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Shared `mutating` flag disables unrelated controls with no per-row busy signal
 
+- **Id:** memory-mutating-flag-disables-unrelated
+- **Status:** open
 - **Dimension:** 9. Interaction & micro-states (also 4. Feedback & state)
 - **Where visible:** not a single frame — archiving one record disables every other record's Archive button and the header capture toggle at once, with no spinner on the row being archived
 - **Source:** `client/settings/sections/MemorySection.svelte:147-159` (`archiveRecord` sets the shared `mutating`), consumed at `:244` (all Archive buttons) and `:176` (capture toggle)
@@ -91,6 +107,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] One-off spacing drifts from sibling sections and the scale
 
+- **Id:** memory-hardcoded-spacing
+- **Status:** open
 - **Dimension:** 8. Spacing, alignment & sizing
 - **Where visible:** Populated — inter-block and record padding rhythm differs subtly from sibling settings cards
 - **Source:** `client/settings/sections/MemorySection.svelte:296-299` (`.settings-memory { gap: 14px }`) and `:342-351` (record `padding: 10px 12px`) vs. the sibling uniform `padding: 12px` (`CodingCredentialsSection.svelte:390`, `McpSection.svelte:255`) and tokens `--gap-inline: 12px` / `--gap-tight: 8px`
@@ -98,6 +116,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Pending (provisional) records are uncovered by stories and offer only "Archive"
 
+- **Id:** memory-pending-records-uncovered
+- **Status:** open
 - **Dimension:** 5. Content & language (coverage note)
 - **Where visible:** not capturable — no fixture includes a `provisional` record, so the "Pending (provisional)" block never renders in Storybook
 - **Source:** `client/settings/sections/MemorySection.svelte:264-276` (pending block); fixtures at `client/stories/msw/settings-handlers-personal.ts:67-81` contain only one `active` record; provisional rows reuse the same `recordItem` whose only control is "Archive" (`:241-248`), i.e. reject, with no visible promote/accept path

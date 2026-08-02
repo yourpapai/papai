@@ -35,6 +35,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] Primary URL field is cramped to ~200px while most of the row is empty
 
+- **Id:** mcp-url-field-cramped
+- **Status:** open
 - **Dimension:** 7. Responsive / layout
 - **Where visible:** Populated (desktop), Long-label/URL overflow (desktop + 640) — URL shows only `https://mcp.example.com/s…` / `endpoint?tenant=acme-corp`
 - **Source:** `client/settings/sections/McpSection.svelte:262` (`.settings-mcp__row :global(.ui-field) { min-width: 200px }` with no flex-grow)
@@ -43,6 +45,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] Empty state is a bare pair of buttons with no explanation
 
+- **Id:** mcp-empty-state-no-explanation
+- **Status:** open
 - **Dimension:** 5. Content & language (also 1. hierarchy)
 - **Where visible:** Empty
 - **Source:** `client/settings/sections/McpSection.svelte:165` (renders straight into the row loop with no empty branch) and `:236` (actions)
@@ -51,6 +55,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Native blue checkbox is off-theme
 
+- **Id:** mcp-checkbox-off-theme
+- **Status:** open
 - **Dimension:** 3. Consistency with the design system
 - **Where visible:** Populated, all states with a row (the "Enabled" control renders as a browser-blue checkbox)
 - **Source:** `client/settings/sections/McpSection.svelte:174` (raw `<input type="checkbox">`)
@@ -58,6 +64,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Invalid URL is never surfaced at the field
 
+- **Id:** mcp-invalid-url-not-surfaced
+- **Status:** open
 - **Dimension:** 4. Feedback & state
 - **Where visible:** Not visible in fixtures (no client validation exists); Error story shows the top-of-section pattern a bad save would reuse
 - **Source:** `client/settings/sections/McpSection.svelte:171` (URL `Field` never receives an `error`) and `:131` (`save()` has no URL check; relies on server)
@@ -66,6 +74,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Header-row Name and Value inputs don't share a baseline
 
+- **Id:** mcp-header-inputs-misaligned
+- **Status:** open
 - **Dimension:** 8. Spacing, alignment & sizing
 - **Where visible:** "header row + new endpoint expanded" — the NAME input sits visibly lower than the VALUE input, and the column labels are misaligned
 - **Source:** `client/settings/sections/McpSection.svelte:298` (`.settings-mcp__header-row { align-items: end }`) with the hint on `:195` making only the Value field taller
@@ -74,6 +84,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] "Remove" ghost button reads as static text
 
+- **Id:** mcp-remove-button-low-affordance
+- **Status:** open
 - **Dimension:** 2. Affordance & signifiers
 - **Where visible:** Populated — "Remove" sits immediately after the "Enabled" checkbox label with near-identical grey styling
 - **Source:** `client/settings/sections/McpSection.svelte:181` (`variant="ghost"` Remove) beside the plain label on `:179`
@@ -81,6 +93,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Spacing uses hardcoded px instead of the gap tokens
 
+- **Id:** mcp-hardcoded-spacing
+- **Status:** open
 - **Dimension:** 8. Spacing, alignment & sizing
 - **Where visible:** All states (row gap/padding, subsection gaps)
 - **Source:** `client/settings/sections/McpSection.svelte:250` (`gap: 12px`), `:257` (`padding: 12px`), `:274` (`gap: 6px`), `:288` (`gap: 8px`)
@@ -89,6 +103,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] `Add header` button stretches to full card width
 
+- **Id:** mcp-add-header-button-full-width
+- **Status:** open
 - **Dimension:** 8. Spacing, alignment & sizing (also 3. consistency)
 - **Where visible:** "header row + new endpoint expanded" — Add header is a full-width bar, unlike the natural-width Add endpoint / Save
 - **Source:** `client/settings/sections/McpSection.svelte:284` (`.settings-mcp__headers { display: grid }` stretches its `Btn` child) vs the flex `.settings-mcp__actions` on `:280`
@@ -96,6 +112,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Hint text is low-contrast on the card surface
 
+- **Id:** mcp-hint-text-low-contrast
+- **Status:** open
 - **Dimension:** 6. Accessibility
 - **Where visible:** Populated / expanded — "comma or newline separated", "leave unchanged to keep stored value"
 - **Source:** shared `client/shared/ui/Field.svelte` hint uses `--fg4` (`#3a4248`) rendered on the card `--surface`; consumed here at `McpSection.svelte:195`, `:221`, `:227`
@@ -104,6 +122,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Endpoint card has no border-radius and non-semantic subsection labels
 
+- **Id:** mcp-endpoint-card-no-radius
+- **Status:** open
 - **Dimension:** 3. Consistency / 6. Accessibility
 - **Where visible:** Populated — square card corners; "Auth headers" / "Tool filter" are plain `<p>`
 - **Source:** `client/settings/sections/McpSection.svelte:253` (`.settings-mcp__row` border, no `--radius`) and `:186` / `:220` (`<p class="settings-mcp__subsection-label">`)

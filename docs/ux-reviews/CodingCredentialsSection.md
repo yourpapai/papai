@@ -46,6 +46,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] Both stories serve the wrong (`forge`) fixture — the real agent-provider form is never screenshotted, and the empty story misrepresents the shipped empty state
 
+- **Id:** coding-credentials-wrong-fixture-stories
+- **Status:** open
 - **Dimension:** 4. Feedback & state (+ review fidelity)
 - **Where visible:** Populated (`Forge token` / `Instance URL` rather than agent/provider/model); Empty (helper text "Enter it below" over a **disabled Save with no field at all**)
 - **Source:** `client/stories/msw/settings-handlers-personal.ts:21` (populated returns `namespace:'forge'`), `:40` (empty returns `fields: []`); server always emits the full field list for `agent-provider` (`src/debug/settings/coding-credentials-routes.ts:55`, `coding-credentials-fields-meta.ts:18`)
@@ -54,6 +56,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Agent/provider/auth selects use the card background token, so they blend into their own field card
 
+- **Id:** coding-credentials-selects-blend-into-card
+- **Status:** open
 - **Dimension:** 2. Affordance & signifiers (also 6. contrast)
 - **Where visible:** Real agent-provider form (source); not reproducible in the current forge shots
 - **Source:** `.coding-select { background: var(--surface) }` (`CodingCredentialsSection.svelte:394`) resolves to `--surface-1` (`tokens.css:70`), the same token as the `SettingsFieldShell` card (`SettingsFieldShell.svelte:55`); the shared `Input` uses `--raised`/`--surface-2` to stand out (`Input.svelte:88`)
@@ -61,6 +65,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Raw `<select>` / `<input list>` instead of the shared `Select` / `Input` primitives
 
+- **Id:** coding-credentials-raw-select-inputs
+- **Status:** open
 - **Dimension:** 3. Consistency with the design system
 - **Where visible:** Real agent-provider form (source)
 - **Source:** raw controls at `CodingCredentialsSection.svelte:289` (select) and `:301` (combobox) styled by one-off `.coding-select` (`:389`); shared `Select.svelte` (styled caret, mono 12px, `--raised`, focus ring) and `Input.svelte` go unused for these fields
@@ -68,6 +74,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Raw selects/combobox have no app focus ring — keyboard focus is inconsistent with the rest of the form
 
+- **Id:** coding-credentials-no-focus-ring
+- **Status:** open
 - **Dimension:** 6. Accessibility (also 9. interaction/micro-states)
 - **Where visible:** Keyboard focus on the agent/provider/auth selects and model combobox (source; the text `Input` focus ring is visible in "text-input focused")
 - **Source:** `.coding-select` defines no `:focus`/`:focus-visible` rule (`CodingCredentialsSection.svelte:389`); no global fallback exists (`base.css` has none), whereas `Input`/`Select` apply `--focus-ring` (`Input.svelte:93`, `Select.svelte:53`, `tokens.css:39`)
@@ -75,6 +83,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] `.coding-select` sizing/typography is off the shared scale
 
+- **Id:** coding-credentials-select-sizing-off-scale
+- **Status:** open
 - **Dimension:** 8. Spacing, alignment & sizing
 - **Where visible:** Real agent-provider form (source)
 - **Source:** `CodingCredentialsSection.svelte:389` — `font-size:14px` (siblings are 12px mono), no `border-radius` (siblings use `--radius-control:2px`), hardcoded `padding:6px 8px`, `min-width:200px`
@@ -82,6 +92,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Empty field list has no guard — helper promises an input that may not render
 
+- **Id:** coding-credentials-empty-field-list-no-guard
+- **Status:** open
 - **Dimension:** 4. Feedback & state
 - **Where visible:** Empty, Empty — narrow 640 (helper "Enter it below" above a disabled Save, no field)
 - **Source:** `{#each fields}` with no `{:else}` (`CodingCredentialsSection.svelte:271`–`337`); helper copy at `:264`–`268`
@@ -90,6 +102,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Model combobox offers no suggestions until credentials are saved, with no hint
 
+- **Id:** coding-credentials-model-combobox-no-hint
+- **Status:** open
 - **Dimension:** 5. Content & language
 - **Where visible:** Real agent-provider form on first setup (source)
 - **Source:** model suggestions load only when a key exists and the provider draft equals the saved provider (`CodingCredentialsSection.svelte:221`–`242`); combobox placeholder is "model id (leave blank for the agent default)" (`:306`)
@@ -97,6 +111,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Auth method / Base URL appear and become required with no explanation
 
+- **Id:** coding-credentials-conditional-fields-unexplained
+- **Status:** open
 - **Dimension:** 5. Content & language (also 4. feedback)
 - **Where visible:** Selecting `anthropic` reveals _Auth method_; selecting `openai-compatible` makes _Base URL_ required (source)
 - **Source:** `fieldHidden` / `effectiveRequired` logic (`CodingCredentialsSection.svelte:74`–`78`, `:273`); the `openai-compatible` case does supply an inline placeholder hint (`:323`)

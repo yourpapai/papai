@@ -43,6 +43,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] Preset selector's active state is invisible at rest and its indicator is detached
 
+- **Id:** tools-preset-active-state-invisible
+- **Status:** open
 - **Dimension:** 2. Affordance & signifiers
 - **Where visible:** Populated / Grouped / Empty screenshots (`activePreset === null`, the common
   "Custom" state) — `Read-only`, `Non-destructive`, and `Allow all` render as plain unstyled
@@ -62,6 +64,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Bare "Ask all" / "Deny all" / "Allow all" row actions look like plain text, not buttons
 
+- **Id:** tools-bulk-actions-look-like-text
+- **Status:** open
 - **Dimension:** 2. Affordance & signifiers
 - **Where visible:** Populated/Grouped screenshots — the right-aligned action after each
   domain/group name and permission pill (e.g. `tasks  allow  Ask all`) has no border or fill,
@@ -74,6 +78,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Populated/grouped rows are sparse — no per-domain or per-group tool count
 
+- **Id:** tools-no-per-group-count
+- **Status:** open
 - **Dimension:** 1. Visual hierarchy & scanning
 - **Where visible:** Grouped screenshot — `plugin partial`, `mcp ask`, `time allow` rows give no
   indication of how many tools are inside each bucket until it is expanded.
@@ -86,6 +92,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Empty state has no actionable next step
 
+- **Id:** tools-empty-state-no-next-step
+- **Status:** open
 - **Dimension:** 5. Content & language
 - **Where visible:** Empty screenshot — "No togglable tools" / "No togglable tools for this
   context." with nothing to do next.
@@ -97,6 +105,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Domain-head row has no flex-wrap; possible clipping at narrow widths
 
+- **Id:** tools-domain-head-no-wrap
+- **Status:** open
 - **Dimension:** 7. Responsive / layout
 - **Where visible:** not captured this run — `bun shoot -g ToolsSection` failed with `Storybook
 addons channel is unavailable` for every story before the manual narrow-viewport test could
@@ -112,6 +122,8 @@ addons channel is unavailable` for every story before the manual narrow-viewport
 
 ### [Low] Dim grey text tiers — verify contrast on dark theme
 
+- **Id:** tools-dim-text-contrast
+- **Status:** open
 - **Dimension:** 6. Accessibility
 - **Where visible:** preset hint line and group-name labels, visible in every state screenshot.
 - **Source:** `client/settings/sections/ToolsSection.svelte:397-401`

@@ -44,6 +44,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] Section bypasses the design system entirely
 
+- **Id:** kaneo-access-bypasses-design-system
+- **Status:** open
 - **Dimension:** 3. Consistency with the design system
 - **Where visible:** all states (Populated, Error, Loading, Not provisioned)
 - **Source:** `client/settings/sections/KaneoAccessSection.svelte:71` (raw `<section>`), `:72` (`<h2>`), `:80` (`<dl>`), `:95` (`<button>`)
@@ -51,6 +53,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] Error state does not read as an error
 
+- **Id:** kaneo-access-error-not-legible
+- **Status:** open
 - **Dimension:** 4. Feedback & state · 6. Accessibility
 - **Where visible:** Error state (the word "boom" renders as tiny default-grey text, indistinguishable from normal body copy)
 - **Source:** `client/settings/sections/KaneoAccessSection.svelte:78` — `<p class="error">`; `.error` is undefined in the settings scope (only `.status-error` exists, `settings.css:91`)
@@ -58,6 +62,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] One-time revealed password has no copy affordance and cannot be re-hidden
 
+- **Id:** kaneo-access-password-no-copy-rehide
+- **Status:** open
 - **Dimension:** 9. Interaction & micro-states · 5. Content & language
 - **Where visible:** Populated — password revealed (password shown as small inline `<code>`, no button, no container)
 - **Source:** `client/settings/sections/KaneoAccessSection.svelte:92`
@@ -65,6 +71,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Workspace URL link is low-contrast on the dark theme
 
+- **Id:** kaneo-access-url-link-low-contrast
+- **Status:** open
 - **Dimension:** 6. Accessibility
 - **Where visible:** Populated / password-revealed (URL renders in browser-default `#0000EE` blue)
 - **Source:** `client/settings/sections/KaneoAccessSection.svelte:85` — bare `<a>` with no design-system link styling
@@ -72,6 +80,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Flat visual hierarchy — label and value tiers collapse
 
+- **Id:** kaneo-access-flat-hierarchy
+- **Status:** open
 - **Dimension:** 1. Visual hierarchy & scanning
 - **Where visible:** Populated (Login email / Workspace URL / Status labels sit at nearly the same size/weight as their values)
 - **Source:** `client/settings/sections/KaneoAccessSection.svelte:80`–`89`
@@ -79,6 +89,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Spacing not drawn from the shared scale
 
+- **Id:** kaneo-access-hardcoded-spacing
+- **Status:** open
 - **Dimension:** 8. Spacing, alignment & sizing
 - **Where visible:** Populated (cramped, zero-gap rows using browser-default `dl` margins)
 - **Source:** `client/settings/sections/KaneoAccessSection.svelte:80`–`89` (no styles defined; UA defaults apply)
@@ -86,6 +98,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] "Not provisioned" empty state is an actionless dead-end
 
+- **Id:** kaneo-access-empty-state-dead-end
+- **Status:** open
 - **Dimension:** 5. Content & language
 - **Where visible:** Not provisioned (single sentence, no component, no next step)
 - **Source:** `client/settings/sections/KaneoAccessSection.svelte:76`
@@ -93,6 +107,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Loading state is unstyled bare text
 
+- **Id:** kaneo-access-loading-unstyled
+- **Status:** open
 - **Dimension:** 4. Feedback & state
 - **Where visible:** Loading ("Loading…" in default text color)
 - **Source:** `client/settings/sections/KaneoAccessSection.svelte:74`
@@ -100,6 +116,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Long workspace URL has no wrap/overflow handling
 
+- **Id:** kaneo-access-url-no-wrap-handling
+- **Status:** open
 - **Dimension:** 7. Responsive / layout
 - **Where visible:** Populated — narrow (~640px); a long monospace URL can overrun its line
 - **Source:** `client/settings/sections/KaneoAccessSection.svelte:85`

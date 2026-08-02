@@ -39,6 +39,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] Loading is indistinguishable from "unsubscribed", and defaults to the green Subscribe CTA before state is known
 
+- **Id:** release-subscription-loading-looks-unsubscribed
+- **Status:** open
 - **Dimension:** 4. Feedback & state
 - **Where visible:** `Loading` vs `Unsubscribed` (desktop) — the two frames are near-identical: both show the green primary **Subscribe** button and the full caption, with no skeleton or spinner.
 - **Detail:** `enabled` starts `null`, and the label is `enabled ? 'Unsubscribe' : 'Subscribe'`, so during every page load the control renders the inviting green **Subscribe** CTA (merely disabled via `Btn`'s `opacity: 0.5`). A user whose account is actually _subscribed_ is briefly shown "Subscribe", i.e. the opposite of their real state, and a slow or momentarily-failed load reads as a settled "you are not subscribed" screen.
@@ -47,6 +49,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Load error dead-ends: raw backend string, no retry, toggle stays disabled
 
+- **Id:** release-subscription-load-error-dead-end
+- **Status:** open
 - **Dimension:** 4. Feedback & state / 5. Content & language
 - **Where visible:** `Error` (desktop + ~640px) — a bare red "boom" appears between title and caption while the button remains a disabled green "Subscribe".
 - **Detail:** `load()` failures assign the raw thrown message straight into the template (`{error}`), so users see unframed developer text with no "Couldn't load subscription" context and no icon. Because a load error leaves `enabled === null`, the toggle stays disabled — there is no in-UI way to re-attempt short of reloading the whole settings page.
@@ -55,6 +59,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Toggle gives no in-flight feedback
 
+- **Id:** release-subscription-toggle-no-feedback
+- **Status:** open
 - **Dimension:** 9. Interaction & micro-states
 - **Where visible:** Not capturable as a stable frame (async), confirmed in source.
 - **Detail:** On click, `mutating` only disables the button; the label depends solely on `enabled`, so it keeps reading "Subscribe"/"Unsubscribe" during the request. A slow network call shows a frozen, dimmed button with no "Subscribing…"/spinner, which reads as unresponsive and invites a second-click perception.
@@ -63,6 +69,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Error text has no dedicated spacing and disrupts the header → caption rhythm
 
+- **Id:** release-subscription-error-text-spacing
+- **Status:** open
 - **Dimension:** 8. Spacing, alignment & sizing
 - **Where visible:** `Error` (desktop + ~640px) — "boom" sits tight against the caption with no intentional separation.
 - **Detail:** The shared `.status-error` class sets only `color`; the error `<p>` therefore inherits ad-hoc block spacing and is injected between `PageHeader` (which owns the `4px 0 14px` header rhythm) and the caption, crowding the caption and shifting layout when it appears/disappears.
@@ -71,6 +79,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Focus ring is ancestor-provided, not carried by the `Btn` primitive
 
+- **Id:** release-subscription-focus-ring-not-owned
+- **Status:** open
 - **Dimension:** 9. Interaction & micro-states / 6. Accessibility
 - **Where visible:** `primary-focus` — in the story harness the focused Subscribe button shows the **UA default blue** outline, not the theme green.
 - **Detail:** In the real settings app the button gets a green ring only because it descends from `.settings-grid :focus-visible` (`settings.css:111`). `Btn` itself defines no `:focus-visible`, so the correct ring does not travel with the primitive; any placement outside that ancestor (or a future host) falls back to the mismatched UA outline. In-app behaviour is currently fine — this is a robustness/consistency note.

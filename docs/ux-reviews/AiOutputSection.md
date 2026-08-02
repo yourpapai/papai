@@ -37,6 +37,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Unselected segment label falls below the contrast minimum
 
+- **Id:** ai-output-segment-label-contrast
+- **Status:** open
 - **Dimension:** 6. Accessibility
 - **Where visible:** Populated / hover-Raw / narrow-640 — the "Raw" option at rest is a dim grey that nearly dissolves into its cell
 - **Source:** `client/shared/ui/SegmentedControl.svelte:56` (`.ui-seg__opt { color: var(--text-dim) }`); `--text-dim` = `#6b766e` (`client/shared/tokens.css:21`) on `--surface-2` `#171c18` ≈ 3.6:1 at 11px, below the 4.5:1 needed for text this size
@@ -44,6 +46,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Privacy-sensitive "Raw" warning is not associated with the control
 
+- **Id:** ai-output-raw-warning-not-associated
+- **Status:** open
 - **Dimension:** 6. Accessibility
 - **Where visible:** Populated — the "Raw detail shows unredacted tool inputs/outputs and reasoning in chat." line sits below the control as a detached paragraph
 - **Source:** `client/settings/sections/AiOutputSection.svelte:77` (standalone `<p class="ai-output-hint">`) vs. the control's `ariaLabel` only at `client/settings/components/ConfigFieldRow.svelte:114`; no `aria-describedby` links them
@@ -51,6 +55,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] The toggle gives no in-flight feedback and reverts silently on failure
 
+- **Id:** ai-output-toggle-no-feedback
+- **Status:** open
 - **Dimension:** 9. Interaction & micro-states
 - **Where visible:** Not capturable in a single frame — behaviour observed in source: `saveEnum` sets `saving = true` and updates `current` optimistically, but only the Clear button reads `disabled={saving}`
 - **Source:** `client/settings/components/ConfigFieldRow.svelte:89-104` (`saveEnum`), `:111-116` (segmented control has no `disabled`/busy prop), `:118` (Clear is `disabled={saving}`)
@@ -58,6 +64,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Controls in the field row don't share a height baseline or radius
 
+- **Id:** ai-output-controls-misaligned
+- **Status:** open
 - **Dimension:** 8. Spacing, alignment & sizing
 - **Where visible:** Populated / narrow-640 — the Standard·Raw segment, the Clear button, and the refresh icon sit at visibly different heights and corner roundings
 - **Source:** segment `height: 26px` + `border-radius: var(--radius)` 6px (`client/shared/ui/SegmentedControl.svelte:49,61`); `sm` Btn `height: 22px` + `--radius-control` 2px (`client/shared/ui/Btn.svelte:63,108`); refresh `28px` (`client/shared/ui/IconButton.svelte:33`); enclosing `.settings-field` has no radius (`client/settings/components/ConfigFieldRow.svelte:180-186`)
@@ -65,6 +73,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Field label and helper text collapse to one visual tier
 
+- **Id:** ai-output-label-helper-collapse
+- **Status:** open
 - **Dimension:** 1. Visual hierarchy & scanning
 - **Where visible:** Populated — "Output detail level" and the hint below read at the same muted weight, so the label doesn't announce itself as the field's name
 - **Source:** label `.settings-field__label { color: var(--fg2); font-size: 12px }` (`client/settings/components/ConfigFieldRow.svelte:193-198`) vs. hint `.ai-output-hint { color: var(--fg2); font-size: 12px }` (`client/settings/sections/AiOutputSection.svelte:88-91`) — identical colour
@@ -72,6 +82,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Segmented control and icon-button lack an explicit focus ring
 
+- **Id:** ai-output-missing-focus-ring
+- **Status:** open
 - **Dimension:** 9. Interaction & micro-states
 - **Where visible:** Not visible in shots (programmatic focus doesn't trigger `:focus-visible`); confirmed absent in source
 - **Source:** `client/shared/ui/SegmentedControl.svelte:45-70` and `client/shared/ui/IconButton.svelte:28-45` define no `:focus-visible` rule, unlike `client/shared/ui/Btn.svelte:74-77` which draws a branded accent ring
@@ -79,6 +91,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Settings components use legacy token aliases
 
+- **Id:** ai-output-legacy-token-aliases
+- **Status:** open
 - **Dimension:** 3. Consistency with the design system
 - **Where visible:** Not visible; consistency/maintenance drift from source
 - **Source:** `ConfigFieldRow` uses `--fg2` and `--surface` (`client/settings/components/ConfigFieldRow.svelte:185,194`), which `client/shared/tokens.css:66,70` labels as legacy aliases for `--surface-1`/`--text-muted` intended for the debug/admin SPAs

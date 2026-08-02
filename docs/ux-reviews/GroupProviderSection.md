@@ -53,6 +53,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] `Save` gives no in-flight or disabled feedback (double-submit risk)
 
+- **Id:** group-provider-save-no-feedback
+- **Status:** open
 - **Dimension:** 9. Interaction & micro-states (also 4. Feedback & state)
 - **Where visible:** Populated / Save-hover shots — the button is a static "Save" at rest and
   during the async PATCH; there is no "Saving…" frame, spinner, or disabled state to shoot.
@@ -69,6 +71,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] `Select` is unlabeled and has no visible keyboard focus ring
 
+- **Id:** group-provider-select-unlabeled-no-focus
+- **Status:** open
 - **Dimension:** 6. Accessibility (also 9. Interaction & micro-states)
 - **Where visible:** Select-focused shot is pixel-identical to the resting Populated shot —
   focusing the dropdown produces no visible ring. The grey "TASK INSTANCE" caption above it is a
@@ -87,6 +91,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Load error is a bare red line with no recovery affordance
 
+- **Id:** group-provider-load-error-no-recovery
+- **Status:** open
 - **Dimension:** 4. Feedback & state (also 3. Consistency)
 - **Where visible:** Error shot — the entire body is a single small red word ("boom"); the form
   never renders because `data` stays `null`.
@@ -101,6 +107,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Initial load renders a blank body (no loading placeholder)
 
+- **Id:** group-provider-blank-initial-load
+- **Status:** open
 - **Dimension:** 4. Feedback & state
 - **Where visible:** Loading shot — only the eyebrow/title and header refresh button render; the
   content area is empty with no "Loading…" cue.
@@ -113,6 +121,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Empty state uses full-brightness text and dead-ends the user
 
+- **Id:** group-provider-empty-state-dead-end
+- **Status:** open
 - **Dimension:** 5. Content & language (also 3. Consistency)
 - **Where visible:** Empty shot — "No active task instances are available for this group." renders
   at full body brightness (not the muted placeholder grey used elsewhere) and offers no next step.
@@ -126,6 +136,8 @@ one.</p>` (`TaskProviderSection.svelte:121`).
 
 ### [Low] Options are labeled with a raw internal id (inherited from sibling)
 
+- **Id:** group-provider-raw-id-options
+- **Status:** open
 - **Dimension:** 5. Content & language
 - **Where visible:** Populated / narrow shots — the only option reads `inst_abc (kaneo · active)`,
   an opaque database id concatenated with provider type and status.

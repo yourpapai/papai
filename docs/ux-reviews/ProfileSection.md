@@ -41,6 +41,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Every save/clear flashes the whole section to "Loading…"
 
+- **Id:** profile-save-clear-full-flash
+- **Status:** open
 - **Dimension:** 9. Interaction & micro-states
 - **Where visible:** Not a single frame — the transition after pressing Save or confirming Clear (the field list is replaced by the Loading placeholder, then re-rendered).
 - **Source:** `client/settings/sections/ProfileSection.svelte:61` (`onSaved={() => void load(contextId)}`) re-runs `load`, which sets `loading = true` (`:30`) and renders `<p class="placeholder">Loading…</p>` (`:55`) in place of every field — so a one-field save blanks the entire landing section.
@@ -48,6 +50,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Error state is a raw message with no in-place recovery
 
+- **Id:** profile-error-no-recovery
+- **Status:** open
 - **Dimension:** 4. Feedback & state
 - **Where visible:** Error state — a lone red `boom` under the title, nothing else.
 - **Source:** `client/settings/sections/ProfileSection.svelte:53` (`<p class="status-error">{error}</p>`); the only retry is the unlabeled `⟳` icon button at `:48`.
@@ -55,6 +59,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] "Clear" destructive action looks like plain label text
 
+- **Id:** profile-clear-low-affordance
+- **Status:** open
 - **Dimension:** 2. Affordance & signifiers
 - **Where visible:** Populated (at rest "Clear" reads as label metadata); the Clear-hover shot shows a background only appears on hover — the sole resting signifier is absent.
 - **Source:** `client/settings/components/ConfigFieldRow.svelte:138` uses `variant="ghost"` (`Btn.svelte`: ghost = transparent bg, `--fg2` text, transparent border) for an action that opens a _danger_ confirm dialog; a `danger` variant already exists.
@@ -62,6 +68,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] Empty state dead-ends on the section every user lands on first
 
+- **Id:** profile-empty-state-dead-end
+- **Status:** open
 - **Dimension:** 5. Content & language
 - **Where visible:** Empty state — "No profile settings / This context has no editable profile settings."
 - **Source:** `client/settings/sections/ProfileSection.svelte:57`; `EmptyState.svelte` supports an `action` snippet, but none is passed.
@@ -69,6 +77,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Empty-state hint contrast is below WCAG AA
 
+- **Id:** profile-empty-hint-low-contrast
+- **Status:** open
 - **Dimension:** 6. Accessibility
 - **Where visible:** Empty state — the "This context has no editable profile settings." hint line.
 - **Source:** `client/shared/ui/EmptyState.svelte` `.ui-empty__hint` uses `--fg3` (`--text-dim` `#6b766e`) at 11px on `--bg` `#0a0c0a` ≈ 4:1, under the 4.5:1 AA threshold for normal text.
@@ -76,6 +86,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Spacing and radii are hardcoded off the shared scale
 
+- **Id:** profile-hardcoded-spacing
+- **Status:** open
 - **Dimension:** 8. Spacing, alignment & sizing
 - **Where visible:** Populated / long-value — alignment is clean, but the values don't come from the token scale.
 - **Source:** `ProfileSection.svelte:70` list `gap: 12px`, `ConfigFieldRow.svelte:182-200` (`gap: 8px` / `10px`, `padding: 12px`) are literal px rather than `--gap-inline`/`--gap-field` (12/20px); radii disagree across primitives — `Btn.svelte:54` and `Input.svelte:57` use `2px` while `IconButton.svelte:37` uses `var(--radius)` (6px), so the header refresh button and the field's Save/input have different corners.
@@ -83,6 +95,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Section looks sparse / unbalanced when data is minimal
 
+- **Id:** profile-sparse-layout-minimal-data
+- **Status:** open
 - **Dimension:** 7. Responsive / layout
 - **Where visible:** Populated (desktop) and narrow — one field, then a large empty expanse below.
 - **Source:** `client/settings/sections/ProfileSection.svelte:59-63` (single-column field list, only `preference`-kind fields survive the filter at `:25`).
@@ -90,6 +104,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] Refresh/retry is a glyph-only control
 
+- **Id:** profile-refresh-glyph-only
+- **Status:** open
 - **Dimension:** 2. Affordance & signifiers
 - **Where visible:** All states — the `⟳` icon button, top-right of the header.
 - **Source:** `client/settings/sections/ProfileSection.svelte:48` (`IconButton` — has `aria-label`/`title` "Refresh", so screen-reader-named, but visually a bare glyph); it doubles as the sole retry path in the Error state.
