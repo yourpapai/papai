@@ -164,7 +164,7 @@ export async function prepareWorktree(config: ReviewLoopConfig, runState: RunSta
 export async function writeRunArtifacts(
   runDir: string,
   result: ReviewLoopResult,
-  options: { poolSize: number; inspect: boolean },
+  options: { poolSize: number; inspect: boolean; wallMs: number },
 ): Promise<void> {
   const closed = Object.values(result.ledger.issues).filter((r) => r.status === 'closed').length
   const summary = buildSummary({
@@ -173,7 +173,8 @@ export async function writeRunArtifacts(
     metrics: result.metrics ?? [],
     ledger: result.ledger,
     runDir,
-    options,
+    wallMs: options.wallMs,
+    options: { poolSize: options.poolSize, inspect: options.inspect },
   })
   await writeFile(path.join(runDir, 'summary.txt'), `${summary}\n`)
   try {
@@ -196,6 +197,7 @@ async function executeReviewLoop(
   trace: TraceLogger,
   pool: WorkerPool,
   inspect: boolean,
+  startedAt: number,
 ): Promise<void> {
   const result = await runReviewLoop({
     config,
@@ -210,11 +212,16 @@ async function executeReviewLoop(
   })
   // Write summary/metrics/trace BEFORE finalizeRun so they always exist for
   // post-mortem, even if the final build check or merge throws.
-  await writeRunArtifacts(runState.runDir, result, { poolSize: config.poolSize, inspect })
+  await writeRunArtifacts(runState.runDir, result, {
+    poolSize: config.poolSize,
+    inspect,
+    wallMs: Date.now() - startedAt,
+  })
   await finalizeRun(config, runState, { exec, runBuildCheck, mergeWorktree, removeWorktree })
 }
 
 export async function runCli(argv: readonly string[]): Promise<void> {
+  const startedAt = Date.now()
   const args = parseCliArgs(argv)
   const config = await loadReviewLoopConfig({ configPath: args.configPath, repoRoot: args.repoRoot })
   if (args.poolSize !== undefined) config.poolSize = args.poolSize
@@ -236,7 +243,7 @@ export async function runCli(argv: readonly string[]): Promise<void> {
   const pool = await createWorkerPool(config, runState)
 
   try {
-    await executeReviewLoop(config, runState, ledger, exec, log, trace, pool, !args.noInspect)
+    await executeReviewLoop(config, runState, ledger, exec, log, trace, pool, !args.noInspect, startedAt)
   } finally {
     await pool.close()
   }

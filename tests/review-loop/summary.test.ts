@@ -92,6 +92,7 @@ function inputOf(overrides?: Partial<SummaryInput>): SummaryInput {
     metrics: [],
     ledger: { issues: {} },
     runDir: '/repo/.review-loop/runs/run-1',
+    wallMs: 200_000,
     options: { poolSize: 1, inspect: false },
     ...overrides,
   }
@@ -150,9 +151,19 @@ describe('buildSummary zero suppression', () => {
 })
 
 describe('buildSummary timing and cost', () => {
-  test('renders duration, nonzero phases, and cost on one line', () => {
+  test('renders wall time, phase sum, nonzero phases, and cost on one line', () => {
     const summary = buildSummary(inputOf({ metrics: [busyMetric(1)] }))
-    expect(summary).toContain('Duration: 2m58s (review 178.3s) · Cost: $1.234 (in 120000 / out 8000 / reasoning 3000)')
+    expect(summary).toContain(
+      'Duration: 3m20s wall · phases 2m58s (review 178.3s) · Cost: $1.234 (in 120,000 / out 8,000 / reasoning 3,000)',
+    )
+  })
+
+  test('hides cost and shows Tokens when the reported cost is zero', () => {
+    const metric = busyMetric(1)
+    metric.usage = { inputTokens: 228_819, outputTokens: 9_824, reasoningTokens: 49_844, costUsd: 0 }
+    const summary = buildSummary(inputOf({ metrics: [metric] }))
+    expect(summary).toContain('· Tokens: in 228,819 / out 9,824 / reasoning 49,844')
+    expect(summary).not.toContain('Cost:')
   })
 })
 

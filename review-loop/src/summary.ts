@@ -52,6 +52,7 @@ export interface SummaryInput {
   metrics: readonly RoundMetric[]
   ledger: IssueLedgerSnapshot
   runDir: string
+  wallMs: number
   options: SummaryOptions
 }
 
@@ -142,13 +143,19 @@ function msToSeconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`
 }
 
-function buildTimingLine(metrics: readonly RoundMetric[]): string {
+function formatCount(n: number): string {
+  return n.toLocaleString('en-US')
+}
+
+function buildTimingLine(metrics: readonly RoundMetric[], wallMs: number): string {
   const phaseMs = aggregatePhaseMs(metrics)
   const totalMs = PHASE_KEYS.reduce((s, k) => s + phaseMs[k], 0)
   const parts = PHASE_KEYS.filter((k) => phaseMs[k] > 0).map((k) => `${k} ${msToSeconds(phaseMs[k])}`)
   const breakdown = parts.length === 0 ? 'no phase timing recorded' : parts.join(', ')
   const usage = aggregateUsage(metrics)
-  return `Duration: ${formatDuration(totalMs)} (${breakdown}) · Cost: $${usage.costUsd.toFixed(3)} (in ${usage.inputTokens} / out ${usage.outputTokens} / reasoning ${usage.reasoningTokens})`
+  const tokens = `in ${formatCount(usage.inputTokens)} / out ${formatCount(usage.outputTokens)} / reasoning ${formatCount(usage.reasoningTokens)}`
+  const cost = usage.costUsd > 0 ? `Cost: $${usage.costUsd.toFixed(3)} (${tokens})` : `Tokens: ${tokens}`
+  return `Duration: ${formatDuration(wallMs)} wall · phases ${formatDuration(totalMs)} (${breakdown}) · ${cost}`
 }
 
 function buildRoundsLine(input: SummaryInput): string | null {
@@ -204,7 +211,7 @@ function artifactsBlock(runDir: string): string[] {
 export function buildSummary(input: SummaryInput): string {
   const total = Object.keys(input.ledger.issues).length
   const counts = countIssues(input.ledger)
-  const lines: string[] = [buildVerdict(input, counts, total), buildTimingLine(input.metrics)]
+  const lines: string[] = [buildVerdict(input, counts, total), buildTimingLine(input.metrics, input.wallMs)]
 
   const roundsLine = buildRoundsLine(input)
   if (roundsLine !== null) lines.push(roundsLine)
