@@ -186,6 +186,9 @@
           showing {filtered.length} · {bufferStats.matchingCount ?? dashboard.logs.length} match filter of {bufferStats.count} buffered (cap {bufferStats.capacity})
         </span>
       {/if}
+      {#if dashboard.logsError !== undefined}
+        <span class="log-bufferstat log-bufferstat--error">{dashboard.logsError}</span>
+      {/if}
       {#if !autoScroll}
         <Btn variant="secondary" size="sm" onClick={jumpToBottom}>{#snippet children()}▼ auto-scroll{/snippet}</Btn>
       {/if}
@@ -245,6 +248,10 @@
     font-family: var(--font-mono);
     font-size: 11px;
     border-top: 1px solid var(--border);
+  }
+
+  .log-bufferstat--error {
+    color: var(--warn);
   }
 
   .log-turnid-badge {

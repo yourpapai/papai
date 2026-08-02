@@ -46,8 +46,10 @@
         dashboard.logs = parsed
         dashboard.logScopeCounts = await fetchScopes()
         for (const scope of collectScopes(parsed)) dashboard.logScopes.add(scope)
+        dashboard.logsError = undefined
       } catch {
-        // SSE will populate from live events.
+        // SSE will populate from live events; tell the user the bootstrap failed.
+        dashboard.logsError = 'initial log load failed — live stream may still deliver events'
       }
     })
 
@@ -72,6 +74,9 @@
     <DebugTopBar {dashboard} />
   {/snippet}
   {#snippet children()}
+    {#if !dashboard.connected}
+      <div class="debug-banner" role="status">stream disconnected — showing last buffered data, reconnecting…</div>
+    {/if}
     <div class="debug-grid">
       <aside class="debug-grid__left">
         <SessionsList

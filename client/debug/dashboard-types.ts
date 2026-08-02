@@ -127,6 +127,8 @@ export interface DashboardState {
   selectedDetail: SelectedDetail
   activeLogFilter: LogFilter
   logScopeCounts: ScopeCount[]
+  /** Set when the initial log bootstrap fetch failed; live SSE may still deliver events. */
+  logsError?: string
   /** Platform user id of the signed-in operator, used to pin their own session. */
   operatorUserId?: string
 }

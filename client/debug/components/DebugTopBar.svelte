@@ -42,7 +42,7 @@
 
 <TopBar page="debug">
   {#snippet statusRow()}
-    <div class="debug-topbar__status">
+    <div class="debug-topbar__status" class:stale={!dashboard.connected}>
       {#if dashboard.connected}
         <Pill tone="accent" dot>{#snippet children()}connected{/snippet}</Pill>
       {:else}
@@ -113,5 +113,9 @@
       flex-wrap: wrap;
       gap: 8px;
     }
+  }
+
+  .debug-topbar__status.stale .debug-topbar__stat {
+    color: var(--fg3);
   }
 </style>

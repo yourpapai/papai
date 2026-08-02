@@ -46,4 +46,13 @@ describe('LogExplorer.svelte', () => {
     expect(target.querySelector('#log-explorer .ui-btn')).not.toBeNull()
     void unmount(c)
   })
+
+  test('shows the logs-error note when logsError is set', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const dashboard = { ...makeDashboard(), logsError: 'initial log load failed' }
+    const c = mount(LogExplorer, { target, props: { dashboard, onSelectLog: () => {} } })
+    expect(target.textContent).toContain('initial log load failed')
+    void unmount(c)
+  })
 })

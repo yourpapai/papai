@@ -1074,3 +1074,14 @@
   background: rgba(93, 217, 122, 0.06);
   box-shadow: inset 2px 0 0 var(--accent);
 }
+
+.debug-banner {
+  margin: 12px 16px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 2px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
