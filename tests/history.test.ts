@@ -143,6 +143,8 @@ describe('history log contracts and clearHistory', () => {
     const tracked = createTrackedLoggerMock()
     const history = await loadHistoryModule(tracked)
     history.appendHistory('ctx-trim-hit', [
+      makeUserMsg('m0', 'earlier turn'),
+      { role: 'assistant', content: 'earlier answer' } as ModelMessage,
       makeUserMsg('m1', 'hello'),
       { role: 'assistant', content: 'old answer' } as ModelMessage,
       { role: 'tool', content: [] } as ModelMessage,
