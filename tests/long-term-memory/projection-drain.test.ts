@@ -173,6 +173,22 @@ describe('projectionCheckpoint', () => {
 
     expect(projectionCheckpoint()).toBe(Math.max(...positions))
   })
+
+  test('the checkpoint is the highest completed position, not the highest position overall', () => {
+    captureMany(3)
+    getDrizzleDb().run(
+      sql`CREATE TRIGGER fail_last_projection BEFORE INSERT ON memory_projection_records
+          WHEN NEW.record_id = 'rec-2'
+          BEGIN SELECT RAISE(ABORT, 'injected projection fault for last item'); END`,
+    )
+    drainProjectionOutbox(NOW)
+    getDrizzleDb().run(sql`DROP TRIGGER IF EXISTS fail_last_projection`)
+    const rows = outbox()
+
+    expect(rows.map((row) => row.state)).toEqual(['complete', 'complete', 'pending'])
+    expect(projectionCheckpoint()).toBe(2)
+    expect(projectionCheckpoint()).not.toBe(Math.max(...rows.map((row) => row.position)))
+  })
 })
 
 describe('repairFailedProjections', () => {
