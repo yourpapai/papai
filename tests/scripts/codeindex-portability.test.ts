@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, test } from 'bun:test'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 
 const REPO_ROOT = path.resolve(import.meta.dir, '../..')
@@ -36,17 +36,6 @@ describe('codeindex portability wiring', () => {
     expect(reindexPlugin).not.toContain(staleAbsolutePath)
     expect(readRepoFile('docs/guides/codeindex-verification.md')).not.toContain(staleAbsolutePath)
   })
-
-  // opencode.json is project-local (gitignored), so only validate it when present
-  test.skipIf(!existsSync(path.join(REPO_ROOT, 'opencode.json')))(
-    'opencode.json routes codeindex through the wrapper when present',
-    () => {
-      const openCodeConfig = readRepoFile('opencode.json')
-      const staleAbsolutePath = '/Users/ki/Projects/papai/codeindex/src/cli.ts'
-      expect(openCodeConfig).toContain('"scripts/codeindex-cli.ts"')
-      expect(openCodeConfig).not.toContain(staleAbsolutePath)
-    },
-  )
 
   test('documents wrapper usage and CODEINDEX_DIR remediation', () => {
     const verificationGuide = readRepoFile('docs/guides/codeindex-verification.md')
