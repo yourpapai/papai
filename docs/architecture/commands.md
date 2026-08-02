@@ -38,9 +38,9 @@ Qualification freezes all of `tests/stories/**`, the listed enforcement scripts 
 
 Chat-adapter transport is outside 0Q: `SCN-interaction-discord-router-wrapped`,
 `SCN-interaction-discord-standalone-fallback`, and
-`SCN-interaction-telegram-callback` remain `needs-seam@3`. Their Discord/grammY
-callback wires are reviewed manually or by the nightly Tier 3 platform-adapter
-lane; they are never a refactor-qualification gate.
+`SCN-interaction-telegram-callback` are executable Tier 3 (forward-only) records
+exercised by the nightly Tier 3 platform-adapter lane; they are never a
+refactor-qualification gate.
 
 To establish a baseline on master:
 
