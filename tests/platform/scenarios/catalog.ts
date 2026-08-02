@@ -9,8 +9,10 @@ export type PlatformStory = { scenarioId: string; title: string; file: string }
 const FETCH_CHAT_LINK = 'tests/platform/scenarios/mattermost-fetch-chat-link.platform.ts'
 const HTTP_ACTION = 'tests/platform/scenarios/mattermost-http-action.platform.ts'
 const DISCORD_INTERACTIONS = 'tests/platform/scenarios/discord-interactions.platform.ts'
+const DISCORD_CALLBACK_ROUTING = 'tests/platform/scenarios/discord-callback-routing.platform.ts'
 const KONTUR_TALK_REPLIES = 'tests/platform/scenarios/kontur-talk-replies.platform.ts'
 const TELEGRAM_ADMIN_AUTHORIZATION = 'tests/platform/scenarios/telegram-admin-authorization.platform.ts'
+const TELEGRAM_CALLBACK_ROUTING = 'tests/platform/scenarios/telegram-callback-routing.platform.ts'
 
 export const PLATFORM_STORIES = {
   'SCN-fetch-chat-link': {
@@ -53,6 +55,21 @@ export const PLATFORM_STORIES = {
     title: 'authorizes Telegram group admins through the Bot API',
     file: TELEGRAM_ADMIN_AUTHORIZATION,
   },
+  'SCN-interaction-discord-router-wrapped': {
+    scenarioId: 'SCN-interaction-discord-router-wrapped',
+    title: 'routes a Discord permission callback through ChatRouter and production setupBot',
+    file: DISCORD_CALLBACK_ROUTING,
+  },
+  'SCN-interaction-discord-standalone-fallback': {
+    scenarioId: 'SCN-interaction-discord-standalone-fallback',
+    title: 'defers an unmatched Discord callback to the standalone message fallback',
+    file: DISCORD_CALLBACK_ROUTING,
+  },
+  'SCN-interaction-telegram-callback': {
+    scenarioId: 'SCN-interaction-telegram-callback',
+    title: 'routes a Telegram permission callback through ChatRouter and production setupBot',
+    file: TELEGRAM_CALLBACK_ROUTING,
+  },
 } as const satisfies Record<string, PlatformStory>
 
 export function platformStoryId(story: PlatformStory): string {
@@ -69,4 +86,7 @@ export const PLATFORM_COVERAGE_FILES: readonly string[] = [
   'src/chat/discord/interaction-helpers.ts',
   'src/chat/kontur-talk/reply-helpers.ts',
   'src/chat/telegram/admin-helpers.ts',
+  'src/chat/discord/button-dispatch.ts',
+  'src/chat/telegram/interaction-helpers.ts',
+  'src/chat/router-helpers.ts',
 ]

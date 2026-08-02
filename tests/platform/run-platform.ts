@@ -10,5 +10,7 @@
 import './scenarios/mattermost-fetch-chat-link.platform.js'
 import './scenarios/mattermost-http-action.platform.js'
 import './scenarios/discord-interactions.platform.js'
+import './scenarios/discord-callback-routing.platform.js'
 import './scenarios/kontur-talk-replies.platform.js'
 import './scenarios/telegram-admin-authorization.platform.js'
+import './scenarios/telegram-callback-routing.platform.js'

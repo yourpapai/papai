@@ -19,7 +19,7 @@ describe('@3 catalog crosscheck', () => {
     )
     const t3 = executable.filter((coverage) => coverage.provingTier === '3')
 
-    expect(t3).toHaveLength(8)
+    expect(t3).toHaveLength(11)
     const platformStoryScenarioIds: string[] = Object.keys(PLATFORM_STORIES)
     for (const scenarioId of [
       'SCN-interaction-discord-command-routing',
@@ -27,6 +27,9 @@ describe('@3 catalog crosscheck', () => {
       'SCN-interaction-discord-response-lifecycle',
       'SCN-interaction-kontur-reply-formatting',
       'SCN-interaction-telegram-admin-authorization',
+      'SCN-interaction-discord-router-wrapped',
+      'SCN-interaction-discord-standalone-fallback',
+      'SCN-interaction-telegram-callback',
     ]) {
       expect(platformStoryScenarioIds).toContain(scenarioId)
     }
@@ -66,6 +69,9 @@ describe('@3 catalog crosscheck', () => {
       'src/chat/discord/interaction-helpers.ts',
       'src/chat/kontur-talk/reply-helpers.ts',
       'src/chat/telegram/admin-helpers.ts',
+      'src/chat/discord/button-dispatch.ts',
+      'src/chat/telegram/interaction-helpers.ts',
+      'src/chat/router-helpers.ts',
     ])
   })
 })
