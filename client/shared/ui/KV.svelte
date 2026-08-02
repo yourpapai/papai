@@ -11,14 +11,13 @@
     v: string | number | Snippet
     sub?: string
     vColor?: string
-    dim?: boolean
   }
 
-  let { k, v, sub, vColor, dim = false }: Props = $props()
+  let { k, v, sub, vColor }: Props = $props()
 </script>
 
 <div class="ui-kv" class:ui-kv--stacked={sub !== undefined}>
-  <span class="ui-kv__k" style:color={dim ? 'var(--text-dim)' : 'var(--text-dim)'}>{k}</span>
+  <span class="ui-kv__k" style:color="var(--text-dim)">{k}</span>
   <span class="ui-kv__v" style:color={vColor ?? 'var(--text)'}>
     {#if typeof v === 'function'}
       {@render (v as Snippet)()}

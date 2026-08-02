@@ -74,14 +74,4 @@
   --s7: 32px;
   --s8: 40px;
   --s9: 48px;
-
-  /* ---- legacy aliases: debug/admin SPAs reference these names ---- */
-  --surface: var(--surface-1);
-  --raised: var(--surface-2);
-  --hair: var(--border);
-  --fg: var(--text);
-  --fg2: var(--text-muted);
-  --fg3: var(--text-dim);
-  --fg4: var(--text-dim); /* was #3a4248 at 1.58:1 — below even the 3:1 non-text floor */
-  --fg-hint: var(--text-dim); /* redundant once --text-dim itself clears 4.5:1 */
 }

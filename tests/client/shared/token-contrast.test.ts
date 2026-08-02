@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 
 /**
  * WCAG 2.1 AA SC 1.4.3 (Contrast, Minimum). Applied flat, with no large-text
- * exemption: every `--fg3`/`--fg4` call site in the codebase renders text at
+ * exemption: every `--text-dim` call site in the codebase renders text at
  * 10–12px, so a 3:1 branch would be a loophole no real site could use.
  */
 const MIN_RATIO = 4.5
@@ -21,7 +21,7 @@ const TOKENS = readFileSync(fileURLToPath(new URL('../../../client/shared/tokens
  * custom property is text and which is a background, so the test declares it.
  * Adding a text token means adding it here — that is the point.
  */
-const TEXT = ['--text', '--text-muted', '--text-dim', '--fg', '--fg2', '--fg3', '--fg4', '--fg-hint']
+const TEXT = ['--text', '--text-muted', '--text-dim']
 const SURFACE = ['--bg', '--surface-1', '--surface-2', '--surface-hover', '--inset']
 
 const DECL = /(--[\w-]+):\s*([^;]+);/gu

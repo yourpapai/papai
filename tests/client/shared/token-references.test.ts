@@ -51,7 +51,7 @@ describe('token references', () => {
   test('the scan actually found references, so an empty result cannot pass vacuously', async () => {
     const { declared, referenced } = await scanClient()
 
-    expect(declared.size).toBeGreaterThan(50)
+    expect(declared.size).toBeGreaterThan(40)
     expect(referenced.length).toBeGreaterThan(500)
   })
 })
