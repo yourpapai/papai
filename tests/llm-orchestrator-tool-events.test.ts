@@ -234,4 +234,18 @@ describe('analytics terminal ordering', () => {
     expect(terminal.data['modelRole']).toBe(request.data['modelRole'])
     expect(terminal.data['argsBytes']).toBe(request.data['argsBytes'])
   })
+
+  test('analytics terminal rounds float durationMs; execute_end keeps the raw value', () => {
+    const { collected } = lifecycle({ ...successEvent({ title: 'done' }), durationMs: 42.4 })
+    const terminal = ofType(collected, 'tool:analytics_completed')[0]!
+    expect(terminal.data['durationMs']).toBe(42)
+    const executeEnd = ofType(collected, 'tool:execute_end')[0]!
+    expect(executeEnd.data['durationMs']).toBe(42.4)
+  })
+
+  test('analytics terminal clamps negative durationMs to zero', () => {
+    const { collected } = lifecycle({ ...successEvent({ title: 'done' }), durationMs: -3 })
+    const terminal = ofType(collected, 'tool:analytics_completed')[0]!
+    expect(terminal.data['durationMs']).toBe(0)
+  })
 })
