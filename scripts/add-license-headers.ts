@@ -139,6 +139,28 @@ const headerStartIndex = (lines: readonly string[]): number => {
   return firstLine !== undefined && firstLine.startsWith('#!') ? 1 : 0
 }
 
+/**
+ * Index of this file's own SPDX line, or -1 when it has no header yet.
+ *
+ * The scan starts past any shebang and walks the leading run of `//` comments and blank lines,
+ * stopping at the first line of real code. That bound is what keeps the search safe: a file may
+ * legitimately contain the SPDX text further down — `src/analytics/tool-slug-generation.ts`
+ * emits a stamped header inside a generated template — and matching that would mangle the file.
+ *
+ * Scanning past the first line (rather than requiring the header there) is what stops a leading
+ * path comment from being read as "no header", which used to make the caller prepend a second
+ * complete header and corrupt the file on first contact.
+ */
+const findHeaderIndex = (lines: readonly string[], startIndex: number): number => {
+  for (let index = startIndex; index < lines.length; index++) {
+    const line = lines[index]
+    if (line === undefined) return -1
+    if (line === SPDX_LINE) return index
+    if (line.length > 0 && !line.startsWith('//')) return -1
+  }
+  return -1
+}
+
 const looksLikeHeaderLine = (line: string | undefined): boolean =>
   line !== undefined &&
   (line.startsWith('// Copyright (c) ') || line === USE_LINE || line === DETAILS_LINE || line.length === 0)
@@ -155,12 +177,12 @@ const contentAfterHeader = (lines: readonly string[], startIndex: number): reado
 
 const updateExistingHeader = (content: string, currentYear: number): string | null => {
   const lines = content.split('\n')
-  const startIndex = headerStartIndex(lines)
-  if (lines[startIndex] !== SPDX_LINE) return null
+  const headerIndex = findHeaderIndex(lines, headerStartIndex(lines))
+  if (headerIndex === -1) return null
 
-  const prefix = startIndex === 1 ? [lines[0]] : []
-  const header = buildHeader(normalizeCopyrightLine(lines[startIndex + 1], currentYear))
-  return [...prefix, header + contentAfterHeader(lines, startIndex).join('\n')].join('\n')
+  const preamble = lines.slice(0, headerIndex)
+  const header = buildHeader(normalizeCopyrightLine(lines[headerIndex + 1], currentYear))
+  return [...preamble, header + contentAfterHeader(lines, headerIndex).join('\n')].join('\n')
 }
 
 const normalizeMdCopyrightLine = (line: string | undefined, currentYear: number): string => {

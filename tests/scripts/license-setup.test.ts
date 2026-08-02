@@ -117,6 +117,71 @@ describe('license setup', () => {
     }
   })
 
+  test('normalizes a header that follows a leading path comment instead of duplicating it', () => {
+    const repoDir = createHeaderScriptRepo()
+    const file = 'src/annotated.ts'
+
+    try {
+      writeRepoFile(
+        repoDir,
+        file,
+        [
+          '// src/annotated.ts',
+          '// SPDX-License-Identifier: BUSL-1.1',
+          '// Copyright (c) 2026 Dmitriy Lazarev',
+          '// Use of this software is governed by the Business Source License 1.1.',
+          '// See LICENSE in the project root for details.',
+          '',
+          'export const annotated = true',
+          '',
+        ].join('\n'),
+      )
+
+      const result = runCommand(repoDir, ['bun', 'scripts/add-license-headers.ts'])
+      const stamped = readFileSync(path.join(repoDir, file), 'utf8')
+
+      expect(result.exitCode).toBe(0)
+      expect(stamped.split('\n').filter((line) => line === HEADER)).toHaveLength(1)
+      expect(stamped).toStartWith('// src/annotated.ts\n')
+      expect(stamped).toContain('export const annotated = true')
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+
+  test('leaves an already-correct file untouched whatever precedes its header', () => {
+    const repoDir = createHeaderScriptRepo()
+    const header = [
+      '// SPDX-License-Identifier: BUSL-1.1',
+      '// Copyright (c) 2026 Dmitriy Lazarev',
+      '// Use of this software is governed by the Business Source License 1.1.',
+      '// See LICENSE in the project root for details.',
+    ]
+
+    try {
+      writeRepoFile(repoDir, 'src/plain.ts', [...header, '', 'export const plain = true', ''].join('\n'))
+      writeRepoFile(
+        repoDir,
+        'src/annotated.ts',
+        ['// src/annotated.ts', ...header, '', 'export const annotated = true', ''].join('\n'),
+      )
+      writeRepoFile(
+        repoDir,
+        'scripts/cli.ts',
+        ['#!/usr/bin/env bun', ...header, '', 'console.log("ok")', ''].join('\n'),
+      )
+
+      const result = runCommand(repoDir, ['bun', 'scripts/add-license-headers.ts'], {
+        LICENSE_HEADER_YEAR: '2026',
+      })
+
+      expect(result.exitCode).toBe(0)
+      expect(result.stdout).toContain('0 stamped')
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+
   test('uses the current header year for new files and expands old years to a range', () => {
     const repoDir = createHeaderScriptRepo()
     const freshFile = 'src/fresh.ts'
