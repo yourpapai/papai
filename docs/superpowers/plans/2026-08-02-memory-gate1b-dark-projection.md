@@ -2225,10 +2225,10 @@ In `tests/long-term-memory/acceptance/corpus.ts`, add this after `seedDuplicateO
 
 ```typescript
 /**
- * A twelve-month horizon: distinct facts whose event times span far enough that lexical or
- * insertion-order ordering would diverge from event-time ordering. The last entry restates the
- * first month's content at a later event time, so supersession must resolve across the whole
- * span rather than between adjacent writes.
+ * A twelve-month horizon: twelve distinct facts, one per month, whose event times span far
+ * enough that lexical or insertion-order ordering would diverge from event-time ordering. Each
+ * entry projects to its own shadow row under its own identity — no entry restates another
+ * month's content, so this fixture does not exercise cross-month supersession.
  */
 export function seedLongHorizon(scope: MemoryScope): readonly string[] {
   const months = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']
@@ -2311,6 +2311,8 @@ import {
   type MemoryCanonicalCaptureAttemptRow,
   memoryCanonicalEvents,
   type MemoryCanonicalEventRow,
+  memoryProjectionRecords,
+  type MemoryProjectionRecordRow,
 } from '../../../src/db/schema.js'
 import { drainProjectionOutbox } from '../../../src/long-term-memory/projection-drain.js'
 import { projectionSnapshot } from '../../../src/long-term-memory/projection-snapshot.js'
@@ -2322,6 +2324,16 @@ const DRAIN_AT = '2026-08-02T18:00:00.000Z'
 const events = (): MemoryCanonicalEventRow[] => getDrizzleDb().select().from(memoryCanonicalEvents).all()
 const attempts = (): MemoryCanonicalCaptureAttemptRow[] =>
   getDrizzleDb().select().from(memoryCanonicalCaptureAttempts).all()
+
+/**
+ * The shadow-projection view, queried directly rather than inferred from `settle()`'s return
+ * value. Every byte-identity assertion in this suite compares two snapshots for equality, which
+ * a no-op projection pipeline satisfies vacuously (both sides settle to the same empty
+ * snapshot). Anchoring at least one assertion per byte-identity claim to a concrete row count
+ * and concrete content here is what makes that claim load-bearing rather than a comparison of
+ * two empty strings.
+ */
+const shadow = (): MemoryProjectionRecordRow[] => getDrizzleDb().select().from(memoryProjectionRecords).all()
 
 const settle = (): string => {
   drainProjectionOutbox(DRAIN_AT)
@@ -2353,6 +2365,12 @@ describe('acceptance: capture-idempotency / duplicate-out-of-order', () => {
     seedDuplicateOutOfOrder(PERSONAL)
     const withDuplicate = settle()
 
+    // Load-bearing: prove the compared snapshot actually carries the surviving record. Without
+    // this, a projection pipeline that no-ops entirely would settle both sides to the same
+    // empty snapshot and the bare equality below would stay green.
+    expect(shadow()).toHaveLength(1)
+    expect(shadow()[0]?.content).toBe('User drinks oat milk')
+
     await setupTestDb()
     seedDuplicateOutOfOrder(PERSONAL)
 
@@ -2370,12 +2388,18 @@ describe('acceptance: capture-idempotency / long-horizon', () => {
     seedLongHorizon(PERSONAL)
     settle()
 
+    expect(shadow()).toHaveLength(12)
     expect(events()).toHaveLength(12)
   })
 
   test('draining once at the end equals draining after every write', async () => {
     seedLongHorizon(PERSONAL)
     const batched = settle()
+
+    // Load-bearing: same anchor as above, applied to the batched-drain snapshot this test
+    // compares against.
+    expect(shadow()).toHaveLength(12)
+    expect(shadow()[0]?.content).toBe('Month 01 status was recorded')
 
     await setupTestDb()
     seedLongHorizon(PERSONAL)
@@ -2388,6 +2412,11 @@ describe('acceptance: capture-idempotency / long-horizon', () => {
     seedLongHorizon(PERSONAL)
     const once = settle()
 
+    // Load-bearing: same anchor, applied to the single-pass snapshot this test compares
+    // against after a second, redundant seeding of the whole horizon.
+    expect(shadow()).toHaveLength(12)
+    expect(shadow()[0]?.content).toBe('Month 01 status was recorded')
+
     await setupTestDb()
     seedLongHorizon(PERSONAL)
     seedLongHorizon(PERSONAL)
@@ -2398,6 +2427,8 @@ describe('acceptance: capture-idempotency / long-horizon', () => {
 ```
 
 If `seedLongHorizon` throws `corpus write suppressed` on the second call in the last test, that is the live store's own duplicate handling rather than a projection defect: change that test to call `seedLongHorizon(PERSONAL)` once and then re-run the same writes through `captureCanonicalEvent` directly, importing it from `../../../src/long-term-memory/canonical-capture.js`. Report which form you used.
+
+**Fix round 1 note:** the `shadow()` helper and its content/row-count assertions were added after initial landing, in response to an independent review (see `.superpowers/sdd/task-8-report.md`, "Fix round 1"). Every byte-identity assertion in this suite (`expect(settle()).toBe(...)`) is pure cross-run equality; without an anchor, a projection pipeline that no-ops entirely satisfies it vacuously because both sides settle to the same empty snapshot. Do not strip `shadow()` calls as "redundant" with the surrounding `settle()`/`events()` assertions — they are the only thing in this file that proves the compared snapshot is non-empty and content-bearing. This was verified by temporarily short-circuiting `drainProjectionOutbox` to return early: the four anchored assertions failed as expected, and the un-anchored `events()`-only assertions did not.
 
 - [ ] **Step 6: Register the case table**
 

@@ -180,10 +180,10 @@ export function seedDuplicateOutOfOrder(scope: MemoryScope): readonly string[] {
 }
 
 /**
- * A twelve-month horizon: distinct facts whose event times span far enough that lexical or
- * insertion-order ordering would diverge from event-time ordering. The last entry restates the
- * first month's content at a later event time, so supersession must resolve across the whole
- * span rather than between adjacent writes.
+ * A twelve-month horizon: twelve distinct facts, one per month, whose event times span far
+ * enough that lexical or insertion-order ordering would diverge from event-time ordering. Each
+ * entry projects to its own shadow row under its own identity — no entry restates another
+ * month's content, so this fixture does not exercise cross-month supersession.
  */
 export function seedLongHorizon(scope: MemoryScope): readonly string[] {
   const months = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']
