@@ -109,15 +109,20 @@ describe('drainProjectionOutbox', () => {
   })
 
   test('a superseded item is counted separately from an applied one', () => {
-    captureCanonicalEvent(input(), 'rec-1', NOW)
+    // Two distinct events (different content, hence different idempotency identity) that
+    // fold to the same shadow row (same recordId). The second-drained one carries an
+    // event time strictly earlier than the first, so `winsAgainst` rejects it and it
+    // resolves as 'superseded' rather than overwriting the incumbent shadow row.
+    captureCanonicalEvent(input({ evidence: { timestamps: ['2026-08-05T00:00:00.000Z'] } }), 'rec-1', NOW)
     captureCanonicalEvent(
-      input({ content: 'likes light mode', evidence: { timestamps: ['2026-08-05T00:00:00.000Z'] } }),
+      input({ content: 'likes light mode', evidence: { timestamps: ['2026-08-01T00:00:00.000Z'] } }),
       'rec-1',
       NOW,
     )
 
-    expect(drainProjectionOutbox(NOW)).toEqual({ applied: 2, superseded: 0, failed: 0, remaining: 0 })
+    expect(drainProjectionOutbox(NOW)).toEqual({ applied: 1, superseded: 1, failed: 0, remaining: 0 })
     expect(shadow()).toHaveLength(1)
+    expect(shadow()[0]?.content).toBe('likes dark mode')
   })
 
   test('the drain stops at the cap and reports the remainder', () => {
@@ -147,8 +152,11 @@ describe('drainProjectionOutbox', () => {
 
   test('failing items are counted and left for retry', () => {
     captureMany(2)
-    drainUnderFault(1)
+    failTheShadowWrite()
+    const result = drainProjectionOutbox(NOW)
+    clearTheFault()
 
+    expect(result).toEqual({ applied: 0, superseded: 0, failed: 2, remaining: 2 })
     expect(outbox().every((row) => row.state === 'pending')).toBe(true)
     expect(shadow()).toHaveLength(0)
   })
