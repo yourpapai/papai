@@ -190,10 +190,12 @@ deliverable.
 
 **No automated test covers this work.** It is Playwright configuration with no meaningful unit
 to assert against; a test that reads the config back and asserts `0.02 === 0.02` would be
-test-shaped noise. The reproduction experiment above is the verification. One friction to
-resolve during implementation: the repo's TDD write-hook may object to editing
-`playwright.config.ts` with no accompanying test, and the resolution must not be a
-lint-disable or type-ignore comment.
+test-shaped noise. The reproduction experiment above is the verification.
+
+The TDD write-hook does not object: `enforceTdd` in `.claude/hooks/pre-tool-use.mjs` gates only
+files under `src/`, `client/`, `plugins/`, or `review-loop/src/`, so `playwright.config.ts`,
+`tests/**`, `package.json`, and `docs/**` are all exempt. No accompanying test file is needed,
+and no suppression comment is warranted for a hook that will not fire.
 
 ## Documentation
 
