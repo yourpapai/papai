@@ -12,7 +12,7 @@ import {
   type IssueGroup,
 } from './issue-format.js'
 import type { IssueLedgerSnapshot, LedgerIssueRecord } from './issue-ledger.js'
-import { formatDuration } from './live-renderer.js'
+import { formatDuration } from './live-format.js'
 import type { ReviewLoopResult } from './loop-controller.js'
 import { burndownBlock } from './summary-burndown.js'
 import type { PhaseMs, RoundMetric, UsageTotals } from './trace-log.js'

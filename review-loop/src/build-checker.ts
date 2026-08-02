@@ -5,7 +5,8 @@
 
 import { execFile } from 'node:child_process'
 
-import { formatDuration, withLivePhase } from './live-renderer.js'
+import { formatDuration } from './live-format.js'
+import { withLivePhase } from './live-renderer.js'
 import type { ProgressReporter } from './progress-log.js'
 
 export type ShellExecFn = (cwd?: string) => Promise<{ exitCode: number; stdout: string; stderr: string }>

@@ -7,7 +7,7 @@ import { appendFile } from 'node:fs/promises'
 
 import type { AgentUsage, LineSink, RunAgentOptions } from './agent-runner.js'
 import { type OpencodeEvent, parseEventLine } from './event-stream.js'
-import { formatLiveLine, formatStepFooter, formatToolArg } from './live-renderer.js'
+import { formatLiveLine, formatStepFooter, formatToolArg } from './live-format.js'
 import type { ProgressReporter } from './progress-log.js'
 
 export interface LineHandler {
