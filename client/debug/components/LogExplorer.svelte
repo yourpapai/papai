@@ -140,7 +140,7 @@
         {#if dashboard.activeLogFilter.turnId !== undefined}
           <div class="log-turnid-badge">
             <span>turn:{dashboard.activeLogFilter.turnId.slice(0, 8)}</span>
-            <Btn variant="ghost" size="sm" onClick={clearTurnFilter}>{#snippet children()}×{/snippet}</Btn>
+            <Btn variant="ghost" size="sm" ariaLabel="Clear turn filter" onClick={clearTurnFilter}>{#snippet children()}×{/snippet}</Btn>
           </div>
         {/if}
         <Btn variant="ghost" size="sm" onClick={clearLogs}>{#snippet children()}clear{/snippet}</Btn>

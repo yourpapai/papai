@@ -26,7 +26,6 @@ See LICENSE in the project root for details.
   class="session-card"
   class:active={isActive}
   class:selected
-  class:operator={isOperator}
   role="button"
   tabindex="0"
   onclick={onSelect}
@@ -65,11 +64,6 @@ See LICENSE in the project root for details.
   .wizard-badge {
     display: block;
     margin-top: 2px;
-  }
-
-  .session-card.operator {
-    border-left: 2px solid var(--accent);
-    background: rgba(93, 217, 122, 0.05);
   }
 
   .operator-badge {
