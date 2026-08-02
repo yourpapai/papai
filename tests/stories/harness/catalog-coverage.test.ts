@@ -217,8 +217,8 @@ describe('scenario catalog coverage', () => {
   test('classifies every catalog scenario exactly once', () => {
     const ledgerIds = catalogCoverage.map(({ scenarioId }) => scenarioId)
 
-    expect(CATALOG_SCENARIO_IDS).toHaveLength(218)
-    expect(new Set(CATALOG_SCENARIO_IDS).size).toBe(218)
+    expect(CATALOG_SCENARIO_IDS).toHaveLength(223)
+    expect(new Set(CATALOG_SCENARIO_IDS).size).toBe(223)
     expect(sorted(ledgerIds)).toEqual(sorted(CATALOG_SCENARIO_IDS))
   })
 
@@ -409,8 +409,28 @@ describe('scenario catalog coverage', () => {
     })
   })
 
+  test('maps Phase 4 transport-free chat and audio stories to Tier 0', () => {
+    expect(
+      Object.fromEntries(
+        [
+          'SCN-chat-message-normalization',
+          'SCN-chat-context-rendering',
+          'SCN-chat-interaction-payload',
+          'SCN-chat-capability-gating',
+          'SCN-plugin-audio-transcribe-transformer',
+        ].map((scenarioId) => [scenarioId, catalogCoverage.find((entry) => entry.scenarioId === scenarioId)]),
+      ),
+    ).toMatchObject({
+      'SCN-chat-message-normalization': { kind: 'executable', provingTier: '0' },
+      'SCN-chat-context-rendering': { kind: 'executable', provingTier: '0' },
+      'SCN-chat-interaction-payload': { kind: 'executable', provingTier: '0' },
+      'SCN-chat-capability-gating': { kind: 'executable', provingTier: '0' },
+      'SCN-plugin-audio-transcribe-transformer': { kind: 'executable', provingTier: '0' },
+    })
+  })
+
   test('tracks the executable coverage total', () => {
-    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(193)
+    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(198)
   })
 
   test('stamps every executable record with a live proving tier', () => {
@@ -419,7 +439,7 @@ describe('scenario catalog coverage', () => {
       .filter((coverage) => !LIVE_STORY_TIERS.includes(coverage.provingTier))
       .map(({ scenarioId, provingTier }) => `${scenarioId} -> T${provingTier}`)
 
-    expect(executable).toHaveLength(193)
+    expect(executable).toHaveLength(198)
     expect(offLaneTiers).toEqual([])
     expect(new Set(executable.map((coverage) => coverage.provingTier))).toEqual(new Set(['0', '1', '2', '3', '4']))
   })

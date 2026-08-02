@@ -334,6 +334,12 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-interaction-telegram-admin-authorization',
   'SCN-deferred-poller-lifecycle',
   'SCN-plugin-deny-gating',
+  // Phase 4 — transport-free chat adapter surfaces and audio plugin (tier2-process-smoke continuation)
+  'SCN-chat-message-normalization',
+  'SCN-chat-context-rendering',
+  'SCN-chat-interaction-payload',
+  'SCN-chat-capability-gating',
+  'SCN-plugin-audio-transcribe-transformer',
 ] as const)
 
 export const PHASE3_UNCATALOGUED_CLUSTER_IDS = [
@@ -1579,6 +1585,42 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     provingTier: '4',
     storyIds: [
       'tests/operational/scenarios/deferred-poller-lifecycle.operational.ts#starts, runs, and stops deferred pollers without residual scheduler tasks',
+    ],
+  },
+  // Phase 4 — transport-free chat adapter surfaces and audio plugin (tier2-process-smoke continuation)
+  'SCN-chat-message-normalization': {
+    verifiedAt: '2026-08-02',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/chat/adapter-pure-surfaces.story.test.ts#SCN-chat-message-normalization: standalone mentions preserve command and thread boundaries',
+    ],
+  },
+  'SCN-chat-context-rendering': {
+    verifiedAt: '2026-08-02',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/chat/adapter-pure-surfaces.story.test.ts#SCN-chat-context-rendering: Telegram context output distinguishes bounded and unbounded budgets',
+    ],
+  },
+  'SCN-chat-interaction-payload': {
+    verifiedAt: '2026-08-02',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/chat/adapter-pure-surfaces.story.test.ts#SCN-chat-interaction-payload: Discord payloads scope DM and group callbacks without transport',
+    ],
+  },
+  'SCN-chat-capability-gating': {
+    verifiedAt: '2026-08-02',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/chat/adapter-pure-surfaces.story.test.ts#SCN-chat-capability-gating: reply features follow declared capability metadata',
+    ],
+  },
+  'SCN-plugin-audio-transcribe-transformer': {
+    verifiedAt: '2026-08-02',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/integrations/plugins/audio-transcribe.story.test.ts#SCN-plugin-audio-transcribe-transformer: a voice attachment is transcribed through the declared host',
     ],
   },
 }
