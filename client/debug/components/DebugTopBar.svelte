@@ -106,4 +106,12 @@
   .debug-topbar__spacer {
     flex: 1;
   }
+
+  @media (max-width: 720px) {
+    .debug-topbar__status,
+    .debug-topbar__secondary {
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+  }
 </style>

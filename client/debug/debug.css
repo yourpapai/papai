@@ -1045,6 +1045,18 @@
   min-width: 0;
 }
 
+@media (max-width: 720px) {
+  .debug-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .debug-grid__center-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  #sessions {
+    max-height: none;
+  }
+}
+
 /* --- Shared row interaction states --- */
 
 .session-card:focus-visible,

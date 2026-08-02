@@ -23,3 +23,15 @@ test.describe('debug/DebugApp', () => {
   })
 })
 // @generated-end auto-screenshots
+
+test('DebugApp — narrow 640px', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'debug-debugapp--default')
+  await sharedPage.setViewportSize({ width: 640, height: 900 })
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('DebugApp — detail selected, narrow 640px', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'debug-debugapp--detail-selected')
+  await sharedPage.setViewportSize({ width: 640, height: 900 })
+  await expect(sharedPage).toHaveScreenshot()
+})
