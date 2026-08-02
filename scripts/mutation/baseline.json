@@ -170,7 +170,7 @@
   "src/deferred-prompts/schedule-update-helpers.ts": 0.6461538461538462,
   "src/deferred-prompts/tool-handlers.ts": 0.5805243445692884,
   "src/errors.ts": 0.7579617834394905,
-  "src/history.ts": 0.21052631578947367,
+  "src/history.ts": 1,
   "src/live-status/tool-status-labels.ts": 0.46190476190476193,
   "src/llm-providers/discovery.ts": 0.5303030303030303,
   "src/llm-providers/env-bootstrap.ts": 0.5540540540540541,

@@ -141,6 +141,41 @@ describe('applyEditToHistory', () => {
     expect(users[0]!.content).toBe('rewritten')
     expect(users[1]!.content).toBe('b-text')
   })
+
+  test('skips a non-user turn that carries the edited messageId', () => {
+    const assistantWithMeta = {
+      role: 'assistant',
+      content: 'old answer',
+      providerOptions: {
+        papai: {
+          messageIds: ['m1'],
+          segments: [{ messageId: 'm1', text: 'hello', username: null }],
+          isThread: false,
+          isDm: true,
+        },
+      },
+    } as ModelMessage
+    const userMsg = {
+      role: 'user',
+      content: 'hello',
+      providerOptions: {
+        papai: {
+          messageIds: ['m1'],
+          segments: [{ messageId: 'm1', text: 'hello', username: null }],
+          isThread: false,
+          isDm: true,
+        },
+      },
+    } as ModelMessage
+    appendHistory('ctx-role-edit', [assistantWithMeta, userMsg])
+
+    const changed = applyEditToHistory('ctx-role-edit', 'm1', 'hello (edited)')
+    expect(changed).toBe(true)
+
+    const history = loadHistory('ctx-role-edit')
+    expect(history[0]!.content).toBe('old answer')
+    expect(history[1]!.content).toBe('hello (edited)')
+  })
 })
 
 describe('trimTurnForRegeneration', () => {
@@ -236,5 +271,38 @@ describe('trimTurnForRegeneration', () => {
 
     expect(trimTurnForRegeneration('ctx-legacy', 'm1')).toBe(false)
     expect(loadHistory('ctx-legacy').length).toBe(1)
+  })
+
+  test('trims at the user turn, not a trailing assistant turn with the same messageId', () => {
+    const userMsg = {
+      role: 'user',
+      content: 'hello',
+      providerOptions: {
+        papai: {
+          messageIds: ['m1'],
+          segments: [{ messageId: 'm1', text: 'hello', username: null }],
+          isThread: false,
+          isDm: true,
+        },
+      },
+    } as ModelMessage
+    const assistantWithMeta = {
+      role: 'assistant',
+      content: 'old answer',
+      providerOptions: {
+        papai: {
+          messageIds: ['m1'],
+          segments: [{ messageId: 'm1', text: 'hello', username: null }],
+          isThread: false,
+          isDm: true,
+        },
+      },
+    } as ModelMessage
+    appendHistory('ctx-role-trim', [userMsg, assistantWithMeta])
+
+    const trimmed = trimTurnForRegeneration('ctx-role-trim', 'm1')
+
+    expect(trimmed).toBe(true)
+    expect(loadHistory('ctx-role-trim')).toEqual([])
   })
 })

@@ -172,6 +172,7 @@
     "tests/plugins/task-provider-youtrack/schemas/issue.test.ts"
   ],
   "plugins/task-provider-youtrack/validate-config.ts": ["tests/plugins/task-provider-youtrack/index.test.ts"],
+  "src/history.ts": ["tests/history-edit.test.ts", "tests/history.test.ts"],
   "src/providers/config-validation.ts": ["tests/providers/resolver.test.ts"],
   "src/tools/add-comment.ts": ["tests/tools/comment-tools.test.ts", "tests/tools/add-comment-reaction.test.ts"],
   "src/tools/add-task-relation.ts": ["tests/tools/task-relation-tools.test.ts"],
