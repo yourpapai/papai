@@ -14,6 +14,7 @@ import { logger } from './logger.js'
 import { sweepDirtyContexts } from './long-term-memory/capture-sweep.js'
 import { runEmbeddingBackfill } from './long-term-memory/embedding-backfill.js'
 import { runMemoryMaintenance } from './long-term-memory/maintenance.js'
+import { drainProjectionOutbox } from './long-term-memory/projection-drain.js'
 import { sweepPromotions } from './long-term-memory/promotion-sweep.js'
 import { runMessageEmbeddingSweep } from './message-embedding-sweep.js'
 import { cleanupExpiredQueues } from './message-queue/index.js'
@@ -37,6 +38,7 @@ export const DEFAULT_SCHEDULER_TASK_NAMES = [
   'memory-promotion-sweep',
   'memory-embedding-backfill',
   'message-embedding-sweep',
+  'memory-projection-drain',
 ] as const
 
 function registerImmediateDefaultTasks(): void {
@@ -78,6 +80,13 @@ function registerDeferredDefaultTasks(): void {
     interval: 5 * 60 * 1000,
     handler: () => {
       void sweepDirtyContexts(new Date().toISOString())
+    },
+    options: { immediate: false },
+  })
+  scheduler.register('memory-projection-drain', {
+    interval: 5 * 60 * 1000,
+    handler: () => {
+      drainProjectionOutbox()
     },
     options: { immediate: false },
   })

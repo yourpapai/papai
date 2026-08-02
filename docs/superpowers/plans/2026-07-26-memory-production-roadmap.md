@@ -97,6 +97,17 @@ and a candidate string, so 1a would have to fabricate a payload to log it. 1c in
 tombstones and can record the suppression properly. This is deliberate and tested, not an oversight;
 1d must not read the missing attempt rows as a reconciliation discrepancy.
 
+**Status (2026-08-02):** **1b — dark projection** is implemented per
+`docs/superpowers/specs/2026-08-02-memory-gate1b-dark-projection-design.md`: the shadow projection
+table, per-item idempotent apply, the derived checkpoint, bounded retry with repair, and the O2
+snapshot. It satisfies observables O2 and O4 for boundaries B2–B4 and promotes the
+`capture-idempotency` criterion, which moved to `implemented` with the `duplicate-out-of-order` and
+`long-horizon` cells executed. B3 and B4 are unreachable by construction — apply writes the shadow
+row and completes the outbox row in one transaction, and the checkpoint is `max(position)` over
+completed rows rather than a stored value. O4 does not close until 1c holds B5. Remaining: **1c**
+canonical tombstones and the concurrency harness (O5; B5; promotes `races` and `crash-recovery`);
+**1d** reconciliation against the current path, which is this gate's exit.
+
 ### Gate 2: Rebuildable hybrid projections
 
 Rebuild lexical and dense projections from canonical events, retaining the delivered hybrid logic

@@ -134,6 +134,15 @@ export default {
     // listRoutes is consumed by the behavior-audit closure verifier via
     // dynamic import; re-exported from src/debug/server.ts.
     'src/debug/server-route-options.ts': ['exports'],
+    // drainProjectionOutbox has a real scheduler consumer (src/scheduler-instance.ts), but
+    // projectionCheckpoint and repairFailedProjections are consumed only by tests today;
+    // their production consumers are Gate 1c/1d tooling not yet landed. Knip's
+    // production-only project scope doesn't see the test importers.
+    'src/long-term-memory/projection-drain.ts': ['exports'],
+    // projectionSnapshot is declared an entry above so the file itself traces rather than
+    // reporting as an unused file, but includeEntryExports: true still checks its own
+    // export for a consumer; its only consumer is Gate 1d's reconciliation, not yet landed.
+    'src/long-term-memory/projection-snapshot.ts': ['exports'],
   },
 
   includeEntryExports: true,
