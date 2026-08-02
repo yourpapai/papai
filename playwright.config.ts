@@ -14,6 +14,9 @@ export default defineConfig({
   // and {arg} is the story name, so PNGs are easy to locate by hand.
   snapshotPathTemplate: '.storybook-shots/{testFilePath}/{arg}{ext}',
   outputDir: '.storybook-shots/test-results',
+  // Regenerates public/storybook-*.css per run. A warm server would otherwise serve the
+  // token snapshot it booted with — see the module's doc comment.
+  globalSetup: './tests/visual/support/global-setup.ts',
   fullyParallel: true,
   reporter: [
     ['list'],
