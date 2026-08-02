@@ -202,6 +202,19 @@ describe('LiveRenderer slots', () => {
     expect(redraw).toContain('line-c')
   })
 
+  test('shrinking the block erases the leftover lines below', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.slot('a', 'line-a')
+    r.slot('b', 'line-b')
+    r.slot('b', null)
+    const shrink = output[output.length - 1]!
+    // old block was 3 lines (status + a + b), new block is 2 (status + a):
+    // after writing the 2 new lines, the third line must be erased and the
+    // cursor returned to the new block bottom.
+    expect(shrink.endsWith('\n\u001b[2K\u001b[1A')).toBe(true)
+  })
+
   test('clearing the last slot erases the whole block', () => {
     const { stream, output } = makeStream({ isTTY: true, columns: 120 })
     const r = new LiveRenderer(stream)

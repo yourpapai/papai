@@ -192,6 +192,11 @@ export class LiveRenderer implements ProgressReporter {
     let out = '\r'
     if (this.renderedLines > 1) out += cursorUp(this.renderedLines - 1)
     out += ERASE_LINE + lines.map((line) => this.fit(line)).join(`\n${ERASE_LINE}`)
+    const leftover = this.renderedLines - lines.length
+    for (let i = 0; i < leftover; i++) {
+      out += `\n${ERASE_LINE}`
+    }
+    if (leftover > 0) out += cursorUp(leftover)
     this.writeSafe(out)
     this.renderedLines = lines.length
   }
