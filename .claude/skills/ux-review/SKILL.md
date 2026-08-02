@@ -11,14 +11,16 @@ source, scoring against the fixed rubric, and writing a severity-ranked findings
 <HARD-GATE>
 This skill is REVIEW-ONLY. While running it you MUST NOT:
 
-- edit, create, or delete any `.svelte`, `.ts`, `.tsx`, `.js`, `.jsx` file under `client/` or `src/`;
+- edit, create, or delete any `.svelte`, `.ts`, `.tsx`, `.js`, `.jsx` file under `client/` or `src/`,
+  **except** `*.stories.svelte` files and `tests/visual/**`, and only to add a state the rubric
+  requires that no existing story captures;
 - propose concrete edits, before→after diffs, or an ordered change-plan (findings carry only a one-line described fix);
 - run any fix → re-shoot → verify loop.
 
-Allowed outputs: markdown under `docs/ux-reviews/`; **`*.stories.svelte` files and `tests/visual/**`
-when a state the rubric requires has no story to capture it**; reading any repo file; running
-`bun shoot` / `bun shoot:gen` to capture screenshots; reading the resulting PNGs. Applying findings
-is a separate, human-initiated step in a separate session.
+Allowed outputs: markdown under `docs/ux-reviews/`; the `*.stories.svelte` / `tests/visual/**`
+edits permitted above; reading any repo file; running `bun shoot` / `bun shoot:gen` to capture
+screenshots; reading the resulting PNGs. Applying findings is a separate, human-initiated step in
+a separate session.
 </HARD-GATE>
 
 ## When to Use
