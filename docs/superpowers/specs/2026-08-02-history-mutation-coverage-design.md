@@ -41,7 +41,7 @@ criticality.
   (`applyEditToHistory`) and `src/history.ts:106` (`trimTurnForRegeneration`):
   replacing `msg.role !== 'user'` with `false` survives because no test has a
   non-user message carrying matching `providerOptions.papai.messageIds`.
-- **Log-metadata mutants — 13 survived** (12 StringLiteral/ObjectLiteral +
+- **Log-metadata mutants — 19 survived** (18 StringLiteral/ObjectLiteral +
   1 ArithmeticOperator). `logger.child({ scope: 'history' })` (L15),
   debug/info calls in `loadHistory`/`saveHistory`/`appendHistory` (L18, L23,
   L25, L29), `applyEditToHistory` miss/hit logs (L80, L84),
