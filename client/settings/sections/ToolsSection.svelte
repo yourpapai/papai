@@ -213,19 +213,24 @@
   {/if}
 
   <div class="settings-tools__presets" data-testid="tools-presets">
-    <span class="settings-tools__presets-label">Preset</span>
-    {#each PRESET_OPTIONS as preset (preset.value)}
-      <Btn
-        variant={activePreset === preset.value ? 'primary' : 'ghost'}
-        size="sm"
-        testid={`preset-${preset.value}`}
-        onClick={() => requestPreset(preset.value)}>
-        {#snippet children()}{preset.label}{/snippet}
-      </Btn>
-    {/each}
-    <span class="settings-tools__presets-active" data-testid="preset-active">
-      <Pill tone="mute">{#snippet children()}{activePreset === null ? 'Custom' : presetLabel(activePreset)}{/snippet}</Pill>
+    <span class="settings-tools__presets-label">
+      Preset: <span data-testid="preset-active">{activePreset === null ? 'Custom' : presetLabel(activePreset)}</span>
     </span>
+    {#each PRESET_OPTIONS as preset (preset.value)}
+      {@const active = activePreset === preset.value}
+      <span class="settings-tools__preset" class:settings-tools__preset--active={active}>
+        <Btn
+          variant="outline"
+          size="sm"
+          busy={applying || clearing}
+          disabled={applying || clearing}
+          ariaPressed={active}
+          testid={`preset-${preset.value}`}
+          onClick={() => requestPreset(preset.value)}>
+          {#snippet children()}{active ? '✓ ' : ''}{preset.label}{/snippet}
+        </Btn>
+      </span>
+    {/each}
   </div>
   <p class="settings-tools__presets-hint">New tools follow the selected preset by their risk level.</p>
 
@@ -299,13 +304,13 @@
               data-testid={`domain-expand-${domain.domain}`}
               aria-expanded={expanded[domain.domain] === true}
               onclick={() => (expanded[domain.domain] = !expanded[domain.domain])}>
-              {expanded[domain.domain] ? '▾' : '▸'} {domain.domain}
+              {expanded[domain.domain] ? '▾' : '▸'} {domain.domain} ({domain.tools.length})
             </button>
             <span data-testid={`domain-summary-${domain.domain}`}>
               <Pill tone={summaryTone(domain.summary)}>{#snippet children()}{domain.summary}{/snippet}</Pill>
             </span>
             <span class="settings-tools__domain-toggle">
-              <Btn variant="ghost" size="sm" testid={`domain-toggle-${domain.domain}`} onClick={() => void onSetDomainPermission(domain.domain, domain.summary)}>
+              <Btn variant="outline" size="sm" testid={`domain-toggle-${domain.domain}`} onClick={() => void onSetDomainPermission(domain.domain, domain.summary)}>
                 {#snippet children()}{domain.summary === 'deny' ? 'Allow all' : domain.summary === 'ask' ? 'Deny all' : domain.summary === 'allow' ? 'Ask all' : 'Allow all'}{/snippet}
               </Btn>
             </span>
@@ -317,11 +322,11 @@
                   {@const groupName = toolGroup.group}
                   {@const summary = groupSummary(toolGroup.tools)}
                   <li class="settings-tools__group-head" data-testid={`group-head-${groupName}`}>
-                    <span class="settings-tools__group-name">{groupName}</span>
+                    <span class="settings-tools__group-name">{groupName} ({toolGroup.tools.length})</span>
                     <Pill tone={summaryTone(summary)}>{#snippet children()}{summary}{/snippet}</Pill>
                     <span class="settings-tools__group-toggle">
                       <Btn
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
                         testid={`group-toggle-${groupName}`}
                         onClick={() => void onSetGroupPermission(domain.domain, groupName, summary)}>
@@ -442,8 +447,9 @@
     font-size: 12px;
     color: var(--text-muted);
   }
-  .settings-tools__presets-active {
-    margin-left: auto;
+  .settings-tools__preset--active :global(.ui-btn) {
+    border-color: var(--accent);
+    color: var(--accent);
   }
   .settings-tools__presets-hint {
     margin: 0 0 12px;

@@ -236,15 +236,73 @@ describe('ToolsSection', () => {
     void unmount(component)
   })
 
-  test('renders the preset bar with the active preset highlighted', async () => {
+  test('renders the preset bar with the active preset marked via aria-pressed', async () => {
     setMockFetch(() => Promise.resolve(json(toolsPayload)))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(ToolsSection, { target, props: { contextId: 'user:1' } })
     await drain()
     expect(target.querySelector('[data-testid="tools-presets"]')).not.toBeNull()
-    expect(target.querySelector('[data-testid="preset-read-only"]')).not.toBeNull()
+    const active = target.querySelector<HTMLButtonElement>('[data-testid="preset-allow-all"]')
+    const inactive = target.querySelector<HTMLButtonElement>('[data-testid="preset-read-only"]')
+    expect(active).not.toBeNull()
+    expect(inactive).not.toBeNull()
+    expect(active!.getAttribute('aria-pressed')).toBe('true')
+    expect(inactive!.getAttribute('aria-pressed')).toBe('false')
+    expect(active!.textContent).toContain('✓')
+    expect(inactive!.textContent).not.toContain('✓')
+    expect(active!.className).not.toContain('ui-btn--primary')
     expect(target.querySelector('[data-testid="preset-active"]')!.textContent).toContain('Allow all')
+    void unmount(component)
+  })
+
+  test('domain and group heads render their tool counts', async () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, {
+      target,
+      props: {
+        contextId: 'user:1',
+        fetchToolsFn: () =>
+          Promise.resolve({
+            contextId: 'user:1',
+            activePreset: null,
+            hasStoredDefaults: false,
+            domains: [
+              {
+                domain: 'plugin',
+                summary: 'partial',
+                tools: [
+                  { name: 'plugin_acp__start', permission: 'ask', risk: 'open-world', group: 'acp' },
+                  { name: 'plugin_acp__list', permission: 'allow', risk: 'read', group: 'acp' },
+                  { name: 'plugin_time__now', permission: 'allow', risk: 'read', group: 'time' },
+                ],
+              },
+            ],
+          } satisfies ToolsResponse),
+      },
+    })
+    await drain()
+    expect(target.querySelector('[data-testid="domain-expand-plugin"]')!.textContent).toContain('(3)')
+    target.querySelector<HTMLButtonElement>('[data-testid="domain-expand-plugin"]')!.click()
+    flushSync()
+    expect(target.querySelector('[data-testid="group-head-acp"]')!.textContent).toContain('(2)')
+    expect(target.querySelector('[data-testid="group-head-time"]')!.textContent).toContain('(1)')
+    void unmount(component)
+  })
+
+  test('row bulk actions are outline buttons, not bare text', async () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, {
+      target,
+      props: { contextId: 'user:1', fetchToolsFn: () => Promise.resolve(busyPayload) },
+    })
+    await drain()
+    const toggle = target.querySelector<HTMLButtonElement>('[data-testid="domain-toggle-task"]')
+    expect(toggle).not.toBeNull()
+    expect(toggle!.className).toContain('ui-btn--outline')
+    expect(toggle!.className).not.toContain('ui-btn--ghost')
     void unmount(component)
   })
 
