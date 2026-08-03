@@ -226,15 +226,23 @@ describe('create-recurring-task — compile branch', () => {
     expect(capturedInput?.rrule).toContain('BYHOUR=9')
     expect(capturedInput?.dtstartUtc).toMatch(/T00:00:00\.000Z$/u)
   })
+
+  test('does not compile when cron reaches execute without a schedule', async () => {
+    const tool = makeCreateRecurringTaskTool('user-1', deps)
+    assert(tool.execute, 'Tool execute is undefined')
+    await tool.execute({ title: 'Task', projectId: 'p1', triggerType: 'cron' }, toolCtx)
+    expect(capturedInput?.rrule).toBeUndefined()
+    expect(capturedInput?.dtstartUtc).toBeUndefined()
+  })
 })
 ```
 
-Note: the second test deliberately bypasses schema validation by calling `execute` directly with an on_complete + schedule combination the schema would reject; it pins the `triggerType === 'cron'` guard so the `&&`→`||` mutant at L73 cannot survive.
+Note: the second test deliberately bypasses schema validation by calling `execute` directly with an on_complete + schedule combination the schema would reject; it pins the `triggerType === 'cron'` guard so the `&&`→`||` mutant at L73 cannot survive. The fourth test does the same for a cron input with no schedule (also schema-invalid), pinning the `schedule !== undefined` right operand of the same guard — the paired run in Task 4 showed that sub-condition mutant survives without it.
 
 - [ ] **Step 2: Run the test file**
 
 Run: `bun test tests/tools/create-recurring-task.test.ts`
-Expected: PASS — 13 tests.
+Expected: PASS — 14 tests.
 
 - [ ] **Step 3: Lint, typecheck, commit**
 
@@ -263,16 +271,18 @@ Background for the expected strings (do not copy into code): `describeCompiledRe
 
 - [ ] **Step 1: Append the result-mapping describe block**
 
+Note on form: the repo's `pedantic: error` oxlint config forbids narrowing casts from `unknown` and flags async functions without `await`, so property assertions use `toMatchObject` (equal strength to `.toBe` for primitive values), `cronInput` is `as const`, and the helper uses `return await`.
+
 ```typescript
 describe('create-recurring-task — result mapping', () => {
   type ToolInput = Parameters<NonNullable<ReturnType<typeof makeCreateRecurringTaskTool>['execute']>>[0]
 
-  const cronInput: ToolInput = {
+  const cronInput = {
     title: 'Task',
     projectId: 'p1',
     triggerType: 'cron',
     schedule: { freq: 'DAILY' },
-  }
+  } as const
 
   beforeEach(() => {
     mockLogger()
@@ -308,7 +318,7 @@ describe('create-recurring-task — result mapping', () => {
     const deps: CreateRecurringTaskDeps = { createRecurringTask: () => record }
     const tool = makeCreateRecurringTaskTool('user-1', deps)
     assert(tool.execute, 'Tool execute is undefined')
-    return tool.execute(input, toolCtx)
+    return await tool.execute(input, toolCtx)
   }
 
   test('describes the compiled schedule for a cron record with rrule and dtstartUtc', async () => {
@@ -325,42 +335,42 @@ describe('create-recurring-task — result mapping', () => {
   })
 
   test('falls back when rrule is null', async () => {
-    const result = (await executeWithRecord(makeResultRecord({ rrule: null }))) as { schedule: string }
-    expect(result.schedule).toBe('after completion of current instance')
+    const result = await executeWithRecord(makeResultRecord({ rrule: null }))
+    expect(result).toMatchObject({ schedule: 'after completion of current instance' })
   })
 
   test('falls back when dtstartUtc is null', async () => {
-    const result = (await executeWithRecord(makeResultRecord({ dtstartUtc: null }))) as { schedule: string }
-    expect(result.schedule).toBe('after completion of current instance')
+    const result = await executeWithRecord(makeResultRecord({ dtstartUtc: null }))
+    expect(result).toMatchObject({ schedule: 'after completion of current instance' })
   })
 
-  test('falls back for on_complete records', async () => {
-    const result = (await executeWithRecord(makeResultRecord({ triggerType: 'on_complete', rrule: null, dtstartUtc: null }), {
+  test('falls back for on_complete records even when rrule and dtstartUtc are populated', async () => {
+    const result = await executeWithRecord(makeResultRecord({ triggerType: 'on_complete' }), {
       title: 'Task',
       projectId: 'p1',
       triggerType: 'on_complete',
-    })) as { schedule: string }
-    expect(result.schedule).toBe('after completion of current instance')
+    })
+    expect(result).toMatchObject({ schedule: 'after completion of current instance' })
   })
 
   test('converts nextRun into the record timezone as naive local time', async () => {
-    const result = (await executeWithRecord(makeResultRecord({ timezone: 'Europe/Berlin' }))) as {
-      nextRun: string
-    }
-    expect(result.nextRun).toBe('2026-06-01T14:00:00')
+    const result = await executeWithRecord(makeResultRecord({ timezone: 'Europe/Berlin' }))
+    expect(result).toMatchObject({ nextRun: '2026-06-01T14:00:00' })
   })
 
   test('passes null nextRun through', async () => {
-    const result = (await executeWithRecord(makeResultRecord({ nextRun: null }))) as { nextRun: string | null }
-    expect(result.nextRun).toBeNull()
+    const result = await executeWithRecord(makeResultRecord({ nextRun: null }))
+    expect(result).toMatchObject({ nextRun: null })
   })
 })
 ```
 
+The on_complete fallback test deliberately keeps `rrule`/`dtstartUtc` populated (the record's `triggerType` alone selects the fallback): the paired run in Task 4 showed the L113 left-operand `ConditionalExpression` mutant survives when they are nulled, because the short-circuit then hides it.
+
 - [ ] **Step 2: Run the test file**
 
 Run: `bun test tests/tools/create-recurring-task.test.ts`
-Expected: PASS — 19 tests. If `'describes the compiled schedule…'` fails on the `schedule` string, print the actual value with a temporary `console.log(result)` and align (it comes from `describeCompiledRecurrence` in src/recurrence.ts — do not change the source).
+Expected: PASS — 20 tests. If `'describes the compiled schedule…'` fails on the `schedule` string, print the actual value with a temporary `console.log(result)` and align (it comes from `describeCompiledRecurrence` in src/recurrence.ts — do not change the source).
 
 - [ ] **Step 3: Lint, typecheck, commit**
 
@@ -401,23 +411,28 @@ describe('create-recurring-task — failure propagation', () => {
       },
     }
     const tool = makeCreateRecurringTaskTool('user-1', deps)
-    assert(tool.execute, 'Tool execute is undefined')
-    expect(() => tool.execute({ title: 'Task', projectId: 'p1', triggerType: 'on_complete' }, toolCtx)).toThrow(
-      'db down',
-    )
+    const exec = tool.execute
+    assert(exec, 'Tool execute is undefined')
+    expect(() => {
+      exec({ title: 'Task', projectId: 'p1', triggerType: 'on_complete' }, toolCtx)
+    }).toThrow('db down')
   })
 })
 ```
 
+The `const exec = tool.execute` capture (instead of asserting `tool.execute` inline) keeps TS narrowing valid inside the closure, and the block-body thunk avoids a `no-unsafe-return` flag — the repo forbids `!` assertions and narrowing casts.
+
 - [ ] **Step 2: Run the test file**
 
 Run: `bun test tests/tools/create-recurring-task.test.ts`
-Expected: PASS — 20 tests.
+Expected: PASS — 21 tests.
 
 - [ ] **Step 3: Run the paired mutation analysis**
 
 Run: `bun test:mutate:file src/tools/create-recurring-task.ts`
-Expected: `killed≈86 survived≈18`, score **≥ 0.78** (pre-change: `killed=50 survived=54 score=0.481`). The ~18 accepted survivors are `.describe()` prose, the logger scope string, and log message/metadata strings/objects (src/tools/create-recurring-task.ts L29, L33–L46, L68, L99, L144).
+Expected: `killed=86 survived=18`, score **0.8269** (pre-change: `killed=50 survived=54 score=0.481`). The 18 accepted survivors are `.describe()` prose, the logger scope string, and log message/metadata strings/objects (src/tools/create-recurring-task.ts L29, L33–L46, L68, L99, L144).
+
+Note: the first run of this task exposed two sub-condition `ConditionalExpression` survivors the original task code missed — the L73 right operand (`schedule !== undefined` → `true`) and the L113 left operand (`record.triggerType === 'cron'` → `true`). They were killed by adding the cron-without-schedule test to the compile-branch describe and by keeping `rrule`/`dtstartUtc` populated in the on_complete fallback test (both already reflected in the Task 2/3 code above).
 
 If any survivor is a ConditionalExpression, LogicalOperator, ArrayDeclaration, or an enum/validation-message string, it was supposed to die: inspect the report with
 
