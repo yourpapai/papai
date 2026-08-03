@@ -45,15 +45,29 @@ Kills the superRefine cluster (src/tools/create-recurring-task.ts L49/L56: 6 Con
 - Consumes: `makeCreateRecurringTaskTool`, `CreateRecurringTaskDeps`, `RecurringTaskInput`, `RecurringTaskRecord` (already imported in the file); `toolCtx`, `makeRecord`, `mockLogger()`, `setCachedConfig()` (already in the file).
 - Produces: describe block `'create-recurring-task — input validation'`; no exports.
 
-- [ ] **Step 1: Add the zod type import**
+- [ ] **Step 1: Append the safeParse helper at the end of the file**
 
-In `tests/tools/create-recurring-task.test.ts`, add after the `node:assert/strict` import and a blank line:
+In `tests/tools/create-recurring-task.test.ts`, append after the existing describe block (this mirrors `isSafeParseable` in tests/utils/test-helpers.ts; the repo lint rules forbid type assertions, so a type guard is required instead of casting `tool.inputSchema`):
 
 ```typescript
-import type { z } from 'zod'
+interface SafeParseIssue {
+  code: string
+  message: string
+  path: PropertyKey[]
+}
+
+type SafeParseOutcome = { success: true } | { success: false; error: { issues: SafeParseIssue[] } }
+
+interface SafeParseable {
+  safeParse: (data: unknown) => SafeParseOutcome
+}
+
+function isSafeParseable(val: unknown): val is SafeParseable {
+  return typeof val === 'object' && val !== null && 'safeParse' in val && typeof val.safeParse === 'function'
+}
 ```
 
-- [ ] **Step 2: Append the validation describe block at the end of the file**
+- [ ] **Step 2: Append the validation describe block after the helper**
 
 ```typescript
 describe('create-recurring-task — input validation', () => {
@@ -67,10 +81,12 @@ describe('create-recurring-task — input validation', () => {
     }
   })
 
-  const parseInput = (data: unknown) => {
+  const parseInput = (data: unknown): SafeParseOutcome => {
     const tool = makeCreateRecurringTaskTool('user-1', deps)
-    const schema = tool.inputSchema as unknown as z.ZodType<unknown>
-    return schema.safeParse(data)
+    if (!isSafeParseable(tool.inputSchema)) {
+      throw new Error('Tool inputSchema does not have safeParse')
+    }
+    return tool.inputSchema.safeParse(data)
   }
 
   test('rejects cron without schedule with a path-scoped custom issue', () => {
