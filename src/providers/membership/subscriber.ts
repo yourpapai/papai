@@ -5,6 +5,7 @@
 
 import pLimit from 'p-limit'
 
+import { NO_ANALYTICS_SCOPE, type ProviderRequestScope } from '../../analytics/provider-request-scope.js'
 import type { DebugEvent } from '../../debug/event-bus.js'
 import { subscribe, unsubscribe } from '../../debug/event-bus.js'
 import { logger } from '../../logger.js'
@@ -18,7 +19,7 @@ function isPlaceholder(userId: string): boolean {
 }
 
 export interface SubscriberHandlers {
-  ensure(groupContextId: string, chatUserId: string): Promise<MemberOutcome>
+  ensure(groupContextId: string, chatUserId: string, scope: ProviderRequestScope): Promise<MemberOutcome>
   markInactive(groupContextId: string, chatUserId: string): Promise<void>
 }
 
@@ -36,7 +37,8 @@ export function registerMembershipSubscriber(handlers: SubscriberHandlers): () =
       const groupId = rawGroupId
       const userId = rawUserId
       void limit(async () => {
-        const outcome = await handlers.ensure(groupId, userId)
+        // Platform membership events are operational, not actor-attributed.
+        const outcome = await handlers.ensure(groupId, userId, NO_ANALYTICS_SCOPE)
         log.debug({ groupId, userId, outcome }, 'group_member:added -> ensureWorkspaceMember')
       })
     } else if (event.type === 'group_member:removed') {

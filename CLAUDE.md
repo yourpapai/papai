@@ -14,6 +14,7 @@ Detailed reference moved out of this file to keep it short. Read the relevant do
 | Commands & TDD hooks  | [`docs/architecture/commands.md`](docs/architecture/commands.md)                           | non-obvious `bun` script semantics; the Write/Edit TDD hook pipeline and write protections                            |
 | Environment variables | [`docs/architecture/environment.md`](docs/architecture/environment.md)                     | startup/required vars, central + BYOK LLM creds, bootstrap, S3, dashboard, runtime config keys                        |
 | Architecture          | [`docs/architecture/overview.md`](docs/architecture/overview.md)                           | request flow, module map, debug/settings server surfaces, `/stats/*` anonymity contract                               |
+| Analytics operations  | [`docs/operations/analytics-runbook.md`](docs/operations/analytics-runbook.md)             | rollout stages A–E, operator commands, reconciliation schedule; incident response in `analytics-incident-runbook.md`  |
 | ACP coding sessions   | [`docs/architecture/coding-sessions.md`](docs/architecture/coding-sessions.md)             | `plugins/acp/` + magi, agent/provider picker, forge connections, operator/group guardrails, transcript viewer         |
 | Storybook screenshots | [`docs/architecture/storybook-screenshots.md`](docs/architecture/storybook-screenshots.md) | agent visual-feedback loop: generate specs, shoot stories, read PNGs                                                  |
 | Plugin system         | [`docs/architecture/plugins.md`](docs/architecture/plugins.md)                             | layout, lifecycle, storage, context facade, permissions, attachment transformers                                      |
@@ -65,7 +66,7 @@ Mandatory; pino with structured metadata-first calls. `debug` — function entry
 
 ## Testing Notes
 
-See `tests/CLAUDE.md`. Prefer DI over `mock.module()` where the module supports it. Helpers (`schemaValidates()`, `getToolExecutor()`, `setMockFetch()`, `restoreFetch()`) live in `tests/utils/test-helpers.ts`; `tests/mock-reset.ts` resets common mocks per test. The repo mixes DI-first and legacy delayed-import/mock suites — follow the local pattern unless intentionally refactoring style. Mutation testing (Stryker) runs as a blocking per-file ratchet gate in CI (`test:mutate:changed` on PRs; `scripts/mutation/baseline.json` is the monotonic per-file floor, ratcheted up on master via `test:mutate --update-baseline`) but is not in the write-hook pipeline.
+See `tests/CLAUDE.md`. Prefer DI over `mock.module()` where the module supports it. Helpers (`schemaValidates()`, `getToolExecutor()`, `setMockFetch()`, `restoreFetch()`) live in `tests/utils/test-helpers.ts`; `tests/mock-reset.ts` resets common mocks per test. The repo mixes DI-first and legacy delayed-import/mock suites — follow the local pattern unless intentionally refactoring style. Mutation testing (Stryker) runs as a blocking per-file ratchet gate in CI (`test:mutate:changed` on PRs; `scripts/mutation/baseline.json` is the monotonic per-file floor, seeded on master from changed files via `test:mutate:changed --base=HEAD~1 --update-baseline` / `seedMerge`) but is not in the write-hook pipeline.
 
 ## Pi Workflow
 

@@ -13,6 +13,7 @@ import type { DashboardState } from '../../../../client/debug/dashboard-types.js
 function makeState(overrides: Partial<DashboardState> = {}): DashboardState {
   return {
     connected: true,
+    hasConnectedOnce: true,
     stats: { startedAt: Date.now(), totalMessages: 0, totalLlmCalls: 0, totalToolCalls: 0 },
     sessions: new Map(),
     wizards: new Map(),
@@ -80,6 +81,14 @@ describe('DebugTopBar.svelte', () => {
     )!
     dmBtn.click()
     expect(dashboard.scopeFilter).toBe('dm')
+    void unmount(component)
+  })
+
+  test('poller pills include on/off state in text', () => {
+    const dashboard = makeState({ pollers: { scheduledRunning: true, alertsRunning: false } })
+    const component = mount(DebugTopBar, { target, props: { dashboard } })
+    expect(target.textContent).toContain('scheduled · on')
+    expect(target.textContent).toContain('alerts · off')
     void unmount(component)
   })
 })

@@ -8,6 +8,7 @@ import { sanitizeSubject, shortTitle } from './issue-processor.js'
 import type { IssueProcessorDeps } from './issue-processor.js'
 import type { FixerResult } from './issue-schema.js'
 import { emitFixComplete, tallyDecision, tallyFixerSeverity, tallyPhaseMs, type RoundCollector } from './loop-trace.js'
+import { emitDecision } from './progress-log.js'
 import type { Worker } from './worker-pool.js'
 import { execGit } from './worktree.js'
 
@@ -49,7 +50,7 @@ export async function runCommitAttempt(
       collector.decisions.no_commit += 1
       tallyFixerSeverity(collector, fixerResult.severity)
       emitFixComplete(deps.trace, round, record.id, false, null, attempt)
-      deps.log.log(`[fix] "${shortTitle(record)}" → no change (fixed:true was a false claim)`)
+      emitDecision(deps.log, record, 'no_commit', 'fixed:true was a false claim')
       return { fixed: false }
     }
 
@@ -60,7 +61,7 @@ export async function runCommitAttempt(
       recordNeedsHuman(deps.ledger, deps.trace, round, record, reasoning, fixerResult)
       tallyDecision(collector, 'needs_human', false)
       tallyFixerSeverity(collector, fixerResult.severity)
-      deps.log.log(`[fix] "${shortTitle(record)}" → needs_human (merge conflict)`)
+      emitDecision(deps.log, record, 'needs_human', 'merge conflict')
       emitFixComplete(deps.trace, round, record.id, false, null, attempt)
       return { fixed: false }
     }
@@ -68,9 +69,7 @@ export async function runCommitAttempt(
     recordFixAttempt(deps.ledger, record.id)
     tallyDecision(collector, fixerResult.verdict, fixerResult.fixed)
     tallyFixerSeverity(collector, fixerResult.severity)
-    deps.log.log(
-      attempt === 1 ? `[fix] "${shortTitle(record)}" → fixed` : `[fix] "${shortTitle(record)}" → fixed (after retry)`,
-    )
+    emitDecision(deps.log, record, 'fixed', attempt === 1 ? undefined : 'after retry')
     emitFixComplete(deps.trace, round, record.id, true, postSha, attempt)
     return { fixed: true }
   } finally {

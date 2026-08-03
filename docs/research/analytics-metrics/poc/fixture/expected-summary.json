@@ -1,0 +1,27 @@
+{
+  "_license": "SPDX-License-Identifier: BUSL-1.1; Copyright (c) 2026 Dmitriy Lazarev",
+  "seed": "papai-analytics-fixture-v1",
+  "day_count": 50,
+  "actor_count": 200,
+  "platforms": ["discord", "kontur-talk", "mattermost", "telegram"],
+  "context_types": ["dm", "group", "none"],
+  "actor_roles": ["admin", "guest", "member", "system"],
+  "task_providers": ["kaneo", "none", "other", "youtrack"],
+  "invocation_modes": ["command", "normal", "proactive", "scheduler", "settings"],
+  "activation_actor_counts": {
+    "first_dm": 200,
+    "config_link_issued": 180,
+    "settings_opened": 160,
+    "task_instance_assigned": 140,
+    "first_task_mutating_success": 120
+  },
+  "retention_actor_counts": {
+    "d1": 90,
+    "d7": 60,
+    "d30": 30
+  },
+  "out_of_order_ratio": {
+    "minimum": 0.05,
+    "maximum": 0.1
+  }
+}

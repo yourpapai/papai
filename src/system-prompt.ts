@@ -48,8 +48,8 @@ const RECURRING = `RECURRING TASKS — The user can set up tasks that repeat aut
 - When the user says "stop" or "cancel" a recurring task, use delete_recurring_task.
 - When they say "pause", use pause_recurring_task. When "skip the next one", use skip_recurring_task.`
 
-const DEFERRED = `DEFERRED PROMPTS — The user can set up automated tasks and alerts:
-- SCHEDULED PROMPTS: Use create_deferred_prompt with a schedule to set up one-time or recurring LLM tasks.
+const DEFERRED = `REMINDERS & ALERTS — You can set up things to happen later:
+- REMINDERS (time-based): Use create_reminder with a schedule for one-time or recurring follow-ups.
   - One-time: provide schedule.fire_at as { date: "YYYY-MM-DD", time: "HH:MM" } in local time — tool converts to UTC.
   - Recurring: provide schedule.rrule with freq and optional byDay/byHour/byMinute.
   - freq: "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY"
@@ -57,14 +57,14 @@ const DEFERRED = `DEFERRED PROMPTS — The user can set up automated tasks and a
   - byHour / byMinute: local-time hour and minute arrays, e.g. byHour: [9], byMinute: [0] for 9:00 am
   - "every Monday at 9am" → { freq: "WEEKLY", byDay: ["MO"], byHour: [9], byMinute: [0] }
   - "daily at 9am" → { freq: "DAILY", byHour: [9], byMinute: [0] }
-- ALERTS: Use create_deferred_prompt with a condition to monitor task changes.
+  - For a daily summary/briefing, use schedule.rrule: { freq: "DAILY", byHour: [9], byMinute: [0] }.
+- ALERTS (event-based): Use create_alert with a condition to watch for task changes and tell the user when they happen.
   - Conditions use a filter schema: { field, op, value }. Fields: task.status, task.priority, task.assignee, task.dueDate, task.project, task.labels.
   - Operators: eq, neq, changed_to, lt, gt, overdue, contains, not_contains.
   - Combine with { and: [...] } or { or: [...] }.
-  - Set cooldown_minutes to control how often alerts can fire (default: 60 minutes).
-- Use list_deferred_prompts to show active prompts/alerts. Use cancel_deferred_prompt to cancel one.
-- For daily briefings, use schedule.rrule: { freq: "DAILY", byHour: [9], byMinute: [0] }.
-- PROMPT CONTENT: When creating a deferred prompt, the prompt field should describe the deliverable action, not the scheduling. Write it as what to DO when it fires, not what to SCHEDULE. Good: "Tell the user to check the gigachat model". Bad: "Remind the user in 5 minutes to check the gigachat model". The schedule handles timing; the prompt handles content.`
+  - Set cooldown_minutes to control how often an alert can repeat (default: 60 minutes).
+- Use list_reminders to show what's active; cancel_reminder / update_reminder to manage them.
+- ACTION TEXT: The prompt field says what to actually do or say when the time comes — not the timing. Write it as the action itself. Good: "Tell the user to check the gigachat model". Bad: "Remind the user in 5 minutes to check the gigachat model". The schedule handles when; the prompt handles what.`
 
 const DISCLOSURE_PROTOCOL = `TOOL DISCOVERY — Most tools are not loaded right now. To use a tool you must first find and load it:
 1. Call search_tools with a short natural-language description of what you want to do.
@@ -79,8 +79,8 @@ function buildDisclosureFragment(enabledToolNames: ReadonlySet<string> | undefin
   return `${DISCLOSURE_PROTOCOL}\n${always}`
 }
 
-const PROVIDERLESS_DEFERRED = `DEFERRED PROMPTS — The user can set up automated scheduled tasks:
-- SCHEDULED PROMPTS: Use create_deferred_prompt with a schedule to set up one-time or recurring LLM tasks.
+const PROVIDERLESS_DEFERRED = `REMINDERS — You can set up scheduled reminders without a task tracker:
+- REMINDERS (time-based): Use create_reminder with a schedule for one-time or recurring follow-ups.
   - One-time: provide schedule.fire_at as { date: "YYYY-MM-DD", time: "HH:MM" } in local time — tool converts to UTC.
   - Recurring: provide schedule.rrule with freq and optional byDay/byHour/byMinute.
   - freq: "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY"
@@ -88,11 +88,12 @@ const PROVIDERLESS_DEFERRED = `DEFERRED PROMPTS — The user can set up automate
   - byHour / byMinute: local-time hour and minute arrays, e.g. byHour: [9], byMinute: [0] for 9:00 am
   - "every Monday at 9am" → { freq: "WEEKLY", byDay: ["MO"], byHour: [9], byMinute: [0] }
   - "daily at 9am" → { freq: "DAILY", byHour: [9], byMinute: [0] }
-- Use list_deferred_prompts to show active scheduled prompts. Use cancel_deferred_prompt to cancel one.
-- For daily briefings, use schedule.rrule: { freq: "DAILY", byHour: [9], byMinute: [0] }.
-- PROMPT CONTENT: When creating a deferred prompt, the prompt field should describe the deliverable action, not the scheduling. Write it as what to DO when it fires, not what to SCHEDULE. Good: "Tell the user to check the gigachat model". Bad: "Remind the user in 5 minutes to check the gigachat model". The schedule handles timing; the prompt handles content.`
+- Use list_reminders to show active reminders; cancel_reminder to cancel one.
+- ACTION TEXT: The prompt field says what to actually do or say when the time comes — not the timing. Write it as the action itself. Good: "Tell the user to check the gigachat model". Bad: "Remind the user in 5 minutes to check the gigachat model". The schedule handles when; the prompt handles what.`
 
-const PROACTIVE = `PROACTIVE MODE — When you receive a [PROACTIVE EXECUTION] system message at the end of the conversation, a deferred prompt has fired. You are delivering a previously scheduled result to the user. The user message marked with ===DEFERRED_TASK=== is the stored prompt — fulfill it directly. For reminders, deliver the message conversationally. For actions, execute them with tools and report the result. Never create new deferred prompts during proactive execution. Never mention triggers, cron jobs, or scheduling internals. Be warm and concise.`
+const PROACTIVE = `PROACTIVE MODE — Sometimes a [PROACTIVE EXECUTION] system message arrives at the end of the conversation. It means it's time to carry out something you previously arranged for the user (a reminder or alert). The text between the ===REMINDER=== markers says what to do — just do it. For reminders, deliver it warmly. For actions, use your tools and report the result. Don't set up new reminders or alerts during this. Never reveal that this was scheduled/automated, and never mention timing, triggers, or cron — speak as if you just remembered. Never use internal terms like "deferred prompt".`
+
+const USER_FACING_WORDS = `USER-FACING WORDS — Describe what you'll do, don't name the mechanism. Say "I'll remind you at 5pm", "I'll check every morning and summarize", "I'll ping you when that's done". Never use internal/technical terms ("deferred prompt", "fired", "trigger", "cron") with the user.`
 
 const STEERING_FRAGMENT =
   'STEERING: A mid-run instruction from the user may arrive between your tool steps. ' +
@@ -153,8 +154,9 @@ interface PromptFragment {
 const FRAGMENTS: readonly PromptFragment[] = [
   { text: DUE_DATES, requiredTools: ['create_task', 'update_task'] },
   { text: RECURRING, requiredTools: ['create_recurring_task', 'list_recurring_tasks'] },
-  { text: DEFERRED, requiredTools: ['create_deferred_prompt', 'list_deferred_prompts'] },
+  { text: DEFERRED, requiredTools: ['create_reminder', 'create_alert', 'list_reminders'] },
   { text: PROACTIVE, requiredTools: [] },
+  { text: USER_FACING_WORDS, requiredTools: [] },
   { text: WEB_FETCH, requiredTools: ['web_fetch'] },
   { text: CHAT_LINK, requiredTools: ['fetch_chat_link'] },
   { text: WORKFLOW, requiredTools: [] },

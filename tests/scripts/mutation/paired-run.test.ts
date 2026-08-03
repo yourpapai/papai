@@ -50,6 +50,24 @@ const readConfiguredReportPath = (configPath: string): string => {
   return parsed.jsonReporter.fileName
 }
 
+const isBunTestFilesConfig = (value: unknown): value is { readonly bun: { readonly testFiles: readonly string[] } } => {
+  if (value === null || typeof value !== 'object') return false
+  if (!('bun' in value)) return false
+  const bun: unknown = value.bun
+  if (bun === null || typeof bun !== 'object') return false
+  if (!('testFiles' in bun)) return false
+  const testFiles: unknown = bun.testFiles
+  return Array.isArray(testFiles) && testFiles.every((f) => typeof f === 'string')
+}
+
+const readConfiguredBunTestFiles = (configPath: string): readonly string[] => {
+  const parsed: unknown = JSON.parse(fs.readFileSync(configPath, 'utf8'))
+  if (!isBunTestFilesConfig(parsed)) {
+    throw new Error('Expected paired config to contain bun.testFiles')
+  }
+  return parsed.bun.testFiles
+}
+
 const writeConfiguredReport = (configPath: string, report: StrykerReport): void => {
   fs.writeFileSync(readConfiguredReportPath(configPath), `${JSON.stringify(report)}\n`)
 }
@@ -427,6 +445,65 @@ describe('pairedRun', () => {
       ignoreStatic: false,
       bun: { testFiles: ['./tests/foo.test.ts'] },
     })
+  })
+
+  test('selects coverage-discovered tests AND keeps the companion (additive) when buildMap returns one', async () => {
+    const reportDir = makeReportDir()
+    const captured = { configPath: '' }
+    const runStryker = mock((configPath: string) => {
+      captured.configPath = configPath
+      writeConfiguredReport(configPath, makeReport(['Killed']))
+    })
+    const deps: PairedRunDeps = {
+      readBaseConfig: () => ({}),
+      resolveCompanion: () => 'tests/companion.test.ts',
+      loadOverrides: () => ({}),
+      runStryker,
+      readReport: readStrykerReport,
+      log: () => {},
+      buildMap: () => ({ 'src/foo.ts': ['tests/integration/covers-foo.test.ts'] }),
+    }
+
+    await pairedRun({
+      projectRoot: '/repo',
+      reportDir,
+      sourceFiles: ['src/foo.ts'],
+      verbose: undefined,
+      deps,
+    })
+
+    const testFiles = readConfiguredBunTestFiles(captured.configPath)
+    expect(testFiles).toContain('./tests/integration/covers-foo.test.ts')
+    expect(testFiles).toContain('./tests/companion.test.ts')
+  })
+
+  test('companions still get selected as fallback when buildMap returns no entry for the source', async () => {
+    const reportDir = makeReportDir()
+    const captured = { configPath: '' }
+    const runStryker = mock((configPath: string) => {
+      captured.configPath = configPath
+      writeConfiguredReport(configPath, makeReport(['Killed']))
+    })
+    const deps: PairedRunDeps = {
+      readBaseConfig: () => ({}),
+      resolveCompanion: () => 'tests/companion.test.ts',
+      loadOverrides: () => ({}),
+      runStryker,
+      readReport: readStrykerReport,
+      log: () => {},
+      buildMap: () => ({}),
+    }
+
+    await pairedRun({
+      projectRoot: '/repo',
+      reportDir,
+      sourceFiles: ['src/foo.ts'],
+      verbose: undefined,
+      deps,
+    })
+
+    const testFiles = readConfiguredBunTestFiles(captured.configPath)
+    expect(testFiles).toEqual(['./tests/companion.test.ts'])
   })
 })
 

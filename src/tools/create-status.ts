@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:create-status' })
 
@@ -27,21 +28,13 @@ export function makeCreateStatusTool(provider: TaskProvider): Tool {
       try {
         const result = await provider.createStatus!(projectId, { name, icon, color, isFinal }, confirm)
         if ('status' in result && result.status === 'confirmation_required') {
-          log.warn({ projectId, name }, 'create_status blocked — shared bundle confirmation required')
+          log.warn('create_status blocked — shared bundle confirmation required')
           return result
         }
-        log.info({ projectId, name }, 'Status created')
+        log.info('Status created')
         return result
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            projectId,
-            name,
-            tool: 'create_status',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('create_status', error), 'Tool execution failed')
         throw error
       }
     },

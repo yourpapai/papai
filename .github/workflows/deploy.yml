@@ -25,7 +25,7 @@ jobs:
       digest: ${{ steps.push.outputs.digest }}
       image_name: ${{ steps.lowercase.outputs.image_name }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -76,7 +76,7 @@ jobs:
     needs: build-and-push
     environment: production
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Deploy via SSH
         env:
@@ -109,6 +109,9 @@ jobs:
           MAIN_MODEL: ${{ vars.MAIN_MODEL }}
           SMALL_MODEL: ${{ vars.SMALL_MODEL }}
           EMBEDDING_MODEL: ${{ vars.EMBEDDING_MODEL }}
+          ANALYTICS_KILL_SWITCH: ${{ vars.ANALYTICS_KILL_SWITCH }}
+          ANALYTICS_HMAC_KEYRING: ${{ secrets.ANALYTICS_HMAC_KEYRING }}
+          ANALYTICS_GOVERNANCE_HMAC_KEYRING: ${{ secrets.ANALYTICS_GOVERNANCE_HMAC_KEYRING }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/id_rsa
@@ -152,6 +155,9 @@ jobs:
             [ -n "${MAIN_MODEL}" ] && printf 'MAIN_MODEL=%s\n' "${MAIN_MODEL}"
             [ -n "${SMALL_MODEL}" ] && printf 'SMALL_MODEL=%s\n' "${SMALL_MODEL}"
             [ -n "${EMBEDDING_MODEL}" ] && printf 'EMBEDDING_MODEL=%s\n' "${EMBEDDING_MODEL}"
+            [ -n "${ANALYTICS_KILL_SWITCH}" ] && printf 'ANALYTICS_KILL_SWITCH=%s\n' "${ANALYTICS_KILL_SWITCH}"
+            [ -n "${ANALYTICS_HMAC_KEYRING}" ] && printf 'ANALYTICS_HMAC_KEYRING=%s\n' "${ANALYTICS_HMAC_KEYRING}"
+            [ -n "${ANALYTICS_GOVERNANCE_HMAC_KEYRING}" ] && printf 'ANALYTICS_GOVERNANCE_HMAC_KEYRING=%s\n' "${ANALYTICS_GOVERNANCE_HMAC_KEYRING}"
           } > .env
           chmod 600 .env
 

@@ -5,12 +5,16 @@
 
 import pLimit from 'p-limit'
 
+import { runWithProviderRequestScope } from '../analytics/provider-request-scope.js'
+import type { ProviderRequestScope } from '../analytics/provider-request-scope.js'
+import { resolveProactiveProviderRequestScope } from '../analytics/provider-scope-factory.js'
+import type { ProactiveScopeInput } from '../analytics/provider-scope-factory.js'
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import type { ChatProvider } from '../chat/types.js'
 import { emitGlobal, emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import { recordProactiveInHistory } from '../proactive-history.js'
-import type { Task } from '../providers/types.js'
+import type { Task, TaskProvider } from '../providers/types.js'
 import {
   describeCondition,
   evaluateCondition,
@@ -155,12 +159,37 @@ async function executeAlertsForContext(
   if (delivered) updateSnapshots(storageContextId, tasks)
 }
 
+const fetchAlertTasks = async (
+  configContextId: string,
+  routable: Map<string, AlertPrompt[]>,
+  provider: TaskProvider,
+  scope: ProviderRequestScope,
+): Promise<{ lightTasks: Task[]; enrichedTasks: Task[] | null } | null> => {
+  const lightTasks = await fetchAllTasks(provider, scope)
+  const needsEnrichment = [...routable.values()].some((alerts) => alertsNeedFullTasks(alerts))
+  if (!needsEnrichment || lightTasks.length === 0) return { lightTasks, enrichedTasks: null }
+  try {
+    log.debug(
+      { configContextId, taskCount: lightTasks.length },
+      'Enriching tasks with full details for alert conditions',
+    )
+    return { lightTasks, enrichedTasks: await enrichTasks(provider, lightTasks, scope) }
+  } catch (error) {
+    log.warn(
+      { configContextId, error: error instanceof Error ? error.message : String(error) },
+      'Task enrichment failed; skipping alert cycle for instance',
+    )
+    return null
+  }
+}
+
 async function executeAlertsForInstance(
   configContextId: string,
   contextGroups: Map<string, AlertPrompt[]>,
   chat: ChatProvider,
   buildProviderFn: BuildProviderFn,
   evalNow: Date,
+  resolveScope: (input: ProactiveScopeInput) => ProviderRequestScope,
 ): Promise<void> {
   const routable = new Map<string, AlertPrompt[]>()
   for (const [storageContextId, alerts] of contextGroups) {
@@ -170,30 +199,23 @@ async function executeAlertsForInstance(
   }
   if (routable.size === 0) return
 
-  const provider = await buildProviderFn(configContextId)
+  // One independent proactive scope per instance poll, built from the first
+  // alert's owner and delivery target. Provider construction and every
+  // task-list/detail request settle inside this awaited scope lease.
+  const firstAlert = [...routable.values()][0]![0]!
+  const scope = resolveScope({
+    createdByUserId: firstAlert.createdByUserId,
+    deliveryTarget: firstAlert.deliveryTarget,
+  })
+  const provider = await runWithProviderRequestScope(scope, () => buildProviderFn(configContextId))
   if (provider === null) {
     log.warn({ configContextId }, 'Could not build task provider for alert polling')
     return
   }
 
-  const lightTasks = await fetchAllTasks(provider)
-  const needsEnrichment = [...routable.values()].some((alerts) => alertsNeedFullTasks(alerts))
-  let enrichedTasks: Task[] | null = null
-  if (needsEnrichment && lightTasks.length > 0) {
-    try {
-      log.debug(
-        { configContextId, taskCount: lightTasks.length },
-        'Enriching tasks with full details for alert conditions',
-      )
-      enrichedTasks = await enrichTasks(provider, lightTasks)
-    } catch (error) {
-      log.warn(
-        { configContextId, error: error instanceof Error ? error.message : String(error) },
-        'Task enrichment failed; skipping alert cycle for instance',
-      )
-      return
-    }
-  }
+  const fetched = await fetchAlertTasks(configContextId, routable, provider, scope)
+  if (fetched === null) return
+  const { lightTasks, enrichedTasks } = fetched
 
   const contextLimit = pLimit(MAX_CONCURRENT_LLM_CALLS)
   await Promise.all(
@@ -205,7 +227,17 @@ async function executeAlertsForInstance(
   )
 }
 
-export async function pollAlertsOnce(chat: ChatProvider, buildProviderFn: BuildProviderFn): Promise<void> {
+export type PollAlertsDeps = Readonly<{
+  resolveScope: (input: ProactiveScopeInput) => ProviderRequestScope
+}>
+
+const defaultPollAlertsDeps: PollAlertsDeps = { resolveScope: resolveProactiveProviderRequestScope }
+
+export async function pollAlertsOnce(
+  chat: ChatProvider,
+  buildProviderFn: BuildProviderFn,
+  deps: PollAlertsDeps = defaultPollAlertsDeps,
+): Promise<void> {
   log.debug('pollAlertsOnce called')
   const eligibleAlerts = getEligibleAlertPrompts()
   emitGlobal('poller:alerts', { eligibleCount: eligibleAlerts.length })
@@ -228,7 +260,8 @@ export async function pollAlertsOnce(chat: ChatProvider, buildProviderFn: BuildP
   const results = await Promise.allSettled(
     [...byInstance.entries()].map(([configContextId, contextGroups]) =>
       userLimit(
-        (): Promise<void> => executeAlertsForInstance(configContextId, contextGroups, chat, buildProviderFn, now),
+        (): Promise<void> =>
+          executeAlertsForInstance(configContextId, contextGroups, chat, buildProviderFn, now, deps.resolveScope),
       ),
     ),
   )

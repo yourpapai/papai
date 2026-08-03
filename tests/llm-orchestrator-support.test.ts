@@ -156,6 +156,43 @@ describe('llm-orchestrator-support', () => {
       expect(saveHistorySpy).toHaveBeenCalledTimes(1)
       expect(saveHistorySpy).toHaveBeenCalledWith('pi:inst:ctx:user', [...baseHistory, userHistoryMessage])
     })
+
+    test('emits resolution-phase failure analytics when no attempt was consumed', async () => {
+      mockLogger()
+      track(spyOn(historyModule, 'saveHistory').mockImplementation(() => {}))
+      const { subscribe, unsubscribe } = await import('../src/debug/event-bus.js')
+      const events: Array<{ type: string; data: unknown }> = []
+      const listener = (event: { type: string; data: unknown }): void => {
+        events.push(event)
+      }
+      subscribe(listener)
+
+      try {
+        const { reply } = createMockReply()
+        await handleLlmTurnError({
+          reply,
+          contextId: 'pi:inst:ctx:user',
+          chatUserId: 'user1',
+          contextType: 'dm',
+          mainModel: 'gpt-4o',
+          startedAt: Date.now(),
+          baseHistory: [],
+          userHistoryMessage: { role: 'user', content: 'hi' },
+          error: new Error('resolution boom'),
+          turnId: 'turn-no-attempt',
+        })
+
+        const event = events.find((e) => e.type === 'llm:error')
+        assert.ok(event !== undefined)
+        assert.ok(isRecord(event.data))
+        expect(event.data['phase']).toBe('resolution')
+        expect(event.data['attemptOrdinal']).toBe(0)
+        expect(event.data['modelRole']).toBe('main')
+        expect(event.data['errorClass']).toBe('Error')
+      } finally {
+        unsubscribe(listener)
+      }
+    })
   })
 
   describe('emitLlmError', () => {

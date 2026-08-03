@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:find-user' })
 
@@ -22,18 +23,10 @@ export function makeFindUserTool(provider: TaskProvider): Tool {
     execute: async ({ query, limit }) => {
       try {
         const users = await provider.listUsers!(query, limit)
-        log.info({ query, limit, count: users.length }, 'Users found via tool')
+        log.info({ limit, count: users.length }, 'Users found via tool')
         return users
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            query,
-            limit,
-            tool: 'find_user',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('find_user', error), 'Tool execution failed')
         throw error
       }
     },

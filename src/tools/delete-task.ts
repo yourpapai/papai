@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
 import { checkConfidence, confidenceField } from './confirmation-gate.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:delete-task' })
 
@@ -25,23 +26,16 @@ export function makeDeleteTaskTool(provider: TaskProvider): Tool {
       confidence: confidenceField,
     }),
     execute: async ({ taskId, label, confidence }) => {
-      log.debug({ taskId, confidence }, 'delete_task called')
+      log.debug({ confidence }, 'delete_task called')
       const gate = checkConfidence(confidence, `Delete "${label ?? taskId}"`)
       if (gate !== null) {
-        log.warn({ taskId, confidence }, 'delete_task blocked — confirmation required')
+        log.warn({ confidence }, 'delete_task blocked — confirmation required')
         return gate
       }
       try {
         return await provider.deleteTask!(taskId)
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            tool: 'delete_task',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('delete_task', error), 'Tool execution failed')
         throw error
       }
     },

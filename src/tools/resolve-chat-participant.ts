@@ -24,9 +24,9 @@ export function makeResolveChatParticipantTool(resolver: ChatParticipantResolver
       limit: z.number().int().positive().optional().describe('Maximum number of candidates to return (default 5)'),
     }),
     execute: async ({ query, limit }) => {
-      log.debug({ contextId, query, limit }, 'resolve_chat_participant')
+      log.debug({ contextId, limit }, 'resolve_chat_participant')
       const candidates = await resolver(contextId, query, limit)
-      log.info({ contextId, query, count: candidates.length }, 'resolve_chat_participant completed')
+      log.info({ contextId, count: candidates.length }, 'resolve_chat_participant completed')
       return candidates
     },
   })

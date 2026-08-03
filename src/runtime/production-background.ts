@@ -7,11 +7,18 @@ import type { ChatRouter } from '../chat/router.js'
 import { startSweeper } from '../dashboard-auth/sweeper.js'
 import { startPollers, stopPollers } from '../deferred-prompts/poller.js'
 import { defaultTaskProviderResolver } from '../providers/resolver.js'
-import { registerDefaultSchedulerTasks, scheduler, unregisterDefaultSchedulerTasks } from '../scheduler-instance.js'
+import {
+  registerAnalyticsSchedulerJobs,
+  registerDefaultSchedulerTasks,
+  scheduler,
+  unregisterAnalyticsSchedulerJobs,
+  unregisterDefaultSchedulerTasks,
+} from '../scheduler-instance.js'
 import { startScheduler, stopScheduler } from '../scheduler.js'
 
 export type ProductionBackgroundDeps = {
   registerDefaultTasks(): void
+  registerAnalyticsJobs?(): void
   startRecurring(router: ChatRouter): void
   startPollers(router: ChatRouter): void
   startTasks(): void
@@ -20,6 +27,7 @@ export type ProductionBackgroundDeps = {
   drainTasks(): Promise<void>
   stopRecurring(): void
   stopPollers(): void
+  unregisterAnalyticsJobs?(): void
   unregisterDefaultTasks(): void
 }
 
@@ -29,6 +37,7 @@ type CleanupStep = () => void | Promise<void>
 
 const defaultDeps: ProductionBackgroundDeps = {
   registerDefaultTasks: registerDefaultSchedulerTasks,
+  registerAnalyticsJobs: registerAnalyticsSchedulerJobs,
   startRecurring: startScheduler,
   startPollers: (router) => {
     startPollers(router, (contextId) => defaultTaskProviderResolver.resolve(contextId))
@@ -39,6 +48,7 @@ const defaultDeps: ProductionBackgroundDeps = {
   drainTasks: scheduler.drainAll,
   stopRecurring: stopScheduler,
   stopPollers,
+  unregisterAnalyticsJobs: unregisterAnalyticsSchedulerJobs,
   unregisterDefaultTasks: unregisterDefaultSchedulerTasks,
 }
 
@@ -63,6 +73,9 @@ async function runCleanupSteps(deps: ProductionBackgroundDeps, stopSweeper?: () 
     deps.stopPollers()
   }, errors)
   await attemptCleanup((): void => {
+    deps.unregisterAnalyticsJobs?.()
+  }, errors)
+  await attemptCleanup((): void => {
     deps.unregisterDefaultTasks()
   }, errors)
   await attemptCleanup((): void => stopSweeper?.(), errors)
@@ -83,6 +96,7 @@ export async function startProductionBackground(
   }
   try {
     deps.registerDefaultTasks()
+    deps.registerAnalyticsJobs?.()
     deps.startRecurring(router)
     deps.startPollers(router)
     deps.startTasks()

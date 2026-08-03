@@ -13,6 +13,7 @@ import type { DashboardState, Turn } from '../../../../client/debug/dashboard-ty
 function freshState(turns: Turn[] = []): DashboardState {
   return {
     connected: false,
+    hasConnectedOnce: false,
     stats: { startedAt: 0, totalMessages: 0, totalLlmCalls: 0, totalToolCalls: 0 },
     sessions: new Map(),
     wizards: new Map(),
@@ -156,6 +157,21 @@ describe('TurnsPanel', () => {
     row?.click()
     expect(seen.length).toBe(1)
     expect(seen[0]?.turnId).toBe('t1')
+    void unmount(component)
+  })
+
+  test('marks the row matching selectedDetail as selected', () => {
+    const turn = makeTurn({ turnId: 't-2' })
+    const state = freshState([makeTurn(), turn])
+    state.selectedDetail = { kind: 'turn', payload: turn }
+    const { target, component } = render(state)
+    expect(target.querySelectorAll('tr.ui-datatable__tr--selected').length).toBe(1)
+    void unmount(component)
+  })
+
+  test('marks nothing when a different detail kind is selected', () => {
+    const { target, component } = render(freshState([makeTurn()]))
+    expect(target.querySelector('tr.ui-datatable__tr--selected')).toBeNull()
     void unmount(component)
   })
 })

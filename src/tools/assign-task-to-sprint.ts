@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:assign-task-to-sprint' })
 
@@ -22,18 +23,10 @@ export function makeAssignTaskToSprintTool(provider: Readonly<TaskProvider>): To
     execute: async ({ taskId, sprintId }) => {
       try {
         const result = await provider.assignTaskToSprint!(taskId, sprintId)
-        log.info({ taskId, sprintId }, 'Task assigned to sprint via tool')
+        log.info('Task assigned to sprint via tool')
         return result
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            sprintId,
-            tool: 'assign_task_to_sprint',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('assign_task_to_sprint', error), 'Tool execution failed')
         throw error
       }
     },

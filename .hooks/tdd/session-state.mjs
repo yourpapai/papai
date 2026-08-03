@@ -51,6 +51,7 @@ const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 1 week
  * @property {Record<string, Array<{ mutator: string; replacement: string; line?: number; description: string }>> | null} sessionMutationBaseline
  * @property {string[]} changedSourceFiles
  * @property {boolean} docReviewSuggested
+ * @property {boolean} analyticsReviewSuggested
  */
 
 /**
@@ -104,6 +105,7 @@ export class SessionState {
       needsRecheck: true,
       changedSourceFiles: [],
       docReviewSuggested: false,
+      analyticsReviewSuggested: false,
     }
   }
 
@@ -216,6 +218,24 @@ export class SessionState {
   setDocReviewSuggested(value) {
     this.#ensureLoaded()
     this.#state.docReviewSuggested = value
+    this.#persist()
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  getAnalyticsReviewSuggested() {
+    this.#ensureLoaded()
+    return this.#state.analyticsReviewSuggested ?? false
+  }
+
+  /**
+   * @param {boolean} value
+   * @returns {void}
+   */
+  setAnalyticsReviewSuggested(value) {
+    this.#ensureLoaded()
+    this.#state.analyticsReviewSuggested = value
     this.#persist()
   }
 

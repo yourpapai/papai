@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import { deleteRecurringTask as defaultDeleteRecurringTask } from '../recurring.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:delete-recurring-task' })
 
@@ -29,7 +30,7 @@ export function makeDeleteRecurringTaskTool(deps: DeleteRecurringTaskDeps = defa
     }),
     execute: ({ recurringTaskId, confidence }) => {
       try {
-        log.debug({ recurringTaskId, confidence }, 'Deleting recurring task')
+        log.debug({ confidence }, 'Deleting recurring task')
 
         if (confidence < 0.85) {
           return {
@@ -40,25 +41,18 @@ export function makeDeleteRecurringTaskTool(deps: DeleteRecurringTaskDeps = defa
 
         const deleted = deps.deleteRecurringTask(recurringTaskId)
         if (!deleted) {
-          log.warn({ recurringTaskId }, 'Recurring task not found for deletion')
+          log.warn('Recurring task not found for deletion')
           return { error: 'Recurring task not found' }
         }
 
-        log.info({ recurringTaskId }, 'Recurring task deleted via tool')
+        log.info('Recurring task deleted via tool')
         return {
           id: recurringTaskId,
           status: 'deleted',
           message: 'Recurring task series permanently stopped.',
         }
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            recurringTaskId,
-            tool: 'delete_recurring_task',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('delete_recurring_task', error), 'Tool execution failed')
         throw error
       }
     },

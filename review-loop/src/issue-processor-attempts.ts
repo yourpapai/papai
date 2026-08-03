@@ -8,7 +8,7 @@ import { runBuildWithLogging } from './build-checker.js'
 import { runCommitAttempt } from './commit-attempt.js'
 import { runInspectorOrTreatAsRejection } from './issue-inspector.js'
 import { recordNeedsHuman, recordVerify, type LedgerIssueRecord } from './issue-ledger.js'
-import { shortTitle, type IssueProcessorDeps } from './issue-processor.js'
+import type { IssueProcessorDeps } from './issue-processor.js'
 import { FixerResultSchema, type FixerResult } from './issue-schema.js'
 import {
   emitBuildComplete,
@@ -19,6 +19,7 @@ import {
   tallyUsage,
   type RoundCollector,
 } from './loop-trace.js'
+import { emitDecision } from './progress-log.js'
 import { buildFixPrompt, buildRetryFixPrompt, buildRetryFixWithInspectorFeedbackPrompt } from './prompt-templates.js'
 import { workerOutputPath } from './run-state.js'
 import type { Worker } from './worker-pool.js'
@@ -109,7 +110,7 @@ export async function runFixerAttempt(
     await worker.resetToBaseline(baselineSha)
     tallyDecision(collector, fixerResult.verdict, fixerResult.fixed)
     tallyFixerSeverity(collector, fixerResult.severity)
-    deps.log.log(`[fix] "${shortTitle(record)}" → ${fixerResult.verdict}`)
+    emitDecision(deps.log, record, fixerResult.verdict)
     emitFixComplete(deps.trace, round, record.id, false, null, attempt)
     return { kind: 'terminal', outcome: { fixed: false } }
   }
@@ -147,7 +148,7 @@ export async function runBuildAttempt(
       )
       tallyDecision(collector, 'needs_human', false)
       tallyFixerSeverity(collector, fixerResult.severity)
-      deps.log.log(`[fix] "${shortTitle(record)}" → needs_human (build failed)`)
+      emitDecision(deps.log, record, 'needs_human', 'build failed')
       emitFixComplete(deps.trace, round, record.id, false, null, attempt)
       return { kind: 'terminal', outcome: { fixed: false } }
     }
@@ -199,9 +200,8 @@ export async function runInspectorAttempt(
       )
       tallyDecision(collector, unavailable ? 'needs_human' : 'inspector_rejected', false)
       tallyFixerSeverity(collector, fixerResult.severity)
-      deps.log.log(
-        `[fix] "${shortTitle(record)}" → needs_human (${unavailable ? 'inspector unavailable' : 'inspector rejected'})`,
-      )
+      const note = unavailable ? 'inspector unavailable' : 'inspector rejected'
+      emitDecision(deps.log, record, 'needs_human', note)
       emitFixComplete(deps.trace, round, record.id, false, null, attempt)
       return { kind: 'terminal', outcome: { fixed: false } }
     }

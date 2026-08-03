@@ -15,7 +15,7 @@ export class KaneoClient {
   private log = logger.child({ scope: 'kaneo:client' })
 
   constructor(private config: KaneoConfig) {
-    this.log.debug({ baseUrl: config.baseUrl }, 'KaneoClient initialized')
+    this.log.debug({ hasSessionCookie: config.sessionCookie !== undefined }, 'KaneoClient initialized')
   }
 
   get tasks(): TaskResource {

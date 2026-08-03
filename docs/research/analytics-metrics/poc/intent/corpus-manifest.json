@@ -1,0 +1,1554 @@
+{
+  "schema": "papai.intent.corpus-manifest.v1",
+  "spdx": "BUSL-1.1",
+  "taxonomy": "intent.v1",
+  "corpus": {
+    "path": "intent-v1-corpus.jsonl",
+    "examples": 3000,
+    "scenario_families": 300,
+    "sha256": "6e165b66359bd855306ceed04654b1f7ffb43185ce164d2b7a1db1e1c72724c3",
+    "splits": {
+      "development": 1800,
+      "calibration": 600,
+      "test": 600
+    },
+    "languages": {
+      "en": 1350,
+      "mixed": 300,
+      "ru": 1350
+    },
+    "cohorts": {
+      "adversarial_boundary": 200,
+      "canonical_core": 2000,
+      "multi_goal": 300,
+      "no_action": 250,
+      "unknown": 250
+    },
+    "invented_content_only": true
+  },
+  "reproducibility": {
+    "ordered_jsonl": true,
+    "examples_per_family": 10,
+    "split_unit": "scenario_family_id",
+    "family_manifest_sha256": "99046797b659a89ac068a009b60ff208dbf5ad50e82896660758dcea4665b1b2",
+    "taxonomy_sha256": "390710642d92d998d3ff1d9db2b0f363c951b1f36cf6f98273286df0e5495008",
+    "classifier_sha256": "4a6b2f143903b9f5ea7b32adbb3d4d0d1feade2624ff4fbe972fdcfdeae7b9b5",
+    "evaluator_sha256": "bafba06a35ce536acf7f4c223a80560f9649134165ce5aceb41bfba90cf10311",
+    "generator_sha256": "4983c68e64d823b565b6293165471109f9848c7705f7d76afec1cd7e79e3ba7e",
+    "family_generator_sha256": "eaf1ff43bee4053c02971fe44aab977461abd1bd050ed4fbd0f9f0c8620600e1",
+    "templates_sha256": "4a98bc86df8b5f3082205b8b50f4f0625fb8993c31ea0bcefd5eba66a5bba662",
+    "small_model_contract_sha256": "60fad651da69420f50db215bb273c03d8086d61ace32cf4edba000f8f0da2060",
+    "small_model_prompt_sha256": "1f36768fd6904398a9d60f34fb4455587135f95bd47c36e8ba49896826109a1b",
+    "small_model_request_schema_sha256": "71f43f89e0a90c7a6b33e582570589ec2593c0191f9df659de4cc39315acc115",
+    "small_model_result_schema_sha256": "65785bba32ac8540cc0de1002ddf8f1e88502f0ab85159bc65304086849a7c3c"
+  },
+  "family_splits": [
+    {
+      "scenario_family_id": "core_01_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_01_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_01_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_01_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_01_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_01_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_01_07",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_01_08",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_01_09",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_01_10",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_02_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_02_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_02_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_02_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_02_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_02_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_02_07",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_02_08",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_02_09",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_02_10",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_03_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_03_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_03_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_03_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_03_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_03_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_03_07",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_03_08",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_03_09",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_03_10",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_04_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_04_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_04_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_04_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_04_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_04_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_04_07",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_04_08",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_04_09",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_04_10",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_05_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_05_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_05_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_05_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_05_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_05_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_05_07",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_05_08",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_05_09",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_05_10",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_06_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_06_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_06_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_06_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_06_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_06_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_06_07",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_06_08",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_06_09",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_06_10",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_07_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_07_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_07_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_07_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_07_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_07_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_07_07",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_07_08",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_07_09",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_07_10",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_08_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_08_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_08_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_08_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_08_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_08_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_08_07",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_08_08",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_08_09",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_08_10",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_09_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_09_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_09_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_09_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_09_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_09_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_09_07",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_09_08",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_09_09",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_09_10",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_10_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_10_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_10_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_10_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_10_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_10_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_10_07",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_10_08",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_10_09",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_10_10",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_11_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_11_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_11_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_11_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_11_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_11_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_11_07",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_11_08",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_11_09",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_11_10",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_12_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_12_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_12_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_12_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_12_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_12_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_12_07",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_12_08",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_12_09",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_12_10",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_13_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_13_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_13_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_13_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_13_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_13_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_13_07",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_13_08",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_13_09",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_13_10",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_14_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_14_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_14_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_14_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_14_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_14_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_14_07",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_14_08",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_14_09",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_14_10",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_15_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_15_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_15_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_15_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_15_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_15_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_15_07",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_15_08",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_15_09",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_15_10",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_16_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_16_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_16_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_16_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_16_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_16_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_16_07",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_16_08",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_16_09",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_16_10",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_17_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_17_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_17_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_17_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_17_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_17_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_17_07",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_17_08",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_17_09",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_17_10",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_18_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_18_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_18_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_18_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_18_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_18_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_18_07",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_18_08",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_18_09",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_18_10",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_19_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_19_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_19_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_19_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_19_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_19_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_19_07",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_19_08",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_19_09",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_19_10",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_20_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_20_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_20_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_20_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_20_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_20_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_20_07",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_20_08",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_20_09",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "core_20_10",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "boundary_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "boundary_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "boundary_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "boundary_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "boundary_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "boundary_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "boundary_07",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "boundary_08",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "boundary_09",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "boundary_10",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "boundary_11",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "boundary_12",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "boundary_13",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "boundary_14",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "boundary_15",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "boundary_16",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "boundary_17",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "boundary_18",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "boundary_19",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "boundary_20",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_07",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_08",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_09",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_10",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_11",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_12",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_13",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_14",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_15",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_16",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_17",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_18",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_19",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_20",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_21",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_22",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_23",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_24",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "no_action_25",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_07",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_08",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_09",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_10",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_11",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_12",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_13",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_14",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_15",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_16",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_17",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_18",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_19",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_20",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_21",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_22",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_23",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_24",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "unknown_25",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_01",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_02",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_03",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_04",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_05",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_06",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_07",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_08",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_09",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_10",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_11",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_12",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_13",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_14",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_15",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_16",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_17",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_18",
+      "split": "development",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_19",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_20",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_21",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_22",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_23",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_24",
+      "split": "calibration",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_25",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_26",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_27",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_28",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_29",
+      "split": "test",
+      "examples": 10
+    },
+    {
+      "scenario_family_id": "multi_goal_30",
+      "split": "test",
+      "examples": 10
+    }
+  ],
+  "annotation": {
+    "prototype_source": "versioned_hand_authored_templates",
+    "independent_human_review": "NOT_EXECUTED",
+    "cohen_kappa_primary": null,
+    "jaccard_goals": null,
+    "qualification_effect": "requires_independent_review_before_production_claims"
+  }
+}

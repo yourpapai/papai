@@ -67,7 +67,7 @@ scenario(
       fireAt: '2099-01-01T09:00:00.000Z',
     })
     given.llm([
-      // list_deferred_prompts applies no status filter when none is given, so a cancelled
+      // list_reminders applies no status filter when none is given, so a cancelled
       // prompt's title text keeps appearing in the default list — it never disappears. The
       // mutation is observable via the status field instead: 'cancelled' appears in both the
       // cancel result and the following list entry, and because this turn never lists before

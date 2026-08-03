@@ -17,6 +17,7 @@ import {
 import type { RecurringTaskRecord } from '../types/recurring.js'
 import { getUserTimezoneOrDefault } from '../utils/config-timezone.js'
 import { localDatetimeToUtc, midnightUtcForTimezone, utcToLocal } from '../utils/datetime.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:update-recurring-task' })
 
@@ -98,11 +99,11 @@ function buildScheduleUpdates(
 function executeUpdate(userId: string, input: Input, deps: UpdateRecurringTaskDeps): unknown {
   const { recurringTaskId, title, description, priority, status, assignee, labels, schedule, catchUp, triggerType } =
     input
-  log.debug({ recurringTaskId }, 'Updating recurring task')
+  log.debug('Updating recurring task')
 
   const existing = deps.getRecurringTask(recurringTaskId)
   if (existing === null) {
-    log.warn({ recurringTaskId }, 'Recurring task not found for update')
+    log.warn('Recurring task not found for update')
     return { error: 'Recurring task not found' }
   }
 
@@ -120,11 +121,11 @@ function executeUpdate(userId: string, input: Input, deps: UpdateRecurringTaskDe
   })
 
   if (updated === null) {
-    log.warn({ recurringTaskId }, 'Recurring task not found for update')
+    log.warn('Recurring task not found for update')
     return { error: 'Recurring task not found' }
   }
 
-  log.info({ id: updated.id, title: updated.title }, 'Recurring task updated via tool')
+  log.info('Recurring task updated via tool')
   return {
     id: updated.id,
     title: updated.title,
@@ -143,14 +144,7 @@ export function makeUpdateRecurringTaskTool(userId: string, deps: UpdateRecurrin
       try {
         return executeUpdate(userId, input, deps)
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            recurringTaskId: input.recurringTaskId,
-            tool: 'update_recurring_task',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('update_recurring_task', error), 'Tool execution failed')
         throw error
       }
     },

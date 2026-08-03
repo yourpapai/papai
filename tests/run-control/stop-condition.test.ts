@@ -12,7 +12,7 @@ import { createMockReply } from '../utils/test-helpers.js'
 describe('createStopRequestedCondition', () => {
   test('reflects the live stopRequested flag', () => {
     const { reply } = createMockReply()
-    const run = new RunRegistry().begin('ctx', { turnId: 't', reply })
+    const run = new RunRegistry().begin('ctx', { turnId: 't', reply, originatingMessageIds: [] })
     const condition = createStopRequestedCondition(run)
     expect(condition()).toBe(false)
     run.stopRequested = true

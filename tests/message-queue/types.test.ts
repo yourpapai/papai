@@ -43,6 +43,8 @@ describe('CoalescedItem interface', () => {
       voiceStagedIds: [],
       reply: mockReply,
       turnId: 'test-turn-id',
+      messageIds: [],
+      segments: [],
     }
     expect(item.text).toBe('Hello')
     expect(item.reply).toBe(mockReply)

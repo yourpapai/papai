@@ -7,13 +7,13 @@ import { test, expect, switchStory } from '@crvy/strybk'
 
 // @generated-begin auto-screenshots
 test.describe('settings/sections/ByokSection', () => {
-  test('Secret set', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'settings-sections-byoksection--secret-set')
+  test('Enabled with provider', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-byoksection--enabled-with-provider')
     await expect(sharedPage).toHaveScreenshot()
   })
 
-  test('Missing required', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'settings-sections-byoksection--missing-required')
+  test('Enabled no providers', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-byoksection--enabled-no-providers')
     await expect(sharedPage).toHaveScreenshot()
   })
 

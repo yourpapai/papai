@@ -5,6 +5,9 @@
 
 import { z } from 'zod'
 
+import { getFeatureObserver } from '../../analytics/feature-observer.js'
+import type { AnalyticsRequestContext } from '../../analytics/provider-observer.js'
+import { buildSettingsActorRequestContext } from '../../analytics/provider-scope-factory.js'
 import {
   deleteByokProvider,
   disableByokForContext,
@@ -27,6 +30,7 @@ import {
   type Verification,
 } from '../../llm-providers/types.js'
 import { logger } from '../../logger.js'
+import type { AuthenticatedSettingsRequest } from '../../settings/request-auth.js'
 import { BYOK_FIELDS, buildByokFieldResponse } from './byok-field-response.js'
 import { authenticate, parseJsonBody, requireCsrf, resolveContextScope, settingsJson } from './respond.js'
 
@@ -154,7 +158,12 @@ const verifyByokProviderInBackground = (
     })
 }
 
-const applyByokAction = (body: ByokActionBody, contextId: string, updatedBy: string): Response => {
+const applyByokAction = (
+  body: ByokActionBody,
+  contextId: string,
+  updatedBy: string,
+  actorContext: AnalyticsRequestContext | null,
+): Response => {
   if (body.action === 'upsert-provider') {
     if (!getByokCredentialState(contextId).enabled)
       return settingsJson(403, {
@@ -183,6 +192,10 @@ const applyByokAction = (body: ByokActionBody, contextId: string, updatedBy: str
   const enabled = body.action === 'enable'
   if (enabled) {
     enableByokForContext(contextId, updatedBy)
+    const observer = getFeatureObserver()
+    if (observer !== null && actorContext !== null) {
+      observer.featureUsed(actorContext, { feature: 'byok', operation: 'enable', outcome: 'success' })
+    }
   } else {
     disableByokForContext(contextId, updatedBy)
   }
@@ -204,6 +217,52 @@ const rejectLegacyValuesAgainstV2Blob = (contextId: string): Response | null => 
   return null
 }
 
+const handleByokPatch = async (req: Request, authed: AuthenticatedSettingsRequest): Promise<Response> => {
+  const csrf = requireCsrf(req, authed)
+  if (csrf !== null) return csrf
+
+  const parsed = await parseJsonBody(req)
+  if (!parsed.ok) return parsed.response
+
+  const body = PatchBodySchema.safeParse(parsed.value)
+  if (!body.success) return settingsJson(422, { error: 'invalid request' })
+
+  const scope = resolveContextScope(authed.principal, 'write', body.data.contextId)
+  if (!scope.ok) return scope.response
+
+  if ('action' in body.data) {
+    return applyByokAction(
+      body.data,
+      scope.scope.contextId,
+      authed.principal.platformUserId,
+      buildSettingsActorRequestContext({
+        platformInstanceId: authed.principal.platformInstanceId,
+        platformUserId: authed.principal.platformUserId,
+        configContextId: scope.scope.contextId,
+        contextType: scope.scope.kind === 'group' ? 'group' : 'dm',
+        actorRole: authed.principal.isBotAdmin || authed.principal.isSuperAdmin ? 'admin' : 'member',
+      }),
+    )
+  }
+
+  const state = getByokCredentialState(scope.scope.contextId)
+  if (!state.enabled)
+    return settingsJson(403, {
+      error: 'BYOK is not enabled for this context',
+    })
+
+  const rejected = rejectLegacyValuesAgainstV2Blob(scope.scope.contextId)
+  if (rejected !== null) return rejected
+
+  updateByokLlmConfig(
+    scope.scope.contextId,
+    valuesToPersist(scope.scope.contextId, body.data.values),
+    authed.principal.platformUserId,
+  )
+
+  return settingsJson(200, { ok: true, contextId: scope.scope.contextId })
+}
+
 export async function handleByokRoutes(req: Request, url: URL): Promise<Response> {
   const auth = authenticate(req)
   if (!auth.ok) return auth.response
@@ -215,38 +274,8 @@ export async function handleByokRoutes(req: Request, url: URL): Promise<Response
   }
 
   if (req.method === 'PATCH') {
-    const csrf = requireCsrf(req, auth.authed)
-    if (csrf !== null) return csrf
-
-    const parsed = await parseJsonBody(req)
-    if (!parsed.ok) return parsed.response
-
-    const body = PatchBodySchema.safeParse(parsed.value)
-    if (!body.success) return settingsJson(422, { error: 'invalid request' })
-
-    const scope = resolveContextScope(auth.authed.principal, 'write', body.data.contextId)
-    if (!scope.ok) return scope.response
-
-    if ('action' in body.data) {
-      return applyByokAction(body.data, scope.scope.contextId, auth.authed.principal.platformUserId)
-    }
-
-    const state = getByokCredentialState(scope.scope.contextId)
-    if (!state.enabled)
-      return settingsJson(403, {
-        error: 'BYOK is not enabled for this context',
-      })
-
-    const rejected = rejectLegacyValuesAgainstV2Blob(scope.scope.contextId)
-    if (rejected !== null) return rejected
-
-    updateByokLlmConfig(
-      scope.scope.contextId,
-      valuesToPersist(scope.scope.contextId, body.data.values),
-      auth.authed.principal.platformUserId,
-    )
-
-    return settingsJson(200, { ok: true, contextId: scope.scope.contextId })
+    const response = await handleByokPatch(req, auth.authed)
+    return response
   }
 
   return settingsJson(405, { error: 'method not allowed' })

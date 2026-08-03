@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:update-label' })
 
@@ -29,14 +30,7 @@ export function makeUpdateLabelTool(provider: TaskProvider): Tool {
       try {
         return await provider.updateLabel!(labelId, { name, color })
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            labelId,
-            tool: 'update_label',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('update_label', error), 'Tool execution failed')
         throw error
       }
     },

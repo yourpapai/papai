@@ -5,8 +5,14 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { ProviderScopeMissingError } from '../src/analytics/provider-request-scope.js'
 import { ProviderClassifiedError, providerError } from '../src/providers/errors.js'
-import { buildToolFailureResult, createInterruptedToolFailureResult, isToolFailureResult } from '../src/tool-failure.js'
+import {
+  buildToolFailureResult,
+  createInterruptedToolFailureResult,
+  createProviderScopeMissingFailureResult,
+  isToolFailureResult,
+} from '../src/tool-failure.js'
 
 describe('buildToolFailureResult', () => {
   test('preserves classified provider errors as structured tool failures', () => {
@@ -45,6 +51,39 @@ describe('buildToolFailureResult', () => {
     })
     expect(result.userMessage.toLowerCase()).toContain('failed')
     expect(result.agentMessage.toLowerCase()).toContain('debug')
+  })
+})
+
+describe('provider_scope_missing mapping', () => {
+  test('buildToolFailureResult maps ProviderScopeMissingError to the controlled failure', () => {
+    const result = buildToolFailureResult(new ProviderScopeMissingError(), 'get_task', 'call-scope-1')
+
+    expect(isToolFailureResult(result)).toBe(true)
+    expect(result).toMatchObject({
+      success: false,
+      toolName: 'get_task',
+      toolCallId: 'call-scope-1',
+      errorType: 'tool-execution',
+      errorCode: 'provider_scope_missing',
+      retryable: false,
+    })
+    expect(result.error).not.toContain('user-1')
+  })
+
+  test('createProviderScopeMissingFailureResult produces the controlled failure directly', () => {
+    const result = createProviderScopeMissingFailureResult('list_tasks', 'call-scope-2')
+
+    expect(isToolFailureResult(result)).toBe(true)
+    expect(result).toMatchObject({
+      success: false,
+      toolName: 'list_tasks',
+      toolCallId: 'call-scope-2',
+      errorType: 'tool-execution',
+      errorCode: 'provider_scope_missing',
+      retryable: false,
+    })
+    expect(result.userMessage.toLowerCase()).toContain('failed')
+    expect(result.agentMessage).toContain('provider_scope_missing')
   })
 })
 

@@ -5,10 +5,24 @@
 
 import type { ChatFile, ReplyFn, ReplyOptions } from './chat/types.js'
 import { emitUser } from './debug/event-bus.js'
+import { logger } from './logger.js'
 import { createScheduler } from './utils/scheduler.js'
+
+const log = logger.child({ scope: 'reply-typing-heartbeat' })
 
 const TYPING_INTERVAL_MS = 4500
 const TYPING_HEARTBEAT_TASK = 'reply-typing-heartbeat'
+
+/**
+ * Content-free observer for the typing heartbeat surface. Payloads carry only
+ * capability, bounded start outcome with monotonic latency, and stop — never
+ * provider responses or message content.
+ */
+export type TypingHeartbeatObserver = Readonly<{
+  onCapability: (event: Readonly<{ supported: boolean }>) => void
+  onStart: (event: Readonly<{ outcome: 'success' | 'failed'; latencyMs: number }>) => void
+  onStop: () => void
+}>
 
 type TextLikeReply = {
   (content: string): Promise<void>
@@ -18,7 +32,21 @@ type FileLikeReply = {
   (file: ChatFile): Promise<void>
   (file: ChatFile, options: ReplyOptions): Promise<void>
 }
-type TypingHeartbeatOptions = { intervalMs: number | undefined; turnId?: string; userId?: string }
+type TypingHeartbeatOptions = {
+  intervalMs: number | undefined
+  turnId?: string
+  userId?: string
+  analytics?: TypingHeartbeatObserver
+  now?: () => number
+}
+
+const notifyHeartbeatObserver = (fn: () => void): void => {
+  try {
+    fn()
+  } catch (error) {
+    log.warn({ error: error instanceof Error ? error.message : String(error) }, 'Typing heartbeat observer failed')
+  }
+}
 
 function wrapReplyWithHeartbeatStop(reply: ReplyFn, stop: () => void): ReplyFn {
   const withStop =
@@ -70,8 +98,9 @@ function isPromiseLike(value: unknown): value is Promise<unknown> {
 /**
  * Send typing indicator safely, swallowing both sync and async errors.
  * Typing is best-effort and should never block message processing.
+ * When given, `onOutcome` reports exactly one bounded success/failure.
  */
-function sendTypingSafely(reply: ReplyFn): void {
+function sendTypingSafely(reply: ReplyFn, onOutcome?: (ok: boolean) => void): void {
   // Cast to unknown-returning function since implementations may return
   // a Promise (even though ReplyFn.typing is typed as () => void)
   const typingFn = reply.typing as () => unknown
@@ -82,16 +111,25 @@ function sendTypingSafely(reply: ReplyFn): void {
     result = typingFn()
   } catch {
     // Sync error - non-fatal
+    onOutcome?.(false)
     return
   }
 
   // Handle async typing that returns a Promise
   if (isPromiseLike(result)) {
     const promise = result
-    promise.catch(() => {
-      // Non-fatal: typing is best-effort
-    })
+    promise.then(
+      () => {
+        onOutcome?.(true)
+      },
+      () => {
+        // Non-fatal: typing is best-effort
+        onOutcome?.(false)
+      },
+    )
+    return
   }
+  onOutcome?.(true)
 }
 
 function parseTypingOptions(rest: [] | [options: TypingHeartbeatOptions]): {
@@ -107,6 +145,41 @@ function parseTypingOptions(rest: [] | [options: TypingHeartbeatOptions]): {
   }
 }
 
+type HeartbeatReporting = Readonly<{
+  reportStart: (ok: boolean) => void
+  reportStop: () => void
+}>
+
+const createHeartbeatReporting = (
+  analytics: TypingHeartbeatObserver | undefined,
+  now: () => number,
+  supported: boolean,
+): HeartbeatReporting => {
+  const startedAtMs = now()
+  let startReported = false
+  if (analytics !== undefined) {
+    notifyHeartbeatObserver(() => {
+      analytics.onCapability({ supported })
+    })
+  }
+  return {
+    reportStart: (ok) => {
+      if (analytics === undefined || startReported) return
+      startReported = true
+      const latencyMs = Math.max(0, Math.round(now() - startedAtMs))
+      notifyHeartbeatObserver(() => {
+        analytics.onStart({ outcome: ok ? 'success' : 'failed', latencyMs })
+      })
+    },
+    reportStop: () => {
+      if (analytics === undefined) return
+      notifyHeartbeatObserver(() => {
+        analytics.onStop()
+      })
+    },
+  }
+}
+
 /**
  * Execute a function with a typing heartbeat that periodically
  * triggers the typing indicator until a reply is sent.
@@ -117,6 +190,11 @@ export async function withReplyTypingHeartbeat<T>(
   ...rest: [] | [options: TypingHeartbeatOptions]
 ): Promise<T> {
   const { intervalMs, turnId, userId } = parseTypingOptions(rest)
+  const reporting = createHeartbeatReporting(
+    rest[0]?.analytics,
+    rest[0]?.now ?? ((): number => Date.now()),
+    typeof reply.typing === 'function',
+  )
   const scheduler = createScheduler()
   let stopped = false
 
@@ -125,6 +203,7 @@ export async function withReplyTypingHeartbeat<T>(
     stopped = true
     scheduler.stop(TYPING_HEARTBEAT_TASK)
     scheduler.unregister(TYPING_HEARTBEAT_TASK)
+    reporting.reportStop()
     if (userId !== undefined) emitUser('typing:stop', userId, {}, turnId)
   }
 
@@ -136,7 +215,7 @@ export async function withReplyTypingHeartbeat<T>(
     },
   })
 
-  sendTypingSafely(reply)
+  sendTypingSafely(reply, reporting.reportStart)
   if (userId !== undefined) emitUser('typing:start', userId, {}, turnId)
   scheduler.start(TYPING_HEARTBEAT_TASK)
 

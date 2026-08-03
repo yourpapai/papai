@@ -7,11 +7,12 @@ import type { ToolSet } from 'ai'
 
 import type { ContextType } from '../chat/types.js'
 import {
-  makeCancelDeferredPromptTool,
-  makeCreateDeferredPromptTool,
-  makeGetDeferredPromptTool,
-  makeListDeferredPromptsTool,
-  makeUpdateDeferredPromptTool,
+  makeCancelReminderTool,
+  makeCreateAlertTool,
+  makeCreateReminderTool,
+  makeGetReminderTool,
+  makeListRemindersTool,
+  makeUpdateReminderTool,
 } from '../deferred-prompts/tools.js'
 
 const getContextId = (contextId: string | undefined, storageOwnerId: string): string => {
@@ -36,11 +37,12 @@ export function addDeferredPromptTools(
   if (storageOwnerId === undefined || chatUserId === undefined) return
   const ctxId = getContextId(contextId, storageOwnerId)
   const ctxType = getContextType(contextType)
-  tools['create_deferred_prompt'] = makeCreateDeferredPromptTool(storageOwnerId, ctxId, ctxType, username, chatUserId, {
-    allowTaskConditions,
-  })
-  tools['list_deferred_prompts'] = makeListDeferredPromptsTool(storageOwnerId)
-  tools['get_deferred_prompt'] = makeGetDeferredPromptTool(storageOwnerId)
-  tools['update_deferred_prompt'] = makeUpdateDeferredPromptTool(storageOwnerId)
-  tools['cancel_deferred_prompt'] = makeCancelDeferredPromptTool(storageOwnerId)
+  tools['create_reminder'] = makeCreateReminderTool(storageOwnerId, ctxId, ctxType, username, chatUserId)
+  tools['list_reminders'] = makeListRemindersTool(storageOwnerId)
+  tools['get_reminder'] = makeGetReminderTool(storageOwnerId)
+  tools['update_reminder'] = makeUpdateReminderTool(storageOwnerId)
+  tools['cancel_reminder'] = makeCancelReminderTool(storageOwnerId)
+  if (allowTaskConditions) {
+    tools['create_alert'] = makeCreateAlertTool(storageOwnerId, ctxId, ctxType, username, chatUserId)
+  }
 }

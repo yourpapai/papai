@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:create-project' })
 
@@ -22,17 +23,10 @@ export function makeCreateProjectTool(provider: TaskProvider): Tool {
     execute: async ({ name, description }) => {
       try {
         const project = await provider.createProject!({ name, description })
-        log.info({ projectId: project.id, name }, 'Project created via tool')
+        log.info('Project created via tool')
         return project
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            name,
-            tool: 'create_project',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('create_project', error), 'Tool execution failed')
         throw error
       }
     },

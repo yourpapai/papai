@@ -16,6 +16,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 
+import { NO_ANALYTICS_SCOPE } from '../src/analytics/provider-request-scope.js'
 import { userCachesForTesting } from '../src/cache.js'
 import { toScopedContextId } from '../src/chat/scoped-context.js'
 import { setCodingGuardrails } from '../src/coding-credentials/guardrails.js'
@@ -140,6 +141,7 @@ describe('buildFullToolSet / who-may-use filter (integration)', () => {
     userText: 'start a session',
     stagedDownloadFn: undefined,
     askPermission: undefined,
+    providerRequestScope: NO_ANALYTICS_SCOPE,
   })
 
   test('whoMayUse=members (default) → allowed-user keeps all acp action tools (reference-identical path)', async () => {

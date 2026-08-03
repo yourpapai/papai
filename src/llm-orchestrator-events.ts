@@ -11,6 +11,26 @@ import { logger } from './logger.js'
 
 const log = logger.child({ scope: 'llm-orchestrator-events' })
 
+/**
+ * Controlled analytics fields generated at the outbound request boundary (`invokeModel`).
+ * Optional so legacy/debug emitters keep the existing event shape; the analytics
+ * subscriber applies bounded defaults when they are absent.
+ */
+export type LlmAttemptAnalytics = Readonly<{
+  attemptOrdinal: number
+  modelRole: 'main' | 'small'
+  providerBinding?: 'global' | 'byok' | 'mixed'
+}>
+
+const attemptAnalyticsData = (analytics: LlmAttemptAnalytics | undefined): Record<string, unknown> => {
+  if (analytics === undefined) return {}
+  return {
+    attemptOrdinal: analytics.attemptOrdinal,
+    modelRole: analytics.modelRole,
+    ...(analytics.providerBinding === undefined ? {} : { providerBinding: analytics.providerBinding }),
+  }
+}
+
 type TokenUsage = {
   inputTokens: number | undefined
   outputTokens: number | undefined
@@ -109,6 +129,7 @@ export function emitLlmStart(
   messages: ModelMessage[],
   tools: ToolSet,
   turnId?: string,
+  analytics?: LlmAttemptAnalytics,
 ): void {
   emitUser(
     'llm:start',
@@ -117,6 +138,7 @@ export function emitLlmStart(
       model: mainModel,
       messageCount: messages.length,
       ...buildToolTelemetry(tools),
+      ...attemptAnalyticsData(analytics),
     },
     turnId,
   )
@@ -132,6 +154,7 @@ export function emitLlmEnd(
   messages: ModelMessage[],
   tools: ToolSet,
   turnId: string,
+  analytics?: LlmAttemptAnalytics & { timeToFirstTokenMs: number | null },
 ): void {
   emitUser(
     'llm:end',
@@ -150,6 +173,8 @@ export function emitLlmEnd(
       ...buildToolTelemetry(tools),
       generatedText: result.text,
       stepsDetail: buildStepsDetail(result.steps),
+      ...attemptAnalyticsData(analytics),
+      ...(analytics === undefined ? {} : { timeToFirstTokenMs: analytics.timeToFirstTokenMs }),
     },
     turnId,
   )

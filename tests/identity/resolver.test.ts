@@ -6,6 +6,7 @@
 import { describe, expect, it, beforeEach } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { NO_ANALYTICS_SCOPE, requireProviderRequestScope } from '../../src/analytics/provider-request-scope.js'
 import { getIdentityMapping, setIdentityMapping, clearIdentityMapping } from '../../src/identity/mapping.js'
 import { resolveMeReference, attemptAutoLink } from '../../src/identity/resolver.js'
 import type { TaskProvider } from '../../src/providers/types.js'
@@ -155,7 +156,7 @@ describe('attemptAutoLink', () => {
   })
 
   it('should auto-link when exact match found', async () => {
-    const result = await attemptAutoLink(testContextId, 'jsmith', mockProvider)
+    const result = await attemptAutoLink(testContextId, 'jsmith', mockProvider, NO_ANALYTICS_SCOPE)
     expect(result.type).toBe('found')
     assert(result.type === 'found')
     expect(result.identity.login).toBe('jsmith')
@@ -169,14 +170,14 @@ describe('attemptAutoLink', () => {
   })
 
   it('should auto-link with case-insensitive match', async () => {
-    const result = await attemptAutoLink(testContextId, 'JDOE', mockProvider)
+    const result = await attemptAutoLink(testContextId, 'JDOE', mockProvider, NO_ANALYTICS_SCOPE)
     expect(result.type).toBe('found')
     assert(result.type === 'found')
     expect(result.identity.login).toBe('jdoe')
   })
 
   it('should return unmatched when no exact match found', async () => {
-    const result = await attemptAutoLink(testContextId, 'unknownuser', mockProvider)
+    const result = await attemptAutoLink(testContextId, 'unknownuser', mockProvider, NO_ANALYTICS_SCOPE)
     expect(result.type).toBe('unmatched')
 
     const mapping = getIdentityMapping(testContextId, 'mock')
@@ -186,7 +187,12 @@ describe('attemptAutoLink', () => {
 
   it('should return not_found when provider has no identity resolver', async () => {
     const providerWithoutResolver = { ...mockProvider, identityResolver: undefined }
-    const result = await attemptAutoLink(testContextId, 'jsmith', providerWithoutResolver as TaskProvider)
+    const result = await attemptAutoLink(
+      testContextId,
+      'jsmith',
+      providerWithoutResolver as TaskProvider,
+      NO_ANALYTICS_SCOPE,
+    )
     expect(result.type).toBe('not_found')
   })
 
@@ -198,7 +204,7 @@ describe('attemptAutoLink', () => {
       },
     } as TaskProvider
 
-    const result = await attemptAutoLink(testContextId, 'jsmith', providerWithFailingResolver)
+    const result = await attemptAutoLink(testContextId, 'jsmith', providerWithFailingResolver, NO_ANALYTICS_SCOPE)
     expect(result.type).toBe('not_found')
     assert(result.type === 'not_found')
     expect(result.message).toContain('Unable to search')
@@ -206,7 +212,7 @@ describe('attemptAutoLink', () => {
 
   it('should return unmatched on subsequent resolveMeReference after auto-link miss', async () => {
     // First: attemptAutoLink fails to find match
-    const autoLinkResult = await attemptAutoLink(testContextId, 'unknownuser', mockProvider)
+    const autoLinkResult = await attemptAutoLink(testContextId, 'unknownuser', mockProvider, NO_ANALYTICS_SCOPE)
     expect(autoLinkResult.type).toBe('unmatched')
 
     // Then: subsequent resolveMeReference should return unmatched (not found with empty userId)
@@ -221,7 +227,7 @@ describe('attemptAutoLink', () => {
       identityResolver: { searchUsers: searchUsersEmailLogin },
     } as TaskProvider
 
-    const result = await attemptAutoLink(testContextId, 'jsmith', emailLoginProvider)
+    const result = await attemptAutoLink(testContextId, 'jsmith', emailLoginProvider, NO_ANALYTICS_SCOPE)
     expect(result.type).toBe('found')
     assert(result.type === 'found')
     expect(result.identity.login).toBe('jsmith@example.com')
@@ -238,9 +244,44 @@ describe('attemptAutoLink', () => {
       identityResolver: { searchUsers: searchUsersEmailLoginExact },
     } as TaskProvider
 
-    const result = await attemptAutoLink(testContextId, 'jsmith@example.com', emailLoginProvider)
+    const result = await attemptAutoLink(testContextId, 'jsmith@example.com', emailLoginProvider, NO_ANALYTICS_SCOPE)
     expect(result.type).toBe('found')
     assert(result.type === 'found')
     expect(result.identity.login).toBe('jsmith@example.com')
+  })
+
+  it('makes the explicit scope active inside the identity resolver search', async () => {
+    let scopeInside: unknown = null
+    const scopedProvider: TaskProvider = {
+      ...mockProvider,
+      identityResolver: {
+        searchUsers: (query: string) => {
+          scopeInside = requireProviderRequestScope()
+          return searchUsersDefault(query)
+        },
+      },
+    } as TaskProvider
+
+    const result = await attemptAutoLink(testContextId, 'jsmith', scopedProvider, NO_ANALYTICS_SCOPE)
+    expect(result.type).toBe('found')
+    expect(scopeInside).toBe(NO_ANALYTICS_SCOPE)
+  })
+
+  it('returns not_found when the scope is omitted (fail-closed, no search I/O)', async () => {
+    let searched = false
+    const scopedProvider: TaskProvider = {
+      ...mockProvider,
+      identityResolver: {
+        searchUsers: (query: string) => {
+          searched = true
+          return searchUsersDefault(query)
+        },
+      },
+    } as TaskProvider
+
+    const omittedScopes: Parameters<typeof attemptAutoLink>[3][] = []
+    const result = await attemptAutoLink(testContextId, 'jsmith', scopedProvider, omittedScopes[0]!)
+    expect(result.type).toBe('not_found')
+    expect(searched).toBe(false)
   })
 })

@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:list-statuses' })
 
@@ -22,14 +23,7 @@ export function makeListStatusesTool(provider: TaskProvider): Tool {
       try {
         return await provider.listStatuses!(projectId)
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            projectId,
-            tool: 'list_statuses',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('list_statuses', error), 'Tool execution failed')
         throw error
       }
     },

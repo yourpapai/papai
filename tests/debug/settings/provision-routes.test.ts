@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { z } from 'zod'
 
@@ -88,6 +89,28 @@ describe('settings kaneo provision route', () => {
     expect(provisionCalls[0]!.contextId).toBe(resolveSettingsPrincipal('pi-1', 'u-1').personalConfigContextId)
     expect(provisionCalls[0]!.publicUrl).toBeUndefined()
     expect(provisionCalls[0]!.internalUrl).toBeUndefined()
+  })
+
+  test('passes an explicit provider request scope to the provision hook', async () => {
+    const { startAnalytics, stopAnalytics } = await import('../../../src/analytics/start-analytics.js')
+    startAnalytics()
+    try {
+      const res = await handleProvisionKaneo(
+        new Request('https://x/settings/api/provision/kaneo', {
+          method: 'POST',
+          headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        }),
+      )
+      expect(res.status).toBe(422)
+      expect(provisionCalls).toHaveLength(1)
+      const scope = provisionCalls[0]!.scope
+      assert.ok(scope.kind === 'actor', 'expected an actor scope from the settings settings route')
+      expect(scope.requestContext.source.invocationMode).toBe('settings')
+      expect(scope.requestContext.source.chatUserId).toBe('u-1')
+    } finally {
+      await stopAnalytics()
+    }
   })
 
   test('returns 422 with unsupported when the task instance type has no provision hook', async () => {

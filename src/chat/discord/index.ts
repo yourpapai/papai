@@ -33,12 +33,9 @@ import {
 } from './client-factory.js'
 import { matchDiscordCommand } from './commands.js'
 import { renderDiscordContext } from './context-renderer.js'
+import { attachDiscordReplyContext, prepareDiscordDispatch } from './dispatch-helpers.js'
 import { resolveDiscordGroupLabel, resolveDiscordGuildFromContext, resolveDiscordUserLabel } from './label-helpers.js'
-import { CHANNEL_TYPE_DM, mapDiscordMessage } from './map-message.js'
-import { isBotMentioned } from './mention-helpers.js'
 import { discordCapabilities, discordConfigRequirements, discordTraits } from './metadata.js'
-import { buildDiscordReplyContext } from './reply-context.js'
-import { createDiscordReplyFn } from './reply-helpers.js'
 import { sendDiscordMessage } from './send-message.js'
 import { isDispatchableMessage, isReadyPayload } from './type-guards.js'
 export type { DiscordClientFactory, DiscordClientLike, DispatchableMessage }
@@ -49,32 +46,6 @@ type DiscordConstructorConfig = {
   readonly clientFactory?: DiscordClientFactory
   readonly token?: string
   readonly platformInstanceId: string
-}
-
-/**
- * Determine if an unmentioned group message is a reply to the bot's own message.
- * Skips the fetch when the bot is already mentioned (passes the group filter regardless)
- * or when the message is in a DM channel.
- */
-async function resolveIsReplyToBot(message: DispatchableMessage, botId: string, mentioned: boolean): Promise<boolean> {
-  if (message.reference?.messageId === undefined) return false
-  if (message.channel.type === CHANNEL_TYPE_DM) return false
-  if (mentioned) return false
-  const messages = message.channel.messages
-  if (messages === undefined) return false
-  try {
-    const parent = await messages.fetch(message.reference.messageId)
-    return parent.author.id === botId
-  } catch (error: unknown) {
-    log.warn(
-      {
-        messageId: message.reference.messageId,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      'failed to fetch parent message for reply-to-bot detection',
-    )
-    return false
-  }
 }
 
 export class DiscordChatProvider implements ChatProvider {
@@ -92,6 +63,7 @@ export class DiscordChatProvider implements ChatProvider {
   private readonly clientFactory: DiscordClientFactory
   private readonly commands = new Map<string, CommandHandler>()
   private messageHandler: OnMessageHandler | null = null
+  private editHandler: OnMessageHandler | null = null
   private interactionHandler: ((interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) | null = null
   private client: DiscordClientLike | null = null
   constructor(config: DiscordConstructorConfig) {
@@ -118,6 +90,9 @@ export class DiscordChatProvider implements ChatProvider {
   }
   onMessage(handler: OnMessageHandler): void {
     this.messageHandler = handler
+  }
+  onMessageEdit(handler: OnMessageHandler): void {
+    this.editHandler = handler
   }
   onInteraction(handler: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>): void {
     this.interactionHandler = handler
@@ -173,6 +148,13 @@ export class DiscordChatProvider implements ChatProvider {
       if (!isDispatchableMessage(rawMsg)) return
       this.dispatchMessage(rawMsg, client.user === null ? '' : client.user.id).catch((error: unknown) => {
         log.error({ error: error instanceof Error ? error.message : String(error) }, 'messageCreate dispatch failed')
+      })
+    })
+
+    client.on('messageUpdate', (_oldMsg, newMsg) => {
+      if (!isDispatchableMessage(newMsg)) return
+      this.dispatchEdit(newMsg, client.user === null ? '' : client.user.id).catch((error: unknown) => {
+        log.error({ error: error instanceof Error ? error.message : String(error) }, 'messageUpdate dispatch failed')
       })
     })
 
@@ -255,15 +237,9 @@ export class DiscordChatProvider implements ChatProvider {
   }
 
   private async dispatchMessage(message: DispatchableMessage, botId: string): Promise<void> {
-    const mentioned = isBotMentioned(message.mentions, botId, 'group')
-    const isReplyToBot = await resolveIsReplyToBot(message, botId, mentioned)
-
-    const mapped = mapDiscordMessage(message, botId, this.platformInstanceId, isReplyToBot)
-    if (mapped === null) return
-    const reply = createDiscordReplyFn({
-      channel: message.channel,
-      replyToMessageId: mapped.messageId,
-    })
+    const prepared = await prepareDiscordDispatch(message, botId, this.platformInstanceId)
+    if (prepared === null) return
+    const { mapped, reply } = prepared
     const auth = checkAuthorizationExtended(
       mapped.user.id,
       mapped.user.username,
@@ -281,17 +257,19 @@ export class DiscordChatProvider implements ChatProvider {
     }
 
     if (this.messageHandler !== null) {
-      if (message.channel.messages !== undefined) {
-        mapped.replyContext = await buildDiscordReplyContext(
-          {
-            reference: message.reference,
-            channel: { id: message.channel.id, messages: message.channel.messages },
-          },
-          mapped.contextId,
-        )
-      }
+      await attachDiscordReplyContext(message, mapped)
       await this.messageHandler(mapped, reply)
     }
+  }
+
+  private async dispatchEdit(message: DispatchableMessage, botId: string): Promise<void> {
+    if (this.editHandler === null) return
+    const prepared = await prepareDiscordDispatch(message, botId, this.platformInstanceId)
+    if (prepared === null) return
+    const { mapped, reply } = prepared
+    mapped.editedAt = Date.now()
+    await attachDiscordReplyContext(message, mapped)
+    await this.editHandler(mapped, reply)
   }
 
   renderContext(snapshot: ContextSnapshot): ContextRendered {

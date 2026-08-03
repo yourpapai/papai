@@ -5,9 +5,12 @@
 
 import { generateText } from 'ai'
 
+import { KNOWN_TOOL_SLUG_SET } from '../../analytics/generated/tool-slugs.js'
+import { resolveAnalyticsToolSlug } from '../../analytics/tool-slug-generation.js'
 import { buildChatModel } from '../../llm-model-builder.js'
 import { resolveLlmConfig } from '../../llm-providers/resolver.js'
 import { logger } from '../../logger.js'
+import { toolErrorClass } from '../tool-logging.js'
 
 const log = logger.child({ scope: 'compaction:summarizer' })
 
@@ -65,7 +68,7 @@ export async function summarizeResult(
     return { summary: trimmed === '' ? null : trimmed }
   } catch (error) {
     log.warn(
-      { error: error instanceof Error ? error.message : String(error), tool: input.toolName },
+      { errorClass: toolErrorClass(error), tool: resolveAnalyticsToolSlug(input.toolName, KNOWN_TOOL_SLUG_SET) },
       'Summarize failed',
     )
     return { summary: null }

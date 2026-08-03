@@ -4,8 +4,10 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
-  import { formatTime } from '../../shared/helpers.js'
+  import { formatDuration, formatTime } from '../../shared/helpers.js'
   import type { Turn, DashboardState, ScopeFilter } from '../dashboard-types.js'
+  import { formatScope } from '../scope-label.js'
+  import { panelCount } from '../panel-count.js'
   import DataTable from '../../shared/ui/DataTable.svelte'
   import EmptyState from '../../shared/ui/EmptyState.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
@@ -26,16 +28,6 @@
     if (status === 'error') return 'danger'
     if (status === 'cancelled') return 'warn'
     return 'accent'
-  }
-
-  function scopeLabel(turn: Turn): string {
-    const { kind, userId, groupId, threadId } = turn.scope
-    if (kind === 'user') return userId ? `dm:${userId}` : 'dm'
-    if (kind === 'group') {
-      const base = groupId ? `group:${groupId}` : 'group'
-      return threadId ? `${base}/${threadId}` : base
-    }
-    return 'global'
   }
 
   function matchesScope(turn: Turn, scope: ScopeFilter): boolean {
@@ -71,7 +63,7 @@
       id: t.turnId,
       time: formatTime(t.startedAt),
       status: t.status,
-      scope: scopeLabel(t),
+      scope: formatScope(t.scope),
       durationMs: (t.endedAt ?? Date.now()) - t.startedAt,
       msgs: t.incomingMessageCount,
       toolList: t.toolCalls.map((tc) => tc.name),
@@ -83,12 +75,16 @@
   const errors = $derived(dashboard.turns.filter((t) => t.status === 'error').length)
   const cancelled = $derived(dashboard.turns.filter((t) => t.status === 'cancelled').length)
 
+  const selectedTurnId = $derived(
+    dashboard.selectedDetail?.kind === 'turn' ? dashboard.selectedDetail.payload.turnId : undefined,
+  )
+
   function selectTurn(row: TurnRow): void {
     onShowTurn(row._turn)
   }
 </script>
 
-<Panel title="turns" count={dashboard.turns.length}>
+<Panel title="turns" count={panelCount(filtered.length, dashboard.turns.length, dashboard.scopeFilter)}>
   {#snippet action()}
     <div class="turns__summary">
       {#if running > 0}
@@ -107,10 +103,11 @@
       {columns}
       rows={turnRows}
       rowKey="id"
+      selectedKey={selectedTurnId}
       cell={cellRender}
       onRowClick={selectTurn}>
       {#snippet empty()}
-        <EmptyState title="No turns" />
+        <EmptyState title="No turns" hint="turns appear here as messages are processed" />
       {/snippet}
     </DataTable>
   {/snippet}
@@ -133,7 +130,7 @@
       </span>
     {/if}
   {:else if col.key === 'durationMs'}
-    {row.durationMs}ms
+    {formatDuration(row.durationMs)}
   {:else if col.key === 'time'}
     {row.time}
   {:else if col.key === 'scope'}

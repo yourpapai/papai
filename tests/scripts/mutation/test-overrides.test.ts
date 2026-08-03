@@ -84,4 +84,57 @@ describe('resolveTestFiles', () => {
     })
     expectSkipWithNoCompanionReason(result)
   })
+
+  test('uses discovered tests when present, ADDITIVELY unioning the companion and overrides', () => {
+    const result = resolveTestFiles({
+      srcFile: 'src/foo.ts',
+      projectRoot: PROJECT_ROOT,
+      overrides: { 'src/foo.ts': ['tests/extra.test.ts'] },
+      findTestFile: () => 'tests/companion.test.ts',
+      discovered: ['tests/integration/covers.test.ts'],
+    })
+    expect(result).toEqual({
+      kind: 'ok',
+      testFiles: ['tests/companion.test.ts', 'tests/integration/covers.test.ts', 'tests/extra.test.ts'],
+    })
+  })
+
+  test('includes the companion additively even when discovered has it covered (0-lines-hit safety net)', () => {
+    const result = resolveTestFiles({
+      srcFile: 'src/foo.ts',
+      projectRoot: PROJECT_ROOT,
+      overrides: {},
+      findTestFile: () => 'tests/companion.test.ts',
+      discovered: ['tests/integration/covers.test.ts', 'tests/companion.test.ts'],
+    })
+    expect(result).toEqual({
+      kind: 'ok',
+      testFiles: ['tests/companion.test.ts', 'tests/integration/covers.test.ts'],
+    })
+  })
+
+  test('falls back to companion + overrides when discovered is empty', () => {
+    const result = resolveTestFiles({
+      srcFile: 'src/foo.ts',
+      projectRoot: PROJECT_ROOT,
+      overrides: { 'src/foo.ts': ['tests/extra.test.ts'] },
+      findTestFile: () => 'tests/companion.test.ts',
+      discovered: [],
+    })
+    expect(result).toEqual({
+      kind: 'ok',
+      testFiles: ['tests/companion.test.ts', 'tests/extra.test.ts'],
+    })
+  })
+
+  test('skip reason is unchanged when discovered is empty and no companion/override exist', () => {
+    const result = resolveTestFiles({
+      srcFile: 'src/no-companion.ts',
+      projectRoot: PROJECT_ROOT,
+      overrides: {},
+      findTestFile: stubFindTestFile,
+      discovered: [],
+    })
+    expectSkipWithNoCompanionReason(result)
+  })
 })

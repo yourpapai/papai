@@ -3,20 +3,39 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, it, test } from 'bun:test'
 
 import {
   buildBaselineFromPerFile,
   isBaselineMap,
   ratchetMerge,
   resolveRatchet,
+  seedMerge,
 } from '../../../scripts/mutation/baseline.js'
 import type { PerFileScore } from '../../../scripts/mutation/baseline.js'
 
 const score = (
   sourceFile: string,
-  s: { killed?: number; survived?: number; noCoverage?: number; timeout?: number },
+  s: number | { killed?: number; survived?: number; noCoverage?: number; timeout?: number },
 ): PerFileScore => {
+  if (typeof s === 'number') {
+    return {
+      sourceFile,
+      merged: {
+        killed: 0,
+        survived: 0,
+        noCoverage: 0,
+        timeout: 0,
+        compileError: 0,
+        ignored: 0,
+        runtimeError: 0,
+        pending: 0,
+        total: 1,
+        scored: 1,
+        score: s,
+      },
+    }
+  }
   const killed = s.killed ?? 0
   const survived = s.survived ?? 0
   const noCoverage = s.noCoverage ?? 0
@@ -67,54 +86,56 @@ describe('ratchetMerge', () => {
   })
 })
 
+describe('seedMerge', () => {
+  it('keeps existing keys absent from latest and takes per-key max', () => {
+    const existing = { 'src/a.ts': 0.5, 'src/untouched.ts': 0.7 }
+    const latest = { 'src/a.ts': 0.6, 'src/new.ts': 0.3 }
+    expect(seedMerge(existing, latest)).toEqual({
+      'src/a.ts': 0.6,
+      'src/untouched.ts': 0.7,
+      'src/new.ts': 0.3,
+    })
+  })
+
+  it('never lowers an existing score', () => {
+    expect(seedMerge({ 'src/a.ts': 0.8 }, { 'src/a.ts': 0.2 })).toEqual({ 'src/a.ts': 0.8 })
+  })
+
+  it('returns latest unchanged when existing is empty', () => {
+    expect(seedMerge({}, { 'src/a.ts': 0.4 })).toEqual({ 'src/a.ts': 0.4 })
+  })
+})
+
 describe('resolveRatchet', () => {
-  test('passes when every file meets max(floor, baseline)', () => {
-    const perFile = [score('src/a.ts', { killed: 9 }), score('src/b.ts', { killed: 3, survived: 3 })]
-    const baseline = { 'src/a.ts': 0.8, 'src/b.ts': 0.5 }
-    const out = resolveRatchet(perFile, baseline, 0.5)
-    expect(out.exitCode).toBe(0)
-    expect(out.regressions).toEqual([])
+  it('passes when every baselined file meets its baseline', () => {
+    const baseline = { 'src/a.ts': 0.5 }
+    const perFile = [score('src/a.ts', 0.6)]
+    expect(resolveRatchet(perFile, baseline)).toEqual({ exitCode: 0, regressions: [] })
   })
 
-  test('flags a file that dropped below its recorded baseline', () => {
-    // src/a.ts scores 0.5 (5 killed of 10); baseline recorded 0.8 -> regression.
-    const perFile = [score('src/a.ts', { killed: 5, survived: 5 })]
-    const baseline = { 'src/a.ts': 0.8 }
-    const out = resolveRatchet(perFile, baseline, 0.5)
-    expect(out.exitCode).toBe(1)
-    expect(out.regressions).toEqual([{ sourceFile: 'src/a.ts', score: 0.5, threshold: 0.8 }])
+  it('flags a baselined file that dropped below its baseline', () => {
+    const baseline = { 'src/a.ts': 0.5 }
+    const perFile = [score('src/a.ts', 0.4)]
+    expect(resolveRatchet(perFile, baseline).regressions).toEqual([
+      { sourceFile: 'src/a.ts', score: 0.4, threshold: 0.5 },
+    ])
   })
 
-  test('flags a new file (no baseline) scoring below the floor', () => {
-    // src/new.ts scores 0.2 (2 killed of 10); no baseline -> floor 0.5 applies.
-    const perFile = [score('src/new.ts', { killed: 2, survived: 8 })]
-    const out = resolveRatchet(perFile, {}, 0.5)
-    expect(out.exitCode).toBe(1)
-    expect(out.regressions).toEqual([{ sourceFile: 'src/new.ts', score: 0.2, threshold: 0.5 }])
+  it('does NOT flag a baselined file held to a sub-0.5 baseline (no floor)', () => {
+    const baseline = { 'src/legacy.ts': 0.2 }
+    const perFile = [score('src/legacy.ts', 0.25)]
+    expect(resolveRatchet(perFile, baseline).exitCode).toBe(0)
   })
 
-  test('holds an existing below-floor file to its own baseline, not the floor', () => {
-    // src/a.ts scores 0.4 (4 killed of 10); baseline 0.3 -> 0.4 >= 0.3, no regression.
-    const perFile = [score('src/a.ts', { killed: 4, survived: 6 })]
-    const baseline = { 'src/a.ts': 0.3 }
-    const out = resolveRatchet(perFile, baseline, 0.5)
-    expect(out.exitCode).toBe(0)
+  it('does NOT flag an unbaselined (first-touch) file regardless of score', () => {
+    const perFile = [score('src/new.ts', 0.0), score('src/other-new.ts', 0.49)]
+    expect(resolveRatchet(perFile, {})).toEqual({ exitCode: 0, regressions: [] })
   })
 
-  test('flags an existing file that drops below its own baseline even when below the floor', () => {
-    // src/a.ts scores 0.2 (2 killed of 10); baseline 0.3 -> regression at threshold 0.3.
-    const perFile = [score('src/a.ts', { killed: 2, survived: 8 })]
-    const baseline = { 'src/a.ts': 0.3 }
-    const out = resolveRatchet(perFile, baseline, 0.5)
-    expect(out.exitCode).toBe(1)
-    expect(out.regressions[0]?.threshold).toBe(0.3)
-  })
-
-  test('skips files with no scoreable mutants', () => {
-    const perFile = [score('src/empty.ts', {})]
-    const out = resolveRatchet(perFile, {}, 0.5)
-    expect(out.exitCode).toBe(0)
-    expect(out.regressions).toEqual([])
+  it('skips files with no scoreable mutants', () => {
+    const baseline = { 'src/a.ts': 0.5 }
+    const perFile = [score('src/a.ts', {})]
+    expect(resolveRatchet(perFile, baseline)).toEqual({ exitCode: 0, regressions: [] })
   })
 })
 

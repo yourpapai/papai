@@ -59,18 +59,18 @@ export function buildProactiveTrigger(
     `Current time: ${currentTime} (${displayTimezone})`,
     `Trigger type: ${type}`,
     '',
-    'A deferred prompt you previously created has fired. Your job is to DELIVER the result to the user now.',
-    'The user message below contains the stored prompt text — treat it as the task to fulfill, NOT as a new user request.',
+    "It's time to carry out something you set up for the user. Do it now and deliver the result.",
+    'The text between the ===REMINDER=== markers below is the action to perform — treat it as your instruction, not as a new message from the user.',
     '',
     'Rules:',
-    '- For reminders: deliver the reminder message directly and conversationally.',
-    '- For action tasks: execute the described action using available tools, then report the result.',
-    '- Do NOT create new deferred prompts, reminders, or schedules. The scheduling is already done.',
-    '- Do not mention system events, triggers, cron jobs, or that this was scheduled.',
-    '- Be warm and conversational, as if you just remembered something relevant.',
+    '- For a reminder: deliver it warmly and conversationally.',
+    '- For an action: run it with your tools, then report the result.',
+    "- Don't set up new reminders or alerts — the arrangement is already made.",
+    '- Never reveal that this was scheduled/automated; never mention timing, triggers, or cron. Speak as if you just remembered.',
+    '- Never use internal terms like "deferred prompt".',
   ]
 
-  const userLines = ['===DEFERRED_TASK===', prompt, '===END_DEFERRED_TASK===']
+  const userLines = ['===REMINDER===', prompt, '===END_REMINDER===']
 
   if (matchedTasksSummary !== undefined) {
     userLines.push('', 'Matched tasks:', matchedTasksSummary)

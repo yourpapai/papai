@@ -3,10 +3,18 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { eq, and } from 'drizzle-orm'
 
+import type { AnalyticsRequestContext, ProviderRequestObservation } from '../../../src/analytics/provider-observer.js'
+import {
+  createActorProviderRequestScope,
+  NO_ANALYTICS_SCOPE,
+  type ProviderRequestScope,
+  requireProviderRequestScope,
+} from '../../../src/analytics/provider-request-scope.js'
+import type { AnalyticsSourceContext } from '../../../src/analytics/source-facts.js'
 import { getDrizzleDb } from '../../../src/db/drizzle.js'
 import { kaneoWorkspaceMembers } from '../../../src/db/schema.js'
 import type { AppError } from '../../../src/errors.js'
@@ -63,7 +71,7 @@ describe('ensureWorkspaceMember', () => {
   })
 
   test('returns "created" on first call, writes the member row, and persists encrypted password', async () => {
-    const result = await ensureWorkspaceMember(GROUP_CTX, CHAT_USER, makeDeps())
+    const result = await ensureWorkspaceMember(GROUP_CTX, CHAT_USER, NO_ANALYTICS_SCOPE, makeDeps())
     expect(result).toBe('created')
     const db = getDrizzleDb()
     const row = db
@@ -78,13 +86,13 @@ describe('ensureWorkspaceMember', () => {
   })
 
   test('returns "exists" when row already present', async () => {
-    await ensureWorkspaceMember(GROUP_CTX, CHAT_USER, makeDeps())
-    const result = await ensureWorkspaceMember(GROUP_CTX, CHAT_USER, makeDeps())
+    await ensureWorkspaceMember(GROUP_CTX, CHAT_USER, NO_ANALYTICS_SCOPE, makeDeps())
+    const result = await ensureWorkspaceMember(GROUP_CTX, CHAT_USER, NO_ANALYTICS_SCOPE, makeDeps())
     expect(result).toBe('exists')
   })
 
   test('writes a "provisioned" identity mapping on success', async () => {
-    await ensureWorkspaceMember(GROUP_CTX, CHAT_USER, makeDeps())
+    await ensureWorkspaceMember(GROUP_CTX, CHAT_USER, NO_ANALYTICS_SCOPE, makeDeps())
     const mapping = getIdentityMapping(CHAT_USER, 'kaneo')
     expect(mapping?.matchMethod).toBe('provisioned')
     expect(mapping?.providerUserId).toBe(KANEO_USER_ID)
@@ -94,6 +102,7 @@ describe('ensureWorkspaceMember', () => {
     const result = await ensureWorkspaceMember(
       GROUP_CTX,
       CHAT_USER,
+      NO_ANALYTICS_SCOPE,
       makeDeps({ resolveProvider: () => Promise.resolve(makeFakeProvider({ capabilities: new Set() })) }),
     )
     expect(result).toBe('skipped')
@@ -103,13 +112,19 @@ describe('ensureWorkspaceMember', () => {
     const result = await ensureWorkspaceMember(
       GROUP_CTX,
       CHAT_USER,
+      NO_ANALYTICS_SCOPE,
       makeDeps({ resolveProvider: () => Promise.resolve(null) }),
     )
     expect(result).toBe('skipped')
   })
 
   test('returns "skipped" when no context settings', async () => {
-    const result = await ensureWorkspaceMember(GROUP_CTX, CHAT_USER, makeDeps({ getContextSettings: () => null }))
+    const result = await ensureWorkspaceMember(
+      GROUP_CTX,
+      CHAT_USER,
+      NO_ANALYTICS_SCOPE,
+      makeDeps({ getContextSettings: () => null }),
+    )
     expect(result).toBe('skipped')
   })
 
@@ -117,6 +132,7 @@ describe('ensureWorkspaceMember', () => {
     const result = await ensureWorkspaceMember(
       GROUP_CTX,
       CHAT_USER,
+      NO_ANALYTICS_SCOPE,
       makeDeps({
         resolveProvider: () =>
           Promise.resolve(
@@ -141,6 +157,7 @@ describe('ensureWorkspaceMember', () => {
     const result = await ensureWorkspaceMember(
       GROUP_CTX,
       CHAT_USER,
+      NO_ANALYTICS_SCOPE,
       makeDeps({
         resolveUserLabel: () => Promise.resolve(null),
         resolveProvider: () =>
@@ -181,6 +198,7 @@ describe('ensureWorkspaceMember', () => {
     await ensureWorkspaceMember(
       GROUP_CTX,
       CHAT_USER,
+      NO_ANALYTICS_SCOPE,
       makeDeps({
         resolveProvider: () =>
           Promise.resolve(
@@ -225,6 +243,7 @@ describe('ensureWorkspaceMember', () => {
     await ensureWorkspaceMember(
       GROUP_CTX,
       CHAT_USER,
+      NO_ANALYTICS_SCOPE,
       makeDeps({
         resolveProvider: () =>
           Promise.resolve(
@@ -248,6 +267,7 @@ describe('ensureWorkspaceMember', () => {
     await ensureWorkspaceMember(
       'grp-ctx-new',
       'chat-user-new',
+      NO_ANALYTICS_SCOPE,
       makeDeps({
         resolveProvider: () =>
           Promise.resolve(
@@ -281,7 +301,7 @@ describe('ensureWorkspaceMember', () => {
       })
       .run()
 
-    const result = await ensureWorkspaceMember(GROUP_CTX, CHAT_USER, makeDeps())
+    const result = await ensureWorkspaceMember(GROUP_CTX, CHAT_USER, NO_ANALYTICS_SCOPE, makeDeps())
     expect(result).toBe('created')
     const row = db
       .select()
@@ -308,7 +328,7 @@ describe('ensureWorkspaceMember', () => {
       })
       .run()
 
-    const result = await ensureWorkspaceMember(GROUP_CTX, CHAT_USER, makeDeps())
+    const result = await ensureWorkspaceMember(GROUP_CTX, CHAT_USER, NO_ANALYTICS_SCOPE, makeDeps())
     expect(result).toBe('created')
     const row = db
       .select()
@@ -334,12 +354,92 @@ describe('ensureWorkspaceMember', () => {
       })
       .run()
 
-    const result = await ensureWorkspaceMember(GROUP_CTX, CHAT_USER, makeDeps())
+    const result = await ensureWorkspaceMember(GROUP_CTX, CHAT_USER, NO_ANALYTICS_SCOPE, makeDeps())
     expect(result).toBe('exists')
   })
 
   test('ensureWorkspaceMember is exported from src/providers/membership/index.ts', async () => {
     const mod = await import('../../../src/providers/membership/index.js')
     expect(typeof mod.ensureWorkspaceMember).toBe('function')
+  })
+})
+
+describe('ensureWorkspaceMember provider request scope', () => {
+  const makeSource = (): AnalyticsSourceContext => ({
+    platform: 'telegram',
+    platformInstanceId: 'pi-1',
+    chatUserId: CHAT_USER,
+    nativeContextId: 'chat-1',
+    storageContextId: 'pi-1:chat-1',
+    configContextId: 'pi-1:chat-1',
+    contextType: 'group',
+    actorRole: 'member',
+    taskInstanceId: 'ti-1',
+    taskProvider: 'kaneo',
+    invocationMode: 'normal',
+    rawTurnId: 'turn-1',
+  })
+
+  const actorScope = (
+    observe: (ctx: AnalyticsRequestContext, observation: ProviderRequestObservation) => void,
+  ): ReturnType<typeof createActorProviderRequestScope> =>
+    createActorProviderRequestScope({
+      requestContext: { source: makeSource(), sourceEventId: 'turn-1:test' },
+      observeProviderRequest: observe,
+    })
+
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  test('the explicit actor scope is active inside the provider call', async () => {
+    const captured: ProviderRequestScope[] = []
+    const scope = actorScope(() => {})
+    const deps = makeDeps({
+      resolveProvider: () =>
+        Promise.resolve(
+          makeFakeProvider({
+            provisionWorkspaceMember: () => {
+              captured.push(requireProviderRequestScope())
+              return Promise.resolve({ providerUserId: KANEO_USER_ID, login: 'u@pap.ai', password: 'gen-pass' })
+            },
+          }),
+        ),
+    })
+    const result = await ensureWorkspaceMember(GROUP_CTX, CHAT_USER, scope, deps)
+    expect(result).toBe('created')
+    expect(captured[0]).toBe(scope)
+  })
+
+  test('NO_ANALYTICS_SCOPE reaches the provider call without inventing an actor', async () => {
+    const captured: ProviderRequestScope[] = []
+    const deps = makeDeps({
+      resolveProvider: () =>
+        Promise.resolve(
+          makeFakeProvider({
+            provisionWorkspaceMember: () => {
+              captured.push(requireProviderRequestScope())
+              return Promise.resolve({ providerUserId: KANEO_USER_ID, login: 'u@pap.ai', password: 'gen-pass' })
+            },
+          }),
+        ),
+    })
+    const result = await ensureWorkspaceMember(GROUP_CTX, CHAT_USER, NO_ANALYTICS_SCOPE, deps)
+    expect(result).toBe('created')
+    expect(captured[0]).toBe(NO_ANALYTICS_SCOPE)
+  })
+
+  test('an omitted scope fails before any provider I/O', async () => {
+    const provision = mock(() =>
+      Promise.resolve({ providerUserId: KANEO_USER_ID, login: 'u@pap.ai', password: 'gen-pass' }),
+    )
+    const deps = makeDeps({
+      resolveProvider: () => Promise.resolve(makeFakeProvider({ provisionWorkspaceMember: provision })),
+    })
+    const omittedScopes: ProviderRequestScope[] = []
+    const result = await ensureWorkspaceMember(GROUP_CTX, CHAT_USER, omittedScopes[0]!, deps)
+    expect(result).toBe('failed')
+    expect(provision).not.toHaveBeenCalled()
   })
 })

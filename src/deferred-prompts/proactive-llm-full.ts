@@ -13,10 +13,33 @@ import type { TaskProvider } from '../providers/types.js'
 import { getToolRetriever } from '../tools/disclosure/embedding-tool-retriever.js'
 import type { DisclosureSession } from '../tools/disclosure/registry.js'
 import { maybeApplyDisclosure } from '../tools/disclosure/wire.js'
+import { emitResolvedSurfaceOpportunities } from '../tools/feature-opportunities.js'
 import { applyToolPreferences, buildProviderlessToolDescriptors, makeTools } from '../tools/index.js'
+import { finalizeProviderScopedTools } from '../tools/wrap-tool-execution.js'
 import { buildMetadataMessages, timezoneOrUtc } from './proactive-llm-helpers.js'
 import { buildProactiveTrigger } from './proactive-trigger.js'
 import type { ExecutionMetadata } from './types.js'
+
+type ProactiveToolOptions = {
+  storageContextId: string
+  chatUserId: string
+  mode: 'proactive'
+  contextType: 'dm' | 'group'
+}
+
+/** Providerless descriptor build + per-invocation opportunity observation (mirrors makeTools). */
+async function buildProviderlessObservedTools(options: ProactiveToolOptions): Promise<ToolSet> {
+  const descriptors = await buildProviderlessToolDescriptors(options)
+  emitResolvedSurfaceOpportunities({
+    mode: options.mode,
+    contextType: options.contextType,
+    storageContextId: options.storageContextId,
+    chatUserId: options.chatUserId,
+    hasProvider: false,
+    tools: descriptors,
+  })
+  return applyToolPreferences(descriptors, options.storageContextId, undefined)
+}
 
 export async function buildFullToolSet(
   provider: TaskProvider | null,
@@ -29,23 +52,25 @@ export async function buildFullToolSet(
   enabledToolNames: ReadonlySet<string>
   disclosure: DisclosureSession
 }> {
-  const options = {
+  const options: ProactiveToolOptions = {
     storageContextId,
     chatUserId: createdByUserId,
-    mode: 'proactive' as const,
+    mode: 'proactive',
     contextType,
   }
   const fullTools =
-    provider === null
-      ? applyToolPreferences(await buildProviderlessToolDescriptors(options), storageContextId, undefined)
-      : await makeTools(provider, options)
+    provider === null ? await buildProviderlessObservedTools(options) : await makeTools(provider, options)
   const retriever = getToolRetriever(getConfigContextIdFromStorageContextId(storageContextId), {
     storageContextId,
     contextType,
     chatUserId: createdByUserId,
   })
   const { tools, disclosure } = maybeApplyDisclosure(fullTools, storageContextId, retriever)
-  return { tools, enabledToolNames: new Set(Object.keys(tools)), disclosure }
+  // Single final pass over the actual ToolSet (after preferences + disclosure):
+  // attaches the strict ProviderRequestScope contextSchema and outer wrapper to
+  // every executable descriptor. No later step may create or replace a tool.
+  const finalized = finalizeProviderScopedTools(tools)
+  return { tools: finalized, enabledToolNames: new Set(Object.keys(finalized)), disclosure }
 }
 
 export function buildFullMessages(

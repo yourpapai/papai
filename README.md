@@ -176,23 +176,26 @@ flowchart TD
 
 ### Component Overview
 
-| Path                                               | Responsibility                                                                                        |
-| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `src/index.ts`                                     | Entry point, env validation, startup, scheduler and optional debug server wiring                      |
-| `src/bot.ts`                                       | Platform-agnostic message handling, queueing, and interaction routing                                 |
-| `src/chat/`                                        | Telegram, Mattermost, Discord, and Kontur Talk adapters plus capability metadata and the `ChatRouter` |
-| `src/llm-orchestrator.ts`                          | LLM tool-calling orchestration                                                                        |
-| `src/tools/`                                       | Context-aware, capability-gated tool assembly                                                         |
-| `src/providers/`                                   | Shared normalized provider types/utilities; Kaneo and YouTrack ship as first-party plugins            |
-| `src/instances/`                                   | DB-backed platform/task/admin stores, encrypted instance config, and env bootstrap                    |
-| `src/identity/`                                    | Chat-to-provider identity mapping and “me” resolution                                                 |
-| `src/attachments/`                                 | Durable attachment workspace: ingest, S3 blob store, metadata, manifest building, resolver            |
-| `src/message-queue/`                               | Message coalescing and orderly LLM dispatch                                                           |
-| `src/group-settings/`                              | Admin group-context listing, scope filtering, and group observations for the settings web UI          |
-| `src/web/`                                         | Safe fetch, extraction, distillation, caching, and rate limiting for `web_fetch`                      |
-| `src/plugins/`                                     | Trusted local plugin system: discovery, manifest validation, approval, lifecycle, KV                  |
-| `src/mcp/`                                         | External MCP server adapter: connection pooling, tool namespacing, user + plugin endpoints            |
-| `src/debug/`, `client/debug/`, and `client/admin/` | Optional local debug server plus split `/debug` and `/admin` UIs                                      |
+| Path                                               | Responsibility                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/index.ts`                                     | Entry point, env validation, startup, scheduler and optional debug server wiring                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `src/bot.ts`                                       | Bot setup: message ingress + auth, interaction routing, command wiring entry                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `src/bot-command-wiring.ts`                        | Command registration and the observed command wrapper (post-auth analytics facts, reply tracking)                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `src/bot-message-handler.ts`                       | Authorized message handling, mid-run steering, queueing, and the queued-turn lifecycle                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `src/chat/`                                        | Telegram, Mattermost, Discord, and Kontur Talk adapters plus capability metadata and the `ChatRouter`                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `src/llm-orchestrator.ts`                          | LLM tool-calling orchestration                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `src/tools/`                                       | Context-aware, capability-gated tool assembly                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `src/providers/`                                   | Shared normalized provider types/utilities; Kaneo and YouTrack ship as first-party plugins                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `src/instances/`                                   | DB-backed platform/task/admin stores, encrypted instance config, and env bootstrap                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `src/identity/`                                    | Chat-to-provider identity mapping and “me” resolution                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `src/attachments/`                                 | Durable attachment workspace: ingest, S3 blob store, metadata, manifest building, resolver                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `src/message-queue/`                               | Message coalescing and orderly LLM dispatch                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `src/group-settings/`                              | Admin group-context listing, scope filtering, and group observations for the settings web UI                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `src/web/`                                         | Safe fetch, extraction, distillation, caching, and rate limiting for `web_fetch`                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `src/plugins/`                                     | Trusted local plugin system: discovery, manifest validation, approval, lifecycle, KV                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `src/mcp/`                                         | External MCP server adapter: connection pooling, tool namespacing, user + plugin endpoints                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `src/analytics/`                                   | Privacy-gated analytics: fact contracts, normalizer/runtime, instrumentation, session/outcome/friction materialization, governed usage backfill/reconciliation, retention/expiry enforcement, authenticated subject export/withdraw/delete, key rekey workflow, curated Metabase snapshot publisher/consumer coordinator (`analytics/metabase/`), thresholded aggregate delivery outbox (suppression lattice, DNS-pinned egress worker), bounded lifecycle jobs registered on the shared scheduler with cutover-fence admission (`analytics/jobs/register.ts`) |
+| `src/debug/`, `client/debug/`, and `client/admin/` | Optional local debug server plus split `/debug` and `/admin` UIs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 ---
 
@@ -346,6 +349,23 @@ Required when the bot needs to receive, persist, or attach files to tasks.
 | `S3_REGION`            | No       | AWS region (e.g. `us-east-1`)                                         |
 | `S3_PREFIX`            | No       | Optional key prefix inside the bucket                                 |
 | `S3_FORCE_PATH_STYLE`  | No       | Set to `true` for MinIO                                               |
+
+</details>
+
+<details>
+<summary><b>Analytics (Privacy-Gated, Off By Default)</b></summary>
+
+papai ships a four-lane, privacy-gated analytics pipeline (`src/analytics/`). The shipping default is `local_aggregate` (closed daily counters only — no actor continuity); pseudonymous lanes require complete governance fields, both HMAC keyrings, and an explicit rollout stage. Operators:
+
+| Variable                            | When required                        | Description                                                                           |
+| ----------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------- |
+| `ANALYTICS_KILL_SWITCH`             | Stage A; incident response           | `1`/`true`/`on` forces every analytics lane off regardless of stored policy           |
+| `ANALYTICS_HMAC_KEYRING`            | Pseudonymous longitudinal lane       | Pseudonym keyring, `v1:<64-hex>[;v2:<64-hex>...]`                                     |
+| `ANALYTICS_GOVERNANCE_HMAC_KEYRING` | Pseudonymous longitudinal lane       | Separate keyring for eligibility refs, consent fences, and deletion-bundle encryption |
+| `ANALYTICS_SNAPSHOT_DIR`            | Rekey BI coordination                | Absolute dir holding published Metabase snapshot files; fail-closed without it        |
+| `ANALYTICS_BACKFILL_APPROVED_AT_MS` | Backfill under `legitimate_interest` | Operator approval timestamp used as the backfill policy cutoff                        |
+
+Full operator flows, rollout stages A–E, and incident response: [`docs/operations/analytics-runbook.md`](docs/operations/analytics-runbook.md) and [`docs/operations/analytics-incident-runbook.md`](docs/operations/analytics-incident-runbook.md).
 
 </details>
 
@@ -589,15 +609,23 @@ compatibility mode.
 bun test:mutate:changed          # PR gate: changed files vs base branch
 bun test:mutate                  # full paired run over the configured scope
 bun test:mutate --update-baseline  # full run; ratchet scripts/mutation/baseline.json up
+bun test:mutate:seed --scores=reports/paired/scores.json  # re-apply persisted scores (CI commit step; lost-seed recovery)
 ```
 
 Runs paired, per-file mutation testing with Stryker (`ignoreStatic: false`, each
-source file paired with its companion test). The CI `mutation-testing` job is a
-**blocking per-file ratchet** on PRs: a changed file fails if its score drops
-below its recorded entry in `scripts/mutation/baseline.json`; files new to scope
-must clear a 0.5 floor. The `mutation-baseline` job ratchets the baseline upward
-(per-file max) on push to `master`. See `scripts/mutation/README.md` for flags
-(`--no-ratchet`, `--ratchet-floor=N`) and the override/companion resolution.
+source file paired with the test set that actually covers it — coverage-derived
+via `scripts/mutation/coverage-map.ts`, with the companion as fallback). The CI
+`mutation-testing` job is a
+**blocking per-file ratchet** on PRs: a changed file fails only if it has a
+recorded entry in `scripts/mutation/baseline.json` and its score drops below it;
+files with no recorded entry (new or never-baselined) are not regressions. The
+`mutation-baseline` job seeds the baseline from files changed since the previous
+master commit (`test:mutate:changed --base=HEAD~1 --update-baseline`; broad
+scope, `seedMerge` preserves existing entries — not a full run) on push to
+`master`; its commit step replays the persisted per-file scores onto the latest
+master (`test:mutate:seed`), so a master update landing mid-run cannot lose the
+seed. See `scripts/mutation/README.md` for flags (`--no-ratchet`), the
+override/companion resolution, and the one-time migration catch-up note.
 
 ---
 

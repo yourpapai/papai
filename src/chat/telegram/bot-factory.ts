@@ -15,6 +15,7 @@ type TelegramUpdateFilter =
   | 'message:audio'
   | 'message:video'
   | 'message:voice'
+  | 'edited_message'
 
 type TelegramSendMessageOptions = {
   entities: ReturnType<typeof formatLlmOutput>['entities']

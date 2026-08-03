@@ -5,6 +5,7 @@
 
 import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm'
 
+import { observeActiveFeatureUsed } from '../analytics/feature-observer.js'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { memoryProfiles, memoryRecords } from '../db/schema.js'
 import { recordScopeCondition } from './record-conditions.js'
@@ -172,14 +173,21 @@ export function searchMemoryRecords(filter: SearchMemoryRecordsFilter): readonly
   ]
   if (filter.kind !== undefined) conditions.push(eq(memoryRecords.kind, filter.kind))
 
-  return getDrizzleDb()
-    .select()
-    .from(memoryRecords)
-    .where(and(...conditions))
-    .orderBy(desc(memoryRecords.lastSeenAt))
-    .limit(filter.limit ?? DEFAULT_SEARCH_LIMIT)
-    .all()
-    .map(rowToRecord)
+  try {
+    const results = getDrizzleDb()
+      .select()
+      .from(memoryRecords)
+      .where(and(...conditions))
+      .orderBy(desc(memoryRecords.lastSeenAt))
+      .limit(filter.limit ?? DEFAULT_SEARCH_LIMIT)
+      .all()
+      .map(rowToRecord)
+    observeActiveFeatureUsed({ feature: 'memory_search', operation: 'search', outcome: 'success' })
+    return results
+  } catch (error) {
+    observeActiveFeatureUsed({ feature: 'memory_search', operation: 'search', outcome: 'failure' })
+    throw error
+  }
 }
 
 export function archiveMemoryRecord(scope: MemoryScope, recordId: string, now: string): boolean {

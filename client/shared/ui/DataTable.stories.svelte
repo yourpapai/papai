@@ -34,28 +34,14 @@
     { subject: 'priya.r', id: 'u_a02f17', type: 'dm', tokIn: 287402, tokOut: 61104 },
     { subject: 'eng-stand', id: 'g_eng-stand', type: 'group', tokIn: 198220, tokOut: 42811 },
   ]
+
+  const noop = () => undefined
 </script>
 
-<Story name="default">
-  <div style="padding: 20px; background: var(--bg); width: 720px;">
-    <DataTable {columns} {rows} />
-  </div>
-</Story>
+<Story name="default" args={{ columns, rows }} />
 
-<Story name="empty">
-  {#snippet emptyState()}<span>No data yet.</span>{/snippet}
-  <div style="padding: 20px; background: var(--bg); width: 720px;">
-    <DataTable {columns} rows={[]} empty={emptyState} />
-  </div>
-</Story>
+<Story name="empty" args={{ columns, rows: [] }} />
 
-<Story name="clickable-with-selection">
-  <div style="padding: 20px; background: var(--bg); width: 720px;">
-    <DataTable
-      {columns}
-      {rows}
-      rowKey="id"
-      selectedKey="u_8f4a92"
-      onRowClick={(row) => console.log('clicked', row)} />
-  </div>
-</Story>
+<Story
+  name="clickable-with-selection"
+  args={{ columns, rows, rowKey: 'id', selectedKey: 'u_8f4a92', onRowClick: noop }} />

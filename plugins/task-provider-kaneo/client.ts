@@ -5,6 +5,13 @@
 
 import type { ZodType } from 'zod'
 
+import {
+  classifyProviderError,
+  classifyStatusClass,
+  createProviderRequestClock,
+} from '../../src/analytics/provider-observer.js'
+import type { ProviderRequestScope } from '../../src/analytics/provider-request-scope.js'
+import { requireProviderRequestScope } from '../../src/analytics/provider-request-scope.js'
 import { logger } from '../../src/logger.js'
 import { KaneoApiError, KaneoValidationError } from './errors.js'
 
@@ -28,6 +35,51 @@ export function isKaneoSessionCookie(value: string): boolean {
   return value.startsWith('__Secure-better-auth.session_token=')
 }
 
+type BoundaryOperation = 'read' | 'search' | 'create' | 'update' | 'delete' | 'connect' | 'stream' | 'other'
+
+const operationOf = (method: string): BoundaryOperation => {
+  switch (method.toUpperCase()) {
+    case 'GET':
+      return 'read'
+    case 'POST':
+      return 'create'
+    case 'PUT':
+    case 'PATCH':
+      return 'update'
+    case 'DELETE':
+      return 'delete'
+    default:
+      return 'other'
+  }
+}
+
+/** Emits the controlled request observation; never throws, never carries request/response content. */
+const observeBoundary = (
+  scope: ProviderRequestScope,
+  clock: Readonly<{ elapsedMs: () => number }>,
+  operation: BoundaryOperation,
+  caught: unknown,
+  status: number | null,
+): void => {
+  if (scope.kind !== 'actor') return
+  const classification =
+    caught === null
+      ? { statusClass: classifyStatusClass(status ?? 200), retryable: null }
+      : classifyProviderError(caught)
+  try {
+    scope.observeProviderRequest(scope.requestContext, {
+      provider: 'kaneo',
+      operation,
+      durationMs: clock.elapsedMs(),
+      outcome: caught === null ? 'success' : 'failure',
+      statusClass: classification.statusClass,
+      retryable: classification.retryable,
+    })
+  } catch {
+    // Observation must never change provider behavior.
+  }
+}
+
 function buildUrl(config: KaneoConfig, path: string, query: Record<string, string> | undefined): URL {
   const url = new URL(`${config.baseUrl}/api${path}`)
   if (query !== undefined) {
@@ -46,25 +98,40 @@ async function fetchResponseBody(response: Response): Promise<unknown> {
   }
 }
 
-async function handleErrorResponse(response: Response, method: string, path: string): Promise<never> {
-  const responseBody = await fetchResponseBody(response)
-  log.error({ method, path, statusCode: response.status, responseBody }, 'Kaneo API error')
-  throw new KaneoApiError(`Kaneo API ${method} ${path} returned ${response.status}`, response.status, responseBody)
+const RESOURCE_CLASS_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/\/task-relation/iu, 'task-relation'],
+  [/\/label/iu, 'label'],
+  [/\/(activity|comment)/iu, 'comment'],
+  [/\/(project|column)/iu, 'project'],
+  [/\/task/iu, 'task'],
+]
+
+/** Maps a request path onto a bounded resource class; the raw path never crosses the error/log boundary. */
+export const resourceClassOf = (path: string): string => {
+  for (const [pattern, resourceClass] of RESOURCE_CLASS_PATTERNS) {
+    if (pattern.test(path)) return resourceClass
+  }
+  return 'other'
 }
 
-function validateResponse<T>(
-  rawData: unknown,
-  schema: ZodType<T>,
-  method: string,
-  path: string,
-  statusCode: number,
-): T {
+async function handleErrorResponse(response: Response, method: string, resourceClass: string): Promise<never> {
+  const responseBody = await fetchResponseBody(response)
+  log.error({ method, statusCode: response.status, resourceClass }, 'Kaneo API error')
+  throw new KaneoApiError(
+    `Kaneo API ${method} request failed with status ${response.status}`,
+    response.status,
+    responseBody,
+    resourceClass,
+  )
+}
+
+function validateResponse<T>(rawData: unknown, schema: ZodType<T>, method: string, statusCode: number): T {
   const result = schema.safeParse(rawData)
   if (!result.success) {
-    log.error({ method, path, error: result.error }, 'Kaneo API response validation failed')
-    throw new KaneoValidationError(`Kaneo API ${method} ${path} returned invalid data`, result.error)
+    log.error({ method, statusCode }, 'Kaneo API response validation failed')
+    throw new KaneoValidationError(`Kaneo API ${method} request returned invalid data`, result.error)
   }
-  log.debug({ method, path, statusCode }, 'Kaneo API response validated')
+  log.debug({ method, statusCode }, 'Kaneo API response validated')
   return result.data
 }
 
@@ -76,9 +143,11 @@ export async function kaneoFetch<T>(
   query: Record<string, string> | undefined,
   schema: ZodType<T>,
 ): Promise<T> {
+  const scope = requireProviderRequestScope()
+  const clock = createProviderRequestClock()
   const url = buildUrl(config, path, query)
 
-  log.debug({ method, path, hasBody: body !== undefined }, 'Kaneo API request')
+  log.debug({ method, hasBody: body !== undefined, hasQuery: query !== undefined }, 'Kaneo API request')
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (config.sessionCookie === undefined) {
@@ -87,17 +156,27 @@ export async function kaneoFetch<T>(
     headers['Cookie'] = config.sessionCookie
   }
 
-  const response = await (config.fetch ?? fetch)(url.toString(), {
-    method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-  })
+  let caught: unknown = null
+  let status: number | null = null
+  try {
+    const response = await (config.fetch ?? fetch)(url.toString(), {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+    status = response.status
 
-  if (!response.ok) {
-    return handleErrorResponse(response, method, path)
+    if (!response.ok) {
+      return await handleErrorResponse(response, method, resourceClassOf(path))
+    }
+
+    const rawData: unknown = await response.json()
+
+    return validateResponse(rawData, schema, method, response.status)
+  } catch (error) {
+    caught = error
+    throw error
+  } finally {
+    observeBoundary(scope, clock, operationOf(method), caught, status)
   }
-
-  const rawData: unknown = await response.json()
-
-  return validateResponse(rawData, schema, method, path, response.status)
 }

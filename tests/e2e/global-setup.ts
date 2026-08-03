@@ -11,6 +11,7 @@
  */
 
 import { provisionAndConfigure } from '../../plugins/task-provider-kaneo/provision.js'
+import { NO_ANALYTICS_SCOPE, runWithProviderRequestScope } from '../../src/analytics/provider-request-scope.js'
 import { logger } from '../../src/logger.js'
 import { startKaneoServer, stopKaneoServer } from './docker-lifecycle.js'
 
@@ -91,10 +92,12 @@ async function performSetup(): Promise<E2EConfig> {
     const uniqueTelegramId = 999999999 + (uniqueSuffix % 1000000)
     process.env['KANEO_INTERNAL_URL'] = baseUrl
     process.env['KANEO_CLIENT_URL'] = publicUrl
-    const result = await provisionAndConfigure(String(uniqueTelegramId), uniqueUsername, {
-      publicUrl,
-      internalUrl: baseUrl,
-    })
+    const result = await runWithProviderRequestScope(NO_ANALYTICS_SCOPE, () =>
+      provisionAndConfigure(String(uniqueTelegramId), uniqueUsername, {
+        publicUrl,
+        internalUrl: baseUrl,
+      }),
+    )
     if (result.status !== 'provisioned') {
       throw new Error(
         `Kaneo provisioning failed: ${result.status === 'failed' ? result.error : 'registration disabled'}`,

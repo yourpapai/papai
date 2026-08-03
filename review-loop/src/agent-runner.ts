@@ -4,14 +4,17 @@
 // See LICENSE in the project root for details.
 
 import { existsSync } from 'node:fs'
-import { appendFile, copyFile, mkdir, readFile, unlink } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, unlink } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { z } from 'zod'
 
-import { type OpencodeEvent, parseEventLine } from './event-stream.js'
-import { formatLiveLine, formatStepFooter, formatToolArg } from './live-renderer.js'
+import { createLineHandler, enqueueLog } from './line-handler.js'
+import type { LineHandler } from './line-handler.js'
 import type { ProgressReporter } from './progress-log.js'
+
+export { createLineHandler } from './line-handler.js'
+export type { LineHandler } from './line-handler.js'
 
 export interface SpawnResult {
   exitCode: number
@@ -79,108 +82,6 @@ interface AttemptError {
 
 type Attempt<T> = AttemptResult<T> | AttemptError
 
-export interface LineHandler {
-  readonly ctx: LiveCtx
-  onLine: LineSink
-  dispose: () => void
-}
-
-interface LiveCtx {
-  readonly label: string
-  readonly logPath: string
-  readonly reporter: ProgressReporter | undefined
-  startedAt: number
-  toolCount: number
-  tool: string
-  arg: string
-  readonly seenCalls: Set<string>
-  timer: ReturnType<typeof setInterval> | null
-  usage: AgentUsage
-  firstStepAt: number | null
-}
-
-function renderLive(ctx: LiveCtx): void {
-  const reporter = ctx.reporter
-  if (reporter === undefined) {
-    return
-  }
-  const elapsed = ctx.startedAt === 0 ? 0 : Date.now() - ctx.startedAt
-  reporter.live([formatLiveLine(ctx.label, ctx.tool, ctx.arg, elapsed, ctx.toolCount)])
-}
-
-function applyEvent(evt: OpencodeEvent, ctx: LiveCtx): void {
-  const reporter = ctx.reporter
-  switch (evt.type) {
-    case 'step_start':
-      ctx.firstStepAt ??= Date.now()
-      if (ctx.startedAt === 0) {
-        ctx.startedAt = Date.now()
-        if (reporter?.dynamic === true) {
-          ctx.timer = setInterval(() => {
-            renderLive(ctx)
-          }, 1000)
-        }
-      }
-      break
-    case 'tool_use':
-      if (!ctx.seenCalls.has(evt.callId)) {
-        ctx.seenCalls.add(evt.callId)
-        ctx.toolCount += 1
-      }
-      ctx.tool = evt.tool
-      ctx.arg = formatToolArg(evt.tool, evt.input)
-      renderLive(ctx)
-      break
-    case 'step_finish':
-      ctx.usage.inputTokens += evt.tokens.input
-      ctx.usage.outputTokens += evt.tokens.output
-      ctx.usage.reasoningTokens += evt.tokens.reasoning
-      ctx.usage.costUsd += evt.cost
-      if (reporter !== undefined) {
-        reporter.clearLive()
-        reporter.event(
-          formatStepFooter(ctx.label, ctx.startedAt === 0 ? 0 : Date.now() - ctx.startedAt, ctx.toolCount, evt.tokens),
-        )
-      }
-      break
-    case 'text':
-      break
-  }
-}
-
-function createLineHandler<T>(options: RunAgentOptions<T>): LineHandler {
-  const ctx: LiveCtx = {
-    label: options.label,
-    logPath: options.logPath,
-    reporter: options.reporter,
-    startedAt: 0,
-    toolCount: 0,
-    tool: '',
-    arg: '',
-    seenCalls: new Set<string>(),
-    timer: null,
-    usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0 },
-    firstStepAt: null,
-  }
-  const onLine: LineSink = (line: string): void => {
-    void appendFile(ctx.logPath, `${line}\n`)
-    const evt = parseEventLine(line)
-    if (evt !== null) {
-      applyEvent(evt, ctx)
-    }
-  }
-  const dispose = (): void => {
-    if (ctx.timer !== null) {
-      clearInterval(ctx.timer)
-    }
-    const reporter = ctx.reporter
-    if (reporter !== undefined) {
-      reporter.clearLive()
-    }
-  }
-  return { ctx, onLine, dispose }
-}
-
 /**
  * Absolute path the agent should write its output to.
  *
@@ -239,7 +140,7 @@ async function runAttempt<T>(options: RunAgentOptions<T>, handler: LineHandler):
   await mkdir(path.resolve(options.cwd, '.review-loop'), { recursive: true })
   const result = await attemptRun(options, handler.onLine)
   if (result.exitCode !== 0) {
-    await appendFile(options.logPath, `[${options.label}] stderr: ${result.stderr}\n`)
+    enqueueLog(handler.ctx, `[${options.label}] stderr: ${result.stderr}\n`)
     return {
       ok: false,
       error: new Error(`${options.label} exited with code ${result.exitCode}: ${result.stderr}`),
@@ -290,6 +191,6 @@ export async function runAgent<T>(options: RunAgentOptions<T>): Promise<AgentRun
     if (second.ok) return finalize(second.value)
     throw new AgentRunError(second.error.message, buildUsage())
   } finally {
-    handler.dispose()
+    await handler.dispose()
   }
 }

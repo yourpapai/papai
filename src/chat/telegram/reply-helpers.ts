@@ -207,29 +207,27 @@ export async function sendTextReply(
   await ctx.reply(content, { reply_parameters: replyParameters })
 }
 
-/** Minimal context surface {@link sendFormattedReply} needs — just the message reply method. */
-export type ReplyCapableContext = { reply: (text: string, other?: Record<string, unknown>) => Promise<unknown> }
-
 /** Sent-message fields needed to build a detached prompt handle: chat id and message id. */
 export type SentButtonMessage = { message_id: number; chat: { id: number } }
-/** Narrowed reply context that preserves the returned message — lets sendButtonReply build a PromptHandle. */
+/** Narrowed reply context that preserves the returned message — lets sendButtonReply/sendFormattedReply capture it. */
 export type ButtonReplyCapableContext = {
   reply: (text: string, other?: Record<string, unknown>) => Promise<SentButtonMessage>
 }
 
 export async function sendFormattedReply(
-  ctx: ReplyCapableContext,
+  ctx: ButtonReplyCapableContext,
   markdown: string,
   buildReplyParams: ReplyParamsBuilder,
   options: ReplyOptions | undefined,
-): Promise<void> {
+): Promise<{ messageId: number; chatId: number }> {
   const formatted = formatLlmOutput(markdown)
   const replyParameters = options === undefined ? buildReplyParams() : buildReplyParams(options)
-  await ctx.reply(formatted.text, {
+  const sent = await ctx.reply(formatted.text, {
     entities: formatted.entities,
     reply_parameters: replyParameters,
     ...(options?.disableLinkPreview === true ? { link_preview_options: { is_disabled: true } } : {}),
   })
+  return { messageId: sent.message_id, chatId: sent.chat.id }
 }
 
 export async function sendFileReply(

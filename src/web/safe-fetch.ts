@@ -264,7 +264,7 @@ export async function safeFetchContent(
   const redirectCount = getRedirectCount(options)
   const abortSignal = composeAbortSignal(options)
 
-  log.debug({ rawUrl, redirectCount }, 'safeFetchContent')
+  log.debug({ redirectCount }, 'safeFetchContent')
 
   try {
     await Promise.race([deps.assertPublicUrl(url), waitForAbort(abortSignal)])
@@ -289,7 +289,7 @@ export async function safeFetchContent(
     const body = await readBoundedBody(response, maxBytes)
     const finalUrl = response.url === '' ? url.toString() : response.url
 
-    log.info({ url: rawUrl, finalUrl, contentType, bytes: body.byteLength }, 'Fetched web content safely')
+    log.info({ contentType, bytes: body.byteLength }, 'Fetched web content safely')
     return { finalUrl, contentType, body }
   } catch (error) {
     return rethrowSafeFetchError(error)

@@ -52,6 +52,25 @@ describe('membership subscriber', () => {
     unregister()
   })
 
+  test('group_member:added passes NO_ANALYTICS_SCOPE explicitly (operational path, no actor inference)', async () => {
+    const { registerMembershipSubscriber } = await import('../../../src/providers/membership/subscriber.js')
+    const { NO_ANALYTICS_SCOPE } = await import('../../../src/analytics/provider-request-scope.js')
+    const scopes: unknown[] = []
+    const unregister = registerMembershipSubscriber({
+      ensure: (_g, _u, scope) => {
+        scopes.push(scope)
+        return Promise.resolve('created' as const)
+      },
+      markInactive: () => Promise.resolve(),
+    })
+
+    emitGlobal('group_member:added', { groupId: 'g-1', userId: 'u-1' })
+    await waitFor(() => scopes.length >= 1)
+
+    expect(scopes[0]).toBe(NO_ANALYTICS_SCOPE)
+    unregister()
+  })
+
   test('group_member:added skips placeholder userIds', async () => {
     const { registerMembershipSubscriber } = await import('../../../src/providers/membership/subscriber.js')
     const unregister = registerMembershipSubscriber({

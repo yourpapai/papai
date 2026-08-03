@@ -7,9 +7,12 @@ import { generateText } from 'ai'
 
 import { emitUser } from './debug/event-bus.js'
 import { handleToolCallFinish } from './llm-orchestrator-support.js'
+import { classifyToolTerminal } from './llm-orchestrator-tool-terminal.js'
+import type { ToolTerminalClassification } from './llm-orchestrator-tool-terminal.js'
 import type { ToolCallContext } from './llm-orchestrator-types.js'
 import { logger } from './logger.js'
 import { buildToolFailureResult, isToolFailureResult } from './tool-failure.js'
+import type { ToolFailureResult } from './tool-failure.js'
 
 const log = logger.child({ scope: 'llm-orchestrator:tool-events' })
 
@@ -98,6 +101,7 @@ export const handleToolCallStart = (ctx: ToolCallContext, event: ToolCallStartEv
       toolName: event.toolCall.toolName,
       toolCallId: event.toolCall.toolCallId,
       argsBytes: safeByteLength(event.toolCall.input),
+      analyticsSourceId: analyticsSourceIdOf(ctx, event.toolCall.toolCallId),
       ...contextEnvelope(ctx),
     },
     ctx.turnId,
@@ -139,43 +143,81 @@ const adaptToolExecutionEnd = (event: ToolExecutionEndArg): ToolCallFinishEvent 
   }
 }
 
-const emitFailureClassified = (ctx: ToolCallContext, event: ToolCallFinishEvent): void => {
-  if (event.success && isToolFailureResult(event.output)) {
-    const failure = event.output
-    emitUser(
-      'tool:failure_classified',
-      ctx.contextId,
-      {
-        toolName: failure.toolName,
-        toolCallId: failure.toolCallId,
-        errorType: failure.errorType,
-        errorCode: failure.errorCode,
-        retryable: failure.retryable,
-        recovered: failure.recovered ?? false,
-        ...contextEnvelope(ctx),
-      },
-      ctx.turnId,
-    )
-  } else if (!event.success) {
-    const failure = buildToolFailureResult(event.error, event.toolCall.toolName, event.toolCall.toolCallId)
-    emitUser(
-      'tool:failure_classified',
-      ctx.contextId,
-      {
-        toolName: failure.toolName,
-        toolCallId: failure.toolCallId,
-        errorType: failure.errorType,
-        errorCode: failure.errorCode,
-        retryable: failure.retryable,
-        recovered: failure.recovered ?? false,
-        ...contextEnvelope(ctx),
-      },
-      ctx.turnId,
-    )
+const emitFailureClassified = (ctx: ToolCallContext, failure: ToolFailureResult | null): void => {
+  if (failure === null) return
+  emitUser(
+    'tool:failure_classified',
+    ctx.contextId,
+    {
+      toolName: failure.toolName,
+      toolCallId: failure.toolCallId,
+      errorType: failure.errorType,
+      errorCode: failure.errorCode,
+      retryable: failure.retryable,
+      recovered: failure.recovered ?? false,
+      ...contextEnvelope(ctx),
+    },
+    ctx.turnId,
+  )
+}
+
+/** One stable analytics source id per tool-call lifecycle, created at tool-request start. */
+const analyticsSourceIdOf = (ctx: ToolCallContext, toolCallId: string): string => `${ctx.turnId}:${toolCallId}`
+
+/**
+ * Exactly-one guard for the analytics terminal: a retried or repeated finish callback
+ * for the same tool-call lifecycle must not emit a second terminal. Keyed on the
+ * per-attempt context object so independent attempts never share state.
+ */
+const terminatedToolCalls = new WeakMap<ToolCallContext, Set<string>>()
+
+const alreadyTerminated = (ctx: ToolCallContext, toolCallId: string): boolean => {
+  const existing = terminatedToolCalls.get(ctx)
+  if (existing !== undefined) return existing.has(toolCallId)
+  return false
+}
+
+const markTerminated = (ctx: ToolCallContext, toolCallId: string): void => {
+  const existing = terminatedToolCalls.get(ctx)
+  if (existing !== undefined) {
+    existing.add(toolCallId)
+    return
   }
+  terminatedToolCalls.set(ctx, new Set([toolCallId]))
+}
+
+const emitAnalyticsCompleted = (
+  ctx: ToolCallContext,
+  event: ToolCallFinishEvent,
+  terminal: ToolTerminalClassification,
+): void => {
+  emitUser(
+    'tool:analytics_completed',
+    ctx.contextId,
+    {
+      toolName: event.toolCall.toolName,
+      toolCallId: event.toolCall.toolCallId,
+      analyticsSourceId: analyticsSourceIdOf(ctx, event.toolCall.toolCallId),
+      durationMs: Math.max(0, Math.round(event.durationMs)),
+      executionOutcome: terminal.outcome,
+      argsBytes: safeByteLength(event.toolCall.input),
+      resultBytes: event.success ? (safeByteLength(event.output) ?? 0) : 0,
+      errorClass: terminal.errorClass,
+      statusClass: terminal.statusClass,
+      retryable: terminal.retryable,
+      recoveredSameTurn: terminal.recoveredSameTurn,
+      ...contextEnvelope(ctx),
+    },
+    ctx.turnId,
+  )
 }
 
 export const handleToolCallFinishEvent = (ctx: ToolCallContext, event: ToolCallFinishEvent): void => {
+  const failure = event.success
+    ? isToolFailureResult(event.output)
+      ? event.output
+      : null
+    : buildToolFailureResult(event.error, event.toolCall.toolName, event.toolCall.toolCallId)
   emitUser(
     'tool:execute_end',
     ctx.contextId,
@@ -190,7 +232,11 @@ export const handleToolCallFinishEvent = (ctx: ToolCallContext, event: ToolCallF
     },
     ctx.turnId,
   )
-  emitFailureClassified(ctx, event)
+  emitFailureClassified(ctx, failure)
+  if (!alreadyTerminated(ctx, event.toolCall.toolCallId)) {
+    markTerminated(ctx, event.toolCall.toolCallId)
+    emitAnalyticsCompleted(ctx, event, classifyToolTerminal({ success: event.success, output: event.output }, failure))
+  }
   reportToolFinished(ctx, event)
   ctx.liveStatus?.onToolFinish()
   handleToolCallFinish(ctx.contextId, undefined, event)

@@ -6,6 +6,7 @@
 import type { generateText, isStepCount, LanguageModel, ModelMessage, ToolSet } from 'ai'
 
 import type { AiProgressReporter } from './ai-progress-reporter.js'
+import type { ProviderRequestScope } from './analytics/provider-request-scope.js'
 import type { StagedFileDownloadFn } from './attachments/types.js'
 import type { ChatParticipantResolver } from './chat/participants/roster.js'
 import type { ReplyFn } from './chat/types.js'
@@ -27,6 +28,7 @@ export type LlmOrchestratorDeps = {
     contextId: string,
     chatUserId: string,
     username: string | null,
+    scope: ProviderRequestScope,
   ) => Promise<boolean>
 } & Partial<Record<'stagedDownloadFn', StagedFileDownloadFn>> &
   Partial<Record<'chatParticipantResolver', ChatParticipantResolver>>
@@ -66,6 +68,7 @@ export type InvokeModelArgs = {
   enabledToolNames: ReadonlySet<string>
   messages: ModelMessage[]
   deps: LlmOrchestratorDeps
+  providerRequestScope: ProviderRequestScope
 } & Partial<Record<'progressReporter', AiProgressReporter>> &
   Partial<Record<'disclosure', DisclosureSession>> &
   Partial<Record<'liveStatus', LiveStatusReporter>>
@@ -96,6 +99,7 @@ export type GenerateArgs = {
   systemPrompt: string
   messages: InvokeModelArgs['messages']
   tools: InvokeModelArgs['tools']
+  toolsContext: Record<string, ProviderRequestScope>
   deps: LlmOrchestratorDeps
   disclosure: InvokeModelArgs['disclosure']
   ctx: ToolCallContext

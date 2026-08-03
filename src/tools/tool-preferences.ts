@@ -5,6 +5,8 @@
 
 import { clearCachedConfig, clearCachedToolsByPrefix, getCachedConfig, setCachedConfig } from '../cache.js'
 import { logger } from '../logger.js'
+import { RENAMED_TOOL_ALIASES } from './tool-aliases.js'
+import { toolErrorClass } from './tool-logging.js'
 import { getToolMetadata, TOOL_DOMAINS, type ToolDomain, type ToolRisk } from './tool-metadata.js'
 
 const log = logger.child({ scope: 'tools:preferences' })
@@ -58,8 +60,13 @@ function isToolRisk(value: string): value is ToolRisk {
 }
 
 export function resolveToolPermission(prefs: ToolPrefs, toolName: string): Permission {
-  const override = prefs.toolOverrides[toolName]
-  if (override !== undefined) return override
+  const direct = prefs.toolOverrides[toolName]
+  if (direct !== undefined) return direct
+  const alias = RENAMED_TOOL_ALIASES[toolName]
+  if (alias !== undefined) {
+    const legacy = prefs.toolOverrides[alias]
+    if (legacy !== undefined) return legacy
+  }
   const meta = getToolMetadata(toolName)
   if (meta === undefined) return 'allow'
   return prefs.domainDefaults[meta.domain] ?? (prefs.riskDefaults ?? {})[meta.risk] ?? 'allow'
@@ -126,7 +133,7 @@ export function parseToolPrefs(raw: string | null): ToolPrefs {
       toolOverrides: parseToolOverrides(parsed),
     }
   } catch (error) {
-    log.warn({ error: error instanceof Error ? error.message : String(error) }, 'Corrupt tool_prefs; using empty prefs')
+    log.warn({ errorClass: toolErrorClass(error) }, 'Corrupt tool_prefs; using empty prefs')
     return emptyPrefs()
   }
 }

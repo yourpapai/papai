@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { fmtBytes, fmtNum, formatDateTime } from '../../../client/shared/helpers'
+import { fmtBytes, fmtNum, formatDateTime, formatDuration } from '../../../client/shared/helpers.js'
 
 describe('fmtNum', () => {
   test('rounds to <=2dp by default and adds thousands separators', () => {
@@ -48,5 +48,21 @@ describe('fmtBytes', () => {
   test('returns em dash for null/undefined', () => {
     expect(fmtBytes(null)).toBe('—')
     expect(fmtBytes(undefined)).toBe('—')
+  })
+})
+
+describe('formatDuration', () => {
+  test('sub-second renders as ms', () => {
+    expect(formatDuration(950)).toBe('950ms')
+  })
+
+  test('seconds render with one decimal', () => {
+    expect(formatDuration(1234)).toBe('1.2s')
+    expect(formatDuration(540)).toBe('540ms')
+  })
+
+  test('invalid input renders a dash', () => {
+    expect(formatDuration(Number.NaN)).toBe('—')
+    expect(formatDuration(-5)).toBe('—')
   })
 })

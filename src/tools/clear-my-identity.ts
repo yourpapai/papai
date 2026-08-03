@@ -39,7 +39,7 @@ export function makeClearMyIdentityTool(
       "Clear the user's task tracker identity mapping. Use when user says things like 'I'm not Alice', 'That's not me', 'These aren't my tasks', or 'Unlink my account'.",
     inputSchema: z.object({}),
     execute: () => {
-      log.debug({ chatUserId }, 'clear_my_identity called')
+      log.debug('clear_my_identity called')
 
       const existing = deps.getIdentityMapping(chatUserId, provider.name, deps)
       if (existing === null || existing.providerUserId === null) {
@@ -51,7 +51,7 @@ export function makeClearMyIdentityTool(
 
       deps.clearIdentityMapping(chatUserId, provider.name, deps)
 
-      log.info({ chatUserId }, 'Identity cleared via NL')
+      log.info('Identity cleared via NL')
       return {
         status: 'success',
         message: "Okay, I've unlinked you. Tell me your correct login (e.g., 'I'm jsmith').",

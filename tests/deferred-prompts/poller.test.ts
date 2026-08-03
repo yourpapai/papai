@@ -7,6 +7,7 @@ import { afterEach, mock, beforeEach, describe, expect, spyOn, test } from 'bun:
 
 import type { ModelMessage } from 'ai'
 
+import { createActorProviderRequestScope, NO_ANALYTICS_SCOPE } from '../../src/analytics/provider-request-scope.js'
 import { setCachedConfig } from '../../src/cache.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import type { ChatProvider, DeferredDeliveryTarget } from '../../src/chat/types.js'
@@ -983,6 +984,72 @@ describe('pollAlertsOnce', () => {
 
     expect(sentMessages).toHaveLength(1)
     expect(sentMessages[0]!.text).toBe('Alert triggered.')
+  })
+
+  test('resolves an independent proactive scope per instance for overlapping owners', async () => {
+    const otherUser = 'poller-user-2'
+    setConfig(otherUser, 'timezone', 'UTC')
+    setContextSettings({ contextId: otherUser, taskInstanceId: 'kaneo-default', platformInstanceId: 'mock-default' })
+    createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
+    createAlertPrompt(otherUser, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
+
+    const provider = createMockProvider({
+      listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
+      listTasks: mock(() =>
+        Promise.resolve([{ id: 'task-1', title: 'Completed Task', status: 'done', url: 'http://test/1' }]),
+      ),
+    })
+
+    const scopeInputs: string[] = []
+    const scopes: unknown[] = []
+    await pollAlertsOnce(chat, () => provider, {
+      resolveScope: (input) => {
+        scopeInputs.push(input.createdByUserId)
+        const scope = createActorProviderRequestScope({
+          requestContext: {
+            source: {
+              platform: 'telegram',
+              platformInstanceId: 'mock-default',
+              chatUserId: input.createdByUserId,
+              nativeContextId: input.deliveryTarget.contextId,
+              storageContextId: input.deliveryTarget.contextId,
+              configContextId: input.deliveryTarget.contextId,
+              contextType: 'dm',
+              actorRole: 'member',
+              taskInstanceId: null,
+              taskProvider: 'none',
+              invocationMode: 'proactive',
+              rawTurnId: null,
+            },
+            sourceEventId: `proactive:${input.createdByUserId}`,
+          },
+          observeProviderRequest: () => {},
+        })
+        scopes.push(scope)
+        return scope
+      },
+    })
+
+    expect(scopeInputs.toSorted()).toEqual([USER_ID, otherUser].toSorted())
+    expect(scopes[0]).not.toBe(scopes[1])
+    expect(sentMessages).toHaveLength(2)
+  })
+
+  test('operational NO_ANALYTICS_SCOPE still runs the alert cycle', async () => {
+    createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
+
+    const listProjects = mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }]))
+    const provider = createMockProvider({
+      listProjects,
+      listTasks: mock(() =>
+        Promise.resolve([{ id: 'task-1', title: 'Completed Task', status: 'done', url: 'http://test/1' }]),
+      ),
+    })
+
+    await pollAlertsOnce(chat, () => provider, { resolveScope: () => NO_ANALYTICS_SCOPE })
+
+    expect(listProjects).toHaveBeenCalled()
+    expect(sentMessages).toHaveLength(1)
   })
 
   test('does not update alert trigger time when delivery fails', async () => {

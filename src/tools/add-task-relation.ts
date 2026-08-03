@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:add-task-relation' })
 
@@ -28,14 +29,7 @@ export function makeAddTaskRelationTool(provider: TaskProvider): Tool {
       try {
         return await provider.addRelation!(taskId, relatedTaskId, type)
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            taskId,
-            tool: 'add_task_relation',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('add_task_relation', error), 'Tool execution failed')
         throw error
       }
     },

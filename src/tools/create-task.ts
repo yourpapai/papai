@@ -13,6 +13,7 @@ import { resolveMeReference } from '../identity/resolver.js'
 import { logger } from '../logger.js'
 import { providerError, ProviderClassifiedError } from '../providers/errors.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolFailureMeta } from './tool-logging.js'
 
 const log = logger.child({ scope: 'tool:create-task' })
 
@@ -92,14 +93,7 @@ async function executeCreateTask(
     assignee: resolvedAssignee,
     customFields,
   })
-  log.info(
-    {
-      taskId: task.id,
-      title,
-      hasCustomFields: customFields !== undefined && customFields.length > 0,
-    },
-    'Task created via tool',
-  )
+  log.info({ hasCustomFields: customFields !== undefined && customFields.length > 0 }, 'Task created via tool')
   return { ...task, dueDate: provider.formatDueDateOutput(task.dueDate, timezone) }
 }
 
@@ -146,14 +140,7 @@ export function makeCreateTaskTool(provider: TaskProvider, userId?: string, stor
       try {
         return await executeCreateTask(params, userId, storageContextId, provider)
       } catch (error) {
-        log.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            title: params.title,
-            tool: 'create_task',
-          },
-          'Tool execution failed',
-        )
+        log.error(toolFailureMeta('create_task', error), 'Tool execution failed')
         throw error
       }
     },

@@ -5,7 +5,38 @@
 
 import { jsonSchema, tool, type ToolSet } from 'ai'
 
+import { observeActiveFeatureUsed } from '../analytics/feature-observer.js'
+import {
+  classifyProviderError,
+  createProviderRequestClock,
+  type ProviderRequestObservation,
+} from '../analytics/provider-observer.js'
+import { type ProviderRequestScope, requireProviderRequestScope } from '../analytics/provider-request-scope.js'
 import { type McpToolFilter, sanitizeServerId } from './types.js'
+
+/** Emits the controlled MCP request observation; never throws, never carries tool names or arguments. */
+const observeMcpRequest = (
+  scope: ProviderRequestScope,
+  clock: Readonly<{ elapsedMs: () => number }>,
+  operation: ProviderRequestObservation['operation'],
+  caught: unknown,
+): void => {
+  if (scope.kind !== 'actor') return
+  const classification =
+    caught === null ? { statusClass: '2xx' as const, retryable: null } : classifyProviderError(caught)
+  try {
+    scope.observeProviderRequest(scope.requestContext, {
+      provider: 'mcp',
+      operation,
+      durationMs: clock.elapsedMs(),
+      outcome: caught === null ? 'success' : 'failure',
+      statusClass: classification.statusClass,
+      retryable: classification.retryable,
+    })
+  } catch {
+    // Observation must never change MCP behavior.
+  }
+}
 
 export type McpToolDef = {
   name: string
@@ -13,15 +44,52 @@ export type McpToolDef = {
   inputSchema?: Record<string, unknown>
 }
 
+/** Marker passed to the boundary classifier when the MCP server returns `isError` without throwing. */
+const TOOL_ERROR_MARKER = new Error('mcp tool error')
+
+type McpClientHandle = {
+  callTool: (params: {
+    name: string
+    arguments?: Record<string, unknown>
+  }) => Promise<{ content: unknown; isError?: boolean }>
+}
+
+const buildMcpToolExecute = (mcpTool: McpToolDef, client: McpClientHandle) => {
+  return async (args: unknown): Promise<unknown> => {
+    const scope = requireProviderRequestScope()
+    const clock = createProviderRequestClock()
+    let caught: unknown = null
+    let toolError = false
+    try {
+      const response = await client.callTool({
+        name: mcpTool.name,
+        arguments: toRecord(args),
+      })
+
+      if (response.isError === true) {
+        toolError = true
+        observeActiveFeatureUsed({ feature: 'mcp', operation: 'read', outcome: 'failure' })
+        const textParts = extractText(response.content)
+        return { error: textParts.join('\n') || 'MCP tool returned an error' }
+      }
+
+      observeActiveFeatureUsed({ feature: 'mcp', operation: 'read', outcome: 'success' })
+      const textParts = extractText(response.content)
+      return textParts.join('\n')
+    } catch (error: unknown) {
+      caught = error
+      observeActiveFeatureUsed({ feature: 'mcp', operation: 'read', outcome: 'failure' })
+      return { error: error instanceof Error ? error.message : String(error) }
+    } finally {
+      observeMcpRequest(scope, clock, 'other', caught ?? (toolError ? TOOL_ERROR_MARKER : null))
+    }
+  }
+}
+
 export function convertMcpToolsToToolSet(
   serverId: string,
   mcpTools: McpToolDef[],
-  client: {
-    callTool: (params: {
-      name: string
-      arguments?: Record<string, unknown>
-    }) => Promise<{ content: unknown; isError?: boolean }>
-  },
+  client: McpClientHandle,
   toolFilter?: McpToolFilter,
 ): ToolSet {
   const filtered = applyToolFilter(mcpTools, toolFilter)
@@ -35,24 +103,7 @@ export function convertMcpToolsToToolSet(
     result[namespacedName] = tool({
       description: mcpTool.description ?? '',
       inputSchema,
-      execute: async (args) => {
-        try {
-          const response = await client.callTool({
-            name: mcpTool.name,
-            arguments: toRecord(args),
-          })
-
-          if (response.isError === true) {
-            const textParts = extractText(response.content)
-            return { error: textParts.join('\n') || 'MCP tool returned an error' }
-          }
-
-          const textParts = extractText(response.content)
-          return textParts.join('\n')
-        } catch (error: unknown) {
-          return { error: error instanceof Error ? error.message : String(error) }
-        }
-      },
+      execute: buildMcpToolExecute(mcpTool, client),
     })
   }
 

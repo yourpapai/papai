@@ -63,12 +63,12 @@
 {#if session.facts !== undefined && session.facts.length > 0}
   <div class="session-detail-section">
     <h4>Facts ({session.facts.length})</h4>
-    <div class="tool-calls-list">
+    <div class="facts-list">
       {#each session.facts as fact (fact.identifier)}
-        <div class="tool-call-item">
-          <div class="tool-call-summary">
-            <span class="tool-name">{fact.title}</span>
-            <span class="tool-id">{fact.identifier}</span>
+        <div class="fact-item">
+          <div class="fact-summary">
+            <span class="fact-title">{fact.title}</span>
+            <span class="fact-id">{fact.identifier}</span>
           </div>
           <div class="tool-call-id">{fact.url}</div>
           <div class="tool-section">
@@ -118,3 +118,115 @@
     </div>
   </div>
 {/if}
+
+<style>
+  .facts-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .fact-item {
+    background: var(--raised);
+    border-left: 3px solid var(--accent);
+    padding: 12px;
+  }
+
+  .fact-summary {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+
+  .fact-summary .fact-title {
+    font-weight: bold;
+    color: var(--accent);
+  }
+
+  .fact-id {
+    color: var(--fg3);
+    font-size: 11px;
+    word-break: break-all;
+  }
+
+  /* Instructions list */
+  .instructions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .instruction-item {
+    background: var(--surface);
+    padding: 8px 12px;
+    border-radius: 2px;
+    border-left: 2px solid var(--warn);
+  }
+
+  .instruction-item .instruction-text {
+    color: var(--fg);
+    font-size: 11px;
+    white-space: pre-wrap;
+    margin-bottom: 4px;
+  }
+
+  .instruction-item .instruction-meta {
+    color: var(--fg3);
+    font-size: 10px;
+  }
+
+  /* History list */
+  .history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .history-item {
+    background: var(--surface);
+    padding: 10px 12px;
+    border-radius: 2px;
+    border-left: 2px solid transparent;
+  }
+
+  .history-item.user {
+    border-left-color: var(--info);
+  }
+
+  .history-item.assistant {
+    border-left-color: var(--accent);
+  }
+
+  .history-item.system {
+    border-left-color: var(--warn);
+  }
+
+  .history-item.tool {
+    border-left-color: var(--danger);
+  }
+
+  .history-item .history-role {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--fg3);
+    margin-bottom: 4px;
+  }
+
+  .history-item .history-content {
+    color: var(--fg);
+    font-size: 11px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .history-item .history-meta {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border);
+    font-size: 10px;
+    color: var(--fg3);
+  }
+</style>

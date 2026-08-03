@@ -12,6 +12,8 @@ const requireDefined = <T>(value: T | undefined): T => {
   return value
 }
 
+const toNumericId = (id: string): number => Number.parseInt(id.split('_')[0] ?? '0', 10)
+
 describe('MIGRATIONS list', () => {
   test('includes migration 040_platform_instances', () => {
     const ids = MIGRATIONS.map((m) => m.id)
@@ -28,8 +30,25 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('070_message_metadata_history_search')
   })
 
-  test('071_message_embeddings is the last migration', () => {
+  test('075_analytics_materializations is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('071_message_embeddings')
+    expect(lastMigration.id).toBe('075_analytics_materializations')
+  })
+
+  test('075_analytics_materializations is registered immediately after 074_analytics_delivery', () => {
+    const ids = MIGRATIONS.map((m) => m.id)
+    const deliveryIndex = ids.indexOf('074_analytics_delivery')
+    expect(deliveryIndex).toBeGreaterThanOrEqual(0)
+    expect(ids[deliveryIndex + 1]).toBe('075_analytics_materializations')
+  })
+
+  test('migration ids are unique', () => {
+    const ids = MIGRATIONS.map((m) => m.id)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  test('migration ids are strictly ordered', () => {
+    const numericIds = MIGRATIONS.map((m) => toNumericId(m.id))
+    expect(numericIds).toEqual([...numericIds].sort((a, b) => a - b))
   })
 })

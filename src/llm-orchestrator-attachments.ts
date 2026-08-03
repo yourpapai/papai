@@ -15,6 +15,7 @@ import {
 } from './attachments/index.js'
 import type { AttachmentRef, StoredAttachment } from './attachments/types.js'
 import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
+import type { MessageSegment, PapaiTurnMeta } from './message-edit/segments.js'
 import { hasContextTransformers, transformNewAttachments, type TransformLine } from './plugins/attachment-transform.js'
 import { getUserTimezoneOrDefault } from './utils/config-timezone.js'
 import { formatCurrentTimeTag } from './utils/current-time-format.js'
@@ -23,6 +24,39 @@ type AttachmentPart =
   | { type: 'text'; text: string }
   | { type: 'image'; image: Buffer; mediaType?: string }
   | { type: 'file'; data: Buffer; filename?: string; mediaType: string }
+
+/**
+ * Build the `providerOptions.papai` block for a user turn, or `undefined` when
+ * there are no segments (legacy/no messageIds). Returning `undefined` lets the
+ * caller omit the property entirely, so `applyEditToHistory` cleanly no-ops on
+ * pre-feature history. Arrays are copied as mutable so the result satisfies the
+ * AI SDK's `SharedV4ProviderOptions` (JSONObject) shape.
+ */
+const buildPapaiMeta = (
+  segments: readonly MessageSegment[],
+  opts: { isThread: boolean; isDm: boolean },
+): PapaiTurnMeta | undefined => {
+  if (segments.length === 0) return undefined
+  return {
+    messageIds: segments.map((s) => s.messageId),
+    segments: segments.map((s) => ({ ...s })),
+    isThread: opts.isThread,
+    isDm: opts.isDm,
+  }
+}
+
+/**
+ * Attach `providerOptions.papai` (when defined) to a user `historyMessage`.
+ * Returns a new message rather than mutating; `providerOptions` is merged
+ * with any caller-supplied options.
+ */
+const withPapaiMeta = (msg: ModelMessage, meta: PapaiTurnMeta | undefined): ModelMessage => {
+  if (meta === undefined) return msg
+  return {
+    ...msg,
+    providerOptions: { ...msg.providerOptions, papai: meta },
+  } as ModelMessage
+}
 
 const recordToPart = (record: StoredAttachment): AttachmentPart | null => {
   // Audio bytes never reach the LLM as content parts; transcripts (when a
@@ -86,6 +120,7 @@ const buildFullPathMessages = async (
   text: string,
   selected: readonly AttachmentRef[],
   newAttachmentIds: readonly string[],
+  papaiMeta: PapaiTurnMeta | undefined,
 ): Promise<{ modelMessage: ModelMessage; historyMessage: ModelMessage }> => {
   const records = await loadAttachmentRecords(contextId, selected)
   const newIds = new Set(newAttachmentIds)
@@ -108,9 +143,15 @@ const buildFullPathMessages = async (
       if (part !== null) parts.push(part)
     }
     parts.push({ type: 'text', text: liveContent })
-    return { modelMessage: { role: 'user', content: parts } as ModelMessage, historyMessage }
+    return {
+      modelMessage: { role: 'user', content: parts } as ModelMessage,
+      historyMessage: withPapaiMeta(historyMessage, papaiMeta),
+    }
   }
-  return { modelMessage: { role: 'user', content: liveContent } as ModelMessage, historyMessage }
+  return {
+    modelMessage: { role: 'user', content: liveContent } as ModelMessage,
+    historyMessage: withPapaiMeta(historyMessage, papaiMeta),
+  }
 }
 
 export const buildUserTurnMessages = (
@@ -119,7 +160,10 @@ export const buildUserTurnMessages = (
   modelName: string,
   text: string,
   newAttachmentIds: readonly string[],
+  segments: readonly MessageSegment[] = [],
+  contextOpts: { isThread: boolean; isDm: boolean } = { isThread: false, isDm: true },
 ): Promise<{ modelMessage: ModelMessage; historyMessage: ModelMessage }> => {
+  const papaiMeta = buildPapaiMeta(segments, contextOpts)
   // Timezone is stored under the (thread-stripped) config-context id, not the raw chatUserId.
   // `contextId` here is the thread-scoped storageContextId, so strip it to the config-context id
   // before the lookup (DM: no-op; group thread: drops the :thread: suffix).
@@ -128,7 +172,7 @@ export const buildUserTurnMessages = (
   const prefixedText = `${timeTag}\n${text}`
   const textOnly = {
     modelMessage: { role: 'user', content: prefixedText } as ModelMessage,
-    historyMessage: { role: 'user', content: prefixedText } as ModelMessage,
+    historyMessage: withPapaiMeta({ role: 'user', content: prefixedText } as ModelMessage, papaiMeta),
   }
   if (!isS3Configured()) return Promise.resolve(textOnly)
   const activeAttachments = listActiveAttachments(contextId)
@@ -144,8 +188,11 @@ export const buildUserTurnMessages = (
     const { liveLines, historyLines } = buildTurnLines(selected, new Map())
     return Promise.resolve({
       modelMessage: { role: 'user', content: formatTurnContent(timeTag, liveLines, text) } as ModelMessage,
-      historyMessage: { role: 'user', content: formatTurnContent(timeTag, historyLines, text) } as ModelMessage,
+      historyMessage: withPapaiMeta(
+        { role: 'user', content: formatTurnContent(timeTag, historyLines, text) } as ModelMessage,
+        papaiMeta,
+      ),
     })
   }
-  return buildFullPathMessages(contextId, chatUserId, modelName, timeTag, text, selected, newAttachmentIds)
+  return buildFullPathMessages(contextId, chatUserId, modelName, timeTag, text, selected, newAttachmentIds, papaiMeta)
 }

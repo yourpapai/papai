@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ReplyFn } from '../chat/types.js'
+import type { ReplyFn, ReplyTarget } from '../chat/types.js'
 
 /** A side-effecting tool action that completed during a run. */
 export type EffectRecord = { toolName: string }
@@ -17,6 +17,13 @@ export type RunControl = {
   readonly turnId: string
   readonly reply: ReplyFn
   readonly abortController: AbortController
+  readonly originatingMessageIds: readonly string[]
+  /**
+   * Where the assistant's reply for this run should be posted. Starts `undefined`;
+   * `sendLlmResponse` populates it from the adapter's `lastReplyTarget()` once the
+   * reply posts, so later W2 edit classification can revise that message in place.
+   */
+  replyTarget: ReplyTarget | undefined
   steerQueue: InjectedMessage[]
   stopRequested: boolean
   completedEffects: EffectRecord[]

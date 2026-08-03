@@ -134,6 +134,95 @@ describe('buildTelegramReplyFn', () => {
   })
 })
 
+describe('buildTelegramReplyFn editReply + lastReplyTarget', () => {
+  beforeEach(() => {
+    mockLogger()
+  })
+
+  type EditCall = { chatId: number; messageId: number; text: string; other: unknown }
+
+  function makeApi(): { api: Record<string, unknown>; edits: EditCall[] } {
+    const edits: EditCall[] = []
+    return {
+      api: {
+        editMessageText: (chatId: number, messageId: number, text: string, other?: unknown): Promise<unknown> => {
+          edits.push({ chatId, messageId, text, other })
+          return Promise.resolve()
+        },
+        deleteMessage: (): Promise<unknown> => Promise.resolve(),
+      },
+      edits,
+    }
+  }
+
+  function makeCtx(): Record<string, unknown> {
+    return {
+      chat: { id: 99, type: 'private' },
+      message: { message_id: 321 },
+      reply: (): Promise<{ message_id: number; chat: { id: number } }> =>
+        Promise.resolve({ message_id: 555, chat: { id: 99 } }),
+      replyWithChatAction: (): Promise<void> => Promise.resolve(),
+    }
+  }
+
+  function buildReply(ctx: Record<string, unknown>, api: Record<string, unknown>): ReplyFn {
+    const buildFn: unknown = Reflect.get({ buildTelegramReplyFn }, 'buildTelegramReplyFn')
+    assert(typeof buildFn === 'function', 'buildTelegramReplyFn is callable')
+    const reply: unknown = Reflect.apply(buildFn, undefined, [ctx, undefined, false, api])
+    assert(isReplyFn(reply), 'Expected a ReplyFn')
+    return reply
+  }
+
+  test('formatted captures the sent message id/chatId via lastReplyTarget()', async () => {
+    const { api } = makeApi()
+    const reply = buildReply(makeCtx(), api)
+
+    assert(reply.lastReplyTarget !== undefined, 'expected lastReplyTarget accessor')
+    expect(reply.lastReplyTarget()).toBeUndefined()
+
+    await reply.formatted('**hello**')
+
+    expect(reply.lastReplyTarget()).toEqual({
+      platform: 'telegram',
+      ref: { messageId: 555, chatId: 99 },
+    })
+  })
+
+  test('editReply calls api.editMessageText with the captured id and formatted entities', async () => {
+    const { api, edits } = makeApi()
+    const reply = buildReply(makeCtx(), api)
+
+    await reply.formatted('original')
+    assert(reply.lastReplyTarget !== undefined, 'expected lastReplyTarget accessor')
+    const target = reply.lastReplyTarget()
+    assert(target !== undefined, 'expected a captured target')
+
+    assert(reply.editReply !== undefined, 'expected editReply')
+    await reply.editReply(target, '**updated**')
+
+    expect(edits).toHaveLength(1)
+    expect(edits[0]!.chatId).toBe(99)
+    expect(edits[0]!.messageId).toBe(555)
+    assert(edits[0]!.other !== undefined, 'expected formatted options passed through')
+  })
+
+  test('editReply swallows platform errors (never throws)', async () => {
+    const api = {
+      editMessageText: (): Promise<never> => Promise.reject(new Error('edit failed')),
+      deleteMessage: (): Promise<unknown> => Promise.resolve(),
+    }
+    const reply = buildReply(makeCtx(), api)
+
+    await reply.formatted('original')
+    assert(reply.lastReplyTarget !== undefined, 'expected lastReplyTarget accessor')
+    const target = reply.lastReplyTarget()
+    assert(target !== undefined, 'expected a captured target')
+
+    assert(reply.editReply !== undefined, 'expected editReply')
+    await expect(reply.editReply(target, 'new text')).resolves.toBeUndefined()
+  })
+})
+
 describe('buildTelegramReplyFn createStatus', () => {
   beforeEach(() => {
     mockLogger()

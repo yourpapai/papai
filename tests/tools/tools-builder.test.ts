@@ -118,7 +118,7 @@ describe('buildTools', () => {
     expect(listMemos(rawChatUserId).map((memo) => memo.content)).not.toContain('scoped memo')
     expect(listRecurringTasks(scopedContextId).map((task) => task.title)).toContain('Scoped recurring')
     expect(listRecurringTasks(rawChatUserId).map((task) => task.title)).not.toContain('Scoped recurring')
-    const deferredList = await getToolExecutor(tools['list_deferred_prompts'])({})
+    const deferredList = await getToolExecutor(tools['list_reminders'])({})
     expect(isDeferredListResult(deferredList)).toBe(true)
     assertDeferredListResult(deferredList)
     expect(deferredList.prompts.map((prompt) => prompt.prompt)).toContain('scoped owner alert')
@@ -150,7 +150,7 @@ describe('buildTools', () => {
       projectId: 'project-1',
       triggerType: 'on_complete',
     })
-    await getToolExecutor(tools['create_deferred_prompt'])({
+    await getToolExecutor(tools['create_alert'])({
       prompt: 'Check blocked tasks',
       condition: { field: 'task.status', op: 'eq', value: 'blocked' },
       execution: { delivery_brief: 'Report blocked tasks' },
@@ -394,8 +394,9 @@ describe('buildTools', () => {
     const provider = createMockProvider()
     const tools = buildTools(provider, 'user-123', 'user-123', 'normal')
 
-    expect(tools).toHaveProperty('create_deferred_prompt')
-    expect(tools).toHaveProperty('list_deferred_prompts')
+    expect(tools).toHaveProperty('create_reminder')
+    expect(tools).toHaveProperty('list_reminders')
+    expect(tools).toHaveProperty('create_alert')
   })
 
   it('should expose agile and sprint tools when phase-five capabilities are present', () => {
@@ -499,8 +500,8 @@ describe('buildTools', () => {
     const provider = createMockProvider()
     const tools = buildTools(provider, 'user-123', 'user-123', 'proactive')
 
-    expect(tools).not.toHaveProperty('create_deferred_prompt')
-    expect(tools).not.toHaveProperty('list_deferred_prompts')
+    expect(tools).not.toHaveProperty('create_reminder')
+    expect(tools).not.toHaveProperty('list_reminders')
   })
 
   it('should not add user-scoped tools when userId is undefined', () => {
@@ -553,8 +554,8 @@ describe('buildTools', () => {
     expect(tools).toHaveProperty('delete_instruction')
     expect(tools).toHaveProperty('lookup_group_history')
     expect(tools).toHaveProperty('web_fetch')
-    expect(tools).toHaveProperty('create_deferred_prompt')
-    expect(tools).toHaveProperty('list_deferred_prompts')
+    expect(tools).toHaveProperty('create_reminder')
+    expect(tools).toHaveProperty('list_reminders')
 
     expect(tools).not.toHaveProperty('create_task')
     expect(tools).not.toHaveProperty('update_task')
@@ -569,30 +570,24 @@ describe('buildTools', () => {
     expect(tools).not.toHaveProperty('promote_memo')
   })
 
-  it('exposes only schedule-based deferred prompt creation in providerless mode', async () => {
+  it('exposes only schedule-based reminder creation in providerless mode (no create_alert)', () => {
     const tools = buildProviderlessTools('user-123', 'group-456:thread-1', 'normal')
-    const createDeferredPrompt = tools['create_deferred_prompt']
+    const createReminder = tools['create_reminder']
 
-    expect(createDeferredPrompt).toBeDefined()
+    expect(createReminder).toBeDefined()
+    expect(tools).not.toHaveProperty('create_alert')
     expect(
-      schemaValidates(createDeferredPrompt!, {
+      schemaValidates(createReminder!, {
         prompt: 'Remind me later',
         schedule: { fire_at: { date: '2027-01-15', time: '09:00' } },
       }),
     ).toBe(true)
     expect(
-      schemaValidates(createDeferredPrompt!, {
+      schemaValidates(createReminder!, {
         prompt: 'Alert me when a task is blocked',
         condition: { field: 'task.status', op: 'eq', value: 'blocked' },
       }),
     ).toBe(false)
-
-    const result = await getToolExecutor(createDeferredPrompt!)({
-      prompt: 'Alert me when a task is blocked',
-      condition: { field: 'task.status', op: 'eq', value: 'blocked' },
-    })
-
-    expect(result).toEqual({ error: 'Task-dependent deferred alerts require a task provider.' })
   })
 
   it('should add lookup_group_history when contextId is a legacy thread', () => {
@@ -1041,5 +1036,268 @@ describe('makeTools direct integration', () => {
     expect(tools).not.toHaveProperty('plugin_task_six_missing_config_plugin__runtime_echo')
 
     contributionRegistry.deregister(pluginId)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Provider request scope closure: descriptor sets stay scope-free; the single
+// finalize pass attaches the strict contextSchema + outer wrapper to every
+// executable descriptor while preserving guest/ask/deny/compaction/disclosure.
+// ---------------------------------------------------------------------------
+
+import type { ToolSet } from 'ai'
+
+import {
+  createActorProviderRequestScope,
+  type ActorProviderRequestScope,
+} from '../../src/analytics/provider-request-scope.js'
+import type { AnalyticsSourceContext } from '../../src/analytics/source-facts.js'
+import { isToolFailureResult } from '../../src/tool-failure.js'
+import { applyResultCompaction } from '../../src/tools/compaction/wrap-compaction.js'
+import { LexicalToolRetriever } from '../../src/tools/disclosure/tool-retriever.js'
+import { maybeApplyDisclosure } from '../../src/tools/disclosure/wire.js'
+import { applyGuestReadOnlyFilter } from '../../src/tools/index.js'
+import { finalizeProviderScopedTools, providerRequestScopeContextSchema } from '../../src/tools/wrap-tool-execution.js'
+import { createMockYouTrackProvider } from './mock-provider.js'
+
+const SCOPE_CONDITIONAL_TOOL_NAMES = [
+  // core task tools
+  'create_task',
+  'update_task',
+  'search_tasks',
+  'list_tasks',
+  'get_task',
+  'delete_task',
+  'count_tasks',
+  'get_current_time',
+  // projects
+  'get_project',
+  'list_projects',
+  'describe_project',
+  'create_project',
+  'update_project',
+  'delete_project',
+  'list_project_team',
+  'add_project_member',
+  'remove_project_member',
+  // comments
+  'get_comments',
+  'add_comment',
+  'update_comment',
+  'remove_comment',
+  'add_comment_reaction',
+  'remove_comment_reaction',
+  // labels
+  'list_labels',
+  'create_label',
+  'update_label',
+  'remove_label',
+  'add_task_label',
+  'remove_task_label',
+  // relations
+  'add_task_relation',
+  'update_task_relation',
+  'remove_task_relation',
+  // statuses
+  'list_statuses',
+  'create_status',
+  'update_status',
+  'delete_status',
+  'reorder_statuses',
+  // attachments
+  'list_attachments',
+  'upload_attachment',
+  'remove_attachment',
+  // work items
+  'list_work',
+  'log_work',
+  'update_work',
+  'remove_work',
+  // sprints + agiles
+  'list_agiles',
+  'list_sprints',
+  'create_sprint',
+  'update_sprint',
+  'assign_task_to_sprint',
+  // queries/history/commands
+  'get_task_history',
+  'list_saved_queries',
+  'run_saved_query',
+  'apply_youtrack_command',
+  // identity
+  'set_my_identity',
+  'clear_my_identity',
+  'get_current_user',
+  // watchers, votes, visibility, users
+  'list_watchers',
+  'add_watcher',
+  'remove_watcher',
+  'add_vote',
+  'remove_vote',
+  'set_visibility',
+  'find_user',
+] as const
+
+const scopeTestSource = (): AnalyticsSourceContext => ({
+  platform: 'telegram',
+  platformInstanceId: 'pi-scope',
+  chatUserId: 'user-scope',
+  nativeContextId: 'chat-scope',
+  storageContextId: 'pi-scope:chat-scope',
+  configContextId: 'pi-scope:chat-scope',
+  contextType: 'group',
+  actorRole: 'member',
+  taskInstanceId: 'ti-scope',
+  taskProvider: 'youtrack',
+  invocationMode: 'normal',
+  rawTurnId: 'turn-scope',
+})
+
+const makeScopeTestActorScope = (): ActorProviderRequestScope =>
+  createActorProviderRequestScope({
+    requestContext: { source: scopeTestSource(), sourceEventId: 'turn-scope:scope' },
+    observeProviderRequest: () => {},
+  })
+
+const noContextOptions = (toolCallId: string): { toolCallId: string; messages: never[] } => ({
+  toolCallId,
+  messages: [],
+})
+
+const expectEveryExecutableFailsClosed = (tools: ToolSet): void => {
+  for (const [name, descriptor] of Object.entries(tools)) {
+    expect(descriptor, name).toBeDefined()
+    expect(descriptor.contextSchema, name).toBe(providerRequestScopeContextSchema)
+  }
+}
+
+const expectScopeMissingFailure = (failure: unknown, name: string): void => {
+  expect(isToolFailureResult(failure), name).toBe(true)
+  if (!isToolFailureResult(failure)) throw new Error(`expected tool failure result for ${name}`)
+  expect(failure.errorCode, name).toBe('provider_scope_missing')
+}
+
+describe('provider request scope closure', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  it('all-capability set covers every conditional tool family and stays scope-free', () => {
+    const provider = createMockYouTrackProvider({
+      identityResolver: { searchUsers: () => Promise.resolve([]) },
+      describeProjectFields: mock(() => Promise.resolve([])),
+    })
+
+    const tools = buildTools(provider, 'user-123', 'group-123', 'normal', 'group')
+
+    for (const name of SCOPE_CONDITIONAL_TOOL_NAMES) {
+      expect(tools[name], name).toBeDefined()
+      expect(tools[name]!.contextSchema, name).toBeUndefined()
+      expect(tools[name]!.execute, name).toBeDefined()
+    }
+  })
+
+  it('minimal-capability set keeps core tools scope-free and omits conditional families', () => {
+    const provider = createMockProvider({
+      capabilities: new Set(),
+      traits: new Set(),
+    })
+
+    const tools = buildTools(provider, 'user-123', 'user-123', 'normal')
+
+    expect(tools).toHaveProperty('create_task')
+    expect(tools).toHaveProperty('get_current_time')
+    expect(tools).not.toHaveProperty('list_projects')
+    expect(tools).not.toHaveProperty('add_watcher')
+    expect(tools).not.toHaveProperty('set_visibility')
+    for (const [name, descriptor] of Object.entries(tools)) {
+      expect(descriptor.contextSchema, name).toBeUndefined()
+    }
+  })
+
+  it('providerless set stays scope-free', () => {
+    const tools = buildProviderlessTools('user-123', 'user-123', 'normal')
+
+    expect(Object.keys(tools).length).toBeGreaterThan(0)
+    for (const [name, descriptor] of Object.entries(tools)) {
+      expect(descriptor.contextSchema, name).toBeUndefined()
+    }
+  })
+
+  it('descriptor executes do not consult ToolExecutionOptions.context before the finalize pass', async () => {
+    const listTasks = mock(() => Promise.resolve([]))
+    const provider = createMockProvider({ listTasks })
+    const tools = buildTools(provider, 'user-123', 'user-123', 'normal')
+
+    const result = await getToolExecutor(tools['list_tasks']!)({ projectId: 'p' }, noContextOptions('call-raw'))
+
+    expect(result).toEqual([])
+    expect(listTasks).toHaveBeenCalled()
+  })
+
+  it('finalize wraps every executable of an all-capability set and fails closed per call context', async () => {
+    const provider = createMockYouTrackProvider({
+      identityResolver: { searchUsers: () => Promise.resolve([]) },
+    })
+    const descriptors = buildTools(provider, 'user-123', 'group-123', 'normal', 'group')
+
+    const finalized = finalizeProviderScopedTools(descriptors)
+
+    expectEveryExecutableFailsClosed(finalized)
+    for (const [name, descriptor] of Object.entries(finalized)) {
+      const failure: unknown = await descriptor.execute!({}, { toolCallId: `call-${name}`, messages: [], context: {} })
+      expectScopeMissingFailure(failure, name)
+    }
+  })
+
+  it('preserves guest read-only filtering through the finalize pass', async () => {
+    const provider = createMockProvider()
+    const descriptors = buildTools(provider, 'user-123', 'group-123', 'normal', 'group')
+
+    const guest = applyGuestReadOnlyFilter(descriptors)
+    const finalized = finalizeProviderScopedTools(guest)
+
+    expect(Object.keys(finalized)).toContain('list_tasks')
+    expect(Object.keys(finalized)).not.toContain('create_task')
+    expectEveryExecutableFailsClosed(finalized)
+    const scope = makeScopeTestActorScope()
+    const out: unknown = await finalized['list_tasks']!.execute!(
+      { projectId: 'p' },
+      { toolCallId: 'call-guest', messages: [], context: scope },
+    )
+    expect(out).toEqual([])
+  })
+
+  it('preserves compaction and disclosure behavior through the finalize pass', async () => {
+    const provider = createMockProvider({
+      listTasks: mock(() =>
+        Promise.resolve(
+          Array.from({ length: 2000 }, (_, i) => ({ id: `t-${i}`, title: `task-${i}`, url: `https://x/${String(i)}` })),
+        ),
+      ),
+    })
+    const descriptors = buildTools(provider, 'user-123', 'user-123', 'normal')
+    const summarizer = {
+      summarize: (): Promise<{ summary: string | null }> => Promise.resolve({ summary: 'SUMMARY' }),
+    }
+    const compacted = applyResultCompaction(descriptors, { storageContextId: 'user-123', userIntent: 'x' }, summarizer)
+    const { tools: disclosed } = maybeApplyDisclosure(compacted, 'user-123', new LexicalToolRetriever())
+
+    const finalized = finalizeProviderScopedTools(disclosed)
+
+    expectEveryExecutableFailsClosed(finalized)
+    const scope = makeScopeTestActorScope()
+    const compactedOut: unknown = await finalized['list_tasks']!.execute!(
+      { projectId: 'p' },
+      { toolCallId: 'call-compact', messages: [], context: scope },
+    )
+    expect(compactedOut).toMatchObject({ _compacted: true, summary: 'SUMMARY' })
+
+    const loadOut: unknown = await finalized['load_tool']!.execute!(
+      { names: ['search_tasks'] },
+      { toolCallId: 'call-load', messages: [], context: scope },
+    )
+    expect(loadOut).toMatchObject({ loaded: ['search_tasks'], unknown: [] })
   })
 })

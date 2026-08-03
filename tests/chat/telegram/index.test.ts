@@ -736,6 +736,119 @@ describe('TelegramChatProvider', () => {
     })
   })
 
+  describe('message edit handling', () => {
+    test('onMessageEdit subscribes to edited_message updates', () => {
+      const provider = createTelegramProvider()
+      const botValue = Reflect.get(provider as object, 'bot') as unknown
+      assert(isBotWithLifecycleMethods(botValue), 'Expected Telegram provider bot to expose lifecycle methods')
+
+      const filters: Array<string | string[]> = []
+      botValue.on = (filter: string | string[]): void => {
+        filters.push(filter)
+      }
+
+      provider.onMessageEdit((_msg) => Promise.resolve())
+
+      expect(filters).toContain('edited_message')
+    })
+
+    test('delivers edited_message to onMessageEdit with editedAt and messageId', async () => {
+      const provider = createTelegramProvider()
+      const botValue = Reflect.get(provider as object, 'bot') as unknown
+      assert(isBotWithLifecycleMethods(botValue), 'Expected Telegram provider bot to expose lifecycle methods')
+
+      const handlers = new Map<string | string[], (...args: unknown[]) => unknown>()
+      botValue.on = (filter: string | string[], handler: (...args: unknown[]) => unknown): void => {
+        handlers.set(filter, handler)
+      }
+
+      const received: Array<{
+        editedAt: number | undefined
+        messageId: string | undefined
+        text: string
+      }> = []
+      provider.onMessageEdit((msg) => {
+        received.push({ editedAt: msg.editedAt, messageId: msg.messageId, text: msg.text })
+        return Promise.resolve()
+      })
+
+      const editedHandler = handlers.get('edited_message')
+      assert(editedHandler !== undefined, 'Expected edited_message handler to be registered')
+
+      await Promise.resolve(
+        editedHandler({
+          from: { id: 42, username: 'alice' },
+          chat: { id: 99, type: 'private' },
+          editedMessage: { message_id: 5, text: 'edited body', edit_date: 123 },
+          me: { id: 99999 },
+        }),
+      )
+
+      expect(received).toEqual([{ editedAt: 123, messageId: '5', text: 'edited body' }])
+    })
+
+    test('editedAt falls back to 0 when edit_date is missing', async () => {
+      const provider = createTelegramProvider()
+      const botValue = Reflect.get(provider as object, 'bot') as unknown
+      assert(isBotWithLifecycleMethods(botValue), 'Expected Telegram provider bot to expose lifecycle methods')
+
+      const handlers = new Map<string | string[], (...args: unknown[]) => unknown>()
+      botValue.on = (filter: string | string[], handler: (...args: unknown[]) => unknown): void => {
+        handlers.set(filter, handler)
+      }
+
+      const received: Array<{ editedAt: number | undefined; messageId: string | undefined }> = []
+      provider.onMessageEdit((msg) => {
+        received.push({ editedAt: msg.editedAt, messageId: msg.messageId })
+        return Promise.resolve()
+      })
+
+      const editedHandler = handlers.get('edited_message')
+      assert(editedHandler !== undefined, 'Expected edited_message handler to be registered')
+
+      await Promise.resolve(
+        editedHandler({
+          from: { id: 42, username: 'alice' },
+          chat: { id: 99, type: 'private' },
+          editedMessage: { message_id: 7, text: 'no edit date' },
+          me: { id: 99999 },
+        }),
+      )
+
+      expect(received).toEqual([{ editedAt: 0, messageId: '7' }])
+    })
+
+    test('ignores edited messages without text', async () => {
+      const provider = createTelegramProvider()
+      const botValue = Reflect.get(provider as object, 'bot') as unknown
+      assert(isBotWithLifecycleMethods(botValue), 'Expected Telegram provider bot to expose lifecycle methods')
+
+      const handlers = new Map<string | string[], (...args: unknown[]) => unknown>()
+      botValue.on = (filter: string | string[], handler: (...args: unknown[]) => unknown): void => {
+        handlers.set(filter, handler)
+      }
+
+      let delivered = false
+      provider.onMessageEdit(() => {
+        delivered = true
+        return Promise.resolve()
+      })
+
+      const editedHandler = handlers.get('edited_message')
+      assert(editedHandler !== undefined, 'Expected edited_message handler to be registered')
+      await Promise.resolve(
+        editedHandler({
+          from: { id: 42, username: 'alice' },
+          chat: { id: 99, type: 'private' },
+          editedMessage: { message_id: 8, photo: [] },
+          me: { id: 99999 },
+        }),
+      )
+
+      expect(delivered).toBe(false)
+    })
+  })
+
   test('provider exposes interactive capabilities and onInteraction hook', () => {
     const provider = createTelegramProvider()
 
@@ -882,6 +995,35 @@ describe('TelegramChatProvider', () => {
         replyToMessageText: undefined,
         quoteText: undefined,
       })
+    })
+
+    test('extractMessageIds falls back to editedMessage when message is absent', () => {
+      const ctx: MinimalContext = {
+        editedMessage: {
+          message_id: 200,
+          reply_to_message: { message_id: 80, text: 'origin' },
+          quote: { text: 'quoted' },
+        },
+      }
+      const result = extractMessageIds(ctx)
+      expect(result).toEqual({
+        messageIdStr: '200',
+        replyToMessageIdStr: '80',
+        replyToMessageText: 'origin',
+        quoteText: 'quoted',
+      })
+    })
+
+    test('extractContextInfo reads text from editedMessage when message is absent', () => {
+      const ctx: MinimalContext = {
+        from: { id: 55 },
+        chat: { id: 55, type: 'private' },
+        editedMessage: { text: 'edited hello' },
+      }
+      const result = extractContextInfo(ctx, isBotMentionedFalse)
+      expect(result).not.toBeNull()
+      assert(result !== null)
+      expect(result.text).toBe('edited hello')
     })
 
     test('logMessageExtraction logs debug info', () => {

@@ -53,6 +53,7 @@ import { makeReorderStatusesTool } from './reorder-statuses.js'
 import { makeResolveChatParticipantTool } from './resolve-chat-participant.js'
 import { makeRunSavedQueryTool } from './run-saved-query.js'
 import { makeSetMyIdentityTool } from './set-my-identity.js'
+import { registerProviderBackedTool } from './tool-registration.js'
 import type { ToolMode } from './types.js'
 import { makeUpdateCommentTool } from './update-comment.js'
 import { makeUpdateProjectTool } from './update-project.js'
@@ -79,62 +80,78 @@ type BuilderArgs =
 
 function maybeAddProjectTools(tools: ToolSet, provider: TaskProvider): void {
   if (provider.capabilities.has('projects.read') && provider.getProject !== undefined)
-    tools['get_project'] = makeGetProjectTool(provider)
-  if (provider.capabilities.has('projects.list')) tools['list_projects'] = makeListProjectsTool(provider)
+    registerProviderBackedTool(tools, 'get_project', makeGetProjectTool(provider))
+  if (provider.capabilities.has('projects.list'))
+    registerProviderBackedTool(tools, 'list_projects', makeListProjectsTool(provider))
   if (provider.traits.has('custom-fields') && provider.describeProjectFields !== undefined)
-    tools['describe_project'] = makeDescribeProjectTool(provider)
-  if (provider.capabilities.has('projects.create')) tools['create_project'] = makeCreateProjectTool(provider)
-  if (provider.capabilities.has('projects.update')) tools['update_project'] = makeUpdateProjectTool(provider)
-  if (provider.capabilities.has('projects.delete')) tools['delete_project'] = makeDeleteProjectTool(provider)
-  if (provider.capabilities.has('projects.team')) tools['list_project_team'] = makeListProjectTeamTool(provider)
-  if (provider.capabilities.has('projects.team')) tools['add_project_member'] = makeAddProjectMemberTool(provider)
-  if (provider.capabilities.has('projects.team')) tools['remove_project_member'] = makeRemoveProjectMemberTool(provider)
+    registerProviderBackedTool(tools, 'describe_project', makeDescribeProjectTool(provider))
+  if (provider.capabilities.has('projects.create'))
+    registerProviderBackedTool(tools, 'create_project', makeCreateProjectTool(provider))
+  if (provider.capabilities.has('projects.update'))
+    registerProviderBackedTool(tools, 'update_project', makeUpdateProjectTool(provider))
+  if (provider.capabilities.has('projects.delete'))
+    registerProviderBackedTool(tools, 'delete_project', makeDeleteProjectTool(provider))
+  if (provider.capabilities.has('projects.team'))
+    registerProviderBackedTool(tools, 'list_project_team', makeListProjectTeamTool(provider))
+  if (provider.capabilities.has('projects.team'))
+    registerProviderBackedTool(tools, 'add_project_member', makeAddProjectMemberTool(provider))
+  if (provider.capabilities.has('projects.team'))
+    registerProviderBackedTool(tools, 'remove_project_member', makeRemoveProjectMemberTool(provider))
 }
 
 function maybeAddCommentTools(tools: ToolSet, provider: TaskProvider): void {
-  if (provider.capabilities.has('comments.read')) tools['get_comments'] = makeGetCommentsTool(provider)
-  if (provider.capabilities.has('comments.create')) tools['add_comment'] = makeAddCommentTool(provider)
-  if (provider.capabilities.has('comments.update')) tools['update_comment'] = makeUpdateCommentTool(provider)
-  if (provider.capabilities.has('comments.delete')) tools['remove_comment'] = makeRemoveCommentTool(provider)
+  if (provider.capabilities.has('comments.read'))
+    registerProviderBackedTool(tools, 'get_comments', makeGetCommentsTool(provider))
+  if (provider.capabilities.has('comments.create'))
+    registerProviderBackedTool(tools, 'add_comment', makeAddCommentTool(provider))
+  if (provider.capabilities.has('comments.update'))
+    registerProviderBackedTool(tools, 'update_comment', makeUpdateCommentTool(provider))
+  if (provider.capabilities.has('comments.delete'))
+    registerProviderBackedTool(tools, 'remove_comment', makeRemoveCommentTool(provider))
   if (provider.capabilities.has('comments.reactions')) {
-    tools['add_comment_reaction'] = makeAddCommentReactionTool(provider)
-    tools['remove_comment_reaction'] = makeRemoveCommentReactionTool(provider)
+    registerProviderBackedTool(tools, 'add_comment_reaction', makeAddCommentReactionTool(provider))
+    registerProviderBackedTool(tools, 'remove_comment_reaction', makeRemoveCommentReactionTool(provider))
   }
 }
 
 function maybeAddLabelTools(tools: ToolSet, provider: TaskProvider): void {
   if (provider.capabilities.has('labels.list')) {
-    tools['list_labels'] = makeListLabelsTool(provider)
+    registerProviderBackedTool(tools, 'list_labels', makeListLabelsTool(provider))
   }
   if (provider.capabilities.has('labels.create')) {
-    tools['create_label'] = makeCreateLabelTool(provider)
+    registerProviderBackedTool(tools, 'create_label', makeCreateLabelTool(provider))
   }
   if (provider.capabilities.has('labels.update')) {
-    tools['update_label'] = makeUpdateLabelTool(provider)
+    registerProviderBackedTool(tools, 'update_label', makeUpdateLabelTool(provider))
   }
   if (provider.capabilities.has('labels.delete')) {
-    tools['remove_label'] = makeRemoveLabelTool(provider)
+    registerProviderBackedTool(tools, 'remove_label', makeRemoveLabelTool(provider))
   }
   if (provider.capabilities.has('labels.assign')) {
-    tools['add_task_label'] = makeAddTaskLabelTool(provider)
-    tools['remove_task_label'] = makeRemoveTaskLabelTool(provider)
+    registerProviderBackedTool(tools, 'add_task_label', makeAddTaskLabelTool(provider))
+    registerProviderBackedTool(tools, 'remove_task_label', makeRemoveTaskLabelTool(provider))
   }
 }
 
 function maybeAddRelationTools(tools: ToolSet, provider: TaskProvider): void {
   if (provider.capabilities.has('tasks.relations')) {
-    tools['add_task_relation'] = makeAddTaskRelationTool(provider)
-    tools['update_task_relation'] = makeUpdateTaskRelationTool(provider)
-    tools['remove_task_relation'] = makeRemoveTaskRelationTool(provider)
+    registerProviderBackedTool(tools, 'add_task_relation', makeAddTaskRelationTool(provider))
+    registerProviderBackedTool(tools, 'update_task_relation', makeUpdateTaskRelationTool(provider))
+    registerProviderBackedTool(tools, 'remove_task_relation', makeRemoveTaskRelationTool(provider))
   }
 }
 
 function maybeAddStatusTools(tools: ToolSet, provider: TaskProvider): void {
-  if (provider.capabilities.has('statuses.list')) tools['list_statuses'] = makeListStatusesTool(provider)
-  if (provider.capabilities.has('statuses.create')) tools['create_status'] = makeCreateStatusTool(provider)
-  if (provider.capabilities.has('statuses.update')) tools['update_status'] = makeUpdateStatusTool(provider)
-  if (provider.capabilities.has('statuses.delete')) tools['delete_status'] = makeDeleteStatusTool(provider)
-  if (provider.capabilities.has('statuses.reorder')) tools['reorder_statuses'] = makeReorderStatusesTool(provider)
+  if (provider.capabilities.has('statuses.list'))
+    registerProviderBackedTool(tools, 'list_statuses', makeListStatusesTool(provider))
+  if (provider.capabilities.has('statuses.create'))
+    registerProviderBackedTool(tools, 'create_status', makeCreateStatusTool(provider))
+  if (provider.capabilities.has('statuses.update'))
+    registerProviderBackedTool(tools, 'update_status', makeUpdateStatusTool(provider))
+  if (provider.capabilities.has('statuses.delete'))
+    registerProviderBackedTool(tools, 'delete_status', makeDeleteStatusTool(provider))
+  if (provider.capabilities.has('statuses.reorder'))
+    registerProviderBackedTool(tools, 'reorder_statuses', makeReorderStatusesTool(provider))
 }
 function addAttachmentTools(
   tools: ToolSet,
@@ -143,45 +160,55 @@ function addAttachmentTools(
   groupContextId: string | undefined,
 ): void {
   if (contextId === undefined) return
-  if (provider.capabilities.has('attachments.list')) tools['list_attachments'] = makeListAttachmentsTool(provider)
+  if (provider.capabilities.has('attachments.list'))
+    registerProviderBackedTool(tools, 'list_attachments', makeListAttachmentsTool(provider))
   if (provider.capabilities.has('attachments.upload'))
-    tools['upload_attachment'] = makeUploadAttachmentTool(provider, contextId, groupContextId)
-  if (provider.capabilities.has('attachments.delete')) tools['remove_attachment'] = makeRemoveAttachmentTool(provider)
+    registerProviderBackedTool(
+      tools,
+      'upload_attachment',
+      makeUploadAttachmentTool(provider, contextId, groupContextId),
+    )
+  if (provider.capabilities.has('attachments.delete'))
+    registerProviderBackedTool(tools, 'remove_attachment', makeRemoveAttachmentTool(provider))
 }
 function maybeAddWorkItemTools(tools: ToolSet, provider: TaskProvider): void {
-  if (provider.capabilities.has('workItems.list')) tools['list_work'] = makeListWorkTool(provider)
-  if (provider.capabilities.has('workItems.create')) tools['log_work'] = makeLogWorkTool(provider)
-  if (provider.capabilities.has('workItems.update')) tools['update_work'] = makeUpdateWorkTool(provider)
-  if (provider.capabilities.has('workItems.delete')) tools['remove_work'] = makeRemoveWorkTool(provider)
+  if (provider.capabilities.has('workItems.list'))
+    registerProviderBackedTool(tools, 'list_work', makeListWorkTool(provider))
+  if (provider.capabilities.has('workItems.create'))
+    registerProviderBackedTool(tools, 'log_work', makeLogWorkTool(provider))
+  if (provider.capabilities.has('workItems.update'))
+    registerProviderBackedTool(tools, 'update_work', makeUpdateWorkTool(provider))
+  if (provider.capabilities.has('workItems.delete'))
+    registerProviderBackedTool(tools, 'remove_work', makeRemoveWorkTool(provider))
 }
 
 function maybeAddPhaseFiveSprintTools(tools: ToolSet, provider: TaskProvider): void {
   if (provider.capabilities.has('agiles.list') && provider.listAgiles !== undefined)
-    tools['list_agiles'] = makeListAgilesTool(provider)
+    registerProviderBackedTool(tools, 'list_agiles', makeListAgilesTool(provider))
   if (provider.capabilities.has('sprints.list') && provider.listSprints !== undefined)
-    tools['list_sprints'] = makeListSprintsTool(provider)
+    registerProviderBackedTool(tools, 'list_sprints', makeListSprintsTool(provider))
   if (provider.capabilities.has('sprints.create') && provider.createSprint !== undefined)
-    tools['create_sprint'] = makeCreateSprintTool(provider)
+    registerProviderBackedTool(tools, 'create_sprint', makeCreateSprintTool(provider))
   if (provider.capabilities.has('sprints.update') && provider.updateSprint !== undefined)
-    tools['update_sprint'] = makeUpdateSprintTool(provider)
+    registerProviderBackedTool(tools, 'update_sprint', makeUpdateSprintTool(provider))
   if (provider.capabilities.has('sprints.assign') && provider.assignTaskToSprint !== undefined)
-    tools['assign_task_to_sprint'] = makeAssignTaskToSprintTool(provider)
+    registerProviderBackedTool(tools, 'assign_task_to_sprint', makeAssignTaskToSprintTool(provider))
 }
 
 function maybeAddPhaseFiveQueryTools(tools: ToolSet, provider: TaskProvider, mode: ToolMode): void {
   if (provider.capabilities.has('activities.read') && provider.getTaskHistory !== undefined)
-    tools['get_task_history'] = makeGetTaskHistoryTool(provider)
+    registerProviderBackedTool(tools, 'get_task_history', makeGetTaskHistoryTool(provider))
   if (provider.capabilities.has('queries.saved') && provider.listSavedQueries !== undefined)
-    tools['list_saved_queries'] = makeListSavedQueriesTool(provider)
+    registerProviderBackedTool(tools, 'list_saved_queries', makeListSavedQueriesTool(provider))
   if (provider.capabilities.has('queries.saved') && provider.runSavedQuery !== undefined)
-    tools['run_saved_query'] = makeRunSavedQueryTool(provider)
+    registerProviderBackedTool(tools, 'run_saved_query', makeRunSavedQueryTool(provider))
   if (
     mode === 'normal' &&
     provider.traits.has('command-language:youtrack') &&
     provider.capabilities.has('tasks.commands') &&
     provider.applyCommand !== undefined
   )
-    tools['apply_youtrack_command'] = makeApplyYouTrackCommandTool(provider)
+    registerProviderBackedTool(tools, 'apply_youtrack_command', makeApplyYouTrackCommandTool(provider))
 }
 
 function maybeAddIdentityTools(
@@ -193,8 +220,8 @@ function maybeAddIdentityTools(
   if (chatUserId === undefined || provider.identityResolver === undefined) return
   if (contextType !== 'group') return
 
-  tools['set_my_identity'] = makeSetMyIdentityTool(provider, chatUserId)
-  tools['clear_my_identity'] = makeClearMyIdentityTool(provider, chatUserId)
+  registerProviderBackedTool(tools, 'set_my_identity', makeSetMyIdentityTool(provider, chatUserId))
+  registerProviderBackedTool(tools, 'clear_my_identity', makeClearMyIdentityTool(provider, chatUserId))
 }
 
 export function buildTools(
@@ -218,14 +245,15 @@ export function buildTools(
   maybeAddLabelTools(tools, provider)
   maybeAddRelationTools(tools, provider)
   maybeAddStatusTools(tools, provider)
-  if (provider.capabilities.has('tasks.delete')) tools['delete_task'] = makeDeleteTaskTool(provider)
+  if (provider.capabilities.has('tasks.delete'))
+    registerProviderBackedTool(tools, 'delete_task', makeDeleteTaskTool(provider))
   maybeAddCollaborationTaskTools(tools, provider, chatUserId)
   addAttachmentTools(tools, provider, contextId, groupReadContextId)
   maybeAddWorkItemTools(tools, provider)
   maybeAddPhaseFiveSprintTools(tools, provider)
   maybeAddPhaseFiveQueryTools(tools, provider, mode)
   if (provider.capabilities.has('tasks.count') && provider.countTasks !== undefined)
-    tools['count_tasks'] = makeCountTasksTool(provider)
+    registerProviderBackedTool(tools, 'count_tasks', makeCountTasksTool(provider))
   addProviderIndependentTools(tools, {
     chatUserId,
     contextId,
@@ -236,7 +264,8 @@ export function buildTools(
     allowTaskDependentDeferredPrompts: true,
   })
   const storageOwnerId = getStorageOwnerId(chatUserId, contextId)
-  if (storageOwnerId !== undefined) tools['promote_memo'] = makePromoteMemoTool(provider, storageOwnerId)
+  if (storageOwnerId !== undefined)
+    registerProviderBackedTool(tools, 'promote_memo', makePromoteMemoTool(provider, storageOwnerId))
   maybeAddIdentityTools(tools, provider, chatUserId, contextType)
   if (contextType === 'group' && chatParticipantResolver !== undefined && contextId !== undefined) {
     tools['resolve_chat_participant'] = makeResolveChatParticipantTool(chatParticipantResolver, contextId)

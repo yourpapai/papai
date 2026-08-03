@@ -20,6 +20,10 @@ import * as _openaiCompat from '@ai-sdk/openai-compatible'
 import * as _ai from 'ai'
 
 import * as _provision from '../plugins/task-provider-kaneo/provision.js'
+import {
+  NO_ANALYTICS_SCOPE,
+  setAmbientProviderRequestScopeForTesting,
+} from '../src/analytics/provider-request-scope.js'
 // Additional modules mocked by tests/index.test.ts (graceful shutdown tests).
 // Bun's mock.module() is process-wide, so any module mocked there leaks into
 // subsequent test files. Capturing originals here lets the global beforeEach
@@ -147,6 +151,11 @@ beforeEach(() => {
   process.env['S3_ACCESS_KEY_ID'] = 'test-key'
   process.env['S3_SECRET_ACCESS_KEY'] = 'test-secret'
   restoreOriginalModules()
+  // Explicit ambient provider request scope: legacy suites written before the
+  // fail-closed provider boundary run unscoped. They get the operational
+  // sentinel, never an actor. Suites asserting the omitted-scope failure must
+  // wrap the call in `runWithoutProviderRequestScope`.
+  setAmbientProviderRequestScopeForTesting(NO_ANALYTICS_SCOPE)
 })
 
 afterEach(() => {
