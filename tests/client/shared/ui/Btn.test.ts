@@ -133,4 +133,28 @@ describe('Btn.svelte', () => {
     expect(target.querySelector('button')?.getAttribute('aria-label')).toBe('Close detail')
     void unmount(c)
   })
+
+  test('omits aria-pressed when ariaPressed is not passed', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Btn, { target, props: { children: textSnippet('x') } })
+    expect(target.querySelector<HTMLButtonElement>('.ui-btn')!.hasAttribute('aria-pressed')).toBe(false)
+    void unmount(component)
+  })
+
+  test('renders aria-pressed="true" when ariaPressed is true', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Btn, { target, props: { children: textSnippet('x'), ariaPressed: true } })
+    expect(target.querySelector<HTMLButtonElement>('.ui-btn')!.getAttribute('aria-pressed')).toBe('true')
+    void unmount(component)
+  })
+
+  test('renders aria-pressed="false" when ariaPressed is false', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Btn, { target, props: { children: textSnippet('x'), ariaPressed: false } })
+    expect(target.querySelector<HTMLButtonElement>('.ui-btn')!.getAttribute('aria-pressed')).toBe('false')
+    void unmount(component)
+  })
 })
