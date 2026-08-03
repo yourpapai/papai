@@ -196,3 +196,56 @@ describe('create-recurring-task — input validation', () => {
     expect(parseInput({ title: 'Task', projectId: 'p1', triggerType: 'weekly' }).success).toBe(false)
   })
 })
+
+describe('create-recurring-task — compile branch', () => {
+  let capturedInput: RecurringTaskInput | null
+  let deps: CreateRecurringTaskDeps
+
+  beforeEach(() => {
+    mockLogger()
+    capturedInput = null
+    setCachedConfig('user-1', 'timezone', 'UTC')
+    deps = {
+      createRecurringTask: (input: RecurringTaskInput): RecurringTaskRecord => {
+        capturedInput = input
+        return makeRecord(input)
+      },
+    }
+  })
+
+  test('passes no rrule or dtstartUtc for on_complete', async () => {
+    const tool = makeCreateRecurringTaskTool('user-1', deps)
+    assert(tool.execute, 'Tool execute is undefined')
+    await tool.execute({ title: 'Task', projectId: 'p1', triggerType: 'on_complete' }, toolCtx)
+    expect(capturedInput?.rrule).toBeUndefined()
+    expect(capturedInput?.dtstartUtc).toBeUndefined()
+  })
+
+  test('does not compile when a schedule is passed with on_complete', async () => {
+    const tool = makeCreateRecurringTaskTool('user-1', deps)
+    assert(tool.execute, 'Tool execute is undefined')
+    await tool.execute(
+      { title: 'Task', projectId: 'p1', triggerType: 'on_complete', schedule: { freq: 'DAILY' } },
+      toolCtx,
+    )
+    expect(capturedInput?.rrule).toBeUndefined()
+    expect(capturedInput?.dtstartUtc).toBeUndefined()
+  })
+
+  test('passes the compiled rrule and dtstartUtc for cron', async () => {
+    const tool = makeCreateRecurringTaskTool('user-1', deps)
+    assert(tool.execute, 'Tool execute is undefined')
+    await tool.execute(
+      {
+        title: 'Task',
+        projectId: 'p1',
+        triggerType: 'cron',
+        schedule: { freq: 'DAILY', byHour: [9], byMinute: [0], timezone: 'UTC' },
+      },
+      toolCtx,
+    )
+    expect(capturedInput?.rrule).toContain('FREQ=DAILY')
+    expect(capturedInput?.rrule).toContain('BYHOUR=9')
+    expect(capturedInput?.dtstartUtc).toMatch(/T00:00:00\.000Z$/u)
+  })
+})
