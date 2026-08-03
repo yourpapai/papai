@@ -74,6 +74,44 @@
       },
     ],
   }
+  const longDomainNames: ToolsResponse = {
+    contextId: CONTEXT_ID,
+    activePreset: null,
+    hasStoredDefaults: false,
+    domains: [
+      {
+        domain: 'plugin_enterprise_document_management_connector',
+        summary: 'partial',
+        tools: [
+          {
+            name: 'plugin_enterprise_document_management_connector__search_documents',
+            permission: 'ask',
+            risk: 'open-world',
+            group: 'enterprise-document-management',
+          },
+          {
+            name: 'plugin_enterprise_document_management_connector__archive_document',
+            permission: 'deny',
+            risk: 'destructive',
+            group: 'enterprise-document-management',
+          },
+        ],
+      },
+      {
+        domain: 'mcp_internal_knowledge_base_search_service',
+        summary: 'ask',
+        tools: [
+          {
+            name: 'mcp_internal_knowledge_base_search_service__query',
+            permission: 'ask',
+            risk: 'open-world',
+          },
+        ],
+      },
+    ],
+  }
+  const fetchLongDomainNames = (): Promise<ToolsResponse> => Promise.resolve(longDomainNames)
+
   const fetchGrouped = (): Promise<ToolsResponse> => Promise.resolve(grouped)
 
   // DI fixtures: each state is a fetchToolsFn returning the matching response.
@@ -101,3 +139,5 @@
 <Story name="Loading" args={{ contextId: CONTEXT_ID, fetchToolsFn: fetchNever }} />
 
 <Story name="Error" args={{ contextId: CONTEXT_ID, fetchToolsFn: fetchError }} />
+
+<Story name="Long domain names" args={{ contextId: CONTEXT_ID, fetchToolsFn: fetchLongDomainNames }} />

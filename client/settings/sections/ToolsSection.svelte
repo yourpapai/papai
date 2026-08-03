@@ -377,6 +377,7 @@
     align-items: center;
     gap: var(--s3);
     padding: var(--s2) var(--s3);
+    flex-wrap: wrap;
   }
   .settings-tools__expand {
     display: inline-flex;
