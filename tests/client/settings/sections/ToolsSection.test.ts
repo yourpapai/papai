@@ -341,6 +341,62 @@ describe('ToolsSection', () => {
     void unmount(component)
   })
 
+  test('the clear-defaults button is disabled while a preset apply is in flight, and the preset confirm bar survives', async () => {
+    const gate = deferred()
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, {
+      target,
+      props: {
+        contextId: 'user:1',
+        fetchToolsFn: () => Promise.resolve(busyPayload),
+        applyToolPresetFn: () => gate.promise,
+        clearPresetFn: () => Promise.resolve(busyPayload),
+      },
+    })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="preset-read-only"]')!.click()
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="preset-confirm-apply"]')!.click()
+    flushSync()
+    const clearBtn = target.querySelector<HTMLButtonElement>('[data-testid="tool-defaults-clear"]')
+    expect(clearBtn).not.toBeNull()
+    expect(clearBtn!.disabled).toBe(true)
+    clearBtn!.click()
+    flushSync()
+    expect(target.querySelector('[data-testid="preset-confirm"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="tool-defaults-clear-confirm"]')).toBeNull()
+    gate.resolve(busyPayload)
+    await drain()
+    void unmount(component)
+  })
+
+  test('clicking a preset selector while a clear is in flight does not unmount the clear confirm bar', async () => {
+    const gate = deferred()
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, {
+      target,
+      props: {
+        contextId: 'user:1',
+        fetchToolsFn: () => Promise.resolve(busyPayload),
+        clearPresetFn: () => gate.promise,
+      },
+    })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="tool-defaults-clear"]')!.click()
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="tool-defaults-clear-confirm-apply"]')!.click()
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="preset-read-only"]')!.click()
+    flushSync()
+    expect(target.querySelector('[data-testid="tool-defaults-clear-confirm"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="preset-confirm"]')).toBeNull()
+    gate.resolve({ ...busyPayload, hasStoredDefaults: false })
+    await drain()
+    void unmount(component)
+  })
+
   test('the empty state offers a next step', async () => {
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!

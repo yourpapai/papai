@@ -155,6 +155,7 @@
   }
 
   function requestPreset(preset: ToolPreset): void {
+    if (applying || clearing) return
     error = null
     pendingClear = false
     pendingPreset = preset
@@ -162,7 +163,7 @@
 
   async function confirmPreset(): Promise<void> {
     const preset = pendingPreset
-    if (preset === null || applying) return
+    if (preset === null || applying || clearing) return
     error = null
     applying = true
     try {
@@ -179,7 +180,7 @@
   }
 
   async function confirmClear(): Promise<void> {
-    if (clearPresetFn === undefined || clearing) return
+    if (clearPresetFn === undefined || clearing || applying) return
     error = null
     clearing = true
     try {
@@ -253,7 +254,12 @@
 
   {#if clearPresetFn !== undefined && storedDefaults && !pendingClear}
     <div class="settings-tools__clear-row">
-      <Btn variant="ghost" size="sm" testid="tool-defaults-clear" onClick={() => { pendingPreset = null; pendingClear = true }}>
+      <Btn
+        variant="ghost"
+        size="sm"
+        disabled={applying || clearing}
+        testid="tool-defaults-clear"
+        onClick={() => { pendingPreset = null; pendingClear = true }}>
         {#snippet children()}Clear admin defaults{/snippet}
       </Btn>
     </div>
