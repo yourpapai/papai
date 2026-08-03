@@ -375,10 +375,15 @@
   .settings-tools__domain-head {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 8px 10px;
+    gap: var(--s3);
+    padding: var(--s2) var(--s3);
   }
   .settings-tools__expand {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s1);
+    min-height: var(--control-h-sm);
+    padding: 0 var(--s1);
     background: none;
     border: none;
     color: var(--text);
@@ -389,14 +394,14 @@
   .settings-tools__list {
     list-style: none;
     margin: 0;
-    padding: 0 10px 10px;
+    padding: 0 var(--s3) var(--s3);
     display: grid;
-    gap: 6px;
+    gap: var(--s2);
   }
   .settings-tools__tool {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--s3);
   }
   .settings-tools__name {
     font-family: var(--font-mono);
@@ -408,8 +413,8 @@
   .settings-tools__group-head {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding-top: 6px;
+    gap: var(--s3);
+    padding-top: var(--s2);
     border-top: 1px solid var(--border);
   }
   .settings-tools__group-name {
@@ -421,15 +426,15 @@
     margin-left: auto;
   }
   .settings-tools__tool--grouped {
-    padding-left: 14px;
+    padding-left: var(--s4);
   }
   .settings-tools__perm { margin-left: auto; }
   .settings-tools__presets {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--s2);
     flex-wrap: wrap;
-    margin-bottom: 6px;
+    margin-bottom: var(--s2);
   }
   .settings-tools__presets-label {
     font-family: var(--font-mono);
@@ -447,10 +452,10 @@
   .settings-tools__confirm {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--s2);
     flex-wrap: wrap;
-    padding: 8px 10px;
-    margin-bottom: 12px;
+    padding: var(--s2) var(--s3);
+    margin-bottom: var(--s3);
     border: 1px solid var(--border);
     background: var(--surface-1);
     font-size: 12px;
