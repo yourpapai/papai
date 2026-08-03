@@ -16,6 +16,14 @@ expanded-group interaction tests recorded in `tests/visual/settings/sections/Too
 (below `@generated-end auto-screenshots`) are now captured — the prior run's `bun shoot`
 failure ("Storybook addons channel is unavailable") was environment-specific and does not
 reproduce; `bun run visual:audit -g ToolsSection` passes 8/8 against the current baselines.
+An independent adversarial verification pass re-derived all 8 previously-open findings from
+source and screenshots (including pixel sampling the active preset button's border at
+`rgb(82,224,138)` — exactly `--accent` — against inactive borders at `rgb(34,42,36)` — exactly
+`--border`) and confirmed all 8 fixed; it also surfaced five new defects (below), none of which
+were among the original 8. Full-suite state at close: `bun test` 10850/0,
+`bun run visual:audit` **462/0** (the design spec's projected 461 undercounted by one — the
+long-domain fix needed both a generated desktop fixture and a manual narrow-viewport one), lint /
+typecheck / `format:check` / `bun security` all clean.
 
 **Rubric:** [`RUBRIC.md`](./RUBRIC.md)
 
@@ -26,15 +34,15 @@ reproduce; `bun run visual:audit -g ToolsSection` passes 8/8 against the current
 
 | Dimension                       | Score | Rationale (one line)                                                                                                                                                                                                                                                        |
 | -------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Visual hierarchy & scanning   | warn  | Domain/group/tool rows share the same weight and are differentiated only by indentation (`ToolsSection.svelte:295-296`), so scanning relies on padding, not type scale or a per-group count.                                                                              |
-| 2. Affordance & signifiers       | fail  | Ghost-variant preset and row-toggle buttons are still visually identical to static text at rest (`Btn.svelte:97-101`), and the active-preset indicator still sits detached from the options it summarizes.                                                                |
-| 3. Consistency w/ design system  | warn  | Reuses `Btn`/`Pill`/`SegmentedControl` correctly, but still overloads the `primary` filled style to mean both "currently selected" and "submit this action" with identical weight (see `tools-preset-active-state-invisible`).                                            |
-| 4. Feedback & state              | pass  | Loading/Empty/Error/Populated states are each clearly distinct and non-alarming; preset apply and admin-defaults clear are both gated behind an explicit two-step confirm.                                                                                                 |
-| 5. Content & language            | warn  | Preset/permission labels are clear plain language, but the empty state is still a dead end with no actionable next step.                                                                                                                                                   |
-| 6. Accessibility                 | warn  | Dim-text contrast is now fixed (`tokens.css:21`) and `SegmentedControl`/domain expander have correct `radiogroup`/`aria-expanded` semantics, but the raw `.settings-tools__expand` toggle has no shared control-height, giving it a below-24px click target unlike its row siblings. |
-| 7. Responsive / layout           | warn  | Narrow-viewport shot is now captured and shows no clipping with the fixture's short domain names, but `.settings-tools__domain-head` still has no `flex-wrap` (unlike `.settings-tools__presets`), so a long domain name remains untested and at risk.                    |
-| 8. Spacing, alignment & sizing   | warn  | Row gaps/paddings (6/10/14px) are hardcoded and don't map onto the `--s1`–`--s4`/`--gap-tight` scale used elsewhere.                                                                                                                                                        |
-| 9. Interaction & micro-states    | warn  | `Btn`/`SegmentedControl` have real hover/focus-visible/disabled styling, but the preset Apply/Clear confirm bar unmounts the instant it's clicked, before the async request resolves, with nothing signalling the in-flight state.                                          |
+| 1. Visual hierarchy & scanning   | pass  | Domain/group rows now surface a tool count alongside the name (`ToolsSection.svelte:307` `{domain.domain} ({domain.tools.length})`, `:325` `{groupName} ({toolGroup.tools.length})`), so scope is scannable before expanding; remaining differentiation is indentation-only, which is a low-severity residue, not a scanning defect. |
+| 2. Affordance & signifiers       | warn  | Preset options and the domain/group row toggles now render as real `outline`-variant buttons with a visible resting border (`:208`, `:313`, `:344`; `.settings-tools__preset--active` at `:450` gives the active option an `--accent` border+text), closing the two worst instances — but the "Clear admin defaults" trigger (`:263`) is still bare `ghost` and reads as text, a residue of the same defect class. |
+| 3. Consistency w/ design system  | pass  | The active-preset state is now expressed via a dedicated `--accent` border/text rule on the `outline` variant (`:450-453`) plus `aria-pressed` (`Btn.svelte:53`, `ToolsSection.svelte:227`), fully decoupled from the `primary`/`danger` filled styles still reserved for the Apply/Clear/Confirm CTAs — the prior overload is gone.                                    |
+| 4. Feedback & state              | pass  | Loading/Empty/Error/Populated states are each clearly distinct and non-alarming; preset apply and admin-defaults clear are both gated behind an explicit two-step confirm, and the confirm bar now stays mounted with a busy/disabled Apply/Clear button for the duration of the request (`:159-172` `confirmPreset`, `:174-186` `confirmClear`).                        |
+| 5. Content & language            | pass  | Preset/permission labels are clear plain language, and the empty state now carries an actionable next step via `EmptyState`'s `action` snippet (`:318` area) instead of being a dead end.                                                                                    |
+| 6. Accessibility                 | warn  | Dim-text contrast remains fixed (`tokens.css:21`), `SegmentedControl`/domain expander keep correct `radiogroup`/`aria-expanded` semantics, and the expand toggle now sits on the shared 24px floor (`e69d2852b`) — but the active preset's `✓` is baked into visible button text rather than marked decorative, duplicating what `aria-pressed` already announces to screen readers.                                     |
+| 7. Responsive / layout           | pass  | `.settings-tools__domain-head` now sets `flex-wrap: wrap`, and a lengthened long-domain fixture proves the head row actually wraps instead of clipping/overflowing at ~640px, closing the previously-untested overflow risk.                                              |
+| 8. Spacing, alignment & sizing   | warn  | Row gaps/paddings now use `var(--s1)`–`var(--s4)`/`--gap-tight` tokens instead of hardcoded 6/10/14px values — but `.settings-tools__clear-row` (`:472`) and `.settings-tools__presets-hint` (`:455`) still carry a bare `12px` margin outside the token scale, a narrower tokenization-consistency residue.                |
+| 9. Interaction & micro-states    | warn  | The preset Apply/Clear confirm bar now stays mounted and shows a busy/disabled state for the duration of the request instead of unmounting instantly (`:159-186`) — but per-tool `SegmentedControl` and the domain/group toggles are never disabled during `applying`/`clearing` (`:307-316`, `:325-335`, `:343-349`), so a manual edit can race a slow preset/clear request, and the clear-trigger row can render alongside the preset confirm bar at the same time (`:260` gated only on `storedDefaults && !pendingClear`, not `pendingPreset === null`).             |
 
 ## Findings
 
@@ -43,142 +51,210 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [High] Preset selector's active state is invisible at rest and its indicator is detached
 
 - **Id:** tools-preset-active-state-invisible
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `0d0f101f7` ("fix(settings): make the ToolsSection preset state visible and row
+  actions look interactive") (2026-08-03), building on `82c8513de` ("feat(ui): add an optional
+  ariaPressed prop to Btn"). Every preset option now uses `variant="outline"` with a visible
+  resting border (`ToolsSection.svelte:208-217`), and the active option gets a dedicated
+  `--accent` border + text color (`.settings-tools__preset--active :global(.ui-btn)` at
+  `:450-453`) plus `ariaPressed={active}` (`:227`, wired through to `aria-pressed` at
+  `Btn.svelte:53`). An independent adversarial verification pass sampled the active button's
+  border pixel at `rgb(82,224,138)` (exactly `--accent`) against inactive borders at
+  `rgb(34,42,36)` (exactly `--border`), confirming the fix. The active state is no longer
+  filled solid green like the Apply/Clear CTAs, so it no longer reads as "click me".
 - **Dimension:** 2. Affordance & signifiers
-- **Where visible:** Populated / Grouped / Empty screenshots (`activePreset === null`, the common
-  "Custom" state) — `Read-only`, `Non-destructive`, and `Allow all` render as plain unstyled
-  text, indistinguishable from the `Preset` label beside them. The current-state summary is
-  shown only via a `Pill` reading `Custom`/preset name pinned to the far right edge of the row
-  by `margin-left: auto`, visually separated from the buttons it describes. Still reproduces —
-  confirmed in the current `settings-sections-ToolsSection-Populated-1.png` and
-  `settings-sections-ToolsSection-Preset-applied-1.png`: in the latter, the active `Read-only`
-  option is filled solid green, the identical fill used by the `Apply`/`Clear` CTA buttons in
-  the confirm dialogs, so it still reads as "click me" rather than "this is currently selected".
-- **Source:** `client/settings/sections/ToolsSection.svelte:206-217` (preset buttons +
-  `variant={activePreset === preset.value ? 'primary' : 'ghost'}` at `:208`), `:395-397`
-  (`.settings-tools__presets-active { margin-left: auto }`); ghost resting style unchanged at
-  `client/shared/ui/Btn.svelte:97-101` (`background: transparent; border-color: transparent`).
-- **Suggested fix:** give inactive preset options a visible resting border/background (e.g. an
-  `outline` variant) and move the current-state indicator directly adjacent to the preset row
-  instead of anchoring it to the far edge.
+- **Where visible:** Populated / Grouped / Preset-applied screenshots.
+- **Source:** `client/settings/sections/ToolsSection.svelte:208-227`, `:450-453`;
+  `client/shared/ui/Btn.svelte:23,37,53`.
+- **Suggested fix:** N/A — resolved.
 
 ### [Med] Bare "Ask all" / "Deny all" / "Allow all" row actions look like plain text, not buttons
 
 - **Id:** tools-bulk-actions-look-like-text
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `0d0f101f7` ("fix(settings): make the ToolsSection preset state visible and row
+  actions look interactive") (2026-08-03). The domain toggle (`ToolsSection.svelte:313`) and the
+  group toggle (`:344`) now both instantiate `<Btn variant="outline" ...>` instead of `ghost`, so
+  they render with a visible resting border and read as controls, not trailing text. Confirmed by
+  the independent adversarial verification pass against current screenshots.
 - **Dimension:** 2. Affordance & signifiers
-- **Where visible:** Populated/Grouped screenshots — the right-aligned action after each
-  domain/group name and permission pill (e.g. `tasks  allow  Ask all`) has no border or fill,
-  reading as a trailing label rather than a control. Still reproduces — confirmed in
-  `settings-sections-ToolsSection-Populated-1.png` and
-  `settings-sections-ToolsSection-Grouped-1.png`.
-- **Source:** `client/settings/sections/ToolsSection.svelte:269-273` (domain toggle) and
-  `:284-292` (group toggle) — both instantiate `<Btn variant="ghost" ...>`; ghost resting style
-  unchanged at `client/shared/ui/Btn.svelte:97-101`.
-- **Suggested fix:** use the `outline` or `secondary` `Btn` variant for these row-level toggle
-  actions so they read as clickable controls at rest, not as trailing text.
+- **Where visible:** Populated/Grouped screenshots.
+- **Source:** `client/settings/sections/ToolsSection.svelte:313`, `:344`.
+- **Suggested fix:** N/A — resolved.
 
 ### [Med] Populated/grouped rows are sparse — no per-domain or per-group tool count
 
 - **Id:** tools-no-per-group-count
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `0d0f101f7` ("fix(settings): make the ToolsSection preset state visible and row
+  actions look interactive") (2026-08-03). The domain head now renders
+  `{domain.domain} ({domain.tools.length})` (`ToolsSection.svelte:307`) and the group head renders
+  `{groupName} ({toolGroup.tools.length})` (`:325`), so scope is visible before expanding.
+  Confirmed by the independent adversarial verification pass against current screenshots.
 - **Dimension:** 1. Visual hierarchy & scanning
-- **Where visible:** Grouped screenshot — `plugin partial`, `mcp ask`, `time allow` rows still
-  give no indication of how many tools are inside each bucket until it is expanded; the expanded
-  narrow-viewport shot (`Tools-—-grouped-expanded-narrow-1.png`) shows the same gap one level
-  down (`acp partial`, `audio-transcribe allow`).
-- **Source:** `client/settings/sections/ToolsSection.svelte:257-274` (domain head markup) and
-  `:281-293` (group head markup) still render only the name and summary `Pill`, never
-  `domain.tools.length` or `toolGroup.tools.length`; `groupToolEntries`/`groupSummary` in
-  `client/settings/lib/group-tools.ts:11-35` already have the tool arrays available.
-- **Suggested fix:** append a count (e.g. `tasks (6)`) to the domain/group head so users can
-  gauge scope before expanding.
+- **Where visible:** Populated/Grouped screenshots, and the expanded narrow-viewport shot.
+- **Source:** `client/settings/sections/ToolsSection.svelte:307`, `:325`.
+- **Suggested fix:** N/A — resolved.
 
 ### [Med] Preset Apply/Clear confirm bar gives no in-flight feedback while the request is pending
 
 - **Id:** tools-confirm-no-busy-state
+- **Status:** fixed
+- **Resolved:** `a2f763cd9` ("fix(settings): keep the Tools confirm bar mounted while in flight and
+  give the empty state a next step") (2026-08-03), hardened by `3b1c5bf09` ("fix(settings):
+  prevent the Tools preset and clear flows from interrupting each other") which stopped the
+  preset-apply and clear-defaults flows from being able to interrupt one another mid-flight.
+  `confirmPreset` (`ToolsSection.svelte:159-172`) now sets `applying = true` before awaiting and
+  clears `pendingPreset` only in a `finally` block; `confirmClear` (`:174-186`) does the same with
+  `clearing`/`pendingClear`. The confirm bar therefore stays mounted with `Apply`/`Clear` in a
+  `busy`/`disabled` state (`:242-243`, `:278-279`) for the duration of the request instead of
+  unmounting instantly. Confirmed by the independent adversarial verification pass.
+- **Dimension:** 9. Interaction & micro-states
+- **Where visible:** not a distinct screenshot — reachable by clicking a preset button then
+  Apply, or "Clear admin defaults" then Clear.
+- **Source:** `client/settings/sections/ToolsSection.svelte:159-186`, `:242-243`, `:278-279`.
+- **Suggested fix:** N/A — resolved.
+
+### [Med] Per-tool/domain/group permission controls stay live during a preset apply or clear
+
+- **Id:** tools-race-permission-during-preset
 - **Status:** open
 - **Dimension:** 9. Interaction & micro-states
-- **Where visible:** not a distinct screenshot (the gap is the frame *between* captured states) —
-  reachable from the Populated/Grouped stories by clicking a preset button then Apply, or
-  "Clear admin defaults" then Clear.
-- **Source:** `client/settings/sections/ToolsSection.svelte:159-172` (`confirmPreset`) and
-  `:174-186` (`confirmClear`) both set `pendingPreset = null` / `pendingClear = false`
-  *synchronously* before `await`ing `applyToolPresetFn`/`clearPresetFn`, which immediately
-  unmounts the `{#if pendingPreset !== null}` (`:221`) / `{#if pendingClear}` (`:241`) confirm
-  bar — so the Apply/Clear/Cancel buttons at `:224-226`/`:244-246` disappear rather than show a
-  busy state, and nothing replaces them until the response resolves and re-renders the domain
-  list. Contrast with the Refresh action, which does wire busy state end-to-end:
-  `ToolsSection.svelte:196` (`<IconButton ... busy={loading} .../>`) and
-  `client/shared/ui/IconButton.svelte:20,48` (`class:ui-iconbtn--busy` → `opacity: 0.6;
-  pointer-events: none`).
-- **Suggested fix:** keep the confirm bar (or a lightweight busy replacement) mounted and pass a
-  `busy` flag to the Apply/Clear `Btn` for the duration of the request, matching the Refresh
-  button's pattern, instead of tearing the confirmation down before the request completes.
+- **Where visible:** not a distinct screenshot — reachable by starting a preset Apply or "Clear
+  admin defaults" Clear, then, before the request resolves, changing an individual tool's
+  `SegmentedControl` or clicking a domain/group "Ask all"/"Deny all"/"Allow all" toggle.
+- **Source:** `client/settings/sections/ToolsSection.svelte:343-349` (`SegmentedControl`, no
+  `disabled` prop), `:313` (domain toggle `Btn`, no `disabled` prop tied to `applying`/`clearing`),
+  `:328-334` (group toggle `Btn`, same gap). The preset (`:242-243`) and clear (`:278-279`) confirm
+  buttons already gate correctly on `applying`/`clearing`, but these three row-level controls do
+  not, so a manual edit during a slow preset/clear request races the in-flight response —
+  whichever resolves last silently wins, invisibly discarding the other. An earlier commit,
+  `3b1c5bf09`, closed this same class of hole between the preset-apply and clear-defaults flows,
+  but not for these per-tool/domain/group controls.
+- **Suggested fix:** disable the `SegmentedControl` and the domain/group toggle `Btn`s while
+  `applying || clearing`, matching the pattern already used on the confirm-bar buttons.
+
+### [Low] "Clear admin defaults" trigger still uses the bare `ghost` variant
+
+- **Id:** tools-clear-trigger-looks-like-text
+- **Status:** open
+- **Dimension:** 2. Affordance & signifiers
+- **Where visible:** Populated/Grouped screenshots, whenever stored admin defaults exist — the
+  "Clear admin defaults" trigger above the preset confirm area.
+- **Source:** `client/settings/sections/ToolsSection.svelte:263` (`<Btn variant="ghost" ...
+  testid="tool-defaults-clear">`) — transparent background *and* transparent border
+  (`Btn.svelte:97-101`), so it reads as plain text. Same defect class as the now-fixed
+  `tools-bulk-actions-look-like-text`, but a different button, hence a new finding rather than a
+  residue. The two other remaining `ghost` buttons (`:250`, `:286`, the confirm-bar Cancels) are
+  deliberately kept `ghost` by design and are not part of this finding.
+- **Suggested fix:** switch `:263` to `variant="outline"`, matching the domain/group toggle fix.
+
+### [Low] Clear-defaults trigger row can render alongside the preset confirm bar
+
+- **Id:** tools-dual-confirm-bars-overlap
+- **Status:** open
+- **Dimension:** 9. Interaction & micro-states
+- **Where visible:** not a distinct screenshot — reachable by requesting a preset (opening the
+  preset confirm bar) while stored admin defaults still exist.
+- **Source:** `client/settings/sections/ToolsSection.svelte:260`
+  (`{#if clearPresetFn !== undefined && storedDefaults && !pendingClear}`) — gated only on
+  `storedDefaults && !pendingClear`, not on `pendingPreset === null`, so the "Clear admin
+  defaults" row can be visible at the same time as the preset Apply/Cancel confirm bar
+  (`:236-256`), putting two competing confirmation affordances on screen at once.
+- **Suggested fix:** add `pendingPreset === null` to the clear-row's guard so only one
+  confirmation surface is ever visible at a time.
+
+### [Low] Two spacing values remain off the token scale
+
+- **Id:** tools-clear-row-spacing-off-scale
+- **Status:** open
+- **Dimension:** 8. Spacing, alignment & sizing
+- **Where visible:** Populated/Grouped screenshots whenever the clear-admin-defaults row or the
+  presets hint line renders.
+- **Source:** `client/settings/sections/ToolsSection.svelte:472`
+  (`.settings-tools__clear-row { margin-bottom: 12px; }`) and `:455`
+  (`.settings-tools__presets-hint { margin: 0 0 12px; }`) — both still a bare `12px` rather than
+  `var(--s3)`. Note the values themselves are on-scale (`--s3` is `12px`); this is a
+  tokenization-consistency gap, a distinct defect from the now-closed `tools-spacing-off-scale`.
+- **Suggested fix:** replace both bare `12px` margins with `var(--s3)`.
+
+### [Low] Active-preset checkmark is redundant with `aria-pressed` for screen readers
+
+- **Id:** tools-preset-checkmark-not-decorative
+- **Status:** open
+- **Dimension:** 6. Accessibility
+- **Where visible:** Preset-applied screenshot — the active preset button reads `✓ Read-only`.
+- **Source:** `client/settings/sections/ToolsSection.svelte:230`
+  (`{active ? '✓ ' : ''}{preset.label}`) — the `✓` is baked into the button's visible text rather
+  than marked decorative, so a screen reader announces "check mark Read-only" in addition to the
+  `aria-pressed="true"` state already wired at `:227`/`Btn.svelte:53`, duplicating the same
+  information.
+- **Suggested fix:** wrap the `✓` in an `aria-hidden="true"` span so screen-reader users hear only
+  the `aria-pressed` state, not a redundant textual marker.
 
 ### [Low] Empty state has no actionable next step
 
 - **Id:** tools-empty-state-no-next-step
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `a2f763cd9` ("fix(settings): keep the Tools confirm bar mounted while in flight and
+  give the empty state a next step") (2026-08-03). `ToolsSection.svelte:361-367` now passes an
+  `action` snippet to `EmptyState` — a `Refresh` button (`variant="outline"`,
+  `testid="tools-empty-refresh"`) that re-runs `load(contextId)` — so the empty state is no
+  longer a dead end. Confirmed by the independent adversarial verification pass.
 - **Dimension:** 5. Content & language
-- **Where visible:** Empty screenshot — "No togglable tools" / "No togglable tools for this
-  context." with nothing to do next. Still reproduces —
-  `settings-sections-ToolsSection-Empty-1.png` shows only the icon/title/hint, no action.
-- **Source:** `client/settings/sections/ToolsSection.svelte:318`
-  (`<EmptyState title="No togglable tools" hint="No togglable tools for this context." />` — no
-  `action` snippet passed, though `client/shared/ui/EmptyState.svelte:13,23` still supports one).
-- **Suggested fix:** pass an `action` snippet (e.g. a link to docs, or a hint to switch context)
-  instead of leaving the message as a dead end.
+- **Where visible:** Empty screenshot.
+- **Source:** `client/settings/sections/ToolsSection.svelte:361-367`;
+  `client/shared/ui/EmptyState.svelte:13,23`.
+- **Suggested fix:** N/A — resolved.
 
 ### [Low] Domain-head row has no flex-wrap; long domain names remain untested
 
 - **Id:** tools-domain-head-no-wrap
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `1629c16be` ("fix(settings): wrap the ToolsSection domain head and prove it with a
+  long-name fixture") (2026-08-03), hardened by `96d0283c6` ("test(visual): lengthen the
+  ToolsSection long-domain fixture until the head row wraps") after the first fixture's domain
+  name turned out not to be long enough to force the wrap. `.settings-tools__domain-head` now sets
+  `flex-wrap: wrap` (`ToolsSection.svelte:380-386`), and the lengthened long-domain fixture's
+  narrow-viewport shot confirms the head row wraps rather than clipping or overflowing. Confirmed
+  by the independent adversarial verification pass.
 - **Dimension:** 7. Responsive / layout
-- **Where visible:** `Tools-—-grouped-expanded-narrow-1.png` (640×900, `Grouped` story,
-  `plugin` domain expanded) — now captured, and shows no clipping, but only because the
-  fixture's domain names (`plugin`, `acp`, `mcp`, `time`) are short; the underlying CSS gap has
-  not changed, so a long domain name is still an untested overflow risk, not a resolved one.
-- **Source:** `client/settings/sections/ToolsSection.svelte:331-336`
-  (`.settings-tools__domain-head { display: flex; align-items: center; gap: 10px; padding: 8px
-  10px; }` — still no `flex-wrap`), contrasted with `.settings-tools__presets:383-389` which does
-  set `flex-wrap: wrap`.
-- **Suggested fix:** add `flex-wrap` (or truncate long domain names) to
-  `.settings-tools__domain-head` so the name, summary pill, and toggle button don't overflow at
-  ~640px with a longer domain string, and add a long-name fixture to confirm it.
+- **Where visible:** narrow-viewport long-domain shot.
+- **Source:** `client/settings/sections/ToolsSection.svelte:380-386`.
+- **Suggested fix:** N/A — resolved.
 
 ### [Low] Row gaps/paddings drift from the spacing scale
 
 - **Id:** tools-spacing-off-scale
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `e69d2852b` ("style(settings): round ToolsSection spacing onto the scale and raise
+  the expand target to 24px") (2026-08-03). The domain-head, list, tool, and group-head rules now
+  use `var(--s2)`/`var(--s3)`/`var(--gap-tight)` instead of hardcoded 6/10/14px values (e.g.
+  `.settings-tools__domain-head` at `ToolsSection.svelte:380-386` now reads
+  `gap: var(--s3); padding: var(--s2) var(--s3);`). Confirmed by the independent adversarial
+  verification pass. A narrower residue remains: `.settings-tools__clear-row` (`:472`) and
+  `.settings-tools__presets-hint` (`:455`) still carry a bare `12px` margin outside the token
+  scale — tracked separately as a new finding below, since the values this finding targeted are
+  now genuinely on-scale.
 - **Dimension:** 8. Spacing, alignment & sizing
 - **Where visible:** every Populated/Grouped screenshot — all domain/group/tool rows.
-- **Source:** `client/settings/sections/ToolsSection.svelte:331-336`
-  (`.settings-tools__domain-head { gap: 10px; padding: 8px 10px; }`), `:345-351`
-  (`.settings-tools__list { padding: 0 10px 10px; gap: 6px; }`), `:352-356`
-  (`.settings-tools__tool { gap: 10px; }`), `:364-370` (`.settings-tools__group-head { gap: 10px;
-  padding-top: 6px; }`) and `:379-381` (`.settings-tools__tool--grouped { padding-left: 14px; }`)
-  — none of the 6/10/14px values map onto the scale in `client/shared/tokens.css:52,68-71`
-  (`--gap-tight: 8px`, `--s1: 4px`, `--s2: 8px`, `--s3: 12px`, `--s4: 16px`).
-- **Suggested fix:** round these gaps/paddings to the nearest scale token (8/12/16px) so tool
-  rows share the same rhythm as sibling sections built on `--gap-tight`/`--gap-inline`.
+- **Source:** `client/settings/sections/ToolsSection.svelte:380-431`.
+- **Suggested fix:** N/A — resolved.
 
 ### [Low] Domain-expand toggle has a below-floor click target
 
 - **Id:** tools-domain-expand-small-target
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `e69d2852b` ("style(settings): round ToolsSection spacing onto the scale and raise
+  the expand target to 24px") (2026-08-03). `.settings-tools__expand` now reaches the shared
+  24px floor (`ToolsSection.svelte:387-396`, `min-height: var(--control-h-sm)`), matching its row
+  siblings (`Btn size="sm"`, `SegmentedControl`). Confirmed by the independent adversarial
+  verification pass.
 - **Dimension:** 6. Accessibility
 - **Where visible:** every Populated/Grouped screenshot — the `▸ tasks` / `▾ plugin` toggle at
   the start of each domain row.
-- **Source:** `client/settings/sections/ToolsSection.svelte:258-265` (raw `<button
-  class="settings-tools__expand" ...>`) styled at `:337-344`
-  (`.settings-tools__expand { background: none; border: none; ...; font-size: 12px; cursor:
-  pointer; }` — no height or padding), unlike its row siblings which all sit on the shared
-  24px floor: the domain-toggle `Btn size="sm"` (`:270`) → `Btn.svelte:108-112`
-  (`--control-h-sm`), and `SegmentedControl.svelte:65` (`height: var(--control-h-sm)`).
-- **Suggested fix:** give `.settings-tools__expand` an explicit min-height (or padding) reaching
-  `--control-h-sm` so its click target matches the WCAG 2.5.8 24px floor already applied to its
-  row siblings.
+- **Source:** `client/settings/sections/ToolsSection.svelte:387-396`.
+- **Suggested fix:** N/A — resolved.
 
 ### [Low] Dim grey text tiers — contrast
 
