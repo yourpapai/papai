@@ -394,7 +394,7 @@ describe('create-recurring-task — failure propagation', () => {
     setCachedConfig('user-1', 'timezone', 'UTC')
   })
 
-  test('rethrows when the store fails', async () => {
+  test('rethrows when the store fails', () => {
     const deps: CreateRecurringTaskDeps = {
       createRecurringTask: (): RecurringTaskRecord => {
         throw new Error('db down')
@@ -402,7 +402,7 @@ describe('create-recurring-task — failure propagation', () => {
     }
     const tool = makeCreateRecurringTaskTool('user-1', deps)
     assert(tool.execute, 'Tool execute is undefined')
-    await expect(tool.execute({ title: 'Task', projectId: 'p1', triggerType: 'on_complete' }, toolCtx)).rejects.toThrow(
+    expect(() => tool.execute({ title: 'Task', projectId: 'p1', triggerType: 'on_complete' }, toolCtx)).toThrow(
       'db down',
     )
   })
