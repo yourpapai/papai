@@ -111,3 +111,88 @@ describe('create-recurring-task — DTSTART anchor', () => {
     expect(capturedInput?.dtstartUtc).toMatch(/T00:00:00\.000Z$/u)
   })
 })
+
+interface SafeParseIssue {
+  code: string
+  message: string
+  path: PropertyKey[]
+}
+
+type SafeParseOutcome = { success: true } | { success: false; error: { issues: SafeParseIssue[] } }
+
+interface SafeParseable {
+  safeParse: (data: unknown) => SafeParseOutcome
+}
+
+function isSafeParseable(val: unknown): val is SafeParseable {
+  return typeof val === 'object' && val !== null && 'safeParse' in val && typeof val.safeParse === 'function'
+}
+
+describe('create-recurring-task — input validation', () => {
+  let deps: CreateRecurringTaskDeps
+
+  beforeEach(() => {
+    mockLogger()
+    setCachedConfig('user-1', 'timezone', 'UTC')
+    deps = {
+      createRecurringTask: (input: RecurringTaskInput): RecurringTaskRecord => makeRecord(input),
+    }
+  })
+
+  const parseInput = (data: unknown): SafeParseOutcome => {
+    const tool = makeCreateRecurringTaskTool('user-1', deps)
+    if (!isSafeParseable(tool.inputSchema)) {
+      throw new Error('Tool inputSchema does not have safeParse')
+    }
+    return tool.inputSchema.safeParse(data)
+  }
+
+  test('rejects cron without schedule with a path-scoped custom issue', () => {
+    const result = parseInput({ title: 'Task', projectId: 'p1', triggerType: 'cron' })
+    expect(result.success).toBe(false)
+    assert(!result.success)
+    expect(result.error.issues[0]?.code).toBe('custom')
+    expect(result.error.issues[0]?.message).toBe("schedule is required when triggerType is 'cron'")
+    expect(result.error.issues[0]?.path).toEqual(['schedule'])
+  })
+
+  test('accepts cron with schedule', () => {
+    expect(
+      parseInput({ title: 'Task', projectId: 'p1', triggerType: 'cron', schedule: { freq: 'DAILY' } }).success,
+    ).toBe(true)
+  })
+
+  test('rejects on_complete with schedule with a path-scoped custom issue', () => {
+    const result = parseInput({
+      title: 'Task',
+      projectId: 'p1',
+      triggerType: 'on_complete',
+      schedule: { freq: 'DAILY' },
+    })
+    expect(result.success).toBe(false)
+    assert(!result.success)
+    expect(result.error.issues[0]?.code).toBe('custom')
+    expect(result.error.issues[0]?.message).toBe("schedule must not be provided when triggerType is 'on_complete'")
+    expect(result.error.issues[0]?.path).toEqual(['schedule'])
+  })
+
+  test('accepts on_complete without schedule', () => {
+    expect(parseInput({ title: 'Task', projectId: 'p1', triggerType: 'on_complete' }).success).toBe(true)
+  })
+
+  test('accepts every priority enum value', () => {
+    for (const priority of ['no-priority', 'low', 'medium', 'high', 'urgent'] as const) {
+      expect(parseInput({ title: 'Task', projectId: 'p1', triggerType: 'on_complete', priority }).success).toBe(true)
+    }
+  })
+
+  test('rejects an invalid priority', () => {
+    expect(
+      parseInput({ title: 'Task', projectId: 'p1', triggerType: 'on_complete', priority: 'critical' }).success,
+    ).toBe(false)
+  })
+
+  test('rejects an invalid triggerType', () => {
+    expect(parseInput({ title: 'Task', projectId: 'p1', triggerType: 'weekly' }).success).toBe(false)
+  })
+})
