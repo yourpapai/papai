@@ -249,3 +249,96 @@ describe('create-recurring-task — compile branch', () => {
     expect(capturedInput?.dtstartUtc).toMatch(/T00:00:00\.000Z$/u)
   })
 })
+
+describe('create-recurring-task — result mapping', () => {
+  type ToolInput = Parameters<NonNullable<ReturnType<typeof makeCreateRecurringTaskTool>['execute']>>[0]
+
+  const cronInput = {
+    title: 'Task',
+    projectId: 'p1',
+    triggerType: 'cron',
+    schedule: { freq: 'DAILY' },
+  } as const
+
+  beforeEach(() => {
+    mockLogger()
+    setCachedConfig('user-1', 'timezone', 'UTC')
+  })
+
+  function makeResultRecord(overrides: Partial<RecurringTaskRecord>): RecurringTaskRecord {
+    return {
+      id: 'rec-1',
+      userId: 'user-1',
+      projectId: 'p1',
+      title: 'Task',
+      description: null,
+      priority: null,
+      status: null,
+      assignee: null,
+      labels: [],
+      triggerType: 'cron',
+      rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0',
+      dtstartUtc: '2026-06-01T09:00:00.000Z',
+      timezone: 'UTC',
+      enabled: true,
+      catchUp: false,
+      lastRun: null,
+      nextRun: '2026-06-01T12:00:00.000Z',
+      createdAt: '2026-05-01T00:00:00.000Z',
+      updatedAt: '2026-05-01T00:00:00.000Z',
+      ...overrides,
+    }
+  }
+
+  async function executeWithRecord(record: RecurringTaskRecord, input: ToolInput = cronInput): Promise<unknown> {
+    const deps: CreateRecurringTaskDeps = { createRecurringTask: () => record }
+    const tool = makeCreateRecurringTaskTool('user-1', deps)
+    assert(tool.execute, 'Tool execute is undefined')
+    return await tool.execute(input, toolCtx)
+  }
+
+  test('describes the compiled schedule for a cron record with rrule and dtstartUtc', async () => {
+    const result = await executeWithRecord(makeResultRecord({}))
+    expect(result).toEqual({
+      id: 'rec-1',
+      title: 'Task',
+      projectId: 'p1',
+      triggerType: 'cron',
+      schedule: 'daily at 09:00 UTC',
+      nextRun: '2026-06-01T12:00:00',
+      enabled: true,
+    })
+  })
+
+  test('falls back when rrule is null', async () => {
+    const result = await executeWithRecord(makeResultRecord({ rrule: null }))
+    expect(result).toMatchObject({ schedule: 'after completion of current instance' })
+  })
+
+  test('falls back when dtstartUtc is null', async () => {
+    const result = await executeWithRecord(makeResultRecord({ dtstartUtc: null }))
+    expect(result).toMatchObject({ schedule: 'after completion of current instance' })
+  })
+
+  test('falls back for on_complete records', async () => {
+    const result = await executeWithRecord(
+      makeResultRecord({ triggerType: 'on_complete', rrule: null, dtstartUtc: null }),
+      {
+        title: 'Task',
+        projectId: 'p1',
+        triggerType: 'on_complete',
+      },
+    )
+    expect(result).toMatchObject({ schedule: 'after completion of current instance' })
+  })
+
+  test('converts nextRun into the record timezone as naive local time', async () => {
+    const result = await executeWithRecord(makeResultRecord({ timezone: 'Europe/Berlin' }))
+    expect(result).toMatchObject({ nextRun: '2026-06-01T14:00:00' })
+  })
+
+  test('passes null nextRun through', async () => {
+    const result = await executeWithRecord(makeResultRecord({ nextRun: null }))
+    expect(result).toMatchObject({ nextRun: null })
+  })
+})
