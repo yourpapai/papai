@@ -71,6 +71,8 @@
   let storedDefaults = $state(hasStoredDefaults)
   let pendingPreset: ToolPreset | null = $state(null)
   let pendingClear = $state(false)
+  let applying = $state(false)
+  let clearing = $state(false)
 
   const riskTone = (risk: ToolRisk): 'mute' | 'info' | 'warn' | 'danger' => {
     if (risk === 'read') return 'mute'
@@ -99,6 +101,8 @@
     expanded = {}
     pendingPreset = null
     pendingClear = false
+    applying = false
+    clearing = false
     try {
       const res = await fetchToolsFn(id)
       if (id !== contextId) return
@@ -158,9 +162,9 @@
 
   async function confirmPreset(): Promise<void> {
     const preset = pendingPreset
-    if (preset === null) return
-    pendingPreset = null
+    if (preset === null || applying) return
     error = null
+    applying = true
     try {
       const res = await applyToolPresetFn({ preset, contextId })
       domains = res.domains
@@ -168,13 +172,16 @@
       storedDefaults = res.hasStoredDefaults
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
+    } finally {
+      applying = false
+      pendingPreset = null
     }
   }
 
   async function confirmClear(): Promise<void> {
-    if (clearPresetFn === undefined) return
-    pendingClear = false
+    if (clearPresetFn === undefined || clearing) return
     error = null
+    clearing = true
     try {
       const res = await clearPresetFn()
       domains = res.domains
@@ -182,6 +189,9 @@
       storedDefaults = res.hasStoredDefaults
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
+    } finally {
+      clearing = false
+      pendingClear = false
     }
   }
 
@@ -221,10 +231,21 @@
   {#if pendingPreset !== null}
     <div class="settings-tools__confirm" data-testid="preset-confirm">
       <span>Apply "{presetLabel(pendingPreset)}"? This replaces your per-tool and per-domain settings.</span>
-      <Btn variant="primary" size="sm" testid="preset-confirm-apply" onClick={() => void confirmPreset()}>
-        {#snippet children()}Apply{/snippet}
+      <Btn
+        variant="primary"
+        size="sm"
+        busy={applying}
+        disabled={applying}
+        testid="preset-confirm-apply"
+        onClick={() => void confirmPreset()}>
+        {#snippet children()}{applying ? 'Applying…' : 'Apply'}{/snippet}
       </Btn>
-      <Btn variant="ghost" size="sm" testid="preset-confirm-cancel" onClick={() => (pendingPreset = null)}>
+      <Btn
+        variant="ghost"
+        size="sm"
+        disabled={applying}
+        testid="preset-confirm-cancel"
+        onClick={() => (pendingPreset = null)}>
         {#snippet children()}Cancel{/snippet}
       </Btn>
     </div>
@@ -241,10 +262,21 @@
   {#if pendingClear}
     <div class="settings-tools__confirm" data-testid="tool-defaults-clear-confirm">
       <span>Clear all admin default tool permissions? Contexts will revert to the allow-all baseline.</span>
-      <Btn variant="danger" size="sm" testid="tool-defaults-clear-confirm-apply" onClick={() => void confirmClear()}>
-        {#snippet children()}Clear{/snippet}
+      <Btn
+        variant="danger"
+        size="sm"
+        busy={clearing}
+        disabled={clearing}
+        testid="tool-defaults-clear-confirm-apply"
+        onClick={() => void confirmClear()}>
+        {#snippet children()}{clearing ? 'Clearing…' : 'Clear'}{/snippet}
       </Btn>
-      <Btn variant="ghost" size="sm" testid="tool-defaults-clear-confirm-cancel" onClick={() => (pendingClear = false)}>
+      <Btn
+        variant="ghost"
+        size="sm"
+        disabled={clearing}
+        testid="tool-defaults-clear-confirm-cancel"
+        onClick={() => (pendingClear = false)}>
         {#snippet children()}Cancel{/snippet}
       </Btn>
     </div>
@@ -315,7 +347,13 @@
   {:else if loading}
     <p class="placeholder">Loading…</p>
   {:else if error === null}
-    <EmptyState title="No togglable tools" hint="No togglable tools for this context." />
+    <EmptyState title="No togglable tools" hint="No tools are available for this context yet. Tools appear here once a task provider or plugin is configured.">
+      {#snippet action()}
+        <Btn variant="outline" size="sm" testid="tools-empty-refresh" onClick={() => void load(contextId)}>
+          {#snippet children()}Refresh{/snippet}
+        </Btn>
+      {/snippet}
+    </EmptyState>
   {/if}
 </section>
 

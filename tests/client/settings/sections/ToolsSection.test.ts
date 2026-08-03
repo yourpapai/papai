@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { flushSync, mount, unmount } from 'svelte'
 import { z } from 'zod'
 
+import type { ToolsResponse } from '../../../../client/settings/fetcher-schemas-tools.js'
 import { setCsrfToken } from '../../../../client/settings/fetchers.js'
 import ToolsSection from '../../../../client/settings/sections/ToolsSection.svelte'
 import { restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
@@ -18,6 +19,29 @@ const json = (payload: unknown): Response =>
 const drain = async (): Promise<void> => {
   for (let i = 0; i < 10; i++) await Promise.resolve()
   flushSync()
+}
+
+type Deferred = { promise: Promise<ToolsResponse>; resolve: (value: ToolsResponse) => void }
+
+const deferred = (): Deferred => {
+  let resolve: (value: ToolsResponse) => void = () => {}
+  const promise = new Promise<ToolsResponse>((r) => {
+    resolve = r
+  })
+  return { promise, resolve }
+}
+
+const busyPayload: ToolsResponse = {
+  contextId: 'user:1',
+  activePreset: 'allow-all',
+  hasStoredDefaults: true,
+  domains: [
+    {
+      domain: 'task',
+      summary: 'allow',
+      tools: [{ name: 'create_task', permission: 'allow', risk: 'write' }],
+    },
+  ],
 }
 
 // Three-state payload using new schema
@@ -257,6 +281,81 @@ describe('ToolsSection', () => {
     flushSync()
     expect(capturedBody).toBeNull()
     expect(target.querySelector('[data-testid="preset-confirm"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('the preset confirm bar stays mounted and Apply is busy while the request is in flight', async () => {
+    const gate = deferred()
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, {
+      target,
+      props: {
+        contextId: 'user:1',
+        fetchToolsFn: () => Promise.resolve(busyPayload),
+        applyToolPresetFn: () => gate.promise,
+      },
+    })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="preset-read-only"]')!.click()
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="preset-confirm-apply"]')!.click()
+    flushSync()
+    const apply = target.querySelector<HTMLButtonElement>('[data-testid="preset-confirm-apply"]')
+    expect(target.querySelector('[data-testid="preset-confirm"]')).not.toBeNull()
+    expect(apply).not.toBeNull()
+    expect(apply!.getAttribute('aria-busy')).toBe('true')
+    expect(apply!.disabled).toBe(true)
+    expect(target.querySelector<HTMLButtonElement>('[data-testid="preset-confirm-cancel"]')!.disabled).toBe(true)
+    gate.resolve(busyPayload)
+    await drain()
+    expect(target.querySelector('[data-testid="preset-confirm"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('the clear confirm bar stays mounted and Clear is busy while the request is in flight', async () => {
+    const gate = deferred()
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, {
+      target,
+      props: {
+        contextId: 'user:1',
+        fetchToolsFn: () => Promise.resolve(busyPayload),
+        clearPresetFn: () => gate.promise,
+      },
+    })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="tool-defaults-clear"]')!.click()
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="tool-defaults-clear-confirm-apply"]')!.click()
+    flushSync()
+    const clear = target.querySelector<HTMLButtonElement>('[data-testid="tool-defaults-clear-confirm-apply"]')
+    expect(target.querySelector('[data-testid="tool-defaults-clear-confirm"]')).not.toBeNull()
+    expect(clear).not.toBeNull()
+    expect(clear!.getAttribute('aria-busy')).toBe('true')
+    expect(clear!.disabled).toBe(true)
+    gate.resolve({ ...busyPayload, hasStoredDefaults: false })
+    await drain()
+    expect(target.querySelector('[data-testid="tool-defaults-clear-confirm"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('the empty state offers a next step', async () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, {
+      target,
+      props: {
+        contextId: 'user:1',
+        fetchToolsFn: () =>
+          Promise.resolve({ contextId: 'user:1', activePreset: null, hasStoredDefaults: false, domains: [] }),
+      },
+    })
+    await drain()
+    const action = target.querySelector<HTMLButtonElement>('[data-testid="tools-empty-refresh"]')
+    expect(action).not.toBeNull()
+    expect(action!.textContent).toContain('Refresh')
     void unmount(component)
   })
 
