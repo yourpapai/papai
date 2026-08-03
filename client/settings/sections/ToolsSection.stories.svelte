@@ -80,29 +80,29 @@
     hasStoredDefaults: false,
     domains: [
       {
-        domain: 'plugin_enterprise_document_management_connector',
+        domain: 'plugin_enterprise_document_management_retrieval_and_archival_connector',
         summary: 'partial',
         tools: [
           {
-            name: 'plugin_enterprise_document_management_connector__search_documents',
+            name: 'plugin_enterprise_document_management_retrieval_and_archival_connector__search_documents',
             permission: 'ask',
             risk: 'open-world',
-            group: 'enterprise-document-management',
+            group: 'enterprise-document-management-retrieval-and-archival',
           },
           {
-            name: 'plugin_enterprise_document_management_connector__archive_document',
+            name: 'plugin_enterprise_document_management_retrieval_and_archival_connector__archive_document',
             permission: 'deny',
             risk: 'destructive',
-            group: 'enterprise-document-management',
+            group: 'enterprise-document-management-retrieval-and-archival',
           },
         ],
       },
       {
-        domain: 'mcp_internal_knowledge_base_search_service',
+        domain: 'mcp_internal_knowledge_base_search_and_relevance_indexing_service',
         summary: 'ask',
         tools: [
           {
-            name: 'mcp_internal_knowledge_base_search_service__query',
+            name: 'mcp_internal_knowledge_base_search_and_relevance_indexing_service__query',
             permission: 'ask',
             risk: 'open-world',
           },
