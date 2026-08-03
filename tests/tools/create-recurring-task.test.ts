@@ -248,6 +248,14 @@ describe('create-recurring-task — compile branch', () => {
     expect(capturedInput?.rrule).toContain('BYHOUR=9')
     expect(capturedInput?.dtstartUtc).toMatch(/T00:00:00\.000Z$/u)
   })
+
+  test('does not compile when cron reaches execute without a schedule', async () => {
+    const tool = makeCreateRecurringTaskTool('user-1', deps)
+    assert(tool.execute, 'Tool execute is undefined')
+    await tool.execute({ title: 'Task', projectId: 'p1', triggerType: 'cron' }, toolCtx)
+    expect(capturedInput?.rrule).toBeUndefined()
+    expect(capturedInput?.dtstartUtc).toBeUndefined()
+  })
 })
 
 describe('create-recurring-task — result mapping', () => {
@@ -320,15 +328,12 @@ describe('create-recurring-task — result mapping', () => {
     expect(result).toMatchObject({ schedule: 'after completion of current instance' })
   })
 
-  test('falls back for on_complete records', async () => {
-    const result = await executeWithRecord(
-      makeResultRecord({ triggerType: 'on_complete', rrule: null, dtstartUtc: null }),
-      {
-        title: 'Task',
-        projectId: 'p1',
-        triggerType: 'on_complete',
-      },
-    )
+  test('falls back for on_complete records even when rrule and dtstartUtc are populated', async () => {
+    const result = await executeWithRecord(makeResultRecord({ triggerType: 'on_complete' }), {
+      title: 'Task',
+      projectId: 'p1',
+      triggerType: 'on_complete',
+    })
     expect(result).toMatchObject({ schedule: 'after completion of current instance' })
   })
 
@@ -340,5 +345,26 @@ describe('create-recurring-task — result mapping', () => {
   test('passes null nextRun through', async () => {
     const result = await executeWithRecord(makeResultRecord({ nextRun: null }))
     expect(result).toMatchObject({ nextRun: null })
+  })
+})
+
+describe('create-recurring-task — failure propagation', () => {
+  beforeEach(() => {
+    mockLogger()
+    setCachedConfig('user-1', 'timezone', 'UTC')
+  })
+
+  test('rethrows when the store fails', () => {
+    const deps: CreateRecurringTaskDeps = {
+      createRecurringTask: (): RecurringTaskRecord => {
+        throw new Error('db down')
+      },
+    }
+    const tool = makeCreateRecurringTaskTool('user-1', deps)
+    const exec = tool.execute
+    assert(exec, 'Tool execute is undefined')
+    expect(() => {
+      exec({ title: 'Task', projectId: 'p1', triggerType: 'on_complete' }, toolCtx)
+    }).toThrow('db down')
   })
 })
