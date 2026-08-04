@@ -28,4 +28,14 @@ describe('settings.css', () => {
   test('admin zone has a danger divider', () => {
     expect(css).toContain('.settings-admin-zone')
   })
+  test('status text uses a spacing token rather than the UA default margin', () => {
+    const statusErrorMatch = css.match(/\.status-error \{[^}]*\}/u)
+    const statusSuccessMatch = css.match(/\.status-success \{[^}]*\}/u)
+    expect(statusErrorMatch).not.toBeNull()
+    expect(statusSuccessMatch).not.toBeNull()
+    const [statusError] = statusErrorMatch!
+    const [statusSuccess] = statusSuccessMatch!
+    expect(statusError).toContain('margin: var(--gap-inline) 0 0')
+    expect(statusSuccess).toContain('margin: var(--gap-inline) 0 0')
+  })
 })

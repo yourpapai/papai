@@ -88,11 +88,16 @@
 }
 
 /* ---- status text ---- */
+/* Both carry the same margin so an error and a success message occupy identical
+   space in the same slot; a section must not shift by the UA default when one
+   swaps for the other. */
 .status-error {
   color: var(--danger);
+  margin: var(--gap-inline) 0 0;
 }
 .status-success {
   color: var(--success);
+  margin: var(--gap-inline) 0 0;
 }
 .placeholder {
   color: var(--text-muted);
