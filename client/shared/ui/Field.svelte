@@ -46,7 +46,7 @@
   <span class="ui-field__label" id={labelId}>
     {label}{#if required}<span class="ui-field__req" aria-hidden="true">*</span>{/if}
   </span>
-  {@render children()}
+  <div class="ui-field__control">{@render children()}</div>
   {#if error}<span class="ui-field__error" id={errorId} role="alert">{error}</span>{:else if hint}<span
       class="ui-field__hint" id={hintId}>{hint}</span>{/if}
 </div>
@@ -57,6 +57,11 @@
     flex-direction: column;
     gap: 6px;
     min-width: 0;
+  }
+  /* display: contents keeps this wrapper out of layout entirely, so adding it
+     moves no pixels. Task 4 promotes it to a real grid row. */
+  .ui-field__control {
+    display: contents;
   }
   .ui-field__label {
     font-family: var(--font-mono);

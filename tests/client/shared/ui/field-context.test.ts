@@ -122,4 +122,17 @@ describe('field-context', () => {
 
     void unmount(c)
   })
+
+  test('wraps the children slot in a single control element', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(FieldHintFixture, { target, props: { hint: 'https only' } })
+    const field = target.querySelector<HTMLElement>('.ui-field')!
+    const control = field.querySelector<HTMLElement>('.ui-field__control')!
+    expect(control).not.toBeNull()
+    expect(control.parentElement).toBe(field)
+    expect(control.querySelector('[data-testid="hint-input"]')).not.toBeNull()
+    expect(field.children.length).toBe(3)
+    void unmount(c)
+  })
 })
