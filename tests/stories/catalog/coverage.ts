@@ -341,6 +341,7 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-chat-context-rendering',
   'SCN-chat-interaction-payload',
   'SCN-chat-capability-gating',
+  'SCN-chat-telegram-reply-fn',
   'SCN-plugin-audio-transcribe-transformer',
 ] as const)
 
@@ -1649,6 +1650,13 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     provingTier: '0',
     storyIds: [
       'tests/stories/chat/adapter-pure-surfaces.story.test.ts#SCN-chat-capability-gating: reply features follow declared capability metadata',
+    ],
+  },
+  'SCN-chat-telegram-reply-fn': {
+    verifiedAt: '2026-08-04',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/chat/telegram-reply-fn.story.test.ts#SCN-chat-telegram-reply-fn: formatted reply, link-preview disable, and edit-target capture',
     ],
   },
   'SCN-plugin-audio-transcribe-transformer': {
