@@ -35,14 +35,14 @@ typecheck / `format:check` / `bun security` all clean.
 | Dimension                       | Score | Rationale (one line)                                                                                                                                                                                                                                                        |
 | -------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1. Visual hierarchy & scanning   | pass  | Domain/group rows now surface a tool count alongside the name (`ToolsSection.svelte:307` `{domain.domain} ({domain.tools.length})`, `:325` `{groupName} ({toolGroup.tools.length})`), so scope is scannable before expanding; remaining differentiation is indentation-only, which is a low-severity residue, not a scanning defect. |
-| 2. Affordance & signifiers       | warn  | Preset options and the domain/group row toggles now render as real `outline`-variant buttons with a visible resting border (`:208`, `:313`, `:344`; `.settings-tools__preset--active` at `:450` gives the active option an `--accent` border+text), closing the two worst instances — but the "Clear admin defaults" trigger (`:263`) is still bare `ghost` and reads as text, a residue of the same defect class. |
+| 2. Affordance & signifiers       | pass  | Every non-Cancel control in the section now renders as a real `outline`-variant button with a visible resting border — preset options, the domain/group row toggles (`:313`, `:328-334`), and, since `bb1aba29b`, the "Clear admin defaults" trigger (`:263`). `.settings-tools__preset--active` at `:450` gives the active preset an `--accent` border+text. The two confirm-bar Cancels stay `ghost` by design. |
 | 3. Consistency w/ design system  | pass  | The active-preset state is now expressed via a dedicated `--accent` border/text rule on the `outline` variant (`:450-453`) plus `aria-pressed` (`Btn.svelte:53`, `ToolsSection.svelte:227`), fully decoupled from the `primary`/`danger` filled styles still reserved for the Apply/Clear/Confirm CTAs — the prior overload is gone.                                    |
 | 4. Feedback & state              | pass  | Loading/Empty/Error/Populated states are each clearly distinct and non-alarming; preset apply and admin-defaults clear are both gated behind an explicit two-step confirm, and the confirm bar now stays mounted with a busy/disabled Apply/Clear button for the duration of the request (`:159-172` `confirmPreset`, `:174-186` `confirmClear`).                        |
 | 5. Content & language            | pass  | Preset/permission labels are clear plain language, and the empty state now carries an actionable next step via `EmptyState`'s `action` snippet (`:318` area) instead of being a dead end.                                                                                    |
-| 6. Accessibility                 | warn  | Dim-text contrast remains fixed (`tokens.css:21`), `SegmentedControl`/domain expander keep correct `radiogroup`/`aria-expanded` semantics, and the expand toggle now sits on the shared 24px floor (`e69d2852b`) — but the active preset's `✓` is baked into visible button text rather than marked decorative, duplicating what `aria-pressed` already announces to screen readers.                                     |
+| 6. Accessibility                 | pass  | Dim-text contrast remains fixed (`tokens.css:21`), `SegmentedControl`/domain expander keep correct `radiogroup`/`aria-expanded` semantics, the expand toggle sits on the shared 24px floor (`e69d2852b`), and the active preset's `✓` is now wrapped in an `aria-hidden="true"` span (`:230`, `ddb63df03`) so screen readers hear only the `aria-pressed` state wired at `:227`.                                     |
 | 7. Responsive / layout           | pass  | `.settings-tools__domain-head` now sets `flex-wrap: wrap`, and a lengthened long-domain fixture proves the head row actually wraps instead of clipping/overflowing at ~640px, closing the previously-untested overflow risk.                                              |
-| 8. Spacing, alignment & sizing   | warn  | Row gaps/paddings now use `var(--s1)`–`var(--s4)`/`--gap-tight` tokens instead of hardcoded 6/10/14px values — but `.settings-tools__clear-row` (`:472`) and `.settings-tools__presets-hint` (`:455`) still carry a bare `12px` margin outside the token scale, a narrower tokenization-consistency residue.                |
-| 9. Interaction & micro-states    | warn  | The preset Apply/Clear confirm bar now stays mounted and shows a busy/disabled state for the duration of the request instead of unmounting instantly (`:159-186`) — but per-tool `SegmentedControl` and the domain/group toggles are never disabled during `applying`/`clearing` (`:307-316`, `:325-335`, `:343-349`), so a manual edit can race a slow preset/clear request, and the clear-trigger row can render alongside the preset confirm bar at the same time (`:260` gated only on `storedDefaults && !pendingClear`, not `pendingPreset === null`).             |
+| 8. Spacing, alignment & sizing   | pass  | Every gap, padding, and margin in the section's stylesheet now resolves through the shared scale — the last two bare `12px` margins, `.settings-tools__presets-hint` (`:455`) and `.settings-tools__clear-row` (`:472`), moved to `var(--s3)` in `ddb63df03`, joining the `var(--s1)`–`var(--s4)`/`--gap-tight` values already in place.                |
+| 9. Interaction & micro-states    | pass  | The preset Apply/Clear confirm bar stays mounted with a busy/disabled action for the duration of the request (`:164-197`), the per-tool `SegmentedControl` and the domain/group toggles are now disabled during `applying`/`clearing` (`:313`, `:328-334`, `:343-348`, `ddb63df03`) so a manual edit cannot race an in-flight request, and the clear-trigger row hides while a preset confirmation is open (`:260` now also gated on `pendingPreset === null`), leaving one confirmation surface on screen at a time.             |
 
 ## Findings
 
@@ -118,7 +118,13 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [Med] Per-tool/domain/group permission controls stay live during a preset apply or clear
 
 - **Id:** tools-race-permission-during-preset
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `ddb63df03` ("fix(settings): close four pixel-preserving ToolsSection findings")
+  (2026-08-04). The domain toggle (`:313`), the group toggle (`:328-334`), and the per-tool
+  `SegmentedControl` (`:343-348`) each now carry `disabled={applying || clearing}`, matching the
+  gating the confirm-bar buttons already had. No `busy` caption was added to the leaf controls —
+  the confirm bar announces the in-flight operation centrally, and up to 30 simultaneous "Saving…"
+  captions for one operation would be worse than none.
 - **Dimension:** 9. Interaction & micro-states
 - **Where visible:** not a distinct screenshot — reachable by starting a preset Apply or "Clear
   admin defaults" Clear, then, before the request resolves, changing an individual tool's
@@ -131,28 +137,44 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
   whichever resolves last silently wins, invisibly discarding the other. An earlier commit,
   `3b1c5bf09`, closed this same class of hole between the preset-apply and clear-defaults flows,
   but not for these per-tool/domain/group controls.
-- **Suggested fix:** disable the `SegmentedControl` and the domain/group toggle `Btn`s while
-  `applying || clearing`, matching the pattern already used on the confirm-bar buttons.
+- **Suggested fix:** N/A — resolved.
 
 ### [Low] "Clear admin defaults" trigger still uses the bare `ghost` variant
 
 - **Id:** tools-clear-trigger-looks-like-text
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `bb1aba29b` ("fix(settings): give the Tools clear-defaults trigger a real button
+  affordance") (2026-08-04). `:263` is now `variant="outline"`, so the trigger has a visible
+  resting border matching the domain/group row toggles. The two confirm-bar Cancels (`:250`,
+  `:286`) remain `ghost` by design. This was the only change in the sub-project permitted to move
+  pixels; it altered exactly one baseline,
+  `settings-sections-ToolsSection-Preset-applied-1.png`, which was read directly to confirm the
+  border appeared and nothing else shifted. That baseline only shows the trigger at all because
+  the same commit added `clearPresetFn` to the `Preset applied` story — before it, the guard at
+  `:260` meant no story rendered the trigger, so the change would have been invisible in every
+  frame.
 - **Dimension:** 2. Affordance & signifiers
-- **Where visible:** Populated/Grouped screenshots, whenever stored admin defaults exist — the
-  "Clear admin defaults" trigger above the preset confirm area.
+- **Where visible:** source only at review time — no story passed `clearPresetFn`, so the
+  "Clear admin defaults" trigger rendered in no baseline. It is visible in the `Preset applied`
+  screenshot from `bb1aba29b` onward, above the preset confirm area.
 - **Source:** `client/settings/sections/ToolsSection.svelte:263` (`<Btn variant="ghost" ...
   testid="tool-defaults-clear">`) — transparent background *and* transparent border
   (`Btn.svelte:97-101`), so it reads as plain text. Same defect class as the now-fixed
   `tools-bulk-actions-look-like-text`, but a different button, hence a new finding rather than a
   residue. The two other remaining `ghost` buttons (`:250`, `:286`, the confirm-bar Cancels) are
   deliberately kept `ghost` by design and are not part of this finding.
-- **Suggested fix:** switch `:263` to `variant="outline"`, matching the domain/group toggle fix.
+- **Suggested fix:** N/A — resolved.
 
 ### [Low] Clear-defaults trigger row can render alongside the preset confirm bar
 
 - **Id:** tools-dual-confirm-bars-overlap
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `ddb63df03` ("fix(settings): close four pixel-preserving ToolsSection findings")
+  (2026-08-04). The clear-row guard at `:260` gained `&& pendingPreset === null`, so the trigger
+  hides while a preset confirmation is open and returns the moment the user cancels. The clear
+  trigger yields to the preset bar rather than the reverse, because the user has just expressed
+  preset intent. This completes a symmetry the code already half-implemented: the clear trigger's
+  own `onClick` at `:267` already set `pendingPreset = null`.
 - **Dimension:** 9. Interaction & micro-states
 - **Where visible:** not a distinct screenshot — reachable by requesting a preset (opening the
   preset confirm bar) while stored admin defaults still exist.
@@ -161,13 +183,17 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
   `storedDefaults && !pendingClear`, not on `pendingPreset === null`, so the "Clear admin
   defaults" row can be visible at the same time as the preset Apply/Cancel confirm bar
   (`:236-256`), putting two competing confirmation affordances on screen at once.
-- **Suggested fix:** add `pendingPreset === null` to the clear-row's guard so only one
-  confirmation surface is ever visible at a time.
+- **Suggested fix:** N/A — resolved.
 
 ### [Low] Two spacing values remain off the token scale
 
 - **Id:** tools-clear-row-spacing-off-scale
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `ddb63df03` ("fix(settings): close four pixel-preserving ToolsSection findings")
+  (2026-08-04). Both bare margins are now `var(--s3)` — `.settings-tools__presets-hint` at `:455`
+  and `.settings-tools__clear-row` at `:472`. `--s3` is `12px` (`client/shared/tokens.css:70`), so
+  this was a tokenisation-consistency change with no visual delta. The visual audit run before any
+  re-shoot confirmed it moved no pixels.
 - **Dimension:** 8. Spacing, alignment & sizing
 - **Where visible:** Populated/Grouped screenshots whenever the clear-admin-defaults row or the
   presets hint line renders.
@@ -176,12 +202,22 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
   (`.settings-tools__presets-hint { margin: 0 0 12px; }`) — both still a bare `12px` rather than
   `var(--s3)`. Note the values themselves are on-scale (`--s3` is `12px`); this is a
   tokenization-consistency gap, a distinct defect from the now-closed `tools-spacing-off-scale`.
-- **Suggested fix:** replace both bare `12px` margins with `var(--s3)`.
+- **Suggested fix:** N/A — resolved.
 
 ### [Low] Active-preset checkmark is redundant with `aria-pressed` for screen readers
 
 - **Id:** tools-preset-checkmark-not-decorative
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `ddb63df03` ("fix(settings): close four pixel-preserving ToolsSection findings")
+  (2026-08-04). `:230` now reads
+  `{#if active}<span aria-hidden="true">✓ </span>{/if}{preset.label}`, so a screen reader hears
+  only the `aria-pressed` state wired at `:227`, not a redundant "check mark" announcement. The
+  glyph remains visible to sighted users. The wrapper turned out **not** to be pixel-neutral: the
+  audit run before any re-shoot caught a ~1px re-shaping of the active preset button, because
+  splitting the glyph and the label into two inline runs re-shapes the text. The glyph, the label,
+  and every colour are unchanged; only the button's width moved, nudging the two buttons to its
+  right by 1px. `bb1aba29b` absorbed that shift when it re-shot the same baseline, so the sub-project
+  still changed exactly one baseline and added none.
 - **Dimension:** 6. Accessibility
 - **Where visible:** Preset-applied screenshot — the active preset button reads `✓ Read-only`.
 - **Source:** `client/settings/sections/ToolsSection.svelte:230`
@@ -189,8 +225,7 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
   than marked decorative, so a screen reader announces "check mark Read-only" in addition to the
   `aria-pressed="true"` state already wired at `:227`/`Btn.svelte:53`, duplicating the same
   information.
-- **Suggested fix:** wrap the `✓` in an `aria-hidden="true"` span so screen-reader users hear only
-  the `aria-pressed` state, not a redundant textual marker.
+- **Suggested fix:** N/A — resolved.
 
 ### [Low] Empty state has no actionable next step
 
