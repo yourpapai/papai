@@ -92,6 +92,22 @@ describe('formatToolStatus', () => {
   test('asRecord rejects a number and yields the no-arg label', () => {
     expect(formatToolStatus('search_memory', 42)).toBe('🔍 Searching memory…')
   })
+
+  test('a mapped tool with no arg extractor renders only the emoji and label', () => {
+    expect(formatToolStatus('list_memory', {})).toBe('🧠 Recalling memory…')
+  })
+
+  test('fetch_chat_link renders the quote:false host form (second hostOf entry)', () => {
+    expect(formatToolStatus('fetch_chat_link', { url: 'https://example.com/x' })).toBe('🔗 Reading link example.com…')
+  })
+
+  test('update_task renders the updating label with no arg', () => {
+    expect(formatToolStatus('update_task', {})).toBe('✏️ Updating task…')
+  })
+
+  test('delete_task renders the deleting label with no arg', () => {
+    expect(formatToolStatus('delete_task', {})).toBe('🗑️ Deleting task…')
+  })
 })
 
 describe('reminder/alert live-status labels', () => {
