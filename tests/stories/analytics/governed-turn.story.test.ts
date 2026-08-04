@@ -58,4 +58,5 @@ scenario(
     await flushAnalytics()
     expect(messageAcceptedValues()).toEqual([1])
   },
+  { testTimeoutMs: 15000 },
 )

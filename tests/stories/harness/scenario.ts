@@ -332,7 +332,11 @@ export type ScenarioApi = Readonly<{
 
 type WorldFactory = (name: string) => Promise<ScenarioWorld>
 
-export type ScenarioOptions = Readonly<{ debugEnabled?: boolean; realTaskProvider?: RealTaskProviderType }>
+export type ScenarioOptions = Readonly<{
+  debugEnabled?: boolean
+  realTaskProvider?: RealTaskProviderType
+  testTimeoutMs?: number
+}>
 
 const contextId = (context: ContextHandle): string =>
   context.kind === 'dm' ? context.user.id : context.kind === 'thread' ? context.group.id : context.id
@@ -1104,12 +1108,10 @@ export function executeScenario(
   })
 }
 
-const SCENARIO_TEST_TIMEOUT_MS = 15000
-
 export function scenario(
   name: string,
   run: (api: ScenarioApi) => void | Promise<void>,
   options?: ScenarioOptions,
 ): void {
-  test(name, () => executeScenario(name, run, undefined, options), SCENARIO_TEST_TIMEOUT_MS)
+  test(name, () => executeScenario(name, run, undefined, options), options?.testTimeoutMs)
 }
