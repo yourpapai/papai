@@ -89,11 +89,20 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [Low] Status messages are positioned away from the action and never clear
 
 - **Id:** repos-status-not-announced-never-clears
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `3814bd2b8` ("fix(settings): route Repositories feedback to the action that caused
+  it") (2026-08-04). The single top-of-section status pair became two slots: load and delete
+  outcomes render above the repo rows (`ReposSection.svelte:150-158`), add outcomes render inside
+  the add-form card (`ReposSection.svelte:255-256`), so each message sits with the control that
+  produced it. Success messages now clear after `statusTimeoutMs` (default 4000,
+  `ReposSection.svelte:22,25,64-74`); errors persist until the user retries or succeeds. The
+  duration is a prop rather than a constant so the stories and the visual spec can hold a message
+  on screen — otherwise the `added, success status` baseline would race a wall clock and fail
+  intermittently under CI load.
 - **Dimension:** 6. Accessibility (also 4. Feedback & state)
 - **Where visible:** `ReposSection — added, success status` — "Repository added." now carries `role="status"` (error carries `role="alert"`), so both are announced; but the message still renders at the very top of the section, above any existing repo rows, and stays there indefinitely.
 - **Source:** `client/settings/sections/ReposSection.svelte:124-125` (`role="alert"` / `role="status"` added — the accessibility gap from the prior review is closed), `:71,98` (`status` is only cleared at the start of the next `handleAdd`/`handleDelete`, never on a timer or on navigating away).
-- **Suggested fix:** Move the add-form outcome next to the add form (or scroll it into view), and time out the success message after a few seconds.
+- **Suggested fix:** N/A — resolved.
 - **Note:** narrowed from the original finding — the "never announced" half is fixed (`7d3a331b9`); only placement and auto-clear remain.
 
 ### [Low] Meta and helper text fall below the AA contrast floor
@@ -126,11 +135,19 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [Low] Load failures surface the raw backend string with no recovery affordance
 
 - **Id:** repos-load-error-no-recovery
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `3814bd2b8` ("fix(settings): route Repositories feedback to the action that caused
+  it") (2026-08-04). The list-slot error now carries an inline `Retry` button
+  (`ReposSection.svelte:151-156`, `testid="repos-error-retry"`) that re-runs `load(contextId)`, so
+  recovery sits beside the message instead of depending on the refresh glyph in the header's far
+  corner (`ReposSection.svelte:146`, `testid="repos-refresh"`). That glyph stays as the idle
+  refresh affordance. The button also renders for a failed delete (`ReposSection.svelte:126`,
+  `listError` set in `handleDelete`'s catch), which is deliberate: after a failed delete the list
+  state is uncertain and re-fetching tells the user whether it landed.
 - **Dimension:** 5. Content & language (also 4. Feedback & state)
 - **Where visible:** `Error` — the message now reads "Something went wrong on the server. Try again shortly." (plain language, not a raw backend string), and the retry control (`IconButton label="Refresh"`) carries an accessible name and visible border via `aria-label`/`title`.
 - **Source:** `client/shared/format-error.ts:14-26` (`formatFetchError`, added in `c5cbcf13b`) maps 5xx/4xx classes to canned copy; `client/settings/sections/ReposSection.svelte:120` (`IconButton label="Refresh" ... testid="repos-refresh"`) in the `PageHeader` action slot.
-- **Suggested fix:** The raw-string and unlabelled-control defects are gone; the residual is that the retry action still lives in the header's far corner rather than beside the error message itself.
+- **Suggested fix:** N/A — resolved.
 - **Note:** narrowed and downgraded from Med — both defects the original finding cited by name (raw text, unlabelled glyph) are resolved; only the proximity suggestion remains outstanding.
 
 ### [Low] The add form's spacing and sizing are all hardcoded px
@@ -161,18 +178,34 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [Low] Egress input is silently normalised
 
 - **Id:** repos-egress-silently-normalised
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `e6c8f7ec3` ("fix(settings): show what the egress field will actually save")
+  (2026-08-04). A read-only hint under the egress textarea (`ReposSection.svelte:237-243`,
+  `data-testid="repos-egress-preview"`) previews the parsed hosts live, derived from the same
+  `parseEgress` (`ReposSection.svelte:50-57`) the submit path calls, via `egressPreview`
+  (`ReposSection.svelte:59`), so it cannot drift from what is stored. The field is never
+  rewritten — rewriting on blur would silently edit what the user typed and destroy their line
+  breaks and ordering. The hint renders nothing when no hosts parse, which is also why only the
+  long-content screenshot changed.
 - **Dimension:** 4. Feedback & state
 - **Where visible:** Not visible in the screenshots — source-only.
 - **Source:** `client/settings/sections/ReposSection.svelte:46-53` — `parseEgress` still lowercases, trims and dedupes; the form still clears on success, so a user who typed `PyPI.org` twice still doesn't see the normalised value until the row re-renders after `load()`.
-- **Suggested fix:** Unchanged — normalise visibly in the field on blur, or highlight the change in the post-add row.
+- **Suggested fix:** N/A — resolved.
 
 ### [Low] The section has no heading element
 
 - **Id:** repos-no-heading-element
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `e24abe5a1` ("fix(settings): make the Repositories add-form label a real heading")
+  (2026-08-04). The add-form sub-label is now an `<h3>` carrying the same
+  `.settings-repos__add-label` class (`ReposSection.svelte:192`), sitting under the `<h2>` that
+  `PageHeader.svelte:25` already rendered, so the add form is reachable by heading navigation.
+  The class gained an explicit `font-weight: 400` (`ReposSection.svelte:345`) because `<h3>`
+  defaults to bold — without it the tag change would have moved pixels. The visual audit was run
+  against the untouched baselines, with no re-shoot, and passed 467/0, which is what proves the
+  promotion was purely semantic.
 - **Dimension:** 6. Accessibility
 - **Where visible:** Not visible — source-only.
 - **Source:** `client/shared/ui/PageHeader.svelte:25` now renders the section title as an `<h2>` (fixed — this half was shared and affects every reviewed section); `client/settings/sections/ReposSection.svelte:159` still renders "Add repository" as a `<p class="settings-repos__add-label">`, not a heading.
-- **Suggested fix:** Promote the "Add repository" sub-label to an `<h3>` so the add form is reachable by heading navigation too.
+- **Suggested fix:** N/A — resolved.
 - **Note:** narrowed — the `PageHeader` half of this finding (originally `<div>`) is resolved; the residual is scoped to this section's own add-form label.
