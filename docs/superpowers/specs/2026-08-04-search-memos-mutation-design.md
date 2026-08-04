@@ -132,15 +132,22 @@ Mirrors `tests/tools/search-chat-history.test.ts:15-27`:
 
 ### Accepted residual mutants
 
+Verified against the final paired run (score **0.9271**, 89 killed / 6
+survived / 1 no-coverage of 96 mutants):
+
 - **`>=` vs `>` at exactly 0.65** (L28): the threshold is not float-representable,
   so an exact-boundary cosine cannot be constructed reliably. The other
   directional mutants die to test 11.
-- **`getMemo`-null filter branch** (L33–37): defensive code unreachable via the
-  public API — `loadEmbeddingsForUser` and `getMemo` apply consistent
-  user/status scoping, so a loaded embedding row always resolves.
-
-Projected ceiling with these residuals: ~0.92–0.95; the ≥ 0.90 gate has
-headroom.
+- **`getMemo`-null defensive family** (L32 filter-removal, L35 `false`, L37
+  `true`): unreachable via the public API — `loadEmbeddingsForUser` and
+  `getMemo` apply consistent user/status scoping, so a loaded embedding row
+  always resolves and the null-filter behaves identically with or without the
+  predicate.
+- **Empty-store early return** (L24 `["Stryker was here"]`, L24 `false`):
+  equivalent — with zero stored embeddings the scored pipeline yields an empty
+  result either way (the garbage-element array filters to empty).
+- **`{ available: false }` → `{}`** (L94): `available: undefined` is falsy and
+  flows through both the auto and semantic branches identically to `false`.
 
 ## Error handling
 
