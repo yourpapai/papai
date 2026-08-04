@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert'
 
 import { setConfig } from '../../src/config.testing.js'
+import { subscribe, unsubscribe, type DebugEvent } from '../../src/debug/event-bus.js'
 import { createTrackedLoggerMock, type TrackedLoggerMock } from '../utils/logger-mock.js'
 import { setupTestDb } from '../utils/test-helpers.js'
 
@@ -177,5 +178,150 @@ describe('tool-handlers store-null update branches', () => {
 
     const result = executeUpdate(USER_ID, { id: created.id, prompt: 'too late' })
     expect(result).toEqual({ error: 'Reminder or alert not found.' })
+  })
+})
+
+describe('tool-handlers update payload guards', () => {
+  type UpdateSpy = ReturnType<typeof mock>
+
+  const mockScheduledUpdate = async (impl: (...args: unknown[]) => unknown): Promise<UpdateSpy> => {
+    const scheduledActual = await import('../../src/deferred-prompts/scheduled.js')
+    const updateSpy = mock(impl)
+    void mock.module('../../src/deferred-prompts/scheduled.js', () => ({
+      ...scheduledActual,
+      updateScheduledPrompt: updateSpy,
+    }))
+    return updateSpy
+  }
+
+  const mockAlertUpdate = async (impl: (...args: unknown[]) => unknown): Promise<UpdateSpy> => {
+    const alertsActual = await import('../../src/deferred-prompts/alerts.js')
+    const updateSpy = mock(impl)
+    void mock.module('../../src/deferred-prompts/alerts.js', () => ({
+      ...alertsActual,
+      updateAlertPrompt: updateSpy,
+    }))
+    return updateSpy
+  }
+
+  const createScheduled = (handlers: ToolHandlersModule): string => {
+    setConfig(USER_ID, 'timezone', 'UTC')
+    handlers.executeCreate(USER_ID, {
+      prompt: 'payload probe',
+      schedule: { fire_at: { date: '2099-01-01', time: '09:00' } },
+    })
+    const { prompts } = handlers.executeList(USER_ID, { type: 'scheduled' })
+    return prompts[0]!.id
+  }
+
+  const createAlert = (handlers: ToolHandlersModule): string => {
+    const created = handlers.executeCreate(USER_ID, {
+      prompt: 'payload alert',
+      condition: { field: 'task.status', op: 'changed_to', value: 'done' },
+    })
+    assert.ok('id' in created)
+    return created.id
+  }
+
+  const collectEvents = (type: string): { events: DebugEvent[]; cleanup: () => void } => {
+    const events: DebugEvent[] = []
+    const handler = (e: DebugEvent): void => {
+      if (e.type === type) events.push(e)
+    }
+    subscribe(handler)
+    return { events, cleanup: () => unsubscribe(handler) }
+  }
+
+  test('scheduled update without prompt sends no prompt key to the store', async () => {
+    const updateSpy = await mockScheduledUpdate(() => ({ id: 'stored' }))
+    const handlers = await importHandlers()
+    const id = createScheduled(handlers)
+
+    handlers.executeUpdate(USER_ID, { id, execution: { delivery_brief: 'brief' } })
+    expect(updateSpy).toHaveBeenCalledTimes(1)
+    expect(updateSpy.mock.calls[0]![2]).toStrictEqual({
+      executionMetadata: { delivery_brief: 'brief', context_snapshot: null },
+    })
+  })
+
+  test('scheduled update with invalid execution sends no executionMetadata key to the store', async () => {
+    const updateSpy = await mockScheduledUpdate(() => ({ id: 'stored' }))
+    const handlers = await importHandlers()
+    const id = createScheduled(handlers)
+
+    const invalidExecution = { delivery_brief: 'x', context_snapshot: 'no brief' }
+    delete (invalidExecution as { delivery_brief?: string }).delivery_brief
+    handlers.executeUpdate(USER_ID, { id, execution: invalidExecution })
+    expect(updateSpy).toHaveBeenCalledTimes(1)
+    expect(updateSpy.mock.calls[0]![2]).toStrictEqual({})
+  })
+
+  test('alert update without prompt sends no prompt key to the store', async () => {
+    const updateSpy = await mockAlertUpdate(() => ({ id: 'stored' }))
+    const handlers = await importHandlers()
+    const id = createAlert(handlers)
+
+    handlers.executeUpdate(USER_ID, { id, cooldown_minutes: 15 })
+    expect(updateSpy).toHaveBeenCalledTimes(1)
+    expect(updateSpy.mock.calls[0]![2]).toStrictEqual({ cooldownMinutes: 15 })
+  })
+
+  test('alert update without cooldown sends no cooldownMinutes key to the store', async () => {
+    const updateSpy = await mockAlertUpdate(() => ({ id: 'stored' }))
+    const handlers = await importHandlers()
+    const id = createAlert(handlers)
+
+    handlers.executeUpdate(USER_ID, { id, prompt: 'only prompt' })
+    expect(updateSpy).toHaveBeenCalledTimes(1)
+    expect(updateSpy.mock.calls[0]![2]).toStrictEqual({ prompt: 'only prompt' })
+  })
+
+  test('alert update with invalid execution sends no executionMetadata key to the store', async () => {
+    const updateSpy = await mockAlertUpdate(() => ({ id: 'stored' }))
+    const handlers = await importHandlers()
+    const id = createAlert(handlers)
+
+    const invalidExecution = { delivery_brief: 'x', context_snapshot: 'no brief' }
+    delete (invalidExecution as { delivery_brief?: string }).delivery_brief
+    handlers.executeUpdate(USER_ID, { id, execution: invalidExecution })
+    expect(updateSpy).toHaveBeenCalledTimes(1)
+    expect(updateSpy.mock.calls[0]![2]).toStrictEqual({})
+  })
+
+  test('updateAlertPrompt is not called when the alert id does not exist', async () => {
+    const updateSpy = await mockAlertUpdate(() => null)
+    const handlers = await importHandlers()
+
+    const result = handlers.executeUpdate(USER_ID, { id: 'missing-alert', prompt: 'x' })
+    expect(result).toEqual({ error: 'Reminder or alert not found.' })
+    expect(updateSpy).not.toHaveBeenCalled()
+  })
+
+  test('scheduled update emits nothing when the store result carries both id and error', async () => {
+    await mockScheduledUpdate(() => ({ id: 'x', error: 'conflict' }))
+    const handlers = await importHandlers()
+    const id = createScheduled(handlers)
+
+    const { events, cleanup } = collectEvents('deferred:updated')
+    try {
+      handlers.executeUpdate(USER_ID, { id, prompt: 'x' })
+      expect(events).toHaveLength(0)
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('alert update emits nothing when the store result carries both id and error', async () => {
+    await mockAlertUpdate(() => ({ id: 'x', error: 'conflict' }))
+    const handlers = await importHandlers()
+    const id = createAlert(handlers)
+
+    const { events, cleanup } = collectEvents('deferred:updated')
+    try {
+      handlers.executeUpdate(USER_ID, { id, prompt: 'x' })
+      expect(events).toHaveLength(0)
+    } finally {
+      cleanup()
+    }
   })
 })

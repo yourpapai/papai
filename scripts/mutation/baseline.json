@@ -168,7 +168,7 @@
   "src/deferred-prompts/proactive-llm-config.ts": 0.625,
   "src/deferred-prompts/proactive-trigger.ts": 0.66,
   "src/deferred-prompts/schedule-update-helpers.ts": 0.6461538461538462,
-  "src/deferred-prompts/tool-handlers.ts": 0.5805243445692884,
+  "src/deferred-prompts/tool-handlers.ts": 0.9550561797752809,
   "src/errors.ts": 0.7579617834394905,
   "src/history.ts": 1,
   "src/live-status/tool-status-labels.ts": 0.46190476190476193,
