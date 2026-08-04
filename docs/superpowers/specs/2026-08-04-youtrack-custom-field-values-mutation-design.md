@@ -162,8 +162,22 @@ and killed by the oracle assertions above; all 14 current survivors sit in
 the L14 exclusion-set and L51–L56 wrapper clusters targeted by section 1,
 plus the L15 `isRecord` arrow body killed transitively by section 3's object
 ladder). Expected paired score **≥ 0.9**. Predicted accepted survivor:
-the `isRecord` `&&`→`||` equivalent (L15). Any other survivor is investigated
-and either killed with an additional case or justified in the plan.
+the `isRecord` `&&`→`||` equivalent (L15).
+
+Achieved (2026-08-04): killed=90 survived=5 noCoverage=0, score=0.947
+(90/95). The five survivors realize the two predicted equivalent classes:
+L15 `isRecord` (`value !== null`→`true`, a `ConditionalExpression` sibling
+of the predicted `&&`→`||` — redundant because `getStringProperty` is only
+reachable with object/array/function values where the null check is moot),
+and the L41 array null-guard (`||`→`&&` plus three
+`ConditionalExpression`→`false` siblings — redundant because `null`/
+`undefined` items fall through to `getStringProperty`, which returns
+`undefined`, and the `.filter()` drops them). Two unexpected filter-removal
+survivors (L39 `MethodExpression` dropping `.filter()`; L44
+`ConditionalExpression`→`true` filter predicate) were killed by adding a
+`toHaveLength(2)` assertion: `bun:test`'s `toEqual` ignores trailing
+`undefined` array elements, so the original oracle was blind to the filter
+step.
 
 ## Measurement and ratchet
 

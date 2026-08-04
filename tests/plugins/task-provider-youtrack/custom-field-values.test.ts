@@ -110,6 +110,12 @@ describe('mapReadOnlyCustomFields array values', () => {
     const result = mapReadOnlyCustomFields([{ $type: 'Custom', name: 'Team', value: [{ login: 'L' }] }])
     expect(result).toEqual([{ name: 'Team', value: ['L'] }])
   })
+
+  test('drops null and non-string items leaving no undefined entries (locks the filter step)', () => {
+    const result = mapReadOnlyCustomFields([{ $type: 'Custom', name: 'Team', value: [{ name: 'A' }, 'b', null, 42] }])
+    expect(result).toEqual([{ name: 'Team', value: ['A', 'b'] }])
+    expect(result?.[0]?.value).toHaveLength(2)
+  })
 })
 
 describe('mapReadOnlyCustomFields stringify tail', () => {
