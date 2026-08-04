@@ -165,6 +165,7 @@
   "src/chat/telegram/reply-helpers.ts": 0.591304347826087,
   "src/config.ts": 0.5862068965517241,
   "src/conversation.ts": 0.6194029850746269,
+  "src/deferred-prompts/alerts.ts": 0.5666666666666667,
   "src/deferred-prompts/proactive-llm-config.ts": 0.625,
   "src/deferred-prompts/proactive-trigger.ts": 0.66,
   "src/deferred-prompts/schedule-update-helpers.ts": 0.6461538461538462,
