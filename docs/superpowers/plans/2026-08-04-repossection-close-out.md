@@ -315,6 +315,8 @@ Append these five tests inside the existing `describe('ReposSection', …)` bloc
     expect(target.querySelector('.settings-repos__add .status-success')).toBeNull()
     const status = target.querySelector<HTMLElement>('.status-success')!
     expect(status.textContent).toContain('Repository removed.')
+    const addCard = target.querySelector<HTMLElement>('.settings-repos__add')!
+    expect(status.compareDocumentPosition(addCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     void unmount(component)
   })
 
@@ -345,10 +347,10 @@ Append these five tests inside the existing `describe('ReposSection', …)` bloc
 
     expect(target.querySelector('.status-success')).not.toBeNull()
 
-    await new Promise((resolve) => setTimeout(resolve, 60))
-    flushSync()
-
-    expect(target.querySelector('.status-success')).toBeNull()
+    await waitFor(() => {
+      flushSync()
+      return target.querySelector('.status-success') === null
+    })
     void unmount(component)
   })
 
@@ -371,7 +373,12 @@ Append these five tests inside the existing `describe('ReposSection', …)` bloc
 
     expect(target.querySelector('.status-error')).not.toBeNull()
 
-    await new Promise((resolve) => setTimeout(resolve, 60))
+    // A non-event cannot be polled for, so this is the generous fixed bound that
+    // tests/CLAUDE.md:16-17 permits. Starvation can only make the 10ms timer *less*
+    // likely to have fired, so contention can never turn this into a false failure.
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 60)
+    })
     flushSync()
 
     expect(target.querySelector('.status-error')).not.toBeNull()
@@ -379,7 +386,9 @@ Append these five tests inside the existing `describe('ReposSection', …)` bloc
   })
 ```
 
-**On the real 60ms waits.** The spec's testing-strategy table said "fake timers"; this plan deliberately uses a tiny injected `statusTimeoutMs` and a real wait instead. That is the whole reason the duration is a prop: a 10ms timeout checked after 60ms has a 6× margin and needs no fake-timer shim, which Bun's runner supports unevenly. This is a considered deviation from the spec's implementation guess, not an oversight — the spec's *requirement* (deterministic, no baseline racing a clock) is fully met.
+Add `waitFor` to the existing import from `'../../utils/test-helpers.js'` — the suite already imports `restoreFetch` and `setMockFetch` from that module, and `waitFor` is exported at `tests/utils/test-helpers.ts:1177`.
+
+**On timing.** The spec's testing-strategy table said "fake timers"; this plan injects a tiny `statusTimeoutMs` instead, which is the whole reason the duration is a prop. The *positive* auto-clear test then polls with `waitFor` rather than sleeping a fixed interval, because `tests/CLAUDE.md:13-17` forbids fixed-wall-clock timing assertions — under CPU contention the event loop starves and they flake. `waitFor` still fails loudly (it throws on timeout) if the message never clears. The *negative* test keeps a fixed bound because asserting a non-event cannot be expressed as a poll, and its flake direction is safe.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 

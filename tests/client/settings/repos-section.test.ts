@@ -9,7 +9,7 @@ import { flushSync, mount, unmount } from 'svelte'
 
 import { setCsrfToken } from '../../../client/settings/fetchers.js'
 import ReposSection from '../../../client/settings/sections/ReposSection.svelte'
-import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
+import { restoreFetch, setMockFetch, waitFor } from '../../utils/test-helpers.js'
 
 const json = (payload: unknown): Response =>
   new Response(JSON.stringify(payload), { status: 200, headers: { 'Content-Type': 'application/json' } })
@@ -534,6 +534,8 @@ describe('ReposSection', () => {
     expect(target.querySelector('.settings-repos__add .status-success')).toBeNull()
     const status = target.querySelector<HTMLElement>('.status-success')!
     expect(status.textContent).toContain('Repository removed.')
+    const addCard = target.querySelector<HTMLElement>('.settings-repos__add')!
+    expect(status.compareDocumentPosition(addCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     void unmount(component)
   })
 
@@ -564,10 +566,10 @@ describe('ReposSection', () => {
 
     expect(target.querySelector('.status-success')).not.toBeNull()
 
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 60)
+    await waitFor(() => {
+      flushSync()
+      return target.querySelector('.status-success') === null
     })
-    flushSync()
 
     expect(target.querySelector('.status-success')).toBeNull()
     void unmount(component)
@@ -592,6 +594,12 @@ describe('ReposSection', () => {
 
     expect(target.querySelector('.status-error')).not.toBeNull()
 
+    // Fixed wait is intentional here (tests/CLAUDE.md:13-17 permits it for this
+    // shape): this asserts a non-event — that the error is still present after
+    // the timer window — which can't be expressed as a poll. CPU contention can
+    // only make the auto-clear timer fire later, never earlier, so starvation
+    // cannot turn this into a false failure; it's a generous-bound "didn't
+    // happen" check.
     await new Promise<void>((resolve) => {
       setTimeout(resolve, 60)
     })
