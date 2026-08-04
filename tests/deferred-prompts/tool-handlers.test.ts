@@ -508,3 +508,96 @@ describe('executeUpdate — scheduled prompt fields', () => {
     expect(getScheduledPrompt(id, USER_ID)!.executionMetadata.delivery_brief).toBe('kept brief')
   })
 })
+
+describe('executeUpdate — alert prompt fields', () => {
+  const createAlert = (): string => {
+    const result = executeCreate(USER_ID, {
+      prompt: 'watch it',
+      condition: { field: 'task.status', op: 'changed_to', value: 'done' },
+    })
+    assert.ok('id' in result)
+    return result.id
+  }
+
+  test('rejects a schedule on an alert prompt and emits nothing', () => {
+    const id = createAlert()
+    const { events, cleanup } = collectEvents('deferred:updated')
+    try {
+      const result = executeUpdate(USER_ID, {
+        id,
+        schedule: { fire_at: { date: '2099-01-01', time: '09:00' } },
+      })
+      expect(result).toEqual({
+        error: 'Cannot apply a schedule to an alert prompt. Use condition fields instead.',
+      })
+      expect(events).toHaveLength(0)
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('prompt update is persisted', () => {
+    const id = createAlert()
+    const result = executeUpdate(USER_ID, { id, prompt: 'watch harder' })
+    expect(result).toMatchObject({ status: 'updated', prompt: 'watch harder' })
+    expect(getAlertPrompt(id, USER_ID)!.prompt).toBe('watch harder')
+  })
+
+  test('valid condition update is persisted and emits deferred:updated', () => {
+    const id = createAlert()
+    const { events, cleanup } = collectEvents('deferred:updated')
+    try {
+      const condition = { field: 'task.labels', op: 'contains', value: 'bug' } as const
+      const result = executeUpdate(USER_ID, { id, condition })
+      expect(result).toMatchObject({ status: 'updated' })
+      expect(getAlertPrompt(id, USER_ID)!.condition).toEqual(condition)
+      expect(events).toHaveLength(1)
+      expect(events[0]!.data['promptId']).toBe(id)
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('invalid condition update fails and emits nothing', () => {
+    const id = createAlert()
+    const { events, cleanup } = collectEvents('deferred:updated')
+    try {
+      const result = executeUpdate(USER_ID, {
+        id,
+        condition: { field: 'task.status', op: 'bogus_op', value: 'x' },
+      })
+      expect(result).toHaveProperty('error')
+      assert.ok('error' in result)
+      expect(result.error).toContain('Invalid condition:')
+      expect(events).toHaveLength(0)
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('cooldown update is persisted', () => {
+    const id = createAlert()
+    const result = executeUpdate(USER_ID, { id, cooldown_minutes: 15 })
+    expect(result).toMatchObject({ status: 'updated' })
+    expect(getAlertPrompt(id, USER_ID)!.cooldownMinutes).toBe(15)
+  })
+
+  test('valid execution update is persisted; invalid execution is ignored', () => {
+    const id = createAlert()
+    executeUpdate(USER_ID, { id, execution: { delivery_brief: 'alert brief' } })
+    expect(getAlertPrompt(id, USER_ID)!.executionMetadata.delivery_brief).toBe('alert brief')
+
+    // Widen + delete: lint-safe way to feed a payload missing delivery_brief
+    // (oxlint no-unsafe-type-assertion blocks `as unknown as` narrowing casts).
+    const invalidExecution = { delivery_brief: 'x', context_snapshot: 'no brief' }
+    delete (invalidExecution as { delivery_brief?: string }).delivery_brief
+    const result = executeUpdate(USER_ID, { id, execution: invalidExecution })
+    expect(result).toMatchObject({ status: 'updated' })
+    expect(getAlertPrompt(id, USER_ID)!.executionMetadata.delivery_brief).toBe('alert brief')
+  })
+
+  test('returns not-found for unknown id', () => {
+    const result = executeUpdate(USER_ID, { id: 'does-not-exist', prompt: 'x' })
+    expect(result).toEqual({ error: 'Reminder or alert not found.' })
+  })
+})
