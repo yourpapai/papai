@@ -8,7 +8,7 @@ See LICENSE in the project root for details.
 # Mutation Coverage Strengthening — `live-status/tool-status-labels.ts`
 
 **Date:** 2026-08-04
-**Status:** Approved for planning
+**Status:** Verified — score 0.4619 → 0.9714 (target ≥ 0.95 met); 6 accepted equivalent residuals; test-only, no `src/` changes.
 **Type:** Test-only — no production source changes
 
 ## Summary
