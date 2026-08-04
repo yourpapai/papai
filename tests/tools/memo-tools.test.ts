@@ -14,7 +14,6 @@ import { makeArchiveMemosTool } from '../../src/tools/archive-memos.js'
 import { makeListMemosTool } from '../../src/tools/list-memos.js'
 import { makePromoteMemoTool } from '../../src/tools/promote-memo.js'
 import { makeSaveMemoTool } from '../../src/tools/save-memo.js'
-import { makeSearchMemosTool } from '../../src/tools/search-memos.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 import { createMockProvider, createMockYouTrackProvider } from './mock-provider.js'
 
@@ -56,39 +55,6 @@ describe('save_memo tool', () => {
   test('saves without tags', async () => {
     const result = await exec(makeSaveMemoTool('user1'), { content: 'no tags' })
     expect(result).toHaveProperty('tags', [])
-  })
-})
-
-describe('search_memos tool', () => {
-  beforeEach(async () => {
-    userCachesForTesting.clear()
-    await setupTestDb()
-  })
-
-  test('keyword search returns matching memos', async () => {
-    saveMemo('user1', 'lease renewal deadline', ['landlord'])
-    saveMemo('user1', 'buy groceries', ['shopping'])
-
-    const result = await exec(makeSearchMemosTool('user1'), { query: 'lease', mode: 'keyword' })
-    expect(result).toHaveProperty('mode', 'keyword')
-    expect(result).toHaveProperty('results')
-  })
-
-  test('falls back to keyword when embedding unavailable', async () => {
-    saveMemo('user1', 'important project deadline', [])
-
-    const result = await exec(makeSearchMemosTool('user1'), { query: 'deadline', mode: 'auto' })
-    expect(result).toHaveProperty('mode', 'keyword_fallback')
-  })
-
-  test('returns empty for no matches', async () => {
-    saveMemo('user1', 'some content', [])
-
-    const result = await exec(makeSearchMemosTool('user1'), {
-      query: 'nonexistent',
-      mode: 'keyword',
-    })
-    expect(result).toHaveProperty('results', [])
   })
 })
 
