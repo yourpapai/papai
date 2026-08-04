@@ -196,3 +196,156 @@ describe('fake YouTrack state-bundle operations', () => {
     expect(remaining.map((v) => v.name)).not.toContain('In Progress')
   })
 })
+
+describe('fake YouTrack agile operations', () => {
+  const AGILES = 'https://youtrack.invalid/api/agiles'
+  const AgileListSchema = z.array(z.object({ id: z.string(), name: z.string() }))
+  const SprintSchema = z.object({
+    id: z.string(),
+    name: z.string(),
+    archived: z.boolean().optional(),
+    goal: z.string().nullable().optional(),
+    isDefault: z.boolean().optional(),
+    start: z.number().nullable().optional(),
+    finish: z.number().nullable().optional(),
+    unresolvedIssuesCount: z.number().optional(),
+  })
+  const listBoards = async (
+    respond: (r: Request) => Promise<Response>,
+  ): Promise<readonly { id: string; name: string }[]> =>
+    AgileListSchema.parse(await (await respond(new Request(AGILES))).json())
+  const firstBoardId = async (respond: (r: Request) => Promise<Response>): Promise<string> =>
+    (await listBoards(respond)).map((board) => board.id)[0] ?? ''
+  const createTask = async (respond: (r: Request) => Promise<Response>, stateName?: string): Promise<string> => {
+    const project = await respond(
+      new Request('https://youtrack.invalid/api/admin/projects?fields=id,name', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Tasks', shortName: 'TA' }),
+      }),
+    )
+    const projectId = ProjectSchema.parse(await project.json()).id
+    const issue = await respond(
+      new Request('https://youtrack.invalid/api/issues?fields=id,idReadable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project: { id: projectId },
+          summary: 'Assignable task',
+          ...(stateName === undefined ? {} : { customFields: [{ name: 'State', value: { name: stateName } }] }),
+        }),
+      }),
+    )
+    return z.object({ id: z.string() }).parse(await issue.json()).id
+  }
+
+  test('GET /api/agiles lists the seeded board with sprints id shape', async () => {
+    const respond = createFakeYouTrackResponder()
+
+    const res = await respond(new Request(`${AGILES}?fields=id,name,sprints(id)`))
+    expect(res.status).toBe(200)
+    const boards = z
+      .array(z.object({ id: z.string(), name: z.string(), sprints: z.array(z.object({ id: z.string() })) }))
+      .parse(await res.json())
+    expect(boards).toHaveLength(1)
+    expect(boards[0]?.sprints).toEqual([])
+  })
+
+  test('POST sprints creates and GET sprints roundtrips the stored fields', async () => {
+    const respond = createFakeYouTrackResponder()
+    const agileId = await firstBoardId(respond)
+
+    const created = await respond(
+      new Request(`${AGILES}/${agileId}/sprints?fields=id,name,goal,start,finish,isDefault`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Sprint 1', goal: 'Ship it', start: 1772461200000, finish: 1773414000000 }),
+      }),
+    )
+    expect(created.status).toBe(200)
+    const sprint = SprintSchema.parse(await created.json())
+    expect(sprint).toMatchObject({ name: 'Sprint 1', goal: 'Ship it', start: 1772461200000, finish: 1773414000000 })
+
+    const list = await respond(new Request(`${AGILES}/${agileId}/sprints?fields=id,name`))
+    expect(
+      z
+        .array(SprintSchema)
+        .parse(await list.json())
+        .map((s) => s.id),
+    ).toContain(sprint.id)
+
+    const boardRead = await respond(new Request(`${AGILES}?fields=id,sprints(id)`))
+    const withSprints = z
+      .array(z.object({ sprints: z.array(z.object({ id: z.string() })) }))
+      .parse(await boardRead.json())
+    expect(withSprints[0]?.sprints.map((s) => s.id)).toContain(sprint.id)
+  })
+
+  test('POST sprint update clears goal with null and archives', async () => {
+    const respond = createFakeYouTrackResponder()
+    const agileId = await firstBoardId(respond)
+    const created = await respond(
+      new Request(`${AGILES}/${agileId}/sprints`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Sprint 1', goal: 'Ship it' }),
+      }),
+    )
+    const sprint = SprintSchema.parse(await created.json())
+
+    const updated = await respond(
+      new Request(`${AGILES}/${agileId}/sprints/${sprint.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ goal: null, archived: true }),
+      }),
+    )
+    expect(updated.status).toBe(200)
+    expect(SprintSchema.parse(await updated.json())).toMatchObject({ goal: null, archived: true, name: 'Sprint 1' })
+  })
+
+  test('POST issues assigns a task and unresolvedIssuesCount reflects resolution state', async () => {
+    const respond = createFakeYouTrackResponder()
+    const agileId = await firstBoardId(respond)
+    const created = await respond(
+      new Request(`${AGILES}/${agileId}/sprints`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Sprint 1' }),
+      }),
+    )
+    const sprint = SprintSchema.parse(await created.json())
+    const openTaskId = await createTask(respond)
+    const doneTaskId = await createTask(respond, 'Done')
+
+    const assigned = await respond(
+      new Request(`${AGILES}/${agileId}/sprints/${sprint.id}/issues`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: openTaskId, $type: 'Issue' }),
+      }),
+    )
+    expect(assigned.status).toBe(200)
+    await respond(
+      new Request(`${AGILES}/${agileId}/sprints/${sprint.id}/issues`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: doneTaskId, $type: 'Issue' }),
+      }),
+    )
+
+    const list = await respond(new Request(`${AGILES}/${agileId}/sprints?fields=id,unresolvedIssuesCount`))
+    const readback = z
+      .array(SprintSchema)
+      .parse(await list.json())
+      .find((s) => s.id === sprint.id)
+    expect(readback?.unresolvedIssuesCount).toBe(1)
+  })
+
+  test('sprint routes 404 for an unknown board', async () => {
+    const respond = createFakeYouTrackResponder()
+
+    const res = await respond(new Request(`${AGILES}/agile-unknown/sprints`))
+    expect(res.status).toBe(404)
+  })
+})

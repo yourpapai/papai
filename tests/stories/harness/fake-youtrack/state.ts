@@ -60,6 +60,23 @@ export type StoredStateValue = {
   isResolved: boolean
 }
 
+export type StoredAgile = {
+  id: string
+  name: string
+}
+
+export type StoredSprint = {
+  id: string
+  agileId: string
+  name: string
+  goal: string | undefined
+  start: number | undefined
+  finish: number | undefined
+  archived: boolean
+  isDefault: boolean
+  issueIds: readonly string[]
+}
+
 export type FakeYouTrackState = {
   projects: Map<string, StoredProject>
   issues: Map<string, StoredIssue>
@@ -67,6 +84,8 @@ export type FakeYouTrackState = {
   comments: Map<string, StoredComment>
   links: Map<string, StoredLink>
   stateValues: Map<string, StoredStateValue[]>
+  agiles: Map<string, StoredAgile>
+  sprints: Map<string, StoredSprint>
   seq: number
 }
 
@@ -95,6 +114,8 @@ export const createFakeYouTrackState = (): FakeYouTrackState => {
     comments: new Map(),
     links: new Map(),
     stateValues: new Map(),
+    agiles: new Map(),
+    sprints: new Map(),
     seq: 0,
   }
   state.stateValues.set(
@@ -106,6 +127,8 @@ export const createFakeYouTrackState = (): FakeYouTrackState => {
       isResolved: name === 'Done',
     })),
   )
+  const boardId = nextId(state, 'agile')
+  state.agiles.set(boardId, { id: boardId, name: 'Main Board' })
   return state
 }
 
@@ -116,6 +139,8 @@ export const resetFakeYouTrackState = (state: FakeYouTrackState): void => {
   state.comments.clear()
   state.links.clear()
   state.stateValues.clear()
+  state.agiles.clear()
+  state.sprints.clear()
   state.seq = 0
 }
 

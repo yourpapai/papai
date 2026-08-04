@@ -12,10 +12,12 @@ import {
   PRIORITY_VALUES,
   STATE_BUNDLE_ID,
   STATE_VALUES,
+  type StoredAgile,
   type StoredComment,
   type StoredIssue,
   type StoredLink,
   type StoredProject,
+  type StoredSprint,
   type StoredStateValue,
 } from './state.js'
 
@@ -619,10 +621,135 @@ const handleStateBundles = (ctx: FakeYouTrackCtx): Response | undefined => {
   return undefined
 }
 
+// ---------- Agile/sprint handler ----------
+
+const resolvedStateNames = (state: FakeYouTrackState): ReadonlySet<string> => {
+  const names = new Set<string>()
+  for (const values of state.stateValues.values()) {
+    for (const value of values) {
+      if (value.isResolved) names.add(value.name)
+    }
+  }
+  return names
+}
+
+const unresolvedIssuesCount = (state: FakeYouTrackState, sprint: StoredSprint): number => {
+  const resolved = resolvedStateNames(state)
+  return sprint.issueIds.filter((issueId) => {
+    const issue = state.issues.get(issueId)
+    if (issue === undefined) return false
+    return issue.state === undefined || !resolved.has(issue.state)
+  }).length
+}
+
+const agileProjection = (state: FakeYouTrackState, agile: StoredAgile): Record<string, unknown> => ({
+  id: agile.id,
+  $type: 'Agile',
+  name: agile.name,
+  sprints: [...state.sprints.values()].filter((s) => s.agileId === agile.id).map((s) => ({ id: s.id })),
+})
+
+const sprintProjection = (state: FakeYouTrackState, sprint: StoredSprint): Record<string, unknown> => ({
+  id: sprint.id,
+  $type: 'Sprint',
+  name: sprint.name,
+  archived: sprint.archived,
+  goal: sprint.goal ?? null,
+  isDefault: sprint.isDefault,
+  start: sprint.start ?? null,
+  finish: sprint.finish ?? null,
+  unresolvedIssuesCount: unresolvedIssuesCount(state, sprint),
+})
+
+type SprintWriteBody = Readonly<{
+  name?: string
+  goal?: string | null
+  start?: number | null
+  finish?: number | null
+  isDefault?: boolean
+  archived?: boolean
+}>
+
+const handleAgiles = (ctx: FakeYouTrackCtx): Response | undefined => {
+  const { method, path, state, query } = ctx
+  if (!path.startsWith('/api/agiles')) return undefined
+
+  const assignPath = matchPath('/api/agiles/:id/sprints/:sprintId/issues', path)
+  if (assignPath !== null && method === 'POST') {
+    const sprint = state.sprints.get(assignPath['sprintId'] ?? '')
+    if (sprint === undefined || sprint.agileId !== (assignPath['id'] ?? ''))
+      return errorResponse(404, 'sprint not found')
+    const body = (ctx.body ?? {}) as { id?: string }
+    const issue = body.id === undefined ? undefined : state.issues.get(body.id)
+    if (issue === undefined) return errorResponse(404, 'issue not found')
+    if (!sprint.issueIds.includes(issue.id))
+      state.sprints.set(sprint.id, { ...sprint, issueIds: [...sprint.issueIds, issue.id] })
+    return json(sprintProjection(state, state.sprints.get(sprint.id) ?? sprint))
+  }
+
+  const oneSprintPath = matchPath('/api/agiles/:id/sprints/:sprintId', path)
+  if (oneSprintPath !== null && method === 'POST') {
+    const sprint = state.sprints.get(oneSprintPath['sprintId'] ?? '')
+    if (sprint === undefined || sprint.agileId !== (oneSprintPath['id'] ?? ''))
+      return errorResponse(404, 'sprint not found')
+    const body = (ctx.body ?? {}) as SprintWriteBody
+    const updated: StoredSprint = {
+      ...sprint,
+      ...(body.name === undefined ? {} : { name: body.name }),
+      ...(body.goal === undefined ? {} : { goal: body.goal ?? undefined }),
+      ...(body.start === undefined ? {} : { start: body.start ?? undefined }),
+      ...(body.finish === undefined ? {} : { finish: body.finish ?? undefined }),
+      ...(body.isDefault === undefined ? {} : { isDefault: body.isDefault }),
+      ...(body.archived === undefined ? {} : { archived: body.archived }),
+    }
+    state.sprints.set(sprint.id, updated)
+    return json(sprintProjection(state, updated))
+  }
+
+  const sprintsPath = matchPath('/api/agiles/:id/sprints', path)
+  if (sprintsPath !== null) {
+    const agile = state.agiles.get(sprintsPath['id'] ?? '')
+    if (agile === undefined) return errorResponse(404, 'agile board not found')
+    if (method === 'GET') {
+      const list = [...state.sprints.values()].filter((s) => s.agileId === agile.id)
+      const top = Number(query.get('$top') ?? '100')
+      const skip = Number(query.get('$skip') ?? '0')
+      return json(list.slice(skip, skip + top).map((s) => sprintProjection(state, s)))
+    }
+    if (method === 'POST') {
+      const body = (ctx.body ?? {}) as SprintWriteBody
+      const sprint: StoredSprint = {
+        id: nextId(state, 'sprint'),
+        agileId: agile.id,
+        name: body.name ?? '',
+        goal: body.goal ?? undefined,
+        start: typeof body.start === 'number' ? body.start : undefined,
+        finish: typeof body.finish === 'number' ? body.finish : undefined,
+        archived: false,
+        isDefault: body.isDefault ?? false,
+        issueIds: [],
+      }
+      state.sprints.set(sprint.id, sprint)
+      return json(sprintProjection(state, sprint))
+    }
+    return undefined
+  }
+
+  if (path === '/api/agiles' && method === 'GET') {
+    const all = [...state.agiles.values()].map((a) => agileProjection(state, a))
+    const top = Number(query.get('$top') ?? '100')
+    const skip = Number(query.get('$skip') ?? '0')
+    return json(all.slice(skip, skip + top))
+  }
+
+  return undefined
+}
+
 // ---------- Handler chain ----------
 
 const handlers: ReadonlyArray<(ctx: FakeYouTrackCtx) => Response | undefined> = [
   handleStateBundles,
+  handleAgiles,
   handleProjects,
   handleIssues,
   handleComments,
