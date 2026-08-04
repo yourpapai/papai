@@ -19,15 +19,15 @@ See LICENSE in the project root for details.
 
 | Dimension                       | Score | Rationale (one line)                                                                                                                                 |
 | -------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1. Visual hierarchy & scanning  | pass  | The list and add-form heading text now clears AA contrast (`--fg-hint`); the remaining gap is the add-form label being a `<p>` rather than a heading. |
+| 1. Visual hierarchy & scanning  | pass  | The list and add-form heading text now clears AA contrast (`--fg-hint`), and the add-form label is an `<h3>` beneath the section's `<h2>`, so the form is reachable by heading navigation. |
 | 2. Affordance & signifiers      | pass  | Delete is now a bordered `danger` button behind a confirm dialog; the only residual is that editing still doesn't exist, softened by an explicit note. |
 | 3. Consistency w/ design system | pass  | Preset select and egress textarea now route through shared `Select`/`Input multiline`; `EmptyState` and `Confirm` are both in use like sibling sections. |
-| 4. Feedback & state             | pass  | Empty state, delete confirmation, and required-field marking are all present; the success message still sits at the top of the section and never times out. |
+| 4. Feedback & state             | pass  | Empty state, delete confirmation, and required-field marking are all present; feedback now renders beside the control that produced it, success messages auto-dismiss, and the egress field previews what it will actually save. |
 | 5. Content & language           | pass  | Load errors are now plain language with a labelled retry; the preset choice carries a one-line consequence hint.                                        |
 | 6. Accessibility                | pass  | Select/textarea have accessible names via `Field`; status/error are live regions; meta/label text clears the AA contrast floor.                          |
 | 7. Responsive / layout          | pass  | Add-form fields now grow to fill the row at 640px via `flex: 1 1 180px`; only extremely long values still truncate, which is expected at any field width. |
 | 8. Spacing, alignment & sizing  | pass  | Every gap/padding/radius in the section now reads from spacing tokens; Select and Input render at visually matched heights.                              |
-| 9. Interaction & micro-states   | pass  | Shared `Btn`/`Select`/`Input` supply hover/focus/disabled/busy; the one gap is the success message's placement and lack of auto-dismiss.                 |
+| 9. Interaction & micro-states   | pass  | Shared `Btn`/`Select`/`Input` supply hover/focus/disabled/busy; success messages clear themselves after `statusTimeoutMs` and a failed load offers an inline `Retry`. |
 
 ## Findings
 
