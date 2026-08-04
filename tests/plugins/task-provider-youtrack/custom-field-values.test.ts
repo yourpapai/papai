@@ -70,3 +70,63 @@ describe('mapReadOnlyCustomFields primitive and null values', () => {
     expect(result).toEqual([{ name: 'Team', value: false }])
   })
 })
+
+describe('mapReadOnlyCustomFields object fallback ladder', () => {
+  test('prefers text over name and login', () => {
+    const result = mapReadOnlyCustomFields([
+      { $type: 'Custom', name: 'Team', value: { text: 'T', name: 'N', login: 'L' } },
+    ])
+    expect(result).toEqual([{ name: 'Team', value: 'T' }])
+  })
+
+  test('prefers name over login when text is absent', () => {
+    const result = mapReadOnlyCustomFields([{ $type: 'Custom', name: 'Team', value: { name: 'N', login: 'L' } }])
+    expect(result).toEqual([{ name: 'Team', value: 'N' }])
+  })
+
+  test('uses login when text and name are absent', () => {
+    const result = mapReadOnlyCustomFields([{ $type: 'Custom', name: 'Team', value: { login: 'L' } }])
+    expect(result).toEqual([{ name: 'Team', value: 'L' }])
+  })
+
+  test('ignores non-string properties and falls through to stringify', () => {
+    const result = mapReadOnlyCustomFields([{ $type: 'Custom', name: 'Team', value: { name: 42 } }])
+    expect(result).toEqual([{ name: 'Team', value: '{"name":42}' }])
+  })
+})
+
+describe('mapReadOnlyCustomFields array values', () => {
+  test('passes string arrays through', () => {
+    const result = mapReadOnlyCustomFields([{ $type: 'Custom', name: 'Team', value: ['a', 'b'] }])
+    expect(result).toEqual([{ name: 'Team', value: ['a', 'b'] }])
+  })
+
+  test('maps object items, keeps strings, drops null and non-string entries', () => {
+    const result = mapReadOnlyCustomFields([{ $type: 'Custom', name: 'Team', value: [{ name: 'A' }, 'b', null, 42] }])
+    expect(result).toEqual([{ name: 'Team', value: ['A', 'b'] }])
+  })
+
+  test('falls back to login for array items without a name', () => {
+    const result = mapReadOnlyCustomFields([{ $type: 'Custom', name: 'Team', value: [{ login: 'L' }] }])
+    expect(result).toEqual([{ name: 'Team', value: ['L'] }])
+  })
+})
+
+describe('mapReadOnlyCustomFields stringify tail', () => {
+  test('stringifies plain objects without text, name or login', () => {
+    const result = mapReadOnlyCustomFields([{ $type: 'Custom', name: 'Team', value: { foo: 'bar' } }])
+    expect(result).toEqual([{ name: 'Team', value: '{"foo":"bar"}' }])
+  })
+
+  test('maps unstringifiable function values to the complex-value placeholder', () => {
+    const result = mapReadOnlyCustomFields([{ $type: 'Custom', name: 'Team', value: (): undefined => undefined }])
+    expect(result).toEqual([{ name: 'Team', value: '[complex value]' }])
+  })
+
+  test('maps circular structures to the complex-value placeholder', () => {
+    const circular: Record<string, unknown> = {}
+    circular['self'] = circular
+    const result = mapReadOnlyCustomFields([{ $type: 'Custom', name: 'Team', value: circular }])
+    expect(result).toEqual([{ name: 'Team', value: '[complex value]' }])
+  })
+})
