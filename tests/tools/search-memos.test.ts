@@ -219,6 +219,7 @@ describe('search_memos tool', () => {
     const tracked = createTrackedLoggerMock()
     const { makeSearchMemosTool } = await loadSearchMemosModule(tracked)
     const mid = seedMemoWithEmbedding('rotate the credentials', VEC_MID)
+    const pass = seedMemoWithEmbedding('security checklist review', VEC_PASS)
     const high = seedMemoWithEmbedding('cycle api keys soon', VEC_HIGH)
     seedMemoWithEmbedding('unrelated lunch note', VEC_ORTHO)
     setQueryVec(QUERY_VEC)
@@ -230,11 +231,16 @@ describe('search_memos tool', () => {
 
     assert(isSearchMemosResult(result))
     expect(result.mode).toBe('semantic')
-    expect(result.results.map((r) => r.id)).toEqual([high.id, mid.id])
+    expect(result.results.map((r) => r.id)).toEqual([high.id, mid.id, pass.id])
+    expect(result.results.map((r) => r.content)).toEqual([
+      'cycle api keys soon',
+      'rotate the credentials',
+      'security checklist review',
+    ])
     expect(typeof result.results[0]?.score).toBe('number')
 
     const done = findCall(tracked, 'info', 'Semantic search completed')
-    expect(done?.args[0]).toEqual({ mode: 'semantic', resultCount: 2 })
+    expect(done?.args[0]).toEqual({ mode: 'semantic', resultCount: 3 })
   })
 
   test('auto mode falls back to keyword when semantic yields zero hits', async () => {
