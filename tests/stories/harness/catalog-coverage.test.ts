@@ -217,8 +217,8 @@ describe('scenario catalog coverage', () => {
   test('classifies every catalog scenario exactly once', () => {
     const ledgerIds = catalogCoverage.map(({ scenarioId }) => scenarioId)
 
-    expect(CATALOG_SCENARIO_IDS).toHaveLength(223)
-    expect(new Set(CATALOG_SCENARIO_IDS).size).toBe(223)
+    expect(CATALOG_SCENARIO_IDS).toHaveLength(224)
+    expect(new Set(CATALOG_SCENARIO_IDS).size).toBe(224)
     expect(sorted(ledgerIds)).toEqual(sorted(CATALOG_SCENARIO_IDS))
   })
 
@@ -375,7 +375,7 @@ describe('scenario catalog coverage', () => {
       .filter((coverage) => coverage.kind === 'executable')
       .filter((coverage) => coverage.scenarioId.startsWith('SCN-settings-'))
     const mcpScenarioIds = new Set(['SCN-settings-admin-mcp-catalog', 'SCN-settings-admin-mcp-plugin-servers'])
-    const latestSettingsScenarioIds = new Set(['SCN-settings-admin-tool-defaults'])
+    const latestSettingsScenarioIds = new Set(['SCN-settings-admin-tool-defaults', 'SCN-settings-admin-analytics'])
     const censusScenarioIds = new Set(
       settingsCoverage.map(({ scenarioId }) => scenarioId).filter((scenarioId) => isCensusScenarioId(scenarioId)),
     )
@@ -388,11 +388,16 @@ describe('scenario catalog coverage', () => {
       isOutsideIdSets(coverage.scenarioId, [mcpScenarioIds, censusScenarioIds, latestSettingsScenarioIds]),
     )
 
-    expect(settingsCoverage).toHaveLength(22)
+    expect(settingsCoverage).toHaveLength(23)
     expect(censusCoverage).toHaveLength(8)
     for (const coverage of mcpCoverage) expect(coverage.verifiedAt).toBe('2026-07-22')
     for (const coverage of censusCoverage) expect(coverage.verifiedAt).toBe('2026-07-28')
-    for (const coverage of latestSettingsCoverage) expect(coverage.verifiedAt).toBe('2026-07-29')
+    expect(
+      latestSettingsCoverage.find(({ scenarioId }) => scenarioId === 'SCN-settings-admin-tool-defaults')?.verifiedAt,
+    ).toBe('2026-07-29')
+    expect(
+      latestSettingsCoverage.find(({ scenarioId }) => scenarioId === 'SCN-settings-admin-analytics')?.verifiedAt,
+    ).toBe('2026-08-03')
     for (const coverage of otherCoverage) expect(coverage.verifiedAt).toBe('2026-07-18')
   })
 
@@ -430,7 +435,7 @@ describe('scenario catalog coverage', () => {
   })
 
   test('tracks the executable coverage total', () => {
-    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(201)
+    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(202)
   })
 
   test('stamps every executable record with a live proving tier', () => {
@@ -439,7 +444,7 @@ describe('scenario catalog coverage', () => {
       .filter((coverage) => !LIVE_STORY_TIERS.includes(coverage.provingTier))
       .map(({ scenarioId, provingTier }) => `${scenarioId} -> T${provingTier}`)
 
-    expect(executable).toHaveLength(201)
+    expect(executable).toHaveLength(202)
     expect(offLaneTiers).toEqual([])
     expect(new Set(executable.map((coverage) => coverage.provingTier))).toEqual(new Set(['0', '1', '2', '3', '4']))
   })
