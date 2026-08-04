@@ -62,11 +62,11 @@ below. Rendering those previously-unexercised states surfaced two new findings, 
 | 1. Visual hierarchy & scanning  | pass  | Eyebrow/title, field group, and primary action follow a single clear top-down reading order in both captured states, with nothing competing for attention. Unchanged from prior review.                                   |
 | 2. Affordance & signifiers      | pass  | `Bind`/`Provision Kaneo` are filled primary buttons with a visible hover shade (`TaskProvider-—-bind-hovered-1.png` now confirms this directly), and the refresh `IconButton` keeps a resting border.                     |
 | 3. Consistency w/ design system | pass  | Reuses `Field`/`Select`/`Btn`/`IconButton`/`PageHeader`/`SummaryList`/`Secret`/`ErrorState`/`formatFetchError` shared primitives throughout; now matches `GroupProviderSection`'s error/label/focus handling closely (see Context). |
-| 4. Feedback & state             | warn  | Loading/empty/bind-success/friendly-error are all handled well, and the null-vs-bound `Select` selection is now correct (`resolveTaskInstanceSelection` leaves the control unselected with a placeholder until something is bound); residual gap is a stored secret with `hasValue: true` and an empty `value` rendering an essentially blank masked pill, giving no visual signal a credential exists (new finding below). |
+| 4. Feedback & state             | pass  | Loading/empty/bind-success/friendly-error are all handled well, the null-vs-bound `Select` selection is correct (`resolveTaskInstanceSelection` leaves the control unselected with a placeholder until something is bound), and a stored secret now always renders a visible masked pill — `Secret` falls back to its `'••••••••'` default for an empty value, and the fixture that fabricated that state has been corrected to the server's real `****xxxx` shape. |
 | 5. Content & language           | pass  | Errors are humanized via `formatFetchError`; the raw-id-options residue is closed — the server (`src/debug/settings/task-instance-options.ts`) now always populates a friendly `name`, so the client's `o.name ?? o.id` fallback is unreachable in production.            |
 | 6. Accessibility                | pass  | `Select` is labelled via `Field`'s `aria-labelledby` context and shows a visible `:focus-within` ring, both confirmed in source and in the new `select-focused` screenshot.                                                |
 | 7. Responsive / layout          | pass  | Captured 640px shot reflows cleanly with no clipping; the field-list and provision layouts, previously unverified at any viewport, are now confirmed at desktop width via the new `Bound` story (`Bound-1.png`, `TaskProvider-—-provision-reveal-1.png`) — only narrow-width coverage of those two states remains unshot, a minor residual not tracked as a separate finding. |
-| 8. Spacing, alignment & sizing  | warn  | `.settings-field-list` gap is tokenized (`--gap-inline`, `TaskProviderSection.svelte:186-190`) and the provision block's hardcoded `gap: 8px`/`padding-top: 8px` (`:191-197`) numerically match `--gap-tight`. Downgraded from `pass` because rendering the provision-reveal state for the first time exposed `task-provider-summary-list-no-inset` (open, Low): the revealed `SummaryList` has zero horizontal inset, so right-aligned values sit flush at the viewport edge while sibling `ConfigFieldRow` cards inset ~16px. |
+| 8. Spacing, alignment & sizing  | pass  | `.settings-field-list` gap is tokenized (`--gap-inline`), the provision block's hardcoded `gap: 8px`/`padding-top: 8px` numerically match `--gap-tight`, and the provision-reveal block now carries `padding-inline: var(--gap-inline)`, so revealed `SummaryList` values align with the sibling `ConfigFieldRow` cards instead of sitting flush at the container edge. |
 | 9. Interaction & micro-states   | pass  | `Select` shows a real `:focus-within` ring (`select-focused` shot) and `Bind`/`Provision Kaneo` show a lighter hover shade (`bind-hovered` shot) plus disabled/busy label swaps ("Binding…"/"Provisioning…") confirmed in source. |
 
 ## Findings
@@ -191,7 +191,19 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [Med] A stored secret with an empty value renders an essentially blank masked pill
 
 - **Id:** task-provider-empty-secret-blank-pill
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `df4f8d620`. Two changes. The fixture was wrong: `client/stories/msw/settings-handlers-task-provider.ts`
+  set `hasValue: true` with `value: ''`, a state **no production route can emit** —
+  `maskSensitiveValue` (`src/config.ts:144-146`) returns `` `****${value.slice(-4)}` ``, never
+  empty, and all three routes feeding `ConfigFieldRow` gate on non-empty raw input before
+  masking (`config-routes.ts:38,49`, `byok-field-response.ts:75,79`,
+  `coding-credentials-routes.ts:68,75`). The fixture now carries a server-shaped
+  `'****WvfQ'`, and `Bound-1.png` reads `••••WvfQ`. Separately, `client/shared/ui/Secret.svelte`
+  now treats an empty string like an absent value, falling back to its own existing
+  `'••••••••'` default — a Svelte prop default fires only for `undefined`, so the explicit `''`
+  from `maskSecret` slipped past it. That guard is defense-in-depth for a future route that
+  bypasses `maskSensitiveValue`, not a fix for a live defect. `maskSecret` was deliberately left
+  alone so it stays a pure string normalizer and all six `Secret` consumers inherit the guard.
 - **Dimension:** 4. Feedback & state
 - **Where visible:** `settings-sections-TaskProviderSection-Bound-1.png` — the "Kaneo API key"
   row shows a ~20px empty grey pill immediately left of the `Replace`/`Clear` buttons, where a
@@ -215,7 +227,16 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [Low] The provision-reveal `SummaryList` has no horizontal inset
 
 - **Id:** task-provider-summary-list-no-inset
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `94769094e`. `client/settings/sections/TaskProviderSection.svelte` gives
+  `.settings-provision__reveal` — previously an entirely unstyled `<div>` —
+  `padding-inline: var(--gap-inline)`, the same 12px token the sibling `ConfigFieldRow` cards
+  use via `SettingsFieldShell.svelte:81`. Revealed values now align with the `Clear` button's
+  right edge instead of terminating at the container edge.
+  `client/shared/ui/SummaryList.svelte` was deliberately **not** modified: five of its six
+  consumers are debug detail panels rendered inside `DebugDetailRail`, which already supplies
+  `padding: 16px` (`DebugDetailRail.svelte:81`), so padding the primitive would double-pad five
+  correct consumers to fix one broken one.
 - **Dimension:** 8. Spacing, alignment & sizing
 - **Where visible:**
   `.storybook-shots/settings/sections/TaskProviderSection.spec.ts/TaskProvider-—-provision-reveal-1.png`

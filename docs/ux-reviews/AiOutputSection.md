@@ -27,7 +27,7 @@ See LICENSE in the project root for details.
 | 6. Accessibility                | pass  | The unselected segment label now uses `--text-muted` (~6.9:1 on `--surface-2`), clearing the WCAG minimum; the Raw warning hint is now linked to the control via `aria-describedby`.                                                                                        |
 | 7. Responsive / layout          | pass  | Reflows cleanly at 640px; `flex-wrap` keeps the label and controls tidy on one row; no overflow, clipping, or truncation.                                                                                                                                                  |
 | 8. Spacing, alignment & sizing  | pass  | Segment and Clear now share height (`--control-h-sm`, 24px) and radius (`--radius-control`, 2px); the header refresh icon-button is intentionally the larger `--control-h-md` header-action size, and shares the same 2px radius rather than a third value.               |
-| 9. Interaction & micro-states   | warn  | Hover/focus-visible are now present on the segment and icon-button, and the segmented control disables while saving with a visible error line on failure; there is still no positive "Saving…"/busy affordance distinct from the disabled-dim state.                       |
+| 9. Interaction & micro-states   | pass  | Hover/focus-visible are present on the segment and icon-button, and the segmented control disables while saving with a visible error line on failure, and it now carries a distinct busy affordance — a `Saving…` caption plus `aria-busy="true"` — so an in-flight save is no longer indistinguishable from a plain disabled state. |
 
 ## Findings
 
@@ -58,7 +58,18 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [Low] The toggle disables and shows an error, but still has no positive busy indicator
 
 - **Id:** ai-output-toggle-no-feedback
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `5f68a5013`. `client/shared/ui/SegmentedControl.svelte` gained an optional
+  `busy?: boolean` prop (default `false`) that renders a `Saving…` caption beside the control
+  and sets `aria-busy="true"` on the `role="radiogroup"` element;
+  `client/settings/components/ConfigFieldRow.svelte` passes `busy={saving}` alongside its
+  existing `disabled={saving}`. The wording reuses the text-field `Save` button's existing
+  `Saving…` label. A static caption was chosen over the suggested pulsing accent because it
+  needs no `prefers-reduced-motion` fallback, is deterministic to screenshot, and — paired with
+  `aria-busy` — reaches screen-reader users, which an opacity change never did. The frame is
+  pinned by `.storybook-shots/shared/ui/SegmentedControl.spec.ts/shared-ui-SegmentedControl-Busy-1.png`. `busy` is
+  presentational plus aria only; `disabled` still carries all behavioural blocking, so the three
+  other consumers are unchanged.
 - **Dimension:** 9. Interaction & micro-states
 - **Where visible:** Not capturable in a single frame — behaviour confirmed in source: `saveEnum` sets `saving = true`, updates `current` optimistically, and now passes `disabled={saving}` to `SegmentedControl` (which dims to `opacity: 0.5` and shows `cursor: not-allowed`); on failure it reverts `current` and renders the message via `role="alert"`. What remains: the only "in-flight" signal is the disabled-dim treatment shared with every other disabled state — there is no distinct busy/spinner cue (unlike the `Save` button elsewhere in the same primitive, which swaps its label to "Saving…"), so a slow save and a merely-disabled control look identical.
 - **Source:** `client/settings/components/ConfigFieldRow.svelte:107-122` (`saveEnum`), `:133` (`disabled={saving}` on `SegmentedControl`), `client/shared/ui/SegmentedControl.svelte:73-76` (`:disabled { opacity: 0.5 }`, no distinct busy state) vs. `client/settings/components/ConfigFieldRow.svelte:177` (`{saving ? 'Saving…' : 'Save'}` on the text-field `Save` button, showing the pattern exists elsewhere but isn't applied to the segmented control)
