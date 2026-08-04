@@ -11,14 +11,8 @@ describe('mcp-server/index re-exports', () => {
     expect(typeof mod.routePluginMcpPaths).toBe('function')
   })
 
-  test('mintPluginMcpToken and verifyPluginMcpToken are exported from token', async () => {
+  test('mintPluginMcpToken is exported from token', async () => {
     const mod = await import('../../src/mcp-server/index.js')
     expect(typeof mod.mintPluginMcpToken).toBe('function')
-    expect(typeof mod.verifyPluginMcpToken).toBe('function')
-  })
-
-  test('PLUGIN_MCP_TOKEN_TTL_SECONDS is exported from token', async () => {
-    const mod = await import('../../src/mcp-server/index.js')
-    expect(typeof mod.PLUGIN_MCP_TOKEN_TTL_SECONDS).toBe('number')
   })
 })

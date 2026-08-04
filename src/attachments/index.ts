@@ -3,17 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-export type {
-  AttachmentRef,
-  AttachmentSourceProvider,
-  StageFileParams,
-  StagedFileDownloadFn,
-  StagedFileRef,
-  StagedFileStatus,
-  StagedResolutionError,
-  StoredAttachment,
-} from './types.js'
-export { loadAttachmentRecord, saveAttachment } from './store.js'
+export type { AttachmentRef, AttachmentSourceProvider, StagedFileDownloadFn, StoredAttachment } from './types.js'
+export { loadAttachmentRecord } from './store.js'
 export { persistIncomingAttachments } from './ingest.js'
 export { listActiveAttachments } from './workspace.js'
 export {
@@ -23,15 +14,7 @@ export {
   selectAttachmentsForTurn,
   supportsAttachmentModelInput,
 } from './resolver.js'
-export {
-  createInMemoryBlobStoreForTesting,
-  resetBlobStoreForTesting,
-  setBlobStoreForTesting,
-  buildBlobKey,
-  getBlobStore,
-  isS3Configured,
-  type InMemoryBlobStore,
-} from './blob-store.js'
+export { getBlobStore, isS3Configured } from './blob-store.js'
 export {
   findStagedFilesByMessageId,
   purgeExpiredStagedFiles,

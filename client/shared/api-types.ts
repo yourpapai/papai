@@ -4,15 +4,10 @@
 // See LICENSE in the project root for details.
 
 import type {
-  Fact,
-  Instruction,
   Session,
-  Wizard,
   SchedulerInfo,
   PollersInfo,
   MessageCacheInfo,
-  TokenInfo,
-  ToolCall,
   LlmTrace,
   LogEntry,
   Turn,
@@ -22,15 +17,10 @@ import type {
 import type { GlobalStats, StatsWindow, TokenUsagePoint } from '../../src/stats/types.js'
 
 export type {
-  Fact,
-  Instruction,
   Session,
-  Wizard,
   SchedulerInfo,
   PollersInfo,
   MessageCacheInfo,
-  TokenInfo,
-  ToolCall,
   LlmTrace,
   LogEntry,
   Turn,

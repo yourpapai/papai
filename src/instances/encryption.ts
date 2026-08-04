@@ -6,7 +6,7 @@
 import { decryptSecretPayload, encryptSecretPayload } from '../secret-payload-crypto.js'
 import type { InstanceConfig } from './types.js'
 
-export { resolveInstanceConfigKey, resolveInstanceConfigKeyInfo } from './config-key.js'
+export { resolveInstanceConfigKey } from './config-key.js'
 
 const SECRET_KEY_PATTERN = /token|key|secret|password|cookie/iu
 

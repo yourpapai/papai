@@ -6,12 +6,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 
+import { resolveInstanceConfigKeyInfo } from '../../src/instances/config-key.js'
 import {
   decryptInstanceConfig,
   encryptInstanceConfig,
   maskConfig,
   resolveInstanceConfigKey,
-  resolveInstanceConfigKeyInfo,
 } from '../../src/instances/encryption.js'
 
 describe('maskConfig with explicit sensitive keys', () => {

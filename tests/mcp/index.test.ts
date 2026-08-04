@@ -25,9 +25,4 @@ describe('mcp/index re-exports', () => {
     expect(mod.mcpPool).toBeDefined()
     expect(typeof mod.mcpPool.getOrCreateFromPlugin).toBe('function')
   })
-
-  test('convertMcpToolsToToolSet is exported from tool-adapter', async () => {
-    const mod = await import('../../src/mcp/index.js')
-    expect(typeof mod.convertMcpToolsToToolSet).toBe('function')
-  })
 })

@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 export type { CompiledRecurrence } from './recurrence/recurrence.js'
-export { nextOccurrence, occurrencesBetween, parseRrule, recurrenceSpecToRrule } from './recurrence/recurrence.js'
+export { nextOccurrence, occurrencesBetween, recurrenceSpecToRrule } from './recurrence/recurrence.js'
 
 import type { CompiledRecurrence } from './recurrence/recurrence.js'
 

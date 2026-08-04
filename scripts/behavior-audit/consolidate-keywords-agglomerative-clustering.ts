@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { incrementClusteringCounter, recordClusteringCounterMax, recordClusteringTiming } from './clustering-profile.js'
+import type { ClusteringProfile } from './clustering-profile.js'
 import { filterClusters, getClusterMembers, tryExtendOrMergeChain } from './consolidate-keywords-agglomerative-chain.js'
 import {
   activeIndices,
@@ -16,16 +17,6 @@ import {
   pairKey,
   updateMergedDistances,
 } from './consolidate-keywords-agglomerative-helpers.js'
-export {
-  activeIndices,
-  buildCondensedDistanceMatrix,
-  condensedIndex,
-  createActiveState,
-  getDistance,
-  isActive,
-  setDistance,
-} from './consolidate-keywords-agglomerative-helpers.js'
-import type { ClusteringProfile } from './clustering-profile.js'
 import type { ActiveState, MutableDistanceMatrix } from './consolidate-keywords-agglomerative-helpers.js'
 import type { LinkageMode } from './consolidate-keywords-clustering.js'
 export type { MutableDistanceMatrix } from './consolidate-keywords-agglomerative-helpers.js'

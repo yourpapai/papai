@@ -199,15 +199,11 @@ import type { Turn, Notification, ToolFailure } from './turn-assembly.js'
 export type { Turn, Notification, ToolFailure } from './turn-assembly.js'
 
 // Inferred types
-export type Fact = z.infer<typeof FactSchema>
-export type Instruction = z.infer<typeof InstructionSchema>
 export type Session = z.infer<typeof SessionSchema>
 export type Wizard = z.infer<typeof WizardSchema>
 export type SchedulerInfo = z.infer<typeof SchedulerInfoSchema>
 export type PollersInfo = z.infer<typeof PollersInfoSchema>
 export type MessageCacheInfo = z.infer<typeof MessageCacheInfoSchema>
-export type TokenInfo = z.infer<typeof TokenInfoSchema>
-export type ToolCall = z.infer<typeof ToolCallSchema>
 export type LlmTrace = z.infer<typeof LlmTraceSchema>
 export type LogEntry = z.infer<typeof LogEntrySchema>
 export type StateInitEvent = z.infer<typeof StateInitEventSchema>

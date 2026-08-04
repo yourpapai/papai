@@ -5,8 +5,6 @@
 
 export { buildMcpToolSet } from './user-endpoints.js'
 export { buildPluginMcpToolSet } from './plugin-endpoints.js'
-export type { PluginMcpDescriptor } from './plugin-endpoints.js'
 export { adaptMcpPool } from './plugin-pool-adapter.js'
 export { mcpPool } from './client-pool.js'
-export { convertMcpToolsToToolSet } from './tool-adapter.js'
-export type { McpEndpointConfig, McpPluginConfig, McpServerInfo } from './types.js'
+export type { McpEndpointConfig, McpPluginConfig } from './types.js'

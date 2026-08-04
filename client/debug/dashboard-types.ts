@@ -4,15 +4,10 @@
 // See LICENSE in the project root for details.
 
 import type {
-  Fact,
-  Instruction,
   Session,
-  Wizard,
   SchedulerInfo,
   PollersInfo,
   MessageCacheInfo,
-  TokenInfo,
-  ToolCall,
   LlmTrace,
   LogEntry,
   Turn,
@@ -25,24 +20,17 @@ import type {
   BillingWindow,
   BillingRoleTotals,
   BillingSubject,
-  BillingRequestRow,
   BillingDetail,
-  AdminLlmKeyState,
   AdminLlmSnapshot,
 } from '../shared/api-types.js'
 import type { ScopeCount } from './log-bootstrap.js'
 import type { LogFilter } from './log-filter-url.js'
 
 export type {
-  Fact,
-  Instruction,
   Session,
-  Wizard,
   SchedulerInfo,
   PollersInfo,
   MessageCacheInfo,
-  TokenInfo,
-  ToolCall,
   LlmTrace,
   LogEntry,
   Turn,
@@ -55,9 +43,7 @@ export type {
   BillingWindow,
   BillingRoleTotals,
   BillingSubject,
-  BillingRequestRow,
   BillingDetail,
-  AdminLlmKeyState,
   AdminLlmSnapshot,
 }
 

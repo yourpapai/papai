@@ -6,7 +6,8 @@
 import { describe, expect, test } from 'bun:test'
 
 import { getUnauthorizedReplyText, replyToUnauthorized } from '../src/bot-unauthorized-reply.js'
-import type { AuthorizationDenyReason, AuthorizationResult } from '../src/chat/types.js'
+import type { AuthorizationDenyReason } from '../src/chat/authorization-types.js'
+import type { AuthorizationResult } from '../src/chat/types.js'
 import { createMockReply } from './utils/test-helpers.js'
 
 const makeAuth = (reason: AuthorizationDenyReason | undefined): AuthorizationResult => ({

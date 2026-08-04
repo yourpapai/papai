@@ -177,7 +177,7 @@ export type IncomingInteraction = {
   threadId: string
 }>
 
-export type { ActorRole, AuthorizationDenyReason, AuthorizationResult } from './authorization-types.js'
+export type { ActorRole, AuthorizationResult } from './authorization-types.js'
 
 /** Command handler signature. */
 export type CommandHandler = (msg: IncomingMessage, reply: ReplyFn, auth: AuthorizationResult) => Promise<void>

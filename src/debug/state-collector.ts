@@ -14,10 +14,8 @@ import { entryMatchesFilter, type LogFilter } from './log-filter-model.js'
 import { recentTurns, recentNotifications, recentToolFailures, handleTurnAssembly } from './turn-assembly.js'
 import type { Turn } from './turn-assembly.js'
 
-export { recentTurns, recentNotifications, recentToolFailures } from './turn-assembly.js'
-export { inFlightTurns, resetTurnBuffers, findTurnById } from './turn-assembly.js'
+export { resetTurnBuffers, findTurnById } from './turn-assembly.js'
 export { recentLlm, pendingTraces } from './llm-trace-collector.js'
-export type { LlmTrace } from './llm-trace-collector.js'
 
 let adminUserId: string | null = null
 let adminVisibility: AdminVisibility = { adminUserId: '', groupIds: new Set() }

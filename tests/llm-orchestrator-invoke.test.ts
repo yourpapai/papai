@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import type { AiProgressReporter, ToolFinishedEvent, ToolStartedEvent } from '../src/ai-progress-reporter.js'
 import { type DebugEvent, subscribe, unsubscribe } from '../src/debug/event-bus.js'
-import { handleToolCallFinishEvent, handleToolCallStart } from '../src/llm-orchestrator-invoke.js'
+import { handleToolCallStart, handleToolCallFinishEvent } from '../src/llm-orchestrator-tool-events.js'
 import type { ToolCallContext } from '../src/llm-orchestrator-types.js'
 import { createMockReply, mockLogger } from './utils/test-helpers.js'
 
