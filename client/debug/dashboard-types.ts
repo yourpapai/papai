@@ -18,10 +18,8 @@ import type {
   Memo,
   IdentityMappingEntry,
   BillingWindow,
-  BillingRoleTotals,
   BillingSubject,
   BillingDetail,
-  AdminLlmSnapshot,
 } from '../shared/api-types.js'
 import type { ScopeCount } from './log-bootstrap.js'
 import type { LogFilter } from './log-filter-url.js'
@@ -41,10 +39,8 @@ export type {
   Memo,
   IdentityMappingEntry,
   BillingWindow,
-  BillingRoleTotals,
   BillingSubject,
   BillingDetail,
-  AdminLlmSnapshot,
 }
 
 /**

@@ -6,13 +6,8 @@
 import type { z } from 'zod'
 
 import type { GlobalStatsSchema, SubjectStatsSchema } from '../../admin/fetcher-schemas.js'
-import type {
-  AdminLlmSnapshot,
-  BillingDetail,
-  BillingSubject,
-  BillingRoleTotals,
-  IdentityMappingEntry,
-} from '../../debug/dashboard-types.js'
+import type { BillingDetail, BillingSubject, IdentityMappingEntry } from '../../debug/dashboard-types.js'
+import type { BillingRoleTotals } from '../../shared/api-types.js'
 
 type GlobalStats = z.infer<typeof GlobalStatsSchema>
 type SubjectStats = z.infer<typeof SubjectStatsSchema>
@@ -127,18 +122,6 @@ export function makeGlobalStats(overrides: Partial<GlobalStats> = {}): GlobalSta
       { date: '2026-05-30', inputTokens: 3_100, outputTokens: 1_500, calls: 7 },
       { date: '2026-05-31', inputTokens: 4_300, outputTokens: 2_200, calls: 12 },
     ],
-    ...overrides,
-  }
-}
-
-export function makeAdminLlmSnapshot(overrides: Partial<AdminLlmSnapshot> = {}): AdminLlmSnapshot {
-  const base = { updatedAt: FIXED_TS, updatedBy: 'admin' }
-  return {
-    llm_apikey: { ...base, value: '***', required: true },
-    llm_baseurl: { ...base, value: 'https://api.example.com', required: true },
-    main_model: { ...base, value: 'gpt-4o-mini', required: true },
-    small_model: { ...base, value: 'gpt-4o-mini', required: false },
-    embedding_model: { ...base, value: 'text-embedding-3-small', required: false },
     ...overrides,
   }
 }

@@ -168,13 +168,11 @@ export default {
     // resetGrepCache and makeAuditToolsForRoot are test-only seams (clear the
     // grep cache between tests; target a fixture root for hermetic testing).
     'scripts/behavior-audit/tools.ts': ['exports'],
-    // parseConsolidationResult is consumed by the schema unit test only;
-    // EntryPointHint is re-exported for the same test-only consumers.
-    'scripts/behavior-audit/consolidate-agent.ts': ['exports', 'types'],
+    // parseConsolidationResult is consumed by the schema unit test only.
+    'scripts/behavior-audit/consolidate-agent.ts': ['exports'],
     // listToolNames is consumed by the behavior-audit closure verifier via
-    // dynamic import from scripts/behavior-audit/entry-point-maps.ts. ToolMode
-    // is part of the same public tool-assembly surface consumed by tests.
-    'src/tools/index.ts': ['exports', 'types'],
+    // dynamic import from scripts/behavior-audit/entry-point-maps.ts.
+    'src/tools/index.ts': ['exports'],
     // listRoutes is consumed by the behavior-audit closure verifier via
     // dynamic import; re-exported from src/debug/server-route-options.ts.
     'src/debug/server-route-options.ts': ['exports'],
@@ -232,59 +230,30 @@ export default {
     // project scope.
     'src/analytics/rekey/*.ts': ['exports', 'types'],
 
-    // Re-export facades (barrels). knip 6.28 reports re-exports that no
-    // production module imports through the facade; these bindings are the
-    // module's intentional public surface, pinned by barrel contract tests
-    // (tests/<area>/index.test.ts) and consumed by tests via named, namespace,
-    // or dynamic `await import()` access — all outside knip's production-only
-    // project scope. Pruning them would break the contract tests that exist
-    // to pin this surface.
-    'src/attachments/index.ts': ['exports', 'types'],
-    'src/chat/telegram/index.ts': ['exports'],
-    'src/chat/types.ts': ['types'],
-    'src/commands/context-collector.ts': ['exports', 'types'],
-    'src/debug/schemas.ts': ['exports'],
-    'src/debug/state-collector.ts': ['exports', 'types'],
-    'src/deferred-prompts/poller.ts': ['exports'],
-    'src/group-settings/registry-helpers.ts': ['types'],
-    'src/instances/encryption.ts': ['exports', 'types'],
-    'src/llm-orchestrator-invoke.ts': ['exports', 'types'],
-    'src/long-term-memory/store.ts': ['exports', 'types'],
-    'src/mcp/index.ts': ['exports', 'types'],
-    'src/mcp-server/index.ts': ['exports', 'types'],
-    'src/message-cache/index.ts': ['exports', 'types'],
-    'src/plugins/contributions.ts': ['exports'],
-    'src/plugins/loader.ts': ['exports'],
-    'src/plugins/registry.ts': ['exports'],
-    'src/plugins/types.ts': ['types'],
-    'src/providers/membership/index.ts': ['types'],
-    'src/recurrence.ts': ['exports', 'types'],
-    'src/recurring.ts': ['exports', 'types'],
-    'src/utils/scheduler.ts': ['exports', 'types'],
-    'client/debug/dashboard-types.ts': ['types'],
-    'plugins/task-provider-kaneo/provider.ts': ['types'],
-    'plugins/task-provider-kaneo/provision.ts': ['types'],
-    'plugins/task-provider-youtrack/task-helpers.ts': ['exports'],
-    'scripts/behavior-audit/consolidate-keywords-advanced-clustering.ts': ['exports', 'types'],
-    'scripts/behavior-audit/consolidate-keywords-agglomerative-clustering.ts': ['types'],
-    'scripts/behavior-audit/consolidate-keywords.ts': ['exports'],
-    'scripts/behavior-audit/extract.ts': ['types'],
-    'scripts/behavior-audit/incremental.ts': ['types'],
-    'scripts/behavior-audit/progress.ts': ['exports'],
-    'scripts/behavior-audit/report-writer.ts': ['types'],
-    // bot.ts re-exports auth helpers as the app entry's public seam; tests
-    // import the concrete src/auth.js module instead.
-    'src/bot.ts': ['exports'],
+    // Re-export facades whose remaining flagged bindings knip cannot trace:
+    // the published plugin-types package export, declared plugin-core-separation
+    // compatibility boundaries, and bindings consumed by byte-frozen 0Q
+    // qualification files (tests/stories/**, tests/utils/test-helpers.ts). Six
+    // justified entries in this block.
     // session-record.ts and store.ts are declared stable compatibility
     // boundaries for the plugin-core-separation refactor (see entry list);
-    // their re-exported surface is consumed by the story harness
-    // (tests/stories/harness) outside knip's production project scope.
+    // store.ts is also consumed by the frozen story harness.
     'src/coding-sessions/session-record.ts': ['exports'],
     'src/coding-sessions/store.ts': ['types'],
+    // state-collector re-exports recentLlm/pendingTraces for the frozen
+    // tests/utils/test-helpers.ts.
+    'src/debug/state-collector.ts': ['exports', 'types'],
+    // pollAlertsOnce is consumed by frozen tests/stories/harness/scenario.ts.
+    'src/deferred-prompts/poller.ts': ['exports'],
     // public-types.ts is published as the `papai/plugin-types` package export
     // (package.json `exports`) and consumed by external plugin authors knip
     // cannot trace, plus tests/providers/public-types.test.ts.
     'src/providers/public-types.ts': ['exports', 'types'],
+    // AdminLlmSnapshot/AdminLlmKeyState model the BYOK system-key admin surface;
+    // consumed by the BYOK-key contract tests (tests/client/**) and the dev-only
+    // Storybook fixture harness (client/stories/**, knip-ignored by config).
+    // Zero production consumers today; the types pin the 5 live BYOK keys.
+    'client/shared/api-types.ts': ['types'],
   },
 
   includeEntryExports: true,

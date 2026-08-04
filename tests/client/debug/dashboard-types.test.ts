@@ -5,13 +5,8 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import type {
-  AdminLlmSnapshot,
-  BillingDetail,
-  BillingSubject,
-  BillingWindow,
-  Session,
-} from '../../../client/debug/dashboard-types.js'
+import type { BillingDetail, BillingSubject, BillingWindow, Session } from '../../../client/debug/dashboard-types.js'
+import type { AdminLlmSnapshot } from '../../../client/shared/api-types.js'
 
 describe('dashboard-types', () => {
   test('BillingWindow type accepts the four whitelisted values', () => {

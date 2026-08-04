@@ -71,12 +71,6 @@ export const TokenInfoSchema = z.object({
   outputTokens: z.number(),
 })
 
-export const ToolCallSchema = z.object({
-  toolName: z.string(),
-  durationMs: z.number(),
-  success: z.boolean(),
-})
-
 export const ToolCallDetailSchema = z.object({
   toolName: z.string(),
   durationMs: z.number(),
@@ -185,11 +179,6 @@ export const SchedulerTickEventSchema = z.object({
 export const PollerEventSchema = z.object({
   scheduledRunning: z.boolean().optional(),
   alertsRunning: z.boolean().optional(),
-})
-
-export const MessageCacheEventSchema = z.object({
-  size: z.number().optional(),
-  pendingWrites: z.number().optional(),
 })
 
 import { TurnSchema, NotificationSchema, ToolFailureSchema } from './turn-assembly.js'
