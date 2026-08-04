@@ -29,10 +29,20 @@ describe('formatToolStatus', () => {
   })
 
   test('collapses whitespace and truncates long arguments to 40 chars', () => {
-    const long = 'a'.repeat(50)
-    const result = formatToolStatus('search_memory', { query: `  multi\nline   ${long}` })
-    expect(result.startsWith('🔍 Searching memory: "multi line ')).toBe(true)
-    expect(result.endsWith('…"…')).toBe(true)
+    const result = formatToolStatus('search_memory', { query: `  multi\nline   ${'a'.repeat(50)}` })
+    expect(result).toBe(`🔍 Searching memory: "multi line ${'a'.repeat(29)}…"…`)
+  })
+
+  test('a 40-char argument is not truncated (boundary: length > MAX_ARG_LENGTH is false at 40)', () => {
+    expect(formatToolStatus('search_memory', { query: 'a'.repeat(40) })).toBe(
+      `🔍 Searching memory: "${'a'.repeat(40)}"…`,
+    )
+  })
+
+  test('a 41-char argument truncates to 40 chars plus ellipsis (boundary)', () => {
+    expect(formatToolStatus('search_memory', { query: 'a'.repeat(41) })).toBe(
+      `🔍 Searching memory: "${'a'.repeat(40)}…"…`,
+    )
   })
 
   test('plugin tool falls back to humanized last segment', () => {
