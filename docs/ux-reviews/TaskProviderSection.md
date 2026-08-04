@@ -9,21 +9,25 @@ See LICENSE in the project root for details.
 
 **Date:** 2026-08-03
 **Reviewed:** `client/settings/sections/TaskProviderSection.svelte`
-**States captured:** Populated, Error · desktop (base-state PNGs under
-`.storybook-shots/settings/sections/TaskProviderSection.spec.ts/`), plus three manual states
+**States captured:** Populated, Bound, Error · desktop (base-state PNGs under
+`.storybook-shots/settings/sections/TaskProviderSection.spec.ts/`), plus four manual states
 below `@generated-end auto-screenshots` in
 `tests/visual/settings/sections/TaskProviderSection.spec.ts`: Populated at ~640px, `Select`
-focused, and `Bind` hovered. This run added the latter two (previously only the narrow shot
-existed) to get direct visual evidence for dimension 9 rather than inferring it from source; all
-5 re-verified clean (`bun run visual:audit -g TaskProviderSection`, 5/5 passed). The `Populated`
-and `Error` fixtures (`client/stories/msw/settings-handlers.ts:238-245`) still set
-`taskInstanceId: null` and `canProvision: false`, so three of the component's states — a bound
-instance rendering its `ConfigFieldRow` credential list (`TaskProviderSection.svelte:145-150`),
-the Kaneo auto-provision block (`:156-164`), and the post-provision secret reveal (`:168-180`) —
-remain unexercised by any story and are not visually verified in this review; those findings
-below are sourced from code only and flagged as such. `.storybook-shots/` is gitignored, so the
-two new local screenshots are not committed artifacts — only the spec file and this document
-change.
+focused, `Bind` hovered, and the post-provision secret reveal (switches to the `Bound` story and
+clicks `provision-kaneo`). The `Bound` story is new this run
+(`client/stories/msw/settings-handlers-task-provider.ts`: `taskProviderBoundInstance` /
+`taskProviderBoundConfig` / `taskProviderProvisionResult`) and closes
+`task-provider-states-unverified` — it renders, for the first time, the bound-instance
+`ConfigFieldRow` credential list (`TaskProviderSection.svelte:147-152`), the Kaneo auto-provision
+block (`:158-166`), and, via the provision-reveal shot, the post-provision secret reveal
+(`:170-182`). Rendering those states for the first time surfaced two new defects, both recorded
+as `open` findings below: `task-provider-empty-secret-blank-pill` (the "Kaneo API key" row's
+`hasValue: true, value: ''` fixture renders an essentially blank masked pill instead of a
+visible placeholder) and `task-provider-summary-list-no-inset` (the provision-reveal
+`SummaryList` has no horizontal inset, so its values run flush to the viewport edge). All 7
+screenshots re-verified clean (`bun run visual:audit -g TaskProviderSection`, 7/7 passed).
+`.storybook-shots/` is gitignored, so the screenshots are not committed artifacts — only the
+spec/fixture files and this document change.
 
 **Rubric:** [`RUBRIC.md`](./RUBRIC.md)
 
@@ -45,9 +49,11 @@ above the 4.5:1 contrast floor") retired the sub-AA `--fg3`/`--fg4` tokens the l
 finding cited; the component now uses the compliant `--text-dim` (5.69:1 on `--bg`, per
 `client/shared/tokens.css:21`) in both places that finding named. The shared-primitive work that
 fixed the sibling's unlabeled-`Select` finding (`6e0249552`, `7cdce941e`) applies here too, since
-this section already composed `Field`/`Select` the same way. One new finding is added for the
-silent-null-preselect defect the task brief asked to check for explicitly — it reproduces here,
-partially mitigated by an adjacent placeholder line the group sibling doesn't have.
+this section already composed `Field`/`Select` the same way. A follow-up remediation pass
+(2026-08-04, `56721f1ec`..`19b96cf1d`) closed the silent-null-preselect and raw-id-options
+findings this section shared with its sibling, and added the `Bound` fixture that finally
+exercises this section's bound-instance and provision states — see the scorecard and findings
+below. Rendering those previously-unexercised states surfaced two new findings, both `open`.
 
 ## Scorecard
 
@@ -56,10 +62,10 @@ partially mitigated by an adjacent placeholder line the group sibling doesn't ha
 | 1. Visual hierarchy & scanning  | pass  | Eyebrow/title, field group, and primary action follow a single clear top-down reading order in both captured states, with nothing competing for attention. Unchanged from prior review.                                   |
 | 2. Affordance & signifiers      | pass  | `Bind`/`Provision Kaneo` are filled primary buttons with a visible hover shade (`TaskProvider-—-bind-hovered-1.png` now confirms this directly), and the refresh `IconButton` keeps a resting border.                     |
 | 3. Consistency w/ design system | pass  | Reuses `Field`/`Select`/`Btn`/`IconButton`/`PageHeader`/`SummaryList`/`Secret`/`ErrorState`/`formatFetchError` shared primitives throughout; now matches `GroupProviderSection`'s error/label/focus handling closely (see Context). |
-| 4. Feedback & state             | warn  | Loading/empty/bind-success/friendly-error are all handled well now, but a bound-vs-unbound `Select` selection is visually indistinguishable when no instance is yet assigned (new finding below).                          |
-| 5. Content & language           | warn  | Errors are now humanized via `formatFetchError`; residual gap is the raw-id fallback for instances lacking a `name` (finding narrowed, not closed).                                                                       |
+| 4. Feedback & state             | warn  | Loading/empty/bind-success/friendly-error are all handled well, and the null-vs-bound `Select` selection is now correct (`resolveTaskInstanceSelection` leaves the control unselected with a placeholder until something is bound); residual gap is a stored secret with `hasValue: true` and an empty `value` rendering an essentially blank masked pill, giving no visual signal a credential exists (new finding below). |
+| 5. Content & language           | pass  | Errors are humanized via `formatFetchError`; the raw-id-options residue is closed — the server (`src/debug/settings/task-instance-options.ts`) now always populates a friendly `name`, so the client's `o.name ?? o.id` fallback is unreachable in production.            |
 | 6. Accessibility                | pass  | `Select` is labelled via `Field`'s `aria-labelledby` context and shows a visible `:focus-within` ring, both confirmed in source and in the new `select-focused` screenshot.                                                |
-| 7. Responsive / layout          | pass  | Captured 640px shot reflows cleanly with no clipping; caveat unchanged: only the "no instance bound yet" sub-state has ever been rendered at narrow width — the field-list/provision layouts are unverified at any viewport (existing finding below). |
+| 7. Responsive / layout          | pass  | Captured 640px shot reflows cleanly with no clipping; the field-list and provision layouts, previously unverified at any viewport, are now confirmed at desktop width via the new `Bound` story (`Bound-1.png`, `TaskProvider-—-provision-reveal-1.png`) — only narrow-width coverage of those two states remains unshot, a minor residual not tracked as a separate finding. |
 | 8. Spacing, alignment & sizing  | pass  | `.settings-field-list` gap is tokenized (`--gap-inline`, `TaskProviderSection.svelte:186-190`); the provision block's `gap: 8px`/`padding-top: 8px` (`:191-197`) are hardcoded but numerically match `--gap-tight`, no drift from the scale. |
 | 9. Interaction & micro-states   | pass  | `Select` shows a real `:focus-within` ring (`select-focused` shot) and `Bind`/`Provision Kaneo` show a lighter hover shade (`bind-hovered` shot) plus disabled/busy label swaps ("Binding…"/"Provisioning…") confirmed in source. |
 
@@ -86,56 +92,47 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [Med] "Not yet configured" is indistinguishable from "configured to the first option"
 
 - **Id:** task-provider-null-silently-preselected
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `client/settings/sections/TaskProviderSection.svelte:54-56` now delegates to
+  `resolveTaskInstanceSelection(instance.taskInstanceId, instance.available)`
+  (`client/settings/lib/task-instance-selection.ts:26-37`), which returns `selected: ''` and the
+  placeholder `Not yet assigned — select an instance` (`UNASSIGNED_PLACEHOLDER`,
+  `task-instance-selection.ts:7`) whenever nothing is bound, instead of falling back to
+  `available[0]`. Landed in `7383904b1` ("fix(settings): show an unassigned placeholder instead
+  of preselecting the first instance"). Confirmed visually in
+  `settings-sections-TaskProviderSection-Populated-1.png`, whose fixture still has
+  `taskInstanceId: null` and one `available` entry
+  (`client/stories/msw/settings-handlers.ts:241-242`) but now renders "Not yet assigned — select
+  an instance" in the `Select` rather than "https://kaneo.example (kaneo · active)".
 - **Dimension:** 4. Feedback & state (also 5. Content & language)
-- **Where visible:** `settings-sections-TaskProviderSection-Populated-1.png` and
-  `TaskProvider-—-narrow-1.png` — the `Select` shows "https://kaneo.example (kaneo · active)" as
-  the chosen value even though the fixture's `taskInstanceId` is `null`
-  (`client/stories/msw/settings-handlers.ts:238-245`, one `available` entry).
-- **Source:** `client/settings/sections/TaskProviderSection.svelte:51-55`:
-  ```
-  const currentId = instance.taskInstanceId
-  selectedInstanceId =
-    currentId !== null && instance.available.some((a) => a.id === currentId)
-      ? currentId
-      : (instance.available[0]?.id ?? '')
-  ```
-  When no instance is bound yet but instances exist, `selectedInstanceId` silently falls back to
-  `available[0].id` and the `Select` renders it as chosen — the identical pattern flagged in
-  `GroupProviderSection.md`'s `group-provider-null-silently-preselected` finding, and it
-  reproduces here with the same fixture shape. It is partially mitigated in this section only:
-  the placeholder line "Bind a task instance above to configure its credentials."
-  (`TaskProviderSection.svelte:152`, driven by `instanceData?.taskInstanceId == null`) does tell
-  a user reading the whole page that nothing is bound yet, which `GroupProviderSection` has no
-  equivalent of. The `Select` itself is still pixel-identical to a real bound state, so a user
-  who only glances at the dropdown (not the placeholder line below it) can still misread "not yet
-  configured" as "configured to the first option."
-- **Suggested fix:** when `instanceData.taskInstanceId === null`, leave the `Select` unselected
-  (it already supports a `placeholder` option, `client/shared/ui/Select.svelte:43-45`) rather than
-  silently defaulting to `available[0]`, so the control itself — not just adjacent copy — reflects
-  the unbound state.
 
 ### [Med] Task-instance options fall back to a raw internal id when no friendly name exists
 
 - **Id:** task-provider-raw-id-options
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** the server now guarantees every option has a friendly `name`.
+  `src/debug/settings/task-instance-options.ts:13-44` introduces
+  `listActiveTaskInstanceOptions()`, whose `TaskInstanceOption` interface makes `name` required
+  (not optional as on the wire schema) and derives it via `taskInstanceLabel(id, type, baseUrl)`
+  (`:29-32`, `baseUrl` when present, else `` `${TYPE_LABELS[type] ?? type} instance (${id})` ``,
+  never the bare id) — landed in `56721f1ec` ("fix(settings): always label task-instance options
+  server-side"), which replaced the ad hoc `name: taskInstance.config['baseUrl']` mapping
+  previously inlined in both `context-task-instance-routes.ts` and `group-routes.ts` (which could
+  yield `name: undefined`) with this shared, always-populated builder. On the client,
+  `client/settings/lib/task-instance-label.ts:26-32`'s `formatTaskInstanceOption()` — now shared
+  by both `TaskProviderSection.svelte:133` and `GroupProviderSection.svelte:98` — still carries an
+  `o.name ?? ...` fallback, but its doc comment (`:19-24`) states this is deliberately-kept dead
+  code for defense-in-depth and Storybook fixtures, unreachable against the real server; commit
+  `65d1672e3` ("fix(settings): share one task-instance option label across the provider pair")
+  also changed that fallback from the old bare `o.id` to
+  `` `${TYPE_LABELS[option.type] ?? option.type} instance (${option.id})` ``, so even the
+  never-supposed-to-run path shows a type-qualified label, not a raw id. Confirmed visually in
+  `settings-sections-TaskProviderSection-Populated-1.png` (server path: "https://kaneo.example
+  (kaneo · active)") and, for the fallback path itself, in the sibling's
+  `settings-sections-GroupProviderSection-NamelessBound-1.png` ("YouTrack instance (inst_bare)
+  (youtrack · active)", not the bare id "inst_bare (youtrack · active)" this finding originally
+  screenshotted).
 - **Dimension:** 5. Content & language
-- **Where visible:** `settings-sections-TaskProviderSection-Populated-1.png` — the single fixture
-  option now reads "https://kaneo.example (kaneo · active)", a friendly name, not the raw id this
-  finding originally flagged.
-- **Source:** `client/settings/sections/TaskProviderSection.svelte:132`
-  (`` label: `${o.name ?? o.id} (${o.type} · ${o.status})` ``) — fixed for the common case by
-  `b4a605bdf` ("fix(settings): TaskProvider friendly errors + instance label (sibling
-  convergence)"), which added the `o.name ??` fallback (previously `o.id` alone, per the
-  finding's original text). This is a substantial narrowing, not a close: `name` is optional on
-  the schema (`client/settings/fetcher-schemas.ts` — `TaskInstanceOptionSchema.name:
-  z.string().optional()`, same shape the sibling review cites), so any instance the task-tracker
-  integration hasn't given a name still displays its opaque id. Identical residue exists in
-  `GroupProviderSection.svelte:97` (see `group-provider-raw-id-options`, also narrowed rather
-  than closed).
-- **Suggested fix:** have the task-instance API always populate `name` (e.g. a server-side label
-  derived from type + creation order) rather than leaving the client to show a raw id when it's
-  absent.
 
 ### [Med] Errors were shown to users as raw exception/HTTP text
 
@@ -173,17 +170,65 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [Low] Three of five component states are unverified by any Storybook fixture
 
 - **Id:** task-provider-states-unverified
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `client/settings/sections/TaskProviderSection.stories.svelte:24` adds a `Bound`
+  story on the new `settings-task-provider-bound` fixture family
+  (`client/stories/msw/settings-handlers-task-provider.ts:15-65`: `taskProviderBoundInstance`
+  sets `taskInstanceId: 'inst_abc'` and `canProvision: true`; `taskProviderBoundConfig` gives two
+  `provider-context` fields, one sensitive with `hasValue: true`). Landed in `b03995932`
+  ("test(visual): cover the TaskProvider bound, provisionable and reveal states"). This exercises,
+  for the first time, all three previously-unverified states: the bound-instance `ConfigFieldRow`
+  credential list (`TaskProviderSection.svelte:147-152`,
+  `settings-sections-TaskProviderSection-Bound-1.png`), the Kaneo auto-provision CTA (`:158-166`,
+  same screenshot), and the post-provision secret reveal (`:170-182`,
+  `tests/visual/settings/sections/TaskProviderSection.spec.ts:49-54`'s "TaskProvider — provision
+  reveal" test, which switches to `Bound`, clicks `provision-kaneo`, and shoots
+  `TaskProvider-—-provision-reveal-1.png`). Rendering these states for the first time — the
+  explicit purpose of this finding — surfaced two new defects in what it rendered; see
+  `task-provider-empty-secret-blank-pill` and `task-provider-summary-list-no-inset` below.
 - **Dimension:** 7. Responsive / layout
-- **Where visible:** not captured — both `Populated` and `Error` stories still use
-  `taskInstanceId: null, canProvision: false`.
-- **Source:** `client/stories/msw/settings-handlers.ts:238-245` (the only `/settings/api/context/
-  task-instance` fixture in `shellReadyHandlers`) and
-  `client/settings/sections/TaskProviderSection.stories.svelte:20-23` (only `Populated`/`Error`
-  stories defined) mean the bound-instance field list
-  (`TaskProviderSection.svelte:145-150`), the Kaneo provision CTA (`:156-164`), and the
-  post-provision secret reveal (`:168-180`) have never been screenshotted, at any viewport. Line
-  numbers moved slightly since the prior review (formerly `:138-175`) but the gap is otherwise
-  unchanged.
-- **Suggested fix:** add a story/fixture variant with a bound `taskInstanceId` and one with
-  `canProvision: true` so those layouts get visual-regression coverage and can be reviewed.
+
+### [Med] A stored secret with an empty value renders an essentially blank masked pill
+
+- **Id:** task-provider-empty-secret-blank-pill
+- **Status:** open
+- **Dimension:** 4. Feedback & state
+- **Where visible:** `settings-sections-TaskProviderSection-Bound-1.png` — the "Kaneo API key"
+  row shows a ~20px empty grey pill immediately left of the `Replace`/`Clear` buttons, where a
+  masked secret value (e.g. `••••WvfQ`) would normally read.
+- **Source:** `client/settings/components/ConfigFieldRow.svelte:158`
+  (`<Secret value={maskSecret(field.value)} />`, reached when `field.sensitive && field.hasValue
+  && !replacing`). The `Bound` fixture's `kaneo_apikey` field
+  (`client/stories/msw/settings-handlers-task-provider.ts:26-35`) sets `hasValue: true` but
+  `value: ''`, and `maskSecret('')` (`client/settings/lib/mask-secret.ts:7-9`,
+  `value.replace(/\*/gu, '•')`) returns `''` unchanged — there are no `*` characters to replace
+  in an empty string. `Secret.svelte:19` then renders `<span
+  class="ui-secret__value">{value}</span>` with an empty string, so the pill's fixed padding
+  (`Secret.svelte:39`, `padding: 3px 10px`) is the only thing giving it any width. A field the
+  server reports as *having* a stored credential therefore gives the user no visual confirmation
+  that a value exists.
+- **Suggested fix:** when `field.sensitive && field.hasValue`, render a fixed-width masked
+  placeholder (e.g. `••••••••`, `Secret`'s own default) instead of `maskSecret(field.value)`
+  whenever `field.value` is empty, so the pill always signals "a secret is stored" regardless of
+  what the (masked) value happens to contain.
+
+### [Low] The provision-reveal `SummaryList` has no horizontal inset
+
+- **Id:** task-provider-summary-list-no-inset
+- **Status:** open
+- **Dimension:** 8. Spacing, alignment & sizing
+- **Where visible:**
+  `.storybook-shots/settings/sections/TaskProviderSection.spec.ts/TaskProvider-—-provision-reveal-1.png`
+  at 1280px: `demo-user@example.invalid` and `https://kaneo.example` both terminate flush against
+  the viewport's right edge (x≈1280), while the sibling `ConfigFieldRow` cards above inset their
+  content roughly 16px from the same edge (their `Clear` button ends at x≈1264).
+- **Source:** `client/shared/ui/SummaryList.svelte:36-39` — `.ui-summary { display: grid;
+  column-gap: 32px; }` sets no horizontal padding at all, and the row rule (`:40-48`,
+  `.ui-summary__row`) has none either. `TaskProviderSection.svelte:173-176` renders this
+  component directly inside `.settings-provision__reveal` with no wrapping inset of its own.
+  Longer real values (a longer email or a self-hosted Kaneo URL) would run past the edge with no
+  padding to absorb them, worsened by `.ui-summary__v`'s `word-break: break-all`
+  (`SummaryList.svelte:58`).
+- **Suggested fix:** give `.ui-summary` (or its usage site) the same horizontal inset the
+  `ConfigFieldRow`/`SettingsFieldShell` cards use, so right-aligned values keep breathing room
+  from the container edge.

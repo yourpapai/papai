@@ -9,15 +9,22 @@ See LICENSE in the project root for details.
 
 **Date:** 2026-08-03
 **Reviewed:** `client/settings/sections/GroupProviderSection.svelte`
-**States captured:** Populated, Empty, Error, Loading · desktop (base-state PNGs under
-`.storybook-shots/settings/sections/GroupProviderSection.spec.ts/`), plus three manual states
-below `@generated-end auto-screenshots` in
+**States captured:** Populated, Unassigned, NamelessBound, Empty, Error, Loading · desktop
+(base-state PNGs under `.storybook-shots/settings/sections/GroupProviderSection.spec.ts/`), plus
+three manual states below `@generated-end auto-screenshots` in
 `tests/visual/settings/sections/GroupProviderSection.spec.ts`: Populated at ~640px, `Select`
-focused, and `Save` hovered. All 7 re-verified clean this run (`bun run visual:audit -g
-GroupProviderSection`, 7/7 passed; no new stories added). Only the `Populated` fixture exercises
-a bound instance; there is no long-id / long-error fixture, so overflow behavior of a long
-instance label remains unverified, and no fixture exercises `taskInstanceId: null` with a
-non-empty `available` list (the "not yet configured" sub-state — see new finding below).
+focused, and `Save` hovered. `Unassigned` and `NamelessBound` are new this run
+(`client/settings/sections/GroupProviderSection.stories.svelte:23-32`, fixtures
+`groupProviderUnassigned` / `groupProviderNamelessBound` in
+`client/stories/msw/settings-handlers-group.ts:112-133`) and close the two gaps the prior review
+flagged here: `Unassigned` sets `taskInstanceId: null` against a non-empty `available` list — the
+"not yet configured" sub-state that had never been screenshotted — and `NamelessBound` binds to
+`inst_bare`, the fixture's nameless option, which a `<select>` renders only when it is the chosen
+value, giving the first screenshot of the raw-id/fallback-label path. Landed in `19b96cf1d`
+("test(visual): cover the GroupProvider unassigned and nameless-instance states"). All 9
+screenshots re-verified clean (`bun run visual:audit -g GroupProviderSection`, 9/9 passed). There
+is still no long-id / long-error fixture, so overflow behavior of a genuinely long instance label
+remains unverified — a minor residual, not tracked as a separate finding.
 
 **Rubric:** [`RUBRIC.md`](./RUBRIC.md)
 
@@ -34,9 +41,11 @@ with retry, a loading placeholder, a busy/disabled save button, the muted `.plac
 style, friendly instance labels, and shared-primitive label/focus association). A sequence of
 commits between 2026-07-03 and 2026-08-02 (`3b865957c`, `632e6e33a`, `0c39b6070`, `8f99c5d3d`,
 `b40777d90`, plus shared-primitive work `6e0249552`/`7cdce941e`) closed essentially all of that
-gap — the component now matches the sibling's pattern almost line for line. Five of the six
-original findings are `fixed`; the sixth (raw-id option labels) is narrowed to its residue. One
-new finding is added for a state-distinction gap the task brief specifically asked to check.
+gap — the component now matches the sibling's pattern almost line for line. A follow-up
+remediation pass (2026-08-04, `56721f1ec`..`19b96cf1d`) closed the two findings that remained
+open after that convergence — the raw-id-options residue and the silent-null-preselect defect —
+and added the `Unassigned`/`NamelessBound` fixtures that screenshot both fixes directly. All
+seven original findings are now `fixed`; this document has zero open findings.
 
 ## Scorecard
 
@@ -45,8 +54,8 @@ new finding is added for a state-distinction gap the task brief specifically ask
 | 1. Visual hierarchy & scanning  | pass  | Eyebrow → title → single field → primary action reads top-down with nothing competing; matches sibling rhythm. Unchanged from prior review.                                              |
 | 2. Affordance & signifiers      | pass  | `Save` is a filled primary button with a visible hover shade (`GroupProviderSection-—-save-hover-1.png`) and the refresh `IconButton` keeps a resting border. Unchanged from prior review. |
 | 3. Consistency w/ design system | pass  | Now shares error/loading/empty/busy/label handling with `TaskProviderSection` (`GroupProviderSection.svelte:80-104` vs. `TaskProviderSection.svelte:113-139`) — the prior divergence is closed. |
-| 4. Feedback & state             | warn  | Load error, loading placeholder, empty state and save-busy are all now handled; residual gap is a silent auto-preselect when no instance is actually assigned (new finding below).        |
-| 5. Content & language           | warn  | Errors are humanized via `formatFetchError`, empty state is actionable; residual gap is raw-id fallback for instances lacking a `name` (finding narrowed, not closed).                     |
+| 4. Feedback & state             | pass  | Load error, loading placeholder, empty state and save-busy are all handled, and the silent auto-preselect residue is closed — `Unassigned-1.png` now shows the control itself, not just adjacent copy, reflecting "nothing bound yet". |
+| 5. Content & language           | pass  | Errors are humanized via `formatFetchError`, empty state is actionable, and the raw-id fallback residue is closed — the server now always populates `name`, and even the client's dead-code fallback path shows a type-qualified label (`NamelessBound-1.png`: "YouTrack instance (inst_bare)"), never a bare id. |
 | 6. Accessibility                | pass  | `Select` is now labelled via `Field`'s context (`aria-labelledby`) and shows a visible `:focus-within` ring — both confirmed in source and in the `select-focused` screenshot.              |
 | 7. Responsive / layout          | pass  | The ~640px shot reflows cleanly — field goes full width, button wraps below, no clipping or overflow. Unchanged from prior review.                                                        |
 | 8. Spacing, alignment & sizing  | pass  | Layout is driven entirely by `.settings-form` tokens; no one-off px, edges align with the field above. Unchanged from prior review.                                                        |
@@ -128,53 +137,41 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [Low] Options fall back to a raw internal id when no friendly name exists
 
 - **Id:** group-provider-raw-id-options
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** the server now guarantees every option has a friendly `name`.
+  `src/debug/settings/task-instance-options.ts:13-44` introduces
+  `listActiveTaskInstanceOptions()`, whose `TaskInstanceOption.name` is required (not optional as
+  on the wire schema) and derived via `taskInstanceLabel(id, type, baseUrl)` (`:29-32`: `baseUrl`
+  when present, else `` `${TYPE_LABELS[type] ?? type} instance (${id})` ``, never a bare id) —
+  landed in `56721f1ec` ("fix(settings): always label task-instance options server-side"), which
+  replaced `group-routes.ts`'s prior inline `name: taskInstance.config['baseUrl']` mapping (could
+  yield `name: undefined`) with a call to this shared builder. On the client,
+  `GroupProviderSection.svelte:98` now calls the shared `formatTaskInstanceOption()`
+  (`client/settings/lib/task-instance-label.ts:26-32`), whose fallback — kept only as
+  defense-in-depth and for Storybook, per its doc comment (`:19-24`) — was also changed by
+  `65d1672e3` ("fix(settings): share one task-instance option label across the provider pair")
+  from the old bare `o.id` to `` `${TYPE_LABELS[option.type] ?? option.type} instance
+  (${option.id})` ``. Confirmed visually in the new
+  `settings-sections-GroupProviderSection-NamelessBound-1.png`, which binds to the fixture's
+  nameless `inst_bare` option and renders "YouTrack instance (inst_bare) (youtrack · active)" —
+  not the bare `inst_bare (youtrack · active)` this finding originally screenshotted.
 - **Dimension:** 5. Content & language
-- **Where visible:** Populated shot — the bound option now reads `https://kaneo.example (kaneo ·
-  active)` (a friendly name), but the fixture's second, unbound option
-  (`{ id: 'inst_bare', type: 'youtrack', status: 'active' }`, no `name`) would still render as
-  the raw id `inst_bare (youtrack · active)` if selected/opened
-  (`client/stories/msw/settings-handlers-group.ts:86`).
-- **Source:** `client/settings/sections/GroupProviderSection.svelte:97`
-  (`` label: `${o.name ?? o.id} (${o.type} · ${o.status})` ``) — the schema's `name` field is
-  optional (`client/settings/fetcher-schemas.ts:204-209`, `TaskInstanceOptionSchema.name:
-  z.string().optional()`), so any instance the task-tracker integration hasn't given a name
-  still displays its opaque id. This is a substantial narrowing from the original finding: the
-  common case (a Kaneo/YouTrack instance with a discoverable URL/name) is now fixed; only
-  nameless instances still show the raw id. Same residue exists in the sibling
-  (`TaskProviderSection.svelte:132`, identical fallback expression).
-- **Suggested fix:** have the task-instance API always populate `name` (e.g. fall back to a
-  server-side label derived from type + creation order) rather than leaving the client to show
-  a raw id when it's absent.
 
 ### [Med] "Not yet configured" is indistinguishable from "configured to the first option"
 
 - **Id:** group-provider-null-silently-preselected
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `client/settings/sections/GroupProviderSection.svelte:43-45` now delegates to
+  `resolveTaskInstanceSelection(result.taskInstanceId, result.available)`
+  (`client/settings/lib/task-instance-selection.ts:26-37`, shared with the sibling section),
+  which returns `selected: ''` and the placeholder `Not yet assigned — select an instance`
+  (`UNASSIGNED_PLACEHOLDER`, `task-instance-selection.ts:7`) whenever nothing is bound, instead
+  of falling back to `available[0]`. Landed in `7383904b1` ("fix(settings): show an unassigned
+  placeholder instead of preselecting the first instance"). Confirmed visually in the new
+  `settings-sections-GroupProviderSection-Unassigned-1.png`, whose fixture sets
+  `taskInstanceId: null` against a two-entry `available` list
+  (`client/stories/msw/settings-handlers-group.ts:112-120`) and renders "Not yet assigned —
+  select an instance" in the `Select` rather than silently showing the first `available` entry
+  as chosen (`19b96cf1d`, "test(visual): cover the GroupProvider unassigned and
+  nameless-instance states").
 - **Dimension:** 4. Feedback & state (also 5. Content & language)
-- **Where visible:** not captured by any story — no fixture sets `taskInstanceId: null` with a
-  non-empty `available` list; the `Populated` fixture's `taskInstanceId` (`'inst_abc'`) already
-  matches `available[0].id`
-  (`client/stories/msw/settings-handlers-group.ts:81-88`), so this state has never been
-  screenshotted.
-- **Source:** `client/settings/sections/GroupProviderSection.svelte:40-44`:
-  ```
-  const currentId = result.taskInstanceId
-  selected =
-    currentId !== null && result.available.some((a) => a.id === currentId)
-      ? currentId
-      : (result.available[0]?.id ?? '')
-  ```
-  When the group has no task instance assigned yet (`taskInstanceId === null`) but instances
-  exist, `selected` silently falls back to `available[0].id` and the `Select` renders that
-  option as chosen — pixel-identical to a group that is genuinely bound to that instance. A
-  group admin opening this section for an unconfigured group sees what looks like an active,
-  saved assignment rather than an unset one; they may assume routing is already correct and skip
-  configuring it, or conversely re-save a value they never actually chose, believing they are
-  correcting an existing binding. The task brief for this section calls this out explicitly
-  because a misrouted task provider silently sends work to the wrong tracker.
-- **Suggested fix:** when `taskInstanceId === null`, either leave the `Select` unselected (add a
-  `placeholder` option, which `Select` already supports —
-  `client/shared/ui/Select.svelte:43-45`) or render an explicit "Not yet assigned" indicator
-  distinct from a real bound value, instead of silently defaulting the dropdown to the first
-  entry.
