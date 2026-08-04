@@ -55,7 +55,7 @@ See LICENSE in the project root for details.
 | `src/debug/settings/group-routes.ts:196-203` | Delete the inline option construction; import the shared builder. |
 | `client/settings/sections/TaskProviderSection.svelte:51-55,130-135` | Use both client helpers; pass `placeholder` to `Select`. |
 | `client/settings/sections/GroupProviderSection.svelte:40-44,95-100` | Same two changes. |
-| `client/stories/msw/settings-handlers.ts` | Add the `taskProviderBoundHandlers` family. |
+| `client/stories/msw/settings-handlers-task-provider.ts` | Add the `taskProviderBoundHandlers` family. **Amended during Task 4:** the plan originally put this block in `settings-handlers.ts`, but that file is 264 lines and the block is 65, breaching its enforced 300-line `max-lines`. Per CLAUDE.md ("a `max-lines` failure is a design signal: split the file; do not game the limit") the family lives in this new file with a paired test; `settings-handlers.ts` is unchanged. |
 | `client/stories/msw/settings-handlers-group.ts` | Add the `groupProviderUnassigned` / `groupProviderNamelessBound` fixtures and handlers. |
 | `client/stories/msw/scenarios.ts` | Register the three new fixture families. |
 | `client/settings/sections/TaskProviderSection.stories.svelte` | Add the `Bound` story. |
@@ -71,7 +71,7 @@ See LICENSE in the project root for details.
 
 ## Spec amendment you must know about (read before Task 3)
 
-The spec says *"No existing test should need to change. If one does, that is a signal the fix altered behavior beyond the two findings — stop and report it."* That check was run while writing this plan, and **seven existing tests do change**. Every one of them asserts a behaviour a finding names as the defect, so each is a test the fix is *supposed* to invalidate. None indicates scope creep, and no test outside these seven is touched.
+The spec says *"No existing test should need to change. If one does, that is a signal the fix altered behavior beyond the two findings — stop and report it."* That check was run while writing this plan, and **ten existing tests do change** (seven found while planning; items 4b, 9 and 10 only during execution). Every one of them asserts a behaviour a finding names as the defect, so each is a test the fix is *supposed* to invalidate. None indicates scope creep, and no test outside these seven is touched.
 
 Server layer — all three assert that a `config: {}` instance arrives with no label:
 
@@ -82,11 +82,21 @@ Server layer — all three assert that a `config: {}` instance arrives with no l
 Client layer:
 
 4. `TaskProviderSection.test.ts` → `renders the friendly instance name in options, falling back to id when absent` — the fallback it asserts is the exact string this project replaces. Updated in Task 2.
+4b. `GroupProviderSection.test.ts:270-289` → `renders the friendly instance name in options, falling back to id when absent` — an exact twin of the above, asserting `'kaneo-b (youtrack · active)'`. **Found during execution, not during planning:** the original enumeration checked the TaskProvider file for label tests and never checked GroupProvider for a twin. It belongs to the same class as the other seven — it asserts the raw-id fallback that `group-provider-raw-id-options` names as the defect. Rename it to `renders the friendly instance name in options, falling back to a type-and-id label when absent` and change its second assertion to `expect(options).toContain('YouTrack instance (kaneo-b) (youtrack · active)')`. Updated in Task 2.
 5. `GroupProviderSection.test.ts` → `preselects the first available when no task instance is set` — **asserts the defect**. Inverted in Task 3, becoming the regression test for `group-provider-null-silently-preselected`.
 6. `GroupProviderSection.test.ts` → `falls back to first available when the assigned instance is missing from available` — same, for the stale-binding sub-state. Inverted in Task 3.
 7. `TaskProviderSection.test.ts` → `binding an instance PATCHes the context endpoint and re-fetches` — its fixture is unbound, so it relied on the silent preselect to have something to PATCH. Task 3 makes it select an option first, which is what a real user does.
 
-If a test **outside this list of seven** fails during execution, the spec's original instruction applies in full: stop and report it rather than updating the assertion.
+9. `TaskProviderSection.test.ts:311` → `a failed post-bind reload keeps the form, no full ErrorState takeover` — **found during execution.**
+10. `TaskProviderSection.test.ts:354` → `disables the instance Select while a bind is in flight` — **found during execution.**
+
+Items 9 and 10 have a different cause from every item above them, and the difference is the lesson. Items 1-8 **assert** the defective behaviour, so they were findable by searching for assertions. Items 9 and 10 never mention the preselect: they serve `unboundInstancePayload` and dispatch `submit` without selecting anything, silently **depending** on the auto-preselect to give `bindInstance()` a value. Once the preselect goes, the section's existing `selectedInstanceId === ''` early return fires and the bind path under test never executes.
+
+A dependency on a defect is invisible to an assertion-based search. The correct way to enumerate would have been to find every test whose fixture has `taskInstanceId: null` and which then submits or binds — not to grep for assertions about preselection.
+
+Both are fixed the same way as item 7: select an option before submitting. All three then test the real user path rather than an accident of the defect.
+
+If a test **outside this list of ten** fails during execution, the spec's original instruction applies in full: stop and report it rather than updating the assertion. That instruction has now proved its worth three times — items 4b, 9 and 10 were each caught by an implementer refusing to touch a test the plan had not named.
 
 The spec's Layer B describes sharing only the *label* helper. This plan also shares the *selection* logic (`task-instance-selection.ts`), because the silently-preselecting block is duplicated byte-for-byte between the two sections and the same DRY argument the spec makes for the server builder applies to it.
 
