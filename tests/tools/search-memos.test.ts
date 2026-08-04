@@ -6,11 +6,13 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { z } from 'zod'
+
 import { userCachesForTesting } from '../../src/cache.js'
 import type { Memo } from '../../src/memos.js'
 import { saveMemo, updateMemoEmbedding } from '../../src/memos.js'
 import { createTrackedLoggerMock, type LogCall, type TrackedLoggerMock } from '../utils/logger-mock.js'
-import { getToolExecutor, setupTestDb } from '../utils/test-helpers.js'
+import { getToolExecutor, schemaValidates, setupTestDb } from '../utils/test-helpers.js'
 
 type SearchMemosModule = typeof import('../../src/tools/search-memos.js')
 
@@ -21,7 +23,11 @@ const isSearchMemosModule = (value: unknown): value is SearchMemosModule =>
 // per-call DI, so control it via mock.module. Re-applied in beforeEach after
 // the preload reset restores src/embeddings.js originals (tests/mock-reset.ts).
 let nextQueryVec: number[] | null = null
-export let embeddingCall: { text: string; configContextId: string; context: unknown } | null = null
+export let embeddingCall: {
+  text: string
+  configContextId: string
+  context: unknown
+} | null = null
 
 const setQueryVec = (v: number[] | null): void => {
   nextQueryVec = v
@@ -52,7 +58,10 @@ async function loadSearchMemosModule(tracked: TrackedLoggerMock): Promise<Search
   return loaded
 }
 
-type SearchMemosResult = { results: (Memo & { score?: number })[]; mode: string }
+type SearchMemosResult = {
+  results: (Memo & { score?: number })[]
+  mode: string
+}
 
 function isSearchMemosResult(value: unknown): value is SearchMemosResult {
   return (
@@ -62,6 +71,20 @@ function isSearchMemosResult(value: unknown): value is SearchMemosResult {
 
 export function findCall(tracked: TrackedLoggerMock, level: LogCall['level'], message: string): LogCall | undefined {
   return tracked.getCallsByLevel(level).find((call) => call.args[1] === message)
+}
+
+function getInputFieldJsonSchema(tool: { inputSchema: unknown }, fieldName: string): z.core.JSONSchema.JSONSchema {
+  const schema = tool.inputSchema
+  if (!(schema instanceof z.ZodType)) throw new Error('Tool inputSchema is not a zod schema')
+  const jsonSchema = z.toJSONSchema(schema)
+  if (!('properties' in jsonSchema) || jsonSchema.properties === undefined) {
+    throw new Error('Tool inputSchema has no properties')
+  }
+  const property = jsonSchema.properties[fieldName]
+  if (typeof property !== 'object' || property === null) {
+    throw new Error(`No JSON schema for field '${fieldName}'`)
+  }
+  return property
 }
 
 const USER = 'user1'
@@ -94,7 +117,10 @@ describe('search_memos tool', () => {
     const lease = saveMemo(USER, 'lease renewal deadline', ['landlord'])
     saveMemo(USER, 'buy groceries', ['shopping'])
 
-    const result: unknown = await getToolExecutor(makeSearchMemosTool(USER))({ query: 'lease', mode: 'keyword' })
+    const result: unknown = await getToolExecutor(makeSearchMemosTool(USER))({
+      query: 'lease',
+      mode: 'keyword',
+    })
 
     assert(isSearchMemosResult(result))
     expect(result.mode).toBe('keyword')
@@ -106,7 +132,10 @@ describe('search_memos tool', () => {
     const { makeSearchMemosTool } = await loadSearchMemosModule(tracked)
     saveMemo(USER, 'some content', [])
 
-    const result: unknown = await getToolExecutor(makeSearchMemosTool(USER))({ query: 'nonexistent', mode: 'keyword' })
+    const result: unknown = await getToolExecutor(makeSearchMemosTool(USER))({
+      query: 'nonexistent',
+      mode: 'keyword',
+    })
 
     assert(isSearchMemosResult(result))
     expect(result.mode).toBe('keyword')
@@ -119,10 +148,57 @@ describe('search_memos tool', () => {
     const memo = saveMemo(USER, 'important project deadline', [])
     setQueryVec(null)
 
-    const result: unknown = await getToolExecutor(makeSearchMemosTool(USER))({ query: 'deadline', mode: 'auto' })
+    const result: unknown = await getToolExecutor(makeSearchMemosTool(USER))({
+      query: 'deadline',
+      mode: 'auto',
+    })
 
     assert(isSearchMemosResult(result))
     expect(result.mode).toBe('keyword_fallback')
     expect(result.results.map((r) => r.id)).toEqual([memo.id])
+  })
+
+  test('input schema validates query/mode/limit constraints', async () => {
+    const tracked = createTrackedLoggerMock()
+    const { makeSearchMemosTool } = await loadSearchMemosModule(tracked)
+    const tool = makeSearchMemosTool(USER)
+
+    expect(schemaValidates(tool, { query: 'x' })).toBe(true)
+    expect(schemaValidates(tool, { query: 'x', mode: 'keyword' })).toBe(true)
+    expect(schemaValidates(tool, { query: 'x', mode: 'semantic' })).toBe(true)
+    expect(schemaValidates(tool, { query: 'x', mode: 'auto' })).toBe(true)
+    expect(schemaValidates(tool, { query: 'x', mode: 'bogus' })).toBe(false)
+    expect(schemaValidates(tool, { query: '' })).toBe(false)
+    expect(schemaValidates(tool, {})).toBe(false)
+    expect(schemaValidates(tool, { query: 'x', limit: 0 })).toBe(false)
+    expect(schemaValidates(tool, { query: 'x', limit: 21 })).toBe(false)
+    expect(schemaValidates(tool, { query: 'x', limit: 2.5 })).toBe(false)
+    expect(schemaValidates(tool, { query: 'x', limit: 1 })).toBe(true)
+    expect(schemaValidates(tool, { query: 'x', limit: 20 })).toBe(true)
+  })
+
+  test('exposes non-empty LLM-facing descriptions, enum, and defaults', async () => {
+    const tracked = createTrackedLoggerMock()
+    const { makeSearchMemosTool } = await loadSearchMemosModule(tracked)
+    const tool = makeSearchMemosTool(USER)
+
+    expect(tool.description).toContain('Search personal notes')
+
+    const queryMeta = getInputFieldJsonSchema(tool, 'query')
+    const modeMeta = getInputFieldJsonSchema(tool, 'mode')
+    const limitMeta = getInputFieldJsonSchema(tool, 'limit')
+
+    expect(typeof queryMeta.description).toBe('string')
+    expect(queryMeta.description?.length).toBeGreaterThan(0)
+    expect(typeof modeMeta.description).toBe('string')
+    expect(modeMeta.description?.length).toBeGreaterThan(0)
+    expect(typeof limitMeta.description).toBe('string')
+    expect(limitMeta.description?.length).toBeGreaterThan(0)
+
+    expect(modeMeta.enum).toEqual(['keyword', 'semantic', 'auto'])
+    expect(modeMeta.default).toBe('auto')
+    expect(limitMeta.default).toBe(5)
+    expect(limitMeta.minimum).toBe(1)
+    expect(limitMeta.maximum).toBe(20)
   })
 })
