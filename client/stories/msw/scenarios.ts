@@ -47,6 +47,8 @@ import {
   codingIdentityHandlers,
   groupMembersHandlers,
   groupProviderHandlers,
+  groupProviderNamelessBoundHandlers,
+  groupProviderUnassignedHandlers,
   groupReleaseHandlers,
   guestModeHandlers,
 } from './settings-handlers-group.js'
@@ -267,6 +269,8 @@ export const scenarios = {
   'settings-group-provider-empty': [...groupProviderHandlers.empty],
   'settings-group-provider-error': [...groupProviderHandlers.error],
   'settings-group-provider-loading': [...groupProviderHandlers.loading],
+  'settings-group-provider-unassigned': [...groupProviderUnassignedHandlers],
+  'settings-group-provider-nameless-bound': [...groupProviderNamelessBoundHandlers],
   'settings-coding-identity-populated': [...codingIdentityHandlers.populated],
   'settings-coding-identity-empty': [...codingIdentityHandlers.empty],
   'settings-coding-identity-error': [...codingIdentityHandlers.error],
