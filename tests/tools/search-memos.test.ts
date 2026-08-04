@@ -277,4 +277,51 @@ describe('search_memos tool', () => {
     const warn = tracked.getCallsByLevel('warn').find((call) => call.args[0] === 'Semantic search unavailable')
     expect(warn).toBeDefined()
   })
+
+  test('semantic search excludes memos below the similarity threshold', async () => {
+    const tracked = createTrackedLoggerMock()
+    const { makeSearchMemosTool } = await loadSearchMemosModule(tracked)
+    seedMemoWithEmbedding('vaguely related', VEC_BELOW)
+    const high = seedMemoWithEmbedding('directly related', VEC_HIGH)
+    setQueryVec(QUERY_VEC)
+
+    const result: unknown = await getToolExecutor(makeSearchMemosTool(USER))({ query: 'topic', mode: 'semantic' })
+
+    assert(isSearchMemosResult(result))
+    expect(result.mode).toBe('semantic')
+    expect(result.results.map((r) => r.id)).toEqual([high.id])
+  })
+
+  test('semantic search keeps only the top limit results', async () => {
+    const tracked = createTrackedLoggerMock()
+    const { makeSearchMemosTool } = await loadSearchMemosModule(tracked)
+    seedMemoWithEmbedding('third best', VEC_PASS)
+    const mid = seedMemoWithEmbedding('second best', VEC_MID)
+    const high = seedMemoWithEmbedding('best match', VEC_HIGH)
+    setQueryVec(QUERY_VEC)
+
+    const result: unknown = await getToolExecutor(makeSearchMemosTool(USER))({
+      query: 'topic',
+      mode: 'semantic',
+      limit: 2,
+    })
+
+    assert(isSearchMemosResult(result))
+    expect(result.results.map((r) => r.id)).toEqual([high.id, mid.id])
+  })
+
+  test('resolves the query embedding against the user scope', async () => {
+    const tracked = createTrackedLoggerMock()
+    const { makeSearchMemosTool } = await loadSearchMemosModule(tracked)
+    seedMemoWithEmbedding('anything', VEC_HIGH)
+    setQueryVec(QUERY_VEC)
+
+    await getToolExecutor(makeSearchMemosTool(USER))({ query: 'find this', mode: 'auto' })
+
+    expect(embeddingCall).toEqual({
+      text: 'find this',
+      configContextId: USER,
+      context: { storageContextId: USER, contextType: 'dm', chatUserId: USER },
+    })
+  })
 })
