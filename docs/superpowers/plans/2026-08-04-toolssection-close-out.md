@@ -552,6 +552,34 @@ Run: `bun run test:client`
 
 Expected: **1427 pass, 0 fail** (1426 after Task 1, plus this one test).
 
+- [ ] **Step 4a: Make the clear trigger reachable from Storybook**
+
+*Added 2026-08-04 during execution.* This plan and its spec both claimed the clear trigger renders in the `Preset applied` story because that story sets `hasStoredDefaults: true`. That reasoning was incomplete: the clear-row guard at `:260` also requires `clearPresetFn !== undefined`, and **no story passes `clearPresetFn`**. The trigger has therefore never rendered in any baseline, and this task's border change would be invisible in every frame. The finding's own "Where visible: Populated/Grouped screenshots" line is wrong for the same reason — the original reviewer found this defect from source, not pixels.
+
+The human partner's decision was to close the coverage hole rather than ship the fix unseen. This adds no story and no test, so the baseline count stays 10 and the audit floor stays 467.
+
+In `client/settings/sections/ToolsSection.stories.svelte`, add this after the `fetchPreset` declaration at `:120`:
+
+```typescript
+  const clearDefaults = (): Promise<ToolsResponse> => Promise.resolve({ ...presetResponse, hasStoredDefaults: false })
+```
+
+Then replace the `Preset applied` story at `:135`:
+
+```svelte
+<Story name="Preset applied" args={{ contextId: CONTEXT_ID, fetchToolsFn: fetchPreset, hasStoredDefaults: true }} />
+```
+
+with:
+
+```svelte
+<Story
+  name="Preset applied"
+  args={{ contextId: CONTEXT_ID, fetchToolsFn: fetchPreset, hasStoredDefaults: true, clearPresetFn: clearDefaults }} />
+```
+
+Do **not** rename the story — the baseline filename `settings-sections-ToolsSection-Preset-applied-1.png` derives from it, and a rename would orphan the old baseline and create a new one.
+
 - [ ] **Step 5: Re-shoot scoped, then read the changed image**
 
 `.storybook-shots/` is git-ignored, so `git status` will **not** list changed PNGs. Drop a timestamp marker first, then compare against it — this is the only reliable way to see what a shoot actually rewrote:
@@ -570,12 +598,13 @@ Then **read the changed PNG** with the Read tool:
 
 `.storybook-shots/settings/sections/ToolsSection.spec.ts/settings-sections-ToolsSection-Preset-applied-1.png`
 
-Confirm **two** things in your report, and state what you actually saw rather than restating these expectations:
+Confirm **three** things in your report, and state what you actually saw rather than restating these expectations:
 
-1. The "Clear admin defaults" trigger has gained a visible resting border matching the other `outline` buttons on the page.
-2. The preset row still reads `✓ Read-only` with the checkmark intact, the active button keeping its `--accent` border and text.
+1. The "Clear admin defaults" trigger is now present in the frame at all (it was absent before Step 4a).
+2. It renders with a visible resting border matching the other `outline` buttons on the page.
+3. The preset row still reads `✓ Read-only` with the checkmark intact, the active button keeping its `--accent` border and text.
 
-This baseline absorbs two changes, not one: this task's border, plus the ~1px preset-row shift from Task 1's fix 4c (see Task 1 Step 8's amendment — that shift was investigated, is invisible to a user, and was accepted by decision). Nothing else in the frame should have moved.
+This baseline absorbs three changes: the newly-rendered clear trigger and whatever it displaces below it (Step 4a), that trigger's `outline` border (Step 3), and the ~1px preset-row shift from Task 1's fix 4c (see Task 1 Step 8's amendment — investigated, invisible to a user, accepted by decision). Nothing else in the frame should have moved.
 
 A green audit after a re-shoot is not evidence — the image is.
 
