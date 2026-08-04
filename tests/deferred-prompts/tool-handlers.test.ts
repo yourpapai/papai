@@ -449,3 +449,62 @@ describe('executeGet', () => {
     expect(result).toMatchObject({ type: 'alert', id: created.id, prompt: 'find me' })
   })
 })
+
+describe('executeUpdate — scheduled prompt fields', () => {
+  const createDaily = (): string => {
+    setConfig(USER_ID, 'timezone', 'UTC')
+    executeCreate(USER_ID, {
+      prompt: 'Original',
+      schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0] } },
+    })
+    const { prompts } = executeList(USER_ID, { type: 'scheduled' })
+    return prompts[0]!.id
+  }
+
+  test('rejects a condition on a scheduled prompt and emits nothing', () => {
+    const id = createDaily()
+    const { events, cleanup } = collectEvents('deferred:updated')
+    try {
+      const result = executeUpdate(USER_ID, {
+        id,
+        condition: { field: 'task.status', op: 'changed_to', value: 'done' },
+      })
+      expect(result).toEqual({
+        error: 'Cannot apply a condition to a scheduled prompt. Use schedule fields instead.',
+      })
+      expect(events).toHaveLength(0)
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('prompt-only update is persisted', () => {
+    const id = createDaily()
+    const result = executeUpdate(USER_ID, { id, prompt: 'Rewritten' })
+    expect(result).toMatchObject({ status: 'updated', prompt: 'Rewritten' })
+    expect(getScheduledPrompt(id, USER_ID)!.prompt).toBe('Rewritten')
+  })
+
+  test('valid execution replaces stored metadata', () => {
+    const id = createDaily()
+    const result = executeUpdate(USER_ID, {
+      id,
+      execution: { delivery_brief: 'new brief', context_snapshot: 'snap' },
+    })
+    expect(result).toMatchObject({ status: 'updated' })
+    expect(getScheduledPrompt(id, USER_ID)!.executionMetadata).toEqual({
+      delivery_brief: 'new brief',
+      context_snapshot: 'snap',
+    })
+  })
+
+  test('invalid execution is ignored and keeps previous metadata', () => {
+    const id = createDaily()
+    executeUpdate(USER_ID, { id, execution: { delivery_brief: 'kept brief' } })
+    const invalidExecution = { delivery_brief: 'x', context_snapshot: 'no brief' }
+    delete (invalidExecution as { delivery_brief?: string }).delivery_brief
+    const result = executeUpdate(USER_ID, { id, execution: invalidExecution })
+    expect(result).toMatchObject({ status: 'updated' })
+    expect(getScheduledPrompt(id, USER_ID)!.executionMetadata.delivery_brief).toBe('kept brief')
+  })
+})
