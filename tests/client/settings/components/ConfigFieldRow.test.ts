@@ -845,4 +845,46 @@ describe('ConfigFieldRow', () => {
     expect(target.querySelector('.settings-field__hint')).toBeNull()
     void unmount(component)
   })
+
+  test('an enum field shows the SegmentedControl busy caption while saving', async () => {
+    setCsrfToken('c')
+    let release: (r: Response) => void = () => {}
+    setMockFetch(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = resolve
+        }),
+    )
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'ai_tool_visibility',
+        storageKey: 'ai_tool_visibility',
+        label: 'Show tool calls',
+        required: false,
+        sensitive: false,
+        kind: 'ai-output',
+        control: 'toggle',
+        options: [
+          { value: 'off', label: 'Off' },
+          { value: 'on', label: 'On' },
+        ],
+        hasValue: false,
+        value: 'off',
+      },
+      onSaved: () => {},
+    })
+    flushSync()
+    expect(target.querySelector('.ui-seg__busy')).toBeNull()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-seg-ai_tool_visibility-on"]')!.click()
+    await drain()
+    expect(target.querySelector('.ui-seg__busy')?.textContent).toBe('Saving…')
+    expect(target.querySelector('[role="radiogroup"]')?.getAttribute('aria-busy')).toBe('true')
+
+    release(json({ ok: true, contextId: 'user:1' }))
+    await drain()
+    expect(target.querySelector('.ui-seg__busy')).toBeNull()
+    void unmount(component)
+  })
 })

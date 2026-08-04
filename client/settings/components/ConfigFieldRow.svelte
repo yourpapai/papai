@@ -131,6 +131,7 @@
         ariaLabel={field.label}
         ariaDescribedBy={segmentedDescribedBy(errorId)}
         disabled={saving}
+        busy={saving}
         onChange={(v) => void saveEnum(v)}
         testidPrefix={`cfg-seg-${field.key}`} />
       {#if field.hasValue}
