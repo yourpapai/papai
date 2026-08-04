@@ -156,7 +156,7 @@
 
     <div class="settings-repos__add">
       <div class="settings-repos__add-head">
-        <p class="settings-repos__add-label">Add repository</p>
+        <h3 class="settings-repos__add-label">Add repository</h3>
         <p class="settings-repos__add-note">
           Branch, preset and egress domains are fixed when a repository is added — change them by removing and
           re-adding it.
@@ -292,6 +292,7 @@
   .settings-repos__add-label {
     font-family: var(--font-mono);
     font-size: 11px;
+    font-weight: 400;
     color: var(--text-dim);
     margin: 0;
   }

@@ -430,4 +430,19 @@ describe('ReposSection', () => {
     expect(target.textContent).toContain('fixed when a repository is added')
     void unmount(component)
   })
+
+  test('the add-form label is a heading so the form is reachable by heading navigation', async () => {
+    setMockFetch(() => Promise.resolve(json(emptyPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const label = target.querySelector<HTMLElement>('.settings-repos__add-label')!
+    expect(label).not.toBeNull()
+    expect(label.tagName).toBe('H3')
+    expect(label.textContent).toContain('Add repository')
+    void unmount(component)
+  })
 })
