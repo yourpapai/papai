@@ -28,7 +28,10 @@ const taskProviderBoundConfig = {
       required: true,
       sensitive: true,
       hasValue: true,
-      value: '',
+      // Server-shape masked value: maskSensitiveValue() (src/config.ts:144-146) always
+      // returns `****` + the last four characters, never an empty string. The previous ''
+      // fabricated a state no route can produce.
+      value: '****WvfQ',
       storageKey: 'kaneo_apikey',
       kind: 'provider-context',
       control: 'text',
