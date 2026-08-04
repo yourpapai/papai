@@ -672,8 +672,8 @@ with:
 ```markdown
 - **Status:** fixed
 - **Resolved:** `<T1>` ("fix(settings): close four pixel-preserving ToolsSection findings")
-  (2026-08-04). The domain toggle (`:313`), the group toggle (`:328-334`), and the per-tool
-  `SegmentedControl` (`:343-348`) each now carry `disabled={applying || clearing}`, matching the
+  (2026-08-04). The domain toggle (`:313-320`), the group toggle (`:333-340`), and the per-tool
+  `SegmentedControl` (`:349-355`) each now carry `disabled={applying || clearing}`, matching the
   gating the confirm-bar buttons already had. No `busy` caption was added to the leaf controls —
   the confirm bar announces the in-flight operation centrally, and up to 30 simultaneous "Saving…"
   captions for one operation would be worse than none.
@@ -771,8 +771,8 @@ with:
 ```markdown
 - **Status:** fixed
 - **Resolved:** `<T1>` ("fix(settings): close four pixel-preserving ToolsSection findings")
-  (2026-08-04). Both bare margins are now `var(--s3)` — `.settings-tools__presets-hint` at `:455`
-  and `.settings-tools__clear-row` at `:472`. `--s3` is `12px` (`client/shared/tokens.css:70`), so
+  (2026-08-04). Both bare margins are now `var(--s3)` — `.settings-tools__presets-hint` at `:461-465`
+  and `.settings-tools__clear-row` at `:477-480`. `--s3` is `12px` (`client/shared/tokens.css:70`), so
   this was a tokenisation-consistency change with no visual delta. The visual audit run before any
   re-shoot confirmed it moved no pixels.
 ```
@@ -831,7 +831,7 @@ Replace the whole of line `38`:
 with:
 
 ```markdown
-| 2. Affordance & signifiers       | pass  | Every non-Cancel control in the section now renders as a real `outline`-variant button with a visible resting border — preset options, the domain/group row toggles (`:313`, `:328-334`), and, since `<T2>`, the "Clear admin defaults" trigger (`:263`). `.settings-tools__preset--active` at `:450` gives the active preset an `--accent` border+text. The two confirm-bar Cancels stay `ghost` by design. |
+| 2. Affordance & signifiers       | pass  | Every non-Cancel control in the section now renders as a real `outline`-variant button with a visible resting border — preset options, the domain/group row toggles (`:313-320`, `:333-340`), and, since `<T2>`, the "Clear admin defaults" trigger (`:263`). `.settings-tools__preset--active` at `:450` gives the active preset an `--accent` border+text. The two confirm-bar Cancels stay `ghost` by design. |
 ```
 
 Replace the whole of line `42`:
@@ -855,7 +855,7 @@ Replace the whole of line `44`:
 with:
 
 ```markdown
-| 8. Spacing, alignment & sizing   | pass  | Every gap, padding, and margin in the section's stylesheet now resolves through the shared scale — the last two bare `12px` margins, `.settings-tools__presets-hint` (`:455`) and `.settings-tools__clear-row` (`:472`), moved to `var(--s3)` in `<T1>`, joining the `var(--s1)`–`var(--s4)`/`--gap-tight` values already in place.                |
+| 8. Spacing, alignment & sizing   | pass  | Every gap, padding, and margin in the section's stylesheet now resolves through the shared scale — the last two bare `12px` margins, `.settings-tools__presets-hint` (`:461-465`) and `.settings-tools__clear-row` (`:477-480`), moved to `var(--s3)` in `<T1>`, joining the `var(--s1)`–`var(--s4)`/`--gap-tight` values already in place.                |
 ```
 
 Replace the whole of line `45`:
@@ -867,7 +867,7 @@ Replace the whole of line `45`:
 with:
 
 ```markdown
-| 9. Interaction & micro-states    | pass  | The preset Apply/Clear confirm bar stays mounted with a busy/disabled action for the duration of the request (`:164-197`), the per-tool `SegmentedControl` and the domain/group toggles are now disabled during `applying`/`clearing` (`:313`, `:328-334`, `:343-348`, `<T1>`) so a manual edit cannot race an in-flight request, and the clear-trigger row hides while a preset confirmation is open (`:260` now also gated on `pendingPreset === null`), leaving one confirmation surface on screen at a time.             |
+| 9. Interaction & micro-states    | pass  | The preset Apply/Clear confirm bar stays mounted with a busy/disabled action for the duration of the request (`:164-197`), the per-tool `SegmentedControl` and the domain/group toggles are now disabled during `applying`/`clearing` (`:313-320`, `:333-340`, `:349-355`, `<T1>`) so a manual edit cannot race an in-flight request, and the clear-trigger row hides while a preset confirmation is open (`:260` now also gated on `pendingPreset === null`), leaving one confirmation surface on screen at a time.             |
 ```
 
 - [ ] **Step 4: Regenerate the backlog**
