@@ -27,7 +27,9 @@ const ENDPOINT = 'https://x/settings/api/context/task-instance'
 const TaskInstanceGetSchema = z.object({
   contextId: z.string(),
   taskInstanceId: z.string().nullable(),
-  available: z.array(z.object({ id: z.string(), type: z.string(), status: z.string(), name: z.string().optional() })),
+  // `name` is required here, not optional: this route is the layer that
+  // guarantees every option carries a human-readable label.
+  available: z.array(z.object({ id: z.string(), type: z.string(), status: z.string(), name: z.string() })),
   canProvision: z.boolean(),
 })
 
@@ -211,7 +213,7 @@ describe('settings context task-instance routes', () => {
     expect(getContextSettings(groupContextId)?.taskInstanceId).toBe('yt-default')
   })
 
-  test('GET surfaces config.baseUrl as the option name', async () => {
+  test('surfaces config.baseUrl as the option name, falling back to type and id', async () => {
     insertTaskInstance({ id: 'kaneo-a', type: 'kaneo', config: { baseUrl: 'https://kaneo.example' }, status: 'active' })
     insertTaskInstance({ id: 'bare', type: 'youtrack', config: {}, status: 'active' })
     const url = getReq(session)
@@ -219,7 +221,7 @@ describe('settings context task-instance routes', () => {
     const body = TaskInstanceGetSchema.parse(await res.json())
     const byId = Object.fromEntries(body.available.map((a) => [a.id, a]))
     expect(byId['kaneo-a']?.name).toBe('https://kaneo.example')
-    expect(byId['bare']?.name).toBeUndefined()
+    expect(byId['bare']?.name).toBe('YouTrack instance (bare)')
   })
 
   test('unsupported method is 405', async () => {
