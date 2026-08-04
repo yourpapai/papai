@@ -431,11 +431,17 @@ If the count differs from 1426 but nothing fails, report the actual number rathe
 
 Run: `bun run visual:audit`
 
-Expected: **467 passed, 0 failed.**
+Expected: **466 passed, 1 failed** — the single failure being `settings-sections-ToolsSection-Preset-applied-1.png`.
 
-**Do not run `bun shoot` in this task under any circumstance.** This audit is the whole point of grouping these four fixes together: none of them can move a pixel, so a green audit is real evidence. The one change that touches rendering rather than only attributes is 4c's `<span>` wrapper, and it lands in the `Preset applied` story.
+**Do not run `bun shoot` in this task under any circumstance.**
 
-**If `settings-sections-ToolsSection-Preset-applied-1.png` (or any other baseline) fails, STOP and report it.** A failure means the `<span>` wrapper is not pixel-neutral — that is a genuine finding, not a baseline to refresh. Re-shooting would destroy exactly the evidence this task is structured to produce. Report the failure with the diff path and stop; do not proceed to Task 2.
+*Amended 2026-08-04 after the first execution attempt.* The plan originally expected 467/0 here and instructed a stop-and-report on any failure. That stop fired, and the investigation resolved it: fix 4c's `<span>` wrapper **is not pixel-neutral**. Splitting `✓ ` and the preset label into two inline runs re-shapes the text, rendering the active preset button ~1px narrower and nudging the two buttons right of it left by 1px. The `actual`, `expected`, and `diff` PNGs were read directly: glyph, label, and colours are identical, and the shift is invisible to a user, but it is a real layout change.
+
+The human partner's decision was to **let Task 2 absorb it** — Task 2 already re-shoots `Preset applied`, so the project still changes exactly one baseline, adds none, and holds the floor at 467.
+
+What this audit still proves, and why it is still worth running: the other **466 tests must pass**. Fixes 4a, 4b, and 4d touch attributes and token-identical margins only, and a clean result across every other baseline is the evidence that they moved nothing. Only `Preset applied` is expected to fail, and only because of 4c.
+
+**If any baseline other than `settings-sections-ToolsSection-Preset-applied-1.png` fails, STOP and report it.** That would be an unexplained regression, not the accepted one. Report the failing name and the diff artifact path; do not re-shoot it away.
 
 - [ ] **Step 9: Format, then commit**
 
@@ -564,7 +570,14 @@ Then **read the changed PNG** with the Read tool:
 
 `.storybook-shots/settings/sections/ToolsSection.spec.ts/settings-sections-ToolsSection-Preset-applied-1.png`
 
-Confirm in your report: the "Clear admin defaults" trigger has gained a visible resting border matching the other `outline` buttons on the page, and nothing else in the frame moved. A green audit after a re-shoot is not evidence — the image is. State what you actually saw.
+Confirm **two** things in your report, and state what you actually saw rather than restating these expectations:
+
+1. The "Clear admin defaults" trigger has gained a visible resting border matching the other `outline` buttons on the page.
+2. The preset row still reads `✓ Read-only` with the checkmark intact, the active button keeping its `--accent` border and text.
+
+This baseline absorbs two changes, not one: this task's border, plus the ~1px preset-row shift from Task 1's fix 4c (see Task 1 Step 8's amendment — that shift was investigated, is invisible to a user, and was accepted by decision). Nothing else in the frame should have moved.
+
+A green audit after a re-shoot is not evidence — the image is.
 
 - [ ] **Step 6: Run the full audit, format, and commit**
 
