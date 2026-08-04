@@ -7,6 +7,12 @@
 // justification comment naming the dynamic mechanism knip cannot trace, and a
 // linked task when the gap is temporary. Prefer code fixes (moving dead code,
 // *.testing.ts shims, entry declarations) over new ignore lines.
+//
+// Standing rule for facade re-exports: when knip flags a facade binding,
+// fix the import structure (repoint production imports through the facade,
+// repoint test imports to the concrete module, or prune the dead binding)
+// instead of adding an ignore. See
+// docs/superpowers/specs/2026-08-04-knip-facade-import-triage-design.md.
 
 // knip's built-in Svelte plugin enables but never registers its compiler:
 // its hasDependency('svelte') probe fails under bun's node_modules-less
