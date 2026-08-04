@@ -7,7 +7,8 @@ import { z } from 'zod'
 
 import { logger } from '../../src/logger.js'
 import { classifyKaneoError } from './classify-error.js'
-import { type KaneoConfig, kaneoFetch } from './client.js'
+import { kaneoFetch } from './client.js'
+import type { KaneoConfig } from './provider.js'
 import { GetProjectResponseSchema } from './schemas/get-project.js'
 import { ProjectSchema } from './schemas/update-project.js'
 

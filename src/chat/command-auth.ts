@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { getThreadScopedStorageContextId } from '../auth.js'
+import { getThreadScopedStorageContextId } from '../bot.js'
 import type { AuthorizationResult, IncomingMessage } from './types.js'
 
 export const buildScopedCommandAuth = (

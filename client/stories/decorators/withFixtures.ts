@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { HttpHandler } from 'msw'
+import type { MswApi } from 'msw-storybook-addon'
 
 import { adminState } from '../../admin/admin.svelte.js'
 import { adminGlobals, refreshGlobals } from '../../admin/global-stats.svelte.js'
@@ -15,6 +16,7 @@ const scenarioMap: Record<string, readonly HttpHandler[]> = scenarios
 
 interface LoaderContext {
   parameters: Record<string, unknown>
+  msw?: MswApi
 }
 
 export function resolveScenario(name: string): readonly HttpHandler[] {
@@ -57,8 +59,9 @@ export function resetAllSingletons(): void {
 
 // Runs before each story renders: resets rune singletons, clears any SSE
 // connections from the previous story, then registers the scenario's MSW
-// handlers and replays seed SSE events. getWorker is imported lazily so the
-// happy-dom unit suite never pulls in msw/browser.
+// handlers and replays seed SSE events. The MSW worker comes from context.msw,
+// installed by mswLoader (registered earlier in .storybook/preview.ts loaders),
+// so the happy-dom unit suite never pulls in msw/browser.
 //
 // `refreshGlobals: true` primes the adminGlobals rune through the real fetch
 // path (served by the active scenario) so components that read adminGlobals.data
@@ -69,11 +72,12 @@ export async function fixturesLoader(context: LoaderContext): Promise<Record<str
 
   const scenario = context.parameters['fixtures']
   if (typeof scenario === 'string') {
-    const { getWorker } = await import('msw-storybook-addon')
-    const worker = getWorker()
-    worker.resetHandlers()
-    const handlers = resolveScenario(scenario)
-    if (handlers.length > 0) worker.use(...handlers)
+    const worker = context.msw
+    if (worker !== undefined) {
+      worker.resetHandlers()
+      const handlers = resolveScenario(scenario)
+      if (handlers.length > 0) worker.use(...handlers)
+    }
 
     if (context.parameters['refreshGlobals'] === true) await refreshGlobals()
     const ready = context.parameters['settingsReady']

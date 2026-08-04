@@ -5,36 +5,10 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import type {
-  AdminLlmSnapshot,
-  BillingDetail,
-  BillingSubject,
-  BillingWindow,
-  Fact,
-  Instruction,
-  Session,
-} from '../../../client/debug/dashboard-types.js'
+import type { BillingDetail, BillingSubject, BillingWindow, Session } from '../../../client/debug/dashboard-types.js'
+import type { AdminLlmSnapshot } from '../../../client/shared/api-types.js'
 
 describe('dashboard-types', () => {
-  test('Fact type is usable', () => {
-    const fact: Fact = {
-      identifier: 'test-123',
-      title: 'Test Fact',
-      url: 'https://example.com',
-      lastSeen: '2024-01-15T10:30:00.000Z',
-    }
-    expect(fact.identifier).toBe('test-123')
-  })
-
-  test('Instruction type is usable', () => {
-    const instruction: Instruction = {
-      id: 'inst-1',
-      text: 'Be helpful',
-      createdAt: '2024-01-15T10:00:00.000Z',
-    }
-    expect(instruction.text).toBe('Be helpful')
-  })
-
   test('BillingWindow type accepts the four whitelisted values', () => {
     const windows: BillingWindow[] = ['24h', '7d', '30d', 'all']
     expect(windows).toHaveLength(4)

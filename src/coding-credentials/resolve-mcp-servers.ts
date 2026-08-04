@@ -5,7 +5,7 @@
 
 import { parseScopedContextId } from '../chat/scoped-context.js'
 import { logger } from '../logger.js'
-import { mintPluginMcpToken } from '../mcp-server/token.js'
+import { mintPluginMcpToken } from '../mcp-server/index.js'
 import type { Permission } from '../tools/tool-preferences.js'
 import { resolveCodingGuardrails } from './guardrails.js'
 import { resolveMcpCatalog, type McpCatalogEntry } from './mcp-catalog.js'

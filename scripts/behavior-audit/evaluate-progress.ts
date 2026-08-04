@@ -5,8 +5,8 @@
 
 import { formatElapsedMs } from './config.js'
 import type { ParsedBehavior } from './evaluate-phase3-helpers.js'
+import type { BehaviorAuditProgressReporter } from './extract.js'
 import { formatPerItemSuffix, recordItemFailed, type AgentUsage, type PhaseStats } from './phase-stats.js'
-import type { BehaviorAuditProgressReporter } from './progress-reporter.js'
 
 export interface Phase3ReportingDeps {
   readonly log: Pick<typeof console, 'log'>

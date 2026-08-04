@@ -6,6 +6,8 @@
 import type { ModelMessage } from 'ai'
 
 import {
+  type StoredAttachment,
+  type AttachmentRef,
   isS3Configured,
   listActiveAttachments,
   loadAttachmentRecord,
@@ -13,7 +15,6 @@ import {
   selectAttachmentsForTurn,
   supportsAttachmentModelInput,
 } from './attachments/index.js'
-import type { AttachmentRef, StoredAttachment } from './attachments/types.js'
 import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
 import type { MessageSegment, PapaiTurnMeta } from './message-edit/segments.js'
 import { hasContextTransformers, transformNewAttachments, type TransformLine } from './plugins/attachment-transform.js'

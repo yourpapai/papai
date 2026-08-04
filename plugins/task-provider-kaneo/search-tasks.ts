@@ -9,7 +9,7 @@ import { logger } from '../../src/logger.js'
 import { classifyKaneoError } from './classify-error.js'
 import type { KaneoConfig } from './client.js'
 import { KaneoClient } from './kaneo-client.js'
-import { GlobalSearchResponseSchema, SearchTaskSchema, type GlobalSearchResponse } from './schemas/global-search.js'
+import { SearchTaskSchema, type GlobalSearchResponse } from './schemas/global-search.js'
 
 const log = logger.child({ scope: 'kaneo:search-tasks' })
 
@@ -24,8 +24,6 @@ export const TaskResultSchema = SearchTaskSchema.pick({
 }).extend({
   userId: z.string(),
 })
-
-export const KaneoSearchResponseSchema = GlobalSearchResponseSchema
 
 export type TaskResult = z.infer<typeof TaskResultSchema>
 

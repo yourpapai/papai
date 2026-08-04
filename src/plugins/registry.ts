@@ -62,7 +62,6 @@ function toOptionalReason(value: string | null | undefined): string | undefined 
   return value
 }
 
-export { checkPluginCompatibility } from './compatibility.js'
 export type { PluginContextEligibility } from './registry-context-eligibility.js'
 
 export type PluginRegistryEntry = {

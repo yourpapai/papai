@@ -5,7 +5,7 @@
 
 import pLimit from 'p-limit'
 
-import type { AttachmentSourceProvider } from '../attachments/types.js'
+import type { AttachmentSourceProvider } from '../attachments/index.js'
 import type { InstanceConfig, PlatformInstanceType } from '../instances/types.js'
 import { logger } from '../logger.js'
 import {

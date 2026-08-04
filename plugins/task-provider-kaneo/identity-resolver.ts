@@ -6,8 +6,8 @@
 import type { IdentityUser, UserIdentityResolver } from 'papai/plugin-types'
 
 import { logger } from '../../src/logger.js'
-import type { KaneoConfig } from './client.js'
 import { kaneoListUsers } from './operations/users.js'
+import type { KaneoConfig } from './provider.js'
 
 const log = logger.child({ scope: 'provider:kaneo:identity' })
 

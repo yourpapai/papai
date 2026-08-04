@@ -14,9 +14,9 @@ import { pluginAdminState } from '../../src/db/plugin-schema.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../src/debug/chat-router-runtime.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
+import { checkPluginCompatibility } from '../../src/plugins/compatibility.js'
 import {
   PluginRegistry,
-  checkPluginCompatibility,
   getPluginContextEligibility,
   getPluginsForContext,
   isPluginActiveForContext,

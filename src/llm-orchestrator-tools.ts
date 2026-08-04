@@ -7,7 +7,7 @@ import type { ModelMessage, ToolSet } from 'ai'
 
 import { runWithProviderRequestScope } from './analytics/provider-request-scope.js'
 import type { ProviderRequestScope } from './analytics/provider-request-scope.js'
-import type { StagedFileDownloadFn } from './attachments/types.js'
+import type { StagedFileDownloadFn } from './attachments/index.js'
 import { getCachedTools, setCachedTools } from './cache.js'
 import type { ChatParticipantResolver } from './chat/participants/roster.js'
 import { askPermissionViaChat } from './chat/permission-prompt.js'

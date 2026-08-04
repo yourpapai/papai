@@ -6,8 +6,7 @@
 import { z } from 'zod'
 
 import { logger } from '../../../logger.js'
-import { namespacedToolName } from '../../../plugins/contribution-names.js'
-import { contributionRegistry } from '../../../plugins/contributions.js'
+import { namespacedToolName, contributionRegistry } from '../../../plugins/contributions.js'
 import type { AuthenticatedSettingsRequest } from '../../../settings/request-auth.js'
 import { adminToolDefaultsContextId } from '../../../tools/admin-tool-defaults.js'
 import { getToolMetadata, isToolDomain, TOOL_METADATA } from '../../../tools/tool-metadata.js'

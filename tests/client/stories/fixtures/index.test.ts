@@ -6,7 +6,6 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
-  makeAdminLlmSnapshot,
   makeBillingDetail,
   makeBillingSubject,
   makeGlobalStats,
@@ -34,13 +33,6 @@ describe('fixture factories', () => {
     expect(stats.subjects.dmTotal).toBeGreaterThanOrEqual(0)
     expect(stats.active.activeIn1d).toBeGreaterThanOrEqual(0)
     expect(stats.llmUsage.totalCalls).toBeGreaterThanOrEqual(0)
-  })
-
-  test('makeAdminLlmSnapshot reports all 5 keys', () => {
-    const snap = makeAdminLlmSnapshot()
-    expect(snap.llm_apikey).toBeDefined()
-    expect(snap.main_model).toBeDefined()
-    expect(snap.embedding_model).toBeDefined()
   })
 
   test('makeSubjectStats produces a fully-populated per-subject snapshot', () => {

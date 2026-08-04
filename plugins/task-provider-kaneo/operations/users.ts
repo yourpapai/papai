@@ -8,7 +8,8 @@ import { z } from 'zod'
 
 import { logger } from '../../../src/logger.js'
 import { classifyKaneoError } from '../classify-error.js'
-import { type KaneoConfig, kaneoFetch } from '../client.js'
+import { kaneoFetch } from '../client.js'
+import type { KaneoConfig } from '../provider.js'
 
 const log = logger.child({ scope: 'provider:kaneo:users' })
 

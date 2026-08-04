@@ -4,8 +4,8 @@
 // See LICENSE in the project root for details.
 
 import { logger } from '../../src/logger.js'
-import type { KaneoConfig } from './client.js'
 import { KaneoClient } from './kaneo-client.js'
+import type { KaneoConfig } from './provider.js'
 
 const log = logger.child({ scope: 'kaneo:delete-column' })
 

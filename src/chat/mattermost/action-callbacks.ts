@@ -5,7 +5,7 @@
 
 import { z } from 'zod'
 
-import { getThreadScopedStorageContextId } from '../../auth.js'
+import { getThreadScopedStorageContextId } from '../../bot.js'
 import { logger } from '../../logger.js'
 import type { ContextType, IncomingInteraction, ReplyFn } from '../types.js'
 import { getMattermostActionSigningSecret } from './action-secret.js'

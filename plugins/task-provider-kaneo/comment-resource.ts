@@ -5,7 +5,8 @@
 
 import { logger } from '../../src/logger.js'
 import { classifyKaneoError } from './classify-error.js'
-import { type KaneoConfig, kaneoFetch } from './client.js'
+import { kaneoFetch } from './client.js'
+import type { KaneoConfig } from './provider.js'
 import { CommentListResponseSchema, CreateCommentResponseSchema } from './schemas/create-comment.js'
 import { UpdateCommentResponseSchema } from './schemas/update-comment.js'
 

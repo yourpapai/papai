@@ -8,6 +8,7 @@ import { join, relative } from 'node:path'
 
 import { EXCLUDED_PREFIXES, PROJECT_ROOT } from './config.js'
 import { runPhase2b } from './consolidate.js'
+import type { BehaviorAuditProgressReporter } from './extract.js'
 import type { ConsolidatedManifest, IncrementalManifest, IncrementalSelection } from './incremental.js'
 import {
   captureRunStart,
@@ -19,13 +20,9 @@ import {
   saveManifest,
   selectIncrementalWork,
 } from './incremental.js'
-import { loadProgress, saveProgress } from './progress-io.js'
-import type {
-  BehaviorAuditProgressRenderer,
-  BehaviorAuditProgressReporter,
-  CreateProgressReporterInput,
-} from './progress-reporter.js'
-import { createEmptyProgress } from './progress.js'
+import { saveProgress } from './progress-io.js'
+import type { BehaviorAuditProgressRenderer, CreateProgressReporterInput } from './progress-reporter.js'
+import { loadProgress, createEmptyProgress } from './progress.js'
 import type { Progress } from './progress.js'
 import type { ParsedTestFile } from './test-parser.js'
 import { parseTestFile } from './test-parser.js'

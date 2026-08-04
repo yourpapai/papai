@@ -4,55 +4,30 @@
 // See LICENSE in the project root for details.
 
 import type {
-  Fact,
-  Instruction,
   Session,
-  Wizard,
   SchedulerInfo,
   PollersInfo,
   MessageCacheInfo,
-  TokenInfo,
-  ToolCall,
   LlmTrace,
   LogEntry,
-  StateInitEvent,
-  StateStatsEvent,
-  CacheEvent,
-  UserIdEvent,
-  SchedulerTickEvent,
-  PollerEvent,
-  MessageCacheEvent,
   Turn,
   Notification,
   ToolFailure,
 } from '../../src/debug/schemas.js'
-import type { GlobalStats, StatsWindow, SubjectStats, TokenUsagePoint } from '../../src/stats/types.js'
+import type { GlobalStats, StatsWindow, TokenUsagePoint } from '../../src/stats/types.js'
 
 export type {
-  Fact,
-  Instruction,
   Session,
-  Wizard,
   SchedulerInfo,
   PollersInfo,
   MessageCacheInfo,
-  TokenInfo,
-  ToolCall,
   LlmTrace,
   LogEntry,
-  StateInitEvent,
-  StateStatsEvent,
-  CacheEvent,
-  UserIdEvent,
-  SchedulerTickEvent,
-  PollerEvent,
-  MessageCacheEvent,
   Turn,
   Notification,
   ToolFailure,
   GlobalStats,
   StatsWindow,
-  SubjectStats,
   TokenUsagePoint,
 }
 

@@ -5,11 +5,11 @@
 
 import type { Project } from 'papai/plugin-types'
 
-import type { KaneoConfig } from '../client.js'
 import { createProject } from '../create-project.js'
 import { deleteProject } from '../delete-project.js'
 import { listProjects } from '../list-projects.js'
 import { mapProject } from '../mappers.js'
+import type { KaneoConfig } from '../provider.js'
 import { updateProject } from '../update-project.js'
 import { buildProjectUrl } from '../url-builder.js'
 

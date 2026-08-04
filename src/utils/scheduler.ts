@@ -170,14 +170,7 @@ export const createScheduler = (options?: SchedulerOptions): Scheduler => {
   }
 }
 
-// Re-export types and errors for convenience
-export {
-  FatalError,
-  RetryableError,
-  SchedulerError,
-  TaskAlreadyExistsError,
-  TaskNotFoundError,
-} from './scheduler.errors.js'
+// Re-export types for convenience
 export type {
   ErrorEvent,
   ErrorHandler,
