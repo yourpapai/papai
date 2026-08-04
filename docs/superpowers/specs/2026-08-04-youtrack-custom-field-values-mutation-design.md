@@ -177,7 +177,9 @@ survivors (L39 `MethodExpression` dropping `.filter()`; L44
 `ConditionalExpression`→`true` filter predicate) were killed by adding a
 `toHaveLength(2)` assertion: `bun:test`'s `toEqual` ignores trailing
 `undefined` array elements, so the original oracle was blind to the filter
-step.
+step. The implementation plan refined the forecast from the single predicted
+equivalent class in the section above to the two documented here before
+measurement.
 
 ## Measurement and ratchet
 

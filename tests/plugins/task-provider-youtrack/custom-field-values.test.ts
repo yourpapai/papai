@@ -101,20 +101,15 @@ describe('mapReadOnlyCustomFields array values', () => {
     expect(result).toEqual([{ name: 'Team', value: ['a', 'b'] }])
   })
 
-  test('maps object items, keeps strings, drops null and non-string entries', () => {
+  test('maps object items, keeps strings, and drops null and non-string entries leaving no undefined entries', () => {
     const result = mapReadOnlyCustomFields([{ $type: 'Custom', name: 'Team', value: [{ name: 'A' }, 'b', null, 42] }])
     expect(result).toEqual([{ name: 'Team', value: ['A', 'b'] }])
+    expect(result?.[0]?.value).toHaveLength(2)
   })
 
   test('falls back to login for array items without a name', () => {
     const result = mapReadOnlyCustomFields([{ $type: 'Custom', name: 'Team', value: [{ login: 'L' }] }])
     expect(result).toEqual([{ name: 'Team', value: ['L'] }])
-  })
-
-  test('drops null and non-string items leaving no undefined entries (locks the filter step)', () => {
-    const result = mapReadOnlyCustomFields([{ $type: 'Custom', name: 'Team', value: [{ name: 'A' }, 'b', null, 42] }])
-    expect(result).toEqual([{ name: 'Team', value: ['A', 'b'] }])
-    expect(result?.[0]?.value).toHaveLength(2)
   })
 })
 
