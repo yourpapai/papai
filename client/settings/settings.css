@@ -35,12 +35,25 @@
 }
 
 /* forms */
+/* Three shared tracks -- label / control / hint. Fields span all three via
+   subgrid (Field.svelte), so labels, controls and hints line up across the
+   whole row. Non-field children (submit buttons) span only label+control and
+   sit at the bottom of the control track, which puts them level with the
+   inputs rather than below a neighbour's hint text. */
 .settings-form {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-rows: auto auto auto;
   gap: var(--gap-inline);
-  align-items: end;
   margin-bottom: var(--gap-field);
+}
+.settings-form > * {
+  grid-row: span 3;
+}
+.settings-form > :not(.ui-field) {
+  grid-row: span 2;
+  align-self: end;
+  justify-self: start;
 }
 .settings-table-wrap {
   overflow-x: auto;

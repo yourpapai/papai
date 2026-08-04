@@ -185,11 +185,6 @@
   .members-error {
     margin: 0 0 var(--gap-field);
   }
-  /* Keep the input growing and the button on the same baseline; hint wraps below the row. */
-  .members-add :global(.ui-field) {
-    flex: 1;
-    min-width: 220px;
-  }
   .member-cell {
     display: inline-flex;
     flex-direction: column;

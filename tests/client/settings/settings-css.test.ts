@@ -44,4 +44,12 @@ describe('settings.css', () => {
     const [placeholder] = m!
     expect(placeholder).toContain('max-width: var(--content-max)')
   })
+  test('settings-form shares grid tracks so controls align across the row', () => {
+    const m = css.match(/\.settings-form \{[^}]*\}/u)
+    expect(m).not.toBeNull()
+    const [form] = m!
+    expect(form).toContain('display: grid')
+    expect(form).not.toContain('align-items: end')
+    expect(css).toContain('grid-row: span 2')
+  })
 })

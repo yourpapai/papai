@@ -360,10 +360,6 @@
   }
   #repos .settings-form {
     margin-bottom: 0;
-    align-items: start;
-  }
-  #repos .settings-form :global(.ui-field) {
-    flex: 1 1 180px;
   }
   .settings-repos__actions {
     display: flex;

@@ -52,16 +52,22 @@
 </div>
 
 <style>
+  /* subgrid adopts the parent's three tracks so this field's label, control and
+     hint align with every sibling's. Outside a grid parent, subgrid is invalid
+     and falls back to independent auto rows -- visually the same stack as the
+     column flex this replaces. */
   .ui-field {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-rows: subgrid;
+    grid-row: span 3;
     gap: 6px;
     min-width: 0;
   }
-  /* display: contents keeps this wrapper out of layout entirely, so adding it
-     moves no pixels. Task 4 promotes it to a real grid row. */
+  /* A real box now, so the control always occupies exactly one grid row no
+     matter how many elements the children slot emits. */
   .ui-field__control {
-    display: contents;
+    display: block;
+    min-width: 0;
   }
   .ui-field__label {
     font-family: var(--font-mono);
