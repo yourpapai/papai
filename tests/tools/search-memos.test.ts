@@ -324,4 +324,24 @@ describe('search_memos tool', () => {
       context: { storageContextId: USER, contextType: 'dm', chatUserId: USER },
     })
   })
+
+  test('binds the tool child logger with its scope', async () => {
+    const tracked = createTrackedLoggerMock()
+    await loadSearchMemosModule(tracked)
+
+    expect(tracked.logger.child).toHaveBeenCalledWith({ scope: 'tool:memo' })
+  })
+
+  test('logs entry params and keyword completion payload', async () => {
+    const tracked = createTrackedLoggerMock()
+    const { makeSearchMemosTool } = await loadSearchMemosModule(tracked)
+    saveMemo(USER, 'lease renewal deadline', [])
+
+    await getToolExecutor(makeSearchMemosTool(USER))({ query: 'lease', mode: 'keyword', limit: 3 })
+
+    const entry = findCall(tracked, 'debug', 'search_memos called')
+    expect(entry?.args[0]).toEqual({ mode: 'keyword', limit: 3 })
+    const done = findCall(tracked, 'info', 'Keyword search completed')
+    expect(done?.args[0]).toEqual({ mode: 'keyword', resultCount: 1 })
+  })
 })
