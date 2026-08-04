@@ -20,6 +20,11 @@ import { toolCapabilityCatalog } from '../../../src/runtime/capability-catalog.j
 import { createPapaiRuntime } from '../../../src/runtime/create-runtime.js'
 import { createProductionRuntimeDeps } from '../../../src/runtime/production-deps.js'
 import type { PapaiRuntime, PapaiRuntimeDeps } from '../../../src/runtime/types.js'
+import { scheduler as schedulerSingleton } from '../../../src/scheduler-instance.js'
+import {
+  startScheduler as startRecurringScheduler,
+  stopScheduler as stopRecurringScheduler,
+} from '../../../src/scheduler.js'
 import { createScenarioChat, type ScenarioChat, type ScenarioReply } from './chat.js'
 import { createScenarioEvents, type ScenarioEvent, type ScenarioEvents } from './events.js'
 import { createFakeKaneoResponder } from './fake-kaneo/responder.js'
@@ -159,6 +164,7 @@ export type ScenarioWorld = Readonly<{
   ensureStarted(): Promise<void>
   assertPrerequisitesOpen(operation: string): void
   registerRuntimeExtension(extension: ScenarioRuntimeExtension): void
+  startScheduler(): Promise<void>
   message(user: UserHandle, context: ContextHandle, text: string): IncomingMessage
   repliesForThread(thread: ThreadHandle): readonly ScenarioReply[]
   /** The thread-aware storage context id production code would compute for this context. */
@@ -362,6 +368,7 @@ type CleanupResources = {
   runtime: PapaiRuntime | undefined
   databaseAttempted: boolean
   providerAttempted: boolean
+  schedulerStarted: boolean
 }
 
 type CleanupCoordinator = Readonly<{ run(): Promise<void> }>
@@ -382,6 +389,8 @@ function createCleanupCoordinator(
       const failures: unknown[] = []
       if (resources.runtime !== undefined)
         await runCleanupStep(events, 'world.cleanup.runtime.stop', () => resources.runtime?.stop(), failures, hooks)
+      if (resources.schedulerStarted)
+        await runCleanupStep(events, 'world.cleanup.scheduler.stop', stopRecurringScheduler, failures, hooks)
       if (runtimeExtensions?.hasRegistered() === true)
         await runCleanupStep(events, 'world.cleanup.runtime-extensions.stop', runtimeExtensions.stop, failures, hooks)
       await runCleanupStep(events, 'world.cleanup.plugins.deactivate', deactivateAllPlugins, failures, hooks)
@@ -456,7 +465,12 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
   })
   const tasks = new MemoryTaskProvider({ events, nextId: (): string => ids.next('task') })
   const fixtures = createScenarioFixtures({ taskProvider: tasks, chat })
-  const resources: CleanupResources = { runtime: undefined, databaseAttempted: false, providerAttempted: false }
+  const resources: CleanupResources = {
+    runtime: undefined,
+    databaseAttempted: false,
+    providerAttempted: false,
+    schedulerStarted: false,
+  }
   let runtimeExtensions: readonly ScenarioRuntimeExtension[] = [...(options.runtimeExtensions ?? [])]
   const runtimeExtensionLifecycle = createScenarioRuntimeExtensionLifecycle(() => runtimeExtensions, {
     record(kind, data): void {
@@ -584,6 +598,16 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     runtimeExtensions = [...runtimeExtensions, extension]
   }
 
+  const startSchedulerFn = async (): Promise<void> => {
+    await start()
+    startRecurringScheduler(chat, { resolve: () => fixtures.taskProvider })
+    resources.schedulerStarted = true
+    await schedulerSingleton.drainAll()
+    const pendingSettle = await pending.settle()
+    await http.idle()
+    return pendingSettle
+  }
+
   const world: ScenarioWorld = {
     name,
     runtime,
@@ -606,6 +630,7 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     ensureStarted: start,
     assertPrerequisitesOpen,
     registerRuntimeExtension,
+    startScheduler: startSchedulerFn,
     message: (user, context, text) => messageForContext(world, user, context, text),
     repliesForThread: (thread) => repliesForThread(world, thread),
     scopedStorageContextId: (context) => scopedStorageContextIdFor(context),

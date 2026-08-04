@@ -279,6 +279,7 @@ type ScenarioWhen = Readonly<{
     }>,
   ): Promise<void>
   recurringTick(): Promise<void>
+  startScheduler(): Promise<void>
   scheduledPoll(): Promise<void>
   alertPoll(): Promise<void>
   promotionSweep(
@@ -945,6 +946,10 @@ function createWhen(world: ScenarioWorld): ScenarioWhen {
       world.events.setPhase('when.recurringTick')
       await world.ensureStarted()
       await tick({ resolve: () => world.fixtures.taskProvider, chat: world.chat })
+    },
+    async startScheduler(): Promise<void> {
+      world.events.setPhase('when.startScheduler')
+      await world.startScheduler()
     },
     async scheduledPoll(): Promise<void> {
       world.events.setPhase('when.scheduledPoll')

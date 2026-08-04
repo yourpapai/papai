@@ -134,6 +134,7 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-reminder-recurring-create',
   'SCN-reminder-recurring-manage',
   'SCN-reminder-recurring-fire',
+  'SCN-scheduler-recurring-fire',
   'SCN-deferred-schedule-create',
   'SCN-deferred-alert-create',
   'SCN-deferred-manage',
@@ -1029,6 +1030,12 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     verifiedAt: '2026-07-21',
     storyIds: [
       'tests/stories/scheduling/recurring.story.test.ts#SCN-reminder-recurring-fire: a due recurrence creates a task and notifies the user',
+    ],
+  },
+  'SCN-scheduler-recurring-fire': {
+    verifiedAt: '2026-08-04',
+    storyIds: [
+      'tests/stories/scheduling/scheduler-recurring.story.test.ts#SCN-scheduler-recurring-fire: the real scheduler processes a due recurring task',
     ],
   },
   'SCN-deferred-schedule-create': {
