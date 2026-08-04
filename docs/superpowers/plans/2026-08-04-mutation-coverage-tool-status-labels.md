@@ -308,6 +308,100 @@ git commit -m "test: pin humanizeToolName hyphen, case, multi-__ and prefix-stri
 
 ---
 
+## Task 7: Pin every REGISTRY entry + 3 missed helper mutants (amendment)
+
+**Why this task exists (amendment):** Task 6's first verification run landed at **0.586**, not ≥ 0.95. Reading the Stryker report showed **68 of 77 survivors are `REGISTRY` object-literal mutants (source lines 58-84)** — Stryker mutates every entry's `emoji`/`label`/`quote`/`arg`, and Task 4's "Class I" pinned only ~6 of the 32 entries. This task closes that gap with one table-driven test that pins every entry's exact rendered output, plus three helper mutants the original gap analysis missed.
+
+**Files:**
+- Modify: `tests/live-status/tool-status-labels.test.ts` (add one `describe` block + three tests inside `describe('formatToolStatus', …)`)
+
+**Kills:** all `REGISTRY` entry mutants (emoji/label `StringLiteral`, `quote` `Boolean`, `arg` `ArrowFunction`, key-removal `ObjectLiteral`) for all 32 entries — ~68 survived + ~10 `noCoverage`; plus L31 `value.trim()`→`value`, L92 `^`-anchor removal on `^(?:mcp|plugin)_`, L93 `+`-quantifier removal on `[_-]+`.
+
+**Discipline:** every `expected` value in the table is a **hand-written literal** — do NOT derive it from the source `REGISTRY` (that would make the test tautological). Copy emoji verbatim, including `🗑️`/`✏️`/`⚙️` variation selectors.
+
+- [ ] **Step 1: Add the table-driven REGISTRY test**
+
+Add a new `describe` block (sibling to `describe('formatToolStatus', …)`):
+
+```ts
+describe('REGISTRY entries render their exact emoji, label, and arg form', () => {
+  const cases: ReadonlyArray<[string, unknown, string]> = [
+    ['web_fetch', { url: 'https://example.com/x' }, '🌐 Fetching example.com…'],
+    ['fetch_chat_link', { url: 'https://example.com/x' }, '🔗 Reading link example.com…'],
+    ['search_memory', { query: 'q' }, '🔍 Searching memory: "q"…'],
+    ['list_memory', {}, '🧠 Recalling memory…'],
+    ['remember_memory', {}, '🧠 Saving a memory…'],
+    ['search_memos', { query: 'q' }, '🔍 Searching memos: "q"…'],
+    ['save_memo', {}, '📌 Saving a memo…'],
+    ['list_memos', {}, '📒 Listing memos…'],
+    ['create_task', { title: 'T' }, '📝 Creating task: "T"…'],
+    ['update_task', {}, '✏️ Updating task…'],
+    ['delete_task', {}, '🗑️ Deleting task…'],
+    ['get_task', {}, '📄 Reading task…'],
+    ['list_tasks', {}, '📋 Listing tasks…'],
+    ['search_tasks', { query: 'q' }, '🔍 Searching tasks: "q"…'],
+    ['count_tasks', {}, '🔢 Counting tasks…'],
+    ['add_comment', {}, '💬 Adding a comment…'],
+    ['create_project', { name: 'N' }, '📁 Creating project: "N"…'],
+    ['list_projects', {}, '📁 Listing projects…'],
+    ['list_files', {}, '📎 Listing files…'],
+    ['search_staged_files', { query: 'q' }, '📎 Searching files: "q"…'],
+    ['upload_attachment', {}, '📤 Attaching a file…'],
+    ['resolve_staged_file', {}, '📎 Attaching a file…'],
+    ['create_recurring_task', {}, '🔁 Scheduling a recurring task…'],
+    ['create_reminder', { prompt: 'P' }, '⏰ Setting up a reminder: "P"…'],
+    ['create_alert', { prompt: 'P' }, '🔔 Setting up an alert: "P"…'],
+    ['list_reminders', {}, '📋 Listing reminders and alerts…'],
+    ['get_reminder', {}, '📄 Reading reminder details…'],
+    ['update_reminder', {}, '✏️ Updating reminder…'],
+    ['cancel_reminder', {}, '🗑️ Cancelling reminder…'],
+    ['lookup_group_history', {}, '🕘 Checking history…'],
+    ['find_user', {}, '👤 Looking up a user…'],
+    ['get_current_time', {}, '🕒 Checking the time…'],
+  ]
+  for (const [name, input, expected] of cases) {
+    test(`${name} renders ${JSON.stringify(expected)}`, () => {
+      expect(formatToolStatus(name, input)).toBe(expected)
+    })
+  }
+})
+```
+
+- [ ] **Step 2: Add the three missed helper tests**
+
+Add inside `describe('formatToolStatus', …)`:
+
+```ts
+  test('getStringField skips a whitespace-only first key via trim and falls back to the next', () => {
+    expect(formatToolStatus('create_task', { title: '   ', name: 'B' })).toBe('📝 Creating task: "B"…')
+  })
+
+  test('humanizeToolName only strips a leading mcp_/plugin_ prefix (anchored)', () => {
+    expect(formatToolStatus('x_mcp_foo', {})).toBe('⚙️ Running x mcp foo…')
+  })
+
+  test('humanizeToolName collapses consecutive separators via the + quantifier', () => {
+    expect(formatToolStatus('mcp_x__foo--bar', {})).toBe('⚙️ Running foo bar…')
+  })
+```
+
+- [ ] **Step 3: Run the test file — verify green**
+
+Run:
+```bash
+bun test tests/live-status/tool-status-labels.test.ts
+```
+Expected: PASS (all — was 31 before, now +32 +3 = 66 tests; the exact count may differ slightly if the runner reports parameterized cases individually).
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add tests/live-status/tool-status-labels.test.ts
+git commit -m "test: pin every REGISTRY entry and three missed helper mutants"
+```
+
+---
+
 ## Task 6: Final mutation verification and residual record
 
 **Files:**
@@ -325,11 +419,14 @@ Expected: per-file score **≥ 0.95**. Compare against the number recorded in Ta
 
 - [ ] **Step 2: Inspect surviving mutants and confirm they are accepted residuals**
 
-Open the Stryker JSON report under `reports/paired/` for `src/live-status/tool-status-labels.ts`. Any surviving mutant must be in the accepted-residual list:
+Open the Stryker JSON report under `reports/paired/` for `src/live-status/tool-status-labels.ts` (`src__live-status__tool-status-labels.ts.stryker-report.json`; `files["src/live-status/tool-status-labels.ts"].mutants`, filter `status === "Survived"`). Any surviving mutant must be in the accepted-residual list (all confirmed equivalent — observable output is identical for every reachable registry input):
 
-- `asRecord`'s `Object.fromEntries(Object.entries(input))` round-trip — behaviorally identity for plain records (equivalent mutant, unkillable without contorting correct code).
+- **L21** `Array.isArray(input)` guard in `asRecord` — arrays passed through become `{0:...}` records, but every registry extractor reads a string key no array possesses, so the result is still `undefined`.
+- **L39** `if (url === undefined) return undefined` early-return in `hostOf` — without it, `new URL(undefined)` throws and the `catch` returns `undefined`; identical outcome.
+- **L93** `.trim()` in `humanizeToolName`'s chain — `base` is always a slice/replace of a tool name with no surrounding whitespace, so trimming is a no-op.
+- **L103** `rawArg.trim() === ''` and the `''` literal in `formatToolStatus`'s omission check — registry extractors (`getStringField`, `hostOf`) pre-filter whitespace, so `rawArg` is never a non-empty whitespace string; these guard an unreachable state.
 
-If a **behavioural** mutant survives (anything that changes the rendered output for some input), do not accept it — add a targeted exact-equality test in the relevant task above and re-run Step 1.
+If a **behavioural** mutant survives (anything that changes the rendered output for some input), do not accept it — add a targeted exact-equality test and re-run Step 1.
 
 - [ ] **Step 3: Confirm no production code changed**
 
@@ -354,7 +451,7 @@ No edit to `scripts/mutation/baseline.json` — CI's master `mutation-baseline` 
 ## Self-Review (completed)
 
 **Spec coverage:** every gap class A–I from the spec's gap-analysis table maps to at least one task:
-- A → Task 1; B, C, G → Task 2; D, E → Task 3; F, I → Task 4; H → Task 5. Verification (≥ 0.95, no-src-diff, CI-seeded baseline) → Task 6. The accepted residual (`asRecord` identity round-trip) → Task 6 Step 2.
+- A → Task 1; B, C, G → Task 2; D, E → Task 3; F, I → Task 4; H → Task 5. **Class I was under-sized in the original design** (Task 4 pinned ~6 of 32 entries); Task 7 (amendment, added after Task 6's first run landed at 0.586) extends it to all 32 entries plus the L31/L92/L93 helper mutants the analysis missed. Verification (≥ 0.95, no-src-diff, CI-seeded baseline) → Task 6. Accepted residuals (L21/L39/L93-trim/L103) → Task 6 Step 2.
 
 **Placeholder scan:** none — every code step contains the full test code; every command is exact with expected output.
 
