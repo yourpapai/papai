@@ -320,7 +320,9 @@ Closes code-host-setup-hint-unbounded-measure."
 
 **Context you need.**
 
-`Field.svelte` renders `[label, {@render children()}, hint|error]`. The children slot is **not guaranteed to emit exactly one element** — `ReposSection`'s egress field emits two (the `Input` plus the egress preview added in `e6c8f7ec3`). Task 4 converts the field into a three-track subgrid, and a variable number of children would break that span. This task makes the structure exactly three rows so Task 4 can rely on it.
+`Field.svelte` renders `[label, {@render children()}, hint|error]`. The children slot is **not guaranteed to emit exactly one element** — `ReposSection`'s egress field emits two (the `Input` plus the egress preview added in `e6c8f7ec3`). Task 4 converts the field into a three-track subgrid, and a slot emitting a variable number of elements would push the hint/error out of its track. Wrapping the slot makes the control **exactly one row**, whatever it contains, so Task 4 can rely on the control occupying track 2.
+
+**The invariant is one control row, not three field rows.** `Field` renders hint **or** error **or** neither, so `.ui-field` has three children when hint or error is set and only two when neither is — and the no-hint case is common (`AdminInstancesSection.svelte:315` is one of many). That is fine under subgrid: the field still spans three parent tracks and simply leaves the third empty, which is exactly what keeps a hintless field's control aligned with a hinted neighbour's. Do not write a test asserting a blanket three-child count; assert that `.ui-field__control` is present, is a single element, and is the second child, in all three states.
 
 **The risk this task exists to test.** `display: contents` removes the wrapper's box from layout entirely, so it *should* be pixel-neutral. But it is not invisible to CSS `>` combinators or to `querySelector`. This task is separate from Task 4 precisely so that neutrality can be proven against untouched baselines — merged, a wrapper regression would hide inside the subgrid's expected churn.
 
@@ -330,30 +332,40 @@ Closes code-host-setup-hint-unbounded-measure."
 
 - [ ] **Step 1: Write the failing test**
 
-Append this test inside the existing `describe('field-context', …)` block in `tests/client/shared/ui/field-context.test.ts`, before the block's closing `})`:
+Append three tests inside the existing `describe('field-context', …)` block in `tests/client/shared/ui/field-context.test.ts`, before the block's closing `})` — one per hint/error/neither state, because the child count differs between them (3 / 3 / 2) and only the control's position is invariant:
 
 ```typescript
-  test('wraps the children slot in a single control element', () => {
+  // Field renders hint OR error OR neither (never both, never a fallback branch), so
+  // .ui-field's child count varies (3 / 3 / 2). What the subgrid conversion actually
+  // depends on is that .ui-field__control is always present, always a single direct
+  // child, and always the second child — asserted per-state below rather than as one
+  // blanket child-count number.
+  test('wraps the children slot in a single control element as the second child when hint is set', () => {
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.body.querySelector<HTMLElement>('#root')!
     const c = mount(FieldHintFixture, { target, props: { hint: 'https only' } })
     const field = target.querySelector<HTMLElement>('.ui-field')!
-    const control = field.querySelector<HTMLElement>('.ui-field__control')!
-    expect(control).not.toBeNull()
-    expect(control.parentElement).toBe(field)
-    expect(control.querySelector('[data-testid="hint-input"]')).not.toBeNull()
+    const controls = field.querySelectorAll(':scope > .ui-field__control')
+    expect(controls.length).toBe(1)
     expect(field.children.length).toBe(3)
+    expect(field.children[1]).toBe(controls[0])
+    expect(controls[0]!.querySelector('[data-testid="hint-input"]')).not.toBeNull()
+    expect(field.children[2]!.classList.contains('ui-field__hint')).toBe(true)
     void unmount(c)
   })
 ```
 
-`FieldHintFixture` is already imported at the top of this file (`line 13`) and already renders an input with `data-testid="hint-input"`.
+Repeat the same body twice more: once with `props: { error: 'boom' }`, asserting `children.length` is `3` and the third child carries `ui-field__error`; and once with `props: {}`, asserting `children.length` is `2` and dropping the third-child assertion entirely.
 
-- [ ] **Step 2: Run the test to verify it fails**
+Use `classList.contains(...)`, **not** a `className` string comparison — Svelte appends a scoped-style hash class (e.g. `svelte-u8ml6v`), so the bare class name never equals `className`.
 
-Run: `bun run test:client -t 'wraps the children slot in a single control element'`
+`FieldHintFixture` is already imported at the top of this file (`line 13`), accepts `hint` / `error` / `required`, and renders an input with `data-testid="hint-input"`.
 
-Expected: FAIL — `control` is `null`, so `expect(control).not.toBeNull()` fails.
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `bun run test:client -t 'wraps the children slot'`
+
+Expected: all three FAIL — `:scope > .ui-field__control` matches 0 elements, so `expect(controls.length).toBe(1)` fails.
 
 - [ ] **Step 3: Add the wrapper element**
 
@@ -402,7 +414,7 @@ bun run test:client -t 'wraps the children slot in a single control element'
 bun run test:client
 ```
 
-Expected: the single test PASSes; the full suite reports **1439 pass / 0 fail** (1438 after Task 2, plus the one added in Step 1).
+Expected: all three tests PASS; the full suite reports **1441 pass / 0 fail** (1438 after Task 2, plus the three added in Step 1).
 
 A failure elsewhere in the suite means some selector does depend on `.ui-field`'s direct-child structure. Report it with the failing test name — do not edit that test to accommodate the wrapper.
 
@@ -569,7 +581,7 @@ In the same file, replace the rule Task 3 added:
 with:
 
 ```css
-  /* A real box now, so the field always occupies exactly three grid rows no
+  /* A real box now, so the control always occupies exactly one grid row no
      matter how many elements the children slot emits. */
   .ui-field__control {
     display: block;
@@ -623,7 +635,7 @@ bun run test:client
 bunx playwright --version
 ```
 
-Expected: the single test PASSes; the full suite reports **1440 pass / 0 fail** (1439 after Task 3, plus the one added in Step 1); Playwright reports `Version 1.61.1` or newer.
+Expected: the single test PASSes; the full suite reports **1442 pass / 0 fail** (1441 after Task 3, plus the one added in Step 1); Playwright reports `Version 1.61.1` or newer.
 
 Record the version in your report. If the suite fails, report the failing test names — do not edit a pre-existing test to accommodate the layout change.
 
