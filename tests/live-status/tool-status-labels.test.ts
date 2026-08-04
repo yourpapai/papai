@@ -124,6 +124,60 @@ describe('formatToolStatus', () => {
   test('humanizeToolName strips a leading mcp_ prefix when there is no __ segment', () => {
     expect(formatToolStatus('mcp_standalone', {})).toBe('⚙️ Running standalone…')
   })
+
+  test('getStringField skips a whitespace-only first key via trim and falls back to the next', () => {
+    expect(formatToolStatus('create_task', { title: '   ', name: 'B' })).toBe('📝 Creating task: "B"…')
+  })
+
+  test('humanizeToolName only strips a leading mcp_/plugin_ prefix (anchored)', () => {
+    expect(formatToolStatus('x_mcp_foo', {})).toBe('⚙️ Running x mcp foo…')
+  })
+
+  test('humanizeToolName collapses consecutive separators via the + quantifier', () => {
+    expect(formatToolStatus('mcp_x__foo--bar', {})).toBe('⚙️ Running foo bar…')
+  })
+})
+
+describe('REGISTRY entries render their exact emoji, label, and arg form', () => {
+  const cases: ReadonlyArray<[string, unknown, string]> = [
+    ['web_fetch', { url: 'https://example.com/x' }, '🌐 Fetching example.com…'],
+    ['fetch_chat_link', { url: 'https://example.com/x' }, '🔗 Reading link example.com…'],
+    ['search_memory', { query: 'q' }, '🔍 Searching memory: "q"…'],
+    ['list_memory', {}, '🧠 Recalling memory…'],
+    ['remember_memory', {}, '🧠 Saving a memory…'],
+    ['search_memos', { query: 'q' }, '🔍 Searching memos: "q"…'],
+    ['save_memo', {}, '📌 Saving a memo…'],
+    ['list_memos', {}, '📒 Listing memos…'],
+    ['create_task', { title: 'T' }, '📝 Creating task: "T"…'],
+    ['update_task', {}, '✏️ Updating task…'],
+    ['delete_task', {}, '🗑️ Deleting task…'],
+    ['get_task', {}, '📄 Reading task…'],
+    ['list_tasks', {}, '📋 Listing tasks…'],
+    ['search_tasks', { query: 'q' }, '🔍 Searching tasks: "q"…'],
+    ['count_tasks', {}, '🔢 Counting tasks…'],
+    ['add_comment', {}, '💬 Adding a comment…'],
+    ['create_project', { name: 'N' }, '📁 Creating project: "N"…'],
+    ['list_projects', {}, '📁 Listing projects…'],
+    ['list_files', {}, '📎 Listing files…'],
+    ['search_staged_files', { query: 'q' }, '📎 Searching files: "q"…'],
+    ['upload_attachment', {}, '📤 Attaching a file…'],
+    ['resolve_staged_file', {}, '📎 Attaching a file…'],
+    ['create_recurring_task', {}, '🔁 Scheduling a recurring task…'],
+    ['create_reminder', { prompt: 'P' }, '⏰ Setting up a reminder: "P"…'],
+    ['create_alert', { prompt: 'P' }, '🔔 Setting up an alert: "P"…'],
+    ['list_reminders', {}, '📋 Listing reminders and alerts…'],
+    ['get_reminder', {}, '📄 Reading reminder details…'],
+    ['update_reminder', {}, '✏️ Updating reminder…'],
+    ['cancel_reminder', {}, '🗑️ Cancelling reminder…'],
+    ['lookup_group_history', {}, '🕘 Checking history…'],
+    ['find_user', {}, '👤 Looking up a user…'],
+    ['get_current_time', {}, '🕒 Checking the time…'],
+  ]
+  for (const [name, input, expected] of cases) {
+    test(`${name} renders ${JSON.stringify(expected)}`, () => {
+      expect(formatToolStatus(name, input)).toBe(expected)
+    })
+  }
 })
 
 describe('reminder/alert live-status labels', () => {
