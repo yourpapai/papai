@@ -25,7 +25,7 @@ These bind every task. Copied from the spec; treat them as part of each task's r
 - **Never use `--no-verify`.** The pre-commit hook runs lint / typecheck / format:check / license-headers. If it fails, fix the cause.
 - **Never add a lint-disable or type-ignore comment.** Hook policy blocks them; fix the underlying issue.
 - **A `max-lines` / `max-lines-per-function` failure is a design signal.** Split the file or extract a function; do not delete blank lines or compress formatting to squeak under the limit. `client/stories/msw/settings-handlers.ts` has an enforced 300-line max.
-- **`client/shared/ui/SummaryList.svelte` MUST NOT be modified.** It has six consumers; five (`TraceDetail`, `LogDetail`, `FailureDetail`, `TurnDetail`, `SessionDetail`) render inside `DebugDetailRail`, which already supplies `padding: 16px` (`DebugDetailRail.svelte:81`). Padding the primitive would double-pad five correct consumers to fix one broken one. The fix lands at the `TaskProviderSection` call site.
+- **`client/shared/ui/SummaryList.svelte` MUST NOT be modified.** It has six consumers; five (`TraceDetail`, `LogDetail`, `FailureDetail`, `TurnDetail`, `SessionDetail`) render inside `DebugDetailRail`'s `.debug-detail-rail__body`, which already supplies `padding: 12px 14px` (`DebugDetailRail.svelte:106-110`). Padding the primitive would double-pad five correct consumers to fix one broken one. The fix lands at the `TaskProviderSection` call site.
 - **Do not introduce a new placeholder glyph.** `Secret.svelte` already declares `value = '••••••••'`. Reuse it. A second variant would make two `Secret` renderings disagree about what a stored secret looks like.
 - **`client/settings/lib/mask-secret.ts` MUST NOT be modified.** It stays a pure string normalizer; the guard belongs in `Secret.svelte` so all six `Secret` consumers inherit it.
 - **The inset acceptance criterion is alignment, not a pixel count.** In the re-shot `TaskProvider-—-provision-reveal-1.png`, the `SummaryList` values' right edge must line up with the sibling `Clear` button's right edge. Use `var(--gap-inline)`. **Hand-tuned one-off px values are forbidden** — matching the token scale is the point of the finding.
@@ -715,7 +715,9 @@ Flips three findings to `fixed` with real commit hashes, re-scores three scoreca
 
 Run: `git log --oneline -8`
 
-Record three hashes: the `Secret`/fixture commit (Task 1), the `ConfigFieldRow` busy commit (Task 3), and the reveal-inset commit (Task 5). Referred to below as `<T1>`, `<T3>`, `<T5>`.
+Record four hashes: the `Secret`/fixture commit (Task 1), the `SegmentedControl` busy-prop commit (Task 2), the `ConfigFieldRow` wiring commit (Task 3), and the reveal-inset commit (Task 5). Referred to below as `<T1>`, `<T2>`, `<T3>`, `<T5>`.
+
+The `ai-output-toggle-no-feedback` fix spans two commits: the prop landed in `<T2>` and only the one-line call-site wiring is in `<T3>`. Citing `<T3>` alone would send a reader to a commit that never touches `SegmentedControl.svelte`, so both hashes must appear.
 
 - [ ] **Step 2: Close `task-provider-empty-secret-blank-pill`**
 
@@ -749,8 +751,9 @@ In the same file:
   use via `SettingsFieldShell.svelte:81`. Revealed values now align with the `Clear` button's
   right edge instead of terminating at the container edge.
   `client/shared/ui/SummaryList.svelte` was deliberately **not** modified: five of its six
-  consumers are debug detail panels rendered inside `DebugDetailRail`, which already supplies
-  `padding: 16px` (`DebugDetailRail.svelte:81`), so padding the primitive would double-pad five
+  consumers are debug detail panels rendered inside `DebugDetailRail`'s
+  `.debug-detail-rail__body`, which already supplies `padding: 12px 14px`
+  (`DebugDetailRail.svelte:106-110`), so padding the primitive would double-pad five
   correct consumers to fix one broken one.
 ```
 
@@ -769,9 +772,10 @@ In `docs/ux-reviews/AiOutputSection.md`, flip that finding to `fixed` and add:
 
 ```markdown
 - **Status:** fixed
-- **Resolved:** `<T3>`. `client/shared/ui/SegmentedControl.svelte` gained an optional
+- **Resolved:** `<T2>` + `<T3>`. In `<T2>`,
+  `client/shared/ui/SegmentedControl.svelte` gained an optional
   `busy?: boolean` prop (default `false`) that renders a `Saving…` caption beside the control
-  and sets `aria-busy="true"` on the `role="radiogroup"` element;
+  and sets `aria-busy="true"` on the `role="radiogroup"` element; in `<T3>`,
   `client/settings/components/ConfigFieldRow.svelte` passes `busy={saving}` alongside its
   existing `disabled={saving}`. The wording reuses the text-field `Save` button's existing
   `Saving…` label. A static caption was chosen over the suggested pulsing accent because it

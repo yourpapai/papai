@@ -56,8 +56,9 @@ because they are non-obvious and a future reader would otherwise re-derive them:
 3. **`task-provider-summary-list-no-inset` must be fixed at the call site, not
    in the primitive.** `SummaryList` has six consumers. Five are debug detail
    panels (`TraceDetail`, `LogDetail`, `FailureDetail`, `TurnDetail`,
-   `SessionDetail`), all rendered inside `DebugDetailRail`, which supplies
-   `padding: 16px` (`DebugDetailRail.svelte:81`). Only `TaskProviderSection`
+   `SessionDetail`), all rendered inside `DebugDetailRail`'s
+   `.debug-detail-rail__body`, which supplies `padding: 12px 14px`
+   (`DebugDetailRail.svelte:106-110`). Only `TaskProviderSection`
    renders `SummaryList` bare. Adding padding to the primitive would
    double-pad five correct consumers to fix one broken one.
 

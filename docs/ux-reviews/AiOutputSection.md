@@ -59,9 +59,10 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 - **Id:** ai-output-toggle-no-feedback
 - **Status:** fixed
-- **Resolved:** `5f68a5013`. `client/shared/ui/SegmentedControl.svelte` gained an optional
+- **Resolved:** `0f3c311bc` + `5f68a5013`. In `0f3c311bc`,
+  `client/shared/ui/SegmentedControl.svelte` gained an optional
   `busy?: boolean` prop (default `false`) that renders a `Saving…` caption beside the control
-  and sets `aria-busy="true"` on the `role="radiogroup"` element;
+  and sets `aria-busy="true"` on the `role="radiogroup"` element; in `5f68a5013`,
   `client/settings/components/ConfigFieldRow.svelte` passes `busy={saving}` alongside its
   existing `disabled={saving}`. The wording reuses the text-field `Save` button's existing
   `Saving…` label. A static caption was chosen over the suggested pulsing accent because it

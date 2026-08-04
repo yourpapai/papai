@@ -234,8 +234,9 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
   use via `SettingsFieldShell.svelte:81`. Revealed values now align with the `Clear` button's
   right edge instead of terminating at the container edge.
   `client/shared/ui/SummaryList.svelte` was deliberately **not** modified: five of its six
-  consumers are debug detail panels rendered inside `DebugDetailRail`, which already supplies
-  `padding: 16px` (`DebugDetailRail.svelte:81`), so padding the primitive would double-pad five
+  consumers are debug detail panels rendered inside `DebugDetailRail`'s
+  `.debug-detail-rail__body`, which already supplies `padding: 12px 14px`
+  (`DebugDetailRail.svelte:106-110`), so padding the primitive would double-pad five
   correct consumers to fix one broken one.
 - **Dimension:** 8. Spacing, alignment & sizing
 - **Where visible:**
