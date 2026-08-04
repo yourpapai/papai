@@ -38,6 +38,8 @@ These bind every task. Copied from the spec; treat them as part of each task's r
 - **Statuses are exactly `open` / `fixed` / `superseded`.** There is no `partial`. A partially-fixed finding stays `open` with its text narrowed to the residue. A non-`open` status **requires** a `- **Resolved:**` line citing a real commit hash or the backlog parser fails loud.
 - **`docs/ux-reviews/_BACKLOG.md` is generated — never hand-edit it.** Regenerate with `bun run ux:backlog`.
 - **Report whatever the generator actually produces.** A count reached by declaring a residual defect fixed is a failure however green the audit is.
+- **Client tests are excluded from default discovery.** `bunfig.toml:8` sets `pathIgnorePatterns = ["tests/e2e/**", "tests/client/**", "tests/visual/**", "tests/stories/**"]`, so `bun test tests/client/...` silently discovers nothing. Run client tests with `bun run test:client`, which supplies `--conditions=browser`, the `tests/client-setup.ts` preload, and `--path-ignore-patterns ''`. Narrow to one case with `bun run test:client -t '<test name substring>'`. To scope to a single file, run the underlying command with that path substituted for `tests/client/`.
+- **Baseline PNG filenames are not the story name alone.** `snapshotPathTemplate` is `.storybook-shots/{testFilePath}/{arg}{ext}`, and `{arg}` is the **full** Playwright title path. A generated case inside `test.describe('settings/sections/TaskProviderSection')` writes `settings-sections-TaskProviderSection-Bound-1.png`; a manual top-level `test('TaskProvider — provision reveal')` writes `TaskProvider-—-provision-reveal-1.png`. If a path in a task step does not exist, `ls` the directory rather than assuming the shot was not written.
 - **Shell is `fish`.** Glob-looking arguments (`--include=*.svelte`) must be quoted or they are expanded/rejected.
 - **Import paths use the `.js` extension** even for TypeScript sources.
 - **Formatter is `oxfmt`** (`bun run format`), not prettier.
@@ -188,7 +190,7 @@ bun shoot -g TaskProviderSection
 
 Then read the PNG with the Read tool:
 
-`.storybook-shots/settings/sections/TaskProviderSection.spec.ts/Bound-1.png`
+`.storybook-shots/settings/sections/TaskProviderSection.spec.ts/settings-sections-TaskProviderSection-Bound-1.png`
 
 Expected, and you must state it explicitly in your report: the "Kaneo API key" row now shows a masked pill reading **`••••WvfQ`**, not the ~20px empty grey pill the finding described. Do not report "the audit is green" — after `bun shoot` it is green by construction. Describe what you saw in the image.
 
@@ -279,7 +281,7 @@ Append these three tests inside the existing `describe` block in `tests/client/s
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `bun test tests/client/shared/ui/SegmentedControl.test.ts`
+Run: `bun run test:client -t 'busy'`
 
 Expected: the first two FAIL (`Received: undefined` for the caption text; `Received: null` or `true` for the aria-busy assertions). The third may pass already, since `busy` is currently an ignored prop — it is the guard proving `busy` never becomes a second `disabled`.
 
@@ -361,11 +363,11 @@ Leave every other rule untouched — in particular `.ui-seg__opt:disabled { curs
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `bun test tests/client/shared/ui/SegmentedControl.test.ts`
+Run: `bun run test:client -t 'SegmentedControl'`
 Expected: PASS, 14 tests (11 pre-existing + 3 new).
 
-Run: `bun test tests/client/`
-Expected: PASS. If any pre-existing client test now fails, **stop and escalate** — do not edit it. A failure here most likely means the new shell changed a DOM shape another test asserts on, which is exactly the signal this step exists to catch.
+Run: `bun run test:client`
+Expected: PASS across the whole client suite. If any pre-existing client test now fails, **stop and escalate** — do not edit it. A failure here most likely means the new shell changed a DOM shape another test asserts on, which is exactly the signal this step exists to catch.
 
 - [ ] **Step 5: Type and lint gates**
 
@@ -450,7 +452,7 @@ The test holds the PATCH open with a never-resolving promise so the in-flight fr
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `bun test tests/client/settings/components/ConfigFieldRow.test.ts -t 'busy caption'`
+Run: `bun run test:client -t 'busy caption'`
 
 Expected: FAIL at the mid-flight assertion — `Expected: "Saving…"  Received: undefined` — because `ConfigFieldRow` does not yet pass `busy`.
 
@@ -474,8 +476,8 @@ Change nothing else in the file — `saveEnum` already manages `saving` correctl
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `bun test tests/client/settings/components/ConfigFieldRow.test.ts`
-Expected: PASS, all cases including the new one.
+Run: `bun run test:client`
+Expected: PASS across the whole client suite, including the new case. If a pre-existing client test now fails, **stop and escalate** — do not edit it.
 
 Run: `bun run typecheck && bun run lint`
 Expected: both clean.
@@ -587,7 +589,7 @@ Expected: 1 passing test, one PNG written.
 
 Read with the Read tool:
 
-`.storybook-shots/shared/ui/SegmentedControl.spec.ts/Busy-1.png`
+`.storybook-shots/shared/ui/SegmentedControl.spec.ts/shared-ui-SegmentedControl-Busy-1.png`
 
 Expected, and you must describe it explicitly: a two-segment `Off`/`On` control with `On` highlighted, the whole control dimmed to half opacity, and the text **`Saving…`** rendered to its right in dim monospace, outside the control's border, vertically centred, not clipped and not overlapping the border.
 
@@ -775,7 +777,7 @@ In `docs/ux-reviews/AiOutputSection.md`, flip that finding to `fixed` and add:
   `Saving…` label. A static caption was chosen over the suggested pulsing accent because it
   needs no `prefers-reduced-motion` fallback, is deterministic to screenshot, and — paired with
   `aria-busy` — reaches screen-reader users, which an opacity change never did. The frame is
-  pinned by `.storybook-shots/shared/ui/SegmentedControl.spec.ts/Busy-1.png`. `busy` is
+  pinned by `.storybook-shots/shared/ui/SegmentedControl.spec.ts/shared-ui-SegmentedControl-Busy-1.png`. `busy` is
   presentational plus aria only; `disabled` still carries all behavioural blocking, so the three
   other consumers are unchanged.
 ```
@@ -832,8 +834,13 @@ The per-task checks were all scoped. This task runs everything unfiltered, which
 
 - [ ] **Step 1: Full test suite**
 
+Two commands — `bunfig.toml:8` excludes `tests/client/**` from default discovery, so `bun test` alone would silently skip every test this project added.
+
 Run: `bun test`
 Expected: PASS, no failures. Record the totals.
+
+Run: `bun run test:client`
+Expected: PASS, no failures. Record the totals separately.
 
 - [ ] **Step 2: Full visual audit, unfiltered**
 
