@@ -196,6 +196,9 @@
     padding-top: 8px;
     border-top: 1px solid var(--border);
   }
+  .settings-provision__reveal {
+    padding-inline: var(--gap-inline);
+  }
   .provision-actions { display: flex; }
   .settings-provision__secret {
     display: flex;
