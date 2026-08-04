@@ -659,7 +659,7 @@ Write both hashes down before editing.
 
 - [ ] **Step 2: Flip the five finding statuses**
 
-In `docs/ux-reviews/ToolsSection.md`, make these five edits. Each replaces the finding's `- **Status:** open` line with a `fixed` status plus a `- **Resolved:**` line, and replaces its `- **Suggested fix:**` line. Leave the `- **Dimension:**`, `- **Where visible:**`, and `- **Source:**` lines untouched.
+In `docs/ux-reviews/ToolsSection.md`, make these five edits. Each replaces the finding's `- **Status:** open` line with a `fixed` status plus a `- **Resolved:**` line, and replaces its `- **Suggested fix:**` line. Leave the `- **Dimension:**` and `- **Source:**` lines untouched, and leave `- **Where visible:**` untouched too — with the single exception of step 2b-bis below, which corrects one demonstrably wrong line.
 
 **2a — `tools-race-permission-during-preset` (currently line 121).** Replace:
 
@@ -702,7 +702,10 @@ with:
   `:286`) remain `ghost` by design. This was the only change in the sub-project permitted to move
   pixels; it altered exactly one baseline,
   `settings-sections-ToolsSection-Preset-applied-1.png`, which was read directly to confirm the
-  border appeared and nothing else shifted.
+  border appeared and nothing else shifted. That baseline only shows the trigger at all because
+  the same commit added `clearPresetFn` to the `Preset applied` story — before it, the guard at
+  `:260` meant no story rendered the trigger, so the change would have been invisible in every
+  frame.
 ```
 
 and replace:
@@ -716,6 +719,27 @@ with:
 ```markdown
 - **Suggested fix:** N/A — resolved.
 ```
+
+**2b-bis — correct this finding's wrong `Where visible` line.** The finding claims the trigger
+is visible in the Populated/Grouped screenshots. It never was: the guard at `:260` requires
+`clearPresetFn !== undefined`, and no story passed it until Task 2 Step 4a. The original
+reviewer found this defect from source, not from pixels, and the line must say so. Replace:
+
+```markdown
+- **Where visible:** Populated/Grouped screenshots, whenever stored admin defaults exist — the
+  "Clear admin defaults" trigger above the preset confirm area.
+```
+
+with:
+
+```markdown
+- **Where visible:** source only at review time — no story passed `clearPresetFn`, so the
+  "Clear admin defaults" trigger rendered in no baseline. It is visible in the `Preset applied`
+  screenshot from `<T2>` onward, above the preset confirm area.
+```
+
+This is the one `Where visible` line that changes; the other four findings' `Where visible`,
+`Dimension`, and `Source` lines stay untouched.
 
 **2c — `tools-dual-confirm-bars-overlap` (currently line 155).** Replace `- **Status:** open` with:
 
