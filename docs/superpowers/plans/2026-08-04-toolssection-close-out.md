@@ -875,7 +875,9 @@ with:
 Run: `bun run ux:backlog`
 
 Expected in `docs/ux-reviews/_BACKLOG.md`:
-- header: **18 open finding(s)** across **17 section(s)** (ToolsSection drops off the open list)
+- header: **18 open finding(s)** across **18 section(s)**. The section count does not drop when a
+  section reaches zero open findings: `scripts/ux-backlog-lib.ts:178` derives it from
+  `sorted.length`, the number of review documents, not the number of sections with open findings.
 - summary row: `| ToolsSection | 0 | 14 | 0 | 2026-08-03 |`
 - total row: `| **Total** | 18 | 153 | 3 | — |`
 - severity buckets: **High (0) / Med (3) / Low (15)**
