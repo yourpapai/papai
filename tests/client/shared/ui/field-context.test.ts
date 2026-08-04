@@ -123,16 +123,49 @@ describe('field-context', () => {
     void unmount(c)
   })
 
-  test('wraps the children slot in a single control element', () => {
+  // Field renders hint OR error OR neither (never both, never a fallback branch), so
+  // .ui-field's child count varies (3 / 3 / 2). What the subgrid conversion actually
+  // depends on is that .ui-field__control is always present, always a single direct
+  // child, and always the second child — asserted per-state below rather than as one
+  // blanket child-count number.
+  test('wraps the children slot in a single control element as the second child when hint is set', () => {
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.body.querySelector<HTMLElement>('#root')!
     const c = mount(FieldHintFixture, { target, props: { hint: 'https only' } })
     const field = target.querySelector<HTMLElement>('.ui-field')!
-    const control = field.querySelector<HTMLElement>('.ui-field__control')!
-    expect(control).not.toBeNull()
-    expect(control.parentElement).toBe(field)
-    expect(control.querySelector('[data-testid="hint-input"]')).not.toBeNull()
+    const controls = field.querySelectorAll(':scope > .ui-field__control')
+    expect(controls.length).toBe(1)
     expect(field.children.length).toBe(3)
+    expect(field.children[1]).toBe(controls[0])
+    expect(controls[0]!.querySelector('[data-testid="hint-input"]')).not.toBeNull()
+    expect(field.children[2]!.classList.contains('ui-field__hint')).toBe(true)
+    void unmount(c)
+  })
+
+  test('wraps the children slot in a single control element as the second child when error is set', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(FieldHintFixture, { target, props: { error: 'boom' } })
+    const field = target.querySelector<HTMLElement>('.ui-field')!
+    const controls = field.querySelectorAll(':scope > .ui-field__control')
+    expect(controls.length).toBe(1)
+    expect(field.children.length).toBe(3)
+    expect(field.children[1]).toBe(controls[0])
+    expect(controls[0]!.querySelector('[data-testid="hint-input"]')).not.toBeNull()
+    expect(field.children[2]!.classList.contains('ui-field__error')).toBe(true)
+    void unmount(c)
+  })
+
+  test('wraps the children slot in a single control element as the second and last child when neither hint nor error is set', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(FieldHintFixture, { target, props: {} })
+    const field = target.querySelector<HTMLElement>('.ui-field')!
+    const controls = field.querySelectorAll(':scope > .ui-field__control')
+    expect(controls.length).toBe(1)
+    expect(field.children.length).toBe(2)
+    expect(field.children[1]).toBe(controls[0])
+    expect(controls[0]!.querySelector('[data-testid="hint-input"]')).not.toBeNull()
     void unmount(c)
   })
 })
