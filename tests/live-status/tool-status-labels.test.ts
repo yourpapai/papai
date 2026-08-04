@@ -76,6 +76,22 @@ describe('formatToolStatus', () => {
   test('never returns the argument when input is not a record', () => {
     expect(formatToolStatus('search_memory', 'budget')).toBe('🔍 Searching memory…')
   })
+
+  test('web_fetch keeps the port in the host (host, not hostname)', () => {
+    expect(formatToolStatus('web_fetch', { url: 'https://host.example:8080/x' })).toBe('🌐 Fetching host.example:8080…')
+  })
+
+  test('asRecord rejects an array and yields the no-arg label', () => {
+    expect(formatToolStatus('search_memory', ['query'])).toBe('🔍 Searching memory…')
+  })
+
+  test('asRecord rejects null and yields the no-arg label', () => {
+    expect(formatToolStatus('search_memory', null)).toBe('🔍 Searching memory…')
+  })
+
+  test('asRecord rejects a number and yields the no-arg label', () => {
+    expect(formatToolStatus('search_memory', 42)).toBe('🔍 Searching memory…')
+  })
 })
 
 describe('reminder/alert live-status labels', () => {
