@@ -340,11 +340,17 @@ describe('executeCreate — input guards', () => {
 
   test('rejects past fire_at', () => {
     setConfig(USER_ID, 'timezone', 'UTC')
-    const result = executeCreate(USER_ID, {
-      prompt: 'past',
-      schedule: { fire_at: { date: '2000-01-01', time: '00:00' } },
-    })
-    expect(result).toEqual({ error: 'fire_at must be a future date and time.' })
+    const { events, cleanup } = collectEvents('deferred:created')
+    try {
+      const result = executeCreate(USER_ID, {
+        prompt: 'past',
+        schedule: { fire_at: { date: '2000-01-01', time: '00:00' } },
+      })
+      expect(result).toEqual({ error: 'fire_at must be a future date and time.' })
+      expect(events).toHaveLength(0)
+    } finally {
+      cleanup()
+    }
   })
 
   test('passes through invalid-timezone error', () => {
