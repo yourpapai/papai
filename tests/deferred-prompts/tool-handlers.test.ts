@@ -12,7 +12,13 @@ import { setConfig } from '../../src/config.testing.js'
 import { subscribe, unsubscribe, type DebugEvent } from '../../src/debug/event-bus.js'
 import { getAlertPrompt, listAlertPrompts } from '../../src/deferred-prompts/alerts.js'
 import { getScheduledPrompt, listScheduledPrompts } from '../../src/deferred-prompts/scheduled.js'
-import { executeCancel, executeCreate, executeList, executeUpdate } from '../../src/deferred-prompts/tool-handlers.js'
+import {
+  executeCancel,
+  executeCreate,
+  executeGet,
+  executeList,
+  executeUpdate,
+} from '../../src/deferred-prompts/tool-handlers.js'
 import type { CreateResult } from '../../src/deferred-prompts/types.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
@@ -390,5 +396,56 @@ describe('executeCreate — rrule edge cases', () => {
       },
     })
     expect(result).toEqual({ error: 'Could not compute next occurrence for the given rrule spec.' })
+  })
+})
+
+describe('executeCreate — alert validation and events', () => {
+  test('rejects invalid condition and emits nothing', () => {
+    const { events, cleanup } = collectEvents('deferred:created')
+    try {
+      const result = executeCreate(USER_ID, {
+        prompt: 'bad condition',
+        condition: { field: 'task.status', op: 'bogus_op', value: 'x' },
+      })
+      expect(result).toHaveProperty('error')
+      assert.ok('error' in result)
+      expect(result.error).toContain('Invalid condition:')
+      expect(events).toHaveLength(0)
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('valid alert emits deferred:created with the alert id', () => {
+    const { events, cleanup } = collectEvents('deferred:created')
+    try {
+      const result = executeCreate(USER_ID, {
+        prompt: 'good condition',
+        condition: { field: 'task.status', op: 'changed_to', value: 'done' },
+      })
+      expect(result).toMatchObject({ status: 'created', type: 'alert' })
+      assert.ok('id' in result)
+      expect(events).toHaveLength(1)
+      expect(events[0]!.data['promptId']).toBe(result.id)
+    } finally {
+      cleanup()
+    }
+  })
+})
+
+describe('executeGet', () => {
+  test('returns not-found for unknown id', () => {
+    const result = executeGet(USER_ID, { id: 'does-not-exist' })
+    expect(result).toEqual({ error: 'Reminder or alert not found.' })
+  })
+
+  test('returns the alert when the id belongs to an alert', () => {
+    const created = executeCreate(USER_ID, {
+      prompt: 'find me',
+      condition: { field: 'task.status', op: 'changed_to', value: 'done' },
+    })
+    assert.ok('id' in created)
+    const result = executeGet(USER_ID, { id: created.id })
+    expect(result).toMatchObject({ type: 'alert', id: created.id, prompt: 'find me' })
   })
 })
