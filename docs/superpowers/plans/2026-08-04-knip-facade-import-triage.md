@@ -522,10 +522,13 @@ function removeBindingFromStatement(stmt: string, symbol: string): string {
   const head = m[1] ?? ''
   const body = m[2] ?? ''
   const tail = m[3] ?? ''
+  const stmtIsType = /^export\s+type\s+\{/.test(stmt)
   const kept = parseNamedList(body).filter((b) => b.local !== symbol)
   if (kept.length === 0) return ''
   const raw: string[] = kept.map((b) => {
-    const typePrefix = b.isType ? 'type ' : ''
+    // Whole-clause `export type { }` already marks bindings; inline `type`
+    // prefixes are illegal there (TS1484).
+    const typePrefix = b.isType && !stmtIsType ? 'type ' : ''
     return b.imported === b.local ? `${typePrefix}${b.local}` : `${typePrefix}${b.imported} as ${b.local}`
   })
   if (!body.includes('\n')) return `${head} ${raw.join(', ')} ${tail.trimStart()}`
@@ -564,7 +567,9 @@ function removeNamedImport(fileText: string, spec: string, symbol: string): stri
       return fileText.slice(0, imp.start) + fileText.slice(dropEnd)
     }
     const raw = kept.map((b) => {
-      const typePrefix = b.isType ? 'type ' : ''
+      // Whole-clause `import type { }` already marks bindings; inline `type`
+      // prefixes are illegal there (TS1484).
+      const typePrefix = b.isType && !imp.allType ? 'type ' : ''
       return b.imported === b.local ? `${typePrefix}${b.local}` : `${typePrefix}${b.imported} as ${b.local}`
     })
     const typeKw = imp.allType ? 'type ' : ''
@@ -581,20 +586,24 @@ function addNamedImport(
   binding: NamedBinding,
   beforeIndex: number,
 ): string {
-  const raw =
-    binding.imported === binding.local
-      ? `${binding.isType ? 'type ' : ''}${binding.local}`
-      : `${binding.isType ? 'type ' : ''}${binding.imported} as ${binding.local}`
+  const rawFor = (allType: boolean): string => {
+    // Whole-clause `import type { }` already marks bindings; inline `type`
+    // prefixes are illegal there (TS1484).
+    const typePrefix = binding.isType && !allType ? 'type ' : ''
+    return binding.imported === binding.local
+      ? `${typePrefix}${binding.local}`
+      : `${typePrefix}${binding.imported} as ${binding.local}`
+  }
   for (const imp of parseImportStatements('x.ts', fileText)) {
     if (imp.spec !== spec || imp.namespace !== null) continue
     if (imp.allType && !binding.isType) continue // never merge a value into an import-type statement
     const bodyM = /\{([^{}]*)\}/s.exec(imp.text)
     if (bodyM === null) break
     const open = imp.text.indexOf('{')
-    const next = imp.text.slice(0, open + 1) + ` ${raw},` + imp.text.slice(open + 1)
+    const next = imp.text.slice(0, open + 1) + ` ${rawFor(imp.allType)},` + imp.text.slice(open + 1)
     return fileText.slice(0, imp.start) + next + fileText.slice(imp.end)
   }
-  const stmt = `import { ${raw} } from '${spec}'\n`
+  const stmt = `import { ${rawFor(false)} } from '${spec}'\n`
   return fileText.slice(0, beforeIndex) + stmt + fileText.slice(beforeIndex)
 }
 
