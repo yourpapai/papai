@@ -111,3 +111,260 @@ describe('create-recurring-task — DTSTART anchor', () => {
     expect(capturedInput?.dtstartUtc).toMatch(/T00:00:00\.000Z$/u)
   })
 })
+
+interface SafeParseIssue {
+  code: string
+  message: string
+  path: PropertyKey[]
+}
+
+type SafeParseOutcome = { success: true } | { success: false; error: { issues: SafeParseIssue[] } }
+
+interface SafeParseable {
+  safeParse: (data: unknown) => SafeParseOutcome
+}
+
+function isSafeParseable(val: unknown): val is SafeParseable {
+  return typeof val === 'object' && val !== null && 'safeParse' in val && typeof val.safeParse === 'function'
+}
+
+describe('create-recurring-task — input validation', () => {
+  let deps: CreateRecurringTaskDeps
+
+  beforeEach(() => {
+    mockLogger()
+    setCachedConfig('user-1', 'timezone', 'UTC')
+    deps = {
+      createRecurringTask: (input: RecurringTaskInput): RecurringTaskRecord => makeRecord(input),
+    }
+  })
+
+  const parseInput = (data: unknown): SafeParseOutcome => {
+    const tool = makeCreateRecurringTaskTool('user-1', deps)
+    if (!isSafeParseable(tool.inputSchema)) {
+      throw new Error('Tool inputSchema does not have safeParse')
+    }
+    return tool.inputSchema.safeParse(data)
+  }
+
+  test('rejects cron without schedule with a path-scoped custom issue', () => {
+    const result = parseInput({ title: 'Task', projectId: 'p1', triggerType: 'cron' })
+    expect(result.success).toBe(false)
+    assert(!result.success)
+    expect(result.error.issues[0]?.code).toBe('custom')
+    expect(result.error.issues[0]?.message).toBe("schedule is required when triggerType is 'cron'")
+    expect(result.error.issues[0]?.path).toEqual(['schedule'])
+  })
+
+  test('accepts cron with schedule', () => {
+    expect(
+      parseInput({ title: 'Task', projectId: 'p1', triggerType: 'cron', schedule: { freq: 'DAILY' } }).success,
+    ).toBe(true)
+  })
+
+  test('rejects on_complete with schedule with a path-scoped custom issue', () => {
+    const result = parseInput({
+      title: 'Task',
+      projectId: 'p1',
+      triggerType: 'on_complete',
+      schedule: { freq: 'DAILY' },
+    })
+    expect(result.success).toBe(false)
+    assert(!result.success)
+    expect(result.error.issues[0]?.code).toBe('custom')
+    expect(result.error.issues[0]?.message).toBe("schedule must not be provided when triggerType is 'on_complete'")
+    expect(result.error.issues[0]?.path).toEqual(['schedule'])
+  })
+
+  test('accepts on_complete without schedule', () => {
+    expect(parseInput({ title: 'Task', projectId: 'p1', triggerType: 'on_complete' }).success).toBe(true)
+  })
+
+  test('accepts every priority enum value', () => {
+    for (const priority of ['no-priority', 'low', 'medium', 'high', 'urgent'] as const) {
+      expect(parseInput({ title: 'Task', projectId: 'p1', triggerType: 'on_complete', priority }).success).toBe(true)
+    }
+  })
+
+  test('rejects an invalid priority', () => {
+    expect(
+      parseInput({ title: 'Task', projectId: 'p1', triggerType: 'on_complete', priority: 'critical' }).success,
+    ).toBe(false)
+  })
+
+  test('rejects an invalid triggerType', () => {
+    expect(parseInput({ title: 'Task', projectId: 'p1', triggerType: 'weekly' }).success).toBe(false)
+  })
+})
+
+describe('create-recurring-task — compile branch', () => {
+  let capturedInput: RecurringTaskInput | null
+  let deps: CreateRecurringTaskDeps
+
+  beforeEach(() => {
+    mockLogger()
+    capturedInput = null
+    setCachedConfig('user-1', 'timezone', 'UTC')
+    deps = {
+      createRecurringTask: (input: RecurringTaskInput): RecurringTaskRecord => {
+        capturedInput = input
+        return makeRecord(input)
+      },
+    }
+  })
+
+  test('passes no rrule or dtstartUtc for on_complete', async () => {
+    const tool = makeCreateRecurringTaskTool('user-1', deps)
+    assert(tool.execute, 'Tool execute is undefined')
+    await tool.execute({ title: 'Task', projectId: 'p1', triggerType: 'on_complete' }, toolCtx)
+    expect(capturedInput?.rrule).toBeUndefined()
+    expect(capturedInput?.dtstartUtc).toBeUndefined()
+  })
+
+  test('does not compile when a schedule is passed with on_complete', async () => {
+    const tool = makeCreateRecurringTaskTool('user-1', deps)
+    assert(tool.execute, 'Tool execute is undefined')
+    await tool.execute(
+      { title: 'Task', projectId: 'p1', triggerType: 'on_complete', schedule: { freq: 'DAILY' } },
+      toolCtx,
+    )
+    expect(capturedInput?.rrule).toBeUndefined()
+    expect(capturedInput?.dtstartUtc).toBeUndefined()
+  })
+
+  test('passes the compiled rrule and dtstartUtc for cron', async () => {
+    const tool = makeCreateRecurringTaskTool('user-1', deps)
+    assert(tool.execute, 'Tool execute is undefined')
+    await tool.execute(
+      {
+        title: 'Task',
+        projectId: 'p1',
+        triggerType: 'cron',
+        schedule: { freq: 'DAILY', byHour: [9], byMinute: [0], timezone: 'UTC' },
+      },
+      toolCtx,
+    )
+    expect(capturedInput?.rrule).toContain('FREQ=DAILY')
+    expect(capturedInput?.rrule).toContain('BYHOUR=9')
+    expect(capturedInput?.dtstartUtc).toMatch(/T00:00:00\.000Z$/u)
+  })
+
+  test('does not compile when cron reaches execute without a schedule', async () => {
+    const tool = makeCreateRecurringTaskTool('user-1', deps)
+    assert(tool.execute, 'Tool execute is undefined')
+    await tool.execute({ title: 'Task', projectId: 'p1', triggerType: 'cron' }, toolCtx)
+    expect(capturedInput?.rrule).toBeUndefined()
+    expect(capturedInput?.dtstartUtc).toBeUndefined()
+  })
+})
+
+describe('create-recurring-task — result mapping', () => {
+  type ToolInput = Parameters<NonNullable<ReturnType<typeof makeCreateRecurringTaskTool>['execute']>>[0]
+
+  const cronInput = {
+    title: 'Task',
+    projectId: 'p1',
+    triggerType: 'cron',
+    schedule: { freq: 'DAILY' },
+  } as const
+
+  beforeEach(() => {
+    mockLogger()
+    setCachedConfig('user-1', 'timezone', 'UTC')
+  })
+
+  function makeResultRecord(overrides: Partial<RecurringTaskRecord>): RecurringTaskRecord {
+    return {
+      id: 'rec-1',
+      userId: 'user-1',
+      projectId: 'p1',
+      title: 'Task',
+      description: null,
+      priority: null,
+      status: null,
+      assignee: null,
+      labels: [],
+      triggerType: 'cron',
+      rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0',
+      dtstartUtc: '2026-06-01T09:00:00.000Z',
+      timezone: 'UTC',
+      enabled: true,
+      catchUp: false,
+      lastRun: null,
+      nextRun: '2026-06-01T12:00:00.000Z',
+      createdAt: '2026-05-01T00:00:00.000Z',
+      updatedAt: '2026-05-01T00:00:00.000Z',
+      ...overrides,
+    }
+  }
+
+  async function executeWithRecord(record: RecurringTaskRecord, input: ToolInput = cronInput): Promise<unknown> {
+    const deps: CreateRecurringTaskDeps = { createRecurringTask: () => record }
+    const tool = makeCreateRecurringTaskTool('user-1', deps)
+    assert(tool.execute, 'Tool execute is undefined')
+    return await tool.execute(input, toolCtx)
+  }
+
+  test('describes the compiled schedule for a cron record with rrule and dtstartUtc', async () => {
+    const result = await executeWithRecord(makeResultRecord({}))
+    expect(result).toEqual({
+      id: 'rec-1',
+      title: 'Task',
+      projectId: 'p1',
+      triggerType: 'cron',
+      schedule: 'daily at 09:00 UTC',
+      nextRun: '2026-06-01T12:00:00',
+      enabled: true,
+    })
+  })
+
+  test('falls back when rrule is null', async () => {
+    const result = await executeWithRecord(makeResultRecord({ rrule: null }))
+    expect(result).toMatchObject({ schedule: 'after completion of current instance' })
+  })
+
+  test('falls back when dtstartUtc is null', async () => {
+    const result = await executeWithRecord(makeResultRecord({ dtstartUtc: null }))
+    expect(result).toMatchObject({ schedule: 'after completion of current instance' })
+  })
+
+  test('falls back for on_complete records even when rrule and dtstartUtc are populated', async () => {
+    const result = await executeWithRecord(makeResultRecord({ triggerType: 'on_complete' }), {
+      title: 'Task',
+      projectId: 'p1',
+      triggerType: 'on_complete',
+    })
+    expect(result).toMatchObject({ schedule: 'after completion of current instance' })
+  })
+
+  test('converts nextRun into the record timezone as naive local time', async () => {
+    const result = await executeWithRecord(makeResultRecord({ timezone: 'Europe/Berlin' }))
+    expect(result).toMatchObject({ nextRun: '2026-06-01T14:00:00' })
+  })
+
+  test('passes null nextRun through', async () => {
+    const result = await executeWithRecord(makeResultRecord({ nextRun: null }))
+    expect(result).toMatchObject({ nextRun: null })
+  })
+})
+
+describe('create-recurring-task — failure propagation', () => {
+  beforeEach(() => {
+    mockLogger()
+    setCachedConfig('user-1', 'timezone', 'UTC')
+  })
+
+  test('rethrows when the store fails', () => {
+    const deps: CreateRecurringTaskDeps = {
+      createRecurringTask: (): RecurringTaskRecord => {
+        throw new Error('db down')
+      },
+    }
+    const tool = makeCreateRecurringTaskTool('user-1', deps)
+    const exec = tool.execute
+    assert(exec, 'Tool execute is undefined')
+    expect(() => {
+      exec({ title: 'Task', projectId: 'p1', triggerType: 'on_complete' }, toolCtx)
+    }).toThrow('db down')
+  })
+})
