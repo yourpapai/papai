@@ -141,3 +141,41 @@ describe('tool-handlers logging', () => {
     expect(infoArgs()).toContainEqual([{ id: alert.id, userId: USER_ID, type: 'alert' }, 'Deferred prompt cancelled'])
   })
 })
+
+describe('tool-handlers store-null update branches', () => {
+  test('updateScheduledPrompt returning null surfaces not-found', async () => {
+    const scheduledActual = await import('../../src/deferred-prompts/scheduled.js')
+    void mock.module('../../src/deferred-prompts/scheduled.js', () => ({
+      ...scheduledActual,
+      updateScheduledPrompt: (): null => null,
+    }))
+    const { executeCreate, executeList, executeUpdate } = await importHandlers()
+    setConfig(USER_ID, 'timezone', 'UTC')
+    executeCreate(USER_ID, {
+      prompt: 'will vanish',
+      schedule: { fire_at: { date: '2099-01-01', time: '09:00' } },
+    })
+    const { prompts } = executeList(USER_ID, { type: 'scheduled' })
+    const id = prompts[0]!.id
+
+    const result = executeUpdate(USER_ID, { id, prompt: 'too late' })
+    expect(result).toEqual({ error: 'Reminder or alert not found.' })
+  })
+
+  test('updateAlertPrompt returning null surfaces not-found', async () => {
+    const alertsActual = await import('../../src/deferred-prompts/alerts.js')
+    void mock.module('../../src/deferred-prompts/alerts.js', () => ({
+      ...alertsActual,
+      updateAlertPrompt: (): null => null,
+    }))
+    const { executeCreate, executeUpdate } = await importHandlers()
+    const created = executeCreate(USER_ID, {
+      prompt: 'will vanish',
+      condition: { field: 'task.status', op: 'changed_to', value: 'done' },
+    })
+    assert.ok('id' in created)
+
+    const result = executeUpdate(USER_ID, { id: created.id, prompt: 'too late' })
+    expect(result).toEqual({ error: 'Reminder or alert not found.' })
+  })
+})
