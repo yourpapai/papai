@@ -12,6 +12,7 @@ import {
   readCoverageFloor,
   STORY_COVERAGE_FLOOR_PATH,
 } from '../coverage/story-coverage-gate.js'
+import { formatStoryCoverageReport } from '../coverage/story-coverage-report.js'
 import { discoverScopedSourceFiles, formatStoryCoverageScope, scopeLcov } from '../coverage/story-scope.js'
 import { STORY_COVERAGE_LCOV_PATH } from './reports.js'
 import type { StoryRunnerSession } from './session.js'
@@ -32,6 +33,7 @@ export async function gateStoryCoverage(
   const floor = await readCoverageFloor(path.join(dependencies.cwd, STORY_COVERAGE_FLOOR_PATH))
   const evaluation = evaluateStoryCoverage(scoped.lcov, floor)
   console.log(formatStoryCoverageEvaluation(evaluation))
+  if (!evaluation.pass) console.log(formatStoryCoverageReport(scoped.lcov))
   console.log(formatStoryCoverageScope(scoped))
   if (!evaluation.pass && childExitCode === 0) return 1
   return childExitCode
