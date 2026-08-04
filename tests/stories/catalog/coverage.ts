@@ -28,7 +28,7 @@ export const TIER_SUITE_ROOTS: Readonly<Record<StoryTier, string>> = Object.free
   '4': 'tests/operational/',
 })
 
-type CatalogScenarioId = (typeof CATALOG_SCENARIO_IDS)[number]
+export type CatalogScenarioId = (typeof CATALOG_SCENARIO_IDS)[number]
 
 export type NonEmptyReadonlyTuple<T> = readonly [T, ...T[]]
 
