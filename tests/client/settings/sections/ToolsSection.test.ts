@@ -585,6 +585,24 @@ describe('ToolsSection', () => {
     void unmount(component)
   })
 
+  test('the clear-defaults trigger is an outline button, not bare text', async () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, {
+      target,
+      props: {
+        contextId: 'user:1',
+        fetchToolsFn: () => Promise.resolve(busyPayload),
+        clearPresetFn: () => Promise.resolve(busyPayload),
+      },
+    })
+    await drain()
+    const clear = target.querySelector<HTMLButtonElement>('[data-testid="tool-defaults-clear"]')!
+    expect(clear.className).toContain('ui-btn--outline')
+    expect(clear.className).not.toContain('ui-btn--ghost')
+    void unmount(component)
+  })
+
   test('the empty state offers a next step', async () => {
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!

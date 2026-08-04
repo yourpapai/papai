@@ -118,6 +118,7 @@
   const fetchPopulated = (): Promise<ToolsResponse> => Promise.resolve(populated)
   const fetchEmpty = (): Promise<ToolsResponse> => Promise.resolve(emptyResponse)
   const fetchPreset = (): Promise<ToolsResponse> => Promise.resolve(presetResponse)
+  const clearDefaults = (): Promise<ToolsResponse> => Promise.resolve({ ...presetResponse, hasStoredDefaults: false })
   const fetchNever = (): Promise<ToolsResponse> => new Promise<ToolsResponse>(() => {})
   const fetchError = (): Promise<ToolsResponse> => Promise.reject(new Error('Failed to load tools'))
 
@@ -132,7 +133,9 @@
 
 <Story name="Empty" args={{ contextId: CONTEXT_ID, fetchToolsFn: fetchEmpty }} />
 
-<Story name="Preset applied" args={{ contextId: CONTEXT_ID, fetchToolsFn: fetchPreset, hasStoredDefaults: true }} />
+<Story
+  name="Preset applied"
+  args={{ contextId: CONTEXT_ID, fetchToolsFn: fetchPreset, hasStoredDefaults: true, clearPresetFn: clearDefaults }} />
 
 <Story name="Grouped" args={{ contextId: CONTEXT_ID, fetchToolsFn: fetchGrouped }} />
 

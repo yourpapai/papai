@@ -260,7 +260,7 @@
   {#if clearPresetFn !== undefined && storedDefaults && !pendingClear && pendingPreset === null}
     <div class="settings-tools__clear-row">
       <Btn
-        variant="ghost"
+        variant="outline"
         size="sm"
         disabled={applying || clearing}
         testid="tool-defaults-clear"
