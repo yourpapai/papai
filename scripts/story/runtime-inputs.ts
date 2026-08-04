@@ -19,7 +19,7 @@ import {
 } from './inputs.js'
 
 export const REQUIRED_RUNTIME_DIRECTORY_ROOTS = ['src', 'plugins'] as const
-const OPTIONAL_RUNTIME_DIRECTORY_ROOTS = ['public'] as const
+export const OPTIONAL_RUNTIME_DIRECTORY_ROOTS = ['public'] as const
 export const REQUIRED_RUNTIME_FILE_ROOTS = ['package.json', 'bun.lock'] as const
 // Candidate-provided documents the frozen harness contract tests read (e.g. behavior
 // source anchors). Optional so fixtures and baselines predating the document still load.

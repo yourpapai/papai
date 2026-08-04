@@ -342,6 +342,23 @@ describe('story manifest', () => {
     )
   })
 
+  test('captures the documented behavior source doc at baseline without emitting docs directories', async () => {
+    const root = fixture()
+    mkdirSync(path.join(root, 'docs/architecture'), { recursive: true })
+    writeFileSync(path.join(root, 'docs/architecture/behaviors.md'), '<!-- behavior:scope-model -->\n')
+    git(root, 'add', '--', 'docs/architecture/behaviors.md')
+    git(root, 'commit', '-qm', 'add documented behavior source')
+    const ref = git(root, 'rev-parse', 'HEAD')
+
+    const baseline = await buildBaselineStoryManifest({ root, ref, seed: 41021, bunVersion: '1.2.3' })
+
+    expect(baseline.runtimeInputs.files.map(({ path: filePath }) => filePath)).toContain(
+      'docs/architecture/behaviors.md',
+    )
+    expect(baseline.runtimeInputs.directories.filter((directory) => directory.startsWith('docs'))).toEqual([])
+    expect(StoryManifestSchema.parse(baseline)).toEqual(baseline)
+  })
+
   test('accepts identical frozen content across different run metadata', async () => {
     const root = fixture()
     const ref = git(root, 'rev-parse', 'HEAD')

@@ -9,6 +9,7 @@ import { compareText, isCapturedStoryInputPath, type LoadedStoryFile } from './i
 import {
   assertRuntimeSymlinkTarget,
   isRuntimeInputPath,
+  OPTIONAL_RUNTIME_DIRECTORY_ROOTS,
   REQUIRED_RUNTIME_DIRECTORY_ROOTS,
   REQUIRED_RUNTIME_FILE_ROOTS,
   type LoadedRuntimeInput,
@@ -107,10 +108,17 @@ export function loadBaselineStoryFiles(root: string, commit: string): Promise<re
   return loadBaselineFiles(root, commit, ['bunfig.toml', 'tests', 'scripts'], isCapturedStoryInputPath)
 }
 
+const RUNTIME_DIRECTORY_ROOTS = new Set<string>([
+  ...REQUIRED_RUNTIME_DIRECTORY_ROOTS,
+  ...OPTIONAL_RUNTIME_DIRECTORY_ROOTS,
+])
+
 function runtimeDirectories(paths: readonly string[]): readonly string[] {
   const directories = new Set<string>()
   for (const filePath of paths) {
     const parts = filePath.split('/').slice(0, -1)
+    const root = parts[0]
+    if (root === undefined || !RUNTIME_DIRECTORY_ROOTS.has(root)) continue
     for (let index = 1; index <= parts.length; index += 1) directories.add(parts.slice(0, index).join('/'))
   }
   return [...directories].sort(compareText)
@@ -119,7 +127,19 @@ function runtimeDirectories(paths: readonly string[]): readonly string[] {
 export async function loadBaselineRuntimeInputs(root: string, commit: string): Promise<LoadedRuntimeInputTree> {
   const tree = await gitBytes(
     root,
-    ['ls-tree', '-rz', '--full-tree', commit, '--', 'src', 'plugins', 'package.json', 'bun.lock', 'public', 'docs'],
+    [
+      'ls-tree',
+      '-rz',
+      '--full-tree',
+      commit,
+      '--',
+      'src',
+      'plugins',
+      'package.json',
+      'bun.lock',
+      'public',
+      'docs/architecture/behaviors.md',
+    ],
     `Cannot read story runtime inputs at ${commit}`,
   )
   const entries = [...parseGitTree(tree, isRuntimeInputPath, true)].sort((left, right) =>
