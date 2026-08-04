@@ -608,4 +608,65 @@ describe('ReposSection', () => {
     expect(target.querySelector('.status-error')).not.toBeNull()
     void unmount(component)
   })
+
+  test('the egress field previews the single host that will be saved', async () => {
+    setMockFetch(() => Promise.resolve(json(emptyPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    expect(target.querySelector('[data-testid="repos-egress-preview"]')).toBeNull()
+
+    const egress = target.querySelector<HTMLTextAreaElement>('[data-testid="repos-add-egress"]')!
+    egress.value = '  PyPI.org  '
+    egress.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+
+    const preview = target.querySelector<HTMLElement>('[data-testid="repos-egress-preview"]')!
+    expect(preview).not.toBeNull()
+    expect(preview.textContent).toContain('Will save: pypi.org')
+    void unmount(component)
+  })
+
+  test('the egress preview shows the deduped count and list for several hosts', async () => {
+    setMockFetch(() => Promise.resolve(json(emptyPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const egress = target.querySelector<HTMLTextAreaElement>('[data-testid="repos-add-egress"]')!
+    egress.value = 'PyPI.org, pypi.org\nGitHub.com'
+    egress.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+
+    const preview = target.querySelector<HTMLElement>('[data-testid="repos-egress-preview"]')!
+    expect(preview.textContent).toContain('Will save 2 domains:')
+    expect(preview.textContent).toContain('pypi.org, github.com')
+    void unmount(component)
+  })
+
+  test('the egress preview disappears again when the field is emptied', async () => {
+    setMockFetch(() => Promise.resolve(json(emptyPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const egress = target.querySelector<HTMLTextAreaElement>('[data-testid="repos-add-egress"]')!
+    egress.value = 'pypi.org'
+    egress.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    expect(target.querySelector('[data-testid="repos-egress-preview"]')).not.toBeNull()
+
+    egress.value = '   ,  \n '
+    egress.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    expect(target.querySelector('[data-testid="repos-egress-preview"]')).toBeNull()
+    void unmount(component)
+  })
 })

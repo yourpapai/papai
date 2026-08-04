@@ -56,6 +56,8 @@
     return [...seen]
   }
 
+  const egressPreview = $derived(parseEgress(addEgress))
+
   let listStatusTimer: ReturnType<typeof setTimeout> | undefined
   let addStatusTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -232,6 +234,13 @@
             rows={3}
             placeholder="pypi.org, files.pythonhosted.org"
             testid="repos-add-egress" />
+          {#if egressPreview.length > 0}
+            <p class="settings-repos__egress-preview" data-testid="repos-egress-preview">
+              {egressPreview.length === 1
+                ? `Will save: ${egressPreview.join(', ')}`
+                : `Will save ${egressPreview.length} domains: ${egressPreview.join(', ')}`}
+            </p>
+          {/if}
         </Field>
       </div>
       <div class="settings-repos__actions">
@@ -340,6 +349,12 @@
   .settings-repos__add-note {
     font-family: var(--font-mono);
     font-size: 11px;
+    color: var(--text-dim);
+    margin: 0;
+  }
+  .settings-repos__egress-preview {
+    font-family: var(--font-mono);
+    font-size: 10px;
     color: var(--text-dim);
     margin: 0;
   }
