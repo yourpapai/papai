@@ -71,6 +71,7 @@ import {
   memoryProvisionalHandlers,
   pluginsHandlers,
 } from './settings-handlers-personal.js'
+import { taskProviderBoundHandlers } from './settings-handlers-task-provider.js'
 import {
   adminUsersHandlers,
   byokHandlers,
@@ -127,6 +128,7 @@ export const scenarios = {
   'settings-kaneo-not-provisioned': [...kaneoHandlers.notProvisioned],
   'settings-kaneo-error': [...kaneoHandlers.error],
   'settings-kaneo-loading': [...kaneoHandlers.loading],
+  'settings-task-provider-bound': [...taskProviderBoundHandlers],
   'settings-admin-users-populated': [...adminUsersHandlers.populated],
   'settings-admin-users-empty': [...adminUsersHandlers.empty],
   'settings-admin-users-error': [...adminUsersHandlers.error],
