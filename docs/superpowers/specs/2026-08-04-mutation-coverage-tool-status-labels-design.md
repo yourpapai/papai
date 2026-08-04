@@ -106,10 +106,14 @@ Mapping one-to-one onto the gap classes:
 
 ## Residual mutants (accepted)
 
-- `asRecord`'s `Object.fromEntries(Object.entries(input))` is a behaviorally
-  identity round-trip for plain records. It is **equivalent** and unkillable
-  without contorting production code that is otherwise fine. This is the one
-  expected residual below 1.0 and the reason the target is 0.95 rather than 1.0.
+Verified at execution time — 6 survivors, all observably-identical for every reachable registry input (the authoritative list lives in the plan's Task 6 Step 2):
+
+- **L21** `Array.isArray(input)` guard in `asRecord` — arrays passed through become `{0:...}` records, but every registry extractor reads a string key no array possesses, so the result is still `undefined`.
+- **L39** `if (url === undefined) return undefined` early-return in `hostOf` — without it, `new URL(undefined)` throws and the `catch` returns `undefined`; identical outcome.
+- **L93** `.trim()` in `humanizeToolName`'s chain — `base` is always a slice/replace of a tool name with no surrounding whitespace, so trimming is a no-op.
+- **L103** (×3) `rawArg.trim() === ''` and the `''` literal in `formatToolStatus`'s omission check — registry extractors (`getStringField`, `hostOf`) pre-filter whitespace, so `rawArg` is never a non-empty whitespace string; these guard an unreachable state.
+
+(The pre-execution design predicted the `asRecord` `Object.fromEntries(Object.entries(input))` identity round-trip as the sole residual; the actual run showed that mutant is killed, and the six above are the real equivalent set.) This residual floor is the reason the target is 0.95 rather than 1.0.
 
 ## Risk & notes
 
