@@ -601,3 +601,35 @@ describe('executeUpdate — alert prompt fields', () => {
     expect(result).toEqual({ error: 'Reminder or alert not found.' })
   })
 })
+
+describe('executeCancel — alerts and unknown ids', () => {
+  test('cancels an alert and emits deferred:cancelled', () => {
+    const created = executeCreate(USER_ID, {
+      prompt: 'alert to cancel',
+      condition: { field: 'task.status', op: 'changed_to', value: 'done' },
+    })
+    assert.ok('id' in created)
+
+    const { events, cleanup } = collectEvents('deferred:cancelled')
+    try {
+      const result = executeCancel(USER_ID, { id: created.id })
+      expect(result).toEqual({ status: 'cancelled', id: created.id })
+      expect(getAlertPrompt(created.id, USER_ID)!.status).toBe('cancelled')
+      expect(events).toHaveLength(1)
+      expect(events[0]!.data['promptId']).toBe(created.id)
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('returns not-found for unknown id and emits nothing', () => {
+    const { events, cleanup } = collectEvents('deferred:cancelled')
+    try {
+      const result = executeCancel(USER_ID, { id: 'does-not-exist' })
+      expect(result).toEqual({ error: 'Reminder or alert not found.' })
+      expect(events).toHaveLength(0)
+    } finally {
+      cleanup()
+    }
+  })
+})
