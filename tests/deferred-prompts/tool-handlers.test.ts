@@ -302,3 +302,87 @@ describe('deferred lifecycle events', () => {
     }
   })
 })
+
+describe('executeCreate — input guards', () => {
+  test('rejects schedule and condition together', () => {
+    const { events, cleanup } = collectEvents('deferred:created')
+    try {
+      const result = executeCreate(USER_ID, {
+        prompt: 'both',
+        schedule: { fire_at: { date: '2099-01-01', time: '09:00' } },
+        condition: { field: 'task.status', op: 'changed_to', value: 'done' },
+      })
+      expect(result).toEqual({ error: 'Provide either a schedule or a condition, not both.' })
+      expect(events).toHaveLength(0)
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('rejects missing schedule and condition', () => {
+    const { events, cleanup } = collectEvents('deferred:created')
+    try {
+      const result = executeCreate(USER_ID, { prompt: 'neither' })
+      expect(result).toEqual({
+        error: 'Provide either a schedule (for time-based) or a condition (for event-based).',
+      })
+      expect(events).toHaveLength(0)
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('rejects empty schedule object', () => {
+    setConfig(USER_ID, 'timezone', 'UTC')
+    const result = executeCreate(USER_ID, { prompt: 'empty', schedule: {} })
+    expect(result).toEqual({ error: 'Schedule must include either fire_at or rrule.' })
+  })
+
+  test('rejects past fire_at', () => {
+    setConfig(USER_ID, 'timezone', 'UTC')
+    const result = executeCreate(USER_ID, {
+      prompt: 'past',
+      schedule: { fire_at: { date: '2000-01-01', time: '00:00' } },
+    })
+    expect(result).toEqual({ error: 'fire_at must be a future date and time.' })
+  })
+
+  test('passes through invalid-timezone error', () => {
+    setConfig(USER_ID, 'timezone', 'Not/AZone')
+    const result = executeCreate(USER_ID, {
+      prompt: 'tz',
+      schedule: { fire_at: { date: '2099-01-01', time: '09:00' } },
+    })
+    expect(result).toEqual({
+      error: 'Your configured timezone is invalid. Please update it in /config (settings web UI) and try again.',
+    })
+  })
+})
+
+describe('executeCreate — rrule edge cases', () => {
+  test('explicit startDate/startTime anchor dtstartUtc, not midnight', () => {
+    setConfig(USER_ID, 'timezone', 'UTC')
+    executeCreate(USER_ID, {
+      prompt: 'anchored',
+      schedule: {
+        rrule: { freq: 'DAILY', byHour: [9], byMinute: [0], startDate: '2030-03-15', startTime: '08:30' },
+      },
+    })
+    const { prompts } = executeList(USER_ID, { type: 'scheduled' })
+    expect(prompts).toHaveLength(1)
+    const prompt = prompts[0]!
+    assert.ok(prompt.type === 'scheduled')
+    expect(prompt.dtstartUtc).toBe('2030-03-15T08:30:00.000Z')
+  })
+
+  test('rrule with until in the past has no next occurrence', () => {
+    setConfig(USER_ID, 'timezone', 'UTC')
+    const result = executeCreate(USER_ID, {
+      prompt: 'expired',
+      schedule: {
+        rrule: { freq: 'DAILY', byHour: [9], byMinute: [0], until: '2000-01-01T00:00:00.000Z' },
+      },
+    })
+    expect(result).toEqual({ error: 'Could not compute next occurrence for the given rrule spec.' })
+  })
+})
