@@ -17,6 +17,10 @@ See LICENSE in the project root for details.
 
 **Spec:** `docs/superpowers/specs/2026-08-04-knip-facade-import-triage-design.md`
 
+## Cascade rule (all apply tasks)
+
+Pruning (or repointing away) a facade's re-export can orphan an UPSTREAM re-export layer whose only consumer was that facade (observed in Task 2: `client/debug/dashboard-types.ts` was the sole consumer of 8 type re-exports in `client/shared/api-types.ts`). After each apply task's edits and BEFORE its verification gate, run `bun run knip`: any NEW unused re-export findings in files without an existing ignore entry are cascade prunings — apply the same class mechanics to them in the SAME commit (prune the binding, clean up unused imports), and record them in the task report. Re-run knip after each cascade pass until clean; cascades terminate because concrete source modules have other consumers. Never fix a cascade by adding an ignore entry.
+
 ## Global Constraints
 
 - Runtime **Bun**; scripts run via `bun <file>`. Strict TypeScript; **`.js` extension in all import specifiers**.
@@ -841,21 +845,31 @@ Expected: only import-statement changes in test files (symbol moved from facade 
 
 - [ ] **Step 3: Manual edits for the `manual` consumer list**
 
-For each entry in the Task 1 `manual` list:
+For each entry in the Task 1 `manual` list. The authoritative classification makes exactly three contract-test edits necessary (the `tests/attachments/index.test.ts` and `tests/message-cache/index.test.ts` contract tests need NO edits — their pinned bindings are all Class A or unflagged and survive):
 
-1. `tests/mcp-server/index.test.ts` — the only contract-test trim. Delete this block (the binding is pruned from the facade):
-
-```ts
-  test('PLUGIN_MCP_TOKEN_TTL_SECONDS is exported from token', async () => {
-    const mod = await import('../../src/mcp-server/index.js')
-    expect(typeof mod.PLUGIN_MCP_TOKEN_TTL_SECONDS).toBe('number')
-  })
-```
-
-The file's other two tests stay — `routePluginMcpPaths`, `mintPluginMcpToken`, `verifyPluginMcpToken` all survive (Class A / unflagged).
-
-2. Any namespace consumer (`import * as x from '<facade>'` using `x.Symbol`): change the namespace import to the concrete source specifier, keeping the qualifier — e.g. `import * as token from '../../src/mcp-server/token.js'`.
-3. Any dynamic consumer (`await import('<facade>')` then `.Symbol`): repoint the specifier string to the concrete module path (`.js` extension), unless it is one of the four contract tests (handled above).
+1. `tests/mcp-server/index.test.ts` — `verifyPluginMcpToken` (Class B) and `PLUGIN_MCP_TOKEN_TTL_SECONDS` (Class B) are pruned from the facade. Two edits:
+   - In the test `'mintPluginMcpToken and verifyPluginMcpToken are exported from token'`, remove only the `verifyPluginMcpToken` assertion line, keeping the `mintPluginMcpToken` one (Class A, survives):
+   ```ts
+   // delete this line only:
+   expect(typeof mod.verifyPluginMcpToken).toBe('function')
+   ```
+     and rename the test to `'mintPluginMcpToken is exported from token'`.
+   - Delete this whole block:
+   ```ts
+     test('PLUGIN_MCP_TOKEN_TTL_SECONDS is exported from token', async () => {
+       const mod = await import('../../src/mcp-server/index.js')
+       expect(typeof mod.PLUGIN_MCP_TOKEN_TTL_SECONDS).toBe('number')
+     })
+   ```
+2. `tests/mcp/index.test.ts` — `convertMcpToolsToToolSet` (Class B) is pruned from the facade. Delete this whole block:
+   ```ts
+     test('convertMcpToolsToToolSet is exported from tool-adapter', async () => {
+       const mod = await import('../../src/mcp/index.js')
+       expect(typeof mod.convertMcpToolsToToolSet).toBe('function')
+     })
+   ```
+3. Any OTHER namespace consumer (`import * as x from '<facade>'` using `x.Symbol` for a Class B symbol): change the namespace import to the concrete source specifier, keeping the qualifier — e.g. `import * as token from '../../src/mcp-server/token.js'`. (The `cacheMessage` namespace consumer in `tests/message-cache/index.test.ts` is Class A — no edit.)
+4. Any OTHER dynamic consumer (`await import('<facade>')` then `.Symbol` for a Class B symbol): repoint the specifier string to the concrete module path (`.js` extension), unless it is one of the four contract tests (handled above).
 
 - [ ] **Step 4: Format**
 
