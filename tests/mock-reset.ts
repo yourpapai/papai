@@ -47,6 +47,7 @@ import * as _dbDrizzle from '../src/db/drizzle.js'
 import * as _dbIndex from '../src/db/index.js'
 import * as _chatRouterRuntime from '../src/debug/chat-router-runtime.js'
 import * as _debugServer from '../src/debug/server.js'
+import * as _alertsPrompts from '../src/deferred-prompts/alerts.js'
 import * as _poller from '../src/deferred-prompts/poller.js'
 import * as _scheduledPrompts from '../src/deferred-prompts/scheduled.js'
 import * as _embeddings from '../src/embeddings.js'
@@ -104,6 +105,7 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/debug/chat-router-runtime.js', { ..._chatRouterRuntime }],
   ['../src/debug/server.js', { ..._debugServer }],
   ['../src/deferred-prompts/scheduled.js', { ..._scheduledPrompts }],
+  ['../src/deferred-prompts/alerts.js', { ..._alertsPrompts }],
   ['../src/deferred-prompts/poller.js', { ..._poller }],
   ['../src/embeddings.js', { ..._embeddings }],
   ['../src/identity/mapping.js', { ..._identityMapping }],
