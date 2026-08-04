@@ -219,6 +219,27 @@ describe('story manifest', () => {
     expect(repeated.runtimeInputs).toEqual(manifest.runtimeInputs)
   })
 
+  test('captures the documented behavior source doc as an optional runtime input', async () => {
+    const root = fixture()
+    mkdirSync(path.join(root, 'docs/architecture'), { recursive: true })
+    writeFileSync(path.join(root, 'docs/architecture/behaviors.md'), '<!-- behavior:scope-model -->\n')
+
+    const manifest = await buildCandidateStoryManifest({ root, seed: 41021, bunVersion: '1.2.3' })
+    writeFileSync(path.join(root, 'docs/architecture/behaviors.md'), '<!-- behavior:mid-run-control -->\n')
+    const rebuilt = await buildCandidateStoryManifest({ root, seed: 41021, bunVersion: '1.2.3' })
+
+    expect(manifest.runtimeInputs.files.map(({ path: filePath }) => filePath)).toEqual([
+      'bun.lock',
+      'docs/architecture/behaviors.md',
+      'package.json',
+      'plugins/example/plugin.json',
+      'public/settings.js',
+      'src/runtime.ts',
+    ])
+    expect(rebuilt.runtimeInputs.treeHash).not.toBe(manifest.runtimeInputs.treeHash)
+    expect(rebuilt.treeHash).toBe(manifest.treeHash)
+  })
+
   test('removes the temporary manifest when atomic publication fails', async () => {
     const root = fixture()
     const manifest = await buildCandidateStoryManifest({ root, seed: 41021 })
