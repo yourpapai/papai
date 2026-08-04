@@ -298,6 +298,8 @@ describe('tool-handlers update payload guards', () => {
   })
 
   test('scheduled update emits nothing when the store result carries both id and error', async () => {
+    // Defensive shape: unreachable with the current stores; pins the
+    // "error wins over id" emit gate.
     await mockScheduledUpdate(() => ({ id: 'x', error: 'conflict' }))
     const handlers = await importHandlers()
     const id = createScheduled(handlers)
@@ -312,6 +314,8 @@ describe('tool-handlers update payload guards', () => {
   })
 
   test('alert update emits nothing when the store result carries both id and error', async () => {
+    // Defensive shape: unreachable with the current stores; pins the
+    // "error wins over id" emit gate.
     await mockAlertUpdate(() => ({ id: 'x', error: 'conflict' }))
     const handlers = await importHandlers()
     const id = createAlert(handlers)

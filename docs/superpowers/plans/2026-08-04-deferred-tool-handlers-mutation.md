@@ -19,7 +19,7 @@ See LICENSE in the project root for details.
 
 ## Global Constraints
 
-- No changes to `src/` files. Tests only, plus `scripts/mutation/overrides.json` and `scripts/mutation/baseline.json`.
+- No changes to `src/` files. Tests only, plus `scripts/mutation/overrides.json` and `scripts/mutation/baseline.json`. Approved exception: `src/deferred-prompts/alerts.ts` gained an empty-set guard in `updateAlertPrompt` (mirroring `updateScheduledPrompt`) after characterization tests exposed that an alert update with only an invalid `execution` payload threw `No values to set` from drizzle.
 - Test runner is `bun:test` — no Jest/Vitest APIs. Use `.js` extensions in import paths.
 - No wall-clock timing assertions (repo policy); all dates used are fixed strings far in the past/future.
 - Error-string assertions must be exact (`toBe`/`toEqual`/`toContainEqual`) — substrings only where the message embeds a zod payload (`'Invalid condition:'` prefix).

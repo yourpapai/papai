@@ -15,7 +15,11 @@ Status: approved
 Raise the mutation score of `src/deferred-prompts/tool-handlers.ts` — paired
 score **0.58** (155 killed / 85 survived / 27 no-coverage, 267 mutants), the
 largest open-mutant pool in `scripts/mutation/baseline.json` — to **≥ 0.95**
-with pure unit tests. No source changes.
+with pure unit tests. Approved exception to "no source changes":
+`src/deferred-prompts/alerts.ts` gained an empty-set guard in
+`updateAlertPrompt` (mirroring `updateScheduledPrompt`) because the
+characterization tests exposed that an alert update with only an invalid
+`execution` payload threw `No values to set` from drizzle.
 
 ## Background and findings
 
@@ -132,7 +136,7 @@ mock.
   `src/deferred-prompts/tool-handlers.ts` alongside the existing behavioral
   file so the paired runner always pairs both.
 
-### 3. Documented residual mutants (8)
+### 3. Documented residual mutants (12)
 
 | Location | Mutants | Reason |
 | --- | --- | --- |
@@ -140,8 +144,14 @@ mock.
 | L123 (`utcToLocal` null fallback) | 4 | `result.fireAt` is always a valid string in the create flow, so `localizedFireAt` is never null/undefined. |
 | L78 (`<=` vs `<`) | 1 | Requires `fireDate.getTime() === Date.now()` exactly; impractical without freezing the clock, and the repo bans wall-clock timing assertions. |
 
-Ceiling: (155 + 104) / 267 ≈ **0.970**. Target ≥ 0.95 leaves slack for any
-survivor that proves impractical during implementation.
+Additional equivalent mutants:
+
+| Location | Mutants | Reason |
+| --- | --- | --- |
+| L170, L174 (`result !== undefined` in the create emit gates) | 2 | Equivalent: `createScheduled`/`createAlert` are typed `CreateResult` and never return `undefined`; the guard is dead defensive code. |
+| L206, L232 (`input.execution !== undefined` → true) | 2 | Equivalent: with the guard forced true, `executionMetadataSchema.safeParse(undefined)` fails and the block is a no-op; store payload identical either way. |
+
+Ceiling: (267 − 12) / 267 = **0.9551** — achieved exactly.
 
 ## Verification
 
