@@ -127,6 +127,11 @@ literals are all behaviorally observable through the return value). Forecast
 floor: **≥ 0.94** allows for one unforeseen accepted survivor, matching the
 kaneo twin's 0.969.
 
+Achieved (2026-08-04): killed=32 survived=0 noCoverage=0, score=1.0. All 32
+mutants killed by the seven mirrored cases; the L12 `MethodExpression`
+trim-removal mutant (left alive in the kaneo twin) is killed by case 5's
+whitespace-only input, matching pre-analysis.
+
 ## Measurement and ratchet
 
 1. `bun test tests/plugins/task-provider-youtrack/validate-config.test.ts` —
