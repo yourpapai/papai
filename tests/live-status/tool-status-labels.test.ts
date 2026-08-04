@@ -28,6 +28,22 @@ describe('formatToolStatus', () => {
     expect(formatToolStatus('create_task', {})).toBe('📝 Creating task…')
   })
 
+  test('getStringField prefers the first listed key when both are present', () => {
+    expect(formatToolStatus('create_task', { title: 'A', name: 'B' })).toBe('📝 Creating task: "A"…')
+  })
+
+  test('getStringField skips an empty first key and falls back to the next', () => {
+    expect(formatToolStatus('create_task', { title: '', name: 'B' })).toBe('📝 Creating task: "B"…')
+  })
+
+  test('getStringField skips a non-string first key and falls back to the next', () => {
+    expect(formatToolStatus('create_task', { title: 5, name: 'B' })).toBe('📝 Creating task: "B"…')
+  })
+
+  test('a whitespace-only argument is omitted like a missing argument', () => {
+    expect(formatToolStatus('search_memory', { query: '   ' })).toBe('🔍 Searching memory…')
+  })
+
   test('collapses whitespace and truncates long arguments to 40 chars', () => {
     const result = formatToolStatus('search_memory', { query: `  multi\nline   ${'a'.repeat(50)}` })
     expect(result).toBe(`🔍 Searching memory: "multi line ${'a'.repeat(29)}…"…`)
