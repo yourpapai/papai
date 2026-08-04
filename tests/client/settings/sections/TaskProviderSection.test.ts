@@ -263,7 +263,7 @@ describe('TaskProviderSection', () => {
     void unmount(component)
   })
 
-  test('renders the friendly instance name in options, falling back to id when absent', async () => {
+  test('renders the friendly instance name in options, falling back to a type-and-id label when absent', async () => {
     const namedInstancePayload = {
       contextId: 'user:1',
       taskInstanceId: 'kaneo-1',
@@ -282,7 +282,7 @@ describe('TaskProviderSection', () => {
       (o) => o.textContent,
     )
     expect(options).toContain('https://kaneo.example (kaneo · active)')
-    expect(options).toContain('yt-default (youtrack · active)')
+    expect(options).toContain('YouTrack instance (yt-default) (youtrack · active)')
     void unmount(component)
   })
 

@@ -13,6 +13,7 @@
   import { formatFetchError } from '../../shared/format-error.js'
   import { fetchGroupTaskInstance, patchGroupTaskInstance } from '../fetchers.js'
   import type { GroupTaskInstanceResponse } from '../fetcher-schemas.js'
+  import { formatTaskInstanceOption } from '../lib/task-instance-label.js'
 
   interface Props {
     contextId: string
@@ -94,7 +95,7 @@
         <Field label="Task instance">
           <Select
             value={selected}
-            options={data.available.map((o) => ({ value: o.id, label: `${o.name ?? o.id} (${o.type} · ${o.status})` }))}
+            options={data.available.map(formatTaskInstanceOption)}
             onChange={(v) => (selected = v)}
             disabled={saving}
             testid="group-task-instance" />

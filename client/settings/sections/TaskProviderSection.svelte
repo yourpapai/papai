@@ -18,6 +18,7 @@
   import ConfigFieldRow from '../components/ConfigFieldRow.svelte'
   import type { ConfigField, ContextTaskInstanceResponse, ProvisionResult } from '../fetcher-schemas.js'
   import { fetchConfig, fetchContextTaskInstance, patchContextTaskInstance, provisionKaneo } from '../fetchers.js'
+  import { formatTaskInstanceOption } from '../lib/task-instance-label.js'
 
   interface Props {
     contextId: string
@@ -129,7 +130,7 @@
             <Field label="Task instance">
               <Select
                 value={selectedInstanceId}
-                options={instanceData.available.map((o) => ({ value: o.id, label: `${o.name ?? o.id} (${o.type} · ${o.status})` }))}
+                options={instanceData.available.map(formatTaskInstanceOption)}
                 onChange={(v) => (selectedInstanceId = v)}
                 disabled={binding}
                 testid="context-task-instance" />
