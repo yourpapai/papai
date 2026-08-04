@@ -108,6 +108,22 @@ describe('formatToolStatus', () => {
   test('delete_task renders the deleting label with no arg', () => {
     expect(formatToolStatus('delete_task', {})).toBe('🗑️ Deleting task…')
   })
+
+  test('humanizeToolName converts hyphens to spaces', () => {
+    expect(formatToolStatus('mcp_s__audio-transcribe', {})).toBe('⚙️ Running audio transcribe…')
+  })
+
+  test('humanizeToolName lowercases the segments', () => {
+    expect(formatToolStatus('mcp_s__CamelCase', {})).toBe('⚙️ Running camelcase…')
+  })
+
+  test('humanizeToolName uses the last __ segment (lastIndexOf, not indexOf)', () => {
+    expect(formatToolStatus('plugin_a__b__c', {})).toBe('⚙️ Running c…')
+  })
+
+  test('humanizeToolName strips a leading mcp_ prefix when there is no __ segment', () => {
+    expect(formatToolStatus('mcp_standalone', {})).toBe('⚙️ Running standalone…')
+  })
 })
 
 describe('reminder/alert live-status labels', () => {
