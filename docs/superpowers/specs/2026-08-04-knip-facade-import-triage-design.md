@@ -50,6 +50,11 @@ The facade/barrel pattern is deeply embedded and deliberately mixed:
 
 ### Per-symbol triage (all 180 flagged bindings classified)
 
+Counts below are pre-execution estimates from a prototype classifier; the
+implementation plan's knip-report-driven codemod re-derives the authoritative
+split during Task 1 (invariants: 166 knip-flagged bindings in scope, 4
+frozen-kept, 162 classified).
+
 | Class | Symbols | Consumer reality | Fix |
 | --- | --- | --- | --- |
 | A | 69 (~127 import sites) | Production imports the symbol, but from the concrete module | Repoint production imports to the facade |

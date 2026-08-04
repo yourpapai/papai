@@ -29,9 +29,11 @@ See LICENSE in the project root for details.
 - The codemod stays **uncommitted** for the whole plan and is deleted in Task 5. It must still be typecheck-clean (tsgo checks the whole tree).
 - Error extraction convention: `error instanceof Error ? error.message : String(error)`.
 
-## Anchor Data (classification ground truth)
+## Anchor Data (classification ground truth — PRELIMINARY)
 
-The codemod's `analyze` output MUST match these per-facade classes (derived from the knip 6.29 report on commit `2c8e04b9b`; totals **A=58, B=65, C=39**). Whole-facade exclusions (script skips these): `src/providers/public-types.ts` (published surface), `src/coding-sessions/session-record.ts` (compat boundary). Per-binding frozen keeps (script skips): `SessionRecord` in `src/coding-sessions/store.ts`, `pollAlertsOnce` in `src/deferred-prompts/poller.ts`, `recentLlm` + `pendingTraces` in `src/debug/state-collector.ts`.
+> **Status: preliminary.** This table was derived by a looser prototype classifier and contains known classification errors (e.g. `ChatProviderConfigField` in `src/chat/types.ts` listed as B; `rg` shows zero consumers → it is C). Task 1's knip-report-driven codemod produces the authoritative classification in `triage.json` (invariants: 166 knip-flagged bindings in scope, exactly 4 frozen-kept bindings, A+B+C = 162); the controller syncs this table from the Task 1 report before Task 2 dispatches. Tasks 2–4 consume `triage.json`, never this table directly.
+
+Per-facade classes from the knip 6.29 report on commit `2c8e04b9b` as classified by the preliminary prototype (totals **A=58, B=65, C=39** — superseded by Task 1 output). Whole-facade exclusions (script skips these): `src/providers/public-types.ts` (published surface), `src/coding-sessions/session-record.ts` (compat boundary). Per-binding frozen keeps (script skips; expected exactly these 4): `SessionRecord` in `src/coding-sessions/store.ts`, `pollAlertsOnce` in `src/deferred-prompts/poller.ts`, `recentLlm` + `pendingTraces` in `src/debug/state-collector.ts`.
 
 | Facade | A (repoint prod → facade) | B (repoint tests → concrete; prune) | C (prune dead) |
 | --- | --- | --- | --- |
@@ -155,13 +157,6 @@ const FACADES = [
 const EXCLUDE_FACADES = new Set([
   'src/providers/public-types.ts', // published papai/plugin-types surface
   'src/coding-sessions/session-record.ts', // declared compat boundary
-])
-
-const FROZEN_KEEP = new Set([
-  'src/coding-sessions/store.tsSessionRecord',
-  'src/deferred-prompts/poller.tspollAlertsOnce',
-  'src/debug/state-collector.tsrecentLlm',
-  'src/debug/state-collector.tspendingTraces',
 ])
 
 const FROZEN_FILES = new Set([
@@ -392,52 +387,118 @@ interface Classified {
   manual: Consumer[]
 }
 
-function analyze(): { items: Classified[]; counts: Record<ClassLetter, number> } {
+interface FrozenKeep {
+  facade: string
+  symbol: string
+  files: string[]
+}
+
+// ---- knip-grounded flagged set ---------------------------------------------
+
+// Runs knip with the pre-ignore config extracted from git history and parses
+// its Unused exports/types report. The current knip.config.ts (which contains
+// the facade ignore entries this refactor removes) is swapped out for the
+// duration of the run and always restored. The flagged set MUST come from
+// knip itself: its used-in-file and type/value semantics are not cheaply
+// reproducible (a self-derived version misclassified bindings knip never
+// flagged, e.g. locally-referenced type re-exports).
+function flaggedFromKnip(): Map<string, Set<string>> {
+  const configPath = path.join(ROOT, 'knip.config.ts')
+  const current = readFileSync(configPath, 'utf8')
+  // 2c8e04b9b is the commit that added the facade ignore entries; its parent
+  // holds the pre-ignore config. If the branch was rebased, rediscover it via
+  // git log --oneline --grep="adapt to msw-storybook-addon" and use that
+  // commit's parent.
+  const prev = execFileSync('git', ['show', '2c8e04b9b^:knip.config.ts'], { cwd: ROOT }).toString()
+  let out = ''
+  writeFileSync(configPath, prev)
+  try {
+    try {
+      out = execFileSync('bunx', ['knip-bun', '--strict', '--no-gitignore'], {
+        cwd: ROOT,
+        maxBuffer: 64 * 1024 * 1024,
+      }).toString()
+    } catch (error) {
+      const stdout = (error as { stdout?: Buffer | string }).stdout
+      out = (stdout ?? '').toString()
+      if (out === '') throw error
+    }
+  } finally {
+    writeFileSync(configPath, current)
+  }
+  const flagged = new Map<string, Set<string>>()
+  for (const line of out.split('\n')) {
+    const m = /^(\S+)\s+(?:type\s+)?([\w/.-]+\.ts):\d+:\d+\s*$/.exec(line.trim())
+    if (m === null) continue
+    const file = m[2] ?? ''
+    const set = flagged.get(file) ?? new Set<string>()
+    set.add(m[1] ?? '')
+    flagged.set(file, set)
+  }
+  return flagged
+}
+
+function analyze(): { items: Classified[]; counts: Record<ClassLetter, number>; frozenKept: FrozenKeep[] } {
+  const flagged = flaggedFromKnip()
   const facadeSet = new Set(FACADES.filter((f) => !EXCLUDE_FACADES.has(f)))
   const consumers = scanConsumers(facadeSet)
   const items: Classified[] = []
+  const frozenKept: FrozenKeep[] = []
+  let flaggedInScope = 0
   for (const facade of facadeSet) {
-    for (const b of facadeBindings(facade)) {
-      if (FROZEN_KEEP.has(`${facade} ${b.symbol}`)) continue
-      if (b.source === null) {
-        console.error(`WARN: no concrete source for ${b.symbol} in ${facade}; skipping`)
+    const flaggedHere = flagged.get(facade) ?? new Set<string>()
+    const bindings = facadeBindings(facade)
+    for (const symbol of flaggedHere) {
+      flaggedInScope += 1
+      const b = bindings.find((x) => x.symbol === symbol)
+      if (b === undefined) {
+        console.error(`WARN: knip-flagged ${symbol} not found among ${facade} export bindings; skipping`)
         continue
       }
-      const viaFacade = consumers.get(facade)?.get(b.symbol) ?? []
-      const viaSource = consumers.get(b.source)?.get(b.symbol) ?? []
-      const frozen = [...viaFacade, ...viaSource].filter((c) => isFrozen(c.file))
-      if (frozen.length > 0) {
-        console.error(`WARN: ${b.symbol} (${facade}) consumed by frozen files: ${frozen.map((c) => c.file).join(', ')}; skipping`)
+      if (b.source === null) {
+        console.error(`WARN: no concrete source for ${symbol} in ${facade}; skipping`)
+        continue
+      }
+      const source = b.source
+      const viaFacade = consumers.get(facade)?.get(symbol) ?? []
+      const viaSource = consumers.get(source)?.get(symbol) ?? []
+      // Frozen files cannot be edited: a binding they import VIA THE FACADE
+      // can only be kept (its facade ignore entry stays). Class A repointing
+      // is still safe (the binding survives); only B/C pruning is blocked.
+      const frozenViaFacade = viaFacade.filter((c) => isFrozen(c.file))
+      const prodViaSource = viaSource.filter((c) => !isTestFile(c.file))
+      if (frozenViaFacade.length > 0 && prodViaSource.length === 0) {
+        frozenKept.push({ facade, symbol, files: frozenViaFacade.map((c) => c.file) })
         continue
       }
       const prodViaFacade = viaFacade.filter((c) => !isTestFile(c.file))
       if (prodViaFacade.length > 0) continue // already used via facade; knip would not flag it
-      const prodViaSource = viaSource.filter((c) => !isTestFile(c.file))
       const testViaFacade = viaFacade.filter((c) => isTestFile(c.file))
       const testViaSource = viaSource.filter((c) => isTestFile(c.file))
       const isManual = (c: Consumer): boolean => c.kind !== 'named' || CONTRACT_TESTS.has(c.file)
       if (prodViaSource.length > 0) {
         items.push({
-          facade, symbol: b.symbol, isType: b.isType, source: b.source, cls: 'A',
+          facade, symbol, isType: b.isType, source, cls: 'A',
           prodConsumers: prodViaSource.filter((c) => !isManual(c)),
           testConsumersViaFacade: [],
           manual: [...prodViaSource.filter(isManual), ...testViaFacade.filter(isManual)],
         })
       } else if (testViaFacade.length > 0 || testViaSource.length > 0) {
         items.push({
-          facade, symbol: b.symbol, isType: b.isType, source: b.source, cls: 'B',
+          facade, symbol, isType: b.isType, source, cls: 'B',
           prodConsumers: [],
           testConsumersViaFacade: testViaFacade.filter((c) => !isManual(c)),
           manual: [...testViaFacade.filter(isManual), ...testViaSource.filter(isManual)],
         })
       } else {
-        items.push({ facade, symbol: b.symbol, isType: b.isType, source: b.source, cls: 'C', prodConsumers: [], testConsumersViaFacade: [], manual: [] })
+        items.push({ facade, symbol, isType: b.isType, source, cls: 'C', prodConsumers: [], testConsumersViaFacade: [], manual: [] })
       }
     }
   }
   const counts: Record<ClassLetter, number> = { A: 0, B: 0, C: 0 }
   for (const it of items) counts[it.cls] += 1
-  return { items, counts }
+  console.log(`knip-flagged bindings in scope: ${flaggedInScope}`)
+  return { items, counts, frozenKept }
 }
 
 // ---- Edit engine -----------------------------------------------------------
@@ -648,10 +709,12 @@ function applyA(dryRun: boolean): void {
 // ---- Main ------------------------------------------------------------------
 
 if (MODE === 'analyze') {
-  const { items, counts } = analyze()
+  const { items, counts, frozenKept } = analyze()
   const manual = items.flatMap((i) => i.manual.map((c) => ({ file: c.file, symbol: i.symbol, reason: c.kind })))
-  writeFileSync(path.join(ROOT, TRIAGE_JSON), JSON.stringify({ items, manual, counts }, null, 1))
-  console.log(`counts: A=${counts.A} B=${counts.B} C=${counts.C} (expected A=58 B=65 C=39)`)
+  writeFileSync(path.join(ROOT, TRIAGE_JSON), JSON.stringify({ items, manual, counts, frozenKept }, null, 1))
+  console.log(`counts: A=${counts.A} B=${counts.B} C=${counts.C} (expect A+B+C = 162)`)
+  console.log(`frozen-kept bindings: ${frozenKept.length} (expected 4)`)
+  for (const f of frozenKept) console.log(`  ${f.symbol}  ${f.facade} <- ${f.files.join(', ')}`)
   console.log(`manual consumers: ${manual.length}`)
   for (const m of manual) console.log(`  ${m.symbol} <- ${m.file} (${m.reason})`)
 } else if (MODE === 'apply-c') {
@@ -672,9 +735,11 @@ Note: the script is written for this repo's strict tsconfig (`noUncheckedIndexed
 
 Run: `bun scripts/knip-facade-triage/triage.ts analyze`
 Expected:
-- `counts: A=58 B=65 C=39 (expected A=58 B=65 C=39)` — counts SHOULD match. The analyzer's namespace/dynamic symbol-usage checks are stricter than the anchor derivation, so a small deviation is tolerable **only if** every differing binding can be explained against the Anchor Data table (e.g. a substring-level false positive in the anchors). Branch drift (facades that gained/lost bindings since `d599caa53`) requires re-deriving the anchors and updating this plan via the syncing-plan-with-code skill before proceeding.
-- No `WARN` lines about frozen files. A frozen-file WARN means a frozen consumer appeared that the Anchor Data does not know about — stop and re-check the freeze list.
-- `manual consumers:` list printed. Expected members: the four contract-test files (for `PLUGIN_MCP_TOKEN_TTL_SECONDS` and any Class B bindings they reference) plus possibly a small number of namespace/dynamic consumers. Record the list for Task 3 Step 3.
+- `knip-flagged bindings in scope: 166` — the codemod runs knip live with the pre-ignore config from git history, so the count reflects the current tree (179 knip findings across the 40 report files, minus the 13 bindings in the two excluded facades; the already-pruned `KaneoSearchResponseSchema` no longer appears). A different number means branch drift — stop and re-check.
+- `frozen-kept bindings: 4 (expected 4)` — exactly `SessionRecord` (src/coding-sessions/store.ts), `pollAlertsOnce` (src/deferred-prompts/poller.ts), `recentLlm` + `pendingTraces` (src/debug/state-collector.ts). Any other frozen-kept binding is a STOP condition: a frozen file imports it via the facade and the Anchor Data does not know about it — re-check the freeze list.
+- `counts: A=.. B=.. C=.. (expect A+B+C = 162)` — the split is the NEW authoritative anchor and replaces the preliminary table above (the codemod is knip-report-driven; the preliminary table's known classification errors, e.g. `ChatProviderConfigField` listed as B where `rg` shows zero consumers, do not recur). Record the actual split and the per-facade breakdown from `triage.json` in your report — the controller syncs the plan's Anchor Data from it before Task 2.
+- No `WARN` lines. Any WARN (knip-flagged binding not found in a facade, or missing concrete source) requires explanation in the report.
+- `manual consumers:` list printed. Expected members: the four contract-test files (for `PLUGIN_MCP_TOKEN_TTL_SECONDS` and any Class A/B bindings they reference) plus possibly a small number of namespace/dynamic consumers. Record the list for Task 3 Step 3.
 
 - [ ] **Step 3: Verify codemod is typecheck-clean**
 
@@ -703,7 +768,7 @@ No commit in this task — tooling stays uncommitted.
 - [ ] **Step 1: Apply pruning**
 
 Run: `bun scripts/knip-facade-triage/triage.ts apply-c`
-Expected: 39 `prune <symbol> from <facade>` lines; `10 facade files edited` (count may be ±1 if a statement rebuild merged lines).
+Expected: one `prune <symbol> from <facade>` line per Class C binding in `triage.json` (preliminary count: 39; the Task 1 report carries the authoritative number).
 
 - [ ] **Step 2: Review the diff**
 
@@ -822,7 +887,7 @@ Verify `scripts/knip-facade-triage/` is NOT staged before committing.
 - [ ] **Step 1: Dry-run and review cycle report**
 
 Run: `bun scripts/knip-facade-triage/triage.ts apply-a --dry-run`
-Expected: ~127 `repoint` lines. Scrutinize any `CYCLE:` lines: each names a (symbol, consumer) pair the codemod refuses to repoint. Accept the fallback (those bindings get pruned in Step 3) unless the cycle looks spurious — then investigate the facade's import graph before proceeding.
+Expected: one `repoint` line per (Class A symbol, prod consumer) pair in `triage.json`. Scrutinize any `CYCLE:` lines: each names a (symbol, consumer) pair the codemod refuses to repoint. Accept the fallback (those bindings get pruned in Step 3) unless the cycle looks spurious — then investigate the facade's import graph before proceeding.
 
 - [ ] **Step 2: Apply repointing**
 
@@ -944,7 +1009,7 @@ Expected: all PR checks green, including the `Checks` job (which runs the serial
 
 ## Self-Review Notes (completed)
 
-- **Spec coverage:** triage classes (Tasks 2–4), contract-test trims (Task 3 Step 3), frozen-file constraint (codemod `FROZEN_KEEP` + throw guard), cycle fallback (Task 4 Steps 1–3), config end state (Task 5 Step 1), verification incl. flake caveat (Task 5 Step 5), 4-commit strategy (Tasks 2–5) — all covered.
+- **Spec coverage:** triage classes (Tasks 2–4), contract-test trims (Task 3 Step 3), frozen-file constraint (codemod via-facade frozen guard + throw guard), cycle fallback (Task 4 Steps 1–3), config end state (Task 5 Step 1), verification incl. flake caveat (Task 5 Step 5), 4-commit strategy (Tasks 2–5) — all covered.
 - **Deviation from spec (deliberate):** the spec's execution model gates per-facade in dependency order; the plan gates per-class batch (Tasks 2–4), matching the spec's own per-class commit strategy. Per-facade isolation is preserved inside each batch by the codemod's deterministic per-symbol edits plus the diff-review step before each gate.
 - **Anchors:** A=58/B=65/C=39 totals plus per-facade table; Task 1 Step 2 halts on unexplained mismatch, preventing silent drift execution. A repo-wide scan confirmed zero aliased re-exports (`export { a as b }`) in the 40 facades, so the codemod's name mapping is identity everywhere; alias-handling code paths exist but are unused.
 - **Type consistency:** `triage.json` `items` shape produced in Task 1 matches what `apply-*` modes consume (`Classified`); task Interfaces blocks reference the same field names.
