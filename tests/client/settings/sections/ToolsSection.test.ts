@@ -44,6 +44,22 @@ const busyPayload: ToolsResponse = {
   ],
 }
 
+const groupedBusyPayload: ToolsResponse = {
+  contextId: 'user:1',
+  activePreset: 'allow-all',
+  hasStoredDefaults: true,
+  domains: [
+    {
+      domain: 'plugin',
+      summary: 'partial',
+      tools: [
+        { name: 'plugin_acp__start', permission: 'ask', risk: 'open-world', group: 'acp' },
+        { name: 'plugin_acp__list', permission: 'allow', risk: 'read', group: 'acp' },
+      ],
+    },
+  ],
+}
+
 // Three-state payload using new schema
 const toolsPayload = {
   contextId: 'user:1',
@@ -399,7 +415,7 @@ describe('ToolsSection', () => {
     void unmount(component)
   })
 
-  test('the clear-defaults button is disabled while a preset apply is in flight, and the preset confirm bar survives', async () => {
+  test('the clear-defaults trigger is absent while a preset apply is in flight, and the preset confirm bar survives', async () => {
     const gate = deferred()
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
@@ -417,15 +433,12 @@ describe('ToolsSection', () => {
     flushSync()
     target.querySelector<HTMLButtonElement>('[data-testid="preset-confirm-apply"]')!.click()
     flushSync()
-    const clearBtn = target.querySelector<HTMLButtonElement>('[data-testid="tool-defaults-clear"]')
-    expect(clearBtn).not.toBeNull()
-    expect(clearBtn!.disabled).toBe(true)
-    clearBtn!.click()
-    flushSync()
+    expect(target.querySelector('[data-testid="tool-defaults-clear"]')).toBeNull()
     expect(target.querySelector('[data-testid="preset-confirm"]')).not.toBeNull()
     expect(target.querySelector('[data-testid="tool-defaults-clear-confirm"]')).toBeNull()
     gate.resolve(busyPayload)
     await drain()
+    expect(target.querySelector('[data-testid="tool-defaults-clear"]')).not.toBeNull()
     void unmount(component)
   })
 
@@ -452,6 +465,123 @@ describe('ToolsSection', () => {
     expect(target.querySelector('[data-testid="preset-confirm"]')).toBeNull()
     gate.resolve({ ...busyPayload, hasStoredDefaults: false })
     await drain()
+    void unmount(component)
+  })
+
+  test('row and per-tool permission controls are disabled while a preset apply is in flight', async () => {
+    const gate = deferred()
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, {
+      target,
+      props: {
+        contextId: 'user:1',
+        fetchToolsFn: () => Promise.resolve(groupedBusyPayload),
+        applyToolPresetFn: () => gate.promise,
+      },
+    })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="domain-expand-plugin"]')!.click()
+    flushSync()
+    const domainToggle = (): HTMLButtonElement =>
+      target.querySelector<HTMLButtonElement>('[data-testid="domain-toggle-plugin"]')!
+    const groupToggle = (): HTMLButtonElement =>
+      target.querySelector<HTMLButtonElement>('[data-testid="group-toggle-acp"]')!
+    const toolOption = (): HTMLButtonElement =>
+      target.querySelector<HTMLButtonElement>('[data-testid="tool-perm-plugin_acp__start-deny"]')!
+    expect(domainToggle().disabled).toBe(false)
+    expect(groupToggle().disabled).toBe(false)
+    expect(toolOption().disabled).toBe(false)
+    target.querySelector<HTMLButtonElement>('[data-testid="preset-read-only"]')!.click()
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="preset-confirm-apply"]')!.click()
+    flushSync()
+    expect(domainToggle().disabled).toBe(true)
+    expect(groupToggle().disabled).toBe(true)
+    expect(toolOption().disabled).toBe(true)
+    gate.resolve(groupedBusyPayload)
+    await drain()
+    expect(domainToggle().disabled).toBe(false)
+    expect(groupToggle().disabled).toBe(false)
+    expect(toolOption().disabled).toBe(false)
+    void unmount(component)
+  })
+
+  test('row and per-tool permission controls are disabled while a clear-defaults request is in flight', async () => {
+    const gate = deferred()
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, {
+      target,
+      props: {
+        contextId: 'user:1',
+        fetchToolsFn: () => Promise.resolve(groupedBusyPayload),
+        clearPresetFn: () => gate.promise,
+      },
+    })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="domain-expand-plugin"]')!.click()
+    flushSync()
+    const domainToggle = (): HTMLButtonElement =>
+      target.querySelector<HTMLButtonElement>('[data-testid="domain-toggle-plugin"]')!
+    const groupToggle = (): HTMLButtonElement =>
+      target.querySelector<HTMLButtonElement>('[data-testid="group-toggle-acp"]')!
+    const toolOption = (): HTMLButtonElement =>
+      target.querySelector<HTMLButtonElement>('[data-testid="tool-perm-plugin_acp__start-deny"]')!
+    target.querySelector<HTMLButtonElement>('[data-testid="tool-defaults-clear"]')!.click()
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="tool-defaults-clear-confirm-apply"]')!.click()
+    flushSync()
+    expect(domainToggle().disabled).toBe(true)
+    expect(groupToggle().disabled).toBe(true)
+    expect(toolOption().disabled).toBe(true)
+    gate.resolve({ ...groupedBusyPayload, hasStoredDefaults: false })
+    await drain()
+    expect(domainToggle().disabled).toBe(false)
+    expect(groupToggle().disabled).toBe(false)
+    expect(toolOption().disabled).toBe(false)
+    void unmount(component)
+  })
+
+  test('the clear-defaults trigger is hidden while a preset confirmation is open and returns on cancel', async () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, {
+      target,
+      props: {
+        contextId: 'user:1',
+        fetchToolsFn: () => Promise.resolve(busyPayload),
+        clearPresetFn: () => Promise.resolve(busyPayload),
+      },
+    })
+    await drain()
+    expect(target.querySelector('[data-testid="tool-defaults-clear"]')).not.toBeNull()
+    target.querySelector<HTMLButtonElement>('[data-testid="preset-read-only"]')!.click()
+    flushSync()
+    expect(target.querySelector('[data-testid="preset-confirm"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="tool-defaults-clear"]')).toBeNull()
+    target.querySelector<HTMLButtonElement>('[data-testid="preset-confirm-cancel"]')!.click()
+    flushSync()
+    expect(target.querySelector('[data-testid="preset-confirm"]')).toBeNull()
+    expect(target.querySelector('[data-testid="tool-defaults-clear"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('the active-preset checkmark is marked decorative', async () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, {
+      target,
+      props: { contextId: 'user:1', fetchToolsFn: () => Promise.resolve(busyPayload) },
+    })
+    await drain()
+    const active = target.querySelector<HTMLButtonElement>('[data-testid="preset-allow-all"]')!
+    const glyph = active.querySelector('[aria-hidden="true"]')
+    expect(glyph).not.toBeNull()
+    expect(glyph!.textContent).toContain('✓')
+    expect(active.textContent).toContain('Allow all')
+    const inactive = target.querySelector<HTMLButtonElement>('[data-testid="preset-read-only"]')!
+    expect(inactive.querySelector('[aria-hidden="true"]')).toBeNull()
     void unmount(component)
   })
 

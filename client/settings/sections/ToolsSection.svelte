@@ -227,7 +227,7 @@
           ariaPressed={active}
           testid={`preset-${preset.value}`}
           onClick={() => requestPreset(preset.value)}>
-          {#snippet children()}{active ? '✓ ' : ''}{preset.label}{/snippet}
+          {#snippet children()}{#if active}<span aria-hidden="true">✓ </span>{/if}{preset.label}{/snippet}
         </Btn>
       </span>
     {/each}
@@ -257,7 +257,7 @@
     </div>
   {/if}
 
-  {#if clearPresetFn !== undefined && storedDefaults && !pendingClear}
+  {#if clearPresetFn !== undefined && storedDefaults && !pendingClear && pendingPreset === null}
     <div class="settings-tools__clear-row">
       <Btn
         variant="ghost"
@@ -310,7 +310,12 @@
               <Pill tone={summaryTone(domain.summary)}>{#snippet children()}{domain.summary}{/snippet}</Pill>
             </span>
             <span class="settings-tools__domain-toggle">
-              <Btn variant="outline" size="sm" testid={`domain-toggle-${domain.domain}`} onClick={() => void onSetDomainPermission(domain.domain, domain.summary)}>
+              <Btn
+                variant="outline"
+                size="sm"
+                disabled={applying || clearing}
+                testid={`domain-toggle-${domain.domain}`}
+                onClick={() => void onSetDomainPermission(domain.domain, domain.summary)}>
                 {#snippet children()}{domain.summary === 'deny' ? 'Allow all' : domain.summary === 'ask' ? 'Deny all' : domain.summary === 'allow' ? 'Ask all' : 'Allow all'}{/snippet}
               </Btn>
             </span>
@@ -328,6 +333,7 @@
                       <Btn
                         variant="outline"
                         size="sm"
+                        disabled={applying || clearing}
                         testid={`group-toggle-${groupName}`}
                         onClick={() => void onSetGroupPermission(domain.domain, groupName, summary)}>
                         {#snippet children()}{summary === 'deny' ? 'Allow all' : summary === 'ask' ? 'Deny all' : summary === 'allow' ? 'Ask all' : 'Allow all'}{/snippet}
@@ -344,6 +350,7 @@
                         options={PERM_OPTIONS}
                         value={tool.permission}
                         ariaLabel={`Permission for ${tool.name}`}
+                        disabled={applying || clearing}
                         onChange={(p) => void onSetToolPermission(tool.name, p as ToolPermission)}
                         testidPrefix={`tool-perm-${tool.name}`} />
                     </div>
@@ -452,7 +459,7 @@
     color: var(--accent);
   }
   .settings-tools__presets-hint {
-    margin: 0 0 12px;
+    margin: 0 0 var(--s3);
     font-size: 11px;
     color: var(--text-dim);
   }
@@ -469,6 +476,6 @@
   }
   .settings-tools__clear-row {
     display: flex;
-    margin-bottom: 12px;
+    margin-bottom: var(--s3);
   }
 </style>
