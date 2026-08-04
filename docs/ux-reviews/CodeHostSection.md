@@ -39,7 +39,7 @@ See LICENSE in the project root for details.
 | 5. Content & language           | pass  | The empty state now explains what the connection is for and what scopes the token needs; the label collision between the section title and the `kind` field is resolved (`kind` label is now "Host type").|
 | 6. Accessibility                | pass  | `aria-required` now travels through `field-context.ts` to the actual control; the page title is a real `<h2>`; controls clear the 24px target floor.  |
 | 7. Responsive / layout          | pass  | Field cards and wrapping editor rows reflow cleanly at 640; a long self-hosted URL stays contained inside the input (verified in the long-value shot). |
-| 8. Spacing, alignment & sizing  | warn  | The actions row now declares `gap: var(--gap-tight)` and matches the field-card content edge, but the first-setup hint paragraph has no `max-width` and runs as one ~1230px unbroken line. |
+| 8. Spacing, alignment & sizing  | pass  | The actions row declares `gap: var(--gap-tight)` and matches the field-card content edge; the first-setup hint paragraph is now capped at the shared 760px measure (~100 characters) via `.placeholder`'s `max-width`, rather than running unbounded. |
 | 9. Interaction & micro-states   | pass  | Save disabled→enabled, hover, "Saving…"/"Clearing…", the focus ring, and now `Input`'s own `disabled` prop during save/refresh are all verified working. |
 
 ## Findings
@@ -126,10 +126,12 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 - **Source:** `client/shared/tokens.css:63` now defines `--control-h-sm: 24px` (`--control-h-md: 28px` at `:64`); `Btn.svelte`'s `.ui-btn--sm` consumes it directly (`height: var(--control-h-sm)`); all four buttons in this section (`CodeHostSection.svelte:299`, `:321`, `:333`, `:345`) still pass `size="sm"` but now resolve to 24px, clearing the WCAG 2.2 AA floor
 - **Notes:** `IconButton` (`md`, 28px) and the section's `sm` controls (24px) are still two different heights, but both now individually clear the floor, so the internal-inconsistency remark no longer carries an accessibility failure — it is cosmetic only and not re-opened as a separate finding.
 
-### [Med] The first-setup hint paragraph runs as one unbroken ~1230px line with no `max-width`
+### [Low] The first-setup hint paragraph runs as one unbroken ~1230px line with no `max-width`
 
 - **Id:** code-host-setup-hint-unbounded-measure
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `238e59b72` ("fix(settings): cap placeholder prose at a reading measure") (2026-08-04). `.placeholder` now carries `max-width: var(--content-max)` (`client/settings/settings.css:119`), the same cap `.settings-group` uses (`client/settings/settings.css:26`).
+- **Correction:** The "~1230px" symptom does not reproduce in the shipped app. `CodeHostSection` renders inside `<div class="settings-group settings-advanced">` (`client/settings/SettingsApp.svelte:234`, `:254`), which is already capped at `max-width: var(--content-max)` (`client/settings/settings.css:26`), `760px` at `client/shared/tokens.css:46`. The 1230px measurement was an artifact of Storybook rendering the section standalone, outside that ancestor's width cap. The surviving defect is the narrower one: 760px of 11px text is still roughly 100 characters, above a comfortable 65-75ch measure.
 - **Dimension:** 8. Spacing, alignment & sizing
 - **Where visible:** Incomplete, Empty — the helper paragraph above the fields spans the full desktop viewport width, wrapping only where the viewport itself ends
 - **Source:** the paragraph renders with class `placeholder` (`CodeHostSection.svelte:280`), and `.placeholder` in `client/settings/settings.css:97`–`99` sets only `color: var(--text-muted)` — no `max-width` or measure constraint at all, unlike `.settings-gate` in the same file (`:100`–`106`), which caps at `max-width: 540px`

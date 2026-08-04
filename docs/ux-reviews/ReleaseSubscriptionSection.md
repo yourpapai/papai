@@ -31,7 +31,7 @@ finding is narrowed to a residual edge case rather than closed outright.
 | 5. Content & language           | pass  | Caption states channel + cadence (DM, per-release, no resend); the initial load error is now framed ("Couldn't load subscription"). |
 | 6. Accessibility                | pass  | Real `<button>`; `Btn` now owns its own `:focus-visible` ring; caption/error contrast within app norms.                  |
 | 7. Responsive / layout          | pass  | Header and `ErrorState` reflow cleanly at ~640px; button stays inline and unclipped; caption wraps.                      |
-| 8. Spacing, alignment & sizing  | warn  | The mutation-error line now has a token margin, but the reload-failure inline line still has no margin token.           |
+| 8. Spacing, alignment & sizing  | pass  | Both the mutation-error line and the reload-failure inline line now carry a token margin (`.settings-section__action-error` and shared `.status-error`), so neither relies on the UA default `<p>` margin. |
 | 9. Interaction & micro-states   | pass  | Toggle shows a "Subscribing…/Unsubscribing…" busy label; `Btn` carries an intrinsic `:focus-visible` ring.               |
 
 ## Findings
@@ -70,7 +70,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [Low] Reload-failure inline error line has no spacing token and is unframed
 
 - **Id:** release-subscription-error-text-spacing
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `07007a48b` ("fix(settings): give status text a token margin instead of the UA default") (2026-08-04). `.status-error` now carries `margin: var(--gap-inline) 0 0` (`client/settings/settings.css:109`), so the reload-failure line's vertical spacing comes from the spacing scale rather than the browser's default `<p>` margin, and the caption no longer shifts by an unstyled amount when the line appears. `.status-success` gained the same margin (`client/settings/settings.css:113`) so an error and a success message occupy identical space in the same slot.
 - **Dimension:** 8. Spacing, alignment & sizing / 4. Feedback & state
 - **Where visible:** Not story-captured (requires a successful initial load followed by a failing background reload, i.e. a failed mutation's post-toggle `load()` call while `enabled` is already known) — confirmed in source only.
 - **Detail:** The original finding (raw "boom" crowding the caption in the top-level `Error` state) is gone: that state now renders the fully-spaced `ErrorState` component (see above). What remains is narrower — `fcf272983` deliberately kept a lighter-weight inline path for a reload failure that happens *after* `enabled` is already known (`{#if loadError !== null}<p class="status-error" role="alert" ...>{loadError}</p>{/if}`, `client/settings/sections/ReleaseSubscriptionSection.svelte:91`). Unlike the sibling `.settings-section__action-error` class used for mutation errors, which now has an explicit `margin: var(--gap-inline) 0 0` (`:117`), the shared `.status-error` class is still color-only (`client/settings/settings.css:91-93`), so this line's vertical spacing comes only from the browser's UA default `<p>` margin rather than the spacing scale, and the caption's position shifts by that unstyled amount whenever the line appears/disappears.
