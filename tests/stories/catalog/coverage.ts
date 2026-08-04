@@ -289,6 +289,7 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-task-youtrack-real-fields',
   'SCN-task-youtrack-real-error',
   'SCN-task-youtrack-real-gating',
+  'SCN-task-youtrack-real-workflow',
   // @0 — real YouTrack provider conformance sweep, grouped by domain (t0-real-youtrack-provider)
   'SCN-youtrack-conformance-tasks',
   'SCN-youtrack-conformance-search',
@@ -1440,6 +1441,12 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     verifiedAt: '2026-07-27',
     storyIds: [
       'tests/stories/tasks/youtrack-real.story.test.ts#SCN-task-youtrack-real-gating: skips member provisioning for a provider without members.provision',
+    ],
+  },
+  'SCN-task-youtrack-real-workflow': {
+    verifiedAt: '2026-08-04',
+    storyIds: [
+      'tests/stories/tasks/youtrack-real.story.test.ts#SCN-task-youtrack-real-workflow: classifies a workflow-validation error naming required fields',
     ],
   },
   'SCN-youtrack-conformance-tasks': {

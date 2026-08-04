@@ -375,6 +375,16 @@ const handleIssues = (ctx: FakeYouTrackCtx): Response | undefined => {
     const projectId = body.project?.id ?? ''
     const project = state.projects.get(projectId)
     if (project === undefined) return errorResponse(404, 'project not found')
+    if (typeof body.summary === 'string' && body.summary.includes('workflow-required')) {
+      return json(
+        {
+          error: 'Assertion failed',
+          error_description: 'Requires these custom fields: Priority, Due Date',
+          error_type: 'workflow',
+        },
+        400,
+      )
+    }
     const dbId = nextId(state, 'issue')
     const number = [...state.issues.values()].filter((i) => i.projectDbId === project.id).length + 1
     const issue: StoredIssue = {

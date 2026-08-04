@@ -96,6 +96,46 @@ scenario(
 )
 
 scenario(
+  'SCN-task-youtrack-real-workflow: classifies a workflow-validation error naming required fields',
+  async ({ given, when, then, resolveRealTaskProvider }) => {
+    const alice = given.user('alice')
+    const dm = given.dm(alice)
+    const instance = given.taskInstance(undefined, 'youtrack')
+    given.assign(dm, instance)
+    given.llm([callCapability('tasks.projects.create', { name: 'Workflow' }), answer('Project created.')])
+
+    await when.message(alice, dm, 'Create a project called Workflow')
+    then.replyTo(alice).equals('Project created.')
+
+    const provider = await resolveRealTaskProvider(dm)
+    const projects = (await provider.listProjects?.()) ?? []
+    const projectId = projects[0]?.id ?? ''
+
+    given.llm([
+      callCapability('tasks.create', { projectId, title: 'workflow-required task' }),
+      answer('The project workflow requires fields: Priority, Due Date.'),
+      answer('The project workflow requires fields: Priority, Due Date.'),
+    ])
+    await when.message(alice, dm, 'Create a task called workflow-required task')
+    then.replyTo(alice).contains('Priority')
+
+    const failure = await provider
+      .createTask({ projectId, title: 'workflow-required task' })
+      .catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(YouTrackClassifiedError)
+    if (failure instanceof YouTrackClassifiedError) {
+      expect(failure.appError.code).toBe('workflow-validation-failed')
+      if (failure.appError.code === 'workflow-validation-failed') {
+        expect(failure.appError.requiredFields).toHaveLength(2)
+        expect(failure.appError.requiredFields.map((field) => field.name)).toContain('Priority')
+        expect(failure.appError.requiredFields.map((field) => field.name)).toContain('Due Date')
+      }
+    }
+  },
+  { realTaskProvider: 'youtrack' },
+)
+
+scenario(
   'SCN-task-youtrack-real-gating: skips member provisioning for a provider without members.provision',
   async ({ given, when, then, resolveRealTaskProvider }) => {
     const bob = given.user('bob')
