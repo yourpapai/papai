@@ -196,13 +196,6 @@ import { TurnSchema, NotificationSchema, ToolFailureSchema } from './turn-assemb
 import type { Turn, Notification, ToolFailure } from './turn-assembly.js'
 
 // Re-export turn schemas from turn-assembly
-export {
-  TurnToolCallSchema,
-  TurnReplySchema,
-  TurnSchema,
-  NotificationSchema,
-  ToolFailureSchema,
-} from './turn-assembly.js'
 export type { Turn, Notification, ToolFailure } from './turn-assembly.js'
 
 // Inferred types
@@ -223,7 +216,6 @@ export type CacheEvent = z.infer<typeof CacheEventSchema>
 export type UserIdEvent = z.infer<typeof UserIdEventSchema>
 export type SchedulerTickEvent = z.infer<typeof SchedulerTickEventSchema>
 export type PollerEvent = z.infer<typeof PollerEventSchema>
-export type MessageCacheEvent = z.infer<typeof MessageCacheEventSchema>
 
 // Validation helpers
 export function parseWizard(data: unknown): Wizard {

@@ -68,11 +68,7 @@ export type ChatProviderTraits = {
   callbackDataMaxLength: number
 }>
 
-export type {
-  ChatProviderConfigField,
-  ChatProviderConfigRequirement,
-  ChatProviderDescriptor,
-} from './provider-descriptor.js'
+export type { ChatProviderConfigRequirement, ChatProviderDescriptor } from './provider-descriptor.js'
 
 /** A file to send to the user. */
 export type ChatFile = {

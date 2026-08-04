@@ -6,8 +6,6 @@
 export type {
   AttachmentRef,
   AttachmentSourceProvider,
-  AttachmentStatus,
-  SaveAttachmentInput,
   StageFileParams,
   StagedFileDownloadFn,
   StagedFileRef,
@@ -30,10 +28,8 @@ export {
   resetBlobStoreForTesting,
   setBlobStoreForTesting,
   buildBlobKey,
-  createS3BlobStore,
   getBlobStore,
   isS3Configured,
-  type BlobStore,
   type InMemoryBlobStore,
 } from './blob-store.js'
 export {

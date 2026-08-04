@@ -5,4 +5,3 @@
 
 export { routePluginMcpPaths } from './server-route.js'
 export { mintPluginMcpToken, verifyPluginMcpToken, PLUGIN_MCP_TOKEN_TTL_SECONDS } from './token.js'
-export type { PluginMcpTokenClaims } from './token.js'

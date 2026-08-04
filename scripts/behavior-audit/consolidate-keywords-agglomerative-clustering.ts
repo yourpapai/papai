@@ -28,7 +28,7 @@ export {
 import type { ClusteringProfile } from './clustering-profile.js'
 import type { ActiveState, MutableDistanceMatrix } from './consolidate-keywords-agglomerative-helpers.js'
 import type { LinkageMode } from './consolidate-keywords-clustering.js'
-export type { ActiveState, MutableDistanceMatrix } from './consolidate-keywords-agglomerative-helpers.js'
+export type { MutableDistanceMatrix } from './consolidate-keywords-agglomerative-helpers.js'
 
 type Cluster = readonly number[]
 

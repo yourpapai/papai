@@ -9,7 +9,7 @@ import type { ContextSection, ContextSnapshot } from '../chat/types.js'
 import { logger } from '../logger.js'
 import { resolveMaxTokens } from '../model-context.js'
 
-export { defaultCountTokens, prepareDefaultCountTokens, type EncodingName } from './context-tokenizer.js'
+export { defaultCountTokens, prepareDefaultCountTokens } from './context-tokenizer.js'
 export { resolveMaxTokens } from '../model-context.js'
 
 const log = logger.child({ scope: 'commands:context-collector' })

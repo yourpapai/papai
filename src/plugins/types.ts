@@ -34,7 +34,6 @@ export type {
   PluginInstance,
   PluginPromptFragment,
   PluginScheduledJob,
-  PluginScheduledJobRuntimeContext,
   PluginTaskProviderFacade,
   PluginTool,
   PluginToolRuntimeContext,

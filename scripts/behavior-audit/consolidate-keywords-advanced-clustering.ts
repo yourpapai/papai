@@ -32,7 +32,6 @@ export {
   isActive,
   setDistance,
 }
-export type { ActiveState, MutableDistanceMatrix } from './consolidate-keywords-agglomerative-clustering.js'
 
 type Cluster = readonly number[]
 

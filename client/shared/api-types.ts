@@ -15,18 +15,11 @@ import type {
   ToolCall,
   LlmTrace,
   LogEntry,
-  StateInitEvent,
-  StateStatsEvent,
-  CacheEvent,
-  UserIdEvent,
-  SchedulerTickEvent,
-  PollerEvent,
-  MessageCacheEvent,
   Turn,
   Notification,
   ToolFailure,
 } from '../../src/debug/schemas.js'
-import type { GlobalStats, StatsWindow, SubjectStats, TokenUsagePoint } from '../../src/stats/types.js'
+import type { GlobalStats, StatsWindow, TokenUsagePoint } from '../../src/stats/types.js'
 
 export type {
   Fact,
@@ -40,19 +33,11 @@ export type {
   ToolCall,
   LlmTrace,
   LogEntry,
-  StateInitEvent,
-  StateStatsEvent,
-  CacheEvent,
-  UserIdEvent,
-  SchedulerTickEvent,
-  PollerEvent,
-  MessageCacheEvent,
   Turn,
   Notification,
   ToolFailure,
   GlobalStats,
   StatsWindow,
-  SubjectStats,
   TokenUsagePoint,
 }
 

@@ -10,5 +10,5 @@ export {
   type MemberOutcome,
   type MembershipDeps,
 } from './ensure-member.js'
-export { registerMembershipSubscriber, type SubscriberHandlers } from './subscriber.js'
-export { runMembershipBackfill, type BackfillResult } from './backfill.js'
+export { registerMembershipSubscriber } from './subscriber.js'
+export { runMembershipBackfill } from './backfill.js'
