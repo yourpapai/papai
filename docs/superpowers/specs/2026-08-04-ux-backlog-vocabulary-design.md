@@ -106,12 +106,20 @@ new status, stating the meaning and the `Resolved:` requirement, and noting that
 
 ## Verification
 
-- Every existing assertion in `tests/scripts/ux-backlog.test.ts` must still hold. The suite
-  currently reports 21 cases and will report more afterwards: two of those cases are
-  `test.each(['fixed', 'superseded'])` at `:69` and `:74`, and extending those arrays to cover
-  the new statuses is the natural way to gain the accept-with-`Resolved` and
-  reject-without-`Resolved` cases for both — which adds four cases rather than rewriting any.
-  A count below 21, or any pre-existing case changed to accommodate the new statuses, means
+- `tests/scripts/ux-backlog.test.ts` currently reports 21 cases and must report more
+  afterwards. Two are `test.each(['fixed', 'superseded'])` at `:69` and `:74`; extending those
+  arrays to cover the new statuses adds four cases without rewriting any assertion.
+
+  Exactly two pre-existing cases legitimately change, and no others:
+
+  - `:139` asserts the literal row `| MembersSection | 0 | 1 | 0 | 2026-07-03 |`. The table
+    gains two columns, so this becomes `| MembersSection | 0 | 1 | 0 | 0 | 0 | 2026-07-03 |`.
+    The assertion is not weakened — it still pins an exact row.
+  - `:64` is titled *"throws on a Status outside the three values"*, which becomes false when
+    there are five. The title is corrected; its assertion (that `partial` is rejected) stands
+    unchanged, because `partial` remains invalid.
+
+  Any other pre-existing case altered, any assertion loosened, or a total below 21 means
   something regressed.
 - A new test asserts the summary table header contains a column for every member of `STATUSES`,
   so the derive-from-tuple property is enforced rather than merely intended.
