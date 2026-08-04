@@ -29,49 +29,55 @@ See LICENSE in the project root for details.
 - The codemod stays **uncommitted** for the whole plan and is deleted in Task 5. It must still be typecheck-clean (tsgo checks the whole tree).
 - Error extraction convention: `error instanceof Error ? error.message : String(error)`.
 
-## Anchor Data (classification ground truth — PRELIMINARY)
+## Anchor Data (classification ground truth — authoritative, from Task 1 codemod)
 
-> **Status: preliminary.** This table was derived by a looser prototype classifier and contains known classification errors (e.g. `ChatProviderConfigField` in `src/chat/types.ts` listed as B; `rg` shows zero consumers → it is C). Task 1's knip-report-driven codemod produces the authoritative classification in `triage.json` (invariants: 166 knip-flagged bindings in scope, exactly 4 frozen-kept bindings, A+B+C = 162); the controller syncs this table from the Task 1 report before Task 2 dispatches. Tasks 2–4 consume `triage.json`, never this table directly.
-
-Per-facade classes from the knip 6.29 report on commit `2c8e04b9b` as classified by the preliminary prototype (totals **A=58, B=65, C=39** — superseded by Task 1 output). Whole-facade exclusions (script skips these): `src/providers/public-types.ts` (published surface), `src/coding-sessions/session-record.ts` (compat boundary). Per-binding frozen keeps (script skips; expected exactly these 4): `SessionRecord` in `src/coding-sessions/store.ts`, `pollAlertsOnce` in `src/deferred-prompts/poller.ts`, `recentLlm` + `pendingTraces` in `src/debug/state-collector.ts`.
+Derived by the knip-report-driven codemod against a live knip run with the pre-ignore config (totals **A=70, B=46, C=46**; invariants verified: 166 knip-flagged bindings in scope, exactly 4 frozen-kept bindings, A+B+C = 162). Tasks 2–4 consume `triage.json`; this table is the human-readable reference of the same data. Whole-facade exclusions (script skips): `src/providers/public-types.ts` (published surface), `src/coding-sessions/session-record.ts` (compat boundary). Frozen-kept (never pruned; facades keep ignore entries): `SessionRecord` in `src/coding-sessions/store.ts`, `pollAlertsOnce` in `src/deferred-prompts/poller.ts`, `recentLlm` + `pendingTraces` in `src/debug/state-collector.ts`.
 
 | Facade | A (repoint prod → facade) | B (repoint tests → concrete; prune) | C (prune dead) |
 | --- | --- | --- | --- |
-| client/debug/dashboard-types.ts | — | AdminLlmSnapshot, BillingDetail, BillingSubject, BillingWindow, Fact, Instruction | AdminLlmKeyState, BillingRequestRow, BillingRoleTotals, CacheEvent, DeferredPrompt, GlobalStats, IdentityMappingEntry, Memo, MessageCacheEvent, PollerEvent, RecurringTask, SchedulerTickEvent, StateInitEvent, StateStatsEvent, StatsWindow, SubjectStats, TokenInfo, ToolCall, UserIdEvent, Wizard |
-| plugins/task-provider-kaneo/provider.ts | — | — | KaneoConfig |
-| plugins/task-provider-kaneo/provision.ts | — | ProvisionResult | — |
+| client/debug/dashboard-types.ts | AdminLlmSnapshot, BillingDetail, BillingRoleTotals, BillingSubject, BillingWindow, DeferredPrompt, IdentityMappingEntry, Memo, RecurringTask | AdminLlmKeyState, BillingRequestRow, Fact, Instruction, TokenInfo, ToolCall, Wizard | CacheEvent, GlobalStats, MessageCacheEvent, PollerEvent, SchedulerTickEvent, StateInitEvent, StateStatsEvent, StatsWindow, SubjectStats, UserIdEvent |
+| plugins/task-provider-kaneo/provider.ts | KaneoConfig | — | — |
+| plugins/task-provider-kaneo/provision.ts | — | — | ProvisionResult |
 | plugins/task-provider-youtrack/task-helpers.ts | mapYouTrackDueDateValue | — | — |
-| scripts/behavior-audit/consolidate-agent.ts | — | — | EntryPointHint |
+| scripts/behavior-audit/consolidate-agent.ts | EntryPointHint | — | — |
 | scripts/behavior-audit/consolidate-keywords-advanced-clustering.ts | — | activeIndices, buildCondensedDistanceMatrix, condensedIndex, createActiveState, getDistance, isActive, setDistance | ActiveState, MutableDistanceMatrix |
 | scripts/behavior-audit/consolidate-keywords-agglomerative-clustering.ts | MutableDistanceMatrix | — | ActiveState |
-| scripts/behavior-audit/consolidate-keywords.ts | — | emptyPhase1b | — |
-| scripts/behavior-audit/extract.ts | — | BehaviorAuditProgressReporter | — |
-| scripts/behavior-audit/incremental.ts | — | SelectIncrementalWorkInput | — |
-| scripts/behavior-audit/progress.ts | invalidatePhase3ForReevaluation, loadProgress, resetPhase1bAndBelow, resetPhase2AndPhase3, resetPhase3 | — | — |
+| scripts/behavior-audit/consolidate-keywords.ts | emptyPhase1b | — | — |
+| scripts/behavior-audit/extract.ts | BehaviorAuditProgressReporter | — | — |
+| scripts/behavior-audit/incremental.ts | — | — | SelectIncrementalWorkInput |
+| scripts/behavior-audit/progress.ts | invalidatePhase3ForReevaluation, loadProgress, resetPhase2AndPhase3, resetPhase3 | resetPhase1bAndBelow | — |
 | scripts/behavior-audit/report-writer.ts | DomainSummary, FailedItem | — | — |
-| src/attachments/index.ts | AttachmentRef, AttachmentSourceProvider, AttachmentStatus, SaveAttachmentInput, StagedFileDownloadFn, StoredAttachment, buildAttachmentManifest, getBlobStore, purgeExpiredStagedFiles, sanitizeForBracket, saveAttachment, searchStagedFiles | BlobStore, InMemoryBlobStore, StageFileParams, StagedFileRef, StagedFileStatus, StagedResolutionError, buildBlobKey, createInMemoryBlobStoreForTesting, createS3BlobStore, resetBlobStoreForTesting, setBlobStoreForTesting | — |
-| src/bot.ts | — | getThreadScopedStorageContextId | — |
+| src/attachments/index.ts | AttachmentRef, AttachmentSourceProvider, StagedFileDownloadFn, StoredAttachment, buildAttachmentManifest, getBlobStore, purgeExpiredStagedFiles, sanitizeForBracket, searchStagedFiles | InMemoryBlobStore, StageFileParams, StagedFileRef, StagedFileStatus, StagedResolutionError, buildBlobKey, createInMemoryBlobStoreForTesting, resetBlobStoreForTesting, saveAttachment, setBlobStoreForTesting | AttachmentStatus, BlobStore, SaveAttachmentInput, createS3BlobStore |
+| src/bot.ts | getThreadScopedStorageContextId | — | — |
 | src/chat/telegram/index.ts | — | extractReplyContext | — |
-| src/chat/types.ts | — | AuthorizationDenyReason, ChatProviderConfigField | — |
+| src/chat/types.ts | — | AuthorizationDenyReason | ChatProviderConfigField |
 | src/commands/context-collector.ts | resolveMaxTokens | — | EncodingName |
 | src/debug/schemas.ts | — | — | NotificationSchema, ToolFailureSchema, TurnReplySchema, TurnSchema, TurnToolCallSchema |
-| src/debug/state-collector.ts | — | LlmTrace, inFlightTurns, recentNotifications, recentToolFailures, recentTurns, resetTurnBuffers | — |
-| src/group-settings/registry-helpers.ts | — | — | UpsertGroupAdminObservationInput, UpsertGroupUserObservationInput, UpsertKnownGroupContextInput |
+| src/debug/state-collector.ts | resetTurnBuffers | LlmTrace, inFlightTurns, recentNotifications, recentToolFailures, recentTurns | — |
+| src/group-settings/registry-helpers.ts | UpsertGroupAdminObservationInput, UpsertGroupUserObservationInput, UpsertKnownGroupContextInput | — | — |
 | src/instances/encryption.ts | resolveInstanceConfigKey | resolveInstanceConfigKeyInfo | InstanceConfigKeyDeps, InstanceConfigKeyInfo, InstanceConfigKeyMode |
 | src/llm-orchestrator-invoke.ts | — | handleToolCallFinishEvent, handleToolCallStart | ToolCallFinishEvent, ToolCallStartEvent |
-| src/long-term-memory/store.ts | — | ListProvisionalFilter, rowToProfile | — |
-| src/mcp-server/index.ts | PluginMcpTokenClaims, mintPluginMcpToken, verifyPluginMcpToken | PLUGIN_MCP_TOKEN_TTL_SECONDS | — |
-| src/mcp/index.ts | McpEndpointConfig, McpPluginConfig, PluginMcpDescriptor, convertMcpToolsToToolSet, mcpPool | McpConnectionPool, McpServerInfo, McpServerStatus, PluginPoolAdapter | — |
-| src/message-cache/index.ts | CachedMessage, MessageScope, SearchFilters, cacheMessage, getMessage, getMessageByContext, getMessageContext, searchMessages | MessageContextMode, MessageContextResult, ReplyChainResult, rowToCachedMessage | — |
+| src/long-term-memory/store.ts | — | — | ListProvisionalFilter, rowToProfile |
+| src/mcp-server/index.ts | mintPluginMcpToken | PLUGIN_MCP_TOKEN_TTL_SECONDS, verifyPluginMcpToken | PluginMcpTokenClaims |
+| src/mcp/index.ts | McpEndpointConfig, McpPluginConfig, mcpPool | McpServerInfo, PluginMcpDescriptor, convertMcpToolsToToolSet | McpConnectionPool, McpServerStatus, PluginPoolAdapter |
+| src/message-cache/index.ts | CachedMessage, MessageScope, SearchFilters, cacheMessage, getMessage, getMessageByContext, getMessageContext, searchMessages | — | MessageContextMode, MessageContextResult, ReplyChainResult, rowToCachedMessage |
 | src/plugins/contributions.ts | namespacedToolName, sanitizePluginId | namespacedJobName | — |
 | src/plugins/loader.ts | — | toPluginImportSpecifier | — |
 | src/plugins/registry.ts | — | checkPluginCompatibility | — |
-| src/plugins/types.ts | PluginScheduledJobRuntimeContext | — | — |
-| src/providers/membership/index.ts | — | BackfillResult, MemberOutcome, MembershipDeps, SubscriberHandlers | — |
-| src/recurrence.ts | — | ParseResult, parseRrule | — |
-| src/recurring.ts | TriggerType, recordOccurrence | COMPLETION_STATUSES, findTemplateByTaskId, isCompletionStatus | — |
-| src/tools/index.ts | — | ToolMode | — |
+| src/plugins/types.ts | — | — | PluginScheduledJobRuntimeContext |
+| src/providers/membership/index.ts | — | MemberOutcome, MembershipDeps | BackfillResult, SubscriberHandlers |
+| src/recurrence.ts | — | parseRrule | ParseResult |
+| src/recurring.ts | TriggerType, findTemplateByTaskId, isCompletionStatus, recordOccurrence | — | COMPLETION_STATUSES |
+| src/tools/index.ts | ToolMode | — | — |
 | src/utils/scheduler.ts | ErrorEvent, ErrorHandler, FatalError, FatalErrorEvent, FatalErrorHandler, RetryEvent, RetryHandler, RetryableError, SchedulerError, TaskAlreadyExistsError, TaskNotFoundError, TaskOptions, TickEvent, TickHandler | — | — |
+
+<details>
+<summary>Superseded preliminary table (A=58, B=65, C=39) — kept for audit trail</summary>
+
+The first prototype classifier produced A=58/B=65/C=39 with known errors (e.g. `ChatProviderConfigField` as B, `saveAttachment` as A, `verifyPluginMcpToken` as A, `PluginScheduledJobRuntimeContext` as A). The Task 1 knip-report-driven codemod corrected these; the authoritative table above replaces it in full.
+
+</details>
+
 
 ---
 
@@ -208,13 +214,13 @@ interface ImportStatement {
   named: NamedBinding[]
 }
 
-function parseNamedList(body: string): NamedBinding[] {
+function parseNamedList(body: string, clauseIsType = false): NamedBinding[] {
   const out: NamedBinding[] = []
   for (const part of body.split(',')) {
     const p = part.trim()
     if (p === '') continue
-    const isType = p.startsWith('type ')
-    const stripped = isType ? p.slice(5).trim() : p
+    const isType = clauseIsType || p.startsWith('type ')
+    const stripped = p.startsWith('type ') ? p.slice(5).trim() : p
     const seg = stripped.split(/\s+as\s+/)
     const imported = (seg[0] ?? '').trim()
     const local = (seg[seg.length - 1] ?? '').trim()
@@ -230,12 +236,15 @@ function parseExportStatements(text: string): ExportStatement[] {
     const stmt = m[0]
     const fromM = /from\s*['"]([^'"]+)['"]/.exec(stmt)
     const bodyM = /\{([^{}]*)\}/s.exec(stmt)
+    // Whole-clause `export type { ... }` marks every binding a type (required
+    // for correct isType metadata under verbatimModuleSyntax).
+    const clauseIsType = /^export\s+type\s+\{/.test(stmt)
     out.push({
       start: m.index ?? 0,
       end: (m.index ?? 0) + stmt.length,
       text: stmt,
       from: fromM?.[1] ?? null,
-      bindings: parseNamedList(bodyM?.[1] ?? ''),
+      bindings: parseNamedList(bodyM?.[1] ?? '', clauseIsType),
     })
   }
   return out
@@ -258,7 +267,7 @@ function parseImportStatements(file: string, text: string): ImportStatement[] {
     const allType = clause.startsWith('type ')
     const nsM = /\*\s+as\s+(\w+)/.exec(clause)
     const bodyM = /\{([^{}]*)\}/s.exec(clause)
-    const named = parseNamedList(bodyM?.[1] ?? '')
+    const named = parseNamedList(bodyM?.[1] ?? '', allType)
     const defM = /^(\w+)\s*,/.exec(clause) ?? (/^\w+$/.test(clause) && bodyM === null && nsM === null ? /(\w+)/.exec(clause) : null)
     const hasDefault = defM !== null
     const valueNamed = named.some((b) => !b.isType)
@@ -731,6 +740,8 @@ if (MODE === 'analyze') {
 
 Note: the script is written for this repo's strict tsconfig (`noUncheckedIndexedAccess`, `noUnusedLocals`) — it must stay typecheck-clean while present because `bun run typecheck` covers the whole tree.
 
+Note on file layout: the embedded source is a single ~700-line monolith, which violates this repo's `max-lines: 300` / `max-lines-per-function: 50` lint rules. Split it into focused modules under `scripts/knip-facade-triage/` (e.g. `triage.ts` main + `types.ts`, `scope.ts`, `parse.ts`, `analyze.ts`, `edit.ts`, `cycle.ts`, `apply.ts`) keeping the logic byte-faithful — AGENTS.md sanctions splitting for max-lines. Verify the split by identical `analyze` output. The generated `triage.json` is a compact artifact; add `scripts/knip-facade-triage/triage.json` to `.oxfmtignore` to keep `format:check` green (reverted in Task 5).
+
 - [ ] **Step 2: Run analysis**
 
 Run: `bun scripts/knip-facade-triage/triage.ts analyze`
@@ -983,6 +994,7 @@ Expected: exit 0, no findings. This is the plan's success criterion: the 32 remo
 - [ ] **Step 3: Remove the codemod**
 
 Run: `rm -rf scripts/knip-facade-triage`
+Also revert the `.oxfmtignore` change from Task 1 (remove the `scripts/knip-facade-triage/triage.json` line — the artifact no longer exists).
 Then: `bun run typecheck && bun run lint && bun run format:check`
 Expected: exit 0.
 
