@@ -50,6 +50,12 @@ describe('settings.css', () => {
     const [form] = m!
     expect(form).toContain('display: grid')
     expect(form).not.toContain('align-items: end')
-    expect(css).toContain('grid-row: span 2')
+  })
+  test('non-field form children span label and control only, so buttons sit level with inputs', () => {
+    const m = css.match(/\.settings-form > :not\(\.ui-field\) \{[^}]*\}/u)
+    expect(m).not.toBeNull()
+    const [rule] = m!
+    expect(rule).toContain('grid-row: span 2')
+    expect(rule).toContain('align-self: end')
   })
 })
