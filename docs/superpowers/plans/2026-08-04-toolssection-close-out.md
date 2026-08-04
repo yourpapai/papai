@@ -773,8 +773,8 @@ with:
 - **Resolved:** `<T1>` ("fix(settings): close four pixel-preserving ToolsSection findings")
   (2026-08-04). Both bare margins are now `var(--s3)` — `.settings-tools__presets-hint` at `:455`
   and `.settings-tools__clear-row` at `:472`. `--s3` is `12px` (`client/shared/tokens.css:70`), so
-  this was a tokenisation-consistency change with no visual delta, and the zero-diff visual audit
-  run before any re-shoot confirmed it moved no pixels.
+  this was a tokenisation-consistency change with no visual delta. The visual audit run before any
+  re-shoot confirmed it moved no pixels.
 ```
 
 and replace:
@@ -797,8 +797,12 @@ with:
   (2026-08-04). `:230` now reads
   `{#if active}<span aria-hidden="true">✓ </span>{/if}{preset.label}`, so a screen reader hears
   only the `aria-pressed` state wired at `:227`, not a redundant "check mark" announcement. The
-  glyph remains visible to sighted users; the zero-diff visual audit confirmed the wrapper is
-  pixel-neutral.
+  glyph remains visible to sighted users. The wrapper turned out **not** to be pixel-neutral: the
+  audit run before any re-shoot caught a ~1px re-shaping of the active preset button, because
+  splitting the glyph and the label into two inline runs re-shapes the text. The glyph, the label,
+  and every colour are unchanged; only the button's width moved, nudging the two buttons to its
+  right by 1px. `<T2>` absorbed that shift when it re-shot the same baseline, so the sub-project
+  still changed exactly one baseline and added none.
 ```
 
 and replace:
