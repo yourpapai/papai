@@ -14,6 +14,7 @@
   import { fetchGroupTaskInstance, patchGroupTaskInstance } from '../fetchers.js'
   import type { GroupTaskInstanceResponse } from '../fetcher-schemas.js'
   import { formatTaskInstanceOption } from '../lib/task-instance-label.js'
+  import { resolveTaskInstanceSelection } from '../lib/task-instance-selection.js'
 
   interface Props {
     contextId: string
@@ -23,6 +24,7 @@
 
   let data: GroupTaskInstanceResponse | null = $state(null)
   let selected = $state('')
+  let selectPlaceholder = $state('')
   let loadError: unknown = $state(null)
   let saveError: unknown = $state(null)
   let status: string | null = $state(null)
@@ -38,11 +40,9 @@
       const result = await fetchGroupTaskInstance(id)
       if (id !== contextId) return
       data = result
-      const currentId = result.taskInstanceId
-      selected =
-        currentId !== null && result.available.some((a) => a.id === currentId)
-          ? currentId
-          : (result.available[0]?.id ?? '')
+      const selection = resolveTaskInstanceSelection(result.taskInstanceId, result.available)
+      selected = selection.selected
+      selectPlaceholder = selection.placeholder
     } catch (err) {
       if (id === contextId) loadError = err
     } finally {
@@ -96,6 +96,7 @@
           <Select
             value={selected}
             options={data.available.map(formatTaskInstanceOption)}
+            placeholder={selectPlaceholder}
             onChange={(v) => (selected = v)}
             disabled={saving}
             testid="group-task-instance" />

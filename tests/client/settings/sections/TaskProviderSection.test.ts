@@ -294,6 +294,11 @@ describe('TaskProviderSection', () => {
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(TaskProviderSection, { target, props: { contextId: 'user:1' } })
     await drain()
+    const select = target.querySelector<HTMLSelectElement>('[data-testid="context-task-instance"]')!
+    expect(select.value).toBe('')
+    select.value = 'yt-default'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    flushSync()
     target.querySelector<HTMLButtonElement>('[data-testid="context-task-instance-save"]')!.click()
     await drain()
     const patched = sink.value
@@ -310,6 +315,10 @@ describe('TaskProviderSection', () => {
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(TaskProviderSection, { target, props: { contextId: 'user:1' } })
     await drain()
+    const select = target.querySelector<HTMLSelectElement>('[data-testid="context-task-instance"]')!
+    select.value = 'yt-default'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    flushSync()
     target
       .querySelector<HTMLFormElement>('form.settings-form')!
       .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
@@ -321,6 +330,31 @@ describe('TaskProviderSection', () => {
     void unmount(component)
   })
 
+  test('selects nothing and shows the unassigned placeholder when no instance is bound', async () => {
+    setMockFetch(routeMock(unboundInstancePayload, { contextId: 'user:1', fields: [] }))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(TaskProviderSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    const select = target.querySelector<HTMLSelectElement>('[data-testid="context-task-instance"]')!
+    expect(select.value).toBe('')
+    expect(select.value).not.toBe('yt-default')
+    expect(target.textContent).toContain('Not yet assigned — select an instance')
+    void unmount(component)
+  })
+
+  test('shows no placeholder option when an instance is genuinely bound', async () => {
+    setMockFetch(routeMock(boundNonProvisionablePayload, { contextId: 'user:1', fields: [] }))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(TaskProviderSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    const select = target.querySelector<HTMLSelectElement>('[data-testid="context-task-instance"]')!
+    expect(select.value).toBe('yt-default')
+    expect(target.textContent).not.toContain('Not yet assigned')
+    void unmount(component)
+  })
+
   test('disables the instance Select while a bind is in flight', async () => {
     setCsrfToken('t')
     setMockFetch(routeNeverResolvingBindMock())
@@ -328,11 +362,14 @@ describe('TaskProviderSection', () => {
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(TaskProviderSection, { target, props: { contextId: 'user:1' } })
     await drain()
+    const sel = target.querySelector<HTMLSelectElement>('[data-testid="context-task-instance"]')!
+    sel.value = 'yt-default'
+    sel.dispatchEvent(new Event('change', { bubbles: true }))
+    flushSync()
     target
       .querySelector<HTMLFormElement>('form.settings-form')!
       .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
     flushSync()
-    const sel = target.querySelector<HTMLSelectElement>('[data-testid="context-task-instance"]')!
     expect(sel.disabled).toBe(true)
     void unmount(component)
   })
