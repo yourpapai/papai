@@ -23,7 +23,7 @@ const isSearchMemosModule = (value: unknown): value is SearchMemosModule =>
 // per-call DI, so control it via mock.module. Re-applied in beforeEach after
 // the preload reset restores src/embeddings.js originals (tests/mock-reset.ts).
 let nextQueryVec: number[] | null = null
-export let embeddingCall: {
+let embeddingCall: {
   text: string
   configContextId: string
   context: unknown
@@ -69,7 +69,7 @@ function isSearchMemosResult(value: unknown): value is SearchMemosResult {
   )
 }
 
-export function findCall(tracked: TrackedLoggerMock, level: LogCall['level'], message: string): LogCall | undefined {
+function findCall(tracked: TrackedLoggerMock, level: LogCall['level'], message: string): LogCall | undefined {
   return tracked.getCallsByLevel(level).find((call) => call.args[1] === message)
 }
 
@@ -89,14 +89,14 @@ function getInputFieldJsonSchema(tool: { inputSchema: unknown }, fieldName: stri
 
 const USER = 'user1'
 
-export const QUERY_VEC = [1, 0]
-export const VEC_HIGH = [0.9, 0.1]
-export const VEC_MID = [0.85, 0.5]
-export const VEC_PASS = [0.7, 0.7]
-export const VEC_BELOW = [0.5, 0.87]
-export const VEC_ORTHO = [0.0, 1.0]
+const QUERY_VEC = [1, 0]
+const VEC_HIGH = [0.9, 0.1]
+const VEC_MID = [0.85, 0.5]
+const VEC_PASS = [0.7, 0.7]
+const VEC_BELOW = [0.5, 0.87]
+const VEC_ORTHO = [0.0, 1.0]
 
-export const seedMemoWithEmbedding = (content: string, vec: number[]): Memo => {
+const seedMemoWithEmbedding = (content: string, vec: number[]): Memo => {
   const memo = saveMemo(USER, content, [])
   updateMemoEmbedding(USER, memo.id, new Float32Array(vec))
   return memo
@@ -280,6 +280,7 @@ describe('search_memos tool', () => {
     assert(isSearchMemosResult(result))
     expect(result.mode).toBe('semantic')
     expect(result.results).toEqual([])
+    // findCall matches args[1]; log.warn here is message-only (args[0])
     const warn = tracked.getCallsByLevel('warn').find((call) => call.args[0] === 'Semantic search unavailable')
     expect(warn).toBeDefined()
   })
