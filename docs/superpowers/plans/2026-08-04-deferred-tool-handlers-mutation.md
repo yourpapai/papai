@@ -409,10 +409,11 @@ describe('executeUpdate — alert prompt fields', () => {
     executeUpdate(USER_ID, { id, execution: { delivery_brief: 'alert brief' } })
     expect(getAlertPrompt(id, USER_ID)!.executionMetadata.delivery_brief).toBe('alert brief')
 
-    const result = executeUpdate(USER_ID, {
-      id,
-      execution: { context_snapshot: 'no brief' } as unknown as { delivery_brief: string },
-    })
+    // Widen + delete: lint-safe way to feed a payload missing delivery_brief
+    // (oxlint no-unsafe-type-assertion blocks `as unknown as` narrowing casts).
+    const invalidExecution = { delivery_brief: 'x', context_snapshot: 'no brief' }
+    delete (invalidExecution as { delivery_brief?: string }).delivery_brief
+    const result = executeUpdate(USER_ID, { id, execution: invalidExecution })
     expect(result).toMatchObject({ status: 'updated' })
     expect(getAlertPrompt(id, USER_ID)!.executionMetadata.delivery_brief).toBe('alert brief')
   })
