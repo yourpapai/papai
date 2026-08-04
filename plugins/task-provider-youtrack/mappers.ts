@@ -18,13 +18,12 @@ import type {
 import type { z } from 'zod'
 
 import { YOUTRACK_DUE_DATE_FIELD_NAME } from './constants.js'
-import { mapYouTrackDueDateValue } from './due-date.js'
 import type { CommentSchema } from './schemas/comment.js'
 import type { CustomFieldValueSchema } from './schemas/custom-fields.js'
 import type { IssueListSchema, IssueSchema } from './schemas/issue.js'
 import type { ReactionSchema } from './schemas/reaction.js'
 import type { VisibilitySchema } from './schemas/visibility.js'
-import { mapReadOnlyCustomFields } from './task-helpers.js'
+import { mapYouTrackDueDateValue, mapReadOnlyCustomFields } from './task-helpers.js'
 
 type AnyCustomField = z.infer<typeof CustomFieldValueSchema>
 

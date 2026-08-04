@@ -10,18 +10,17 @@
  */
 
 import type {
-  ErrorEvent,
-  ErrorHandler,
-  FatalErrorEvent,
-  FatalErrorHandler,
-  RetryEvent,
-  RetryHandler,
-  SchedulerOptions,
-  TaskHandler,
-  TaskOptions,
-  TickEvent,
   TickHandler,
-} from './scheduler.types.js'
+  TickEvent,
+  TaskOptions,
+  RetryHandler,
+  RetryEvent,
+  FatalErrorHandler,
+  FatalErrorEvent,
+  ErrorHandler,
+  ErrorEvent,
+} from './scheduler.js'
+import type { SchedulerOptions, TaskHandler } from './scheduler.types.js'
 
 /**
  * Internal task record containing runtime state.

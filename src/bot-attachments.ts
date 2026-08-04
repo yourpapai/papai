@@ -6,6 +6,9 @@
 import pLimit from 'p-limit'
 
 import {
+  type StagedFileDownloadFn,
+  type AttachmentSourceProvider,
+  type AttachmentRef,
   findStagedFilesByMessageId,
   isS3Configured,
   listActiveAttachments,
@@ -13,12 +16,7 @@ import {
   resolveStagedFile,
   stageFileMetadata,
 } from './attachments/index.js'
-import {
-  toSourceProvider,
-  type AttachmentRef,
-  type AttachmentSourceProvider,
-  type StagedFileDownloadFn,
-} from './attachments/types.js'
+import { toSourceProvider } from './attachments/types.js'
 import { resolveSourceProviderName } from './chat/source-instance.js'
 import type { ChatProvider, IncomingFile, IncomingFileCandidate, IncomingMessage } from './chat/types.js'
 import { logger } from './logger.js'

@@ -6,8 +6,8 @@
 import { z } from 'zod'
 
 import { logger } from '../../src/logger.js'
-import type { KaneoConfig } from './client.js'
 import { KaneoClient } from './kaneo-client.js'
+import type { KaneoConfig } from './provider.js'
 import { ColumnCompatSchema } from './schemas/api-compat.js'
 
 const log = logger.child({ scope: 'kaneo:create-column' })

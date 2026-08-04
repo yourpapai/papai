@@ -3,7 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ClosureResult, EntryPointEntry, EntryPointHint } from './scores-types.js'
+import type { EntryPointHint } from './consolidate-agent.js'
+import type { ClosureResult, EntryPointEntry } from './scores-types.js'
 
 export interface CodeindexCandidate {
   readonly filePath: string

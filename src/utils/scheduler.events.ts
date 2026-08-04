@@ -9,7 +9,7 @@
 
 import { logger } from '../logger.js'
 import type { Emitters, EventEmitter } from './scheduler.helpers.js'
-import type { ErrorEvent, FatalErrorEvent, RetryEvent, TickEvent } from './scheduler.types.js'
+import type { TickEvent, RetryEvent, FatalErrorEvent, ErrorEvent } from './scheduler.js'
 
 const log = logger.child({ scope: 'scheduler:events' })
 

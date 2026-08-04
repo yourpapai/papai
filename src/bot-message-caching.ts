@@ -5,7 +5,7 @@
 
 import { getScopeKey } from './chat/context-scope.js'
 import type { AuthorizationResult, IncomingMessage } from './chat/types.js'
-import { cacheMessage } from './message-cache/cache.js'
+import { cacheMessage } from './message-cache/index.js'
 
 /**
  * Persist every allowed observed non-command message to message_metadata.

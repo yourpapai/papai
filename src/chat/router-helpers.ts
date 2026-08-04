@@ -5,7 +5,7 @@
 
 import { createHmac, randomBytes } from 'node:crypto'
 
-import type { AttachmentSourceProvider } from '../attachments/types.js'
+import type { AttachmentSourceProvider } from '../attachments/index.js'
 import { getContextSettings } from '../instances/context-store.js'
 import type { InstanceConfig, InstanceStatus, PlatformInstanceType } from '../instances/types.js'
 import type { ManagedChatInstance, ManagedChatInstanceSnapshot } from './router-types.js'

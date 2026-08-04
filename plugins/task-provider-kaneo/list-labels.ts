@@ -7,8 +7,8 @@ import { z } from 'zod'
 
 import { logger } from '../../src/logger.js'
 import { classifyKaneoError } from './classify-error.js'
-import type { KaneoConfig } from './client.js'
 import { KaneoClient } from './kaneo-client.js'
+import type { KaneoConfig } from './provider.js'
 import { CreateLabelResponseSchema } from './schemas/create-label.js'
 
 const log = logger.child({ scope: 'kaneo:list-labels' })

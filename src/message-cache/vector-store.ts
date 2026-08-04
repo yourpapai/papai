@@ -9,8 +9,8 @@ import { and, eq, isNull, ne, or, sql } from 'drizzle-orm'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { messageEmbeddings, messageMetadata } from '../db/schema.js'
 import { logger } from '../logger.js'
+import type { SearchFilters, MessageScope } from './index.js'
 import { scopeWhere } from './store.js'
-import type { MessageScope, SearchFilters } from './store.js'
 
 const log = logger.child({ scope: 'message-vector-store' })
 

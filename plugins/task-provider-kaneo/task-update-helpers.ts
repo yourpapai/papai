@@ -4,7 +4,8 @@
 // See LICENSE in the project root for details.
 
 import { logger } from '../../src/logger.js'
-import { type KaneoConfig, kaneoFetch } from './client.js'
+import { kaneoFetch } from './client.js'
+import type { KaneoConfig } from './provider.js'
 import { TaskSchema, type CreateTaskResponse } from './schemas/create-task.js'
 import { type TaskStatusDeps, denormalizeStatus, validateStatus } from './task-status.js'
 

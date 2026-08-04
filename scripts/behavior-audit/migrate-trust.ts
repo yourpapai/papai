@@ -8,7 +8,7 @@ import { basename, dirname, join } from 'node:path'
 
 import { EXTRACTED_DIR, PROGRESS_PATH } from './config.js'
 import { loadManifest, saveManifest } from './incremental.js'
-import { loadProgress } from './progress-io.js'
+import { loadProgress } from './progress.js'
 import type { Progress } from './progress.js'
 
 export interface MigrationResult {

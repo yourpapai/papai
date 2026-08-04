@@ -3,10 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { BehaviorAuditProgressReporter } from './extract.js'
 import type { ExtractedBehaviorRecord } from './extracted-store.js'
 import type { IncrementalManifest } from './incremental.js'
 import type { AgentUsage, PhaseStats } from './phase-stats.js'
-import type { BehaviorAuditProgressReporter } from './progress-reporter.js'
 import type { Progress } from './progress.js'
 import type { ParsedTestFile, TestCase } from './test-parser.js'
 

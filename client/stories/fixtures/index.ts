@@ -9,10 +9,10 @@ import type { GlobalStatsSchema, SubjectStatsSchema } from '../../admin/fetcher-
 import type {
   AdminLlmSnapshot,
   BillingDetail,
-  BillingRoleTotals,
   BillingSubject,
+  BillingRoleTotals,
   IdentityMappingEntry,
-} from '../../shared/api-types.js'
+} from '../../debug/dashboard-types.js'
 
 type GlobalStats = z.infer<typeof GlobalStatsSchema>
 type SubjectStats = z.infer<typeof SubjectStatsSchema>

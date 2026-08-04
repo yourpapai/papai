@@ -8,8 +8,7 @@ import { emitGlobal } from './debug/event-bus.js'
 import { logger } from './logger.js'
 import { defaultTaskProviderResolver } from './providers/resolver.js'
 import type { TaskProvider } from './providers/types.js'
-import { recordOccurrence } from './recurring-occurrences.js'
-import { type RecurringTaskRecord, getDueRecurringTasks, getRecurringTask } from './recurring.js'
+import { recordOccurrence, type RecurringTaskRecord, getDueRecurringTasks, getRecurringTask } from './recurring.js'
 import { scheduler } from './scheduler-instance.js'
 import {
   applyLabels,

@@ -17,14 +17,10 @@ import {
   selectIncrementalRunWork as selectIncrementalRunWorkWithLog,
 } from './entrypoint-helpers.js'
 import { runPhase3 } from './evaluate.js'
-import { runPhase1 } from './extract.js'
+import { type BehaviorAuditProgressReporter, runPhase1 } from './extract.js'
 import type { IncrementalManifest } from './incremental.js'
 import { saveConsolidatedManifest } from './incremental.js'
-import {
-  createProgressReporter,
-  type BehaviorAuditProgressReporter,
-  type CreateProgressReporterInput,
-} from './progress-reporter.js'
+import { createProgressReporter, type CreateProgressReporterInput } from './progress-reporter.js'
 import type { Progress } from './progress.js'
 import { rebuildReportsFromStoredResults } from './report-writer.js'
 import type { ParsedTestFile } from './test-parser.js'

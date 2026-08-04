@@ -5,12 +5,12 @@
 
 import type { ListTasksParams, Task, TaskListItem, TaskSearchResult } from 'papai/plugin-types'
 
-import type { KaneoConfig } from '../client.js'
 import { createTask } from '../create-task.js'
 import { deleteTask } from '../delete-task.js'
 import { getTask } from '../get-task.js'
 import { listTasks } from '../list-tasks.js'
 import { mapCreateTaskResponse, mapGlobalSearchTaskResults, mapTaskDetails, mapTaskListItem } from '../mappers.js'
+import type { KaneoConfig } from '../provider.js'
 import { searchTasks } from '../search-tasks.js'
 import { updateTask } from '../update-task.js'
 import { buildTaskUrl } from '../url-builder.js'

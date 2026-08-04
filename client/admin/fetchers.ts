@@ -10,11 +10,11 @@ import type {
   BillingDetail,
   BillingSubject,
   BillingWindow,
-  DeferredPrompt,
   IdentityMappingEntry,
   Memo,
+  DeferredPrompt,
   RecurringTask,
-} from '../shared/api-types.js'
+} from '../debug/dashboard-types.js'
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
 import {
   BillingDetailResponseSchema,

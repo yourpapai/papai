@@ -10,8 +10,7 @@ import { z } from 'zod'
 import { getScopeKey } from '../chat/context-scope.js'
 import type { ContextType } from '../chat/types.js'
 import { logger } from '../logger.js'
-import { getMessageContext, type MessageScope } from '../message-cache/store.js'
-import type { CachedMessage } from '../message-cache/types.js'
+import { type MessageScope, type CachedMessage, getMessageContext } from '../message-cache/index.js'
 
 const log = logger.child({ scope: 'tool:get-message-context' })
 

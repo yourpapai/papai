@@ -9,9 +9,10 @@ import { z } from 'zod'
 
 import { logger } from '../../src/logger.js'
 import { classifyKaneoError } from './classify-error.js'
-import { type KaneoConfig, kaneoFetch } from './client.js'
+import { kaneoFetch } from './client.js'
 import { buildListTasksQuery } from './list-tasks-query.js'
 import type { KaneoTaskListItem } from './list-tasks.js'
+import type { KaneoConfig } from './provider.js'
 import { TaskSchema as KaneoCreateTaskResponseSchema } from './schemas/create-task.js'
 import { TaskSchema as KaneoGetTaskResponseSchema } from './schemas/get-task.js'
 import {

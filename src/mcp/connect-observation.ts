@@ -10,7 +10,7 @@ import { getFeatureObserver } from '../analytics/feature-observer.js'
 import type { McpAvailabilityOrigin, McpAvailabilityOutcome } from '../analytics/feature-observer.js'
 import { classifyProviderError, type ProviderRequestObservation } from '../analytics/provider-observer.js'
 import type { ProviderRequestScope } from '../analytics/provider-request-scope.js'
-import type { McpEndpointConfig, McpPluginConfig } from './types.js'
+import type { McpPluginConfig, McpEndpointConfig } from './index.js'
 
 export type ConnectObservationTarget = Readonly<{
   availabilityOrigin: McpAvailabilityOrigin

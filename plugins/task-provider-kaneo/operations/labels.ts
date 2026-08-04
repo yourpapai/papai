@@ -6,11 +6,11 @@
 import type { Label, TaskLabel } from 'papai/plugin-types'
 
 import { addTaskLabel } from '../add-task-label.js'
-import type { KaneoConfig } from '../client.js'
 import { createLabel } from '../create-label.js'
 import { listLabels } from '../list-labels.js'
 import { listTaskLabels } from '../list-task-labels.js'
 import { mapLabel } from '../mappers.js'
+import type { KaneoConfig } from '../provider.js'
 import { removeLabel } from '../remove-label.js'
 import { removeTaskLabel } from '../remove-task-label.js'
 import { updateLabel } from '../update-label.js'

@@ -12,8 +12,7 @@ import { PROJECT_ROOT } from './config.js'
 import type { EvaluatedFeatureRecord } from './evaluated-store.js'
 import type { ExtractedBehaviorRecord } from './extracted-store.js'
 import type { ConsolidatedManifest } from './incremental.js'
-import type { DomainSummary } from './report-index-helpers.js'
-import type { ConsolidatedBehavior, StoryEvaluation } from './report-writer.js'
+import type { DomainSummary, ConsolidatedBehavior, StoryEvaluation } from './report-writer.js'
 
 export interface TrustMetrics {
   readonly totalExtracted: number

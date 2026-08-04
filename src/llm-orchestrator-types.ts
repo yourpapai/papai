@@ -7,7 +7,7 @@ import type { generateText, isStepCount, LanguageModel, ModelMessage, ToolSet } 
 
 import type { AiProgressReporter } from './ai-progress-reporter.js'
 import type { ProviderRequestScope } from './analytics/provider-request-scope.js'
-import type { StagedFileDownloadFn } from './attachments/types.js'
+import type { StagedFileDownloadFn } from './attachments/index.js'
 import type { ChatParticipantResolver } from './chat/participants/roster.js'
 import type { ReplyFn } from './chat/types.js'
 import type { LiveStatusReporter } from './live-status/reporter.js'
