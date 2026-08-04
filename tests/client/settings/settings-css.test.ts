@@ -38,4 +38,10 @@ describe('settings.css', () => {
     expect(statusError).toContain('margin: var(--gap-inline) 0 0')
     expect(statusSuccess).toContain('margin: var(--gap-inline) 0 0')
   })
+  test('placeholder prose is capped at a reading measure', () => {
+    const m = css.match(/\.placeholder \{[^}]*\}/u)
+    expect(m).not.toBeNull()
+    const [placeholder] = m!
+    expect(placeholder).toContain('max-width: var(--content-max)')
+  })
 })

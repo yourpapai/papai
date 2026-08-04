@@ -99,8 +99,11 @@
   color: var(--success);
   margin: var(--gap-inline) 0 0;
 }
+/* --content-max is the same cap .settings-group uses, so placeholder prose
+   wraps at the measure of the column that usually contains it. */
 .placeholder {
   color: var(--text-muted);
+  max-width: var(--content-max);
 }
 
 .settings-gate {
