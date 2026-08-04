@@ -52,6 +52,8 @@ const RATIONALES: Readonly<Record<string, string>> = Object.freeze({
     'Provider-wiring coverage: re-runs the shared project/label/identity parity groups through the real Kaneo plugin against a stateful fake API, not a new behavior claim.',
   'tests/stories/tasks/kaneo-conformance.story.test.ts#SCN-kaneo-conformance-errors: real Kaneo provider satisfies the shared error groups':
     'Provider-wiring coverage: re-runs the shared error parity groups through the real Kaneo plugin against a stateful fake API, not a new behavior claim.',
+  'tests/stories/tasks/youtrack-real-statuses.story.test.ts#SCN-task-youtrack-real-status-lifecycle: shared-bundle status lifecycle through the real provider':
+    'Provider-wiring coverage: drives the status lifecycle (shared-bundle confirmation, confirmed create/update/reorder/delete) through the real YouTrack plugin against a stateful fake YouTrack API. Abstract status lifecycle behavior is already owned by SCN-task-statuses, so this proves real-provider request building, response mapping, and shared-bundle derivation rather than a new behavior claim.',
 })
 
 export const SUPPORTING_STORIES: Readonly<Record<string, PendingReason>> = Object.freeze(

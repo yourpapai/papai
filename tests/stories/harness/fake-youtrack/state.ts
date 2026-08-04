@@ -53,12 +53,20 @@ export type StoredLink = {
   direction: string
 }
 
+export type StoredStateValue = {
+  id: string
+  name: string
+  ordinal: number
+  isResolved: boolean
+}
+
 export type FakeYouTrackState = {
   projects: Map<string, StoredProject>
   issues: Map<string, StoredIssue>
   issuesByReadable: Map<string, string>
   comments: Map<string, StoredComment>
   links: Map<string, StoredLink>
+  stateValues: Map<string, StoredStateValue[]>
   seq: number
 }
 
@@ -79,14 +87,27 @@ export const PRIORITY_VALUES: readonly string[] = ['high', 'normal', 'low']
 
 // ---------- State + id helpers ----------
 
-export const createFakeYouTrackState = (): FakeYouTrackState => ({
-  projects: new Map(),
-  issues: new Map(),
-  issuesByReadable: new Map(),
-  comments: new Map(),
-  links: new Map(),
-  seq: 0,
-})
+export const createFakeYouTrackState = (): FakeYouTrackState => {
+  const state: FakeYouTrackState = {
+    projects: new Map(),
+    issues: new Map(),
+    issuesByReadable: new Map(),
+    comments: new Map(),
+    links: new Map(),
+    stateValues: new Map(),
+    seq: 0,
+  }
+  state.stateValues.set(
+    STATE_BUNDLE_ID,
+    STATE_VALUES.map((name, index) => ({
+      id: nextId(state, 'state-val'),
+      name,
+      ordinal: index,
+      isResolved: name === 'Done',
+    })),
+  )
+  return state
+}
 
 export const resetFakeYouTrackState = (state: FakeYouTrackState): void => {
   state.projects.clear()
@@ -94,6 +115,7 @@ export const resetFakeYouTrackState = (state: FakeYouTrackState): void => {
   state.issuesByReadable.clear()
   state.comments.clear()
   state.links.clear()
+  state.stateValues.clear()
   state.seq = 0
 }
 

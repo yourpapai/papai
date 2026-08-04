@@ -13,6 +13,13 @@ const ProjectSchema = z.object({ id: z.string(), name: z.string() })
 const ProjectListSchema = z.array(z.object({ id: z.string() }))
 const ErrorBodySchema = z.object({ error: z.string(), error_description: z.string() })
 const LinkTypeListSchema = z.array(z.object({ name: z.string() }))
+const StateValueArraySchema = z.array(z.object({ id: z.string(), name: z.string() }))
+const StateValueSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  ordinal: z.number(),
+  isResolved: z.boolean(),
+})
 
 describe('createFakeYouTrackResponder', () => {
   test('creates a project and reads it back through the responder', async () => {
@@ -77,5 +84,115 @@ describe('createFakeYouTrackResponder', () => {
     const response = await respond(new Request('https://youtrack.invalid/api/nope', { method: 'POST' }))
 
     expect(response.status).toBe(404)
+  })
+})
+
+describe('fake YouTrack state-bundle operations', () => {
+  const BUNDLE_BASE = 'https://youtrack.invalid/api/admin/customFieldSettings/bundles/state/state-bundle-1'
+  const createProject = async (respond: (r: Request) => Promise<Response>, name: string): Promise<string> => {
+    const res = await respond(
+      new Request('https://youtrack.invalid/api/admin/projects?fields=id,name', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, shortName: name.slice(0, 2).toUpperCase() }),
+      }),
+    )
+    return ProjectSchema.parse(await res.json()).id
+  }
+
+  test('GET bundle metadata reports aggregated projects (isShared when >1)', async () => {
+    const respond = createFakeYouTrackResponder()
+    await createProject(respond, 'Alpha')
+    await createProject(respond, 'Beta')
+
+    const res = await respond(new Request(BUNDLE_BASE))
+    expect(res.status).toBe(200)
+    const body = z
+      .object({
+        id: z.string(),
+        aggregated: z.object({ project: z.array(z.object({ id: z.string() })) }).optional(),
+      })
+      .parse(await res.json())
+    expect(body.id).toBe('state-bundle-1')
+    expect(body.aggregated?.project).toHaveLength(2)
+  })
+
+  test('GET values returns seeded state values with id/name/ordinal/isResolved', async () => {
+    const respond = createFakeYouTrackResponder()
+    await createProject(respond, 'Solo')
+
+    const res = await respond(new Request(`${BUNDLE_BASE}/values?fields=id,name,ordinal,isResolved`))
+    expect(res.status).toBe(200)
+    const values = z.array(StateValueSchema).parse(await res.json())
+    expect(values).toHaveLength(3)
+    expect(values[0]).toMatchObject({ name: 'Open', ordinal: 0, isResolved: false })
+    expect(values[2]).toMatchObject({ name: 'Done', ordinal: 2, isResolved: true })
+    expect(typeof values[0]?.id).toBe('string')
+  })
+
+  test('POST values creates a new state value', async () => {
+    const respond = createFakeYouTrackResponder()
+    await createProject(respond, 'Solo')
+
+    const res = await respond(
+      new Request(`${BUNDLE_BASE}/values?fields=id,name,ordinal,isResolved`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Review', isResolved: false }),
+      }),
+    )
+    expect(res.status).toBe(200)
+    const created = StateValueSchema.parse(await res.json())
+    expect(created.name).toBe('Review')
+    expect(created.ordinal).toBe(3)
+    expect(created.isResolved).toBe(false)
+
+    const list = await respond(new Request(`${BUNDLE_BASE}/values?fields=id,name,ordinal,isResolved`))
+    expect(StateValueArraySchema.parse(await list.json()).map((v) => v.name)).toContain('Review')
+  })
+
+  test('POST per-status updates name and isResolved', async () => {
+    const respond = createFakeYouTrackResponder()
+    await createProject(respond, 'Solo')
+
+    const res = await respond(
+      new Request(`${BUNDLE_BASE}/values/state-val-1?fields=id,name,ordinal,isResolved`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Reopened', isResolved: false }),
+      }),
+    )
+    expect(res.status).toBe(200)
+    const updated = StateValueSchema.parse(await res.json())
+    expect(updated.name).toBe('Reopened')
+    expect(updated.isResolved).toBe(false)
+  })
+
+  test('POST per-status updates ordinal (reorder)', async () => {
+    const respond = createFakeYouTrackResponder()
+    await createProject(respond, 'Solo')
+
+    const res = await respond(
+      new Request(`${BUNDLE_BASE}/values/state-val-3?fields=id,name,ordinal,isResolved`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ordinal: 0 }),
+      }),
+    )
+    expect(res.status).toBe(200)
+    expect(StateValueSchema.parse(await res.json()).ordinal).toBe(0)
+  })
+
+  test('DELETE per-status removes the value', async () => {
+    const respond = createFakeYouTrackResponder()
+    await createProject(respond, 'Solo')
+
+    const del = await respond(new Request(`${BUNDLE_BASE}/values/state-val-2`, { method: 'DELETE' }))
+    expect(del.status).toBe(204)
+
+    const list = await respond(new Request(`${BUNDLE_BASE}/values?fields=id,name`))
+    const remaining = StateValueArraySchema.parse(await list.json())
+    expect(remaining).toHaveLength(2)
+    expect(remaining.map((v) => v.name)).not.toContain('In Progress')
   })
 })

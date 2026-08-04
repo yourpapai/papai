@@ -16,6 +16,7 @@ import {
   type StoredIssue,
   type StoredLink,
   type StoredProject,
+  type StoredStateValue,
 } from './state.js'
 
 // ---------- Response helpers ----------
@@ -539,9 +540,89 @@ const handleRelations = (ctx: FakeYouTrackCtx): Response | undefined => {
   return undefined
 }
 
+// ---------- State-bundle handler ----------
+
+const stateValueProjection = (v: StoredStateValue): Record<string, unknown> => ({
+  id: v.id,
+  name: v.name,
+  ordinal: v.ordinal,
+  isResolved: v.isResolved,
+})
+
+const handleStateBundles = (ctx: FakeYouTrackCtx): Response | undefined => {
+  const { method, path, state, body } = ctx
+  if (!path.startsWith('/api/admin/customFieldSettings/bundles/state/')) return undefined
+
+  const metaPath = matchPath('/api/admin/customFieldSettings/bundles/state/:bundleId', path)
+  if (metaPath !== null && method === 'GET') {
+    const bundleId = metaPath['bundleId'] ?? ''
+    const projects = [...state.projects.values()].map((p) => ({ id: p.id }))
+    return json({
+      id: bundleId,
+      name: 'States',
+      ...(projects.length > 0 ? { aggregated: { project: projects } } : {}),
+    })
+  }
+
+  const collectionPath = matchPath('/api/admin/customFieldSettings/bundles/state/:bundleId/values', path)
+  if (collectionPath !== null) {
+    const bundleId = collectionPath['bundleId'] ?? ''
+    if (method === 'GET') {
+      const values = [...(state.stateValues.get(bundleId) ?? [])].sort((a, b) => a.ordinal - b.ordinal)
+      return json(values.map(stateValueProjection))
+    }
+    if (method === 'POST') {
+      const b = (body ?? {}) as { name?: string; isResolved?: boolean }
+      const values = state.stateValues.get(bundleId) ?? []
+      const created: StoredStateValue = {
+        id: nextId(state, 'state-val'),
+        name: b.name ?? '',
+        ordinal: values.length,
+        isResolved: b.isResolved ?? false,
+      }
+      state.stateValues.set(bundleId, [...values, created])
+      return json(stateValueProjection(created))
+    }
+    return undefined
+  }
+
+  const statusPath = matchPath('/api/admin/customFieldSettings/bundles/state/:bundleId/values/:statusId', path)
+  if (statusPath !== null) {
+    const bundleId = statusPath['bundleId'] ?? ''
+    const statusId = statusPath['statusId'] ?? ''
+    const values = state.stateValues.get(bundleId) ?? []
+    if (method === 'POST') {
+      const b = (body ?? {}) as { name?: string; isResolved?: boolean; ordinal?: number }
+      const existing = values.find((v) => v.id === statusId)
+      if (existing === undefined) return errorResponse(404, 'state value not found')
+      const updated: StoredStateValue = {
+        ...existing,
+        ...(b.name === undefined ? {} : { name: b.name }),
+        ...(b.isResolved === undefined ? {} : { isResolved: b.isResolved }),
+        ...(b.ordinal === undefined ? {} : { ordinal: b.ordinal }),
+      }
+      state.stateValues.set(
+        bundleId,
+        values.map((v) => (v.id === statusId ? updated : v)),
+      )
+      return json(stateValueProjection(updated))
+    }
+    if (method === 'DELETE') {
+      state.stateValues.set(
+        bundleId,
+        values.filter((v) => v.id !== statusId),
+      )
+      return noContent()
+    }
+  }
+
+  return undefined
+}
+
 // ---------- Handler chain ----------
 
 const handlers: ReadonlyArray<(ctx: FakeYouTrackCtx) => Response | undefined> = [
+  handleStateBundles,
   handleProjects,
   handleIssues,
   handleComments,
