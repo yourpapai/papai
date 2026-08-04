@@ -5,12 +5,20 @@
 
 import { expect } from 'bun:test'
 
+import { eq } from 'drizzle-orm'
+
+import { ANALYTICS_GOVERNANCE_HMAC_KEYRING_ENV, ANALYTICS_HMAC_KEYRING_ENV } from '../../../src/analytics/config.js'
+import { ANALYTICS_KILL_SWITCH_ENV } from '../../../src/analytics/governance/policy-store.js'
+import type { AnalyticsObserver } from '../../../src/analytics/runtime.js'
+import { getActiveAnalyticsRuntime, startAnalytics, stopAnalytics } from '../../../src/analytics/start-analytics.js'
+import type { AuthorizedTurnContextRegistry } from '../../../src/analytics/turn-context.js'
 import { getThreadScopedStorageContextId } from '../../../src/auth.js'
 import { setupBot, type BotDeps } from '../../../src/bot.js'
 import { ChatRouter } from '../../../src/chat/router.js'
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import type { IncomingInteraction, IncomingMessage } from '../../../src/chat/types.js'
-import { closeDrizzleDb } from '../../../src/db/drizzle.js'
+import { analyticsPolicy } from '../../../src/db/analytics-governance-schema.js'
+import { closeDrizzleDb, getDrizzleDb } from '../../../src/db/drizzle.js'
 import { routeRequest } from '../../../src/debug/server.js'
 import type { ProcessMessageFn } from '../../../src/llm-orchestrator-process-args.js'
 import { defaultDeps as defaultLlmDeps, processMessage } from '../../../src/llm-orchestrator.js'
@@ -165,6 +173,7 @@ export type ScenarioWorld = Readonly<{
   assertPrerequisitesOpen(operation: string): void
   registerRuntimeExtension(extension: ScenarioRuntimeExtension): void
   startScheduler(): Promise<void>
+  startAnalyticsRuntime(mode: 'governed'): void
   message(user: UserHandle, context: ContextHandle, text: string): IncomingMessage
   repliesForThread(thread: ThreadHandle): readonly ScenarioReply[]
   /** The thread-aware storage context id production code would compute for this context. */
@@ -357,11 +366,18 @@ async function runCleanupStep(
   }
 }
 
-function setupScenarioBot(router: ChatRouter, model: ScriptedModel, pending: PendingWork): void {
-  setupBot(router, ADMIN_USER_ID, {
+function setupScenarioBot(
+  router: ChatRouter,
+  model: ScriptedModel,
+  pending: PendingWork,
+  analytics: Readonly<{ observer: AnalyticsObserver; registry: AuthorizedTurnContextRegistry }> | null,
+): void {
+  const deps: BotDeps = {
     processMessage: createScenarioProcessMessage(model),
     enqueueMessage: pending.enqueue,
-  })
+    ...(analytics === null ? {} : { analyticsObserver: analytics.observer, analyticsTurnRegistry: analytics.registry }),
+  }
+  setupBot(router, ADMIN_USER_ID, deps)
 }
 
 type CleanupResources = {
@@ -369,7 +385,10 @@ type CleanupResources = {
   databaseAttempted: boolean
   providerAttempted: boolean
   schedulerStarted: boolean
+  analyticsTeardown: (() => Promise<void>) | undefined
 }
+
+const ANALYTICS_DRAIN_TIMER_SETTLE_MS = 5100
 
 type CleanupCoordinator = Readonly<{ run(): Promise<void> }>
 
@@ -391,6 +410,8 @@ function createCleanupCoordinator(
         await runCleanupStep(events, 'world.cleanup.runtime.stop', () => resources.runtime?.stop(), failures, hooks)
       if (resources.schedulerStarted)
         await runCleanupStep(events, 'world.cleanup.scheduler.stop', stopRecurringScheduler, failures, hooks)
+      if (resources.analyticsTeardown !== undefined)
+        await runCleanupStep(events, 'world.cleanup.analytics.stop', resources.analyticsTeardown, failures, hooks)
       if (runtimeExtensions?.hasRegistered() === true)
         await runCleanupStep(events, 'world.cleanup.runtime-extensions.stop', runtimeExtensions.stop, failures, hooks)
       await runCleanupStep(events, 'world.cleanup.plugins.deactivate', deactivateAllPlugins, failures, hooks)
@@ -470,6 +491,7 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     databaseAttempted: false,
     providerAttempted: false,
     schedulerStarted: false,
+    analyticsTeardown: undefined,
   }
   let runtimeExtensions: readonly ScenarioRuntimeExtension[] = [...(options.runtimeExtensions ?? [])]
   const runtimeExtensionLifecycle = createScenarioRuntimeExtensionLifecycle(() => runtimeExtensions, {
@@ -485,6 +507,8 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
   let api: ScenarioApi | undefined
   let state: 'new' | 'starting' | 'started' | 'stopping' | 'stopped' = 'new'
   let startInFlight: Promise<void> | undefined
+  let analyticsRuntimeRef: Readonly<{ observer: AnalyticsObserver; registry: AuthorizedTurnContextRegistry }> | null =
+    null
 
   try {
     resources.databaseAttempted = true
@@ -514,7 +538,7 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
         database: { start: () => undefined, stop: () => undefined },
         chat: { createRouter: () => router, ingress: chat },
         application: {
-          setupBot: (activeRouter) => setupScenarioBot(activeRouter, model, pending),
+          setupBot: (activeRouter) => setupScenarioBot(activeRouter, model, pending, analyticsRuntimeRef),
           flush: pending.settle,
         },
         web: {
@@ -598,6 +622,54 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     runtimeExtensions = [...runtimeExtensions, extension]
   }
 
+  const startAnalyticsRuntime = (mode: 'governed'): void => {
+    assertPrerequisitesOpen('given.analyticsRuntime')
+    const testKey = `v1:${'a'.repeat(64)}`
+    const priorAnalytics = process.env[ANALYTICS_HMAC_KEYRING_ENV]
+    const priorGovernance = process.env[ANALYTICS_GOVERNANCE_HMAC_KEYRING_ENV]
+    const priorKillSwitch = process.env[ANALYTICS_KILL_SWITCH_ENV]
+    process.env[ANALYTICS_HMAC_KEYRING_ENV] = testKey
+    process.env[ANALYTICS_GOVERNANCE_HMAC_KEYRING_ENV] = testKey
+    const nowMs = Date.now()
+    getDrizzleDb()
+      .update(analyticsPolicy)
+      .set({
+        policyVersion: 1,
+        noticeVersion: 1,
+        controllerContact: 'test@example.com',
+        purpose: 'automated test coverage',
+        lawfulBasisMode: 'legitimate_interest',
+        retainedEventHorizonDays: 90,
+        reviewDateMs: nowMs + 365 * 24 * 60 * 60 * 1000,
+        acknowledgedAtMs: nowMs,
+        policyEffectiveAtMs: nowMs,
+        localMode: 'local_aggregate',
+        updatedAtMs: nowMs,
+      })
+      .where(eq(analyticsPolicy.singletonId, 1))
+      .run()
+    startAnalytics()
+    const activeRuntime = getActiveAnalyticsRuntime()
+    if (activeRuntime !== null) analyticsRuntimeRef = activeRuntime
+    resources.analyticsTeardown = async (): Promise<void> => {
+      try {
+        await stopAnalytics()
+      } finally {
+        const restore = (envName: string, prior: string | undefined): void => {
+          if (prior === undefined) Reflect.deleteProperty(process.env, envName)
+          else process.env[envName] = prior
+        }
+        restore(ANALYTICS_HMAC_KEYRING_ENV, priorAnalytics)
+        restore(ANALYTICS_GOVERNANCE_HMAC_KEYRING_ENV, priorGovernance)
+        restore(ANALYTICS_KILL_SWITCH_ENV, priorKillSwitch)
+      }
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, ANALYTICS_DRAIN_TIMER_SETTLE_MS)
+      })
+    }
+    events.record('given.analyticsRuntime', { mode })
+  }
+
   const startSchedulerFn = async (): Promise<void> => {
     await start()
     startRecurringScheduler(chat, { resolve: () => fixtures.taskProvider })
@@ -631,6 +703,7 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     assertPrerequisitesOpen,
     registerRuntimeExtension,
     startScheduler: startSchedulerFn,
+    startAnalyticsRuntime,
     message: (user, context, text) => messageForContext(world, user, context, text),
     repliesForThread: (thread) => repliesForThread(world, thread),
     scopedStorageContextId: (context) => scopedStorageContextIdFor(context),

@@ -233,6 +233,7 @@ type ScenarioGiven = Readonly<{
   notifyToken(token: string): void
   mcpPluginServer(platformInstanceId: string, pluginId: string): void
   publicBaseUrl(url: string): void
+  analyticsRuntime(mode: 'governed'): void
   allowPublicUrl(): void
   exhaustedWebFetchQuota(context: ContextHandle): void
   recurringTask(
@@ -798,6 +799,10 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
       prerequisite('given.publicBaseUrl')
       world.fixtures.setPublicBaseUrl(url)
     },
+    analyticsRuntime(mode): void {
+      prerequisite('given.analyticsRuntime')
+      world.startAnalyticsRuntime(mode)
+    },
     allowPublicUrl(): void {
       prerequisite('given.allowPublicUrl')
       world.fixtures.allowPublicUrl()
@@ -1099,10 +1104,12 @@ export function executeScenario(
   })
 }
 
+const SCENARIO_TEST_TIMEOUT_MS = 15000
+
 export function scenario(
   name: string,
   run: (api: ScenarioApi) => void | Promise<void>,
   options?: ScenarioOptions,
 ): void {
-  test(name, () => executeScenario(name, run, undefined, options))
+  test(name, () => executeScenario(name, run, undefined, options), SCENARIO_TEST_TIMEOUT_MS)
 }

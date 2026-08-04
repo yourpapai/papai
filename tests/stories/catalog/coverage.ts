@@ -223,6 +223,7 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-settings-admin-guardrails',
   'SCN-settings-admin-tool-defaults',
   'SCN-settings-admin-analytics',
+  'SCN-analytics-governed-turn',
   'SCN-settings-admin-mcp-catalog',
   'SCN-settings-admin-mcp-plugin-servers',
   'SCN-settings-admin-system-access',
@@ -1527,6 +1528,12 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     verifiedAt: '2026-08-03',
     storyIds: [
       'tests/stories/settings/admin-surfaces.story.test.ts#SCN-settings-admin-analytics: an operator reviews and updates the analytics policy through settings',
+    ],
+  },
+  'SCN-analytics-governed-turn': {
+    verifiedAt: '2026-08-04',
+    storyIds: [
+      'tests/stories/analytics/governed-turn.story.test.ts#SCN-analytics-governed-turn: a governed turn records one epoch-bound message aggregate and the kill switch stops collection without blocking replies',
     ],
   },
   'SCN-settings-api-tools': {
