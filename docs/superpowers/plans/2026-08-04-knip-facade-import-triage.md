@@ -1007,7 +1007,14 @@ Replace the remaining comment block so the kept entries read:
     // (package.json `exports`) and consumed by external plugin authors knip
     // cannot trace, plus tests/providers/public-types.test.ts.
     'src/providers/public-types.ts': ['exports', 'types'],
+    // AdminLlmSnapshot/AdminLlmKeyState model the BYOK system-key admin surface;
+    // consumed by the BYOK-key contract tests (tests/client/**) and the dev-only
+    // Storybook fixture harness (client/stories/**, knip-ignored by config).
+    // Zero production consumers today; the types pin the 5 live BYOK keys.
+    'client/shared/api-types.ts': ['types'],
 ```
+
+(The 6th entry was added during execution: the `AdminLlmSnapshot` cascade surfaced in Task 5 and the controller ruled the BYOK drift-guard types stay — see the ledger. The dead `makeAdminLlmSnapshot` fixture factory was deleted in the same commit.)
 
 - [ ] **Step 2: The proof — knip clean without the ignores**
 

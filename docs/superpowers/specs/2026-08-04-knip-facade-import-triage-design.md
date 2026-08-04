@@ -8,18 +8,21 @@ See LICENSE in the project root for details.
 # Knip facade triage: replace ignoreIssues with import-structure fixes
 
 Date: 2026-08-04
-Status: approved
+Status: implemented
 
 ## Goal
 
 Reverse 34 of the 39 facade `ignoreIssues` entries added or expanded in
 `knip.config.ts` during the PR #216 dependency bump (32 entries removed, 2
 expanded entries reverted to their pre-bump scope), fixing the underlying
-import structure instead of suppressing knip findings. The 5 remaining
-entries keep only bindings that knip genuinely cannot trace: the published
+import structure instead of suppressing knip findings. The remaining entries
+keep only bindings that knip genuinely cannot trace: the published
 `papai/plugin-types` package surface, declared plugin-core-separation
-compatibility boundaries, and bindings consumed by byte-frozen
-0Q-qualification test files.
+compatibility boundaries, bindings consumed by byte-frozen
+0Q-qualification test files, and — added during implementation — the BYOK
+admin-surface types in `client/shared/api-types.ts` consumed only by
+contract tests and the knip-ignored Storybook harness (6 kept entries
+total).
 
 ## Background and findings
 
@@ -149,6 +152,7 @@ cannot trace:
 | Entry | Justification |
 | --- | --- |
 | `src/providers/public-types.ts` | Published as `papai/plugin-types` (package.json `exports`); consumed by external plugin authors |
+| `client/shared/api-types.ts` | `AdminLlmSnapshot`/`AdminLlmKeyState` model the live BYOK system-key admin surface; consumed by BYOK-key contract tests and the dev-only Storybook fixture harness (`client/stories/**`, knip-ignored by config) |
 | `src/coding-sessions/session-record.ts`, `src/coding-sessions/store.ts` | Declared stable compatibility boundaries for the in-flight plugin-core-separation refactor; `store.ts` also consumed by the frozen story harness |
 | `src/debug/state-collector.ts` | `recentLlm`/`pendingTraces` consumed by frozen `tests/utils/test-helpers.ts` |
 | `src/deferred-prompts/poller.ts` | `pollAlertsOnce` consumed by frozen `tests/stories/harness/scenario.ts` |
