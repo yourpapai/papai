@@ -13,7 +13,8 @@
   const { Story } = defineMeta({
     title: 'settings/sections/ReposSection',
     component: ReposSection,
-    args: { contextId: CONTEXT_ID },
+    // Effectively disables the success-message auto-clear so screenshots never race the timer.
+    args: { contextId: CONTEXT_ID, statusTimeoutMs: 600_000 },
   })
 </script>
 

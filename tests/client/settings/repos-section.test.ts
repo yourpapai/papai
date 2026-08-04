@@ -60,6 +60,20 @@ const routeMock = (_url: string, init?: RequestInit): Promise<Response> => {
   return Promise.resolve(json(emptyPayload))
 }
 
+const createFailFirstLoadMock = (): { fetch: () => Promise<Response>; callCount: () => number } => {
+  let calls = 0
+  const responses = [
+    (): Promise<Response> => Promise.resolve(new Response('{"error":"boom"}', { status: 500 })),
+    (): Promise<Response> => Promise.resolve(json(populatedPayload)),
+  ]
+  const fetch = (): Promise<Response> => {
+    const respond = responses[calls] ?? responses[1]!
+    calls += 1
+    return respond()
+  }
+  return { fetch, callCount: () => calls }
+}
+
 const failDeleteMock = (_url: string, init?: RequestInit): Promise<Response> => {
   const method = (init?.method ?? 'GET').toUpperCase()
   const isCodingRepos = _url.includes('/settings/api/coding-repos')
@@ -443,6 +457,147 @@ describe('ReposSection', () => {
     expect(label).not.toBeNull()
     expect(label.tagName).toBe('H3')
     expect(label.textContent).toContain('Add repository')
+    void unmount(component)
+  })
+
+  test('a load failure renders a Retry control beside the message that re-fetches the list', async () => {
+    const mockLoad = createFailFirstLoadMock()
+    setMockFetch(mockLoad.fetch)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const retry = target.querySelector<HTMLButtonElement>('[data-testid="repos-error-retry"]')!
+    expect(retry).not.toBeNull()
+    expect(target.querySelector('.settings-repos__feedback .status-error')).not.toBeNull()
+
+    retry.click()
+    await drain()
+
+    expect(mockLoad.callCount()).toBe(2)
+    expect(target.querySelector('[data-testid="repos-error-retry"]')).toBeNull()
+    expect(target.textContent).toContain('demo')
+    void unmount(component)
+  })
+
+  test('an add outcome renders inside the add-form card, not above the repo rows', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(routeMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1', statusTimeoutMs: 60_000 },
+    })
+
+    await drain()
+
+    const set = (testid: string, value: string): void => {
+      const el = target.querySelector<HTMLInputElement>(`[data-testid="${testid}"]`)!
+      el.value = value
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    set('repos-add-name', 'my-project')
+    set('repos-add-url', 'https://github.com/acme/my-project.git')
+    set('repos-add-branch', 'main')
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="repos-add-submit"]')!.click()
+    await drain()
+    await drain()
+
+    const inAddCard = target.querySelector<HTMLElement>('.settings-repos__add .status-success')!
+    expect(inAddCard).not.toBeNull()
+    expect(inAddCard.textContent).toContain('Repository added.')
+    void unmount(component)
+  })
+
+  test('a delete outcome renders in the list slot, not inside the add-form card', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(routeMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1', statusTimeoutMs: 60_000 },
+    })
+
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="repos-delete-r1"]')!.click()
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="confirm-accept"]')!.click()
+    await drain()
+    await drain()
+
+    expect(target.querySelector('.settings-repos__add .status-success')).toBeNull()
+    const status = target.querySelector<HTMLElement>('.status-success')!
+    expect(status.textContent).toContain('Repository removed.')
+    void unmount(component)
+  })
+
+  test('a success message clears itself after statusTimeoutMs', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(routeMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1', statusTimeoutMs: 10 },
+    })
+
+    await drain()
+
+    const set = (testid: string, value: string): void => {
+      const el = target.querySelector<HTMLInputElement>(`[data-testid="${testid}"]`)!
+      el.value = value
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    set('repos-add-name', 'my-project')
+    set('repos-add-url', 'https://github.com/acme/my-project.git')
+    set('repos-add-branch', 'main')
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="repos-add-submit"]')!.click()
+    await drain()
+    await drain()
+
+    expect(target.querySelector('.status-success')).not.toBeNull()
+
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 60)
+    })
+    flushSync()
+
+    expect(target.querySelector('.status-success')).toBeNull()
+    void unmount(component)
+  })
+
+  test('an error message does not clear itself on the status timer', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(failDeleteMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1', statusTimeoutMs: 10 },
+    })
+
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="repos-delete-r1"]')!.click()
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="confirm-accept"]')!.click()
+    await drain()
+
+    expect(target.querySelector('.status-error')).not.toBeNull()
+
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 60)
+    })
+    flushSync()
+
+    expect(target.querySelector('.status-error')).not.toBeNull()
     void unmount(component)
   })
 })

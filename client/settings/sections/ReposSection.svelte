@@ -18,13 +18,17 @@
 
   interface Props {
     contextId: string
+    /** How long a success message stays on screen. Injected so screenshots never race the clock. */
+    statusTimeoutMs?: number
   }
 
-  let { contextId }: Props = $props()
+  let { contextId, statusTimeoutMs = 4000 }: Props = $props()
 
   let repos: RepoRecord[] = $state([])
-  let error: string | null = $state(null)
-  let status: string | null = $state(null)
+  let listError: string | null = $state(null)
+  let listStatus: string | null = $state(null)
+  let addError: string | null = $state(null)
+  let addStatus: string | null = $state(null)
   let loading = $state(false)
   let adding = $state(false)
   let deletingId: string | null = $state(null)
@@ -52,23 +56,38 @@
     return [...seen]
   }
 
+  let listStatusTimer: ReturnType<typeof setTimeout> | undefined
+  let addStatusTimer: ReturnType<typeof setTimeout> | undefined
+
+  const showListStatus = (message: string): void => {
+    listStatus = message
+    clearTimeout(listStatusTimer)
+    listStatusTimer = setTimeout(() => (listStatus = null), statusTimeoutMs)
+  }
+
+  const showAddStatus = (message: string): void => {
+    addStatus = message
+    clearTimeout(addStatusTimer)
+    addStatusTimer = setTimeout(() => (addStatus = null), statusTimeoutMs)
+  }
+
   async function load(id: string): Promise<void> {
-    error = null
+    listError = null
     loading = true
     try {
       const data = await fetchRepos(id)
       if (id !== contextId) return
       repos = data.repos
     } catch (err) {
-      if (id === contextId) error = formatFetchError(err)
+      if (id === contextId) listError = formatFetchError(err)
     } finally {
       if (id === contextId) loading = false
     }
   }
 
   async function handleAdd(): Promise<void> {
-    error = null
-    status = null
+    addError = null
+    addStatus = null
     adding = true
     try {
       await addRepo({
@@ -85,24 +104,24 @@
       addPreset = 'cautious'
       addEgress = ''
       await load(contextId)
-      status = 'Repository added.'
+      showAddStatus('Repository added.')
     } catch (err) {
-      error = formatFetchError(err)
+      addError = formatFetchError(err)
     } finally {
       adding = false
     }
   }
 
   async function handleDelete(repoId: string): Promise<void> {
-    error = null
-    status = null
+    listError = null
+    listStatus = null
     deletingId = repoId
     try {
       await deleteRepo({ contextId, repoId })
       await load(contextId)
-      status = 'Repository removed.'
+      showListStatus('Repository removed.')
     } catch (err) {
-      error = formatFetchError(err)
+      listError = formatFetchError(err)
     } finally {
       deletingId = null
       pendingDeleteId = null
@@ -111,6 +130,11 @@
 
   $effect(() => {
     void load(contextId)
+  })
+
+  $effect(() => () => {
+    clearTimeout(listStatusTimer)
+    clearTimeout(addStatusTimer)
   })
 </script>
 
@@ -121,8 +145,15 @@
     {/snippet}
   </PageHeader>
 
-  {#if error !== null}<p class="status-error" role="alert">{error}</p>{/if}
-  {#if status !== null}<p class="status-success" role="status">{status}</p>{/if}
+  {#if listError !== null}
+    <div class="settings-repos__feedback">
+      <p class="status-error" role="alert">{listError}</p>
+      <Btn variant="outline" size="sm" testid="repos-error-retry" onClick={() => void load(contextId)}>
+        {#snippet children()}Retry{/snippet}
+      </Btn>
+    </div>
+  {/if}
+  {#if listStatus !== null}<p class="status-success" role="status">{listStatus}</p>{/if}
 
   {#if loading && repos.length === 0}
     <p class="placeholder">Loading…</p>
@@ -212,6 +243,8 @@
           {#snippet children()}{adding ? 'Adding…' : 'Add'}{/snippet}
         </Btn>
       </div>
+      {#if addError !== null}<p class="status-error" role="alert">{addError}</p>{/if}
+      {#if addStatus !== null}<p class="status-success" role="status">{addStatus}</p>{/if}
     </div>
   {/if}
 
@@ -276,6 +309,14 @@
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--text-dim);
+  }
+  .settings-repos__feedback {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+  }
+  .settings-repos__feedback .status-error {
+    margin: 0;
   }
   .settings-repos__add {
     display: grid;
