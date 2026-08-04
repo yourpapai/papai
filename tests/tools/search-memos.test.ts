@@ -201,4 +201,80 @@ describe('search_memos tool', () => {
     expect(limitMeta.minimum).toBe(1)
     expect(limitMeta.maximum).toBe(20)
   })
+
+  test('auto mode still falls back to keyword when embeddings exist but no query vector resolves', async () => {
+    const tracked = createTrackedLoggerMock()
+    const { makeSearchMemosTool } = await loadSearchMemosModule(tracked)
+    const memo = seedMemoWithEmbedding('deadline notes', VEC_HIGH)
+    setQueryVec(null)
+
+    const result: unknown = await getToolExecutor(makeSearchMemosTool(USER))({ query: 'deadline', mode: 'auto' })
+
+    assert(isSearchMemosResult(result))
+    expect(result.mode).toBe('keyword_fallback')
+    expect(result.results.map((r) => r.id)).toEqual([memo.id])
+  })
+
+  test('auto mode returns semantic hits sorted by descending score', async () => {
+    const tracked = createTrackedLoggerMock()
+    const { makeSearchMemosTool } = await loadSearchMemosModule(tracked)
+    const mid = seedMemoWithEmbedding('rotate the credentials', VEC_MID)
+    const high = seedMemoWithEmbedding('cycle api keys soon', VEC_HIGH)
+    seedMemoWithEmbedding('unrelated lunch note', VEC_ORTHO)
+    setQueryVec(QUERY_VEC)
+
+    const result: unknown = await getToolExecutor(makeSearchMemosTool(USER))({
+      query: 'security rotation',
+      mode: 'auto',
+    })
+
+    assert(isSearchMemosResult(result))
+    expect(result.mode).toBe('semantic')
+    expect(result.results.map((r) => r.id)).toEqual([high.id, mid.id])
+    expect(typeof result.results[0]?.score).toBe('number')
+
+    const done = findCall(tracked, 'info', 'Semantic search completed')
+    expect(done?.args[0]).toEqual({ mode: 'semantic', resultCount: 2 })
+  })
+
+  test('auto mode falls back to keyword when semantic yields zero hits', async () => {
+    const tracked = createTrackedLoggerMock()
+    const { makeSearchMemosTool } = await loadSearchMemosModule(tracked)
+    const memo = seedMemoWithEmbedding('deploy runbook', VEC_ORTHO)
+    setQueryVec(QUERY_VEC)
+
+    const result: unknown = await getToolExecutor(makeSearchMemosTool(USER))({ query: 'deploy', mode: 'auto' })
+
+    assert(isSearchMemosResult(result))
+    expect(result.mode).toBe('keyword_fallback')
+    expect(result.results.map((r) => r.id)).toEqual([memo.id])
+  })
+
+  test('semantic mode returns an empty semantic result when nothing passes the threshold', async () => {
+    const tracked = createTrackedLoggerMock()
+    const { makeSearchMemosTool } = await loadSearchMemosModule(tracked)
+    seedMemoWithEmbedding('deploy runbook', VEC_ORTHO)
+    setQueryVec(QUERY_VEC)
+
+    const result: unknown = await getToolExecutor(makeSearchMemosTool(USER))({ query: 'deploy', mode: 'semantic' })
+
+    assert(isSearchMemosResult(result))
+    expect(result.mode).toBe('semantic')
+    expect(result.results).toEqual([])
+  })
+
+  test('semantic mode returns an empty result and warns when no embedding model resolves', async () => {
+    const tracked = createTrackedLoggerMock()
+    const { makeSearchMemosTool } = await loadSearchMemosModule(tracked)
+    saveMemo(USER, 'deploy runbook', [])
+    setQueryVec(null)
+
+    const result: unknown = await getToolExecutor(makeSearchMemosTool(USER))({ query: 'deploy', mode: 'semantic' })
+
+    assert(isSearchMemosResult(result))
+    expect(result.mode).toBe('semantic')
+    expect(result.results).toEqual([])
+    const warn = tracked.getCallsByLevel('warn').find((call) => call.args[0] === 'Semantic search unavailable')
+    expect(warn).toBeDefined()
+  })
 })
