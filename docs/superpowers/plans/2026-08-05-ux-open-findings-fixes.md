@@ -36,11 +36,13 @@ See LICENSE in the project root for details.
 Run this in order. It is the only sanctioned way to move a baseline:
 
 1. `bun run visual:audit` **first**, after the code change and before any re-shoot. The failure list is the *prediction check*: it enumerates exactly which shots your change moved. Record that list in your report.
-2. `bun shoot -g <Section>` to re-shoot only that section.
-3. **Read every changed PNG** with the Read tool (`git status --porcelain/` names them) and confirm each matches the finding's intent.
+2. `bun shoot -g <Section>` to re-shoot only that section. Note that `--update-snapshots=all` rewrites the baseline of **every test the grep matches**, not only the failing ones — so this step touches more files than step 1 predicted, by design.
+3. **Read every PNG whose mtime changed** with the Read tool, and confirm each matches the finding's intent. `.storybook-shots/` is gitignored, so `git status` will not name them — list them with:
+   `find .storybook-shots -name '*.png' -newermt '-10 minutes'`
+   Every file that lists must be looked at, including the ones step 1 did not predict: those are the shots the re-shoot rewrote without needing to, and confirming they are unchanged in content is the only thing standing between a scoped re-shoot and a silent regression.
 4. `bun run visual:audit` again — must be 0 failed.
 
-A green audit after a re-shoot is vacuous on its own; it is evidence only in combination with steps 1 and 3. **A shot that moves without being predicted is a defect, not a baseline update** — stop and report it.
+A green audit after a re-shoot is vacuous on its own; it is evidence only in combination with steps 1 and 3. **A shot whose content changes without being predicted is a defect, not a baseline update** — stop and report it.
 
 Storybook must be running for any shoot/audit: `bun storybook` (kept warm).
 
@@ -199,7 +201,7 @@ Expected: exactly **1 failed** — `shared/ui/ErrorState › With detail`, faili
 - [ ] **Step 8: Shoot and inspect**
 
 Run: `bun shoot -g ErrorState`
-Then `git status --porcelain/` and Read every listed PNG. Expected: exactly one new file, showing the panel with a closed "Technical details" disclosure below the red message and above "Try again".
+Then list the rewritten PNGs with `find .storybook-shots -name '*.png' -newermt '-10 minutes'` and Read every one. Expected: exactly one new file, showing the panel with a closed "Technical details" disclosure below the red message and above "Try again".
 
 - [ ] **Step 9: Re-audit**
 
@@ -299,7 +301,7 @@ Expected: failures confined to `settings/sections/ByokSection › Error` (and an
 - [ ] **Step 6: Shoot and inspect**
 
 Run: `bun shoot -g ByokSection`
-Then `git status --porcelain/` and Read every changed PNG. Expected: the panel now reads "Something went wrong" / "Could not load BYOK settings for this context." with a closed "Technical details" disclosure where the bare word "boom" used to be.
+Then list the rewritten PNGs with `find .storybook-shots -name '*.png' -newermt '-10 minutes'` and Read every one. Expected: the panel now reads "Something went wrong" / "Could not load BYOK settings for this context." with a closed "Technical details" disclosure where the bare word "boom" used to be.
 
 - [ ] **Step 7: Re-audit**
 
@@ -921,7 +923,7 @@ Expected: failures confined to `settings/sections/KaneoAccessSection` — the "N
 - [ ] **Step 8: Shoot and inspect**
 
 Run: `bun shoot -g KaneoAccessSection`
-Then `git status --porcelain/` and Read every changed PNG. Expected: the empty state now ends in a "Check again" button below the hint; nothing else in the section shifts.
+Then list the rewritten PNGs with `find .storybook-shots -name '*.png' -newermt '-10 minutes'` and Read every one. Expected: the empty state now ends in a "Check again" button below the hint; nothing else in the section shifts.
 
 - [ ] **Step 9: Re-audit**
 
@@ -1091,7 +1093,7 @@ Composed `SettingsApp` shots must not move either — that section is not in the
 - [ ] **Step 9: Shoot and inspect**
 
 Run: `bun shoot -g CodingCredentialsSection`
-Then `git status --porcelain/` and Read every changed PNG. Confirm: the Auth-method hint reads as a caption under its control, the new OpenAI-compatible shot shows Base URL marked required with its hint and **no** Auth method row, and no text is clipped at the narrow width.
+Then list the rewritten PNGs with `find .storybook-shots -name '*.png' -newermt '-10 minutes'` and Read every one. Confirm: the Auth-method hint reads as a caption under its control, the new OpenAI-compatible shot shows Base URL marked required with its hint and **no** Auth method row, and no text is clipped at the narrow width.
 
 - [ ] **Step 10: Re-audit**
 
@@ -1169,7 +1171,7 @@ Expected: failures confined to `settings/sections/MembersSection` shots that ren
 - [ ] **Step 6: Shoot and inspect**
 
 Run: `bun shoot -g MembersSection`
-Then `git status --porcelain/` and Read every changed PNG. Confirm the sentence fits the table body without wrapping oddly or overflowing at the narrow width.
+Then list the rewritten PNGs with `find .storybook-shots -name '*.png' -newermt '-10 minutes'` and Read every one. Confirm the sentence fits the table body without wrapping oddly or overflowing at the narrow width.
 
 - [ ] **Step 7: Re-audit**
 
@@ -1242,7 +1244,7 @@ Expected: failures confined to shots that render `RoleBindingBlock` — the Byok
 - [ ] **Step 6: Shoot and inspect**
 
 Run: `bun shoot -g ByokSection`
-Then `git status --porcelain/` and Read every changed PNG. Confirm the only difference is 2px more breathing room between a role binding's head and its controls, and that nothing overflows or reflows.
+Then list the rewritten PNGs with `find .storybook-shots -name '*.png' -newermt '-10 minutes'` and Read every one. Confirm the only difference is 2px more breathing room between a role binding's head and its controls, and that nothing overflows or reflows.
 
 - [ ] **Step 7: Re-audit**
 
