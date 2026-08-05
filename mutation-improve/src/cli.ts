@@ -1,0 +1,204 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import path from 'node:path'
+
+import { runAgent } from '../../review-loop/src/agent-runner.js'
+import { createShellExec, runBuildCheck } from '../../review-loop/src/build-checker.js'
+import { LiveRenderer } from '../../review-loop/src/live-renderer.js'
+import { realSpawn } from '../../review-loop/src/spawn.js'
+import {
+  createWorktree,
+  execGit,
+  mergeWorktree,
+  removeWorktree,
+  resetWorktree,
+} from '../../review-loop/src/worktree.js'
+import { readBaseline, writeBaseline } from './baseline.js'
+import { type MutationImproveConfig, loadMutationImproveConfig } from './config.js'
+import { runFinalize } from './finalize.js'
+import { runPipeline, type PipelineDeps } from './pipeline.js'
+import { ResultSchema } from './result-schema.js'
+import { createRunState, loadRunState, saveRunState, type MutationImproveRunState } from './run-state.js'
+import { measureMutationScore } from './score-reader.js'
+import { SelectionSchema } from './selection-schema.js'
+
+export interface CliArgs {
+  configPath: string
+  count?: number
+  threshold?: number
+  base?: string
+  resumeRunId?: string
+  resetWorktree: boolean
+  noPr: boolean
+}
+
+const DEFAULT_CONFIG_PATH = path.join(import.meta.dir, '..', 'config.json')
+
+interface GhResult {
+  exitCode: number
+  stdout: string
+  stderr: string
+}
+
+function readValueArg(argv: readonly string[], index: number, name: string): string {
+  const value = argv[index + 1]
+  if (value === undefined) throw new Error(`Missing value for ${name}`)
+  return value
+}
+
+export function parseCliArgs(argv: readonly string[]): CliArgs {
+  const flags: CliArgs = { configPath: DEFAULT_CONFIG_PATH, resetWorktree: false, noPr: false }
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i]
+    if (arg === undefined) continue
+    if (arg === '--config') {
+      flags.configPath = readValueArg(argv, i, '--config')
+      i += 1
+      continue
+    }
+    if (arg === '--count') {
+      const v = Number(readValueArg(argv, i, '--count'))
+      if (!Number.isInteger(v) || v < 1) throw new Error('--count must be a positive integer')
+      flags.count = v
+      i += 1
+      continue
+    }
+    if (arg.startsWith('--threshold=')) {
+      flags.threshold = Number(arg.slice('--threshold='.length))
+      continue
+    }
+    if (arg === '--base') {
+      flags.base = readValueArg(argv, i, '--base')
+      i += 1
+      continue
+    }
+    if (arg === '--resume-run') {
+      flags.resumeRunId = readValueArg(argv, i, '--resume-run')
+      i += 1
+      continue
+    }
+    if (arg === '--reset-worktree') {
+      flags.resetWorktree = true
+      continue
+    }
+    if (arg === '--no-pr') {
+      flags.noPr = true
+      continue
+    }
+    throw new Error(`Unknown argument: ${arg}`)
+  }
+  return flags
+}
+
+function selectRunner(
+  config: MutationImproveConfig,
+  runState: MutationImproveRunState,
+  log: LiveRenderer,
+): PipelineDeps['runSelectAgent'] {
+  return (worktreePath, prompt) =>
+    runAgent({
+      spawn: realSpawn,
+      model: config.agent.model,
+      cwd: worktreePath,
+      prompt,
+      outputPath: path.join(runState.runDir, 'iter', 'selection.json'),
+      outputSchema: SelectionSchema,
+      label: 'select',
+      logPath: path.join(runState.runDir, 'agent-output.log'),
+      extraArgs: config.agent.extraArgs,
+      reporter: log,
+      timeoutMs: config.agent.timeoutMs,
+    })
+}
+
+function improveRunner(
+  config: MutationImproveConfig,
+  runState: MutationImproveRunState,
+  log: LiveRenderer,
+): PipelineDeps['runImproveAgent'] {
+  return (worktreePath, prompt) =>
+    runAgent({
+      spawn: realSpawn,
+      model: config.agent.model,
+      cwd: worktreePath,
+      prompt,
+      outputPath: path.join(runState.runDir, 'iter', 'result.json'),
+      outputSchema: ResultSchema,
+      label: 'improve',
+      logPath: path.join(runState.runDir, 'agent-output.log'),
+      extraArgs: config.agent.extraArgs,
+      reporter: log,
+      timeoutMs: config.agent.timeoutMs,
+    })
+}
+
+function buildPipelineDeps(
+  config: MutationImproveConfig,
+  runState: MutationImproveRunState,
+  log: LiveRenderer,
+): PipelineDeps {
+  return {
+    config,
+    runState,
+    spawn: realSpawn,
+    createWorktree,
+    resetWorktree,
+    removeWorktree,
+    mergeWorktree,
+    execGit,
+    runBuildCheck: () => {
+      const exec = createShellExec(runState.runDir, config.checkCommand, config.buildTimeoutMs)
+      return runBuildCheck({ exec: () => exec() })
+    },
+    measureScore: (worktreePath: string, srcFile: string) => {
+      const exec = createShellExec(worktreePath, `${config.mutateFileCommand} ${srcFile}`, config.agentTimeoutMs)
+      return measureMutationScore({ exec: () => exec() }, path.join(worktreePath, 'reports', 'paired'), srcFile)
+    },
+    readBaseline,
+    writeBaseline,
+    runSelectAgent: selectRunner(config, runState, log),
+    runImproveAgent: improveRunner(config, runState, log),
+    log,
+  }
+}
+
+async function runGh(ghArgs: readonly string[], cwd: string): Promise<GhResult> {
+  const { execFile } = await import('node:child_process')
+  return new Promise<GhResult>((resolve) => {
+    execFile('gh', [...ghArgs], { cwd, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+      resolve({ exitCode: err === null ? 0 : 1, stdout, stderr })
+    })
+  })
+}
+
+export async function runCli(argv: readonly string[]): Promise<void> {
+  const args = parseCliArgs(argv)
+  const config = await loadMutationImproveConfig({ configPath: args.configPath })
+  if (args.count !== undefined) config.count = args.count
+  if (args.threshold !== undefined) config.threshold = args.threshold
+  if (args.base !== undefined) config.base = args.base
+
+  const runState: MutationImproveRunState =
+    args.resumeRunId === undefined ? await createRunState(config) : await loadRunState(config.workDir, args.resumeRunId)
+
+  const log = new LiveRenderer(process.stdout)
+  const deps = buildPipelineDeps(config, runState, log)
+  const { results, aborted } = await runPipeline(deps)
+  await saveRunState(runState)
+
+  const failed = results.filter((r) => r.outcome === 'failed')
+  if (!args.noPr && runState.merged.length > 0 && !aborted) {
+    await runFinalize({ execGit, runGh }, { config, runState })
+  }
+  if (failed.length > 0 || aborted) process.exitCode = 1
+}
+
+if (import.meta.main) {
+  runCli(process.argv.slice(2)).catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : String(error))
+    process.exit(1)
+  })
+}
