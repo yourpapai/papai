@@ -41,6 +41,9 @@ const patchErrorMock = (url: string, init: RequestInit): Promise<Response> => {
 
 const neverResolves = (): Promise<Response> => new Promise<Response>(() => {})
 
+const describedByIds = (btn: HTMLButtonElement): string[] =>
+  (btn.getAttribute('aria-describedby') ?? '').split(' ').filter((id) => id.length > 0)
+
 const getHangsMock = (): Promise<Response> => neverResolves()
 
 const patchHangsMock = (url: string, init: RequestInit): Promise<Response> => {
@@ -245,6 +248,38 @@ describe('GuestModeSection', () => {
     expect(target.querySelector('[data-testid="error-retry"]')).toBeNull()
     const btn = target.querySelector<HTMLButtonElement>('[data-testid="guest-mode-toggle"]')!
     expect(btn.textContent?.trim()).toBe('Enable guest mode')
+    void unmount(component)
+  })
+
+  test('the toggle is described by the state pill and the help caption', async () => {
+    setMockFetch(() => Promise.resolve(json(enabledPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(GuestModeSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+
+    const btn = target.querySelector<HTMLButtonElement>('[data-testid="guest-mode-toggle"]')!
+    const ids = describedByIds(btn)
+    expect(ids).toEqual(['guest-mode-state', 'guest-mode-help'])
+    for (const id of ids) {
+      expect(target.querySelector(`#${id}`)).not.toBeNull()
+    }
+    expect(target.querySelector('#guest-mode-state')?.textContent).toContain('On')
+    void unmount(component)
+  })
+
+  test('the toggle-mutation error banner is announced', async () => {
+    setMockFetch(patchErrorMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(GuestModeSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="guest-mode-toggle"]')!.click()
+    await drain()
+
+    const banner = target.querySelector('[data-testid="guest-mode-error"]')
+    expect(banner).not.toBeNull()
+    expect(banner!.getAttribute('role')).toBe('alert')
     void unmount(component)
   })
 })

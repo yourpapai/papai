@@ -157,4 +157,20 @@ describe('Btn.svelte', () => {
     expect(target.querySelector<HTMLButtonElement>('.ui-btn')!.getAttribute('aria-pressed')).toBe('false')
     void unmount(component)
   })
+
+  test('renders aria-describedby when ariaDescribedBy is passed', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Btn, { target, props: { children: textSnippet('x'), ariaDescribedBy: 'a b' } })
+    expect(target.querySelector('button')?.getAttribute('aria-describedby')).toBe('a b')
+    void unmount(component)
+  })
+
+  test('omits aria-describedby when ariaDescribedBy is absent', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Btn, { target, props: { children: textSnippet('x') } })
+    expect(target.querySelector('button')?.hasAttribute('aria-describedby')).toBe(false)
+    void unmount(component)
+  })
 })

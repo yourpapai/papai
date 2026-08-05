@@ -14,9 +14,11 @@
     children: Snippet
     tone?: Tone
     dot?: boolean
+    /** Optional id so the pill can be referenced by aria-describedby / aria-labelledby. */
+    id?: string
   }
 
-  let { children, tone = 'neutral', dot = false }: Props = $props()
+  let { children, tone = 'neutral', dot = false, id }: Props = $props()
 
   const dotColor: Record<Tone, string> = {
     accent: 'var(--accent)',
@@ -28,7 +30,7 @@
   }
 </script>
 
-<span class="ui-pill ui-pill--{tone}">
+<span {id} class="ui-pill ui-pill--{tone}">
   {#if dot}
     <Dot color={dotColor[tone]} glow={tone === 'accent'} />
   {/if}

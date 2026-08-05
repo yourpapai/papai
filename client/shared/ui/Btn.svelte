@@ -21,6 +21,7 @@
     testid?: string
     ariaLabel?: string
     ariaPressed?: boolean
+    ariaDescribedBy?: string
   }
 
   let {
@@ -35,6 +36,7 @@
     testid,
     ariaLabel,
     ariaPressed,
+    ariaDescribedBy,
   }: Props = $props()
 
   function handleClick(): void {
@@ -51,6 +53,7 @@
   aria-busy={busy}
   aria-label={ariaLabel}
   aria-pressed={ariaPressed}
+  aria-describedby={ariaDescribedBy}
   onclick={handleClick}
   data-testid={testid}
 >
