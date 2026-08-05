@@ -175,6 +175,52 @@ describe('buildPairedConfig', () => {
     expect(cfg.bun.bunArgs).toBeUndefined()
   })
 
+  test('adds the browser condition and client preload for tests/client/', () => {
+    // Clearing pathIgnorePatterns only makes the lane discoverable. These tests are
+    // written for the mode `bun test:client` runs them in: without --conditions=browser
+    // msw resolves to its node export and the handler suites fail unmutated, which
+    // aborts the whole file with a ConfigError instead of producing a score.
+    const cfg = buildPairedConfig({
+      base: BASE,
+      srcFile: 'client/stories/msw/namespace.ts',
+      testFiles: ['tests/client/stories/msw/coding-credentials-namespace.test.ts'],
+      reportPath: 'reports/paired/namespace.json',
+    })
+    expect(cfg.bun.bunArgs).toContain('--conditions=browser')
+    expect(cfg.bun.bunArgs).toContain('--preload')
+    expect(cfg.bun.bunArgs).toContain('./tests/client-setup.ts')
+  })
+
+  test('adds the e2e preload for tests/e2e/ without the browser condition', () => {
+    const cfg = buildPairedConfig({
+      base: BASE,
+      srcFile: 'src/kaneo/client.ts',
+      testFiles: ['tests/e2e/e2e.test.ts'],
+      reportPath: 'reports/paired/client.json',
+    })
+    expect(cfg.bun.bunArgs).toContain('./tests/e2e/bun-test-setup.ts')
+    expect(cfg.bun.bunArgs).toContain('--path-ignore-patterns')
+    expect(cfg.bun.bunArgs).not.toContain('--conditions=browser')
+  })
+
+  test('emits --path-ignore-patterns once when both lanes are present', () => {
+    const cfg = buildPairedConfig({
+      base: BASE,
+      srcFile: 'client/shared/ui/field-context.ts',
+      testFiles: ['tests/client/foo.test.ts', 'tests/e2e/e2e.test.ts'],
+      reportPath: 'reports/paired/field-context.json',
+    })
+    expect(cfg.bun.bunArgs).toEqual([
+      '--conditions=browser',
+      '--preload',
+      './tests/client-setup.ts',
+      '--preload',
+      './tests/e2e/bun-test-setup.ts',
+      '--path-ignore-patterns',
+      '',
+    ])
+  })
+
   test('preserves existing base bunArgs when adding path-ignore-patterns', () => {
     const cfg = buildPairedConfig({
       base: { ...BASE, bun: { ...BASE.bun, bunArgs: ['--watch'] } },
