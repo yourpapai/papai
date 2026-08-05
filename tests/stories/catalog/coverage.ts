@@ -103,7 +103,7 @@ export type CatalogCoverage =
     }>
 
 export const CATALOG_SOURCE =
-  'scenario-catalog snapshot supplied 2026-07-13; extended 2026-07-23 with 12 SCN-parity-* provider-real (@1) ids (tier1-provider-real-parity); extended 2026-07-24 with 17 SCN-parity-* domain-retrofit (@1) ids (tier1b-e2e-parity-retrofit); extended 2026-07-24 with 8 SCN-* process-real smoke (@2) ids (tier2-process-smoke); extended 2026-07-27 with 10 real-YouTrack (@0) ids (t0-real-youtrack-provider); extended 2026-07-28 with 18 previously uncataloged story ids (story-catalog-census); extended 2026-07-29 with 21 uncatalogued-cluster behavior ids (@0/@3/@4) (phase3-catalog-foundation); extended 2026-08-01 with 3 real-Kaneo (@0) chat-loop story ids attached to the YouTrack real-provider records (t0-real-kaneo-provider); extended 2026-08-03 with 1 analytics settings (@0) story id (analytics-settings-census)' as const
+  'scenario-catalog snapshot supplied 2026-07-13; extended 2026-07-23 with 12 SCN-parity-* provider-real (@1) ids (tier1-provider-real-parity); extended 2026-07-24 with 17 SCN-parity-* domain-retrofit (@1) ids (tier1b-e2e-parity-retrofit); extended 2026-07-24 with 8 SCN-* process-real smoke (@2) ids (tier2-process-smoke); extended 2026-07-27 with 10 real-YouTrack (@0) ids (t0-real-youtrack-provider); extended 2026-07-28 with 18 previously uncataloged story ids (story-catalog-census); extended 2026-07-29 with 21 uncatalogued-cluster behavior ids (@0/@3/@4) (phase3-catalog-foundation); extended 2026-08-01 with 3 real-Kaneo (@0) chat-loop story ids attached to the YouTrack real-provider records (t0-real-kaneo-provider); extended 2026-08-03 with 1 analytics settings (@0) story id (analytics-settings-census); extended 2026-08-04 with 4 aggregate delivery (@0) ids (analytics-aggregate-delivery-coverage)' as const
 
 export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-task-create-update',
@@ -227,6 +227,7 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-analytics-aggregate-release-settings',
   'SCN-analytics-aggregate-release-denials',
   'SCN-analytics-aggregate-delivery-captured',
+  'SCN-analytics-aggregate-delivery-governance',
   'SCN-settings-admin-mcp-catalog',
   'SCN-settings-admin-mcp-plugin-servers',
   'SCN-settings-admin-system-access',
@@ -1565,6 +1566,13 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     provingTier: '0',
     storyIds: [
       'tests/stories/analytics/aggregate-delivery.story.test.ts#SCN-analytics-aggregate-delivery-captured: the delivery worker sends a staged release to the captured sink with the payload contract and no pseudonymous fields',
+    ],
+  },
+  'SCN-analytics-aggregate-delivery-governance': {
+    verifiedAt: '2026-08-04',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/analytics/aggregate-delivery.story.test.ts#SCN-analytics-aggregate-delivery-governance: the kill switch defers a staged release and a 5xx schedules a bounded retry before delivery succeeds',
     ],
   },
   'SCN-settings-api-tools': {

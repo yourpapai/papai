@@ -12,7 +12,9 @@ import { AnalyticsAggregateReleaseV1Schema } from '../../../src/analytics/delive
 import { CAPTURED_SINK_ENDPOINT, SYNTHETIC_SINK_TOKEN } from '../../../src/analytics/delivery/captured-sink.testing.js'
 import { createCapturedSink, findCanaries } from '../../../src/analytics/delivery/captured-sink.testing.js'
 import { createSinkVersion } from '../../../src/analytics/delivery/sink-service.js'
+import { computeRetryDelayMs } from '../../../src/analytics/delivery/worker.js'
 import { runDeliveryWorkerTick } from '../../../src/analytics/delivery/worker.js'
+import { ANALYTICS_KILL_SWITCH_ENV } from '../../../src/analytics/governance/policy-store.js'
 import { analyticsDailyCounters } from '../../../src/db/analytics-schema.js'
 import { getDrizzleDb } from '../../../src/db/drizzle.js'
 import { analyticsAggregateDeliveries, analyticsAggregateReleases, analyticsSinks } from '../../../src/db/schema.js'
@@ -280,6 +282,75 @@ scenario(
 
     expect(getDrizzleDb().select().from(analyticsAggregateReleases).all()).toHaveLength(0)
     expect(getDrizzleDb().select().from(analyticsAggregateDeliveries).all()).toHaveLength(0)
+  },
+  { testTimeoutMs: 15000 },
+)
+
+scenario(
+  'SCN-analytics-aggregate-delivery-governance: the kill switch defers a staged release and a 5xx schedules a bounded retry before delivery succeeds',
+  async ({ given, when, world }) => {
+    const alice = given.user('alice')
+    given.analyticsRuntime('governed')
+    const admin = await given.settingsAdminSession(alice)
+    const nowMs = world.clock.now().getTime()
+    const utcDay = completeUtcDay(nowMs)
+    const sinkVersionId = seedEnabledAggregateSink(nowMs)
+    insertFinalizedCounter({ utcDay, metric: 'turn_started', value: 250, contributorCount: 40 })
+    const releaseId = await stageRelease(when, admin, utcDay, sinkVersionId)
+
+    const sink = createCapturedSink({ kind: 'delivered', status: 200, receiptHash: 'f'.repeat(64) })
+    const deliveryState = (): string | null =>
+      getDrizzleDb()
+        .select({ state: analyticsAggregateDeliveries.state })
+        .from(analyticsAggregateDeliveries)
+        .where(eq(analyticsAggregateDeliveries.releaseId, releaseId))
+        .get()?.state ?? null
+
+    process.env[ANALYTICS_KILL_SWITCH_ENV] = '1'
+    try {
+      const skipped = await runDeliveryWorkerTick(
+        { nowMs },
+        { getDrizzleDb, transport: sink.transport, lookupAll: capturedLookupAll },
+      )
+      expect(skipped).toEqual({ status: 'kill_switch', leased: 0, delivered: 0, retryable: 0, ambiguous: 0, dead: 0 })
+      expect(deliveryState()).toBe('pending')
+      expect(sink.requests).toHaveLength(0)
+    } finally {
+      Reflect.deleteProperty(process.env, ANALYTICS_KILL_SWITCH_ENV)
+    }
+
+    sink.setOutcome({ kind: 'responded', status: 503, errorClass: 'http_5xx' })
+    const retryNow = nowMs
+    const retried = await runDeliveryWorkerTick(
+      { nowMs: retryNow },
+      { getDrizzleDb, transport: sink.transport, lookupAll: capturedLookupAll },
+    )
+    expect(retried).toEqual({ status: 'ok', leased: 1, delivered: 0, retryable: 1, ambiguous: 0, dead: 0 })
+    const pendingRow = getDrizzleDb()
+      .select()
+      .from(analyticsAggregateDeliveries)
+      .where(eq(analyticsAggregateDeliveries.releaseId, releaseId))
+      .get()
+    expect(pendingRow).toMatchObject({
+      state: 'pending',
+      attempts: 1,
+      nextAttemptAtMs: retryNow + computeRetryDelayMs(0),
+    })
+
+    const early = await runDeliveryWorkerTick(
+      { nowMs: retryNow },
+      { getDrizzleDb, transport: sink.transport, lookupAll: capturedLookupAll },
+    )
+    expect(early).toEqual({ status: 'ok', leased: 0, delivered: 0, retryable: 0, ambiguous: 0, dead: 0 })
+
+    sink.setOutcome({ kind: 'delivered', status: 200, receiptHash: 'f'.repeat(64) })
+    const delivered = await runDeliveryWorkerTick(
+      { nowMs: retryNow + computeRetryDelayMs(0) + 1 },
+      { getDrizzleDb, transport: sink.transport, lookupAll: capturedLookupAll },
+    )
+    expect(delivered).toEqual({ status: 'ok', leased: 1, delivered: 1, retryable: 0, ambiguous: 0, dead: 0 })
+    expect(deliveryState()).toBe('delivered')
+    expect(sink.requests).toHaveLength(2)
   },
   { testTimeoutMs: 15000 },
 )
