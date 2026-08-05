@@ -237,7 +237,7 @@
   }
 
   .settings-field__saved {
-    color: var(--success, var(--text-muted));
+    color: var(--success);
     font-size: 11px;
     white-space: nowrap;
   }
