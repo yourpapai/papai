@@ -48,10 +48,10 @@ describe('score-reader', () => {
     expect(score).toBeCloseTo(0.8, 5)
   })
 
-  test('measureMutationScore retries exec once when the report read throws, then succeeds', async () => {
+  test('measureMutationScore retries exec once when the report read throws ReportReadError, then succeeds', async () => {
     const exec = mock(successfulExec)
     const readReport = mock((): StrykerReport => reportWith(10, 0)).mockImplementationOnce((): StrykerReport => {
-      throw new Error('malformed')
+      throw new ReportReadError('shape')
     })
     const score = await measureMutationScore({ exec, readReport }, 'reports/paired', 'src/foo.ts')
     expect(exec).toHaveBeenCalledTimes(2)
@@ -68,20 +68,49 @@ describe('score-reader', () => {
     expect(exec).toHaveBeenCalledTimes(1)
   })
 
-  test('measureMutationScore throws after a failed retry', async () => {
+  test('measureMutationScore throws the typed error after a failed retry', async () => {
     const exec = mock(successfulExec)
     await expect(
       measureMutationScore(
         {
           exec,
           readReport: (): StrykerReport => {
-            throw new Error('still malformed')
+            throw new ReportReadError('shape')
           },
         },
         'reports/paired',
         'src/foo.ts',
       ),
-    ).rejects.toThrow(/malformed|stryker/iu)
+    ).rejects.toBeInstanceOf(ReportReadError)
+    expect(exec).toHaveBeenCalledTimes(2)
+  })
+
+  test('measureMutationScore retries when the report read throws an ENOENT-coded error', async () => {
+    const exec = mock(successfulExec)
+    const enoent = Object.assign(new Error('not found'), { code: 'ENOENT' })
+    const readReport = mock((): StrykerReport => reportWith(6, 0)).mockImplementationOnce((): StrykerReport => {
+      throw enoent
+    })
+    const score = await measureMutationScore({ exec, readReport }, 'reports/paired', 'src/foo.ts')
+    expect(exec).toHaveBeenCalledTimes(2)
+    expect(score).toBe(1)
+  })
+
+  test('measureMutationScore does NOT retry on a plain (non-typed, non-ENOENT) error and propagates it', async () => {
+    const exec = mock(successfulExec)
+    await expect(
+      measureMutationScore(
+        {
+          exec,
+          readReport: (): StrykerReport => {
+            throw new Error('boom')
+          },
+        },
+        'reports/paired',
+        'src/foo.ts',
+      ),
+    ).rejects.toThrow('boom')
+    expect(exec).toHaveBeenCalledTimes(1)
   })
 })
 
