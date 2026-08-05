@@ -143,6 +143,7 @@
   "review-loop/src/progress-log.ts": 1,
   "review-loop/src/summary-burndown.ts": 0.74,
   "review-loop/src/summary.ts": 0.721030042918455,
+  "review-loop/src/worktree.ts": 0.8402366863905325,
   "src/analytics/intent/classifier.ts": 0.4581818181818182,
   "src/analytics/jobs/backfill.ts": 0.7741935483870968,
   "src/announcements/humanize.ts": 0.3382352941176471,
