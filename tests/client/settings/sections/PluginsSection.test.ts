@@ -38,7 +38,7 @@ const pluginsPayload = {
       active: true,
       enabled: false,
       eligibility: { eligible: false, reason: 'config_missing', missingKeys: ['token'] },
-      contextConfig: [{ key: 'token', label: 'Token', required: true, sensitive: true, hasValue: false }],
+      contextConfig: [{ key: 'token', label: 'Token', required: true, sensitive: true, hasValue: false, value: '' }],
     },
   ],
 }
@@ -77,7 +77,9 @@ const pluginClearPayload = {
       active: true,
       enabled: true,
       eligibility: { eligible: true },
-      contextConfig: [{ key: 'token', label: 'Token', required: false, sensitive: false, hasValue: true }],
+      contextConfig: [
+        { key: 'token', label: 'Token', required: false, sensitive: false, hasValue: true, value: 'stored-value' },
+      ],
     },
   ],
 }
@@ -120,7 +122,7 @@ const configPayload = {
       active: true,
       enabled: false,
       eligibility: { eligible: false, reason: 'config_missing', missingKeys: ['token'] },
-      contextConfig: [{ key: 'token', label: 'Token', required: true, sensitive: false, hasValue: false }],
+      contextConfig: [{ key: 'token', label: 'Token', required: true, sensitive: false, hasValue: false, value: '' }],
     },
   ],
 }
@@ -271,7 +273,16 @@ describe('PluginsSection', () => {
               active: true,
               enabled: true,
               eligibility: { eligible: true },
-              contextConfig: [{ key: 'token', label: 'Token', required: false, sensitive: false, hasValue: true }],
+              contextConfig: [
+                {
+                  key: 'token',
+                  label: 'Token',
+                  required: false,
+                  sensitive: false,
+                  hasValue: true,
+                  value: 'stored-value',
+                },
+              ],
             },
           ],
         }),
@@ -297,7 +308,9 @@ describe('PluginsSection', () => {
               active: true,
               enabled: false,
               eligibility: { eligible: false, reason: 'config_missing', missingKeys: ['token'] },
-              contextConfig: [{ key: 'token', label: 'Token', required: true, sensitive: false, hasValue: false }],
+              contextConfig: [
+                { key: 'token', label: 'Token', required: true, sensitive: false, hasValue: false, value: '' },
+              ],
             },
           ],
         }),
@@ -379,7 +392,16 @@ describe('PluginsSection', () => {
               active: true,
               enabled: true,
               eligibility: { eligible: true },
-              contextConfig: [{ key: 'token', label: 'Token', required: true, sensitive: false, hasValue: true }],
+              contextConfig: [
+                {
+                  key: 'token',
+                  label: 'Token',
+                  required: true,
+                  sensitive: false,
+                  hasValue: true,
+                  value: 'stored-value',
+                },
+              ],
             },
           ],
         }),
