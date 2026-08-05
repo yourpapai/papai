@@ -45,6 +45,28 @@
 
   const hintId = $derived(`cfg-hint-${field.key}`)
 
+  // How long the save acknowledgement stays on screen. Long enough to notice, short enough
+  // that it never reads as persistent state.
+  const SAVED_VISIBLE_MS = 2000
+
+  let justSaved = $state(false)
+  let savedTimer: ReturnType<typeof setTimeout> | null = null
+
+  // The row writes in place with no submit-and-navigate step, so without an explicit
+  // acknowledgement a completed save is indistinguishable from a control never touched.
+  function markSaved(): void {
+    justSaved = true
+    if (savedTimer !== null) clearTimeout(savedTimer)
+    savedTimer = setTimeout(() => {
+      justSaved = false
+      savedTimer = null
+    }, SAVED_VISIBLE_MS)
+  }
+
+  $effect(() => () => {
+    if (savedTimer !== null) clearTimeout(savedTimer)
+  })
+
   // The enum branch's hint stays visible even when the shell shows an error (unlike
   // the input branch, where the shell suppresses the hint), so both ids may be present
   // at once — compose a space-separated aria-describedby token list, skipping whichever
@@ -83,6 +105,7 @@
       await patchConfig({ key: field.key, value: draft, contextId })
       replacing = false
       onSaved()
+      markSaved()
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
@@ -97,6 +120,7 @@
     try {
       await unsetConfigField({ key: field.key, contextId })
       onSaved()
+      markSaved()
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
@@ -113,6 +137,7 @@
     try {
       await patchConfig({ key: field.key, value: next, contextId })
       onSaved()
+      markSaved()
     } catch (err) {
       current = previous
       error = err instanceof Error ? err.message : String(err)
@@ -121,6 +146,12 @@
     }
   }
 </script>
+
+{#snippet savedMarker()}
+  {#if justSaved}
+    <span class="settings-field__saved" role="status" data-testid={`cfg-saved-${field.key}`}>✓ Saved</span>
+  {/if}
+{/snippet}
 
 {#if isEnum}
   <SettingsFieldShell label={field.label} editorOpen={false} error={error ?? undefined} testid={`cfg-row-${field.key}`}>
@@ -139,6 +170,7 @@
           {#snippet children()}Clear{/snippet}
         </Btn>
       {/if}
+      {@render savedMarker()}
     {/snippet}
     {#snippet footer()}
       {#if hint}
@@ -166,6 +198,7 @@
           {#snippet children()}Clear{/snippet}
         </Btn>
       {/if}
+      {@render savedMarker()}
     {/snippet}
     {#snippet editor()}
       <Input
@@ -201,5 +234,11 @@
     margin: 0;
     color: var(--text-muted);
     font-size: 12px;
+  }
+
+  .settings-field__saved {
+    color: var(--success, var(--text-muted));
+    font-size: 11px;
+    white-space: nowrap;
   }
 </style>

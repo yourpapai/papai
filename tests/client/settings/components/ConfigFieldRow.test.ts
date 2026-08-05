@@ -887,4 +887,94 @@ describe('ConfigFieldRow', () => {
     expect(target.querySelector('.ui-seg__busy')).toBeNull()
     void unmount(component)
   })
+
+  test('shows a saved acknowledgement after a resolved save, and not before', async () => {
+    setCsrfToken('c')
+    setMockFetch(() => Promise.resolve(json({ ok: true, contextId: 'user:1' })))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'timezone',
+        storageKey: 'timezone',
+        label: 'Timezone',
+        required: true,
+        sensitive: false,
+        kind: 'preference',
+        hasValue: true,
+        value: 'UTC',
+      },
+      onSaved: () => {},
+    })
+    flushSync()
+    expect(target.querySelector('[data-testid="cfg-saved-timezone"]')).toBeNull()
+
+    const input = target.querySelector<HTMLInputElement>('[data-testid="cfg-input-timezone"]')!
+    input.value = 'Europe/Berlin'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-save-timezone"]')!.click()
+    await drain()
+
+    expect(target.querySelector('[data-testid="cfg-saved-timezone"]')?.textContent).toContain('Saved')
+    void unmount(component)
+  })
+
+  test('does not acknowledge a save that failed', async () => {
+    setCsrfToken('c')
+    setMockFetch(() => Promise.resolve(json({ error: 'nope' }, 500)))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'timezone',
+        storageKey: 'timezone',
+        label: 'Timezone',
+        required: true,
+        sensitive: false,
+        kind: 'preference',
+        hasValue: true,
+        value: 'UTC',
+      },
+      onSaved: () => {},
+    })
+    flushSync()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="cfg-input-timezone"]')!
+    input.value = 'Europe/Berlin'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-save-timezone"]')!.click()
+    await drain()
+
+    expect(target.querySelector('[data-testid="cfg-saved-timezone"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('acknowledges an enum save', async () => {
+    setCsrfToken('c')
+    setMockFetch(() => Promise.resolve(json({ ok: true, contextId: 'user:1' })))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'ai_output',
+        storageKey: 'ai_output',
+        label: 'AI output',
+        required: false,
+        sensitive: false,
+        kind: 'preference',
+        hasValue: true,
+        value: 'rich',
+        control: 'toggle',
+        options: [
+          { value: 'rich', label: 'Rich' },
+          { value: 'raw', label: 'Raw' },
+        ],
+      },
+      onSaved: () => {},
+    })
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-seg-ai_output-raw"]')!.click()
+    await drain()
+
+    expect(target.querySelector('[data-testid="cfg-saved-ai_output"]')?.textContent).toContain('Saved')
+    void unmount(component)
+  })
 })
