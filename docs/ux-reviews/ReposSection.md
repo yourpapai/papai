@@ -116,7 +116,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [Low] A repository can only be added or deleted, never edited
 
 - **Id:** repos-no-edit-capability
-- **Status:** open
+- **Status:** deferred
+- **Resolved:** 2026-08-04 — decision, no commit. `client/settings/repos-fetchers.ts:16-34` exposes only add and delete; per-row editing of branch, preset and egress needs backend update support that does not exist. The surprise-discovery half of this finding is already closed by the note at `ReposSection.svelte:160-163`. Deferred rather than won't-fix because the capability may genuinely be built later.
 - **Dimension:** 4. Feedback & state (also 2. Affordance & signifiers)
 - **Where visible:** `Populated` — each row still shows branch, preset and egress domains as static text with no way to change them; the add form now states this plainly ("Branch, preset and egress domains are fixed when a repository is added — change them by removing and re-adding it.").
 - **Source:** `client/settings/repos-fetchers.ts:16-34` — still only `addRepo`/`deleteRepo`; the discoverability half of this finding is closed by the note added in `e6e223424` (`ReposSection.svelte:160-163`).

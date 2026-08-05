@@ -214,7 +214,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [Low] Icon-only buttons sit at the shared 24px control-height token
 
 - **Id:** debug-icon-buttons-control-height
-- **Status:** open
+- **Status:** wont-fix
+- **Resolved:** 2026-08-04 — decision, no commit. 24px meets WCAG 2.5.8 (Target Size Minimum)'s 24×24px floor, so this is not an accessibility failure. The finding's own text directs that no action be taken in DebugApp; any change belongs in `--control-h-sm` (`client/shared/tokens.css:63`), where it would affect every consumer and require re-reviewing the affected sections.
 - **Dimension:** 6. Accessibility
 - **Where visible:** Detail rail `✕` close, log turn-badge `×` clear, and every other `size="sm"` `Btn` in the debug dashboard
 - **Source:** `client/shared/ui/Btn.svelte:111` (`.sm { height: var(--control-h-sm); }`); `client/shared/tokens.css:63` (`--control-h-sm: 24px`)
