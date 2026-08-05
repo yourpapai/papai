@@ -159,7 +159,13 @@
         {/if}
       {/snippet}
       <DataTable columns={memberColumns} rows={memberRows} {cell} rowKey="user_id">
-        {#snippet empty()}No members yet — add the first one using the form above.{/snippet}
+        {#snippet empty()}
+          {#if error === null}
+            No members yet — add the first one using the form above.
+          {:else}
+            Members couldn't be loaded.
+          {/if}
+        {/snippet}
       </DataTable>
     </div>
   {/if}
