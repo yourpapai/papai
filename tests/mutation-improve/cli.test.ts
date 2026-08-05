@@ -7,7 +7,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { existsSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { parseCliArgs, resetRunWorktrees } from '../../mutation-improve/src/cli.js'
+import { DEFAULT_CONFIG_PATH, parseCliArgs, resetRunWorktrees } from '../../mutation-improve/src/cli.js'
 import { execGit } from '../../review-loop/src/worktree.js'
 import { cleanupTempDirs, makeTempDir } from './test-helpers'
 
@@ -37,6 +37,29 @@ describe('cli parseCliArgs', () => {
     const args = parseCliArgs(['--resume-run', 'r1', '--reset-worktree'])
     expect(args.resumeRunId).toBe('r1')
     expect(args.resetWorktree).toBe(true)
+  })
+
+  test('rejects non-numeric --threshold', () => {
+    expect(() => parseCliArgs(['--threshold=abc'])).toThrow(/threshold/iu)
+  })
+
+  test('throws on unknown argument', () => {
+    expect(() => parseCliArgs(['--bogus'])).toThrow(/Unknown argument/u)
+  })
+
+  test('throws when a value-taking flag is missing its value', () => {
+    for (const flag of ['--config', '--count', '--base', '--resume-run']) {
+      expect(() => parseCliArgs([flag])).toThrow(`Missing value for ${flag}`)
+    }
+  })
+
+  test('rejects fractional and non-numeric --count', () => {
+    expect(() => parseCliArgs(['--count', '3.5'])).toThrow()
+    expect(() => parseCliArgs(['--count', 'abc'])).toThrow()
+  })
+
+  test('uses the default config path when --config is absent', () => {
+    expect(parseCliArgs([]).configPath).toBe(DEFAULT_CONFIG_PATH)
   })
 })
 

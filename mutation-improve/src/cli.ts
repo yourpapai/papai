@@ -35,7 +35,7 @@ export interface CliArgs {
   noPr: boolean
 }
 
-const DEFAULT_CONFIG_PATH = path.join(import.meta.dir, '..', 'config.json')
+export const DEFAULT_CONFIG_PATH = path.join(import.meta.dir, '..', 'config.json')
 
 interface GhResult {
   exitCode: number
@@ -67,7 +67,9 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
       continue
     }
     if (arg.startsWith('--threshold=')) {
-      flags.threshold = Number(arg.slice('--threshold='.length))
+      const threshold = Number(arg.slice('--threshold='.length))
+      if (!Number.isFinite(threshold)) throw new Error('--threshold must be a finite number')
+      flags.threshold = threshold
       continue
     }
     if (arg === '--base') {
