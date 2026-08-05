@@ -6,8 +6,23 @@
 export type StrykerBunConfig = Record<string, unknown> & {
   testFiles?: string[]
   bunArgs?: string[]
+  env?: Record<string, string>
   timeout?: number
 }
+
+/**
+ * Env flag tests/setup.ts reads to register the Svelte loader plugin.
+ *
+ * The runner's coverage preload eagerly imports every mutate target, and it is
+ * passed as a --preload ahead of the ones in bunArgs — so for a target that
+ * (transitively) imports a .svelte.ts module, tests/client-setup.ts registers
+ * the loader too late: the untransformed module throws `$state is not defined`,
+ * and Bun's cache hands that same failed module to the test file, which then
+ * cannot load at all ("No tests were executed"). bunfig's preload runs before
+ * any CLI --preload, so registering from tests/setup.ts is the only hook early
+ * enough.
+ */
+export const SVELTE_PLUGIN_ENV_VAR = 'PAPAI_SVELTE_TEST_PLUGIN'
 
 /**
  * Normalize a test file path so Bun treats it as a path, not a pattern.
@@ -86,10 +101,13 @@ export function buildPairedConfig(input: BuildPairedConfigInput): PairedStrykerC
   const normalizedTestFiles = testFiles.map(toRelativeTestFilePath)
   const baseBunArgs = Array.isArray(baseBun.bunArgs) ? baseBun.bunArgs : []
   const bunArgs = [...baseBunArgs, ...laneBunArgs(normalizedTestFiles)]
+  const isClientLane = normalizedTestFiles.some((f) => f.includes('tests/client/'))
+  const env = isClientLane ? { ...baseBun.env, [SVELTE_PLUGIN_ENV_VAR]: '1' } : baseBun.env
   const resolvedBun: StrykerBunConfig & { testFiles: string[] } = {
     ...baseBun,
     testFiles: normalizedTestFiles,
     ...(bunArgs.length > 0 ? { bunArgs } : {}),
+    ...(env === undefined ? {} : { env }),
   }
   const next: PairedStrykerConfig = {
     ...base,
