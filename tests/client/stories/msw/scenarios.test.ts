@@ -26,6 +26,8 @@ describe('msw scenarios', () => {
     'settings-admin-users-populated',
     'settings-admin-mcp-catalog-populated',
     'settings-admin-mcp-catalog-empty',
+    'settings-plugins-configurable',
+    'settings-plugins-ineligible',
     'settings-shell-ready',
   ])('%s resolves to a non-empty handler bundle', (name) => {
     expect(scenarios[name].length).toBeGreaterThan(0)
