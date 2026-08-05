@@ -20,7 +20,10 @@ export async function measureMutationScore(deps: MeasureDeps, reportDir: string,
   const read = deps.readReport ?? readStrykerReport
   const reportPath = reportPathFor(reportDir, srcFile)
   const attempt = async (): Promise<number> => {
-    await deps.exec()
+    const result = await deps.exec()
+    if (result.exitCode !== 0) {
+      throw new Error(`mutation run failed (exit ${result.exitCode}): ${result.stderr}`)
+    }
     return mergeReports([read(reportPath)]).score
   }
   try {
