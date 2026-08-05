@@ -22,3 +22,7 @@
 
 <!-- Personal context with both admin flags: full Admin zone (bot-admin + super-admin sections). -->
 <Story name="Admin ready" parameters={{ fixtures: 'settings-shell-admin-ready', settingsReady: 'admin' }} />
+
+<!-- No settingsReady parameter, so the session singleton stays at its reset 'loading' status:
+     the pre-bootstrap gate every settings visit passes through before the shell mounts. -->
+<Story name="Loading" parameters={{ fixtures: 'settings-shell-ready' }} />
