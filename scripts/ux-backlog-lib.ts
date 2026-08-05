@@ -189,6 +189,7 @@ export function renderBacklog(reviews: readonly SectionReview[], year: number): 
     '## Summary',
     '',
     `| Section | ${STATUSES.map((status) => STATUS_LABELS[status]).join(' | ')} | Last reviewed |`,
+    // + 2 for the Section and Last reviewed columns that bracket the status counts.
     `| ${Array.from({ length: STATUSES.length + 2 }, () => '---').join(' | ')} |`,
     ...rows,
     `| **Total** | ${STATUSES.map((status) => total(status)).join(' | ')} | — |`,

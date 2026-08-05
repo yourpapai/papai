@@ -154,6 +154,22 @@ describe('renderBacklog', () => {
     expect(cells).toEqual(['', 'Section', 'Open', 'Fixed', 'Superseded', "Won't fix", 'Deferred', 'Last reviewed', ''])
   })
 
+  // The header row alone is not enough: a later `STATUSES` change could re-hardcode the
+  // separator or the total row and still render a header with every status. A markdown table
+  // whose rows disagree on column count renders malformed, so pin all three to one another.
+  test('the separator and total rows carry the same column count as the header', () => {
+    const cellCount = (line: string): number => line.split('|').length
+    const lines = renderBacklog([], 2026).split('\n')
+    const summaryHeader = lines.find((line) => line.startsWith('| Section |'))
+    const separator = lines.find((line) => line.startsWith('| --- |'))
+    const totalRow = lines.find((line) => line.startsWith('| **Total** |'))
+    expect(summaryHeader).toBeDefined()
+    expect(separator).toBeDefined()
+    expect(totalRow).toBeDefined()
+    expect(cellCount(separator!)).toBe(cellCount(summaryHeader!))
+    expect(cellCount(totalRow!)).toBe(cellCount(summaryHeader!))
+  })
+
   test('is deterministic and independent of input order', () => {
     const a = parseFindings(finding(VALID), 'MembersSection.md')
     const b = parseFindings(
