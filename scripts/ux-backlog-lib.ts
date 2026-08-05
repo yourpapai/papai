@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 const SEVERITIES = ['High', 'Med', 'Low'] as const
-const STATUSES = ['open', 'fixed', 'superseded'] as const
+const STATUSES = ['open', 'fixed', 'superseded', 'wont-fix', 'deferred'] as const
 
 export type Severity = (typeof SEVERITIES)[number]
 export type FindingStatus = (typeof STATUSES)[number]
@@ -84,7 +84,7 @@ function toFinding(raw: RawFinding, section: string, filename: string, seen: Set
 
   const status = raw.fields.get('Status')
   if (status === undefined || !isStatus(status)) {
-    throw new Error(`${where}: Status must be one of open, fixed, superseded (got "${status ?? ''}")`)
+    throw new Error(`${where}: Status must be one of ${STATUSES.join(', ')} (got "${status ?? ''}")`)
   }
 
   const resolved = raw.fields.get('Resolved')

@@ -61,19 +61,26 @@ describe('parseFindings', () => {
     expect(() => parseFindings(doubled, 'MembersSection.md')).toThrow(/duplicate Id "members-delete-no-confirm"/u)
   })
 
-  test('throws on a Status outside the three values', () => {
+  test('throws on a Status outside the permitted values', () => {
     const bad = withStatus('partial')
     expect(() => parseFindings(finding(bad), 'MembersSection.md')).toThrow(/Status/u)
   })
 
-  test.each(['fixed', 'superseded'])('throws when %s carries no Resolved line', (status) => {
+  test.each(['fixed', 'superseded', 'wont-fix', 'deferred'])('throws when %s carries no Resolved line', (status) => {
     const bad = withStatus(status)
     expect(() => parseFindings(finding(bad), 'MembersSection.md')).toThrow(/Resolved/u)
   })
 
-  test.each(['fixed', 'superseded'])('accepts %s when a Resolved line is present', (status) => {
+  test.each(['fixed', 'superseded', 'wont-fix', 'deferred'])('accepts %s when a Resolved line is present', (status) => {
     const ok = [...withStatus(status), '- **Resolved:** sub-project F, commit abc1234']
     expect(parseFindings(finding(ok), 'MembersSection.md').findings[0]?.status).toBe(status)
+  })
+
+  test('the invalid-status error names every permitted status', () => {
+    const bad = withStatus('partial')
+    expect(() => parseFindings(finding(bad), 'MembersSection.md')).toThrow(
+      /must be one of open, fixed, superseded, wont-fix, deferred/u,
+    )
   })
 
   test('throws on a severity outside High, Med, Low', () => {
