@@ -35,12 +35,17 @@ export async function detectGitRoot(cwd: string): Promise<string> {
   return stdout.trim()
 }
 
-export async function createWorktree(repoRoot: string, worktreePath: string, runId: string): Promise<void> {
+export async function createWorktree(
+  repoRoot: string,
+  worktreePath: string,
+  runId: string,
+  branchPrefix = 'review-loop',
+): Promise<void> {
   const parentDir = path.dirname(worktreePath)
   if (!existsSync(parentDir)) {
     await mkdir(parentDir, { recursive: true })
   }
-  await execGit(repoRoot, ['worktree', 'add', worktreePath, '-b', `review-loop/${runId}`])
+  await execGit(repoRoot, ['worktree', 'add', worktreePath, '-b', `${branchPrefix}/${runId}`])
 }
 
 export function worktreeExists(worktreePath: string): boolean {
@@ -98,12 +103,17 @@ export async function mergeWorktree(repoRoot: string, branchName: string): Promi
   return { ok: true }
 }
 
-export async function removeWorktree(repoRoot: string, worktreePath: string, runId: string): Promise<void> {
+export async function removeWorktree(
+  repoRoot: string,
+  worktreePath: string,
+  runId: string,
+  branchPrefix = 'review-loop',
+): Promise<void> {
   if (existsSync(worktreePath)) {
     await execGit(repoRoot, ['worktree', 'remove', worktreePath, '--force'])
   }
   try {
-    await execGit(repoRoot, ['branch', '-D', `review-loop/${runId}`])
+    await execGit(repoRoot, ['branch', '-D', `${branchPrefix}/${runId}`])
   } catch {
     // Branch may not exist if already merged and deleted
   }
