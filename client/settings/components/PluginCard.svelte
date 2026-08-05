@@ -16,7 +16,7 @@
     contextId: string
     onChanged: () => Promise<void>
     onRequestClear: (key: string, required: boolean) => void
-    onError: (message: string) => void
+    onError: (message: string | null) => void
   }
 
   let { plugin, contextId, onChanged, onRequestClear, onError }: Props = $props()
@@ -41,6 +41,7 @@
   }
 
   async function toggle(): Promise<void> {
+    onError(null)
     try {
       await togglePlugin({ pluginId: plugin.id, enabled: !plugin.enabled, contextId })
       await onChanged()
@@ -50,6 +51,7 @@
   }
 
   async function saveConfig(key: string): Promise<void> {
+    onError(null)
     const value = drafts[key] ?? ''
     const cfg = plugin.contextConfig.find((c) => c.key === key)
     if (cfg?.required === true && value.trim() === '') {
