@@ -8,6 +8,7 @@
   import { fetchPlugins, unsetPluginConfig } from '../fetchers.js'
   import PluginCard from '../components/PluginCard.svelte'
   import EmptyState from '../../shared/ui/EmptyState.svelte'
+  import ErrorState from '../../shared/ui/ErrorState.svelte'
   import IconButton from '../../shared/ui/IconButton.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Confirm from '../../shared/Confirm.svelte'
@@ -75,15 +76,16 @@
     {/snippet}
   </PageHeader>
 
-  {#if error !== null}<p class="status-error">{error}</p>{/if}
-
-  {#if loading && plugins.length === 0}
+  {#if error !== null}
+    <ErrorState
+      message="Could not load plugins for this context."
+      detail={error}
+      onRetry={() => void load(contextId)} />
+  {:else if loading && plugins.length === 0}
     <p class="placeholder">Loading…</p>
-  {:else if !loading && error === null && plugins.length === 0}
+  {:else if plugins.length === 0}
     <EmptyState title="No plugins discovered" />
-  {/if}
-
-  {#if plugins.length > 0}
+  {:else}
     <div class="settings-plugins">
       {#each plugins as plugin (plugin.id)}
         <PluginCard
@@ -93,8 +95,7 @@
           onRequestClear={(key, required) => {
             pendingClearKey = { pluginId: plugin.id, key, required }
             clearError = null
-          }}
-          onError={(m) => (error = m)} />
+          }} />
       {/each}
     </div>
   {/if}

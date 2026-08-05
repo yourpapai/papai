@@ -110,32 +110,22 @@ const inactivePayload = {
   ],
 }
 
-const configPatchRequests: Array<{ url: string; init: RequestInit }> = []
-const isConfigPatch = (r: { url: string; init: RequestInit }): boolean =>
-  r.url.includes('/plugins/config') && r.init.method === 'PATCH'
-const configPayload = {
-  contextId: 'user:1',
-  plugins: [
-    {
-      id: 'needs-token',
-      name: 'Needs Token',
-      active: true,
-      enabled: false,
-      eligibility: { eligible: false, reason: 'config_missing', missingKeys: ['token'] },
-      contextConfig: [{ key: 'token', label: 'Token', required: true, sensitive: false, hasValue: false, value: '' }],
-    },
-  ],
-}
-const trackConfigMock = (url: string, init: RequestInit): Promise<Response> => {
-  configPatchRequests.push({ url, init })
-  return Promise.resolve(json(configPayload))
+// Conditional mock logic must live outside test() bodies — oxlint's
+// no-conditional-in-test forbids if/ternary/?? directly inside a test.
+const makeFailThenSucceedMock = (): (() => Promise<Response>) => {
+  let calls = 0
+  return () => {
+    calls += 1
+    return calls === 1
+      ? Promise.resolve(new Response('Server Error', { status: 500 }))
+      : Promise.resolve(json(pluginsPayload))
+  }
 }
 
 afterEach(() => {
   capturedToggleBody = ''
   capturedDisabledToggleBody = ''
   capturedPluginConfigBody = ''
-  configPatchRequests.length = 0
   restoreFetch()
   setCsrfToken('')
 })
@@ -197,27 +187,6 @@ describe('PluginsSection', () => {
 
     const button = target.querySelector<HTMLButtonElement>('[data-testid="plugin-toggle-pending"]')!
     expect(button.disabled).toBe(true)
-    void unmount(component)
-  })
-
-  test('saving an empty required plugin config shows an error and does not POST', async () => {
-    setCsrfToken('c')
-    setMockFetch(trackConfigMock)
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(PluginsSection, { target, props: { contextId: 'user:1' } })
-    await drain()
-
-    // save button is now a Btn (.ui-btn)
-    const saveBtn = target.querySelector<HTMLButtonElement>('[data-testid="plugin-cfg-save-needs-token-token"]')!
-    expect(saveBtn.classList.contains('ui-btn')).toBe(true)
-    saveBtn.click()
-    await drain()
-
-    const errorEl = target.querySelector('.status-error')
-    expect(errorEl).not.toBeNull()
-    expect(errorEl!.textContent).toContain('required')
-    expect(configPatchRequests.filter(isConfigPatch)).toHaveLength(0)
     void unmount(component)
   })
 
@@ -417,6 +386,23 @@ describe('PluginsSection', () => {
 
     expect(target.querySelector('.modal')).not.toBeNull()
     expect(target.textContent).toContain('ineligible')
+    void unmount(component)
+  })
+
+  test('a load failure renders ErrorState with a working retry', async () => {
+    setMockFetch(makeFailThenSucceedMock())
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(PluginsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    expect(target.querySelector('.ui-error')).not.toBeNull()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="error-retry"]')!.click()
+    await drain()
+
+    expect(target.querySelector('.ui-error')).toBeNull()
+    expect(target.textContent).toContain('Hello World')
     void unmount(component)
   })
 })

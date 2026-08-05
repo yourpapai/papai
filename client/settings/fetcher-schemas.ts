@@ -149,6 +149,7 @@ export const PluginEligibilitySchema = z.union([
   }),
 ])
 export const PluginConfigFieldSchema = StoredConfigValueSchema
+export type PluginConfigField = z.infer<typeof PluginConfigFieldSchema>
 export const PluginEntrySchema = z.object({
   id: z.string(),
   name: z.string(),
