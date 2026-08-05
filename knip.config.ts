@@ -26,10 +26,11 @@ const svelteCompiler = (source: string): string => {
 }
 
 export default {
-  // The review-loop workspace is a standalone developer tool with its own
-  // check suite (review-loop:lint/typecheck/format:check/test) run separately
-  // in check:full. knip-bun cannot resolve its .js-extension imports.
-  ignoreWorkspaces: ['review-loop'],
+  // The review-loop and mutation-improve workspaces are standalone developer
+  // tools with their own check suites (review-loop:lint/typecheck/format:check/test
+  // and mutation-improve:lint/typecheck/format:check/test) run separately
+  // in check:full. knip-bun cannot resolve their .js-extension imports.
+  ignoreWorkspaces: ['review-loop', 'mutation-improve'],
 
   compilers: { '.svelte': svelteCompiler },
 

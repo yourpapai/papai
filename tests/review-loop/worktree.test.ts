@@ -132,6 +132,37 @@ describe('worktree', () => {
     const result = await detectGitRoot(repoRoot)
     expect(result).toBe(realpathSync(repoRoot))
   })
+
+  test('createWorktree uses the branchPrefix argument', async () => {
+    const repoRoot = makeTempDir('wt-prefix-')
+    await execGit(repoRoot, ['init', '--quiet'])
+    await execGit(repoRoot, ['config', 'user.email', 't@t'])
+    await execGit(repoRoot, ['config', 'user.name', 't'])
+    writeFileSync(path.join(repoRoot, 'a.txt'), 'x')
+    await execGit(repoRoot, ['add', '.'])
+    await execGit(repoRoot, ['commit', '-m', 'init', '--quiet'])
+    const wt = path.join(repoRoot, 'wt')
+    await createWorktree(repoRoot, wt, 'run-1', 'mutation-improve')
+    const { stdout } = await execGit(repoRoot, ['branch', '--list'])
+    expect(stdout).toContain('mutation-improve/run-1')
+  })
+
+  test('removeWorktree deletes a branch under branchPrefix', async () => {
+    const repoRoot = makeTempDir('wt-prefix-rm-')
+    await execGit(repoRoot, ['init', '--quiet'])
+    await execGit(repoRoot, ['config', 'user.email', 't@t'])
+    await execGit(repoRoot, ['config', 'user.name', 't'])
+    writeFileSync(path.join(repoRoot, 'a.txt'), 'x')
+    await execGit(repoRoot, ['add', '.'])
+    await execGit(repoRoot, ['commit', '-m', 'init', '--quiet'])
+    const wt = path.join(repoRoot, 'wt')
+    await createWorktree(repoRoot, wt, 'run-2', 'mutation-improve')
+    const { stdout: afterCreate } = await execGit(repoRoot, ['branch', '--list'])
+    expect(afterCreate).toContain('mutation-improve/run-2')
+    await removeWorktree(repoRoot, wt, 'run-2', 'mutation-improve')
+    const { stdout } = await execGit(repoRoot, ['branch', '--list'])
+    expect(stdout).not.toContain('mutation-improve/run-2')
+  })
 })
 
 describe('cleanWorkerWorktrees', () => {

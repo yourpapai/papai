@@ -5,7 +5,8 @@
   "description": "papai — an intelligent Telegram bot for managing Kaneo tasks with LLM.",
   "license": "BUSL-1.1",
   "workspaces": [
-    "review-loop"
+    "review-loop",
+    "mutation-improve"
   ],
   "type": "module",
   "module": "src/index.ts",
@@ -29,6 +30,11 @@
     "review-loop:lint": "bun run --filter review-loop lint",
     "review-loop:format:check": "bun run --filter review-loop format:check",
     "review-loop:start": "bun run --filter review-loop start",
+    "mutation-improve:test": "bun run --filter mutation-improve test",
+    "mutation-improve:typecheck": "bun run --filter mutation-improve typecheck",
+    "mutation-improve:lint": "bun run --filter mutation-improve lint",
+    "mutation-improve:format:check": "bun run --filter mutation-improve format:check",
+    "mutation-improve:start": "bun run --filter mutation-improve start",
     "knip": "knip-bun --strict --no-gitignore",
     "typecheck": "tsgo --noEmit",
     "lint": "oxlint --config .oxlintrc.json --ignore-path .oxlintignore .",
@@ -62,7 +68,7 @@
     "test:stories:compat": "bun scripts/story/test-stories.ts --compat",
     "check": "./scripts/check.sh --staged",
     "check:full": "./scripts/check.sh",
-    "check:verbose": "bun run --parallel lint typecheck format:check knip test duplicates review-loop:lint review-loop:typecheck review-loop:format:check review-loop:test",
+    "check:verbose": "bun run --parallel lint typecheck format:check knip test duplicates review-loop:lint review-loop:typecheck review-loop:format:check review-loop:test mutation-improve:lint mutation-improve:typecheck mutation-improve:format:check mutation-improve:test",
     "fix": "bun run lint:fix && bun run format",
     "duplicates": "bun run scripts/detect-duplicates.ts",
     "prepare": "[ -d .git ] && cp scripts/pre-commit.sh .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit || true",
