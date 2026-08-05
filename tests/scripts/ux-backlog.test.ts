@@ -143,7 +143,15 @@ describe('renderBacklog', () => {
     )
     const out = renderBacklog([closed], 2026)
     expect(out).not.toContain('`members-stale-copy`')
-    expect(out).toContain('| MembersSection | 0 | 1 | 0 | 2026-07-03 |')
+    expect(out).toContain('| MembersSection | 0 | 1 | 0 | 0 | 0 | 2026-07-03 |')
+  })
+
+  test('the summary header carries a column for every status', () => {
+    const out = renderBacklog([], 2026)
+    const summaryHeader = out.split('\n').find((line) => line.startsWith('| Section |'))
+    expect(summaryHeader).toBeDefined()
+    const cells = summaryHeader!.split('|').map((cell) => cell.trim())
+    expect(cells).toEqual(['', 'Section', 'Open', 'Fixed', 'Superseded', "Won't fix", 'Deferred', 'Last reviewed', ''])
   })
 
   test('is deterministic and independent of input order', () => {

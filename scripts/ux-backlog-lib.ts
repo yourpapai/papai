@@ -9,6 +9,15 @@ const STATUSES = ['open', 'fixed', 'superseded', 'wont-fix', 'deferred'] as cons
 export type Severity = (typeof SEVERITIES)[number]
 export type FindingStatus = (typeof STATUSES)[number]
 
+/** Column headings for the roll-up table, one per member of `STATUSES`, in tuple order. */
+const STATUS_LABELS: Record<FindingStatus, string> = {
+  open: 'Open',
+  fixed: 'Fixed',
+  superseded: 'Superseded',
+  'wont-fix': "Won't fix",
+  deferred: 'Deferred',
+}
+
 export interface Finding {
   readonly id: string
   readonly section: string
@@ -163,8 +172,8 @@ export function renderBacklog(reviews: readonly SectionReview[], year: number): 
   const open = sorted.flatMap((review) => review.findings.filter((finding) => finding.status === 'open'))
 
   const rows = sorted.map((review) => {
-    const counts = [countBy(review, 'open'), countBy(review, 'fixed'), countBy(review, 'superseded')]
-    return `| ${review.section} | ${counts[0]} | ${counts[1]} | ${counts[2]} | ${review.date} |`
+    const counts = STATUSES.map((status) => countBy(review, status))
+    return `| ${review.section} | ${counts.join(' | ')} | ${review.date} |`
   })
   const total = (status: FindingStatus): number => sorted.reduce((sum, review) => sum + countBy(review, status), 0)
 
@@ -179,10 +188,10 @@ export function renderBacklog(reviews: readonly SectionReview[], year: number): 
     '',
     '## Summary',
     '',
-    '| Section | Open | Fixed | Superseded | Last reviewed |',
-    '| --- | --- | --- | --- | --- |',
+    `| Section | ${STATUSES.map((status) => STATUS_LABELS[status]).join(' | ')} | Last reviewed |`,
+    `| ${Array.from({ length: STATUSES.length + 2 }, () => '---').join(' | ')} |`,
     ...rows,
-    `| **Total** | ${total('open')} | ${total('fixed')} | ${total('superseded')} | — |`,
+    `| **Total** | ${STATUSES.map((status) => total(status)).join(' | ')} | — |`,
     '',
     '## Open findings',
   ]

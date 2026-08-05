@@ -13,27 +13,27 @@ See LICENSE in the project root for details.
 
 ## Summary
 
-| Section | Open | Fixed | Superseded | Last reviewed |
-| --- | --- | --- | --- | --- |
-| AiOutputSection | 1 | 7 | 0 | 2026-08-03 |
-| ByokSection | 2 | 2 | 3 | 2026-08-03 |
-| CodeHostSection | 0 | 14 | 0 | 2026-08-03 |
-| CodingCredentialsSection | 1 | 7 | 0 | 2026-08-03 |
-| CodingIdentitySection | 0 | 8 | 0 | 2026-08-03 |
-| DebugApp | 1 | 17 | 0 | 2026-08-03 |
-| GroupProviderSection | 0 | 7 | 0 | 2026-08-03 |
-| GuestModeSection | 1 | 5 | 0 | 2026-08-03 |
-| IdentitySection | 0 | 10 | 0 | 2026-08-03 |
-| KaneoAccessSection | 2 | 7 | 0 | 2026-08-03 |
-| McpSection | 0 | 10 | 0 | 2026-08-03 |
-| MembersSection | 1 | 7 | 0 | 2026-08-03 |
-| MemorySection | 0 | 10 | 0 | 2026-08-03 |
-| ProfileSection | 1 | 7 | 0 | 2026-08-03 |
-| ReleaseSubscriptionSection | 0 | 5 | 0 | 2026-08-03 |
-| ReposSection | 1 | 15 | 0 | 2026-08-02 |
-| TaskProviderSection | 0 | 8 | 0 | 2026-08-03 |
-| ToolsSection | 0 | 14 | 0 | 2026-08-03 |
-| **Total** | 11 | 160 | 3 | — |
+| Section | Open | Fixed | Superseded | Won't fix | Deferred | Last reviewed |
+| --- | --- | --- | --- | --- | --- | --- |
+| AiOutputSection | 1 | 7 | 0 | 0 | 0 | 2026-08-03 |
+| ByokSection | 2 | 2 | 3 | 0 | 0 | 2026-08-03 |
+| CodeHostSection | 0 | 14 | 0 | 0 | 0 | 2026-08-03 |
+| CodingCredentialsSection | 1 | 7 | 0 | 0 | 0 | 2026-08-03 |
+| CodingIdentitySection | 0 | 8 | 0 | 0 | 0 | 2026-08-03 |
+| DebugApp | 1 | 17 | 0 | 0 | 0 | 2026-08-03 |
+| GroupProviderSection | 0 | 7 | 0 | 0 | 0 | 2026-08-03 |
+| GuestModeSection | 1 | 5 | 0 | 0 | 0 | 2026-08-03 |
+| IdentitySection | 0 | 10 | 0 | 0 | 0 | 2026-08-03 |
+| KaneoAccessSection | 2 | 7 | 0 | 0 | 0 | 2026-08-03 |
+| McpSection | 0 | 10 | 0 | 0 | 0 | 2026-08-03 |
+| MembersSection | 1 | 7 | 0 | 0 | 0 | 2026-08-03 |
+| MemorySection | 0 | 10 | 0 | 0 | 0 | 2026-08-03 |
+| ProfileSection | 1 | 7 | 0 | 0 | 0 | 2026-08-03 |
+| ReleaseSubscriptionSection | 0 | 5 | 0 | 0 | 0 | 2026-08-03 |
+| ReposSection | 1 | 15 | 0 | 0 | 0 | 2026-08-02 |
+| TaskProviderSection | 0 | 8 | 0 | 0 | 0 | 2026-08-03 |
+| ToolsSection | 0 | 14 | 0 | 0 | 0 | 2026-08-03 |
+| **Total** | 11 | 160 | 3 | 0 | 0 | — |
 
 ## Open findings
 
