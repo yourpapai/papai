@@ -924,7 +924,7 @@ Expected: PASS, including the pre-existing KaneoAccessSection tests.
 - [ ] **Step 7: Audit to predict the baseline change**
 
 Run: `bun run visual:audit 2>&1 | tail -20`
-Expected: failures confined to `settings/sections/KaneoAccessSection` — the "Not provisioned" shot (now carrying a "Check again" button) and any narrow variant of it. The revealed-password states are behind an interaction no story performs, so those shots must not move.
+Expected: failures confined to `settings/sections/KaneoAccessSection` — the "Not provisioned" shot (now carrying a "Check again" button), any narrow variant of it, **and `Populated — password revealed`**. That last one is not a generated story shot: `tests/visual/settings/sections/KaneoAccessSection.spec.ts:36` is a manual test that clicks Reveal before screenshotting, so it legitimately moves to pick up the new Hide button. When reading it, confirm the only change is the added Hide button beside Copy (plus the updated hint line) and that nothing else shifted.
 
 - [ ] **Step 8: Shoot and inspect**
 
