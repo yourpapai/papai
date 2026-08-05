@@ -265,4 +265,60 @@ describe('PluginCard', () => {
     expect(target.querySelector('.settings-field__req')!.getAttribute('aria-hidden')).toBe('true')
     void unmount(component)
   })
+
+  test('eligibility reads as human copy, never as a schema enum', () => {
+    setMockFetch(() => Promise.resolve(json({ ok: true, contextId: 'user:1' })))
+    const { component, target } = render({
+      plugin: entry({
+        eligibility: { eligible: false, reason: 'config_missing', missingKeys: ['api_key'] },
+        contextConfig: [
+          { key: 'api_key', label: 'API key', required: true, sensitive: true, hasValue: false, value: '' },
+        ],
+      }),
+    })
+    flushSync()
+
+    expect(target.querySelector('.ui-pill')!.textContent.trim()).toBe('Needs setup')
+    expect(target.textContent).toContain('Needs API key before it can run.')
+    expect(target.textContent).not.toContain('config_missing')
+    void unmount(component)
+  })
+
+  test('the toggle is described by the status pill', () => {
+    setMockFetch(() => Promise.resolve(json({ ok: true, contextId: 'user:1' })))
+    const { component, target } = render({ plugin: entry({ enabled: true }) })
+    flushSync()
+
+    const btn = target.querySelector<HTMLButtonElement>('[data-testid="plugin-toggle-my-plugin"]')!
+    expect(btn.textContent.trim()).toBe('Disable')
+    const described = btn.getAttribute('aria-describedby')!.split(' ')
+    expect(described).toContain('plugin-elig-my-plugin')
+    for (const id of described) expect(target.querySelector(`#${id}`)).not.toBeNull()
+    // Rejected in favour of the pill: the label already swaps Enable/Disable, so
+    // aria-pressed would announce the opposite of what the label says.
+    expect(btn.hasAttribute('aria-pressed')).toBe(false)
+    void unmount(component)
+  })
+
+  test('a disabled toggle points at the explanation of why it cannot be used', () => {
+    setMockFetch(() => Promise.resolve(json({ ok: true, contextId: 'user:1' })))
+    const { component, target } = render({
+      plugin: entry({ active: false, eligibility: { eligible: false, reason: 'inactive' } }),
+    })
+    flushSync()
+
+    const btn = target.querySelector<HTMLButtonElement>('[data-testid="plugin-toggle-my-plugin"]')!
+    expect(btn.disabled).toBe(true)
+    expect(btn.getAttribute('aria-describedby')).toContain('plugin-explain-my-plugin')
+    expect(target.querySelector('#plugin-explain-my-plugin')!.textContent).toContain('operator must approve')
+    void unmount(component)
+  })
+
+  test('the plugin name is a heading', () => {
+    setMockFetch(() => Promise.resolve(json({ ok: true, contextId: 'user:1' })))
+    const { component, target } = render({ plugin: entry() })
+    flushSync()
+    expect(target.querySelector('h3')!.textContent).toBe('My Plugin')
+    void unmount(component)
+  })
 })

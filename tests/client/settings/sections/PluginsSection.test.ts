@@ -138,9 +138,19 @@ describe('PluginsSection', () => {
     const component = mount(PluginsSection, { target, props: { contextId: 'user:1' } })
     await drain()
     expect(target.textContent).toContain('Hello World')
-    expect(target.textContent).toContain('config_missing')
+    expect(target.textContent).toContain('Needs setup')
     // eligibility is now rendered as a Pill
     expect(target.querySelector('.settings-plugins__elig .ui-pill')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('plugin cards are list items so they can be counted and jumped between', async () => {
+    setMockFetch(() => Promise.resolve(json(pluginsPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(PluginsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelectorAll('ul.settings-plugins > li')).toHaveLength(2)
     void unmount(component)
   })
 

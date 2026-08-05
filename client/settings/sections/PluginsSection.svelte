@@ -86,18 +86,20 @@
   {:else if plugins.length === 0}
     <EmptyState title="No plugins discovered" />
   {:else}
-    <div class="settings-plugins">
+    <ul class="settings-plugins">
       {#each plugins as plugin (plugin.id)}
-        <PluginCard
-          {plugin}
-          {contextId}
-          onChanged={() => load(contextId)}
-          onRequestClear={(key, required) => {
-            pendingClearKey = { pluginId: plugin.id, key, required }
-            clearError = null
-          }} />
+        <li>
+          <PluginCard
+            {plugin}
+            {contextId}
+            onChanged={() => load(contextId)}
+            onRequestClear={(key, required) => {
+              pendingClearKey = { pluginId: plugin.id, key, required }
+              clearError = null
+            }} />
+        </li>
       {/each}
-    </div>
+    </ul>
   {/if}
 
   <Confirm
@@ -119,5 +121,8 @@
   .settings-plugins {
     display: grid;
     gap: 12px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
   }
 </style>

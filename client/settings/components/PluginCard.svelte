@@ -8,6 +8,7 @@
 
   import type { PluginConfigField, PluginEntry } from '../fetcher-schemas.js'
   import { patchPluginConfig, togglePlugin } from '../fetchers.js'
+  import { eligibilityCopy } from '../lib/plugin-eligibility.js'
   import { maskSecret } from '../lib/mask-secret.js'
   import Btn from '../../shared/ui/Btn.svelte'
   import Input from '../../shared/ui/Input.svelte'
@@ -48,20 +49,13 @@
 
   const message = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
-  const eligibilityLabel = (p: PluginEntry): string => {
-    if (p.eligibility.eligible) return 'eligible'
-    if (p.eligibility.reason === 'config_missing') return `config_missing: ${p.eligibility.missingKeys.join(', ')}`
-    if (p.eligibility.reason === 'capability_missing') {
-      return `capability_missing: ${p.eligibility.missingCapabilities.join(', ')}`
-    }
-    return p.eligibility.reason
-  }
-
-  const eligTone = (p: PluginEntry): 'accent' | 'warn' | 'mute' => {
-    if (p.eligibility.eligible) return 'accent'
-    if (p.eligibility.reason === 'inactive' || p.eligibility.reason === 'disabled') return 'mute'
-    return 'warn'
-  }
+  const copy = $derived(eligibilityCopy(plugin))
+  const pillId = $derived(`plugin-elig-${plugin.id}`)
+  const explainId = $derived(`plugin-explain-${plugin.id}`)
+  // The toggle's label already swaps Enable/Disable, so aria-pressed would announce
+  // the opposite of the label. Point at the status pill (and the explanation, when
+  // the state needs one) instead: "Disable, button, Ready".
+  const toggleDescribedBy = $derived(copy.explanation === undefined ? pillId : `${pillId} ${explainId}`)
 
   // The card writes in place with no submit-and-navigate step, so without an explicit
   // acknowledgement a completed save is indistinguishable from a control never touched.
@@ -134,20 +128,24 @@
 
 <div class="settings-plugins__card">
   <div class="settings-plugins__head">
-    <span class="settings-plugins__name">{plugin.name}</span>
+    <h3 class="settings-plugins__name">{plugin.name}</h3>
     <span class="settings-plugins__elig">
-      <Pill tone={eligTone(plugin)}>{#snippet children()}{eligibilityLabel(plugin)}{/snippet}</Pill>
+      <Pill tone={copy.tone} id={pillId}>{#snippet children()}{copy.label}{/snippet}</Pill>
     </span>
     <Btn
       variant="secondary"
       size="sm"
       testid={`plugin-toggle-${plugin.id}`}
       busy={toggling}
+      ariaDescribedBy={toggleDescribedBy}
       disabled={!plugin.eligibility.eligible && plugin.eligibility.reason === 'inactive'}
       onClick={() => void toggle()}>
       {#snippet children()}{plugin.enabled ? 'Disable' : 'Enable'}{/snippet}
     </Btn>
   </div>
+  {#if copy.explanation !== undefined}
+    <p class="settings-plugins__explain" id={explainId}>{copy.explanation}</p>
+  {/if}
   {#if cardError !== null}
     <p class="status-error" role="alert" data-testid={`plugin-card-error-${plugin.id}`}>{cardError}</p>
   {/if}
@@ -229,8 +227,15 @@
     gap: 12px;
   }
   .settings-plugins__name {
+    margin: 0;
     font-family: var(--font-mono);
     font-size: 13px;
+    font-weight: 500;
+  }
+  .settings-plugins__explain {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 12px;
   }
   .settings-plugins__cfg {
     display: grid;
