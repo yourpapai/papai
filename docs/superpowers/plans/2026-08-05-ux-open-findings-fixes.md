@@ -1255,7 +1255,7 @@ Expected: PASS. Nothing behavioural changed; this is the guard that no markup wa
 - [ ] **Step 5: Audit to predict the baseline change**
 
 Run: `bun run visual:audit 2>&1 | tail -20`
-Expected: failures confined to shots that render `RoleBindingBlock` — the ByokSection states with role overrides (and their narrow variants). Seven of the eight substitutions are value-identical and must move nothing; only the `.role-binding` 6px → 8px gap may. **A moved shot that shows no role bindings is a defect** — it means a substitution was not value-identical. Stop and report.
+Expected: failures confined to shots that render `RoleBindingBlock`. That is **not only ByokSection** — `client/settings/sections/admin/AdminModelsSection.svelte:13,93,100,107` imports and renders `RoleBindingBlock` three times unconditionally, so its `Empty` and `Populated` shots move too. Seven shots in total: five ByokSection states with role overrides (and their narrow variants) plus those two. Seven of the eight substitutions are value-identical and must move nothing; only the `.role-binding` 6px → 8px gap may. **A moved shot that shows no role bindings is a defect** — it means a substitution was not value-identical. Stop and report.
 
 - [ ] **Step 6: Shoot and inspect**
 
