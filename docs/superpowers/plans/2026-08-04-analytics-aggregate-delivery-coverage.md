@@ -18,7 +18,7 @@ See LICENSE in the project root for details.
 ## Global Constraints
 
 - Scope is aggregate release through settings plus hermetic injected captured delivery. Do **not** touch real egress, sink verification (`verify` route or `SinkProbe`), derive/intent/backfill/rekey jobs, or snapshot paths.
-- All scenario IDs, metric names, day strings computed from `Date.now()`, and fake outcomes are deterministic; never use live network endpoints, live credentials, random data, fixed-wall-clock waits, or test ordering.
+- All scenario IDs, metric names, day strings derived from the scenario's fixed world clock, and fake outcomes are deterministic; never use live network endpoints, live credentials, random data, fixed-wall-clock waits, or test ordering.
 - Stories run the real settings route handlers and the real delivery worker; never call `buildDailyAggregateRelease` internals as the proof of the settings path.
 - Keep the Tier 0 floors at `lines: 0.71` and `functions: 0.70`; do not lower either value.
 - Every new `scenario(...)` must be registered in `tests/stories/catalog/coverage.ts` in the same commit that introduces it; an uncataloged scenario fails `bun test:stories:contracts`.
@@ -34,20 +34,23 @@ See LICENSE in the project root for details.
 | --- | --- |
 | Create: `tests/stories/analytics/aggregate-delivery.story.test.ts` | Four Tier 0 scenarios covering settings-driven release, the denial matrix, captured delivery, and delivery governance (kill switch + retry). |
 | Modify: `tests/stories/catalog/coverage.ts` | Add four `SCN-analytics-aggregate-*` ids to `CATALOG_SCENARIO_IDS`, four executable records with `provingTier: '0'`, and extend `CATALOG_SOURCE`. |
+| Modify: `tests/stories/harness/catalog-coverage.test.ts` | Ratchet the exact catalog scenario and executable counts after each new record. |
+| Modify: `tests/scripts/story-coverage-totals.test.ts` | Update the catalog-total expectations from the current 207/229 baseline to include the four new Tier 0 catalog records. |
 
-No production source files and no harness files change. Sink staging and cell seeding are story-local helpers built on production functions (`createSinkVersion`, drizzle inserts), matching the precedent in `tests/analytics/privacy-contract.test.ts:387-403`.
+No production source files change. Sink staging and cell seeding are story-local helpers built on production functions (`createSinkVersion`, drizzle inserts), matching the precedent in `tests/analytics/privacy-contract.test.ts:387-403`.
 
 ### Task 1: Settings-driven aggregate release story
 
 **Files:**
 - Create: `tests/stories/analytics/aggregate-delivery.story.test.ts`
 - Modify: `tests/stories/catalog/coverage.ts:225-226` (id tuple region) and `:1540-1544` (record map region)
+- Modify: `tests/stories/harness/catalog-coverage.test.ts:220-221,438,447` (exact catalog count ratchets)
 
 **Interfaces:**
 - Consumes: `scenario`, `answer` from the story harness; `createSinkVersion` from `src/analytics/delivery/sink-service.ts`; `CAPTURED_SINK_ENDPOINT`, `SYNTHETIC_SINK_TOKEN` from `src/analytics/delivery/captured-sink.testing.ts`.
-- Produces (story-local, reused by Tasks 2-4): `seedEnabledAggregateSink(nowMs: number): string` returning the enabled `sinkVersionId`; `insertFinalizedCounter(input: { utcDay: string; metric: string; value: number; contributorCount: number }): void`; `completeUtcDay(): string` returning the UTC day two days before `Date.now()`; `ReleaseExecutionSchema` for response parsing.
+- Produces (story-local, reused by Tasks 2-4): `seedEnabledAggregateSink(nowMs: number): string` returning the enabled `sinkVersionId`; `insertFinalizedCounter(input: { utcDay: string; metric: string; value: number; contributorCount: number }): void`; `completeUtcDay(nowMs: number): string` returning the UTC day two days before the scenario's fixed world clock; `ReleaseExecutionSchema` for response parsing.
 
-- [ ] **Step 1: Write the failing release story**
+- [x] **Step 1: Write the failing release story**
 
 Create `tests/stories/analytics/aggregate-delivery.story.test.ts`:
 
@@ -72,7 +75,7 @@ import { scenario } from '../harness/scenario.js'
 
 const DAY_MS = 86_400_000
 
-const completeUtcDay = (): string => new Date(Date.now() - 2 * DAY_MS).toISOString().slice(0, 10)
+const completeUtcDay = (nowMs: number): string => new Date(nowMs - 2 * DAY_MS).toISOString().slice(0, 10)
 
 const seedEnabledAggregateSink = (nowMs: number): string => {
   const view = createSinkVersion(
@@ -150,12 +153,12 @@ const disclosureScopeOf = (utcDay: string, metric: string): string | null => {
 
 scenario(
   'SCN-analytics-aggregate-release-settings: an operator enables the aggregate lane, executes a release through settings, and a re-execute is idempotent',
-  async ({ given, when, then }) => {
+  async ({ given, when, then, world }) => {
     const alice = given.user('alice')
-    const admin = await given.settingsAdminSession(alice)
     given.analyticsRuntime('governed')
-    const nowMs = Date.now()
-    const utcDay = completeUtcDay()
+    const admin = await given.settingsAdminSession(alice)
+    const nowMs = world.clock.now().getTime()
+    const utcDay = completeUtcDay(nowMs)
     const sinkVersionId = seedEnabledAggregateSink(nowMs)
     insertFinalizedCounter({ utcDay, metric: 'turn_started', value: 250, contributorCount: 40 })
     insertFinalizedCounter({ utcDay, metric: 'message_accepted', value: 7, contributorCount: 3 })
@@ -211,13 +214,13 @@ scenario(
 )
 ```
 
-- [ ] **Step 2: Run the story to verify it fails the catalog census**
+- [x] **Step 2: Run the story to verify it fails the catalog census**
 
 Run: `bun test:stories --fixture tests/stories/analytics/aggregate-delivery.story.test.ts`
 
 Expected: the story itself PASSES against existing production behavior, but `bun test:stories:contracts` FAILS with an uncataloged-scenario census error naming `SCN-analytics-aggregate-release-settings`.
 
-- [ ] **Step 3: Register the catalog id and record**
+- [x] **Step 3: Register the catalog id and record**
 
 In `tests/stories/catalog/coverage.ts`, add `'SCN-analytics-aggregate-release-settings',` to `CATALOG_SCENARIO_IDS` immediately after `'SCN-analytics-governed-turn',` (line 226), and add the record immediately after the `'SCN-analytics-governed-turn'` record:
 
@@ -231,16 +234,18 @@ In `tests/stories/catalog/coverage.ts`, add `'SCN-analytics-aggregate-release-se
   },
 ```
 
-- [ ] **Step 4: Run the story and the contracts**
+In `tests/stories/harness/catalog-coverage.test.ts`, update the exact scenario count assertions at lines 220-221 from `229` to `230`, and the executable count assertions at lines 438 and 447 from `207` to `208`.
+
+- [x] **Step 4: Run the story and the contracts**
 
 Run: `bun test:stories --fixture tests/stories/analytics/aggregate-delivery.story.test.ts && bun test:stories:contracts`
 
 Expected: both exit `0`.
 
-- [ ] **Step 5: Commit the release story**
+- [x] **Step 5: Commit the release story**
 
 ```bash
-git add tests/stories/analytics/aggregate-delivery.story.test.ts tests/stories/catalog/coverage.ts
+git add tests/stories/analytics/aggregate-delivery.story.test.ts tests/stories/catalog/coverage.ts tests/stories/harness/catalog-coverage.test.ts
 git commit -m "test(stories): cover settings-driven aggregate release"
 ```
 
@@ -249,12 +254,13 @@ git commit -m "test(stories): cover settings-driven aggregate release"
 **Files:**
 - Modify: `tests/stories/analytics/aggregate-delivery.story.test.ts`
 - Modify: `tests/stories/catalog/coverage.ts`
+- Modify: `tests/stories/harness/catalog-coverage.test.ts`
 
 **Interfaces:**
-- Consumes: `seedEnabledAggregateSink`, `insertFinalizedCounter`, `completeUtcDay`, and `AdminAnalyticsViewSchema` from Task 1.
+- Consumes: `seedEnabledAggregateSink`, `insertFinalizedCounter`, `completeUtcDay(nowMs)`, and `AdminAnalyticsViewSchema` from Task 1. Destructure `world` in every scenario, call `given.analyticsRuntime('governed')` before `given.settingsAdminSession(...)`, and derive all times from `world.clock.now().getTime()`.
 - Produces: `ReleaseDeniedSchema` (`z.looseObject({ code: z.string() })` plus optional `reason`), reused by Task 3.
 
-- [ ] **Step 1: Write the failing denial story**
+- [x] **Step 1: Write the failing denial story**
 
 Append to `tests/stories/analytics/aggregate-delivery.story.test.ts`:
 
@@ -263,14 +269,14 @@ const ReleaseDeniedSchema = z.looseObject({ code: z.string(), reason: z.string()
 
 scenario(
   'SCN-analytics-aggregate-release-denials: release requests are denied without a sink, with an incomplete day, and for drill-through, and non-admins cannot execute',
-  async ({ given, when, then }) => {
+  async ({ given, when, then, world }) => {
     const alice = given.user('alice')
     const bob = given.user('bob')
+    given.analyticsRuntime('governed')
     const admin = await given.settingsAdminSession(alice)
     const memberSession = await when.settingsSession(bob)
-    given.analyticsRuntime('governed')
-    const nowMs = Date.now()
-    const utcDay = completeUtcDay()
+    const nowMs = world.clock.now().getTime()
+    const utcDay = completeUtcDay(nowMs)
     const sinkVersionId = seedEnabledAggregateSink(nowMs)
     insertFinalizedCounter({ utcDay, metric: 'turn_started', value: 250, contributorCount: 40 })
 
@@ -292,7 +298,7 @@ scenario(
     then.responseStatus(unknownSink, 422)
     expect(ReleaseDeniedSchema.parse(await unknownSink.json()).code).toBe('release_sink_unavailable')
 
-    const today = new Date(Date.now()).toISOString().slice(0, 10)
+    const today = new Date(nowMs).toISOString().slice(0, 10)
     const incompleteDay = await postRelease(admin, { release: { utcDay: today, sinkVersionId, execute: true } })
     then.responseStatus(incompleteDay, 422)
     const incomplete = ReleaseDeniedSchema.parse(await incompleteDay.json())
@@ -315,13 +321,13 @@ scenario(
 
 The `assessmentOnly` request proves `execute` omitted runs the assessment without staging a release; the final two assertions prove no denial staged durable rows.
 
-- [ ] **Step 2: Run the story to verify the census failure**
+- [x] **Step 2: Run the story to verify the census failure**
 
 Run: `bun test:stories --fixture tests/stories/analytics/aggregate-delivery.story.test.ts`
 
 Expected: the story PASSES; `bun test:stories:contracts` FAILS naming the uncataloged `SCN-analytics-aggregate-release-denials`.
 
-- [ ] **Step 3: Register the catalog record**
+- [x] **Step 3: Register the catalog record**
 
 Add `'SCN-analytics-aggregate-release-denials',` to `CATALOG_SCENARIO_IDS` after the Task 1 id, and the record after the Task 1 record:
 
@@ -335,16 +341,18 @@ Add `'SCN-analytics-aggregate-release-denials',` to `CATALOG_SCENARIO_IDS` after
   },
 ```
 
-- [ ] **Step 4: Run the story and the contracts**
+In `tests/stories/harness/catalog-coverage.test.ts`, increment the exact scenario count assertions from `230` to `231` and executable count assertions from `208` to `209`.
+
+- [x] **Step 4: Run the story and the contracts**
 
 Run: `bun test:stories --fixture tests/stories/analytics/aggregate-delivery.story.test.ts && bun test:stories:contracts`
 
 Expected: both exit `0`.
 
-- [ ] **Step 5: Commit the denial story**
+- [x] **Step 5: Commit the denial story**
 
 ```bash
-git add tests/stories/analytics/aggregate-delivery.story.test.ts tests/stories/catalog/coverage.ts
+git add tests/stories/analytics/aggregate-delivery.story.test.ts tests/stories/catalog/coverage.ts tests/stories/harness/catalog-coverage.test.ts
 git commit -m "test(stories): cover aggregate release denial matrix"
 ```
 
@@ -353,12 +361,13 @@ git commit -m "test(stories): cover aggregate release denial matrix"
 **Files:**
 - Modify: `tests/stories/analytics/aggregate-delivery.story.test.ts`
 - Modify: `tests/stories/catalog/coverage.ts`
+- Modify: `tests/stories/harness/catalog-coverage.test.ts`
 
 **Interfaces:**
-- Consumes: Task 1 helpers and the settings release flow.
+- Consumes: Task 1 helpers and the settings release flow. Destructure `world` in the scenario, call `given.analyticsRuntime('governed')` before `given.settingsAdminSession(...)`, and derive all worker timestamps from `world.clock.now().getTime()`.
 - Produces: `stageRelease(when: ScenarioApi['when'], admin: SettingsSessionHandle, utcDay: string, sinkVersionId: string): Promise<string>` story-local helper returning the `releaseId` of a freshly staged release; `capturedLookupAll` constant used by Task 4.
 
-- [ ] **Step 1: Write the failing captured-delivery story**
+- [x] **Step 1: Write the failing captured-delivery story**
 
 Add imports to the story file:
 
@@ -392,18 +401,18 @@ const stageRelease = async (
 
 scenario(
   'SCN-analytics-aggregate-delivery-captured: the delivery worker sends a staged release to the captured sink with the payload contract and no pseudonymous fields',
-  async ({ given, when, then }) => {
+  async ({ given, when, then, world }) => {
     const alice = given.user('alice')
-    const admin = await given.settingsAdminSession(alice)
     given.analyticsRuntime('governed')
-    const nowMs = Date.now()
-    const utcDay = completeUtcDay()
+    const admin = await given.settingsAdminSession(alice)
+    const nowMs = world.clock.now().getTime()
+    const utcDay = completeUtcDay(nowMs)
     const sinkVersionId = seedEnabledAggregateSink(nowMs)
     insertFinalizedCounter({ utcDay, metric: 'turn_started', value: 250, contributorCount: 40 })
     const releaseId = await stageRelease(when, admin, utcDay, sinkVersionId)
 
     const sink = createCapturedSink({ kind: 'delivered', status: 200, receiptHash: 'f'.repeat(64) })
-    const tickNow = Date.now()
+    const tickNow = world.clock.now().getTime()
     const tick = await runDeliveryWorkerTick(
       { nowMs: tickNow },
       { getDrizzleDb, transport: sink.transport, lookupAll: capturedLookupAll },
@@ -435,13 +444,13 @@ scenario(
 )
 ```
 
-- [ ] **Step 2: Run the story to verify the census failure**
+- [x] **Step 2: Run the story to verify the census failure**
 
 Run: `bun test:stories --fixture tests/stories/analytics/aggregate-delivery.story.test.ts`
 
 Expected: all three scenarios PASS; contracts FAIL naming `SCN-analytics-aggregate-delivery-captured`.
 
-- [ ] **Step 3: Register the catalog record**
+- [x] **Step 3: Register the catalog record**
 
 Add `'SCN-analytics-aggregate-delivery-captured',` to `CATALOG_SCENARIO_IDS` after the Task 2 id, and the record after the Task 2 record:
 
@@ -455,16 +464,18 @@ Add `'SCN-analytics-aggregate-delivery-captured',` to `CATALOG_SCENARIO_IDS` aft
   },
 ```
 
-- [ ] **Step 4: Run the story and the contracts**
+In `tests/stories/harness/catalog-coverage.test.ts`, increment the exact scenario count assertions from `231` to `232` and executable count assertions from `209` to `210`.
+
+- [x] **Step 4: Run the story and the contracts**
 
 Run: `bun test:stories --fixture tests/stories/analytics/aggregate-delivery.story.test.ts && bun test:stories:contracts`
 
 Expected: both exit `0`.
 
-- [ ] **Step 5: Commit the captured-delivery story**
+- [x] **Step 5: Commit the captured-delivery story**
 
 ```bash
-git add tests/stories/analytics/aggregate-delivery.story.test.ts tests/stories/catalog/coverage.ts
+git add tests/stories/analytics/aggregate-delivery.story.test.ts tests/stories/catalog/coverage.ts tests/stories/harness/catalog-coverage.test.ts
 git commit -m "test(stories): cover captured aggregate delivery"
 ```
 
@@ -473,12 +484,14 @@ git commit -m "test(stories): cover captured aggregate delivery"
 **Files:**
 - Modify: `tests/stories/analytics/aggregate-delivery.story.test.ts`
 - Modify: `tests/stories/catalog/coverage.ts`
+- Modify: `tests/stories/harness/catalog-coverage.test.ts`
+- Modify: `tests/scripts/story-coverage-totals.test.ts`
 
 **Interfaces:**
-- Consumes: `stageRelease`, `capturedLookupAll`, `createCapturedSink`, `runDeliveryWorkerTick` from Task 3; `ANALYTICS_KILL_SWITCH_ENV` from `src/analytics/governance/policy-store.ts`; `computeRetryDelayMs` from `src/analytics/delivery/worker.ts`.
+- Consumes: `stageRelease`, `capturedLookupAll`, `createCapturedSink`, `runDeliveryWorkerTick` from Task 3; `ANALYTICS_KILL_SWITCH_ENV` from `src/analytics/governance/policy-store.ts`; `computeRetryDelayMs` from `src/analytics/delivery/worker.ts`. Destructure `world`, call `given.analyticsRuntime('governed')` before opening the settings session, and derive every worker timestamp from `world.clock.now().getTime()`.
 - Produces: nothing reused by later tasks.
 
-- [ ] **Step 1: Write the failing governance story**
+- [x] **Step 1: Write the failing governance story**
 
 Add imports to the story file:
 
@@ -492,12 +505,12 @@ Append the scenario:
 ```ts
 scenario(
   'SCN-analytics-aggregate-delivery-governance: the kill switch defers a staged release and a 5xx schedules a bounded retry before delivery succeeds',
-  async ({ given, when, then }) => {
+  async ({ given, when, then, world }) => {
     const alice = given.user('alice')
-    const admin = await given.settingsAdminSession(alice)
     given.analyticsRuntime('governed')
-    const nowMs = Date.now()
-    const utcDay = completeUtcDay()
+    const admin = await given.settingsAdminSession(alice)
+    const nowMs = world.clock.now().getTime()
+    const utcDay = completeUtcDay(nowMs)
     const sinkVersionId = seedEnabledAggregateSink(nowMs)
     insertFinalizedCounter({ utcDay, metric: 'turn_started', value: 250, contributorCount: 40 })
     const releaseId = await stageRelease(when, admin, utcDay, sinkVersionId)
@@ -513,7 +526,7 @@ scenario(
     process.env[ANALYTICS_KILL_SWITCH_ENV] = '1'
     try {
       const skipped = await runDeliveryWorkerTick(
-        { nowMs: Date.now() },
+        { nowMs },
         { getDrizzleDb, transport: sink.transport, lookupAll: capturedLookupAll },
       )
       expect(skipped).toEqual({ status: 'kill_switch', leased: 0, delivered: 0, retryable: 0, ambiguous: 0, dead: 0 })
@@ -524,7 +537,7 @@ scenario(
     }
 
     sink.setOutcome({ kind: 'responded', status: 503, errorClass: 'http_5xx' })
-    const retryNow = Date.now()
+    const retryNow = nowMs
     const retried = await runDeliveryWorkerTick(
       { nowMs: retryNow },
       { getDrizzleDb, transport: sink.transport, lookupAll: capturedLookupAll },
@@ -556,13 +569,13 @@ scenario(
 )
 ```
 
-- [ ] **Step 2: Run the story to verify the census failure**
+- [x] **Step 2: Run the story to verify the census failure**
 
 Run: `bun test:stories --fixture tests/stories/analytics/aggregate-delivery.story.test.ts`
 
 Expected: all four scenarios PASS; contracts FAIL naming `SCN-analytics-aggregate-delivery-governance`.
 
-- [ ] **Step 3: Register the catalog record and extend the source line**
+- [x] **Step 3: Register the catalog record and extend the source line**
 
 Add `'SCN-analytics-aggregate-delivery-governance',` to `CATALOG_SCENARIO_IDS` after the Task 3 id, and the record after the Task 3 record:
 
@@ -582,16 +595,39 @@ Extend `CATALOG_SOURCE` by appending to the existing literal:
 '; extended 2026-08-04 with 4 aggregate delivery (@0) ids (analytics-aggregate-delivery-coverage)'
 ```
 
-- [ ] **Step 4: Run the story and the contracts**
+In `tests/stories/harness/catalog-coverage.test.ts`, increment the exact scenario count assertions from `232` to `233` and executable count assertions from `210` to `211`.
 
-Run: `bun test:stories --fixture tests/stories/analytics/aggregate-delivery.story.test.ts && bun test:stories:contracts`
+Update `tests/scripts/story-coverage-totals.test.ts` to account for the four new executable Tier 0 records. The current catalog baseline is 207 executable stories out of 229 total, including 158 Tier 0 stories; after this task it must expect 211 executable stories out of 233 total, including 162 Tier 0 stories:
 
-Expected: both exit `0`.
+```ts
+    expect(storyCoverageTotals()).toEqual({
+      total: 233,
+      executable: 211,
+      pending: 22,
+      readiness: { 'executable-as-is': 0, 'needs-seam': 0, blocked: 22 },
+      executableByTier: { '0': 162, '1': 29, '2': 8, '3': 11, '4': 1 },
+      pendingByUnblockingTier: { '0': 0, '1': 0, '2': 0, '3': 0, '4': 0 },
+    })
+```
 
-- [ ] **Step 5: Commit the governance story**
+Update the formatted expectation to:
+
+```ts
+      'story catalog: 211/233 executable (T0 162, T1 29, T2 8, T3 11, T4 1); ' +
+        'pending 22 (0 executable-as-is, 0 needs-seam, 22 blocked); ' +
+        'pending unblocked by tier (T0 0, T1 0, T2 0, T3 0, T4 0)',
+```
+
+- [x] **Step 4: Run the story, contracts, and catalog-total test**
+
+Run: `bun test:stories --fixture tests/stories/analytics/aggregate-delivery.story.test.ts && bun test:stories:contracts && bun test tests/scripts/story-coverage-totals.test.ts`
+
+Expected: all three commands exit `0`.
+
+- [x] **Step 5: Commit the governance story**
 
 ```bash
-git add tests/stories/analytics/aggregate-delivery.story.test.ts tests/stories/catalog/coverage.ts
+git add tests/stories/analytics/aggregate-delivery.story.test.ts tests/stories/catalog/coverage.ts tests/stories/harness/catalog-coverage.test.ts tests/scripts/story-coverage-totals.test.ts
 git commit -m "test(stories): cover aggregate delivery kill switch and retry"
 ```
 
@@ -599,7 +635,16 @@ git commit -m "test(stories): cover aggregate delivery kill switch and retry"
 
 - [ ] Run `bun test:stories --fixture tests/stories/analytics/aggregate-delivery.story.test.ts`; expected exit code `0` with four passing scenarios.
 - [ ] Run `bun test:stories:contracts`; expected exit code `0`.
+- [ ] Run `bun test tests/scripts/story-coverage-totals.test.ts`; expected exit code `0` with the `211/233` catalog total and `162` Tier 0 stories.
 - [ ] Run `bun test:stories:coverage`; expected exit code `0`, with lines `>= 71.00%` and functions `>= 70.00%`.
 - [ ] Run `bun run typecheck && bun run lint`; expected exit code `0`.
 - [ ] Run `git status --short`; expected output shows no uncommitted changes under `tests/` or `src/`.
 - [ ] Verify no story file imports `snapshot`, `verifySinkVersion`, `runDeriveJob`, `runIntentDerivation`, `runBackfillJob`, or any `src/analytics/rekey/` module.
+
+## Drift Log
+
+| Date | Category | Item | Decision |
+| --- | --- | --- | --- |
+| 2026-08-05 | In-plan, divergent | Task 1 `completeUtcDay` and scenario setup | Adopted fixed-world-clock timestamps via `completeUtcDay(nowMs)` and `world.clock.now().getTime()` because the literal `Date.now()` day is future-relative to the hermetic world. |
+| 2026-08-05 | Out-of-plan, on-goal | `tests/stories/harness/catalog-coverage.test.ts` count ratchets | Added each task's required scenario/executable count update so its mandated catalog-contract verification can pass. |
+| 2026-08-05 | Out-of-plan, environmental | `bun test:stories:coverage` measures 68.71% lines / 65.87% functions against the unchanged 71%/70% floors | This test-only branch did not cause the shortfall (no production source files changed); master's coverage must be confirmed before merge to determine whether the floors were already failing there. |
