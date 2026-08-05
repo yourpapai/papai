@@ -21,7 +21,7 @@ findings are open. Nine are actionable UI defects. Two are not:
 - `repos-no-edit-capability` — `client/settings/repos-fetchers.ts:16-34` exposes only
   `addRepo`/`deleteRepo`. Per-row editing of branch/preset/egress needs backend update support.
   The discoverability half of the finding is already closed by the explicit note in
-  `ReposSection.svelte:160-163`; the residue is a capability gap, not a UX defect.
+  `ReposSection.svelte:193-196`; the residue is a capability gap, not a UX defect.
 
 Neither can be honestly closed with today's vocabulary. `scripts/ux-backlog-lib.ts:7` allows
 `open`, `fixed`, `superseded`. As established across the three existing uses (all in
@@ -91,7 +91,7 @@ only `open` findings.
 | Finding | Document | Status | Recorded rationale |
 | --- | --- | --- | --- |
 | `debug-icon-buttons-control-height` | `DebugApp.md` | `wont-fix` | 24px meets WCAG 2.5.8's 24×24px floor, so this is not a defect. The finding's own text directs that no action be taken in `DebugApp`, and that any change belongs in `--control-h-sm` (`client/shared/tokens.css:63`) where it would affect every consumer and require re-reviewing the affected sections. |
-| `repos-no-edit-capability` | `ReposSection.md` | `deferred` | `repos-fetchers.ts` exposes only add/delete; per-row editing needs backend update support that does not exist. The surprise-discovery half is already closed by the note at `ReposSection.svelte:160-163`. Deferred rather than won't-fix because the capability may genuinely be built later. |
+| `repos-no-edit-capability` | `ReposSection.md` | `deferred` | `repos-fetchers.ts` exposes only add/delete; per-row editing needs backend update support that does not exist. The surprise-discovery half is already closed by the note at `ReposSection.svelte:193-196`. Deferred rather than won't-fix because the capability may genuinely be built later. |
 
 Each finding's existing `- **Source:**` line is left untouched — those record the pre-decision
 state and remain accurate.

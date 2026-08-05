@@ -457,7 +457,7 @@ git commit -m "feat(ux-backlog): list deferred findings in their own section"
 **Context:** These two findings are not UI defects.
 
 - `debug-icon-buttons-control-height` — its own text says *"No action needed in DebugApp"*. 24px meets WCAG 2.5.8 (Target Size Minimum)'s 24×24px floor, so it is not an accessibility failure. It was recorded as a shared design-token fact. Its only real fix is raising `--control-h-sm` in `client/shared/tokens.css`, which changes every consumer at once and requires re-reviewing every affected section — explicitly out of scope.
-- `repos-no-edit-capability` — `client/settings/repos-fetchers.ts:16-34` exposes only `addRepo`/`deleteRepo`. Per-row editing of branch/preset/egress needs backend update support that does not exist. The discoverability half of the finding is already closed by the explicit note in `ReposSection.svelte:160-163`; the residue is a capability gap, not a UX defect. It is `deferred` rather than `wont-fix` because the capability may genuinely be built later.
+- `repos-no-edit-capability` — `client/settings/repos-fetchers.ts:16-34` exposes only `addRepo`/`deleteRepo`. Per-row editing of branch/preset/egress needs backend update support that does not exist. The discoverability half of the finding is already closed by the explicit note in `ReposSection.svelte:193-196`; the residue is a capability gap, not a UX defect. It is `deferred` rather than `wont-fix` because the capability may genuinely be built later.
 
 The parser requires a non-empty `- **Resolved:**` line for any non-`open` status. It checks only non-emptiness — it does **not** validate a commit hash — so these two entries carry a rationale instead. Each finding's existing `- **Source:**` line is left untouched: it records the pre-decision state and remains accurate.
 
@@ -482,7 +482,7 @@ In `docs/ux-reviews/ReposSection.md:116-124`, the finding with `- **Id:** repos-
 
 ```markdown
 - **Status:** deferred
-- **Resolved:** 2026-08-04 — decision, no commit. `client/settings/repos-fetchers.ts:16-34` exposes only add and delete; per-row editing of branch, preset and egress needs backend update support that does not exist. The surprise-discovery half of this finding is already closed by the note at `ReposSection.svelte:160-163`. Deferred rather than won't-fix because the capability may genuinely be built later.
+- **Resolved:** 2026-08-04 — decision, no commit. `client/settings/repos-fetchers.ts:16-34` exposes only add and delete; per-row editing of branch, preset and egress needs backend update support that does not exist. The surprise-discovery half of this finding is already closed by the note at `ReposSection.svelte:193-196`. Deferred rather than won't-fix because the capability may genuinely be built later.
 ```
 
 - [ ] **Step 3: Document the two statuses for humans**
