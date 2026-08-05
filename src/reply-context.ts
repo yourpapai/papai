@@ -3,10 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { isS3Configured } from './attachments/index.js'
-import { buildAttachmentManifest } from './attachments/resolver.js'
+import { type AttachmentRef, buildAttachmentManifest, isS3Configured } from './attachments/index.js'
 import { findStagedFilesByMessageId } from './attachments/staged.js'
-import type { AttachmentRef } from './attachments/types.js'
 import type { IncomingMessage } from './chat/types.js'
 import { logger } from './logger.js'
 import { buildReplyChain, getCachedMessage } from './message-cache/index.js'

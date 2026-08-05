@@ -6,9 +6,9 @@
 import type { Comment } from 'papai/plugin-types'
 
 import { addComment } from '../add-comment.js'
-import type { KaneoConfig } from '../client.js'
 import { getComments } from '../get-comments.js'
 import { mapComment } from '../mappers.js'
+import type { KaneoConfig } from '../provider.js'
 import { removeComment } from '../remove-comment.js'
 import { updateComment } from '../update-comment.js'
 

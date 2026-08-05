@@ -9,7 +9,8 @@ import { z } from 'zod'
 
 import { logger } from '../../src/logger.js'
 import { classifyKaneoError, KaneoClassifiedError } from './classify-error.js'
-import { type KaneoConfig, kaneoFetch } from './client.js'
+import { kaneoFetch } from './client.js'
+import type { KaneoConfig } from './provider.js'
 
 const log = logger.child({ scope: 'kaneo:task-relations' })
 

@@ -14,12 +14,7 @@ import { buildCompiled, computeMissedDates, computeNextRun, toRecord } from './r
 import type { RecurringTaskInput, RecurringTaskRecord } from './types/recurring.js'
 
 export type { TriggerType, RecurringTaskInput, RecurringTaskRecord } from './types/recurring.js'
-export {
-  COMPLETION_STATUSES,
-  findTemplateByTaskId,
-  isCompletionStatus,
-  recordOccurrence,
-} from './recurring-occurrences.js'
+export { recordOccurrence } from './recurring-occurrences.js'
 
 const log = logger.child({ scope: 'recurring' })
 const generateId = (): string => crypto.randomUUID()

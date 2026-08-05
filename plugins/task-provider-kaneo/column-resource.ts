@@ -7,7 +7,8 @@ import { z } from 'zod'
 
 import { logger } from '../../src/logger.js'
 import { classifyKaneoError } from './classify-error.js'
-import { type KaneoConfig, kaneoFetch } from './client.js'
+import { kaneoFetch } from './client.js'
+import type { KaneoConfig } from './provider.js'
 // ColumnCompatSchema accepts undefined icon/color — see src/kaneo/schemas/api-compat.ts for upstream bug reference.
 import { ColumnCompatSchema } from './schemas/api-compat.js'
 

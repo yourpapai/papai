@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { mcpPool } from '../mcp/client-pool.js'
+import { mcpPool } from '../mcp/index.js'
 import { jsonResponse } from './json-response.js'
 
 export function handleMcpStatus(): Response {

@@ -20,7 +20,6 @@ import { provisionKaneoUser } from './provision-requests.js'
 const log = logger.child({ scope: 'kaneo:provision' })
 
 export { provisionKaneoUser } from './provision-requests.js'
-export type { ProvisionResult } from './provision-requests.js'
 
 type NormalizedProvisionConfig = Readonly<{ publicUrl: string; internalUrl: string | undefined }>
 

@@ -7,6 +7,12 @@
 // justification comment naming the dynamic mechanism knip cannot trace, and a
 // linked task when the gap is temporary. Prefer code fixes (moving dead code,
 // *.testing.ts shims, entry declarations) over new ignore lines.
+//
+// Standing rule for facade re-exports: when knip flags a facade binding,
+// fix the import structure (repoint production imports through the facade,
+// repoint test imports to the concrete module, or prune the dead binding)
+// instead of adding an ignore. See
+// docs/superpowers/specs/2026-08-04-knip-facade-import-triage-design.md.
 
 // knip's built-in Svelte plugin enables but never registers its compiler:
 // its hasDependency('svelte') probe fails under bun's node_modules-less
@@ -229,6 +235,31 @@ export default {
     // 13B, in flight) and by analytics tests outside knip's production
     // project scope.
     'src/analytics/rekey/*.ts': ['exports', 'types'],
+
+    // Re-export facades whose remaining flagged bindings knip cannot trace:
+    // the published plugin-types package export, declared plugin-core-separation
+    // compatibility boundaries, and bindings consumed by byte-frozen 0Q
+    // qualification files (tests/stories/**, tests/utils/test-helpers.ts). Six
+    // justified entries in this block.
+    // session-record.ts and store.ts are declared stable compatibility
+    // boundaries for the plugin-core-separation refactor (see entry list);
+    // store.ts is also consumed by the frozen story harness.
+    'src/coding-sessions/session-record.ts': ['exports'],
+    'src/coding-sessions/store.ts': ['types'],
+    // state-collector re-exports recentLlm/pendingTraces for the frozen
+    // tests/utils/test-helpers.ts.
+    'src/debug/state-collector.ts': ['exports', 'types'],
+    // pollAlertsOnce is consumed by frozen tests/stories/harness/scenario.ts.
+    'src/deferred-prompts/poller.ts': ['exports'],
+    // public-types.ts is published as the `papai/plugin-types` package export
+    // (package.json `exports`) and consumed by external plugin authors knip
+    // cannot trace, plus tests/providers/public-types.test.ts.
+    'src/providers/public-types.ts': ['exports', 'types'],
+    // AdminLlmSnapshot/AdminLlmKeyState model the BYOK system-key admin surface;
+    // consumed by the BYOK-key contract tests (tests/client/**) and the dev-only
+    // Storybook fixture harness (client/stories/**, knip-ignored by config).
+    // Zero production consumers today; the types pin the 5 live BYOK keys.
+    'client/shared/api-types.ts': ['types'],
   },
 
   includeEntryExports: true,

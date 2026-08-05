@@ -6,7 +6,8 @@
 import { recurringTasks } from './db/schema.js'
 import { nextOccurrence, occurrencesBetween } from './recurrence.js'
 import type { CompiledRecurrence } from './recurrence.js'
-import type { RecurringTaskRecord, TriggerType } from './types/recurring.js'
+import type { TriggerType } from './recurring.js'
+import type { RecurringTaskRecord } from './types/recurring.js'
 
 export const parseLabels = (raw: string | null): string[] => {
   if (raw === null || raw === '') return []

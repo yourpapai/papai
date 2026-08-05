@@ -28,11 +28,37 @@ describe('formatToolStatus', () => {
     expect(formatToolStatus('create_task', {})).toBe('📝 Creating task…')
   })
 
+  test('getStringField prefers the first listed key when both are present', () => {
+    expect(formatToolStatus('create_task', { title: 'A', name: 'B' })).toBe('📝 Creating task: "A"…')
+  })
+
+  test('getStringField skips an empty first key and falls back to the next', () => {
+    expect(formatToolStatus('create_task', { title: '', name: 'B' })).toBe('📝 Creating task: "B"…')
+  })
+
+  test('getStringField skips a non-string first key and falls back to the next', () => {
+    expect(formatToolStatus('create_task', { title: 5, name: 'B' })).toBe('📝 Creating task: "B"…')
+  })
+
+  test('a whitespace-only argument is omitted like a missing argument', () => {
+    expect(formatToolStatus('search_memory', { query: '   ' })).toBe('🔍 Searching memory…')
+  })
+
   test('collapses whitespace and truncates long arguments to 40 chars', () => {
-    const long = 'a'.repeat(50)
-    const result = formatToolStatus('search_memory', { query: `  multi\nline   ${long}` })
-    expect(result.startsWith('🔍 Searching memory: "multi line ')).toBe(true)
-    expect(result.endsWith('…"…')).toBe(true)
+    const result = formatToolStatus('search_memory', { query: `  multi\nline   ${'a'.repeat(50)}` })
+    expect(result).toBe(`🔍 Searching memory: "multi line ${'a'.repeat(29)}…"…`)
+  })
+
+  test('a 40-char argument is not truncated (boundary: length > MAX_ARG_LENGTH is false at 40)', () => {
+    expect(formatToolStatus('search_memory', { query: 'a'.repeat(40) })).toBe(
+      `🔍 Searching memory: "${'a'.repeat(40)}"…`,
+    )
+  })
+
+  test('a 41-char argument truncates to 40 chars plus ellipsis (boundary)', () => {
+    expect(formatToolStatus('search_memory', { query: 'a'.repeat(41) })).toBe(
+      `🔍 Searching memory: "${'a'.repeat(40)}…"…`,
+    )
   })
 
   test('plugin tool falls back to humanized last segment', () => {
@@ -50,6 +76,110 @@ describe('formatToolStatus', () => {
   test('never returns the argument when input is not a record', () => {
     expect(formatToolStatus('search_memory', 'budget')).toBe('🔍 Searching memory…')
   })
+
+  test('web_fetch keeps the port in the host (host, not hostname)', () => {
+    expect(formatToolStatus('web_fetch', { url: 'https://host.example:8080/x' })).toBe('🌐 Fetching host.example:8080…')
+  })
+
+  test('asRecord rejects an array and yields the no-arg label', () => {
+    expect(formatToolStatus('search_memory', ['query'])).toBe('🔍 Searching memory…')
+  })
+
+  test('asRecord rejects null and yields the no-arg label', () => {
+    expect(formatToolStatus('search_memory', null)).toBe('🔍 Searching memory…')
+  })
+
+  test('asRecord rejects a number and yields the no-arg label', () => {
+    expect(formatToolStatus('search_memory', 42)).toBe('🔍 Searching memory…')
+  })
+
+  test('a mapped tool with no arg extractor renders only the emoji and label', () => {
+    expect(formatToolStatus('list_memory', {})).toBe('🧠 Recalling memory…')
+  })
+
+  test('fetch_chat_link renders the quote:false host form (second hostOf entry)', () => {
+    expect(formatToolStatus('fetch_chat_link', { url: 'https://example.com/x' })).toBe('🔗 Reading link example.com…')
+  })
+
+  test('update_task renders the updating label with no arg', () => {
+    expect(formatToolStatus('update_task', {})).toBe('✏️ Updating task…')
+  })
+
+  test('delete_task renders the deleting label with no arg', () => {
+    expect(formatToolStatus('delete_task', {})).toBe('🗑️ Deleting task…')
+  })
+
+  test('humanizeToolName converts hyphens to spaces', () => {
+    expect(formatToolStatus('mcp_s__audio-transcribe', {})).toBe('⚙️ Running audio transcribe…')
+  })
+
+  test('humanizeToolName lowercases the segments', () => {
+    expect(formatToolStatus('mcp_s__CamelCase', {})).toBe('⚙️ Running camelcase…')
+  })
+
+  test('humanizeToolName uses the last __ segment (lastIndexOf, not indexOf)', () => {
+    expect(formatToolStatus('plugin_a__b__c', {})).toBe('⚙️ Running c…')
+  })
+
+  test('humanizeToolName strips a leading mcp_ prefix when there is no __ segment', () => {
+    expect(formatToolStatus('mcp_standalone', {})).toBe('⚙️ Running standalone…')
+  })
+
+  test('getStringField skips a whitespace-only first key via trim and falls back to the next', () => {
+    expect(formatToolStatus('create_task', { title: '   ', name: 'B' })).toBe('📝 Creating task: "B"…')
+  })
+
+  test('humanizeToolName only strips a leading mcp_/plugin_ prefix (anchored)', () => {
+    expect(formatToolStatus('x_mcp_foo', {})).toBe('⚙️ Running x mcp foo…')
+  })
+
+  test('humanizeToolName collapses consecutive separators via the + quantifier', () => {
+    expect(formatToolStatus('mcp_x__foo--bar', {})).toBe('⚙️ Running foo bar…')
+  })
+})
+
+describe('REGISTRY entries render their exact emoji, label, and arg form', () => {
+  const cases: ReadonlyArray<[string, unknown, string]> = [
+    ['web_fetch', { url: 'https://example.com/x' }, '🌐 Fetching example.com…'],
+    ['fetch_chat_link', { url: 'https://example.com/x' }, '🔗 Reading link example.com…'],
+    ['search_memory', { query: 'q' }, '🔍 Searching memory: "q"…'],
+    ['list_memory', {}, '🧠 Recalling memory…'],
+    ['remember_memory', {}, '🧠 Saving a memory…'],
+    ['search_memos', { query: 'q' }, '🔍 Searching memos: "q"…'],
+    ['save_memo', {}, '📌 Saving a memo…'],
+    ['list_memos', {}, '📒 Listing memos…'],
+    ['create_task', { title: 'T' }, '📝 Creating task: "T"…'],
+    ['update_task', {}, '✏️ Updating task…'],
+    ['delete_task', {}, '🗑️ Deleting task…'],
+    ['get_task', {}, '📄 Reading task…'],
+    ['list_tasks', {}, '📋 Listing tasks…'],
+    ['search_tasks', { query: 'q' }, '🔍 Searching tasks: "q"…'],
+    ['search_tasks', { text: 't' }, '🔍 Searching tasks: "t"…'],
+    ['count_tasks', {}, '🔢 Counting tasks…'],
+    ['add_comment', {}, '💬 Adding a comment…'],
+    ['create_project', { name: 'N' }, '📁 Creating project: "N"…'],
+    ['create_project', { title: 'T' }, '📁 Creating project: "T"…'],
+    ['list_projects', {}, '📁 Listing projects…'],
+    ['list_files', {}, '📎 Listing files…'],
+    ['search_staged_files', { query: 'q' }, '📎 Searching files: "q"…'],
+    ['upload_attachment', {}, '📤 Attaching a file…'],
+    ['resolve_staged_file', {}, '📎 Attaching a file…'],
+    ['create_recurring_task', {}, '🔁 Scheduling a recurring task…'],
+    ['create_reminder', { prompt: 'P' }, '⏰ Setting up a reminder: "P"…'],
+    ['create_alert', { prompt: 'P' }, '🔔 Setting up an alert: "P"…'],
+    ['list_reminders', {}, '📋 Listing reminders and alerts…'],
+    ['get_reminder', {}, '📄 Reading reminder details…'],
+    ['update_reminder', {}, '✏️ Updating reminder…'],
+    ['cancel_reminder', {}, '🗑️ Cancelling reminder…'],
+    ['lookup_group_history', {}, '🕘 Checking history…'],
+    ['find_user', {}, '👤 Looking up a user…'],
+    ['get_current_time', {}, '🕒 Checking the time…'],
+  ]
+  for (const [name, input, expected] of cases) {
+    test(`${name} renders ${JSON.stringify(expected)}`, () => {
+      expect(formatToolStatus(name, input)).toBe(expected)
+    })
+  }
 })
 
 describe('reminder/alert live-status labels', () => {

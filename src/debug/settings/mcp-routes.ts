@@ -7,7 +7,8 @@ import { z } from 'zod'
 
 import { getConfigValue, maskSensitiveValue, setConfigValue } from '../../config.js'
 import { logger } from '../../logger.js'
-import { mcpEndpointConfigSchema, type McpEndpointConfig } from '../../mcp/types.js'
+import type { McpEndpointConfig } from '../../mcp/index.js'
+import { mcpEndpointConfigSchema } from '../../mcp/types.js'
 import { parseMcpEndpoints } from '../../mcp/user-endpoints.js'
 import { authenticate, parseJsonBody, requireCsrf, resolveContextScope, settingsJson } from './respond.js'
 

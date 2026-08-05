@@ -6,6 +6,7 @@
 import type { LanguageModel, ModelMessage } from 'ai'
 
 import { getCachedHistory, setCachedHistory } from './cache.js'
+import { resolveMaxTokens } from './commands/context-collector.js'
 import { emitUser } from './debug/event-bus.js'
 import { buildChatModel } from './llm-model-builder.js'
 import { resolveLlmConfig } from './llm-providers/resolver.js'
@@ -15,7 +16,7 @@ import { buildLongTermMemoryContextMessage } from './long-term-memory/context.js
 import { resolveMemoryScope } from './long-term-memory/scope.js'
 import { getMemoryProfile, listMemoryRecords } from './long-term-memory/store.js'
 import { buildMemoryContextMessage, loadFacts, loadSummary, saveSummary, trimWithMemoryModel } from './memory.js'
-import { estimateMessagesTokens, resolveMaxTokens } from './model-context.js'
+import { estimateMessagesTokens } from './model-context.js'
 
 const log = logger.child({ scope: 'conversation' })
 

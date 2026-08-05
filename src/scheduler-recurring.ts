@@ -11,8 +11,7 @@ import { emitUser } from './debug/event-bus.js'
 import { logger } from './logger.js'
 import { recordProactiveInHistory } from './proactive-history.js'
 import type { Task, TaskProvider } from './providers/types.js'
-import { recordOccurrence } from './recurring-occurrences.js'
-import { markExecuted, type RecurringTaskRecord } from './recurring.js'
+import { recordOccurrence, markExecuted, type RecurringTaskRecord } from './recurring.js'
 
 const log = logger.child({ scope: 'scheduler:recurring' })
 

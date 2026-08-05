@@ -6,8 +6,12 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { type DebugEvent, subscribe, unsubscribe } from '../src/debug/event-bus.js'
-import { handleToolCallFinishEvent, handleToolCallStart } from '../src/llm-orchestrator-invoke.js'
-import { buildToolCallFinishHandler, buildToolCallStartHandler } from '../src/llm-orchestrator-tool-events.js'
+import {
+  handleToolCallStart,
+  handleToolCallFinishEvent,
+  buildToolCallFinishHandler,
+  buildToolCallStartHandler,
+} from '../src/llm-orchestrator-tool-events.js'
 import type { ToolCallContext } from '../src/llm-orchestrator-types.js'
 import { buildToolFailureResult } from '../src/tool-failure.js'
 import { buildPermissionDenied } from '../src/tools/permission-gate.js'

@@ -55,7 +55,6 @@ export interface IncrementalSelection {
   readonly reportRebuildOnly: boolean
 }
 
-export type { SelectIncrementalWorkInput } from './incremental-selection.js'
 export { selectIncrementalWork } from './incremental-selection.js'
 
 export interface ConsolidatedManifestEntry {

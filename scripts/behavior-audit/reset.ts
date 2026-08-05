@@ -14,8 +14,8 @@ import {
   EVALUATED_DIR,
   STORIES_DIR,
 } from './config.js'
-import { loadProgress, saveProgress } from './progress-io.js'
-import { resetPhase2AndPhase3, resetPhase3 } from './progress-resets.js'
+import { saveProgress } from './progress-io.js'
+import { resetPhase3, resetPhase2AndPhase3, loadProgress } from './progress.js'
 
 export type ResetTarget = 'phase2' | 'phase3' | 'all'
 

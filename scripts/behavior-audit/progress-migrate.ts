@@ -6,7 +6,8 @@
 import { z } from 'zod'
 
 import { MAX_RETRIES } from './config.js'
-import { emptyPhase1b, emptyPhase2a, emptyPhase2b, emptyPhase3, type Progress } from './progress.js'
+import { emptyPhase1b } from './consolidate-keywords.js'
+import { emptyPhase2a, emptyPhase2b, emptyPhase3, type Progress } from './progress.js'
 
 const FailedEntrySchema = z.object({
   error: z.string(),

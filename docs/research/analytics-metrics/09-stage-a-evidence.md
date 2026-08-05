@@ -150,6 +150,9 @@ the same pass.
 | Day (UTC) | Eligible | Reason | Freshness | Recon delta | Rejects | Overflow | Expiry | Notes |
 |---|---|---|---|---|---|---|---|---|
 | 2026-08-01 | true | — | none | 0 | 24 (invalid_value=24) | 0 | ok | — |
+| 2026-08-02 | true | — | none | 0 | 0 | 0 | ok | — |
+| 2026-08-03 | true | — | none | 0 | 2 (invalid_value=2) | 0 | ok | — |
+| 2026-08-04 | true | — | none | 0 | 150 (invalid_value=150) | 0 | ok | — |
 
 | Week | Freshness | Reconciliation delta | Rejects | Overflow | Expiry check | Notes |
 |---|---|---|---|---|---|---|

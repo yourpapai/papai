@@ -22,12 +22,6 @@ import { createDisclosurePrepareStep } from './tools/disclosure/prepare-step.js'
 import { buildToolsContextRecord } from './tools/wrap-tool-execution.js'
 
 // Re-exported for existing importers/tests that reach these through this module.
-export {
-  handleToolCallFinishEvent,
-  handleToolCallStart,
-  type ToolCallFinishEvent,
-  type ToolCallStartEvent,
-} from './llm-orchestrator-tool-events.js'
 
 const log = logger.child({ scope: 'llm-orchestrator:invoke' })
 

@@ -7,8 +7,8 @@ import { providerError } from 'papai/plugin-types'
 
 import { logger } from '../../src/logger.js'
 import { classifyKaneoError, KaneoClassifiedError } from './classify-error.js'
-import type { KaneoConfig } from './client.js'
 import { KaneoClient } from './kaneo-client.js'
+import type { KaneoConfig } from './provider.js'
 import type { CreateLabelResponse } from './schemas/create-label.js'
 
 const log = logger.child({ scope: 'kaneo:update-label' })

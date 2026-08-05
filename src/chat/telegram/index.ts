@@ -43,7 +43,6 @@ import {
   shiftTelegramEntity,
   telegramIsBotMentioned,
 } from './reply-helpers.js'
-export { extractReplyContext } from './message-extraction.js'
 const log = logger.child({ scope: 'chat:telegram' })
 type TelegramConstructorConfig = {
   readonly token?: string

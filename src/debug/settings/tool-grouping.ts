@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { sanitizeServerId } from '../../mcp/types.js'
-import { sanitizePluginId } from '../../plugins/contribution-names.js'
+import { sanitizePluginId } from '../../plugins/contributions.js'
 import { pluginRegistry } from '../../plugins/registry.js'
 import { getToolMetadata, type ToolDomain } from '../../tools/tool-metadata.js'
 

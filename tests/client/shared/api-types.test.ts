@@ -6,15 +6,10 @@
 import { describe, expect, test } from 'bun:test'
 
 import type {
-  Fact,
-  Instruction,
   Session,
-  Wizard,
   SchedulerInfo,
   PollersInfo,
   MessageCacheInfo,
-  TokenInfo,
-  ToolCall,
   Turn,
   Notification,
   ToolFailure,
@@ -34,19 +29,6 @@ import type {
 describe('api-types', () => {
   test('types compile successfully and are correct', () => {
     // Construct minimal type compliant variables to verify compiler accepts them
-    const fact: Fact = {
-      identifier: 'id1',
-      title: 'Fact Title',
-      url: 'http://example.com',
-      lastSeen: '2026-05-21T00:00:00.000Z',
-    }
-
-    const instruction: Instruction = {
-      id: 'inst1',
-      text: 'do task',
-      createdAt: '2026-05-21T00:00:00.000Z',
-    }
-
     const session: Session = {
       userId: 'user123',
       lastAccessed: 123456789,
@@ -54,12 +36,6 @@ describe('api-types', () => {
       factsCount: 5,
       summary: null,
       configKeys: ['llm_apikey'],
-    }
-
-    const wizard: Wizard = {
-      userId: 'user123',
-      currentStep: 1,
-      totalSteps: 3,
     }
 
     const schedulerInfo: SchedulerInfo = {
@@ -75,17 +51,6 @@ describe('api-types', () => {
     const messageCacheInfo: MessageCacheInfo = {
       size: 5,
       pendingWrites: 0,
-    }
-
-    const tokenInfo: TokenInfo = {
-      inputTokens: 1000,
-      outputTokens: 500,
-    }
-
-    const toolCall: ToolCall = {
-      toolName: 'create_task',
-      durationMs: 150,
-      success: true,
     }
 
     const turn: Turn = {
@@ -232,15 +197,10 @@ describe('api-types', () => {
     }
 
     // Assert true to prove it compiles and runs without issues
-    expect(fact.identifier).toBe('id1')
-    expect(instruction.id).toBe('inst1')
     expect(session.userId).toBe('user123')
-    expect(wizard.userId).toBe('user123')
     expect(schedulerInfo.running).toBe(true)
     expect(pollersInfo.alertsRunning).toBe(true)
     expect(messageCacheInfo.size).toBe(5)
-    expect(tokenInfo.inputTokens).toBe(1000)
-    expect(toolCall.toolName).toBe('create_task')
     expect(turn.turnId).toBe('turn1')
     expect(notification.timestamp).toBe(1234567890)
     expect(toolFailure.timestamp).toBe(1234567890)

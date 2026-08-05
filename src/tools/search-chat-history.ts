@@ -12,8 +12,13 @@ import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.j
 import type { ContextType } from '../chat/types.js'
 import { getEmbeddingForContext, type EmbeddingCallContext } from '../embeddings.js'
 import { logger } from '../logger.js'
-import { getMessage, searchMessages, type MessageScope, type SearchFilters } from '../message-cache/store.js'
-import type { CachedMessage } from '../message-cache/types.js'
+import {
+  type SearchFilters,
+  type MessageScope,
+  type CachedMessage,
+  searchMessages,
+  getMessage,
+} from '../message-cache/index.js'
 import { searchKnn } from '../message-cache/vector-store.js'
 
 const log = logger.child({ scope: 'tool:search-chat-history' })
