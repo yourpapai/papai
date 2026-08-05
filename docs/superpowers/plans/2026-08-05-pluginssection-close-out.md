@@ -247,6 +247,20 @@ the route's 'unchanged' no-op flag reaches the caller."
 
 ## Task 2: Extract eligibility copy into a pure module
 
+> **Scheduling correction — this task does not commit on its own.** It was executed as
+> written (`ac0df189c`) and reverted (`6fc7f6b33`): `knip --strict` gates `bun check:full`
+> and fails an **unused file**, so a module cannot land ahead of its first consumer, and
+> that consumer is Task 6. The two files below are correct as written and are preserved
+> verbatim in the session scratchpad at `…/scratchpad/task2/`. Task 6 restores them and
+> commits them together with the code that imports them. Everything in this task's steps
+> still applies — only the commit boundary moved.
+>
+> One deviation from the code below was found necessary during that run and is already
+> reflected in the preserved file: the `switch` needs a
+> `default: throw new Error(\`Unhandled eligibility reason: …\`)` branch, because
+> `consistent-return` fails the lint gate otherwise. That matches the codebase's existing
+> convention in `src/chat/context-scope.ts`.
+
 **Files:**
 - Create: `client/settings/lib/plugin-eligibility.ts`
 - Test: `tests/client/settings/lib/plugin-eligibility.test.ts` (create)
@@ -1642,6 +1656,13 @@ settings-plugins-populated scenario is untouched."
 - Modify: `client/settings/sections/PluginsSection.svelte`
 - Test: `tests/client/settings/components/PluginCard.test.ts`
 - Test: `tests/client/settings/sections/PluginsSection.test.ts`
+
+**Also restores Task 2's files** (see the scheduling note on Task 2): copy
+`client/settings/lib/plugin-eligibility.ts` and
+`tests/client/settings/lib/plugin-eligibility.test.ts` back from the scratchpad, verbatim,
+and run `bun run test:client -t "eligibilityCopy"` (expected: 7 pass) **before** starting
+this task's own steps. They are committed as part of this task, since this is the task
+that first imports them and `knip --strict` fails an unused file.
 
 **Interfaces:**
 - Consumes: `eligibilityCopy` from Task 2 — first use.
