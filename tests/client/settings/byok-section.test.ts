@@ -302,4 +302,18 @@ describe('ByokSection', () => {
     expect(target.querySelector('[data-testid="error-retry"]')).not.toBeNull()
     expect(target.querySelector('.ui-error')).not.toBeNull()
   })
+
+  test('the failed-load panel leads with a written sentence and demotes the raw error', async () => {
+    setMockFetch(() => Promise.resolve(new Response('boom', { status: 500 })))
+    mountSection()
+    await drain()
+
+    const message = target.querySelector('.ui-error__message')
+    expect(message?.textContent).toBe('Could not load BYOK settings for this context.')
+    expect(message?.textContent).not.toContain('boom')
+    // The fixture's plain-text 500 body isn't valid JSON, so fetcher-helpers' `requireOk` falls
+    // back to its generic "request failed with status ..." message rather than surfacing "boom"
+    // verbatim (see client/shared/fetcher-helpers.ts). Assert on that actual raw error text.
+    expect(target.querySelector('.ui-error__detail')?.textContent).toContain('request failed with status 500')
+  })
 })
