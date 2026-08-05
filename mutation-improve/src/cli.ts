@@ -174,6 +174,31 @@ async function runGh(ghArgs: readonly string[], cwd: string): Promise<GhResult> 
   })
 }
 
+// Sweeps stale iteration worktrees left over from a crashed/killed prior run
+// (process death bypasses runIteration's try/catch cleanup, so `<runId>-iterN`
+// worktrees and their `mutation-improve/<runId>-iterN` branches leak). Keyed by
+// runId so concurrent runs sharing a repo are not disturbed — mirrors
+// review-loop's cleanWorkerWorktrees, including the basename-only match (git
+// resolves symlinks in `worktree list`, so a prefix check would miss entries
+// under a `/var`-style tmp root). Removes sequentially because
+// `git worktree remove`/`branch -D` take repo-wide locks and race under load.
+export async function resetRunWorktrees(repoRoot: string, runId: string, branchPrefix: string): Promise<void> {
+  const { stdout } = await execGit(repoRoot, ['worktree', 'list', '--porcelain'])
+  const stale: string[] = []
+  for (const line of stdout.split('\n')) {
+    if (!line.startsWith('worktree ')) continue
+    const wtPath = line.slice('worktree '.length)
+    if (path.basename(wtPath).startsWith(`${runId}-iter`)) stale.push(wtPath)
+  }
+  let chain: Promise<unknown> = Promise.resolve()
+  for (const wtPath of stale) {
+    chain = chain.then(() =>
+      removeWorktree(repoRoot, wtPath, path.basename(wtPath), branchPrefix).catch(() => undefined),
+    )
+  }
+  await chain
+}
+
 export async function runCli(argv: readonly string[]): Promise<void> {
   const args = parseCliArgs(argv)
   const config = await loadMutationImproveConfig({ configPath: args.configPath })
@@ -183,6 +208,10 @@ export async function runCli(argv: readonly string[]): Promise<void> {
 
   const runState: MutationImproveRunState =
     args.resumeRunId === undefined ? await createRunState(config) : await loadRunState(config.workDir, args.resumeRunId)
+
+  if (args.resetWorktree) {
+    await resetRunWorktrees(config.repoRoot, runState.runId, config.prBranchPrefix)
+  }
 
   const log = new LiveRenderer(process.stdout)
   const deps = buildPipelineDeps(config, runState, log)
