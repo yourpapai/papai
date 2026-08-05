@@ -178,11 +178,14 @@ These pin behavior directly and catch signature drift the compiler might miss
 `removeWorktree`, `resetWorktree`, `detectGitRoot` — which require real git or a
 spawned `opencode` subprocess and so cannot be exercised cheaply — assert:
 
-- symbol is defined (`typeof x === 'function'`, or constructable for `LiveRenderer`),
-- function arity (`x.length`) matches what `cli.ts`/`pipeline.ts` call with.
+- symbol is defined (`typeof x === 'function'`, or constructable for `LiveRenderer`).
+
+Function arity is not re-asserted at runtime: it is compile-checked at the
+call sites in `cli.ts`/`pipeline.ts`, so a hardcoded `.length` assertion would
+add fragility without catching drift TS already catches.
 
 These are weak on their own but make the consumed surface explicit and fail
-loudly on removal/rename/arity drift. Each assertion carries a comment naming
+loudly on removal/rename drift. Each assertion carries a comment naming
 `review-loop`'s own suite (under `tests/review-loop/`) as the behavioral
 authority for these functions — the contract here is existence and call-shape,
 not full behavior.
@@ -238,7 +241,7 @@ conventions; uses `makeTempDir` from `./test-helpers.ts`).
   by construction: the design enumerates each current trigger and maps it to a
   typed/`.code` equivalent. The new score-reader tests are the proof.
 - **Contract-test strength (Stream 3).** Tier B is intentionally weak
-  (existence/arity); the spec says so explicitly rather than overselling it as a
+  (existence); the spec says so explicitly rather than overselling it as a
   full behavioral guarantee. The honest claim is "drift in the consumed surface
   now fails loudly in mutation-improve's own gate," not "review-loop is fully
   pinned."
