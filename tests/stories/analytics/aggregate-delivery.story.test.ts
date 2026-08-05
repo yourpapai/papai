@@ -85,6 +85,8 @@ const ReleaseExecutionSchema = z.looseObject({
   }),
 })
 
+const ReleaseDeniedSchema = z.looseObject({ code: z.string(), reason: z.string().optional() })
+
 const disclosureScopeOf = (utcDay: string, metric: string): string | null => {
   const row = getDrizzleDb()
     .select({ disclosureScope: analyticsDailyCounters.disclosureScope })
@@ -157,6 +159,61 @@ scenario(
     const repeatExecution = ReleaseExecutionSchema.parse(await repeated.json()).releaseExecution
     expect(repeatExecution).toMatchObject({ status: 'already_released', releaseId: execution.releaseId, cellCount: 0 })
     expect(getDrizzleDb().select().from(analyticsAggregateReleases).all()).toHaveLength(1)
+  },
+  { testTimeoutMs: 15000 },
+)
+
+scenario(
+  'SCN-analytics-aggregate-release-denials: release requests are denied without a sink, with an incomplete day, and for drill-through, and non-admins cannot execute',
+  async ({ given, when, then, world }) => {
+    const alice = given.user('alice')
+    const bob = given.user('bob')
+    given.analyticsRuntime('governed')
+    const admin = await given.settingsAdminSession(alice)
+    const memberSession = await when.settingsSession(bob)
+    const nowMs = world.clock.now().getTime()
+    const utcDay = completeUtcDay(nowMs)
+    const sinkVersionId = seedEnabledAggregateSink(nowMs)
+    insertFinalizedCounter({ utcDay, metric: 'turn_started', value: 250, contributorCount: 40 })
+
+    const postRelease = (session: typeof admin, body: unknown): Promise<Response> =>
+      when.settingsRequest(session, '/settings/api/admin/analytics/reconcile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+    const forbidden = await postRelease(memberSession, { release: { utcDay, sinkVersionId, execute: true } })
+    then.responseStatus(forbidden, 403)
+
+    const missingSink = await postRelease(admin, { release: { utcDay, execute: true } })
+    then.responseStatus(missingSink, 422)
+    expect(ReleaseDeniedSchema.parse(await missingSink.json()).code).toBe('release_sink_required')
+
+    const unknownSink = await postRelease(admin, {
+      release: { utcDay, sinkVersionId: 'story-aggregate-sink:v99', execute: true },
+    })
+    then.responseStatus(unknownSink, 422)
+    expect(ReleaseDeniedSchema.parse(await unknownSink.json()).code).toBe('release_sink_unavailable')
+
+    const today = new Date(nowMs).toISOString().slice(0, 10)
+    const incompleteDay = await postRelease(admin, { release: { utcDay: today, sinkVersionId, execute: true } })
+    then.responseStatus(incompleteDay, 422)
+    const incomplete = ReleaseDeniedSchema.parse(await incompleteDay.json())
+    expect(incomplete).toMatchObject({ code: 'release_denied', reason: 'incomplete_day' })
+
+    const drillThrough = await postRelease(admin, {
+      release: { utcDay, sinkVersionId, execute: true, drillThrough: true },
+    })
+    then.responseStatus(drillThrough, 422)
+    const drill = ReleaseDeniedSchema.parse(await drillThrough.json())
+    expect(drill).toMatchObject({ code: 'release_denied', reason: 'drill_through' })
+
+    const assessmentOnly = await postRelease(admin, { release: { utcDay, sinkVersionId } })
+    then.responseStatus(assessmentOnly, 200)
+
+    expect(getDrizzleDb().select().from(analyticsAggregateReleases).all()).toHaveLength(0)
+    expect(getDrizzleDb().select().from(analyticsAggregateDeliveries).all()).toHaveLength(0)
   },
   { testTimeoutMs: 15000 },
 )

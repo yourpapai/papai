@@ -225,6 +225,7 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-settings-admin-analytics',
   'SCN-analytics-governed-turn',
   'SCN-analytics-aggregate-release-settings',
+  'SCN-analytics-aggregate-release-denials',
   'SCN-settings-admin-mcp-catalog',
   'SCN-settings-admin-mcp-plugin-servers',
   'SCN-settings-admin-system-access',
@@ -1549,6 +1550,13 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     provingTier: '0',
     storyIds: [
       'tests/stories/analytics/aggregate-delivery.story.test.ts#SCN-analytics-aggregate-release-settings: an operator enables the aggregate lane, executes a release through settings, and a re-execute is idempotent',
+    ],
+  },
+  'SCN-analytics-aggregate-release-denials': {
+    verifiedAt: '2026-08-04',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/analytics/aggregate-delivery.story.test.ts#SCN-analytics-aggregate-release-denials: release requests are denied without a sink, with an incomplete day, and for drill-through, and non-admins cannot execute',
     ],
   },
   'SCN-settings-api-tools': {
