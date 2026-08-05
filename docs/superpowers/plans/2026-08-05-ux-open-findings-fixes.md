@@ -231,7 +231,7 @@ git commit -m "feat(ui): let ErrorState demote raw diagnostics to a collapsed de
 - Consumes: `ErrorState`'s `detail?: string` prop from Task 1.
 - Produces: nothing later tasks depend on.
 
-**Context:** Closes `byok-load-error-raw-message` [Med]. Today a failed initial load renders `<ErrorState message={error} …>` where `error` is the raw exception string ("boom" in the fixture). The `error` variable is **also** used by the inline banner at `:241` for the currentData-present case; that banner is out of scope and must keep showing the raw text. So do not rewrite `error` — pass a written sentence as `message` and the raw string as `detail`.
+**Context:** Closes `byok-load-error-raw-message` [Med]. Today a failed initial load renders `<ErrorState message={error} …>` where `error` is the raw exception string. Note the fixture body `boom` is plain text, so `fetcher-helpers.ts`'s `requireOk` discards it and `error` is actually `request failed with status 500` — assert on that, not on `boom`. The `error` variable is **also** used by the inline banner at `:241` for the currentData-present case; that banner is out of scope and must keep showing the raw text. So do not rewrite `error` — pass a written sentence as `message` and the raw string as `detail`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -255,14 +255,17 @@ Replace the existing test at `tests/client/settings/byok-section.test.ts:297-304
     const message = target.querySelector('.ui-error__message')
     expect(message?.textContent).toBe('Could not load BYOK settings for this context.')
     expect(message?.textContent).not.toContain('boom')
-    expect(target.querySelector('.ui-error__detail')?.textContent).toContain('boom')
+    // The fixture's plain-text 500 body isn't valid JSON, so fetcher-helpers' `requireOk` falls
+    // back to its generic "request failed with status ..." message rather than surfacing "boom"
+    // verbatim (see client/shared/fetcher-helpers.ts). Assert on that actual raw error text.
+    expect(target.querySelector('.ui-error__detail')?.textContent).toContain('request failed with status 500')
   })
 ```
 
 - [ ] **Step 2: Run the tests to verify the new one fails**
 
 Run: `bun run test:client 2>&1 | tail -20`
-Expected: FAIL — the message element still reads the raw `boom`.
+Expected: FAIL — the message element still reads the raw `request failed with status 500`.
 
 - [ ] **Step 3: Implement**
 
@@ -301,7 +304,7 @@ Expected: failures confined to `settings/sections/ByokSection › Error` (and an
 - [ ] **Step 6: Shoot and inspect**
 
 Run: `bun shoot -g ByokSection`
-Then list the rewritten PNGs with `find .storybook-shots -name '*.png' -newermt '-10 minutes'` and Read every one. Expected: the panel now reads "Something went wrong" / "Could not load BYOK settings for this context." with a closed "Technical details" disclosure where the bare word "boom" used to be.
+Then list the rewritten PNGs with `find .storybook-shots -name '*.png' -newermt '-10 minutes'` and Read every one. Expected: the panel now reads "Something went wrong" / "Could not load BYOK settings for this context." with a closed "Technical details" disclosure where the bare status line used to be.
 
 - [ ] **Step 7: Re-audit**
 
