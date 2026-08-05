@@ -822,6 +822,13 @@ and config-row fixes need."
 
 Closes `plugins-load-error-no-recovery`, `plugins-no-inflight-state`, `plugins-validation-far-from-field`, `plugins-save-no-success-feedback`.
 
+**Correction applied after review.** Step 4's `saveConfig` originally placed `cardError = null`
+*after* the required-field guard's `return`, so a stale card-level error banner survived a failed
+required-field save and stacked under the new field-level message. The pre-refactor version cleared
+the error as its first statement, before validating. The code below has been corrected to clear
+immediately after the re-entrancy guard; the fix landed separately on top of `dd5b75d86` with a
+regression test in `tests/client/settings/components/PluginCard.test.ts`.
+
 The section's `error` now means exactly one thing — the load failed — so it renders as a page state that replaces the list. A failed background refresh therefore hides a stale list rather than showing it under a red line; the retry sits in the same view.
 
 - [ ] **Step 1: Write the failing card tests**
@@ -1126,13 +1133,13 @@ In `client/settings/components/PluginCard.svelte`, replace the whole `<script>` 
 
   async function saveConfig(cfg: PluginConfigField): Promise<void> {
     if (savingKeys[cfg.key] === true) return
+    cardError = null
     const value = drafts[cfg.key] ?? ''
     delete fieldErrors[cfg.key]
     if (cfg.required && value.trim() === '') {
       fieldErrors[cfg.key] = `${cfg.label} is required.`
       return
     }
-    cardError = null
     savingKeys[cfg.key] = true
     try {
       const result = await patchPluginConfig({ pluginId: plugin.id, key: cfg.key, value, contextId })
