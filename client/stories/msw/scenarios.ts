@@ -38,6 +38,7 @@ import {
 } from './settings-handlers-admin.js'
 import {
   codingCredentialsHandlers,
+  codingCredentialsOpenAiCompatibleHandlers,
   forgeHandlers,
   forgeIncompleteHandlers,
   forgeSaveErrorHandlers,
@@ -218,6 +219,7 @@ export const scenarios = {
   'settings-coding-credentials-empty': [...codingCredentialsHandlers.empty],
   'settings-coding-credentials-error': [...codingCredentialsHandlers.error],
   'settings-coding-credentials-loading': [...codingCredentialsHandlers.loading],
+  'settings-coding-credentials-openai-compatible': [...codingCredentialsOpenAiCompatibleHandlers],
   'settings-code-host-populated': [...forgeHandlers.populated],
   'settings-code-host-empty': [...forgeHandlers.empty],
   'settings-code-host-error': [...forgeHandlers.error],

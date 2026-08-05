@@ -1018,6 +1018,30 @@ describe('CodingCredentialsSection', () => {
     void unmount(component)
   })
 
+  test('Auth method carries a hint explaining why it appeared', async () => {
+    setMockFetch(() => Promise.resolve(json(baseUrlStoredPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    const row = target.querySelector('[data-testid="coding-row-auth_method"]')
+    expect(row?.textContent).toContain('Anthropic')
+    void unmount(component)
+  })
+
+  test('Base URL carries a hint when the provider is openai-compatible', async () => {
+    setMockFetch(() => Promise.resolve(json(withOpenAiCompatiblePayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    const row = target.querySelector('[data-testid="coding-row-provider_base_url"]')
+    expect(row?.textContent).toContain('OpenAI-compatible')
+    void unmount(component)
+  })
+
   test('a 422 with no field key renders in the banner', async () => {
     setCsrfToken('csrf-t')
     setMockFetch(makeFieldErrorMock({ error: 'Something went wrong.' }))

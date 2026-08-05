@@ -97,6 +97,17 @@
     return field.label
   }
 
+  // Fields that appear, vanish, or flip to required as the provider/auth-method changes read as
+  // a glitch without a reason attached to the field itself.
+  function hintFor(field: CodingCredentialField): string | undefined {
+    if (field.control === 'combobox' && !hasSavedKey) return 'Save your API key to load model suggestions.'
+    if (field.key === 'auth_method') return 'Shown because the provider is Anthropic — only Anthropic offers an OAuth subscription as an alternative to an API key.'
+    if (field.key === 'provider_base_url' && isOpenAiCompatible) {
+      return 'Required for OpenAI-compatible providers — the endpoint your requests are sent to.'
+    }
+    return undefined
+  }
+
   function selectOptionsFor(field: CodingCredentialField): string[] {
     const opts = field.options ?? []
     if (field.key === 'agent') {
@@ -308,9 +319,7 @@
               required={effectiveRequired}
               editorOpen={editorOpen(field)}
               error={inlineField === field.key ? (error ?? undefined) : undefined}
-              hint={field.control === 'combobox' && !hasSavedKey
-                ? 'Save your API key to load model suggestions.'
-                : undefined}
+              hint={hintFor(field)}
               testid={`coding-row-${field.key}`}>
               {#snippet head()}
                 {#if field.sensitive && field.hasValue && !editorOpen(field)}

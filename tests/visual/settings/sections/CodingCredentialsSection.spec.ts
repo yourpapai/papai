@@ -26,6 +26,11 @@ test.describe('settings/sections/CodingCredentialsSection', () => {
     await switchStory(sharedPage, 'settings-sections-codingcredentialssection--loading')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('OpenAI-compatible', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-codingcredentialssection--open-ai-compatible')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots
 

@@ -40,3 +40,9 @@
   args={{ contextId: CONTEXT_ID }}
   parameters={{ fixtures: 'settings-coding-credentials-loading' }}
 />
+
+<Story
+  name="OpenAI-compatible"
+  args={{ contextId: CONTEXT_ID }}
+  parameters={{ fixtures: 'settings-coding-credentials-openai-compatible' }}
+/>

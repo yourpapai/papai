@@ -77,6 +77,25 @@ const codingCredentialsEmpty = {
   allowedAgents: AGENT_OPTIONS,
 }
 
+// `openai-compatible` is the only provider that makes Base URL required and hides Auth method.
+// Without a fixture for it, that hint has no shootable state. The agent is overridden to
+// 'opencode' alongside the provider: 'claude' (agentProviderFields' default) only accepts
+// 'anthropic' as a compatible provider (see compatibleProviders in CodingCredentialsSection.svelte),
+// so leaving it at 'claude' makes the rendered <select> filter 'openai-compatible' out of its
+// options and show up blank — a broken-looking demo of the exact state this story exists to show.
+const codingCredentialsOpenAiCompatible = {
+  namespace: 'agent-provider',
+  configured: true,
+  complete: true,
+  missing: [],
+  fields: agentProviderFields(true).map((field) => {
+    if (field['key'] === 'agent') return { ...field, value: 'opencode' }
+    if (field['key'] === 'provider') return { ...field, value: 'openai-compatible' }
+    return field
+  }),
+  allowedAgents: AGENT_OPTIONS,
+}
+
 const codingModelsPopulated = {
   ok: true,
   models: [
@@ -113,6 +132,13 @@ export const codingCredentialsHandlers: HandlerFamily = {
     }),
   ],
 }
+
+export const codingCredentialsOpenAiCompatibleHandlers: HttpHandler[] = [
+  http.get('/settings/api/coding-credentials/models', () => HttpResponse.json(codingModelsPopulated)),
+  http.get('/settings/api/coding-credentials', ({ request }) =>
+    isNamespace(request, 'agent-provider') ? HttpResponse.json(codingCredentialsOpenAiCompatible) : undefined,
+  ),
+]
 
 // --- Forge (namespace: 'forge') ---
 // Mirrors FIELDS_META.forge in src/debug/settings/coding-credentials-fields-meta.ts:63-79.
