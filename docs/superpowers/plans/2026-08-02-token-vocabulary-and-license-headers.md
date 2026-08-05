@@ -1,0 +1,924 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
+# Token Vocabulary Retirement and License-Header Repair Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Retire the legacy design-token alias vocabulary from `client/`, fix the two undefined
+token references it concealed, and stop `scripts/add-license-headers.ts` from duplicating
+license headers.
+
+**Architecture:** Four sequential tasks. Task 1 repairs the license-header script first because
+`bun run shoot:gen` invokes it and Task 4 needs `shoot:gen`. Task 2 adds a guard test that makes
+undefined token references impossible and fixes the two it finds. Task 3 rewrites 314 call sites
+mechanically. Task 4 deletes the now-unreferenced alias definitions. Tasks 3 and 4 are verified
+by a pixel-level "exactly zero visual diff" audit; Task 2 is the one task expected to change
+pixels.
+
+**Tech Stack:** Bun (runtime + test runner), Svelte 5, Playwright + `@crvy/strybk` (visual
+suite), Storybook 10, oxfmt (formatter), oxlint.
+
+**Spec:** `docs/superpowers/specs/2026-08-02-token-vocabulary-and-license-headers-design.md`
+
+**Where this plan supersedes the spec.** Two facts were measured after the spec was committed;
+where they disagree, this plan governs.
+
+1. The spec calls the two sub-projects independent and orderable either way. They are not:
+   `bun run shoot:gen` invokes `bun run license:headers >/dev/null`, so the header bug would fire
+   silently inside Task 4. **Task 1 must land first.**
+2. The spec names `--fg1` as the only undefined token. A full scan of `client/` found a second,
+   `--surface2`, at four sites. Task 2 fixes both, and its red state is five violations across
+   two names.
+
+## Global Constraints
+
+- **Branch:** work on `ui-ux-review-01`. Commit into it. Do not create a new branch, merge, or push.
+- **Task order is load-bearing and must not be resequenced.** Task 1 before Task 4 (`shoot:gen`
+  runs `license:headers`). Task 2 before Task 3 (the guard test is red until Task 2). Task 3
+  before Task 4 (deleting the aliases is only provably inert once nothing references them).
+- **Never run `bun shoot` after making a change you intend to verify.** The audit compares
+  against whatever baselines are on disk, so re-baselining after a change converts the proof
+  into a tautology. `bun shoot` runs exactly where a step says to run it.
+- **Storybook must be running** (`bun storybook`, port 6006) for every visual step, and must stay
+  warm across each task.
+- The audit floor is **449 passed / 5 failed** on an unmodified tree. The 5 are the
+  `DebugApp` / `DebugTopBar` clock stories, which carry a live uptime counter and differ by
+  47–50 pixels of ticking digits on every run. They are a known false positive.
+- **Never add a lint-disable or type-ignore comment.** Repo hook policy blocks them; fix the
+  underlying issue.
+- TypeScript imports use the `.js` extension. Strict mode, `noUncheckedIndexedAccess: true`,
+  `exactOptionalPropertyTypes` **not** enabled.
+- Formatter is **oxfmt** via `bun run format`, not prettier.
+- Error extraction idiom: `error instanceof Error ? error.message : String(error)`.
+- **`bun run check:full` currently returns 10/12**, with `test` and `review-loop:test` failing on
+  pre-existing review-loop load flakiness unrelated to this branch (`bun run review-loop:test`
+  alone passes 247/0 in 50.5s). **10/12 is the expected result. Do not attempt to fix
+  review-loop from this branch.** If any *other* check fails, report it verbatim.
+- The shell is **fish**. Heredocs and `bash -c '...'` with apostrophes misbehave; write scratch
+  scripts with the Write tool instead.
+
+---
+
+## File Structure
+
+**Created:**
+
+| File | Responsibility |
+| --- | --- |
+| `tests/client/shared/token-references.test.ts` | Guard test: every `var(--x)` in `client/` resolves to a `--x:` declaration in `client/`. |
+
+**Modified:**
+
+| File | Change |
+| --- | --- |
+| `scripts/add-license-headers.ts` | Bound the header scan to the leading comment run. |
+| `tests/scripts/license-setup.test.ts` | Two tests for the above. |
+| `client/settings/sections/ReposSection.svelte:264` | `var(--fg1)` → `var(--text)`. |
+| `client/admin/components/SubjectsTable.svelte:145` | `var(--surface2)` → `var(--surface-2)`. |
+| `client/admin/components/SubjectDetail.svelte:172,181,240` | `var(--surface2)` → `var(--surface-2)`. |
+| 75 files under `client/` | Eight alias substitutions, 314 sites. |
+| `client/shared/tokens.css:78-86` | Delete the legacy alias block. |
+| `client/shared/ui/KV.svelte` | Remove the inert `dim` prop. |
+| `client/shared/ui/KV.stories.svelte` | Remove the `Dim` story. |
+| `tests/visual/shared/ui/KV.spec.ts` | Regenerated by `bun run shoot:gen`. |
+| `tests/client/shared/tokens.test.ts:48-52` | Invert the legacy-alias assertion; move `--s4`. |
+
+**Deleted:**
+
+| File | Reason |
+| --- | --- |
+| `.storybook-shots/shared/ui/KV.spec.ts/shared-ui-KV-Dim-1.png` | Its story no longer exists. |
+
+---
+
+## Task 1: Bound the license-header scan
+
+`scripts/add-license-headers.ts` requires the SPDX line at exactly line 1 (or line 2 past a
+shebang). 33 files repo-wide open with a path comment instead:
+
+```
+// src/byok-llm/blob-codec.ts        <- line 1
+// SPDX-License-Identifier: BUSL-1.1 <- line 2, header already correct
+```
+
+The check fails, `updateExistingHeader` returns `null`, and control falls to `addHeader`, which
+prepends a **second** complete four-line header. The file then starts with SPDX, so every later
+run reports "skipped". The corruption is one-shot, permanent, and invisible to the obvious
+check (run it again).
+
+This task is first because `bun run shoot:gen` — needed in Task 4 — invokes
+`bun run license:headers >/dev/null`, so the bug would fire with its output suppressed.
+
+**Files:**
+
+- Modify: `scripts/add-license-headers.ts:127-164`
+- Test: `tests/scripts/license-setup.test.ts`
+
+**Interfaces:**
+
+- Produces: nothing other tasks import. Task 4 depends only on the *behaviour* — that
+  `bun run shoot:gen` no longer stamps unrelated files.
+
+- [ ] **Step 1: Write the failing test**
+
+Add to `tests/scripts/license-setup.test.ts`, inside the existing `describe('license setup')`
+block, after the `'preserves executable shebangs as the first line'` test. The helpers
+`createHeaderScriptRepo()`, `writeRepoFile()`, `runCommand()`, and the constant
+`HEADER` (`'// SPDX-License-Identifier: BUSL-1.1'`) already exist at the top of the file.
+
+```typescript
+  test('normalizes a header that follows a leading path comment instead of duplicating it', () => {
+    const repoDir = createHeaderScriptRepo()
+    const file = 'src/annotated.ts'
+
+    try {
+      writeRepoFile(
+        repoDir,
+        file,
+        [
+          '// src/annotated.ts',
+          '// SPDX-License-Identifier: BUSL-1.1',
+          '// Copyright (c) 2026 Dmitriy Lazarev',
+          '// Use of this software is governed by the Business Source License 1.1.',
+          '// See LICENSE in the project root for details.',
+          '',
+          'export const annotated = true',
+          '',
+        ].join('\n'),
+      )
+
+      const result = runCommand(repoDir, ['bun', 'scripts/add-license-headers.ts'])
+      const stamped = readFileSync(path.join(repoDir, file), 'utf8')
+
+      expect(result.exitCode).toBe(0)
+      expect(stamped.split('\n').filter((line) => line === HEADER)).toHaveLength(1)
+      expect(stamped).toStartWith('// src/annotated.ts\n')
+      expect(stamped).toContain('export const annotated = true')
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+
+  test('leaves an already-correct file untouched whatever precedes its header', () => {
+    const repoDir = createHeaderScriptRepo()
+    const header = [
+      '// SPDX-License-Identifier: BUSL-1.1',
+      '// Copyright (c) 2026 Dmitriy Lazarev',
+      '// Use of this software is governed by the Business Source License 1.1.',
+      '// See LICENSE in the project root for details.',
+    ]
+
+    try {
+      writeRepoFile(repoDir, 'src/plain.ts', [...header, '', 'export const plain = true', ''].join('\n'))
+      writeRepoFile(
+        repoDir,
+        'src/annotated.ts',
+        ['// src/annotated.ts', ...header, '', 'export const annotated = true', ''].join('\n'),
+      )
+      writeRepoFile(
+        repoDir,
+        'scripts/cli.ts',
+        ['#!/usr/bin/env bun', ...header, '', 'console.log("ok")', ''].join('\n'),
+      )
+
+      const result = runCommand(repoDir, ['bun', 'scripts/add-license-headers.ts'], {
+        LICENSE_HEADER_YEAR: '2026',
+      })
+
+      expect(result.exitCode).toBe(0)
+      expect(result.stdout).toContain('0 stamped')
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+```
+
+`LICENSE_HEADER_YEAR: '2026'` pins the year so the second test does not start failing in
+January for an unrelated reason — the script reads that env var via `getCurrentHeaderYear()`.
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+```bash
+bun test tests/scripts/license-setup.test.ts
+```
+
+Expected: both new tests FAIL. The first fails on
+`expect(received).toHaveLength(1)` — received length `2`, because the script prepended a second
+header. The second fails on `expect(received).toContain("0 stamped")` — stdout says
+`Done: 1 stamped, 2 skipped`, the one being `src/annotated.ts`.
+
+The other four tests in the file must still pass. If any of them fails, stop and report it —
+that is a pre-existing problem, not something this task introduced.
+
+- [ ] **Step 3: Add the bounded header search**
+
+In `scripts/add-license-headers.ts`, insert this function immediately after `headerStartIndex`
+(which ends at line 140), before `looksLikeHeaderLine`:
+
+```typescript
+/**
+ * Index of this file's own SPDX line, or -1 when it has no header yet.
+ *
+ * The scan starts past any shebang and walks the leading run of `//` comments and blank lines,
+ * stopping at the first line of real code. That bound is what keeps the search safe: a file may
+ * legitimately contain the SPDX text further down — `src/analytics/tool-slug-generation.ts`
+ * emits a stamped header inside a generated template — and matching that would mangle the file.
+ *
+ * Scanning past the first line (rather than requiring the header there) is what stops a leading
+ * path comment from being read as "no header", which used to make the caller prepend a second
+ * complete header and corrupt the file on first contact.
+ */
+const findHeaderIndex = (lines: readonly string[], startIndex: number): number => {
+  for (let index = startIndex; index < lines.length; index++) {
+    const line = lines[index]
+    if (line === undefined) return -1
+    if (line === SPDX_LINE) return index
+    if (line.length > 0 && !line.startsWith('//')) return -1
+  }
+  return -1
+}
+```
+
+- [ ] **Step 4: Use it in `updateExistingHeader`**
+
+Replace the whole of `updateExistingHeader` (lines 155-164) with:
+
+```typescript
+const updateExistingHeader = (content: string, currentYear: number): string | null => {
+  const lines = content.split('\n')
+  const headerIndex = findHeaderIndex(lines, headerStartIndex(lines))
+  if (headerIndex === -1) return null
+
+  const preamble = lines.slice(0, headerIndex)
+  const header = buildHeader(normalizeCopyrightLine(lines[headerIndex + 1], currentYear))
+  return [...preamble, header + contentAfterHeader(lines, headerIndex).join('\n')].join('\n')
+}
+```
+
+`preamble` generalizes the old `prefix`: it carries the shebang, the path comment, both, or
+nothing, and `contentAfterHeader` already takes the header's index as its second argument, so it
+needs no change.
+
+- [ ] **Step 5: Run the tests to verify they pass**
+
+```bash
+bun test tests/scripts/license-setup.test.ts
+```
+
+Expected: PASS, 6 tests. In particular
+`'preserves executable shebangs as the first line'` and
+`'uses the current header year for new files and expands old years to a range'` must still pass —
+they cover the two paths `preamble` replaced.
+
+- [ ] **Step 6: Verify the acceptance criterion on the real repo**
+
+```bash
+git status --porcelain
+bun run license:headers
+git status --porcelain
+```
+
+Expected: the tree is clean before, the script prints `Done: 0 stamped, <N> skipped`, and the
+tree is still clean after. Before this task it printed `37 stamped`.
+
+Assert only the stamped count. The skipped count is the repo's file total and grows with every
+file this branch adds.
+
+If any file *is* stamped, do not commit. Reverse the change with
+`git diff > /tmp/stamp.patch; git apply -R /tmp/stamp.patch` (note: `git checkout --` and
+`git stash` are blocked by a repo hook in this worktree) and report which files and why.
+
+- [ ] **Step 7: Format, lint, commit**
+
+```bash
+bun run format
+bun run lint
+git add scripts/add-license-headers.ts tests/scripts/license-setup.test.ts
+git commit -m "fix(scripts): stop license-header stamping from duplicating existing headers"
+```
+
+---
+
+## Task 2: Guard test and the two undefined token references
+
+`client/` references two custom properties that are defined nowhere, so both declarations
+resolve to nothing:
+
+- `client/settings/sections/ReposSection.svelte:264` — `color: var(--fg1)` on
+  `.settings-repos__name`, the repository name and the most prominent text in each row. Present
+  since `fe38bb0bb`.
+- `client/admin/components/SubjectsTable.svelte:145` and
+  `client/admin/components/SubjectDetail.svelte:172,181,240` — `background: var(--surface2)`
+  (no hyphen) on badge, pill, and code-block elements, which therefore render with no background
+  at all.
+
+Both are the same failure: a plausible name in a family, written by analogy, that nothing in the
+toolchain rejects. The guard test closes the class; the fixes close the instances.
+
+**Files:**
+
+- Create: `tests/client/shared/token-references.test.ts`
+- Modify: `client/settings/sections/ReposSection.svelte:264`
+- Modify: `client/admin/components/SubjectsTable.svelte:145`
+- Modify: `client/admin/components/SubjectDetail.svelte:172,181,240`
+
+**Interfaces:**
+
+- Produces: `tests/client/shared/token-references.test.ts`, which Tasks 3 and 4 must keep green.
+  It has no exports; it is a `bun:test` file run by the normal suite.
+
+- [ ] **Step 1: Capture baselines BEFORE changing anything**
+
+Storybook must already be running (`bun storybook`). Then:
+
+```bash
+bun shoot
+```
+
+Expected: every one of the 454 baselines under `.storybook-shots/` is rewritten. `bun shoot` is
+`playwright test --update-snapshots=all`; the `=all` is required, because the bare
+`--update-snapshots` flag presets to mode `"changed"` and would silently strand sub-threshold
+drift.
+
+This is the only place in Tasks 2 and 3 where `bun shoot` runs. Do not run it again until
+Step 8.
+
+- [ ] **Step 2: Write the failing guard test**
+
+Create `tests/client/shared/token-references.test.ts`:
+
+```typescript
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { Glob } from 'bun'
+import { describe, expect, test } from 'bun:test'
+import { fileURLToPath } from 'node:url'
+
+const CLIENT_DIR = fileURLToPath(new URL('../../../client/', import.meta.url))
+
+// A custom-property declaration: `--name:`. The colon must follow the name directly (modulo
+// whitespace), which is what keeps `style:color={dim ? 'var(--fg4)' : 'var(--fg3)'}` from
+// reading as a declaration — there, the colon is separated from the name by `)` and a quote.
+// The name itself must start at a real declaration boundary — start of line, `{`, or `;` — before
+// optional whitespace, which is what keeps a BEM modifier class glued to a pseudo-class (e.g.
+// `.ui-btn--primary:hover:not(:disabled)`) from reading as a declaration of `--primary`.
+const DECLARATION = /(?:^|[{;])\s*(--[a-z0-9-]+)\s*:/gimu
+
+// A reference. Both `var(--name)` and `var(--name, fallback)` occur in this codebase, so the name
+// is followed by optional whitespace and then either `,` or the closing paren.
+const REFERENCE = /var\((--[a-z0-9-]+)\s*[,)]/giu
+
+const scanClient = async (): Promise<{ declared: Set<string>; referenced: { name: string; file: string }[] }> => {
+  const declared = new Set<string>()
+  const referenced: { name: string; file: string }[] = []
+
+  for await (const relativePath of new Glob('**/*.{css,svelte,ts}').scan({ cwd: CLIENT_DIR })) {
+    const text = await Bun.file(`${CLIENT_DIR}${relativePath}`).text()
+    for (const match of text.matchAll(DECLARATION)) declared.add(match[1]!)
+    for (const match of text.matchAll(REFERENCE)) {
+      referenced.push({ name: match[1]!, file: relativePath })
+    }
+  }
+
+  return { declared, referenced }
+}
+
+describe('token references', () => {
+  test('every var(--x) in client/ resolves to a declaration in client/', async () => {
+    const { declared, referenced } = await scanClient()
+
+    const undeclared = referenced
+      .filter((reference) => !declared.has(reference.name))
+      .map((reference) => `${reference.name} <- client/${reference.file}`)
+
+    expect(undeclared).toEqual([])
+  })
+
+  test('the scan actually found references, so an empty result cannot pass vacuously', async () => {
+    const { declared, referenced } = await scanClient()
+
+    // Task 4 deletes the eight legacy aliases, dropping the true count from 57 to 49,
+    // so this floor lands at 40 once the whole plan has run.
+    expect(declared.size).toBeGreaterThan(40)
+    expect(referenced.length).toBeGreaterThan(500)
+  })
+})
+```
+
+Declarations are collected from **all** of `client/`, not just `tokens.css`, so a component that
+scopes its own custom property is not a false positive.
+
+The second test exists because the first one passes trivially if the glob ever stops matching —
+a rename, a moved directory, a Bun API change. Without it, a silently empty scan reads as green.
+
+- [ ] **Step 3: Run the guard test to verify it fails**
+
+```bash
+bun test tests/client/shared/token-references.test.ts
+```
+
+Expected: the first test FAILS with exactly these five entries, and the second PASSES:
+
+```
+--surface2 <- client/admin/components/SubjectsTable.svelte
+--surface2 <- client/admin/components/SubjectDetail.svelte
+--surface2 <- client/admin/components/SubjectDetail.svelte
+--surface2 <- client/admin/components/SubjectDetail.svelte
+--fg1 <- client/settings/sections/ReposSection.svelte
+```
+
+Order within the list may vary with glob traversal order. If any *other* name appears, stop and
+report it — this plan's fix list is then incomplete.
+
+- [ ] **Step 4: Fix `--fg1`**
+
+In `client/settings/sections/ReposSection.svelte`, change line 264 from:
+
+```css
+    color: var(--fg1);
+```
+
+to:
+
+```css
+    color: var(--text);
+```
+
+For context, the surrounding rule is:
+
+```css
+  .settings-repos__name {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text);
+    font-weight: 600;
+  }
+```
+
+**This is an inference about intent, not a recorded decision, and must be flagged to the
+reviewer.** It is well supported: the sibling `.settings-repos__url` uses `--fg2` (→
+`--text-muted`), this rule styles the row's primary text at `font-weight: 600`, and `--fg`
+aliases `--text` — so the brightest foreground is the only sensible reading. But nothing in the
+repo records what the original author meant.
+
+- [ ] **Step 5: Fix `--surface2`**
+
+In `client/admin/components/SubjectsTable.svelte` line 145, and
+`client/admin/components/SubjectDetail.svelte` lines 172, 181, and 240, change:
+
+```css
+    background: var(--surface2);
+```
+
+to:
+
+```css
+    background: var(--surface-2);
+```
+
+All four are `background` declarations on badge, pill, and code-block elements. `--surface-2` is
+the raised surface and is the unambiguous intent — there is no other token whose name is one
+hyphen away.
+
+- [ ] **Step 6: Run the guard test to verify it passes**
+
+```bash
+bun test tests/client/shared/token-references.test.ts
+```
+
+Expected: PASS, 2 tests.
+
+- [ ] **Step 7: Run the visual audit and confirm the change is real**
+
+```bash
+bun run visual:audit
+```
+
+Expected: **more than 5 failures**, and every failure beyond the 5 known clock stories
+(`DebugApp` ×3, `DebugTopBar` ×2) belongs to `ReposSection`, `SubjectsTable`, or
+`SubjectDetail`. That surplus is the evidence the bug was real: a declaration that resolved to
+nothing now resolves to a colour.
+
+Open the diff PNGs Playwright writes under `.storybook-shots/` (files ending `-diff.png`) with
+the Read tool and confirm two things by eye:
+
+1. the repository name in `ReposSection` got brighter;
+2. the badges and code blocks in the two admin components gained a visible background.
+
+If a failing story belongs to none of those three components, stop and report it — a rename
+would not do that, so it means something else changed.
+
+If the run reports `ERR_ABORTED` or `ERR_CONNECTION_REFUSED`, the Storybook dev server died.
+Those are loud navigation failures, not pixel diffs. Restart Storybook and re-run; **do not
+re-baseline from a run containing them.**
+
+- [ ] **Step 8: Re-baseline the three affected components**
+
+```bash
+bun shoot -g ReposSection
+bun shoot -g SubjectsTable
+bun shoot -g SubjectDetail
+```
+
+Use the `-g <pattern>` form. Do **not** write `bun shoot <path>`: `--update-snapshots` consumes a
+positional argument, so a bare path is swallowed as the flag's value.
+
+Then confirm the tree is back to the floor:
+
+```bash
+bun run visual:audit
+```
+
+Expected: **449 passed / 5 failed**, the 5 being only the clock stories.
+
+- [ ] **Step 9: Format, lint, commit**
+
+```bash
+bun run format
+bun run lint
+git add tests/client/shared/token-references.test.ts client/settings/sections/ReposSection.svelte client/admin/components/SubjectsTable.svelte client/admin/components/SubjectDetail.svelte
+git commit -m "fix(client): resolve the undefined --fg1 and --surface2 token references"
+```
+
+`.storybook-shots/` is gitignored, so the re-baselined PNGs are correctly absent from the commit.
+
+---
+
+## Task 3: Migrate the 314 alias call sites
+
+`client/shared/tokens.css:78` opens a block commented *"legacy aliases: debug/admin SPAs
+reference these names"*. Every member is a pure alias with exactly one target, so the codebase
+carries two complete vocabularies for the same colours. This task moves every call site onto the
+semantic vocabulary. It changes no colour: all 314 substitutions resolve to byte-identical CSS.
+
+**Files:**
+
+- Modify: 75 files under `client/` (28 `shared`, 26 `settings`, 11 `admin`, 7 `debug`,
+  2 `transcript`, 1 `stories`)
+
+**Interfaces:**
+
+- Consumes: `tests/client/shared/token-references.test.ts` from Task 2, which must stay green.
+- Produces: a `client/` tree with zero references to the eight legacy aliases, which is the
+  precondition that makes Task 4's deletion provably inert.
+
+- [ ] **Step 1: Write the migration script**
+
+This is a throwaway tool, not a repo artifact. Write it to the scratchpad, not to `scripts/`.
+
+Create `<scratchpad>/migrate-tokens.ts`:
+
+```typescript
+import { Glob } from 'bun'
+
+// Each alias has exactly one target. Verified: no `var(--x, fallback)` uses exist, and none of
+// these names is declared anywhere outside client/shared/tokens.css.
+const MAP: Readonly<Record<string, string>> = {
+  '--fg': '--text',
+  '--fg2': '--text-muted',
+  '--fg3': '--text-dim',
+  '--fg4': '--text-dim',
+  '--fg-hint': '--text-dim',
+  '--surface': '--surface-1',
+  '--raised': '--surface-2',
+  '--hair': '--border',
+}
+
+let fileCount = 0
+let replacementCount = 0
+
+for await (const relativePath of new Glob('**/*.{css,svelte,ts}').scan({ cwd: 'client' })) {
+  const filePath = `client/${relativePath}`
+  const before = await Bun.file(filePath).text()
+  let after = before
+  let hits = 0
+
+  for (const [alias, target] of Object.entries(MAP)) {
+    const parts = after.split(`var(${alias})`)
+    hits += parts.length - 1
+    after = parts.join(`var(${target})`)
+  }
+
+  if (after !== before) {
+    await Bun.write(filePath, after)
+    fileCount += 1
+    replacementCount += hits
+  }
+}
+
+console.log(`files=${fileCount} replacements=${replacementCount}`)
+```
+
+Two properties make this safe, and both matter:
+
+- **It is literal string replacement, not regex.** The search term includes the closing paren
+  (`var(--fg)`), so it cannot match `var(--fg2)` or `var(--fg-hint)`. This is the whole hazard:
+  `--fg` is a prefix of `--fg1`/`--fg2`/`--fg3`/`--fg4`/`--fg-hint`, and `--surface` is a prefix
+  of `--surface-1`/`--surface-2`/`--surface-hover`, so a word-boundary regex on `--surface`
+  matches 14 lines that already correctly use the semantic tokens — corrupting the very tokens
+  the migration moves toward.
+- **The substitutions are order-independent.** No target is itself a key, so no replacement can
+  be re-replaced.
+
+- [ ] **Step 2: Run it**
+
+```bash
+bun run <scratchpad>/migrate-tokens.ts
+```
+
+Expected output, exactly:
+
+```
+files=75 replacements=314
+```
+
+If either number differs, stop and report both. The counts were measured on this tree; a
+mismatch means the tree moved or the script is wrong.
+
+- [ ] **Step 3: Verify `tokens.css` was not touched and no aliases survive**
+
+```bash
+git diff --stat client/shared/tokens.css
+grep -rn --include="*.css" --include="*.svelte" --include="*.ts" -E "var\(--(fg|fg2|fg3|fg4|fg-hint|surface|raised|hair)\)" client
+```
+
+Expected: the first command prints nothing (`tokens.css` unchanged — its alias definitions are
+`--fg3: var(--text-dim)` and the like, whose *values* are semantic tokens, so nothing in it
+matches). The second prints nothing (zero surviving references).
+
+- [ ] **Step 4: Run the guard test and the token test**
+
+```bash
+bun test tests/client/shared/
+```
+
+Expected: PASS. `token-references.test.ts` stays green because every new name is declared, and
+`tokens.test.ts` stays green because the alias *definitions* are still present — Task 4 removes
+them.
+
+- [ ] **Step 5: Run the visual audit — this is the proof**
+
+```bash
+bun run visual:audit
+```
+
+Expected: **449 passed / 5 failed**, the 5 being only the `DebugApp` / `DebugTopBar` clock
+stories.
+
+This is an oracle, not a smoke test. Audit mode sets `threshold: 0.02`, giving a pixelmatch
+per-pixel cutoff of `35215 × 0.02² = 14.09`. A mis-mapped alias — say `--fg3` → `--text` instead
+of `--text-dim` — is a YIQ delta in the thousands. It cannot hide.
+
+A sixth failure means a real defect, and the failing story name localizes it. **Do not
+re-baseline to make it pass.** Report the story and the diff.
+
+- [ ] **Step 6: Format, lint, commit**
+
+```bash
+bun run format
+bun run lint
+git add client
+git commit -m "refactor(client): migrate 314 legacy token aliases to the semantic vocabulary"
+```
+
+The diff is 75 files. The reviewer's job is to check the substitution rule and the audit result,
+not to read 314 lines.
+
+---
+
+## Task 4: Delete the alias block and the inert `dim` prop
+
+With zero references remaining, the eight alias definitions can be deleted and the deletion is
+provably inert. Two dependent cleanups land with it: `tokens.test.ts` currently *asserts the
+aliases exist*, and `KV.svelte` carries a `dim` prop whose two branches now resolve to the same
+colour.
+
+**Files:**
+
+- Modify: `client/shared/tokens.css:78-86`
+- Modify: `tests/client/shared/tokens.test.ts:28-52`
+- Modify: `client/shared/ui/KV.svelte`
+- Modify: `client/shared/ui/KV.stories.svelte`
+- Modify: `tests/visual/shared/ui/KV.spec.ts` (regenerated, not hand-edited)
+- Delete: `.storybook-shots/shared/ui/KV.spec.ts/shared-ui-KV-Dim-1.png`
+
+**Interfaces:**
+
+- Consumes: the alias-free `client/` tree from Task 3, and the repaired
+  `scripts/add-license-headers.ts` from Task 1 (`bun run shoot:gen` invokes
+  `bun run license:headers`).
+
+- [ ] **Step 1: Delete the alias block**
+
+In `client/shared/tokens.css`, delete lines 78-86 — the comment and all eight definitions:
+
+```css
+  /* ---- legacy aliases: debug/admin SPAs reference these names ---- */
+  --surface: var(--surface-1);
+  --raised: var(--surface-2);
+  --hair: var(--border);
+  --fg: var(--text);
+  --fg2: var(--text-muted);
+  --fg3: var(--text-dim);
+  --fg4: var(--text-dim); /* was #3a4248 at 1.58:1 — below even the 3:1 non-text floor */
+  --fg-hint: var(--text-dim); /* redundant once --text-dim itself clears 4.5:1 */
+```
+
+Also delete the now-orphaned blank line 77, so the spacing scale ending `--s9: 48px;` is
+followed directly by the closing `}`.
+
+- [ ] **Step 2: Invert the tokens test**
+
+In `tests/client/shared/tokens.test.ts`, replace the test at lines 48-52:
+
+```typescript
+  test('keeps legacy aliases so debug/admin SPAs still resolve', () => {
+    for (const t of ['--surface:', '--raised:', '--hair:', '--fg:', '--fg2:', '--fg3:', '--fg4:', '--s4:']) {
+      expect(css).toContain(t)
+    }
+  })
+```
+
+with:
+
+```typescript
+  test('declares no legacy aliases: the semantic names are the only vocabulary', () => {
+    for (const t of ['--surface:', '--raised:', '--hair:', '--fg:', '--fg2:', '--fg3:', '--fg4:', '--fg-hint:']) {
+      expect(css).not.toContain(t)
+    }
+  })
+```
+
+`'--surface:'` and `'--fg:'` carry their trailing colons for a reason: without them the
+assertion would match `--surface-1:` and `--fg-hint:` and fail against tokens that must survive.
+
+The old list also included `--s4:`, which is a spacing-scale token, not a legacy alias. It was
+grouped there by mistake. Move it into the `'defines layout + sizing tokens'` test at line 28,
+which does not currently assert it — add `'--s4'` to that array:
+
+```typescript
+  test('defines layout + sizing tokens', () => {
+    for (const t of [
+      '--content-max',
+      '--table-max',
+      '--gap-group',
+      '--gap-section',
+      '--gap-field',
+      '--gap-inline',
+      '--gap-tight',
+      '--radius',
+      '--radius-control',
+      '--radius-pill',
+      '--row-h',
+      '--control-h-sm',
+      '--control-h-md',
+      '--control-h-lg',
+      '--s4',
+    ]) {
+      expect(css).toContain(`${t}:`)
+    }
+  })
+```
+
+- [ ] **Step 3: Remove the inert `dim` prop from `KV.svelte`**
+
+After Task 3, `client/shared/ui/KV.svelte:21` reads
+`style:color={dim ? 'var(--text-dim)' : 'var(--text-dim)'}` — both branches identical, so the
+prop cannot affect anything.
+
+Delete `dim?: boolean` from the `Props` interface, drop it from the destructuring, and inline the
+colour. The `<script>` block becomes:
+
+```svelte
+<script lang="ts">
+  import type { Snippet } from 'svelte'
+
+  interface Props {
+    k: string
+    v: string | number | Snippet
+    sub?: string
+    vColor?: string
+  }
+
+  let { k, v, sub, vColor }: Props = $props()
+</script>
+```
+
+and line 21 becomes:
+
+```svelte
+  <span class="ui-kv__k" style:color="var(--text-dim)">{k}</span>
+```
+
+Leave `.ui-kv__sub`'s `color: var(--text-dim)` in the `<style>` block alone — Task 3 already
+migrated it from `--fg4`.
+
+- [ ] **Step 4: Remove the `Dim` story**
+
+**No production code passes `dim`.** Its only consumer is the story. In
+`client/shared/ui/KV.stories.svelte`, delete this line and the blank line after it:
+
+```svelte
+<Story name="Dim" args={{ k: 'Idle since', v: '3h', dim: true }} />
+```
+
+Leaving it would break the build: `dim` is no longer a declared prop.
+
+- [ ] **Step 5: Regenerate the visual spec and drop the orphaned baseline**
+
+```bash
+bun run shoot:gen
+rm .storybook-shots/shared/ui/KV.spec.ts/shared-ui-KV-Dim-1.png
+git status --porcelain
+```
+
+Expected: `tests/visual/shared/ui/KV.spec.ts` loses its `test('Dim', ...)` block, and
+`git status` shows **only** the files this task edits. `shoot:gen` runs
+`bun run license:headers >/dev/null` internally; after Task 1 that stamps nothing. If unrelated
+files appear as modified, Task 1's fix did not hold — stop and report.
+
+- [ ] **Step 6: Run the unit tests**
+
+```bash
+bun test tests/client/shared/
+```
+
+Expected: PASS. `tokens.test.ts` now asserts the aliases are absent, and
+`token-references.test.ts` stays green because Task 3 left no references to them.
+
+- [ ] **Step 7: Run the visual audit**
+
+```bash
+bun run visual:audit
+```
+
+Expected: **448 passed / 5 failed.**
+
+**The pass count drops by one on purpose.** The suite now has 453 baselines, not 454, because
+the `Dim` story is gone. This is the only place in the whole plan where a count other than 449
+is correct — everywhere else, a change from 449 is a defect. If you see 449, the story was not
+actually removed. If you see 447, something else disappeared too.
+
+Deleting the alias definitions themselves must produce zero pixel change: nothing references
+them.
+
+- [ ] **Step 8: Format, lint, commit**
+
+```bash
+bun run format
+bun run lint
+git add client/shared/tokens.css tests/client/shared/tokens.test.ts client/shared/ui/KV.svelte client/shared/ui/KV.stories.svelte tests/visual/shared/ui/KV.spec.ts
+git commit -m "refactor(client): delete the legacy token alias block and KV's inert dim prop"
+```
+
+- [ ] **Step 9: Run the full repo gate**
+
+```bash
+bun run check:full
+```
+
+Expected: **10/12**, with `test` and `review-loop:test` failing on the pre-existing review-loop
+load flakiness described in Global Constraints. That is this branch's known baseline, not a
+regression from this plan.
+
+If any *other* check fails, report its name and output verbatim. Do not attempt a broad fix
+without reporting first, and do not conclude "unrelated" without re-running the named suite in
+isolation to confirm it.
+
+---
+
+## Notes for the implementer
+
+**The audit is the test.** Tasks 3 and 4 change CSS, which has no meaningful unit to assert
+against — a test that reads a stylesheet back and asserts `'--text-dim' === '--text-dim'` is
+test-shaped noise. `bun run visual:audit` is the verification, and it is a genuine red/green
+pair: Task 2 Step 7 is red by design (the fix must show up), Tasks 3 and 4 are green by design
+(the rename must not). Do not substitute a mock-based test for either.
+
+**Baseline ordering is the one thing that cannot be recovered from.** `bun shoot` runs at Task 2
+Step 1, at Task 2 Step 8 (scoped with `-g`), and nowhere else. Running it after an unverified
+change silently rewrites the evidence into agreement with whatever you just did, and the audit
+then passes for the wrong reason. If you think you have run it out of order, say so — the fix is
+to re-run the audit from a known baseline, not to proceed.
+
+**Write hooks and this plan.** The TDD write hook (`enforceTdd` in
+`.claude/hooks/pre-tool-use.mjs`) gates `src/`, `client/`, `plugins/`, and `review-loop/src/`.
+Tasks 2, 3, and 4 edit `client/`, so it *will* fire; each of those tasks has its test written
+before the source change, which is what satisfies it. `scripts/`, `tests/`, and `docs/` are
+exempt, so Task 1's ordering is a TDD choice rather than a hook requirement — keep it anyway.
+Never add a lint-suppression comment to work around a hook.
+
+**`bun run license:headers` is safe to run only after Task 1.** Before it, the script stamps 37
+unrelated files. `bun run format` does not invoke it; `bun run shoot:gen` does.
+
+**Report boring results.** "449 / 5, unchanged" is the single most valuable sentence in Tasks 3
+and 4. It is a positive statement about 314 substitutions being colour-preserving, not an
+absence of findings.

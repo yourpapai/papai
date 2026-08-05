@@ -27,6 +27,7 @@ import { isBoundInstanceProvisionable } from './context-task-instance-routes.js'
 import { enrichMembers } from './member-enrichment.js'
 import { resolveSettingsUserId } from './resolve-user-id.js'
 import { authenticate, parseJsonBody, requireCsrf, settingsJson } from './respond.js'
+import { listActiveTaskInstanceOptions } from './task-instance-options.js'
 
 const log = logger.child({ scope: 'debug-server:settings-group' })
 
@@ -193,14 +194,7 @@ function handleTaskInstanceGet(authed: AuthenticatedSettingsRequest, url: URL): 
   const outcome = requireGroup(authed, 'read', url.searchParams.get('contextId'))
   if (!outcome.ok) return outcome.response
   const settings = getContextSettings(outcome.group.contextId)
-  const available = listTaskInstancesSafe()
-    .instances.filter((taskInstance) => taskInstance.status === 'active')
-    .map((taskInstance) => ({
-      id: taskInstance.id,
-      type: taskInstance.type,
-      status: taskInstance.status,
-      name: taskInstance.config['baseUrl'],
-    }))
+  const available = listActiveTaskInstanceOptions()
   return settingsJson(200, {
     contextId: outcome.group.contextId,
     taskInstanceId: settings?.taskInstanceId ?? null,

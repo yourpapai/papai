@@ -52,18 +52,18 @@
     font-family: var(--font-mono);
     font-size: 11px;
     display: inline-flex;
-    border: 1px solid var(--hair);
+    border: 1px solid var(--border);
     border-radius: 2px;
     overflow: hidden;
   }
   .ui-jsoncell__key {
     background: var(--inset);
-    color: var(--fg3);
+    color: var(--text-dim);
     padding: 2px 7px;
   }
   .ui-jsoncell__val {
-    background: var(--raised);
-    color: var(--fg);
+    background: var(--surface-2);
+    color: var(--text);
     padding: 2px 7px;
     max-width: 280px;
     overflow: hidden;

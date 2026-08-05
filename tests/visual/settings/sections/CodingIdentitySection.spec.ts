@@ -29,6 +29,10 @@ test.describe('settings/sections/CodingIdentitySection', () => {
 })
 // @generated-end auto-screenshots
 
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
+
 test('CodingIdentity — designated policy reveals member select', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'settings-sections-codingidentitysection--populated')
   await sharedPage.getByTestId('coding-identity-policy').selectOption('designated')

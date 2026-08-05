@@ -18,7 +18,7 @@
 
 <div class="ui-metric-card">
   <div class="ui-metric-card__label">{label}</div>
-  <div class="ui-metric-card__value" style:color={accent ?? 'var(--fg)'}>
+  <div class="ui-metric-card__value" style:color={accent ?? 'var(--text)'}>
     {#if typeof value === 'function'}
       {@render (value as Snippet)()}
     {:else}
@@ -35,7 +35,7 @@
     display: flex;
     flex-direction: column;
     padding: 14px 16px;
-    background: var(--surface);
+    background: var(--surface-1);
     border: 1px solid var(--border);
     min-width: 0;
   }
@@ -45,7 +45,7 @@
     font-weight: 600;
     letter-spacing: 0.10em;
     text-transform: uppercase;
-    color: var(--fg3);
+    color: var(--text-dim);
   }
   .ui-metric-card__value {
     font-family: var(--font-mono);
@@ -60,7 +60,7 @@
   .ui-metric-card__sub {
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--fg3);
+    color: var(--text-dim);
     margin-top: 4px;
   }
 </style>

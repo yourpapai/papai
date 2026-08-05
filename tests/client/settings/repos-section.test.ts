@@ -9,7 +9,7 @@ import { flushSync, mount, unmount } from 'svelte'
 
 import { setCsrfToken } from '../../../client/settings/fetchers.js'
 import ReposSection from '../../../client/settings/sections/ReposSection.svelte'
-import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
+import { restoreFetch, setMockFetch, waitFor } from '../../utils/test-helpers.js'
 
 const json = (payload: unknown): Response =>
   new Response(JSON.stringify(payload), { status: 200, headers: { 'Content-Type': 'application/json' } })
@@ -58,6 +58,29 @@ const routeMock = (_url: string, init?: RequestInit): Promise<Response> => {
     return Promise.resolve(json(populatedPayload))
   }
   return Promise.resolve(json(emptyPayload))
+}
+
+const createFailFirstLoadMock = (): { fetch: () => Promise<Response>; callCount: () => number } => {
+  let calls = 0
+  const responses = [
+    (): Promise<Response> => Promise.resolve(new Response('{"error":"boom"}', { status: 500 })),
+    (): Promise<Response> => Promise.resolve(json(populatedPayload)),
+  ]
+  const fetch = (): Promise<Response> => {
+    const respond = responses[calls] ?? responses[1]!
+    calls += 1
+    return respond()
+  }
+  return { fetch, callCount: () => calls }
+}
+
+const failDeleteMock = (_url: string, init?: RequestInit): Promise<Response> => {
+  const method = (init?.method ?? 'GET').toUpperCase()
+  const isCodingRepos = _url.includes('/settings/api/coding-repos')
+  const isFailingDelete = isCodingRepos && method === 'DELETE'
+  return isFailingDelete
+    ? Promise.resolve(new Response('nope', { status: 500 }))
+    : Promise.resolve(json(isCodingRepos ? populatedPayload : emptyPayload))
 }
 
 afterEach(() => {
@@ -162,7 +185,7 @@ describe('ReposSection', () => {
     void unmount(component)
   })
 
-  test('delete button issues DELETE with repoId', async () => {
+  test('the row delete button opens a confirm dialog without issuing DELETE', async () => {
     setCsrfToken('csrf-t')
     setMockFetch(routeMock)
     document.body.innerHTML = '<div id="root"></div>'
@@ -174,8 +197,74 @@ describe('ReposSection', () => {
     target.querySelector<HTMLButtonElement>('[data-testid="repos-delete-r1"]')!.click()
     await drain()
 
+    const modal = target.querySelector<HTMLElement>('.modal')!
+    expect(modal.textContent).toContain('Delete repository')
+    expect(modal.textContent).toContain('demo')
+    expect(capturedDeleteUrl).toBe('')
+    void unmount(component)
+  })
+
+  test('confirming the dialog issues DELETE with repoId', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(routeMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="repos-delete-r1"]')!.click()
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="confirm-accept"]')!.click()
+    await drain()
+    // Second drain: the first resolves the DELETE, this one flushes the list
+    // reload it chains into — the modal only closes once that settles.
+    await drain()
+
     expect(capturedDeleteUrl).toContain('repoId=r1')
     expect(capturedDeleteUrl).toContain('contextId=pi%3Atelegram%3Actx%3Au1')
+    expect(target.querySelector('.modal')).toBeNull()
+    void unmount(component)
+  })
+
+  test('a failed DELETE closes the dialog and surfaces the error', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(failDeleteMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="repos-delete-r1"]')!.click()
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="confirm-accept"]')!.click()
+    await drain()
+
+    expect(target.querySelector('.modal')).toBeNull()
+    const errorEl = target.querySelector<HTMLElement>('.status-error')!
+    expect(errorEl).not.toBeNull()
+    expect(errorEl.textContent).toContain('Something went wrong on the server')
+    void unmount(component)
+  })
+
+  test('cancelling the dialog leaves the repository in place', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(routeMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="repos-delete-r1"]')!.click()
+    await drain()
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--secondary')!.click()
+    await drain()
+
+    expect(capturedDeleteUrl).toBe('')
+    expect(target.querySelector('.modal')).toBeNull()
+    expect(target.querySelector('[data-testid="repos-row-r1"]')).not.toBeNull()
     void unmount(component)
   })
 
@@ -206,6 +295,378 @@ describe('ReposSection', () => {
     expect(parsed).toMatchObject({
       additionalEgressDomains: ['pypi.org', 'files.pythonhosted.org', 'npm.pkg.dev'],
     })
+    void unmount(component)
+  })
+
+  test('the preset control renders through the shared Select primitive and is labelled', async () => {
+    setMockFetch(() => Promise.resolve(json(emptyPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const preset = target.querySelector<HTMLSelectElement>('[data-testid="repos-add-preset"]')!
+    expect(preset.closest('.ui-select')).not.toBeNull()
+    expect(preset.getAttribute('aria-labelledby')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('the egress control renders through the shared multiline Input and is labelled', async () => {
+    setMockFetch(() => Promise.resolve(json(emptyPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const egress = target.querySelector<HTMLTextAreaElement>('[data-testid="repos-add-egress"]')!
+    expect(egress.closest('.ui-input--multiline')).not.toBeNull()
+    expect(egress.getAttribute('aria-labelledby')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('preset options run from most to least restricted', async () => {
+    setMockFetch(() => Promise.resolve(json(emptyPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const preset = target.querySelector<HTMLSelectElement>('[data-testid="repos-add-preset"]')!
+    expect([...preset.options].map((o) => o.value)).toEqual(['readonly', 'cautious', 'autonomous'])
+    expect(preset.value).toBe('cautious')
+    void unmount(component)
+  })
+
+  test('a context with no repositories renders an empty state', async () => {
+    setMockFetch(() => Promise.resolve(json(emptyPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    expect(target.querySelector('.ui-empty')).not.toBeNull()
+    expect(target.textContent).toContain('No repositories connected')
+    void unmount(component)
+  })
+
+  test('a populated context renders no empty state', async () => {
+    setMockFetch(() => Promise.resolve(json(populatedPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    expect(target.querySelector('.ui-empty')).toBeNull()
+    void unmount(component)
+  })
+
+  test('the three mandatory fields are marked required and the optional ones are not', async () => {
+    setMockFetch(() => Promise.resolve(json(emptyPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const labelFor = (testid: string): HTMLElement =>
+      target
+        .querySelector<HTMLElement>(`[data-testid="${testid}"]`)!
+        .closest('.ui-field')!
+        .querySelector<HTMLElement>('.ui-field__label')!
+
+    expect(labelFor('repos-add-name').querySelector('.ui-field__req')).not.toBeNull()
+    expect(labelFor('repos-add-url').querySelector('.ui-field__req')).not.toBeNull()
+    expect(labelFor('repos-add-branch').querySelector('.ui-field__req')).not.toBeNull()
+    expect(labelFor('repos-add-preset').querySelector('.ui-field__req')).toBeNull()
+    expect(labelFor('repos-add-egress').querySelector('.ui-field__req')).toBeNull()
+    void unmount(component)
+  })
+
+  test('a failed load renders framed copy in an announced alert', async () => {
+    setMockFetch(() => Promise.resolve(new Response('{"error":"boom"}', { status: 500 })))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const alert = target.querySelector<HTMLElement>('.status-error')!
+    expect(alert.getAttribute('role')).toBe('alert')
+    expect(alert.textContent).toContain('Something went wrong on the server')
+    expect(alert.textContent).not.toContain('boom')
+    void unmount(component)
+  })
+
+  test('a successful add announces its status', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(routeMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const set = (testid: string, value: string): void => {
+      const el = target.querySelector<HTMLInputElement>(`[data-testid="${testid}"]`)!
+      el.value = value
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    set('repos-add-name', 'my-project')
+    set('repos-add-url', 'https://github.com/acme/my-project.git')
+    set('repos-add-branch', 'main')
+
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="repos-add-submit"]')!.click()
+    await drain()
+    await drain()
+
+    const status = target.querySelector<HTMLElement>('.status-success')!
+    expect(status.getAttribute('role')).toBe('status')
+    expect(status.textContent).toContain('Repository added.')
+    void unmount(component)
+  })
+
+  test('the add form uses the shared settings-form layout and states what is fixed at creation', async () => {
+    setMockFetch(() => Promise.resolve(json(emptyPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    expect(target.querySelector('.settings-form')).not.toBeNull()
+    expect(target.querySelector('.settings-repos__add-form')).toBeNull()
+    expect(target.textContent).toContain('fixed when a repository is added')
+    void unmount(component)
+  })
+
+  test('the add-form label is a heading so the form is reachable by heading navigation', async () => {
+    setMockFetch(() => Promise.resolve(json(emptyPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const label = target.querySelector<HTMLElement>('.settings-repos__add-label')!
+    expect(label).not.toBeNull()
+    expect(label.tagName).toBe('H3')
+    expect(label.textContent).toContain('Add repository')
+    void unmount(component)
+  })
+
+  test('a load failure renders a Retry control beside the message that re-fetches the list', async () => {
+    const mockLoad = createFailFirstLoadMock()
+    setMockFetch(mockLoad.fetch)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const retry = target.querySelector<HTMLButtonElement>('[data-testid="repos-error-retry"]')!
+    expect(retry).not.toBeNull()
+    expect(target.querySelector('.settings-repos__feedback .status-error')).not.toBeNull()
+
+    retry.click()
+    await drain()
+
+    expect(mockLoad.callCount()).toBe(2)
+    expect(target.querySelector('[data-testid="repos-error-retry"]')).toBeNull()
+    expect(target.textContent).toContain('demo')
+    void unmount(component)
+  })
+
+  test('an add outcome renders inside the add-form card, not above the repo rows', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(routeMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1', statusTimeoutMs: 60_000 },
+    })
+
+    await drain()
+
+    const set = (testid: string, value: string): void => {
+      const el = target.querySelector<HTMLInputElement>(`[data-testid="${testid}"]`)!
+      el.value = value
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    set('repos-add-name', 'my-project')
+    set('repos-add-url', 'https://github.com/acme/my-project.git')
+    set('repos-add-branch', 'main')
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="repos-add-submit"]')!.click()
+    await drain()
+    await drain()
+
+    const inAddCard = target.querySelector<HTMLElement>('.settings-repos__add .status-success')!
+    expect(inAddCard).not.toBeNull()
+    expect(inAddCard.textContent).toContain('Repository added.')
+    void unmount(component)
+  })
+
+  test('a delete outcome renders in the list slot, not inside the add-form card', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(routeMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1', statusTimeoutMs: 60_000 },
+    })
+
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="repos-delete-r1"]')!.click()
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="confirm-accept"]')!.click()
+    await drain()
+    await drain()
+
+    expect(target.querySelector('.settings-repos__add .status-success')).toBeNull()
+    const status = target.querySelector<HTMLElement>('.status-success')!
+    expect(status.textContent).toContain('Repository removed.')
+    const addCard = target.querySelector<HTMLElement>('.settings-repos__add')!
+    expect(status.compareDocumentPosition(addCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    void unmount(component)
+  })
+
+  test('a success message clears itself after statusTimeoutMs', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(routeMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1', statusTimeoutMs: 10 },
+    })
+
+    await drain()
+
+    const set = (testid: string, value: string): void => {
+      const el = target.querySelector<HTMLInputElement>(`[data-testid="${testid}"]`)!
+      el.value = value
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    set('repos-add-name', 'my-project')
+    set('repos-add-url', 'https://github.com/acme/my-project.git')
+    set('repos-add-branch', 'main')
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="repos-add-submit"]')!.click()
+    await drain()
+    await drain()
+
+    expect(target.querySelector('.status-success')).not.toBeNull()
+
+    await waitFor(() => {
+      flushSync()
+      return target.querySelector('.status-success') === null
+    })
+
+    expect(target.querySelector('.status-success')).toBeNull()
+    void unmount(component)
+  })
+
+  test('an error message does not clear itself on the status timer', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(failDeleteMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1', statusTimeoutMs: 10 },
+    })
+
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="repos-delete-r1"]')!.click()
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="confirm-accept"]')!.click()
+    await drain()
+
+    expect(target.querySelector('.status-error')).not.toBeNull()
+
+    // Fixed wait is intentional here (tests/CLAUDE.md:13-17 permits it for this
+    // shape): this asserts a non-event — that the error is still present after
+    // the timer window — which can't be expressed as a poll. CPU contention can
+    // only make the auto-clear timer fire later, never earlier, so starvation
+    // cannot turn this into a false failure; it's a generous-bound "didn't
+    // happen" check.
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 60)
+    })
+    flushSync()
+
+    expect(target.querySelector('.status-error')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('the egress field previews the single host that will be saved', async () => {
+    setMockFetch(() => Promise.resolve(json(emptyPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    expect(target.querySelector('[data-testid="repos-egress-preview"]')).toBeNull()
+
+    const egress = target.querySelector<HTMLTextAreaElement>('[data-testid="repos-add-egress"]')!
+    egress.value = '  PyPI.org  '
+    egress.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+
+    const preview = target.querySelector<HTMLElement>('[data-testid="repos-egress-preview"]')!
+    expect(preview).not.toBeNull()
+    expect(preview.textContent).toContain('Will save: pypi.org')
+    void unmount(component)
+  })
+
+  test('the egress preview shows the deduped count and list for several hosts', async () => {
+    setMockFetch(() => Promise.resolve(json(emptyPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const egress = target.querySelector<HTMLTextAreaElement>('[data-testid="repos-add-egress"]')!
+    egress.value = 'PyPI.org, pypi.org\nGitHub.com'
+    egress.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+
+    const preview = target.querySelector<HTMLElement>('[data-testid="repos-egress-preview"]')!
+    expect(preview.textContent).toContain('Will save 2 domains:')
+    expect(preview.textContent).toContain('pypi.org, github.com')
+    void unmount(component)
+  })
+
+  test('the egress preview disappears again when the field is emptied', async () => {
+    setMockFetch(() => Promise.resolve(json(emptyPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const egress = target.querySelector<HTMLTextAreaElement>('[data-testid="repos-add-egress"]')!
+    egress.value = 'pypi.org'
+    egress.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    expect(target.querySelector('[data-testid="repos-egress-preview"]')).not.toBeNull()
+
+    egress.value = '   ,  \n '
+    egress.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    expect(target.querySelector('[data-testid="repos-egress-preview"]')).toBeNull()
     void unmount(component)
   })
 })

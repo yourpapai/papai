@@ -37,9 +37,19 @@ import {
   adminToolDefaultsHandlers,
 } from './settings-handlers-admin.js'
 import {
+  codingCredentialsHandlers,
+  codingCredentialsOpenAiCompatibleHandlers,
+  forgeHandlers,
+  forgeIncompleteHandlers,
+  forgeSaveErrorHandlers,
+  forgeSelfHostedHandlers,
+} from './settings-handlers-coding.js'
+import {
   codingIdentityHandlers,
   groupMembersHandlers,
   groupProviderHandlers,
+  groupProviderNamelessBoundHandlers,
+  groupProviderUnassignedHandlers,
   groupReleaseHandlers,
   guestModeHandlers,
 } from './settings-handlers-group.js'
@@ -56,7 +66,6 @@ import {
   releaseSubscriptionMutationErrorHandlers,
 } from './settings-handlers-personal-2.js'
 import {
-  codingCredentialsHandlers,
   identityGatedHandlers,
   identityHandlers,
   mcpHandlers,
@@ -65,6 +74,7 @@ import {
   memoryProvisionalHandlers,
   pluginsHandlers,
 } from './settings-handlers-personal.js'
+import { taskProviderBoundHandlers } from './settings-handlers-task-provider.js'
 import {
   adminUsersHandlers,
   byokHandlers,
@@ -121,6 +131,7 @@ export const scenarios = {
   'settings-kaneo-not-provisioned': [...kaneoHandlers.notProvisioned],
   'settings-kaneo-error': [...kaneoHandlers.error],
   'settings-kaneo-loading': [...kaneoHandlers.loading],
+  'settings-task-provider-bound': [...taskProviderBoundHandlers],
   'settings-admin-users-populated': [...adminUsersHandlers.populated],
   'settings-admin-users-empty': [...adminUsersHandlers.empty],
   'settings-admin-users-error': [...adminUsersHandlers.error],
@@ -208,6 +219,14 @@ export const scenarios = {
   'settings-coding-credentials-empty': [...codingCredentialsHandlers.empty],
   'settings-coding-credentials-error': [...codingCredentialsHandlers.error],
   'settings-coding-credentials-loading': [...codingCredentialsHandlers.loading],
+  'settings-coding-credentials-openai-compatible': [...codingCredentialsOpenAiCompatibleHandlers],
+  'settings-code-host-populated': [...forgeHandlers.populated],
+  'settings-code-host-empty': [...forgeHandlers.empty],
+  'settings-code-host-error': [...forgeHandlers.error],
+  'settings-code-host-loading': [...forgeHandlers.loading],
+  'settings-code-host-save-error': [...forgeSaveErrorHandlers],
+  'settings-code-host-incomplete': [...forgeIncompleteHandlers],
+  'settings-code-host-self-hosted': [...forgeSelfHostedHandlers],
   'settings-coding-mcp-populated': [...codingMcpHandlers.populated],
   'settings-coding-mcp-empty': [...codingMcpHandlers.empty],
   'settings-coding-mcp-no-catalog': [...codingMcpNoCatalogHandlers],
@@ -252,6 +271,8 @@ export const scenarios = {
   'settings-group-provider-empty': [...groupProviderHandlers.empty],
   'settings-group-provider-error': [...groupProviderHandlers.error],
   'settings-group-provider-loading': [...groupProviderHandlers.loading],
+  'settings-group-provider-unassigned': [...groupProviderUnassignedHandlers],
+  'settings-group-provider-nameless-bound': [...groupProviderNamelessBoundHandlers],
   'settings-coding-identity-populated': [...codingIdentityHandlers.populated],
   'settings-coding-identity-empty': [...codingIdentityHandlers.empty],
   'settings-coding-identity-error': [...codingIdentityHandlers.error],

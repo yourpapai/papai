@@ -1,0 +1,291 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { HttpResponse, delay, http } from 'msw'
+import type { HttpHandler } from 'msw'
+
+import { isNamespace } from './namespace.js'
+import type { HandlerFamily } from './settings-handlers-personal.js'
+
+const NEVER_RESOLVE_MS = 60_000
+const boom = (): HttpResponse<{ error: string }> => HttpResponse.json({ error: 'boom' }, { status: 500 })
+
+// --- Coding credentials (GET /settings/api/coding-credentials) ---
+// Three namespaces share this URL: 'agent-provider' and 'forge' here, 'mcp' in
+// settings-handlers-personal-2.ts. Every resolver must guard on its own namespace.
+
+const AGENT_OPTIONS = ['claude', 'codex', 'opencode']
+const PROVIDER_OPTIONS = ['anthropic', 'openai', 'openai-compatible']
+const AUTH_METHOD_OPTIONS = ['api-key', 'oauth-subscription']
+
+type FixtureField = Record<string, unknown>
+
+function credentialField(key: string, label: string, overrides: FixtureField = {}): FixtureField {
+  return { key, label, required: false, sensitive: false, hasValue: false, value: '', ...overrides }
+}
+
+function agentProviderFields(hasValue: boolean): FixtureField[] {
+  return [
+    credentialField('agent', 'Coding agent', {
+      required: true,
+      hasValue,
+      value: 'claude',
+      control: 'select',
+      options: AGENT_OPTIONS,
+    }),
+    credentialField('provider', 'Model provider', {
+      required: true,
+      hasValue,
+      value: 'anthropic',
+      control: 'select',
+      options: PROVIDER_OPTIONS,
+    }),
+    credentialField('auth_method', 'Auth method', {
+      hasValue,
+      value: 'api-key',
+      control: 'select',
+      options: AUTH_METHOD_OPTIONS,
+    }),
+    credentialField('provider_api_key', 'API key', {
+      required: true,
+      sensitive: true,
+      hasValue,
+      value: hasValue ? '****ab12' : '',
+    }),
+    credentialField('provider_base_url', 'Base URL'),
+    credentialField('model', 'Model', { hasValue, value: hasValue ? 'claude-sonnet-4' : '', control: 'combobox' }),
+  ]
+}
+
+const codingCredentialsPopulated = {
+  namespace: 'agent-provider',
+  configured: true,
+  complete: true,
+  missing: [],
+  fields: agentProviderFields(true),
+  allowedAgents: AGENT_OPTIONS,
+}
+
+const codingCredentialsEmpty = {
+  namespace: 'agent-provider',
+  configured: false,
+  complete: false,
+  missing: ['provider_api_key'],
+  fields: agentProviderFields(false),
+  allowedAgents: AGENT_OPTIONS,
+}
+
+// `openai-compatible` is the only provider that makes Base URL required and hides Auth method.
+// Without a fixture for it, that hint has no shootable state. The agent is overridden to
+// 'opencode' alongside the provider: 'claude' (agentProviderFields' default) only accepts
+// 'anthropic' as a compatible provider (see compatibleProviders in CodingCredentialsSection.svelte),
+// so leaving it at 'claude' makes the rendered <select> filter 'openai-compatible' out of its
+// options and show up blank — a broken-looking demo of the exact state this story exists to show.
+const codingCredentialsOpenAiCompatible = {
+  namespace: 'agent-provider',
+  configured: true,
+  complete: true,
+  missing: [],
+  fields: agentProviderFields(true).map((field) => {
+    if (field['key'] === 'agent') return { ...field, value: 'opencode' }
+    if (field['key'] === 'provider') return { ...field, value: 'openai-compatible' }
+    return field
+  }),
+  allowedAgents: AGENT_OPTIONS,
+}
+
+const codingModelsPopulated = {
+  ok: true,
+  models: [
+    { value: 'claude-sonnet-4', label: 'claude-sonnet-4' },
+    { value: 'claude-opus-4', label: 'claude-opus-4' },
+  ],
+}
+
+export const codingCredentialsHandlers: HandlerFamily = {
+  populated: [
+    http.get('/settings/api/coding-credentials/models', () => HttpResponse.json(codingModelsPopulated)),
+    http.get('/settings/api/coding-credentials', ({ request }) =>
+      isNamespace(request, 'agent-provider') ? HttpResponse.json(codingCredentialsPopulated) : undefined,
+    ),
+  ],
+  empty: [
+    http.get('/settings/api/coding-credentials/models', () => HttpResponse.json({ ok: false, models: [] })),
+    http.get('/settings/api/coding-credentials', ({ request }) =>
+      isNamespace(request, 'agent-provider') ? HttpResponse.json(codingCredentialsEmpty) : undefined,
+    ),
+  ],
+  error: [
+    http.get('/settings/api/coding-credentials', ({ request }) =>
+      isNamespace(request, 'agent-provider') ? boom() : undefined,
+    ),
+  ],
+  loading: [
+    http.get('/settings/api/coding-credentials', async ({ request }) => {
+      // Guard before the delay: a foreign namespace must fall through immediately,
+      // not hang for NEVER_RESOLVE_MS.
+      if (!isNamespace(request, 'agent-provider')) return undefined
+      await delay(NEVER_RESOLVE_MS)
+      return HttpResponse.json(codingCredentialsEmpty)
+    }),
+  ],
+}
+
+export const codingCredentialsOpenAiCompatibleHandlers: HttpHandler[] = [
+  http.get('/settings/api/coding-credentials/models', () => HttpResponse.json(codingModelsPopulated)),
+  http.get('/settings/api/coding-credentials', ({ request }) =>
+    isNamespace(request, 'agent-provider') ? HttpResponse.json(codingCredentialsOpenAiCompatible) : undefined,
+  ),
+]
+
+// --- Forge (namespace: 'forge') ---
+// Mirrors FIELDS_META.forge in src/debug/settings/coding-credentials-fields-meta.ts:63-79.
+// The route attaches allowedAgents only for 'agent-provider' and the catalog keys only for
+// 'mcp', so a forge body carries neither.
+
+const FORGE_KIND_OPTIONS = ['github', 'github-enterprise', 'gitlab', 'gitlab-self-hosted']
+
+function forgeFields(hasValue: boolean): FixtureField[] {
+  return [
+    credentialField('kind', 'Host type', {
+      required: true,
+      hasValue,
+      // A SaaS kind, so instance_url starts hidden and the reveal interaction is observable.
+      value: hasValue ? 'github' : '',
+      control: 'select',
+      options: FORGE_KIND_OPTIONS,
+    }),
+    credentialField('instance_url', 'Instance URL'),
+    credentialField('forge_token', 'Access token', {
+      required: true,
+      sensitive: true,
+      hasValue,
+      value: hasValue ? '****cd34' : '',
+    }),
+  ]
+}
+
+const forgePopulated = {
+  namespace: 'forge',
+  configured: true,
+  complete: true,
+  missing: [],
+  fields: forgeFields(true),
+}
+
+// `missing` follows allRequiredFields (src/coding-credentials/store.ts:60): both required fields.
+const forgeEmpty = {
+  namespace: 'forge',
+  configured: false,
+  complete: false,
+  missing: ['kind', 'forge_token'],
+  fields: forgeFields(false),
+}
+
+// Configured but incomplete: the token is absent, so the header reports `pending` and names
+// the host, and the first-setup helper renders.
+const forgeIncomplete = {
+  namespace: 'forge',
+  configured: true,
+  complete: false,
+  missing: ['forge_token'],
+  fields: [
+    credentialField('kind', 'Host type', {
+      required: true,
+      hasValue: true,
+      value: 'github',
+      control: 'select',
+      options: FORGE_KIND_OPTIONS,
+    }),
+    credentialField('instance_url', 'Instance URL'),
+    credentialField('forge_token', 'Access token', { required: true, sensitive: true }),
+  ],
+}
+
+// A complete self-hosted record, so instance_url is visible with its required marker and hint
+// on first paint — no interaction needed to reach that state.
+const forgeSelfHosted = {
+  namespace: 'forge',
+  configured: true,
+  complete: true,
+  missing: [],
+  fields: [
+    credentialField('kind', 'Host type', {
+      required: true,
+      hasValue: true,
+      value: 'gitlab-self-hosted',
+      control: 'select',
+      options: FORGE_KIND_OPTIONS,
+    }),
+    credentialField('instance_url', 'Instance URL', {
+      hasValue: true,
+      value: 'https://gitlab.internal.example.com',
+    }),
+    credentialField('forge_token', 'Access token', {
+      required: true,
+      sensitive: true,
+      hasValue: true,
+      value: '****cd34',
+    }),
+  ],
+}
+
+export const forgeIncompleteHandlers: HttpHandler[] = [
+  http.get('/settings/api/coding-credentials', ({ request }) =>
+    isNamespace(request, 'forge') ? HttpResponse.json(forgeIncomplete) : undefined,
+  ),
+]
+
+export const forgeSelfHostedHandlers: HttpHandler[] = [
+  http.get('/settings/api/coding-credentials', ({ request }) =>
+    isNamespace(request, 'forge') ? HttpResponse.json(forgeSelfHosted) : undefined,
+  ),
+]
+
+// Save-validation family: GET serves the populated forge record, PATCH always rejects with the
+// route's real 422 for a self-hosted kind and no instance URL
+// (src/debug/settings/coding-credentials-routes.ts:113-120).
+//
+// The PATCH carries `namespace` in its JSON body, not the query string, so the isNamespace
+// guard used on every GET here does not apply to it. That is safe because only one handler
+// family registers a PATCH per scenario — the absence of a guard is deliberate, not forgotten.
+export const forgeSaveErrorHandlers: HttpHandler[] = [
+  http.get('/settings/api/coding-credentials', ({ request }) =>
+    isNamespace(request, 'forge') ? HttpResponse.json(forgePopulated) : undefined,
+  ),
+  http.patch('/settings/api/coding-credentials', () =>
+    HttpResponse.json(
+      {
+        error: 'required for self-hosted code hosts, and must start with https://',
+        field: 'instance_url',
+      },
+      { status: 422 },
+    ),
+  ),
+]
+
+export const forgeHandlers: HandlerFamily = {
+  populated: [
+    http.get('/settings/api/coding-credentials', ({ request }) =>
+      isNamespace(request, 'forge') ? HttpResponse.json(forgePopulated) : undefined,
+    ),
+  ],
+  empty: [
+    http.get('/settings/api/coding-credentials', ({ request }) =>
+      isNamespace(request, 'forge') ? HttpResponse.json(forgeEmpty) : undefined,
+    ),
+  ],
+  error: [
+    http.get('/settings/api/coding-credentials', ({ request }) => (isNamespace(request, 'forge') ? boom() : undefined)),
+  ],
+  loading: [
+    http.get('/settings/api/coding-credentials', async ({ request }) => {
+      // Guard before the delay: a foreign namespace must fall through immediately.
+      if (!isNamespace(request, 'forge')) return undefined
+      await delay(NEVER_RESOLVE_MS)
+      return HttpResponse.json(forgeEmpty)
+    }),
+  ],
+}

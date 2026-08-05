@@ -127,7 +127,7 @@
   }
 
   .fact-item {
-    background: var(--raised);
+    background: var(--surface-2);
     border-left: 3px solid var(--accent);
     padding: 12px;
   }
@@ -146,7 +146,7 @@
   }
 
   .fact-id {
-    color: var(--fg3);
+    color: var(--text-dim);
     font-size: 11px;
     word-break: break-all;
   }
@@ -159,21 +159,21 @@
   }
 
   .instruction-item {
-    background: var(--surface);
+    background: var(--surface-1);
     padding: 8px 12px;
     border-radius: 2px;
     border-left: 2px solid var(--warn);
   }
 
   .instruction-item .instruction-text {
-    color: var(--fg);
+    color: var(--text);
     font-size: 11px;
     white-space: pre-wrap;
     margin-bottom: 4px;
   }
 
   .instruction-item .instruction-meta {
-    color: var(--fg3);
+    color: var(--text-dim);
     font-size: 10px;
   }
 
@@ -185,7 +185,7 @@
   }
 
   .history-item {
-    background: var(--surface);
+    background: var(--surface-1);
     padding: 10px 12px;
     border-radius: 2px;
     border-left: 2px solid transparent;
@@ -211,12 +211,12 @@
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
-    color: var(--fg3);
+    color: var(--text-dim);
     margin-bottom: 4px;
   }
 
   .history-item .history-content {
-    color: var(--fg);
+    color: var(--text);
     font-size: 11px;
     white-space: pre-wrap;
     word-break: break-word;
@@ -227,6 +227,6 @@
     padding-top: 6px;
     border-top: 1px solid var(--border);
     font-size: 10px;
-    color: var(--fg3);
+    color: var(--text-dim);
   }
 </style>

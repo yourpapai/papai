@@ -4,7 +4,7 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
-  import { getFieldLabelId } from './field-context.js'
+  import { getFieldLabelId, useFieldInvalid } from './field-context.js'
 
   interface Option {
     value: string
@@ -23,14 +23,23 @@
   let { value, options, onChange, testid, disabled = false, placeholder }: Props = $props()
 
   const labelId = getFieldLabelId()
+  const fieldError = useFieldInvalid()
 
   function handleChange(event: Event): void {
     onChange?.((event.target as HTMLSelectElement).value)
   }
 </script>
 
-<div class="ui-select" class:ui-select--disabled={disabled}>
-  <select {value} {disabled} onchange={handleChange} aria-labelledby={labelId} data-testid={testid}>
+<div class="ui-select" class:ui-select--disabled={disabled} class:ui-select--invalid={fieldError.invalid}>
+  <select
+    {value}
+    {disabled}
+    onchange={handleChange}
+    aria-labelledby={labelId}
+    aria-invalid={fieldError.invalid ? 'true' : undefined}
+    aria-required={fieldError.required ? 'true' : undefined}
+    aria-describedby={fieldError.describedBy}
+    data-testid={testid}>
     {#if placeholder}
       <option value="" disabled>{placeholder}</option>
     {/if}
@@ -46,13 +55,13 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    background: var(--raised);
+    background: var(--surface-2);
     border: 1px solid var(--border);
     padding: 4px 8px 4px 10px;
     border-radius: 2px;
     font-family: var(--font-mono);
     font-size: 12px;
-    color: var(--fg);
+    color: var(--text);
   }
   .ui-select:focus-within {
     outline: 2px solid rgba(82, 224, 138, 0.4);
@@ -62,17 +71,20 @@
     background: transparent;
     border: 0;
     outline: 0;
-    color: var(--fg);
+    color: var(--text);
     font: inherit;
     appearance: none;
   }
   .ui-select__caret {
-    color: var(--fg3);
+    color: var(--text-dim);
     font-size: 10px;
     pointer-events: none;
   }
   .ui-select--disabled {
     opacity: 0.6;
     cursor: not-allowed;
+  }
+  .ui-select--invalid {
+    border-color: var(--danger);
   }
 </style>

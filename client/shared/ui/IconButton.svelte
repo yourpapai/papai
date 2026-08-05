@@ -30,8 +30,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: var(--control-h-md);
+    height: var(--control-h-md);
     background: transparent;
     border: 1px solid var(--border);
     border-radius: var(--radius-control);

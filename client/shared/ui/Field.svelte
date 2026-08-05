@@ -25,29 +25,48 @@
   const uid = ++seq
   const labelId = `ui-field-${uid}`
   const errorId = `ui-field-err-${uid}`
+  const hintId = `ui-field-hint-${uid}`
   setFieldLabelId(labelId)
   setFieldError({
     errorId,
+    hintId,
     get invalid() {
       return error !== undefined && error !== ''
+    },
+    get hasHint() {
+      return hint !== undefined && hint !== ''
+    },
+    get required() {
+      return required
     },
   })
 </script>
 
 <div class="ui-field">
   <span class="ui-field__label" id={labelId}>
-    {label}{#if required}<span class="ui-field__req">*</span>{/if}
+    {label}{#if required}<span class="ui-field__req" aria-hidden="true">*</span>{/if}
   </span>
-  {@render children()}
+  <div class="ui-field__control">{@render children()}</div>
   {#if error}<span class="ui-field__error" id={errorId} role="alert">{error}</span>{:else if hint}<span
-      class="ui-field__hint">{hint}</span>{/if}
+      class="ui-field__hint" id={hintId}>{hint}</span>{/if}
 </div>
 
 <style>
+  /* subgrid adopts the parent's three tracks so this field's label, control and
+     hint align with every sibling's. Outside a grid parent, subgrid is invalid
+     and falls back to independent auto rows -- visually the same stack as the
+     column flex this replaces. */
   .ui-field {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-rows: subgrid;
+    grid-row: span 3;
     gap: 6px;
+    min-width: 0;
+  }
+  /* A real box now, so the control always occupies exactly one grid row no
+     matter how many elements the children slot emits. */
+  .ui-field__control {
+    display: block;
     min-width: 0;
   }
   .ui-field__label {
@@ -56,7 +75,7 @@
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--fg3);
+    color: var(--text-dim);
   }
   .ui-field__req {
     color: var(--accent);
@@ -64,7 +83,7 @@
   }
   .ui-field__hint {
     font-size: 10px;
-    color: var(--fg-hint);
+    color: var(--text-dim);
   }
   .ui-field__error {
     font-size: 10px;

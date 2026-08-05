@@ -20,6 +20,8 @@
     busy?: boolean
     testid?: string
     ariaLabel?: string
+    ariaPressed?: boolean
+    ariaDescribedBy?: string
   }
 
   let {
@@ -33,6 +35,8 @@
     busy = false,
     testid,
     ariaLabel,
+    ariaPressed,
+    ariaDescribedBy,
   }: Props = $props()
 
   function handleClick(): void {
@@ -48,6 +52,8 @@
   {disabled}
   aria-busy={busy}
   aria-label={ariaLabel}
+  aria-pressed={ariaPressed}
+  aria-describedby={ariaDescribedBy}
   onclick={handleClick}
   data-testid={testid}
 >
@@ -85,18 +91,18 @@
     border-color: var(--accent);
   }
   .ui-btn--secondary {
-    background: var(--raised);
-    color: var(--fg);
+    background: var(--surface-2);
+    color: var(--text);
     border-color: var(--border);
   }
   .ui-btn--outline {
     background: transparent;
-    color: var(--fg);
+    color: var(--text);
     border-color: var(--border);
   }
   .ui-btn--ghost {
     background: transparent;
-    color: var(--fg2);
+    color: var(--text-muted);
     border-color: transparent;
   }
   .ui-btn--danger {
@@ -108,17 +114,17 @@
   .ui-btn--sm {
     padding: 3px 8px;
     font-size: 11px;
-    height: 22px;
+    height: var(--control-h-sm);
   }
   .ui-btn--md {
     padding: 5px 12px;
     font-size: 12px;
-    height: 28px;
+    height: var(--control-h-md);
   }
   .ui-btn--lg {
     padding: 8px 16px;
     font-size: 13px;
-    height: 34px;
+    height: var(--control-h-lg);
   }
 
   .ui-btn--primary:hover:not(:disabled) {
@@ -129,10 +135,10 @@
     background: var(--strong);
   }
   .ui-btn--outline:hover:not(:disabled) {
-    background: var(--raised);
+    background: var(--surface-2);
   }
   .ui-btn--ghost:hover:not(:disabled) {
-    background: var(--raised);
+    background: var(--surface-2);
   }
   .ui-btn--danger:hover:not(:disabled) {
     background: var(--danger-soft);

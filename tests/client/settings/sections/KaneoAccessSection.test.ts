@@ -101,4 +101,52 @@ describe('KaneoAccessSection', () => {
     expect(target.textContent).toContain('http://kaneo.example.com')
     void unmount(component)
   })
+
+  test('the not-provisioned empty state offers a re-check action', async () => {
+    let calls = 0
+    setMockFetch(() => {
+      calls += 1
+      return Promise.resolve(json({ error: 'not found' }, 404))
+    })
+
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(KaneoAccessSection, { target, props: { contextId: CONTEXT_ID } })
+    await drain()
+
+    const recheck = target.querySelector<HTMLButtonElement>('[data-testid="kaneo-empty-recheck"]')
+    expect(recheck).not.toBeNull()
+    const before = calls
+    recheck!.click()
+    await drain()
+    expect(calls).toBe(before + 1)
+    void unmount(component)
+  })
+
+  test('Hide clears the revealed password and does not re-arm Reveal', async () => {
+    setCsrfToken('c')
+    setMockFetch(
+      routeCredentialsMock(
+        json({ contextId: CONTEXT_ID, login: 'alice@pap.ai', status: 'active', kaneoUrl: 'http://kaneo' }),
+        json({ password: 's3cret-pw', warning: 'This password is shown once. Store it securely.' }),
+      ),
+    )
+
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(KaneoAccessSection, { target, props: { contextId: CONTEXT_ID } })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="kaneo-reveal"]')!.click()
+    await drain()
+    expect(target.textContent).toContain('s3cret-pw')
+
+    target.querySelector<HTMLButtonElement>('[data-testid="kaneo-hide"]')!.click()
+    await drain()
+
+    expect(target.textContent).not.toContain('s3cret-pw')
+    expect(target.querySelector('[data-testid="kaneo-reveal"]')).toBeNull()
+    expect(target.querySelector('[data-testid="kaneo-pw-hidden"]')?.textContent).toContain("can't be shown again")
+    void unmount(component)
+  })
 })

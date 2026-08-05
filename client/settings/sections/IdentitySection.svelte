@@ -236,7 +236,7 @@
   .identity-intro {
     max-width: 520px;
     margin-bottom: var(--gap-field);
-    color: var(--fg2);
+    color: var(--text-muted);
     font-size: 12px;
   }
   .identity-form {

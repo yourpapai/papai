@@ -22,7 +22,7 @@
 <div class="ui-page-header">
   <div class="ui-page-header__text">
     {#if eyebrow}<Caption>{eyebrow}</Caption>{/if}
-    <div class="ui-page-header__title" data-testid={titleTestId}>{title}</div>
+    <h2 class="ui-page-header__title" data-testid={titleTestId}>{title}</h2>
     {#if sub}<div class="ui-page-header__sub">{sub}</div>{/if}
   </div>
   {#if action}<div class="ui-page-header__action">{@render action()}</div>{/if}
@@ -40,15 +40,16 @@
     min-width: 0;
   }
   .ui-page-header__title {
+    margin: 0;
     font-family: var(--font-mono);
     font-size: 20px;
     font-weight: 700;
-    color: var(--fg);
+    color: var(--text);
     letter-spacing: -0.02em;
   }
   .ui-page-header__sub {
     font-size: 11px;
-    color: var(--fg3);
+    color: var(--text-dim);
     margin-top: 4px;
   }
   .ui-page-header__action {

@@ -236,3 +236,48 @@ test('omits aria-describedby when ariaDescribedBy is not provided', () => {
   expect(target.querySelector('[role="radiogroup"]')!.getAttribute('aria-describedby')).toBeNull()
   void unmount(c)
 })
+
+test('renders the Saving… caption and aria-busy when busy', () => {
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.body.querySelector<HTMLElement>('#root')!
+  const c = mount(SegmentedControl, {
+    target,
+    props: { options, value: 'ask', ariaLabel: 'Mode', onChange: () => {}, busy: true },
+  })
+  expect(target.querySelector('.ui-seg__busy')?.textContent).toBe('Saving…')
+  expect(target.querySelector('[role="radiogroup"]')?.getAttribute('aria-busy')).toBe('true')
+  void unmount(c)
+})
+
+test('renders no caption and no aria-busy by default', () => {
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.body.querySelector<HTMLElement>('#root')!
+  const c = mount(SegmentedControl, {
+    target,
+    props: { options, value: 'ask', ariaLabel: 'Mode', onChange: () => {} },
+  })
+  expect(target.querySelector('.ui-seg__busy')).toBeNull()
+  expect(target.querySelector('[role="radiogroup"]')?.hasAttribute('aria-busy')).toBe(false)
+  void unmount(c)
+})
+
+test('busy alone does not block interaction — only disabled does', () => {
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.body.querySelector<HTMLElement>('#root')!
+  let picked = ''
+  const c = mount(SegmentedControl, {
+    target,
+    props: {
+      options,
+      value: 'ask',
+      ariaLabel: 'Mode',
+      busy: true,
+      onChange: (v: string) => {
+        picked = v
+      },
+    },
+  })
+  target.querySelectorAll<HTMLButtonElement>('.ui-seg__opt')[2]!.click()
+  expect(picked).toBe('deny')
+  void unmount(c)
+})

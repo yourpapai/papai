@@ -107,6 +107,39 @@ export const groupProviderHandlers: HandlerFamily = {
   ],
 }
 
+// taskInstanceId: null with a non-empty available list — the "not yet assigned"
+// sub-state, which no fixture rendered before (group-provider-null-silently-preselected).
+const groupProviderUnassigned = {
+  contextId: 'ctx-group-1',
+  taskInstanceId: null,
+  available: [
+    { id: 'inst_abc', type: 'kaneo', status: 'active', name: 'https://kaneo.example' },
+    { id: 'inst_bare', type: 'youtrack', status: 'active' },
+  ],
+  canProvision: false,
+}
+
+// Bound to the nameless instance. A <select> renders only its chosen option, so
+// this is the only way the type-and-id fallback label appears on screen
+// (group-provider-raw-id-options).
+const groupProviderNamelessBound = {
+  contextId: 'ctx-group-1',
+  taskInstanceId: 'inst_bare',
+  available: [
+    { id: 'inst_abc', type: 'kaneo', status: 'active', name: 'https://kaneo.example' },
+    { id: 'inst_bare', type: 'youtrack', status: 'active' },
+  ],
+  canProvision: false,
+}
+
+export const groupProviderUnassignedHandlers: HttpHandler[] = [
+  http.get('/settings/api/group/task-instance', () => HttpResponse.json(groupProviderUnassigned)),
+]
+
+export const groupProviderNamelessBoundHandlers: HttpHandler[] = [
+  http.get('/settings/api/group/task-instance', () => HttpResponse.json(groupProviderNamelessBound)),
+]
+
 // --- Coding identity (GET /settings/api/group/coding-identity + /settings/api/group/members) ---
 // Schema: GroupCodingIdentityResponseSchema = { contextId: string, identity: string }
 // CodingIdentitySection fetches both coding-identity and members in parallel.

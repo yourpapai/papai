@@ -16,8 +16,18 @@
     testidPrefix?: string
     disabled?: boolean
     ariaDescribedBy?: string
+    busy?: boolean
   }
-  let { options, value, ariaLabel, onChange, testidPrefix, disabled = false, ariaDescribedBy }: Props = $props()
+  let {
+    options,
+    value,
+    ariaLabel,
+    onChange,
+    testidPrefix,
+    disabled = false,
+    ariaDescribedBy,
+    busy = false,
+  }: Props = $props()
 
   function onKey(event: KeyboardEvent, index: number): void {
     if (disabled) return
@@ -28,25 +38,43 @@
   }
 </script>
 
-<div class="ui-seg" role="radiogroup" aria-label={ariaLabel} aria-describedby={ariaDescribedBy}>
-  {#each options as opt, i (opt.value)}
-    <button
-      type="button"
-      role="radio"
-      aria-checked={value === opt.value ? 'true' : 'false'}
-      tabindex={value === opt.value ? 0 : -1}
-      class="ui-seg__opt"
-      class:ui-seg__opt--on={value === opt.value}
-      {disabled}
-      data-testid={testidPrefix ? `${testidPrefix}-${opt.value}` : undefined}
-      onclick={() => onChange(opt.value)}
-      onkeydown={(e) => onKey(e, i)}>
-      {opt.label}
-    </button>
-  {/each}
+<div class="ui-seg-shell">
+  <div
+    class="ui-seg"
+    role="radiogroup"
+    aria-label={ariaLabel}
+    aria-describedby={ariaDescribedBy}
+    aria-busy={busy ? 'true' : undefined}>
+    {#each options as opt, i (opt.value)}
+      <button
+        type="button"
+        role="radio"
+        aria-checked={value === opt.value ? 'true' : 'false'}
+        tabindex={value === opt.value ? 0 : -1}
+        class="ui-seg__opt"
+        class:ui-seg__opt--on={value === opt.value}
+        {disabled}
+        data-testid={testidPrefix ? `${testidPrefix}-${opt.value}` : undefined}
+        onclick={() => onChange(opt.value)}
+        onkeydown={(e) => onKey(e, i)}>
+        {opt.label}
+      </button>
+    {/each}
+  </div>
+  {#if busy}<span class="ui-seg__busy">Saving…</span>{/if}
 </div>
 
 <style>
+  .ui-seg-shell {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--gap-tight);
+  }
+  .ui-seg__busy {
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
   .ui-seg {
     display: inline-flex;
     border: 1px solid var(--border);
@@ -62,7 +90,7 @@
     font-family: var(--font-mono);
     font-size: 11px;
     padding: 0 10px;
-    height: 22px;
+    height: var(--control-h-sm);
   }
   .ui-seg__opt:last-child { border-right: 0; }
   .ui-seg__opt:focus-visible {

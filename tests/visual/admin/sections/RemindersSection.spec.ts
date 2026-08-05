@@ -13,3 +13,7 @@ test.describe('admin/sections/RemindersSection', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()

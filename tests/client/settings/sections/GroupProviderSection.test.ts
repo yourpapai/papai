@@ -125,7 +125,7 @@ describe('GroupProviderSection', () => {
     void unmount(component)
   })
 
-  test('preselects the first available when no task instance is set', async () => {
+  test('selects nothing and shows the unassigned placeholder when no task instance is set', async () => {
     const noInstancePayload = {
       contextId: 'group:7',
       taskInstanceId: null,
@@ -141,11 +141,13 @@ describe('GroupProviderSection', () => {
     const component = mount(GroupProviderSection, { target, props: { contextId: 'group:7' } })
     await drain()
     const select = target.querySelector<HTMLSelectElement>('[data-testid="group-task-instance"]')!
-    expect(select.value).toBe('kaneo-a')
+    expect(select.value).toBe('')
+    expect(select.value).not.toBe('kaneo-a')
+    expect(target.textContent).toContain('Not yet assigned — select an instance')
     void unmount(component)
   })
 
-  test('falls back to first available when the assigned instance is missing from available', async () => {
+  test('selects nothing and flags the stale binding when the assigned instance is missing from available', async () => {
     const stalePayload = {
       contextId: 'group:7',
       taskInstanceId: 'gone',
@@ -161,7 +163,21 @@ describe('GroupProviderSection', () => {
     const component = mount(GroupProviderSection, { target, props: { contextId: 'group:7' } })
     await drain()
     const select = target.querySelector<HTMLSelectElement>('[data-testid="group-task-instance"]')!
+    expect(select.value).toBe('')
+    expect(select.value).not.toBe('kaneo-a')
+    expect(target.textContent).toContain('Assigned instance is unavailable — select another')
+    void unmount(component)
+  })
+
+  test('shows no placeholder option when an instance is genuinely bound', async () => {
+    setMockFetch(() => Promise.resolve(json(payload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(GroupProviderSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    const select = target.querySelector<HTMLSelectElement>('[data-testid="group-task-instance"]')!
     expect(select.value).toBe('kaneo-a')
+    expect(target.textContent).not.toContain('Not yet assigned')
     void unmount(component)
   })
 
@@ -267,7 +283,7 @@ describe('GroupProviderSection', () => {
     void unmount(component)
   })
 
-  test('renders the friendly instance name in options, falling back to id when absent', async () => {
+  test('renders the friendly instance name in options, falling back to a type-and-id label when absent', async () => {
     const namedPayload = {
       contextId: 'group:7',
       taskInstanceId: 'kaneo-a',
@@ -284,7 +300,7 @@ describe('GroupProviderSection', () => {
     await drain()
     const options = [...target.querySelectorAll('[data-testid="group-task-instance"] option')].map((o) => o.textContent)
     expect(options).toContain('https://kaneo.example (kaneo · active)')
-    expect(options).toContain('kaneo-b (youtrack · active)')
+    expect(options).toContain('YouTrack instance (kaneo-b) (youtrack · active)')
     void unmount(component)
   })
 

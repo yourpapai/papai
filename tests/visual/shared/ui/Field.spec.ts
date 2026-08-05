@@ -23,3 +23,7 @@ test.describe('shared/ui/Field', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()

@@ -12,6 +12,16 @@ test.describe('settings/sections/GroupProviderSection', () => {
     await expect(sharedPage).toHaveScreenshot()
   })
 
+  test('Unassigned', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-groupprovidersection--unassigned')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('NamelessBound', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-groupprovidersection--nameless-bound')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
   test('Empty', async ({ sharedPage }) => {
     await switchStory(sharedPage, 'settings-sections-groupprovidersection--empty')
     await expect(sharedPage).toHaveScreenshot()
@@ -28,6 +38,10 @@ test.describe('settings/sections/GroupProviderSection', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
 
 test('GroupProviderSection — populated, narrow', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'settings-sections-groupprovidersection--populated')

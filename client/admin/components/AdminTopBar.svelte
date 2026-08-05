@@ -66,7 +66,7 @@
     background: var(--border);
   }
   .admin-topbar__back {
-    color: var(--fg2);
+    color: var(--text-muted);
     text-decoration: none;
     font-family: var(--font-mono);
     font-size: 12px;
@@ -75,12 +75,12 @@
     color: var(--accent);
   }
   .admin-topbar__lbl {
-    color: var(--fg3);
+    color: var(--text-dim);
     font-family: var(--font-mono);
     font-size: 11px;
   }
   .admin-topbar__stat {
-    color: var(--fg);
+    color: var(--text);
     font-family: var(--font-mono);
     font-size: 12px;
   }

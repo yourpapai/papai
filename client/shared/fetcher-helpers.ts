@@ -5,11 +5,17 @@
 
 import { z } from 'zod'
 
-export const ErrorBodySchema = z.object({ error: z.string() })
+export const ErrorBodySchema = z.object({ error: z.string(), field: z.string().optional() })
 
 export const errorMessageFrom = (body: unknown, fallback: string): string => {
   const parsed = ErrorBodySchema.safeParse(body)
   return parsed.success ? parsed.data.error : fallback
+}
+
+/** The offending form field, when the server attributed the error to one. */
+export const errorFieldFrom = (body: unknown): string | undefined => {
+  const parsed = ErrorBodySchema.safeParse(body)
+  return parsed.success ? parsed.data.field : undefined
 }
 
 export const readBody = async (res: Response): Promise<unknown> => {
@@ -22,14 +28,20 @@ export const readBody = async (res: Response): Promise<unknown> => {
 
 export class FetchError extends Error {
   readonly status: number
-  constructor(status: number, message: string) {
+  readonly field: string | undefined
+  constructor(status: number, message: string, field?: string) {
     super(message)
     this.name = 'FetchError'
     this.status = status
+    this.field = field
   }
 }
 
 export const requireOk = (res: Response, body: unknown): void => {
   if (res.ok) return
-  throw new FetchError(res.status, errorMessageFrom(body, `request failed with status ${res.status}`))
+  throw new FetchError(
+    res.status,
+    errorMessageFrom(body, `request failed with status ${res.status}`),
+    errorFieldFrom(body),
+  )
 }

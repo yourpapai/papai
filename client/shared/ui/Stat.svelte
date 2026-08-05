@@ -33,7 +33,7 @@
     font-family: var(--font-mono);
     font-size: 26px;
     font-weight: 600;
-    color: var(--fg);
+    color: var(--text);
     margin-top: 6px;
     letter-spacing: -0.02em;
   }
@@ -42,7 +42,7 @@
   }
   .ui-stat__of {
     font-size: 11px;
-    color: var(--fg3);
+    color: var(--text-dim);
     margin-top: 4px;
   }
   .ui-stat__of--over {

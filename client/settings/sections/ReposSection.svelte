@@ -4,26 +4,35 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
+  import Confirm from '../../shared/Confirm.svelte'
   import Btn from '../../shared/ui/Btn.svelte'
+  import EmptyState from '../../shared/ui/EmptyState.svelte'
   import Field from '../../shared/ui/Field.svelte'
   import IconButton from '../../shared/ui/IconButton.svelte'
   import Input from '../../shared/ui/Input.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
+  import Select from '../../shared/ui/Select.svelte'
+  import { formatFetchError } from '../../shared/format-error.js'
   import type { RepoRecord } from '../fetcher-schemas-repos.js'
   import { addRepo, deleteRepo, fetchRepos } from '../repos-fetchers.js'
 
   interface Props {
     contextId: string
+    /** How long a success message stays on screen. Injected so screenshots never race the clock. */
+    statusTimeoutMs?: number
   }
 
-  let { contextId }: Props = $props()
+  let { contextId, statusTimeoutMs = 4000 }: Props = $props()
 
   let repos: RepoRecord[] = $state([])
-  let error: string | null = $state(null)
-  let status: string | null = $state(null)
+  let listError: string | null = $state(null)
+  let listStatus: string | null = $state(null)
+  let addError: string | null = $state(null)
+  let addStatus: string | null = $state(null)
   let loading = $state(false)
   let adding = $state(false)
   let deletingId: string | null = $state(null)
+  let pendingDeleteId: string | null = $state(null)
 
   // Add form state
   let addName = $state('')
@@ -31,6 +40,12 @@
   let addBranch = $state('')
   let addPreset = $state('cautious')
   let addEgress = $state('')
+
+  const PRESET_OPTIONS = [
+    { value: 'readonly', label: 'readonly' },
+    { value: 'cautious', label: 'cautious' },
+    { value: 'autonomous', label: 'autonomous' },
+  ]
 
   const parseEgress = (raw: string): string[] => {
     const seen = new Set<string>()
@@ -41,23 +56,40 @@
     return [...seen]
   }
 
+  const egressPreview = $derived(parseEgress(addEgress))
+
+  let listStatusTimer: ReturnType<typeof setTimeout> | undefined
+  let addStatusTimer: ReturnType<typeof setTimeout> | undefined
+
+  const showListStatus = (message: string): void => {
+    listStatus = message
+    clearTimeout(listStatusTimer)
+    listStatusTimer = setTimeout(() => (listStatus = null), statusTimeoutMs)
+  }
+
+  const showAddStatus = (message: string): void => {
+    addStatus = message
+    clearTimeout(addStatusTimer)
+    addStatusTimer = setTimeout(() => (addStatus = null), statusTimeoutMs)
+  }
+
   async function load(id: string): Promise<void> {
-    error = null
+    listError = null
     loading = true
     try {
       const data = await fetchRepos(id)
       if (id !== contextId) return
       repos = data.repos
     } catch (err) {
-      if (id === contextId) error = err instanceof Error ? err.message : String(err)
+      if (id === contextId) listError = formatFetchError(err)
     } finally {
       if (id === contextId) loading = false
     }
   }
 
   async function handleAdd(): Promise<void> {
-    error = null
-    status = null
+    addError = null
+    addStatus = null
     adding = true
     try {
       await addRepo({
@@ -74,31 +106,37 @@
       addPreset = 'cautious'
       addEgress = ''
       await load(contextId)
-      status = 'Repository added.'
+      showAddStatus('Repository added.')
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      addError = formatFetchError(err)
     } finally {
       adding = false
     }
   }
 
   async function handleDelete(repoId: string): Promise<void> {
-    error = null
-    status = null
+    listError = null
+    listStatus = null
     deletingId = repoId
     try {
       await deleteRepo({ contextId, repoId })
       await load(contextId)
-      status = 'Repository removed.'
+      showListStatus('Repository removed.')
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      listError = formatFetchError(err)
     } finally {
       deletingId = null
+      pendingDeleteId = null
     }
   }
 
   $effect(() => {
     void load(contextId)
+  })
+
+  $effect(() => () => {
+    clearTimeout(listStatusTimer)
+    clearTimeout(addStatusTimer)
   })
 </script>
 
@@ -109,8 +147,15 @@
     {/snippet}
   </PageHeader>
 
-  {#if error !== null}<p class="status-error">{error}</p>{/if}
-  {#if status !== null}<p class="status-success">{status}</p>{/if}
+  {#if listError !== null}
+    <div class="settings-repos__feedback">
+      <p class="status-error" role="alert">{listError}</p>
+      <Btn variant="outline" size="sm" testid="repos-error-retry" onClick={() => void load(contextId)}>
+        {#snippet children()}Retry{/snippet}
+      </Btn>
+    </div>
+  {/if}
+  {#if listStatus !== null}<p class="status-success" role="status">{listStatus}</p>{/if}
 
   {#if loading && repos.length === 0}
     <p class="placeholder">Loading…</p>
@@ -127,64 +172,78 @@
                 : ''}</span>
           </div>
           <Btn
-            variant="ghost"
+            variant="danger"
             size="sm"
             testid={`repos-delete-${repo.repoId}`}
             disabled={deletingId === repo.repoId}
-            onClick={() => void handleDelete(repo.repoId)}>
+            onClick={() => (pendingDeleteId = repo.repoId)}>
             {#snippet children()}{deletingId === repo.repoId ? 'Removing…' : 'Delete'}{/snippet}
           </Btn>
         </div>
+      {:else}
+        <EmptyState
+          title="No repositories connected"
+          hint="Add one below to make it available to coding sessions in this context." />
       {/each}
     </div>
 
     <div class="settings-repos__add">
-      <p class="settings-repos__add-label">Add repository</p>
-      <div class="settings-repos__add-form">
-        <Field label="Name">
+      <div class="settings-repos__add-head">
+        <h3 class="settings-repos__add-label">Add repository</h3>
+        <p class="settings-repos__add-note">
+          Branch, preset and egress domains are fixed when a repository is added — change them by removing and
+          re-adding it.
+        </p>
+      </div>
+      <div class="settings-form">
+        <Field label="Name" required>
           <Input
             value={addName}
             onInput={(v) => (addName = v)}
             placeholder="my-project"
             testid="repos-add-name" />
         </Field>
-        <Field label="Repository URL (https)">
+        <Field label="Repository URL (https)" required>
           <Input
             value={addUrl}
             onInput={(v) => (addUrl = v)}
             placeholder="https://github.com/org/repo.git"
             testid="repos-add-url" />
         </Field>
-        <Field label="Base branch">
+        <Field label="Base branch" required>
           <Input
             value={addBranch}
             onInput={(v) => (addBranch = v)}
             placeholder="main"
             testid="repos-add-branch" />
         </Field>
-        <Field label="Permission preset">
-          <select
-            class="settings-repos__preset-select"
-            data-testid="repos-add-preset"
+        <Field label="Permission preset" hint="readonly is the most restricted, autonomous the least.">
+          <Select
             value={addPreset}
-            onchange={(e) => (addPreset = (e.target as HTMLSelectElement).value)}>
-            <option value="autonomous">autonomous</option>
-            <option value="cautious">cautious</option>
-            <option value="readonly">readonly</option>
-          </select>
+            options={PRESET_OPTIONS}
+            onChange={(v) => (addPreset = v)}
+            testid="repos-add-preset" />
         </Field>
-        <Field label="Additional egress domains">
-          <textarea
-            class="settings-repos__egress-input"
-            data-testid="repos-add-egress"
+        <Field
+          label="Additional egress domains"
+          hint="Extra domains this project's sessions may reach, added to the defaults. One per line or comma-separated. A domain may still be blocked if your operator's egress policy doesn't include it.">
+          <Input
             value={addEgress}
-            oninput={(e) => (addEgress = (e.target as HTMLTextAreaElement).value)}
-            placeholder="pypi.org, files.pythonhosted.org"></textarea>
-          <p class="settings-repos__egress-help">
-            Extra domains this project's sessions may reach, added to the defaults. One per line or comma-separated. A
-            domain may still be blocked if your operator's egress policy doesn't include it.
-          </p>
+            onInput={(v) => (addEgress = v)}
+            multiline={true}
+            rows={3}
+            placeholder="pypi.org, files.pythonhosted.org"
+            testid="repos-add-egress" />
+          {#if egressPreview.length > 0}
+            <p class="settings-repos__egress-preview" data-testid="repos-egress-preview">
+              {egressPreview.length === 1
+                ? `Will save: ${egressPreview.join(', ')}`
+                : `Will save ${egressPreview.length} domains: ${egressPreview.join(', ')}`}
+            </p>
+          {/if}
         </Field>
+      </div>
+      <div class="settings-repos__actions">
         <Btn
           variant="primary"
           testid="repos-add-submit"
@@ -193,24 +252,47 @@
           {#snippet children()}{adding ? 'Adding…' : 'Add'}{/snippet}
         </Btn>
       </div>
+      {#if addError !== null}<p class="status-error" role="alert">{addError}</p>{/if}
+      {#if addStatus !== null}<p class="status-success" role="status">{addStatus}</p>{/if}
     </div>
   {/if}
+
+  <Confirm
+    open={pendingDeleteId !== null}
+    title="Delete repository"
+    danger
+    busy={deletingId !== null}
+    confirmLabel="Delete"
+    onCancel={() => {
+      pendingDeleteId = null
+    }}
+    onConfirm={() => {
+      if (pendingDeleteId !== null) void handleDelete(pendingDeleteId)
+    }}>
+    {#snippet body()}
+      <p>
+        Delete {repos.find((r) => r.repoId === pendingDeleteId)?.name ?? 'this repository'}? Coding sessions in this
+        context will no longer be able to use it.
+      </p>
+    {/snippet}
+  </Confirm>
 </section>
 
 <style>
   .settings-repos {
     display: grid;
-    gap: 8px;
-    margin-bottom: 20px;
+    gap: var(--gap-tight);
+    margin-bottom: var(--gap-field);
   }
   .settings-repos__row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    padding: 10px 12px;
+    gap: var(--gap-inline);
+    padding: var(--gap-tight) var(--gap-inline);
     border: 1px solid var(--border);
-    background: var(--surface);
+    border-radius: var(--radius-control);
+    background: var(--surface-1);
   }
   .settings-repos__info {
     display: flex;
@@ -221,13 +303,13 @@
   .settings-repos__name {
     font-family: var(--font-mono);
     font-size: 13px;
-    color: var(--fg1);
+    color: var(--text);
     font-weight: 600;
   }
   .settings-repos__url {
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--fg2);
+    color: var(--text-muted);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -235,53 +317,52 @@
   .settings-repos__meta {
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--fg3);
+    color: var(--text-dim);
+  }
+  .settings-repos__feedback {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+  }
+  .settings-repos__feedback .status-error {
+    margin: 0;
   }
   .settings-repos__add {
     display: grid;
-    gap: 12px;
-    padding: 12px;
+    gap: var(--gap-inline);
+    padding: var(--gap-inline);
     border: 1px solid var(--border);
-    background: var(--surface);
+    border-radius: var(--radius-control);
+    background: var(--surface-1);
+  }
+  .settings-repos__add-head {
+    display: grid;
+    gap: var(--s1);
   }
   .settings-repos__add-label {
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--fg3);
+    font-weight: 400;
+    color: var(--text-dim);
     margin: 0;
   }
-  .settings-repos__add-form {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    align-items: end;
-  }
-  .settings-repos__add-form :global(.ui-field) {
-    min-width: 180px;
-  }
-  .settings-repos__preset-select {
-    width: 100%;
+  .settings-repos__add-note {
     font-family: var(--font-mono);
-    font-size: 12px;
-    padding: 6px 8px;
-    border: 1px solid var(--border);
-    background: var(--bg);
-    color: var(--fg1);
-  }
-  .settings-repos__egress-input {
-    width: 100%;
-    min-height: 52px;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    padding: 6px 8px;
-    border: 1px solid var(--border);
-    background: var(--bg);
-    color: var(--fg1);
-    resize: vertical;
-  }
-  .settings-repos__egress-help {
     font-size: 11px;
-    color: var(--fg3);
-    margin: 4px 0 0;
+    color: var(--text-dim);
+    margin: 0;
+  }
+  .settings-repos__egress-preview {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    margin: 0;
+  }
+  #repos .settings-form {
+    margin-bottom: 0;
+  }
+  .settings-repos__actions {
+    display: flex;
+    justify-content: flex-end;
   }
 </style>

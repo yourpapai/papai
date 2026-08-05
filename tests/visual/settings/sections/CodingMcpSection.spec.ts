@@ -44,6 +44,10 @@ test.describe('settings/sections/CodingMcpSection', () => {
 })
 // @generated-end auto-screenshots
 
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
+
 test('CodingMcp — populated shows one row per selection; internal row has no credential input, external row does', async ({
   sharedPage,
 }) => {

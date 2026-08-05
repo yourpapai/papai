@@ -15,7 +15,7 @@
   class="ui-hr"
   style:border-top-width="1px"
   style:border-top-style={dashed ? 'dashed' : 'solid'}
-  style:border-top-color="var(--hair)"
+  style:border-top-color="var(--border)"
 ></div>
 
 <style>

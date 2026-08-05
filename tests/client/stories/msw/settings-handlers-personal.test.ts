@@ -8,7 +8,6 @@ import { describe, expect, test } from 'bun:test'
 import type { HttpHandler } from 'msw'
 
 import {
-  codingCredentialsHandlers,
   identityHandlers,
   mcpHandlers,
   memoryHandlers,
@@ -20,28 +19,6 @@ function pathsOf(handlers: readonly HttpHandler[]): string[] {
 }
 
 describe('personal settings msw handlers', () => {
-  // --- codingCredentialsHandlers ---
-
-  test('codingCredentialsHandlers has all four variants with at least one handler each', () => {
-    expect(Array.isArray(codingCredentialsHandlers.populated)).toBe(true)
-    expect(Array.isArray(codingCredentialsHandlers.empty)).toBe(true)
-    expect(Array.isArray(codingCredentialsHandlers.error)).toBe(true)
-    expect(Array.isArray(codingCredentialsHandlers.loading)).toBe(true)
-    expect(codingCredentialsHandlers.populated.length).toBeGreaterThan(0)
-  })
-
-  test('codingCredentialsHandlers populated covers /settings/api/coding-credentials', () => {
-    expect(
-      pathsOf(codingCredentialsHandlers.populated).some((p) => p.includes('/settings/api/coding-credentials')),
-    ).toBe(true)
-  })
-
-  test('codingCredentialsHandlers populated wires the models endpoint', () => {
-    expect(
-      pathsOf(codingCredentialsHandlers.populated).some((p) => p.includes('/settings/api/coding-credentials/models')),
-    ).toBe(true)
-  })
-
   // --- memoryHandlers ---
 
   test('memoryHandlers has all four variants with at least one handler each', () => {

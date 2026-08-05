@@ -87,7 +87,7 @@
   }
 
   .failure-row:hover {
-    background: var(--raised);
+    background: var(--surface-2);
   }
 
   .failure-summary {
@@ -95,11 +95,11 @@
     flex-wrap: wrap;
     gap: 8px;
     align-items: center;
-    color: var(--fg2);
+    color: var(--text-muted);
   }
 
   .failure-time {
-    color: var(--fg3);
+    color: var(--text-dim);
   }
 
   .failure-tool {
@@ -108,7 +108,7 @@
   }
 
   .failure-error {
-    color: var(--fg);
+    color: var(--text);
     word-break: break-word;
   }
 </style>

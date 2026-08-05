@@ -28,4 +28,34 @@ describe('settings.css', () => {
   test('admin zone has a danger divider', () => {
     expect(css).toContain('.settings-admin-zone')
   })
+  test('status text uses a spacing token rather than the UA default margin', () => {
+    const statusErrorMatch = css.match(/\.status-error \{[^}]*\}/u)
+    const statusSuccessMatch = css.match(/\.status-success \{[^}]*\}/u)
+    expect(statusErrorMatch).not.toBeNull()
+    expect(statusSuccessMatch).not.toBeNull()
+    const [statusError] = statusErrorMatch!
+    const [statusSuccess] = statusSuccessMatch!
+    expect(statusError).toContain('margin: var(--gap-inline) 0 0')
+    expect(statusSuccess).toContain('margin: var(--gap-inline) 0 0')
+  })
+  test('placeholder prose is capped at a reading measure', () => {
+    const m = css.match(/\.placeholder \{[^}]*\}/u)
+    expect(m).not.toBeNull()
+    const [placeholder] = m!
+    expect(placeholder).toContain('max-width: var(--content-max)')
+  })
+  test('settings-form shares grid tracks so controls align across the row', () => {
+    const m = css.match(/\.settings-form \{[^}]*\}/u)
+    expect(m).not.toBeNull()
+    const [form] = m!
+    expect(form).toContain('display: grid')
+    expect(form).not.toContain('align-items: end')
+  })
+  test('non-field form children span label and control only, so buttons sit level with inputs', () => {
+    const m = css.match(/\.settings-form > :not\(\.ui-field\) \{[^}]*\}/u)
+    expect(m).not.toBeNull()
+    const [rule] = m!
+    expect(rule).toContain('grid-row: span 2')
+    expect(rule).toContain('align-self: end')
+  })
 })

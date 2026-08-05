@@ -57,7 +57,7 @@ See LICENSE in the project root for details.
     border-left: 2px solid var(--border);
     padding: 10px 12px;
     margin-bottom: 6px;
-    border-bottom: 1px solid var(--hair);
+    border-bottom: 1px solid var(--border);
     font-size: 11px;
     line-height: 1.45;
     cursor: pointer;
@@ -65,7 +65,7 @@ See LICENSE in the project root for details.
   }
 
   .session-card:hover {
-    background: var(--raised);
+    background: var(--surface-2);
   }
 
   .session-card.active {
@@ -73,14 +73,14 @@ See LICENSE in the project root for details.
   }
 
   .user-id {
-    color: var(--fg);
+    color: var(--text);
     font-weight: 600;
   }
 
   .session-detail {
     display: block;
     margin-top: 2px;
-    color: var(--fg3);
+    color: var(--text-dim);
   }
 
   .wizard-badge {

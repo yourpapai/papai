@@ -39,6 +39,10 @@ test.describe('settings/sections/MemorySection', () => {
 })
 // @generated-end auto-screenshots
 
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
+
 test.describe('settings/sections/MemorySection — manual', () => {
   test('Populated — narrow 640', async ({ sharedPage }) => {
     await switchStory(sharedPage, 'settings-sections-memorysection--populated')

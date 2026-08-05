@@ -30,16 +30,16 @@
     padding: 1px 6px;
     border-radius: 2px;
     line-height: 1.6;
-    border: 1px solid var(--hair);
-    color: var(--fg3);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
   }
   .ui-tag--required {
     color: var(--accent);
     border-color: rgba(93, 217, 122, 0.3);
   }
   .ui-tag--optional {
-    color: var(--fg3);
-    border-color: var(--hair);
+    color: var(--text-dim);
+    border-color: var(--border);
   }
   .ui-tag--info {
     color: var(--info);

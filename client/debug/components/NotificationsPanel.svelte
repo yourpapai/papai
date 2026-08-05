@@ -71,11 +71,11 @@
   }
 
   .notification-row:nth-child(even) {
-    background: var(--surface);
+    background: var(--surface-1);
   }
 
   .notification-time {
-    color: var(--fg3);
+    color: var(--text-dim);
     margin-right: 8px;
   }
 
@@ -86,7 +86,7 @@
   }
 
   .notification-text {
-    color: var(--fg2);
+    color: var(--text-muted);
     word-break: break-word;
   }
 </style>

@@ -8,6 +8,7 @@ import { describe, expect, test } from 'bun:test'
 import { mount, unmount } from 'svelte'
 
 import Combobox from '../../../../client/shared/ui/Combobox.svelte'
+import FieldErrorFixture from './FieldErrorFixture.svelte'
 
 describe('Combobox.svelte', () => {
   test('renders an input wired to a datalist with one option per entry', () => {
@@ -62,5 +63,27 @@ describe('Combobox.svelte', () => {
     const input = target.querySelector<HTMLInputElement>('[data-testid="model"]')!
     expect(input.disabled).toBe(true)
     void unmount(component)
+  })
+
+  test('marks the combobox invalid and describes it when the Field carries an error', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(FieldErrorFixture, { target, props: { error: 'too long (max 200 characters)' } })
+    const input = target.querySelector<HTMLInputElement>('[data-testid="err-combobox"]')!
+    const err = target.querySelector<HTMLElement>('.ui-field__error')!
+    expect(input.getAttribute('aria-invalid')).toBe('true')
+    expect(input.getAttribute('aria-describedby')).toBe(err.id)
+    expect(target.querySelector('.ui-combobox--invalid')).not.toBeNull()
+    void unmount(c)
+  })
+
+  test('leaves the combobox valid when the Field carries no error', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(FieldErrorFixture, { target, props: {} })
+    const input = target.querySelector<HTMLInputElement>('[data-testid="err-combobox"]')!
+    expect(input.getAttribute('aria-invalid')).toBeNull()
+    expect(target.querySelector('.ui-combobox--invalid')).toBeNull()
+    void unmount(c)
   })
 })

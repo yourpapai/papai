@@ -334,7 +334,7 @@
   .guardrails-heading {
     font-family: var(--font-mono);
     font-size: 13px;
-    color: var(--fg2);
+    color: var(--text-muted);
     margin: 0;
   }
   .guardrails-agents,
@@ -356,8 +356,8 @@
     width: 4em;
     padding: 4px 6px;
     border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--fg);
+    background: var(--surface-1);
+    color: var(--text);
     font-size: 13px;
     font-family: var(--font-mono);
   }
@@ -366,8 +366,8 @@
     min-height: 80px;
     padding: 8px;
     border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--fg);
+    background: var(--surface-1);
+    color: var(--text);
     font-size: 13px;
     font-family: var(--font-mono);
     resize: vertical;
@@ -378,7 +378,7 @@
   }
   .guardrails-key-set {
     font-size: 14px;
-    color: var(--fg2);
+    color: var(--text-muted);
     margin: 0;
   }
   .guardrails-key-fields {

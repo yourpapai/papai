@@ -110,7 +110,7 @@
   .settings-section__caption {
     margin: 0;
     font-size: 12px;
-    color: var(--fg3);
+    color: var(--text-dim);
     line-height: 1.45;
   }
   .settings-section__action-error {

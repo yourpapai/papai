@@ -34,20 +34,24 @@ test.describe('settings/sections/ByokSection', () => {
 })
 // @generated-end auto-screenshots
 
-test('Missing required — narrow 640', async ({ sharedPage }) => {
-  await switchStory(sharedPage, 'settings-sections-byoksection--missing-required')
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
+
+test('Enabled no providers — narrow 640', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-byoksection--enabled-no-providers')
   await sharedPage.setViewportSize({ width: 640, height: 700 })
   await expect(sharedPage).toHaveScreenshot()
 })
 
-test('Secret set — narrow 640', async ({ sharedPage }) => {
-  await switchStory(sharedPage, 'settings-sections-byoksection--secret-set')
+test('Enabled with provider — narrow 640', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-byoksection--enabled-with-provider')
   await sharedPage.setViewportSize({ width: 640, height: 700 })
   await expect(sharedPage).toHaveScreenshot()
 })
 
-test('Missing required — input focused', async ({ sharedPage }) => {
-  await switchStory(sharedPage, 'settings-sections-byoksection--missing-required')
-  await sharedPage.getByTestId('byok-input-ANTHROPIC_API_KEY').focus()
+test('Enabled no providers — add-provider form open', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-byoksection--enabled-no-providers')
+  await sharedPage.getByTestId('byok-add-provider').click()
   await expect(sharedPage).toHaveScreenshot()
 })

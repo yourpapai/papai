@@ -26,8 +26,17 @@ test.describe('settings/sections/CodingCredentialsSection', () => {
     await switchStory(sharedPage, 'settings-sections-codingcredentialssection--loading')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('OpenAI-compatible', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-codingcredentialssection--open-ai-compatible')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
 
 test('Populated — narrow 640', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'settings-sections-codingcredentialssection--populated')

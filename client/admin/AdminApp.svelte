@@ -45,6 +45,7 @@
   {/snippet}
   {#snippet children()}
     <div class="admin-grid">
+      <h1 class="sr-only">Admin</h1>
       <AdminSidebarPanel activeId={adminState.currentSection} />
       <main class="admin-grid__main">
         <OverviewSection />

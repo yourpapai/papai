@@ -35,12 +35,25 @@
 }
 
 /* forms */
+/* Three shared tracks -- label / control / hint. Fields span all three via
+   subgrid (Field.svelte), so labels, controls and hints line up across the
+   whole row. Non-field children (submit buttons) span only label+control and
+   sit at the bottom of the control track, which puts them level with the
+   inputs rather than below a neighbour's hint text. */
 .settings-form {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-rows: auto auto auto;
   gap: var(--gap-inline);
-  align-items: end;
   margin-bottom: var(--gap-field);
+}
+.settings-form > * {
+  grid-row: span 3;
+}
+.settings-form > :not(.ui-field) {
+  grid-row: span 2;
+  align-self: end;
+  justify-self: start;
 }
 .settings-table-wrap {
   overflow-x: auto;
@@ -88,14 +101,22 @@
 }
 
 /* ---- status text ---- */
+/* Both carry the same margin so an error and a success message occupy identical
+   space in the same slot; a section must not shift by the UA default when one
+   swaps for the other. */
 .status-error {
   color: var(--danger);
+  margin: var(--gap-inline) 0 0;
 }
 .status-success {
   color: var(--success);
+  margin: var(--gap-inline) 0 0;
 }
+/* --content-max is the same cap .settings-group uses, so placeholder prose
+   wraps at the measure of the column that usually contains it. */
 .placeholder {
   color: var(--text-muted);
+  max-width: var(--content-max);
 }
 
 .settings-gate {

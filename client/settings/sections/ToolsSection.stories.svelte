@@ -74,12 +74,51 @@
       },
     ],
   }
+  const longDomainNames: ToolsResponse = {
+    contextId: CONTEXT_ID,
+    activePreset: null,
+    hasStoredDefaults: false,
+    domains: [
+      {
+        domain: 'plugin_enterprise_document_management_retrieval_and_archival_connector',
+        summary: 'partial',
+        tools: [
+          {
+            name: 'plugin_enterprise_document_management_retrieval_and_archival_connector__search_documents',
+            permission: 'ask',
+            risk: 'open-world',
+            group: 'enterprise-document-management-retrieval-and-archival',
+          },
+          {
+            name: 'plugin_enterprise_document_management_retrieval_and_archival_connector__archive_document',
+            permission: 'deny',
+            risk: 'destructive',
+            group: 'enterprise-document-management-retrieval-and-archival',
+          },
+        ],
+      },
+      {
+        domain: 'mcp_internal_knowledge_base_search_and_relevance_indexing_service',
+        summary: 'ask',
+        tools: [
+          {
+            name: 'mcp_internal_knowledge_base_search_and_relevance_indexing_service__query',
+            permission: 'ask',
+            risk: 'open-world',
+          },
+        ],
+      },
+    ],
+  }
+  const fetchLongDomainNames = (): Promise<ToolsResponse> => Promise.resolve(longDomainNames)
+
   const fetchGrouped = (): Promise<ToolsResponse> => Promise.resolve(grouped)
 
   // DI fixtures: each state is a fetchToolsFn returning the matching response.
   const fetchPopulated = (): Promise<ToolsResponse> => Promise.resolve(populated)
   const fetchEmpty = (): Promise<ToolsResponse> => Promise.resolve(emptyResponse)
   const fetchPreset = (): Promise<ToolsResponse> => Promise.resolve(presetResponse)
+  const clearDefaults = (): Promise<ToolsResponse> => Promise.resolve({ ...presetResponse, hasStoredDefaults: false })
   const fetchNever = (): Promise<ToolsResponse> => new Promise<ToolsResponse>(() => {})
   const fetchError = (): Promise<ToolsResponse> => Promise.reject(new Error('Failed to load tools'))
 
@@ -94,10 +133,14 @@
 
 <Story name="Empty" args={{ contextId: CONTEXT_ID, fetchToolsFn: fetchEmpty }} />
 
-<Story name="Preset applied" args={{ contextId: CONTEXT_ID, fetchToolsFn: fetchPreset, hasStoredDefaults: true }} />
+<Story
+  name="Preset applied"
+  args={{ contextId: CONTEXT_ID, fetchToolsFn: fetchPreset, hasStoredDefaults: true, clearPresetFn: clearDefaults }} />
 
 <Story name="Grouped" args={{ contextId: CONTEXT_ID, fetchToolsFn: fetchGrouped }} />
 
 <Story name="Loading" args={{ contextId: CONTEXT_ID, fetchToolsFn: fetchNever }} />
 
 <Story name="Error" args={{ contextId: CONTEXT_ID, fetchToolsFn: fetchError }} />
+
+<Story name="Long domain names" args={{ contextId: CONTEXT_ID, fetchToolsFn: fetchLongDomainNames }} />

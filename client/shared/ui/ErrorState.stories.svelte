@@ -16,3 +16,11 @@
 
 <Story name="With retry" args={{ message: 'Request failed: 500 Internal Server Error', onRetry: () => {} }} />
 <Story name="Message only" args={{ message: 'Request failed: 500 Internal Server Error' }} />
+<Story
+  name="With detail"
+  args={{
+    message: 'Could not load BYOK settings for this context.',
+    detail: 'TypeError: Failed to fetch',
+    onRetry: () => {},
+  }}
+/>

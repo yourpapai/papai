@@ -211,7 +211,7 @@
   }
   .settings-plugins__card {
     border: 1px solid var(--border);
-    background: var(--surface);
+    background: var(--surface-1);
     padding: 12px;
     display: grid;
     gap: 10px;

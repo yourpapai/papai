@@ -47,7 +47,7 @@
     flex-direction: column;
     gap: 8px;
     padding: 12px;
-    background: var(--surface);
+    background: var(--surface-1);
     border-right: 1px solid var(--border);
     min-height: 100vh;
   }
@@ -57,7 +57,7 @@
     gap: 2px;
   }
   .admin-sidebar__link {
-    color: var(--fg2);
+    color: var(--text-muted);
     text-decoration: none;
     padding: 6px 8px;
     font-family: var(--font-mono);
@@ -65,13 +65,13 @@
     border-left: 2px solid transparent;
   }
   .admin-sidebar__link:hover {
-    color: var(--fg);
-    background: var(--raised);
+    color: var(--text);
+    background: var(--surface-2);
   }
   .admin-sidebar__link--active {
     color: var(--accent);
     border-left-color: var(--accent);
-    background: var(--raised);
+    background: var(--surface-2);
   }
   .admin-sidebar__kvs {
     display: flex;

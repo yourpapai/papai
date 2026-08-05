@@ -22,14 +22,13 @@ test.describe('shared/ui/KV', () => {
     await expect(sharedPage).toHaveScreenshot()
   })
 
-  test('Dim', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'shared-ui-kv--dim')
-    await expect(sharedPage).toHaveScreenshot()
-  })
-
   test('With Pill value', async ({ sharedPage }) => {
     await switchStory(sharedPage, 'shared-ui-kv--with-pill-value')
     await expect(sharedPage).toHaveScreenshot()
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()

@@ -160,7 +160,7 @@
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--fg3);
+    color: var(--text-dim);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -168,8 +168,8 @@
   .count-badge {
     font-size: 11px;
     font-weight: 500;
-    color: var(--fg4);
-    background: var(--surface2);
+    color: var(--text-dim);
+    background: var(--surface-2);
     padding: 1px 6px;
     border-radius: 10px;
   }
@@ -177,8 +177,8 @@
     margin-bottom: 8px;
     padding: 6px 10px;
     font-size: 11px;
-    color: var(--fg3);
-    background: var(--surface2);
+    color: var(--text-dim);
+    background: var(--surface-2);
     border-radius: 6px;
   }
   .subject-detail__chart {
@@ -187,7 +187,7 @@
   }
   .subject-detail__caption {
     margin-top: 4px;
-    color: var(--fg3);
+    color: var(--text-dim);
     font-family: var(--font-mono);
     font-size: 11px;
   }
@@ -199,20 +199,20 @@
   }
   .admin-subject__requests th {
     text-align: left;
-    color: var(--fg3);
+    color: var(--text-dim);
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    border-bottom: 1px solid var(--hair);
+    border-bottom: 1px solid var(--border);
     padding: 6px 8px;
     position: sticky;
     top: 0;
-    background: var(--surface);
+    background: var(--surface-1);
   }
   .admin-subject__requests td {
     padding: 6px 8px;
-    border-bottom: 1px solid var(--hair);
-    color: var(--fg);
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
     white-space: nowrap;
   }
   .admin-subject__requests th.num,
@@ -236,15 +236,15 @@
     margin: 0;
     padding: 8px 12px;
     font-size: 11px;
-    color: var(--fg2);
-    background: var(--surface2);
+    color: var(--text-muted);
+    background: var(--surface-2);
     border-radius: 6px;
     overflow-x: auto;
     white-space: pre;
   }
   .admin-subject__empty {
     padding: 12px;
-    color: var(--fg3);
+    color: var(--text-dim);
     font-family: var(--font-mono);
     font-size: 12px;
     margin: 0;
@@ -252,7 +252,7 @@
   .placeholder {
     display: block;
     padding: 16px;
-    color: var(--fg3);
+    color: var(--text-dim);
     font-family: var(--font-mono);
     font-size: 12px;
   }

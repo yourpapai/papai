@@ -100,11 +100,11 @@
     padding: 2px 0;
     font-family: var(--font-mono);
     font-size: 12px;
-    color: var(--fg);
+    color: var(--text);
     line-height: 1.5;
   }
   .tree-key {
-    color: var(--fg2);
+    color: var(--text-muted);
   }
   .tree-open {
     display: inline-flex;
@@ -114,16 +114,16 @@
   .tree-toggle {
     display: inline-flex;
     width: 12px;
-    color: var(--fg3);
+    color: var(--text-dim);
     cursor: pointer;
     user-select: none;
   }
   .tree-bracket {
-    color: var(--fg3);
+    color: var(--text-dim);
   }
   .tree-children {
     display: block;
-    border-left: 1px dashed var(--hair);
+    border-left: 1px dashed var(--border);
   }
   .tree-string {
     color: var(--accent);
@@ -136,7 +136,7 @@
   }
   .tree-null,
   .tree-undefined {
-    color: var(--fg4);
+    color: var(--text-dim);
     font-style: italic;
   }
 </style>

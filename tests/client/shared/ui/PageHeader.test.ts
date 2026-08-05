@@ -43,4 +43,14 @@ describe('PageHeader.svelte', () => {
     expect(target.querySelector('[data-testid]')).toBeNull()
     void unmount(c)
   })
+
+  test('renders the title as an h2 so sections form a document outline', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(PageHeader, { target, props: { title: 'Repositories' } })
+    const heading = target.querySelector<HTMLElement>('h2')!
+    expect(heading.textContent).toBe('Repositories')
+    expect(heading.classList.contains('ui-page-header__title')).toBe(true)
+    void unmount(c)
+  })
 })

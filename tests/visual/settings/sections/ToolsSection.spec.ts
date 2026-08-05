@@ -36,12 +36,33 @@ test.describe('settings/sections/ToolsSection', () => {
     await switchStory(sharedPage, 'settings-sections-toolssection--error')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('Long domain names', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-toolssection--long-domain-names')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
 
 test('Tools — grouped, expanded, narrow', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'settings-sections-toolssection--grouped')
   await sharedPage.setViewportSize({ width: 640, height: 900 })
   await sharedPage.getByTestId('domain-expand-plugin').click()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('Tools — populated, expanded, per-tool segmented control', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-toolssection--populated')
+  await sharedPage.getByTestId('domain-expand-tasks').click()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('Tools — long domain names, narrow', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-toolssection--long-domain-names')
+  await sharedPage.setViewportSize({ width: 640, height: 900 })
   await expect(sharedPage).toHaveScreenshot()
 })

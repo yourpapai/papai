@@ -48,4 +48,20 @@ describe('Secret.svelte', () => {
     expect(called).toBe(true)
     void unmount(c)
   })
+
+  test('falls back to the eight-bullet default when the value is an empty string', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(Secret, { target, props: { value: '' } })
+    expect(target.querySelector('.ui-secret__value')?.textContent).toBe('••••••••')
+    void unmount(c)
+  })
+
+  test('renders the real masked value untouched when it is non-empty', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(Secret, { target, props: { value: '••••WvfQ' } })
+    expect(target.querySelector('.ui-secret__value')?.textContent).toBe('••••WvfQ')
+    void unmount(c)
+  })
 })

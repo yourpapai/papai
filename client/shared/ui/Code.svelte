@@ -25,9 +25,9 @@
   .ui-code {
     font-family: var(--font-mono);
     font-size: 12px;
-    color: var(--fg);
+    color: var(--text);
     background: var(--inset);
-    border: 1px solid var(--hair);
+    border: 1px solid var(--border);
     padding: 3px 8px;
     border-radius: 2px;
     display: inline-block;

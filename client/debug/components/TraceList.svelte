@@ -66,7 +66,7 @@
   }
 
   .trace-row:hover {
-    background: var(--raised);
+    background: var(--surface-2);
   }
 
   .trace-row.error {
@@ -77,15 +77,15 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    color: var(--fg2);
+    color: var(--text-muted);
   }
 
   .trace-summary .trace-time {
-    color: var(--fg3);
+    color: var(--text-dim);
   }
 
   .trace-summary .trace-user {
-    color: var(--fg);
+    color: var(--text);
   }
 
   .trace-summary .trace-model {

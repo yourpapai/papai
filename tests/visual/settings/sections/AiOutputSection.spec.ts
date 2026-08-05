@@ -29,6 +29,10 @@ test.describe('settings/sections/AiOutputSection', () => {
 })
 // @generated-end auto-screenshots
 
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
+
 test('Populated — narrow 640', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'settings-sections-aioutputsection--populated')
   await sharedPage.setViewportSize({ width: 640, height: 700 })

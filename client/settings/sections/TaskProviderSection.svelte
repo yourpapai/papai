@@ -18,6 +18,8 @@
   import ConfigFieldRow from '../components/ConfigFieldRow.svelte'
   import type { ConfigField, ContextTaskInstanceResponse, ProvisionResult } from '../fetcher-schemas.js'
   import { fetchConfig, fetchContextTaskInstance, patchContextTaskInstance, provisionKaneo } from '../fetchers.js'
+  import { formatTaskInstanceOption } from '../lib/task-instance-label.js'
+  import { resolveTaskInstanceSelection } from '../lib/task-instance-selection.js'
 
   interface Props {
     contextId: string
@@ -34,6 +36,7 @@
 
   let instanceData: ContextTaskInstanceResponse | null = $state(null)
   let selectedInstanceId = $state('')
+  let selectPlaceholder = $state('')
   let bindError: unknown = $state(null)
   let bindStatus: string | null = $state(null)
   let binding = $state(false)
@@ -48,11 +51,9 @@
       if (id !== contextId) return
       fields = config.fields
       instanceData = instance
-      const currentId = instance.taskInstanceId
-      selectedInstanceId =
-        currentId !== null && instance.available.some((a) => a.id === currentId)
-          ? currentId
-          : (instance.available[0]?.id ?? '')
+      const selection = resolveTaskInstanceSelection(instance.taskInstanceId, instance.available)
+      selectedInstanceId = selection.selected
+      selectPlaceholder = selection.placeholder
     } catch (err) {
       if (id === contextId) error = err
     } finally {
@@ -129,7 +130,8 @@
             <Field label="Task instance">
               <Select
                 value={selectedInstanceId}
-                options={instanceData.available.map((o) => ({ value: o.id, label: `${o.name ?? o.id} (${o.type} · ${o.status})` }))}
+                options={instanceData.available.map(formatTaskInstanceOption)}
+                placeholder={selectPlaceholder}
                 onChange={(v) => (selectedInstanceId = v)}
                 disabled={binding}
                 testid="context-task-instance" />
@@ -194,6 +196,9 @@
     padding-top: 8px;
     border-top: 1px solid var(--border);
   }
+  .settings-provision__reveal {
+    padding-inline: var(--gap-inline);
+  }
   .provision-actions { display: flex; }
   .settings-provision__secret {
     display: flex;
@@ -203,7 +208,7 @@
     font-size: 12px;
   }
   .settings-provision__secret-label {
-    color: var(--fg3);
+    color: var(--text-dim);
     min-width: 80px;
   }
 </style>

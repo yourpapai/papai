@@ -93,9 +93,9 @@
 </div>
 
 <style>
-  .role-binding { display: grid; gap: 6px; padding: 8px 0; }
+  .role-binding { display: grid; gap: var(--gap-tight); padding: var(--gap-tight) 0; }
   .role-binding__head { display: flex; align-items: center; justify-content: space-between; }
-  .role-binding__name { font-family: var(--font-mono); font-size: 12px; text-transform: capitalize; color: var(--fg2); }
-  .role-binding__inherit { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--fg3); cursor: pointer; }
-  .role-binding__controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  .role-binding__name { font-family: var(--font-mono); font-size: 12px; text-transform: capitalize; color: var(--text-muted); }
+  .role-binding__inherit { display: flex; align-items: center; gap: var(--s1); font-size: 11px; color: var(--text-dim); cursor: pointer; }
+  .role-binding__controls { display: flex; gap: var(--gap-tight); flex-wrap: wrap; }
 </style>

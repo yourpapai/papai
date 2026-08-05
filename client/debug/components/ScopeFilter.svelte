@@ -48,7 +48,7 @@
   .scope-filter__hint {
     font-family: var(--font-mono);
     font-size: 10px;
-    color: var(--fg3);
+    color: var(--text-dim);
     padding: 0 4px 4px;
   }
   .scope-filter {
@@ -65,21 +65,21 @@
     padding: 1px 6px;
     border: 1px solid var(--border);
     border-radius: 2px;
-    background: var(--surface);
-    color: var(--fg2);
+    background: var(--surface-1);
+    color: var(--text-muted);
     cursor: pointer;
   }
   .scope-chip__count {
-    color: var(--fg4);
+    color: var(--text-dim);
     margin-left: 4px;
   }
   .scope-chip--include {
     border-color: var(--accent, #4ea1ff);
-    color: var(--fg);
+    color: var(--text);
   }
   .scope-chip--exclude {
     border-color: var(--danger, #ff5c5c);
-    color: var(--fg3);
+    color: var(--text-dim);
     text-decoration: line-through;
   }
 </style>

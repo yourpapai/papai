@@ -50,10 +50,10 @@
   }
   .models-editor__textarea {
     width: 100%;
-    background: var(--raised);
+    background: var(--surface-2);
     border: 1px solid var(--border);
     border-radius: var(--radius-control);
-    color: var(--fg);
+    color: var(--text);
     font-family: var(--font-mono);
     font-size: 12px;
     padding: 8px;

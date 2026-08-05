@@ -28,3 +28,7 @@ test.describe('shared/PanelShell', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()

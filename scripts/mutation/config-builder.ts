@@ -6,8 +6,23 @@
 export type StrykerBunConfig = Record<string, unknown> & {
   testFiles?: string[]
   bunArgs?: string[]
+  env?: Record<string, string>
   timeout?: number
 }
+
+/**
+ * Env flag tests/setup.ts reads to register the Svelte loader plugin.
+ *
+ * The runner's coverage preload eagerly imports every mutate target, and it is
+ * passed as a --preload ahead of the ones in bunArgs — so for a target that
+ * (transitively) imports a .svelte.ts module, tests/client-setup.ts registers
+ * the loader too late: the untransformed module throws `$state is not defined`,
+ * and Bun's cache hands that same failed module to the test file, which then
+ * cannot load at all ("No tests were executed"). bunfig's preload runs before
+ * any CLI --preload, so registering from tests/setup.ts is the only hook early
+ * enough.
+ */
+export const SVELTE_PLUGIN_ENV_VAR = 'PAPAI_SVELTE_TEST_PLUGIN'
 
 /**
  * Normalize a test file path so Bun treats it as a path, not a pattern.
@@ -17,13 +32,29 @@ export type StrykerBunConfig = Record<string, unknown> & {
 export const toRelativeTestFilePath = (p: string): string => (p.startsWith('./') || p.startsWith('/') ? p : `./${p}`)
 
 /**
- * Return true when any of the test files live under tests/client/ or tests/e2e/,
- * which are excluded by bunfig.toml pathIgnorePatterns. The stryker-bun-runner
- * copies pathIgnorePatterns into the sanitized sandbox bunfig, so we must pass
- * --path-ignore-patterns '' as a bunArg to clear it for these runs.
+ * Extra bun CLI flags the tests/client/ and tests/e2e/ lanes need inside the
+ * Stryker sandbox. Two distinct problems:
+ *
+ * 1. Discovery — both lanes are excluded by bunfig.toml pathIgnorePatterns, and
+ *    the stryker-bun-runner copies pathIgnorePatterns into the sanitized sandbox
+ *    bunfig, so `--path-ignore-patterns ''` is needed to clear it.
+ * 2. Execution mode — each lane's package.json script passes a setup preload
+ *    (and, for the client lane, `--conditions=browser`, without which msw
+ *    resolves to its node export and the handler suites fail unmutated). A lane
+ *    whose tests fail on the unmutated code aborts the whole file with a
+ *    ConfigError, which the paired run records as `errored` rather than a score.
  */
-const needsPathIgnoreOverride = (testFiles: string[]): boolean =>
-  testFiles.some((f) => f.includes('tests/client/') || f.includes('tests/e2e/'))
+const laneBunArgs = (testFiles: string[]): string[] => {
+  const args: string[] = []
+  if (testFiles.some((f) => f.includes('tests/client/'))) {
+    args.push('--conditions=browser', '--preload', './tests/client-setup.ts')
+  }
+  if (testFiles.some((f) => f.includes('tests/e2e/'))) {
+    args.push('--preload', './tests/e2e/bun-test-setup.ts')
+  }
+  if (args.length > 0) args.push('--path-ignore-patterns', '')
+  return args
+}
 
 export type StrykerConfig = Record<string, unknown> & {
   appendPlugins?: string[]
@@ -69,12 +100,14 @@ export function buildPairedConfig(input: BuildPairedConfigInput): PairedStrykerC
   const baseThresholds = base.thresholds ?? { high: 80, low: 60, break: 0 }
   const normalizedTestFiles = testFiles.map(toRelativeTestFilePath)
   const baseBunArgs = Array.isArray(baseBun.bunArgs) ? baseBun.bunArgs : []
-  const extraBunArgs = needsPathIgnoreOverride(normalizedTestFiles) ? ['--path-ignore-patterns', ''] : []
-  const bunArgs = [...baseBunArgs, ...extraBunArgs]
+  const bunArgs = [...baseBunArgs, ...laneBunArgs(normalizedTestFiles)]
+  const isClientLane = normalizedTestFiles.some((f) => f.includes('tests/client/'))
+  const env = isClientLane ? { ...baseBun.env, [SVELTE_PLUGIN_ENV_VAR]: '1' } : baseBun.env
   const resolvedBun: StrykerBunConfig & { testFiles: string[] } = {
     ...baseBun,
     testFiles: normalizedTestFiles,
     ...(bunArgs.length > 0 ? { bunArgs } : {}),
+    ...(env === undefined ? {} : { env }),
   }
   const next: PairedStrykerConfig = {
     ...base,

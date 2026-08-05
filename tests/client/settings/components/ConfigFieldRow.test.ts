@@ -384,7 +384,9 @@ describe('ConfigFieldRow', () => {
     flushSync()
     target.querySelector<HTMLButtonElement>('[data-testid="cfg-seg-ai_output_detail_level-raw"]')!.click()
     await drain()
-    expect(target.querySelector('.status-error')).not.toBeNull()
+    const errorEl = target.querySelector('.settings-field__error')
+    expect(errorEl).not.toBeNull()
+    expect(errorEl!.textContent).toBe('request failed with status 500')
     const sanitizedBtn = target.querySelector<HTMLButtonElement>(
       '[data-testid="cfg-seg-ai_output_detail_level-sanitized"]',
     )!
@@ -614,6 +616,109 @@ describe('ConfigFieldRow', () => {
     void unmount(component)
   })
 
+  test('an enum field with a hint and no error describes the segmented control by the hint id only', () => {
+    setMockFetch(() => Promise.resolve(json({})))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'ai_output_detail_level',
+        storageKey: 'ai_output_detail_level',
+        label: 'Detail level',
+        required: false,
+        sensitive: false,
+        kind: 'ai-output',
+        control: 'select',
+        options: [
+          { value: 'sanitized', label: 'Standard' },
+          { value: 'raw', label: 'Raw' },
+        ],
+        hasValue: false,
+        value: 'sanitized',
+      },
+      hint: 'Raw detail shows unredacted tool inputs/outputs and reasoning in chat.',
+      onSaved: () => undefined,
+    })
+    flushSync()
+    const describedBy = target.querySelector('[role="radiogroup"]')!.getAttribute('aria-describedby')
+    expect(describedBy).toBe('cfg-hint-ai_output_detail_level')
+    expect(document.getElementById('cfg-hint-ai_output_detail_level')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('an enum field with a hint whose save fails describes the segmented control by both the error and hint ids', async () => {
+    setCsrfToken('c')
+    setMockFetch(() => Promise.resolve(new Response('nope', { status: 500 })))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'ai_output_detail_level',
+        storageKey: 'ai_output_detail_level',
+        label: 'Detail level',
+        required: false,
+        sensitive: false,
+        kind: 'ai-output',
+        control: 'select',
+        options: [
+          { value: 'sanitized', label: 'Standard' },
+          { value: 'raw', label: 'Raw' },
+        ],
+        hasValue: false,
+        value: 'sanitized',
+      },
+      hint: 'Raw detail shows unredacted tool inputs/outputs and reasoning in chat.',
+      onSaved: () => undefined,
+    })
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-seg-ai_output_detail_level-raw"]')!.click()
+    await drain()
+    const describedBy = target.querySelector('[role="radiogroup"]')!.getAttribute('aria-describedby')!
+    const ids = describedBy.split(' ')
+    expect(ids.length).toBe(2)
+    const [firstId, secondId] = ids
+    expect(document.getElementById(firstId!)).not.toBeNull()
+    expect(document.getElementById(secondId!)).not.toBeNull()
+    const errorEl = target.querySelector('.settings-field__error')
+    expect(errorEl).not.toBeNull()
+    expect(ids).toContain(errorEl!.id)
+    const hintEl = target.querySelector('#cfg-hint-ai_output_detail_level')
+    expect(hintEl).not.toBeNull()
+    expect(ids).toContain('cfg-hint-ai_output_detail_level')
+    void unmount(component)
+  })
+
+  test('an enum field with no hint whose save fails describes the segmented control by the error id only', async () => {
+    setCsrfToken('c')
+    setMockFetch(() => Promise.resolve(new Response('nope', { status: 500 })))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'ai_output_detail_level',
+        storageKey: 'ai_output_detail_level',
+        label: 'Detail level',
+        required: false,
+        sensitive: false,
+        kind: 'ai-output',
+        control: 'select',
+        options: [
+          { value: 'sanitized', label: 'Standard' },
+          { value: 'raw', label: 'Raw' },
+        ],
+        hasValue: false,
+        value: 'sanitized',
+      },
+      onSaved: () => undefined,
+    })
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-seg-ai_output_detail_level-raw"]')!.click()
+    await drain()
+    const errorEl = target.querySelector('.settings-field__error')
+    expect(errorEl).not.toBeNull()
+    const describedBy = target.querySelector('[role="radiogroup"]')!.getAttribute('aria-describedby')
+    expect(describedBy).toBe(errorEl!.id)
+    expect(document.getElementById(errorEl!.id)).not.toBeNull()
+    void unmount(component)
+  })
+
   test('disables the segmented control while an enum save is in flight', async () => {
     setCsrfToken('c')
     let release!: (r: Response) => void
@@ -650,6 +755,226 @@ describe('ConfigFieldRow', () => {
     release(json({ ok: true, contextId: 'user:1' }))
     await drain()
     expect(rawBtn.disabled).toBe(false)
+    void unmount(component)
+  })
+
+  test('renders the hint paragraph through the shell for a non-enum field', () => {
+    setMockFetch(() => Promise.resolve(json({})))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'timezone',
+        storageKey: 'timezone',
+        label: 'Timezone',
+        required: false,
+        sensitive: false,
+        kind: 'preference',
+        hasValue: true,
+        value: 'UTC',
+      },
+      hint: 'Pick your local timezone for scheduling.',
+      onSaved: () => undefined,
+    })
+    flushSync()
+    const hintEl = target.querySelector('.settings-field__hint')
+    expect(hintEl).not.toBeNull()
+    expect(hintEl!.textContent).toBe('Pick your local timezone for scheduling.')
+    void unmount(component)
+  })
+
+  test('a non-enum field renders the save error through the shell when the PATCH fails', async () => {
+    setCsrfToken('c')
+    setMockFetch(() => Promise.resolve(json({ error: 'save failed' }, 500)))
+    let saved = false
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'timezone',
+        storageKey: 'timezone',
+        label: 'Timezone',
+        required: false,
+        sensitive: false,
+        kind: 'preference',
+        hasValue: true,
+        value: 'UTC',
+      },
+      onSaved: () => {
+        saved = true
+      },
+    })
+    flushSync()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="cfg-input-timezone"]')!
+    input.value = 'Europe/Berlin'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-save-timezone"]')!.click()
+    await drain()
+    const errorEl = target.querySelector('.settings-field__error')
+    expect(errorEl).not.toBeNull()
+    expect(errorEl!.textContent).toBe('save failed')
+    expect(saved).toBe(false)
+    void unmount(component)
+  })
+
+  test('a non-enum field renders the error instead of the hint when both are present', async () => {
+    setCsrfToken('c')
+    setMockFetch(() => Promise.resolve(json({ error: 'save failed' }, 500)))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'timezone',
+        storageKey: 'timezone',
+        label: 'Timezone',
+        required: false,
+        sensitive: false,
+        kind: 'preference',
+        hasValue: true,
+        value: 'UTC',
+      },
+      hint: 'Pick your local timezone for scheduling.',
+      onSaved: () => undefined,
+    })
+    flushSync()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="cfg-input-timezone"]')!
+    input.value = 'Europe/Berlin'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-save-timezone"]')!.click()
+    await drain()
+    expect(target.querySelector('.settings-field__error')).not.toBeNull()
+    expect(target.querySelector('.settings-field__hint')).toBeNull()
+    void unmount(component)
+  })
+
+  test('an enum field shows the SegmentedControl busy caption while saving', async () => {
+    setCsrfToken('c')
+    let release: (r: Response) => void = () => {}
+    setMockFetch(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = resolve
+        }),
+    )
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'ai_tool_visibility',
+        storageKey: 'ai_tool_visibility',
+        label: 'Show tool calls',
+        required: false,
+        sensitive: false,
+        kind: 'ai-output',
+        control: 'toggle',
+        options: [
+          { value: 'off', label: 'Off' },
+          { value: 'on', label: 'On' },
+        ],
+        hasValue: false,
+        value: 'off',
+      },
+      onSaved: () => {},
+    })
+    flushSync()
+    expect(target.querySelector('.ui-seg__busy')).toBeNull()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-seg-ai_tool_visibility-on"]')!.click()
+    await drain()
+    expect(target.querySelector('.ui-seg__busy')?.textContent).toBe('Saving…')
+    expect(target.querySelector('[role="radiogroup"]')?.getAttribute('aria-busy')).toBe('true')
+
+    release(json({ ok: true, contextId: 'user:1' }))
+    await drain()
+    expect(target.querySelector('.ui-seg__busy')).toBeNull()
+    void unmount(component)
+  })
+
+  test('shows a saved acknowledgement after a resolved save, and not before', async () => {
+    setCsrfToken('c')
+    setMockFetch(() => Promise.resolve(json({ ok: true, contextId: 'user:1' })))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'timezone',
+        storageKey: 'timezone',
+        label: 'Timezone',
+        required: true,
+        sensitive: false,
+        kind: 'preference',
+        hasValue: true,
+        value: 'UTC',
+      },
+      onSaved: () => {},
+    })
+    flushSync()
+    expect(target.querySelector('[data-testid="cfg-saved-timezone"]')).toBeNull()
+
+    const input = target.querySelector<HTMLInputElement>('[data-testid="cfg-input-timezone"]')!
+    input.value = 'Europe/Berlin'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-save-timezone"]')!.click()
+    await drain()
+
+    expect(target.querySelector('[data-testid="cfg-saved-timezone"]')?.textContent).toContain('Saved')
+    void unmount(component)
+  })
+
+  test('does not acknowledge a save that failed', async () => {
+    setCsrfToken('c')
+    setMockFetch(() => Promise.resolve(json({ error: 'nope' }, 500)))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'timezone',
+        storageKey: 'timezone',
+        label: 'Timezone',
+        required: true,
+        sensitive: false,
+        kind: 'preference',
+        hasValue: true,
+        value: 'UTC',
+      },
+      onSaved: () => {},
+    })
+    flushSync()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="cfg-input-timezone"]')!
+    input.value = 'Europe/Berlin'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-save-timezone"]')!.click()
+    await drain()
+
+    expect(target.querySelector('[data-testid="cfg-saved-timezone"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('acknowledges an enum save', async () => {
+    setCsrfToken('c')
+    setMockFetch(() => Promise.resolve(json({ ok: true, contextId: 'user:1' })))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'ai_output',
+        storageKey: 'ai_output',
+        label: 'AI output',
+        required: false,
+        sensitive: false,
+        kind: 'preference',
+        hasValue: true,
+        value: 'rich',
+        control: 'toggle',
+        options: [
+          { value: 'rich', label: 'Rich' },
+          { value: 'raw', label: 'Raw' },
+        ],
+      },
+      onSaved: () => {},
+    })
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-seg-ai_output-raw"]')!.click()
+    await drain()
+
+    expect(target.querySelector('[data-testid="cfg-saved-ai_output"]')?.textContent).toContain('Saved')
     void unmount(component)
   })
 })

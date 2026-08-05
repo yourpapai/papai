@@ -18,3 +18,7 @@ test.describe('admin/AdminApp', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../support/viewport.js'
+
+pinDefaultViewport()

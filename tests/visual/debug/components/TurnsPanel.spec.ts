@@ -16,5 +16,19 @@ test.describe('debug/components/TurnsPanel', () => {
     await switchStory(sharedPage, 'debug-components-turnspanel--empty')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('Selected', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'debug-components-turnspanel--selected')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('Filtered', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'debug-components-turnspanel--filtered')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()

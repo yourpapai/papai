@@ -7,9 +7,9 @@ See LICENSE in the project root for details.
 
 # UX Review — MembersSection
 
-**Date:** 2026-07-03
-**Reviewed:** `client/settings/sections/MembersSection.svelte` (+ shared `DataTable`, `IconButton`, `Btn`, `Field`, `Input`)
-**States captured:** Populated, Empty, Error, Loading, add-input-focused, Add-button hover, populated · desktop + ~640px
+**Date:** 2026-08-03
+**Reviewed:** `client/settings/sections/MembersSection.svelte` (+ shared `DataTable`, `IconButton`, `Btn`, `Field`, `Input`, `Confirm`, `Modal`, `client/shared/helpers.ts`)
+**States captured:** Populated, Empty, Error, Loading, add-input-focused, Add-button hover, remove-confirmation-open, loading-is-distinct-from-empty, populated · desktop + ~640px
 **Rubric:** [`RUBRIC.md`](./RUBRIC.md)
 
 > Report-only. This document contains no code changes and no change-plan. Each finding
@@ -24,17 +24,17 @@ group-members API and is a genuinely destructive surface (removing a member revo
 
 ## Scorecard
 
-| Dimension                       | Score | Rationale (one line)                                                                                                         |
-| ------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------- |
-| 1. Visual hierarchy & scanning  | pass  | Eyebrow `GROUP` / title / field / table tiers are distinct; the add-form → member-table rhythm scans cleanly.                |
-| 2. Affordance & signifiers      | warn  | "Remove" (ghost) reads like plain text at rest; the header refresh is a faint glyph — neither looks interactive until hover. |
-| 3. Consistency w/ design system | warn  | Reuses the shared primitives, but skips `Confirm` (used by 8+ sibling sections) and the shared `formatDateTime` helper.      |
-| 4. Feedback & state             | fail  | Loading is pixel-identical to Empty, Add gives no in-flight feedback, and the destructive Remove has no confirmation.        |
-| 5. Content & language           | warn  | `added_at` is a raw ISO string and `added_by`/`user_id` are opaque ids; the empty state dead-ends on "No members".           |
-| 6. Accessibility                | warn  | Focus ring handled app-wide (`.settings-grid :focus-visible`); refresh glyph (`--text-muted`) and ghost "Remove" run faint.  |
-| 7. Responsive / layout          | warn  | Reflows cleanly at ~640px with short ids; long ids fall back to horizontal scroll, and 0–2 members leave a large empty span. |
-| 8. Spacing, alignment & sizing  | warn  | `.settings-form align-items: end` is inert here — the full-width field drops the small `md` button to its own line.          |
-| 9. Interaction & micro-states   | warn  | Hover exists on `Btn`; but Add/Remove never enter a busy/disabled state while their async request is in flight.              |
+| Dimension                       | Score | Rationale (one line)                                                                                                                         |
+| ------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Visual hierarchy & scanning  | pass  | Eyebrow `GROUP` / title / field / table tiers are distinct; the add-form → member-table rhythm scans cleanly.                                |
+| 2. Affordance & signifiers      | pass  | Remove is now `danger`-styled with a visible border/color, and the refresh glyph resolves at `--text` contrast — both read as interactive.   |
+| 3. Consistency w/ design system | pass  | Now routes destructive removal through the shared `Confirm`/`Modal` and renders `added_at` via the shared `formatDateTime` helper.           |
+| 4. Feedback & state             | pass  | Loading now renders a distinct "Loading…" placeholder, Add shows a pending "Adding…" state, and Remove is gated by `Confirm` with its own busy/error surface. |
+| 5. Content & language           | pass  | `user_id`/`added_by` now prefer human labels with the raw id as a muted secondary line; the empty state now guides to the add form above, with a distinct message when the load itself failed. |
+| 6. Accessibility                | pass  | Refresh glyph and destructive Remove now clear resting contrast; focus-visible ring still handled app-wide.                                  |
+| 7. Responsive / layout          | pass  | Reflows cleanly at ~640px (Add collapses to a full-width row); `DataTable` cells truncate long values with ellipsis rather than breaking layout. |
+| 8. Spacing, alignment & sizing  | pass  | The add row now uses the shared `.settings-form` subgrid tracks, so the field and button share a row, stay inside the section's padding, and the button sits level with the input's own box; the error line carries its own bottom margin. |
+| 9. Interaction & micro-states   | pass  | Hover/focus-visible exist on `Btn`/`IconButton`; Add disables and labels "Adding…" while in flight, Remove/Confirm show a "Working…" busy state.  |
 
 ## Findings
 
@@ -42,56 +42,90 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] Removing a member revokes access with no confirmation
 
+- **Id:** members-delete-no-confirm
+- **Status:** fixed
+- **Resolved:** `fdaa06850` — "fix(settings): confirm before removing a group member" (2026-07-03).
 - **Dimension:** 4. Feedback & state (also 3. Consistency)
-- **Where visible:** Populated — each row's right-aligned "Remove".
-- **Source:** `client/settings/sections/MembersSection.svelte:107` (`Btn … onClick={() => void remove(row.user_id)}`) calls `remove()` (`:52`) immediately; there is no interstitial. Eight-plus sibling sections (`MemorySection`, `CodeHostSection`, `CodingCredentialsSection`, `PluginsSection`, several `admin/*`) gate destructive actions behind the shared `Confirm` component — this one does not.
-- **Suggested fix:** Gate Remove behind the shared `Confirm` dialog (naming the member) as sibling sections do, so a single mis-click can't silently revoke someone's access.
+- **Where visible:** Populated — clicking "Remove" now opens a confirmation modal (see `remove-confirmation-open` shot).
+- **Source:** `client/settings/sections/MembersSection.svelte:147` now calls `requestRemove(row.user_id)` (`:65-68`), which only sets `pendingRemove`; the actual `removeGroupMember` call happens in `confirmRemove()` (`:70-89`), gated behind the shared `Confirm` dialog rendered at `:167-181` (`danger`, "Remove {label} from this group? They'll lose access to the bot here.").
+- **Suggested fix:** N/A — resolved.
 
 ### [Med] Loading state is indistinguishable from Empty
 
+- **Id:** members-loading-looks-empty
+- **Status:** fixed
+- **Resolved:** `587850eeb` — "fix(settings): distinguish MembersSection loading state from empty" (2026-07-03).
 - **Dimension:** 4. Feedback & state
-- **Where visible:** Loading vs Empty — the two screenshots are pixel-identical; the table shows "No members" while the fetch is still in flight.
-- **Source:** `MembersSection.svelte:62-64` (`$effect` → `load`) sets `loading = true` (`:29`) but the body still renders `memberRows` (empty during the initial load), so `DataTable` falls through to its `empty` snippet "No members" (`:115`). The only loading signal is the header `IconButton busy` (`:87`), a faint glyph most users won't notice.
-- **Suggested fix:** When `loading` and no rows are present yet, render an in-body loading placeholder/skeleton instead of the empty-state copy, so "still loading" never reads as "nobody is a member".
+- **Where visible:** Loading — now renders "Loading…" as its own copy, confirmed distinct from Empty's "No members" (see the dedicated `loading-is-distinct-from-empty` shot).
+- **Source:** `MembersSection.svelte:141-142` (`{#if loading && members.length === 0}<p class="placeholder">Loading…</p>{:else}…{/if}`) now short-circuits before the table/`DataTable` empty snippet is ever reached during the initial load.
+- **Suggested fix:** N/A — resolved.
 
 ### [Med] Add gives no in-flight feedback and allows double-submit
 
+- **Id:** members-add-no-feedback-double-submit
+- **Status:** fixed
+- **Resolved:** `145c84014` — "fix(settings): signal in-flight add and block double-submit in MembersSection" (2026-07-03).
 - **Dimension:** 9. Interaction & micro-states
-- **Where visible:** Not a single frame — the interval after pressing "Add member" (button stays green, enabled, and unchanged while the request runs).
-- **Source:** `MembersSection.svelte:39-50` (`add()` is async but sets no pending flag); the button (`:99-101`) has no `disabled`/busy binding, so it neither disables nor shows an "Adding…" state — a second click before `load()` returns re-submits.
-- **Suggested fix:** Track a pending flag for the add request and bind it to the button (`disabled` + busy label) so the control signals in-flight work and blocks duplicate submits.
+- **Where visible:** Not a single frame — checked in source per the skill's guidance for busy states.
+- **Source:** `MembersSection.svelte:47-48` (`if (adding) return`) guards re-entry, `:28`/`:53`/`:61` track the `adding` flag, and the submit button (`:136-138`) binds `disabled={adding}` and swaps its label to `'Adding…'` while the request is in flight.
+- **Suggested fix:** N/A — resolved.
 
 ### [Med] Error is detached from the action that caused it and crowds the field label
 
+- **Id:** members-error-detached-crowds-label
+- **Status:** fixed
+- **Resolved:** `fdaa06850` — "fix(settings): confirm before removing a group member" (2026-07-03, split add/remove error state) and `a7bc2810d` — "style(settings): space MembersSection error and align add row" (2026-07-03, margin).
 - **Dimension:** 4. Feedback & state (also 8. Spacing)
-- **Where visible:** Error — "boom" sits directly above the "USER ID OR @USERNAME" label with no breathing room, between the header and the form.
-- **Source:** `MembersSection.svelte:91` renders the error `<p class="status-error">` at the top for _all_ failures; a Remove failure originates in the table far below (`:52`), so the message lands nowhere near its trigger. `.status-error` (`settings.css:91-93`) is a bare `color` rule with no margin, so it crowds the following label.
-- **Suggested fix:** Surface add errors adjacent to the form and remove errors near the table/row, and give the status line vertical rhythm from the `--gap-*` scale.
+- **Where visible:** Error — the top-of-section `<p class="status-error members-error">` now carries `margin: 0 0 var(--gap-field)` breathing room before the field label (see the `Error` shot).
+- **Source:** Add and Remove failures are now separate state: add errors stay in `error`/`:128` (top-of-section, spaced via `.members-error` at `:185-187`), while Remove failures set `removeError` (`:31`, `:74`, `:81`) and render inside the `Confirm` dialog body next to the action that caused them (`:179`, `data-testid="member-remove-error"`) rather than at the top of the section.
+- **Suggested fix:** N/A — resolved.
 
 ### [Med] `added_at` is a raw ISO timestamp and bypasses the shared formatter
 
+- **Id:** members-added-at-raw-timestamp
+- **Status:** fixed
+- **Resolved:** `452cb8666` — "fix(settings): format MembersSection added_at via shared helper" (2026-07-03).
 - **Dimension:** 5. Content & language (also 3. Consistency)
-- **Where visible:** Populated — the "Added at" column reads `2026-05-01T00:00:00Z`.
-- **Source:** `MembersSection.svelte:73` passes `m.added_at` through unchanged and `:111` stringifies it verbatim; `client/shared/helpers.ts:41` exports `formatDateTime()` for exactly this, used by other data tables.
-- **Suggested fix:** Render `added_at` via the shared `formatDateTime` helper so the timestamp is human-readable and consistent with sibling tables.
+- **Where visible:** Populated — the "Added at" column now reads `2026-05-01 00:00` (see the `Populated` shot).
+- **Source:** `MembersSection.svelte:107` (`added_at: formatDateTime(m.added_at)`) runs every row through the shared `client/shared/helpers.ts` formatter before it reaches `memberRows`.
+- **Suggested fix:** N/A — resolved.
 
 ### [Low] "Remove" and the refresh control read as non-interactive at rest
 
+- **Id:** members-remove-refresh-low-affordance
+- **Status:** fixed
+- **Resolved:** `8a7e912e1` — "fix(settings): make MembersSection Remove read as destructive" (2026-07-03) and `8ed4b85e5` — "style(ui): raise IconButton resting contrast" (2026-07-03, shared primitive).
 - **Dimension:** 2. Affordance & signifiers (also 6. Accessibility)
-- **Where visible:** Populated (both "Remove" cells look like label text until hover); all states (the faint header `⟳`).
-- **Source:** `MembersSection.svelte:107` uses `variant="ghost"` (`Btn.svelte:77-81`: transparent bg, `--fg2` text, transparent border) for a _destructive_ action; the refresh `IconButton` (`:87`) uses `--text-muted` on transparent (`IconButton.svelte:38`), running low-contrast on the dark theme.
-- **Suggested fix:** Give the destructive Remove a button-shaped or `danger`-leaning affordance, and raise the refresh glyph's resting contrast.
+- **Where visible:** Populated — "Remove" now shows a visible danger-tinted border/color at rest (see `Populated` shot); the header `⟳` resolves at full `--text` contrast.
+- **Source:** `MembersSection.svelte:147` now uses `variant="danger"` (`Btn.svelte:102-106`: `color: var(--danger)`, `border-color: rgba(232,92,92,0.3)`) instead of `ghost`; the shared `IconButton.svelte:38` was changed from `color: var(--text-muted)` to `color: var(--text)`, raising the refresh glyph's resting contrast for every consumer, including the Members header refresh at `:124`.
+- **Suggested fix:** N/A — resolved.
 
 ### [Low] Add-form alignment rule is inert; the primary button is undersized under a full-width input
 
+- **Id:** members-add-form-alignment-inert
+- **Status:** fixed
+- **Resolved:** `3f7cf5a60` ("fix(settings): align form fields on shared subgrid tracks") (2026-08-04). `.settings-form` is now a grid with `grid-template-columns: repeat(auto-fit, minmax(180px, 1fr))` and `grid-template-rows: auto auto auto` (`client/settings/settings.css:43-49`), and `.ui-field` adopts the parent's three tracks via `display: grid; grid-template-rows: subgrid; grid-row: span 3` (`client/shared/ui/Field.svelte:59-62`). Both residues are addressed: (a) the add row no longer escapes the section's padding — the field and the "Add member" button now live inside the same grid tracks as every other `.settings-form` consumer, which is bounded by `.settings-section`/`.settings-group`'s own width, so the button's right edge sits well inside the table padding instead of flush with the viewport edge (confirmed in `settings-sections-MembersSection-Populated-1.png`). (b) The button now shares the input's baseline: `.settings-form > :not(.ui-field)` spans only the label+control rows (`grid-row: span 2; align-self: end; justify-self: start`, `client/settings/settings.css:53-57`), putting it level with the input's own box rather than the bottom of the field group including its hint text. The section-local `.members-add :global(.ui-field) { flex: 1; min-width: 220px; }` override that previously fought this layout has been deleted.
 - **Dimension:** 8. Spacing, alignment & sizing
-- **Where visible:** Populated (desktop + narrow) — the full-width input, then a small "Add member" button dropped onto its own line below the hint.
-- **Source:** `settings.css:38-44` (`.settings-form` `flex-wrap: wrap; align-items: end`) is written for an inline input-plus-button row, but the `Field` (`:93-98`) spans the row width so the `md` button (`:99`) wraps below — leaving `align-items: end` with nothing to align and the primary action visually small next to the input.
-- **Suggested fix:** Either constrain the input width so the button sits inline (honoring `align-items: end`) or make the button full-width to match the input's visual weight.
+- **Where visible:** Populated (desktop) and populated/narrow (~640px) — in both shots the "Add member" button is flush against the right edge of the viewport, with no gutter, while the input beside it and the `Remove` buttons in the table below all stop short of that edge. The button also sits visibly lower than the input rather than sharing its baseline.
+- **Source:** `MembersSection.svelte:189-192` (`.members-add :global(.ui-field) { flex: 1; min-width: 220px; }`) did close the original defect — the field no longer forces the button onto its own undersized line, and the two now share a row (`a7bc2810d`, "style(settings): space MembersSection error and align add row", 2026-07-03). Two residues remain, which is why this stays open rather than closing. (a) The add row escapes the section's right padding: the button's right edge lands on the viewport edge at both captured widths. (b) `.settings-form`'s `align-items: end` (`settings.css:38-44`) aligns against the bottom of the whole field group — which includes the "For Telegram, you can use @username…" hint line — so the button's baseline sits below the input's, not level with it.
+- **Suggested fix:** Contain the add row within the section's horizontal padding, and align the button to the input's own box rather than to the field group including its hint text.
 
 ### [Low] Empty state dead-ends on "No members"
 
+- **Id:** members-empty-state-dead-end
+- **Status:** fixed
+- **Resolved:** `74d886e40` — the `DataTable` empty snippet now reads "No members yet — add the first one using the form above.", pointing at the add form directly above it.
 - **Dimension:** 5. Content & language
-- **Where visible:** Empty — the table body reads only "No members".
-- **Source:** `MembersSection.svelte:115` (`{#snippet empty()}No members{/snippet}`); the add form directly above partly mitigates, but the copy offers no next step.
-- **Suggested fix:** Acceptable as-is given the adjacent form, but a one-line pointer ("Add the first member above") would turn the dead-end into guidance.
+- **Where visible:** Empty — the table body previously read only "No members" (see the `Empty` shot).
+- **Source:** `MembersSection.svelte:162` (`{#snippet empty()}No members{/snippet}`), prior to the fix.
+- **Suggested fix:** N/A — resolved.
+
+### [Low] Empty-table guidance renders under a failed-load error banner as if the load had succeeded
+
+- **Id:** members-empty-guidance-during-load-error
+- **Status:** fixed
+- **Resolved:** `be7cfeab4` — discovered while closing `members-empty-state-dead-end`: the newly-worded guidance ("No members yet — add the first one using the form above.") rendered inside the empty table even when `load()` had failed, since a failed fetch leaves `members` at `[]`, so the table asserted zero members directly under the error banner saying the load failed. The `empty()` snippet is now conditional on `error`, showing "Members couldn't be loaded." instead when the two states coincide. The table itself is deliberately still rendered on error (not suppressed) so a failed *refresh* doesn't blank out previously loaded rows.
+- **Dimension:** 4. Feedback & state (also 5. Content & language)
+- **Where visible:** Not one of this document's captured states — this is the previously-uncaptured intersection of Error and Empty (a load failure with zero prior rows), not the standalone `Error` or `Empty` shots.
+- **Source:** `MembersSection.svelte:162-167` (`{#snippet empty()}{#if error === null}No members yet…{:else}Members couldn't be loaded.{/if}{/snippet}`) — the `error === null` branch before this fix was unconditional.
+- **Suggested fix:** N/A — resolved.

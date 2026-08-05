@@ -19,6 +19,18 @@
 
 <Story name="Populated" args={{ contextId: CONTEXT_ID }} parameters={{ fixtures: 'settings-group-provider-populated' }} />
 
+<!-- no instance bound yet: the Select shows the placeholder, not available[0] -->
+<Story
+  name="Unassigned"
+  args={{ contextId: CONTEXT_ID }}
+  parameters={{ fixtures: 'settings-group-provider-unassigned' }} />
+
+<!-- bound to an instance with no baseUrl: renders the type-and-id fallback label -->
+<Story
+  name="NamelessBound"
+  args={{ contextId: CONTEXT_ID }}
+  parameters={{ fixtures: 'settings-group-provider-nameless-bound' }} />
+
 <Story name="Empty" args={{ contextId: CONTEXT_ID }} parameters={{ fixtures: 'settings-group-provider-empty' }} />
 
 <Story name="Error" args={{ contextId: CONTEXT_ID }} parameters={{ fixtures: 'settings-group-provider-error' }} />

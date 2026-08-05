@@ -29,6 +29,10 @@ test.describe('settings/sections/GuestModeSection', () => {
 })
 // @generated-end auto-screenshots
 
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
+
 test('Disabled — narrow 640', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'settings-sections-guestmodesection--disabled')
   await sharedPage.setViewportSize({ width: 640, height: 900 })

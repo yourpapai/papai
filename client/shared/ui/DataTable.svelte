@@ -155,13 +155,16 @@
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--fg3);
+    color: var(--text-dim);
     padding: 8px 12px;
-    border-bottom: 1px solid var(--hair);
+    border-bottom: 1px solid var(--border);
     text-align: left;
   }
   .ui-datatable__sort {
     all: unset;
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--control-h-sm);
     cursor: pointer;
     font: inherit;
     letter-spacing: inherit;
@@ -170,7 +173,7 @@
     white-space: nowrap;
   }
   .ui-datatable__sort:hover {
-    color: var(--fg);
+    color: var(--text);
   }
   .ui-datatable__th--right .ui-datatable__sort {
     text-align: right;
@@ -183,9 +186,9 @@
   }
   .ui-datatable__td {
     font-size: 13px;
-    color: var(--fg);
+    color: var(--text);
     padding: 10px 12px;
-    border-bottom: 1px solid var(--hair);
+    border-bottom: 1px solid var(--border);
     text-align: left;
     white-space: nowrap;
     overflow: hidden;
@@ -214,7 +217,7 @@
   .ui-datatable__empty {
     padding: 24px 12px;
     text-align: center;
-    color: var(--fg3);
+    color: var(--text-dim);
     font-size: 12px;
   }
 </style>

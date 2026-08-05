@@ -38,13 +38,17 @@ describe('design tokens', () => {
       '--radius-control',
       '--radius-pill',
       '--row-h',
+      '--control-h-sm',
+      '--control-h-md',
+      '--control-h-lg',
+      '--s4',
     ]) {
       expect(css).toContain(`${t}:`)
     }
   })
-  test('keeps legacy aliases so debug/admin SPAs still resolve', () => {
-    for (const t of ['--surface:', '--raised:', '--hair:', '--fg:', '--fg2:', '--fg3:', '--fg4:', '--s4:']) {
-      expect(css).toContain(t)
+  test('declares no legacy aliases: the semantic names are the only vocabulary', () => {
+    for (const t of ['--surface:', '--raised:', '--hair:', '--fg:', '--fg2:', '--fg3:', '--fg4:', '--fg-hint:']) {
+      expect(css).not.toContain(t)
     }
   })
   test('adopts the spec accent value', () => {

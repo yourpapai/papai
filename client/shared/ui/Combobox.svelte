@@ -9,7 +9,7 @@
 </script>
 
 <script lang="ts">
-  import { getFieldLabelId } from './field-context.js'
+  import { getFieldLabelId, useFieldInvalid } from './field-context.js'
 
   interface Option {
     value: string
@@ -28,6 +28,7 @@
   let { value, options = [], onInput, placeholder, disabled = false, testid }: Props = $props()
 
   const labelId = getFieldLabelId()
+  const fieldError = useFieldInvalid()
   const listId = `ui-combobox-${++seq}`
 
   function handleInput(event: Event): void {
@@ -35,13 +36,16 @@
   }
 </script>
 
-<div class="ui-combobox" class:ui-combobox--disabled={disabled}>
+<div class="ui-combobox" class:ui-combobox--disabled={disabled} class:ui-combobox--invalid={fieldError.invalid}>
   <input
     list={listId}
     {value}
     {placeholder}
     {disabled}
     aria-labelledby={labelId}
+    aria-invalid={fieldError.invalid ? 'true' : undefined}
+    aria-required={fieldError.required ? 'true' : undefined}
+    aria-describedby={fieldError.describedBy}
     data-testid={testid}
     oninput={handleInput} />
   <datalist id={listId}>
@@ -57,7 +61,7 @@
     align-items: center;
     flex: 1;
     min-width: 200px;
-    background: var(--raised);
+    background: var(--surface-2);
     border: 1px solid var(--border);
     padding: 0 10px;
     border-radius: var(--radius-control);
@@ -70,7 +74,7 @@
     background: transparent;
     border: 0;
     outline: 0;
-    color: var(--fg);
+    color: var(--text);
     font-family: var(--font-mono);
     font-size: 12px;
     flex: 1;
@@ -78,5 +82,8 @@
   }
   .ui-combobox--disabled {
     opacity: 0.6;
+  }
+  .ui-combobox--invalid {
+    border-color: var(--danger);
   }
 </style>

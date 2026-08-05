@@ -10,7 +10,7 @@ import { isGateableImplFile } from '../../.hooks/tdd/test-resolver.mjs'
 import { buildBaselineFromPerFile, loadBaseline, resolveRatchet, seedMerge, writeBaseline } from './baseline.js'
 import type { BaselineMap, PerFileScore } from './baseline.js'
 import { pairedRun, resolvePairedRunExitCode } from './paired-run.js'
-import type { PairedRunInput, PairedRunResult } from './paired-run.js'
+import type { ErroredFile, PairedRunInput, PairedRunResult } from './paired-run.js'
 import { SCORES_FILE, writeScoresFile } from './seed-from.js'
 
 export interface ChangedFilesDeps {
@@ -204,6 +204,57 @@ export const runUpdateBaseline = (input: {
   return count
 }
 
+export interface ErroredGate {
+  readonly exitCode: 0 | 1
+  readonly message: string | null
+}
+
+/**
+ * Gate on files whose Stryker run errored. Such a file produces no per-file
+ * score, so it appears in neither the merged threshold check nor the ratchet —
+ * an unmeasurable file would otherwise pass the gate by not showing up at all,
+ * which is the one outcome a mutation gate must never allow.
+ */
+export const resolveErroredGate = (errored: readonly ErroredFile[]): ErroredGate => {
+  if (errored.length === 0) return { exitCode: 0, message: null }
+  const detail = errored.map((e) => `${e.sourceFile}: ${e.error}`).join('; ')
+  return {
+    exitCode: 1,
+    message: `Mutation run errored for ${errored.length} file(s), so they were never scored: ${detail}`,
+  }
+}
+
+/**
+ * Apply the three gates in order — unscorable files, merged threshold, per-file
+ * ratchet — printing the first failure and returning its exit code.
+ */
+const reportGates = (input: {
+  readonly result: PairedRunResult
+  readonly threshold: number
+  readonly noRatchet: boolean
+  readonly baseline: BaselineMap
+}): number => {
+  const { result, threshold, noRatchet, baseline } = input
+  const errored = resolveErroredGate(result.errored)
+  if (errored.exitCode === 1) {
+    console.error(errored.message)
+    return 1
+  }
+  if (resolvePairedRunExitCode(result.merged, threshold) === 1) {
+    console.error(`Mutation score ${result.merged.score} is below threshold ${threshold}`)
+    return 1
+  }
+  if (noRatchet) return 0
+  const ratchet = resolveRatchet(result.perFile, baseline)
+  if (ratchet.exitCode === 0) return 0
+  console.error(
+    `Mutation ratchet regression: ${ratchet.regressions
+      .map((r) => `${r.sourceFile} ${r.score.toFixed(4)} < ${r.threshold.toFixed(4)}`)
+      .join(', ')}`,
+  )
+  return 1
+}
+
 const main = async (bun: BunLike): Promise<number> => {
   const parsed = parseChangedFilesCliArgs(bun.argv.slice(2))
   if (parsed.kind === 'usageError') {
@@ -237,22 +288,7 @@ const main = async (bun: BunLike): Promise<number> => {
     return 0
   }
 
-  if (resolvePairedRunExitCode(result.merged, parsed.threshold) === 1) {
-    console.error(`Mutation score ${result.merged.score} is below threshold ${parsed.threshold}`)
-    return 1
-  }
-  if (!parsed.noRatchet) {
-    const ratchet = resolveRatchet(result.perFile, baseline)
-    if (ratchet.exitCode === 1) {
-      console.error(
-        `Mutation ratchet regression: ${ratchet.regressions
-          .map((r) => `${r.sourceFile} ${r.score.toFixed(4)} < ${r.threshold.toFixed(4)}`)
-          .join(', ')}`,
-      )
-      return 1
-    }
-  }
-  return 0
+  return reportGates({ result, threshold: parsed.threshold, noRatchet: parsed.noRatchet, baseline })
 }
 
 const maybeBun = (globalThis as typeof globalThis & { readonly Bun: BunLike | undefined }).Bun

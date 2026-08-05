@@ -20,4 +20,7 @@
 <!-- both /config and /context/task-instance mocked: instance selector + bind form visible -->
 <Story name="Populated" args={{ contextId: CONTEXT_ID }} parameters={{ fixtures: 'settings-shell-ready' }} />
 
+<!-- bound Kaneo instance: credential field list + auto-provision CTA both visible -->
+<Story name="Bound" args={{ contextId: CONTEXT_ID }} parameters={{ fixtures: 'settings-task-provider-bound' }} />
+
 <Story name="Error" args={{ contextId: CONTEXT_ID }} parameters={{ fixtures: 'settings-config-error' }} />

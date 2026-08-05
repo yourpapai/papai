@@ -23,3 +23,7 @@ test.describe('debug/components/SessionCard', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()

@@ -23,3 +23,7 @@ test.describe('debug/components/TraceDetail', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
