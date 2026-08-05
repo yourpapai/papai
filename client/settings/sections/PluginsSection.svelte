@@ -84,7 +84,9 @@
   {:else if loading && plugins.length === 0}
     <p class="placeholder">Loading…</p>
   {:else if plugins.length === 0}
-    <EmptyState title="No plugins discovered" />
+    <EmptyState
+      title="No plugins discovered"
+      hint="Plugins are installed on the server by an operator. Once one is installed and approved, it appears here for you to enable." />
   {:else}
     <ul class="settings-plugins">
       {#each plugins as plugin (plugin.id)}
@@ -120,7 +122,7 @@
 <style>
   .settings-plugins {
     display: grid;
-    gap: 12px;
+    gap: var(--gap-inline);
     list-style: none;
     margin: 0;
     padding: 0;

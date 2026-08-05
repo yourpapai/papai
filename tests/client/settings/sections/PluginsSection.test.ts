@@ -229,7 +229,7 @@ describe('PluginsSection', () => {
     void unmount(component)
   })
 
-  test('shows EmptyState when no plugins are discovered', async () => {
+  test('the empty state says who installs plugins instead of stopping at the void', async () => {
     setMockFetch(() => Promise.resolve(json({ contextId: 'user:1', plugins: [] })))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
@@ -237,6 +237,10 @@ describe('PluginsSection', () => {
     await drain()
     expect(target.querySelector('.ui-empty')).not.toBeNull()
     expect(target.textContent).toContain('No plugins discovered')
+    expect(target.querySelector('.ui-empty__hint')!.textContent).toContain('operator')
+    // No action: PageHeader already carries a Refresh control two rows up, and a
+    // second one inside the empty state would put the same action on screen twice.
+    expect(target.querySelector('.ui-empty__action')).toBeNull()
     void unmount(component)
   })
 

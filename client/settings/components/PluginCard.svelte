@@ -216,21 +216,29 @@
 <style>
   .settings-plugins__card {
     border: 1px solid var(--border);
+    border-radius: var(--radius);
     background: var(--surface-1);
-    padding: 12px;
+    padding: var(--gap-inline);
     display: grid;
-    gap: 10px;
+    gap: var(--gap-inline);
   }
   .settings-plugins__head {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--gap-inline);
+    flex-wrap: wrap;
   }
   .settings-plugins__name {
     margin: 0;
     font-family: var(--font-mono);
     font-size: 13px;
     font-weight: 500;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  /* Push the toggle to the card's trailing edge, as .settings-mcp__primary-trailing does. */
+  .settings-plugins__head :global(.ui-btn) {
+    margin-left: auto;
   }
   .settings-plugins__explain {
     margin: 0;
@@ -239,7 +247,7 @@
   }
   .settings-plugins__cfg {
     display: grid;
-    gap: 10px;
+    gap: var(--gap-inline);
   }
   .settings-plugins__note {
     color: var(--success);
