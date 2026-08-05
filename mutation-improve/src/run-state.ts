@@ -16,6 +16,8 @@ const MergedEntrySchema = z.object({
   beforeScore: z.number(),
   afterScore: z.number(),
   iter: z.number().int(),
+  specPath: z.string().optional(),
+  planPath: z.string().optional(),
 })
 
 const FailedEntrySchema = z.object({

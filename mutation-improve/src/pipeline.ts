@@ -150,6 +150,7 @@ async function finalizePhase(
   baseline: BaselineMap,
   beforeScore: number,
   afterScore: number,
+  improved: Result,
 ): Promise<IterationResult> {
   const bumped = bumpScore(baseline, file, afterScore)
   await deps.writeBaseline(deps.config.repoRoot, bumped)
@@ -167,7 +168,14 @@ async function finalizePhase(
   }
   await deps.removeWorktree(deps.config.repoRoot, worktreePath, runIdFor(deps, iter), deps.config.prBranchPrefix)
   deps.runState.doneSet.push(file)
-  deps.runState.merged.push({ file, beforeScore, afterScore, iter })
+  deps.runState.merged.push({
+    file,
+    beforeScore,
+    afterScore,
+    iter,
+    specPath: improved.specPath,
+    planPath: improved.planPath,
+  })
   return { iter, outcome: 'improved', file, beforeScore, afterScore }
 }
 
@@ -218,7 +226,7 @@ export async function runIteration(deps: PipelineDeps, iter: number): Promise<It
   const gate = await gatePhase(deps, worktreePath, selection.file, improved)
   if (!gate.ok) return failIter(deps, iter, worktreePath, gate.gate, gate.reason)
 
-  return finalizePhase(deps, iter, worktreePath, selection.file, baseline, beforeScore, gate.value)
+  return finalizePhase(deps, iter, worktreePath, selection.file, baseline, beforeScore, gate.value, improved)
 }
 
 export async function runPipeline(deps: PipelineDeps): Promise<{ results: IterationResult[]; aborted: boolean }> {
