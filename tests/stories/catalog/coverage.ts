@@ -224,6 +224,7 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-settings-admin-tool-defaults',
   'SCN-settings-admin-analytics',
   'SCN-analytics-governed-turn',
+  'SCN-analytics-aggregate-release-settings',
   'SCN-settings-admin-mcp-catalog',
   'SCN-settings-admin-mcp-plugin-servers',
   'SCN-settings-admin-system-access',
@@ -1541,6 +1542,13 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     verifiedAt: '2026-08-04',
     storyIds: [
       'tests/stories/analytics/governed-turn.story.test.ts#SCN-analytics-governed-turn: a governed turn records one epoch-bound message aggregate and the kill switch stops collection without blocking replies',
+    ],
+  },
+  'SCN-analytics-aggregate-release-settings': {
+    verifiedAt: '2026-08-04',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/analytics/aggregate-delivery.story.test.ts#SCN-analytics-aggregate-release-settings: an operator enables the aggregate lane, executes a release through settings, and a re-execute is idempotent',
     ],
   },
   'SCN-settings-api-tools': {
