@@ -153,7 +153,14 @@ async function finalizePhase(
   improved: Result,
 ): Promise<IterationResult> {
   const bumped = bumpScore(baseline, file, afterScore)
-  await deps.writeBaseline(deps.config.repoRoot, bumped)
+  // C1: write the baseline bump into the WORKTREE (not repoRoot) and commit the
+  // agent's spec/plan/test outputs together with the bump on the worktree
+  // branch BEFORE mergeWorktree. Without this, mergeWorktree merges an empty
+  // branch ("Already up to date"), writeBaseline never propagates to base, and
+  // removeWorktree --force discards the agent's uncommitted files.
+  await deps.writeBaseline(worktreePath, bumped)
+  await deps.execGit(worktreePath, ['add', '-A'])
+  await deps.execGit(worktreePath, ['commit', '-m', `chore(mutation): ratchet ${file} baseline to ${afterScore}`])
   const merge = await deps.mergeWorktree(deps.config.repoRoot, branchFor(deps, iter))
   if (!merge.ok) {
     return {

@@ -182,6 +182,24 @@ describe('pipeline runIteration', () => {
     expect(outcome.afterScore).toBe(0.94)
   })
 
+  // I2: pins the AND of the residual escape. The existing "no residuals → fail"
+  // test uses afterScore=0.46 (also below threshold − ε), so deleting the
+  // `residuals.length > 0 &&` would still leave that test green. This case puts
+  // afterScore INSIDE epsilon with NO residuals: a correct impl fails (no
+  // residuals → not justified); a mutant deleting `&&` would wrongly pass it.
+  test('score within epsilon with NO residuals fails (pins residual-escape AND)', async () => {
+    const deps = happyDeps()
+    // before 0.46 (< 0.95), after 0.94 (within epsilon of 0.95), residuals
+    // empty → must fail 'score'. 0.94 >= 0.95 − 0.02, so the AND is the only
+    // thing standing between this iteration and an unjustified pass.
+    deps.measureScore = sequenceMeasure([0.46, 0.94])
+    deps.runImproveAgent = (): Promise<{ value: Result; usage: AgentUsage }> =>
+      Promise.resolve({ value: { ...result, residuals: [] }, usage: emptyUsage() })
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    expect(outcome.gate).toBe('score')
+  })
+
   test('merge conflict produces a failed merge-gate outcome', async () => {
     const deps = happyDeps()
     deps.mergeWorktree = (): Promise<{ ok: false; conflictFiles: string[] }> =>

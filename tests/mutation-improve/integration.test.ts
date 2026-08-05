@@ -4,10 +4,9 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
 
-import { readBaseline, writeBaseline } from '../../mutation-improve/src/baseline.js'
+import type { BaselineMap } from '../../mutation-improve/src/baseline.js'
 import type { MutationImproveConfig } from '../../mutation-improve/src/config.js'
 import { runFinalize } from '../../mutation-improve/src/finalize.js'
 import { runPipeline, type PipelineDeps } from '../../mutation-improve/src/pipeline.js'
@@ -51,9 +50,13 @@ const sequenceMeasure = (scores: readonly number[]): PipelineDeps['measureScore'
 describe('integration', () => {
   test('runPipeline + runFinalize end-to-end with all externals faked', async () => {
     const repoRoot = makeTempDir('e2e-')
-    // seed a baseline file (writeBaseline does not mkdir parents)
-    await mkdir(path.join(repoRoot, 'scripts', 'mutation'), { recursive: true })
-    await writeBaseline(repoRoot, { 'src/foo.ts': 0.4 })
+    // C1 changed the baseline WRITE target from repoRoot to the worktree path.
+    // This composition test fakes createWorktree (no real worktree dir on disk),
+    // so writeBaseline must be faked too — otherwise it would ENOENT on the
+    // non-existent worktree path. Real baseline.ts persistence is exercised by
+    // integration-git.test.ts; this test still proves runPipeline + runFinalize
+    // composition end-to-end.
+    let baseline: BaselineMap = { 'src/foo.ts': 0.4 }
     const config: MutationImproveConfig = {
       repoRoot,
       workDir: path.join(repoRoot, '.mutation-improve'),
@@ -82,8 +85,11 @@ describe('integration', () => {
       execGit: () => Promise.resolve({ stdout: 'tests/foo.test.ts\n', stderr: '' }),
       runBuildCheck: () => Promise.resolve({ passed: true, stdout: '', stderr: '' }),
       measureScore: sequenceMeasure([0.4, 0.97]),
-      readBaseline: () => readBaseline(repoRoot),
-      writeBaseline: (repo: string, map) => writeBaseline(repo, map),
+      readBaseline: () => Promise.resolve(baseline),
+      writeBaseline: (_root: string, map: BaselineMap) => {
+        baseline = map
+        return Promise.resolve()
+      },
       runSelectAgent: () => Promise.resolve({ value: selection, usage: emptyUsage() }),
       runImproveAgent: () => Promise.resolve({ value: improvedResult, usage: emptyUsage() }),
       log: { log: () => undefined },
@@ -93,8 +99,7 @@ describe('integration', () => {
     expect(aborted).toBe(false)
     expect(results[0]).toMatchObject({ outcome: 'improved', file: 'src/foo.ts', afterScore: 0.97 })
 
-    const finalBaseline = await readBaseline(repoRoot)
-    expect(finalBaseline['src/foo.ts']).toBe(0.97)
+    expect(baseline['src/foo.ts']).toBe(0.97)
 
     const out = await runFinalize(
       {

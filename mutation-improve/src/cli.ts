@@ -19,7 +19,7 @@ import {
 import { readBaseline, writeBaseline } from './baseline.js'
 import { type MutationImproveConfig, loadMutationImproveConfig } from './config.js'
 import { runFinalize } from './finalize.js'
-import { runPipeline, type PipelineDeps } from './pipeline.js'
+import { type IterationResult, runPipeline, type PipelineDeps } from './pipeline.js'
 import { ResultSchema } from './result-schema.js'
 import { createRunState, loadRunState, saveRunState, type MutationImproveRunState } from './run-state.js'
 import { measureMutationScore } from './score-reader.js'
@@ -186,8 +186,18 @@ export async function runCli(argv: readonly string[]): Promise<void> {
 
   const log = new LiveRenderer(process.stdout)
   const deps = buildPipelineDeps(config, runState, log)
-  const { results, aborted } = await runPipeline(deps)
-  await saveRunState(runState)
+  // I1: try/finally guarantees saveRunState runs even if runPipeline throws
+  // (e.g. AgentRunError mid-pipeline), so --resume-run sees the last-known
+  // in-memory progress instead of losing everything to a throw.
+  let results: IterationResult[] = []
+  let aborted = false
+  try {
+    const pipelineOut = await runPipeline(deps)
+    results = pipelineOut.results
+    aborted = pipelineOut.aborted
+  } finally {
+    await saveRunState(runState)
+  }
 
   const failed = results.filter((r) => r.outcome === 'failed')
   if (!args.noPr && runState.merged.length > 0 && !aborted) {
