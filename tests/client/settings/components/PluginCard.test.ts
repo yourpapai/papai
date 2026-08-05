@@ -135,6 +135,31 @@ describe('PluginCard', () => {
     void unmount(component)
   })
 
+  test('saving an empty required field clears any earlier card-level error', async () => {
+    setCsrfToken('c')
+    setMockFetch(() => Promise.resolve(new Response('Server Error', { status: 500 })))
+    const { component, target } = render({
+      plugin: entry({
+        contextConfig: [{ key: 'token', label: 'Token', required: true, sensitive: false, hasValue: false, value: '' }],
+      }),
+    })
+    flushSync()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="plugin-toggle-my-plugin"]')!.click()
+    await drain()
+    expect(target.querySelector('[data-testid="plugin-card-error-my-plugin"]')).not.toBeNull()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="plugin-cfg-save-my-plugin-token"]')!.click()
+    await drain()
+
+    expect(target.querySelector('[data-testid="plugin-card-error-my-plugin"]')).toBeNull()
+    const row = target.querySelector('[data-testid="plugin-cfg-row-my-plugin-token"]')!
+    const alert = row.querySelector('[role="alert"]')
+    expect(alert).not.toBeNull()
+    expect(alert!.textContent).toContain('required')
+    void unmount(component)
+  })
+
   test('a successful save acknowledges with a Saved marker', async () => {
     setCsrfToken('c')
     setMockFetch(() => Promise.resolve(json({ ok: true, contextId: 'user:1' })))

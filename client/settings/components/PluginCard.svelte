@@ -103,13 +103,13 @@
 
   async function saveConfig(cfg: PluginConfigField): Promise<void> {
     if (savingKeys[cfg.key] === true) return
+    cardError = null
     const value = drafts[cfg.key] ?? ''
     delete fieldErrors[cfg.key]
     if (cfg.required && value.trim() === '') {
       fieldErrors[cfg.key] = `${cfg.label} is required.`
       return
     }
-    cardError = null
     savingKeys[cfg.key] = true
     try {
       const result = await patchPluginConfig({ pluginId: plugin.id, key: cfg.key, value, contextId })
