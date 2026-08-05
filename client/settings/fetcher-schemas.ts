@@ -148,7 +148,8 @@ export const PluginEligibilitySchema = z.union([
     missingCapabilities: z.array(z.string()),
   }),
 ])
-export const PluginConfigFieldSchema = StoredConfigValueSchema.omit({ value: true })
+export const PluginConfigFieldSchema = StoredConfigValueSchema
+export type PluginConfigField = z.infer<typeof PluginConfigFieldSchema>
 export const PluginEntrySchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -160,6 +161,16 @@ export const PluginEntrySchema = z.object({
 export type PluginEntry = z.infer<typeof PluginEntrySchema>
 export const PluginsResponseSchema = z.object({ contextId: z.string(), plugins: z.array(PluginEntrySchema) })
 export type PluginsResponse = z.infer<typeof PluginsResponseSchema>
+
+export const PluginConfigPatchResultSchema = z.object({
+  ok: z.literal(true),
+  contextId: z.string(),
+  // The route answers an empty or masked-equal submit on a sensitive field with this
+  // flag instead of writing (plugins-routes.ts:137-142). Without it the caller cannot
+  // tell a real save from a silent no-op.
+  unchanged: z.boolean().optional(),
+})
+export type PluginConfigPatchResult = z.infer<typeof PluginConfigPatchResultSchema>
 
 // --- Identity ---
 

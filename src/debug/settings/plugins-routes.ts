@@ -28,13 +28,18 @@ function handleGet(req: Request, url: URL): Response {
     const id = entry.discoveredPlugin.manifest.id
     const contextConfig = entry.discoveredPlugin.manifest.configRequirements
       .filter((r) => r.scope === 'context')
-      .map((r) => ({
-        key: r.key,
-        label: r.label,
-        required: r.required,
-        sensitive: r.sensitive,
-        hasValue: (getPluginConfig(scope.scope.contextId, id, r.key) ?? '').length > 0,
-      }))
+      .map((r) => {
+        const raw = getPluginConfig(scope.scope.contextId, id, r.key) ?? ''
+        const hasValue = raw.length > 0
+        return {
+          key: r.key,
+          label: r.label,
+          required: r.required,
+          sensitive: r.sensitive,
+          hasValue,
+          value: hasValue && r.sensitive ? maskSensitiveValue(raw) : raw,
+        }
+      })
     return {
       id,
       name: entry.discoveredPlugin.manifest.name,

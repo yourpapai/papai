@@ -74,6 +74,7 @@ import {
   memoryProvisionalHandlers,
   pluginsHandlers,
 } from './settings-handlers-personal.js'
+import { pluginsConfigurableHandlers, pluginsIneligibleHandlers } from './settings-handlers-plugins.js'
 import { taskProviderBoundHandlers } from './settings-handlers-task-provider.js'
 import {
   adminUsersHandlers,
@@ -248,6 +249,8 @@ export const scenarios = {
   'settings-plugins-empty': [...pluginsHandlers.empty],
   'settings-plugins-error': [...pluginsHandlers.error],
   'settings-plugins-loading': [...pluginsHandlers.loading],
+  'settings-plugins-configurable': [...pluginsConfigurableHandlers],
+  'settings-plugins-ineligible': [...pluginsIneligibleHandlers],
   'settings-identity-populated': [...identityHandlers.populated],
   'settings-identity-empty': [...identityHandlers.empty],
   'settings-identity-error': [...identityHandlers.error],
