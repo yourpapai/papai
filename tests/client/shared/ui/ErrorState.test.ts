@@ -39,4 +39,20 @@ describe('ErrorState.svelte', () => {
     expect(retried).toBe(1)
     void unmount(component)
   })
+
+  test('renders no detail disclosure when detail is absent', () => {
+    const { target, component } = render({ message: 'Could not load.' })
+    expect(target.querySelector('.ui-error__detail')).toBeNull()
+    void unmount(component)
+  })
+
+  test('renders detail inside a closed disclosure when detail is passed', () => {
+    const { target, component } = render({ message: 'Could not load.', detail: 'TypeError: x is undefined' })
+    const details = target.querySelector<HTMLDetailsElement>('.ui-error__detail')
+    expect(details).not.toBeNull()
+    expect(details!.open).toBe(false)
+    expect(details!.textContent).toContain('Technical details')
+    expect(details!.textContent).toContain('TypeError: x is undefined')
+    void unmount(component)
+  })
 })
