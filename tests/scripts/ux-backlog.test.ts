@@ -178,6 +178,46 @@ describe('renderBacklog', () => {
     )
     expect(renderBacklog([a, b], 2026)).toBe(renderBacklog([b, a], 2026))
   })
+
+  test('deferred findings are listed but wont-fix findings are not', () => {
+    const out = renderBacklog(
+      [
+        {
+          section: 'ReposSection',
+          date: '2026-07-05',
+          findings: [
+            {
+              id: 'repos-blocked',
+              section: 'ReposSection',
+              severity: 'Low',
+              title: 'Needs backend support',
+              status: 'deferred',
+              anchor: 'client/settings/repos-fetchers.ts:16',
+            },
+            {
+              id: 'repos-accepted',
+              section: 'ReposSection',
+              severity: 'Low',
+              title: 'Accepted as-is',
+              status: 'wont-fix',
+              anchor: '',
+            },
+          ],
+        },
+      ],
+      2026,
+    )
+    expect(out).toContain('## Deferred')
+    expect(out).toContain('`repos-blocked` — **ReposSection** — Needs backend support')
+    expect(out).toContain('client/settings/repos-fetchers.ts:16')
+    expect(out).not.toContain('repos-accepted')
+  })
+
+  test('the deferred section reads _None._ when nothing is deferred', () => {
+    const out = renderBacklog([], 2026)
+    const deferredSection = out.slice(out.indexOf('## Deferred'))
+    expect(deferredSection).toContain('_None._')
+  })
 })
 
 describe('the checked-in backlog', () => {

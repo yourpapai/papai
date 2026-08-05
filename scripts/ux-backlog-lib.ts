@@ -165,6 +165,41 @@ function assertUniqueIds(reviews: readonly SectionReview[]): void {
 const countBy = (review: SectionReview, status: FindingStatus): number =>
   review.findings.filter((finding) => finding.status === status).length
 
+const renderFindingLine = (finding: Finding): string => {
+  const anchor = finding.anchor === '' ? '' : ` — \`${finding.anchor}\``
+  return `- \`${finding.id}\` — **${finding.section}** — ${finding.title}${anchor}`
+}
+
+function renderOpenFindingsSection(open: readonly Finding[]): string[] {
+  const lines: string[] = ['', '## Open findings']
+  for (const severity of SEVERITIES) {
+    const bucket = open.filter((finding) => finding.severity === severity).sort(bySectionThenId)
+    lines.push('', `### ${severity} (${bucket.length})`, '')
+    if (bucket.length === 0) {
+      lines.push('_None._')
+      continue
+    }
+    for (const finding of bucket) {
+      lines.push(renderFindingLine(finding))
+    }
+  }
+  return lines
+}
+
+function renderDeferredSection(sorted: readonly SectionReview[]): string[] {
+  const deferred = sorted
+    .flatMap((review) => review.findings.filter((finding) => finding.status === 'deferred'))
+    .sort(bySectionThenId)
+  const lines: string[] = ['', '## Deferred', '']
+  if (deferred.length === 0) {
+    lines.push('_None._')
+  }
+  for (const finding of deferred) {
+    lines.push(renderFindingLine(finding))
+  }
+  return lines
+}
+
 export function renderBacklog(reviews: readonly SectionReview[], year: number): string {
   assertUniqueIds(reviews)
 
@@ -193,23 +228,10 @@ export function renderBacklog(reviews: readonly SectionReview[], year: number): 
     `| ${Array.from({ length: STATUSES.length + 2 }, () => '---').join(' | ')} |`,
     ...rows,
     `| **Total** | ${STATUSES.map((status) => total(status)).join(' | ')} | — |`,
-    '',
-    '## Open findings',
   ]
 
-  for (const severity of SEVERITIES) {
-    const bucket = open.filter((finding) => finding.severity === severity).sort(bySectionThenId)
-    lines.push('', `### ${severity} (${bucket.length})`, '')
-    if (bucket.length === 0) {
-      lines.push('_None._')
-      continue
-    }
-    for (const finding of bucket) {
-      const anchor = finding.anchor === '' ? '' : ` — \`${finding.anchor}\``
-      lines.push(`- \`${finding.id}\` — **${finding.section}** — ${finding.title}${anchor}`)
-    }
-  }
-
+  lines.push(...renderOpenFindingsSection(open))
+  lines.push(...renderDeferredSection(sorted))
   lines.push('')
   return lines.join('\n')
 }

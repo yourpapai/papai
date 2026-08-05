@@ -57,3 +57,7 @@ _None._
 - `members-empty-state-dead-end` — **MembersSection** — Empty state dead-ends on "No members" — `MembersSection.svelte:162`
 - `profile-sparse-layout-minimal-data` — **ProfileSection** — Section looks sparse / unbalanced when data is minimal
 - `repos-no-edit-capability` — **ReposSection** — A repository can only be added or deleted, never edited
+
+## Deferred
+
+_None._
