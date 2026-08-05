@@ -253,8 +253,14 @@ before SP5 is **467 passed / 0 failed**, and it must return to 0 failed at every
 
 - `CodingCredentialsSection`'s story set exercises only `claude`/`anthropic`/`api-key`, so the
   `openai-compatible` Base URL hint cannot be shot. That task adds a story arg for it.
-- The `✓ Saved` marker is transient and cannot be a state story. It gets an interaction test in the
-  manual region of the spec, below `// @generated-end auto-screenshots`.
+- The `✓ Saved` marker is transient and gets **no visual baseline at all** — unit coverage only.
+  An interaction test in the manual region was the original plan and is wrong:
+  `toHaveScreenshot()` retries until two consecutive frames match, and an element that removes
+  itself on a timer either vanishes mid-loop or is captured after dismissal. That is a flaky gate
+  on a suite whose contract is 0 failed, so the marker is asserted in
+  `tests/client/settings/components/ConfigFieldRow.test.ts` and nowhere else. The `settings-config-*`
+  fixtures also register no PATCH handler, so such a story would need a new scenario purely to
+  photograph a two-second element.
 
 ### Documentation closure
 
