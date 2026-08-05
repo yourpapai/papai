@@ -416,7 +416,10 @@ Append inside the existing `describe('ConfigFieldRow', …)` block in `tests/cli
         hasValue: true,
         value: 'rich',
         control: 'toggle',
-        options: ['rich', 'raw'],
+        options: [
+          { value: 'rich', label: 'Rich' },
+          { value: 'raw', label: 'Raw' },
+        ],
       },
       onSaved: () => {},
     })
@@ -529,13 +532,13 @@ Append to the `<style>` block:
 
 ```css
   .settings-field__saved {
-    color: var(--ok, var(--text-muted));
+    color: var(--success);
     font-size: 11px;
     white-space: nowrap;
   }
 ```
 
-> Read `client/shared/tokens.css` and use the repo's existing success-colour token name. If there is no success token, use `var(--text-muted)` outright and delete the fallback — do not invent a token.
+> `--success` is defined at `client/shared/tokens.css:36` as `var(--accent)` and every consumer uses it bare — no fallback.
 
 - [ ] **Step 6: Run the tests to verify they pass**
 
