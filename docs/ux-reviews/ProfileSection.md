@@ -97,7 +97,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [Low] Section looks sparse / unbalanced when data is minimal
 
 - **Id:** profile-sparse-layout-minimal-data
-- **Status:** open
+- **Status:** wont-fix
+- **Resolved:** SP5 decision-close, no commit. The suggested fix is a bordered panel/section wrapper around the lone field row. Two facts make that the wrong change: `client/shared/ui/Panel.svelte` has **zero consumers under `client/settings/`**, and `ProfileSection`, `AiOutputSection`, `TaskProviderSection` and `AdminPluginsConfigSection` all render the identical unframed `.settings-field-list`. Framing only this one would buy rubric dimension 7 (responsive/layout) at the cost of dimension 3 (design-system consistency) across four sections, and framing all four is a design-system decision no finding asks for. The sparseness is a consequence of the section genuinely holding one preference, not of its layout.
 - **Dimension:** 7. Responsive / layout
 - **Where visible:** Populated (`settings-sections-ProfileSection-Populated-1.png`) and narrow (`ProfileSection-—-populated-narrow-1.png`) — both still show one field row followed by a large empty expanse below it.
 - **Narrowed:** Partially addressed — `PageHeader` now carries a descriptive `sub` intro ("Personal preferences for how the bot addresses and responds to you.", commit `7b4210424`), which was part of the original suggested fix. The remaining residue is purely visual: the field list still renders as a single bordered row with no grouping/framing, so the bulk of the viewport below it is still bare background at both desktop and ~640px.

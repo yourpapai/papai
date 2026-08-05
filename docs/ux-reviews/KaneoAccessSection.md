@@ -22,9 +22,10 @@ primitives", 2026-07-08) rewrote the section from raw `<h2>`/`<button>`/`<dl>`/`
 undefined `.error` onto `PageHeader`, `KV`, `StatusPill`, `ErrorState`, `EmptyState`,
 `Code`, and `CopyButton`. Its own commit message names 9 resolved findings; verification
 below confirms 8 of the original 9 are actually fixed against current source/screenshots.
-The one residual: the revealed password still cannot be re-hidden (copy affordance itself
-is now present via `CopyButton`), so that finding is narrowed rather than closed. This is
-no longer an outlier section — it now matches sibling composition patterns.
+The residual (the revealed password could not be re-hidden; copy affordance itself was
+already present via `CopyButton`) was later closed by `c7ad1ba31`, which added a one-way
+"Hide" control. This is no longer an outlier section — it now matches sibling composition
+patterns.
 
 ## Scorecard
 
@@ -34,11 +35,11 @@ no longer an outlier section — it now matches sibling composition patterns.
 | 2. Affordance & signifiers      | pass  | `Btn`/`IconButton`/`CopyButton` give hover/focus states consistent with the app's shared controls.                     |
 | 3. Consistency w/ design system | pass  | Composes `PageHeader`/`KV`/`StatusPill`/`ErrorState`/`EmptyState`/`Code`/`CopyButton`/`Btn` — no raw elements remain.  |
 | 4. Feedback & state             | pass  | `ErrorState` renders a danger-colored, alert-role message; loading uses shared `.placeholder`; busy button disables.   |
-| 5. Content & language           | warn  | "No Kaneo access yet" hint is informative but still has no action/link — `EmptyState`'s `action` slot is unused.       |
+| 5. Content & language           | pass  | "No Kaneo access yet" hint now pairs with an `EmptyState` `action` snippet — a "Check again" button re-running `load(contextId)`.       |
 | 6. Accessibility                | pass  | Workspace URL now uses `var(--accent)` (green) instead of UA-default link blue; contrast is no longer suspect.         |
 | 7. Responsive / layout          | pass  | `.kaneo-url__link { overflow-wrap: anywhere }` plus a `KV` value override let long URLs wrap instead of overflowing.   |
 | 8. Spacing, alignment & sizing  | pass  | Rows use `--gap-inline`/`--gap-field` tokens; no more UA-default `dl` margins.                                         |
-| 9. Interaction & micro-states   | warn  | Busy "Revealing…" + disabled-in-flight and a working copy button exist; the revealed password still can't be re-hidden. |
+| 9. Interaction & micro-states   | pass  | Busy "Revealing…" + disabled-in-flight and a working copy button exist; a "Hide" control now clears the revealed password (one-way, matching the server's clear-on-reveal behavior). |
 
 ## Findings
 
@@ -67,12 +68,13 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [Low] Revealed password cannot be re-hidden
 
 - **Id:** kaneo-access-password-no-copy-rehide
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `c7ad1ba31` — a "Hide" control beside the copy button clears `revealedPassword`. Hiding is one-way by design: `src/debug/settings/kaneo-credentials-routes.ts:127` clears the stored password before responding, so a second reveal 409s. A bare Hide would have re-armed a Reveal button that cannot work after the user discarded the only copy; the component instead renders a terminal "shown once" line.
 - **Dimension:** 9. Interaction & micro-states
 - **Where visible:** Populated — password revealed
 - **Source:** `client/settings/sections/KaneoAccessSection.svelte:121`–`129` — once `revealedPassword !== null`, there is no control to clear it back to the "Reveal password" button state for the rest of the session
-- **Resolved (partial — narrowed, stays open):** `75b762a5a` added a `CopyButton` (`:126`) next to the `Code`-contained secret, closing the original "no copy affordance, manual selection of tiny text" complaint and downgrading this from High. Narrowed to the residue: there is still no re-hide/clear affordance if the tab is left open after reveal.
-- **Suggested fix:** Add a small "Hide" control next to the copy button that resets `revealedPassword` to `null`, so a user can clear the secret from screen without navigating away.
+- **Prior narrowing:** `75b762a5a` added a `CopyButton` (`:126`) next to the `Code`-contained secret, closing the original "no copy affordance, manual selection of tiny text" complaint and downgrading this from High before this residue was fixed.
+- **Suggested fix:** N/A — resolved.
 
 ### [Med] Workspace URL link is low-contrast on the dark theme
 
@@ -107,7 +109,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [Low] "Not provisioned" empty state still has no next step
 
 - **Id:** kaneo-access-empty-state-dead-end
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `c7ad1ba31` — the `EmptyState` now passes an `action` snippet with a "Check again" button re-running `load(contextId)`. A link was rejected: this is a non-provisioned member's personal view, provisioning is asynchronous server-side, and the SPA has no members/admin destination reachable from that context.
 - **Dimension:** 5. Content & language
 - **Where visible:** Not provisioned
 - **Source:** `client/settings/sections/KaneoAccessSection.svelte:95`–`97` — now composed via `EmptyState` (fixing the "no component" half of the original finding), but no `action` snippet is passed even though `EmptyState` supports one (`EmptyState.svelte:13`,`:23`). The hint text ("ask a group admin to add you") is still the dead end; there is no link or button.

@@ -31,7 +31,7 @@ See LICENSE in the project root for details.
 | 2. Affordance & signifiers      | pass  | `Select`/`Combobox` use `--surface-2` against the card's `--surface-1`, so they read as controls, not card background (confirmed in "Populated" shot). |
 | 3. Consistency w/ design system | pass  | The section now renders every field through shared `Select`/`Combobox`/`Input`; no raw `<select>`/`<input list>` or `.coding-select` remain (`CodingCredentialsSection.svelte:325`–`351`). |
 | 4. Feedback & state             | pass  | Loading/error/success solid; an explicit empty-guard now renders ("No provider fields available…", `:293`–`294`) and a model-suggestions hint covers first setup (`:311`–`313`). |
-| 5. Content & language           | warn  | Labels/helper are clear and the model-combobox now hints at post-save population, but dynamic reveal of _Auth method_ / required _Base URL_ still has no explanatory text. |
+| 5. Content & language           | pass  | Labels/helper are clear, the model-combobox hints at post-save population, and `hintFor(field)` now explains why _Auth method_ appears and why _Base URL_ becomes required. |
 | 6. Accessibility                | pass  | Labels wired via `aria-labelledby` (`SettingsFieldShell.svelte:40`); `Select`/`Combobox` now show a focus ring on `:focus-within` (`Select.svelte:66`–`69`, confirmed in "base URL input focused" shot). |
 | 7. Responsive / layout          | pass  | Field cards + wrapping editor rows reflow cleanly at 640 (confirmed in "Populated — narrow 640" and "Empty — narrow 640" shots).                |
 | 8. Spacing, alignment & sizing  | pass  | Selects now pull 12px mono font and `border-radius:2px` in line with `Input`/`Combobox`; no more hardcoded 14px/no-radius scale drift (`Select.svelte:54`–`65`). |
@@ -107,7 +107,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [Low] Auth method / Base URL appear and become required with no explanation
 
 - **Id:** coding-credentials-conditional-fields-unexplained
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `7b7a84b74` — the inline `hint` ternary became a `hintFor(field)` helper carrying three cases: the pre-existing combobox hint, why *Auth method* appears (provider is Anthropic), and why *Base URL* is required (OpenAI-compatible endpoint). A `settings-coding-credentials-openai-compatible` fixture and story were added so the Base URL hint has a shootable state — the story set previously exercised only `claude`/`anthropic`/`api-key`.
 - **Dimension:** 5. Content & language (also 4. feedback)
 - **Where visible:** Selecting `anthropic` reveals _Auth method_; selecting `openai-compatible` makes _Base URL_ required (source; still not reproducible in the current story set, which only exercises `claude`/`anthropic`/`api-key`)
 - **Source:** `fieldHidden` logic (`CodingCredentialsSection.svelte:90`–`94`), `effectiveRequired` (`:305`); the `openai-compatible` case still only supplies an inline placeholder on the `Input` itself ("https://your-llm-endpoint/v1 (required)", `:347`–`349`) and the model combobox now gets a proper `hint` (see the now-`fixed` finding above), but `Auth method`'s reveal (when `provider === 'anthropic'`) and Base URL's required-on-reveal (when `provider === 'openai-compatible'`) still carry no explanatory `hint` prop on their `SettingsFieldShell`.

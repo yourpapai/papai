@@ -30,7 +30,7 @@ group-members API and is a genuinely destructive surface (removing a member revo
 | 2. Affordance & signifiers      | pass  | Remove is now `danger`-styled with a visible border/color, and the refresh glyph resolves at `--text` contrast — both read as interactive.   |
 | 3. Consistency w/ design system | pass  | Now routes destructive removal through the shared `Confirm`/`Modal` and renders `added_at` via the shared `formatDateTime` helper.           |
 | 4. Feedback & state             | pass  | Loading now renders a distinct "Loading…" placeholder, Add shows a pending "Adding…" state, and Remove is gated by `Confirm` with its own busy/error surface. |
-| 5. Content & language           | warn  | `user_id`/`added_by` now prefer human labels with the raw id as a muted secondary line, but the empty state still dead-ends on "No members".  |
+| 5. Content & language           | pass  | `user_id`/`added_by` now prefer human labels with the raw id as a muted secondary line; the empty state now guides to the add form above, with a distinct message when the load itself failed. |
 | 6. Accessibility                | pass  | Refresh glyph and destructive Remove now clear resting contrast; focus-visible ring still handled app-wide.                                  |
 | 7. Responsive / layout          | pass  | Reflows cleanly at ~640px (Add collapses to a full-width row); `DataTable` cells truncate long values with ellipsis rather than breaking layout. |
 | 8. Spacing, alignment & sizing  | pass  | The add row now uses the shared `.settings-form` subgrid tracks, so the field and button share a row, stay inside the section's padding, and the button sits level with the input's own box; the error line carries its own bottom margin. |
@@ -113,8 +113,19 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [Low] Empty state dead-ends on "No members"
 
 - **Id:** members-empty-state-dead-end
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `74d886e40` — the `DataTable` empty snippet now reads "No members yet — add the first one using the form above.", pointing at the add form directly above it.
 - **Dimension:** 5. Content & language
-- **Where visible:** Empty — the table body still reads only "No members" (see the `Empty` shot).
-- **Source:** `MembersSection.svelte:162` (`{#snippet empty()}No members{/snippet}`); unchanged since the last review. The add form directly above partly mitigates, but the copy still offers no explicit next step.
-- **Suggested fix:** Acceptable as-is given the adjacent form, but a one-line pointer ("Add the first member above") would turn the dead-end into guidance.
+- **Where visible:** Empty — the table body previously read only "No members" (see the `Empty` shot).
+- **Source:** `MembersSection.svelte:162` (`{#snippet empty()}No members{/snippet}`), prior to the fix.
+- **Suggested fix:** N/A — resolved.
+
+### [Low] Empty-table guidance renders under a failed-load error banner as if the load had succeeded
+
+- **Id:** members-empty-guidance-during-load-error
+- **Status:** fixed
+- **Resolved:** `be7cfeab4` — discovered while closing `members-empty-state-dead-end`: the newly-worded guidance ("No members yet — add the first one using the form above.") rendered inside the empty table even when `load()` had failed, since a failed fetch leaves `members` at `[]`, so the table asserted zero members directly under the error banner saying the load failed. The `empty()` snippet is now conditional on `error`, showing "Members couldn't be loaded." instead when the two states coincide. The table itself is deliberately still rendered on error (not suppressed) so a failed *refresh* doesn't blank out previously loaded rows.
+- **Dimension:** 4. Feedback & state (also 5. Content & language)
+- **Where visible:** Not one of this document's captured states — this is the previously-uncaptured intersection of Error and Empty (a load failure with zero prior rows), not the standalone `Error` or `Empty` shots.
+- **Source:** `MembersSection.svelte:162-167` (`{#snippet empty()}{#if error === null}No members yet…{:else}Members couldn't be loaded.{/if}{/snippet}`) — the `error === null` branch before this fix was unconditional.
+- **Suggested fix:** N/A — resolved.

@@ -21,12 +21,12 @@ See LICENSE in the project root for details.
 | ------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------ |
 | 1. Visual hierarchy & scanning  | pass  | Redesigned to a `Pill` state indicator + provider table + role-overrides block; no more competing double labels.         |
 | 2. Affordance & signifiers      | pass  | A `Pill` next to the toggle reads "Active" / "Central credentials" / "No providers" / "Unreadable" independent of the toggle's own action label. |
-| 3. Consistency w/ design system | warn  | `ByokSection`/`ProviderForm`/`RoleBindingBlock` still hand-roll gap/padding literals (4/6/8/16px) instead of `--gap-*`/`--s*` tokens. |
-| 4. Feedback & state             | warn  | Load error now shows a friendly `ErrorState` with a visible Retry action, but the message body is still the raw exception text. |
-| 5. Content & language           | warn  | Raw server error text ("boom") still surfaced verbatim in the error body; fallback-to-central and delete-consequence copy are otherwise clear. |
+| 3. Consistency w/ design system | pass  | `ByokSection`/`ProviderForm`/`RoleBindingBlock` now draw spacing from `--s1`/`--s4`/`--gap-tight` instead of hand-rolled 4/6/8/16px literals. |
+| 4. Feedback & state             | pass  | Load error shows a friendly `ErrorState` with a visible Retry action; the raw exception text is now demoted to a closed `<details>` disclosure rather than the message body. |
+| 5. Content & language           | pass  | The failed-load panel leads with "Could not load BYOK settings for this context."; the raw server text is opt-in via a collapsed detail rather than surfaced verbatim. |
 | 6. Accessibility                | pass  | Section status/error `<p>` now carry `role="alert"`/`role="status"`, so save success/failure and the unreadable-context message are announced. |
 | 7. Responsive / layout          | pass  | Reflows cleanly at 640px; the provider table scrolls via its own `overflow-x: auto` wrapper rather than clipping (right-edge icon clip is a canvas artifact). |
-| 8. Spacing, alignment & sizing  | warn  | Same hardcoded-literal gaps/padding as dim 3, viewed from the sizing/token angle (see `byok-hardcoded-spacing`).         |
+| 8. Spacing, alignment & sizing  | pass  | Same token migration as dim 3, viewed from the sizing angle (see the now-`fixed` `byok-hardcoded-spacing`).             |
 | 9. Interaction & micro-states   | pass  | Save/roles-save show busy text and disable while in-flight; buttons/inputs have real `:focus-visible`/hover/`aria-busy` states (from source). |
 
 ## Findings
@@ -47,7 +47,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [Med] Load-error state drops the primary control and shows the raw server message
 
 - **Id:** byok-load-error-raw-message
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `6c0e9307f` — the failed-load panel now leads with "Could not load BYOK settings for this context." and passes the raw exception string to `ErrorState`'s new optional `detail` prop, which renders it in a closed `<details>` disclosure. The inline banner for the currentData-present path still shows the raw text and was deliberately not changed.
 - **Dimension:** 5. Content & language
 - **Where visible:** `.storybook-shots/settings/sections/ByokSection.spec.ts/settings-sections-ByokSection-Error-1.png` — a centered panel with a warning glyph, the title "Something went wrong", the raw string "boom" in red, and a "Try again" button.
 - **Source:** `client/settings/sections/ByokSection.svelte:246-247` (`{:else if currentData === null && error !== null}` renders `<ErrorState message={error} onRetry={...} />`), `client/shared/ui/ErrorState.svelte:17,23` (`title` defaults to "Something went wrong"; `message` is printed verbatim as `.ui-error__message`), `:92-96` (raw `err.message` assigned to `error`).
@@ -79,7 +80,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [Low] Card spacing and radius are hardcoded, off the shared scale
 
 - **Id:** byok-hardcoded-spacing
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `c2b3acf4d` — the eight literals across `ByokSection.svelte`, `ProviderForm.svelte` and `RoleBindingBlock.svelte` now use `--s1` / `--s4` / `--gap-tight`. Seven substitutions were value-identical; `.role-binding`'s `gap: 6px` was rounded up to `var(--gap-tight)` (8px) rather than introducing a 6px token for a single consumer.
 - **Dimension:** 8. Spacing, alignment & sizing / 3. Consistency w/ design system
 - **Where visible:** all populated states (provider table, add-provider form, role-overrides block)
 - **Source:** `client/settings/sections/ByokSection.svelte:397-403` (`.mono` ok, `.row-actions { gap: 4px }`), `:380-386` (`.provider-create { padding: 16px }` — this one now correctly uses `border-radius: var(--radius)`), `client/settings/components/ProviderForm.svelte:98-101` (`.provider-form__field { gap: 4px }`, `.provider-form__actions { gap: 8px }`), `client/settings/components/RoleBindingBlock.svelte:96-100` (`.role-binding { gap: 6px; padding: 8px 0 }`, `.role-binding__controls { gap: 8px }`).

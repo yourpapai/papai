@@ -49,7 +49,7 @@ inline toggle-mutation error banner still isn't a live region (see the narrowed 
 | 3. Consistency w/ design system | pass  | Uses `Pill` the same way `MemorySection.svelte:227` does, and the caption now uses the shared `.t-help` class (`client/settings/settings.css:79-83`) instead of a local one-off style.   |
 | 4. Feedback & state             | pass  | Loading shows a real `Loading…` placeholder and hides the button until state resolves (`:63,93`); load error renders via `ErrorState` with retry (`:91`); toggle mutation shows `busy` + a changing label (`:68,73-79`). |
 | 5. Content & language           | pass  | Errors render through `formatFetchError` (`client/shared/format-error.ts:14-26`), giving human copy ("Something went wrong on the server. Try again shortly.") instead of the raw exception string. |
-| 6. Accessibility                | warn  | Real `<button>` with `:focus-visible`; the load-error text now has `role="alert"` (`:96`), but the toggle still has no `aria-pressed`, the caption isn't linked via `aria-describedby`, and the toggle-mutation error banner (`:87`) has no live region. |
+| 6. Accessibility                | pass  | Real `<button>` with `:focus-visible`; the toggle now carries `aria-describedby` naming the state `Pill` and help caption, the load-error text has `role="alert"` (`:96`), and the toggle-mutation error banner now also carries `role="alert"`. |
 | 7. Responsive / layout          | pass  | The ~640px shot reflows cleanly — title/pill/button share the header row, caption wraps to two lines, no clipping or overflow.                                                            |
 | 8. Spacing, alignment & sizing  | pass  | Layout is `PageHeader` default spacing; edges align; the caption no longer carries a local one-off style (component has no `<style>` block at all).                                     |
 | 9. Interaction & micro-states   | pass  | Hover darkens the shared `secondary` variant in both hovered shots; focus-visible ring exists in `Btn.svelte:77-80`; the PATCH now passes `busy={mutating}` with a changing label (`:68,73-79`), which `Btn` renders as `aria-busy` + dimmed/pointer-events-none (`Btn.svelte:46,49,73-76`). |
@@ -125,7 +125,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 ### [Med] Binary toggle state is not exposed to assistive tech
 
 - **Id:** guest-mode-toggle-not-exposed-a11y
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `89915740d` — the toggle now carries `aria-describedby="guest-mode-state guest-mode-help"`, naming the On/Off `Pill` (which gained an optional `id`) and the help caption; the mutation-error banner gained `role="alert"` to match the load-error banner. The suggested `aria-pressed={enabled}` was deliberately **not** implemented: the button's label already swaps between "Enable guest mode" and "Disable guest mode", so `aria-pressed` would announce "Disable guest mode, pressed" — the label naming the action and the state naming its opposite. `Pill` gained an `id` prop rather than an id-carrying wrapper because `Pill` is `display: inline-flex` inside a flex row (`PageHeader.svelte:55-59`), and a wrapper would become the flex item and risk a height shift.
 - **Dimension:** 6. Accessibility
 - **Where visible:** source-only (screen-reader / keyboard). The control is a real `<button>` with a
   visible `:focus-visible` ring (good), and the load-error path is now announced, but the toggle's
