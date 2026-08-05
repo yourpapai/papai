@@ -110,7 +110,7 @@ const happyDeps = (): PipelineDeps => {
     resetWorktree: () => Promise.resolve(),
     removeWorktree: () => Promise.resolve(),
     mergeWorktree: () => Promise.resolve({ ok: true }),
-    execGit: () => Promise.resolve({ stdout: 'tests/live-status/x.test.ts\n', stderr: '' }),
+    execGit: () => Promise.resolve({ stdout: ' M tests/live-status/x.test.ts\n', stderr: '' }),
     runBuildCheck: () => Promise.resolve({ passed: true, stdout: '', stderr: '' }),
     measureScore: sequenceMeasure([0.46, 0.97]),
     readBaseline: () => Promise.resolve(baseline),
@@ -147,7 +147,7 @@ describe('pipeline runIteration', () => {
   test('diff-scope violation fails the iteration without merging or ratcheting', async () => {
     const deps = happyDeps()
     deps.execGit = (): Promise<{ stdout: string; stderr: string }> =>
-      Promise.resolve({ stdout: 'src/foo.ts\n', stderr: '' })
+      Promise.resolve({ stdout: ' M src/foo.ts\n', stderr: '' })
     const outcome = await runIteration(deps, 1)
     expect(outcome.outcome).toBe('failed')
     expect(outcome.gate).toBe('diff-scope')

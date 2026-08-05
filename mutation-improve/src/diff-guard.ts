@@ -21,11 +21,12 @@ export async function runDiffGuard(
   execGit: ExecGitFn,
   cwd: string,
 ): Promise<{ ok: true } | { ok: false; violations: string[] }> {
-  const { stdout } = await execGit(cwd, ['diff', '--name-only', 'HEAD'])
+  const { stdout } = await execGit(cwd, ['status', '--porcelain', '--untracked-files=all'])
   const paths = stdout
     .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
+    .map((line) => line.slice(3).trim())
+    .map((p) => p.replace(/^"|"$/gu, ''))
+    .filter((p) => p.length > 0)
   const { violations } = classifyDiff(paths)
   return violations.length === 0 ? { ok: true } : { ok: false, violations }
 }

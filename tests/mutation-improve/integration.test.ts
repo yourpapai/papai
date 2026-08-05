@@ -82,7 +82,7 @@ describe('integration', () => {
       resetWorktree: () => Promise.resolve(),
       removeWorktree: () => Promise.resolve(),
       mergeWorktree: () => Promise.resolve({ ok: true }),
-      execGit: () => Promise.resolve({ stdout: 'tests/foo.test.ts\n', stderr: '' }),
+      execGit: () => Promise.resolve({ stdout: ' M tests/foo.test.ts\n', stderr: '' }),
       runBuildCheck: () => Promise.resolve({ passed: true, stdout: '', stderr: '' }),
       measureScore: sequenceMeasure([0.4, 0.97]),
       readBaseline: () => Promise.resolve(baseline),

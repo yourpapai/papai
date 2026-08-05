@@ -138,10 +138,12 @@ async function gatePhase(
   return { ok: true, value: afterScore }
 }
 
-// ⑥ RATCHET (runner-owned) → ⑦ MERGE. Baseline bump happens BEFORE merge so a
-// merge conflict still leaves the persisted baseline advanced (the work is
-// done; only the integration failed). Merge-conflict returns gate:'merge',
-// which runPipeline treats as abort.
+// ⑥ RATCHET (runner-owned) → ⑦ MERGE. The baseline bump is written into the
+// worktree and committed there together with the agent's spec/plan/test work,
+// so mergeWorktree propagates ALL of it to base. On merge conflict the bump
+// stays on the unmerged iteration branch (kept for inspection) and does NOT
+// advance base; the run aborts (gate:'merge') so no later iteration chains
+// off a stale base.
 async function finalizePhase(
   deps: PipelineDeps,
   iter: number,
@@ -160,7 +162,12 @@ async function finalizePhase(
   // removeWorktree --force discards the agent's uncommitted files.
   await deps.writeBaseline(worktreePath, bumped)
   await deps.execGit(worktreePath, ['add', '-A'])
-  await deps.execGit(worktreePath, ['commit', '-m', `chore(mutation): ratchet ${file} baseline to ${afterScore}`])
+  await deps.execGit(worktreePath, [
+    'commit',
+    '--allow-empty',
+    '-m',
+    `chore(mutation): ratchet ${file} baseline to ${afterScore}`,
+  ])
   const merge = await deps.mergeWorktree(deps.config.repoRoot, branchFor(deps, iter))
   if (!merge.ok) {
     return {
