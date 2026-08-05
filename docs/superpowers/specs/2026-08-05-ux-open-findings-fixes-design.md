@@ -252,7 +252,10 @@ before SP5 is **467 passed / 0 failed**, and it must return to 0 failed at every
 ### States not capturable today
 
 - `CodingCredentialsSection`'s story set exercises only `claude`/`anthropic`/`api-key`, so the
-  `openai-compatible` Base URL hint cannot be shot. That task adds a story arg for it.
+  `openai-compatible` Base URL hint cannot be shot. The stories are fixture-driven
+  (`parameters={{ fixtures: … }}`), not arg-driven, so that task adds an msw handler bundle in
+  `client/stories/msw/settings-handlers-coding.ts`, a `settings-coding-credentials-openai-compatible`
+  key in `scenarios.ts`, and a story consuming it.
 - The `✓ Saved` marker is transient and gets **no visual baseline at all** — unit coverage only.
   An interaction test in the manual region was the original plan and is wrong:
   `toHaveScreenshot()` retries until two consecutive frames match, and an element that removes
