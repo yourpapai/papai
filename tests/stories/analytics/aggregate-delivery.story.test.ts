@@ -10,11 +10,15 @@ import { z } from 'zod'
 
 import { AnalyticsAggregateReleaseV1Schema } from '../../../src/analytics/delivery/aggregate-release.js'
 import { CAPTURED_SINK_ENDPOINT, SYNTHETIC_SINK_TOKEN } from '../../../src/analytics/delivery/captured-sink.testing.js'
+import { createCapturedSink, findCanaries } from '../../../src/analytics/delivery/captured-sink.testing.js'
 import { createSinkVersion } from '../../../src/analytics/delivery/sink-service.js'
+import { runDeliveryWorkerTick } from '../../../src/analytics/delivery/worker.js'
 import { analyticsDailyCounters } from '../../../src/db/analytics-schema.js'
 import { getDrizzleDb } from '../../../src/db/drizzle.js'
 import { analyticsAggregateDeliveries, analyticsAggregateReleases, analyticsSinks } from '../../../src/db/schema.js'
+import type { SettingsSessionHandle } from '../harness/fixtures.js'
 import { scenario } from '../harness/scenario.js'
+import type { ScenarioApi } from '../harness/scenario.js'
 
 const DAY_MS = 86_400_000
 
@@ -95,6 +99,68 @@ const disclosureScopeOf = (utcDay: string, metric: string): string | null => {
     .get()
   return row?.disclosureScope ?? null
 }
+
+const capturedLookupAll = (): Promise<readonly { address: string; family: 4 }[]> =>
+  Promise.resolve([{ address: '203.0.113.10', family: 4 as const }])
+
+const stageRelease = async (
+  when: ScenarioApi['when'],
+  admin: SettingsSessionHandle,
+  utcDay: string,
+  sinkVersionId: string,
+): Promise<string> => {
+  const response = await when.settingsRequest(admin, '/settings/api/admin/analytics/reconcile', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ release: { utcDay, sinkVersionId, execute: true } }),
+  })
+  expect(response.status).toBe(200)
+  return ReleaseExecutionSchema.parse(await response.json()).releaseExecution.releaseId
+}
+
+scenario(
+  'SCN-analytics-aggregate-delivery-captured: the delivery worker sends a staged release to the captured sink with the payload contract and no pseudonymous fields',
+  async ({ given, when, world }) => {
+    const alice = given.user('alice')
+    given.analyticsRuntime('governed')
+    const admin = await given.settingsAdminSession(alice)
+    const nowMs = world.clock.now().getTime()
+    const utcDay = completeUtcDay(nowMs)
+    const sinkVersionId = seedEnabledAggregateSink(nowMs)
+    insertFinalizedCounter({ utcDay, metric: 'turn_started', value: 250, contributorCount: 40 })
+    const releaseId = await stageRelease(when, admin, utcDay, sinkVersionId)
+
+    const sink = createCapturedSink({ kind: 'delivered', status: 200, receiptHash: 'f'.repeat(64) })
+    const tickNow = world.clock.now().getTime()
+    const tick = await runDeliveryWorkerTick(
+      { nowMs: tickNow },
+      { getDrizzleDb, transport: sink.transport, lookupAll: capturedLookupAll },
+    )
+    expect(tick).toEqual({ status: 'ok', leased: 1, delivered: 1, retryable: 0, ambiguous: 0, dead: 0 })
+
+    expect(sink.requests).toHaveLength(1)
+    const request = sink.requests[0]!
+    expect(request.url).toBe(CAPTURED_SINK_ENDPOINT)
+    expect(request.pinnedAddress).toBe('203.0.113.10')
+    expect(request.headers['authorization']).toBe(`Bearer ${SYNTHETIC_SINK_TOKEN}`)
+
+    const payload = AnalyticsAggregateReleaseV1Schema.parse(JSON.parse(request.body))
+    expect(payload.utc_day).toBe(utcDay)
+    expect(payload.cells).toHaveLength(1)
+    expect(
+      findCanaries([request.body], ['actor_key', 'conversation_key', 'turn_key', 'session_key', alice.id]),
+    ).toEqual([])
+
+    const delivery = getDrizzleDb()
+      .select()
+      .from(analyticsAggregateDeliveries)
+      .where(eq(analyticsAggregateDeliveries.releaseId, releaseId))
+      .get()
+    expect(delivery).toMatchObject({ state: 'delivered', attempts: 1 })
+    expect(delivery?.remoteReceiptHash).toMatch(/^[0-9a-f]{64}$/u)
+  },
+  { testTimeoutMs: 15000 },
+)
 
 scenario(
   'SCN-analytics-aggregate-release-settings: an operator enables the aggregate lane, executes a release through settings, and a re-execute is idempotent',

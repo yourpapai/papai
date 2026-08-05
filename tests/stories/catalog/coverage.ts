@@ -226,6 +226,7 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-analytics-governed-turn',
   'SCN-analytics-aggregate-release-settings',
   'SCN-analytics-aggregate-release-denials',
+  'SCN-analytics-aggregate-delivery-captured',
   'SCN-settings-admin-mcp-catalog',
   'SCN-settings-admin-mcp-plugin-servers',
   'SCN-settings-admin-system-access',
@@ -1557,6 +1558,13 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     provingTier: '0',
     storyIds: [
       'tests/stories/analytics/aggregate-delivery.story.test.ts#SCN-analytics-aggregate-release-denials: release requests are denied without a sink, with an incomplete day, and for drill-through, and non-admins cannot execute',
+    ],
+  },
+  'SCN-analytics-aggregate-delivery-captured': {
+    verifiedAt: '2026-08-04',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/analytics/aggregate-delivery.story.test.ts#SCN-analytics-aggregate-delivery-captured: the delivery worker sends a staged release to the captured sink with the payload contract and no pseudonymous fields',
     ],
   },
   'SCN-settings-api-tools': {
