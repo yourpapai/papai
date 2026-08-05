@@ -204,4 +204,65 @@ describe('PluginCard', () => {
     expect(note.textContent).toContain('No change')
     void unmount(component)
   })
+
+  test('a sensitive field with a stored value rests masked behind Replace', () => {
+    setMockFetch(() => Promise.resolve(json({ ok: true, contextId: 'user:1' })))
+    const { component, target } = render({
+      plugin: entry({
+        contextConfig: [
+          { key: 'api_key', label: 'API key', required: true, sensitive: true, hasValue: true, value: '****WvfQ' },
+        ],
+      }),
+    })
+    flushSync()
+
+    expect(target.querySelector('.ui-secret')).not.toBeNull()
+    expect(target.querySelector('.ui-secret__value')!.textContent).toBe('••••WvfQ')
+    expect(target.querySelector('[data-testid="plugin-cfg-input-my-plugin-api_key"]')).toBeNull()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="plugin-cfg-replace-my-plugin-api_key"]')!.click()
+    flushSync()
+    expect(target.querySelector('[data-testid="plugin-cfg-input-my-plugin-api_key"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('a non-sensitive stored value is readable in the editor, not hidden behind "(set)"', () => {
+    setMockFetch(() => Promise.resolve(json({ ok: true, contextId: 'user:1' })))
+    const { component, target } = render({
+      plugin: entry({
+        contextConfig: [
+          {
+            key: 'base_url',
+            label: 'Base URL',
+            required: false,
+            sensitive: false,
+            hasValue: true,
+            value: 'https://example.test',
+          },
+        ],
+      }),
+    })
+    flushSync()
+
+    const input = target.querySelector<HTMLInputElement>('[data-testid="plugin-cfg-input-my-plugin-base_url"]')!
+    expect(input.value).toBe('https://example.test')
+    expect(target.textContent).not.toContain('(set)')
+    void unmount(component)
+  })
+
+  test('a required field marks its control aria-required instead of appending an asterisk to the label', () => {
+    setMockFetch(() => Promise.resolve(json({ ok: true, contextId: 'user:1' })))
+    const { component, target } = render({
+      plugin: entry({
+        contextConfig: [{ key: 'token', label: 'Token', required: true, sensitive: false, hasValue: false, value: '' }],
+      }),
+    })
+    flushSync()
+
+    const input = target.querySelector<HTMLInputElement>('[data-testid="plugin-cfg-input-my-plugin-token"]')!
+    expect(input.getAttribute('aria-required')).toBe('true')
+    expect(target.querySelector('.settings-field__label')!.textContent).toBe('Token*')
+    expect(target.querySelector('.settings-field__req')!.getAttribute('aria-hidden')).toBe('true')
+    void unmount(component)
+  })
 })

@@ -26,6 +26,16 @@ test.describe('settings/sections/PluginsSection', () => {
     await switchStory(sharedPage, 'settings-sections-pluginssection--loading')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('Configurable', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-pluginssection--configurable')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('Ineligible', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-pluginssection--ineligible')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots
 

@@ -24,3 +24,10 @@
 <Story name="Error" args={{ contextId: CONTEXT_ID }} parameters={{ fixtures: 'settings-plugins-error' }} />
 
 <Story name="Loading" args={{ contextId: CONTEXT_ID }} parameters={{ fixtures: 'settings-plugins-loading' }} />
+
+<Story
+  name="Configurable"
+  args={{ contextId: CONTEXT_ID }}
+  parameters={{ fixtures: 'settings-plugins-configurable' }} />
+
+<Story name="Ineligible" args={{ contextId: CONTEXT_ID }} parameters={{ fixtures: 'settings-plugins-ineligible' }} />
