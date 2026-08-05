@@ -24,9 +24,10 @@ See LICENSE in the project root for details.
 - Formatter is `oxfmt`, invoked as `bun run format`. Not prettier.
 - Import paths use the `.js` extension even for TypeScript sources.
 - Client tests run with **`bun run test:client`**. Never `bun test tests/client/…`: `bunfig.toml:8` lists `tests/client/**` in `pathIgnorePatterns`, so the direct form exits 0 without executing anything. The `test:client` script overrides it with `--path-ignore-patterns ''`.
-- **Never run bare `bun shoot`.** It is `playwright test --update-snapshots=all` and rewrites all 465 baselines. Only ever `bun shoot -g <Section>`.
+- **Never run bare `bun shoot`.** It is `playwright test --update-snapshots=all` and rewrites every baseline at once. Only ever `bun shoot -g <Section>`.
+- `.storybook-shots/` is **gitignored** (`.gitignore:56`). Baselines are local on-disk state and are never committed — do not `git add` them, and never force-add with `-f`. The audit is the proof that they are correct; git is not.
 - `bun run visual:audit` (`VISUAL_AUDIT=1 playwright test`) is the non-mutating check. `playwright.config.ts:34-41` sets `threshold: 0.02` and sets neither `maxDiffPixels` nor `maxDiffPixelRatio`, so both default to 0 — one over-threshold pixel fails.
-- The audit floor entering SP5 is **467 passed / 0 failed**. Every task must end at 0 failed.
+- The audit floor entering SP5 is **474 passed / 0 failed**. Every task must end at 0 failed.
 - `docs/ux-reviews/_BACKLOG.md` is generated. Regenerate with `bun run ux:backlog`; never hand-edit it.
 - Backlog status vocabulary, exact strings: `open`, `fixed`, `superseded`, `wont-fix`, `deferred`. Any non-`open` status requires a non-empty `- **Resolved:**` line.
 
@@ -36,7 +37,7 @@ Run this in order. It is the only sanctioned way to move a baseline:
 
 1. `bun run visual:audit` **first**, after the code change and before any re-shoot. The failure list is the *prediction check*: it enumerates exactly which shots your change moved. Record that list in your report.
 2. `bun shoot -g <Section>` to re-shoot only that section.
-3. **Read every changed PNG** with the Read tool (`git status --porcelain .storybook-shots/` names them) and confirm each matches the finding's intent.
+3. **Read every changed PNG** with the Read tool (`git status --porcelain/` names them) and confirm each matches the finding's intent.
 4. `bun run visual:audit` again — must be 0 failed.
 
 A green audit after a re-shoot is vacuous on its own; it is evidence only in combination with steps 1 and 3. **A shot that moves without being predicted is a defect, not a baseline update** — stop and report it.
@@ -198,19 +199,19 @@ Expected: exactly **1 failed** — `shared/ui/ErrorState › With detail`, faili
 - [ ] **Step 8: Shoot and inspect**
 
 Run: `bun shoot -g ErrorState`
-Then `git status --porcelain .storybook-shots/` and Read every listed PNG. Expected: exactly one new file, showing the panel with a closed "Technical details" disclosure below the red message and above "Try again".
+Then `git status --porcelain/` and Read every listed PNG. Expected: exactly one new file, showing the panel with a closed "Technical details" disclosure below the red message and above "Try again".
 
 - [ ] **Step 9: Re-audit**
 
 Run: `bun run visual:audit 2>&1 | tail -5`
-Expected: **468 passed / 0 failed**.
+Expected: **475 passed / 0 failed**.
 
 - [ ] **Step 10: Commit**
 
 ```bash
 git add client/shared/ui/ErrorState.svelte client/shared/ui/ErrorState.stories.svelte \
   tests/visual/shared/ui/ErrorState.spec.ts tests/client/shared/ui/ErrorState.test.ts \
-  .storybook-shots
+ 
 git commit -m "feat(ui): let ErrorState demote raw diagnostics to a collapsed detail"
 ```
 
@@ -298,17 +299,17 @@ Expected: failures confined to `settings/sections/ByokSection › Error` (and an
 - [ ] **Step 6: Shoot and inspect**
 
 Run: `bun shoot -g ByokSection`
-Then `git status --porcelain .storybook-shots/` and Read every changed PNG. Expected: the panel now reads "Something went wrong" / "Could not load BYOK settings for this context." with a closed "Technical details" disclosure where the bare word "boom" used to be.
+Then `git status --porcelain/` and Read every changed PNG. Expected: the panel now reads "Something went wrong" / "Could not load BYOK settings for this context." with a closed "Technical details" disclosure where the bare word "boom" used to be.
 
 - [ ] **Step 7: Re-audit**
 
 Run: `bun run visual:audit 2>&1 | tail -5`
-Expected: **468 passed / 0 failed**.
+Expected: **475 passed / 0 failed**.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add client/settings/sections/ByokSection.svelte tests/client/settings/byok-section.test.ts .storybook-shots
+git add client/settings/sections/ByokSection.svelte tests/client/settings/byok-section.test.ts
 git commit -m "fix(settings): give the BYOK load failure a written message"
 ```
 
@@ -539,7 +540,7 @@ Expected: PASS, including the pre-existing `ConfigFieldRow` and `AiOutputSection
 - [ ] **Step 7: Audit — expect no movement**
 
 Run: `bun run visual:audit 2>&1 | tail -5`
-Expected: **468 passed / 0 failed** with no re-shoot. The marker only exists after an interaction that no story performs. If anything fails, `justSaved` is initialising truthy — fix that rather than re-shooting.
+Expected: **475 passed / 0 failed** with no re-shoot. The marker only exists after an interaction that no story performs. If anything fails, `justSaved` is initialising truthy — fix that rather than re-shooting.
 
 - [ ] **Step 8: Commit**
 
@@ -738,7 +739,7 @@ Expected: PASS across `Btn`, `Pill`, `GuestModeSection`, and every other consume
 - [ ] **Step 7: Audit — expect no movement**
 
 Run: `bun run visual:audit 2>&1 | tail -5`
-Expected: **468 passed / 0 failed** with no re-shoot. Every change in this task is an attribute; none affects layout or paint. Any failure means something else moved — investigate, do not re-shoot.
+Expected: **475 passed / 0 failed** with no re-shoot. Every change in this task is an attribute; none affects layout or paint. Any failure means something else moved — investigate, do not re-shoot.
 
 - [ ] **Step 8: Commit**
 
@@ -920,18 +921,18 @@ Expected: failures confined to `settings/sections/KaneoAccessSection` — the "N
 - [ ] **Step 8: Shoot and inspect**
 
 Run: `bun shoot -g KaneoAccessSection`
-Then `git status --porcelain .storybook-shots/` and Read every changed PNG. Expected: the empty state now ends in a "Check again" button below the hint; nothing else in the section shifts.
+Then `git status --porcelain/` and Read every changed PNG. Expected: the empty state now ends in a "Check again" button below the hint; nothing else in the section shifts.
 
 - [ ] **Step 9: Re-audit**
 
 Run: `bun run visual:audit 2>&1 | tail -5`
-Expected: **468 passed / 0 failed**.
+Expected: **475 passed / 0 failed**.
 
 - [ ] **Step 10: Commit**
 
 ```bash
 git add client/settings/sections/KaneoAccessSection.svelte \
-  tests/client/settings/sections/KaneoAccessSection.test.ts .storybook-shots
+  tests/client/settings/sections/KaneoAccessSection.test.ts
 git commit -m "fix(settings): give Kaneo access a re-check action and a one-way password hide"
 ```
 
@@ -1090,12 +1091,12 @@ Composed `SettingsApp` shots must not move either — that section is not in the
 - [ ] **Step 9: Shoot and inspect**
 
 Run: `bun shoot -g CodingCredentialsSection`
-Then `git status --porcelain .storybook-shots/` and Read every changed PNG. Confirm: the Auth-method hint reads as a caption under its control, the new OpenAI-compatible shot shows Base URL marked required with its hint and **no** Auth method row, and no text is clipped at the narrow width.
+Then `git status --porcelain/` and Read every changed PNG. Confirm: the Auth-method hint reads as a caption under its control, the new OpenAI-compatible shot shows Base URL marked required with its hint and **no** Auth method row, and no text is clipped at the narrow width.
 
 - [ ] **Step 10: Re-audit**
 
 Run: `bun run visual:audit 2>&1 | tail -5`
-Expected: **469 passed / 0 failed**.
+Expected: **476 passed / 0 failed**.
 
 - [ ] **Step 11: Commit**
 
@@ -1104,7 +1105,7 @@ git add client/settings/sections/CodingCredentialsSection.svelte \
   client/settings/sections/CodingCredentialsSection.stories.svelte \
   client/stories/msw/settings-handlers-coding.ts client/stories/msw/scenarios.ts \
   tests/visual/settings/sections/CodingCredentialsSection.spec.ts \
-  tests/client/settings/coding-credentials-section.test.ts .storybook-shots
+  tests/client/settings/coding-credentials-section.test.ts
 git commit -m "fix(settings): explain why the coding-credential conditional fields appear"
 ```
 
@@ -1168,18 +1169,18 @@ Expected: failures confined to `settings/sections/MembersSection` shots that ren
 - [ ] **Step 6: Shoot and inspect**
 
 Run: `bun shoot -g MembersSection`
-Then `git status --porcelain .storybook-shots/` and Read every changed PNG. Confirm the sentence fits the table body without wrapping oddly or overflowing at the narrow width.
+Then `git status --porcelain/` and Read every changed PNG. Confirm the sentence fits the table body without wrapping oddly or overflowing at the narrow width.
 
 - [ ] **Step 7: Re-audit**
 
 Run: `bun run visual:audit 2>&1 | tail -5`
-Expected: **469 passed / 0 failed**.
+Expected: **476 passed / 0 failed**.
 
 - [ ] **Step 8: Commit**
 
 ```bash
 git add client/settings/sections/MembersSection.svelte \
-  tests/client/settings/sections/MembersSection.test.ts .storybook-shots
+  tests/client/settings/sections/MembersSection.test.ts
 git commit -m "fix(settings): turn the empty members table into guidance"
 ```
 
@@ -1241,18 +1242,18 @@ Expected: failures confined to shots that render `RoleBindingBlock` — the Byok
 - [ ] **Step 6: Shoot and inspect**
 
 Run: `bun shoot -g ByokSection`
-Then `git status --porcelain .storybook-shots/` and Read every changed PNG. Confirm the only difference is 2px more breathing room between a role binding's head and its controls, and that nothing overflows or reflows.
+Then `git status --porcelain/` and Read every changed PNG. Confirm the only difference is 2px more breathing room between a role binding's head and its controls, and that nothing overflows or reflows.
 
 - [ ] **Step 7: Re-audit**
 
 Run: `bun run visual:audit 2>&1 | tail -5`
-Expected: **469 passed / 0 failed**.
+Expected: **476 passed / 0 failed**.
 
 - [ ] **Step 8: Commit**
 
 ```bash
 git add client/settings/sections/ByokSection.svelte client/settings/components/ProviderForm.svelte \
-  client/settings/components/RoleBindingBlock.svelte .storybook-shots
+  client/settings/components/RoleBindingBlock.svelte
 git commit -m "style(settings): replace the BYOK spacing literals with scale tokens"
 ```
 
@@ -1376,13 +1377,13 @@ Expected: PASS. The "is current" test proves the committed `_BACKLOG.md` matches
 
 - [ ] **Step 7: Confirm zero client changes**
 
-Run: `git status --porcelain client/ src/ .storybook-shots/`
+Run: `git status --porcelain client/ src/`
 Expected: no output. If anything appears, this task strayed outside documentation.
 
 - [ ] **Step 8: Final audit**
 
 Run: `bun run visual:audit 2>&1 | tail -5`
-Expected: **469 passed / 0 failed**, unchanged from Task 8.
+Expected: **476 passed / 0 failed**, unchanged from Task 8.
 
 - [ ] **Step 9: Format and commit**
 
@@ -1430,4 +1431,4 @@ No spec requirement is unassigned.
 
 **Baseline arithmetic**
 
-467 (floor) + 1 (`ErrorState` "With detail", Task 1) + 1 (`CodingCredentialsSection` "OpenAI-compatible", Task 6) = **469** at the end. Tasks 2, 5, 7, 8 move existing baselines without adding any; Tasks 3, 4, 9 move none.
+474 (floor) + 1 (`ErrorState` "With detail", Task 1) + 1 (`CodingCredentialsSection` "OpenAI-compatible", Task 6) = **476** at the end. Tasks 2, 5, 7, 8 move existing baselines without adding any; Tasks 3, 4, 9 move none.
