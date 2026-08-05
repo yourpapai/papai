@@ -64,7 +64,7 @@ is real work merely blocked elsewhere. It is not; it is declined.
 
 ## Shared-component changes
 
-Three shared components are touched. All three changes are **additive optional props whose default
+Four shared components are touched. All four changes are **additive optional props whose default
 rendering is byte-identical**, so no consumer that does not opt in can move.
 
 ### `ErrorState` gains `detail?: string`
@@ -109,6 +109,16 @@ moves.
 element, which `guest-mode-toggle-not-exposed-a11y` needs. One optional attribute, additive and
 visually inert.
 
+### `Pill` gains `id?: string`
+
+The On/Off `Pill` must be referenceable by `aria-describedby`, and it renders a bare
+`<span class="ui-pill">` with no id. The alternative — wrapping it in an id-carrying `<span>` —
+is worse: `Pill` is `display: inline-flex` and sits as a direct flex child of
+`.ui-page-header__action`, so a wrapper would become the flex item and introduce a line box,
+risking a height shift. That would move a visual baseline for a change that is supposed to be
+invisible. One optional attribute rendered on the existing span, with no wrapper and no layout
+change.
+
 ## Section-local fixes
 
 All anchors below were re-verified against the working tree while writing this spec.
@@ -119,8 +129,8 @@ Three parts, one task:
 
 1. The toggle-mutation error `<p>` at `:87` gains `role="alert"`, matching the load-error `<p>` at
    `:96` that already has one.
-2. The help caption at `:98-100` gains an id, and the toggle `Btn` an `ariaDescribedBy` pointing at
-   it.
+2. The help caption at `:98-100` gains an id, the On/Off `Pill` at `:64` gains an id, and the
+   toggle `Btn` an `ariaDescribedBy` naming both.
 3. **The finding's literal suggested fix is rejected.** It asks for `aria-pressed={enabled}`, but
    the button's label already swaps between "Enable guest mode" and "Disable guest mode"
    (`:73-79`). Combining the two announces *"Disable guest mode, pressed"* when guest mode is on:
@@ -134,11 +144,24 @@ Three parts, one task:
 
 ### `KaneoAccessSection` — two findings, one task
 
-- `kaneo-access-empty-state-dead-end`: the `EmptyState` at `:95-97` gains an `action` snippet
-  linking to the members section. `EmptyState` already supports `action` (`EmptyState.svelte:13`,
-  `:23`); no component change is needed.
+- `kaneo-access-empty-state-dead-end`: the `EmptyState` at `:95-97` gains an `action` snippet.
+  `EmptyState` already supports `action` (`EmptyState.svelte:13`, `:23`); no component change is
+  needed. The action is a "Check again" button re-running `load(contextId)`, not a link: this is
+  the personal view of a member who is not provisioned, provisioning happens asynchronously
+  server-side, and the settings SPA has no members/admin destination reachable from a
+  non-provisioned personal context.
 - `kaneo-access-password-no-copy-rehide`: the revealed-password block at `:121-129` gains a "Hide"
   control beside the existing `CopyButton`, resetting `revealedPassword` to `null`.
+
+  The finding's suggested fix stops there, but reveal is **destructive server-side**:
+  `src/debug/settings/kaneo-credentials-routes.ts:127` calls `clearStoredPassword` before
+  returning, so a second reveal 409s with "No stored password for this account". A bare Hide would
+  therefore restore a "Reveal password" button that cannot work, and the user would have discarded
+  the only copy of a secret to reach it. Hiding is consequently one-way in the UI too: the
+  component tracks that a reveal has happened, and after Hide renders a terminal line
+  ("Password hidden — it was shown once and can't be shown again.") in place of the reveal button.
+  This costs one `$state` boolean and keeps the UI's affordances truthful about the server's
+  reveal-once contract.
 
 ### `CodingCredentialsSection` — `coding-credentials-conditional-fields-unexplained`
 
@@ -173,7 +196,7 @@ Layered — shared components first, then sections, then documentation:
 1. `ErrorState.detail`
 2. `ByokSection` consumes it (sanitized message + demoted raw text)
 3. `ConfigFieldRow` saved signal
-4. `Btn.ariaDescribedBy` + `GuestModeSection` accessibility
+4. `Btn.ariaDescribedBy` + `Pill.id` + `GuestModeSection` accessibility
 5. `KaneoAccessSection` (both findings)
 6. `CodingCredentialsSection` hints
 7. `MembersSection` empty copy
@@ -200,8 +223,8 @@ Most of these fixes are assertable without pixels, and each task writes its test
 - `ConfigFieldRow` shows the saved marker after a resolved save and clears it
 - `GuestModeSection`'s `aria-describedby` resolves to the caption element; the mutation-error `<p>`
   carries `role="alert"`
-- `KaneoAccessSection`'s Hide control clears the revealed password; the `EmptyState` renders its
-  action
+- `KaneoAccessSection`'s Hide control clears the revealed password and leaves the terminal
+  "shown once" line rather than a re-armed Reveal button; the `EmptyState` renders its action
 - `CodingCredentialsSection` renders the `hint` text on each conditional field
 - `MembersSection` renders the new empty copy
 
