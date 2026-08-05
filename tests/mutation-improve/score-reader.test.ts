@@ -4,8 +4,11 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, mock, test } from 'bun:test'
+import { rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 
 import { measureMutationScore, reportPathFor, safeFileStem } from '../../mutation-improve/src/score-reader.js'
+import { ReportReadError, readStrykerReport } from '../../scripts/mutation/json-readers.js'
 import type { StrykerReport } from '../../scripts/mutation/score-merger.js'
 
 const reportWith = (killed: number, survived: number, noCoverage = 0, timeout = 0): StrykerReport => ({
@@ -79,5 +82,28 @@ describe('score-reader', () => {
         'src/foo.ts',
       ),
     ).rejects.toThrow(/malformed|stryker/iu)
+  })
+})
+
+describe('readStrykerReport (json-readers contract)', () => {
+  test('throws ReportReadError when the parsed JSON is not a Stryker report', () => {
+    const tmpFile = `${tmpdir()}/mi-not-a-report-${Date.now()}.json`
+    // `files` must be a record; an array is not a valid Stryker report shape
+    writeFileSync(tmpFile, JSON.stringify({ files: [] }))
+    try {
+      expect(() => readStrykerReport(tmpFile)).toThrow(ReportReadError)
+    } finally {
+      rmSync(tmpFile, { force: true })
+    }
+  })
+
+  test('returns the report when the shape is valid', () => {
+    const tmpFile = `${tmpdir()}/mi-valid-${Date.now()}.json`
+    writeFileSync(tmpFile, JSON.stringify({ files: { 'src/x.ts': { mutants: [{ status: 'Killed' }] } } }))
+    try {
+      expect(readStrykerReport(tmpFile).files?.['src/x.ts']?.mutants?.length).toBe(1)
+    } finally {
+      rmSync(tmpFile, { force: true })
+    }
   })
 })
