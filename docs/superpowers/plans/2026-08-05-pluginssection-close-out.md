@@ -189,8 +189,9 @@ with:
 
 ```typescript
 export const PluginConfigFieldSchema = StoredConfigValueSchema
-export type PluginConfigField = z.infer<typeof PluginConfigFieldSchema>
 ```
+
+Do **not** add a `PluginConfigField` type export here. `knip --strict` gates `check:full` and fails on an exported type with no consumer; the first consumer arrives in Task 4, which adds the export itself.
 
 Then, immediately after the `PluginsResponse` type export at `:162`, add:
 
@@ -799,6 +800,10 @@ and config-row fixes need."
 
 **Interfaces:**
 - Consumes: `PluginCard` props from Task 3, `PluginConfigPatchResult` from Task 1.
+- Also adds, in `client/settings/fetcher-schemas.ts` directly beneath `PluginConfigFieldSchema`, the type this task is the first to consume (Task 1 deliberately left it out — `knip --strict` fails an exported type with no consumer):
+  ```typescript
+  export type PluginConfigField = z.infer<typeof PluginConfigFieldSchema>
+  ```
 - Produces: `PluginCard`'s `onError` prop is **removed**; `Props` is now `{ plugin, contextId, onChanged, onRequestClear }`. New testids: `plugin-card-error-<pluginId>`, `plugin-cfg-note-<pluginId>-<key>`. The section renders `ErrorState` (testid `error-retry` on its button, from `ErrorState.svelte:35`) instead of `<p class="status-error">` for load failures.
 
 Closes `plugins-load-error-no-recovery`, `plugins-no-inflight-state`, `plugins-validation-far-from-field`, `plugins-save-no-success-feedback`.
