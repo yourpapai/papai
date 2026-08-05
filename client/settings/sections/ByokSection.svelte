@@ -385,7 +385,7 @@
     border: 1px solid var(--border);
     background: var(--surface-1);
     border-radius: var(--radius);
-    padding: 16px;
+    padding: var(--s4);
     margin-bottom: var(--gap-field);
   }
   .settings-byok__roles {
@@ -403,6 +403,6 @@
   }
   .row-actions {
     display: flex;
-    gap: 4px;
+    gap: var(--s1);
   }
 </style>
