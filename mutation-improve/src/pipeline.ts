@@ -222,25 +222,43 @@ export async function runIteration(deps: PipelineDeps, iter: number): Promise<It
   const worktreePath = worktreeFor(deps, iter)
   const iterPath = iterDir(deps.runState.runDir, iter)
   await mkdir(iterPath, { recursive: true })
-  await deps.createWorktree(deps.config.repoRoot, worktreePath, runIdFor(deps, iter), deps.config.prBranchPrefix)
+  // C2: wrap the body so any unexpected throw (AgentRunError, git failure,
+  // stryker crash) still routes through the single cleanup path. Without this,
+  // a thrown exception bypasses failIter entirely: the worktree and its
+  // `mutation-improve/<runId>-iterN` branch are leaked, runState.failed gains
+  // no entry, and the next createWorktree for the same path fails.
+  let worktreeCreated = false
+  try {
+    await deps.createWorktree(deps.config.repoRoot, worktreePath, runIdFor(deps, iter), deps.config.prBranchPrefix)
+    worktreeCreated = true
 
-  const sel = await selectPhase(deps, worktreePath, iterPath)
-  if (!sel.ok) return failIter(deps, iter, worktreePath, sel.gate, sel.reason)
-  const { selection, baseline } = sel.value
+    const sel = await selectPhase(deps, worktreePath, iterPath)
+    if (!sel.ok) return await failIter(deps, iter, worktreePath, sel.gate, sel.reason)
+    const { selection, baseline } = sel.value
 
-  // ② CAPTURE BEFORE (runner-owned). Already at threshold → nothing to do.
-  const beforeScore = await deps.measureScore(worktreePath, selection.file)
-  if (beforeScore >= deps.config.threshold) {
-    deps.runState.doneSet.push(selection.file)
-    return skipIter(deps, iter, worktreePath, selection.file, beforeScore)
+    // ② CAPTURE BEFORE (runner-owned). Already at threshold → nothing to do.
+    const beforeScore = await deps.measureScore(worktreePath, selection.file)
+    if (beforeScore >= deps.config.threshold) {
+      deps.runState.doneSet.push(selection.file)
+      return await skipIter(deps, iter, worktreePath, selection.file, beforeScore)
+    }
+
+    const improved = await improvePhase(deps, worktreePath, iterPath, selection.file, beforeScore)
+
+    const gate = await gatePhase(deps, worktreePath, selection.file, improved)
+    if (!gate.ok) return await failIter(deps, iter, worktreePath, gate.gate, gate.reason)
+
+    return await finalizePhase(deps, iter, worktreePath, selection.file, baseline, beforeScore, gate.value, improved)
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    // If createWorktree itself threw there is nothing to reset/remove; just
+    // record the failure so the run is not silently dropped.
+    if (!worktreeCreated) {
+      deps.runState.failed.push({ iter, gate: 'exception', reason })
+      return { iter, outcome: 'failed', gate: 'exception', reason }
+    }
+    return failIter(deps, iter, worktreePath, 'exception', reason)
   }
-
-  const improved = await improvePhase(deps, worktreePath, iterPath, selection.file, beforeScore)
-
-  const gate = await gatePhase(deps, worktreePath, selection.file, improved)
-  if (!gate.ok) return failIter(deps, iter, worktreePath, gate.gate, gate.reason)
-
-  return finalizePhase(deps, iter, worktreePath, selection.file, baseline, beforeScore, gate.value, improved)
 }
 
 export async function runPipeline(deps: PipelineDeps): Promise<{ results: IterationResult[]; aborted: boolean }> {

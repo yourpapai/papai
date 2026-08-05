@@ -208,6 +208,55 @@ describe('pipeline runIteration', () => {
     expect(outcome.outcome).toBe('failed')
     expect(outcome.gate).toBe('merge')
   })
+
+  // C2: an unexpected throw mid-pipeline must route through failIter so the
+  // worktree is reset/removed and the failure is recorded — not leaked.
+  test('thrown exception after worktree creation resets/removes worktree and records exception gate', async () => {
+    const deps = happyDeps()
+    const calls = { reset: 0, remove: 0 }
+    deps.runImproveAgent = (): Promise<{ value: Result; usage: AgentUsage }> =>
+      Promise.reject(new Error('agent blew up'))
+    deps.resetWorktree = (): Promise<void> => {
+      calls.reset += 1
+      return Promise.resolve()
+    }
+    deps.removeWorktree = (): Promise<void> => {
+      calls.remove += 1
+      return Promise.resolve()
+    }
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    expect(outcome.gate).toBe('exception')
+    expect(outcome.reason).toBe('agent blew up')
+    expect(calls.reset).toBe(1)
+    expect(calls.remove).toBe(1)
+    expect(deps.runState.failed).toEqual([{ iter: 1, gate: 'exception', reason: 'agent blew up' }])
+    expect(deps.runState.merged).toHaveLength(0)
+  })
+
+  // C2: if createWorktree itself throws, the catch must not attempt to
+  // reset/remove a worktree that was never created (resetWorktree would throw
+  // on a missing path); it still records the failure.
+  test('createWorktree throwing records exception gate without touching reset/remove', async () => {
+    const deps = happyDeps()
+    const calls = { reset: 0, remove: 0 }
+    deps.createWorktree = (): Promise<void> => Promise.reject(new Error('worktree add failed'))
+    deps.resetWorktree = (): Promise<void> => {
+      calls.reset += 1
+      return Promise.resolve()
+    }
+    deps.removeWorktree = (): Promise<void> => {
+      calls.remove += 1
+      return Promise.resolve()
+    }
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    expect(outcome.gate).toBe('exception')
+    expect(outcome.reason).toBe('worktree add failed')
+    expect(calls.reset).toBe(0)
+    expect(calls.remove).toBe(0)
+    expect(deps.runState.failed).toEqual([{ iter: 1, gate: 'exception', reason: 'worktree add failed' }])
+  })
 })
 
 describe('pipeline runPipeline', () => {

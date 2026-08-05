@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { readStrykerReport } from '../../scripts/mutation/json-readers.js'
+import { ReportReadError, readStrykerReport } from '../../scripts/mutation/json-readers.js'
 import { mergeReports, type StrykerReport } from '../../scripts/mutation/score-merger.js'
 
 export const safeFileStem = (srcFile: string): string => srcFile.replaceAll(/[^a-zA-Z0-9._-]+/gu, '__')
@@ -16,21 +16,29 @@ export interface MeasureDeps {
   readReport?: (reportPath: string) => StrykerReport
 }
 
+function isRetryable(error: unknown): boolean {
+  if (error instanceof ReportReadError) return true
+  return (
+    typeof error === 'object' && error !== null && 'code' in error && (error as { code: unknown }).code === 'ENOENT'
+  )
+}
+
 export async function measureMutationScore(deps: MeasureDeps, reportDir: string, srcFile: string): Promise<number> {
   const read = deps.readReport ?? readStrykerReport
   const reportPath = reportPathFor(reportDir, srcFile)
   const attempt = async (): Promise<number> => {
-    await deps.exec()
+    const result = await deps.exec()
+    if (result.exitCode !== 0) {
+      throw new Error(`mutation run failed (exit ${result.exitCode}): ${result.stderr}`)
+    }
     return mergeReports([read(reportPath)]).score
   }
   try {
     const score = await attempt()
     return score
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    if (/enoent|malformed|must contain a stryker/iu.test(message)) {
-      const retried = await attempt()
-      return retried
+    if (isRetryable(error)) {
+      return attempt()
     }
     throw error
   }

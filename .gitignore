@@ -61,6 +61,9 @@ crvy-rprtr-*.json
 # Review loop state
 .review-loop/
 
+# Mutation improve runner state
+.mutation-improve/
+
 codeindex/.codeindex/
 papai-local.tar
 client/assets
