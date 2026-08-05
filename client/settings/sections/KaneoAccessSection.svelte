@@ -30,6 +30,10 @@
   let error: string | null = $state(null)
   let revealedPassword: string | null = $state(null)
   let revealing = $state(false)
+  // Reveal is destructive server-side (kaneo-credentials-routes.ts:127 clears the stored
+  // password before responding), so once it has happened the Reveal button must not come back:
+  // a second attempt 409s, and the user would have discarded the only copy to reach it.
+  let revealedOnce = $state(false)
 
   async function load(id: string): Promise<void> {
     credentials = null
@@ -69,6 +73,7 @@
     try {
       const result = await revealKaneoPassword(contextId)
       revealedPassword = result.password
+      revealedOnce = true
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : String(e)
     } finally {
@@ -94,7 +99,18 @@
   {:else if notProvisioned}
     <EmptyState
       title="No Kaneo access yet"
-      hint="Your account isn't provisioned in this group yet. Group members are set up automatically — if this persists, ask a group admin to add you." />
+      hint="Your account isn't provisioned in this group yet. Group members are set up automatically — if this persists, ask a group admin to add you.">
+      {#snippet action()}
+        <Btn
+          variant="secondary"
+          size="sm"
+          busy={loading}
+          testid="kaneo-empty-recheck"
+          onClick={() => void load(contextId)}>
+          {#snippet children()}Check again{/snippet}
+        </Btn>
+      {/snippet}
+    </EmptyState>
   {:else if error !== null}
     <ErrorState message={error} onRetry={() => void load(contextId)} />
   {:else if credentials !== null}
@@ -124,9 +140,17 @@
         <div class="kaneo-pw__row">
           <Code truncate={false}>{revealedPassword}</Code>
           <CopyButton value={revealedPassword} label="Copy password" />
+          <Btn variant="ghost" size="sm" testid="kaneo-hide" onClick={() => (revealedPassword = null)}>
+            {#snippet children()}Hide{/snippet}
+          </Btn>
         </div>
-        <p class="placeholder">Store this password securely — it won't be shown again.</p>
+        <p class="placeholder">Store this password securely — hiding it here is permanent, and it won't be shown again.</p>
       </div>
+    {:else if revealedOnce}
+      <p class="placeholder" data-testid="kaneo-pw-hidden">
+        Password hidden. It was shown once and can't be shown again — ask an admin to re-provision your account if you
+        no longer have it.
+      </p>
     {:else}
       <div class="kaneo-pw__reveal">
         <Btn
