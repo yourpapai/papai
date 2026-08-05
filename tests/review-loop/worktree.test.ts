@@ -157,6 +157,8 @@ describe('worktree', () => {
     await execGit(repoRoot, ['commit', '-m', 'init', '--quiet'])
     const wt = path.join(repoRoot, 'wt')
     await createWorktree(repoRoot, wt, 'run-2', 'mutation-improve')
+    const { stdout: afterCreate } = await execGit(repoRoot, ['branch', '--list'])
+    expect(afterCreate).toContain('mutation-improve/run-2')
     await removeWorktree(repoRoot, wt, 'run-2', 'mutation-improve')
     const { stdout } = await execGit(repoRoot, ['branch', '--list'])
     expect(stdout).not.toContain('mutation-improve/run-2')
