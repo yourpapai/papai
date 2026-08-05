@@ -1,0 +1,47 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { afterEach, describe, expect, test } from 'bun:test'
+import { writeFileSync } from 'node:fs'
+import path from 'node:path'
+
+import { MutationImproveConfigSchema, loadMutationImproveConfig } from '../../mutation-improve/src/config.js'
+import { cleanupTempDirs, makeTempDir } from './test-helpers.js'
+
+afterEach(cleanupTempDirs)
+
+const minimalValid = {
+  workDir: '.mutation-improve',
+  agent: { model: 'opencode/claude-sonnet-4-6', extraArgs: [] },
+}
+
+describe('config', () => {
+  test('MutationImproveConfigSchema applies defaults', () => {
+    const parsed = MutationImproveConfigSchema.parse(minimalValid)
+    expect(parsed.base).toBe('master')
+    expect(parsed.upstream).toBe('origin')
+    expect(parsed.count).toBe(1)
+    expect(parsed.threshold).toBe(0.95)
+    expect(parsed.epsilon).toBe(0.02)
+    expect(parsed.checkCommand).toBe('bun check:full')
+    expect(parsed.mutateFileCommand).toBe('bun test:mutate:file')
+    expect(parsed.prBranchPrefix).toBe('mutation-improve')
+    expect(parsed.agent.timeoutMs).toBe(1_800_000)
+  })
+
+  test('MutationImproveConfigSchema rejects threshold out of [0,1]', () => {
+    expect(() => MutationImproveConfigSchema.parse({ ...minimalValid, threshold: 1.5 })).toThrow()
+    expect(() => MutationImproveConfigSchema.parse({ ...minimalValid, threshold: -0.1 })).toThrow()
+  })
+
+  test('loadMutationImproveConfig resolves workDir against repoRoot and creates it', async () => {
+    const repoRoot = makeTempDir('cfg-')
+    const configPath = path.join(repoRoot, 'config.json')
+    writeFileSync(configPath, JSON.stringify({ ...minimalValid, repoRoot }))
+    const config = await loadMutationImproveConfig({ configPath })
+    expect(config.repoRoot).toBe(repoRoot)
+    expect(config.workDir).toBe(path.resolve(repoRoot, '.mutation-improve'))
+  })
+})

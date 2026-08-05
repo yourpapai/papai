@@ -1,0 +1,57 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { mkdir, readFile } from 'node:fs/promises'
+import path from 'node:path'
+
+import { z } from 'zod'
+
+import { detectGitRoot } from '../../review-loop/src/worktree.js'
+
+const AgentConfigSchema = z.object({
+  model: z.string().min(1),
+  extraArgs: z.array(z.string()).default([]),
+  timeoutMs: z.number().int().min(0).default(1_800_000),
+})
+
+export const MutationImproveConfigSchema = z.object({
+  repoRoot: z.string().min(1).optional(),
+  workDir: z.string().min(1),
+  base: z.string().min(1).default('master'),
+  upstream: z.string().min(1).default('origin'),
+  count: z.number().int().positive().default(1),
+  threshold: z.number().min(0).max(1).default(0.95),
+  epsilon: z.number().min(0).max(1).default(0.02),
+  agentTimeoutMs: z.number().int().min(0).default(1_800_000),
+  buildTimeoutMs: z.number().int().min(0).default(600_000),
+  checkCommand: z.string().min(1).default('bun check:full'),
+  mutateFileCommand: z.string().min(1).default('bun test:mutate:file'),
+  agent: AgentConfigSchema,
+  prBranchPrefix: z.string().min(1).default('mutation-improve'),
+})
+
+export interface MutationImproveConfig extends z.infer<typeof MutationImproveConfigSchema> {
+  repoRoot: string
+  workDir: string
+}
+
+export interface ConfigLoadInput {
+  configPath: string
+  repoRoot?: string
+}
+
+export async function loadMutationImproveConfig(input: ConfigLoadInput): Promise<MutationImproveConfig> {
+  const configPath = path.resolve(input.configPath)
+  const raw = JSON.parse(await readFile(configPath, 'utf8')) as unknown
+  const parsed = MutationImproveConfigSchema.parse(raw)
+
+  const repoRootSource = input.repoRoot ?? parsed.repoRoot
+  const repoRoot = repoRootSource === undefined ? await detectGitRoot(process.cwd()) : path.resolve(repoRootSource)
+  const workDir = path.resolve(repoRoot, parsed.workDir)
+
+  await mkdir(workDir, { recursive: true })
+
+  return { ...parsed, repoRoot, workDir }
+}
