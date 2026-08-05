@@ -14,6 +14,7 @@ import {
   changedFilesRun,
   parseChangedFilesCliArgs,
   runUpdateBaseline,
+  resolveErroredGate,
   seedBaseline,
   selectChangedMutationTargets,
   type ChangedFilesDeps,
@@ -441,5 +442,24 @@ describe('runUpdateBaseline', () => {
     expect(count).toBe(1)
     expect(readBaseline(baselinePath)).toEqual({ 'src/old.ts': 0.6 })
     expect(readBaseline(path.join(reportDir, 'scores.json'))).toEqual({})
+  })
+})
+
+describe('resolveErroredGate', () => {
+  test('passes when no file errored', () => {
+    expect(resolveErroredGate([])).toEqual({ exitCode: 0, message: null })
+  })
+
+  test('fails and names every errored file', () => {
+    const gate = resolveErroredGate([
+      { sourceFile: 'client/a.ts', error: 'ConfigError: tests failed' },
+      { sourceFile: 'client/b.ts', error: 'timeout' },
+    ])
+
+    expect(gate.exitCode).toBe(1)
+    expect(gate.message).toContain('client/a.ts')
+    expect(gate.message).toContain('ConfigError: tests failed')
+    expect(gate.message).toContain('client/b.ts')
+    expect(gate.message).toContain('timeout')
   })
 })
