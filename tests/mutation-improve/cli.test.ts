@@ -41,6 +41,7 @@ describe('cli parseCliArgs', () => {
 
   test('rejects non-numeric --threshold', () => {
     expect(() => parseCliArgs(['--threshold=abc'])).toThrow(/threshold/iu)
+    expect(() => parseCliArgs(['--threshold=Infinity'])).toThrow(/threshold/iu)
   })
 
   test('throws on unknown argument', () => {
