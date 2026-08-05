@@ -30,7 +30,7 @@ and a disabled toggle, closing the gap this caveat originally recorded. See
 | 2. Affordance & signifiers      | pass  | Stored config renders through `SettingsFieldShell` + `Secret` with a "Replace" affordance; a disabled toggle is paired with a discoverable reason |
 | 3. Consistency w/ design system | pass  | The section now uses `ErrorState`, `SettingsFieldShell` and `Secret`, matching every sibling config section            |
 | 4. Feedback & state             | pass  | Load failure retries through `ErrorState`; toggles and saves show in-flight `busy` state and a transient success marker |
-| 5. Content & language           | pass  | Eligibility reasons render as human sentences naming the consequence and next step, not raw enum identifiers          |
+| 5. Content & language           | warn  | Eligibility reasons read as human sentences, but the `inactive` one names approval as the remedy for all six non-active states |
 | 6. Accessibility                | pass  | Cards are `<li>`s with `<h3>` names; `required` is passed to `Field`; the toggle's `ariaDescribedBy` names its status  |
 | 7. Responsive / layout          | pass  | The head row wraps with `min-width: 0` on the name, so a long plugin name no longer squeezes the pill and action       |
 | 8. Spacing, alignment & sizing  | pass  | Gaps and padding use `--gap-inline` / `--gap-tight`, the card carries `border-radius: var(--radius)`, and the action sits on a trailing edge |
@@ -168,6 +168,15 @@ and a disabled toggle, closing the gap this caveat originally recorded. See
 - **Where visible:** Source only
 - **Source:** `client/settings/sections/PluginsSection.svelte:154`
 - **Suggested fix:** Pass `required={cfg.required}` to `Field` — which renders the asterisk `aria-hidden` and sets `aria-required` on the control — instead of concatenating `' *'` into the label, where it is announced as literal punctuation and conveys nothing programmatically.
+
+### [Med] The ineligible-plugin sentence names approval as the remedy for six different states
+
+- **Id:** plugins-inactive-copy-overclaims-approval
+- **Status:** open
+- **Dimension:** 5. Content & language
+- **Where visible:** `settings-sections-PluginsSection-Ineligible-1.png` — the "Needs setup"/"Unavailable" card body
+- **Source:** `client/settings/lib/plugin-eligibility.ts:44`
+- **Suggested fix:** The copy reads "An operator must approve this plugin before it can be enabled here.", but `src/plugins/registry-context-eligibility.ts:102` collapses all six non-`active` states — `discovered`, `approved`, `rejected`, `incompatible`, `error`, `absent` — into the one client-visible reason `inactive`, so the same sentence fires for a rejected, crashed, or incompatible plugin where approval is not the remedy; widen the server-side reason so the client can distinguish "awaiting approval" from "rejected", "failed to load", and "incompatible", then split the copy to match.
 
 ### [Low] Empty state is a dead end
 
