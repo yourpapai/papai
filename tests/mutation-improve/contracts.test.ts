@@ -3,10 +3,25 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
 
 import { ResultSchema } from '../../mutation-improve/src/result-schema.js'
 import { SelectionSchema } from '../../mutation-improve/src/selection-schema.js'
+import { runAgent } from '../../review-loop/src/agent-runner.js'
+import { createShellExec, runBuildCheck } from '../../review-loop/src/build-checker.js'
+import { LiveRenderer } from '../../review-loop/src/live-renderer.js'
+import { realSpawn } from '../../review-loop/src/spawn.js'
+import {
+  createWorktree,
+  detectGitRoot,
+  execGit,
+  mergeWorktree,
+  removeWorktree,
+  resetWorktree,
+} from '../../review-loop/src/worktree.js'
+import { cleanupTempDirs, makeTempDir } from './test-helpers'
+
+afterEach(cleanupTempDirs)
 
 describe('contracts', () => {
   test('SelectionSchema accepts a well-formed selection and rejects missing runnerUps', () => {
@@ -49,5 +64,42 @@ describe('contracts', () => {
     }
     expect(() => ResultSchema.parse(base)).toThrow()
     expect(() => ResultSchema.parse({ ...base, testPaths: ['tests/x.test.ts'] })).not.toThrow()
+  })
+})
+
+describe('review-loop surface contract', () => {
+  test('Tier A — LiveRenderer.log writes the message through to the stream', () => {
+    const written: string[] = []
+    const sink = {
+      write: (chunk: string): boolean => {
+        written.push(chunk)
+        return true
+      },
+    }
+    new LiveRenderer(sink).log('hello')
+    expect(written.join('')).toBe('hello\n')
+  })
+
+  test('Tier A — createShellExec + runBuildCheck map exit 0 → passed and non-zero → failed', async () => {
+    const dir = makeTempDir('contract-build-')
+    const passed = await runBuildCheck({ exec: createShellExec(dir, 'true') })
+    expect(passed.passed).toBe(true)
+    const failed = await runBuildCheck({ exec: createShellExec(dir, 'false') })
+    expect(failed.passed).toBe(false)
+  })
+
+  test('Tier B — consumed concrete symbols are exported and callable', () => {
+    // Inventory of the review-loop surface mutation-improve consumes today.
+    // Behavioral authority for the git/opencode-requiring functions lives in
+    // tests/review-loop/**; this asserts presence + callability so removal or
+    // export-shape drift fails loudly in mutation-improve's own gate.
+    expect(typeof runAgent).toBe('function')
+    expect(typeof realSpawn).toBe('function')
+    expect(typeof createWorktree).toBe('function')
+    expect(typeof execGit).toBe('function')
+    expect(typeof mergeWorktree).toBe('function')
+    expect(typeof removeWorktree).toBe('function')
+    expect(typeof resetWorktree).toBe('function')
+    expect(typeof detectGitRoot).toBe('function')
   })
 })
