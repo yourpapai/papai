@@ -974,7 +974,7 @@ Append inside the top-level `describe` in `tests/client/settings/coding-credenti
 
 ```typescript
   test('Auth method carries a hint explaining why it appeared', async () => {
-    setMockFetch(() => Promise.resolve(json(configuredPayload)))
+    setMockFetch(() => Promise.resolve(json(baseUrlStoredPayload)))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(CodingCredentialsSection, { target, props: { contextId: 'user:1' } })
@@ -998,7 +998,7 @@ Append inside the top-level `describe` in `tests/client/settings/coding-credenti
   })
 ```
 
-> Confirm `configuredPayload` has `provider: 'anthropic'` and `withOpenAiCompatiblePayload` has `provider: 'openai-compatible'` before relying on them; adjust which fixture each test uses if not, but keep both assertions.
+> `configuredPayload` carries only `provider_api_key` / `provider_base_url` — it has no `provider` and no `auth_method` field, so the Auth-method row never renders under it and the first test could not pass under any implementation. Use `baseUrlStoredPayload` (`tests/client/settings/coding-credentials-section.test.ts:175-220`), which has `provider: 'anthropic'` and `auth_method: 'api-key'`. Confirm `withOpenAiCompatiblePayload` has `provider: 'openai-compatible'` before relying on it; adjust which fixture each test uses if not, but keep both assertions.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -1040,14 +1040,24 @@ In `client/stories/msw/settings-handlers-coding.ts`, add after `codingCredential
 ```typescript
 // `openai-compatible` is the only provider that makes Base URL required and hides Auth method.
 // Without a fixture for it, that hint has no shootable state.
+//
+// `agent` must be overridden too, not just `provider`. `compatibleProviders('claude', …)`
+// (CodingCredentialsSection.svelte:32) returns only ['anthropic'], and selectOptionsFor filters
+// the provider <select>'s options through it — so a fixture pairing the default agent 'claude'
+// with provider 'openai-compatible' renders a blank <select>, because the forced value is absent
+// from the option list. The app itself can never reach that pairing (onSelectChange resets the
+// provider draft when the agent changes), so it is a fixture-authoring error, not a component
+// defect: a raw fixture bypasses that reconciliation on initial load.
 const codingCredentialsOpenAiCompatible = {
   namespace: 'agent-provider',
   configured: true,
   complete: true,
   missing: [],
-  fields: agentProviderFields(true).map((field) =>
-    field['key'] === 'provider' ? { ...field, value: 'openai-compatible' } : field,
-  ),
+  fields: agentProviderFields(true).map((field) => {
+    if (field['key'] === 'agent') return { ...field, value: 'opencode' }
+    if (field['key'] === 'provider') return { ...field, value: 'openai-compatible' }
+    return field
+  }),
   allowedAgents: AGENT_OPTIONS,
 }
 ```
