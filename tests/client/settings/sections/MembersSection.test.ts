@@ -307,4 +307,15 @@ describe('MembersSection', () => {
     expect(target.textContent).toContain('No members')
     void unmount(component)
   })
+
+  test('the empty table points at the add form above it', async () => {
+    setMockFetch(() => Promise.resolve(json({ contextId: 'group:7', members: [] })))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MembersSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+
+    expect(target.textContent).toContain('No members yet — add the first one using the form above.')
+    void unmount(component)
+  })
 })
