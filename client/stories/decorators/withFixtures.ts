@@ -60,8 +60,10 @@ export function resetAllSingletons(): void {
 // Runs before each story renders: resets rune singletons, clears any SSE
 // connections from the previous story, then registers the scenario's MSW
 // handlers and replays seed SSE events. The MSW worker comes from context.msw,
-// installed by mswLoader (registered earlier in .storybook/preview.ts loaders),
-// so the happy-dom unit suite never pulls in msw/browser.
+// installed by mswLoader, which `.storybook/preview.ts` awaits before calling
+// this function — sibling loaders in one array run through `Promise.all`, so
+// being listed after mswLoader would not have been enough. This file never
+// imports msw/browser itself, so the happy-dom unit suite never pulls it in.
 //
 // `refreshGlobals: true` primes the adminGlobals rune through the real fetch
 // path (served by the active scenario) so components that read adminGlobals.data
