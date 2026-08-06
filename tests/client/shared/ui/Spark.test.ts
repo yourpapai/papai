@@ -38,4 +38,25 @@ describe('Spark.svelte', () => {
     expect(target.querySelector('path[data-role="line"]')).not.toBeNull()
     void unmount(component)
   })
+
+  test('omitting width renders a fluid svg at the requested height', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Spark, { target, props: { data: [1, 4, 2], height: 28 } })
+    const svg = target.querySelector('svg')!
+    expect(svg.getAttribute('width')).toBeNull()
+    expect(svg.getAttribute('preserveAspectRatio')).toBe('none')
+    expect(svg.getAttribute('style')).toContain('height: 28px')
+    void unmount(component)
+  })
+
+  test('the fluid path spans the intrinsic viewBox width, not the old fixed default', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Spark, { target, props: { data: [1, 2, 3, 4, 5], height: 28 } })
+    const svg = target.querySelector('svg')!
+    expect(svg.getAttribute('viewBox')).toBe('0 0 100 28')
+    expect(target.querySelector('path[data-role="line"]')!.getAttribute('d')).toContain('100,')
+    void unmount(component)
+  })
 })
