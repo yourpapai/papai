@@ -207,7 +207,7 @@
   "src/deferred-prompts/proactive-trigger.ts": 0.66,
   "src/deferred-prompts/schedule-update-helpers.ts": 0.6461538461538462,
   "src/deferred-prompts/tool-handlers.ts": 0.9550561797752809,
-  "src/errors.ts": 0.7579617834394905,
+  "src/errors.ts": 0.9808917197452229,
   "src/group-settings/registry.ts": 0.6962025316455697,
   "src/history.ts": 1,
   "src/instances/encryption.ts": 1,
