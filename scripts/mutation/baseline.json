@@ -211,7 +211,7 @@
   "src/group-settings/registry.ts": 0.6962025316455697,
   "src/history.ts": 1,
   "src/instances/encryption.ts": 1,
-  "src/live-status/tool-status-labels.ts": 0.46190476190476193,
+  "src/live-status/tool-status-labels.ts": 0.9714285714285714,
   "src/llm-orchestrator-attachments.ts": 0.5727272727272728,
   "src/llm-orchestrator-invoke.ts": 0.691358024691358,
   "src/llm-orchestrator-tools.ts": 0.5409836065573771,
