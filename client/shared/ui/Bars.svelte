@@ -19,19 +19,28 @@
   const bw = $derived(safeData.length > 0 ? intrinsicW / safeData.length : 0)
 </script>
 
+{#snippet bars()}
+  {#each safeData as v, i (i)}
+    {@const h = Math.max(0, (v / max) * (height - 4))}
+    <rect x={i * bw + 1} y={height - h} width={bw - 2} height={h} fill={color} fill-opacity="0.85" />
+  {/each}
+{/snippet}
+
 {#if width !== undefined}
   <svg {width} {height} class="ui-bars" aria-hidden="true">
-    {#each safeData as v, i (i)}
-      {@const h = Math.max(0, (v / max) * (height - 4))}
-      <rect x={i * bw + 1} y={height - h} width={bw - 2} height={h} fill={color} fill-opacity="0.85" />
-    {/each}
+    {@render bars()}
   </svg>
 {:else}
-  <svg viewBox="0 0 {intrinsicW} {height}" preserveAspectRatio="none" class="ui-bars ui-bars--fluid" aria-hidden="true">
-    {#each safeData as v, i (i)}
-      {@const h = Math.max(0, (v / max) * (height - 4))}
-      <rect x={i * bw + 1} y={height - h} width={bw - 2} height={h} fill={color} fill-opacity="0.85" />
-    {/each}
+  <!-- `preserveAspectRatio="none"` stretches the bars horizontally to fill the
+       panel. Without an explicit pixel height it also stretched them vertically,
+       turning the caller's `height` into an aspect-ratio denominator. -->
+  <svg
+    viewBox="0 0 {intrinsicW} {height}"
+    preserveAspectRatio="none"
+    class="ui-bars ui-bars--fluid"
+    style="height: {height}px"
+    aria-hidden="true">
+    {@render bars()}
   </svg>
 {/if}
 
@@ -41,6 +50,5 @@
   }
   .ui-bars--fluid {
     width: 100%;
-    height: auto;
   }
 </style>
