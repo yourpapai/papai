@@ -25,15 +25,15 @@ from a shot; that gap is itself filed as `transcript-app-story-renders-banner`.
 
 | Dimension                       | Score | Rationale (one line)                                                                                                    |
 | ------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------- |
-| 1. Visual hierarchy & scanning  | fail  | Raw JSON blocks sit at the same weight as prose; the 2px timeline rail is near-invisible, so events read as one flat run. |
-| 2. Affordance & signifiers      | fail  | The two terminal states (`invalid-token`, `error`) offer no next step, and the only control is an unstyled `<summary>`.   |
-| 3. Consistency w/ design system | fail  | Uses none of the shared kit (`StatusPill`, `StatusDot`, `EmptyState`, `Panel`); "Live" is a literal `●` character.        |
-| 4. Feedback & state             | fail  | A failed tool call renders identically to a completed one, and zero events renders as a blank page in every status.       |
-| 5. Content & language           | fail  | The user's own `prompt` event and every agent plan reach the end user as pretty-printed JSON.                             |
-| 6. Accessibility                | warn  | Semantic `<h1>`/`<details>` are right, but nothing announces async updates and the longest blocks use the dimmest token.  |
+| 1. Visual hierarchy & scanning  | pass  | Raw payloads sit behind a disclosure, the rail reads at `--strong`, and a tabular time gutter anchors the scan.           |
+| 2. Affordance & signifiers      | pass  | Every terminal status carries copy saying what happens next; both `<summary>` disclosures show a keyboard focus ring.     |
+| 3. Consistency w/ design system | pass  | Banner is the shared `Pill` with a real `StatusDot`; empty states use `EmptyState`; no literal `●` remains.               |
+| 4. Feedback & state             | pass  | Tool rows take colour and glyph from `payload.status`; every one of the six statuses renders a titled empty state.        |
+| 5. Content & language           | pass  | `prompt`, `plan`, `thought`, and tool events each have a typed branch; JSON is the fallback, not the default.             |
+| 6. Accessibility                | warn  | `role="log"` + status-gated `aria-live` and focus rings are in place, but the history bulk-load can slip inside the gate. |
 | 7. Responsive / layout          | pass  | Single flex column, `max-width: 860px` with side padding, `white-space: pre-wrap` — long content wraps cleanly.           |
-| 8. Spacing, alignment & sizing  | warn  | Internally consistent, but every value is a one-off (`0.85rem`, `0.3rem 0.7rem`, `0.75rem`, `860px`, `6px`) off-scale.    |
-| 9. Interaction & micro-states   | fail  | No `:focus-visible`, hover, `cursor`, or busy styling exists anywhere in the three stylesheets.                           |
+| 8. Spacing, alignment & sizing  | pass  | Spacing and padding now come from the shared `--s1`…`--s9` scale; the remaining one-offs are type sizes, not spacing.     |
+| 9. Interaction & micro-states   | pass  | Both disclosures carry hover, `cursor`, and `:focus-visible` built from the shared focus-ring tokens.                     |
 
 ## Findings
 
@@ -148,6 +148,15 @@ Severity-ranked, highest first.
 - **Where visible:** `transcript-TranscriptApp-Invalid-token-1.png`, `transcript-TranscriptApp-Error-1.png` — one line of red text on an otherwise empty page
 - **Source:** `client/transcript/components/StatusBanner.svelte:11-12`
 - **Suggested fix:** Pair each with a next step — how to obtain a fresh link for `invalid-token`, and a manual retry for `error`.
+
+### [Med] The history bulk-load can be announced as if it were live
+
+- **Id:** transcript-aria-live-history-race
+- **Status:** open
+- **Dimension:** 6. Accessibility
+- **Where visible:** Not visible in a static shot; reproduces when the live stream delivers its first message before `fetchAllHistory` resolves
+- **Source:** `client/transcript/transcript.svelte.ts:58-66` — `onEvent` sets `status = 'live'` on the first SSE message even while `historyLoaded` is still `false` and the event is only buffered; `loadHistory` (`:79-91`) then applies the entire backlog via `applyEvents` with `aria-live="polite"` already active on `client/transcript/TranscriptView.svelte`. The live-region gate assumed the bulk load always lands during `connecting`, which the stitch order does not guarantee.
+- **Suggested fix:** Hold the live region off until history has loaded — gate on `historyLoaded` as well as status, or defer the `'live'` transition until the buffer has been flushed.
 
 ### [Low] The timeline rail is effectively invisible
 
