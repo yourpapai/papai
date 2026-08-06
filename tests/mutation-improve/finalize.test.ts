@@ -27,7 +27,7 @@ const config = (repoRoot: string): MutationImproveConfig => ({
   count: 1,
   threshold: 0.95,
   epsilon: 0.02,
-  agentTimeoutMs: 1,
+  mutateTimeoutMs: 1,
   buildTimeoutMs: 1,
   checkCommand: 'x',
   mutateFileCommand: 'x',

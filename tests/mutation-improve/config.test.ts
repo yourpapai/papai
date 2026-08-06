@@ -30,6 +30,13 @@ describe('config', () => {
     expect(parsed.mutateFileCommand).toBe('bun test:mutate:file')
     expect(parsed.prBranchPrefix).toBe('mutation-improve')
     expect(parsed.agent.timeoutMs).toBe(1_800_000)
+    expect(parsed.mutateTimeoutMs).toBe(1_800_000)
+  })
+
+  test('MutationImproveConfigSchema strips the legacy agentTimeoutMs key', () => {
+    const parsed = MutationImproveConfigSchema.parse({ ...minimalValid, agentTimeoutMs: 5 })
+    expect(parsed.mutateTimeoutMs).toBe(1_800_000)
+    expect('agentTimeoutMs' in parsed).toBe(false)
   })
 
   test('MutationImproveConfigSchema rejects threshold out of [0,1]', () => {

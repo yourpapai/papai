@@ -24,7 +24,7 @@ export const MutationImproveConfigSchema = z.object({
   count: z.number().int().positive().default(1),
   threshold: z.number().min(0).max(1).default(0.95),
   epsilon: z.number().min(0).max(1).default(0.02),
-  agentTimeoutMs: z.number().int().min(0).default(1_800_000),
+  mutateTimeoutMs: z.number().int().min(0).default(1_800_000),
   buildTimeoutMs: z.number().int().min(0).default(600_000),
   checkCommand: z.string().min(1).default('bun check:full'),
   mutateFileCommand: z.string().min(1).default('bun test:mutate:file'),

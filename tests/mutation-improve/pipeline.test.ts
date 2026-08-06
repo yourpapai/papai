@@ -28,7 +28,7 @@ const config = (repoRoot: string, overrides: Partial<MutationImproveConfig> = {}
   count: 1,
   threshold: 0.95,
   epsilon: 0.02,
-  agentTimeoutMs: 1_800_000,
+  mutateTimeoutMs: 1_800_000,
   buildTimeoutMs: 600_000,
   checkCommand: 'bun check:full',
   mutateFileCommand: 'bun test:mutate:file',

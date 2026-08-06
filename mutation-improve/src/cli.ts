@@ -156,7 +156,7 @@ function buildPipelineDeps(
       return runBuildCheck({ exec: () => exec() })
     },
     measureScore: (worktreePath: string, srcFile: string) => {
-      const exec = createShellExec(worktreePath, `${config.mutateFileCommand} ${srcFile}`, config.agentTimeoutMs)
+      const exec = createShellExec(worktreePath, `${config.mutateFileCommand} ${srcFile}`, config.mutateTimeoutMs)
       return measureMutationScore({ exec: () => exec() }, path.join(worktreePath, 'reports', 'paired'), srcFile)
     },
     readBaseline,

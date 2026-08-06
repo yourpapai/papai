@@ -6,7 +6,7 @@
   "count": 10,
   "threshold": 0.9,
   "epsilon": 0.02,
-  "agentTimeoutMs": 1800000,
+  "mutateTimeoutMs": 1800000,
   "buildTimeoutMs": 600000,
   "checkCommand": "bun check:full",
   "mutateFileCommand": "bun test:mutate:file",
