@@ -77,18 +77,29 @@ export const adminGlobals = $state({
   loading: false,
   data: null as GlobalStats | null,
   fetchedAt: null as number | null,
+  /** Why the last refresh failed, or null when the last refresh succeeded. */
+  error: null as string | null,
 })
 
 export async function refreshGlobals(): Promise<void> {
   adminGlobals.loading = true
+  adminGlobals.error = null
   try {
     const res = await fetch(`/stats/global?window=${encodeURIComponent(adminGlobals.window)}`, {
       headers: { Accept: 'application/json' },
     })
-    if (!res.ok) return
+    if (!res.ok) {
+      // Stale data stays on screen: the last good numbers are more useful than a blank
+      // dashboard, and the pill in the top bar is what says they are stale.
+      adminGlobals.error = `request failed with status ${res.status}`
+      return
+    }
     const body = await readBody(res)
     const parsed = GlobalStatsSchema.safeParse(body)
-    if (!parsed.success) return
+    if (!parsed.success) {
+      adminGlobals.error = 'response did not match the expected shape'
+      return
+    }
     adminGlobals.data = parsed.data
     adminGlobals.fetchedAt = Date.now()
   } finally {
