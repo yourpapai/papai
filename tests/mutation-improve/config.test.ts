@@ -4,7 +4,8 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { MutationImproveConfigSchema, loadMutationImproveConfig } from '../../mutation-improve/src/config.js'
@@ -43,5 +44,25 @@ describe('config', () => {
     const config = await loadMutationImproveConfig({ configPath })
     expect(config.repoRoot).toBe(repoRoot)
     expect(config.workDir).toBe(path.resolve(repoRoot, '.mutation-improve'))
+  })
+
+  test('loadMutationImproveConfig snaps a repoRoot subdirectory to the git toplevel', async () => {
+    const gitRoot = makeTempDir('cfg-git-')
+    const git = (args: readonly string[], cwd: string): string =>
+      execFileSync('git', [...args], { cwd, encoding: 'utf8' })
+    git(['init', '--quiet'], gitRoot)
+    const subdir = path.join(gitRoot, 'mutation-improve')
+    mkdirSync(subdir)
+    const configPath = path.join(subdir, 'config.json')
+    writeFileSync(configPath, JSON.stringify({ ...minimalValid, repoRoot: '.' }))
+    const cwd = process.cwd()
+    process.chdir(subdir)
+    try {
+      const config = await loadMutationImproveConfig({ configPath })
+      expect(config.repoRoot).toBe(realpathSync(gitRoot))
+      expect(config.workDir).toBe(path.join(realpathSync(gitRoot), '.mutation-improve'))
+    } finally {
+      process.chdir(cwd)
+    }
   })
 })
