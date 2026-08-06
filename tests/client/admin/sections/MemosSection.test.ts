@@ -155,18 +155,18 @@ describe('MemosSection', () => {
 
     const userInput = target.querySelector<HTMLInputElement>('[data-testid="memos-user-id"]')
     expect(userInput).not.toBeNull()
-    expect(field?.contains(userInput)).toBe(true)
+    expect(field!.contains(userInput)).toBe(true)
 
     const labelledBy = userInput!.getAttribute('aria-labelledby')
     expect(labelledBy).not.toBeNull()
     const label = document.getElementById(labelledBy!)
     expect(label).not.toBeNull()
-    expect(label?.classList.contains('ui-field__label')).toBe(true)
-    expect(label?.textContent?.trim()).toBe('user id')
+    expect(label!.classList.contains('ui-field__label')).toBe(true)
+    expect(label!.textContent?.trim()).toBe('user id')
 
     const submitButton = target.querySelector<HTMLButtonElement>('[data-testid="memos-load"]')
     expect(submitButton).not.toBeNull()
-    expect(submitButton?.textContent).toContain('Load memos')
+    expect(submitButton!.textContent).toContain('Load memos')
 
     void unmount(component)
   })

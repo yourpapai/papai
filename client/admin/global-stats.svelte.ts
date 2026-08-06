@@ -102,6 +102,11 @@ export async function refreshGlobals(): Promise<void> {
     }
     adminGlobals.data = parsed.data
     adminGlobals.fetchedAt = Date.now()
+  } catch (err) {
+    // Network-level failures (offline, DNS, CORS) reject fetch() itself rather than
+    // resolving with a bad response; without this, the error would propagate as an
+    // unhandled rejection and the top bar would keep reporting "live".
+    adminGlobals.error = err instanceof Error ? err.message : String(err)
   } finally {
     adminGlobals.loading = false
   }

@@ -25,7 +25,7 @@ See LICENSE in the project root for details.
 | 4. Feedback & state             | pass  | "last refreshed" ticks live, the status pill reflects real health, a zero-data story exists, and a failed refresh now surfaces an error instead of going stale silently. |
 | 5. Content & language           | pass  | The quick-stat row reads real tool counts, and both lookup inputs carry real labels naming what they load.               |
 | 6. Accessibility                | pass  | The admin sheet applies the shared `:focus-visible` tokens app-wide, and the active nav link now carries `aria-current`.  |
-| 7. Responsive / layout          | pass  | The rail collapses correctly below 720px without burying content, stays pinned to the scroll container, and the KPI grid wraps before values clip. |
+| 7. Responsive / layout          | pass  | The rail collapses correctly below 900px without burying content, stays pinned to the scroll container, and the KPI grid wraps before values clip. |
 | 8. Spacing, alignment & sizing  | pass  | Rail and sparkline sizing now draw from the shared spacing/size tokens instead of one-off px and fixed dimensions.        |
 | 9. Interaction & micro-states   | pass  | Keyboard focus is visible shell-wide via the shared focus ring, alongside the existing hover and in-flight states.        |
 

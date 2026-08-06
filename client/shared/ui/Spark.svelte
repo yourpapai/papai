@@ -44,7 +44,7 @@
 
 {#if hasSeriesData(data)}
   {#if width !== undefined}
-    <svg {width} {height} class="ui-spark">
+    <svg {width} {height} class="ui-spark" aria-hidden="true">
       {@render paths()}
     </svg>
   {:else}
@@ -52,7 +52,8 @@
       viewBox="0 0 {intrinsicW} {height}"
       preserveAspectRatio="none"
       class="ui-spark ui-spark--fluid"
-      style="height: {height}px">
+      style="height: {height}px"
+      aria-hidden="true">
       {@render paths()}
     </svg>
   {/if}

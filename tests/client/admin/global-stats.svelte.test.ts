@@ -107,6 +107,13 @@ describe('global-stats', () => {
     restoreFetch()
   })
 
+  test('records the error message and resets loading when fetch itself rejects', async () => {
+    setMockFetch(() => Promise.reject(new Error('network offline')))
+    await expect(refreshGlobals()).resolves.toBeUndefined()
+    expect(adminGlobals.error).toBe('network offline')
+    expect(adminGlobals.loading).toBe(false)
+  })
+
   test('clears a previous error on a successful refresh', async () => {
     adminGlobals.error = 'request failed with status 503'
     setMockFetch(() =>
