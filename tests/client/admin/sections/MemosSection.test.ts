@@ -139,4 +139,11 @@ describe('MemosSection', () => {
 
     void unmount(component)
   })
+
+  test('the user id input is labelled and the button names what it loads', async () => {
+    const url = new URL('../../../../client/admin/sections/MemosSection.svelte', import.meta.url)
+    const svelte = await Bun.file(url).text()
+    expect(svelte).toContain('<Field label="user id">')
+    expect(svelte).toContain("loading ? 'Loading memos…' : 'Load memos'")
+  })
 })
