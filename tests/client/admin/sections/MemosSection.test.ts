@@ -146,4 +146,28 @@ describe('MemosSection', () => {
     expect(svelte).toContain('<Field label="user id">')
     expect(svelte).toContain("loading ? 'Loading memos…' : 'Load memos'")
   })
+
+  test('renders the user id input wrapped in a Field with a real aria-labelledby association, and the load button names what it loads', () => {
+    const { target, component } = render()
+
+    const field = target.querySelector('.ui-field')
+    expect(field).not.toBeNull()
+
+    const userInput = target.querySelector<HTMLInputElement>('[data-testid="memos-user-id"]')
+    expect(userInput).not.toBeNull()
+    expect(field?.contains(userInput)).toBe(true)
+
+    const labelledBy = userInput!.getAttribute('aria-labelledby')
+    expect(labelledBy).not.toBeNull()
+    const label = document.getElementById(labelledBy!)
+    expect(label).not.toBeNull()
+    expect(label?.classList.contains('ui-field__label')).toBe(true)
+    expect(label?.textContent?.trim()).toBe('user id')
+
+    const submitButton = target.querySelector<HTMLButtonElement>('[data-testid="memos-load"]')
+    expect(submitButton).not.toBeNull()
+    expect(submitButton?.textContent).toContain('Load memos')
+
+    void unmount(component)
+  })
 })
