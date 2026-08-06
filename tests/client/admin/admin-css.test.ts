@@ -40,4 +40,41 @@ describe('admin.css', () => {
     expect(rule).toContain('gap: var(--s2)')
     expect(rule).toContain('padding: var(--s3)')
   })
+
+  test('the grid fills the remaining height so its columns can scroll independently', async () => {
+    const url = new URL('../../../client/admin/admin.css', import.meta.url)
+    const css = await Bun.file(url).text()
+    const m = css.match(/\.admin-grid \{[^}]*\}/u)
+    expect(m).not.toBeNull()
+    const [grid] = m!
+    expect(grid).toContain('flex: 1 1 auto')
+    expect(grid).toContain('min-height: 0')
+  })
+
+  test('the main column owns its own scroll', async () => {
+    const url = new URL('../../../client/admin/admin.css', import.meta.url)
+    const css = await Bun.file(url).text()
+    const m = css.match(/\.admin-grid__main \{[^}]*\}/u)
+    expect(m).not.toBeNull()
+    const [main] = m!
+    expect(main).toContain('overflow-y: auto')
+  })
+
+  test('the rail fills its track instead of being a sticky 100vh box', async () => {
+    const url = new URL('../../../client/admin/components/AdminSidebarPanel.svelte', import.meta.url)
+    const svelte = await Bun.file(url).text()
+    const m = svelte.match(/\.admin-sidebar \{[^}]*\}/u)
+    expect(m).not.toBeNull()
+    const [rail] = m!
+    expect(rail).toContain('height: 100%')
+    expect(rail).toContain('overflow-y: auto')
+    expect(rail).not.toContain('100vh')
+    expect(rail).not.toContain('position: sticky')
+  })
+
+  test('the admin shell body does not double as a page scroller', async () => {
+    const url = new URL('../../../client/admin/AdminApp.svelte', import.meta.url)
+    const svelte = await Bun.file(url).text()
+    expect(svelte).toContain('bodyScroll={false}')
+  })
 })

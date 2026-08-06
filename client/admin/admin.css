@@ -108,15 +108,17 @@
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
   gap: 0;
+  flex: 1 1 auto;
   min-height: 0;
 }
 
 .admin-grid__main {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  padding: 24px;
+  gap: var(--s6);
+  padding: var(--s6);
   min-width: 0;
+  overflow-y: auto;
 }
 
 .admin-section {

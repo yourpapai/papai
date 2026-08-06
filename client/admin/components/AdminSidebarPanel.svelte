@@ -49,7 +49,11 @@
     padding: var(--s3);
     background: var(--surface-1);
     border-right: 1px solid var(--border);
-    min-height: 100vh;
+    /* Fills its grid track and scrolls inside it. No sticky/full-viewport-height box:
+       that box was taller than the scrollport it sat in, and being sticky, the outer
+       scroll could never bring its tail into view. */
+    height: 100%;
+    overflow-y: auto;
   }
   /* 2px is below the 4px scale on purpose: this is a hairline marker, not spacing. */
   .admin-sidebar__nav {
