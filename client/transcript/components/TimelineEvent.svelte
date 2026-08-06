@@ -48,7 +48,10 @@
     {:else if described.kind === 'result'}
       <div class="tx-result">✔ finished — {described.stopReason}</div>
     {:else}
-      <pre class="tx-raw">{described.json}</pre>
+      <details class="tx-raw-wrap">
+        <summary>unrecognised event</summary>
+        <pre class="tx-raw">{described.json}</pre>
+      </details>
     {/if}
   </div>
 </div>
@@ -56,13 +59,12 @@
 <style>
   .tx-ev {
     display: flex;
-    /* New rule, so it takes a token immediately. The pre-existing literals below
-       (padding, --border) are migrated in a later task, not here. */
     gap: var(--s3);
     font-family: var(--font-mono);
     font-size: 0.85rem;
-    border-left: 2px solid var(--border);
-    padding: 0.3rem 0.7rem;
+    /* --border is invisible against --bg at 2px; --strong is the token that reads as a rail. */
+    border-left: 2px solid var(--strong);
+    padding: var(--s1) var(--s3);
   }
   .tx-ev__time {
     flex: none;
@@ -81,7 +83,7 @@
   }
   .tx-prompt {
     display: flex;
-    gap: 0.5rem;
+    gap: var(--s2);
   }
   .tx-prompt__who {
     color: var(--text-dim);
@@ -93,7 +95,7 @@
   }
   .tx-tool {
     display: flex;
-    gap: 0.5rem;
+    gap: var(--s2);
   }
   .tx-tool__glyph {
     flex: none;
@@ -126,7 +128,7 @@
   }
   .tx-plan__item {
     display: flex;
-    gap: 0.5rem;
+    gap: var(--s2);
     color: var(--text-muted);
   }
   .tx-plan__mark {
@@ -138,9 +140,26 @@
   .tx-plan__item--in_progress {
     color: var(--info);
   }
+  /* The two longest bodies previously used --text-dim, the most recessive token, which inverted
+     hierarchy. --text-dim is now reserved for short labels: the time gutter and the "you" tag. */
   .tx-thought pre,
   .tx-raw {
     white-space: pre-wrap;
-    color: var(--text-dim);
+    color: var(--text-muted);
+  }
+  /* The only interactive controls in the viewer. Both disclosures share these rules. */
+  .tx-thought summary,
+  .tx-raw-wrap summary {
+    cursor: pointer;
+    color: var(--text-muted);
+  }
+  .tx-thought summary:hover,
+  .tx-raw-wrap summary:hover {
+    color: var(--text);
+  }
+  .tx-thought summary:focus-visible,
+  .tx-raw-wrap summary:focus-visible {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
   }
 </style>
