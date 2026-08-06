@@ -245,7 +245,7 @@
   "src/providers/membership/subscriber.ts": 0.5633802816901409,
   "src/providers/registry.ts": 0.6866666666666666,
   "src/providers/resolver.ts": 0.5471698113207547,
-  "src/recurrence.ts": 0.5416666666666666,
+  "src/recurrence.ts": 0.9513888888888888,
   "src/recurring-utils.ts": 0.6,
   "src/recurring.ts": 0.4576271186440678,
   "src/reply-context.ts": 0.5,
