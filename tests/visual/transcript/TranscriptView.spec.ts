@@ -31,6 +31,16 @@ test.describe('transcript/TranscriptView', () => {
     await switchStory(sharedPage, 'transcript-transcriptview--empty-invalid-token')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('Empty recording disabled', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'transcript-transcriptview--empty-recording-disabled')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('Empty error', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'transcript-transcriptview--empty-error')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots
 

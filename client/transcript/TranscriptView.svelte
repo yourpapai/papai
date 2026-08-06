@@ -8,7 +8,7 @@
 
   let { events, status }: { events: TranscriptEvent[]; status: ViewerStatus } = $props()
 
-  const empty = $derived(events.length === 0 ? emptyStateFor(status) : null)
+  const empty = $derived(emptyStateFor(status))
 </script>
 
 <main class="tx-wrap">
@@ -22,7 +22,7 @@
         <TimelineEvent {event} />
       {/each}
     </div>
-  {:else if empty !== null}
+  {:else}
     <EmptyState title={empty.title} hint={empty.hint} />
   {/if}
 </main>

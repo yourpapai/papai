@@ -71,3 +71,7 @@
 <Story name="Empty finished" args={{ events: [], status: 'finished' }} />
 
 <Story name="Empty invalid token" args={{ events: [], status: 'invalid-token' }} />
+
+<Story name="Empty recording disabled" args={{ events: [], status: 'recording-disabled' }} />
+
+<Story name="Empty error" args={{ events: [], status: 'error' }} />
