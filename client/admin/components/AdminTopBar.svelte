@@ -23,12 +23,19 @@
     const minutes = Math.floor(seconds / 60)
     return `${minutes}m ago`
   })
+
+  // `warn`, not `danger`: the numbers on screen are stale, not wrong.
+  const health = $derived.by(() => {
+    if (adminGlobals.loading) return { tone: 'neutral' as const, text: 'loading' }
+    if (adminGlobals.error !== null) return { tone: 'warn' as const, text: 'stale' }
+    return { tone: 'accent' as const, text: 'live' }
+  })
 </script>
 
 <TopBar page="admin">
   {#snippet statusRow()}
     <div class="admin-topbar__status">
-      <Pill tone="accent" dot>{#snippet children()}configured{/snippet}</Pill>
+      <Pill tone={health.tone} dot>{#snippet children()}{health.text}{/snippet}</Pill>
       <span class="admin-topbar__sep"></span>
       <a class="admin-topbar__back" href="/debug">← /debug</a>
       <span class="admin-topbar__spacer"></span>
