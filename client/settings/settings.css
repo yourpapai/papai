@@ -4,18 +4,29 @@
 /* See LICENSE in the project root for details. */
 
 /* ---- layout shell ---- */
+/* The shell body no longer scrolls (Shell bodyScroll={false}); this column fills it
+   and hands the remaining height to the grid, so the sidebar and the main column each
+   scroll inside a box whose height is real rather than an assumed 100vh. */
+.settings-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
 .settings-grid {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
   gap: 0;
+  flex: 1 1 auto;
   min-height: 0;
 }
 .settings-grid__main {
   display: flex;
   flex-direction: column;
   gap: var(--gap-group);
-  padding: var(--gap-section) var(--gap-section) 96px;
+  padding: var(--gap-section) var(--gap-section) var(--s9);
   min-width: 0;
+  overflow-y: auto;
 }
 
 /* group = Personal / Integrations / Admin */
@@ -30,7 +41,7 @@
 }
 
 .settings-section {
-  scroll-margin-top: 96px;
+  scroll-margin-top: var(--gap-inline);
   color: var(--text);
 }
 

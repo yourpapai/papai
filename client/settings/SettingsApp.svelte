@@ -137,90 +137,92 @@
 {#if settingsSession.status !== 'ready'}
   <SettingsGate />
 {:else}
-  <Shell>
+  <Shell bodyScroll={false}>
     {#snippet topBar()}
       <SettingsTopBar />
     {/snippet}
     {#snippet children()}
       <h1 class="sr-only">Settings</h1>
-      <SettingsJumpMenu {groups} {activeId} />
-      <div class="settings-grid">
-        <SettingsSidebar {groups} {activeId} onToggle={onSidebarToggle} />
-        <main class="settings-grid__main">
-          <div class="settings-group">
-            <ProfileSection contextId={ctx} />
-            <TaskProviderSection contextId={ctx} />
-            <ToolsSection contextId={ctx} />
-            <ReleaseSubscriptionSection scope="personal" contextId={ctx} />
-            <AnalyticsPreferencesSection />
-            {#if isGroup}
-              <MembersSection contextId={ctx} />
-              <GroupProviderSection contextId={ctx} />
-              <GuestModeSection contextId={ctx} />
-              <CodingIdentitySection contextId={ctx} />
-              <ReleaseSubscriptionSection scope="group" contextId={ctx} />
-              <KaneoAccessSection contextId={ctx} />
-            {/if}
-          </div>
-          <div class="settings-group settings-advanced">
-            <SettingsGroupToggle
-              label="Advanced"
-              hint={groupHint(advancedItems)}
-              collapsed={isGroupCollapsed('advanced')}
-              controls="settings-advanced-content"
-              testid="advanced-toggle"
-              onToggle={() => toggleGroup('advanced')} />
-            {#if !isGroupCollapsed('advanced')}
-              <div id="settings-advanced-content">
-                <MemorySection contextId={ctx} />
-                <AiOutputSection contextId={ctx} />
-                <IdentitySection contextId={ctx} />
-                <ByokSection contextId={ctx} />
-                <CodingCredentialsSection contextId={ctx} />
-                <CodingMcpSection contextId={ctx} />
-                <CodeHostSection contextId={ctx} />
-                <ReposSection contextId={ctx} />
-                <McpSection contextId={ctx} />
-                <PluginsSection contextId={ctx} />
-              </div>
-            {/if}
-          </div>
-          {#if settingsSession.isBotAdmin || settingsSession.isSuperAdmin}
-            <div class="settings-group settings-group--wide settings-admin-zone">
+      <div class="settings-shell">
+        <SettingsJumpMenu {groups} {activeId} />
+        <div class="settings-grid">
+          <SettingsSidebar {groups} {activeId} onToggle={onSidebarToggle} />
+          <main class="settings-grid__main">
+            <div class="settings-group">
+              <ProfileSection contextId={ctx} />
+              <TaskProviderSection contextId={ctx} />
+              <ToolsSection contextId={ctx} />
+              <ReleaseSubscriptionSection scope="personal" contextId={ctx} />
+              <AnalyticsPreferencesSection />
+              {#if isGroup}
+                <MembersSection contextId={ctx} />
+                <GroupProviderSection contextId={ctx} />
+                <GuestModeSection contextId={ctx} />
+                <CodingIdentitySection contextId={ctx} />
+                <ReleaseSubscriptionSection scope="group" contextId={ctx} />
+                <KaneoAccessSection contextId={ctx} />
+              {/if}
+            </div>
+            <div class="settings-group settings-advanced">
               <SettingsGroupToggle
-                label="Admin"
-                hint={groupHint(adminItems)}
-                collapsed={isGroupCollapsed('admin')}
-                controls="settings-admin-content"
-                testid="admin-toggle"
-                onToggle={() => toggleGroup('admin')} />
-              {#if !isGroupCollapsed('admin')}
-                <div id="settings-admin-content" class="settings-group">
-                  {#if settingsSession.isBotAdmin}
-                    <AdminInstancesSection />
-                    <AdminProvidersSection />
-                    <AdminModelsSection />
-                    <AdminByokSection />
-                    <AdminPluginsConfigSection />
-                    <AdminUsersSection />
-                    <AdminToolDefaultsSection />
-                    <AdminCodingGuardrailsSection />
-                    <AdminMcpCatalogSection />
-                    <AdminMcpPluginServersSection />
-                    <AdminGroupsSection />
-                    <AdminAnnounceSection />
-                    <AdminReleaseNotesSection />
-                    <AdminAnalyticsSection />
-                  {/if}
-                  {#if settingsSession.isSuperAdmin}
-                    <AdminAdminsSection />
-                    <AdminPluginsApprovalSection catalogContextId={ctx} />
-                  {/if}
+                label="Advanced"
+                hint={groupHint(advancedItems)}
+                collapsed={isGroupCollapsed('advanced')}
+                controls="settings-advanced-content"
+                testid="advanced-toggle"
+                onToggle={() => toggleGroup('advanced')} />
+              {#if !isGroupCollapsed('advanced')}
+                <div id="settings-advanced-content">
+                  <MemorySection contextId={ctx} />
+                  <AiOutputSection contextId={ctx} />
+                  <IdentitySection contextId={ctx} />
+                  <ByokSection contextId={ctx} />
+                  <CodingCredentialsSection contextId={ctx} />
+                  <CodingMcpSection contextId={ctx} />
+                  <CodeHostSection contextId={ctx} />
+                  <ReposSection contextId={ctx} />
+                  <McpSection contextId={ctx} />
+                  <PluginsSection contextId={ctx} />
                 </div>
               {/if}
             </div>
-          {/if}
-        </main>
+            {#if settingsSession.isBotAdmin || settingsSession.isSuperAdmin}
+              <div class="settings-group settings-group--wide settings-admin-zone">
+                <SettingsGroupToggle
+                  label="Admin"
+                  hint={groupHint(adminItems)}
+                  collapsed={isGroupCollapsed('admin')}
+                  controls="settings-admin-content"
+                  testid="admin-toggle"
+                  onToggle={() => toggleGroup('admin')} />
+                {#if !isGroupCollapsed('admin')}
+                  <div id="settings-admin-content" class="settings-group">
+                    {#if settingsSession.isBotAdmin}
+                      <AdminInstancesSection />
+                      <AdminProvidersSection />
+                      <AdminModelsSection />
+                      <AdminByokSection />
+                      <AdminPluginsConfigSection />
+                      <AdminUsersSection />
+                      <AdminToolDefaultsSection />
+                      <AdminCodingGuardrailsSection />
+                      <AdminMcpCatalogSection />
+                      <AdminMcpPluginServersSection />
+                      <AdminGroupsSection />
+                      <AdminAnnounceSection />
+                      <AdminReleaseNotesSection />
+                      <AdminAnalyticsSection />
+                    {/if}
+                    {#if settingsSession.isSuperAdmin}
+                      <AdminAdminsSection />
+                      <AdminPluginsApprovalSection catalogContextId={ctx} />
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          </main>
+        </div>
       </div>
     {/snippet}
   </Shell>

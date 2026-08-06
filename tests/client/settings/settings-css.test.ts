@@ -58,4 +58,26 @@ describe('settings.css', () => {
     expect(rule).toContain('grid-row: span 2')
     expect(rule).toContain('align-self: end')
   })
+  test('the settings shell is a contained full-height column, not a page scroller', () => {
+    const m = css.match(/\.settings-shell \{[^}]*\}/u)
+    expect(m).not.toBeNull()
+    const [shell] = m!
+    expect(shell).toContain('height: 100%')
+    expect(shell).toContain('min-height: 0')
+  })
+
+  test('the grid fills the remaining height so its columns can scroll independently', () => {
+    const m = css.match(/\.settings-grid \{[^}]*\}/u)
+    expect(m).not.toBeNull()
+    const [grid] = m!
+    expect(grid).toContain('flex: 1 1 auto')
+    expect(grid).toContain('min-height: 0')
+  })
+
+  test('the main column owns its own scroll', () => {
+    const m = css.match(/\.settings-grid__main \{[^}]*\}/u)
+    expect(m).not.toBeNull()
+    const [main] = m!
+    expect(main).toContain('overflow-y: auto')
+  })
 })

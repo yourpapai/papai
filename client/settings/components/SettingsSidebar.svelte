@@ -66,14 +66,14 @@
   .settings-sidebar {
     display: flex;
     flex-direction: column;
-    gap: 20px;
-    padding: 16px 12px;
+    gap: var(--s5);
+    padding: var(--s4) var(--s3);
     background: var(--surface-1);
     border-right: 1px solid var(--border);
-    position: sticky;
-    top: 0;
-    align-self: start;
-    max-height: 100vh;
+    /* Fills its grid track and scrolls inside it. No sticky/100vh box: that box was
+       taller than the scrollport it sat in, and being sticky, the outer scroll could
+       never bring its tail into view. */
+    height: 100%;
     overflow-y: auto;
   }
   .settings-sidebar__group--danger {
