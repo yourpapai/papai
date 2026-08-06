@@ -27,9 +27,15 @@ permissions:
 # One run at a time per issue. `cancel-in-progress` stays false: a half-finished
 # run must be allowed to post its state comment, or the next trigger restores
 # stale state.
+#
+# Both event kinds must resolve to the *same* key. Keying issue events on the
+# issue number and CI events on the branch would put a CI-fix run and a
+# maintainer-triggered run for one issue in different groups, so they would not
+# serialize — and both push to the same branch. The branch name is the identity
+# they share.
 concurrency:
   group: >-
-    opencode-agent-${{ github.event.issue.number || github.event.workflow_run.head_branch }}
+    opencode-agent-${{ github.event.workflow_run.head_branch || format('agent/issue-{0}', github.event.issue.number) }}
   cancel-in-progress: false
 
 env:

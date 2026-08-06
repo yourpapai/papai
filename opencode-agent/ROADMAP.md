@@ -125,7 +125,24 @@ but it does not recover the lost commit.
 
 ### S1-3 The clarification loop is unreachable in CI — by inspection — **[FIXED]**
 
-_Fixed: the workflow no longer filters `issue_comment` on slash commands._
+_Fixed and verified. The workflow no longer filters `issue_comment` on slash
+commands, so a plain reply — a clarifying answer, a question, a change request —
+reaches the pipeline and the in-process guardrails decide what to do with it.
+
+This also closes **S6-8**, partly. `tests/opencode-agent/workflow.test.ts` parses
+the workflow and pins its trigger surface: the job condition carries no
+comment-body filter, the maintainer check reads the _commenter's_ association
+before the issue author's, CI events are admitted only when red and on an agent
+branch, and machine events are not asked for an author association. Both the
+comment-body guard and the concurrency guard were mutation-checked against the
+reintroduced defects.
+
+A second workflow bug surfaced while verifying this one and is fixed here: the
+concurrency group keyed issue events on the issue number and CI events on the
+branch, so `opencode-agent-42` and `opencode-agent-agent/issue-42` were different
+groups. A CI-fix run and a maintainer-triggered run for the same issue did not
+serialize, and both push the same branch. Both kinds now resolve to the branch
+name via `format()`._
 
 `src/phases/triage.ts:58` tells the maintainer "Reply in this thread and I will
 pick it up from there", and `src/orchestrator.ts:94-96` implements exactly that:
@@ -491,7 +508,7 @@ Specific gaps worth closing, beyond the raw percentages:
 - **S6-5** **Stryker does not cover this workspace.** `stryker.config.json`'s `mutate` globs list `src/**` and `plugins/**` only, so the repo's strongest quality gate — the per-file mutation ratchet — never sees `opencode-agent/`. Ironic for a pipeline that runs a mutation loop. New files get a "first measurement, seeded" pass rather than an enforced floor, so this will not _block_ the PR; it just leaves the code unmeasured.
 - **S6-6** **Coverage-floor risk on CI.** `scripts/coverage/floor.json` enforces an aggregate 90% lines / 90% functions. Eight of the spike's files sit below that. papai is large enough (~289k lines) that ~1,200 new lines at roughly 75% should not push the aggregate under the floor, but this has not been measured against a full coverage run and should be checked before merge.
 - **S6-7** `opencode-agent:lint` / `:typecheck` / `:format:check` / `:test` are not in `scripts/check.sh`'s full check list (`:296`), unlike `review-loop:*`. They are covered transitively by the root `lint`, `typecheck` and `test`, so this is consistency rather than a hole — but the asymmetry will confuse the next person.
-- **S6-8** No workflow linting. `actionlint` would have caught the original heredoc-indentation bug in the failure step, and would guard the `if:` expression.
+- **S6-8 [PARTLY FIXED]** `workflow.test.ts` now parses the workflow and asserts its trigger surface, condition, concurrency key, step wiring and permissions. That is a property check, not a linter: it cannot catch a shell-quoting or expression _syntax_ error the way `actionlint` would. Adding actionlint to CI is still worth doing.
 - **S6-9** `bun security` (Semgrep) could not run in the authoring environment — no Semgrep binary and no Docker. The spike has **not** been through the repo's security scan. Run it before merge; S3-1, S3-3 and S3-5 are the kind of thing its AI/LLM rules target.
 
 ---
