@@ -14,13 +14,13 @@
   const SESSION: TranscriptEvent[] = [
     {
       seq: 1,
-      ts: 't',
+      ts: '2026-08-06T14:23:05.000Z',
       type: 'prompt',
       payload: { prompt: 'The D7 retention figure looks off by one bucket — can you check the window boundary?' },
     },
     {
       seq: 2,
-      ts: 't',
+      ts: '2026-08-06T14:23:11.000Z',
       type: 'update',
       payload: {
         sessionUpdate: 'agent_thought_chunk',
@@ -29,7 +29,7 @@
     },
     {
       seq: 3,
-      ts: 't',
+      ts: '2026-08-06T14:23:18.000Z',
       type: 'update',
       payload: {
         sessionUpdate: 'plan',
@@ -42,23 +42,23 @@
     },
     {
       seq: 4,
-      ts: 't',
+      ts: '2026-08-06T14:23:24.000Z',
       type: 'update',
       payload: { sessionUpdate: 'tool_call', title: 'read rollup-window-boundaries.ts', status: 'completed' },
     },
     {
       seq: 5,
-      ts: 't',
+      ts: '2026-08-06T14:23:31.000Z',
       type: 'update',
       payload: { sessionUpdate: 'tool_call', title: 'run analytics tests', status: 'failed' },
     },
     {
       seq: 6,
-      ts: 't',
+      ts: '2026-08-06T14:23:37.000Z',
       type: 'update',
       payload: { sessionUpdate: 'agent_message_chunk', content: 'The boundary was inclusive on both ends. Fixed.' },
     },
-    { seq: 7, ts: 't', type: 'result', payload: { stopReason: 'end_turn' } },
+    { seq: 7, ts: '2026-08-06T14:23:44.000Z', type: 'result', payload: { stopReason: 'end_turn' } },
   ]
 </script>
 

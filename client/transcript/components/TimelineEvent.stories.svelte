@@ -16,7 +16,7 @@
   args={{
     event: {
       seq: 1,
-      ts: 't',
+      ts: '2026-08-06T14:23:05.000Z',
       type: 'update',
       payload: { sessionUpdate: 'agent_message_chunk', content: 'Reading the file…' },
     },
@@ -28,7 +28,7 @@
   args={{
     event: {
       seq: 2,
-      ts: 't',
+      ts: '2026-08-06T14:23:11.000Z',
       type: 'update',
       payload: { sessionUpdate: 'tool_call', title: 'edit history.ts', status: 'completed' },
     },
@@ -37,12 +37,12 @@
 
 <Story
   name="Permission (read-only)"
-  args={{ event: { seq: 3, ts: 't', type: 'permission_request', payload: {} } }}
+  args={{ event: { seq: 3, ts: '2026-08-06T14:23:18.000Z', type: 'permission_request', payload: {} } }}
 />
 
 <Story
   name="Result"
-  args={{ event: { seq: 4, ts: 't', type: 'result', payload: { stopReason: 'end_turn' } } }}
+  args={{ event: { seq: 4, ts: '2026-08-06T14:23:24.000Z', type: 'result', payload: { stopReason: 'end_turn' } } }}
 />
 
 <!-- Review-only states: branches of TimelineEvent no existing story rendered. -->
@@ -52,7 +52,7 @@
   args={{
     event: {
       seq: 5,
-      ts: 't',
+      ts: '2026-08-06T14:23:31.000Z',
       type: 'update',
       payload: {
         sessionUpdate: 'agent_thought_chunk',
@@ -67,7 +67,7 @@
   args={{
     event: {
       seq: 6,
-      ts: 't',
+      ts: '2026-08-06T14:23:37.000Z',
       type: 'update',
       payload: {
         sessionUpdate: 'plan',
@@ -83,7 +83,7 @@
 
 <Story
   name="Permission decided"
-  args={{ event: { seq: 7, ts: 't', type: 'permission_decision', payload: {} } }}
+  args={{ event: { seq: 7, ts: '2026-08-06T14:23:44.000Z', type: 'permission_decision', payload: {} } }}
 />
 
 <Story
@@ -91,7 +91,7 @@
   args={{
     event: {
       seq: 8,
-      ts: 't',
+      ts: '2026-08-06T14:23:50.000Z',
       type: 'update',
       payload: { sessionUpdate: 'available_commands_update', availableCommands: [{ name: 'compact' }] },
     },
@@ -103,7 +103,7 @@
   args={{
     event: {
       seq: 9,
-      ts: 't',
+      ts: '2026-08-06T14:23:57.000Z',
       type: 'update',
       payload: {
         sessionUpdate: 'agent_message_chunk',
@@ -119,7 +119,7 @@
   args={{
     event: {
       seq: 10,
-      ts: 't',
+      ts: '2026-08-06T14:24:03.000Z',
       type: 'update',
       payload: { sessionUpdate: 'tool_call', title: 'run tests', status: 'failed' },
     },
@@ -131,7 +131,7 @@
   args={{
     event: {
       seq: 11,
-      ts: 't',
+      ts: '2026-08-06T14:24:10.000Z',
       type: 'prompt',
       payload: { prompt: 'The D7 retention figure looks off by one bucket — can you check the window boundary?' },
     },
@@ -143,7 +143,7 @@
   args={{
     event: {
       seq: 12,
-      ts: 't',
+      ts: '2026-08-06T14:24:16.000Z',
       type: 'update',
       payload: { sessionUpdate: 'tool_call', title: 'read rollup-window-boundaries.ts', status: 'in_progress' },
     },
