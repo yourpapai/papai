@@ -6,7 +6,7 @@
 import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
 
-import type { AgentRunResult } from '../../review-loop/src/agent-runner.js'
+import { agentWritePath, type AgentRunResult } from '../../review-loop/src/agent-runner.js'
 import type { MergeResult } from '../../review-loop/src/worktree.js'
 import { bumpScore, type BaselineMap } from './baseline.js'
 import type { MutationImproveConfig } from './config.js'
@@ -77,7 +77,7 @@ async function selectPhase(
     buildSelectPrompt({
       doneSet: deps.runState.doneSet,
       baselineSummary: JSON.stringify(baseline),
-      outputPath: selectOut,
+      outputPath: agentWritePath(worktreePath, selectOut),
     }),
   )
   const selection = SelectionSchema.parse(selectRes.value)
@@ -105,7 +105,7 @@ async function improvePhase(
       beforeScore,
       threshold: deps.config.threshold,
       date: new Date().toISOString().slice(0, 10),
-      outputPath: improveOut,
+      outputPath: agentWritePath(worktreePath, improveOut),
     }),
   )
   return ResultSchema.parse(improveRes.value)

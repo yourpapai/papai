@@ -7,7 +7,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 
 import { ResultSchema } from '../../mutation-improve/src/result-schema.js'
 import { SelectionSchema } from '../../mutation-improve/src/selection-schema.js'
-import { runAgent } from '../../review-loop/src/agent-runner.js'
+import { agentWritePath, runAgent } from '../../review-loop/src/agent-runner.js'
 import { createShellExec, runBuildCheck } from '../../review-loop/src/build-checker.js'
 import { LiveRenderer } from '../../review-loop/src/live-renderer.js'
 import { realSpawn } from '../../review-loop/src/spawn.js'
@@ -94,6 +94,7 @@ describe('review-loop surface contract', () => {
     // tests/review-loop/**; this asserts presence + callability so removal or
     // export-shape drift fails loudly in mutation-improve's own gate.
     expect(typeof runAgent).toBe('function')
+    expect(typeof agentWritePath).toBe('function')
     expect(typeof realSpawn).toBe('function')
     expect(typeof createWorktree).toBe('function')
     expect(typeof execGit).toBe('function')

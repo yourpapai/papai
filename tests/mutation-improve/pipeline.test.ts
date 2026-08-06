@@ -11,7 +11,7 @@ import { runIteration, runPipeline, type PipelineDeps } from '../../mutation-imp
 import type { Result } from '../../mutation-improve/src/result-schema.js'
 import type { MutationImproveRunState } from '../../mutation-improve/src/run-state.js'
 import type { Selection } from '../../mutation-improve/src/selection-schema.js'
-import type { AgentUsage } from '../../review-loop/src/agent-runner.js'
+import { agentWritePath, type AgentUsage } from '../../review-loop/src/agent-runner.js'
 import { cleanupTempDirs, makeTempDir } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
@@ -142,6 +142,36 @@ describe('pipeline runIteration', () => {
     // baseline bump is runner-owned
     const bumped = await deps.readBaseline(deps.config.repoRoot)
     expect(bumped['src/live-status/tool-status-labels.ts']).toBe(0.97)
+  })
+
+  // The runner reads agent output ONLY from agentWritePath(worktree, outputPath)
+  // (<worktree>/.review-loop/<basename>); the prompt must direct the agent to
+  // that exact scratch path or the iteration dies with an exception gate (the
+  // 2026-08-05 run failed all 10 iterations this way).
+  test('select prompt directs the agent to the worktree scratch path the runner reads', async () => {
+    const deps = happyDeps()
+    let selectPrompt = ''
+    deps.runSelectAgent = (_worktreePath: string, prompt: string): Promise<{ value: Selection; usage: AgentUsage }> => {
+      selectPrompt = prompt
+      return Promise.resolve({ value: selection, usage: emptyUsage() })
+    }
+    await runIteration(deps, 1)
+    const worktreePath = path.join(deps.config.workDir, 'worktrees', 'r1-iter1')
+    const selectOut = path.join(deps.runState.runDir, 'iter', '1', 'selection.json')
+    expect(selectPrompt).toContain(agentWritePath(worktreePath, selectOut))
+  })
+
+  test('improve prompt directs the agent to the worktree scratch path the runner reads', async () => {
+    const deps = happyDeps()
+    let improvePrompt = ''
+    deps.runImproveAgent = (_worktreePath: string, prompt: string): Promise<{ value: Result; usage: AgentUsage }> => {
+      improvePrompt = prompt
+      return Promise.resolve({ value: result, usage: emptyUsage() })
+    }
+    await runIteration(deps, 1)
+    const worktreePath = path.join(deps.config.workDir, 'worktrees', 'r1-iter1')
+    const improveOut = path.join(deps.runState.runDir, 'iter', '1', 'result.json')
+    expect(improvePrompt).toContain(agentWritePath(worktreePath, improveOut))
   })
 
   test('diff-scope violation fails the iteration without merging or ratcheting', async () => {
