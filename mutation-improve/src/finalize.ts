@@ -62,11 +62,13 @@ export function buildSummaryBody(merged: readonly MergedRow[], failed: readonly 
 
 export async function runFinalize(deps: FinalizeDeps, input: FinalizeInput): Promise<FinalizeResult> {
   const { config, runState } = input
-  await deps.execGit(config.repoRoot, ['push', config.upstream, config.base])
+  const { stdout } = await deps.execGit(config.repoRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])
+  const branch = stdout.trim()
+  await deps.execGit(config.repoRoot, ['push', config.upstream, branch])
   const title = `mutation-improve: ${runState.merged.map((m) => m.file).join(', ')}`
   const body = buildSummaryBody(runState.merged, runState.failed)
   const result = await deps.runGh(
-    ['pr', 'create', '--base', config.base, '--title', title, '--body', body],
+    ['pr', 'create', '--base', config.base, '--head', branch, '--title', title, '--body', body],
     config.repoRoot,
   )
   if (result.exitCode !== 0) {
@@ -74,7 +76,7 @@ export async function runFinalize(deps: FinalizeDeps, input: FinalizeInput): Pro
     await mkdir(path.dirname(logPath), { recursive: true })
     await appendFile(
       logPath,
-      `gh pr create failed (exit ${result.exitCode}): ${result.stderr}\nRe-run: gh pr create --base ${config.base} --title ${JSON.stringify(title)} --body <body>\n`,
+      `gh pr create failed (exit ${result.exitCode}): ${result.stderr}\nRe-run: gh pr create --base ${config.base} --head ${branch} --title ${JSON.stringify(title)} --body <body>\n`,
     )
     return { pushed: true }
   }

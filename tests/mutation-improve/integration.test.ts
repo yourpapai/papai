@@ -104,7 +104,7 @@ describe('integration', () => {
 
     const out = await runFinalize(
       {
-        execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
+        execGit: () => Promise.resolve({ stdout: 'feat\n', stderr: '' }),
         runGh: () => Promise.resolve({ exitCode: 0, stdout: 'https://github.com/x/pull/1\n', stderr: '' }),
       },
       { config, runState },

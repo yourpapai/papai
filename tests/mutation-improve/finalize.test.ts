@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
+import { readFile } from 'node:fs/promises'
 
 import type { MutationImproveConfig } from '../../mutation-improve/src/config.js'
 import {
@@ -34,6 +35,13 @@ const config = (repoRoot: string): MutationImproveConfig => ({
   prBranchPrefix: 'mutation-improve',
 })
 
+const branchExecGit =
+  (branch: string, seen?: string[]): ExecGitFn =>
+  (_cwd, args) => {
+    seen?.push(args.join(' '))
+    return Promise.resolve({ stdout: args[0] === 'rev-parse' ? `${branch}\n` : '', stderr: '' })
+  }
+
 describe('finalize', () => {
   test('buildSummaryBody renders one row per merged file plus a failures section when present', () => {
     const body = buildSummaryBody(
@@ -63,15 +71,18 @@ describe('finalize', () => {
       status: 'completed',
     }
     const seen: string[] = []
-    const execGit: ExecGitFn = (_cwd, args) => {
-      seen.push(args.join(' '))
-      return Promise.resolve({ stdout: '', stderr: '' })
+    const execGit = branchExecGit('mutation-improve-10', seen)
+    let ghArgs: readonly string[] = []
+    const runGh: RunGhFn = (args) => {
+      ghArgs = args
+      return Promise.resolve({ exitCode: 0, stdout: 'https://github.com/x/pull/9\n', stderr: '' })
     }
-    const runGh: RunGhFn = () => Promise.resolve({ exitCode: 0, stdout: 'https://github.com/x/pull/9\n', stderr: '' })
     const out = await runFinalize({ execGit, runGh }, { config: config(repoRoot), runState })
     expect(out.pushed).toBe(true)
     expect(out.prUrl).toBe('https://github.com/x/pull/9')
-    expect(seen.some((s) => s.startsWith('push origin master'))).toBe(true)
+    expect(seen).toContain('push origin mutation-improve-10')
+    expect(ghArgs).toContain('--head')
+    expect(ghArgs[ghArgs.indexOf('--head') + 1]).toBe('mutation-improve-10')
   })
 
   test('runFinalize survives gh failure and still reports pushed=true', async () => {
@@ -91,11 +102,13 @@ describe('finalize', () => {
       failed: [],
       status: 'completed',
     }
-    const execGit: ExecGitFn = () => Promise.resolve({ stdout: '', stderr: '' })
+    const execGit = branchExecGit('mutation-improve-10')
     const runGh: RunGhFn = () => Promise.resolve({ exitCode: 1, stdout: '', stderr: 'no gh' })
     const out = await runFinalize({ execGit, runGh }, { config: config(repoRoot), runState })
     expect(out.pushed).toBe(true)
     expect(out.prUrl).toBeUndefined()
+    const log = await readFile(`${repoRoot}/.mi/runs/r/finalize.log`, 'utf8')
+    expect(log).toContain('--head mutation-improve-10')
   })
 })
 
