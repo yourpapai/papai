@@ -166,7 +166,7 @@
   "src/attachments/staged-download.ts": 1,
   "src/bot-attachments.ts": 0.5950413223140496,
   "src/bot-message-caching.ts": 0.9166666666666666,
-  "src/byok-llm/blob-codec.ts": 0.6944444444444444,
+  "src/byok-llm/blob-codec.ts": 1,
   "src/chat/command-auth.ts": 0,
   "src/chat/discord/dispatch-helpers.ts": 0.5,
   "src/chat/discord/index.ts": 0.6445783132530121,
