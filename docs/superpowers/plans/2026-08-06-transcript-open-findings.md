@@ -618,7 +618,14 @@ bun shoot -g TimelineEvent
 bun shoot -g TranscriptView
 ```
 
-Expected: transcript suites pass; lint/typecheck/knip clean; 12 and 5 screenshot tests pass respectively. Then read `.storybook-shots/tests/visual/transcript/components/TimelineEvent.spec.ts/Long-message-overflow.png` and `Plan.png` with the Read tool. Confirm: a `14:2X:XX` timestamp is visible at the left of each row, the long message wraps instead of overflowing horizontally, and the plan checklist still aligns under the body column.
+Expected: transcript suites pass; lint/typecheck/knip clean; 12 TimelineEvent shots and 6 TranscriptView shots pass (5 generated plus the manual `TranscriptView — populated, narrow` test below the generated region).
+
+Baselines land at `.storybook-shots/<story-path>/<SpecFile>/transcript-<Component>-<Story>-1.png` — note this is **not** the `tests/visual/…` path. Read these two with the Read tool:
+
+```
+.storybook-shots/transcript/components/TimelineEvent.spec.ts/transcript-TimelineEvent-Long-message-overflow-1.png
+.storybook-shots/transcript/components/TimelineEvent.spec.ts/transcript-TimelineEvent-Plan-1.png
+``` Confirm: a `14:2X:XX` timestamp is visible at the left of each row, the long message wraps instead of overflowing horizontally, and the plan checklist still aligns under the body column.
 
 - [ ] **Step 9: Commit**
 
@@ -863,7 +870,14 @@ bun run lint && bun run typecheck && bun run knip
 bun shoot -g TranscriptView
 ```
 
-Expected: transcript suites pass; lint/typecheck/knip clean; 7 screenshot tests pass (5 existing plus 2 new). Then read `.storybook-shots/tests/visual/transcript/TranscriptView.spec.ts/Empty-invalid-token.png` and `Empty-error.png` and confirm each shows a banner plus a titled empty state with a hint below it — not a blank page.
+Expected: transcript suites pass; lint/typecheck/knip clean; 8 screenshot tests pass (5 existing generated, 2 new, plus the manual `TranscriptView — populated, narrow` test below the generated region). Then read these two with the Read tool:
+
+```
+.storybook-shots/transcript/TranscriptView.spec.ts/transcript-TranscriptView-Empty-invalid-token-1.png
+.storybook-shots/transcript/TranscriptView.spec.ts/transcript-TranscriptView-Empty-error-1.png
+```
+
+Confirm each shows a banner plus a titled empty state with a hint below it — not a blank page.
 
 - [ ] **Step 9: Commit**
 
@@ -1050,7 +1064,7 @@ bun run lint && bun run typecheck && bun run knip
 bun shoot -g TranscriptView
 ```
 
-Expected: transcript suites pass; lint/typecheck/knip clean; 7 screenshot tests pass. The shots should be unchanged from Task 3 — `role` and `aria-live` are not visual. If any shot differs, the markup changed in a way this task did not intend; investigate before committing.
+Expected: transcript suites pass; lint/typecheck/knip clean; 8 screenshot tests pass. The shots should be unchanged from Task 3 — `role` and `aria-live` are not visual. If any shot differs, the markup changed in a way this task did not intend; investigate before committing.
 
 - [ ] **Step 7: Commit**
 
@@ -1247,18 +1261,18 @@ bun shoot -g TimelineEvent
 bun shoot -g TranscriptView
 ```
 
-Expected: transcript suites pass; lint/typecheck/knip clean; 12 and 7 screenshot tests pass.
+Expected: transcript suites pass; lint/typecheck/knip clean; 12 and 8 screenshot tests pass.
 
 - [ ] **Step 5: Read the screenshots and confirm each fix by eye**
 
 Read these four PNGs with the Read tool and check the stated property:
 
-| File under `.storybook-shots/tests/visual/transcript/` | Confirm |
+| File under `.storybook-shots/transcript/` | Confirm |
 | --- | --- |
-| `components/TimelineEvent.spec.ts/Unknown-shape-raw-fallback.png` | Shows a collapsed `unrecognised event` disclosure, not a JSON dump |
-| `components/TimelineEvent.spec.ts/Thought.png` | The `thinking` body is legibly brighter than before, and the summary is distinguishable from it |
-| `components/TimelineEvent.spec.ts/Plan.png` | The left rail is visible against the background |
-| `TranscriptView.spec.ts/Populated.png` | Timeline spacing is unchanged in feel; the page bottom padding is slightly tighter |
+| `components/TimelineEvent.spec.ts/transcript-TimelineEvent-Unknown-shape-raw-fallback-1.png` | Shows a collapsed `unrecognised event` disclosure, not a JSON dump |
+| `components/TimelineEvent.spec.ts/transcript-TimelineEvent-Thought-1.png` | The `thinking` body is legibly brighter than before, and the summary is distinguishable from it |
+| `components/TimelineEvent.spec.ts/transcript-TimelineEvent-Plan-1.png` | The left rail is visible against the background |
+| `TranscriptView.spec.ts/transcript-TranscriptView-Populated-1.png` | Timeline spacing is unchanged in feel; the page bottom padding is slightly tighter |
 
 `:focus-visible` cannot be verified from a screenshot — Playwright's programmatic `.focus()` does not trigger it. Confirm the rule exists in the stylesheet instead; that is what the finding asked for.
 
