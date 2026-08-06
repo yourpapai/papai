@@ -5,7 +5,8 @@
 
 import { Octokit } from '@octokit/rest'
 
-import type { IssueComment } from './state-manager.js'
+import type { IssueComment } from './blocks.js'
+import type { IssueContext } from './phase-context.js'
 
 export interface PullRequestInput {
   head: string
@@ -27,9 +28,11 @@ export interface PullRequestRef {
 export interface GitHubApi {
   listIssueComments(issueNumber: number): Promise<IssueComment[]>
   createComment(issueNumber: number, body: string): Promise<{ id: number; url: string }>
+  getIssue(issueNumber: number): Promise<IssueContext>
   getAuthenticatedLogin(): Promise<string>
   findOpenPullRequest(head: string): Promise<PullRequestRef | null>
   createPullRequest(input: PullRequestInput): Promise<PullRequestRef>
+  updatePullRequest(number: number, patch: { body: string }): Promise<void>
 }
 
 export interface OctokitApiOptions {
@@ -87,6 +90,15 @@ export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
         body,
       })
       return { id: data.id, url: data.html_url }
+    },
+
+    getIssue: async (issueNumber) => {
+      const { data } = await octokit.rest.issues.get({ ...repo, issue_number: issueNumber })
+      return { number: data.number, title: data.title, body: data.body ?? '' }
+    },
+
+    updatePullRequest: async (number, patch) => {
+      await octokit.rest.pulls.update({ ...repo, pull_number: number, body: patch.body })
     },
 
     getAuthenticatedLogin: async () => {

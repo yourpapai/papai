@@ -8,143 +8,203 @@ See LICENSE in the project root for details.
 # opencode-agent — GitHub Actions issue agent (spike)
 
 An event-driven coding agent that lives in GitHub Actions. A maintainer opens an
-issue; the agent writes a design spec, waits for `/approve`, plans the work,
-implements it on `agent/issue-<n>`, drives a review + mutation loop, and opens a
-pull request. Every step runs in its own short-lived job — nothing long-polls.
+issue; the agent writes a design spec, discusses it, plans the work, discusses
+that, implements it on `agent/issue-<n>`, runs the repository's own review loop,
+and opens a pull request — then fixes that pull request when its checks go red.
+Every step runs in its own short-lived job; nothing long-polls.
 
-> **Spike status.** This is a proof of concept, not a hardened product. It is
-> deliberately conservative about who can trigger it and deliberately loud about
-> what it did, but it has not been run against a real repository at scale.
+> **Spike status.** This is a proof of concept, not a hardened product. See
+> `ROADMAP.md` for the open findings, including the ones that still matter.
 
 ## How the ephemeral model works
 
-An Actions job has no memory of the previous one, so state lives on the issue.
-Every comment the agent posts ends with a hidden block:
+An Actions job has no memory of the previous one, so state lives on the issue in
+hidden HTML blocks:
 
-```html
-<!-- AGENT_STATE:
-{
-  "phase": "EXECUTION_PLAN",
-  "issueId": 42,
-  "branch": "agent/issue-42",
-  "approved": true,
-  "resumeFrom": null,
-  "attempts": 0,
-  "lastError": null,
-  "prUrl": null,
-  "updatedAt": null
-}
--->
-```
+- `<!-- AGENT_STATE: … -->` — phase, branch, counters. Rewritten on every comment.
+- `<!-- AGENT_SPEC: … -->` — the current design spec.
+- `<!-- AGENT_PLAN: … -->` — the current execution plan.
+- `<!-- AGENT_REPORT: … -->` — the implementation report.
 
-On each trigger, `state-manager.ts` walks the thread backwards, takes the newest
-comment authored by the agent that carries a parsable block, and restores from
-it. A corrupt or spoofed block is skipped rather than trusted: only comments
-authored by the configured agent login count, and a block that fails schema
-validation is ignored in favour of the last good one.
+Artefacts get their own blocks rather than being scraped back out of the visible
+markdown. That is not a style preference: a spec is model-written markdown full
+of headings and `---` rules, and any heading-and-trailer scraping truncates it at
+the first horizontal rule. Blocks are read back byte-exact.
+
+Only blocks authored by the configured agent login are read, and a block failing
+schema validation is skipped in favour of the last good one, so neither a
+planted block nor a corrupt one can steer the pipeline.
 
 ## Phases
 
-| Phase               | Trigger                                              | What happens                                                            | Ends at                                            |
-| ------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------- |
-| `INIT_OR_CLARIFY`   | issue opened, or a maintainer reply while clarifying | Reads the issue and the thread, explores the repo                       | Clarifying questions (stays here) or a design spec |
-| `DESIGN_SPEC`       | —                                                    | Waiting state. No handler runs                                          | `/approve`, `/replan`, `/cancel`                   |
-| `EXECUTION_PLAN`    | `/approve`                                           | Planning skills produce a step breakdown; cuts `agent/issue-<n>`        | Plan posted                                        |
-| `REVIEW_AND_MUTATE` | automatic                                            | Applies the plan, runs the review loop, then the mutation loop, commits | Changes committed                                  |
-| `PR_DELIVERY`       | automatic                                            | Pushes the branch, opens (or reuses) the PR with `Closes #<n>`          | PR opened                                          |
-| `COMPLETE`          | —                                                    | Terminal                                                                | —                                                  |
-| `FAILED`            | any handler throwing                                 | Failure comment posted, `resumeFrom` recorded                           | `/retry` or `/cancel`                              |
+| Phase               | Trigger                                   | What happens                                                          | Ends at                                   |
+| ------------------- | ----------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------- |
+| `INIT_OR_CLARIFY`   | issue opened, or a reply while clarifying | Reads the issue and thread, explores the repo                         | Questions (stays here) or a design spec   |
+| `DESIGN_SPEC`       | —                                         | Waiting. The spec is under review                                     | `/approve`, `/changes`, `/ask`, `/cancel` |
+| `EXECUTION_PLAN`    | spec approved                             | Planning skills produce a step breakdown; cuts `agent/issue-<n>`      | Plan posted                               |
+| `PLAN_REVIEW`       | —                                         | Waiting. The plan is under review                                     | `/approve`, `/changes`, `/ask`, `/cancel` |
+| `REVIEW_AND_MUTATE` | plan approved                             | Implements, runs the `review-loop/` workspace, commits **and pushes** | Changes pushed                            |
+| `PR_DELIVERY`       | automatic                                 | Opens or refreshes the PR with `Closes #<n>`                          | PR opened                                 |
+| `CI_FIX`            | a red check run on `agent/issue-<n>`      | Reproduces CI locally, repairs, pushes                                | Fix pushed                                |
+| `COMPLETE`          | —                                         | Terminal, but re-enterable from `CI_FIX`                              | —                                         |
+| `FAILED`            | any handler throwing                      | Failure comment posted, `resumeFrom` recorded                         | `/retry` or `/cancel`                     |
 
-Phases 2–4 cascade inside a single job: one `/approve` normally takes the issue
-all the way to an open pull request.
+There are two review gates, not one. The spec and the plan are each parked in
+front of a human before anything downstream is spent.
 
-### Commands
+## Talking to the agent
 
-| Command    | Valid in                | Effect                             |
-| ---------- | ----------------------- | ---------------------------------- |
-| `/approve` | `DESIGN_SPEC`           | Plan, implement, deliver           |
-| `/replan`  | `DESIGN_SPEC`           | Send the spec back through triage  |
-| `/retry`   | `FAILED`                | Resume the exact phase that failed |
-| `/cancel`  | anything but `COMPLETE` | Park the issue in `COMPLETE`       |
+| Command                     | Valid in                     | Effect                                                         |
+| --------------------------- | ---------------------------- | -------------------------------------------------------------- |
+| `/approve`                  | `DESIGN_SPEC`, `PLAN_REVIEW` | Proceed to the next phase                                      |
+| `/changes <what to change>` | `DESIGN_SPEC`, `PLAN_REVIEW` | Rewrite the spec or plan, with your feedback in the prompt     |
+| `/ask <question>`           | anywhere                     | Answer, grounded in the repo, without moving the state machine |
+| `/retry`                    | `FAILED`                     | Resume the exact phase that failed                             |
+| `/cancel`                   | anything but `COMPLETE`      | Stop                                                           |
 
-A command only counts on a line that starts with it, and lines inside fenced
-code blocks are ignored — so the agent quoting its own instructions ("reply with
-`/approve`") does not fire the command.
+**Plain replies work too.** A comment with no command on a waiting phase is
+classified as a question, a change request, or an approval, and handled
+accordingly. The classifier is deliberately biased: **anything ambiguous, and
+any classification failure, resolves to "question"** — answering a comment that
+was really a change request costs one reply, whereas re-planning a comment that
+was really a question discards an approved artefact.
+
+A command only counts on a line that _starts_ with it, and fenced code blocks
+are ignored, so the agent quoting its own instructions does not fire them.
+
+## Red pull requests
+
+When the `CI` workflow concludes `failure` on `agent/issue-<n>`, the agent comes
+back: it checks out the branch, runs the configured checks locally, hands the
+real failure output to the model, and pushes a fix. Reproducing beats reading
+logs from another machine — and the runner has the branch anyway.
+
+Two budgets bound it. `AGENT_CI_FIX_MAX_ROUNDS` caps repair rounds within one
+job; `AGENT_MAX_CI_ATTEMPTS` caps rounds across the pull request's whole life, so
+a genuinely broken branch cannot bounce between the agent and CI forever. The
+agent's own workflow is excluded, so its failures never feed itself.
+
+> **This path only fires if CI runs on the agent's branch.** Pushes made with the
+> default `GITHUB_TOKEN` deliberately do not trigger other workflows. Set
+> `AGENT_GITHUB_TOKEN` to a GitHub App installation token or a PAT if you want
+> CI — and therefore CI fixing — to happen at all.
+
+## The review loop is the repository's own
+
+Phase 3 does not implement a review loop; it drives the `review-loop/` workspace
+that already lives in this repo, via `bun run review-loop/src/cli.ts --config …
+--plan …`. That workspace owns the hard parts — a durable issue ledger,
+reviewer/fixer rounds, worktree isolation, a build gate, and a merge back into
+the working branch — and it is separately tested. `review-runner.ts` only
+generates its config, hands over the approved plan, and translates the exit code.
+
+The `mutation-improve/` workspace is deliberately _not_ wired in: it selects
+files and opens its own pull requests, which would conflict with a pipeline whose
+job is to open one. Run it separately.
+
+`check-loop.ts` remains, but only for CI fixing — "make these named commands
+green" is a different problem from "review this diff", and the workspace does not
+cover it.
 
 ## Guardrails
 
 Applied in `src/guardrails.ts`, and mirrored as a first-pass `if:` in the
-workflow so an unauthorized event never boots a runner with keys mounted:
+workflow so an unauthorized event never boots a runner with keys mounted.
 
-1. Only `issues.opened` and `issue_comment.created`; comments on pull requests
-   are dropped.
-2. `sender.type == 'Bot'` aborts.
-3. A sender matching the agent's own login aborts — the recursion guard.
-4. The author association must be `OWNER`, `MEMBER`, or `COLLABORATOR`. For a
-   comment event, the _commenter's_ association is what is checked, not the
-   issue author's.
+Human events: supported event and action only; no comments on pull requests; no
+`Bot` senders; nothing from the agent's own login; and the author association
+must be `OWNER`, `MEMBER`, or `COLLABORATOR` — read from the _commenter_, not the
+issue author.
 
-Issue and comment text is wrapped in `<untrusted_input>` envelopes before it
-reaches the model, and the system prompt states that this text is a request to
-be evaluated, never an instruction that can change the agent's rules. Commands
-are executed as argv vectors with `shell: false`, so untrusted text is never
-interpolated into a shell line.
+CI events: the run must have concluded `failure`, on a branch matching
+`agent/issue-<n>`, from a workflow that is not this one.
+
+Issue text reaches the model inside a nonce-terminated envelope
+(`<untrusted_input source="…" id="<nonce>">`). A fixed closing tag would be
+escapable by text containing that tag; the nonce is not guessable from the issue
+side, and a forged terminator is neutralised before wrapping. Commands are
+spawned as argv vectors with `shell: false`, so untrusted text never reaches a
+shell.
 
 ### A note on the "actor matches repository owner" rule
 
-The spike spec asks for the run to abort when the event actor matches
-`github.repository_owner`. Taken literally that also locks out the human owner,
-who on most repositories is the maintainer driving the issue — the rule is aimed
-at the _agent's_ identity, which merely defaults to the owner. So it is
-implemented as a comparison against `AGENT_SELF_LOGIN`, which **defaults to the
-repository owner** (spec behaviour) and should be set to the bot account's login
-once the agent posts under its own identity. Set it before expecting the owner
-to be able to trigger the agent.
+The original spike spec asked for the run to abort when the actor matches
+`github.repository_owner` — which also locks out the human owner, usually the
+maintainer driving the issue. The rule is aimed at the _agent's_ identity, which
+merely defaults to the owner, so it compares against `AGENT_SELF_LOGIN`
+(defaulting to the owner). Set it to the bot account's login.
 
 ## Configuration
 
-All configuration is environment variables; see `src/config.ts`.
+One OpenAI-compatible endpoint. That covers OpenAI, Azure-style gateways,
+OpenRouter, vLLM and anything else that speaks the protocol, so there are no
+provider-specific keys to keep in step. The same generated OpenCode config is
+used by the in-process SDK session _and_, via `OPENCODE_CONFIG_CONTENT`, by the
+`opencode run` subprocesses the review loop spawns — one definition, so the two
+cannot drift.
 
-| Variable                                   | Required | Default                       | Purpose                                                 |
-| ------------------------------------------ | -------- | ----------------------------- | ------------------------------------------------------- |
-| `GITHUB_TOKEN`                             | yes      | —                             | Repository access for comments, branches, pull requests |
-| `GITHUB_REPOSITORY`                        | yes      | —                             | `owner/repo`                                            |
-| `OPENCODE_MODEL`                           | no       | `anthropic/claude-sonnet-4-5` | `provider/model` reference                              |
-| `AGENT_SELF_LOGIN`                         | no       | repository owner              | Login treated as the agent itself                       |
-| `AGENT_BASE_BRANCH`                        | no       | `main`                        | Branch the PR targets                                   |
-| `AGENT_CHECKS`                             | no       | lint / typecheck / test       | JSON array of `{ "name", "argv" }`                      |
-| `AGENT_MUTATION_THRESHOLD`                 | no       | `0.6`                         | Mutation score floor, 0–1                               |
-| `AGENT_MAX_REVIEW_ROUNDS`                  | no       | `3`                           | Review-loop attempts, including the first               |
-| `AGENT_MAX_MUTATION_ROUNDS`                | no       | `2`                           | Mutation-loop attempts                                  |
-| `AGENT_MAX_ATTEMPTS`                       | no       | `3`                           | Failures before `/retry` stops resuming                 |
-| `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no       | `opencode-agent[bot]`         | Commit identity                                         |
-| `AGENT_LOG_LEVEL`                          | no       | `info`                        | `debug`, `info`, `warn`, `error`                        |
+| Variable                                   | Required | Default                                         | Purpose                                           |
+| ------------------------------------------ | -------- | ----------------------------------------------- | ------------------------------------------------- |
+| `OPENAI_API_KEY`                           | yes      | —                                               | Model credentials                                 |
+| `OPENAI_MODEL`                             | yes      | —                                               | Model name, e.g. `gpt-5`                          |
+| `OPENAI_BASE_URL`                          | no       | `https://api.openai.com/v1`                     | Any OpenAI-compatible endpoint                    |
+| `GITHUB_TOKEN`                             | yes      | —                                               | Comments, branches, pull requests                 |
+| `GITHUB_REPOSITORY`                        | yes      | —                                               | `owner/repo`                                      |
+| `AGENT_SELF_LOGIN`                         | no       | repository owner                                | Login treated as the agent itself                 |
+| `AGENT_WORKFLOW_NAME`                      | no       | `OpenCode Issue Agent`                          | This workflow's name, for the CI recursion guard  |
+| `AGENT_BASE_BRANCH`                        | no       | `main`                                          | Branch the PR targets                             |
+| `AGENT_CHECK_COMMAND`                      | no       | `bun run lint && bun run typecheck && bun test` | review-loop's build gate                          |
+| `AGENT_CHECKS`                             | no       | lint / typecheck / test                         | JSON `[{ "name", "argv" }]` the CI-fix phase runs |
+| `AGENT_REVIEW_MAX_ROUNDS`                  | no       | `4`                                             | review-loop rounds                                |
+| `AGENT_REVIEW_POOL_SIZE`                   | no       | `2`                                             | review-loop worker pool                           |
+| `AGENT_CI_FIX_MAX_ROUNDS`                  | no       | `2`                                             | Repair rounds per CI-fix job                      |
+| `AGENT_MAX_CI_ATTEMPTS`                    | no       | `3`                                             | CI-fix jobs per pull request                      |
+| `AGENT_MAX_ATTEMPTS`                       | no       | `3`                                             | Failures before `/retry` stops resuming           |
+| `AGENT_TIMEOUT_MS`                         | no       | `1800000`                                       | Per-subprocess timeout                            |
+| `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no       | `opencode-agent[bot]`                           | Commit identity                                   |
+| `AGENT_LOG_LEVEL`                          | no       | `info`                                          | `debug`, `info`, `warn`, `error`                  |
 
-Provider credentials (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or a custom
-endpoint's variables) are read by the OpenCode server from the environment; the
-adapter never handles them, and the logger redacts credential-shaped fields.
+`OPENAI_MODEL` is required rather than defaulted: with a custom base URL there is
+no model name that is right by default, and a wrong guess surfaces deep inside
+the first model call instead of at config load. Every numeric knob is validated
+as a positive integer.
+
+## Skills
+
+`obra/superpowers` is fetched, not vendored — it is MIT-licensed and separately
+maintained, so a pinned checkout keeps updates to a ref bump rather than a copy.
+The workflow checks it out to `.superpowers/` (gitignored) and then _verifies_
+the skills landed, because a silently empty skill layer is indistinguishable
+from a working one.
+
+Each phase declares required and optional skills. A missing **required** skill
+fails the phase with a message naming it; optional ones are logged and skipped.
+Skill names are asserted against the upstream list in
+`tests/opencode-agent/adapters.test.ts`, so a ref bump that renames one fails the
+test suite instead of the pipeline. YAML frontmatter is stripped before inlining.
+
+`subagent-driven-development` and `writing-skills` are deliberately excluded:
+both are 26–28 KB and neither applies to a single-session CI run.
 
 ## Setup
 
-1. Add the model provider key as a repository secret (`ANTHROPIC_API_KEY` or
-   equivalent).
-2. Optionally add `AGENT_GITHUB_TOKEN` — a GitHub App installation token or PAT.
-   Use one if you want the agent's pull requests to trigger your other
-   workflows; pushes made with the default `GITHUB_TOKEN` deliberately do not.
-3. Optionally set repository variables for the knobs above.
-4. Set `AGENT_SELF_LOGIN` to the login the agent comments under.
-5. Ensure Actions has write access to contents, issues and pull requests.
+1. Repository secret `OPENAI_API_KEY`.
+2. Repository variable `OPENAI_MODEL` (and `OPENAI_BASE_URL` for a non-OpenAI
+   endpoint).
+3. Repository variable `AGENT_SELF_LOGIN` — the login the agent comments under.
+4. Optionally `AGENT_GITHUB_TOKEN`, a GitHub App installation token. Without it
+   the agent's pushes do not trigger CI, so the CI-fix path never runs.
+5. Actions needs write access to contents, issues and pull requests.
 
 The workflow lives at `.github/workflows/agent-pipeline.yml`.
 
 ## Local runs
 
-The entry point takes an event payload file, exactly like the runner does:
-
 ```bash
 GITHUB_REPOSITORY=acme/widgets \
 GITHUB_TOKEN=ghp_… \
-ANTHROPIC_API_KEY=sk-ant-… \
+OPENAI_API_KEY=sk-… \
+OPENAI_MODEL=gpt-5 \
 AGENT_SELF_LOGIN=opencode-agent \
 bun run opencode-agent/src/index.ts \
   --event-path ./fixtures/issue-opened.json \
@@ -173,48 +233,56 @@ A minimal `issues.opened` payload:
 }
 ```
 
-Exit code is `0` for `skipped`, `waiting` and `completed`, and `1` only when a
-phase actually failed. The run writes NDJSON logs to stdout.
+For the CI-fix path, pass a `workflow_run` payload with
+`--event-name workflow_run`.
+
+Exit code is `0` for skipped/waiting/completed, `1` only when a phase failed.
+Logs are NDJSON on stdout.
 
 ## Module map
 
-| File                                          | Responsibility                                                                  |
-| --------------------------------------------- | ------------------------------------------------------------------------------- |
-| `src/index.ts`                                | CLI entry: flags, config, dependency wiring, exit code                          |
-| `src/orchestrator.ts`                         | The state machine: guardrails, command handling, phase cascade, failure parking |
-| `src/state-manager.ts`                        | `<!-- AGENT_STATE -->` serialization, thread restore, transition table          |
-| `src/guardrails.ts`                           | Webhook payload normalization and every abort rule                              |
-| `src/opencode-adapter.ts`                     | Headless OpenCode server + session wrapper                                      |
-| `src/obra-skills.ts`                          | Loads superpowers `SKILL.md` files and composes system prompts                  |
-| `src/review-loop.ts`                          | Review loop and mutation-improve loop                                           |
-| `src/phases/*.ts`                             | One handler per acting phase                                                    |
-| `src/github.ts`, `src/git.ts`, `src/shell.ts` | Octokit, git and process boundaries                                             |
-
-Skills are looked up under `.claude/skills/`, `docs/superpowers/extensions/` and
-`.superpowers/skills/`, first hit wins. A missing skill is skipped, not fatal —
-the pipeline runs in a checkout that has not vendored superpowers, just with a
-thinner system prompt.
+| File                                          | Responsibility                                                         |
+| --------------------------------------------- | ---------------------------------------------------------------------- |
+| `src/index.ts`                                | CLI entry: flags, config, dependency wiring, agent teardown, exit code |
+| `src/orchestrator.ts`                         | The state machine: guardrails, triggers, phase cascade                 |
+| `src/run-report.ts`                           | Everything the orchestrator writes back to the issue                   |
+| `src/state-manager.ts`                        | Transition table and the `AGENT_STATE` block                           |
+| `src/blocks.ts` / `src/artifacts.ts`          | The hidden-block channel and the spec/plan/report artefacts            |
+| `src/guardrails.ts`                           | Payload normalization (issue vs CI) and every abort rule               |
+| `src/commands.ts` / `src/intent.ts`           | Slash commands, and classifying plain replies                          |
+| `src/openai-config.ts`                        | The single endpoint, and the OpenCode config both paths share          |
+| `src/opencode-adapter.ts`                     | Headless OpenCode server + session                                     |
+| `src/obra-skills.ts`                          | Superpowers skill loading and system-prompt composition                |
+| `src/review-runner.ts`                        | Drives the `review-loop/` workspace                                    |
+| `src/check-loop.ts`                           | The CI-fix repair loop                                                 |
+| `src/phases/*.ts`                             | One handler per acting phase                                           |
+| `src/github.ts`, `src/git.ts`, `src/shell.ts` | Octokit, git and process boundaries                                    |
 
 ## Tests
 
 ```bash
-bun run opencode-agent:test        # unit tests
+bun run opencode-agent:test
 bun run opencode-agent:typecheck
 bun run opencode-agent:lint
 ```
 
-Tests live in `tests/opencode-agent/`. Every external boundary — GitHub, git,
-the OpenCode session, the check runner, the filesystem — is an injected
-interface, so the whole state machine runs against fakes with no network.
+Tests live in `tests/opencode-agent/`. Every external boundary — GitHub, git, the
+OpenCode session, the check runner, the review-loop subprocess, the filesystem —
+is an injected interface, so the state machine runs against fakes with no
+network.
 
 ## Known limitations
 
-- The mutation loop parses a Stryker-style `Mutation score: NN%` line. A runner
-  that reports differently needs `parseMutationScore` extended.
-- Review and mutation failures are reported, not enforced: the branch is pushed
-  and the pull request opened with a red report rather than being withheld. CI
-  on the pull request is the actual gate.
-- The agent never edits or deletes its own comments, so a long issue accumulates
-  one comment per phase.
-- There is no cost ceiling. `AGENT_MAX_REVIEW_ROUNDS`, `AGENT_MAX_MUTATION_ROUNDS`
-  and the job `timeout-minutes` are the only bounds on model spend.
+- **The OpenCode SDK response shapes are still unverified against a live server.**
+  `readSessionId` and `readReplyText` probe two plausible shapes each. This is the
+  spike's largest untested assumption.
+- Review-loop failures are reported, not enforced: the branch is pushed and the
+  pull request opened with a red report. CI on the pull request is the real gate,
+  and the CI-fix loop is what acts on it.
+- Bumping `STATE_VERSION` strands in-flight issues — old blocks fail validation
+  and the scan falls back to an older one, or to a fresh state. Drain before
+  bumping, or write a migration.
+- No cost ceiling beyond the round caps and the job timeout.
+- The model runs with unrestricted tools and repository credentials in the same
+  process. `AgentPromptRequest.tools` exists as the seam for narrowing this and
+  is not yet used — see `ROADMAP.md` S3-2.

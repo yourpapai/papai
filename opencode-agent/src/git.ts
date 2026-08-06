@@ -16,6 +16,24 @@ export interface GitOptions {
 /** Branch name the pipeline owns for a given issue. */
 export const branchNameFor = (issueNumber: number): string => `agent/issue-${issueNumber}`
 
+const BRANCH_PATTERN = /^agent\/issue-(\d+)$/u
+
+/**
+ * Recovers the issue number from a branch the pipeline owns; `null` for any
+ * other branch. This is the only link from a CI event — which knows a branch
+ * but not an issue — back to the conversation that started the work.
+ */
+export const issueNumberFromBranch = (branch: string): number | null => {
+  const match = BRANCH_PATTERN.exec(branch)
+  if (match === null) return null
+
+  const raw = match[1]
+  if (raw === undefined) return null
+
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null
+}
+
 export class GitError extends Error {
   readonly result: CommandResult
 

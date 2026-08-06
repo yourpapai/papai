@@ -5,14 +5,8 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import {
-  formatFailures,
-  parseMutationScore,
-  runMutationImprove,
-  runReviewLoop,
-  truncateOutput,
-} from '../../opencode-agent/src/review-loop.js'
-import type { CheckSpec } from '../../opencode-agent/src/review-loop.js'
+import { formatFailures, runCheckLoop, truncateOutput } from '../../opencode-agent/src/check-loop.js'
+import type { CheckSpec } from '../../opencode-agent/src/check-loop.js'
 import type { CommandResult } from '../../opencode-agent/src/shell.js'
 
 const CHECKS: CheckSpec[] = [
@@ -36,16 +30,6 @@ const healingRunner =
   () =>
     Promise.resolve(state.fixed ? result(0) : result(1, 'boom'))
 
-/** Runner that replays `outputs` in order, then keeps returning the last one. */
-const scriptedRunner = (outputs: readonly string[]): (() => Promise<CommandResult>) => {
-  let index = 0
-  return () => {
-    const output = outputs[Math.min(index, outputs.length - 1)] ?? ''
-    index += 1
-    return Promise.resolve(result(0, output))
-  }
-}
-
 describe('truncateOutput', () => {
   test('returns short output unchanged', () => {
     expect(truncateOutput(result(1, 'boom'), 100)).toBe('boom')
@@ -64,11 +48,11 @@ describe('truncateOutput', () => {
   })
 })
 
-describe('runReviewLoop', () => {
+describe('runCheckLoop', () => {
   test('passes on the first round when every check is green', async () => {
     const seen: string[] = []
 
-    const outcome = await runReviewLoop({
+    const outcome = await runCheckLoop({
       checks: CHECKS,
       run: (check) => {
         seen.push(check.name)
@@ -85,7 +69,7 @@ describe('runReviewLoop', () => {
   test('runs every check before repairing, so one prompt sees all failures', async () => {
     let repaired: string[] = []
 
-    await runReviewLoop({
+    await runCheckLoop({
       checks: CHECKS,
       run: () => Promise.resolve(result(1, 'broken')),
       repair: (failures) => {
@@ -102,7 +86,7 @@ describe('runReviewLoop', () => {
     const state = { fixed: false }
     let repairs = 0
 
-    const outcome = await runReviewLoop({
+    const outcome = await runCheckLoop({
       checks: CHECKS,
       run: healingRunner(state),
       repair: (_failures, round) => {
@@ -121,7 +105,7 @@ describe('runReviewLoop', () => {
   test('gives up after maxRounds and reports the surviving failures', async () => {
     let repairs = 0
 
-    const outcome = await runReviewLoop({
+    const outcome = await runCheckLoop({
       checks: [CHECKS[0]!],
       run: () => Promise.resolve(result(2, 'still broken')),
       repair: () => {
@@ -140,7 +124,7 @@ describe('runReviewLoop', () => {
   test('maxRounds of 1 disables self-repair', async () => {
     let repairs = 0
 
-    const outcome = await runReviewLoop({
+    const outcome = await runCheckLoop({
       checks: [CHECKS[0]!],
       run: () => Promise.resolve(result(1)),
       repair: () => {
@@ -155,7 +139,7 @@ describe('runReviewLoop', () => {
   })
 
   test('clamps a nonsensical maxRounds up to one attempt', async () => {
-    const outcome = await runReviewLoop({
+    const outcome = await runCheckLoop({
       checks: [CHECKS[0]!],
       run: () => Promise.resolve(result(0)),
       repair: () => Promise.reject(new Error('repair must not run')),
@@ -166,7 +150,7 @@ describe('runReviewLoop', () => {
   })
 
   test('an empty check list passes trivially', async () => {
-    const outcome = await runReviewLoop({
+    const outcome = await runCheckLoop({
       checks: [],
       run: () => Promise.reject(new Error('run must not be called')),
       repair: () => Promise.reject(new Error('repair must not run')),
@@ -174,111 +158,6 @@ describe('runReviewLoop', () => {
     })
 
     expect(outcome.passed).toBe(true)
-  })
-})
-
-describe('parseMutationScore', () => {
-  test.each([
-    ['Mutation score: 87.42%', 0.8742],
-    ['mutation score 100%', 1],
-    ['Mutation score based on covered code: 61.5 %', 0.615],
-    ['Mutation score: 0.83', 0.83],
-    ['Mutation score: 0%', 0],
-  ])('parses %p', (output, expected) => {
-    expect(parseMutationScore(output)).toBeCloseTo(expected, 5)
-  })
-
-  test.each([['no score here'], ['mutation testing crashed'], ['']])('returns null for %p', (output) => {
-    expect(parseMutationScore(output)).toBeNull()
-  })
-})
-
-describe('runMutationImprove', () => {
-  const check: CheckSpec = { name: 'mutation', argv: ['bun', 'run', 'mutate'] }
-
-  test('passes when the first run clears the threshold', async () => {
-    const outcome = await runMutationImprove({
-      check,
-      run: () => Promise.resolve(result(0, 'Mutation score: 91%')),
-      improve: () => Promise.reject(new Error('improve must not run')),
-      threshold: 0.6,
-      maxRounds: 3,
-    })
-
-    expect(outcome.passed).toBe(true)
-    expect(outcome.rounds).toBe(1)
-    expect(outcome.finalScore).toBeCloseTo(0.91, 5)
-  })
-
-  test('improves and re-measures until the score clears', async () => {
-    const outcome = await runMutationImprove({
-      check,
-      run: scriptedRunner(['Mutation score: 40%', 'Mutation score: 75%']),
-      improve: () => Promise.resolve(),
-      threshold: 0.6,
-      maxRounds: 3,
-    })
-
-    expect(outcome.passed).toBe(true)
-    expect(outcome.rounds).toBe(2)
-    expect(outcome.finalScore).toBeCloseTo(0.75, 5)
-  })
-
-  test('fails when the score never clears the threshold', async () => {
-    const outcome = await runMutationImprove({
-      check,
-      run: () => Promise.resolve(result(0, 'Mutation score: 10%')),
-      improve: () => Promise.resolve(),
-      threshold: 0.6,
-      maxRounds: 2,
-    })
-
-    expect(outcome.passed).toBe(false)
-    expect(outcome.rounds).toBe(2)
-    expect(outcome.finalScore).toBeCloseTo(0.1, 5)
-  })
-
-  test('fails when no score can be parsed, even on a zero exit', async () => {
-    const outcome = await runMutationImprove({
-      check,
-      run: () => Promise.resolve(result(0, 'runner produced no summary')),
-      improve: () => Promise.resolve(),
-      threshold: 0.6,
-      maxRounds: 1,
-    })
-
-    expect(outcome.passed).toBe(false)
-    expect(outcome.finalScore).toBeNull()
-  })
-
-  test('fails when the runner exits non-zero despite a high score', async () => {
-    const outcome = await runMutationImprove({
-      check,
-      run: () => Promise.resolve(result(1, 'Mutation score: 99%')),
-      improve: () => Promise.resolve(),
-      threshold: 0.6,
-      maxRounds: 1,
-    })
-
-    expect(outcome.passed).toBe(false)
-  })
-
-  test('hands the report to the improve callback', async () => {
-    const rounds: number[] = []
-
-    await runMutationImprove({
-      check,
-      run: () => Promise.resolve(result(0, 'Mutation score: 5%')),
-      improve: (report, round) => {
-        rounds.push(round)
-        expect(report.score).toBeCloseTo(0.05, 5)
-        return Promise.resolve()
-      },
-      threshold: 0.9,
-      maxRounds: 3,
-    })
-
-    expect(rounds).toEqual([1, 2])
   })
 })
 

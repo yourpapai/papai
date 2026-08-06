@@ -5,21 +5,17 @@
 
 import { z } from 'zod'
 
-import type { CheckSpec } from './review-loop.js'
+import type { CheckSpec } from './check-loop.js'
+import type { OpenAiSettings } from './openai-config.js'
 
 const checkSpecSchema = z.object({ name: z.string().min(1), argv: z.array(z.string().min(1)).min(1) })
 
-/** Checks the review loop runs when the repo does not declare its own. */
+/** Checks the CI-fix loop runs when the repo does not declare its own. */
 export const DEFAULT_CHECKS: readonly CheckSpec[] = [
   { name: 'lint', argv: ['bun', 'run', 'lint'] },
   { name: 'typecheck', argv: ['bun', 'run', 'typecheck'] },
   { name: 'test', argv: ['bun', 'test'] },
 ]
-
-export const DEFAULT_MUTATION_CHECK: CheckSpec = {
-  name: 'mutation',
-  argv: ['bun', 'run', 'test:mutate:changed'],
-}
 
 export interface PipelineConfig {
   repoRoot: string
@@ -28,18 +24,25 @@ export interface PipelineConfig {
   githubToken: string
   /** Login treated as the agent's own identity for recursion guards. */
   selfLogin: string
-  model: string
+  /** This pipeline's workflow name, so its own red runs do not re-trigger it. */
+  selfWorkflowName: string
+  openai: OpenAiSettings
   baseBranch: string
   commitAuthorName: string
   commitAuthorEmail: string
+  /** Build gate the review-loop workspace runs between rounds. */
+  checkCommand: string
+  /** Commands the CI-fix phase runs locally to reproduce a red pull request. */
   checks: readonly CheckSpec[]
-  mutationCheck: CheckSpec
-  mutationThreshold: number
-  maxReviewRounds: number
-  maxMutationRounds: number
+  reviewMaxRounds: number
+  reviewPoolSize: number
+  agentTimeoutMs: number
+  ciFixMaxRounds: number
+  /** Ceiling on CI-fix rounds across the whole life of one pull request. */
+  maxCiAttempts: number
   /** Above this, a FAILED issue stops auto-retrying and waits for `/retry`. */
   maxAttempts: number
-  dryRun: boolean
+  skillRoots: readonly string[]
 }
 
 export class ConfigError extends Error {
@@ -64,18 +67,23 @@ const optional = (env: Env, key: string, fallback: string): string => {
   return value === undefined || value.trim().length === 0 ? fallback : value.trim()
 }
 
-const numeric = (env: Env, key: string, fallback: number): number => {
+/** Reads a positive integer knob, rejecting the values that silently break loops. */
+const positiveInt = (env: Env, key: string, fallback: number): number => {
   const raw = env[key]
   if (raw === undefined || raw.trim().length === 0) return fallback
-  const parsed = Number.parseFloat(raw)
-  if (!Number.isFinite(parsed)) throw new ConfigError(`${key} must be numeric, got "${raw}"`)
+
+  const parsed = Number.parseInt(raw.trim(), 10)
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || String(parsed) !== raw.trim()) {
+    throw new ConfigError(`${key} must be a positive integer, got "${raw}"`)
+  }
   return parsed
 }
 
-/** Parses `GITHUB_REPOSITORY` (`owner/repo`). */
+/** Parses `GITHUB_REPOSITORY` (`owner/repo`), rejecting anything else. */
 export const parseRepository = (raw: string): { owner: string; repo: string } => {
-  const [owner, repo] = raw.split('/')
-  if (owner === undefined || repo === undefined || owner === '' || repo === '') {
+  const parts = raw.split('/')
+  const [owner, repo] = parts
+  if (parts.length !== 2 || owner === undefined || repo === undefined || owner === '' || repo === '') {
     throw new ConfigError(`GITHUB_REPOSITORY must be "owner/repo", got "${raw}"`)
   }
   return { owner, repo }
@@ -98,6 +106,22 @@ const safeJson = (raw: string): unknown => {
   }
 }
 
+/**
+ * Reads the single model endpoint.
+ *
+ * `OPENAI_MODEL` is required rather than defaulted: with a custom base URL
+ * there is no model name that is right by default, and a wrong guess surfaces
+ * deep inside the first model call instead of here.
+ */
+export const loadOpenAiSettings = (env: Env): OpenAiSettings => ({
+  apiKey: required(env, 'OPENAI_API_KEY'),
+  baseUrl: optional(env, 'OPENAI_BASE_URL', 'https://api.openai.com/v1'),
+  model: required(env, 'OPENAI_MODEL'),
+})
+
+/** Skill roots searched in order; the vendored superpowers checkout wins. */
+const DEFAULT_SKILL_ROOTS = ['.superpowers/skills', '.claude/skills'] as const
+
 /** Builds the pipeline config from the runner environment. */
 export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
   const { owner, repo } = parseRepository(required(env, 'GITHUB_REPOSITORY'))
@@ -108,16 +132,19 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     repo,
     githubToken: required(env, 'GITHUB_TOKEN'),
     selfLogin: optional(env, 'AGENT_SELF_LOGIN', owner),
-    model: optional(env, 'OPENCODE_MODEL', 'anthropic/claude-sonnet-4-5'),
+    selfWorkflowName: optional(env, 'AGENT_WORKFLOW_NAME', 'OpenCode Issue Agent'),
+    openai: loadOpenAiSettings(env),
     baseBranch: optional(env, 'AGENT_BASE_BRANCH', 'main'),
     commitAuthorName: optional(env, 'AGENT_COMMIT_NAME', 'opencode-agent[bot]'),
     commitAuthorEmail: optional(env, 'AGENT_COMMIT_EMAIL', 'opencode-agent@users.noreply.github.com'),
+    checkCommand: optional(env, 'AGENT_CHECK_COMMAND', 'bun run lint && bun run typecheck && bun test'),
     checks: parseChecks(env['AGENT_CHECKS']),
-    mutationCheck: DEFAULT_MUTATION_CHECK,
-    mutationThreshold: numeric(env, 'AGENT_MUTATION_THRESHOLD', 0.6),
-    maxReviewRounds: numeric(env, 'AGENT_MAX_REVIEW_ROUNDS', 3),
-    maxMutationRounds: numeric(env, 'AGENT_MAX_MUTATION_ROUNDS', 2),
-    maxAttempts: numeric(env, 'AGENT_MAX_ATTEMPTS', 3),
-    dryRun: optional(env, 'AGENT_DRY_RUN', 'false').toLowerCase() === 'true',
+    reviewMaxRounds: positiveInt(env, 'AGENT_REVIEW_MAX_ROUNDS', 4),
+    reviewPoolSize: positiveInt(env, 'AGENT_REVIEW_POOL_SIZE', 2),
+    agentTimeoutMs: positiveInt(env, 'AGENT_TIMEOUT_MS', 1_800_000),
+    ciFixMaxRounds: positiveInt(env, 'AGENT_CI_FIX_MAX_ROUNDS', 2),
+    maxCiAttempts: positiveInt(env, 'AGENT_MAX_CI_ATTEMPTS', 3),
+    maxAttempts: positiveInt(env, 'AGENT_MAX_ATTEMPTS', 3),
+    skillRoots: DEFAULT_SKILL_ROOTS,
   }
 }

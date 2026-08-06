@@ -5,41 +5,41 @@
 `opencode-agent/` is a standalone Bun workspace holding a **spike**: an
 event-driven GitHub Actions coding agent built on the OpenCode SDK and
 obra/superpowers skills. It is not a papai runtime dependency and nothing under
-`src/` imports it. Full behaviour, configuration and setup: `README.md`.
+`src/` imports it. Full behaviour, configuration and setup: `README.md`. Open
+findings: `ROADMAP.md`.
 
 ## Shape
 
-- One CI job = one call to `runCli`. State lives in hidden
-  `<!-- AGENT_STATE: {...} -->` blocks on the issue, not on disk.
+- One CI job = one call to `runCli`. State lives in hidden blocks on the issue,
+  not on disk: `AGENT_STATE` for the machine, `AGENT_SPEC` / `AGENT_PLAN` /
+  `AGENT_REPORT` for the artefacts.
 - `src/orchestrator.ts` owns the state machine; phase handlers in `src/phases/`
-  return a `TransitionSignal` and a comment body and never write state or decide
-  the next phase themselves.
+  return a `TransitionSignal`, a comment body and optional artefact blocks, and
+  never write state or decide the next phase themselves.
 - Every external boundary is an injected interface (`GitHubApi`, `Git`,
-  `CheckRunner`, `OpenCodeAgent`, `ReadSkillFile`), so the whole pipeline runs
-  against fakes.
-
-## Scripts
-
-Run from the repo root:
-
-- `bun run opencode-agent:test`
-- `bun run opencode-agent:typecheck`
-- `bun run opencode-agent:lint`
-- `bun run opencode-agent:format:check`
-- `bun run opencode-agent:start -- --event-path <file> --event-name <name>`
+  `CheckRunner`, `RunReview`, `OpenCodeAgent`, `ReadSkillFile`).
 
 ## Local rules
 
+- **Never scrape prose to recover an artefact.** Spec, plan and report travel in
+  hidden blocks via `blocks.ts` / `artifacts.ts`. Heading-and-trailer scraping
+  silently truncated specs at their first `---` rule; do not reintroduce it.
+- **The review loop is `review-loop/`, not a local reimplementation.** Phase 3
+  drives that workspace through `review-runner.ts`. `check-loop.ts` exists only
+  for CI fixing, which the workspace does not cover.
+- **One model endpoint.** Everything goes through `openai-config.ts`; there are
+  no provider-specific keys and no second place a model is named.
+- Untrusted text (issue bodies, comments, check output) must go through the
+  nonce envelope from `prompts.ts` before reaching a prompt, and commands must be
+  spawned as argv vectors with `shell: false`.
 - No `await` inside a loop body (repo lint). Sequential iteration goes through
-  `src/sequence.ts` (`mapSeries`, `firstMatch`) or tail recursion — see the
-  round loops in `src/review-loop.ts` and the cascade in `src/orchestrator.ts`.
+  `src/sequence.ts` (`mapSeries`, `firstMatch`) or tail recursion.
 - One class per file: pipeline failures are constructed through the factories in
   `src/errors.ts` rather than new error subclasses.
-- Untrusted text (issue bodies, comments) must be wrapped with `asUntrusted()`
-  from `src/prompts.ts` before it reaches a prompt, and commands must be spawned
-  as argv vectors with `shell: false`.
 - Tests live in `tests/opencode-agent/`, follow `tests/CLAUDE.md`, and must not
-  touch the network.
+  touch the network. When a command test asserts an outcome, assert the
+  **persisted state**, not just the returned status — a state that is never
+  posted never happened.
 
 ## Dependencies
 
@@ -53,3 +53,8 @@ run time: this workspace is developer tooling that never runs inside the papai
 container, and the Dockerfile's `prod-deps` stage installs with `--production`.
 The Actions workflow runs a plain `bun install --frozen-lockfile`, so both are
 present there.
+
+The workflow additionally installs the `opencode` CLI (the review-loop workspace
+shells out to `opencode run`) and checks out `obra/superpowers` to `.superpowers/`.
+Both of those paths, plus the generated `.opencode-agent/` run inputs, are
+gitignored — `git add --all` in the implement phase would otherwise commit them.

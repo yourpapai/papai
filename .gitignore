@@ -71,3 +71,7 @@ client/assets
 # opencode local config
 .opencode/
 opencode.json
+
+# opencode-agent: vendored superpowers checkout + generated run inputs
+.superpowers/
+.opencode-agent/

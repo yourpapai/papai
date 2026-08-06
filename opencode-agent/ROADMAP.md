@@ -7,6 +7,14 @@ See LICENSE in the project root for details.
 
 # opencode-agent — follow-up roadmap
 
+> **Status update.** A follow-up change addressed several of the findings below
+> while reworking the pipeline (OpenAI-only credentials, fetched superpowers
+> skills, the real `review-loop/` workspace, CI-failure retries, and a
+> conversational review flow). Resolved items are marked **[FIXED]** inline with
+> a one-line note. Everything unmarked still stands — in particular **S1-5**
+> (the OpenCode SDK response shapes remain unverified against a live server) and
+> the whole of **S3** except S3-1.
+
 Findings from a file-by-file audit of the spike as committed on
 `claude/github-actions-opencode-agent-807fjo`. **Report only — nothing here is
 fixed.**
@@ -37,7 +45,9 @@ Severity:
 
 ## S1 — Blockers
 
-### S1-1 `/cancel` is a silent no-op; the issue stays live — **verified**
+### S1-1 `/cancel` is a silent no-op; the issue stays live — **verified** — **[FIXED]**
+
+_Fixed: the terminal path now posts when nothing else did (`orchestrator.ts` `settle`), and the `/cancel` test asserts durability across a following `/approve`._
 
 `src/orchestrator.ts:93-107` transitions the state to `COMPLETE`, then
 `driveMachine` (`:122-130`) finds no handler for `COMPLETE` and returns
@@ -62,7 +72,9 @@ generally have `driveMachine` persist state whenever `applyCommand` changed the
 phase and no handler will do it. The second is the real fix — it closes the
 whole class rather than the one instance.
 
-### S1-2 Resuming `PR_DELIVERY` on a fresh runner cannot work — by inspection
+### S1-2 Resuming `PR_DELIVERY` on a fresh runner cannot work — by inspection — **[FIXED]**
+
+_Fixed: phase 3 now pushes, and `PR_DELIVERY` is purely API-side, so it needs no working tree._
 
 `src/phases/deliver.ts:18-34` calls `deps.git.push(branch)` without first
 calling `ensureBranch`. That is correct only when phase 4 runs in the same job
@@ -85,7 +97,9 @@ boundary match the durability boundary, which is what `resumeFrom` assumes. As a
 stopgap, `handleDeliver` calling `ensureBranch` first at least stops the crash,
 but it does not recover the lost commit.
 
-### S1-3 The clarification loop is unreachable in CI — by inspection
+### S1-3 The clarification loop is unreachable in CI — by inspection — **[FIXED]**
+
+_Fixed: the workflow no longer filters `issue_comment` on slash commands._
 
 `src/phases/triage.ts:58` tells the maintainer "Reply in this thread and I will
 pick it up from there", and `src/orchestrator.ts:94-96` implements exactly that:
@@ -104,7 +118,9 @@ explicit `/answer` command and change the prompt text to match. The current
 split is the worst of the three because the code and the docs both claim a
 behaviour the deployment forbids.
 
-### S1-4 A spec or plan containing `---` is silently truncated — **verified**
+### S1-4 A spec or plan containing `---` is silently truncated — **verified** — **[FIXED]**
+
+_Fixed: artefacts moved to their own hidden blocks (`blocks.ts` / `artifacts.ts`); `thread.ts` is deleted._
 
 `src/thread.ts:13` defines `TRAILER_PATTERN = /\n---\n[\S\s]*$/u` and `:46`
 applies it to strip the agent's trailing call-to-action. It strips from the
@@ -145,7 +161,9 @@ provider, or at minimum a recorded fixture of a real `session.create` and
 `session.prompt` response asserted against `readSessionId` / `readReplyText`.
 This is the single highest-value test the spike is missing.
 
-### S1-6 No skills ever load; the superpowers integration is inert — **verified**
+### S1-6 No skills ever load; the superpowers integration is inert — **verified** — **[FIXED]**
+
+_Fixed: the workflow checks out `obra/superpowers` and verifies it; required skills are now fatal; names are asserted against upstream in tests._
 
 `src/obra-skills.ts:24` searches `.claude/skills/`,
 `docs/superpowers/extensions/` and `.superpowers/skills/` for
@@ -169,7 +187,9 @@ whether a missing _planning_ skill should be fatal for `EXECUTION_PLAN` rather
 than silently degrading. Also strip YAML frontmatter before inlining — it is
 prompt noise.
 
-### S1-7 The OpenCode server is never closed; the job may hang — by inspection
+### S1-7 The OpenCode server is never closed; the job may hang — by inspection — **[FIXED]**
+
+_Fixed: `runCli` closes the agent in a `finally`, and `main` exits explicitly._
 
 `src/index.ts:86-97` memoizes the agent but nothing ever calls
 `agent.close()`. `src/opencode-adapter.ts` exposes `close()` on the interface and
@@ -189,7 +209,9 @@ an explicit `process.exit(code)` after flushing logs.
 
 ## S2 — Correctness
 
-### S2-1 `attempts` is never reset on success — **verified**
+### S2-1 `attempts` is never reset on success — **verified** — **[FIXED]**
+
+_Fixed: `PROGRESS_SIGNALS` clears the counter on forward progress._
 
 `src/state-manager.ts:139-143`: normal transitions carry `attempts` through from
 the previous state. Reproduced: a run that fails once, is `/retry`-ed, and then
@@ -202,7 +224,9 @@ later, entirely unrelated failure hits the ceiling immediately.
 **Direction:** reset `attempts` to 0 on any signal that represents forward
 progress, or track it per `resumeFrom` phase.
 
-### S2-2 Exhausting the retry budget is completely silent — by inspection
+### S2-2 Exhausting the retry budget is completely silent — by inspection — **[FIXED]**
+
+_Fixed: the budget path posts a "Giving up" comment._
 
 `src/orchestrator.ts:132-134` returns `failed` when
 `attempts >= maxAttempts` **before** running a handler and without posting
@@ -216,14 +240,16 @@ run that is succeeding can be aborted between phases by a stale attempt count
 **Direction:** post a "budget exhausted" comment, and evaluate the budget once
 at entry rather than on every recursion step.
 
-### S2-3 `renderFailure` has an unreachable branch — by inspection
+### S2-3 `renderFailure` has an unreachable branch — by inspection — **[FIXED]**
 
 `src/orchestrator.ts:189-191` branches on `next.attempts >= 1`, but
 `transition(state, 'FAILED')` always increments `attempts`, so `next.attempts`
 is always ≥ 1. The `else` string can never render. Harmless, but it signals the
 author expected `attempts` to mean something it does not.
 
-### S2-4 The mutation check is hardcoded and papai-specific — by inspection
+### S2-4 The mutation check is hardcoded and papai-specific — by inspection — **[FIXED]**
+
+_Fixed differently than suggested: the custom mutation loop is gone. `mutation-improve/` opens its own pull requests, so it is not wired into a pipeline whose job is to open one._
 
 `src/config.ts:19-22` hardcodes `bun run test:mutate:changed`, and `:116` wires
 it in with no environment override (unlike `AGENT_CHECKS`). Any repository other
@@ -244,7 +270,9 @@ and every README example targets a branch that does not exist here, and
 **Direction:** make the default the detected default branch, or fail loudly when
 the configured base does not exist rather than surfacing a raw `GitError`.
 
-### S2-6 A reused pull request is never actually updated — by inspection
+### S2-6 A reused pull request is never actually updated — by inspection — **[FIXED]**
+
+_Fixed: `updatePullRequest` refreshes the body on reuse._
 
 `src/phases/deliver.ts:24-33` reuses an existing open PR and
 `renderDelivery` (`:57-64`) announces "**Updated** existing pull request" — but
@@ -260,12 +288,14 @@ what happened.
 merged and someone `/retry`s, the pipeline opens a _second_ PR from the
 now-merged branch, almost certainly with an empty diff.
 
-### S2-8 `parseRepository` silently truncates — by inspection
+### S2-8 `parseRepository` silently truncates — by inspection — **[FIXED]**
 
 `src/config.ts:77` destructures `raw.split('/')` into two variables, so
 `a/b/c` parses as owner `a`, repo `b`, discarding `c` without complaint.
 
-### S2-9 Numeric configuration is unvalidated — by inspection
+### S2-9 Numeric configuration is unvalidated — by inspection — **[FIXED]**
+
+_Fixed: every knob is a validated positive integer._
 
 `src/config.ts:67-73` accepts any finite float. `AGENT_MAX_ATTEMPTS=0` makes
 every run fail instantly and silently (see S2-2). `AGENT_MUTATION_THRESHOLD=95`
@@ -286,7 +316,9 @@ than by accident.
 
 ## S3 — Security and containment
 
-### S3-1 The untrusted-input envelope is trivially escapable — by inspection
+### S3-1 The untrusted-input envelope is trivially escapable — by inspection — **[FIXED]**
+
+_Fixed: nonce-terminated envelope, with a forged terminator neutralised before wrapping._
 
 `src/prompts.ts:10-11` wraps issue text in `<untrusted_input source="...">` …
 `</untrusted_input>` with **no escaping**. An issue body containing the literal
@@ -391,18 +423,18 @@ attributes rather than in-band text.
 
 ## S5 — Robustness, cost, operability
 
-| #     | Item                                            | Where                                   | Note                                                                                                                                                                                                |
-| ----- | ----------------------------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| S5-1  | No retry on transient model errors              | `opencode-adapter.ts:167-170`           | A single 429 or 5xx fails the phase and burns an attempt.                                                                                                                                           |
-| S5-2  | No timeout on a prompt                          | `opencode-adapter.ts`                   | `ServerOptions.timeout` exists and is not passed. A hung call runs to the job timeout.                                                                                                              |
-| S5-3  | No JSON-repair retry                            | `model-json.ts:44-56`                   | One malformed reply fails the run and needs a human `/retry`. A single "return valid JSON matching this schema" re-ask would recover most of these cheaply.                                         |
-| S5-4  | No prompt size budget                           | `prompts.ts:14-18`; `review-loop.ts:43` | `renderThread` caps at 20 comments but not at characters; `truncateOutput` caps 8k _per failure_, so three failures put 24k into each repair round.                                                 |
-| S5-5  | `timeout-minutes: 45` is likely too low         | `agent-pipeline.yml:31`                 | Implement + up to 3 review rounds + 2 mutation rounds on a real repo can exceed it. A timeout loses everything — no state comment is posted, so the issue is stuck in whatever phase it started in. |
-| S5-6  | No cost ceiling                                 | —                                       | Round caps and the job timeout are the only bounds. A token budget per issue would be a cheap guardrail.                                                                                            |
-| S5-7  | No progress output during a phase               | adapter                                 | A 20-minute implement prompt emits nothing; the Actions log looks hung. The SDK supports streaming.                                                                                                 |
-| S5-8  | Every check reruns every round                  | `review-loop.ts:52-66`                  | Deliberate and documented, but on a repo with a 20-minute test suite three rounds is an hour. Consider rerunning only previously-failing checks after round 1, with a full pass at the end.         |
-| S5-9  | `parseMutationScore` is ambiguous at `1`        | `review-loop.ts:130`                    | `value > 1 ? value/100 : value` reads a bare `Mutation score: 1` as 100%, not 1%. Inherent to the format; worth documenting or requiring the `%`.                                                   |
-| S5-10 | Substring command matching boots wasted runners | `agent-pipeline.yml:41-44`              | A comment merely mentioning `/approve` starts a job that then correctly skips. Harmless, noisy, billable.                                                                                           |
+| #                      | Item                                        | Where                                   | Note                                                                                                                                                                                                |
+| ---------------------- | ------------------------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S5-1                   | No retry on transient model errors          | `opencode-adapter.ts:167-170`           | A single 429 or 5xx fails the phase and burns an attempt.                                                                                                                                           |
+| S5-2                   | No timeout on a prompt                      | `opencode-adapter.ts`                   | `ServerOptions.timeout` exists and is not passed. A hung call runs to the job timeout.                                                                                                              |
+| S5-3                   | No JSON-repair retry                        | `model-json.ts:44-56`                   | One malformed reply fails the run and needs a human `/retry`. A single "return valid JSON matching this schema" re-ask would recover most of these cheaply.                                         |
+| S5-4                   | No prompt size budget                       | `prompts.ts:14-18`; `review-loop.ts:43` | `renderThread` caps at 20 comments but not at characters; `truncateOutput` caps 8k _per failure_, so three failures put 24k into each repair round.                                                 |
+| S5-5                   | `timeout-minutes: 45` is likely too low     | `agent-pipeline.yml:31`                 | Implement + up to 3 review rounds + 2 mutation rounds on a real repo can exceed it. A timeout loses everything — no state comment is posted, so the issue is stuck in whatever phase it started in. |
+| S5-6                   | No cost ceiling                             | —                                       | Round caps and the job timeout are the only bounds. A token budget per issue would be a cheap guardrail.                                                                                            |
+| S5-7                   | No progress output during a phase           | adapter                                 | A 20-minute implement prompt emits nothing; the Actions log looks hung. The SDK supports streaming.                                                                                                 |
+| S5-8                   | Every check reruns every round              | `review-loop.ts:52-66`                  | Deliberate and documented, but on a repo with a 20-minute test suite three rounds is an hour. Consider rerunning only previously-failing checks after round 1, with a full pass at the end.         |
+| S5-9                   | `parseMutationScore` is ambiguous at `1`    | `review-loop.ts:130`                    | `value > 1 ? value/100 : value` reads a bare `Mutation score: 1` as 100%, not 1%. Inherent to the format; worth documenting or requiring the `%`.                                                   |
+| S5-10 **[SUPERSEDED]** | The comment filter is gone by design (S1-3) | `agent-pipeline.yml:41-44`              | A comment merely mentioning `/approve` starts a job that then correctly skips. Harmless, noisy, billable.                                                                                           |
 
 ---
 
@@ -426,9 +458,9 @@ Everything else is at 100%.
 
 Specific gaps worth closing, beyond the raw percentages:
 
-- **S6-1** The `/cancel` test asserts status and git calls but not persistence — which is why S1-1 shipped green. Assert the posted state on every command test.
+- **S6-1 [FIXED]** The `/cancel` test asserted status and git calls but not persistence — which is why S1-1 shipped green. Assert the posted state on every command test.
 - **S6-2** No test drives `handleDeliver` against a git fake that behaves like a _fresh runner_ (branch absent locally). That fake permissiveness is why S1-2 is invisible.
-- **S6-3** No test for a spec containing `---` (S1-4), or for `asUntrusted` with an embedded closing tag (S3-1).
+- **S6-3 [FIXED]** Both are now covered: a spec with `---` round-trips through the block channel, and a forged envelope terminator is asserted inert.
 - **S6-4** No contract or integration test against the real OpenCode SDK (S1-5).
 - **S6-5** **Stryker does not cover this workspace.** `stryker.config.json`'s `mutate` globs list `src/**` and `plugins/**` only, so the repo's strongest quality gate — the per-file mutation ratchet — never sees `opencode-agent/`. Ironic for a pipeline that runs a mutation loop. New files get a "first measurement, seeded" pass rather than an enforced floor, so this will not _block_ the PR; it just leaves the code unmeasured.
 - **S6-6** **Coverage-floor risk on CI.** `scripts/coverage/floor.json` enforces an aggregate 90% lines / 90% functions. Eight of the spike's files sit below that. papai is large enough (~289k lines) that ~1,200 new lines at roughly 75% should not push the aggregate under the floor, but this has not been measured against a full coverage run and should be checked before merge.

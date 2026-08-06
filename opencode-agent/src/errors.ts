@@ -22,14 +22,11 @@ export class PipelineError extends Error {
 export const missingSpecError = (issueNumber: number): PipelineError =>
   new PipelineError(
     'MISSING_SPEC',
-    `No approved design spec found on issue #${issueNumber}. Was the spec comment edited or deleted?`,
+    `No approved design spec found on issue #${issueNumber}. Was the spec comment deleted?`,
   )
 
 export const missingPlanError = (issueNumber: number): PipelineError =>
-  new PipelineError(
-    'MISSING_PLAN',
-    `No execution plan found on issue #${issueNumber}. Was the plan comment edited or deleted?`,
-  )
+  new PipelineError('MISSING_PLAN', `No execution plan found on issue #${issueNumber}. Was the plan comment deleted?`)
 
 export const noChangesError = (issueNumber: number): PipelineError =>
   new PipelineError(
@@ -41,3 +38,13 @@ export const openCodeError = (message: string): PipelineError => new PipelineErr
 
 export const modelResponseError = (message: string, raw: string): PipelineError =>
   new PipelineError('MODEL_RESPONSE', `${message}\n\nRaw reply:\n${raw.slice(0, 2000)}`)
+
+export const reviewLoopError = (exitCode: number, summary: string): PipelineError =>
+  new PipelineError('REVIEW_LOOP', `The review-loop workspace exited ${exitCode}.\n\n${summary}`)
+
+export const missingSkillError = (phase: string, names: readonly string[]): PipelineError =>
+  new PipelineError(
+    'MISSING_SKILL',
+    `Phase ${phase} requires skills that are not installed: ${names.join(', ')}. ` +
+      'Check that the superpowers checkout step ran and populated .superpowers/skills.',
+  )

@@ -8,6 +8,7 @@ import path from 'node:path'
 import process from 'node:process'
 import { pathToFileURL } from 'node:url'
 
+import type { CheckRunner } from './check-loop.js'
 import { loadConfig } from './config.js'
 import type { PipelineConfig } from './config.js'
 import { createGit } from './git.js'
@@ -17,16 +18,17 @@ import { createLogger } from './logger.js'
 import type { Logger, LogLevel } from './logger.js'
 import { loadPhaseSkills } from './obra-skills.js'
 import type { SkillDocument } from './obra-skills.js'
+import { opencodeConfigEnv } from './openai-config.js'
 import { createOpenCodeAgent } from './opencode-adapter.js'
 import type { OpenCodeAgent } from './opencode-adapter.js'
 import { runPipeline } from './orchestrator.js'
 import type { RunResult } from './orchestrator.js'
-import type { PhaseDeps } from './phase-context.js'
-import type { CheckRunner } from './review-loop.js'
+import type { PhaseDeps, RunReview } from './phase-context.js'
+import { runReviewLoop } from './review-runner.js'
 import { runCommand } from './shell.js'
 import type { CommandRunner } from './shell.js'
-import type { Phase } from './types.js'
 import { errorMessage } from './types.js'
+import type { Phase } from './types.js'
 
 export interface CliArgs {
   eventPath: string
@@ -38,13 +40,15 @@ export interface CliArgs {
 export class UsageError extends Error {
   constructor(message: string) {
     super(
-      `${message}\n\nUsage: opencode-agent --event-path <file.json> --event-name <issues|issue_comment> [--repo-root <dir>] [--log-level debug|info|warn|error]`,
+      `${message}\n\nUsage: opencode-agent --event-path <file.json> --event-name <issues|issue_comment|workflow_run> [--repo-root <dir>] [--log-level debug|info|warn|error]`,
     )
     this.name = 'UsageError'
   }
 }
 
 const LOG_LEVELS: ReadonlySet<string> = new Set(['debug', 'info', 'warn', 'error'])
+
+const isLogLevel = (value: string): value is LogLevel => LOG_LEVELS.has(value)
 
 /** Parses the CLI flags. Defaults come from the Actions runner environment. */
 export const parseArgs = (argv: readonly string[], env: NodeJS.ProcessEnv): CliArgs => {
@@ -80,34 +84,64 @@ export const parseArgs = (argv: readonly string[], env: NodeJS.ProcessEnv): CliA
   }
 }
 
-const isLogLevel = (value: string): value is LogLevel => LOG_LEVELS.has(value)
+/** Boots the OpenCode session at most once per job, and exposes it for closing. */
+interface AgentHandle {
+  get: () => Promise<OpenCodeAgent>
+  close: () => Promise<void>
+}
 
-/** Boots the OpenCode session at most once per job. */
-const memoizeAgent = (config: PipelineConfig, issueNumber: number): (() => Promise<OpenCodeAgent>) => {
+const memoizeAgent = (config: PipelineConfig, issueNumber: number): AgentHandle => {
   let pending: Promise<OpenCodeAgent> | null = null
 
-  return () => {
-    pending ??= createOpenCodeAgent({
-      directory: config.repoRoot,
-      model: config.model,
-      sessionTitle: `issue-${issueNumber}`,
-    })
-    return pending
+  return {
+    get: () => {
+      pending ??= createOpenCodeAgent({
+        directory: config.repoRoot,
+        openai: config.openai,
+        sessionTitle: `issue-${issueNumber}`,
+      })
+      return pending
+    },
+    // Never boots a server just to shut one down, and never turns a teardown
+    // failure into a pipeline failure.
+    close: async () => {
+      if (pending === null) return
+      await pending.then((agent) => agent.close()).catch(() => undefined)
+    },
   }
 }
 
 const makeCheckRunner =
   (run: CommandRunner, config: PipelineConfig): CheckRunner =>
   (check) =>
-    run(check.argv, { cwd: config.repoRoot })
+    run(check.argv, { cwd: config.repoRoot, timeoutMs: config.agentTimeoutMs })
 
-const makeSkillLoader = (config: PipelineConfig): ((phase: Phase) => Promise<SkillDocument[]>) => {
+const makeReviewRunner =
+  (run: CommandRunner, config: PipelineConfig, log: Logger): RunReview =>
+  (plan) =>
+    runReviewLoop({
+      settings: {
+        repoRoot: config.repoRoot,
+        openai: config.openai,
+        checkCommand: config.checkCommand,
+        maxRounds: config.reviewMaxRounds,
+        poolSize: config.reviewPoolSize,
+        agentTimeoutMs: config.agentTimeoutMs,
+      },
+      plan,
+      run,
+      env: opencodeConfigEnv(config.openai),
+      log,
+      timeoutMs: config.agentTimeoutMs,
+    })
+
+const makeSkillLoader = (config: PipelineConfig, log: Logger): ((phase: Phase) => Promise<SkillDocument[]>) => {
   const cache = new Map<Phase, Promise<SkillDocument[]>>()
 
   return (phase) => {
     const cached = cache.get(phase)
     if (cached !== undefined) return cached
-    const loading = loadPhaseSkills(phase, { repoRoot: config.repoRoot })
+    const loading = loadPhaseSkills(phase, { repoRoot: config.repoRoot, roots: config.skillRoots, log })
     cache.set(phase, loading)
     return loading
   }
@@ -121,7 +155,7 @@ export interface MainOptions {
 }
 
 /**
- * Entry point shared by the Action and by local `--event-path` dry runs.
+ * Entry point shared by the Action and by local `--event-path` runs.
  *
  * Returns a {@link RunResult} rather than exiting so the same call is drivable
  * from a test; `main` below maps the status onto a process exit code.
@@ -134,11 +168,12 @@ export const runCli = async (options: MainOptions): Promise<RunResult> => {
   const payload: unknown = JSON.parse(await readFile(args.eventPath, 'utf8'))
   const event = parseTriggerEvent(args.eventName, payload)
   if (event === null) {
-    log.warn({ eventName: args.eventName }, 'Payload carries no issue; nothing to do')
-    return { status: 'skipped', reason: 'Payload carries no issue', state: null }
+    log.warn({ eventName: args.eventName }, 'Payload carries nothing this pipeline acts on')
+    return { status: 'skipped', reason: 'Payload carries nothing to act on', state: null }
   }
 
   const run = options.run ?? runCommand
+  const agent = memoizeAgent(config, event.issueNumber)
   const deps: PhaseDeps = {
     github: createOctokitApi({ token: config.githubToken, owner: config.owner, repo: config.repo }),
     git: createGit({
@@ -148,21 +183,28 @@ export const runCli = async (options: MainOptions): Promise<RunResult> => {
       authorEmail: config.commitAuthorEmail,
     }),
     runCheck: makeCheckRunner(run, config),
-    agent: memoizeAgent(config, event.issueNumber),
-    skills: makeSkillLoader(config),
+    runReview: makeReviewRunner(run, config, log),
+    agent: agent.get,
+    skills: makeSkillLoader(config, log),
     config,
     log,
   }
 
   log.info(
-    { event: args.eventName, action: event.action, issue: event.issueNumber, dryRun: config.dryRun },
+    { event: args.eventName, kind: event.kind, issue: event.issueNumber, model: config.openai.model },
     'Starting agent pipeline',
   )
 
-  const result = await runPipeline({ event, deps })
-  const phase = result.state === null ? null : result.state.phase
-  log.info({ status: result.status, reason: result.reason, phase }, 'Pipeline finished')
-  return result
+  try {
+    const result = await runPipeline({ event, deps })
+    const phase = result.state === null ? null : result.state.phase
+    log.info({ status: result.status, reason: result.reason, phase }, 'Pipeline finished')
+    return result
+  } finally {
+    // The OpenCode server holds a listening socket; without this the process
+    // stays alive after the work is done and the job dies on its timeout.
+    await agent.close()
+  }
 }
 
 /** Exit codes: 0 for skipped/waiting/completed, 1 only for a genuine failure. */
@@ -171,7 +213,8 @@ export const main = async (): Promise<number> => {
     const result = await runCli({ argv: process.argv.slice(2), env: process.env })
     return result.status === 'failed' ? 1 : 0
   } catch (error) {
-    process.stderr.write(`${errorMessage(error)}\n`)
+    const stack = error instanceof Error && error.stack !== undefined ? error.stack : errorMessage(error)
+    process.stderr.write(`${stack}\n`)
     return 1
   }
 }
@@ -183,5 +226,5 @@ const isEntryPoint = (): boolean => {
 }
 
 if (isEntryPoint()) {
-  process.exitCode = await main()
+  process.exit(await main())
 }

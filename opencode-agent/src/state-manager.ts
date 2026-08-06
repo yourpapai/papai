@@ -3,104 +3,106 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { agentStateSchema, InvalidTransitionError } from './types.js'
+import { findLatestBlock, readBlock, renderBlock } from './blocks.js'
+import type { IssueComment } from './blocks.js'
+import { agentStateSchema, InvalidTransitionError, STATE_VERSION } from './types.js'
 import type { AgentState, Phase, TransitionSignal } from './types.js'
+
+export type { IssueComment } from './blocks.js'
 
 /** Marker opening every persisted state block. Also the grep handle for humans. */
 export const STATE_MARKER = 'AGENT_STATE'
 
 /**
- * Matches `<!-- AGENT_STATE: {...} -->`. Non-greedy so several blocks in one
- * body are found separately; the `u` flag keeps it consistent with repo lint.
+ * Where each signal leads. Signals absent from a phase's row are rejected, so a
+ * command arriving in the wrong phase is a loud no-op rather than a silent
+ * corruption of the persisted state.
  */
-const STATE_BLOCK_PATTERN = /<!--\s*AGENT_STATE:\s*([\S\s]*?)-->/gu
-
-/** Anything the state machine may branch on when picking the next phase. */
 const TRANSITIONS: Record<Phase, Partial<Record<TransitionSignal, Phase>>> = {
-  INIT_OR_CLARIFY: { NEEDS_CLARIFICATION: 'INIT_OR_CLARIFY', SPEC_POSTED: 'DESIGN_SPEC' },
-  DESIGN_SPEC: { NEEDS_CLARIFICATION: 'INIT_OR_CLARIFY', APPROVED: 'EXECUTION_PLAN' },
-  EXECUTION_PLAN: { PLAN_POSTED: 'REVIEW_AND_MUTATE' },
+  INIT_OR_CLARIFY: { NEEDS_CLARIFICATION: 'INIT_OR_CLARIFY', ANSWERED: 'INIT_OR_CLARIFY', SPEC_POSTED: 'DESIGN_SPEC' },
+  DESIGN_SPEC: { ANSWERED: 'DESIGN_SPEC', CHANGES_REQUESTED: 'INIT_OR_CLARIFY', APPROVED: 'EXECUTION_PLAN' },
+  EXECUTION_PLAN: { PLAN_POSTED: 'PLAN_REVIEW' },
+  PLAN_REVIEW: { ANSWERED: 'PLAN_REVIEW', CHANGES_REQUESTED: 'EXECUTION_PLAN', APPROVED: 'REVIEW_AND_MUTATE' },
   REVIEW_AND_MUTATE: { CHANGES_COMMITTED: 'PR_DELIVERY' },
   PR_DELIVERY: { PR_OPENED: 'COMPLETE' },
-  COMPLETE: {},
+  CI_FIX: { CI_FIXED: 'COMPLETE' },
+  COMPLETE: { CI_FAILED: 'CI_FIX' },
   FAILED: {},
 }
 
-/** A comment as the state manager needs to see it, independent of the API shape. */
-export interface IssueComment {
-  id: number
-  body: string
-  authorLogin: string
-}
+/** Signals that count as forward progress and therefore clear the failure budget. */
+const PROGRESS_SIGNALS: ReadonlySet<TransitionSignal> = new Set<TransitionSignal>([
+  'SPEC_POSTED',
+  'APPROVED',
+  'PLAN_POSTED',
+  'CHANGES_COMMITTED',
+  'PR_OPENED',
+  'CI_FIXED',
+])
+
+/** Signals that produce a revised spec or plan, bumping the artefact revision. */
+const REVISION_SIGNALS: ReadonlySet<TransitionSignal> = new Set<TransitionSignal>(['SPEC_POSTED', 'PLAN_POSTED'])
 
 /** Fresh state for an issue the agent has not seen before. */
 export const initialState = (issueId: number): AgentState =>
-  agentStateSchema.parse({ phase: 'INIT_OR_CLARIFY', issueId })
+  agentStateSchema.parse({ v: STATE_VERSION, phase: 'INIT_OR_CLARIFY', issueId })
 
-/** Renders the hidden HTML block that carries state across ephemeral CI jobs. */
-export const serializeState = (state: AgentState): string =>
-  `<!-- ${STATE_MARKER}:\n${JSON.stringify(state, null, 2)}\n-->`
+/** Renders the hidden block that carries state across ephemeral CI jobs. */
+export const serializeState = (state: AgentState): string => renderBlock(STATE_MARKER, state)
 
 /** Appends the hidden state block to a human-readable comment body. */
 export const renderStateComment = (body: string, state: AgentState): string =>
   `${body.trimEnd()}\n\n${serializeState(state)}`
 
-/**
- * Reads the state block out of a single comment body. When a body somehow
- * carries several blocks the last one wins — that is the most recent write.
- * Malformed JSON and schema-invalid payloads yield `null` rather than throwing,
- * so one corrupt comment cannot wedge the pipeline.
- */
-export const extractState = (commentBody: string): AgentState | null => {
-  let found: AgentState | null = null
-
-  for (const match of commentBody.matchAll(STATE_BLOCK_PATTERN)) {
-    const raw = match[1]
-    if (raw === undefined) continue
-
-    const parsed = parseStateJson(raw)
-    if (parsed !== null) found = parsed
-  }
-
-  return found
+const toState = (candidate: unknown): AgentState | null => {
+  if (candidate === undefined) return null
+  const result = agentStateSchema.safeParse(candidate)
+  return result.success ? result.data : null
 }
 
-const parseStateJson = (raw: string): AgentState | null => {
-  try {
-    const result = agentStateSchema.safeParse(JSON.parse(raw))
-    return result.success ? result.data : null
-  } catch {
-    return null
-  }
-}
+/** Reads the state block out of a single comment body; `null` when absent or invalid. */
+export const extractState = (commentBody: string): AgentState | null => toState(readBlock(commentBody, STATE_MARKER))
 
 /**
  * Restores state from an issue thread: the newest comment authored by the agent
- * that carries a parsable state block. Comments are expected in GitHub's
- * chronological order; the scan walks backwards so the newest block wins even
- * when older agent comments still carry stale blocks.
+ * that carries a schema-valid state block.
+ *
+ * A block written by an older, incompatible state version is rejected the same
+ * way a corrupt one is — the scan simply keeps walking back. That is safer than
+ * coercing it, but it does mean a breaking `STATE_VERSION` bump strands
+ * in-flight issues; see the migration note in the README before bumping.
  */
-export const findLatestState = (comments: readonly IssueComment[], agentLogin: string): AgentState | null => {
-  const normalizedAgent = agentLogin.toLowerCase()
+export const findLatestState = (comments: readonly IssueComment[], agentLogin: string): AgentState | null =>
+  toState(findLatestBlock(comments, agentLogin, STATE_MARKER))
 
-  for (let index = comments.length - 1; index >= 0; index -= 1) {
-    const comment = comments[index]
-    if (comment === undefined) continue
-    if (comment.authorLogin.toLowerCase() !== normalizedAgent) continue
-
-    const state = extractState(comment.body)
-    if (state !== null) return state
-  }
-
-  return null
-}
-
-/** Whether `signal` is accepted in `phase`. FAILED/RETRY are always accepted. */
+/** Whether `signal` is accepted in `phase`. */
 export const canTransition = (phase: Phase, signal: TransitionSignal): boolean => {
   if (signal === 'FAILED' || signal === 'CANCELLED') return phase !== 'COMPLETE'
   if (signal === 'RETRY') return phase === 'FAILED'
   return TRANSITIONS[phase][signal] !== undefined
 }
+
+const failTransition = (state: AgentState, patch: Partial<AgentState>): Partial<AgentState> => ({
+  phase: 'FAILED',
+  resumeFrom: state.phase === 'FAILED' ? state.resumeFrom : state.phase,
+  attempts: state.attempts + 1,
+  ...patch,
+})
+
+const forwardTransition = (
+  state: AgentState,
+  signal: TransitionSignal,
+  next: Phase,
+  patch: Partial<AgentState>,
+): Partial<AgentState> => ({
+  phase: next,
+  approved: signal === 'APPROVED' ? true : state.approved,
+  attempts: PROGRESS_SIGNALS.has(signal) ? 0 : state.attempts,
+  revision: REVISION_SIGNALS.has(signal) ? state.revision + 1 : state.revision,
+  ciAttempts: signal === 'CI_FAILED' ? state.ciAttempts + 1 : state.ciAttempts,
+  lastError: null,
+  ...patch,
+})
 
 /**
  * Applies a handler signal to the state, returning a new state object. Throws
@@ -114,19 +116,8 @@ export const transition = (
 ): AgentState => {
   if (!canTransition(state.phase, signal)) throw new InvalidTransitionError(state.phase, signal)
 
-  if (signal === 'FAILED') {
-    return applyPatch(state, {
-      phase: 'FAILED',
-      resumeFrom: state.phase === 'FAILED' ? state.resumeFrom : state.phase,
-      attempts: state.attempts + 1,
-      ...patch,
-    })
-  }
-
-  if (signal === 'CANCELLED') {
-    return applyPatch(state, { phase: 'COMPLETE', resumeFrom: null, ...patch })
-  }
-
+  if (signal === 'FAILED') return applyPatch(state, failTransition(state, patch))
+  if (signal === 'CANCELLED') return applyPatch(state, { phase: 'COMPLETE', resumeFrom: null, ...patch })
   if (signal === 'RETRY') {
     return applyPatch(state, {
       phase: state.resumeFrom ?? 'INIT_OR_CLARIFY',
@@ -138,10 +129,8 @@ export const transition = (
 
   const next = TRANSITIONS[state.phase][signal]
   if (next === undefined) throw new InvalidTransitionError(state.phase, signal)
-
-  const approved = signal === 'APPROVED' ? true : state.approved
-  return applyPatch(state, { phase: next, approved, lastError: null, ...patch })
+  return applyPatch(state, forwardTransition(state, signal, next, patch))
 }
 
 const applyPatch = (state: AgentState, patch: Partial<AgentState>): AgentState =>
-  agentStateSchema.parse({ ...state, ...patch })
+  agentStateSchema.parse({ ...state, ...patch, v: STATE_VERSION })

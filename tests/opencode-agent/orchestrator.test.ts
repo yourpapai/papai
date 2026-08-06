@@ -5,18 +5,20 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { findArtifact, PLAN_MARKER, SPEC_MARKER } from '../../opencode-agent/src/artifacts.js'
+import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import { DEFAULT_CHECKS } from '../../opencode-agent/src/config.js'
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
 import type { Git } from '../../opencode-agent/src/git.js'
 import type { GitHubApi, PullRequestRef } from '../../opencode-agent/src/github.js'
-import type { TriggerEvent } from '../../opencode-agent/src/guardrails.js'
+import type { CiTriggerEvent, IssueTriggerEvent } from '../../opencode-agent/src/guardrails.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
 import type { AgentPromptRequest, OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
 import { runPipeline } from '../../opencode-agent/src/orchestrator.js'
 import type { PhaseDeps } from '../../opencode-agent/src/phase-context.js'
+import type { ReviewRunResult } from '../../opencode-agent/src/review-runner.js'
 import type { CommandResult } from '../../opencode-agent/src/shell.js'
 import { extractState } from '../../opencode-agent/src/state-manager.js'
-import type { IssueComment } from '../../opencode-agent/src/state-manager.js'
 import type { AgentState } from '../../opencode-agent/src/types.js'
 
 const AGENT_LOGIN = 'agent-bot'
@@ -35,21 +37,25 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   repo: 'widgets',
   githubToken: 'token',
   selfLogin: AGENT_LOGIN,
-  model: 'anthropic/claude-sonnet-4-5',
+  selfWorkflowName: 'OpenCode Issue Agent',
+  openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5' },
   baseBranch: 'main',
   commitAuthorName: 'agent',
   commitAuthorEmail: 'agent@example.com',
+  checkCommand: 'bun test',
   checks: DEFAULT_CHECKS,
-  mutationCheck: { name: 'mutation', argv: ['bun', 'run', 'mutate'] },
-  mutationThreshold: 0.6,
-  maxReviewRounds: 2,
-  maxMutationRounds: 1,
+  reviewMaxRounds: 2,
+  reviewPoolSize: 1,
+  agentTimeoutMs: 1000,
+  ciFixMaxRounds: 2,
+  maxCiAttempts: 2,
   maxAttempts: 3,
-  dryRun: false,
+  skillRoots: ['.superpowers/skills'],
   ...overrides,
 })
 
-const event = (overrides: Partial<TriggerEvent> = {}): TriggerEvent => ({
+const issueEvent = (overrides: Partial<IssueTriggerEvent> = {}): IssueTriggerEvent => ({
+  kind: 'issue',
   eventName: 'issues',
   action: 'opened',
   senderLogin: 'maintainer',
@@ -61,12 +67,25 @@ const event = (overrides: Partial<TriggerEvent> = {}): TriggerEvent => ({
   isPullRequest: false,
   commentBody: null,
   repositoryOwner: 'acme',
-  repositoryName: 'widgets',
   defaultBranch: 'main',
   ...overrides,
 })
 
-const approval = (): TriggerEvent => event({ eventName: 'issue_comment', action: 'created', commentBody: '/approve' })
+const comment = (body: string): IssueTriggerEvent =>
+  issueEvent({ eventName: 'issue_comment', action: 'created', commentBody: body })
+
+const ciEvent = (overrides: Partial<CiTriggerEvent> = {}): CiTriggerEvent => ({
+  kind: 'ci',
+  eventName: 'workflow_run',
+  action: 'completed',
+  branch: `agent/issue-${ISSUE}`,
+  issueNumber: ISSUE,
+  conclusion: 'failure',
+  workflowName: 'CI',
+  runUrl: 'https://example.test/run/1',
+  defaultBranch: 'main',
+  ...overrides,
+})
 
 /** Mutable recording surface shared by every fake in a harness. */
 interface PipelineIo {
@@ -77,8 +96,10 @@ interface PipelineIo {
   checkResults: Map<string, CommandResult>
   /** Model replies, consumed in order by successive prompts. */
   replies: string[]
+  reviewResult: ReviewRunResult
   createdPr: PullRequestRef | null
   openPr: PullRequestRef | null
+  prBodies: string[]
 }
 
 interface Harness {
@@ -91,8 +112,7 @@ const PLAN_REPLY = JSON.stringify({
   steps: [{ title: 'Write retry tests', files: ['tests/retry.test.ts'], verification: 'bun test' }],
   summary: 'One step.',
 })
-
-const OK_CHECK: CommandResult = { command: 'check', exitCode: 0, stdout: 'Mutation score: 95%', stderr: '' }
+const OK_CHECK: CommandResult = { command: 'check', exitCode: 0, stdout: '', stderr: '' }
 
 const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
   const io: PipelineIo = {
@@ -101,9 +121,11 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     prompts: [],
     gitCalls: [],
     checkResults: new Map(),
-    replies: [SPEC_REPLY, PLAN_REPLY, 'Implemented.', 'PR body.'],
+    replies: [],
+    reviewResult: { passed: true, summary: 'no issues found', exitCode: 0 },
     createdPr: null,
     openPr: null,
+    prBodies: [],
   }
 
   let nextCommentId = 100
@@ -116,11 +138,17 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       io.thread.push({ id: nextCommentId, body, authorLogin: AGENT_LOGIN })
       return Promise.resolve({ id: nextCommentId, url: `https://example.test/c/${nextCommentId}` })
     },
+    getIssue: () => Promise.resolve({ number: ISSUE, title: 'Add retries', body: 'Please add retries.' }),
     getAuthenticatedLogin: () => Promise.resolve(AGENT_LOGIN),
     findOpenPullRequest: () => Promise.resolve(io.openPr),
-    createPullRequest: () => {
+    createPullRequest: (input) => {
+      io.prBodies.push(input.body)
       io.createdPr = { number: 7, url: 'https://example.test/pull/7' }
       return Promise.resolve(io.createdPr)
+    },
+    updatePullRequest: (_number, patch) => {
+      io.prBodies.push(patch.body)
+      return Promise.resolve()
     },
   }
 
@@ -154,6 +182,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     github,
     git,
     runCheck: (check) => Promise.resolve(io.checkResults.get(check.name) ?? OK_CHECK),
+    runReview: () => Promise.resolve(io.reviewResult),
     agent: () => Promise.resolve(agent),
     skills: () => Promise.resolve([]),
     config: config(overrides),
@@ -163,17 +192,33 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
   return { deps, io }
 }
 
-/** State written by the newest comment the agent posted. */
 const latestPostedState = (harness: Harness): AgentState | null => {
   const last = harness.io.posted.at(-1)
   return last === undefined ? null : extractState(last)
 }
 
-describe('runPipeline guardrails', () => {
+const headings = (harness: Harness): string[] => harness.io.posted.map((body) => body.split('\n')[0] ?? '')
+
+/** Drives an issue as far as DESIGN_SPEC, ready for the review conversation. */
+const toDesignSpec = async (harness: Harness): Promise<void> => {
+  harness.io.replies = [SPEC_REPLY]
+  await runPipeline({ event: issueEvent(), deps: harness.deps })
+  harness.io.posted.length = 0
+}
+
+/** Drives an issue as far as PLAN_REVIEW. */
+const toPlanReview = async (harness: Harness): Promise<void> => {
+  await toDesignSpec(harness)
+  harness.io.replies = [PLAN_REPLY]
+  await runPipeline({ event: comment('/approve'), deps: harness.deps })
+  harness.io.posted.length = 0
+}
+
+describe('guardrails', () => {
   test('skips a run raised by a Bot without touching the issue', async () => {
     const harness = makeHarness()
 
-    const result = await runPipeline({ event: event({ senderType: 'Bot' }), deps: harness.deps })
+    const result = await runPipeline({ event: issueEvent({ senderType: 'Bot' }), deps: harness.deps })
 
     expect(result.status).toBe('skipped')
     expect(harness.io.posted).toEqual([])
@@ -182,18 +227,14 @@ describe('runPipeline guardrails', () => {
   test('skips a non-maintainer', async () => {
     const harness = makeHarness()
 
-    const result = await runPipeline({
-      event: event({ authorAssociation: 'CONTRIBUTOR' }),
-      deps: harness.deps,
-    })
+    const result = await runPipeline({ event: issueEvent({ authorAssociation: 'CONTRIBUTOR' }), deps: harness.deps })
 
     expect(result.status).toBe('skipped')
-    expect(result.reason).toContain('CONTRIBUTOR')
     expect(harness.io.posted).toEqual([])
   })
 })
 
-describe('runPipeline phase 1', () => {
+describe('phase 1 — triage', () => {
   let harness: Harness
 
   beforeEach(() => {
@@ -201,34 +242,41 @@ describe('runPipeline phase 1', () => {
   })
 
   test('posts a design spec and parks in DESIGN_SPEC', async () => {
-    const result = await runPipeline({ event: event(), deps: harness.deps })
+    harness.io.replies = [SPEC_REPLY]
+
+    const result = await runPipeline({ event: issueEvent(), deps: harness.deps })
 
     expect(result.status).toBe('waiting')
-    expect(harness.io.posted).toHaveLength(1)
     expect(harness.io.posted[0]).toContain('### Design spec')
-    expect(harness.io.posted[0]).toContain('/approve')
     expect(latestPostedState(harness)?.phase).toBe('DESIGN_SPEC')
   })
 
-  test('posts clarification questions and stays in INIT_OR_CLARIFY', async () => {
-    harness.io.replies = [JSON.stringify({ status: 'clarify', questions: ['Which client?', 'How many retries?'] })]
+  test('persists the spec in a block that survives markdown rules', async () => {
+    const spec = '## Goal\n\nDo it.\n\n---\n\n## Files\n\n- `src/a.ts`'
+    harness.io.replies = [JSON.stringify({ status: 'spec', spec })]
 
-    const result = await runPipeline({ event: event(), deps: harness.deps })
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    // Read it back the way a later job does, not by string surgery.
+    expect(findArtifact(harness.io.thread, AGENT_LOGIN, SPEC_MARKER)?.text).toBe(spec)
+  })
+
+  test('posts clarification questions and stays in INIT_OR_CLARIFY', async () => {
+    harness.io.replies = [JSON.stringify({ status: 'clarify', questions: ['Which client?'] })]
+
+    const result = await runPipeline({ event: issueEvent(), deps: harness.deps })
 
     expect(result.status).toBe('waiting')
     expect(harness.io.posted[0]).toContain('Which client?')
     expect(latestPostedState(harness)?.phase).toBe('INIT_OR_CLARIFY')
   })
 
-  test('re-runs triage when a maintainer answers without a slash command', async () => {
+  test('a plain reply while clarifying re-runs triage', async () => {
     harness.io.replies = [JSON.stringify({ status: 'clarify', questions: ['Which client?'] }), SPEC_REPLY]
-    await runPipeline({ event: event(), deps: harness.deps })
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+    harness.io.posted.length = 0
 
-    harness.io.thread.push({ id: 500, body: 'The HTTP client.', authorLogin: 'maintainer' })
-    const result = await runPipeline({
-      event: event({ eventName: 'issue_comment', action: 'created', commentBody: 'The HTTP client.' }),
-      deps: harness.deps,
-    })
+    const result = await runPipeline({ event: comment('The HTTP client.'), deps: harness.deps })
 
     expect(result.status).toBe('waiting')
     expect(latestPostedState(harness)?.phase).toBe('DESIGN_SPEC')
@@ -237,182 +285,326 @@ describe('runPipeline phase 1', () => {
   test('parks in FAILED when the model returns unusable JSON', async () => {
     harness.io.replies = ['I could not decide.']
 
-    const result = await runPipeline({ event: event(), deps: harness.deps })
+    const result = await runPipeline({ event: issueEvent(), deps: harness.deps })
 
     expect(result.status).toBe('failed')
     expect(harness.io.posted[0]).toContain('Run failed in INIT_OR_CLARIFY')
-    expect(harness.io.posted[0]).toContain('/retry')
 
     const state = latestPostedState(harness)
     expect(state?.phase).toBe('FAILED')
     expect(state?.resumeFrom).toBe('INIT_OR_CLARIFY')
-    expect(state?.attempts).toBe(1)
   })
 })
 
-describe('runPipeline phases 2-4', () => {
+describe('review conversation', () => {
   let harness: Harness
 
   beforeEach(async () => {
     harness = makeHarness()
-    await runPipeline({ event: event(), deps: harness.deps })
-    harness.io.posted.length = 0
+    await toDesignSpec(harness)
   })
 
-  test('/approve cascades through plan, implement and delivery in one run', async () => {
-    const result = await runPipeline({ event: approval(), deps: harness.deps })
+  test('/ask answers without moving the state machine', async () => {
+    harness.io.replies = ['Because the retry helper already exists there.']
+
+    const result = await runPipeline({ event: comment('/ask why that file?'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted[0]).toContain('### Answer')
+    expect(harness.io.posted[0]).toContain('Because the retry helper already exists there.')
+    expect(latestPostedState(harness)?.phase).toBe('DESIGN_SPEC')
+  })
+
+  test('/ask passes the question through to the model', async () => {
+    harness.io.replies = ['an answer']
+    await runPipeline({ event: comment('/ask why that file?'), deps: harness.deps })
+
+    expect(String(harness.io.prompts.at(-1)?.prompt)).toContain('why that file?')
+  })
+
+  test('/changes revises the spec and reports a new revision', async () => {
+    harness.io.replies = [JSON.stringify({ status: 'spec', spec: 'Use the existing helper.' })]
+
+    const result = await runPipeline({ event: comment('/changes use the existing helper'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted[0]).toContain('Design spec (revision 2)')
+    expect(latestPostedState(harness)?.phase).toBe('DESIGN_SPEC')
+  })
+
+  test('/changes threads the maintainer feedback into the rewrite prompt', async () => {
+    harness.io.replies = [JSON.stringify({ status: 'spec', spec: 'revised' })]
+    await runPipeline({ event: comment('/changes use the existing helper'), deps: harness.deps })
+
+    expect(String(harness.io.prompts.at(-1)?.prompt)).toContain('use the existing helper')
+  })
+
+  test('a plain comment classified as a question gets answered', async () => {
+    harness.io.replies = [JSON.stringify({ intent: 'question' }), 'Because it already exists.']
+
+    const result = await runPipeline({ event: comment('why that file?'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted[0]).toContain('### Answer')
+  })
+
+  test('a plain comment classified as a change request revises the spec', async () => {
+    harness.io.replies = [JSON.stringify({ intent: 'changes' }), JSON.stringify({ status: 'spec', spec: 'revised' })]
+
+    await runPipeline({ event: comment('please use the existing helper instead'), deps: harness.deps })
+
+    expect(harness.io.posted[0]).toContain('Design spec (revision 2)')
+  })
+
+  test('a plain comment classified as approval proceeds to planning', async () => {
+    harness.io.replies = [JSON.stringify({ intent: 'approve' }), PLAN_REPLY]
+
+    await runPipeline({ event: comment('looks great, go ahead'), deps: harness.deps })
+
+    expect(harness.io.posted[0]).toContain('### Execution plan')
+  })
+
+  test('an unusable classification falls back to answering, never to re-planning', async () => {
+    harness.io.replies = ['not json at all', 'an answer']
+
+    const result = await runPipeline({ event: comment('hmm'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted[0]).toContain('### Answer')
+    expect(latestPostedState(harness)?.revision).toBe(1)
+  })
+})
+
+describe('plan review gate', () => {
+  let harness: Harness
+
+  beforeEach(() => {
+    harness = makeHarness()
+  })
+
+  test('/approve on the spec stops at the plan rather than implementing', async () => {
+    await toDesignSpec(harness)
+    harness.io.replies = [PLAN_REPLY]
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(headings(harness)).toEqual(['### Execution plan (revision 2)'])
+    expect(latestPostedState(harness)?.phase).toBe('PLAN_REVIEW')
+    expect(harness.io.gitCalls).toEqual([`ensureBranch:agent/issue-${ISSUE}:main`])
+  })
+
+  test('/changes on the plan re-plans without touching the spec', async () => {
+    await toPlanReview(harness)
+    harness.io.replies = [PLAN_REPLY]
+
+    await runPipeline({ event: comment('/changes split step 1'), deps: harness.deps })
+
+    expect(harness.io.posted[0]).toContain('### Execution plan (revision 3)')
+    expect(latestPostedState(harness)?.phase).toBe('PLAN_REVIEW')
+  })
+
+  test('/approve on the plan cascades through implementation and delivery', async () => {
+    await toPlanReview(harness)
+    harness.io.replies = ['Implemented.']
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
     expect(result.status).toBe('completed')
-    expect(harness.io.posted.map((body) => body.split('\n')[0])).toEqual([
-      '### Execution plan',
-      '### Implementation report',
-      '### Pull request ready',
-    ])
+    expect(headings(harness)).toEqual(['### Implementation report', '### Pull request ready'])
     expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
   })
+})
 
-  test('cuts, commits and pushes the issue branch', async () => {
-    await runPipeline({ event: approval(), deps: harness.deps })
+describe('implementation and delivery', () => {
+  let harness: Harness
 
-    expect(harness.io.gitCalls).toContain('ensureBranch:agent/issue-42:main')
-    expect(harness.io.gitCalls).toContain('push:agent/issue-42')
-    expect(harness.io.gitCalls.some((call) => call.startsWith('commit:'))).toBe(true)
+  beforeEach(async () => {
+    harness = makeHarness()
+    await toPlanReview(harness)
+    harness.io.replies = ['Implemented.']
   })
 
-  test('records the branch and the pull request URL in the persisted state', async () => {
-    await runPipeline({ event: approval(), deps: harness.deps })
+  test('pushes the branch in the phase that made the commit', async () => {
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
-    const state = latestPostedState(harness)
-    expect(state?.branch).toBe('agent/issue-42')
-    expect(state?.prUrl).toBe('https://example.test/pull/7')
-    expect(state?.approved).toBe(true)
+    // Delivery must not depend on a working tree; the push happens in phase 3.
+    const pushIndex = harness.io.gitCalls.indexOf(`push:agent/issue-${ISSUE}`)
+    expect(pushIndex).toBeGreaterThan(-1)
+    expect(harness.io.gitCalls.filter((call) => call.startsWith('commit:'))).toHaveLength(2)
   })
 
   test('opens a pull request that closes the issue', async () => {
-    let body = ''
-    harness.deps.github.createPullRequest = (input): Promise<PullRequestRef> => {
-      body = input.body
-      return Promise.resolve({ number: 7, url: 'https://example.test/pull/7' })
-    }
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
-    await runPipeline({ event: approval(), deps: harness.deps })
-
-    expect(body).toContain('Closes #42')
+    expect(harness.io.prBodies[0]).toContain(`Closes #${ISSUE}`)
+    expect(harness.io.prBodies[0]).toContain('review-loop summary')
   })
 
-  test('reuses an already-open pull request instead of opening a second', async () => {
+  test('records the pull request in the persisted state', async () => {
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    const state = latestPostedState(harness)
+    expect(state?.prUrl).toBe('https://example.test/pull/7')
+    expect(state?.prNumber).toBe(7)
+  })
+
+  test('refreshes an already-open pull request rather than opening a second', async () => {
     harness.io.openPr = { number: 3, url: 'https://example.test/pull/3' }
 
-    await runPipeline({ event: approval(), deps: harness.deps })
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
     expect(harness.io.createdPr).toBeNull()
+    expect(harness.io.prBodies).toHaveLength(1)
     expect(harness.io.posted.at(-1)).toContain('https://example.test/pull/3')
   })
 
-  test('still delivers when the review loop stays red, and says so', async () => {
-    harness.io.checkResults.set('lint', { command: 'lint', exitCode: 1, stdout: 'lint blew up', stderr: '' })
+  test('still delivers when the review loop exits red, and says so', async () => {
+    harness.io.reviewResult = { passed: false, summary: 'two issues left open', exitCode: 1 }
 
-    const result = await runPipeline({ event: approval(), deps: harness.deps })
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
     expect(result.status).toBe('completed')
-    const report = harness.io.posted.find((body) => body.startsWith('### Implementation report'))
-    expect(report).toContain('❌ red')
-    expect(report).toContain('lint blew up')
+    expect(harness.io.posted[0]).toContain('❌ exited 1')
+    expect(harness.io.posted[0]).toContain('two issues left open')
   })
 
   test('fails when the agent produced no file changes', async () => {
     harness.deps.git.hasChanges = (): Promise<boolean> => Promise.resolve(false)
 
-    const result = await runPipeline({ event: approval(), deps: harness.deps })
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
     expect(result.status).toBe('failed')
     expect(latestPostedState(harness)?.resumeFrom).toBe('REVIEW_AND_MUTATE')
   })
+
+  test('persists the plan so a later job reads it back verbatim', async () => {
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.thread.some((entry) => entry.body.includes(PLAN_MARKER))).toBe(true)
+  })
 })
 
-describe('runPipeline command handling', () => {
-  test('ignores a comment with no command while waiting for approval', async () => {
-    const harness = makeHarness()
-    await runPipeline({ event: event(), deps: harness.deps })
-    harness.io.posted.length = 0
+describe('CI fixing', () => {
+  let harness: Harness
 
+  beforeEach(async () => {
+    harness = makeHarness()
+    await toPlanReview(harness)
+    harness.io.replies = ['Implemented.']
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+    harness.io.posted.length = 0
+    harness.io.gitCalls.length = 0
+  })
+
+  test('a red run on the agent branch starts a fix round', async () => {
+    const result = await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.posted[0]).toContain('### CI fix attempt 1 of 2')
+    expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
+  })
+
+  test('repairs failing checks and pushes the fix', async () => {
+    harness.io.checkResults.set('lint', { command: 'lint', exitCode: 1, stdout: 'lint blew up', stderr: '' })
+    harness.io.replies = ['Fixed the lint error.']
+
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(String(harness.io.prompts.at(-1)?.prompt)).toContain('lint blew up')
+    expect(harness.io.gitCalls).toContain(`push:agent/issue-${ISSUE}`)
+  })
+
+  test('reports the remaining failures when it cannot get green', async () => {
+    harness.io.checkResults.set('test', { command: 'test', exitCode: 1, stdout: 'still failing', stderr: '' })
+    harness.io.replies = ['tried', 'tried again']
+
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(harness.io.posted[0]).toContain('❌ still red')
+    expect(harness.io.posted[0]).toContain('still failing')
+  })
+
+  test('a green run is ignored', async () => {
+    const result = await runPipeline({ event: ciEvent({ conclusion: 'success' }), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(harness.io.posted).toEqual([])
+  })
+
+  test('the agent pipeline failing does not feed itself', async () => {
     const result = await runPipeline({
-      event: event({ eventName: 'issue_comment', action: 'created', commentBody: 'nice work' }),
+      event: ciEvent({ workflowName: 'OpenCode Issue Agent' }),
       deps: harness.deps,
     })
 
     expect(result.status).toBe('skipped')
     expect(harness.io.posted).toEqual([])
+  })
+
+  test('stops after the CI-fix budget is spent', async () => {
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+    harness.io.posted.length = 0
+
+    const result = await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(result.reason).toContain('CI-fix budget exhausted')
+    expect(harness.io.posted).toEqual([])
+  })
+})
+
+describe('commands and budgets', () => {
+  test('/cancel is durable — a later /approve does not resurrect the issue', async () => {
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+
+    const cancelled = await runPipeline({ event: comment('/cancel'), deps: harness.deps })
+
+    expect(cancelled.status).toBe('completed')
+    expect(harness.io.posted).toHaveLength(1)
+    expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
+
+    harness.io.posted.length = 0
+    const after = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(after.status).toBe('skipped')
+    expect(harness.io.gitCalls).toEqual([])
   })
 
   test('rejects /approve arriving in a phase that cannot accept it', async () => {
     const harness = makeHarness()
 
-    const result = await runPipeline({ event: approval(), deps: harness.deps })
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
     expect(result.status).toBe('skipped')
-    expect(result.reason).toContain('/approve is not valid in INIT_OR_CLARIFY')
+    expect(result.reason).toContain('not valid in INIT_OR_CLARIFY')
     expect(harness.io.posted).toEqual([])
-  })
-
-  test('/replan sends an unapproved spec back through triage', async () => {
-    const harness = makeHarness()
-    harness.io.replies = [SPEC_REPLY, SPEC_REPLY]
-    await runPipeline({ event: event(), deps: harness.deps })
-    harness.io.posted.length = 0
-
-    const result = await runPipeline({
-      event: event({ eventName: 'issue_comment', action: 'created', commentBody: '/replan' }),
-      deps: harness.deps,
-    })
-
-    expect(result.status).toBe('waiting')
-    expect(harness.io.posted[0]).toContain('### Design spec')
-  })
-
-  test('/cancel parks the issue in COMPLETE without doing more work', async () => {
-    const harness = makeHarness()
-    await runPipeline({ event: event(), deps: harness.deps })
-    harness.io.posted.length = 0
-
-    const result = await runPipeline({
-      event: event({ eventName: 'issue_comment', action: 'created', commentBody: '/cancel' }),
-      deps: harness.deps,
-    })
-
-    expect(result.status).toBe('completed')
-    expect(harness.io.gitCalls).toEqual([])
   })
 
   test('/retry resumes the failed phase rather than replaying the pipeline', async () => {
     const harness = makeHarness()
     harness.io.replies = ['not json', SPEC_REPLY]
-    await runPipeline({ event: event(), deps: harness.deps })
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
     harness.io.posted.length = 0
 
-    const result = await runPipeline({
-      event: event({ eventName: 'issue_comment', action: 'created', commentBody: '/retry' }),
-      deps: harness.deps,
-    })
+    const result = await runPipeline({ event: comment('/retry'), deps: harness.deps })
 
     expect(result.status).toBe('waiting')
     expect(harness.io.posted[0]).toContain('### Design spec')
-    expect(latestPostedState(harness)?.attempts).toBe(1)
   })
 
-  test('stops retrying once the attempt budget is spent', async () => {
+  test('an exhausted retry budget is reported on the issue, not swallowed', async () => {
     const harness = makeHarness({ maxAttempts: 1 })
     harness.io.replies = ['not json', 'not json either']
-    await runPipeline({ event: event(), deps: harness.deps })
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
     harness.io.posted.length = 0
 
-    const result = await runPipeline({
-      event: event({ eventName: 'issue_comment', action: 'created', commentBody: '/retry' }),
-      deps: harness.deps,
-    })
+    const result = await runPipeline({ event: comment('/retry'), deps: harness.deps })
 
     expect(result.status).toBe('failed')
     expect(result.reason).toContain('Retry budget exhausted')
-    expect(harness.io.posted).toEqual([])
+    expect(harness.io.posted[0]).toContain('### Giving up')
   })
 })

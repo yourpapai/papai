@@ -6,9 +6,11 @@
 import { createOpencodeClient, createOpencodeServer } from '@opencode-ai/sdk'
 
 import { openCodeError } from './errors.js'
+import { buildOpencodeConfig, modelRef } from './openai-config.js'
+import type { OpenAiSettings } from './openai-config.js'
 import { errorMessage } from './types.js'
 
-/** `providerID/modelID`, e.g. `anthropic/claude-sonnet-4-5`. */
+/** `providerID/modelID`, e.g. `openai/gpt-5`. */
 export interface ModelRef {
   providerID: string
   modelID: string
@@ -85,8 +87,8 @@ export interface OpenCodeConnection {
 
 export interface OpenCodeAgentOptions {
   directory: string
-  /** `provider/model` reference; typically from `OPENCODE_MODEL`. */
-  model: string
+  /** The single OpenAI-compatible endpoint this pipeline talks to. */
+  openai: OpenAiSettings
   sessionTitle: string
   /** Injection seam for tests. Defaults to the real SDK server + client. */
   connect?: () => Promise<OpenCodeConnection>
@@ -131,8 +133,14 @@ const readSessionId = (created: unknown): string | null => {
   return null
 }
 
-const connectSdk = async (directory: string): Promise<OpenCodeConnection> => {
-  const server = await createOpencodeServer({ hostname: '127.0.0.1', port: 0 })
+const connectSdk = async (directory: string, openai: OpenAiSettings): Promise<OpenCodeConnection> => {
+  // The provider, endpoint and model are pinned in the server's own config, so
+  // the session cannot fall back to whatever credentials happen to be in env.
+  const server = await createOpencodeServer({
+    hostname: '127.0.0.1',
+    port: 0,
+    config: buildOpencodeConfig(openai),
+  })
   const client = createOpencodeClient({ baseUrl: server.url, directory })
 
   return {
@@ -156,8 +164,8 @@ const connectSdk = async (directory: string): Promise<OpenCodeConnection> => {
  * which is exactly the lifetime an ephemeral Actions runner gives us.
  */
 export const createOpenCodeAgent = async (options: OpenCodeAgentOptions): Promise<OpenCodeAgent> => {
-  const model = parseModelRef(options.model)
-  const connect = options.connect ?? ((): Promise<OpenCodeConnection> => connectSdk(options.directory))
+  const model = parseModelRef(modelRef(options.openai))
+  const connect = options.connect ?? ((): Promise<OpenCodeConnection> => connectSdk(options.directory, options.openai))
   const connection = await connect()
 
   let sessionId: string

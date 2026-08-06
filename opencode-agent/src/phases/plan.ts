@@ -5,13 +5,14 @@
 
 import { z } from 'zod'
 
+import { PLAN_MARKER, renderArtifact, requireArtifact, SPEC_MARKER } from '../artifacts.js'
 import { missingSpecError } from '../errors.js'
 import { branchNameFor } from '../git.js'
 import { parseModelJson } from '../model-json.js'
 import { composeSystemPrompt } from '../obra-skills.js'
-import type { PhaseHandler, PhaseOutcome } from '../phase-context.js'
+import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
 import { buildPlanPrompt } from '../prompts.js'
-import { findAgentSection, PLAN_HEADING, SPEC_HEADING } from '../thread.js'
+import { envelopeFor } from './envelope.js'
 
 const planStepSchema = z.object({
   title: z.string().min(1),
@@ -19,10 +20,7 @@ const planStepSchema = z.object({
   verification: z.string().default(''),
 })
 
-const planSchema = z.object({
-  steps: z.array(planStepSchema).min(1),
-  summary: z.string().default(''),
-})
+const planSchema = z.object({ steps: z.array(planStepSchema).min(1), summary: z.string().default('') })
 
 export type ExecutionPlan = z.infer<typeof planSchema>
 
@@ -35,14 +33,17 @@ const PLAN_INSTRUCTIONS = [
 /**
  * Phase 2. Runs after a maintainer approves the spec: drives the superpowers
  * planning skills to produce a step breakdown and cuts the working branch.
+ *
+ * Re-entered when a maintainer requests changes to a plan, with their feedback
+ * threaded into the prompt.
  */
 export const handlePlan: PhaseHandler = async (input): Promise<PhaseOutcome> => {
   const { deps, state } = input
-  const spec = findAgentSection(input.thread, deps.config.selfLogin, SPEC_HEADING)
-  if (spec === null) throw missingSpecError(state.issueId)
+  const spec = requireArtifact(input.thread, deps.config.selfLogin, SPEC_MARKER, () => missingSpecError(state.issueId))
 
-  const branch = state.branch ?? branchNameFor(state.issueId)
-  deps.log.info({ issue: state.issueId, branch }, 'Building execution plan')
+  const branch = branchNameFor(state.issueId)
+  const feedback = changeRequest(input)
+  deps.log.info({ issue: state.issueId, branch, revising: feedback !== null }, 'Building execution plan')
 
   const agent = await deps.agent()
   const reply = await agent.prompt({
@@ -52,31 +53,56 @@ export const handlePlan: PhaseHandler = async (input): Promise<PhaseOutcome> => 
       repoRoot: deps.config.repoRoot,
       instructions: PLAN_INSTRUCTIONS,
     }),
-    prompt: buildPlanPrompt({ issueNumber: state.issueId, spec, branch }),
+    prompt: buildPlanPrompt({
+      envelope: envelopeFor(state),
+      issueNumber: state.issueId,
+      spec,
+      branch,
+      feedback,
+    }),
     agent: 'plan',
   })
 
   const plan = parseModelJson(reply.text, planSchema)
   await deps.git.ensureBranch(branch, deps.config.baseBranch)
 
+  const markdown = renderPlanMarkdown(plan)
   return {
     signal: 'PLAN_POSTED',
-    comment: renderPlan(plan, branch),
+    comment: renderPlanComment(markdown, branch, state.revision + 1),
+    blocks: [renderArtifact(PLAN_MARKER, markdown, state.revision + 1)],
     patch: { branch },
   }
 }
 
-const renderPlan = (plan: ExecutionPlan, branch: string): string => {
+const changeRequest = (input: PhaseInput): string | null => {
+  const { command } = input
+  if (command === null || command.command !== '/changes') return null
+  return command.argument.length > 0 ? command.argument : null
+}
+
+/** The plan as markdown — this exact text is what the implement phase acts on. */
+export const renderPlanMarkdown = (plan: ExecutionPlan): string => {
   const steps = plan.steps.map((step, index) => {
     const files = step.files.length === 0 ? '_(no files declared)_' : step.files.map((file) => `\`${file}\``).join(', ')
     const verification = step.verification.trim() === '' ? '_(not stated)_' : step.verification.trim()
     return `${index + 1}. **${step.title}**\n   - Files: ${files}\n   - Verified by: ${verification}`
   })
 
-  const sections = [PLAN_HEADING]
+  const sections: string[] = []
   if (plan.summary.trim() !== '') sections.push(plan.summary.trim())
   sections.push(steps.join('\n'))
-  sections.push(`Working branch: \`${branch}\`. Implementing now — I will report back when the review loop settles.`)
-
   return sections.join('\n\n')
 }
+
+const renderPlanComment = (markdown: string, branch: string, revision: number): string =>
+  [
+    `### Execution plan (revision ${revision})`,
+    '',
+    markdown,
+    '',
+    `Working branch: \`${branch}\`.`,
+    '',
+    '**What now?** `/approve` to implement this plan, `/changes <what to change>` to revise it,',
+    '`/ask <question>` to ask about it, or `/cancel` to stop.',
+  ].join('\n')

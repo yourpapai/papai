@@ -86,7 +86,13 @@ describe('parseArgs', () => {
 })
 
 describe('runCli', () => {
-  const env = { GITHUB_REPOSITORY: 'acme/widgets', GITHUB_TOKEN: 'tok', AGENT_SELF_LOGIN: 'agent-bot' }
+  const env = {
+    GITHUB_REPOSITORY: 'acme/widgets',
+    GITHUB_TOKEN: 'tok',
+    OPENAI_API_KEY: 'sk-test',
+    OPENAI_MODEL: 'gpt-5',
+    AGENT_SELF_LOGIN: 'agent-bot',
+  }
 
   test('drives a full local run from an event file and stops at the bot guard', async () => {
     const eventPath = await writeEvent('bot', {
@@ -118,6 +124,39 @@ describe('runCli', () => {
 
     expect(result.status).toBe('skipped')
     expect(result.state).toBeNull()
+  })
+
+  test('ignores a red run on a branch the agent does not own', async () => {
+    const eventPath = await writeEvent('foreign-ci', {
+      action: 'completed',
+      workflow_run: { name: 'CI', head_branch: 'feature/other', conclusion: 'failure', html_url: 'u' },
+      repository: { default_branch: 'main' },
+    })
+
+    const result = await runCli({
+      argv: ['--event-path', eventPath, '--event-name', 'workflow_run'],
+      env,
+      logger: silentLogger,
+    })
+
+    expect(result.status).toBe('skipped')
+  })
+
+  test('requires the OpenAI model, rather than guessing one', async () => {
+    const eventPath = await writeEvent('nomodel', {
+      action: 'opened',
+      sender: { login: 'maintainer', type: 'User' },
+      issue: { number: 1, title: 't', body: 'b', author_association: 'OWNER' },
+    })
+    const { OPENAI_MODEL: _unused, ...withoutModel } = env
+
+    const attempt = runCli({
+      argv: ['--event-path', eventPath, '--event-name', 'issues'],
+      env: withoutModel,
+      logger: silentLogger,
+    })
+
+    await expect(attempt).rejects.toThrow('OPENAI_MODEL')
   })
 
   test('fails loudly when the event file is missing', async () => {
