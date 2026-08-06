@@ -22,11 +22,12 @@
 
 <aside class="admin-sidebar">
   <Caption>{#snippet children()}sections{/snippet}</Caption>
-  <nav class="admin-sidebar__nav">
+  <nav class="admin-sidebar__nav" aria-label="Admin sections">
     {#each items as item (item.id)}
       <a
         class="admin-sidebar__link"
         class:admin-sidebar__link--active={activeId === item.id}
+        aria-current={activeId === item.id ? 'true' : undefined}
         href={`#${item.id}`}>
         {item.label}
       </a>

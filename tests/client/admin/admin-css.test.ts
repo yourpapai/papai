@@ -102,4 +102,22 @@ describe('admin.css', () => {
     expect(jump).toContain('ariaLabelledby="admin-jump-label"')
     expect(jump).not.toContain('t-label')
   })
+
+  test('the focus ring uses the shared tokens rather than a copied literal', async () => {
+    const url = new URL('../../../client/admin/admin.css', import.meta.url)
+    const css = await Bun.file(url).text()
+    const m = css.match(/[^}]*:focus-visible \{[^}]*\}/u)
+    expect(m).not.toBeNull()
+    const [rule] = m!
+    expect(rule).toContain('outline: var(--focus-ring)')
+    expect(rule).toContain('outline-offset: var(--focus-ring-offset)')
+    expect(css).not.toContain('rgba(82, 224, 138, 0.4)')
+  })
+
+  test('the nav is named and the current section is announced, not only coloured', async () => {
+    const url = new URL('../../../client/admin/components/AdminSidebarPanel.svelte', import.meta.url)
+    const svelte = await Bun.file(url).text()
+    expect(svelte).toContain('aria-label="Admin sections"')
+    expect(svelte).toContain("aria-current={activeId === item.id ? 'true' : undefined}")
+  })
 })

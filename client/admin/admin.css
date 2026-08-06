@@ -11,6 +11,13 @@
   text-transform: uppercase;
 }
 
+/* The shared primitives carry their own rings; this covers the bare elements the admin
+   shell renders itself: the nav links and the top-bar links. */
+.ui-shell :focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
 .admin-section-header {
   display: flex;
   gap: 12px;
