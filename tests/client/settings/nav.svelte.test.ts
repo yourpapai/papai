@@ -29,7 +29,10 @@ describe('buildNavGroups', () => {
   test('a personal non-admin session gets Personal and Advanced only', () => {
     const groups = buildNavGroups(personal, false)
     expect(groups.map((g) => g.key)).toEqual(['personal', 'advanced'])
+    expect(groups.map((g) => g.kicker)).toEqual(['Personal', 'Advanced'])
     expect(groups[0]!.items.map((i) => i.id)).toEqual(['profile', 'task-provider', 'tools', 'analytics'])
+    expect(groups[0]!.collapsible).toBe(false)
+    expect(groups[0]!.danger).toBe(false)
   })
 
   test('a group context adds the group-only sections to Personal', () => {
@@ -49,6 +52,7 @@ describe('buildNavGroups', () => {
 
   test('Advanced holds the ten integration sections and is collapsible', () => {
     const advanced = buildNavGroups(personal, false).find((g) => g.key === 'advanced')!
+    expect(advanced.kicker).toBe('Advanced')
     expect(advanced.collapsible).toBe(true)
     expect(advanced.danger).toBe(false)
     expect(advanced.items.map((i) => i.id)).toEqual([
@@ -67,6 +71,7 @@ describe('buildNavGroups', () => {
 
   test('a bot admin gets the 14 bot-admin entries, collapsible and flagged danger', () => {
     const admin = buildNavGroups(botAdmin, false).find((g) => g.key === 'admin')!
+    expect(admin.kicker).toBe('Admin')
     expect(admin.collapsible).toBe(true)
     expect(admin.danger).toBe(true)
     expect(admin.items).toHaveLength(14)
