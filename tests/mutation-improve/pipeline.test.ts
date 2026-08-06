@@ -4,14 +4,16 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
+import type { BaselineMap } from '../../mutation-improve/src/baseline.js'
 import type { MutationImproveConfig } from '../../mutation-improve/src/config.js'
 import { runIteration, runPipeline, type PipelineDeps } from '../../mutation-improve/src/pipeline.js'
 import type { Result } from '../../mutation-improve/src/result-schema.js'
 import type { MutationImproveRunState } from '../../mutation-improve/src/run-state.js'
 import type { Selection } from '../../mutation-improve/src/selection-schema.js'
-import type { AgentUsage } from '../../review-loop/src/agent-runner.js'
+import { agentWritePath, type AgentUsage } from '../../review-loop/src/agent-runner.js'
 import { cleanupTempDirs, makeTempDir } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
@@ -26,7 +28,7 @@ const config = (repoRoot: string, overrides: Partial<MutationImproveConfig> = {}
   count: 1,
   threshold: 0.95,
   epsilon: 0.02,
-  agentTimeoutMs: 1_800_000,
+  mutateTimeoutMs: 1_800_000,
   buildTimeoutMs: 600_000,
   checkCommand: 'bun check:full',
   mutateFileCommand: 'bun test:mutate:file',
@@ -120,6 +122,7 @@ const happyDeps = (): PipelineDeps => {
     },
     runSelectAgent: () => Promise.resolve({ value: selection, usage: emptyUsage() }),
     runImproveAgent: () => Promise.resolve({ value: result, usage: emptyUsage() }),
+    saveRunState: () => Promise.resolve(),
     log: { log: () => undefined, issue: undefined },
   }
   return deps
@@ -142,6 +145,36 @@ describe('pipeline runIteration', () => {
     // baseline bump is runner-owned
     const bumped = await deps.readBaseline(deps.config.repoRoot)
     expect(bumped['src/live-status/tool-status-labels.ts']).toBe(0.97)
+  })
+
+  // The runner reads agent output ONLY from agentWritePath(worktree, outputPath)
+  // (<worktree>/.review-loop/<basename>); the prompt must direct the agent to
+  // that exact scratch path or the iteration dies with an exception gate (the
+  // 2026-08-05 run failed all 10 iterations this way).
+  test('select prompt directs the agent to the worktree scratch path the runner reads', async () => {
+    const deps = happyDeps()
+    let selectPrompt = ''
+    deps.runSelectAgent = (_worktreePath: string, prompt: string): Promise<{ value: Selection; usage: AgentUsage }> => {
+      selectPrompt = prompt
+      return Promise.resolve({ value: selection, usage: emptyUsage() })
+    }
+    await runIteration(deps, 1)
+    const worktreePath = path.join(deps.config.workDir, 'worktrees', 'r1-iter1')
+    const selectOut = path.join(deps.runState.runDir, 'iter', '1', 'selection.json')
+    expect(selectPrompt).toContain(agentWritePath(worktreePath, selectOut))
+  })
+
+  test('improve prompt directs the agent to the worktree scratch path the runner reads', async () => {
+    const deps = happyDeps()
+    let improvePrompt = ''
+    deps.runImproveAgent = (_worktreePath: string, prompt: string): Promise<{ value: Result; usage: AgentUsage }> => {
+      improvePrompt = prompt
+      return Promise.resolve({ value: result, usage: emptyUsage() })
+    }
+    await runIteration(deps, 1)
+    const worktreePath = path.join(deps.config.workDir, 'worktrees', 'r1-iter1')
+    const improveOut = path.join(deps.runState.runDir, 'iter', '1', 'result.json')
+    expect(improvePrompt).toContain(agentWritePath(worktreePath, improveOut))
   })
 
   test('diff-scope violation fails the iteration without merging or ratcheting', async () => {
@@ -230,7 +263,18 @@ describe('pipeline runIteration', () => {
     expect(outcome.reason).toBe('agent blew up')
     expect(calls.reset).toBe(1)
     expect(calls.remove).toBe(1)
-    expect(deps.runState.failed).toEqual([{ iter: 1, gate: 'exception', reason: 'agent blew up' }])
+    expect(deps.runState.failed).toEqual([
+      { iter: 1, gate: 'exception', reason: 'agent blew up', file: 'src/live-status/tool-status-labels.ts' },
+    ])
+    const failure = JSON.parse(
+      await readFile(path.join(deps.runState.runDir, 'iter', '1', 'failure.json'), 'utf8'),
+    ) as unknown
+    expect(failure).toEqual({
+      iter: 1,
+      gate: 'exception',
+      reason: 'agent blew up',
+      file: 'src/live-status/tool-status-labels.ts',
+    })
     expect(deps.runState.merged).toHaveLength(0)
   })
 
@@ -256,6 +300,125 @@ describe('pipeline runIteration', () => {
     expect(calls.reset).toBe(0)
     expect(calls.remove).toBe(0)
     expect(deps.runState.failed).toEqual([{ iter: 1, gate: 'exception', reason: 'worktree add failed' }])
+  })
+
+  test('build gate runs checkCommand inside the iteration worktree', async () => {
+    const deps = happyDeps()
+    let buildCwd = ''
+    deps.runBuildCheck = (worktreePath: string): Promise<{ passed: boolean; stdout: string; stderr: string }> => {
+      buildCwd = worktreePath
+      return Promise.resolve({ passed: true, stdout: '', stderr: '' })
+    }
+    await runIteration(deps, 1)
+    expect(buildCwd).toBe(path.join(deps.config.workDir, 'worktrees', 'r1-iter1'))
+  })
+
+  test('select agent receives the per-iteration outputPath', async () => {
+    const deps = happyDeps()
+    let seenOut = ''
+    deps.runSelectAgent = (
+      _worktreePath: string,
+      _prompt: string,
+      outputPath: string,
+    ): Promise<{ value: Selection; usage: AgentUsage }> => {
+      seenOut = outputPath
+      return Promise.resolve({ value: selection, usage: emptyUsage() })
+    }
+    await runIteration(deps, 1)
+    expect(seenOut).toBe(path.join(deps.runState.runDir, 'iter', '1', 'selection.json'))
+  })
+
+  test('improve agent receives the per-iteration outputPath', async () => {
+    const deps = happyDeps()
+    let seenOut = ''
+    deps.runImproveAgent = (
+      _worktreePath: string,
+      _prompt: string,
+      outputPath: string,
+    ): Promise<{ value: Result; usage: AgentUsage }> => {
+      seenOut = outputPath
+      return Promise.resolve({ value: result, usage: emptyUsage() })
+    }
+    await runIteration(deps, 1)
+    expect(seenOut).toBe(path.join(deps.runState.runDir, 'iter', '1', 'result.json'))
+  })
+
+  test('select-gate rejection records the invalidly picked file and writes failure.json', async () => {
+    const deps = happyDeps()
+    deps.runSelectAgent = (): Promise<{ value: Selection; usage: AgentUsage }> =>
+      Promise.resolve({ value: { ...selection, file: 'src/not-in-baseline.ts' }, usage: emptyUsage() })
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    expect(outcome.gate).toBe('select')
+    expect(deps.runState.failed[0]).toEqual({
+      iter: 1,
+      gate: 'select',
+      reason: 'selection file not in baseline or already done',
+      file: 'src/not-in-baseline.ts',
+    })
+    const failure = JSON.parse(
+      await readFile(path.join(deps.runState.runDir, 'iter', '1', 'failure.json'), 'utf8'),
+    ) as unknown
+    expect(failure).toEqual({
+      iter: 1,
+      gate: 'select',
+      reason: 'selection file not in baseline or already done',
+      file: 'src/not-in-baseline.ts',
+    })
+  })
+
+  test('createWorktree throw still writes failure.json without a file', async () => {
+    const deps = happyDeps()
+    deps.createWorktree = (): Promise<void> => Promise.reject(new Error('worktree add failed'))
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    const failure = JSON.parse(
+      await readFile(path.join(deps.runState.runDir, 'iter', '1', 'failure.json'), 'utf8'),
+    ) as unknown
+    expect(failure).toEqual({ iter: 1, gate: 'exception', reason: 'worktree add failed' })
+  })
+
+  test('skip ratchets a stale baseline floor with a baseline-only commit in repoRoot', async () => {
+    const deps = happyDeps()
+    deps.measureScore = sequenceMeasure([0.97])
+    const gitCalls: string[] = []
+    deps.execGit = (cwd: string, args: readonly string[]): Promise<{ stdout: string; stderr: string }> => {
+      gitCalls.push(`${cwd} ${args.join(' ')}`)
+      return Promise.resolve({ stdout: '', stderr: '' })
+    }
+    const outcome = await runIteration(deps, 1)
+    expect(outcome).toEqual({
+      iter: 1,
+      outcome: 'skipped',
+      file: 'src/live-status/tool-status-labels.ts',
+      beforeScore: 0.97,
+    })
+    const baseline = await deps.readBaseline(deps.config.repoRoot)
+    expect(baseline['src/live-status/tool-status-labels.ts']).toBe(0.97)
+    const repoRoot = deps.config.repoRoot
+    expect(gitCalls).toContain(`${repoRoot} add scripts/mutation/baseline.json`)
+    const commitPrefix = `${repoRoot} commit -m chore(mutation): ratchet src/live-status/tool-status-labels.ts baseline to 0.97`
+    expect(gitCalls.some((c) => c.startsWith(commitPrefix))).toBe(true)
+  })
+
+  test('skip with an accurate floor does not rewrite or commit the baseline', async () => {
+    const deps = happyDeps()
+    deps.readBaseline = (): Promise<BaselineMap> => Promise.resolve({ 'src/live-status/tool-status-labels.ts': 0.97 })
+    let writes = 0
+    deps.writeBaseline = (): Promise<void> => {
+      writes += 1
+      return Promise.resolve()
+    }
+    const gitCalls: string[] = []
+    deps.execGit = (_cwd: string, args: readonly string[]): Promise<{ stdout: string; stderr: string }> => {
+      gitCalls.push(args.join(' '))
+      return Promise.resolve({ stdout: '', stderr: '' })
+    }
+    deps.measureScore = sequenceMeasure([0.96])
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('skipped')
+    expect(writes).toBe(0)
+    expect(gitCalls.some((c) => c.startsWith('commit'))).toBe(false)
   })
 })
 
@@ -288,5 +451,34 @@ describe('pipeline runPipeline', () => {
     expect(results[0]?.gate).toBe('merge')
     expect(deps.runState.status).toBe('aborted')
     expect(deps.runState.currentIteration).toBe(1)
+  })
+
+  test('saves run state after each iteration', async () => {
+    const deps = happyDeps()
+    deps.config = config(deps.config.repoRoot, { count: 2 })
+    deps.measureScore = sequenceMeasure([0.46, 0.97, 0.5, 0.96])
+    const picks = ['src/live-status/tool-status-labels.ts', 'src/tools/memory.ts']
+    deps.runSelectAgent = sequenceSelect(picks, selection)
+    const savedIterations: number[] = []
+    deps.saveRunState = (state: MutationImproveRunState): Promise<void> => {
+      savedIterations.push(state.currentIteration)
+      return Promise.resolve()
+    }
+    await runPipeline(deps)
+    expect(savedIterations).toEqual([1, 2])
+  })
+
+  test('merge-abort saves state with status aborted', async () => {
+    const deps = happyDeps()
+    deps.mergeWorktree = (): Promise<{ ok: false; conflictFiles: string[] }> =>
+      Promise.resolve({ ok: false, conflictFiles: ['scripts/mutation/baseline.json'] })
+    const savedStatuses: string[] = []
+    deps.saveRunState = (state: MutationImproveRunState): Promise<void> => {
+      savedStatuses.push(state.status)
+      return Promise.resolve()
+    }
+    const { aborted } = await runPipeline(deps)
+    expect(aborted).toBe(true)
+    expect(savedStatuses).toEqual(['aborted'])
   })
 })

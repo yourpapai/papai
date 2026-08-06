@@ -18,7 +18,7 @@ import {
 } from '../../review-loop/src/worktree.js'
 import { readBaseline, writeBaseline } from './baseline.js'
 import { type MutationImproveConfig, loadMutationImproveConfig } from './config.js'
-import { runFinalize } from './finalize.js'
+import { assertIntegrationBranch, runFinalize } from './finalize.js'
 import { type IterationResult, runPipeline, type PipelineDeps } from './pipeline.js'
 import { ResultSchema } from './result-schema.js'
 import { createRunState, loadRunState, saveRunState, type MutationImproveRunState } from './run-state.js'
@@ -100,13 +100,13 @@ function selectRunner(
   runState: MutationImproveRunState,
   log: LiveRenderer,
 ): PipelineDeps['runSelectAgent'] {
-  return (worktreePath, prompt) =>
+  return (worktreePath, prompt, outputPath) =>
     runAgent({
       spawn: realSpawn,
       model: config.agent.model,
       cwd: worktreePath,
       prompt,
-      outputPath: path.join(runState.runDir, 'iter', 'selection.json'),
+      outputPath,
       outputSchema: SelectionSchema,
       label: 'select',
       logPath: path.join(runState.runDir, 'agent-output.log'),
@@ -121,13 +121,13 @@ function improveRunner(
   runState: MutationImproveRunState,
   log: LiveRenderer,
 ): PipelineDeps['runImproveAgent'] {
-  return (worktreePath, prompt) =>
+  return (worktreePath, prompt, outputPath) =>
     runAgent({
       spawn: realSpawn,
       model: config.agent.model,
       cwd: worktreePath,
       prompt,
-      outputPath: path.join(runState.runDir, 'iter', 'result.json'),
+      outputPath,
       outputSchema: ResultSchema,
       label: 'improve',
       logPath: path.join(runState.runDir, 'agent-output.log'),
@@ -151,18 +151,19 @@ function buildPipelineDeps(
     removeWorktree,
     mergeWorktree,
     execGit,
-    runBuildCheck: () => {
-      const exec = createShellExec(runState.runDir, config.checkCommand, config.buildTimeoutMs)
+    runBuildCheck: (worktreePath: string) => {
+      const exec = createShellExec(worktreePath, config.checkCommand, config.buildTimeoutMs)
       return runBuildCheck({ exec: () => exec() })
     },
     measureScore: (worktreePath: string, srcFile: string) => {
-      const exec = createShellExec(worktreePath, `${config.mutateFileCommand} ${srcFile}`, config.agentTimeoutMs)
+      const exec = createShellExec(worktreePath, `${config.mutateFileCommand} ${srcFile}`, config.mutateTimeoutMs)
       return measureMutationScore({ exec: () => exec() }, path.join(worktreePath, 'reports', 'paired'), srcFile)
     },
     readBaseline,
     writeBaseline,
     runSelectAgent: selectRunner(config, runState, log),
     runImproveAgent: improveRunner(config, runState, log),
+    saveRunState,
     log,
   }
 }
@@ -207,6 +208,8 @@ export async function runCli(argv: readonly string[]): Promise<void> {
   if (args.count !== undefined) config.count = args.count
   if (args.threshold !== undefined) config.threshold = args.threshold
   if (args.base !== undefined) config.base = args.base
+
+  await assertIntegrationBranch(execGit, config.repoRoot, config.base)
 
   const runState: MutationImproveRunState =
     args.resumeRunId === undefined ? await createRunState(config) : await loadRunState(config.workDir, args.resumeRunId)

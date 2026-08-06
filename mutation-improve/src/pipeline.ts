@@ -6,11 +6,12 @@
 import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
 
-import type { AgentRunResult } from '../../review-loop/src/agent-runner.js'
+import { agentWritePath, type AgentRunResult } from '../../review-loop/src/agent-runner.js'
 import type { MergeResult } from '../../review-loop/src/worktree.js'
 import { bumpScore, type BaselineMap } from './baseline.js'
 import type { MutationImproveConfig } from './config.js'
 import { runDiffGuard } from './diff-guard.js'
+import { recordFailure, type FailureEntry } from './failure-recorder.js'
 import { buildImprovePrompt, buildSelectPrompt } from './prompt-templates.js'
 import type { Result } from './result-schema.js'
 import { ResultSchema } from './result-schema.js'
@@ -18,6 +19,7 @@ import type { MutationImproveRunState } from './run-state.js'
 import { iterDir } from './run-state.js'
 import { SelectionSchema } from './selection-schema.js'
 import type { Selection } from './selection-schema.js'
+import { ratchetVerifiedSkip } from './skip-ratchet.js'
 
 export interface IterationResult {
   iter: number
@@ -38,17 +40,18 @@ export interface PipelineDeps {
   removeWorktree: (repoRoot: string, worktreePath: string, runId: string, branchPrefix: string) => Promise<void>
   mergeWorktree: (repoRoot: string, branchName: string) => Promise<MergeResult>
   execGit: (cwd: string, args: readonly string[]) => Promise<{ stdout: string; stderr: string }>
-  runBuildCheck: () => Promise<{ passed: boolean; stdout: string; stderr: string }>
+  runBuildCheck: (worktreePath: string) => Promise<{ passed: boolean; stdout: string; stderr: string }>
   measureScore: (worktreePath: string, srcFile: string) => Promise<number>
   readBaseline: (repoRoot: string) => Promise<BaselineMap>
   writeBaseline: (repoRoot: string, map: BaselineMap) => Promise<void>
-  runSelectAgent: (worktreePath: string, prompt: string) => Promise<AgentRunResult<Selection>>
-  runImproveAgent: (worktreePath: string, prompt: string) => Promise<AgentRunResult<Result>>
+  runSelectAgent: (worktreePath: string, prompt: string, outputPath: string) => Promise<AgentRunResult<Selection>>
+  runImproveAgent: (worktreePath: string, prompt: string, outputPath: string) => Promise<AgentRunResult<Result>>
+  saveRunState: (state: MutationImproveRunState) => Promise<void>
   log: { log: (msg: string) => void; issue?: unknown }
 }
 
 type PhaseOk<T> = { ok: true; value: T }
-type PhaseFail = { ok: false; gate: string; reason: string }
+type PhaseFail = { ok: false; gate: string; reason: string; file?: string }
 type PhaseResult<T> = PhaseOk<T> | PhaseFail
 
 function branchFor(deps: PipelineDeps, iter: number): string {
@@ -77,12 +80,13 @@ async function selectPhase(
     buildSelectPrompt({
       doneSet: deps.runState.doneSet,
       baselineSummary: JSON.stringify(baseline),
-      outputPath: selectOut,
+      outputPath: agentWritePath(worktreePath, selectOut),
     }),
+    selectOut,
   )
   const selection = SelectionSchema.parse(selectRes.value)
   if (deps.runState.doneSet.includes(selection.file) || baseline[selection.file] === undefined) {
-    return { ok: false, gate: 'select', reason: 'selection file not in baseline or already done' }
+    return { ok: false, gate: 'select', reason: 'selection file not in baseline or already done', file: selection.file }
   }
   return { ok: true, value: { selection, baseline } }
 }
@@ -105,8 +109,9 @@ async function improvePhase(
       beforeScore,
       threshold: deps.config.threshold,
       date: new Date().toISOString().slice(0, 10),
-      outputPath: improveOut,
+      outputPath: agentWritePath(worktreePath, improveOut),
     }),
+    improveOut,
   )
   return ResultSchema.parse(improveRes.value)
 }
@@ -126,7 +131,7 @@ async function gatePhase(
   if (!diff.ok) {
     return { ok: false, gate: 'diff-scope', reason: `forbidden paths changed: ${diff.violations.join(', ')}` }
   }
-  const build = await deps.runBuildCheck()
+  const build = await deps.runBuildCheck(worktreePath)
   if (!build.passed) {
     return { ok: false, gate: 'build', reason: build.stderr || build.stdout }
   }
@@ -199,11 +204,12 @@ async function failIter(
   worktreePath: string,
   gate: string,
   reason: string,
+  file?: string,
 ): Promise<IterationResult> {
+  const entry: FailureEntry = await recordFailure(deps.runState, iter, gate, reason, file)
   await deps.resetWorktree(worktreePath)
   await deps.removeWorktree(deps.config.repoRoot, worktreePath, runIdFor(deps, iter), deps.config.prBranchPrefix)
-  deps.runState.failed.push({ iter, gate, reason })
-  return { iter, outcome: 'failed', gate, reason }
+  return { ...entry, outcome: 'failed' }
 }
 
 function skipIter(
@@ -228,36 +234,39 @@ export async function runIteration(deps: PipelineDeps, iter: number): Promise<It
   // `mutation-improve/<runId>-iterN` branch are leaked, runState.failed gains
   // no entry, and the next createWorktree for the same path fails.
   let worktreeCreated = false
+  let file: string | undefined
   try {
     await deps.createWorktree(deps.config.repoRoot, worktreePath, runIdFor(deps, iter), deps.config.prBranchPrefix)
     worktreeCreated = true
 
     const sel = await selectPhase(deps, worktreePath, iterPath)
-    if (!sel.ok) return await failIter(deps, iter, worktreePath, sel.gate, sel.reason)
+    if (!sel.ok) return await failIter(deps, iter, worktreePath, sel.gate, sel.reason, sel.file)
     const { selection, baseline } = sel.value
+    file = selection.file
 
     // ② CAPTURE BEFORE (runner-owned). Already at threshold → nothing to do.
     const beforeScore = await deps.measureScore(worktreePath, selection.file)
     if (beforeScore >= deps.config.threshold) {
       deps.runState.doneSet.push(selection.file)
+      await ratchetVerifiedSkip(deps, baseline, selection.file, beforeScore)
       return await skipIter(deps, iter, worktreePath, selection.file, beforeScore)
     }
 
     const improved = await improvePhase(deps, worktreePath, iterPath, selection.file, beforeScore)
 
     const gate = await gatePhase(deps, worktreePath, selection.file, improved)
-    if (!gate.ok) return await failIter(deps, iter, worktreePath, gate.gate, gate.reason)
+    if (!gate.ok) return await failIter(deps, iter, worktreePath, gate.gate, gate.reason, file)
 
     return await finalizePhase(deps, iter, worktreePath, selection.file, baseline, beforeScore, gate.value, improved)
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
-    // If createWorktree itself threw there is nothing to reset/remove; just
-    // record the failure so the run is not silently dropped.
+    // If createWorktree itself threw there is nothing to reset/remove; record
+    // the failure (no file — selection never ran) so the run is not dropped.
     if (!worktreeCreated) {
-      deps.runState.failed.push({ iter, gate: 'exception', reason })
+      await recordFailure(deps.runState, iter, 'exception', reason)
       return { iter, outcome: 'failed', gate: 'exception', reason }
     }
-    return failIter(deps, iter, worktreePath, 'exception', reason)
+    return failIter(deps, iter, worktreePath, 'exception', reason, file)
   }
 }
 
@@ -273,8 +282,10 @@ export async function runPipeline(deps: PipelineDeps): Promise<{ results: Iterat
     results.push(outcome)
     if (outcome.gate === 'merge') {
       deps.runState.status = 'aborted'
+      await deps.saveRunState(deps.runState)
       return { results, aborted: true }
     }
+    await deps.saveRunState(deps.runState)
     return runFrom(iter + 1, false)
   }
   const final = await runFrom(deps.runState.currentIteration + 1, false)

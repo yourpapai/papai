@@ -5,7 +5,12 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { ALLOWED_PREFIXES, classifyDiff, runDiffGuard } from '../../mutation-improve/src/diff-guard.js'
+import {
+  ALLOWED_PREFIXES,
+  classifyDiff,
+  parsePorcelainPaths,
+  runDiffGuard,
+} from '../../mutation-improve/src/diff-guard.js'
 
 type GitResult = { stdout: string; stderr: string }
 
@@ -52,6 +57,43 @@ describe('diff-guard', () => {
 
   test('runDiffGuard strips porcelain quotes around paths with special chars', async () => {
     const execGit = (): Promise<GitResult> => Promise.resolve({ stdout: ' M "tests/a b.test.ts"\n', stderr: '' })
+    const result = await runDiffGuard(execGit, '/repo/wt')
+    expect(result).toEqual({ ok: true })
+  })
+
+  test('parsePorcelainPaths returns a single path for non-rename entries', () => {
+    expect(parsePorcelainPaths(' M tests/a.test.ts')).toEqual(['tests/a.test.ts'])
+    expect(parsePorcelainPaths('?? "docs/superpowers/a b.md"')).toEqual(['docs/superpowers/a b.md'])
+  })
+
+  test('parsePorcelainPaths splits rename entries into both endpoints', () => {
+    expect(parsePorcelainPaths('R  tests/old.test.ts -> tests/new.test.ts')).toEqual([
+      'tests/old.test.ts',
+      'tests/new.test.ts',
+    ])
+    expect(parsePorcelainPaths('R  "tests/a b.test.ts" -> "tests/c d.test.ts"')).toEqual([
+      'tests/a b.test.ts',
+      'tests/c d.test.ts',
+    ])
+  })
+
+  test('runDiffGuard flags a rename from allowed to forbidden (smuggle)', async () => {
+    const execGit = (): Promise<GitResult> =>
+      Promise.resolve({ stdout: 'R  tests/a.test.ts -> src/foo.ts\n', stderr: '' })
+    const result = await runDiffGuard(execGit, '/repo/wt')
+    expect(result).toEqual({ ok: false, violations: ['src/foo.ts'] })
+  })
+
+  test('runDiffGuard flags a rename from forbidden to allowed (source removal)', async () => {
+    const execGit = (): Promise<GitResult> =>
+      Promise.resolve({ stdout: 'R  src/foo.ts -> tests/foo.test.ts\n', stderr: '' })
+    const result = await runDiffGuard(execGit, '/repo/wt')
+    expect(result).toEqual({ ok: false, violations: ['src/foo.ts'] })
+  })
+
+  test('runDiffGuard allows a rename within tests/', async () => {
+    const execGit = (): Promise<GitResult> =>
+      Promise.resolve({ stdout: 'R  tests/old.test.ts -> tests/new.test.ts\n', stderr: '' })
     const result = await runDiffGuard(execGit, '/repo/wt')
     expect(result).toEqual({ ok: true })
   })

@@ -65,7 +65,7 @@ describe('integration', () => {
       count: 1,
       threshold: 0.95,
       epsilon: 0.02,
-      agentTimeoutMs: 1_800_000,
+      mutateTimeoutMs: 1_800_000,
       buildTimeoutMs: 600_000,
       checkCommand: 'bun check:full',
       mutateFileCommand: 'bun test:mutate:file',
@@ -92,6 +92,7 @@ describe('integration', () => {
       },
       runSelectAgent: () => Promise.resolve({ value: selection, usage: emptyUsage() }),
       runImproveAgent: () => Promise.resolve({ value: improvedResult, usage: emptyUsage() }),
+      saveRunState: () => Promise.resolve(),
       log: { log: () => undefined },
     }
 
@@ -103,7 +104,7 @@ describe('integration', () => {
 
     const out = await runFinalize(
       {
-        execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
+        execGit: () => Promise.resolve({ stdout: 'feat\n', stderr: '' }),
         runGh: () => Promise.resolve({ exitCode: 0, stdout: 'https://github.com/x/pull/1\n', stderr: '' }),
       },
       { config, runState },

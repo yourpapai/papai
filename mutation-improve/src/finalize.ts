@@ -62,11 +62,13 @@ export function buildSummaryBody(merged: readonly MergedRow[], failed: readonly 
 
 export async function runFinalize(deps: FinalizeDeps, input: FinalizeInput): Promise<FinalizeResult> {
   const { config, runState } = input
-  await deps.execGit(config.repoRoot, ['push', config.upstream, config.base])
+  const { stdout } = await deps.execGit(config.repoRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])
+  const branch = stdout.trim()
+  await deps.execGit(config.repoRoot, ['push', config.upstream, branch])
   const title = `mutation-improve: ${runState.merged.map((m) => m.file).join(', ')}`
   const body = buildSummaryBody(runState.merged, runState.failed)
   const result = await deps.runGh(
-    ['pr', 'create', '--base', config.base, '--title', title, '--body', body],
+    ['pr', 'create', '--base', config.base, '--head', branch, '--title', title, '--body', body],
     config.repoRoot,
   )
   if (result.exitCode !== 0) {
@@ -74,9 +76,22 @@ export async function runFinalize(deps: FinalizeDeps, input: FinalizeInput): Pro
     await mkdir(path.dirname(logPath), { recursive: true })
     await appendFile(
       logPath,
-      `gh pr create failed (exit ${result.exitCode}): ${result.stderr}\nRe-run: gh pr create --base ${config.base} --title ${JSON.stringify(title)} --body <body>\n`,
+      `gh pr create failed (exit ${result.exitCode}): ${result.stderr}\nRe-run: gh pr create --base ${config.base} --head ${branch} --title ${JSON.stringify(title)} --body <body>\n`,
     )
     return { pushed: true }
   }
   return { pushed: true, prUrl: result.stdout.trim() || undefined }
+}
+
+// Iterations merge into whatever branch repoRoot is checked out on. Starting
+// a run on base (or a detached HEAD) would merge+push straight onto base with
+// no PR, so refuse before any run state is created.
+export async function assertIntegrationBranch(execGit: ExecGitFn, repoRoot: string, base: string): Promise<void> {
+  const { stdout } = await execGit(repoRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])
+  const branch = stdout.trim()
+  if (branch === base || branch === 'HEAD') {
+    throw new Error(
+      `mutation-improve merges iterations into the checked-out branch, but repoRoot is on '${branch}'. Check out a non-base integration branch first (base: ${base}).`,
+    )
+  }
 }

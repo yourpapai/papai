@@ -24,7 +24,7 @@ export const MutationImproveConfigSchema = z.object({
   count: z.number().int().positive().default(1),
   threshold: z.number().min(0).max(1).default(0.95),
   epsilon: z.number().min(0).max(1).default(0.02),
-  agentTimeoutMs: z.number().int().min(0).default(1_800_000),
+  mutateTimeoutMs: z.number().int().min(0).default(1_800_000),
   buildTimeoutMs: z.number().int().min(0).default(600_000),
   checkCommand: z.string().min(1).default('bun check:full'),
   mutateFileCommand: z.string().min(1).default('bun test:mutate:file'),
@@ -42,13 +42,27 @@ export interface ConfigLoadInput {
   repoRoot?: string
 }
 
+// repoRoot may legitimately resolve to a subdirectory of the target repo (e.g.
+// "repoRoot": "." in mutation-improve/config.json, where `bun run --filter`
+// sets the cwd to the package dir). Snap it to the git toplevel so baseline,
+// worktree, and merge operations target the real repo; non-git roots (tests,
+// ad-hoc dirs) pass through unchanged.
+async function snapToGitRoot(resolved: string): Promise<string> {
+  try {
+    return await detectGitRoot(resolved)
+  } catch {
+    return resolved
+  }
+}
+
 export async function loadMutationImproveConfig(input: ConfigLoadInput): Promise<MutationImproveConfig> {
   const configPath = path.resolve(input.configPath)
   const raw = JSON.parse(await readFile(configPath, 'utf8')) as unknown
   const parsed = MutationImproveConfigSchema.parse(raw)
 
   const repoRootSource = input.repoRoot ?? parsed.repoRoot
-  const repoRoot = repoRootSource === undefined ? await detectGitRoot(process.cwd()) : path.resolve(repoRootSource)
+  const resolved = repoRootSource === undefined ? await detectGitRoot(process.cwd()) : path.resolve(repoRootSource)
+  const repoRoot = await snapToGitRoot(resolved)
   const workDir = path.resolve(repoRoot, parsed.workDir)
 
   await mkdir(workDir, { recursive: true })

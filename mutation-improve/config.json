@@ -3,15 +3,15 @@
   "workDir": ".mutation-improve",
   "base": "master",
   "upstream": "origin",
-  "count": 1,
-  "threshold": 0.95,
+  "count": 10,
+  "threshold": 0.9,
   "epsilon": 0.02,
   "mutateTimeoutMs": 1800000,
   "buildTimeoutMs": 600000,
   "checkCommand": "bun check:full",
   "mutateFileCommand": "bun test:mutate:file",
   "agent": {
-    "model": "opencode/claude-sonnet-4-6",
+    "model": "zai-coding-plan/glm-5.2",
     "extraArgs": [],
     "timeoutMs": 1800000
   },
