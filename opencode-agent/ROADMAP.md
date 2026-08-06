@@ -47,7 +47,22 @@ Severity:
 
 ### S1-1 `/cancel` is a silent no-op; the issue stays live — **verified** — **[FIXED]**
 
-_Fixed: the terminal path now posts when nothing else did (`orchestrator.ts` `settle`), and the `/cancel` test asserts durability across a following `/approve`._
+_Fixed and independently re-verified. The terminal path now posts whenever the
+trigger moved the state and no handler wrote it down (`orchestrator.ts` `settle`,
+guarded by a `posted` flag) — the class fix, not just the `/cancel` instance.
+Regression coverage asserts the persisted state, not only the returned status.
+
+A follow-up defect **in that fix** was also corrected: the closing comment
+invited the maintainer to "comment again to restart the conversation", but
+`COMPLETE` accepts no command and no plain comment, so the machine answered
+`No actionable command while in COMPLETE`. The wording now states plainly that
+further comments will not restart the agent._
+
+**Still open, by design:** `/cancel` is irreversible. Resuming a cancelled issue
+would need `CANCELLED` to record the phase it cancelled from and `/retry` to be
+admitted from `COMPLETE` — but only for the cancelled case, never for a
+delivered one, where a retry would re-run implementation over a shipped pull
+request. That is a feature decision, not part of this fix.
 
 `src/orchestrator.ts:93-107` transitions the state to `COMPLETE`, then
 `driveMachine` (`:122-130`) finds no handler for `COMPLETE` and returns

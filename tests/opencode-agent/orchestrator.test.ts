@@ -573,6 +573,41 @@ describe('commands and budgets', () => {
     expect(harness.io.gitCalls).toEqual([])
   })
 
+  test('a cancelled issue stays cancelled when a maintainer keeps talking', async () => {
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    await runPipeline({ event: comment('/cancel'), deps: harness.deps })
+    harness.io.posted.length = 0
+
+    const result = await runPipeline({ event: comment('ok, can we revisit this?'), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(harness.io.posted).toEqual([])
+  })
+
+  test('the closing comment does not promise a restart the machine refuses', async () => {
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+
+    await runPipeline({ event: comment('/cancel'), deps: harness.deps })
+
+    // COMPLETE accepts nothing; the wording has to match that, not soften it.
+    const closing = String(harness.io.posted[0])
+    expect(closing).toContain('will not restart me')
+    expect(closing.toLowerCase()).not.toContain('comment again')
+  })
+
+  test('a delivered issue closes by pointing at the pull request', async () => {
+    const harness = makeHarness()
+    await toPlanReview(harness)
+    harness.io.replies = ['Implemented.']
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    // Delivery posts its own closing comment; no bare "Stopped" on a shipped issue.
+    expect(harness.io.posted.at(-1)).toContain('https://example.test/pull/7')
+    expect(harness.io.posted.join('\n')).not.toContain('### Stopped')
+  })
+
   test('rejects /approve arriving in a phase that cannot accept it', async () => {
     const harness = makeHarness()
 

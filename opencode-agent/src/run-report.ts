@@ -35,12 +35,30 @@ export const postAndAppend = async (
   return [...thread, { id: posted.id, body: rendered, authorLogin: input.deps.config.selfLogin }]
 }
 
+/**
+ * The comment that ends a run in `COMPLETE`.
+ *
+ * `COMPLETE` accepts no command and no plain comment — the only way back in is a
+ * red CI run on the delivered branch. So the cancelled wording has to say that
+ * plainly: an earlier draft invited the maintainer to "comment again to restart
+ * the conversation", which the state machine then refused with an unhelpful
+ * `No actionable command while in COMPLETE`.
+ */
 export const renderClosing = (state: AgentState): string =>
   state.prUrl === null
-    ? ['### Stopped', '', 'This issue is no longer being worked on. Comment again to restart the conversation.'].join(
-        '\n',
-      )
-    : ['### Done', '', `The work is in ${state.prUrl}.`].join('\n')
+    ? [
+        '### Stopped',
+        '',
+        'I am no longer working on this issue, and further comments here will not restart me.',
+        'Open a new issue if you want this picked up again.',
+      ].join('\n')
+    : [
+        '### Done',
+        '',
+        `The work is in ${state.prUrl}.`,
+        '',
+        'If that pull request goes red I will still pick it up and push a fix.',
+      ].join('\n')
 
 export const renderSettled = (state: AgentState): string =>
   state.phase === 'COMPLETE' ? renderClosing(state) : `### Waiting\n\nParked in \`${state.phase}\`.`

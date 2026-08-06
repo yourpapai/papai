@@ -60,7 +60,7 @@ front of a human before anything downstream is spent.
 | `/changes <what to change>` | `DESIGN_SPEC`, `PLAN_REVIEW` | Rewrite the spec or plan, with your feedback in the prompt     |
 | `/ask <question>`           | anywhere                     | Answer, grounded in the repo, without moving the state machine |
 | `/retry`                    | `FAILED`                     | Resume the exact phase that failed                             |
-| `/cancel`                   | anything but `COMPLETE`      | Stop                                                           |
+| `/cancel`                   | anything but `COMPLETE`      | Stop for good — a cancelled issue cannot be restarted          |
 
 **Plain replies work too.** A comment with no command on a waiting phase is
 classified as a question, a change request, or an approval, and handled
