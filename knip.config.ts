@@ -177,6 +177,10 @@ export default {
     'scripts/behavior-audit/tools.ts': ['exports'],
     // parseConsolidationResult is consumed by the schema unit test only.
     'scripts/behavior-audit/consolidate-agent.ts': ['exports'],
+    // resetNavCollapse resets nav.svelte.ts's module-level collapse-state singleton
+    // between tests (tests/client/settings/SettingsApp.test.ts's afterEach); knip's
+    // production-only project scope doesn't see that test importer.
+    'client/settings/nav.svelte.ts': ['exports'],
     // listToolNames is consumed by the behavior-audit closure verifier via
     // dynamic import from scripts/behavior-audit/entry-point-maps.ts.
     'src/tools/index.ts': ['exports'],

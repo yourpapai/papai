@@ -10,6 +10,8 @@
   }
   export interface SidebarGroup {
     kicker: string
+    /** Stable identity for collapse state; falls back to the kicker when absent. */
+    key?: string
     items: readonly SidebarItem[]
     danger?: boolean
     collapsible?: boolean
@@ -34,7 +36,7 @@
           class="t-kicker settings-sidebar__kicker settings-sidebar__kicker--toggle"
           aria-expanded={group.collapsed !== true}
           data-testid={`sidebar-toggle-${group.kicker}`}
-          onclick={() => onToggle?.(group.kicker)}>
+          onclick={() => onToggle?.(group.key ?? group.kicker)}>
           <span class="settings-sidebar__chevron">{group.collapsed === true ? '▸' : '▾'}</span>
           {group.kicker}
         </button>

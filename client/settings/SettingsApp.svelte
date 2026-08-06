@@ -7,11 +7,22 @@
   import Shell from '../shared/ui/Shell.svelte'
 
   import SettingsGate from './components/SettingsGate.svelte'
+  import SettingsGroupToggle from './components/SettingsGroupToggle.svelte'
   import SettingsSidebar from './components/SettingsSidebar.svelte'
   import type { SidebarGroup } from './components/SettingsSidebar.svelte'
   import SettingsJumpMenu from './components/SettingsJumpMenu.svelte'
   import SettingsTopBar from './components/SettingsTopBar.svelte'
   import { tick, untrack } from 'svelte'
+  import {
+    allSectionIds,
+    buildNavGroups,
+    expandGroupOwning,
+    groupHint,
+    isGroupCollapsed,
+    isNavGroupKey,
+    mountedSectionIds,
+    toggleGroup,
+  } from './nav.svelte.js'
   import { useScrollSpy } from './scrollspy.js'
   import { activeContext, settingsSession } from './session.svelte.js'
   import ProfileSection from './sections/ProfileSection.svelte'
@@ -51,113 +62,36 @@
   import AdminToolDefaultsSection from './sections/admin/AdminToolDefaultsSection.svelte'
   import AdminAnalyticsSection from './sections/admin/AdminAnalyticsSection.svelte'
 
-  type SidebarItem = SidebarGroup['items'][number]
-
-  /** Section ids that live under the collapsible Advanced group. */
-  const ADVANCED_IDS: readonly string[] = [
-    'memory',
-    'ai-output',
-    'identity',
-    'byok',
-    'coding-credentials',
-    'coding-mcp',
-    'code-host',
-    'repos',
-    'mcp',
-    'plugins',
-  ]
-
-  function buildAdminSidebarItems(session: typeof settingsSession): SidebarItem[] {
-    const items: SidebarItem[] = []
-    if (session.isBotAdmin) {
-      items.push(
-        { id: 'instances', label: 'Instances' },
-        { id: 'llm-providers', label: 'LLM providers' },
-        { id: 'llm-models', label: 'LLM models' },
-        { id: 'byok-admin', label: 'BYOK LLM' },
-        { id: 'plugin-config', label: 'Plugin config' },
-        { id: 'users', label: 'Users' },
-        { id: 'tool-defaults', label: 'Tool defaults' },
-        { id: 'coding-guardrails', label: 'Coding guardrails' },
-        { id: 'mcp-catalog', label: 'MCP catalog' },
-        { id: 'mcp-plugin-servers', label: 'MCP plugin servers' },
-        { id: 'groups', label: 'Groups' },
-        { id: 'announce', label: 'Announce' },
-        { id: 'release-notes', label: 'Release notes' },
-        { id: 'analytics-admin', label: 'Analytics' },
-      )
-    }
-    // super admins are always bot admins, so items already has the bot-admin entries here
-    if (session.isSuperAdmin) {
-      items.push(
-        { id: 'admins', label: 'Admins' },
-        { id: 'plugin-approval', label: 'Plugin approval' },
-      )
-    }
-    return items
-  }
-
   const initialHash = window.location.hash.slice(1)
   let activeId = $state(initialHash || 'profile')
-  // Collapsed by default, except when a deep link targets an Advanced section.
-  let advancedCollapsed = $state(!ADVANCED_IDS.includes(initialHash))
 
   const isGroup = $derived(activeContext()?.kind === 'group')
 
-  const groups = $derived.by((): SidebarGroup[] => {
-    const list: SidebarGroup[] = [
-      {
-        kicker: 'Personal',
-        items: [
-          { id: 'profile', label: 'Profile' },
-          { id: 'task-provider', label: 'Task provider' },
-          { id: 'tools', label: 'Tools' },
-          { id: 'analytics', label: 'Analytics' },
-          ...(isGroup
-            ? [
-                { id: 'members', label: 'Members' },
-                { id: 'group-provider', label: 'Group provider' },
-                { id: 'guest-mode', label: 'Guest mode' },
-                { id: 'coding-identity', label: 'Session identity' },
-                { id: 'kaneo-access', label: 'My Kaneo access' },
-              ]
-            : []),
-        ],
-      },
-      {
-        kicker: 'Advanced',
-        collapsible: true,
-        collapsed: advancedCollapsed,
-        items: [
-          { id: 'memory', label: 'Memory' },
-          { id: 'ai-output', label: 'AI output' },
-          { id: 'identity', label: 'Identity' },
-          { id: 'byok', label: 'BYOK LLM' },
-          { id: 'coding-credentials', label: 'Coding sessions' },
-          { id: 'coding-mcp', label: 'Coding MCP servers' },
-          { id: 'code-host', label: 'Code host' },
-          { id: 'repos', label: 'Repositories' },
-          { id: 'mcp', label: 'MCP' },
-          { id: 'plugins', label: 'Plugins' },
-        ],
-      },
-    ]
-    const adminItems = buildAdminSidebarItems(settingsSession)
-    if (adminItems.length > 0) list.push({ kicker: 'Admin', danger: true, items: adminItems })
-    return list
-  })
+  const navGroups = $derived(buildNavGroups(settingsSession, isGroup))
 
-  const sectionIds = $derived(groups.flatMap((g) => g.items.map((i) => i.id)))
-
-  /** Only the sections currently mounted (Advanced sections unmount when collapsed). */
-  const observableSectionIds = $derived(
-    advancedCollapsed ? sectionIds.filter((id) => !ADVANCED_IDS.includes(id)) : sectionIds,
+  const groups = $derived(
+    navGroups.map(
+      (group): SidebarGroup => ({
+        key: group.key,
+        kicker: group.kicker,
+        items: group.items,
+        danger: group.danger,
+        collapsible: group.collapsible,
+        collapsed: group.collapsible ? isGroupCollapsed(group.key) : undefined,
+      }),
+    ),
   )
+
+  const sectionIds = $derived(allSectionIds(navGroups))
+  const observableSectionIds = $derived(mountedSectionIds(navGroups))
+
+  const advancedItems = $derived(navGroups.find((g) => g.key === 'advanced')?.items ?? [])
+  const adminItems = $derived(navGroups.find((g) => g.key === 'admin')?.items ?? [])
 
   const ctx = $derived(settingsSession.activeContextId)
 
-  function toggleAdvanced(): void {
-    advancedCollapsed = !advancedCollapsed
+  function onSidebarToggle(key: string): void {
+    if (isNavGroupKey(key)) toggleGroup(key)
   }
 
   $effect(() => {
@@ -167,25 +101,26 @@
     })
   })
 
-  // Auto-expand + scroll when a hash targets an Advanced section (sidebar link, jump menu, deep link).
+  // A hash can name a section inside a collapsed group (sidebar link, jump menu, deep link).
+  // Open whichever group owns it, then scroll once the section has mounted.
   $effect(() => {
     const onHash = (): void => {
       const id = window.location.hash.slice(1)
-      if (!ADVANCED_IDS.includes(id)) return
-      advancedCollapsed = false
+      if (id === '') return
+      expandGroupOwning(id, untrack(() => navGroups))
       void tick().then(() => document.getElementById(id)?.scrollIntoView())
     }
     window.addEventListener('hashchange', onHash)
     return (): void => window.removeEventListener('hashchange', onHash)
   })
 
-  // First ready render: scroll to an Advanced deep-link target (already expanded via init state).
+  // First ready render: the same treatment for a hash that was present on load.
   $effect(() => {
     if (settingsSession.status !== 'ready') return
     const id = untrack(() => window.location.hash.slice(1))
-    if (id !== '' && ADVANCED_IDS.includes(id)) {
-      void tick().then(() => document.getElementById(id)?.scrollIntoView())
-    }
+    if (id === '') return
+    expandGroupOwning(id, untrack(() => navGroups))
+    void tick().then(() => document.getElementById(id)?.scrollIntoView())
   })
 
   $effect(() => {
@@ -210,7 +145,7 @@
       <h1 class="sr-only">Settings</h1>
       <SettingsJumpMenu {groups} {activeId} />
       <div class="settings-grid">
-        <SettingsSidebar {groups} {activeId} onToggle={toggleAdvanced} />
+        <SettingsSidebar {groups} {activeId} onToggle={onSidebarToggle} />
         <main class="settings-grid__main">
           <div class="settings-group">
             <ProfileSection contextId={ctx} />
@@ -228,18 +163,14 @@
             {/if}
           </div>
           <div class="settings-group settings-advanced">
-            <button
-              type="button"
-              class="settings-advanced__toggle"
-              aria-expanded={!advancedCollapsed}
-              aria-controls="settings-advanced-content"
-              data-testid="advanced-toggle"
-              onclick={toggleAdvanced}>
-              <span class="settings-advanced__chevron">{advancedCollapsed ? '▸' : '▾'}</span>
-              Advanced
-              <span class="settings-advanced__hint">Memory, AI output, identity, BYOK, integrations</span>
-            </button>
-            {#if !advancedCollapsed}
+            <SettingsGroupToggle
+              label="Advanced"
+              hint={groupHint(advancedItems)}
+              collapsed={isGroupCollapsed('advanced')}
+              controls="settings-advanced-content"
+              testid="advanced-toggle"
+              onToggle={() => toggleGroup('advanced')} />
+            {#if !isGroupCollapsed('advanced')}
               <div id="settings-advanced-content">
                 <MemorySection contextId={ctx} />
                 <AiOutputSection contextId={ctx} />
@@ -256,25 +187,36 @@
           </div>
           {#if settingsSession.isBotAdmin || settingsSession.isSuperAdmin}
             <div class="settings-group settings-group--wide settings-admin-zone">
-              {#if settingsSession.isBotAdmin}
-                <AdminInstancesSection />
-                <AdminProvidersSection />
-                <AdminModelsSection />
-                <AdminByokSection />
-                <AdminPluginsConfigSection />
-                <AdminUsersSection />
-                <AdminToolDefaultsSection />
-                <AdminCodingGuardrailsSection />
-                <AdminMcpCatalogSection />
-                <AdminMcpPluginServersSection />
-                <AdminGroupsSection />
-                <AdminAnnounceSection />
-                <AdminReleaseNotesSection />
-                <AdminAnalyticsSection />
-              {/if}
-              {#if settingsSession.isSuperAdmin}
-                <AdminAdminsSection />
-                <AdminPluginsApprovalSection catalogContextId={ctx} />
+              <SettingsGroupToggle
+                label="Admin"
+                hint={groupHint(adminItems)}
+                collapsed={isGroupCollapsed('admin')}
+                controls="settings-admin-content"
+                testid="admin-toggle"
+                onToggle={() => toggleGroup('admin')} />
+              {#if !isGroupCollapsed('admin')}
+                <div id="settings-admin-content" class="settings-group">
+                  {#if settingsSession.isBotAdmin}
+                    <AdminInstancesSection />
+                    <AdminProvidersSection />
+                    <AdminModelsSection />
+                    <AdminByokSection />
+                    <AdminPluginsConfigSection />
+                    <AdminUsersSection />
+                    <AdminToolDefaultsSection />
+                    <AdminCodingGuardrailsSection />
+                    <AdminMcpCatalogSection />
+                    <AdminMcpPluginServersSection />
+                    <AdminGroupsSection />
+                    <AdminAnnounceSection />
+                    <AdminReleaseNotesSection />
+                    <AdminAnalyticsSection />
+                  {/if}
+                  {#if settingsSession.isSuperAdmin}
+                    <AdminAdminsSection />
+                    <AdminPluginsApprovalSection catalogContextId={ctx} />
+                  {/if}
+                </div>
               {/if}
             </div>
           {/if}
@@ -283,25 +225,3 @@
     {/snippet}
   </Shell>
 {/if}
-
-<style>
-  .settings-advanced__toggle {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    background: none;
-    border: none;
-    border-bottom: 1px solid var(--border);
-    color: var(--text);
-    font-family: var(--font-mono);
-    font-size: 13px;
-    text-align: left;
-    padding: 10px 4px;
-    cursor: pointer;
-  }
-  .settings-advanced__hint {
-    color: var(--text-muted);
-    font-size: 11px;
-  }
-</style>

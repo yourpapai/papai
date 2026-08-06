@@ -11,6 +11,7 @@ import SettingsSidebar from '../../../../client/settings/components/SettingsSide
 
 interface SidebarGroup {
   kicker: string
+  key?: string
   items: readonly { id: string; label: string }[]
   danger?: boolean
   collapsible?: boolean
@@ -125,6 +126,31 @@ describe('SettingsSidebar collapsible group', () => {
     target.querySelector<HTMLButtonElement>('[data-testid="sidebar-toggle-Advanced"]')!.click()
     flushSync()
     expect(calls).toEqual(['Advanced'])
+    void unmount(c)
+  })
+
+  test('onToggle emits the stable key when the group carries one', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const calls: string[] = []
+    const keyed = [
+      { kicker: 'Personal', items: [{ id: 'profile', label: 'Profile' }] },
+      {
+        kicker: 'Advanced',
+        key: 'advanced',
+        collapsible: true,
+        collapsed: true,
+        items: [{ id: 'memory', label: 'Memory' }],
+      },
+    ]
+    const c = mount(SettingsSidebar, {
+      target,
+      props: { groups: keyed, activeId: 'profile', onToggle: (k: string) => calls.push(k) },
+    })
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="sidebar-toggle-Advanced"]')!.click()
+    flushSync()
+    expect(calls).toEqual(['advanced'])
     void unmount(c)
   })
 })
