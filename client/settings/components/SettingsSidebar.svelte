@@ -21,14 +21,14 @@
   interface Props {
     groups: readonly SidebarGroup[]
     activeId: string
-    onToggle?: (kicker: string) => void
+    onToggle?: (groupKey: string) => void
   }
 
   let { groups, activeId, onToggle }: Props = $props()
 </script>
 
 <aside class="settings-sidebar">
-  {#each groups as group (group.kicker)}
+  {#each groups as group (group.key ?? group.kicker)}
     <div class="settings-sidebar__group" class:settings-sidebar__group--danger={group.danger === true}>
       {#if group.collapsible === true}
         <button

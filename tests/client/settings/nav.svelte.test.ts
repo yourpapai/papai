@@ -13,9 +13,9 @@ import {
   isGroupCollapsed,
   isNavGroupKey,
   mountedSectionIds,
-  resetNavCollapse,
   toggleGroup,
 } from '../../../client/settings/nav.svelte.js'
+import { resetNavCollapse } from '../../../client/settings/nav.svelte.testing.js'
 
 const personal = { isBotAdmin: false, isSuperAdmin: false }
 const botAdmin = { isBotAdmin: true, isSuperAdmin: false }
