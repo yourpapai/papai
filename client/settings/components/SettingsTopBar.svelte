@@ -47,6 +47,7 @@
   .settings-topbar__spacer {
     flex: 1;
   }
+  /* gap was 6px, snapped up to the nearest scale step (--s2, 8px). */
   .settings-topbar__ctx {
     display: inline-flex;
     align-items: center;

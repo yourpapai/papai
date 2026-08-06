@@ -81,6 +81,8 @@
     padding-left: var(--s3);
     margin-left: calc(-1 * var(--s3));
   }
+  /* gap and margin-bottom were 6px, snapped up to the nearest scale step (--s2, 8px)
+     rather than swapped like-for-like. */
   .settings-sidebar__kicker {
     display: flex;
     align-items: center;
@@ -103,6 +105,7 @@
     color: var(--danger);
     border: 1px solid var(--danger);
     border-radius: var(--radius-pill);
+    /* horizontal padding was 6px, snapped up to the nearest scale step (--s2, 8px). */
     padding: 0 var(--s2);
     font-size: 9px;
     letter-spacing: 0.08em;
@@ -117,6 +120,8 @@
   .settings-sidebar__link {
     color: var(--text-muted);
     text-decoration: none;
+    /* vertical padding was 6px, snapped up to the nearest scale step (--s2, 8px);
+       horizontal was already 8px. */
     padding: var(--s2);
     font-family: var(--font-mono);
     font-size: 12px;
