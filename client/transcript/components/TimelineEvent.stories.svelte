@@ -125,3 +125,27 @@
     },
   }}
 />
+
+<Story
+  name="Prompt"
+  args={{
+    event: {
+      seq: 11,
+      ts: 't',
+      type: 'prompt',
+      payload: { prompt: 'The D7 retention figure looks off by one bucket — can you check the window boundary?' },
+    },
+  }}
+/>
+
+<Story
+  name="Tool call pending"
+  args={{
+    event: {
+      seq: 12,
+      ts: 't',
+      type: 'update',
+      payload: { sessionUpdate: 'tool_call', title: 'read rollup-window-boundaries.ts', status: 'in_progress' },
+    },
+  }}
+/>

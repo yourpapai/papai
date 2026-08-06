@@ -56,6 +56,16 @@ test.describe('transcript/TimelineEvent', () => {
     await switchStory(sharedPage, 'transcript-timelineevent--tool-call-failed')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('Prompt', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'transcript-timelineevent--prompt')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('Tool call pending', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'transcript-timelineevent--tool-call-pending')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots
 
