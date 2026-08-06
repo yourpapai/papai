@@ -25,10 +25,13 @@ export function stripCodeFromUrl(): void {
 
 export async function start(target: Element): Promise<void> {
   registerExpiryHandler()
+  // Mount first: bootstrap is a network round trip, and until the component exists
+  // the page is settings.html's empty <div id="app"> -- a blank screen with no text.
+  // Mounting first puts the loading gate on screen for the whole wait.
+  mount(SettingsApp, { target })
   const code = readCodeFromLocation(window.location.search)
   await bootstrapSession(code)
   if (code !== null) stripCodeFromUrl()
-  mount(SettingsApp, { target })
 }
 
 if (typeof document !== 'undefined' && document.getElementById('app') !== null) {

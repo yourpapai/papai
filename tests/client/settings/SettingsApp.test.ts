@@ -48,7 +48,7 @@ describe('SettingsApp', () => {
     settingsSession.status = 'loading'
     const component = mountApp()
     await drain()
-    expect(document.body.textContent).toContain('Loading…')
+    expect(document.body.textContent).toContain('Loading your settings')
     expect(document.querySelector('#profile')).toBeNull()
     void unmount(component)
   })

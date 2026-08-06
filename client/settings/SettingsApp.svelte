@@ -6,6 +6,7 @@
 <script lang="ts">
   import Shell from '../shared/ui/Shell.svelte'
 
+  import SettingsGate from './components/SettingsGate.svelte'
   import SettingsSidebar from './components/SettingsSidebar.svelte'
   import type { SidebarGroup } from './components/SettingsSidebar.svelte'
   import SettingsJumpMenu from './components/SettingsJumpMenu.svelte'
@@ -198,13 +199,8 @@
   })
 </script>
 
-{#if settingsSession.status === 'loading'}
-  <main class="settings-gate"><p>Loading…</p></main>
-{:else if settingsSession.status === 'unauthenticated'}
-  <main class="settings-gate">
-    <h1>Session expired or missing</h1>
-    <p>Request a new settings link by sending <code>/config</code> to the bot.</p>
-  </main>
+{#if settingsSession.status !== 'ready'}
+  <SettingsGate />
 {:else}
   <Shell>
     {#snippet topBar()}
