@@ -153,7 +153,7 @@
   "review-loop/src/issue-processor-attempts.ts": 0.6993006993006993,
   "review-loop/src/issue-processor.ts": 0.696969696969697,
   "review-loop/src/line-handler.ts": 0.5421686746987951,
-  "review-loop/src/live-format.ts": 0.7435897435897436,
+  "review-loop/src/live-format.ts": 0.9871794871794872,
   "review-loop/src/live-renderer.ts": 0.6678571428571428,
   "review-loop/src/loop-controller.ts": 0.6666666666666666,
   "review-loop/src/progress-log.ts": 1,
