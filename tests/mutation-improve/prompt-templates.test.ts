@@ -35,4 +35,19 @@ describe('prompt-templates', () => {
     expect(prompt).toContain('/run/iter/1/result.json')
     expect(prompt).toContain('docs/superpowers/specs/2026-08-05-mutation-coverage-foo-design.md')
   })
+
+  // The improve agent once wrote a stray copy of its result to `review-loop/result.json`
+  // (dropping the leading dot from `.review-loop/`), which the diff gate rejected. The
+  // prompt must confine writes to the allowed prefixes plus the single result path.
+  test('buildImprovePrompt confines writes to the allowed prefixes plus the single result path', () => {
+    const prompt = buildImprovePrompt({
+      file: 'src/foo.ts',
+      beforeScore: 0.3,
+      threshold: 0.95,
+      date: '2026-08-05',
+      outputPath: '/run/iter/1/result.json',
+    })
+    expect(prompt).toContain('ONLY under tests/ and docs/superpowers/')
+    expect(prompt).toContain('do not create copies')
+  })
 })

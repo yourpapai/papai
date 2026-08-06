@@ -25,8 +25,10 @@ export const MutationImproveConfigSchema = z.object({
   threshold: z.number().min(0).max(1).default(0.95),
   epsilon: z.number().min(0).max(1).default(0.02),
   mutateTimeoutMs: z.number().int().min(0).default(1_800_000),
-  buildTimeoutMs: z.number().int().min(0).default(600_000),
-  checkCommand: z.string().min(1).default('bun check:full'),
+  buildTimeoutMs: z.number().int().min(0).default(1_800_000),
+  // Serial (CI=true) gate: `bun test --parallel` flakes with 15s timeouts under
+  // worker contention, which would randomly discard completed agent work.
+  checkCommand: z.string().min(1).default('CI=true bun check:full'),
   mutateFileCommand: z.string().min(1).default('bun test:mutate:file'),
   agent: AgentConfigSchema,
   prBranchPrefix: z.string().min(1).default('mutation-improve'),

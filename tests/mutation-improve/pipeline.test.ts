@@ -313,6 +313,44 @@ describe('pipeline runIteration', () => {
     expect(buildCwd).toBe(path.join(deps.config.workDir, 'worktrees', 'r1-iter1'))
   })
 
+  // bun always prints `error: script ... exited with code 1` to stderr when the
+  // check command fails, so a `stderr || stdout` reason never shows check.sh's
+  // stdout breakdown naming the failing check. Both streams must survive.
+  test('build gate failure reason includes stdout details even when stderr is non-empty', async () => {
+    const deps = happyDeps()
+    deps.runBuildCheck = (): Promise<{ passed: boolean; stdout: string; stderr: string }> =>
+      Promise.resolve({
+        passed: false,
+        stdout: '✗ test failed (exit code 1):\n---\n(fail) WorkerPool > closes cleanly\n---',
+        stderr: 'error: script "check:full" exited with code 1\n',
+      })
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    expect(outcome.gate).toBe('build')
+    expect(outcome.reason).toContain('error: script "check:full" exited with code 1')
+    expect(outcome.reason).toContain('(fail) WorkerPool > closes cleanly')
+  })
+
+  test('build gate failure persists the full combined output to build-output.log and tail-bounds the reason', async () => {
+    const deps = happyDeps()
+    const marker = 'UNIQUE-BUILD-FAILURE-MARKER'
+    deps.runBuildCheck = (): Promise<{ passed: boolean; stdout: string; stderr: string }> =>
+      Promise.resolve({
+        passed: false,
+        stdout: `${'x'.repeat(6000)}\n${marker}\n`,
+        stderr: 'error: script "check:full" exited with code 1\n',
+      })
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    expect(outcome.gate).toBe('build')
+    expect(outcome.reason).toContain(marker)
+    expect(outcome.reason?.length).toBeLessThan(4500)
+    const log = await readFile(path.join(deps.runState.runDir, 'iter', '1', 'build-output.log'), 'utf8')
+    expect(log).toContain('error: script "check:full" exited with code 1')
+    expect(log).toContain(marker)
+    expect(log.length).toBeGreaterThan(6000)
+  })
+
   test('select agent receives the per-iteration outputPath', async () => {
     const deps = happyDeps()
     let seenOut = ''

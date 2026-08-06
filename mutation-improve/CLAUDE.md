@@ -18,12 +18,13 @@ Outcomes per iteration: `improved` | `skipped` | `failed`. The CLI exits 1 if an
 
 ## Config & repoRoot
 
-`config.json` (shape in `config.example.json`) loads via `--config` (default: `config.json` next to this package). `repoRoot` is resolved then **snapped to the git toplevel** (`detectGitRoot` in `src/config.ts`), so `"repoRoot": "."` works even though `bun run --filter` sets the cwd to this package dir; non-git roots pass through unchanged. `workDir` resolves against the snapped root. Note `readBaseline` (`src/baseline.ts`) returns `{}` on ENOENT rather than erroring — a wrong root therefore surfaces as select-gate rejections, not a load error. Three timeouts exist: `agent.timeoutMs` for agent subprocesses, top-level `mutateTimeoutMs` for the mutation-run exec, `buildTimeoutMs` for the build check.
+`config.json` (shape in `config.example.json`) loads via `--config` (default: `config.json` next to this package). `repoRoot` is resolved then **snapped to the git toplevel** (`detectGitRoot` in `src/config.ts`), so `"repoRoot": "."` works even though `bun run --filter` sets the cwd to this package dir; non-git roots pass through unchanged. `workDir` resolves against the snapped root. Note `readBaseline` (`src/baseline.ts`) returns `{}` on ENOENT rather than erroring — a wrong root therefore surfaces as select-gate rejections, not a load error. Three timeouts exist: `agent.timeoutMs` for agent subprocesses, top-level `mutateTimeoutMs` for the mutation-run exec, `buildTimeoutMs` for the build check. The default `checkCommand` is `CI=true bun check:full` — the serial path, because `bun test --parallel` flakes with 15s timeouts under worker contention and would randomly discard completed agent work.
 
 ## Storage / Artifacts
 
 - `<workDir>/runs/<runId>/state.json` — persisted run state (Zod-validated on `--resume-run <runId>`).
 - `<workDir>/runs/<runId>/agent-output.log` + `iter/<N>/{selection,result}.json` — agent transcripts and structured outputs.
+- `iter/<N>/build-output.log` — full combined stdout+stderr of a failed build gate (the recorded reason is tail-bounded).
 - `<workDir>/worktrees/<runId>-iter<N>` on branches `mutation-improve/<runId>-iter<N>` (kept on merge conflict, removed otherwise).
 - `finalize.log` in the run dir if `gh pr create` fails (includes a re-run command).
 

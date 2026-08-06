@@ -9,6 +9,7 @@ import path from 'node:path'
 import { agentWritePath, type AgentRunResult } from '../../review-loop/src/agent-runner.js'
 import type { MergeResult } from '../../review-loop/src/worktree.js'
 import { bumpScore, type BaselineMap } from './baseline.js'
+import { recordBuildFailure } from './build-gate.js'
 import type { MutationImproveConfig } from './config.js'
 import { runDiffGuard } from './diff-guard.js'
 import { recordFailure, type FailureEntry } from './failure-recorder.js'
@@ -120,9 +121,11 @@ async function improvePhase(
 // attempt to edit baseline.json or src/ is caught before the runner spends a
 // mutation-score run on tampered inputs. The after-score is runner-measured;
 // the residual escape hatch only opens when the agent declared residuals AND
-// the measured score lands within epsilon of the threshold.
+// the measured score lands within epsilon of the threshold. Build-gate failures
+// persist their full output via recordBuildFailure (see build-gate.ts).
 async function gatePhase(
   deps: PipelineDeps,
+  iterPath: string,
   worktreePath: string,
   file: string,
   improved: Result,
@@ -133,7 +136,7 @@ async function gatePhase(
   }
   const build = await deps.runBuildCheck(worktreePath)
   if (!build.passed) {
-    return { ok: false, gate: 'build', reason: build.stderr || build.stdout }
+    return { ok: false, gate: 'build', reason: await recordBuildFailure(iterPath, build) }
   }
   const afterScore = await deps.measureScore(worktreePath, file)
   const justified = improved.residuals.length > 0 && afterScore >= deps.config.threshold - deps.config.epsilon
@@ -254,7 +257,7 @@ export async function runIteration(deps: PipelineDeps, iter: number): Promise<It
 
     const improved = await improvePhase(deps, worktreePath, iterPath, selection.file, beforeScore)
 
-    const gate = await gatePhase(deps, worktreePath, selection.file, improved)
+    const gate = await gatePhase(deps, iterPath, worktreePath, selection.file, improved)
     if (!gate.ok) return await failIter(deps, iter, worktreePath, gate.gate, gate.reason, file)
 
     return await finalizePhase(deps, iter, worktreePath, selection.file, baseline, beforeScore, gate.value, improved)

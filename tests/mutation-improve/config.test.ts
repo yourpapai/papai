@@ -26,11 +26,12 @@ describe('config', () => {
     expect(parsed.count).toBe(1)
     expect(parsed.threshold).toBe(0.95)
     expect(parsed.epsilon).toBe(0.02)
-    expect(parsed.checkCommand).toBe('bun check:full')
+    expect(parsed.checkCommand).toBe('CI=true bun check:full')
     expect(parsed.mutateFileCommand).toBe('bun test:mutate:file')
     expect(parsed.prBranchPrefix).toBe('mutation-improve')
     expect(parsed.agent.timeoutMs).toBe(1_800_000)
     expect(parsed.mutateTimeoutMs).toBe(1_800_000)
+    expect(parsed.buildTimeoutMs).toBe(1_800_000)
   })
 
   test('MutationImproveConfigSchema strips the legacy agentTimeoutMs key', () => {
