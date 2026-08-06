@@ -19,6 +19,7 @@ import type { MutationImproveRunState } from './run-state.js'
 import { iterDir } from './run-state.js'
 import { SelectionSchema } from './selection-schema.js'
 import type { Selection } from './selection-schema.js'
+import { ratchetVerifiedSkip } from './skip-ratchet.js'
 
 export interface IterationResult {
   iter: number
@@ -247,6 +248,7 @@ export async function runIteration(deps: PipelineDeps, iter: number): Promise<It
     const beforeScore = await deps.measureScore(worktreePath, selection.file)
     if (beforeScore >= deps.config.threshold) {
       deps.runState.doneSet.push(selection.file)
+      await ratchetVerifiedSkip(deps, baseline, selection.file, beforeScore)
       return await skipIter(deps, iter, worktreePath, selection.file, beforeScore)
     }
 

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
+import type { BaselineMap } from '../../mutation-improve/src/baseline.js'
 import type { MutationImproveConfig } from '../../mutation-improve/src/config.js'
 import { runIteration, runPipeline, type PipelineDeps } from '../../mutation-improve/src/pipeline.js'
 import type { Result } from '../../mutation-improve/src/result-schema.js'
@@ -375,6 +376,49 @@ describe('pipeline runIteration', () => {
       await readFile(path.join(deps.runState.runDir, 'iter', '1', 'failure.json'), 'utf8'),
     ) as unknown
     expect(failure).toEqual({ iter: 1, gate: 'exception', reason: 'worktree add failed' })
+  })
+
+  test('skip ratchets a stale baseline floor with a baseline-only commit in repoRoot', async () => {
+    const deps = happyDeps()
+    deps.measureScore = sequenceMeasure([0.97])
+    const gitCalls: string[] = []
+    deps.execGit = (cwd: string, args: readonly string[]): Promise<{ stdout: string; stderr: string }> => {
+      gitCalls.push(`${cwd} ${args.join(' ')}`)
+      return Promise.resolve({ stdout: '', stderr: '' })
+    }
+    const outcome = await runIteration(deps, 1)
+    expect(outcome).toEqual({
+      iter: 1,
+      outcome: 'skipped',
+      file: 'src/live-status/tool-status-labels.ts',
+      beforeScore: 0.97,
+    })
+    const baseline = await deps.readBaseline(deps.config.repoRoot)
+    expect(baseline['src/live-status/tool-status-labels.ts']).toBe(0.97)
+    const repoRoot = deps.config.repoRoot
+    expect(gitCalls).toContain(`${repoRoot} add scripts/mutation/baseline.json`)
+    const commitPrefix = `${repoRoot} commit -m chore(mutation): ratchet src/live-status/tool-status-labels.ts baseline to 0.97`
+    expect(gitCalls.some((c) => c.startsWith(commitPrefix))).toBe(true)
+  })
+
+  test('skip with an accurate floor does not rewrite or commit the baseline', async () => {
+    const deps = happyDeps()
+    deps.readBaseline = (): Promise<BaselineMap> => Promise.resolve({ 'src/live-status/tool-status-labels.ts': 0.97 })
+    let writes = 0
+    deps.writeBaseline = (): Promise<void> => {
+      writes += 1
+      return Promise.resolve()
+    }
+    const gitCalls: string[] = []
+    deps.execGit = (_cwd: string, args: readonly string[]): Promise<{ stdout: string; stderr: string }> => {
+      gitCalls.push(args.join(' '))
+      return Promise.resolve({ stdout: '', stderr: '' })
+    }
+    deps.measureScore = sequenceMeasure([0.96])
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('skipped')
+    expect(writes).toBe(0)
+    expect(gitCalls.some((c) => c.startsWith('commit'))).toBe(false)
   })
 })
 
