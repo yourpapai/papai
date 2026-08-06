@@ -298,6 +298,36 @@ describe('pipeline runIteration', () => {
     await runIteration(deps, 1)
     expect(buildCwd).toBe(path.join(deps.config.workDir, 'worktrees', 'r1-iter1'))
   })
+
+  test('select agent receives the per-iteration outputPath', async () => {
+    const deps = happyDeps()
+    let seenOut = ''
+    deps.runSelectAgent = (
+      _worktreePath: string,
+      _prompt: string,
+      outputPath: string,
+    ): Promise<{ value: Selection; usage: AgentUsage }> => {
+      seenOut = outputPath
+      return Promise.resolve({ value: selection, usage: emptyUsage() })
+    }
+    await runIteration(deps, 1)
+    expect(seenOut).toBe(path.join(deps.runState.runDir, 'iter', '1', 'selection.json'))
+  })
+
+  test('improve agent receives the per-iteration outputPath', async () => {
+    const deps = happyDeps()
+    let seenOut = ''
+    deps.runImproveAgent = (
+      _worktreePath: string,
+      _prompt: string,
+      outputPath: string,
+    ): Promise<{ value: Result; usage: AgentUsage }> => {
+      seenOut = outputPath
+      return Promise.resolve({ value: result, usage: emptyUsage() })
+    }
+    await runIteration(deps, 1)
+    expect(seenOut).toBe(path.join(deps.runState.runDir, 'iter', '1', 'result.json'))
+  })
 })
 
 describe('pipeline runPipeline', () => {

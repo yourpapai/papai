@@ -42,8 +42,8 @@ export interface PipelineDeps {
   measureScore: (worktreePath: string, srcFile: string) => Promise<number>
   readBaseline: (repoRoot: string) => Promise<BaselineMap>
   writeBaseline: (repoRoot: string, map: BaselineMap) => Promise<void>
-  runSelectAgent: (worktreePath: string, prompt: string) => Promise<AgentRunResult<Selection>>
-  runImproveAgent: (worktreePath: string, prompt: string) => Promise<AgentRunResult<Result>>
+  runSelectAgent: (worktreePath: string, prompt: string, outputPath: string) => Promise<AgentRunResult<Selection>>
+  runImproveAgent: (worktreePath: string, prompt: string, outputPath: string) => Promise<AgentRunResult<Result>>
   log: { log: (msg: string) => void; issue?: unknown }
 }
 
@@ -79,6 +79,7 @@ async function selectPhase(
       baselineSummary: JSON.stringify(baseline),
       outputPath: agentWritePath(worktreePath, selectOut),
     }),
+    selectOut,
   )
   const selection = SelectionSchema.parse(selectRes.value)
   if (deps.runState.doneSet.includes(selection.file) || baseline[selection.file] === undefined) {
@@ -107,6 +108,7 @@ async function improvePhase(
       date: new Date().toISOString().slice(0, 10),
       outputPath: agentWritePath(worktreePath, improveOut),
     }),
+    improveOut,
   )
   return ResultSchema.parse(improveRes.value)
 }

@@ -100,13 +100,13 @@ function selectRunner(
   runState: MutationImproveRunState,
   log: LiveRenderer,
 ): PipelineDeps['runSelectAgent'] {
-  return (worktreePath, prompt) =>
+  return (worktreePath, prompt, outputPath) =>
     runAgent({
       spawn: realSpawn,
       model: config.agent.model,
       cwd: worktreePath,
       prompt,
-      outputPath: path.join(runState.runDir, 'iter', 'selection.json'),
+      outputPath,
       outputSchema: SelectionSchema,
       label: 'select',
       logPath: path.join(runState.runDir, 'agent-output.log'),
@@ -121,13 +121,13 @@ function improveRunner(
   runState: MutationImproveRunState,
   log: LiveRenderer,
 ): PipelineDeps['runImproveAgent'] {
-  return (worktreePath, prompt) =>
+  return (worktreePath, prompt, outputPath) =>
     runAgent({
       spawn: realSpawn,
       model: config.agent.model,
       cwd: worktreePath,
       prompt,
-      outputPath: path.join(runState.runDir, 'iter', 'result.json'),
+      outputPath,
       outputSchema: ResultSchema,
       label: 'improve',
       logPath: path.join(runState.runDir, 'agent-output.log'),
