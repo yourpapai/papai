@@ -17,6 +17,23 @@ export function classifyDiff(paths: readonly string[]): { allowed: string[]; vio
   return { allowed, violations }
 }
 
+function unquote(p: string): string {
+  return p.replace(/^"|"$/gu, '')
+}
+
+// Porcelain v1 rename/copy entries look like `R  orig -> new` (each side
+// quoted independently when it contains special chars). Only R/C statuses use
+// the arrow form, so the status check prevents mis-splitting a quoted path
+// that merely contains ' -> '.
+export function parsePorcelainPaths(line: string): string[] {
+  const status = line.slice(0, 2)
+  const body = line.slice(3).trim()
+  if (!status.includes('R') && !status.includes('C')) return [unquote(body)]
+  const arrowIdx = body.indexOf(' -> ')
+  if (arrowIdx === -1) return [unquote(body)]
+  return [unquote(body.slice(0, arrowIdx)), unquote(body.slice(arrowIdx + 4))]
+}
+
 export async function runDiffGuard(
   execGit: ExecGitFn,
   cwd: string,
@@ -24,8 +41,8 @@ export async function runDiffGuard(
   const { stdout } = await execGit(cwd, ['status', '--porcelain', '--untracked-files=all'])
   const paths = stdout
     .split('\n')
-    .map((line) => line.slice(3).trim())
-    .map((p) => p.replace(/^"|"$/gu, ''))
+    .filter((line) => line.trim().length > 0)
+    .flatMap(parsePorcelainPaths)
     .filter((p) => p.length > 0)
   const { violations } = classifyDiff(paths)
   return violations.length === 0 ? { ok: true } : { ok: false, violations }
