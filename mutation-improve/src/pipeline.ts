@@ -11,6 +11,7 @@ import type { MergeResult } from '../../review-loop/src/worktree.js'
 import { bumpScore, type BaselineMap } from './baseline.js'
 import type { MutationImproveConfig } from './config.js'
 import { runDiffGuard } from './diff-guard.js'
+import { recordFailure, type FailureEntry } from './failure-recorder.js'
 import { buildImprovePrompt, buildSelectPrompt } from './prompt-templates.js'
 import type { Result } from './result-schema.js'
 import { ResultSchema } from './result-schema.js'
@@ -48,7 +49,7 @@ export interface PipelineDeps {
 }
 
 type PhaseOk<T> = { ok: true; value: T }
-type PhaseFail = { ok: false; gate: string; reason: string }
+type PhaseFail = { ok: false; gate: string; reason: string; file?: string }
 type PhaseResult<T> = PhaseOk<T> | PhaseFail
 
 function branchFor(deps: PipelineDeps, iter: number): string {
@@ -83,7 +84,7 @@ async function selectPhase(
   )
   const selection = SelectionSchema.parse(selectRes.value)
   if (deps.runState.doneSet.includes(selection.file) || baseline[selection.file] === undefined) {
-    return { ok: false, gate: 'select', reason: 'selection file not in baseline or already done' }
+    return { ok: false, gate: 'select', reason: 'selection file not in baseline or already done', file: selection.file }
   }
   return { ok: true, value: { selection, baseline } }
 }
@@ -201,11 +202,12 @@ async function failIter(
   worktreePath: string,
   gate: string,
   reason: string,
+  file?: string,
 ): Promise<IterationResult> {
+  const entry: FailureEntry = await recordFailure(deps.runState, iter, gate, reason, file)
   await deps.resetWorktree(worktreePath)
   await deps.removeWorktree(deps.config.repoRoot, worktreePath, runIdFor(deps, iter), deps.config.prBranchPrefix)
-  deps.runState.failed.push({ iter, gate, reason })
-  return { iter, outcome: 'failed', gate, reason }
+  return { ...entry, outcome: 'failed' }
 }
 
 function skipIter(
@@ -230,13 +232,15 @@ export async function runIteration(deps: PipelineDeps, iter: number): Promise<It
   // `mutation-improve/<runId>-iterN` branch are leaked, runState.failed gains
   // no entry, and the next createWorktree for the same path fails.
   let worktreeCreated = false
+  let file: string | undefined
   try {
     await deps.createWorktree(deps.config.repoRoot, worktreePath, runIdFor(deps, iter), deps.config.prBranchPrefix)
     worktreeCreated = true
 
     const sel = await selectPhase(deps, worktreePath, iterPath)
-    if (!sel.ok) return await failIter(deps, iter, worktreePath, sel.gate, sel.reason)
+    if (!sel.ok) return await failIter(deps, iter, worktreePath, sel.gate, sel.reason, sel.file)
     const { selection, baseline } = sel.value
+    file = selection.file
 
     // ② CAPTURE BEFORE (runner-owned). Already at threshold → nothing to do.
     const beforeScore = await deps.measureScore(worktreePath, selection.file)
@@ -248,18 +252,18 @@ export async function runIteration(deps: PipelineDeps, iter: number): Promise<It
     const improved = await improvePhase(deps, worktreePath, iterPath, selection.file, beforeScore)
 
     const gate = await gatePhase(deps, worktreePath, selection.file, improved)
-    if (!gate.ok) return await failIter(deps, iter, worktreePath, gate.gate, gate.reason)
+    if (!gate.ok) return await failIter(deps, iter, worktreePath, gate.gate, gate.reason, file)
 
     return await finalizePhase(deps, iter, worktreePath, selection.file, baseline, beforeScore, gate.value, improved)
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
-    // If createWorktree itself threw there is nothing to reset/remove; just
-    // record the failure so the run is not silently dropped.
+    // If createWorktree itself threw there is nothing to reset/remove; record
+    // the failure (no file — selection never ran) so the run is not dropped.
     if (!worktreeCreated) {
-      deps.runState.failed.push({ iter, gate: 'exception', reason })
+      await recordFailure(deps.runState, iter, 'exception', reason)
       return { iter, outcome: 'failed', gate: 'exception', reason }
     }
-    return failIter(deps, iter, worktreePath, 'exception', reason)
+    return failIter(deps, iter, worktreePath, 'exception', reason, file)
   }
 }
 

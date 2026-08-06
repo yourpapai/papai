@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { MutationImproveConfig } from '../../mutation-improve/src/config.js'
@@ -260,7 +261,18 @@ describe('pipeline runIteration', () => {
     expect(outcome.reason).toBe('agent blew up')
     expect(calls.reset).toBe(1)
     expect(calls.remove).toBe(1)
-    expect(deps.runState.failed).toEqual([{ iter: 1, gate: 'exception', reason: 'agent blew up' }])
+    expect(deps.runState.failed).toEqual([
+      { iter: 1, gate: 'exception', reason: 'agent blew up', file: 'src/live-status/tool-status-labels.ts' },
+    ])
+    const failure = JSON.parse(
+      await readFile(path.join(deps.runState.runDir, 'iter', '1', 'failure.json'), 'utf8'),
+    ) as unknown
+    expect(failure).toEqual({
+      iter: 1,
+      gate: 'exception',
+      reason: 'agent blew up',
+      file: 'src/live-status/tool-status-labels.ts',
+    })
     expect(deps.runState.merged).toHaveLength(0)
   })
 
@@ -327,6 +339,41 @@ describe('pipeline runIteration', () => {
     }
     await runIteration(deps, 1)
     expect(seenOut).toBe(path.join(deps.runState.runDir, 'iter', '1', 'result.json'))
+  })
+
+  test('select-gate rejection records the invalidly picked file and writes failure.json', async () => {
+    const deps = happyDeps()
+    deps.runSelectAgent = (): Promise<{ value: Selection; usage: AgentUsage }> =>
+      Promise.resolve({ value: { ...selection, file: 'src/not-in-baseline.ts' }, usage: emptyUsage() })
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    expect(outcome.gate).toBe('select')
+    expect(deps.runState.failed[0]).toEqual({
+      iter: 1,
+      gate: 'select',
+      reason: 'selection file not in baseline or already done',
+      file: 'src/not-in-baseline.ts',
+    })
+    const failure = JSON.parse(
+      await readFile(path.join(deps.runState.runDir, 'iter', '1', 'failure.json'), 'utf8'),
+    ) as unknown
+    expect(failure).toEqual({
+      iter: 1,
+      gate: 'select',
+      reason: 'selection file not in baseline or already done',
+      file: 'src/not-in-baseline.ts',
+    })
+  })
+
+  test('createWorktree throw still writes failure.json without a file', async () => {
+    const deps = happyDeps()
+    deps.createWorktree = (): Promise<void> => Promise.reject(new Error('worktree add failed'))
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    const failure = JSON.parse(
+      await readFile(path.join(deps.runState.runDir, 'iter', '1', 'failure.json'), 'utf8'),
+    ) as unknown
+    expect(failure).toEqual({ iter: 1, gate: 'exception', reason: 'worktree add failed' })
   })
 })
 
