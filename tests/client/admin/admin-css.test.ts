@@ -77,4 +77,29 @@ describe('admin.css', () => {
     const svelte = await Bun.file(url).text()
     expect(svelte).toContain('bodyScroll={false}')
   })
+
+  test('the single-column cutover happens at 900px, above the squeeze band', async () => {
+    const url = new URL('../../../client/admin/admin.css', import.meta.url)
+    const css = await Bun.file(url).text()
+    expect(css).toContain('@media (max-width: 900px)')
+    expect(css).not.toContain('@media (max-width: 720px)')
+  })
+
+  test('the rail hides below the cutover and the jump menu appears', async () => {
+    const railUrl = new URL('../../../client/admin/components/AdminSidebarPanel.svelte', import.meta.url)
+    const rail = await Bun.file(railUrl).text()
+    expect(rail).toMatch(/@media \(max-width: 900px\) \{\s*\.admin-sidebar \{\s*display: none;/u)
+
+    const jumpUrl = new URL('../../../client/admin/components/AdminJumpMenu.svelte', import.meta.url)
+    const jump = await Bun.file(jumpUrl).text()
+    expect(jump).toMatch(/@media \(max-width: 900px\) \{\s*\.admin-jump \{\s*display: flex;/u)
+  })
+
+  test('the jump menu names itself without the settings-only type utility', async () => {
+    const jumpUrl = new URL('../../../client/admin/components/AdminJumpMenu.svelte', import.meta.url)
+    const jump = await Bun.file(jumpUrl).text()
+    expect(jump).toContain('id="admin-jump-label"')
+    expect(jump).toContain('ariaLabelledby="admin-jump-label"')
+    expect(jump).not.toContain('t-label')
+  })
 })

@@ -83,4 +83,9 @@
     flex-direction: column;
     gap: var(--s1);
   }
+  @media (max-width: 900px) {
+    .admin-sidebar {
+      display: none;
+    }
+  }
 </style>

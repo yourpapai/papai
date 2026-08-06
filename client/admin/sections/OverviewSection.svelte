@@ -18,11 +18,13 @@
       ? '—'
       : String(adminGlobals.data.subjects.dmTotal + adminGlobals.data.subjects.groupTotal),
   )
-  const subjectsSub = $derived(
-    adminGlobals.data?.subjects === undefined
-      ? undefined
-      : `${adminGlobals.data.subjects.dmTotal} dm · ${adminGlobals.data.subjects.groupTotal} group`,
-  )
+  const subjectsSub = $derived.by(() => {
+    const subjects = adminGlobals.data?.subjects
+    if (subjects === undefined) return undefined
+    const base = `${subjects.dmTotal} dm · ${subjects.groupTotal} group`
+    const active = adminGlobals.data?.active?.activeIn30d
+    return active === undefined ? base : `${base} · ${active} active 30d`
+  })
 
   const llmTotal = $derived(
     adminGlobals.data?.llmUsage === undefined
