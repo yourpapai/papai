@@ -74,4 +74,15 @@ describe('SettingsGroupToggle', () => {
     expect(calls).toBe(1)
     void unmount(c)
   })
+
+  test('SettingsGroupToggle.svelte source declares a :focus-visible ring using the shared tokens', async () => {
+    const url = new URL('../../../../client/settings/components/SettingsGroupToggle.svelte', import.meta.url)
+    const source = await Bun.file(url).text()
+    expect(source).toContain('.settings-group-toggle:focus-visible')
+    const match = source.match(/\.settings-group-toggle:focus-visible\s*\{[^}]*\}/u)
+    expect(match).not.toBeNull()
+    const [rule] = match!
+    expect(rule).toContain('outline: var(--focus-ring)')
+    expect(rule).toContain('outline-offset: var(--focus-ring-offset)')
+  })
 })

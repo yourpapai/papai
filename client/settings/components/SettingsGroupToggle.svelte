@@ -54,6 +54,10 @@
   .settings-group-toggle:active {
     background: var(--surface-2);
   }
+  .settings-group-toggle:focus-visible {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
   .settings-group-toggle__hint {
     color: var(--text-muted);
     font-size: 11px;
