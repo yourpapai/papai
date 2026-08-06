@@ -92,7 +92,8 @@ Severity-ranked, highest first.
 ### [Med] Events carry no timestamps
 
 - **Id:** transcript-no-timestamps
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `58e928535` — `formatEventTime` renders the existing `ts` field as `HH:MM:SS` in a time gutter. `playwright.config.ts` pins `timezoneId: 'UTC'` so baselines are machine-independent.
 - **Dimension:** 5. Content & language
 - **Where visible:** Every `TimelineEvent` shot
 - **Source:** `client/transcript/components/TimelineEvent.svelte:15-38` — `event.ts` is in the schema (`client/transcript/fetcher-schemas.ts:18`) and never read
@@ -101,7 +102,8 @@ Severity-ranked, highest first.
 ### [Med] Asynchronous updates are never announced
 
 - **Id:** transcript-no-aria-live
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `060f69111` — the timeline is `role="log"` with `aria-live` gated to the `live` status, so the history bulk-load is not read aloud on open.
 - **Dimension:** 6. Accessibility
 - **Where visible:** Not visible in a static shot; both the banner and the timeline mutate after mount
 - **Source:** `client/transcript/TranscriptApp.svelte:14-24` — no `aria-live` on the header or the `.tx-timeline` container
@@ -110,7 +112,8 @@ Severity-ranked, highest first.
 ### [Med] None of the shared UI kit is used
 
 - **Id:** transcript-no-design-system-primitives
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `c889e5bce` — StatusBanner rebuilt on the shared `Pill`/`Dot`; the bespoke style block and the literal `●` are gone.
 - **Dimension:** 3. Consistency w/ design system
 - **Where visible:** `transcript-TranscriptApp-Live-1.png` — the live indicator is a literal `●` glyph inside the text string, not a status dot
 - **Source:** `client/transcript/components/StatusBanner.svelte:8,16-34` — bespoke `.tx-banner` chip where `StatusPill` / `StatusDot` exist
@@ -119,7 +122,8 @@ Severity-ranked, highest first.
 ### [Med] Every spacing and sizing value is a one-off
 
 - **Id:** transcript-hardcoded-spacing
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `92a54ebc1` — every gap and padding now uses the `--s*` scale. `max-width: 860px` stays a documented literal: `--content-max` is 760px and `--table-max` 1100px, and neither suits a monospace view.
 - **Dimension:** 8. Spacing, alignment & sizing
 - **Where visible:** All shots
 - **Source:** `client/transcript/transcript.css:1-11` (`860px`, `1.5rem 1rem 4rem`, `0.75rem`), `client/transcript/components/TimelineEvent.svelte:44-46` (`0.85rem`, `0.3rem 0.7rem`, `0.5rem`), `client/transcript/components/StatusBanner.svelte:21-23` (`0.4rem 0.7rem`, `6px`)
@@ -128,7 +132,8 @@ Severity-ranked, highest first.
 ### [Med] No focus, hover, or cursor styling on the only interactive control
 
 - **Id:** transcript-no-focus-visible
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `92a54ebc1` — both `<summary>` disclosures gained `cursor`, `:hover`, and `:focus-visible` rules using `--focus-ring`.
 - **Dimension:** 9. Interaction & micro-states
 - **Where visible:** `transcript-TimelineEvent-Thought-1.png` — the "thinking" disclosure looks like static text
 - **Source:** `client/transcript/components/TimelineEvent.svelte:41-64` — no `summary`, `:hover`, or `:focus-visible` rule in the block
@@ -137,7 +142,8 @@ Severity-ranked, highest first.
 ### [Med] The two terminal states are dead ends
 
 - **Id:** transcript-dead-end-error-states
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `426f72d1e` — every status returns empty-state copy naming the consequence and the next step. Deliberately no controls: `invalid-token` has no in-app recovery and `error` already reconnects itself.
 - **Dimension:** 2. Affordance & signifiers
 - **Where visible:** `transcript-TranscriptApp-Invalid-token-1.png`, `transcript-TranscriptApp-Error-1.png` — one line of red text on an otherwise empty page
 - **Source:** `client/transcript/components/StatusBanner.svelte:11-12`
@@ -146,7 +152,8 @@ Severity-ranked, highest first.
 ### [Low] The timeline rail is effectively invisible
 
 - **Id:** transcript-timeline-rail-invisible
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `92a54ebc1` — the rail moved from `--border` to `--strong`.
 - **Dimension:** 1. Visual hierarchy & scanning
 - **Where visible:** `transcript-TimelineEvent-Plan-1.png` — the 2px left border is barely separable from the background
 - **Source:** `client/transcript/components/TimelineEvent.svelte:45` — `border-left: 2px solid var(--border)`
@@ -155,7 +162,8 @@ Severity-ranked, highest first.
 ### [Low] Unrecognised payloads dump JSON to end users
 
 - **Id:** transcript-unknown-payload-raw-json
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `92a54ebc1` — the raw payload moved behind an `unrecognised event` disclosure, collapsed by default. The `raw` fallback itself is unchanged and stays deliberate.
 - **Dimension:** 5. Content & language
 - **Where visible:** `transcript-TimelineEvent-Unknown-shape-raw-fallback-1.png`
 - **Source:** `client/transcript/components/TimelineEvent.svelte:36-37`
@@ -164,7 +172,8 @@ Severity-ranked, highest first.
 ### [Low] Three banner states share identical chrome
 
 - **Id:** transcript-banner-status-undifferentiated
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `c889e5bce` — `bannerFor` gives each status its own tone; `error` is `warn` (it self-heals) and `invalid-token` stays `danger` (it is terminal).
 - **Dimension:** 1. Visual hierarchy & scanning
 - **Where visible:** `transcript-TranscriptApp-Connecting-1.png`, `-Finished-1.png`, `-Recording-disabled-1.png` are visually the same chip
 - **Source:** `client/transcript/components/StatusBanner.svelte:28-34` — only `live`, `invalid-token`, and `error` get a modifier
@@ -173,8 +182,9 @@ Severity-ranked, highest first.
 ### [Low] The longest text blocks use the dimmest text token
 
 - **Id:** transcript-dim-text-contrast
-- **Status:** open
-- **Dimension:** 6. Accessibility
+- **Status:** fixed
+- **Resolved:** `92a54ebc1` — re-scoped before fixing. The accessibility framing was wrong: `client/shared/tokens.css:21` documents `--text-dim` at 5.69:1 on `--bg`, which clears WCAG SC 1.4.3. The real defect was hierarchy — the longest bodies (`.tx-thought pre`, `.tx-raw`) used the most recessive token. Both moved to `--text-muted`; `--text-dim` is now reserved for short labels.
+- **Dimension:** 1. Visual hierarchy & scanning
 - **Where visible:** `transcript-TimelineEvent-Plan-1.png` — the plan body is low-contrast grey on the near-black surface
 - **Source:** `client/transcript/components/TimelineEvent.svelte:59-64` — `.tx-thought pre`, `.tx-plan`, `.tx-raw` are all `var(--text-dim)`
 - **Suggested fix:** Reserve `--text-dim` for secondary labels and render multi-line bodies at the normal text colour.
@@ -182,7 +192,8 @@ Severity-ranked, highest first.
 ### [Low] Live events append with no scroll cue
 
 - **Id:** transcript-no-live-scroll-affordance
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `060f69111` — `shouldFollow` plus an `$effect.pre`/`$effect` pair follows the live tail only while the reader is already at the bottom.
 - **Dimension:** 4. Feedback & state
 - **Where visible:** Not visible in a static shot; applies while `status === 'live'`
 - **Source:** `client/transcript/TranscriptApp.svelte:19-23` — events append with no scroll anchoring, and nothing in `client/transcript/` handles scroll position
