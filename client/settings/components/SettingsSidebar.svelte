@@ -129,7 +129,7 @@
     border-left-color: var(--accent);
     background: var(--surface-2);
   }
-  @media (max-width: 720px) {
+  @media (max-width: 900px) {
     .settings-sidebar {
       display: none;
     }

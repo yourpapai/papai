@@ -80,4 +80,9 @@ describe('settings.css', () => {
     const [main] = m!
     expect(main).toContain('overflow-y: auto')
   })
+
+  test('the single-column cutover happens at 900px, above the squeeze band', () => {
+    expect(css).toContain('@media (max-width: 900px)')
+    expect(css).not.toContain('@media (max-width: 720px)')
+  })
 })

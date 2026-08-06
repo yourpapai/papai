@@ -145,7 +145,10 @@
   outline-offset: 1px;
 }
 
-@media (max-width: 720px) {
+/* Below this the sidebar hides and the jump menu takes over. 900px, not 720px: with a
+   fixed 220px rail, a 760px viewport leaves the content column ~492px -- narrower than
+   the 608px it gets at 640px, where the rail is already gone. */
+@media (max-width: 900px) {
   .settings-grid {
     grid-template-columns: 1fr;
   }
