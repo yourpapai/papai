@@ -282,4 +282,341 @@ describe('classifyYouTrackError', () => {
       expect(result.appError).toEqual(systemError.networkError('fetch failed'))
     })
   })
+
+  describe('isYouTrackErrorBody body validation', () => {
+    test('falls back to constructor message when a known key holds a non-string value', () => {
+      const error = new YouTrackApiError('Constructor message', 500, { error: 123 })
+      const result = classifyYouTrackError(error)
+      expect(result.message).toBe('Constructor message')
+      expect(result.appError.code).toBe('unexpected')
+    })
+
+    test('does not throw and falls back when body is null', () => {
+      const error = new YouTrackApiError('Constructor message', 500, null)
+      const result = classifyYouTrackError(error)
+      expect(result.message).toBe('Constructor message')
+      expect(result.appError.code).toBe('unexpected')
+    })
+
+    test('keeps a body valid when a foreign key holds a non-string value', () => {
+      const error = new YouTrackApiError('Constructor message', 500, { error: 'Body message', extra: 9 })
+      const result = classifyYouTrackError(error)
+      expect(result.message).toBe('Body message')
+    })
+
+    test('prefers error_description over error and constructor message', () => {
+      const error = new YouTrackApiError('Constructor message', 401, {
+        error_description: 'Descriptive message',
+        error: 'Short error',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.message).toBe('Descriptive message')
+    })
+
+    test('falls back to error when error_description is absent', () => {
+      const error = new YouTrackApiError('Constructor message', 401, { error: 'Short error' })
+      const result = classifyYouTrackError(error)
+      expect(result.message).toBe('Short error')
+    })
+
+    test('treats a non-string error_description value as an invalid body', () => {
+      const error = new YouTrackApiError('Constructor message', 500, { error_description: 123 })
+      const result = classifyYouTrackError(error)
+      expect(result.message).toBe('Constructor message')
+    })
+
+    test('uses error when error_description is explicitly undefined', () => {
+      const error = new YouTrackApiError('Constructor message', 500, {
+        error_description: undefined,
+        error: 'Body error',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.message).toBe('Body error')
+    })
+
+    test('treats a non-string error_type value as an invalid body even when error is present', () => {
+      const error = new YouTrackApiError('Constructor message', 500, {
+        error_type: 123,
+        error: 'Body message',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.message).toBe('Constructor message')
+    })
+
+    test('treats a non-string error_rule_name value as an invalid body on the 400 path', () => {
+      const error = new YouTrackApiError('Bad request', 400, {
+        error_type: 'workflow',
+        error_rule_name: 123,
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.appError.code).toBe('validation-failed')
+    })
+  })
+
+  describe('normalizeFieldName cleaning', () => {
+    test('trims surrounding whitespace from a field name', () => {
+      const error = new YouTrackApiError('Bad request', 400, {
+        error_description: 'required field:    Spaced    ',
+        error_type: 'workflow',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.appError).toHaveProperty('requiredFields', [{ name: 'Spaced' }])
+    })
+
+    test('strips surrounding quotes from a field name', () => {
+      const error = new YouTrackApiError('Bad request', 400, {
+        error_description: 'required field: "Quoted"',
+        error_type: 'workflow',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.appError).toHaveProperty('requiredFields', [{ name: 'Quoted' }])
+    })
+
+    test('strips every layer of surrounding quotes and whitespace', () => {
+      const error = new YouTrackApiError('Bad request', 400, {
+        error_description: "required fields: ''URL''",
+        error_type: 'workflow',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.appError).toHaveProperty('requiredFields', [{ name: 'URL' }])
+    })
+
+    test('collapses internal double spaces to a single space', () => {
+      const error = new YouTrackApiError('Bad request', 400, {
+        error_description: 'required field: double  space',
+        error_type: 'workflow',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.appError).toHaveProperty('requiredFields', [{ name: 'double space' }])
+    })
+
+    test('drops a name that is empty after trimming', () => {
+      const error = new YouTrackApiError('Bad request', 400, {
+        error_description: 'required fields:    ',
+        error_type: 'workflow',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.appError).toHaveProperty('requiredFields', [])
+    })
+  })
+
+  describe('normalizeFieldName stopword filter', () => {
+    test('drops the stopword "field"', () => {
+      const error = new YouTrackApiError('Bad request', 400, {
+        error_description: 'required field: field',
+        error_type: 'workflow',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.appError).toHaveProperty('requiredFields', [])
+    })
+
+    test('drops the stopword "fields"', () => {
+      const error = new YouTrackApiError('Bad request', 400, {
+        error_description: 'required field: fields',
+        error_type: 'workflow',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.appError).toHaveProperty('requiredFields', [])
+    })
+
+    test('drops the stopword "custom field"', () => {
+      const error = new YouTrackApiError('Bad request', 400, {
+        error_description: 'required field: custom field',
+        error_type: 'workflow',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.appError).toHaveProperty('requiredFields', [])
+    })
+
+    test('drops the stopword "custom fields"', () => {
+      const error = new YouTrackApiError('Bad request', 400, {
+        error_description: 'required field: custom fields',
+        error_type: 'workflow',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.appError).toHaveProperty('requiredFields', [])
+    })
+
+    test('matches stopwords case-insensitively via toLowerCase', () => {
+      const error = new YouTrackApiError('Bad request', 400, {
+        error_description: 'required field: Field',
+        error_type: 'workflow',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.appError).toHaveProperty('requiredFields', [])
+    })
+  })
+
+  describe('appendFieldNames separator rewrite', () => {
+    test('splits a list joined by " and " into separate names', () => {
+      const error = new YouTrackApiError('Bad request', 400, {
+        error_description: 'required fields: Alpha and Beta',
+        error_type: 'workflow',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.appError).toHaveProperty('requiredFields', [{ name: 'Alpha' }, { name: 'Beta' }])
+    })
+  })
+
+  describe('extractRequiredFields pattern matching', () => {
+    test('harvests fields from the error_rule_name candidate', () => {
+      const error = new YouTrackApiError('Bad request', 400, {
+        error_rule_name: 'required field: FromRule',
+        error_type: 'workflow',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.appError).toHaveProperty('requiredFields', [{ name: 'FromRule' }])
+    })
+
+    test('matches the "requires these custom fields:" list pattern', () => {
+      const error = new YouTrackApiError('Bad request', 400, {
+        error_description: 'requires these custom fields: URL, Name',
+        error_type: 'workflow',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.appError).toHaveProperty('requiredFields', [{ name: 'URL' }, { name: 'Name' }])
+    })
+
+    test('matches the "requires these custom fields:" list with no space after the colon', () => {
+      const error = new YouTrackApiError('Bad request', 400, {
+        error_description: 'requires these custom fields:URL, Name',
+        error_type: 'workflow',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.appError).toHaveProperty('requiredFields', [{ name: 'URL' }, { name: 'Name' }])
+    })
+
+    test('matches the singular "required field:" pattern', () => {
+      const error = new YouTrackApiError('Bad request', 400, {
+        error_description: 'required field: Solo',
+        error_type: 'workflow',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.appError).toHaveProperty('requiredFields', [{ name: 'Solo' }])
+    })
+
+    test('matches the singular "required field:" pattern with no space after the colon', () => {
+      const error = new YouTrackApiError('Bad request', 400, {
+        error_description: 'required field:Solo',
+        error_type: 'workflow',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.appError).toHaveProperty('requiredFields', [{ name: 'Solo' }])
+    })
+
+    test('matches the plural "required fields:" pattern', () => {
+      const error = new YouTrackApiError('Bad request', 400, {
+        error_description: 'required fields: Aaa, Bbb',
+        error_type: 'workflow',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.appError).toHaveProperty('requiredFields', [{ name: 'Aaa' }, { name: 'Bbb' }])
+    })
+
+    test('matches the unquoted "field X is required" pattern', () => {
+      const error = new YouTrackApiError('Bad request', 400, {
+        error_description: 'field URL is required',
+        error_type: 'workflow',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.appError).toHaveProperty('requiredFields', [{ name: 'URL' }])
+    })
+
+    test('does not run the quoted fallback once a primary pattern matched', () => {
+      const error = new YouTrackApiError('Bad request', 400, {
+        error_description: 'requires these custom fields: Primary. Fill "Extra"',
+        error_type: 'workflow',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.appError).toHaveProperty('requiredFields', [{ name: 'Primary' }])
+    })
+
+    test('quoted fallback tolerates an absent error_description candidate', () => {
+      const error = new YouTrackApiError('fill "Msg"', 400, { error_type: 'workflow' })
+      const result = classifyYouTrackError(error)
+      expect(result.appError).toHaveProperty('requiredFields', [{ name: 'Msg' }])
+    })
+
+    test('field-is-required path drops a captured stopword name', () => {
+      const error = new YouTrackApiError('Bad request', 400, {
+        error_description: 'field custom field is required',
+        error_type: 'workflow',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.appError).toHaveProperty('requiredFields', [])
+    })
+
+    test('quoted fallback drops a captured stopword name', () => {
+      const error = new YouTrackApiError('fill "field" please', 400, { error_type: 'workflow' })
+      const result = classifyYouTrackError(error)
+      expect(result.appError).toHaveProperty('requiredFields', [])
+    })
+  })
+
+  describe('classifyWorkflowValidationError context', () => {
+    test('preserves the provided projectId', () => {
+      const error = new YouTrackApiError('Bad request', 400, {
+        error_description: 'requires these custom fields: X',
+        error_type: 'workflow',
+      })
+      const result = classifyYouTrackError(error, { projectId: 'PROJ-9' })
+      expect(result.appError).toHaveProperty('projectId', 'PROJ-9')
+    })
+
+    test('falls back to projectId "unknown" when no context is given', () => {
+      const error = new YouTrackApiError('Bad request', 400, {
+        error_description: 'requires these custom fields: X',
+        error_type: 'workflow',
+      })
+      const result = classifyYouTrackError(error)
+      expect(result.appError).toHaveProperty('projectId', 'unknown')
+    })
+  })
+
+  describe('classifyApiError 400 invalid body', () => {
+    test('classifies a 400 with an invalid body as validation-failed without throwing', () => {
+      const error = new YouTrackApiError('Bad request', 400, { error_description: 123 })
+      const result = classifyYouTrackError(error)
+      expect(result.appError.code).toBe('validation-failed')
+    })
+  })
+
+  describe('classifyNotFoundError context fallbacks', () => {
+    test('falls back to projectId "unknown" when no context is given', () => {
+      const error = new YouTrackApiError('Project not found', 404, {})
+      const result = classifyYouTrackError(error)
+      expect(result.appError.code).toBe('project-not-found')
+      expect(result.appError).toHaveProperty('projectId', 'unknown')
+    })
+
+    test('falls back to commentId "unknown" when no context is given', () => {
+      const error = new YouTrackApiError('Comment not found', 404, {})
+      const result = classifyYouTrackError(error)
+      expect(result.appError.code).toBe('comment-not-found')
+      expect(result.appError).toHaveProperty('commentId', 'unknown')
+    })
+
+    test('falls back to labelName "unknown" when no context is given', () => {
+      const error = new YouTrackApiError('Tag not found', 404, {})
+      const result = classifyYouTrackError(error)
+      expect(result.appError.code).toBe('label-not-found')
+      expect(result.appError).toHaveProperty('labelName', 'unknown')
+    })
+
+    test('falls back to resourceId "unknown" for a saved query without context', () => {
+      const error = new YouTrackApiError('saved query not found', 404, {})
+      const result = classifyYouTrackError(error)
+      expect(result.appError.code).toBe('not-found')
+      expect(result.appError).toHaveProperty('resourceType', 'Saved query')
+      expect(result.appError).toHaveProperty('resourceId', 'unknown')
+    })
+  })
+
+  describe('YouTrackClassifiedError name', () => {
+    test('sets the error name to YouTrackClassifiedError', () => {
+      const error = new YouTrackApiError('Issue not found', 404, {})
+      const result = classifyYouTrackError(error, { taskId: 'T-1' })
+      expect(result.name).toBe('YouTrackClassifiedError')
+    })
+  })
 })

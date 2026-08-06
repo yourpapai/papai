@@ -91,7 +91,7 @@
   "plugins/task-provider-kaneo/validation-error.ts": 0,
   "plugins/task-provider-youtrack/bundle-cache.ts": 0.6067415730337079,
   "plugins/task-provider-youtrack/bundle-values.ts": 0.4838709677419355,
-  "plugins/task-provider-youtrack/classify-error.ts": 0.6036363636363636,
+  "plugins/task-provider-youtrack/classify-error.ts": 0.9490909090909091,
   "plugins/task-provider-youtrack/collaboration-provider.ts": 0,
   "plugins/task-provider-youtrack/create-field-helpers.ts": 0.46511627906976744,
   "plugins/task-provider-youtrack/custom-field-values.ts": 0,
