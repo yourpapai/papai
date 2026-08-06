@@ -148,4 +148,91 @@ describe('Select.svelte', () => {
     expect(target.querySelector('.ui-select--invalid')).toBeNull()
     void unmount(c)
   })
+
+  test('renders an optgroup per group with its options nested', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Select, {
+      target,
+      props: {
+        value: 'tools',
+        groups: [
+          {
+            label: 'Personal',
+            options: [
+              { value: 'profile', label: 'Profile' },
+              { value: 'tools', label: 'Tools' },
+            ],
+          },
+          { label: 'Admin', options: [{ value: 'users', label: 'Users' }] },
+        ],
+      },
+    })
+    const optgroups = target.querySelectorAll('optgroup')
+    expect(optgroups.length).toBe(2)
+    expect(optgroups[0]!.getAttribute('label')).toBe('Personal')
+    expect(optgroups[0]!.querySelectorAll('option').length).toBe(2)
+    expect(optgroups[1]!.getAttribute('label')).toBe('Admin')
+    expect(target.querySelector<HTMLSelectElement>('select')!.value).toBe('tools')
+    void unmount(component)
+  })
+
+  test('a grouped select emits onChange with the picked value', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    let picked = ''
+    const component = mount(Select, {
+      target,
+      props: {
+        value: 'profile',
+        groups: [
+          {
+            label: 'Personal',
+            options: [
+              { value: 'profile', label: 'Profile' },
+              { value: 'tools', label: 'Tools' },
+            ],
+          },
+        ],
+        onChange: (v: string) => {
+          picked = v
+        },
+      },
+    })
+    const sel = target.querySelector<HTMLSelectElement>('select')!
+    sel.value = 'tools'
+    sel.dispatchEvent(new Event('change', { bubbles: true }))
+    expect(picked).toBe('tools')
+    void unmount(component)
+  })
+
+  test('block adds the full-width modifier class', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Select, {
+      target,
+      props: { value: 'a', options: [{ value: 'a', label: 'A' }], block: true },
+    })
+    expect(target.querySelector('.ui-select--block')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('a flat select carries no optgroup and no block modifier', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Select, {
+      target,
+      props: {
+        value: 'a',
+        options: [
+          { value: 'a', label: 'A' },
+          { value: 'b', label: 'B' },
+        ],
+      },
+    })
+    expect(target.querySelectorAll('optgroup').length).toBe(0)
+    expect(target.querySelector('.ui-select--block')).toBeNull()
+    expect(target.querySelectorAll('option').length).toBe(2)
+    void unmount(component)
+  })
 })
