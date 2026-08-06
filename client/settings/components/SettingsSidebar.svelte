@@ -78,14 +78,14 @@
   }
   .settings-sidebar__group--danger {
     border-left: 2px solid var(--danger);
-    padding-left: 10px;
-    margin-left: -12px;
+    padding-left: var(--s3);
+    margin-left: calc(-1 * var(--s3));
   }
   .settings-sidebar__kicker {
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin-bottom: 6px;
+    gap: var(--s2);
+    margin-bottom: var(--s2);
   }
   .settings-sidebar__kicker--toggle {
     background: none;
@@ -103,10 +103,12 @@
     color: var(--danger);
     border: 1px solid var(--danger);
     border-radius: var(--radius-pill);
-    padding: 0 6px;
+    padding: 0 var(--s2);
     font-size: 9px;
     letter-spacing: 0.08em;
   }
+  /* 2px is below the 4px scale on purpose: at --s1 (4px) a 16-item admin nav grows by
+     14px, which is what pushes its tail out of a short viewport. */
   .settings-sidebar__nav {
     display: flex;
     flex-direction: column;
@@ -115,7 +117,7 @@
   .settings-sidebar__link {
     color: var(--text-muted);
     text-decoration: none;
-    padding: 6px 8px;
+    padding: var(--s2);
     font-family: var(--font-mono);
     font-size: 12px;
     border-left: 2px solid transparent;

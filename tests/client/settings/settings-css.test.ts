@@ -22,8 +22,20 @@ describe('settings.css', () => {
     expect(css).toContain('var(--gap-group)')
     expect(css).toContain('var(--gap-section)')
   })
-  test('focus ring uses accent at reduced alpha', () => {
-    expect(css).toContain(':focus-visible')
+  test('the focus ring uses the shared tokens rather than a copied literal', () => {
+    const m = css.match(/[^}]*:focus-visible \{[^}]*\}/u)
+    expect(m).not.toBeNull()
+    const [rule] = m!
+    expect(rule).toContain('outline: var(--focus-ring)')
+    expect(rule).toContain('outline-offset: var(--focus-ring-offset)')
+    expect(css).not.toContain('rgba(82, 224, 138, 0.4)')
+  })
+
+  test('the focus ring covers the chrome outside the grid, not just the grid', () => {
+    const m = css.match(/[^}]*:focus-visible \{[^}]*\}/u)
+    const [rule] = m!
+    expect(rule).toContain('.ui-shell')
+    expect(rule).toContain('.settings-gate')
   })
   test('admin zone has a danger divider', () => {
     expect(css).toContain('.settings-admin-zone')

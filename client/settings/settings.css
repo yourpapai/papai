@@ -140,9 +140,13 @@
 }
 
 /* ---- shared focus ring ---- */
-.settings-grid :focus-visible {
-  outline: 2px solid rgba(82, 224, 138, 0.4);
-  outline-offset: 1px;
+/* .ui-shell rather than .settings-grid: the top bar, the jump menu, and the gates all
+   render outside the grid, so scoping there left the context switcher, sign-out, and
+   the only small-screen navigation with the UA default ring. */
+.ui-shell :focus-visible,
+.settings-gate :focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* Below this the sidebar hides and the jump menu takes over. 900px, not 720px: with a
