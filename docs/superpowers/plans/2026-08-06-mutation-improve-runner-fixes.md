@@ -401,15 +401,25 @@ git commit -m "fix(mutation-improve): write agent artifacts to per-iteration dir
 ### Task 4: failure.json + file in failed entries (Unit B)
 
 `failIter` drops the file and never writes the spec'd `iter/<N>/failure.json`.
-Add a `recordFailure` helper used by every failure path.
+Add a `recordFailure` helper (single failure sink), thread the file through,
+and update/extend tests.
+
+> **Execution amendment (controller-authorized):** the verbatim in-pipeline
+> implementation pushed `pipeline.ts` over the repo's 300-line `max-lines`
+> gate, so `recordFailure` + `FailureEntry` live in a new
+> `mutation-improve/src/failure-recorder.ts` with direct unit tests in
+> `tests/mutation-improve/failure-recorder.test.ts`; `pipeline.ts` imports and
+> delegates. Behavior is identical to the inline version below.
 
 **Files:**
+- Create: `mutation-improve/src/failure-recorder.ts`
 - Modify: `mutation-improve/src/pipeline.ts`
-- Test: `tests/mutation-improve/pipeline.test.ts`
+- Test: `tests/mutation-improve/failure-recorder.test.ts`, `tests/mutation-improve/pipeline.test.ts`
 
 **Interfaces:**
-- Consumes: `iterDir(runDir, iter)` from `run-state.ts` (already imported in pipeline.ts).
-- Produces: `PhaseFail` gains `file?: string`; `failIter` gains a trailing
+- Consumes: `iterDir(runDir, iter)` from `run-state.ts`.
+- Produces: `recordFailure(runState: MutationImproveRunState, iter: number, gate: string, reason: string, file?: string): Promise<FailureEntry>` (new module);
+  `PhaseFail` gains `file?: string`; `failIter` gains a trailing
   `file?: string` parameter; every failure writes
   `<runDir>/iter/<N>/failure.json` containing `{iter, gate, reason, file?}`.
 
@@ -490,7 +500,9 @@ Expected: FAIL — updated exception test sees `failed` without `file`;
 
 In `mutation-improve/src/pipeline.ts`:
 
-1. Change the fs import to `import { mkdir, writeFile } from 'node:fs/promises'`.
+1. Leave the fs import as `import { mkdir } from 'node:fs/promises'` (writeFile
+   lives in the new module). Add
+   `import { recordFailure, type FailureEntry } from './failure-recorder.js'`.
 2. Change the `PhaseFail` type:
 
 ```typescript
@@ -505,30 +517,34 @@ type PhaseFail = { ok: false; gate: string; reason: string; file?: string }
   }
 ```
 
-4. Replace `failIter` with `recordFailure` + a slimmer `failIter`:
+4. Create `mutation-improve/src/failure-recorder.ts` (with the repo SPDX
+   header) containing `FailureEntry` + `recordFailure`, and slim `failIter` in
+   pipeline.ts to delegate:
 
 ```typescript
-type FailureEntry = { iter: number; gate: string; reason: string; file?: string }
+// failure-recorder.ts (imports: node:fs/promises writeFile, node:path,
+// { iterDir, type MutationImproveRunState } from './run-state.js')
+export type FailureEntry = { iter: number; gate: string; reason: string; file?: string }
 
 // Single failure sink: every failed iteration leaves a durable
 // iter/<N>/failure.json (runner-spec artifact) and a state.json entry. The
 // file is recorded when known so the summary PR can name what was attempted.
-async function recordFailure(
-  deps: PipelineDeps,
+export async function recordFailure(
+  runState: MutationImproveRunState,
   iter: number,
   gate: string,
   reason: string,
   file?: string,
 ): Promise<FailureEntry> {
   const entry: FailureEntry = file === undefined ? { iter, gate, reason } : { iter, gate, reason, file }
-  await writeFile(
-    path.join(iterDir(deps.runState.runDir, iter), 'failure.json'),
-    `${JSON.stringify(entry, null, 2)}\n`,
-  )
-  deps.runState.failed.push(entry)
+  await writeFile(path.join(iterDir(runState.runDir, iter), 'failure.json'), `${JSON.stringify(entry, null, 2)}\n`)
+  runState.failed.push(entry)
   return entry
 }
+```
 
+```typescript
+// pipeline.ts — failIter delegates
 async function failIter(
   deps: PipelineDeps,
   iter: number,
@@ -537,12 +553,17 @@ async function failIter(
   reason: string,
   file?: string,
 ): Promise<IterationResult> {
-  const entry = await recordFailure(deps, iter, gate, reason, file)
+  const entry = await recordFailure(deps.runState, iter, gate, reason, file)
   await deps.resetWorktree(worktreePath)
   await deps.removeWorktree(deps.config.repoRoot, worktreePath, runIdFor(deps, iter), deps.config.prBranchPrefix)
   return { ...entry, outcome: 'failed' }
 }
 ```
+
+Also create `tests/mutation-improve/failure-recorder.test.ts` (test-first,
+before the module): direct unit tests that `recordFailure` writes
+`iter/<N>/failure.json` and pushes the state entry — with `file` when known,
+without the key when not.
 
 5. In `runIteration`: declare `let file: string | undefined` next to
    `worktreeCreated`; pass `sel.file` on the select-gate failure; set
@@ -555,7 +576,7 @@ async function failIter(
     // If createWorktree itself threw there is nothing to reset/remove; record
     // the failure (no file — selection never ran) so the run is not dropped.
     if (!worktreeCreated) {
-      await recordFailure(deps, iter, 'exception', reason)
+      await recordFailure(deps.runState, iter, 'exception', reason)
       return { iter, outcome: 'failed', gate: 'exception', reason }
     }
     return failIter(deps, iter, worktreePath, 'exception', reason, file)
@@ -574,7 +595,7 @@ expectation (no file) and still passes.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add mutation-improve/src/pipeline.ts tests/mutation-improve/pipeline.test.ts
+git add mutation-improve/src/failure-recorder.ts mutation-improve/src/pipeline.ts tests/mutation-improve/failure-recorder.test.ts tests/mutation-improve/pipeline.test.ts
 git commit -m "fix(mutation-improve): record failure.json and file on failed iterations"
 ```
 
@@ -945,9 +966,18 @@ git commit -m "fix(mutation-improve): push integration branch and PR with explic
 A skip means the floor was stale. Ratchet `baseline.json` directly in repoRoot
 (on the guarded integration branch) with a baseline-only commit.
 
+> **Execution amendment (controller-authorized, anticipated from Task 4):**
+> `pipeline.ts` is near the repo's 300-line `max-lines` gate, so
+> `ratchetVerifiedSkip` lives in a new `mutation-improve/src/skip-ratchet.ts`
+> (importing `type { PipelineDeps }` from `'./pipeline.js'` — type-only
+> circularity is fine) with direct unit tests in
+> `tests/mutation-improve/skip-ratchet.test.ts`. `pipeline.ts` imports and calls
+> it. Behavior identical to the inline version below.
+
 **Files:**
-- Modify: `mutation-improve/src/pipeline.ts` (`runIteration` skip path + helper)
-- Test: `tests/mutation-improve/pipeline.test.ts`
+- Create: `mutation-improve/src/skip-ratchet.ts`
+- Modify: `mutation-improve/src/pipeline.ts` (`runIteration` skip path)
+- Test: `tests/mutation-improve/skip-ratchet.test.ts`, `tests/mutation-improve/pipeline.test.ts`
 
 **Interfaces:**
 - Consumes: `bumpScore`, `BaselineMap` (already imported in pipeline.ts).
@@ -1011,7 +1041,9 @@ Expected: FAIL — baseline stays 0.46, no add/commit calls recorded.
 
 - [ ] **Step 3: Implement ratchetVerifiedSkip**
 
-In `mutation-improve/src/pipeline.ts`, add above `skipIter`:
+Create `mutation-improve/src/skip-ratchet.ts` (with the repo SPDX header;
+imports: `bumpScore`/`BaselineMap` from `'./baseline.js'`,
+`import type { PipelineDeps } from './pipeline.js'`):
 
 ```typescript
 // A skip means the measured score already clears the threshold while the
@@ -1037,7 +1069,7 @@ async function ratchetVerifiedSkip(
 }
 ```
 
-In `runIteration`, change the skip branch:
+In `runIteration` (pipeline.ts), change the skip branch (`import { ratchetVerifiedSkip } from './skip-ratchet.js'` at the top):
 
 ```typescript
     const beforeScore = await deps.measureScore(worktreePath, selection.file)
@@ -1056,7 +1088,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add mutation-improve/src/pipeline.ts tests/mutation-improve/pipeline.test.ts
+git add mutation-improve/src/skip-ratchet.ts mutation-improve/src/pipeline.ts tests/mutation-improve/skip-ratchet.test.ts tests/mutation-improve/pipeline.test.ts
 git commit -m "fix(mutation-improve): ratchet baseline floor on threshold-verified skips"
 ```
 
