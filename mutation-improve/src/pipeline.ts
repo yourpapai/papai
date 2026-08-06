@@ -38,7 +38,7 @@ export interface PipelineDeps {
   removeWorktree: (repoRoot: string, worktreePath: string, runId: string, branchPrefix: string) => Promise<void>
   mergeWorktree: (repoRoot: string, branchName: string) => Promise<MergeResult>
   execGit: (cwd: string, args: readonly string[]) => Promise<{ stdout: string; stderr: string }>
-  runBuildCheck: () => Promise<{ passed: boolean; stdout: string; stderr: string }>
+  runBuildCheck: (worktreePath: string) => Promise<{ passed: boolean; stdout: string; stderr: string }>
   measureScore: (worktreePath: string, srcFile: string) => Promise<number>
   readBaseline: (repoRoot: string) => Promise<BaselineMap>
   writeBaseline: (repoRoot: string, map: BaselineMap) => Promise<void>
@@ -126,7 +126,7 @@ async function gatePhase(
   if (!diff.ok) {
     return { ok: false, gate: 'diff-scope', reason: `forbidden paths changed: ${diff.violations.join(', ')}` }
   }
-  const build = await deps.runBuildCheck()
+  const build = await deps.runBuildCheck(worktreePath)
   if (!build.passed) {
     return { ok: false, gate: 'build', reason: build.stderr || build.stdout }
   }

@@ -287,6 +287,17 @@ describe('pipeline runIteration', () => {
     expect(calls.remove).toBe(0)
     expect(deps.runState.failed).toEqual([{ iter: 1, gate: 'exception', reason: 'worktree add failed' }])
   })
+
+  test('build gate runs checkCommand inside the iteration worktree', async () => {
+    const deps = happyDeps()
+    let buildCwd = ''
+    deps.runBuildCheck = (worktreePath: string): Promise<{ passed: boolean; stdout: string; stderr: string }> => {
+      buildCwd = worktreePath
+      return Promise.resolve({ passed: true, stdout: '', stderr: '' })
+    }
+    await runIteration(deps, 1)
+    expect(buildCwd).toBe(path.join(deps.config.workDir, 'worktrees', 'r1-iter1'))
+  })
 })
 
 describe('pipeline runPipeline', () => {

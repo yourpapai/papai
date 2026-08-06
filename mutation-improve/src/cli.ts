@@ -151,8 +151,8 @@ function buildPipelineDeps(
     removeWorktree,
     mergeWorktree,
     execGit,
-    runBuildCheck: () => {
-      const exec = createShellExec(runState.runDir, config.checkCommand, config.buildTimeoutMs)
+    runBuildCheck: (worktreePath: string) => {
+      const exec = createShellExec(worktreePath, config.checkCommand, config.buildTimeoutMs)
       return runBuildCheck({ exec: () => exec() })
     },
     measureScore: (worktreePath: string, srcFile: string) => {
