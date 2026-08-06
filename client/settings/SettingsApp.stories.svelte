@@ -26,3 +26,11 @@
 <!-- No settingsReady parameter, so the session singleton stays at its reset 'loading' status:
      the pre-bootstrap gate every settings visit passes through before the shell mounts. -->
 <Story name="Loading" parameters={{ fixtures: 'settings-shell-ready' }} />
+
+<!-- The 401 gate: an expired or already-used settings link. No retry, because retrying cannot help. -->
+<Story
+  name="Unauthenticated"
+  parameters={{ fixtures: 'settings-shell-ready', settingsGate: 'unauthenticated' }} />
+
+<!-- Everything that is not a 401 -- 5xx, 429, a dropped connection. The link is still good, so this one retries. -->
+<Story name="Failed" parameters={{ fixtures: 'settings-shell-ready', settingsGate: 'failed' }} />
