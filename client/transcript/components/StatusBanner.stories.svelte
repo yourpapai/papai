@@ -6,9 +6,9 @@
 <script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf'
 
-  import StatusBanner from './components/StatusBanner.svelte'
+  import StatusBanner from './StatusBanner.svelte'
 
-  const { Story } = defineMeta({ title: 'transcript/TranscriptApp', component: StatusBanner })
+  const { Story } = defineMeta({ title: 'transcript/StatusBanner', component: StatusBanner })
 </script>
 
 <Story name="Connecting" args={{ status: 'connecting' }} />
@@ -20,7 +20,5 @@
 <Story name="Recording disabled" args={{ status: 'recording-disabled' }} />
 
 <Story name="Invalid token" args={{ status: 'invalid-token' }} />
-
-<!-- Review-only state: the sixth ViewerStatus, which no existing story rendered. -->
 
 <Story name="Error" args={{ status: 'error' }} />
