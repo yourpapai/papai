@@ -8,6 +8,7 @@
   "epsilon": 0.02,
   "mutateTimeoutMs": 1800000,
   "buildTimeoutMs": 1800000,
+  "buildFixAttempts": 2,
   "checkCommand": "CI=true bun check:full",
   "mutateFileCommand": "bun test:mutate:file",
   "agent": {

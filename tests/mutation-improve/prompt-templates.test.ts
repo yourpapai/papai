@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { buildImprovePrompt, buildSelectPrompt } from '../../mutation-improve/src/prompt-templates.js'
+import { buildFixPrompt, buildImprovePrompt, buildSelectPrompt } from '../../mutation-improve/src/prompt-templates.js'
 
 describe('prompt-templates', () => {
   test('buildSelectPrompt names the output path, the done-set, and the rejection rules', () => {
@@ -49,5 +49,22 @@ describe('prompt-templates', () => {
     })
     expect(prompt).toContain('ONLY under tests/ and docs/superpowers/')
     expect(prompt).toContain('do not create copies')
+  })
+
+  test('buildFixPrompt embeds the failed check output, the attempt budget, and the hard constraints', () => {
+    const prompt = buildFixPrompt({
+      file: 'src/foo.ts',
+      attempt: 1,
+      maxAttempts: 2,
+      buildOutput: '✗ format:check failed (exit code 1)\ntests/foo.test.ts',
+      outputPath: '/wt/.review-loop/result.json',
+    })
+    expect(prompt).toContain('src/foo.ts')
+    expect(prompt).toContain('✗ format:check failed (exit code 1)')
+    expect(prompt).toContain('tests/foo.test.ts')
+    expect(prompt).toContain('1 of 2')
+    expect(prompt).toContain('MUST NOT edit anything under src/')
+    expect(prompt).toContain('ONLY under tests/ and docs/superpowers/')
+    expect(prompt).toContain('/wt/.review-loop/result.json')
   })
 })

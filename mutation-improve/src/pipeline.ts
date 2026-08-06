@@ -9,7 +9,7 @@ import path from 'node:path'
 import { agentWritePath, type AgentRunResult } from '../../review-loop/src/agent-runner.js'
 import type { MergeResult } from '../../review-loop/src/worktree.js'
 import { bumpScore, type BaselineMap } from './baseline.js'
-import { recordBuildFailure } from './build-gate.js'
+import { runBuildGateWithRetries } from './build-gate.js'
 import type { MutationImproveConfig } from './config.js'
 import { runDiffGuard } from './diff-guard.js'
 import { recordFailure, type FailureEntry } from './failure-recorder.js'
@@ -122,28 +122,30 @@ async function improvePhase(
 // mutation-score run on tampered inputs. The after-score is runner-measured;
 // the residual escape hatch only opens when the agent declared residuals AND
 // the measured score lands within epsilon of the threshold. Build-gate failures
-// persist their full output via recordBuildFailure (see build-gate.ts).
+// are fed back to the agent for up to config.buildFixAttempts fix-and-re-gate
+// cycles (see runBuildGateWithRetries in build-gate.ts) before failing.
 async function gatePhase(
   deps: PipelineDeps,
   iterPath: string,
   worktreePath: string,
   file: string,
   improved: Result,
-): Promise<PhaseResult<number>> {
+): Promise<PhaseResult<{ afterScore: number; result: Result }>> {
   const diff = await runDiffGuard(deps.execGit, worktreePath)
   if (!diff.ok) {
     return { ok: false, gate: 'diff-scope', reason: `forbidden paths changed: ${diff.violations.join(', ')}` }
   }
-  const build = await deps.runBuildCheck(worktreePath)
-  if (!build.passed) {
-    return { ok: false, gate: 'build', reason: await recordBuildFailure(iterPath, build) }
-  }
+  const buildGate = await runBuildGateWithRetries(
+    { execGit: deps.execGit, runBuildCheck: deps.runBuildCheck, runImproveAgent: deps.runImproveAgent, log: deps.log },
+    { iterPath, worktreePath, file, attempt: 1, maxAttempts: deps.config.buildFixAttempts, improved },
+  )
+  if (!buildGate.ok) return buildGate
   const afterScore = await deps.measureScore(worktreePath, file)
-  const justified = improved.residuals.length > 0 && afterScore >= deps.config.threshold - deps.config.epsilon
+  const justified = buildGate.value.residuals.length > 0 && afterScore >= deps.config.threshold - deps.config.epsilon
   if (afterScore < deps.config.threshold && !justified) {
     return { ok: false, gate: 'score', reason: `afterScore ${afterScore} < threshold ${deps.config.threshold}` }
   }
-  return { ok: true, value: afterScore }
+  return { ok: true, value: { afterScore, result: buildGate.value } }
 }
 
 // ⑥ RATCHET (runner-owned) → ⑦ MERGE. The baseline bump is written into the
@@ -159,9 +161,9 @@ async function finalizePhase(
   file: string,
   baseline: BaselineMap,
   beforeScore: number,
-  afterScore: number,
-  improved: Result,
+  gate: { afterScore: number; result: Result },
 ): Promise<IterationResult> {
+  const { afterScore, result } = gate
   const bumped = bumpScore(baseline, file, afterScore)
   // C1: write the baseline bump into the WORKTREE (not repoRoot) and commit the
   // agent's spec/plan/test outputs together with the bump on the worktree
@@ -195,8 +197,8 @@ async function finalizePhase(
     beforeScore,
     afterScore,
     iter,
-    specPath: improved.specPath,
-    planPath: improved.planPath,
+    specPath: result.specPath,
+    planPath: result.planPath,
   })
   return { iter, outcome: 'improved', file, beforeScore, afterScore }
 }
@@ -260,7 +262,7 @@ export async function runIteration(deps: PipelineDeps, iter: number): Promise<It
     const gate = await gatePhase(deps, iterPath, worktreePath, selection.file, improved)
     if (!gate.ok) return await failIter(deps, iter, worktreePath, gate.gate, gate.reason, file)
 
-    return await finalizePhase(deps, iter, worktreePath, selection.file, baseline, beforeScore, gate.value, improved)
+    return await finalizePhase(deps, iter, worktreePath, selection.file, baseline, beforeScore, gate.value)
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
     // If createWorktree itself threw there is nothing to reset/remove; record

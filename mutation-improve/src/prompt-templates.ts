@@ -41,6 +41,39 @@ export function buildSelectPrompt(input: {
   ].join('\n')
 }
 
+export function buildFixPrompt(input: {
+  file: string
+  attempt: number
+  maxAttempts: number
+  buildOutput: string
+  outputPath: string
+}): string {
+  return [
+    `You are the FIX phase of an autonomous mutation-coverage improvement runner.`,
+    `The runner's build gate (the repo's full check suite) FAILED in your worktree after your`,
+    `changes for ${input.file}. This is fix attempt ${input.attempt} of ${input.maxAttempts}.`,
+    '',
+    'Failed check output (tail):',
+    '---',
+    input.buildOutput,
+    '---',
+    '',
+    'Diagnose the failure and fix the cause. The output names the failing check and the files it',
+    'rejected; those are files YOU created or modified. Typical causes: formatting (run the',
+    "repo's formatter on your files), lint, typecheck errors, or a failing test you added.",
+    'Re-run the failing check until it passes before finishing.',
+    '',
+    'HARD CONSTRAINTS (unchanged; the runner verifies these and REJECTS the iteration if violated):',
+    '- MUST NOT edit anything under src/, client/, plugins/, or scripts/.',
+    '- Create or modify files ONLY under tests/ and docs/superpowers/, plus the one result JSON',
+    '  below - do not create copies of it anywhere else.',
+    '',
+    `When done, REWRITE your result JSON to this ABSOLUTE path: ${input.outputPath}`,
+    'Schema: { specPath: string, planPath: string, testPaths: string[] (>=1),',
+    'residuals: [{loc, why}], notes: string }.',
+  ].join('\n')
+}
+
 export function buildImprovePrompt(input: {
   file: string
   beforeScore: number

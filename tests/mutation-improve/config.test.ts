@@ -32,6 +32,13 @@ describe('config', () => {
     expect(parsed.agent.timeoutMs).toBe(1_800_000)
     expect(parsed.mutateTimeoutMs).toBe(1_800_000)
     expect(parsed.buildTimeoutMs).toBe(1_800_000)
+    expect(parsed.buildFixAttempts).toBe(2)
+  })
+
+  test('MutationImproveConfigSchema honors an explicit buildFixAttempts and rejects negatives', () => {
+    expect(MutationImproveConfigSchema.parse({ ...minimalValid, buildFixAttempts: 0 }).buildFixAttempts).toBe(0)
+    expect(MutationImproveConfigSchema.parse({ ...minimalValid, buildFixAttempts: 5 }).buildFixAttempts).toBe(5)
+    expect(() => MutationImproveConfigSchema.parse({ ...minimalValid, buildFixAttempts: -1 })).toThrow()
   })
 
   test('MutationImproveConfigSchema strips the legacy agentTimeoutMs key', () => {
