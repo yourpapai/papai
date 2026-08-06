@@ -89,7 +89,18 @@ whole class rather than the one instance.
 
 ### S1-2 Resuming `PR_DELIVERY` on a fresh runner cannot work — by inspection — **[FIXED]**
 
-_Fixed: phase 3 now pushes, and `PR_DELIVERY` is purely API-side, so it needs no working tree._
+_Fixed and verified. Phase 3 commits **and pushes**, so the work is durable
+before the phase that made it returns; `PR_DELIVERY` makes zero `deps.git` calls
+and derives its branch from `branchNameFor(issueId)` rather than the persisted
+`state.branch`. The phase boundary now matches the durability boundary, which is
+what `resumeFrom` always assumed.
+
+Regression coverage closes **S6-2** at the same time: a `hostileGit()` fake that
+throws on every operation drives a full resume — delivery fails once, the state
+parks at `resumeFrom: PR_DELIVERY`, and a fresh runner with no working tree
+retries and opens the pull request. Both new tests were mutation-checked by
+reintroducing the original defects (a `git.push` in delivery, and a push ordered
+before the last commit); each test goes red, so neither is vacuous._
 
 `src/phases/deliver.ts:18-34` calls `deps.git.push(branch)` without first
 calling `ensureBranch`. That is correct only when phase 4 runs in the same job

@@ -192,6 +192,25 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
   return { deps, io }
 }
 
+/**
+ * A Git that refuses every operation — the shape a fresh runner presents to a
+ * phase that assumes a working tree it never created. `PR_DELIVERY` must be
+ * able to run against this, because on a retry that is exactly what it gets.
+ */
+const hostileGit = (): Git => {
+  const refuse = (operation: string): never => {
+    throw new Error(`git ${operation} must not run on a fresh runner`)
+  }
+
+  return {
+    ensureBranch: (): Promise<void> => refuse('ensureBranch'),
+    hasChanges: (): Promise<boolean> => refuse('status'),
+    commitAll: (): Promise<boolean> => refuse('commit'),
+    push: (): Promise<void> => refuse('push'),
+    currentSha: (): Promise<string> => refuse('rev-parse'),
+  }
+}
+
 const latestPostedState = (harness: Harness): AgentState | null => {
   const last = harness.io.posted.at(-1)
   return last === undefined ? null : extractState(last)
@@ -432,6 +451,45 @@ describe('implementation and delivery', () => {
     const pushIndex = harness.io.gitCalls.indexOf(`push:agent/issue-${ISSUE}`)
     expect(pushIndex).toBeGreaterThan(-1)
     expect(harness.io.gitCalls.filter((call) => call.startsWith('commit:'))).toHaveLength(2)
+  })
+
+  test('pushes before the phase ends, so the commit outlives the job', async () => {
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    const calls = harness.io.gitCalls
+    const push = calls.indexOf(`push:agent/issue-${ISSUE}`)
+    const lastCommit = calls.map((call) => call.startsWith('commit:')).lastIndexOf(true)
+
+    // An Actions working tree dies with the job: a commit that is not pushed by
+    // the end of the phase that made it cannot be recovered by any later retry.
+    expect(push).toBeGreaterThan(lastCommit)
+  })
+
+  test('resumes delivery on a fresh runner, touching git not at all', async () => {
+    // The job that implemented the work pushed the branch, then died before the
+    // pull request existed. This is the scenario that used to be unrecoverable:
+    // delivery pushed a branch that a fresh checkout does not have locally.
+    harness.deps.github.createPullRequest = (): Promise<PullRequestRef> => {
+      throw new Error('GitHub was down')
+    }
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+    expect(latestPostedState(harness)?.resumeFrom).toBe('PR_DELIVERY')
+    expect(harness.io.gitCalls).toContain(`push:agent/issue-${ISSUE}`)
+
+    // A brand-new runner: no branch checked out, no commit, no working tree.
+    harness.io.posted.length = 0
+    harness.deps.git = hostileGit()
+    harness.deps.github.createPullRequest = (input): Promise<PullRequestRef> => {
+      harness.io.prBodies.push(input.body)
+      return Promise.resolve({ number: 7, url: 'https://example.test/pull/7' })
+    }
+
+    const result = await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.posted.at(-1)).toContain('https://example.test/pull/7')
+    expect(harness.io.prBodies.at(-1)).toContain(`Closes #${ISSUE}`)
   })
 
   test('opens a pull request that closes the issue', async () => {
