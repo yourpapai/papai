@@ -125,7 +125,7 @@
   "plugins/task-provider-youtrack/phase-five-provider.ts": 0,
   "plugins/task-provider-youtrack/prompt-addendum.ts": 0.7222222222222222,
   "plugins/task-provider-youtrack/provider.ts": 0.46,
-  "plugins/task-provider-youtrack/query-builder.ts": 0.4727272727272727,
+  "plugins/task-provider-youtrack/query-builder.ts": 1,
   "plugins/task-provider-youtrack/relations.ts": 0.6037735849056604,
   "plugins/task-provider-youtrack/schemas/activity.ts": 1,
   "plugins/task-provider-youtrack/schemas/agile.ts": 1,
