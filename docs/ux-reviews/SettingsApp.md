@@ -24,15 +24,15 @@ the frame.
 
 | Dimension                       | Score | Rationale (one line)                                                                                                                    |
 | ------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Visual hierarchy & scanning  | warn  | The Personal/Advanced/Admin kickers and the red ADMIN zone read cleanly, but an admin gets 30 flat sidebar links of which only 10 collapse |
-| 2. Affordance & signifiers      | warn  | Sidebar active/hover states are unambiguous; the inline Advanced disclosure is a full-width button styled as a horizontal rule            |
-| 3. Consistency w/ design system | warn  | Sidebar and top bar use shared primitives, but the sole sub-720px navigation is a raw `<select>` rather than the shared `Select`          |
+| 1. Visual hierarchy & scanning  | pass  | The Personal/Advanced/Admin kickers and the red ADMIN zone read cleanly, and Admin (16 items) is now `collapsible: true` like Advanced, so no group is left flat by default |
+| 2. Affordance & signifiers      | pass  | Sidebar active/hover states are unambiguous, and the inline Advanced toggle is now a bordered button with hover/active/focus-visible states instead of a divider |
+| 3. Consistency w/ design system | warn  | The sub-720px navigation now renders the shared `Select` with `optgroup`s, but re-picking the option already selected still fires no change event and does nothing |
 | 4. Feedback & state             | pass  | The bootstrap wait now mounts a real `role="status"` loading state, and a genuine 401 is distinguished from a recoverable failure with an in-page retry |
-| 5. Content & language           | warn  | The Advanced hint names five things for ten sections, and "Analytics"/"BYOK LLM" each appear twice in the nav with no disambiguation      |
-| 6. Accessibility                | warn  | Semantics are sound (`aria-expanded`/`aria-controls`/`aria-current`, real buttons and labels); the loading gate has no live region        |
+| 5. Content & language           | pass  | The Advanced hint is now generated from the group's own item labels (`groupHint`) instead of a hand-written summary, and the Admin-scoped "Analytics policy"/"BYOK keys" no longer collide with the Personal/Advanced labels they used to duplicate |
+| 6. Accessibility                | pass  | Semantics are sound (`aria-expanded`/`aria-controls`/`aria-current`, real buttons and labels), and the loading gate is now a `role="status"` live region |
 | 7. Responsive / layout          | pass  | The sidebar now scrolls inside the grid's own track instead of a sticky `100vh` box, and the single-column breakpoint moved to 900px       |
-| 8. Spacing, alignment & sizing  | warn  | Shell chrome is built from one-off px (20/16/13/12/11/9/6/2) while the sections it frames use the `--gap-*` tokens                        |
-| 9. Interaction & micro-states   | warn  | The focus ring is a hardcoded rgba scoped to `.settings-grid`, so the top bar, jump menu, and both gates fall back to the UA default      |
+| 8. Spacing, alignment & sizing  | warn  | Shell chrome spacing now sits on the `--s*` scale; only font-size literals (12/11/9px) and one intentional sub-scale 2px remain               |
+| 9. Interaction & micro-states   | warn  | The focus ring is now scoped to `.ui-shell`/`.settings-gate` so the top bar, jump menu, and both gates all get it, but its colour is still the hardcoded `rgba(82, 224, 138, 0.4)` literal rather than `var(--accent)` |
 
 ## Findings
 
@@ -66,16 +66,6 @@ Severity-ranked, highest first.
 - **Where visible:** not capturable before this fix — the state had no DOM to shoot. The `Loading` story exercised a branch real users never reached.
 - **Source:** `client/settings/index.ts:26-32` awaited `bootstrapSession(code)` **before** `mount(SettingsApp, { target })`, so the component's `loading` branch could not render in production. What a user saw for the length of the bootstrap round trip was `client/settings/settings.html`'s empty `<div id="app"></div>` — a blank page with no text, no brand mark, and nothing announced to assistive tech.
 - **Fix:** mount first and let the component own the wait, with the loading copy in a `role="status"` region.
-- **Resolved:** sub-project `docs/superpowers/specs/2026-08-05-settingsapp-shell-findings-design.md` (branch `ui-ux-review-02`)
-
-### [Med] The app's focus ring is scoped to the content grid, exempting the three most global controls
-
-- **Id:** settings-app-focus-ring-scoped-to-grid
-- **Status:** fixed
-- **Dimension:** 9. Interaction & micro-states
-- **Where visible:** from source (programmatic focus does not trigger `:focus-visible`, so this is not observable in a shot)
-- **Source:** `client/settings/settings.css:132` (`.settings-grid :focus-visible`), against `client/settings/SettingsApp.svelte:211` (top bar) and `:215` (jump menu), both rendered outside `.settings-grid`
-- **Suggested fix:** Scope the ring to the settings root rather than the content grid so the context switcher, sign-out, the sub-720px jump menu, and both session gates get the same treatment as the sections — and draw its colour from the accent token instead of the hardcoded `rgba(82, 224, 138, 0.4)`.
 - **Resolved:** sub-project `docs/superpowers/specs/2026-08-05-settingsapp-shell-findings-design.md` (branch `ui-ux-review-02`)
 
 ### [Med] The only navigation below 720px is a bare native `<select>`
@@ -176,6 +166,15 @@ Severity-ranked, highest first.
 - **Where visible:** from source — a native `<select>`'s `change` event does not fire when the chosen option matches the current value, which a single frame cannot show
 - **Source:** `client/settings/components/SettingsJumpMenu.svelte:16-18` (`onChange` sets `window.location.hash` only on the underlying `<select>`'s `change` event) and `client/shared/ui/Select.svelte:53-55` (`handleChange` forwards that native event unmodified)
 - **Suggested fix:** The collapse-model half of this finding is fixed — the option list now skips collapsed groups (`client/settings/components/SettingsJumpMenu.svelte:19-25`) — but re-picking the option the user is already on still fires no event and does nothing; give the user an explicit way to reaffirm or return to the current section from the menu.
+
+### [Low] The focus ring's colour is a hardcoded literal instead of the accent token
+
+- **Id:** settings-app-focus-ring-scoped-to-grid
+- **Status:** open
+- **Dimension:** 9. Interaction & micro-states
+- **Where visible:** from source (programmatic focus does not trigger `:focus-visible`, so this is not observable in a shot)
+- **Source:** `client/shared/tokens.css:39` (`--focus-ring: 2px solid rgba(82, 224, 138, 0.4)`) restates the same colour as `--accent: #52e08a` at `:24` as a separate literal instead of referencing the token
+- **Suggested fix:** The scope half of this finding is fixed — `.ui-shell :focus-visible, .settings-gate :focus-visible` (`client/settings/settings.css:146-149`) now covers the top bar, jump menu, and both gates along with the sections — but the ring's colour is still the hardcoded `rgba(82, 224, 138, 0.4)` rather than `var(--accent)`; move it onto the token so a future accent change does not leave the ring silently out of sync. Severity lowered from Med to Low: the original defect (three global controls falling back to the UA default ring entirely) is fixed, and the residue is a token-sourcing nit with no visible symptom today, since the literal and `--accent` currently resolve to the same colour.
 
 ### [Low] No shared type scale, so every component invents its own font sizes
 
