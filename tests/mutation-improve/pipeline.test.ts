@@ -30,6 +30,7 @@ const config = (repoRoot: string, overrides: Partial<MutationImproveConfig> = {}
   epsilon: 0.02,
   mutateTimeoutMs: 1_800_000,
   buildTimeoutMs: 600_000,
+  buildFixAttempts: 2,
   checkCommand: 'bun check:full',
   mutateFileCommand: 'bun test:mutate:file',
   agent: { model: 'm', extraArgs: [], timeoutMs: 1_800_000 },
@@ -95,6 +96,43 @@ const sequenceSelect = (picks: readonly string[], selectionTemplate: Selection):
       value: { ...selectionTemplate, file, beforeScore: 0.5 },
       usage: emptyUsage(),
     })
+  }
+}
+
+// Sequence-based runBuildCheck fake: returns outcomes[0] on first call, etc.,
+// clamping to the last element past the end (same pattern as sequenceMeasure).
+const sequenceBuild = (
+  outcomes: readonly { passed: boolean; stdout: string; stderr: string }[],
+): PipelineDeps['runBuildCheck'] => {
+  let calls = 0
+  return (): Promise<{ passed: boolean; stdout: string; stderr: string }> => {
+    calls += 1
+    const idx = Math.min(calls - 1, outcomes.length - 1)
+    return Promise.resolve(outcomes[idx] ?? { passed: true, stdout: '', stderr: '' })
+  }
+}
+
+// Sequence-based execGit fake returning porcelain-status stdout per call.
+const sequenceGitStatus = (statuses: readonly string[]): PipelineDeps['execGit'] => {
+  let calls = 0
+  return (): Promise<{ stdout: string; stderr: string }> => {
+    calls += 1
+    const idx = Math.min(calls - 1, statuses.length - 1)
+    return Promise.resolve({ stdout: statuses[idx] ?? '', stderr: '' })
+  }
+}
+
+// Sequence-based runImproveAgent fake: records each prompt into `prompts` and
+// returns results[0] on first call, etc., clamping to the last element.
+const sequenceImprove = (
+  results: readonly Result[],
+  prompts: string[],
+  fallback: Result,
+): PipelineDeps['runImproveAgent'] => {
+  return (_worktreePath: string, prompt: string): Promise<{ value: Result; usage: AgentUsage }> => {
+    prompts.push(prompt)
+    const idx = Math.min(prompts.length - 1, results.length - 1)
+    return Promise.resolve({ value: results[idx] ?? fallback, usage: emptyUsage() })
   }
 }
 
@@ -313,6 +351,44 @@ describe('pipeline runIteration', () => {
     expect(buildCwd).toBe(path.join(deps.config.workDir, 'worktrees', 'r1-iter1'))
   })
 
+  // bun always prints `error: script ... exited with code 1` to stderr when the
+  // check command fails, so a `stderr || stdout` reason never shows check.sh's
+  // stdout breakdown naming the failing check. Both streams must survive.
+  test('build gate failure reason includes stdout details even when stderr is non-empty', async () => {
+    const deps = happyDeps()
+    deps.runBuildCheck = (): Promise<{ passed: boolean; stdout: string; stderr: string }> =>
+      Promise.resolve({
+        passed: false,
+        stdout: '✗ test failed (exit code 1):\n---\n(fail) WorkerPool > closes cleanly\n---',
+        stderr: 'error: script "check:full" exited with code 1\n',
+      })
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    expect(outcome.gate).toBe('build')
+    expect(outcome.reason).toContain('error: script "check:full" exited with code 1')
+    expect(outcome.reason).toContain('(fail) WorkerPool > closes cleanly')
+  })
+
+  test('build gate failure persists the full combined output to build-output.log and tail-bounds the reason', async () => {
+    const deps = happyDeps()
+    const marker = 'UNIQUE-BUILD-FAILURE-MARKER'
+    deps.runBuildCheck = (): Promise<{ passed: boolean; stdout: string; stderr: string }> =>
+      Promise.resolve({
+        passed: false,
+        stdout: `${'x'.repeat(6000)}\n${marker}\n`,
+        stderr: 'error: script "check:full" exited with code 1\n',
+      })
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    expect(outcome.gate).toBe('build')
+    expect(outcome.reason).toContain(marker)
+    expect(outcome.reason?.length).toBeLessThan(4500)
+    const log = await readFile(path.join(deps.runState.runDir, 'iter', '1', 'build-output.log'), 'utf8')
+    expect(log).toContain('error: script "check:full" exited with code 1')
+    expect(log).toContain(marker)
+    expect(log.length).toBeGreaterThan(6000)
+  })
+
   test('select agent receives the per-iteration outputPath', async () => {
     const deps = happyDeps()
     let seenOut = ''
@@ -419,6 +495,104 @@ describe('pipeline runIteration', () => {
     expect(outcome.outcome).toBe('skipped')
     expect(writes).toBe(0)
     expect(gitCalls.some((c) => c.startsWith('commit'))).toBe(false)
+  })
+})
+
+describe('pipeline build-fix retry', () => {
+  // A failed check:full (e.g. oxfmt on an agent-authored test file) used to burn
+  // the whole iteration. The runner now feeds the failed check output back to
+  // the agent and re-gates, up to config.buildFixAttempts times.
+  test('build failure feeds the check output back to the agent and passes on retry', async () => {
+    const deps = happyDeps()
+    const marker = '✗ format:check failed (exit code 1)'
+    let builds = 0
+    const check = sequenceBuild([
+      {
+        passed: false,
+        stdout: `${marker}\ntests/x.test.ts\n`,
+        stderr: 'error: script "check:full" exited with code 1\n',
+      },
+      { passed: true, stdout: '', stderr: '' },
+    ])
+    deps.runBuildCheck = (worktreePath: string): Promise<{ passed: boolean; stdout: string; stderr: string }> => {
+      builds += 1
+      return check(worktreePath)
+    }
+    const prompts: string[] = []
+    const fixedResult: Result = { ...result, specPath: 'docs/superpowers/specs/fixed-design.md' }
+    deps.runImproveAgent = sequenceImprove([result, fixedResult], prompts, result)
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('improved')
+    expect(builds).toBe(2)
+    expect(prompts).toHaveLength(2)
+    expect(prompts[1]).toContain(marker)
+    expect(prompts[1]).toContain('MUST NOT edit anything under src/')
+    const worktreePath = path.join(deps.config.workDir, 'worktrees', 'r1-iter1')
+    const improveOut = path.join(deps.runState.runDir, 'iter', '1', 'result.json')
+    expect(prompts[1]).toContain(agentWritePath(worktreePath, improveOut))
+    // the fix agent's rewritten result replaces the original for finalize
+    expect(deps.runState.merged[0]?.specPath).toBe('docs/superpowers/specs/fixed-design.md')
+  })
+
+  test('exhausts buildFixAttempts then fails the build gate', async () => {
+    const deps = happyDeps()
+    let builds = 0
+    deps.runBuildCheck = (): Promise<{ passed: boolean; stdout: string; stderr: string }> => {
+      builds += 1
+      return Promise.resolve({
+        passed: false,
+        stdout: '✗ test failed\n',
+        stderr: 'error: script "check:full" exited with code 1\n',
+      })
+    }
+    let improveCalls = 0
+    deps.runImproveAgent = (): Promise<{ value: Result; usage: AgentUsage }> => {
+      improveCalls += 1
+      return Promise.resolve({ value: result, usage: emptyUsage() })
+    }
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    expect(outcome.gate).toBe('build')
+    expect(outcome.reason).toContain('✗ test failed')
+    // 1 initial build + 2 re-gates after fix attempts
+    expect(builds).toBe(3)
+    // 1 improve + 2 fix invocations
+    expect(improveCalls).toBe(3)
+  })
+
+  test('buildFixAttempts 0 fails immediately without a fix attempt', async () => {
+    const deps = happyDeps()
+    deps.config = config(deps.config.repoRoot, { buildFixAttempts: 0 })
+    let builds = 0
+    deps.runBuildCheck = (): Promise<{ passed: boolean; stdout: string; stderr: string }> => {
+      builds += 1
+      return Promise.resolve({ passed: false, stdout: '✗ lint failed\n', stderr: '' })
+    }
+    let improveCalls = 0
+    deps.runImproveAgent = (): Promise<{ value: Result; usage: AgentUsage }> => {
+      improveCalls += 1
+      return Promise.resolve({ value: result, usage: emptyUsage() })
+    }
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    expect(outcome.gate).toBe('build')
+    expect(builds).toBe(1)
+    expect(improveCalls).toBe(1)
+  })
+
+  test('diff-scope violation introduced during a fix attempt fails without further build retries', async () => {
+    const deps = happyDeps()
+    let builds = 0
+    const check = sequenceBuild([{ passed: false, stdout: '✗ format:check failed\n', stderr: '' }])
+    deps.runBuildCheck = (worktreePath: string): Promise<{ passed: boolean; stdout: string; stderr: string }> => {
+      builds += 1
+      return check(worktreePath)
+    }
+    deps.execGit = sequenceGitStatus([' M tests/live-status/x.test.ts\n', ' M src/foo.ts\n'])
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    expect(outcome.gate).toBe('diff-scope')
+    expect(builds).toBe(1)
   })
 })
 

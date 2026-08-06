@@ -88,6 +88,7 @@ describe('integration real-git', () => {
       epsilon: 0.02,
       mutateTimeoutMs: 1_800_000,
       buildTimeoutMs: 600_000,
+      buildFixAttempts: 0,
       checkCommand: 'bun check:full',
       mutateFileCommand: 'bun test:mutate:file',
       agent: { model: 'm', extraArgs: [], timeoutMs: 1_800_000 },

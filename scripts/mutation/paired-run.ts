@@ -17,6 +17,7 @@ import { parsePairedRunCliArgs, resolvePairedRunCliUsageExitCode, resolvePairedR
 import { appendProcessFailure } from './process-error.js'
 import { mergeReports } from './score-merger.js'
 import type { MergedScore, StrykerReport } from './score-merger.js'
+import { resolveNodeModulesBin } from './stryker-bin.js'
 import { runStrykerWithCapturedFailure } from './stryker-run.js'
 import { loadOverrides as loadOverridesFile, resolveTestFiles } from './test-overrides.js'
 import type { OverridesMap } from './test-overrides.js'
@@ -85,6 +86,15 @@ type BunLike = {
 const DEFAULT_REPORT_DIR = 'reports/paired'
 const STRYKER_TIMEOUT_MS = 30 * 60 * 1000
 
+export const defaultRunStryker = (configPath: string, projectRoot: string, options: PairedRunStrykerOptions): void => {
+  execFileSync(resolveNodeModulesBin(projectRoot, 'stryker'), ['run', configPath], {
+    cwd: projectRoot,
+    stdio: options.verbose ? 'inherit' : 'pipe',
+    timeout: STRYKER_TIMEOUT_MS,
+    maxBuffer: 20 * 1024 * 1024,
+  })
+}
+
 const defaultDeps: PairedRunDeps = {
   readBaseConfig: (projectRoot) => {
     const configPath = path.join(projectRoot, 'stryker.config.json')
@@ -92,14 +102,7 @@ const defaultDeps: PairedRunDeps = {
   },
   resolveCompanion: (srcFile, projectRoot) => findTestFile(path.join(projectRoot, srcFile), projectRoot),
   loadOverrides: (projectRoot) => loadOverridesFile(path.join(projectRoot, 'scripts/mutation/overrides.json')),
-  runStryker: (configPath, projectRoot, options) => {
-    execFileSync(path.join(projectRoot, 'node_modules/.bin/stryker'), ['run', configPath], {
-      cwd: projectRoot,
-      stdio: options.verbose ? 'inherit' : 'pipe',
-      timeout: STRYKER_TIMEOUT_MS,
-      maxBuffer: 20 * 1024 * 1024,
-    })
-  },
+  runStryker: defaultRunStryker,
   readReport: readStrykerReport,
   log: (message) => {
     console.log(message)

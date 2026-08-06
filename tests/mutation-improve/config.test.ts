@@ -26,11 +26,19 @@ describe('config', () => {
     expect(parsed.count).toBe(1)
     expect(parsed.threshold).toBe(0.95)
     expect(parsed.epsilon).toBe(0.02)
-    expect(parsed.checkCommand).toBe('bun check:full')
+    expect(parsed.checkCommand).toBe('CI=true bun check:full')
     expect(parsed.mutateFileCommand).toBe('bun test:mutate:file')
     expect(parsed.prBranchPrefix).toBe('mutation-improve')
     expect(parsed.agent.timeoutMs).toBe(1_800_000)
     expect(parsed.mutateTimeoutMs).toBe(1_800_000)
+    expect(parsed.buildTimeoutMs).toBe(1_800_000)
+    expect(parsed.buildFixAttempts).toBe(2)
+  })
+
+  test('MutationImproveConfigSchema honors an explicit buildFixAttempts and rejects negatives', () => {
+    expect(MutationImproveConfigSchema.parse({ ...minimalValid, buildFixAttempts: 0 }).buildFixAttempts).toBe(0)
+    expect(MutationImproveConfigSchema.parse({ ...minimalValid, buildFixAttempts: 5 }).buildFixAttempts).toBe(5)
+    expect(() => MutationImproveConfigSchema.parse({ ...minimalValid, buildFixAttempts: -1 })).toThrow()
   })
 
   test('MutationImproveConfigSchema strips the legacy agentTimeoutMs key', () => {
