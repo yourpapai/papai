@@ -149,11 +149,14 @@
   .admin-section {
     scroll-margin-top: 96px;
   }
+  /* 160px fits the widest realistic value (`27.6k` at the tile's headline size) inside
+     the 128px left after MetricCard's `padding: 14px 16px`, so tiles wrap to a second
+     row rather than ellipsing a headline number. */
   .overview__kpis {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 8px;
-    padding: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: var(--s2);
+    padding: var(--s3);
   }
   .overview__charts {
     display: grid;

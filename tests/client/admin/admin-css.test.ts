@@ -120,4 +120,14 @@ describe('admin.css', () => {
     expect(svelte).toContain('aria-label="Admin sections"')
     expect(svelte).toContain("aria-current={activeId === item.id ? 'true' : undefined}")
   })
+
+  test('KPI tiles wrap to a second row rather than ellipsing their headline value', async () => {
+    const url = new URL('../../../client/admin/sections/OverviewSection.svelte', import.meta.url)
+    const svelte = await Bun.file(url).text()
+    const m = svelte.match(/\.overview__kpis \{[^}]*\}/u)
+    expect(m).not.toBeNull()
+    const [kpis] = m!
+    expect(kpis).toContain('repeat(auto-fit, minmax(160px, 1fr))')
+    expect(kpis).not.toContain('repeat(5,')
+  })
 })
