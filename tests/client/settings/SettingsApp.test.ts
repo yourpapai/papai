@@ -255,4 +255,16 @@ describe('SettingsApp', () => {
     expect(document.querySelector('#memory')).toBeNull()
     void unmount(component)
   })
+
+  test('a sidebar click is the only thing that writes the hash', async () => {
+    setMockFetch(() => Promise.resolve(new Response('{}')))
+    seed({})
+    const component = mountApp()
+    await drain()
+    expect(window.location.hash).toBe('')
+    document.querySelector<HTMLAnchorElement>('a[href="#tools"]')!.click()
+    await drain()
+    expect(window.location.hash).toBe('#tools')
+    void unmount(component)
+  })
 })

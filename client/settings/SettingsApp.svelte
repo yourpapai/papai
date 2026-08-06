@@ -64,6 +64,7 @@
 
   const initialHash = window.location.hash.slice(1)
   let activeId = $state(initialHash || 'profile')
+  let mainEl = $state<HTMLElement | null>(null)
 
   const isGroup = $derived(activeContext()?.kind === 'group')
 
@@ -125,10 +126,18 @@
 
   $effect(() => {
     if (settingsSession.status !== 'ready') return
-    const spy = useScrollSpy(observableSectionIds, (id) => {
-      activeId = id
-      if (window.location.hash !== `#${id}`) window.history.replaceState(null, '', `#${id}`)
-    })
+    const root = mainEl
+    if (root === null) return
+    // The spy drives the active marker only. It used to replaceState on every crossing,
+    // which overwrote the entry a sidebar click had just pushed -- so Back landed on a
+    // section the user never chose. The hash changes on explicit navigation, nothing else.
+    const spy = useScrollSpy(
+      observableSectionIds,
+      (id) => {
+        activeId = id
+      },
+      root,
+    )
     void tick().then(() => spy.start())
     return (): void => spy.stop()
   })
@@ -147,7 +156,7 @@
         <SettingsJumpMenu {groups} {activeId} />
         <div class="settings-grid">
           <SettingsSidebar {groups} {activeId} onToggle={onSidebarToggle} />
-          <main class="settings-grid__main">
+          <main class="settings-grid__main" bind:this={mainEl}>
             <div class="settings-group">
               <ProfileSection contextId={ctx} />
               <TaskProviderSection contextId={ctx} />
