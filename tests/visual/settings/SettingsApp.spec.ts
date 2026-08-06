@@ -118,3 +118,16 @@ test('SettingsApp — admin sidebar, short viewport', async ({ sharedPage }) => 
   await sharedPage.getByTestId('sidebar-toggle-Admin').click()
   await expect(sharedPage).toHaveScreenshot()
 })
+
+// The frame above only proves the rail's head is visible at a short viewport; an
+// unscrolled shot looks identical whether the rail scrolls internally or simply
+// overflows and clips its tail. This is the durable counterpart: scroll the last
+// Admin link ("Plugin approval") into view within the rail and prove it is fully
+// reachable, not clipped, while the main column stays put.
+test('SettingsApp — admin sidebar, tail reachable', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-settingsapp--admin-ready')
+  await sharedPage.setViewportSize({ width: 1280, height: 600 })
+  await sharedPage.getByTestId('sidebar-toggle-Admin').click()
+  await sharedPage.getByRole('link', { name: 'Plugin approval' }).scrollIntoViewIfNeeded()
+  await expect(sharedPage).toHaveScreenshot()
+})
