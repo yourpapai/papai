@@ -181,3 +181,25 @@ describe('describeEvent — permission, result, raw', () => {
     expect(describeEvent(ev('update', null))).toEqual({ kind: 'raw', json: '{}' })
   })
 })
+
+describe('describeEvent — non-object top-level payload', () => {
+  test('a bare string payload on prompt serializes the original string, not {}', () => {
+    expect(describeEvent(ev('prompt', 'hi'))).toEqual({ kind: 'raw', json: JSON.stringify('hi', null, 2) })
+  })
+
+  test('a bare string payload on update serializes the original string, not {}', () => {
+    expect(describeEvent(ev('update', 'hi'))).toEqual({ kind: 'raw', json: JSON.stringify('hi', null, 2) })
+  })
+
+  test('a bare string payload on result ignores the payload shape entirely', () => {
+    expect(describeEvent(ev('result', 'hi'))).toEqual({ kind: 'result', stopReason: '' })
+  })
+
+  test('a bare string payload on permission_request ignores the payload shape entirely', () => {
+    expect(describeEvent(ev('permission_request', 'hi'))).toEqual({ kind: 'permission', decided: false })
+  })
+
+  test('a bare string payload on permission_decision ignores the payload shape entirely', () => {
+    expect(describeEvent(ev('permission_decision', 'hi'))).toEqual({ kind: 'permission', decided: true })
+  })
+})

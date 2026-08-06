@@ -73,13 +73,14 @@ function describePlan(payload: Record<string, unknown>): DescribedEvent {
   return { kind: 'plan', entries }
 }
 
-function describeUpdate(payload: Record<string, unknown>): DescribedEvent {
-  const kind = asString(payload['sessionUpdate']) ?? ''
-  const body = asString(payload['content']) ?? asString(payload['text'])
+function describeUpdate(payload: unknown): DescribedEvent {
+  const fields = isRecord(payload) ? payload : {}
+  const kind = asString(fields['sessionUpdate']) ?? ''
+  const body = asString(fields['content']) ?? asString(fields['text'])
   if (kind === 'agent_message_chunk') return body === null ? raw(payload) : { kind: 'message', body }
   if (kind === 'agent_thought_chunk') return body === null ? raw(payload) : { kind: 'thought', body }
-  if (kind === 'tool_call' || kind === 'tool_call_update') return describeTool(payload)
-  if (kind === 'plan') return describePlan(payload)
+  if (kind === 'tool_call' || kind === 'tool_call_update') return describeTool(fields)
+  if (kind === 'plan') return describePlan(fields)
   return raw(payload)
 }
 
@@ -92,13 +93,13 @@ function describeUpdate(payload: Record<string, unknown>): DescribedEvent {
  * than throwing or rendering a misleading branch.
  */
 export function describeEvent(event: TranscriptEvent): DescribedEvent {
-  const payload = isRecord(event.payload) ? event.payload : {}
+  const fields = isRecord(event.payload) ? event.payload : {}
   if (event.type === 'prompt') {
-    const body = asString(payload['prompt']) ?? asString(payload['text']) ?? asString(payload['content'])
-    return body === null ? raw(payload) : { kind: 'prompt', body }
+    const body = asString(fields['prompt']) ?? asString(fields['text']) ?? asString(fields['content'])
+    return body === null ? raw(event.payload) : { kind: 'prompt', body }
   }
   if (event.type === 'permission_request') return { kind: 'permission', decided: false }
   if (event.type === 'permission_decision') return { kind: 'permission', decided: true }
-  if (event.type === 'result') return { kind: 'result', stopReason: asString(payload['stopReason']) ?? '' }
-  return describeUpdate(payload)
+  if (event.type === 'result') return { kind: 'result', stopReason: asString(fields['stopReason']) ?? '' }
+  return describeUpdate(event.payload)
 }
