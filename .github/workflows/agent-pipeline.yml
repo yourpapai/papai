@@ -1,0 +1,109 @@
+name: OpenCode Issue Agent
+
+# Event-driven, never long-polling: every trigger starts a fresh job that
+# restores its state from the hidden <!-- AGENT_STATE --> block on the issue,
+# advances the state machine as far as it can, and exits.
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+# The agent pushes a branch and opens a pull request, so it needs write access
+# to contents, issues and pull-requests — and nothing else.
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+# One run at a time per issue. Without this, a maintainer double-posting
+# `/approve` would start two jobs racing on the same agent/issue-N branch.
+# `cancel-in-progress` stays false: a half-finished run must be allowed to post
+# its state comment, or the next trigger restores stale state.
+concurrency:
+  group: opencode-agent-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  agent:
+    name: Run agent pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    # First-pass filter, mirrored in src/guardrails.ts. Doing it here too keeps a
+    # non-maintainer or bot event from ever booting a runner with the API keys
+    # mounted; the in-process check is the one that is unit-tested.
+    if: >-
+      github.event.issue.pull_request == null &&
+      github.event.sender.type != 'Bot' &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association || github.event.issue.author_association) &&
+      (github.event_name == 'issues' ||
+       contains(github.event.comment.body, '/approve') ||
+       contains(github.event.comment.body, '/replan') ||
+       contains(github.event.comment.body, '/retry') ||
+       contains(github.event.comment.body, '/cancel'))
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history: the pipeline cuts agent/issue-N from origin/<base> and
+          # may need to fast-forward an existing agent branch from a prior run.
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.13
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run the agent pipeline
+        env:
+          # Repository access. Swap for a GitHub App installation token when you
+          # want the agent's pull requests to trigger other workflows — pushes
+          # made with GITHUB_TOKEN deliberately do not.
+          GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+
+          # Model credentials. Set whichever provider OPENCODE_MODEL names; the
+          # OpenCode server reads these from the environment.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+
+          # Pipeline configuration — see opencode-agent/README.md.
+          OPENCODE_MODEL: ${{ vars.OPENCODE_MODEL || 'anthropic/claude-sonnet-4-5' }}
+          AGENT_SELF_LOGIN: ${{ vars.AGENT_SELF_LOGIN || github.repository_owner }}
+          AGENT_BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          AGENT_CHECKS: ${{ vars.AGENT_CHECKS }}
+          AGENT_MUTATION_THRESHOLD: ${{ vars.AGENT_MUTATION_THRESHOLD }}
+          AGENT_MAX_REVIEW_ROUNDS: ${{ vars.AGENT_MAX_REVIEW_ROUNDS }}
+          AGENT_MAX_MUTATION_ROUNDS: ${{ vars.AGENT_MAX_MUTATION_ROUNDS }}
+          AGENT_MAX_ATTEMPTS: ${{ vars.AGENT_MAX_ATTEMPTS }}
+          AGENT_LOG_LEVEL: ${{ vars.AGENT_LOG_LEVEL || 'info' }}
+        run: |
+          bun run opencode-agent/src/index.ts \
+            --event-path "$GITHUB_EVENT_PATH" \
+            --event-name "$GITHUB_EVENT_NAME" \
+            --repo-root "$GITHUB_WORKSPACE"
+
+      # The pipeline posts its own failure comment and parks the state in FAILED
+      # before exiting non-zero. This step only covers the case where the job
+      # itself died first (install failure, runner timeout, cancelled job), where
+      # nothing would otherwise appear on the issue.
+      - name: Report an infrastructure failure on the issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          printf '%s\n\n%s\n\n%s\n' \
+            '### Agent job failed' \
+            "The workflow run itself failed before or during the pipeline. Logs: $RUN_URL" \
+            'The issue state is unchanged; reply `/retry` once the cause is addressed.' \
+            > /tmp/agent-failure.md
+          gh issue comment "$ISSUE_NUMBER" --body-file /tmp/agent-failure.md

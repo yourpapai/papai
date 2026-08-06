@@ -35,7 +35,7 @@ is_license_header_file() {
         *) return 1 ;;
       esac
       ;;
-    src/*|client/*|scripts/*|review-loop/src/*|tests/*|drizzle.config.ts)
+    src/*|client/*|scripts/*|review-loop/src/*|opencode-agent/src/*|tests/*|drizzle.config.ts)
       case "$file" in
         *.ts|*.tsx|*.js|*.jsx) return 0 ;;
         *) return 1 ;;
@@ -48,7 +48,7 @@ is_license_header_file() {
 is_oxlint_scoped_file() {
   local file="$1"
   case "$file" in
-    src/*|client/*|scripts/*|review-loop/src/*|tests/*|drizzle.config.ts)
+    src/*|client/*|scripts/*|review-loop/src/*|opencode-agent/src/*|tests/*|drizzle.config.ts)
       case "$file" in
         *.ts|*.tsx|*.js|*.jsx) return 0 ;;
         *) return 1 ;;
