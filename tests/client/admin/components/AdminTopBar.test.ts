@@ -106,4 +106,16 @@ describe('AdminTopBar.svelte', () => {
     expect(target.textContent).toContain('live')
     void unmount(component)
   })
+
+  test('the refreshed label reads a ticking state, not Date.now() inside the derivation', async () => {
+    const url = new URL('../../../../client/admin/components/AdminTopBar.svelte', import.meta.url)
+    const svelte = await Bun.file(url).text()
+    const m = svelte.match(/const refreshedLabel = \$derived\.by\(\(\) => \{[\s\S]*?\n  \}\)/u)
+    expect(m).not.toBeNull()
+    const [derivation] = m!
+    expect(derivation).not.toContain('Date.now()')
+    expect(derivation).toContain('now - adminState.lastRefreshedAt')
+    expect(svelte).toContain('let now = $state(Date.now())')
+    expect(svelte).toContain('clearInterval(handle)')
+  })
 })

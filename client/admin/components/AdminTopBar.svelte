@@ -16,9 +16,22 @@
 
   import AdminJumpMenu from './AdminJumpMenu.svelte'
 
+  // 1s, because the label renders seconds below one minute. Reading `now` rather than
+  // calling Date.now() is what puts the tick in the derivation's dependency set.
+  let now = $state(Date.now())
+
+  $effect(() => {
+    const handle = setInterval(() => {
+      now = Date.now()
+    }, 1000)
+    return (): void => {
+      clearInterval(handle)
+    }
+  })
+
   const refreshedLabel = $derived.by(() => {
     if (adminState.lastRefreshedAt === null) return 'never'
-    const seconds = Math.max(0, Math.floor((Date.now() - adminState.lastRefreshedAt) / 1000))
+    const seconds = Math.max(0, Math.floor((now - adminState.lastRefreshedAt) / 1000))
     if (seconds < 60) return `${seconds}s ago`
     const minutes = Math.floor(seconds / 60)
     return `${minutes}m ago`
