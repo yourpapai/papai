@@ -106,3 +106,25 @@ export async function refreshGlobals(): Promise<void> {
     adminGlobals.loading = false
   }
 }
+
+export interface ToolTotals {
+  total: number
+  ok: number
+  fail: number
+}
+
+/**
+ * Totals over `toolMix.topTools`. Shared so the Overview `tools` tile and the rail's
+ * `tools` quick stat cannot drift apart.
+ */
+export function toolTotalsFrom(stats: GlobalStats | null): ToolTotals | null {
+  const tools = stats?.toolMix?.topTools
+  if (tools === undefined) return null
+  let total = 0
+  let ok = 0
+  for (const t of tools) {
+    total += t.count
+    ok += Math.round(t.count * t.successRate)
+  }
+  return { total, ok, fail: total - ok }
+}

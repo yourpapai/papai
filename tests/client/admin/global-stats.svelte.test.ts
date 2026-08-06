@@ -5,7 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { adminGlobals, refreshGlobals } from '../../../client/admin/global-stats.svelte.js'
+import { adminGlobals, refreshGlobals, toolTotalsFrom } from '../../../client/admin/global-stats.svelte.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 const responseBody = {
@@ -116,5 +116,23 @@ describe('global-stats', () => {
     expect(adminGlobals.error).toBeNull()
     expect(adminGlobals.data?.subjects?.dmTotal).toBe(1)
     restoreFetch()
+  })
+
+  test('toolTotalsFrom sums counts and splits them by success rate', () => {
+    const totals = toolTotalsFrom({
+      toolMix: {
+        topTools: [
+          { toolName: 'a', count: 100, successRate: 0.9 },
+          { toolName: 'b', count: 10, successRate: 1 },
+        ],
+        errorTypeCounts: {},
+      },
+    })
+    expect(totals).toEqual({ total: 110, ok: 100, fail: 10 })
+  })
+
+  test('toolTotalsFrom returns null when there is no tool mix', () => {
+    expect(toolTotalsFrom(null)).toBeNull()
+    expect(toolTotalsFrom({})).toBeNull()
   })
 })

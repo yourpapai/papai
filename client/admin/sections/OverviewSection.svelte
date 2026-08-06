@@ -11,7 +11,7 @@
   import Panel from '../../shared/ui/Panel.svelte'
   import Spark from '../../shared/ui/Spark.svelte'
 
-  import { adminGlobals } from '../global-stats.svelte.js'
+  import { adminGlobals, toolTotalsFrom } from '../global-stats.svelte.js'
 
   const subjectsTotal = $derived(
     adminGlobals.data?.subjects === undefined
@@ -37,17 +37,7 @@
       : `${adminGlobals.data.llmUsage.mainCalls} main · ${adminGlobals.data.llmUsage.smallCalls} small`,
   )
 
-  const toolTotals = $derived.by(() => {
-    const tools = adminGlobals.data?.toolMix?.topTools
-    if (tools === undefined) return null
-    let total = 0
-    let ok = 0
-    for (const t of tools) {
-      total += t.count
-      ok += Math.round(t.count * t.successRate)
-    }
-    return { total, ok, fail: total - ok }
-  })
+  const toolTotals = $derived(toolTotalsFrom(adminGlobals.data))
   const toolTotal = $derived(toolTotals === null ? '—' : toolTotals.total.toLocaleString())
   const toolSub = $derived(toolTotals === null ? undefined : `${toolTotals.ok} ok · ${toolTotals.fail} fail`)
 

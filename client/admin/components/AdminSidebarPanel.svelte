@@ -9,7 +9,7 @@
   import KV from '../../shared/ui/KV.svelte'
 
   import { adminSections } from '../admin.svelte.js'
-  import { adminGlobals } from '../global-stats.svelte.js'
+  import { adminGlobals, toolTotalsFrom } from '../global-stats.svelte.js'
 
   const items = adminSections
 
@@ -18,6 +18,8 @@
   }
 
   let { activeId }: Props = $props()
+
+  const toolTotal = $derived(toolTotalsFrom(adminGlobals.data)?.total ?? '—')
 </script>
 
 <aside class="admin-sidebar">
@@ -38,7 +40,7 @@
   <div class="admin-sidebar__kvs">
     <KV k="DM" v={adminGlobals.data?.subjects?.dmTotal ?? '—'} />
     <KV k="active" v={adminGlobals.data?.active?.activeIn30d ?? '—'} />
-    <KV k="tools" v="—" />
+    <KV k="tools" v={toolTotal} />
   </div>
 </aside>
 
