@@ -42,7 +42,8 @@ Severity-ranked, highest first.
 ### [High] The user's own prompt renders as raw JSON
 
 - **Id:** transcript-prompt-raw-json
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `47a678dca` (mapper) + `c3d0d8c4c` (rendering) — `describeEvent` gives `prompt` its own branch. The field probe order (`prompt` → `text` → `content`) is a guess: no `prompt` fixture exists anywhere in this repository, so this must be re-verified against a real magi payload. The `raw` JSON fallback means a wrong guess degrades to the old behaviour rather than breaking, but if nobody records the assumption the finding silently reopens with nobody noticing.
 - **Dimension:** 5. Content & language
 - **Where visible:** Not shot (no story covers `type: 'prompt'`); reproduces via the fallback branch seen in `transcript-TimelineEvent-Unknown-shape-raw-fallback-1.png`
 - **Source:** `client/transcript/components/TimelineEvent.svelte:36` — `prompt` is a first-class member of `TRANSCRIPT_EVENT_TYPES` (`client/transcript/fetcher-schemas.ts:9`) but has no branch, so it falls to `<pre class="tx-raw">`
@@ -51,7 +52,8 @@ Severity-ranked, highest first.
 ### [High] A failed tool call is indistinguishable from a successful one
 
 - **Id:** transcript-tool-failure-reads-as-success
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `47a678dca` (mapper) + `c3d0d8c4c` (rendering) — tool rows take colour from a `StatusTone` and carry a status glyph, so failed reads red with `✖` and completed green with `✔`.
 - **Dimension:** 4. Feedback & state
 - **Where visible:** `transcript-TimelineEvent-Tool-call-failed-1.png` — "run tests failed" renders in the same green `--accent` as the completed call in `transcript-TimelineEvent-Tool-call-1.png`
 - **Source:** `client/transcript/components/TimelineEvent.svelte:26,51-55` — `.tx-tool` is unconditionally `--accent` and `.tx-tool__status` carries no styling
@@ -60,7 +62,8 @@ Severity-ranked, highest first.
 ### [High] Agent plans render as pretty-printed JSON
 
 - **Id:** transcript-plan-raw-json
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `47a678dca` (mapper) + `c3d0d8c4c` (rendering) — plans render as a checklist with per-entry `[x]` / `[~]` / `[ ]` marks.
 - **Dimension:** 1. Visual hierarchy & scanning
 - **Where visible:** `transcript-TimelineEvent-Plan-1.png` — a three-step plan occupies 13 lines of braces and quoted keys
 - **Source:** `client/transcript/components/TimelineEvent.svelte:29`
@@ -69,7 +72,8 @@ Severity-ranked, highest first.
 ### [High] No empty state — a session with no events yet is a blank page
 
 - **Id:** transcript-no-empty-state
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `50b7c7ae7` (`emptyStateFor`) + `a53858ca5` (`TranscriptView`) — `emptyStateFor()` supplies status-aware copy rendered through the shared `EmptyState`; the three statuses whose banner already says everything render nothing.
 - **Dimension:** 4. Feedback & state
 - **Where visible:** `transcript-TranscriptApp-Connecting-1.png`, `transcript-TranscriptApp-Live-1.png` — everything below the banner is empty
 - **Source:** `client/transcript/TranscriptApp.svelte:19-23` — the `{#each}` has no `{:else}`, and the initial state is `{ events: [], status: 'connecting' }` (`client/transcript/transcript.svelte.ts:103`)
@@ -78,7 +82,8 @@ Severity-ranked, highest first.
 ### [Med] The TranscriptApp story renders StatusBanner, not the app
 
 - **Id:** transcript-app-story-renders-banner
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `a53858ca5` — the banner states moved to `transcript/StatusBanner` and the composed viewer is storied as `transcript/TranscriptView` with populated, empty, and 640px shots.
 - **Dimension:** 3. Consistency w/ design system
 - **Where visible:** Every shot under `.storybook-shots/transcript/TranscriptApp.spec.ts/` shows a lone banner chip
 - **Source:** `client/transcript/TranscriptApp.stories.svelte:11` — `defineMeta({ title: 'transcript/TranscriptApp', component: StatusBanner })`
