@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { fmtBytes, fmtNum, formatDateTime, formatDuration } from '../../../client/shared/helpers.js'
+import { fmtBytes, fmtNum, formatDateTime, formatDuration, hasSeriesData } from '../../../client/shared/helpers.js'
 
 describe('fmtNum', () => {
   test('rounds to <=2dp by default and adds thousands separators', () => {
@@ -64,5 +64,21 @@ describe('formatDuration', () => {
   test('invalid input renders a dash', () => {
     expect(formatDuration(Number.NaN)).toBe('—')
     expect(formatDuration(-5)).toBe('—')
+  })
+})
+
+describe('hasSeriesData', () => {
+  test('is false for undefined, empty, and all-zero series', () => {
+    expect(hasSeriesData(undefined)).toBe(false)
+    expect(hasSeriesData([])).toBe(false)
+    expect(hasSeriesData([0, 0, 0])).toBe(false)
+  })
+
+  test('is false for a series of non-finite values', () => {
+    expect(hasSeriesData([Number.NaN, Number.POSITIVE_INFINITY])).toBe(false)
+  })
+
+  test('is true as soon as one positive finite value is present', () => {
+    expect(hasSeriesData([0, 0, 1])).toBe(true)
   })
 })

@@ -4,6 +4,8 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
+  import { hasSeriesData } from '../helpers.js'
+
   interface Props {
     data: number[]
     /** Omit for a fluid spark that fills its container at `height`. */
@@ -40,18 +42,20 @@
   <path data-role="line" d={linePath} fill="none" stroke={color} stroke-width="1.25" />
 {/snippet}
 
-{#if width !== undefined}
-  <svg {width} {height} class="ui-spark">
-    {@render paths()}
-  </svg>
-{:else}
-  <svg
-    viewBox="0 0 {intrinsicW} {height}"
-    preserveAspectRatio="none"
-    class="ui-spark ui-spark--fluid"
-    style="height: {height}px">
-    {@render paths()}
-  </svg>
+{#if hasSeriesData(data)}
+  {#if width !== undefined}
+    <svg {width} {height} class="ui-spark">
+      {@render paths()}
+    </svg>
+  {:else}
+    <svg
+      viewBox="0 0 {intrinsicW} {height}"
+      preserveAspectRatio="none"
+      class="ui-spark ui-spark--fluid"
+      style="height: {height}px">
+      {@render paths()}
+    </svg>
+  {/if}
 {/if}
 
 <style>

@@ -4,8 +4,9 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
-  import { fmtBytes, fmtNum, formatTokens } from '../../shared/helpers.js'
+  import { fmtBytes, fmtNum, formatTokens, hasSeriesData } from '../../shared/helpers.js'
   import Bars from '../../shared/ui/Bars.svelte'
+  import EmptyState from '../../shared/ui/EmptyState.svelte'
   import Meter from '../../shared/ui/Meter.svelte'
   import MetricCard from '../../shared/ui/MetricCard.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
@@ -94,6 +95,8 @@
       { label: 'instructions', n: sm.subjectsWithInstructions, total },
     ]
   })
+
+  const hasSurfaceMix = $derived(surfaceMix.some((row) => row.n > 0))
 </script>
 
 <section id="overview" class="admin-section">
@@ -110,24 +113,32 @@
         <Panel title="activity · 30d">
           {#snippet body()}
             <div class="overview__chart-body">
-              <figure class="admin-overview__spark">
-                <Spark data={sparkData} />
-                <figcaption class="overview__caption">new subjects per day (dm + group) · last 30d</figcaption>
-              </figure>
-              <figure class="overview__bars-wrap">
-                <Bars data={barsData} height={56} />
-                <figcaption class="overview__caption">top tools by successful calls · all time</figcaption>
-              </figure>
+              {#if hasSeriesData(sparkData) || hasSeriesData(barsData)}
+                <figure class="admin-overview__spark">
+                  <Spark data={sparkData} />
+                  <figcaption class="overview__caption">new subjects per day (dm + group) · last 30d</figcaption>
+                </figure>
+                <figure class="overview__bars-wrap">
+                  <Bars data={barsData} height={56} />
+                  <figcaption class="overview__caption">top tools by successful calls · all time</figcaption>
+                </figure>
+              {:else}
+                <EmptyState title="No activity yet" />
+              {/if}
             </div>
           {/snippet}
         </Panel>
         <Panel title="surface mix">
           {#snippet body()}
-            <div class="overview__mix">
-              {#each surfaceMix as row (row.label)}
-                <Meter label={row.label} value={row.n} total={row.total} />
-              {/each}
-            </div>
+            {#if hasSurfaceMix}
+              <div class="overview__mix">
+                {#each surfaceMix as row (row.label)}
+                  <Meter label={row.label} value={row.n} total={row.total} />
+                {/each}
+              </div>
+            {:else}
+              <EmptyState title="No subjects yet" />
+            {/if}
           {/snippet}
         </Panel>
       </div>

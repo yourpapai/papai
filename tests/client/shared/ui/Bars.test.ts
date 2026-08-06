@@ -22,12 +22,11 @@ describe('Bars.svelte', () => {
     void unmount(component)
   })
 
-  test('renders empty svg for undefined data', () => {
+  test('renders nothing at all for undefined data', () => {
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.body.querySelector<HTMLElement>('#root')!
     const component = mount(Bars, { target, props: { data: undefined, width: 200, height: 40 } })
-    expect(target.querySelector('svg')).not.toBeNull()
-    expect(target.querySelectorAll('rect').length).toBe(0)
+    expect(target.querySelector('svg')).toBeNull()
     void unmount(component)
   })
 
@@ -39,11 +38,11 @@ describe('Bars.svelte', () => {
     void unmount(component)
   })
 
-  test('renders flat baseline for all-zero data', () => {
+  test('renders nothing at all for an all-zero series', () => {
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.body.querySelector<HTMLElement>('#root')!
     const component = mount(Bars, { target, props: { data: [0, 0, 0, 0], width: 200, height: 40 } })
-    expect(target.querySelectorAll('rect').length).toBe(4)
+    expect(target.querySelector('svg')).toBeNull()
     void unmount(component)
   })
 

@@ -59,4 +59,12 @@ describe('Spark.svelte', () => {
     expect(target.querySelector('path[data-role="line"]')!.getAttribute('d')).toContain('100,')
     void unmount(component)
   })
+
+  test('renders nothing at all for an empty series', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Spark, { target, props: { data: [] } })
+    expect(target.querySelector('svg')).toBeNull()
+    void unmount(component)
+  })
 })

@@ -4,6 +4,8 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
+  import { hasSeriesData } from '../helpers.js'
+
   interface Props {
     data: number[] | undefined
     width?: number
@@ -26,22 +28,24 @@
   {/each}
 {/snippet}
 
-{#if width !== undefined}
-  <svg {width} {height} class="ui-bars" aria-hidden="true">
-    {@render bars()}
-  </svg>
-{:else}
-  <!-- `preserveAspectRatio="none"` stretches the bars horizontally to fill the
-       panel. Without an explicit pixel height it also stretched them vertically,
-       turning the caller's `height` into an aspect-ratio denominator. -->
-  <svg
-    viewBox="0 0 {intrinsicW} {height}"
-    preserveAspectRatio="none"
-    class="ui-bars ui-bars--fluid"
-    style="height: {height}px"
-    aria-hidden="true">
-    {@render bars()}
-  </svg>
+{#if hasSeriesData(safeData)}
+  {#if width !== undefined}
+    <svg {width} {height} class="ui-bars" aria-hidden="true">
+      {@render bars()}
+    </svg>
+  {:else}
+    <!-- `preserveAspectRatio="none"` stretches the bars horizontally to fill the
+         panel. Without an explicit pixel height it also stretched them vertically,
+         turning the caller's `height` into an aspect-ratio denominator. -->
+    <svg
+      viewBox="0 0 {intrinsicW} {height}"
+      preserveAspectRatio="none"
+      class="ui-bars ui-bars--fluid"
+      style="height: {height}px"
+      aria-hidden="true">
+      {@render bars()}
+    </svg>
+  {/if}
 {/if}
 
 <style>
