@@ -83,6 +83,15 @@ describe('AdminTopBar.svelte', () => {
     void unmount(component)
   })
 
+  test('status pill reads "loading" (not "stale") when a refresh is retried after a failure', () => {
+    adminGlobals.loading = true
+    adminGlobals.error = 'request failed with status 500'
+    const component = mount(AdminTopBar, { target, props: {} })
+    expect(target.textContent).toContain('loading')
+    expect(target.textContent).not.toContain('stale')
+    void unmount(component)
+  })
+
   test('status pill reads "stale" after a failed refresh', () => {
     adminGlobals.error = 'request failed with status 500'
     const component = mount(AdminTopBar, { target, props: {} })
