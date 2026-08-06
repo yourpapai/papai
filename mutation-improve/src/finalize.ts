@@ -80,3 +80,16 @@ export async function runFinalize(deps: FinalizeDeps, input: FinalizeInput): Pro
   }
   return { pushed: true, prUrl: result.stdout.trim() || undefined }
 }
+
+// Iterations merge into whatever branch repoRoot is checked out on. Starting
+// a run on base (or a detached HEAD) would merge+push straight onto base with
+// no PR, so refuse before any run state is created.
+export async function assertIntegrationBranch(execGit: ExecGitFn, repoRoot: string, base: string): Promise<void> {
+  const { stdout } = await execGit(repoRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])
+  const branch = stdout.trim()
+  if (branch === base || branch === 'HEAD') {
+    throw new Error(
+      `mutation-improve merges iterations into the checked-out branch, but repoRoot is on '${branch}'. Check out a non-base integration branch first (base: ${base}).`,
+    )
+  }
+}

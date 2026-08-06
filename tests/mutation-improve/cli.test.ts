@@ -7,11 +7,23 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { existsSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { DEFAULT_CONFIG_PATH, parseCliArgs, resetRunWorktrees } from '../../mutation-improve/src/cli.js'
+import { DEFAULT_CONFIG_PATH, parseCliArgs, resetRunWorktrees, runCli } from '../../mutation-improve/src/cli.js'
 import { execGit } from '../../review-loop/src/worktree.js'
 import { cleanupTempDirs, makeTempDir } from './test-helpers'
 
 afterEach(cleanupTempDirs)
+
+async function setupRepo(): Promise<{ repoRoot: string; worktreesDir: string }> {
+  const repoRoot = makeTempDir('cli-repo-')
+  await execGit(repoRoot, ['init'])
+  await execGit(repoRoot, ['config', 'user.email', 'test@test.com'])
+  await execGit(repoRoot, ['config', 'user.name', 'Test'])
+  await execGit(repoRoot, ['checkout', '-b', 'master'])
+  writeFileSync(path.join(repoRoot, 'README.md'), 'hello')
+  await execGit(repoRoot, ['add', '.'])
+  await execGit(repoRoot, ['commit', '-m', 'init'])
+  return { repoRoot, worktreesDir: path.join(repoRoot, '.mutation-improve', 'worktrees') }
+}
 
 describe('cli parseCliArgs', () => {
   test('parses --config and requires --config (default exists)', () => {
@@ -65,18 +77,6 @@ describe('cli parseCliArgs', () => {
 })
 
 describe('resetRunWorktrees', () => {
-  async function setupRepo(): Promise<{ repoRoot: string; worktreesDir: string }> {
-    const repoRoot = makeTempDir('cli-repo-')
-    await execGit(repoRoot, ['init'])
-    await execGit(repoRoot, ['config', 'user.email', 'test@test.com'])
-    await execGit(repoRoot, ['config', 'user.name', 'Test'])
-    await execGit(repoRoot, ['checkout', '-b', 'master'])
-    writeFileSync(path.join(repoRoot, 'README.md'), 'hello')
-    await execGit(repoRoot, ['add', '.'])
-    await execGit(repoRoot, ['commit', '-m', 'init'])
-    return { repoRoot, worktreesDir: path.join(repoRoot, '.mutation-improve', 'worktrees') }
-  }
-
   test('removes only iteration worktrees and branches matching runId', async () => {
     const { repoRoot, worktreesDir } = await setupRepo()
     const sameRun1 = path.join(worktreesDir, 'r1-iter1')
@@ -100,5 +100,25 @@ describe('resetRunWorktrees', () => {
   test('no-op when no matching worktrees exist', async () => {
     const { repoRoot } = await setupRepo()
     await expect(resetRunWorktrees(repoRoot, 'r1', 'mutation-improve')).resolves.toBeUndefined()
+  })
+})
+
+describe('runCli integration-branch guard', () => {
+  test('fails fast on the base branch before creating run state', async () => {
+    const { repoRoot } = await setupRepo()
+    const configPath = path.join(repoRoot, 'cfg.json')
+    writeFileSync(configPath, JSON.stringify({ repoRoot, workDir: '.mi', agent: { model: 'm' } }))
+    await expect(runCli(['--config', configPath])).rejects.toThrow(/integration branch/u)
+    expect(existsSync(path.join(repoRoot, '.mi', 'runs'))).toBe(false)
+  })
+
+  test('fails fast on a detached HEAD', async () => {
+    const { repoRoot } = await setupRepo()
+    const { stdout: sha } = await execGit(repoRoot, ['rev-parse', 'HEAD'])
+    await execGit(repoRoot, ['checkout', sha.trim()])
+    const configPath = path.join(repoRoot, 'cfg.json')
+    writeFileSync(configPath, JSON.stringify({ repoRoot, workDir: '.mi', agent: { model: 'm' } }))
+    await expect(runCli(['--config', configPath])).rejects.toThrow(/integration branch/u)
+    expect(existsSync(path.join(repoRoot, '.mi', 'runs'))).toBe(false)
   })
 })

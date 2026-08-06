@@ -18,7 +18,7 @@ import {
 } from '../../review-loop/src/worktree.js'
 import { readBaseline, writeBaseline } from './baseline.js'
 import { type MutationImproveConfig, loadMutationImproveConfig } from './config.js'
-import { runFinalize } from './finalize.js'
+import { assertIntegrationBranch, runFinalize } from './finalize.js'
 import { type IterationResult, runPipeline, type PipelineDeps } from './pipeline.js'
 import { ResultSchema } from './result-schema.js'
 import { createRunState, loadRunState, saveRunState, type MutationImproveRunState } from './run-state.js'
@@ -208,6 +208,8 @@ export async function runCli(argv: readonly string[]): Promise<void> {
   if (args.count !== undefined) config.count = args.count
   if (args.threshold !== undefined) config.threshold = args.threshold
   if (args.base !== undefined) config.base = args.base
+
+  await assertIntegrationBranch(execGit, config.repoRoot, config.base)
 
   const runState: MutationImproveRunState =
     args.resumeRunId === undefined ? await createRunState(config) : await loadRunState(config.workDir, args.resumeRunId)

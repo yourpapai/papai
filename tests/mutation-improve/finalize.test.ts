@@ -6,7 +6,13 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 
 import type { MutationImproveConfig } from '../../mutation-improve/src/config.js'
-import { buildSummaryBody, runFinalize, type ExecGitFn, type RunGhFn } from '../../mutation-improve/src/finalize.js'
+import {
+  assertIntegrationBranch,
+  buildSummaryBody,
+  runFinalize,
+  type ExecGitFn,
+  type RunGhFn,
+} from '../../mutation-improve/src/finalize.js'
 import type { MutationImproveRunState } from '../../mutation-improve/src/run-state.js'
 import { cleanupTempDirs, makeTempDir } from './test-helpers.js'
 
@@ -90,5 +96,26 @@ describe('finalize', () => {
     const out = await runFinalize({ execGit, runGh }, { config: config(repoRoot), runState })
     expect(out.pushed).toBe(true)
     expect(out.prUrl).toBeUndefined()
+  })
+})
+
+describe('assertIntegrationBranch', () => {
+  const branchExec =
+    (branch: string): ExecGitFn =>
+    () =>
+      Promise.resolve({ stdout: `${branch}\n`, stderr: '' })
+
+  test('passes on a non-base branch', async () => {
+    await expect(assertIntegrationBranch(branchExec('mutation-improve-10'), '/repo', 'master')).resolves.toBeUndefined()
+  })
+
+  test('throws on the base branch', async () => {
+    await expect(assertIntegrationBranch(branchExec('master'), '/repo', 'master')).rejects.toThrow(
+      /integration branch/u,
+    )
+  })
+
+  test('throws on a detached HEAD', async () => {
+    await expect(assertIntegrationBranch(branchExec('HEAD'), '/repo', 'master')).rejects.toThrow(/integration branch/u)
   })
 })
