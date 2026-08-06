@@ -96,7 +96,7 @@
   "plugins/task-provider-youtrack/create-field-helpers.ts": 0.46511627906976744,
   "plugins/task-provider-youtrack/custom-field-values.ts": 0,
   "plugins/task-provider-youtrack/dedicated-fields.ts": 0.6699029126213593,
-  "plugins/task-provider-youtrack/due-date.ts": 0.6595744680851063,
+  "plugins/task-provider-youtrack/due-date.ts": 0.925531914893617,
   "plugins/task-provider-youtrack/entry-runtime.ts": 0,
   "plugins/task-provider-youtrack/field-engine.ts": 0.4280155642023346,
   "plugins/task-provider-youtrack/field-name-error.ts": 0.8,
