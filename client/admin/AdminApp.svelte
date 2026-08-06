@@ -7,11 +7,11 @@
   import { onMount } from 'svelte'
 
   import Shell from '../shared/ui/Shell.svelte'
+  import { useScrollSpy } from '../shared/scrollspy.js'
 
   import { adminSections, adminState, refreshAll, setSection } from './admin.svelte.js'
   import AdminSidebarPanel from './components/AdminSidebarPanel.svelte'
   import AdminTopBar from './components/AdminTopBar.svelte'
-  import { useScrollSpy } from './scrollspy.js'
   import BillingSection from './sections/BillingSection.svelte'
   import IdentitiesSection from './sections/IdentitiesSection.svelte'
   import MemosSection from './sections/MemosSection.svelte'

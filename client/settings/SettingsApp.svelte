@@ -23,7 +23,7 @@
     mountedSectionIds,
     toggleGroup,
   } from './nav.svelte.js'
-  import { useScrollSpy } from './scrollspy.js'
+  import { useScrollSpy } from '../shared/scrollspy.js'
   import { activeContext, settingsSession } from './session.svelte.js'
   import ProfileSection from './sections/ProfileSection.svelte'
   import AnalyticsPreferencesSection from './sections/AnalyticsPreferencesSection.svelte'
