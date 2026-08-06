@@ -45,12 +45,13 @@
   .admin-sidebar {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 12px;
+    gap: var(--s2);
+    padding: var(--s3);
     background: var(--surface-1);
     border-right: 1px solid var(--border);
     min-height: 100vh;
   }
+  /* 2px is below the 4px scale on purpose: this is a hairline marker, not spacing. */
   .admin-sidebar__nav {
     display: flex;
     flex-direction: column;
@@ -59,7 +60,7 @@
   .admin-sidebar__link {
     color: var(--text-muted);
     text-decoration: none;
-    padding: 6px 8px;
+    padding: var(--s2);
     font-family: var(--font-mono);
     font-size: 12px;
     border-left: 2px solid transparent;
@@ -76,6 +77,6 @@
   .admin-sidebar__kvs {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--s1);
   }
 </style>
