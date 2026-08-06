@@ -27,11 +27,27 @@
     placeholder?: string
     /** Full-width control at row height, for a select that owns its line. */
     block?: boolean
+    /**
+     * Explicit `aria-labelledby` for callers that render their own label outside a
+     * `Field` (e.g. a standalone select with a plain `<span>` for a label). Takes
+     * precedence over a `Field` ancestor's label id, if any.
+     */
+    ariaLabelledby?: string
   }
 
-  let { value, options, groups, onChange, testid, disabled = false, placeholder, block = false }: Props = $props()
+  let {
+    value,
+    options,
+    groups,
+    onChange,
+    testid,
+    disabled = false,
+    placeholder,
+    block = false,
+    ariaLabelledby,
+  }: Props = $props()
 
-  const labelId = getFieldLabelId()
+  const labelId = $derived(ariaLabelledby ?? getFieldLabelId())
   const fieldError = useFieldInvalid()
 
   function handleChange(event: Event): void {

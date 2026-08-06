@@ -33,7 +33,16 @@
 
 <div class="settings-jump">
   <span class="t-label" id="settings-jump-label">Jump to</span>
-  <Select value={activeId} groups={options} {onChange} block testid="settings-jump-select" />
+  <!-- This menu is not wrapped in a Field, so the shared Select never picks up a label id
+       from Field context; pass this span's id explicitly so the select still gets an
+       accessible name. -->
+  <Select
+    value={activeId}
+    groups={options}
+    {onChange}
+    block
+    testid="settings-jump-select"
+    ariaLabelledby="settings-jump-label" />
 </div>
 
 <style>
