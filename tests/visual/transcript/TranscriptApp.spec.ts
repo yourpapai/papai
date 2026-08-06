@@ -31,6 +31,11 @@ test.describe('transcript/TranscriptApp', () => {
     await switchStory(sharedPage, 'transcript-transcriptapp--invalid-token')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('Error', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'transcript-transcriptapp--error')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots
 

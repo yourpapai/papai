@@ -20,3 +20,7 @@
 <Story name="Recording disabled" args={{ status: 'recording-disabled' }} />
 
 <Story name="Invalid token" args={{ status: 'invalid-token' }} />
+
+<!-- Review-only state: the sixth ViewerStatus, which no existing story rendered. -->
+
+<Story name="Error" args={{ status: 'error' }} />
