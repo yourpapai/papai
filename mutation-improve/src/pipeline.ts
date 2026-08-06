@@ -45,6 +45,7 @@ export interface PipelineDeps {
   writeBaseline: (repoRoot: string, map: BaselineMap) => Promise<void>
   runSelectAgent: (worktreePath: string, prompt: string, outputPath: string) => Promise<AgentRunResult<Selection>>
   runImproveAgent: (worktreePath: string, prompt: string, outputPath: string) => Promise<AgentRunResult<Result>>
+  saveRunState: (state: MutationImproveRunState) => Promise<void>
   log: { log: (msg: string) => void; issue?: unknown }
 }
 
@@ -279,8 +280,10 @@ export async function runPipeline(deps: PipelineDeps): Promise<{ results: Iterat
     results.push(outcome)
     if (outcome.gate === 'merge') {
       deps.runState.status = 'aborted'
+      await deps.saveRunState(deps.runState)
       return { results, aborted: true }
     }
+    await deps.saveRunState(deps.runState)
     return runFrom(iter + 1, false)
   }
   const final = await runFrom(deps.runState.currentIteration + 1, false)

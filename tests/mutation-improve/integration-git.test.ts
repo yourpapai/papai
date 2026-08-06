@@ -125,6 +125,7 @@ describe('integration real-git', () => {
       writeBaseline,
       runSelectAgent: () => Promise.resolve({ value: selection, usage: emptyUsage() }),
       runImproveAgent,
+      saveRunState: () => Promise.resolve(),
       log: { log: () => undefined },
     }
 

@@ -163,6 +163,7 @@ function buildPipelineDeps(
     writeBaseline,
     runSelectAgent: selectRunner(config, runState, log),
     runImproveAgent: improveRunner(config, runState, log),
+    saveRunState,
     log,
   }
 }

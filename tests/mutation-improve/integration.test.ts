@@ -92,6 +92,7 @@ describe('integration', () => {
       },
       runSelectAgent: () => Promise.resolve({ value: selection, usage: emptyUsage() }),
       runImproveAgent: () => Promise.resolve({ value: improvedResult, usage: emptyUsage() }),
+      saveRunState: () => Promise.resolve(),
       log: { log: () => undefined },
     }
 

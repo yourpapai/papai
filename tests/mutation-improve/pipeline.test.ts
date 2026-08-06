@@ -121,6 +121,7 @@ const happyDeps = (): PipelineDeps => {
     },
     runSelectAgent: () => Promise.resolve({ value: selection, usage: emptyUsage() }),
     runImproveAgent: () => Promise.resolve({ value: result, usage: emptyUsage() }),
+    saveRunState: () => Promise.resolve(),
     log: { log: () => undefined, issue: undefined },
   }
   return deps
@@ -406,5 +407,34 @@ describe('pipeline runPipeline', () => {
     expect(results[0]?.gate).toBe('merge')
     expect(deps.runState.status).toBe('aborted')
     expect(deps.runState.currentIteration).toBe(1)
+  })
+
+  test('saves run state after each iteration', async () => {
+    const deps = happyDeps()
+    deps.config = config(deps.config.repoRoot, { count: 2 })
+    deps.measureScore = sequenceMeasure([0.46, 0.97, 0.5, 0.96])
+    const picks = ['src/live-status/tool-status-labels.ts', 'src/tools/memory.ts']
+    deps.runSelectAgent = sequenceSelect(picks, selection)
+    const savedIterations: number[] = []
+    deps.saveRunState = (state: MutationImproveRunState): Promise<void> => {
+      savedIterations.push(state.currentIteration)
+      return Promise.resolve()
+    }
+    await runPipeline(deps)
+    expect(savedIterations).toEqual([1, 2])
+  })
+
+  test('merge-abort saves state with status aborted', async () => {
+    const deps = happyDeps()
+    deps.mergeWorktree = (): Promise<{ ok: false; conflictFiles: string[] }> =>
+      Promise.resolve({ ok: false, conflictFiles: ['scripts/mutation/baseline.json'] })
+    const savedStatuses: string[] = []
+    deps.saveRunState = (state: MutationImproveRunState): Promise<void> => {
+      savedStatuses.push(state.status)
+      return Promise.resolve()
+    }
+    const { aborted } = await runPipeline(deps)
+    expect(aborted).toBe(true)
+    expect(savedStatuses).toEqual(['aborted'])
   })
 })
