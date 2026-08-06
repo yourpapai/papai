@@ -4,6 +4,8 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
+  import Select from '../../shared/ui/Select.svelte'
+
   import type { SidebarGroup } from './SettingsSidebar.svelte'
 
   interface Props {
@@ -13,43 +15,37 @@
 
   let { groups, activeId }: Props = $props()
 
-  function onChange(event: Event): void {
-    const id = (event.target as HTMLSelectElement).value
+  // A collapsed group's sections are not mounted, so offering them here would
+  // navigate to a fragment that does not exist on the page.
+  const options = $derived(
+    groups
+      .filter((group) => group.collapsed !== true)
+      .map((group) => ({
+        label: group.kicker,
+        options: group.items.map((item) => ({ value: item.id, label: item.label })),
+      })),
+  )
+
+  function onChange(id: string): void {
     window.location.hash = `#${id}`
   }
 </script>
 
 <div class="settings-jump">
-  <label class="t-label" for="settings-jump-select">Jump to</label>
-  <select id="settings-jump-select" value={activeId} onchange={onChange}>
-    {#each groups as group (group.kicker)}
-      <optgroup label={group.kicker}>
-        {#each group.items as item (item.id)}
-          <option value={item.id}>{item.label}</option>
-        {/each}
-      </optgroup>
-    {/each}
-  </select>
+  <span class="t-label" id="settings-jump-label">Jump to</span>
+  <Select value={activeId} groups={options} {onChange} block testid="settings-jump-select" />
 </div>
 
 <style>
   .settings-jump {
     display: none;
     flex-direction: column;
-    gap: 6px;
-    padding: 12px var(--gap-section) 0;
+    gap: var(--gap-tight);
+    padding: var(--gap-inline) var(--gap-section) 0;
   }
-  .settings-jump select {
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text);
-    font-family: var(--font-mono);
-    font-size: 14px;
-    height: var(--row-h);
-    padding: 0 10px;
-  }
-  @media (max-width: 720px) {
-    .settings-jump { display: flex; }
+  @media (max-width: 900px) {
+    .settings-jump {
+      display: flex;
+    }
   }
 </style>

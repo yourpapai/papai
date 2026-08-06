@@ -13,6 +13,8 @@ interface SidebarGroup {
   kicker: string
   items: readonly { id: string; label: string }[]
   danger?: boolean
+  collapsible?: boolean
+  collapsed?: boolean
 }
 
 const groups: SidebarGroup[] = [
@@ -45,5 +47,53 @@ test('navigating sets the location hash', () => {
   select.dispatchEvent(new Event('change', { bubbles: true }))
   flushSync()
   expect(window.location.hash).toBe('#system')
+  void unmount(c)
+})
+
+test('uses the shared Select primitive rather than a bare select', () => {
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.querySelector<HTMLElement>('#root')!
+  const c = mount(SettingsJumpMenu, { target, props: { groups, activeId: 'profile' } })
+  flushSync()
+  expect(target.querySelector('.ui-select')).not.toBeNull()
+  expect(target.querySelector('.ui-select--block')).not.toBeNull()
+  void unmount(c)
+})
+
+test('a collapsed group contributes no options and no optgroup', () => {
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.querySelector<HTMLElement>('#root')!
+  const withCollapsed: SidebarGroup[] = [
+    { kicker: 'Personal', items: [{ id: 'profile', label: 'Profile' }] },
+    {
+      kicker: 'Advanced',
+      collapsible: true,
+      collapsed: true,
+      items: [{ id: 'memory', label: 'Memory' }],
+    },
+  ]
+  const c = mount(SettingsJumpMenu, { target, props: { groups: withCollapsed, activeId: 'profile' } })
+  flushSync()
+  expect(target.querySelectorAll('optgroup').length).toBe(1)
+  expect(target.querySelector('option[value="memory"]')).toBeNull()
+  void unmount(c)
+})
+
+test('an expanded collapsible group keeps its options', () => {
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.querySelector<HTMLElement>('#root')!
+  const expanded: SidebarGroup[] = [
+    { kicker: 'Personal', items: [{ id: 'profile', label: 'Profile' }] },
+    {
+      kicker: 'Advanced',
+      collapsible: true,
+      collapsed: false,
+      items: [{ id: 'memory', label: 'Memory' }],
+    },
+  ]
+  const c = mount(SettingsJumpMenu, { target, props: { groups: expanded, activeId: 'profile' } })
+  flushSync()
+  expect(target.querySelectorAll('optgroup').length).toBe(2)
+  expect(target.querySelector('option[value="memory"]')).not.toBeNull()
   void unmount(c)
 })
