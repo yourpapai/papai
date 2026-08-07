@@ -86,6 +86,13 @@ was really a question discards an approved artefact.
 A command only counts on a line that _starts_ with it, and fenced code blocks
 are ignored, so the agent quoting its own instructions does not fire them.
 
+Three phases — triage, planning, and that classifier — want JSON back. When a
+reply does not validate, the model is asked **once** more, with the reason and
+its own rejected reply quoted back to it. Once, not until it works: a model that
+cannot produce the shape twice will not produce it on the fifth attempt, and the
+job has its own timeout. A second bad reply fails the phase as before, with the
+raw text in the failure comment.
+
 ## Red pull requests
 
 When the `CI` workflow concludes `failure` on `agent/issue-<n>`, the agent comes
@@ -431,6 +438,7 @@ Logs are NDJSON on stdout.
 | `src/commands.ts` / `src/intent.ts`           | Slash commands, and classifying plain replies                          |
 | `src/openai-config.ts`                        | The single endpoint, and the OpenCode config both paths share          |
 | `src/opencode-adapter.ts`                     | Headless OpenCode server + session                                     |
+| `src/ask-json.ts`                             | Asking the model for JSON, with one repair re-ask on a bad reply       |
 | `src/obra-skills.ts`                          | Superpowers skill loading and system-prompt composition                |
 | `src/review-runner.ts`                        | Drives the `review-loop/` workspace                                    |
 | `src/check-loop.ts`                           | The CI-fix repair loop                                                 |

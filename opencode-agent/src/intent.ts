@@ -5,9 +5,9 @@
 
 import { z } from 'zod'
 
+import { promptForJson } from './ask-json.js'
 import { COMMENT_INTENTS } from './commands.js'
 import type { CommentIntent } from './commands.js'
-import { parseModelJson } from './model-json.js'
 import { composeSystemPrompt } from './obra-skills.js'
 import type { PhaseDeps } from './phase-context.js'
 import { mintEnvelope } from './phases/envelope.js'
@@ -41,19 +41,25 @@ export const classifyComment = async (input: ClassifyInput): Promise<CommentInte
 
   try {
     const agent = await deps.agent()
-    const reply = await agent.prompt({
-      system: composeSystemPrompt({
-        phase: state.phase,
-        skills: [],
-        repoRoot: deps.config.repoRoot,
-        nonce: envelope.nonce,
-        instructions: CLASSIFY_INSTRUCTIONS,
-      }),
-      prompt: buildClassifyPrompt(envelope, input.body, input.phase),
-      agent: 'plan',
+    const classified = await promptForJson({
+      agent,
+      schema: intentSchema,
+      envelope,
+      log: deps.log,
+      request: {
+        system: composeSystemPrompt({
+          phase: state.phase,
+          skills: [],
+          repoRoot: deps.config.repoRoot,
+          nonce: envelope.nonce,
+          instructions: CLASSIFY_INSTRUCTIONS,
+        }),
+        prompt: buildClassifyPrompt(envelope, input.body, input.phase),
+        agent: 'plan',
+      },
     })
 
-    return parseModelJson(reply.text, intentSchema).intent
+    return classified.intent
   } catch (error) {
     deps.log.warn({ error: errorMessage(error) }, 'Comment classification failed; treating it as a question')
     return 'question'

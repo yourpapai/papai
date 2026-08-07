@@ -912,9 +912,34 @@ describe('commands and budgets', () => {
     expect(harness.io.posted).toEqual([])
   })
 
+  test('a single malformed reply is repaired rather than failing the run', async () => {
+    // This used to park the issue in FAILED and wait for a human `/retry` over
+    // a stray sentence around an otherwise fine object.
+    const harness = makeHarness()
+    harness.io.replies = ['here you go: not json', SPEC_REPLY]
+
+    const result = await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted.at(-1)).toContain('### Design spec')
+    expect(harness.io.prompts).toHaveLength(2)
+    expect(String(harness.io.prompts[1]?.prompt)).toContain('could not be used')
+  })
+
+  test('re-asks once, not until it works', async () => {
+    const harness = makeHarness()
+    harness.io.replies = ['not json', 'still not json', SPEC_REPLY]
+
+    const result = await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.prompts).toHaveLength(2)
+    expect(latestPostedState(harness)?.resumeFrom).toBe('INIT_OR_CLARIFY')
+  })
+
   test('/retry resumes the failed phase rather than replaying the pipeline', async () => {
     const harness = makeHarness()
-    harness.io.replies = ['not json', SPEC_REPLY]
+    harness.io.replies = ['not json', 'still not json', SPEC_REPLY]
     await runPipeline({ event: issueEvent(), deps: harness.deps })
     harness.io.posted.length = 0
 

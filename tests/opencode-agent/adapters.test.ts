@@ -234,6 +234,17 @@ describe('extractJsonObject / parseModelJson', () => {
     expect(parseModelJson('```\nnot json\n```\n{"status":"spec"}', schema)).toEqual({ status: 'spec' })
   })
 
+  test('prefers an untagged fence over a brace span that would swallow later prose', () => {
+    // The brace span runs first `{` to last `}`, so a model that fences its
+    // answer and then keeps talking about `{…}` has no parsable span at all.
+    // Every other fixture here parses either way, which left the fence pattern
+    // free to be mutated — requiring the `json` tag, capturing one character —
+    // with nothing failing.
+    const text = '```\n{"status":"spec"}\n```\nI also considered {"status":"other"} and rejected it.'
+
+    expect(parseModelJson(text, schema)).toEqual({ status: 'spec' })
+  })
+
   test.each([['no json at all'], ['[1,2,3]'], ['{ broken']])('returns null for %p', (text) => {
     expect(extractJsonObject(text)).toBeNull()
   })

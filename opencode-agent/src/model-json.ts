@@ -39,18 +39,33 @@ export const extractJsonObject = (text: string): unknown => {
   return tryParse(text.slice(start, end + 1))
 }
 
+export type ModelJsonResult<T> = { ok: true; value: T } | { ok: false; reason: string }
+
+/**
+ * Extracts and validates a structured model reply, reporting *why* it failed.
+ *
+ * Separate from {@link parseModelJson} so a caller can act on the reason —
+ * re-asking the model with the complaint attached — instead of only turning it
+ * into a failure comment. The reason alone, without the raw text, is what a
+ * repair prompt wants: the model already knows what it said.
+ */
+export const readModelJson = <T>(text: string, schema: z.ZodType<T>): ModelJsonResult<T> => {
+  const candidate = extractJsonObject(text)
+  if (candidate === null) return { ok: false, reason: 'Model reply contained no JSON object' }
+
+  const result = schema.safeParse(candidate)
+  if (!result.success) return { ok: false, reason: `Model reply failed validation: ${result.error.message}` }
+
+  return { ok: true, value: result.data }
+}
+
 /**
  * Extracts and validates a structured model reply. Throws a `PipelineError`
  * carrying the raw text, so the failure comment on the issue shows what the
  * model actually said instead of a bare schema complaint.
  */
 export const parseModelJson = <T>(text: string, schema: z.ZodType<T>): T => {
-  const candidate = extractJsonObject(text)
-  if (candidate === null) throw modelResponseError('Model reply contained no JSON object', text)
-
-  const result = schema.safeParse(candidate)
-  if (!result.success) {
-    throw modelResponseError(`Model reply failed validation: ${result.error.message}`, text)
-  }
-  return result.data
+  const result = readModelJson(text, schema)
+  if (!result.ok) throw modelResponseError(result.reason, text)
+  return result.value
 }

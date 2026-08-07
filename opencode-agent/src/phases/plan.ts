@@ -6,9 +6,9 @@
 import { z } from 'zod'
 
 import { PLAN_MARKER, renderArtifact, requireArtifact, SPEC_MARKER } from '../artifacts.js'
+import { promptForJson } from '../ask-json.js'
 import { missingSpecError } from '../errors.js'
 import { branchNameFor } from '../git.js'
-import { parseModelJson } from '../model-json.js'
 import { composeSystemPrompt } from '../obra-skills.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
 import { buildPlanPrompt } from '../prompts.js'
@@ -47,25 +47,30 @@ export const handlePlan: PhaseHandler = async (input): Promise<PhaseOutcome> => 
 
   const envelope = mintEnvelope()
   const agent = await deps.agent()
-  const reply = await agent.prompt({
-    system: composeSystemPrompt({
-      phase: 'EXECUTION_PLAN',
-      skills: await deps.skills('EXECUTION_PLAN'),
-      repoRoot: deps.config.repoRoot,
-      nonce: envelope.nonce,
-      instructions: PLAN_INSTRUCTIONS,
-    }),
-    prompt: buildPlanPrompt({
-      envelope,
-      issueNumber: state.issueId,
-      spec,
-      branch,
-      feedback,
-    }),
-    agent: 'plan',
+  const plan = await promptForJson({
+    agent,
+    schema: planSchema,
+    envelope,
+    log: deps.log,
+    request: {
+      system: composeSystemPrompt({
+        phase: 'EXECUTION_PLAN',
+        skills: await deps.skills('EXECUTION_PLAN'),
+        repoRoot: deps.config.repoRoot,
+        nonce: envelope.nonce,
+        instructions: PLAN_INSTRUCTIONS,
+      }),
+      prompt: buildPlanPrompt({
+        envelope,
+        issueNumber: state.issueId,
+        spec,
+        branch,
+        feedback,
+      }),
+      agent: 'plan',
+    },
   })
 
-  const plan = parseModelJson(reply.text, planSchema)
   await deps.git.ensureBranch(branch, await deps.baseBranch())
 
   const markdown = renderPlanMarkdown(plan)

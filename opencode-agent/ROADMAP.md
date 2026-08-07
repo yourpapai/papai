@@ -1262,7 +1262,7 @@ two call sites that consume the identity.
 | ---------------------- | ------------------------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | S5-1                   | No retry on transient model errors          | `opencode-adapter.ts:167-170`           | A single 429 or 5xx fails the phase and burns an attempt.                                                                                                                                           |
 | S5-2                   | No timeout on a prompt                      | `opencode-adapter.ts`                   | `ServerOptions.timeout` exists and is not passed. A hung call runs to the job timeout.                                                                                                              |
-| S5-3                   | No JSON-repair retry                        | `model-json.ts:44-56`                   | One malformed reply fails the run and needs a human `/retry`. A single "return valid JSON matching this schema" re-ask would recover most of these cheaply.                                         |
+| S5-3 **[FIXED]**       | No JSON-repair retry                        | `ask-json.ts`                           | `promptForJson` re-asks **once**, carrying the validation complaint and the rejected reply back to the model. See below.                                                                            |
 | S5-4                   | No prompt size budget                       | `prompts.ts:14-18`; `review-loop.ts:43` | `renderThread` caps at 20 comments but not at characters; `truncateOutput` caps 8k _per failure_, so three failures put 24k into each repair round.                                                 |
 | S5-5                   | `timeout-minutes: 45` is likely too low     | `agent-pipeline.yml:31`                 | Implement + up to 3 review rounds + 2 mutation rounds on a real repo can exceed it. A timeout loses everything — no state comment is posted, so the issue is stuck in whatever phase it started in. |
 | S5-6                   | No cost ceiling                             | —                                       | Round caps and the job timeout are the only bounds. A token budget per issue would be a cheap guardrail.                                                                                            |
@@ -1270,6 +1270,46 @@ two call sites that consume the identity.
 | S5-8                   | Every check reruns every round              | `review-loop.ts:52-66`                  | Deliberate and documented, but on a repo with a 20-minute test suite three rounds is an hour. Consider rerunning only previously-failing checks after round 1, with a full pass at the end.         |
 | S5-9                   | `parseMutationScore` is ambiguous at `1`    | `review-loop.ts:130`                    | `value > 1 ? value/100 : value` reads a bare `Mutation score: 1` as 100%, not 1%. Inherent to the format; worth documenting or requiring the `%`.                                                   |
 | S5-10 **[SUPERSEDED]** | The comment filter is gone by design (S1-3) | `agent-pipeline.yml:41-44`              | A comment merely mentioning `/approve` starts a job that then correctly skips. Harmless, noisy, billable.                                                                                           |
+
+### S5-3 — what the fix is, and what it deliberately is not
+
+Three phases ask the model for JSON — triage, plan, and comment classification —
+and all three went straight from `agent.prompt()` to `parseModelJson`, which
+throws. A stray sentence around an otherwise correct object therefore parked the
+run in `FAILED` and waited for a human `/retry`, which then re-ran the whole
+phase from the start.
+
+`promptForJson` in `ask-json.ts` sits between them. It re-asks **once**, with the
+original request, the rejected reply, and the reason the reply was rejected. To
+make the reason available at all, `model-json.ts` grew `readModelJson`, which
+returns `{ ok: false, reason }` instead of throwing; `parseModelJson` is now that
+function plus a throw, so the two cannot disagree about what "valid" means.
+
+Once, not until it works. A model that cannot produce the shape twice will not
+produce it on the fifth attempt, and each round costs tokens and wall clock
+inside a job with its own timeout — so the second failure still throws, still
+carrying the full raw reply into the failure comment.
+
+The rejected reply is quoted back **inside the envelope**. It is the pipeline's
+own model talking, not issue text, but it is still text this pipeline did not
+author being pasted into a prompt, and a reply is free to contain whatever the
+issue told it to contain.
+
+Mutation-checked. Of the survivors, three were real and are now covered: the
+"could not be used" and "no markdown fence" instruction lines, and the `warn`
+that makes a run silently repairing every prompt visible at all. The rest are
+blank-line separators and the `join('\n')` — formatting, where an assertion would
+be over-fitting.
+
+One thing the check found that S5-3 did not cause: `extractJsonObject`'s fence
+pattern could be mutated freely (require the `json` tag, capture one character)
+because every fixture also parsed via the brace-span fallback. Added the case
+where it cannot — an untagged fence followed by prose containing braces — which
+took that file from 0.61 to 0.76. What survives there is pre-existing and mostly
+equivalent: `end <= start` versus `end <`, which differ only when `{` and `}`
+share an index, and `||` versus `&&` on the same line, where both orderings hand
+`tryParse` an unparsable slice. The one real gap left is a fence containing valid
+JSON that is not an object (` ```\n5\n``` `); it belongs with S6, not here.
 
 ---
 

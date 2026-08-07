@@ -6,7 +6,7 @@
 import { z } from 'zod'
 
 import { renderArtifact, SPEC_MARKER } from '../artifacts.js'
-import { parseModelJson } from '../model-json.js'
+import { promptForJson } from '../ask-json.js'
 import { composeSystemPrompt } from '../obra-skills.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
 import { buildTriagePrompt, TRIAGE_INSTRUCTIONS } from '../prompts.js'
@@ -32,22 +32,27 @@ export const handleTriage: PhaseHandler = async (input): Promise<PhaseOutcome> =
 
   const envelope = mintEnvelope()
   const agent = await deps.agent()
-  const reply = await agent.prompt({
-    system: composeSystemPrompt({
-      phase: 'INIT_OR_CLARIFY',
-      skills: await deps.skills('INIT_OR_CLARIFY'),
-      repoRoot: deps.config.repoRoot,
-      nonce: envelope.nonce,
-      instructions: TRIAGE_INSTRUCTIONS,
-    }),
-    prompt: buildTriagePrompt(
-      { envelope, issueNumber: issue.number, title: issue.title, body: issue.body, thread: input.thread },
-      feedback,
-    ),
-    agent: 'plan',
+  const decision = await promptForJson({
+    agent,
+    schema: triageSchema,
+    envelope,
+    log: deps.log,
+    request: {
+      system: composeSystemPrompt({
+        phase: 'INIT_OR_CLARIFY',
+        skills: await deps.skills('INIT_OR_CLARIFY'),
+        repoRoot: deps.config.repoRoot,
+        nonce: envelope.nonce,
+        instructions: TRIAGE_INSTRUCTIONS,
+      }),
+      prompt: buildTriagePrompt(
+        { envelope, issueNumber: issue.number, title: issue.title, body: issue.body, thread: input.thread },
+        feedback,
+      ),
+      agent: 'plan',
+    },
   })
 
-  const decision = parseModelJson(reply.text, triageSchema)
   if (decision.status === 'clarify') {
     return { signal: 'NEEDS_CLARIFICATION', comment: renderQuestions(decision.questions) }
   }
