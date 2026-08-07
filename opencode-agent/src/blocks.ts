@@ -28,9 +28,30 @@ const escapeMarker = (marker: string): string => {
   return marker
 }
 
+/**
+ * Serializes a payload so it cannot terminate its own block.
+ *
+ * `JSON.stringify` escapes quotes and backslashes but not `-->`, and the block
+ * pattern is non-greedy, so a payload containing `-->` ends the block early and
+ * the remainder fails to parse. That is not hypothetical: mermaid diagrams
+ * (`A --> B`) belong in a design spec, and plenty of compilers print `-->` in
+ * the diagnostics that land in `lastError`.
+ *
+ * Escaping every `<` and `>` as a JSON unicode escape closes it at the source.
+ * Both characters can only occur inside string literals — JSON's structural
+ * syntax has neither — so a blanket replacement on the serialized form is safe,
+ * and `JSON.parse` decodes the escapes back to the original text exactly.
+ *
+ * The cost is that HTML-ish payload text reads as `<…>` in the raw
+ * comment. These blocks are machine state; the human-readable rendering lives
+ * in the visible markdown above them.
+ */
+const encodePayload = (payload: unknown): string =>
+  JSON.stringify(payload, null, 2).replaceAll('<', '\\u003C').replaceAll('>', '\\u003E')
+
 /** Renders a hidden block. Markers are `SCREAMING_SNAKE` and validated. */
 export const renderBlock = (marker: string, payload: unknown): string =>
-  `<!-- ${escapeMarker(marker)}:\n${JSON.stringify(payload, null, 2)}\n-->`
+  `<!-- ${escapeMarker(marker)}:\n${encodePayload(payload)}\n-->`
 
 const blockPattern = (marker: string): RegExp => new RegExp(`<!--\\s*${escapeMarker(marker)}:\\s*([\\S\\s]*?)-->`, 'gu')
 

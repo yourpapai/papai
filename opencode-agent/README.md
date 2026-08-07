@@ -29,7 +29,12 @@ hidden HTML blocks:
 Artefacts get their own blocks rather than being scraped back out of the visible
 markdown. That is not a style preference: a spec is model-written markdown full
 of headings and `---` rules, and any heading-and-trailer scraping truncates it at
-the first horizontal rule. Blocks are read back byte-exact.
+the first horizontal rule.
+
+Blocks are read back byte-exact, and a payload cannot forge its own delimiter:
+`<` and `>` are escaped as JSON unicode escapes before serialization, so text
+containing `-->` — a mermaid arrow, a compiler diagnostic in `lastError` — cannot
+terminate the block early.
 
 Only blocks authored by the configured agent login are read, and a block failing
 schema validation is skipped in favour of the last good one, so neither a

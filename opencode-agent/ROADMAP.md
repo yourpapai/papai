@@ -163,7 +163,27 @@ behaviour the deployment forbids.
 
 ### S1-4 A spec or plan containing `---` is silently truncated — **verified** — **[FIXED]**
 
-_Fixed: artefacts moved to their own hidden blocks (`blocks.ts` / `artifacts.ts`); `thread.ts` is deleted._
+_Fixed in two steps. The first moved artefacts out of heading-scraped prose into
+hidden blocks (`blocks.ts` / `artifacts.ts`); `thread.ts` is deleted.
+
+That was not sufficient, and verifying it found the same defect one layer down.
+`JSON.stringify` does not escape `-->`, and the block pattern is non-greedy, so a
+payload containing `-->` terminated its own block — the truncation had moved from
+`---` to `-->`, not gone. Both live consequences were reproduced: a spec with a
+mermaid diagram (`A --> B`) became unreadable, and a `lastError` carrying a
+compiler diagnostic (`--> src/a.rs:3:9`) destroyed the **state** block outright,
+which is worse than losing an artefact because the next job then restarts a live
+issue from phase one.
+
+`renderBlock` now escapes every `<` and `>` as a JSON unicode escape. Both
+characters occur only inside string literals — JSON's structural syntax has
+neither — so the replacement is safe on the serialized form and `JSON.parse`
+decodes it back exactly. A payload can no longer forge its own delimiter.
+
+Eight regression tests cover the class (terminator, mermaid arrow, compiler
+diagnostic, opening marker, a forged block of the payload's own, angle brackets,
+a literal `\u003C` in the text, and the state-block cases), and were
+mutation-checked by removing the escape: six go red._
 
 `src/thread.ts:13` defines `TRAILER_PATTERN = /\n---\n[\S\s]*$/u` and `:46`
 applies it to strip the agent's trailing call-to-action. It strips from the

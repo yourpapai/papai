@@ -270,14 +270,44 @@ describe('phase 1 — triage', () => {
     expect(latestPostedState(harness)?.phase).toBe('DESIGN_SPEC')
   })
 
-  test('persists the spec in a block that survives markdown rules', async () => {
-    const spec = '## Goal\n\nDo it.\n\n---\n\n## Files\n\n- `src/a.ts`'
+  test('persists a spec whose markdown could forge the block delimiters', async () => {
+    // Horizontal rules broke the original heading-scraping recovery; `-->`
+    // broke the block channel that replaced it. A real design spec contains
+    // both — a mermaid diagram is `A --> B`.
+    const spec = [
+      '## Goal',
+      '',
+      'Do it.',
+      '',
+      '---',
+      '',
+      '```mermaid',
+      'graph TD',
+      '  A --> B',
+      '```',
+      '',
+      '## Files',
+      '',
+      '- `src/a.ts`',
+    ].join('\n')
     harness.io.replies = [JSON.stringify({ status: 'spec', spec })]
 
     await runPipeline({ event: issueEvent(), deps: harness.deps })
 
     // Read it back the way a later job does, not by string surgery.
     expect(findArtifact(harness.io.thread, AGENT_LOGIN, SPEC_MARKER)?.text).toBe(spec)
+    expect(latestPostedState(harness)?.phase).toBe('DESIGN_SPEC')
+  })
+
+  test('a failure whose message forges the delimiter still persists its state', async () => {
+    // The state block carries tool output verbatim in lastError. Losing it is
+    // worse than losing an artefact: the next job restarts a live issue.
+    harness.io.replies = ['error[E0308] expected struct\n  --> src/a.rs:3:9\n   |']
+
+    const result = await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(latestPostedState(harness)?.resumeFrom).toBe('INIT_OR_CLARIFY')
   })
 
   test('posts clarification questions and stays in INIT_OR_CLARIFY', async () => {
