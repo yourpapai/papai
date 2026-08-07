@@ -6,6 +6,7 @@
 import { PLAN_MARKER, renderArtifact, REPORT_MARKER, requireArtifact } from '../artifacts.js'
 import { missingPlanError, noChangesError } from '../errors.js'
 import { branchNameFor } from '../git.js'
+import { fence } from '../markdown.js'
 import { composeSystemPrompt } from '../obra-skills.js'
 import type { PhaseHandler, PhaseOutcome } from '../phase-context.js'
 import { buildImplementPrompt } from '../prompts.js'
@@ -80,9 +81,8 @@ const renderReport = (review: ReviewRunResult): string => {
     '',
     '<details><summary>review-loop summary</summary>',
     '',
-    '```',
-    review.summary,
-    '```',
+    // The summary is the workspace's own output and can contain fences.
+    fence(review.summary),
     '',
     '</details>',
   ]

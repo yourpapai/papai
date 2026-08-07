@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { fence } from './markdown.js'
 import { mapSeries } from './sequence.js'
 import type { CommandResult } from './shell.js'
 
@@ -104,6 +105,6 @@ export const formatFailures = (failures: readonly CheckFailure[], perFailure = 1
   failures
     .map((failure) => {
       const body = failure.output.length > perFailure ? failure.output.slice(-perFailure) : failure.output
-      return `**${failure.name}** (exit ${failure.exitCode})\n\n\`\`\`\n${body}\n\`\`\``
+      return `**${failure.name}** (exit ${failure.exitCode})\n\n${fence(body)}`
     })
     .join('\n\n')

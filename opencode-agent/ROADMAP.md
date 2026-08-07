@@ -417,6 +417,31 @@ at entry rather than on every recursion step.
 
 ### S2-3 `renderFailure` has an unreachable branch — by inspection — **[FIXED]**
 
+_The dead `attempts >= 1` branch is gone; the comment always reports
+`Attempt N of M`.
+
+Checking it surfaced a live defect in the same function. Every error message it
+renders is wrapped in a fixed ` ` ``` fence, and the messages carry raw model
+output — `modelResponseError` embeds up to 2 KB of the reply, which for a
+"contained no JSON object" failure is usually prose **with a fenced code block in
+it**. Traced against CommonMark: the model's inner fence closes the outer one
+early, the reply's tail escapes into prose, and the closing fence opens a fresh
+block that swallows the trailing line. That trailing line is
+"Reply `/retry` to resume" — the one instruction the maintainer needs, rendered
+as code.
+
+Backtick _parity_ misses this entirely: the fences balance while pairing wrongly,
+so the regression tests model CommonMark spans instead of counting.
+
+New `markdown.ts` sizes each fence one backtick longer than anything inside, and
+the three places that fence foreign text now use it: the failure comment, the
+CI-fix check output, and the review-loop summary. Delimiters written by something
+else have now bitten three times — `---`, `-->`, and ` ` ``` — so this closes
+the third the same way as the others: at the boundary, for the whole class.
+
+Mutation-checked by restoring the fixed-length fence: six tests go red.
+`renderFailure` also stopped taking the whole `PhaseDeps` to read one number._
+
 `src/orchestrator.ts:189-191` branches on `next.attempts >= 1`, but
 `transition(state, 'FAILED')` always increments `attempts`, so `next.attempts`
 is always ≥ 1. The `else` string can never render. Harmless, but it signals the

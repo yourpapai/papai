@@ -4,7 +4,8 @@
 // See LICENSE in the project root for details.
 
 import type { IssueComment } from './blocks.js'
-import type { PhaseDeps, PhaseInput } from './phase-context.js'
+import { fence } from './markdown.js'
+import type { PhaseInput } from './phase-context.js'
 import { renderStateComment } from './state-manager.js'
 import type { AgentState, Phase } from './types.js'
 
@@ -83,14 +84,13 @@ export const renderCiExhausted = (reason: string, prUrl: string | null): string 
     'Its checks are red and I will not attempt another fix — take a look, or push a fix yourself.',
   ].join('\n')
 
-export const renderFailure = (phase: Phase, message: string, next: AgentState, deps: PhaseDeps): string =>
+export const renderFailure = (phase: Phase, message: string, next: AgentState, maxAttempts: number): string =>
   [
     `### Run failed in ${phase}`,
     '',
-    '```',
-    message,
-    '```',
+    // The message carries raw model output, which usually contains fences.
+    fence(message),
     '',
-    `Attempt ${next.attempts} of ${deps.config.maxAttempts}. Reply **\`/retry\`** to resume from \`${phase}\`, ` +
+    `Attempt ${next.attempts} of ${maxAttempts}. Reply **\`/retry\`** to resume from \`${phase}\`, ` +
       'or **`/cancel`** to stop.',
   ].join('\n')

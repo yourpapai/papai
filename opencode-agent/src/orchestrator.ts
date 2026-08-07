@@ -273,7 +273,7 @@ const failRun = async (input: MachineInput, error: unknown): Promise<RunResult> 
   deps.log.error({ issue: state.issueId, phase: state.phase, error: message }, 'Phase handler failed')
 
   const failed = transition(state, 'FAILED', { lastError: message })
-  await postAndAppend(thread, input, renderFailure(state.phase, message, failed, deps), failed)
+  await postAndAppend(thread, input, renderFailure(state.phase, message, failed, deps.config.maxAttempts), failed)
 
   return { status: 'failed', reason: message, state: failed }
 }
