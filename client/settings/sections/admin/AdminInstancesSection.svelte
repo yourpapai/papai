@@ -338,10 +338,10 @@
   const platformRows = $derived<InstanceRow[]>(platforms.map((r) => ({ id: r.id, type: r.type, status: r.status })))
   const taskRows = $derived<InstanceRow[]>(tasks.map((r) => ({ id: r.id, type: r.type, status: r.status })))
   const instanceColumns = [
-    { key: 'id' as const, label: 'ID' },
-    { key: 'type' as const, label: 'Type' },
-    { key: 'status' as const, label: 'Status' },
-    { key: 'actions' as const, label: '', align: 'right' as const },
+    { key: 'id' as const, label: 'ID', width: '40%', sortable: true },
+    { key: 'type' as const, label: 'Type', width: '20%' },
+    { key: 'status' as const, label: 'Status', width: '15%', sortable: true },
+    { key: 'actions' as const, label: '', align: 'right' as const, width: '25%' },
   ]
 
   const pendingDeleteLabel = $derived(
@@ -565,7 +565,7 @@
     border: 1px solid var(--border);
     background: var(--surface-1);
     border-radius: var(--radius);
-    padding: 16px;
+    padding: var(--s4);
     margin-bottom: var(--gap-field);
   }
 </style>
