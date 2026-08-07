@@ -139,6 +139,26 @@ const ghostPendingMock = (url: string): Promise<Response> => {
   return Promise.resolve(json(ghostPendingPayload))
 }
 
+// For the remove-confirmation label test: an @-handle-style username paired with the
+// placeholder id, so `removeUserLabel` has a name to render instead of falling back to
+// "this pending user". Distinct from the UUID-shaped `pendingPayload` above, which
+// `pendingDeleteMock` relies on.
+const handlePendingPayload = {
+  users: [
+    {
+      platform_user_id: 'placeholder-@ghost',
+      platform_instance_id: 'tg',
+      username: '@ghost',
+      added_by: 'admin',
+    },
+  ],
+}
+
+const pendingPayloadMock = (url: string): Promise<Response> => {
+  if (url.includes('/admin/open-access')) return Promise.resolve(json(openAccessOff))
+  return Promise.resolve(json(handlePendingPayload))
+}
+
 const openAccessUserMock = (url: string): Promise<Response> => {
   if (url.includes('/admin/open-access')) return Promise.resolve(json(openAccessOff))
   return Promise.resolve(json(openAccessUserPayload))
@@ -652,6 +672,44 @@ describe('AdminUsersSection', () => {
     await drain()
     expect(target.textContent).toContain('Loading…')
     expect(target.textContent).not.toContain('No users')
+    void unmount(component)
+  })
+
+  test('the remove confirmation names the person, not the storage id', async () => {
+    setMockFetch(pendingPayloadMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="user-remove-placeholder-@ghost"]')!.click()
+    flushSync()
+    expect(document.body.textContent).toContain('@ghost (pending)')
+    expect(document.body.textContent).not.toContain('placeholder-@ghost?')
+    void unmount(component)
+  })
+
+  test('the remove confirmation contrasts removal with blocking', async () => {
+    setMockFetch(openAccessOffMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="user-remove-42"]')!.click()
+    flushSync()
+    expect(document.body.textContent).toContain('Block')
+    void unmount(component)
+  })
+
+  test('block is weighted below remove', async () => {
+    setMockFetch(openAccessOffMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    const block = target.querySelector('[data-testid="user-block-42"]')!
+    const remove = target.querySelector('[data-testid="user-remove-42"]')!
+    expect(block.className).not.toContain('danger')
+    expect(remove.className).toContain('danger')
     void unmount(component)
   })
 })

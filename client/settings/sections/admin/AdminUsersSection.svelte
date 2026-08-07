@@ -23,9 +23,17 @@
   import IdCell from '../../components/IdCell.svelte'
   import ErrorState from '../../../shared/ui/ErrorState.svelte'
   import Pill from '../../../shared/ui/Pill.svelte'
-  import { describeAddedBy, userStatus } from './admin-users-presenters.js'
+  import { describeAddedBy, removeUserLabel, userStatus } from './admin-users-presenters.js'
   import type { UserStatus } from './admin-users-presenters.js'
   import { statusTone } from '../../../shared/ui/status-tone.js'
+
+  interface UserRow {
+    platform_user_id: string
+    username: string
+    status: UserStatus
+    added_by: string
+    blocked: boolean
+  }
 
   let users: AdminUserRow[] = $state([])
   let openDmAccess = $state(false)
@@ -39,11 +47,15 @@
   let initialLoad = $state(true)
   let newUserId = $state('')
   let newUsername = $state('')
-  let pendingRemoval: string | null = $state(null)
+  let pendingRemovalRow: UserRow | null = $state(null)
   let blocking: string | null = $state(null)
   let removing = $state(false)
   let removeError = $state<string | null>(null)
-  const pendingRemovalLabel = $derived(pendingRemoval ?? '')
+  const pendingRemovalLabel = $derived(
+    pendingRemovalRow === null
+      ? ''
+      : removeUserLabel({ username: pendingRemovalRow.username, userId: pendingRemovalRow.platform_user_id }),
+  )
 
   const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
@@ -107,8 +119,8 @@
   }
 
   async function confirmRemove(): Promise<void> {
-    const userId = pendingRemoval
-    if (userId === null || removing) return
+    const userId = pendingRemovalRow?.platform_user_id
+    if (userId === undefined || removing) return
     removeError = null
     removing = true
     let ok = false
@@ -121,7 +133,7 @@
       removing = false
     }
     if (ok) {
-      pendingRemoval = null
+      pendingRemovalRow = null
       await load()
       status = 'User removed.'
     }
@@ -145,14 +157,6 @@
   $effect(() => {
     void load()
   })
-
-  interface UserRow {
-    platform_user_id: string
-    username: string
-    status: UserStatus
-    added_by: string
-    blocked: boolean
-  }
 
   const userRows = $derived<UserRow[]>(
     users.map((u) => {
@@ -252,7 +256,7 @@
       {#snippet cell(row: UserRow, col: { key: string; label: string })}
         {#if col.key === 'actions'}
           <Btn
-            variant={row.blocked ? 'secondary' : 'danger'}
+            variant="secondary"
             size="sm"
             testid={`user-block-${row.platform_user_id}`}
             disabled={blocking === row.platform_user_id}
@@ -266,7 +270,7 @@
             disabled={blocking === row.platform_user_id}
             onClick={() => {
               removeError = null
-              pendingRemoval = row.platform_user_id
+              pendingRemovalRow = row
             }}>
             {#snippet children()}Remove{/snippet}
           </Btn>
@@ -313,16 +317,20 @@
   {/if}
 
   <Confirm
-    open={pendingRemoval !== null}
+    open={pendingRemovalRow !== null}
     title="Remove user"
     danger
     busy={removing}
     confirmLabel="Remove"
-    onCancel={() => (pendingRemoval = null)}
+    onCancel={() => (pendingRemovalRow = null)}
     onConfirm={() => void confirmRemove()}>
     {#snippet body()}
-      <p>Remove user {pendingRemovalLabel}? This cannot be undone.</p>
-      {#if removeError !== null}<p class="status-error">{removeError}</p>{/if}
+      <p>Remove {pendingRemovalLabel}?</p>
+      <p class="confirm-hint">
+        They lose access entirely and drop off this list. To keep the record and revoke access reversibly, Block them
+        instead.
+      </p>
+      {#if removeError !== null}<p class="status-error" role="alert">{removeError}</p>{/if}
     {/snippet}
   </Confirm>
 </section>
@@ -359,5 +367,9 @@
   .placeholder {
     color: var(--text-muted);
     font-size: 12px;
+  }
+  .confirm-hint {
+    font-size: 12px;
+    color: var(--text-muted);
   }
 </style>
