@@ -10,6 +10,7 @@ import { createGit } from './git.js'
 import { createOctokitApi } from './github.js'
 import type { FetchLike } from './github.js'
 import type { TriggerEvent } from './guardrails.js'
+import { resolveSelfLogin } from './identity.js'
 import type { AgentHandle } from './index.js'
 import type { Logger } from './logger.js'
 import { loadPhaseSkills } from './obra-skills.js'
@@ -95,15 +96,16 @@ export const assembleDeps = ({ config, secrets, event, env, run, log, agent, fet
     secrets,
     credential: { remote: config.gitRemoteBase, token: config.githubToken },
   })
+  const github = createOctokitApi({
+    token: config.githubToken,
+    owner: config.owner,
+    repo: config.repo,
+    secrets,
+    fetch,
+  })
 
   return {
-    github: createOctokitApi({
-      token: config.githubToken,
-      owner: config.owner,
-      repo: config.repo,
-      secrets,
-      fetch,
-    }),
+    github,
     git,
     runCheck: makeCheckRunner(run, config),
     runReview: makeReviewRunner(run, config, log),
@@ -111,6 +113,9 @@ export const assembleDeps = ({ config, secrets, event, env, run, log, agent, fet
     skills: makeSkillLoader(config, log),
     baseBranch: memoize(() =>
       resolveBaseBranch(env, { fromEvent: event.defaultBranch, fromGit: () => git.defaultBranch() }),
+    ),
+    selfLogin: memoize(() =>
+      resolveSelfLogin({ override: config.selfLoginOverride, api: github, owner: config.owner, log }),
     ),
     config,
     log,

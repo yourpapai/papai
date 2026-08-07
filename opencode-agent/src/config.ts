@@ -27,8 +27,14 @@ export interface PipelineConfig {
   owner: string
   repo: string
   githubToken: string
-  /** Login treated as the agent's own identity for recursion guards. */
-  selfLogin: string
+  /**
+   * `AGENT_SELF_LOGIN`, or `null` to derive it from the token.
+   *
+   * Not defaulted to the owner here: that default was indistinguishable from a
+   * deliberate choice, and it is wrong for every token that posts as a bot.
+   * `resolveSelfLogin` owns the fallback, and warns when it takes it.
+   */
+  selfLoginOverride: string | null
   /** This pipeline's workflow name, so its own red runs do not re-trigger it. */
   selfWorkflowName: string
   openai: OpenAiSettings
@@ -74,6 +80,12 @@ const required = (env: Env, key: string): string => {
     throw new ConfigError(`Missing required environment variable ${key}`)
   }
   return value.trim()
+}
+
+/** A knob whose absence is meaningful, rather than something to default. */
+const optionalOrNull = (env: Env, key: string): string | null => {
+  const value = env[key]
+  return value === undefined || value.trim().length === 0 ? null : value.trim()
 }
 
 const optional = (env: Env, key: string, fallback: string): string => {
@@ -251,7 +263,7 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     owner,
     repo,
     githubToken: required(env, 'GITHUB_TOKEN'),
-    selfLogin: optional(env, 'AGENT_SELF_LOGIN', owner),
+    selfLoginOverride: optionalOrNull(env, 'AGENT_SELF_LOGIN'),
     selfWorkflowName: optional(env, 'AGENT_WORKFLOW_NAME', 'OpenCode Issue Agent'),
     openai: loadOpenAiSettings(env),
     gitRemoteBase: optional(env, 'GITHUB_SERVER_URL', 'https://github.com').replace(/\/*$/u, '/'),

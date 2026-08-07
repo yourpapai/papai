@@ -29,6 +29,13 @@ export interface PullRequestInput extends PullRequestPresentation {
   base: string
 }
 
+export interface PostedComment {
+  id: number
+  url: string
+  /** Who GitHub says wrote it — the only free, authoritative identity check. */
+  authorLogin: string
+}
+
 export interface PullRequestRef {
   number: number
   url: string
@@ -55,7 +62,8 @@ export interface PullRequestStatus extends PullRequestRef {
  */
 export interface GitHubApi {
   listIssueComments(issueNumber: number): Promise<IssueComment[]>
-  createComment(issueNumber: number, body: string): Promise<{ id: number; url: string }>
+  /** Returns the created comment, including the author GitHub recorded. */
+  createComment(issueNumber: number, body: string): Promise<PostedComment>
   getIssue(issueNumber: number): Promise<IssueContext>
   getAuthenticatedLogin(): Promise<string>
   /** The newest pull request from `head`, whatever became of it. */
@@ -165,7 +173,7 @@ export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
         issue_number: issueNumber,
         body: clean(body),
       })
-      return { id: data.id, url: data.html_url }
+      return { id: data.id, url: data.html_url, authorLogin: data.user?.login ?? '' }
     },
 
     getIssue: async (issueNumber) => {

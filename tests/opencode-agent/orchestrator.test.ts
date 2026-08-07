@@ -41,7 +41,7 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   owner: 'acme',
   repo: 'widgets',
   githubToken: 'token',
-  selfLogin: AGENT_LOGIN,
+  selfLoginOverride: AGENT_LOGIN,
   selfWorkflowName: 'OpenCode Issue Agent',
   openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5' },
   commitAuthorName: 'agent',
@@ -111,6 +111,8 @@ interface PipelineIo {
   existingPr: PullRequestStatus | null
   prBodies: string[]
   prTitles: string[]
+  /** The account GitHub records as the author of the agent's comments. */
+  postedAs: string
 }
 
 interface Harness {
@@ -139,6 +141,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     existingPr: null,
     prBodies: [],
     prTitles: [],
+    postedAs: AGENT_LOGIN,
   }
 
   let nextCommentId = 100
@@ -148,8 +151,12 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     createComment: (_issueNumber, body) => {
       nextCommentId += 1
       io.posted.push(body)
-      io.thread.push({ id: nextCommentId, body, authorLogin: AGENT_LOGIN })
-      return Promise.resolve({ id: nextCommentId, url: `https://example.test/c/${nextCommentId}` })
+      io.thread.push({ id: nextCommentId, body, authorLogin: io.postedAs })
+      return Promise.resolve({
+        id: nextCommentId,
+        url: `https://example.test/c/${nextCommentId}`,
+        authorLogin: io.postedAs,
+      })
     },
     getIssue: () => Promise.resolve({ number: ISSUE, title: 'Add retries', body: 'Please add retries.' }),
     getAuthenticatedLogin: () => Promise.resolve(AGENT_LOGIN),
@@ -202,6 +209,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     agent: () => Promise.resolve(agent),
     skills: () => Promise.resolve([]),
     baseBranch: () => Promise.resolve(BASE_BRANCH),
+    selfLogin: () => Promise.resolve(AGENT_LOGIN),
     config: config(overrides),
     log: silentLogger(),
   }
@@ -663,6 +671,25 @@ describe('implementation and delivery', () => {
 
     expect(harness.io.gitCalls.join(' ')).not.toContain('agent/issue-7')
     expect(harness.io.gitCalls.join(' ')).toContain(`agent/issue-${ISSUE}`)
+  })
+
+  test('a mismatched posting identity fails now, not one job later', async () => {
+    // The in-job thread mirror carries the author GitHub *recorded*. If it
+    // carried the assumed one instead, delivery would find the report this job
+    // just wrote while the next job — reading real authors back from the API —
+    // could not. Failing the same way in both places is what makes the
+    // misconfiguration visible; `reportIdentityDrift` says why on the same run.
+    harness.io.postedAs = 'github-actions[bot]'
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.prBodies.at(-1)).toContain('No implementation report was recorded')
+  })
+
+  test('finds its own report when the identity matches', async () => {
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.prBodies.at(-1)).toContain('Implementation report')
   })
 
   test('persists the plan so a later job reads it back verbatim', async () => {

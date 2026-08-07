@@ -241,9 +241,31 @@ it, because that one catches a third-party token the pipeline never loaded.
 
 The original spike spec asked for the run to abort when the actor matches
 `github.repository_owner` — which also locks out the human owner, usually the
-maintainer driving the issue. The rule is aimed at the _agent's_ identity, which
-merely defaults to the owner, so it compares against `AGENT_SELF_LOGIN`
-(defaulting to the owner). Set it to the bot account's login.
+maintainer driving the issue. The rule is aimed at the _agent's_ identity, so it
+compares against the login the agent actually posts as.
+
+### The agent's own identity
+
+That login is **not** only a recursion guard: it is the author filter the
+pipeline reads its own state and artefacts back through. Get it wrong and nothing
+matches — every event restores a fresh state, so the issue restarts at phase one,
+forever, with no error. It used to default to the repository owner, which is
+wrong for every token that posts as a bot.
+
+It is now resolved, in order:
+
+1. `AGENT_SELF_LOGIN`, if set. An operator who knows the answer is not
+   second-guessed, and this is the escape hatch for everything below.
+2. Otherwise the token's own identity. Exact for a personal access token.
+3. Otherwise the repository owner, **with a warning naming `AGENT_SELF_LOGIN`**.
+   A GitHub App installation token cannot read `/user`, so this is the expected
+   path for the token this README recommends — set the variable to
+   `<app-slug>[bot]`.
+
+Whatever it resolves to is checked against reality for free: a created comment
+comes back carrying its author, and a mismatch is logged at `error`. The in-job
+thread mirror uses that recorded author too, so a wrong identity fails on the
+run that made it rather than on the next one.
 
 ## Configuration
 
@@ -261,7 +283,7 @@ cannot drift.
 | `OPENAI_BASE_URL`                          | no       | `https://api.openai.com/v1`                     | Any OpenAI-compatible endpoint                        |
 | `GITHUB_TOKEN`                             | yes      | —                                               | Comments, branches, pull requests                     |
 | `GITHUB_REPOSITORY`                        | yes      | —                                               | `owner/repo`                                          |
-| `AGENT_SELF_LOGIN`                         | no       | repository owner                                | Login treated as the agent itself                     |
+| `AGENT_SELF_LOGIN`                         | no       | derived from the token                          | Login the agent posts as; see above                   |
 | `AGENT_WORKFLOW_NAME`                      | no       | `OpenCode Issue Agent`                          | This workflow's name, for the CI recursion guard      |
 | `AGENT_BASE_BRANCH`                        | no       | detected                                        | Branch the PR targets; see below                      |
 | `AGENT_CHECK_COMMAND`                      | no       | `bun run lint && bun run typecheck && bun test` | review-loop's build gate                              |
@@ -342,6 +364,8 @@ both are 26–28 KB and neither applies to a single-session CI run.
 2. Repository variable `OPENAI_MODEL` (and `OPENAI_BASE_URL` for a non-OpenAI
    endpoint).
 3. Repository variable `AGENT_SELF_LOGIN` — the login the agent comments under.
+   Optional for a PAT, but required for a GitHub App token, which cannot report
+   its own identity.
 4. Optionally `AGENT_GITHUB_TOKEN`, a GitHub App installation token. Without it
    the agent's pushes do not trigger CI, so the CI-fix path never runs.
 5. Actions needs write access to contents, issues and pull requests.

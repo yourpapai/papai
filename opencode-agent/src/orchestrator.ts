@@ -52,7 +52,7 @@ export const runPipeline = async (options: RunOptions): Promise<RunResult> => {
   const { event, deps } = options
 
   const guard = evaluateGuardrails(event, {
-    selfLogin: deps.config.selfLogin,
+    selfLogin: await deps.selfLogin(),
     selfWorkflowName: deps.config.selfWorkflowName,
   })
   if (!guard.allowed) {
@@ -61,7 +61,7 @@ export const runPipeline = async (options: RunOptions): Promise<RunResult> => {
   }
 
   const thread = await deps.github.listIssueComments(event.issueNumber)
-  const restored = findLatestState(thread, deps.config.selfLogin, event.issueNumber) ?? initialState(event.issueNumber)
+  const restored = findLatestState(thread, await deps.selfLogin(), event.issueNumber) ?? initialState(event.issueNumber)
   const issue = await resolveIssue(event, deps)
   const command = event.kind === 'issue' ? parseSlashCommand(event.commentBody) : null
 

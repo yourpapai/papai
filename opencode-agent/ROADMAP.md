@@ -1209,7 +1209,7 @@ the ten had already been closed by unrelated work and were never marked.
 | S4-1  | `dryRun` parsed, logged, never honoured             | **[FIXED]** — no work | Zero references in `src/`. Went with the OpenAI-only rework, along with the config knob and the log line.                                                                                                                                                                                                                                                             |
 | S4-2  | `updatedAt` never written                           | **[FIXED]**           | Deleted. Zero writes and zero reads; the comment carrying the block is already timestamped by GitHub, so the field only added a lie about freshness.                                                                                                                                                                                                                  |
 | S4-3  | `approved` written, never read                      | **[FIXED]**           | Deleted. Two writes, zero reads — the phase _is_ the gate, so the flag could only ever disagree with it.                                                                                                                                                                                                                                                              |
-| S4-4  | `getAuthenticatedLogin()` implemented, never called | open                  | The one item of real substance left. See the note below the table.                                                                                                                                                                                                                                                                                                    |
+| S4-4  | `getAuthenticatedLogin()` implemented, never called | **[FIXED]**           | Wired behind a lazy `deps.selfLogin()`: explicit override → token identity → repository owner with a warning. Plus the check that was free all along — a created comment reports its author, so a mismatch is now an `error` on the run that caused it.                                                                                                               |
 | S4-5  | `currentSha()` implemented, never called            | **[FIXED]**           | Deleted, rather than wired into the state block. A sha is not derivable, so it would be a legitimate field — but the pull request already shows it, and this workspace has just removed two fields nothing read.                                                                                                                                                      |
 | S4-6  | `buildPrBodyPrompt` / `PrPromptInput` dead          | **[FIXED]** — no work | Zero references. Removed when `deliver.ts` took over rendering the pull-request body deterministically.                                                                                                                                                                                                                                                               |
 | S4-7  | No state schema version                             | **[FIXED]** — no work | `STATE_VERSION = 2`, with a `v` field that defaults to 1 so blocks written before versioning still parse.                                                                                                                                                                                                                                                             |
@@ -1222,22 +1222,37 @@ bump**: zod strips unknown keys, so a block written with the old fields still
 parses. Bumping would have stranded every in-flight issue for no gain — the same
 reasoning that let S3-4 drop `branch`.
 
-### S4-4 — why this one is more than dead code
+### S4-4 — what it turned out to be
 
-`AGENT_SELF_LOGIN` is not only the recursion guard. It is the **author filter**
-`findLatestState` and `findArtifact` read state back through. Set it wrong and
-nothing matches, so every event restores `initialState` and the issue silently
-restarts at phase 1 — forever, with no error anywhere. Deriving the identity from
-the token removes that whole class.
+Fixed. Recording what the fix had to reckon with, because the caveat flagged
+before starting it was the deciding constraint.
 
-The shape is S2-5's: an async lookup behind a lazy memoized `deps.selfLogin()`,
-with a fallback chain (`AGENT_SELF_LOGIN` → token identity → repository owner)
-and every read site updated. Worth checking first whether
-`users.getAuthenticated` returns anything usable for a **GitHub App installation
-token** — apps report as `<app>[bot]` through a different endpoint, and the
-workflow recommends an App token for the CI-fix path to fire at all. If it does
-not, the fallback chain carries most of the value and the derivation carries
-little.
+`users.getAuthenticated` answers for a personal access token and **cannot** for a
+GitHub App installation token — the identity behind one is `<app-slug>[bot]`,
+which needs a JWT and a different endpoint. That is the token the workflow
+recommends, so "derive it from the API" alone would have been wrong for the
+recommended setup. The chain is shaped so correctness never depends on knowing
+which token types can answer: it asks, and falls back on any failure, warning and
+naming `AGENT_SELF_LOGIN` when it does.
+
+The second half is the part that closes the failure mode rather than improving
+the default. A created comment comes back carrying its author — the truth was
+free all along, and nothing looked at it. `reportIdentityDrift` compares it with
+the identity in use and logs at `error`, and `postAndAppend` mirrors the
+**recorded** author into the in-job thread. That second choice is deliberate: the
+assumed author would let a run find the artefacts it had just written while the
+next job, reading real authors from the API, could not — working now and failing
+later is the worst of both. It now fails the same way in both places, on the run
+that caused it.
+
+A surviving mutant found a test that could not see the code it named. Swapping
+the mirror to the assumed author killed nothing, because the assertion read the
+harness's own `io.thread` — which the _fake_ populates — rather than anything
+production returned. Rewritten to observe what a later phase sees: with a
+mismatched identity, delivery cannot find the report the previous phase wrote.
+
+Mutation-checked ten ways in total, across the chain, the drift check and the
+two call sites that consume the identity.
 
 ---
 

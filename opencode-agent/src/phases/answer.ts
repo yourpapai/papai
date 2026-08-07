@@ -35,7 +35,7 @@ export const handleAnswer: PhaseHandler = async (input): Promise<PhaseOutcome> =
     prompt: buildAnswerPrompt(
       { envelope, issueNumber: issue.number, title: issue.title, body: issue.body, thread: input.thread },
       question,
-      artifactUnderReview(input),
+      await artifactUnderReview(input),
     ),
     agent: 'plan',
   })
@@ -52,9 +52,9 @@ const questionText = (input: PhaseInput): string => {
 }
 
 /** The spec or plan the maintainer is most likely asking about. */
-const artifactUnderReview = (input: PhaseInput): string | null => {
+const artifactUnderReview = async (input: PhaseInput): Promise<string | null> => {
   const marker = input.state.phase === 'PLAN_REVIEW' ? PLAN_MARKER : SPEC_MARKER
-  const artifact = findArtifact(input.thread, input.deps.config.selfLogin, marker)
+  const artifact = findArtifact(input.thread, await input.deps.selfLogin(), marker)
   return artifact === null ? null : artifact.text
 }
 

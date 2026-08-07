@@ -711,12 +711,15 @@ describe('config', () => {
     expect(() => parseRepository('acme/widgets\n')).toThrow('"acme/widgets\\n"')
   })
 
-  test('defaults selfLogin to the repository owner', () => {
-    expect(loadConfig(baseEnv, '/repo').selfLogin).toBe('acme')
+  test('leaves the identity unset rather than guessing the repository owner', () => {
+    // The owner default was indistinguishable from a deliberate choice, and it
+    // is wrong for every token that posts as a bot. `resolveSelfLogin` owns the
+    // fallback now, and warns when it takes it.
+    expect(loadConfig(baseEnv, '/repo').selfLoginOverride).toBeNull()
   })
 
   test('AGENT_SELF_LOGIN overrides the owner-based recursion guard', () => {
-    expect(loadConfig({ ...baseEnv, AGENT_SELF_LOGIN: 'agent-bot' }, '/repo').selfLogin).toBe('agent-bot')
+    expect(loadConfig({ ...baseEnv, AGENT_SELF_LOGIN: 'agent-bot' }, '/repo').selfLoginOverride).toBe('agent-bot')
   })
 
   test.each(['0', '-1', '2.5', 'lots', '1e3', '01', '7 rounds'])('rejects the unparseable round count %p', (raw) => {

@@ -39,7 +39,7 @@ const PLAN_INSTRUCTIONS = [
  */
 export const handlePlan: PhaseHandler = async (input): Promise<PhaseOutcome> => {
   const { deps, state } = input
-  const spec = requireArtifact(input.thread, deps.config.selfLogin, SPEC_MARKER, () => missingSpecError(state.issueId))
+  const spec = requireArtifact(input.thread, await deps.selfLogin(), SPEC_MARKER, () => missingSpecError(state.issueId))
 
   const branch = branchNameFor(state.issueId)
   const feedback = changeRequest(input)

@@ -46,6 +46,12 @@ export interface PhaseDeps {
    * guardrail must never pay that — or fail on it.
    */
   baseBranch: () => Promise<string>
+  /**
+   * The login the agent posts as. Memoized and lazy for the same reason as
+   * `baseBranch`, and load-bearing for more: it is the author filter that state
+   * and artefacts are read back through, not just the recursion guard.
+   */
+  selfLogin: () => Promise<string>
   config: PipelineConfig
   log: Logger
 }

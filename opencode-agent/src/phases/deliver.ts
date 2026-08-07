@@ -31,7 +31,7 @@ export const handleDeliver: PhaseHandler = async (input): Promise<PhaseOutcome> 
 
   // Rendered once and used by both live paths, so a reused pull request
   // presents exactly what a freshly opened one would.
-  const presentation = renderPresentation(input)
+  const presentation = await renderPresentation(input)
   const pr =
     existing === null
       ? await openPullRequest(input, branch, presentation)
@@ -94,8 +94,8 @@ const refresh = async (
   return pr
 }
 
-const renderPresentation = (input: PhaseInput): PullRequestPresentation => {
-  const report = findArtifact(input.thread, input.deps.config.selfLogin, REPORT_MARKER)
+const renderPresentation = async (input: PhaseInput): Promise<PullRequestPresentation> => {
+  const report = findArtifact(input.thread, await input.deps.selfLogin(), REPORT_MARKER)
 
   return {
     title: `${input.issue.title} (#${input.state.issueId})`,

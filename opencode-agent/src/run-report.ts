@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { IssueComment } from './blocks.js'
+import { reportIdentityDrift } from './identity.js'
 import { fence } from './markdown.js'
 import type { PhaseInput } from './phase-context.js'
 import { renderStateComment } from './state-manager.js'
@@ -33,7 +34,11 @@ export const postAndAppend = async (
   const rendered = `${renderStateComment(body, state)}${artifacts}`
 
   const posted = await input.deps.github.createComment(input.issue.number, rendered)
-  return [...thread, { id: posted.id, body: rendered, authorLogin: input.deps.config.selfLogin }]
+  // The recorded author, not the one the pipeline believes in: if they differ,
+  // the in-job mirror would otherwise disagree with what a later job reads back.
+  reportIdentityDrift(await input.deps.selfLogin(), posted.authorLogin, input.deps.log)
+
+  return [...thread, { id: posted.id, body: rendered, authorLogin: posted.authorLogin }]
 }
 
 /**

@@ -29,7 +29,7 @@ const IMPLEMENT_INSTRUCTIONS = [
  */
 export const handleImplement: PhaseHandler = async (input): Promise<PhaseOutcome> => {
   const { deps, state } = input
-  const plan = requireArtifact(input.thread, deps.config.selfLogin, PLAN_MARKER, () => missingPlanError(state.issueId))
+  const plan = requireArtifact(input.thread, await deps.selfLogin(), PLAN_MARKER, () => missingPlanError(state.issueId))
 
   const branch = branchNameFor(state.issueId)
   await deps.git.ensureBranch(branch, await deps.baseBranch())
