@@ -155,7 +155,9 @@ workflow above):
 That design covers the strangler/no-backfill decision, the frozen legacy tree
 rules for `docs/superpowers/`, the CLAUDE.md routing table, and the
 retargeting of repo-local skills and dev tooling. §1–§3 of this document
-remain the decision research.
+remain the decision research. Porting individual legacy items into OpenSpec
+(one at a time: archive/adopt/seed/retire) is operationalized by
+[`docs/operations/legacy-migration-runbook.md`](../operations/legacy-migration-runbook.md).
 
 ## 5. Open questions
 

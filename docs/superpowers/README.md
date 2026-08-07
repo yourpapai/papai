@@ -16,12 +16,19 @@ and lives under `openspec/changes/<name>/`. There is no backfill — see the
 
 ## Disposition rules
 
+The step-by-step porting procedure (triage signals, lane definitions, queue
+inventory) lives in
+[`docs/operations/legacy-migration-runbook.md`](../operations/legacy-migration-runbook.md).
+Summary:
+
 - **Adopting a `remaining/` brief or a pending design** → `/opsx:propose` a
   change and port its content into `proposal.md` / `design.md` / `tasks.md`;
-  then delete the stale legacy file in the same commit.
+  then delete the stale legacy file in the same commit (runbook Lane 1).
 - **Referencing shipped behavior** → read the ADRs in `docs/adr/` and the
   archived design+plan pairs in `docs/archive/`; read `specs/` here only as
-  historical detail.
+  historical detail. Shipped plans drain to `docs/archive/` via
+  `scripts/plan-adr-workflow.ts` (runbook Lane 0); a change that modifies a
+  legacy-documented capability seeds its spec first (runbook Lane 2).
 - **No new files** under this tree, with two carve-outs:
   - maintenance of the e2e planning workflow (`e2e-planning-workflow.md` and
     `templates/`), which stays live and now targets `openspec/changes/`;
