@@ -91,7 +91,7 @@
   "plugins/task-provider-kaneo/search-tasks.ts": 0.6326530612244898,
   "plugins/task-provider-kaneo/task-relations.ts": 0.47058823529411764,
   "plugins/task-provider-kaneo/task-resource.ts": 0.4387755102040816,
-  "plugins/task-provider-kaneo/task-status.ts": 0.234375,
+  "plugins/task-provider-kaneo/task-status.ts": 0.875,
   "plugins/task-provider-kaneo/task-update-helpers.ts": 0.4246575342465753,
   "plugins/task-provider-kaneo/update-column.ts": 0.09523809523809523,
   "plugins/task-provider-kaneo/update-comment.ts": 0.18181818181818182,
