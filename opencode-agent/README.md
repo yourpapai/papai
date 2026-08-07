@@ -191,6 +191,14 @@ travels in `OPENCODE_CONFIG_CONTENT`, the GitHub token goes to Octokit directly,
 and git reads `.git/config`. They are matched by **value**, not name, so an
 aliased export goes too.
 
+Nothing is committed unchecked. `git add --all` stages whatever the model left
+behind, so between staging and the commit a guard inspects the index and unstages
+if it refuses: staged content containing one of the pipeline's own credentials
+(by value, not by filename — a `.env` renamed `notes.txt` is the same disaster),
+more than `AGENT_MAX_CHANGED_FILES` files, more than `AGENT_MAX_CHANGED_LINES`
+lines, or a binary it cannot size-check. A credential reaching git history is not
+undone by deleting the file.
+
 Every outbound body — issue comments, pull request titles and bodies — is
 stripped of the pipeline's credentials at the GitHub adapter, not in the
 renderers. A comment is assembled from check output, git stderr, review
@@ -237,6 +245,8 @@ cannot drift.
 | `AGENT_CI_FIX_MAX_ROUNDS`                  | no       | `2`                                             | Repair rounds per CI-fix job                          |
 | `AGENT_MAX_CI_ATTEMPTS`                    | no       | `3`                                             | CI-fix jobs per pull request                          |
 | `AGENT_MAX_ATTEMPTS`                       | no       | `3`                                             | Failures before `/retry` stops resuming               |
+| `AGENT_MAX_CHANGED_FILES`                  | no       | `100`                                           | Files one commit may carry                            |
+| `AGENT_MAX_CHANGED_LINES`                  | no       | `20000`                                         | Lines one commit may change                           |
 | `AGENT_TIMEOUT_MS`                         | no       | `1800000`                                       | Per-subprocess timeout                                |
 | `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no       | `opencode-agent[bot]`                           | Commit identity                                       |
 | `AGENT_LOG_LEVEL`                          | no       | `info`                                          | `debug`, `info`, `warn`, `error`                      |

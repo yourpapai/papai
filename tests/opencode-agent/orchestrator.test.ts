@@ -55,6 +55,7 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   ciFixMaxRounds: 2,
   maxCiAttempts: 2,
   maxAttempts: 3,
+  diffLimits: { maxFiles: 100, maxLines: 20_000 },
   skillRoots: ['.superpowers/skills'],
   ...overrides,
 })

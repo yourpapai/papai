@@ -3,6 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { inspectStaged, parseNumstat } from './diff-guard.js'
+import type { DiffLimits } from './diff-guard.js'
+import { diffGuardError } from './errors.js'
 import type { CommandResult, CommandRunner } from './shell.js'
 
 export interface GitOptions {
@@ -11,6 +14,10 @@ export interface GitOptions {
   /** Identity stamped on agent commits. */
   authorName: string
   authorEmail: string
+  /** Ceilings a staged change set must stay under before it is committed. */
+  limits: DiffLimits
+  /** Credential values that must never reach a commit, whatever file holds them. */
+  secrets: readonly string[]
 }
 
 /** Branch name the pipeline owns for a given issue. */
@@ -92,11 +99,34 @@ const ensureBranch = async (git: GitFn, gitOrThrow: GitFn, branch: string, base:
   await gitOrThrow('checkout', '-B', branch, `origin/${base}`)
 }
 
+/**
+ * Checks what `git add --all` actually staged, and unstages it if the answer is
+ * unacceptable.
+ *
+ * Measured after staging rather than before: `--numstat` on the index lists
+ * every file individually, including the untracked ones that
+ * `status --porcelain` collapses into a single directory entry — which is
+ * precisely how a whole `node_modules` reads as one line.
+ */
+const guardStaged = async (gitOrThrow: GitFn, options: GitOptions): Promise<void> => {
+  const staged = parseNumstat((await gitOrThrow('diff', '--cached', '--numstat')).stdout)
+  const diff = (await gitOrThrow('diff', '--cached')).stdout
+
+  const verdict = inspectStaged(staged, diff, options.limits, options.secrets)
+  if (verdict.ok) return
+
+  // Leave the tree as it was found. A retry lands on a fresh runner in the
+  // normal case, but a half-staged index is a poor thing to hand anyone.
+  await gitOrThrow('reset')
+  throw diffGuardError(verdict.reason)
+}
+
 const commitAll = async (gitOrThrow: GitFn, options: GitOptions, message: string): Promise<boolean> => {
   const status = await gitOrThrow('status', '--porcelain')
   if (status.stdout.trim().length === 0) return false
 
   await gitOrThrow('add', '--all')
+  await guardStaged(gitOrThrow, options)
   await gitOrThrow(
     '-c',
     `user.name=${options.authorName}`,

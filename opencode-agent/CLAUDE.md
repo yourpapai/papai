@@ -39,7 +39,10 @@ findings: `ROADMAP.md`.
   wholesale — so never reintroduce a code path that reads a secret from `env`
   after `runCli` has loaded config. Outbound text is redacted in `github.ts`, at
   the boundary: never move that into a renderer, and never add a `GitHubApi`
-  method that sends free text without passing it through `clean`.
+  method that sends free text without passing it through `clean`. `diff-guard.ts`
+  inspects the index between `git add --all` and the commit; its `parseNumstat`
+  fixtures are recorded from real git output, so re-record rather than adjust
+  them by inspection.
 - Untrusted text (issue bodies, comments, **check output**) must go through the
   envelope from `prompts.ts` before reaching a prompt, and commands must be
   spawned as argv vectors with `shell: false`. The envelope is only as good as

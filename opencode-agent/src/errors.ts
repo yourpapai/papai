@@ -34,6 +34,19 @@ export const noChangesError = (issueNumber: number): PipelineError =>
     `The agent finished the plan for issue #${issueNumber} without touching a single file. Nothing to commit.`,
   )
 
+export const diffGuardError = (reason: string): PipelineError =>
+  new PipelineError(
+    'DIFF_GUARD',
+    [
+      `Refusing to commit: ${reason}.`,
+      '',
+      'The pipeline stages every change the model left behind, so this is usually',
+      'a build artefact, a downloaded fixture, or a file written while debugging',
+      'that the repository does not ignore. Add it to `.gitignore`, or raise',
+      '`AGENT_MAX_CHANGED_FILES` / `AGENT_MAX_CHANGED_LINES` if the change really is that large.',
+    ].join('\n'),
+  )
+
 export const openCodeError = (message: string): PipelineError => new PipelineError('OPENCODE', message)
 
 export const modelResponseError = (message: string, raw: string): PipelineError =>

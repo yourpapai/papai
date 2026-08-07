@@ -9,7 +9,9 @@ import path from 'node:path'
 import { z } from 'zod'
 
 import type { CheckSpec } from './check-loop.js'
+import type { DiffLimits } from './diff-guard.js'
 import type { OpenAiSettings } from './openai-config.js'
+import { parseRepository } from './repository.js'
 
 const checkSpecSchema = z.object({ name: z.string().min(1), argv: z.array(z.string().min(1)).min(1) })
 
@@ -46,6 +48,8 @@ export interface PipelineConfig {
   maxCiAttempts: number
   /** Above this, a FAILED issue stops auto-retrying and waits for `/retry`. */
   maxAttempts: number
+  /** Ceilings a staged change set must stay under before it is committed. */
+  diffLimits: DiffLimits
   skillRoots: readonly string[]
 }
 
@@ -95,6 +99,14 @@ const ROUND_RANGE: IntRange = { min: 1, max: 20 }
  */
 const TIMEOUT_RANGE: IntRange = { min: 1_000, max: 7_200_000 }
 
+/**
+ * Bounds on one commit. Generous enough for a real feature and its tests, small
+ * enough that a staged `node_modules`, a downloaded fixture or a build directory
+ * stops the run instead of landing in a public pull request.
+ */
+const FILES_RANGE: IntRange = { min: 1, max: 5_000 }
+const LINES_RANGE: IntRange = { min: 1, max: 1_000_000 }
+
 /** Concurrent `opencode run` subprocesses one runner can actually serve. */
 const POOL_RANGE: IntRange = { min: 1, max: 16 }
 
@@ -114,50 +126,6 @@ const boundedInt = (env: Env, key: string, fallback: number, range: IntRange): n
     throw new ConfigError(`${key} must be between ${range.min} and ${range.max}, got ${parsed}`)
   }
   return parsed
-}
-
-/**
- * GitHub's own rules for each half of `owner/repo`. Owners are alphanumeric with
- * interior hyphens and cap at 39 characters; repositories also allow `.` and `_`
- * and cap at 100.
- */
-const OWNER_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/u
-const REPO_PATTERN = /^[A-Za-z0-9._-]{1,100}$/u
-
-/** Names `REPO_PATTERN` admits but a path segment must never carry. */
-const RESERVED_REPO_NAMES: ReadonlySet<string> = new Set(['.', '..'])
-
-const isRepoName = (candidate: string): boolean => REPO_PATTERN.test(candidate) && !RESERVED_REPO_NAMES.has(candidate)
-
-/**
- * Parses `GITHUB_REPOSITORY` (`owner/repo`).
- *
- * Both halves are matched against GitHub's naming rules rather than merely
- * counted. Counting separators is a proxy for "well-formed" and admits plenty
- * that is not: `acme / widgets`, a value with the trailing newline a shell
- * heredoc leaves behind, `acme/widgets?x=1`. Each of those parses, then surfaces
- * far away as an opaque 404 from the REST API in the middle of a run — the same
- * argument `OPENAI_MODEL` is required for.
- *
- * The raw value is quoted with `JSON.stringify` so invisible characters, which
- * are the likeliest cause, are visible in the error.
- */
-export const parseRepository = (raw: string): { owner: string; repo: string } => {
-  const [owner, repo, ...extra] = raw.split('/')
-
-  if (
-    owner === undefined ||
-    repo === undefined ||
-    extra.length > 0 ||
-    !OWNER_PATTERN.test(owner) ||
-    !isRepoName(repo)
-  ) {
-    throw new ConfigError(
-      `GITHUB_REPOSITORY must be "owner/repo" using GitHub's naming rules, got ${JSON.stringify(raw)}`,
-    )
-  }
-
-  return { owner, repo }
 }
 
 /** Parses `AGENT_CHECKS` — a JSON array of `{ name, argv }`. */
@@ -291,6 +259,10 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     ciFixMaxRounds: boundedInt(env, 'AGENT_CI_FIX_MAX_ROUNDS', 2, ROUND_RANGE),
     maxCiAttempts: boundedInt(env, 'AGENT_MAX_CI_ATTEMPTS', 3, ROUND_RANGE),
     maxAttempts: boundedInt(env, 'AGENT_MAX_ATTEMPTS', 3, ROUND_RANGE),
+    diffLimits: {
+      maxFiles: boundedInt(env, 'AGENT_MAX_CHANGED_FILES', 100, FILES_RANGE),
+      maxLines: boundedInt(env, 'AGENT_MAX_CHANGED_LINES', 20_000, LINES_RANGE),
+    },
     skillRoots: DEFAULT_SKILL_ROOTS,
   }
 }

@@ -8,13 +8,7 @@ import { describe, expect, test } from 'bun:test'
 import { z } from 'zod'
 
 import { renderBlock } from '../../opencode-agent/src/blocks.js'
-import {
-  loadConfig,
-  parseChecks,
-  parseRepository,
-  resolveBaseBranch,
-  resolveReviewCommand,
-} from '../../opencode-agent/src/config.js'
+import { loadConfig, parseChecks, resolveBaseBranch, resolveReviewCommand } from '../../opencode-agent/src/config.js'
 import type { Env } from '../../opencode-agent/src/config.js'
 import { PipelineError } from '../../opencode-agent/src/errors.js'
 import { createGit } from '../../opencode-agent/src/git.js'
@@ -37,6 +31,7 @@ import {
 import type { OpenCodeConnection, SdkPromptBody } from '../../opencode-agent/src/opencode-adapter.js'
 import { mintEnvelope } from '../../opencode-agent/src/phases/envelope.js'
 import { buildCiFixPrompt, createEnvelope, renderThread } from '../../opencode-agent/src/prompts.js'
+import { parseRepository } from '../../opencode-agent/src/repository.js'
 import { redactSecrets, scrubSecrets } from '../../opencode-agent/src/secrets.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
 import { PHASES } from '../../opencode-agent/src/types.js'
@@ -1074,11 +1069,14 @@ const captureGit = (exitCodes: Record<string, number> = {}, stdouts: Record<stri
   return { calls, run }
 }
 
-const gitOptions = (run: CommandRunner): GitOptions => ({
+const gitOptions = (run: CommandRunner, overrides: Partial<GitOptions> = {}): GitOptions => ({
   run,
   cwd: '/repo',
   authorName: 'agent',
   authorEmail: 'agent@example.com',
+  limits: { maxFiles: 100, maxLines: 20_000 },
+  secrets: [],
+  ...overrides,
 })
 
 const NO_REMOTE_BRANCH = { 'git rev-parse --verify refs/remotes/origin/agent/issue-1': 1 }

@@ -925,19 +925,51 @@ edit can still move the machine — including past the two review gates. That is
 inside the trust boundary the guardrails already draw (the same person can push),
 but it is worth stating rather than implying the block is now trusted._
 
-### S3-5 `git add --all` commits whatever the model left behind — by inspection
+### S3-5 `git add --all` commits whatever the model left behind — verified — **[FIXED]**
 
-`src/git.ts:75`. Everything untracked and not gitignored is committed:
-downloaded fixtures, `.env` files the model created while debugging, coverage
-output, stray caches. There is no pathspec restriction and no size or scope
-guard.
+_Verified in a scratch repository: a `.env`, a 400 KB binary and a `node_modules`
+tree all landed in one commit, and the key inside the `.env` is then in git
+history, where deleting the file does not remove it._
 
-Both sibling workspaces in this repo (`review-loop/`, `mutation-improve/`) have
-explicit diff guards; the spike has none.
+_A `diff-guard.ts` now inspects the **index** between `git add --all` and the
+commit, and unstages if it refuses. Measured after staging on purpose:
+`--numstat` on the index lists every file individually, including the untracked
+ones that `status --porcelain` collapses into a single directory entry — which is
+exactly how a whole `node_modules` reads as one line._
 
-**Direction:** port a `diff-guard` — cap changed-file count and total diff size,
-refuse to commit files outside the plan's declared `files` list (the plan schema
-already collects them and currently uses them only for display).
+_Three refusals, in this order:_
+
+1. _**A credential in the staged content**, checked first so a leak is never
+   masked by a size failure. By **value**, not filename: a name deny-list
+   (`.env`, `*.pem`) only catches the files someone thought of, and a `.env`
+   renamed `notes.txt` is the same disaster. The refusal counts the credentials
+   and never repeats one._
+2. _**Scale** — `AGENT_MAX_CHANGED_FILES` (100) and `AGENT_MAX_CHANGED_LINES`
+   (20 000), both range-checked by the S2-9 machinery._
+3. _**Binaries**, which `--numstat` reports as `-` and cannot size-check.
+   Counting them as zero lines would let an arbitrarily large blob slide under
+   the line cap, so they are reported as unmeasurable and refused._
+
+_The porcelain-parsing idea is ported from `mutation-improve/src/diff-guard.ts`,
+but not its `ALLOWED_PREFIXES` shape: that workspace only ever edits `tests/`,
+whereas this one implements arbitrary approved plans. `parseNumstat` was
+**recorded from real git output**, not written from memory — a binary is
+`-\t-\tpath`, a rename inside a shared prefix is `src/{old.ts => new.ts}`, one
+without is `a.txt => b/c.txt`, and numstat leaves spaced paths unquoted where
+porcelain quotes them. Guessing any of those would have been wrong._
+
+_Mutation-checked ten ways — removing the guard, refusing without throwing,
+skipping the unstage, dropping the secret check, reordering it after the caps,
+zeroing binaries, admitting binaries, an off-by-one on the file cap, keeping the
+rename source, and naming the leaked value — each kills the tests that name it._
+
+_**Deliberately not done: refusing files outside the plan's declared `files`
+list.** The finding suggests it, and it is the wrong trade here. Models
+legitimately touch files a plan did not name — a test helper, a snapshot, a
+lockfile, an index barrel — so a hard refusal would fail correct runs routinely,
+and the plan's file list is model-written prose rather than a specification. The
+caps bound the blast radius and the pull request diff stays reviewable, which is
+what the guard is actually for._
 
 ### S3-6 Thread rendering leaks state blocks and allows role impersonation — by inspection
 

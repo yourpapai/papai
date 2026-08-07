@@ -179,6 +179,8 @@ const assembleDeps = ({ config, event, env, run, log, agent, fetch }: DepsInput)
     cwd: config.repoRoot,
     authorName: config.commitAuthorName,
     authorEmail: config.commitAuthorEmail,
+    limits: config.diffLimits,
+    secrets: pipelineSecrets(config),
   })
 
   return {
