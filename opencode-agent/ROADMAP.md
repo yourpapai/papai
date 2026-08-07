@@ -7,17 +7,22 @@ See LICENSE in the project root for details.
 
 # opencode-agent — follow-up roadmap
 
-> **Status update.** A follow-up change addressed several of the findings below
-> while reworking the pipeline (OpenAI-only credentials, fetched superpowers
-> skills, the real `review-loop/` workspace, CI-failure retries, and a
-> conversational review flow). Resolved items are marked **[FIXED]** inline with
-> a one-line note. Everything unmarked still stands — in particular **S1-5**
-> (the OpenCode SDK response shapes remain unverified against a live server) and
-> the whole of **S3** except S3-1.
+> **Status.** This began as a report-only audit; much of it has since been fixed.
+> Resolved items are marked **[FIXED]** inline, each with what was verified and —
+> where it applies — what the first attempt at the fix got wrong. All of **S1**
+> and **S2** are closed, as is **S3** apart from **S3-7** (the repository token
+> still lives in `.git/config`) and **S3-8** (the logger redacts by field name
+> rather than by value), which were split out of larger findings rather than left
+> implied. **S4** onwards is untouched.
+>
+> A recurring pattern is worth stating once: several items marked `[FIXED]` were
+> re-opened on inspection because the fix had closed the _instance_ and left the
+> _class_ open — a deny-list that named one string, a check that counted
+> separators, a guard on one field of several. Where that happened the entry says
+> so.
 
 Findings from a file-by-file audit of the spike as committed on
-`claude/github-actions-opencode-agent-807fjo`. **Report only — nothing here is
-fixed.**
+`claude/github-actions-opencode-agent-807fjo`.
 
 ## Method and confidence
 
@@ -204,52 +209,41 @@ recovering them by heading and stripping decorations. Comment-scraping is the
 fragile part of the whole design; the hidden-block channel already exists and is
 schema-validated.
 
-### S1-5 The OpenCode SDK response shapes are guesses, and untested — by inspection
+### S1-5 The OpenCode SDK response shapes are guesses, and untested — verified — **[FIXED]**
 
-`src/opencode-adapter.ts:118-152` probes for a session id at `.id` _or_
-`.data.id`, and for reply text at `.parts` _or_ `.data.parts`. Those are
-defensive guesses, not verified contracts. Lines 126-149 — `readSessionId` and
-the entire `connectSdk` real-SDK path — are at **0% coverage**; every test
-injects a fake `connect`.
+_Now genuinely verified, which is what the old status banner said was missing.
+`tests/opencode-agent/live-sdk.integration.ts` drives the real adapter against a
+real `opencode serve`, with a stub OpenAI-compatible endpoint standing in for the
+provider — so it needs no credentials, and it proves the generated config's custom
+`baseUrl` is honoured end to end. Run: `bun run opencode-agent:test:live`._
 
-If both guesses are wrong, `collectText` returns `''`, `parseModelJson` throws
-"Model reply contained no JSON object", and **every run fails in triage** with a
-message that points at the model rather than at the adapter.
+_Recorded from a live run, not inferred:_
 
-`createOpencodeServer({ hostname: '127.0.0.1', port: 0 })` is likewise
-unverified — port `0` may or may not be honoured.
+| call             | shape                                                             |
+| ---------------- | ----------------------------------------------------------------- |
+| `session.create` | `{ data: { id: "ses_…" }, request, response }`                    |
+| `session.prompt` | `{ data: { info, parts }, request, response }`                    |
+| reply parts      | `step-start`, `text`, `step-finish` — only `text` carries content |
 
-**[FIXED]** _Settled empirically, not by inspection. A real `opencode serve`
-1.18.7 was booted and driven through the pipeline's own generated config against
-a stub OpenAI-compatible endpoint, which also proves the custom `baseUrl` is
-honoured end to end.
+_The probing `.id` **or** `.data.id` guesswork is gone: `decodeSessionId` and
+`decodeReply` decode through zod schemas, so an SDK upgrade that moves the
+payload fails there naming the contract instead of yielding empty text that
+surfaces three layers away as "the model returned no JSON"._
 
-The observed contract matches the generated types: the client returns
-`{ data, error, request, response }` (`ThrowOnError = false`,
-`ResponseStyle = "fields"`), so the session id is at `.data.id` and the reply
-parts at `.data.parts` — the old probing tried the **top level first**, a branch
-that never matches. A reply carries `step-start` / `text` / `step-finish` parts,
-so `collectText`'s `type === 'text'` filter was right.
+_**Running the check found a real defect in the check itself.** On a cold
+OpenCode data directory — which every CI runner is — booting two servers
+simultaneously races OpenCode's first-time SQLite initialisation. Observed twice:
+once as `database is locked`, once as a hang past a 240-second wall clock. It
+passes on a warm store, which is why it had never shown up. The check now boots a
+single server and closes it before the concurrent pair. That ordering is what the
+pipeline already does — the memoized server boots alone, well before the review
+loop spawns its pool — so this is the check catching up with production rather
+than a production fix; but a future change that made the review pool the first
+OpenCode process on a runner would hit it._
 
-Probing is replaced by schema decoding: `decodeSessionId` and `decodeReply` are
-exported (they sit on the one path a `connect` seam cannot reach, which is how
-they stayed untested), and an SDK upgrade that relocates the payload now fails
-naming the contract instead of yielding empty text that surfaces three layers
-away as "the model returned no JSON". The `adapters.test.ts` fixtures are
-recorded from the live run, and the pre-existing fixtures that encoded the guess
-failed when the decoder landed — which is the point.
-
-`tests/opencode-agent/live-sdk.integration.ts` preserves the check; run it with
-`bun run opencode-agent:test:live`. It is deliberately not a `*.test.ts`: it
-needs the `opencode` CLI on PATH, so it stays out of default discovery and is not
-a gate.
-
-**Two further defects surfaced while verifying:** `createOpencodeServer` passes
-`port` straight to `opencode serve`, and `port: 0` there does **not** mean
-"ephemeral" — the server was observed booting on its 4096 default, so two agent
-processes on one host collide. A port is now reserved from the OS first, and the
-live check boots two servers concurrently to prove it. The SDK's 5-second boot
-timeout was also raised to 60s; a cold runner with a large repo can miss it._
+_Coverage of `connectSdk` remains 0% in the unit suite by design: it is the one
+path a `connect` seam cannot reach, which is exactly how the shapes came to be
+guesses. The live check is the coverage._
 
 ### S1-6 No skills ever load; the superpowers integration is inert — **verified** — **[FIXED]**
 

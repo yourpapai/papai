@@ -20,6 +20,11 @@
  * No model credentials are needed: a stub OpenAI-compatible endpoint stands in
  * for the provider, which is also what proves the generated config's custom
  * `baseUrl` is honoured end to end.
+ *
+ * Last recorded run confirmed: a session response is
+ * `{ data: { id: "ses_…" }, request, response }`; a prompt response is
+ * `{ data: { info, parts }, request, response }` with parts typed
+ * `step-start` / `text` / `step-finish`, of which only `text` carries content.
  */
 
 import { z } from 'zod'
@@ -97,6 +102,16 @@ const run = async (): Promise<number> => {
   const serversBefore = countServers()
 
   try {
+    // Warm OpenCode's own store before anything runs concurrently. On a cold
+    // data directory — which every CI runner is — two servers starting at once
+    // race each other's first-time SQLite initialisation, and the boot either
+    // dies with `database is locked` or hangs well past the SDK timeout. Both
+    // were observed. The pipeline itself boots one memoized server before the
+    // review pool spawns anything, so this ordering is what production already
+    // does; the check has to do it deliberately.
+    const warmup = await createOpenCodeAgent({ directory: process.cwd(), openai, sessionTitle: 'live-warmup' })
+    await warmup.close()
+
     // Two at once: the SDK ignores `port: 0` and falls back to its 4096 default,
     // so a shared-port bug shows up here and nowhere else.
     const [first, second] = await Promise.all([
