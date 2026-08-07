@@ -24,6 +24,21 @@ any finding was closed. Fifteen of the seventeen original findings close in this
 below for the evidence. One new finding is filed for a pre-existing, cross-cutting pattern this
 plan deliberately left alone (`admin-users-live-region-mounts-with-text`).
 
+**Second re-review pass (2026-08-07, same day).** `9fb8d8018` landed `table-layout: fixed` on
+`DataTable`, gated on every column declaring a `width`. Re-shot and re-measured against that
+commit: `admin-users-table-not-sortable-or-width-pinned` now closes for real — the same
+before/after-search measurement used to narrow it now returns identical column widths
+(`[319.5, 319.5, 191.6875, 191.6875, 255.625]`, both before and after, across three runs) — and
+the long-username residue in `admin-users-username-truncates-silently` narrows further: the value
+now genuinely truncates with an ellipsis and a working `title`, but stays `open` because a
+keyboard or touch user still has no way to recover the clipped portion. Pinning the widths also
+surfaced two regressions at the 640px breakpoint that did not exist under the previous `auto`
+layout, filed fresh: `admin-users-narrow-actions-column-hides-remove` (the `Remove` button
+disappears entirely, with no scroll affordance left to reach it) and
+`admin-users-narrow-added-by-clips-mid-glyph` (the Added-by pill clips mid-word with no ellipsis
+marker). Both are new, both are `open`, and neither existed before `9fb8d8018` — see each for the
+DOM measurement.
+
 **Capture caveat — retired.** The fixture now carries a 48-character username
 (`a_very_long_telegram_username_that_will_not_fit`, `client/stories/msw/settings-handlers.ts`)
 and an `openAccessError` scenario, both added in Task 4. Every shot below is now backed by real
@@ -39,13 +54,13 @@ design; the shell supplies it. Not filed.
 | ------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1. Visual hierarchy & scanning  | pass  | A blocked user now carries a red `blocked` status pill visible at a glance; the row no longer reads like an active one (`AdminUsersSection-Populated-1.png`).                          |
 | 2. Affordance & signifiers      | pass  | Open DM access has a dot-pill state indicator independent of the button, and Block (secondary) now reads as materially less destructive than Remove (danger).                          |
-| 3. Consistency w/ design system | warn  | `ErrorState`, `EmptyState`, `Pill`, and live-region roles are all adopted now; sorting works, but column widths are not actually pinned — see `admin-users-table-not-sortable-or-width-pinned` below. |
+| 3. Consistency w/ design system | pass  | `ErrorState`, `EmptyState`, `Pill`, and live-region roles are all adopted; sorting and column-width pinning both now hold, verified by identical before/after-search header measurements. |
 | 4. Feedback & state             | pass  | Loading, a fatal load failure, a non-fatal open-access failure, and a genuinely empty list each render a distinct, correctly-worded state; a blank add is blocked and explained.        |
 | 5. Content & language           | pass  | `Added by` renders "Open access" / "Announcement signup" pills or a truncated id, the remove confirmation names the person, and the confirm dialog states how Block differs from Remove. |
 | 6. Accessibility                | warn  | Labels, focus rings, and `aria-busy` now come correct, but the live-region roles are mounted with their text already inside them — see `admin-users-live-region-mounts-with-text` below. |
-| 7. Responsive / layout          | pass  | At 640px the page itself never scrolls horizontally (`document.documentElement.scrollWidth === clientWidth`, verified); the table instead scrolls within its own `.settings-table-wrap`. |
-| 8. Spacing, alignment & sizing  | warn  | The open-access card now draws its radius/padding/margin from the token scale, but column widths still visibly shift when a search narrows the row set — see the width-pinning finding. |
-| 9. Interaction & micro-states   | warn  | Add now has a real in-flight guard (`disabled`, "Adding…"), but the open-access toggle still never sets `aria-busy` — `Btn`'s call site only passes `disabled`, not `busy`.              |
+| 7. Responsive / layout          | warn  | The page itself never scrolls horizontally at 640px, but pinning the column widths that tightly now squeezes the Actions column enough to hide `Remove` entirely — see `admin-users-narrow-actions-column-hides-remove`. |
+| 8. Spacing, alignment & sizing  | warn  | The open-access card draws its radius/padding/margin from the token scale and column widths no longer shift, but the Added-by pill now clips mid-word with no ellipsis at 640px — see `admin-users-narrow-added-by-clips-mid-glyph`. |
+| 9. Interaction & micro-states   | warn  | Add has a real in-flight guard (`disabled`, "Adding…"), but the open-access toggle still never sets `aria-busy`, and at 640px `Remove` is not just visually squeezed but fully unreachable. |
 
 ## Findings
 
@@ -90,6 +105,24 @@ Severity-ranked, highest first.
 - **Where visible:** `AdminUsersSection-—-add-submitted-with-blank-id-1.png` (pre-fix)
 - **Source:** `client/settings/sections/admin/AdminUsersSection.svelte:55-58,252-266`
 - **Suggested fix:** (superseded by the resolution above)
+
+### [High] At the narrow breakpoint, the Remove control disappears entirely
+
+- **Id:** admin-users-narrow-actions-column-hides-remove
+- **Status:** open
+- **Dimension:** 9. Interaction & micro-states
+- **Where visible:** `AdminUsersSection-—-populated-narrow-1.png` at 640px — every row's Actions cell shows `Block`/`Unblock` followed by three literal dots where the `Remove` button used to read; no part of the button's label is visible. Confirmed by DOM measurement, not just the pixel: at 640px the Actions `<td>` is `127.625px` wide while its content (`Block`/`Unblock` + `Remove`) needs `141`–`154px`, and `.settings-table-wrap`/the document report zero horizontal overflow (`scrollWidth === clientWidth === 640` at every level) — so there is no scrollbar or any other affordance left to reach the hidden control. This is a direct side effect of `9fb8d8018`: before that fix, an unpinned `auto`-layout table simply grew wider than the 640px viewport and the existing `overflow-x: auto` on `.settings-table-wrap` let a user scroll to `Remove`; now that all five columns are pinned to their declared percentages, the table is forced to fit exactly inside 640px, and the 20%-wide Actions column is too narrow for two buttons once one of them says `Unblock` rather than `Block`.
+- **Source:** `client/settings/sections/admin/AdminUsersSection.svelte:193` (`{ key: 'actions', ..., width: '20%' }`) combined with `client/shared/ui/DataTable.svelte:161-163,198-206` (`table-layout: fixed` plus `.ui-datatable__td`'s `overflow: hidden; text-overflow: ellipsis`, which — for a `<td>` whose overflowing content is itself an atomic inline-block/`inline-flex` box such as `Btn` rather than plain text — hides the whole overflowing button and renders the ellipsis in its place instead of clipping it partially).
+- **Suggested fix:** Give the Actions column more room at narrow widths (e.g. a wider percentage, a `min-width` in `px` that the fixed layout still honors, or dropping the two buttons to icon-only / a single overflow menu below some breakpoint) so `Remove` stays reachable without relying on the table exceeding the viewport.
+
+### [Med] At the narrow breakpoint, the Added-by pill clips mid-word with no ellipsis
+
+- **Id:** admin-users-narrow-added-by-clips-mid-glyph
+- **Status:** open
+- **Dimension:** 8. Spacing, alignment & sizing
+- **Where visible:** `AdminUsersSection-—-populated-narrow-1.png` at 640px — the `Announcement signup` pill in the Added-by column renders as `Announcemen`, missing its final letter, with no `…` marker anywhere. DOM measurement confirms the column itself is squeezed to `96px` while the pill's content needs up to `176px` at that row; the `Pill` component (`client/shared/ui/Pill.svelte:33-51`) sets no `overflow`/`text-overflow` of its own, so the parent `<td>`'s ellipsis rule is what's supposed to apply — but because the pill is an `inline-flex` box, the browser clips its box edge rather than substituting an ellipsis glyph, the same class of quirk as the Remove-button finding above but manifesting as a hard, silent cut instead of a fully-hidden control. This is new at the narrow breakpoint since `9fb8d8018` pinned the Added-by column to 15% of the viewport; under the previous `auto` layout the column was never squeezed this far because the table simply grew past 640px and scrolled instead.
+- **Source:** `client/shared/ui/DataTable.svelte:161-163,198-206`; `client/settings/sections/admin/admin-users-presenters.ts:24-31` (`describeAddedBy()` produces the `Announcement signup` / `Open access` prose that no longer reliably fits at 15% of a 640px viewport).
+- **Suggested fix:** Either widen the Added-by column at narrow viewports, shorten the prose (e.g. "Announce" / "Open"), or add explicit `overflow: hidden; text-overflow: ellipsis; max-width: 100%` to `Pill` itself so a squeeze inside it degrades to a legible ellipsis rather than a bare glyph cut.
 
 ### [Med] A blocked user's row looks identical to an active one
 
@@ -164,11 +197,12 @@ Severity-ranked, highest first.
 ### [Med] The users table is neither sortable nor width-pinned
 
 - **Id:** admin-users-table-not-sortable-or-width-pinned
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `98d926898` (sorting — a `▲` indicator on the USERNAME header, rows arrive in username order via `defaultSort`) + `9fb8d8018` (width pinning — `DataTable` now sets `table-layout: fixed` on `.ui-datatable`, gated on every column declaring a `width`). Re-measured directly: at the default (1280px) viewport, `thead th` boxes give `[319.5, 319.5, 191.6875, 191.6875, 255.625]` before filtering the search box to `alice` and the identical `[319.5, 319.5, 191.6875, 191.6875, 255.625]` after — repeated across three runs. The instability this finding originally described (column widths shifting as the row set changes) no longer reproduces at the default viewport.
 - **Dimension:** 3. Consistency with the design system
-- **Where visible:** Sorting is confirmed fixed — `settings-sections-admin-AdminUsersSection-Populated-1.png` shows a `▲` indicator on the USERNAME header, and rows arrive in username order via `defaultSort`. Width pinning is not: with the populated fixture at the default viewport, measuring `thead th` boxes before and after filtering the search box to `alice` gives column widths of `[286, 391.9, 174, 187.6, 238.3]` before and `[319.5, 319.5, 191.7, 191.7, 255.6]` after — every column shifts as the row set changes, which is the exact instability ("the header row jumps") the finding originally described, just triggered by a search instead of by the load transition (which the new `EmptyState`/`ErrorState` branches now sidestep structurally).
-- **Source:** `client/shared/ui/DataTable.svelte:148-152` — `.ui-datatable` sets `width: 100%` but never `table-layout: fixed`, so the `width` passed on each `<th>` (`client/settings/sections/admin/AdminUsersSection.svelte:189-193`) is only an initial-layout hint, not an enforced constraint; the browser's default `table-layout: auto` still redistributes column widths from the actual content of whichever rows are currently rendered.
-- **Suggested fix:** Set `table-layout: fixed` on `.ui-datatable` (or an equivalent per-column `max-width`) so a `width` passed on a column is actually load-bearing; verify against the same before/after-search measurement used here, and against the long-username fixture, once that's decided.
+- **Where visible:** `settings-sections-admin-AdminUsersSection-Populated-1.png` (sort indicator); before/after-search measurement above (width pinning).
+- **Source:** `client/shared/ui/DataTable.svelte:93-99,161-163` — `table-layout: fixed` is applied via `.ui-datatable--fixed`, gated on `allColumnsHaveWidths`.
+- **Suggested fix:** (superseded by the resolution above)
 
 ### [Low] The empty table is a dead end, and says the same thing when a search misses
 
@@ -190,14 +224,14 @@ Severity-ranked, highest first.
 - **Source:** `client/settings/sections/admin/AdminUsersSection.svelte:373-382`
 - **Suggested fix:** (superseded by the resolution above)
 
-### [Low] A long username truncates with no way to read it
+### [Low] A long username truncates with no way to read it on keyboard or touch
 
 - **Id:** admin-users-username-truncates-silently
 - **Status:** open
 - **Dimension:** 7. Responsive / layout
-- **Where visible:** `AdminUsersSection-—-populated-narrow-1.png` and `settings-sections-admin-AdminUsersSection-Populated-1.png` — the 48-character fixture username (`a_very_long_telegram_username_that_will_not_fit`) renders in full in both shots, with no ellipsis. Measuring the cell directly (`scrollWidth === clientWidth === 368px` at both 640px and 1280px viewports) confirms the browser is not clipping it: the `USERNAME` column simply grows to fit the longest value present, which is also why the table's own width (926px) exceeds the 640px viewport at the narrow breakpoint — that excess is absorbed by `.settings-table-wrap`'s `overflow-x: auto` (page-level `scrollWidth` stays 640px), not by truncation.
-- **Source:** `client/shared/ui/DataTable.svelte:187-196` — the `td` rule (`white-space: nowrap; overflow: hidden; text-overflow: ellipsis`) and the section's own `.cell-text` (`AdminUsersSection.svelte:368-372`, same three properties) both require the cell's *box* to be narrower than its content before either can do anything; because `.ui-datatable` has no `table-layout: fixed` (see the width-pinning finding above), the column box grows to match content instead, so the ellipsis rule never activates for any username length. `title={row.username}` (`AdminUsersSection.svelte:306`) is present and correct, but currently sits on a span that never actually clips — it is not wrong, just unreachable under the current layout.
-- **Suggested fix:** This is the same root cause as `admin-users-table-not-sortable-or-width-pinned`: once column widths are genuinely pinned (`table-layout: fixed` or a per-column `max-width`), the existing `overflow: hidden; text-overflow: ellipsis` will engage and the `title` already in place will make the truncated value hover-recoverable. That still leaves the value unreachable to a keyboard-only or touch user with no hover — `title` has no non-pointer path to its content — so re-verify this finding once the layout fix lands and expect it to survive, narrowed to that remainder.
+- **Where visible:** `AdminUsersSection-—-populated-narrow-1.png` and `settings-sections-admin-AdminUsersSection-Populated-1.png` — the 48-character fixture username (`a_very_long_telegram_username_that_will_not_fit`) now renders as `a_very_long_tele…` in both shots. Now that `table-layout: fixed` (`9fb8d8018`) holds the USERNAME column to its declared width, the ellipsis rule genuinely engages: measured directly, the `span.cell-text` carrying the username has `scrollWidth: 368` against `clientWidth: 136` at 640px and `clientWidth: 296` at 1280px — the content is reliably wider than the box at both breakpoints, so it clips.
+- **Source:** `client/shared/ui/DataTable.svelte:198-206` (`.ui-datatable__td`: `white-space: nowrap; overflow: hidden; text-overflow: ellipsis`) and `AdminUsersSection.svelte:306,368-372` (`.cell-text`, same three properties, plus `title={row.username}`). `title` is present and now actually load-bearing — a mouse user can hover the truncated cell and read the full username in the native tooltip. What remains: `title` has no keyboard or touch equivalent — a keyboard-only user tabbing to a row, or a touch user with no hover concept, has no way to recover the clipped portion of the value. That is the residue this finding narrows to.
+- **Suggested fix:** Give the truncated value a non-hover path to its full text — e.g. render it as a focusable element (a button/disclosure) that reveals the full username on focus or tap, or move the full value into an always-visible/expandable place (a tooltip-on-focus pattern, or a details row) rather than relying solely on `title`.
 
 ### [Low] A pending user has no readable identifier
 
