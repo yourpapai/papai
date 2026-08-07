@@ -14,7 +14,8 @@ findings: `ROADMAP.md`.
   not on disk: `AGENT_STATE` for the machine, `AGENT_SPEC` / `AGENT_PLAN` /
   `AGENT_REPORT` for the artefacts.
 - `src/triggers.ts` decides _whether and where_ an event moves the state;
-  `src/orchestrator.ts` drives the phase cascade once that decision is made.
+  `src/orchestrator.ts` drives the phase cascade once that decision is made;
+  `src/token-budget.ts` decides whether the cascade may afford another step.
   Phase handlers in `src/phases/` return a `TransitionSignal`, a comment body and
   optional artefact blocks, and never write state or decide the next phase
   themselves.
@@ -66,6 +67,22 @@ findings: `ROADMAP.md`.
   count reaches a handler. The invariant to preserve: no path may leave the
   persisted state in a phase that has a handler but that no trigger can
   re-enter.
+- **An over-budget stop parks in `FAILED`; it does not stay put.** The token
+  check sits inside the cascade, before each handler, and cannot move to the
+  trigger layer the way the retry gate did: half its firings are mid-cascade
+  (`REVIEW_AND_MUTATE` → `PR_DELIVERY` → `COMPLETE` in one job), where the phase
+  has rightly advanced and there is no signal to refuse. So the **stop** carries
+  the invariant instead — `transition(FAILED)` with `resumeFrom` naming the
+  phase it refused to start, which is the recovery path that already exists and
+  is what makes "raise `AGENT_MAX_TOKENS`, reply `/retry`" true. Leaving the
+  phase alone stranded the issue in a handler phase, reachable only by
+  `/cancel`, on a first `/approve` with no failure involved. `attempts` is
+  **carried, not incremented**: running out of tokens is not a failed attempt,
+  and spending one would let the retry gate refuse the very `/retry` the token
+  notice asks for, citing a ceiling it never mentioned. The **answer** path is
+  the deliberate exception and moves nothing, for the reasons `failAnswer` moves
+  nothing — plus `COMPLETE` accepts no `FAILED`, so parking a question there
+  would throw out of the pipeline.
 - **The token budget is per issue and persisted.** `tokensSpent` lives in the
   state block; the orchestrator checks it before each phase. Budget on
   **tokens**, never on `cost`: token counts come

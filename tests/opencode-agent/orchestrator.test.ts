@@ -1265,16 +1265,19 @@ describe('the token budget', () => {
     expect(harness.io.posted[0]).toContain('### Token budget spent')
   })
 
-  test('says why /retry will not help, and names what would', async () => {
-    // The spend is persisted, so a retry re-reads the same total and stops
-    // again. Naming AGENT_MAX_TOKENS is the only advice that leads anywhere.
+  test('says why a bare /retry will not help, and names what makes it help', async () => {
+    // The spend is persisted, so a retry against the same ceiling re-reads the
+    // same total and stops again — but it is no longer a dead end, because the
+    // stop parks a resume point. So the notice has to name both halves in
+    // order: raise AGENT_MAX_TOKENS, *then* `/retry`.
     const harness = makeHarness({ maxTokens: 50_000 })
     seedSpend(harness, 60_000)
 
     await runPipeline({ event: comment('/changes again'), deps: harness.deps })
 
     expect(harness.io.posted[0]).toContain('AGENT_MAX_TOKENS')
-    expect(harness.io.posted[0]).toContain('will stop here again')
+    expect(harness.io.posted[0]).toContain('stops right back here')
+    expect(harness.io.posted[0]).toContain('/retry')
   })
 
   test('checks before the phase runs, not after it has spent more', async () => {
@@ -1306,5 +1309,145 @@ describe('the token budget', () => {
     const result = await runPipeline({ event: issueEvent(), deps: harness.deps })
 
     expect(result.status).toBe('waiting')
+  })
+
+  test('parks the stop in FAILED, resuming from the phase it refused to start', async () => {
+    // Trigger point one: the budget runs out on the *first* phase of a run,
+    // right after a trigger moved the state. The stop used to leave the state
+    // exactly where the trigger had put it — `EXECUTION_PLAN`, a phase with a
+    // handler — so the issue was parked somewhere `/retry` (needs FAILED) and a
+    // plain comment (needs a waiting phase) both refuse, and only `/cancel`
+    // reached it. Reachable on a first approval with no failure involved.
+    const harness = makeHarness({ maxTokens: 100 })
+    seedState(harness, { phase: 'DESIGN_SPEC', tokensSpent: 500 })
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.posted[0]).toContain('### Token budget spent')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('FAILED')
+    expect(state?.resumeFrom).toBe('EXECUTION_PLAN')
+    expect(state?.tokensSpent).toBe(500)
+  })
+
+  test('parks a mid-cascade stop too, where no trigger moved the state', async () => {
+    // Trigger point two, which no trigger-layer refusal can reach: the earlier
+    // phase legitimately did its work and posted, and the cascade stops before
+    // the next one. Stopping in `PR_DELIVERY` is the same dead end as stopping
+    // in `EXECUTION_PLAN` above — worse, in fact, since the branch is already
+    // pushed and only delivery is left.
+    const harness = makeHarness({ maxTokens: 50_000 })
+    await toPlanReview(harness)
+    harness.io.replies = ['Implemented.']
+    harness.deps.runReview = (): Promise<ReviewRunResult> => {
+      harness.io.tokensUsed = 60_000
+      return Promise.resolve(harness.io.reviewResult)
+    }
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(headings(harness)).toEqual(['### Implementation report', '### Token budget spent'])
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('FAILED')
+    expect(state?.resumeFrom).toBe('PR_DELIVERY')
+    expect(state?.tokensSpent).toBe(60_000)
+  })
+
+  test('names the phase it parked in, so the notice and the state block agree', async () => {
+    const harness = makeHarness({ maxTokens: 100 })
+    seedState(harness, { phase: 'DESIGN_SPEC', tokensSpent: 500 })
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.posted[0]).toContain('AGENT_MAX_TOKENS')
+    expect(harness.io.posted[0]).toContain('/retry')
+    expect(harness.io.posted[0]).toContain(`\`${String(latestPostedState(harness)?.resumeFrom)}\``)
+  })
+
+  test('raising the ceiling and replying /retry resumes the phase it stopped before', async () => {
+    // What makes the notice honest. It names `AGENT_MAX_TOKENS` and `/retry`,
+    // so both together have to actually finish the work — before, raising the
+    // ceiling left the issue in `PR_DELIVERY` with no event able to re-enter it.
+    const harness = makeHarness({ maxTokens: 50_000 })
+    await toPlanReview(harness)
+    harness.io.replies = ['Implemented.']
+    harness.deps.runReview = (): Promise<ReviewRunResult> => {
+      harness.io.tokensUsed = 60_000
+      return Promise.resolve(harness.io.reviewResult)
+    }
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+    harness.io.posted.length = 0
+
+    // A fresh runner: a new session that has spent nothing, under a raised ceiling.
+    harness.io.tokensUsed = 0
+    harness.deps.config = config({ maxTokens: 500_000 })
+    const result = await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.posted.at(-1)).toContain('### Pull request ready')
+    expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
+  })
+
+  test('an over-budget stop does not eat the retry budget', async () => {
+    // A stop for want of tokens is not a failed attempt, so it must not spend
+    // one — otherwise the two budgets collide: the token notice says to raise
+    // `AGENT_MAX_TOKENS` and reply `/retry`, and that `/retry` is then turned
+    // down by the *retry* gate in `triggers.ts` for a ceiling nobody mentioned.
+    const harness = makeHarness({ maxAttempts: 3 })
+    await toDesignSpec(harness)
+    seedState(harness, { phase: 'FAILED', resumeFrom: 'EXECUTION_PLAN', attempts: 2, tokensSpent: 500 })
+
+    harness.deps.config = config({ maxAttempts: 3, maxTokens: 100 })
+    await runPipeline({ event: comment('/retry'), deps: harness.deps })
+    expect(latestPostedState(harness)?.attempts).toBe(2)
+    harness.io.posted.length = 0
+
+    harness.deps.config = config({ maxAttempts: 3, maxTokens: 500_000 })
+    harness.io.replies = [PLAN_REPLY]
+    const result = await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    expect(result.reason).not.toContain('Retry budget exhausted')
+    expect(harness.io.posted.at(-1)).toContain('### Execution plan')
+    expect(latestPostedState(harness)?.phase).toBe('PLAN_REVIEW')
+  })
+
+  test('an over-budget /ask leaves the phase alone rather than parking a question', async () => {
+    // Answering is a side conversation about work that lives elsewhere, so the
+    // park above must not apply to it. `resumeFrom` may never name a waiting
+    // phase — a `/retry` into `DESIGN_SPEC` finds no handler and re-parks with
+    // "Parked in `DESIGN_SPEC`", one round trip for nothing — and the phase the
+    // question was asked in is one a trigger can already re-enter.
+    const harness = makeHarness({ maxTokens: 100 })
+    seedState(harness, { phase: 'DESIGN_SPEC', tokensSpent: 500 })
+
+    const result = await runPipeline({ event: comment('/ask why that file?'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.prompts).toEqual([])
+    expect(harness.io.posted[0]).toContain('AGENT_MAX_TOKENS')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('DESIGN_SPEC')
+    expect(state?.resumeFrom).toBeNull()
+    expect(state?.tokensSpent).toBe(500)
+  })
+
+  test('an over-budget /ask in COMPLETE reports instead of crashing the runner', async () => {
+    // `COMPLETE` accepts neither FAILED nor CANCELLED, so parking a question
+    // there would throw `InvalidTransitionError` straight out of the pipeline —
+    // the runner exits 1 and the issue hears nothing, which is the failure the
+    // answer path has already been burned by twice.
+    const harness = makeHarness({ maxTokens: 100 })
+    seedState(harness, { phase: 'COMPLETE', tokensSpent: 500, prUrl: 'https://example.test/pull/7' })
+
+    const result = await runPipeline({ event: comment('/ask what did you change?'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.posted[0]).toContain('### Token budget spent')
+    expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
   })
 })

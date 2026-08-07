@@ -75,6 +75,22 @@ export interface PhaseInput {
 }
 
 /**
+ * What the phase cascade carries on top of a handler's input.
+ *
+ * Here rather than in `orchestrator.ts`, where it began, because the cascade is
+ * no longer the only module that reasons over it: `token-budget.ts` decides
+ * whether the next phase can be afforded, and a shape shared by two modules in
+ * the file one of them owns is how an import cycle starts.
+ */
+export interface MachineInput extends PhaseInput {
+  answer: boolean
+  /** Whether this run has already written a state block to the thread. */
+  posted: boolean
+  /** Tokens this issue had spent before this job started. */
+  carriedTokens: number
+}
+
+/**
  * What a handler reports. The handler never writes state or decides the next
  * phase; the runner applies `signal` to the state machine and posts `comment`
  * with the resulting state block appended.

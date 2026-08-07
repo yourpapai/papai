@@ -6,15 +6,16 @@
 import { parseSlashCommand } from './commands.js'
 import { evaluateGuardrails } from './guardrails.js'
 import type { TriggerEvent } from './guardrails.js'
-import type { IssueContext, PhaseDeps, PhaseHandler, PhaseInput, PhaseOutcome } from './phase-context.js'
+import type { IssueContext, MachineInput, PhaseDeps, PhaseHandler, PhaseInput, PhaseOutcome } from './phase-context.js'
 import { handleAnswer } from './phases/answer.js'
 import { handleCiFix } from './phases/ci-fix.js'
 import { handleDeliver } from './phases/deliver.js'
 import { handleImplement } from './phases/implement.js'
 import { handlePlan } from './phases/plan.js'
 import { handleTriage } from './phases/triage.js'
-import { postAndAppend, renderAnswerFailure, renderFailure, renderOverBudget, renderSettled } from './run-report.js'
+import { postAndAppend, renderAnswerFailure, renderFailure, renderSettled } from './run-report.js'
 import { findLatestState, initialState, transition } from './state-manager.js'
+import { stopIfOverBudget, totalTokens } from './token-budget.js'
 import { applyTrigger } from './triggers.js'
 import { errorMessage } from './types.js'
 import type { AgentState, Phase, RunResult, TransitionSignal } from './types.js'
@@ -89,29 +90,22 @@ const resolveIssue = (event: TriggerEvent, deps: PhaseDeps): Promise<IssueContex
   return deps.github.getIssue(event.issueNumber)
 }
 
-interface MachineInput extends PhaseInput {
-  answer: boolean
-  /** Whether this run has already written a state block to the thread. */
-  posted: boolean
-  /** Tokens this issue had spent before this job started. */
-  carriedTokens: number
-}
-
-/** Everything this issue has spent, prior jobs included. */
-const totalTokens = async (input: MachineInput): Promise<number> =>
-  input.carriedTokens + (await input.deps.tokensUsed())
-
 /**
  * Runs handlers back-to-back. Recursion rather than a loop: each step's result
  * feeds the next call's state and thread, and the repo forbids awaiting inside
  * a loop body. The cascade ends at a phase with no handler.
  *
  * The **retry** budget is deliberately not checked here, unlike the token
- * budget below. It used to be, and being inside the cascade was the whole
- * problem: by this point `applyTrigger` has applied `RETRY`, which clears
- * `resumeFrom`, so the give-up notice posted the state that had already left
- * `FAILED` and stranded the issue in a handler phase nothing re-enters.
+ * budget in `token-budget.ts`. It used to be, and being inside the cascade was
+ * the whole problem: by this point `applyTrigger` has applied `RETRY`, which
+ * clears `resumeFrom`, so the give-up notice posted the state that had already
+ * left `FAILED` and stranded the issue in a handler phase nothing re-enters.
  * `refuseExhausted` in `triggers.ts` turns the signal down instead.
+ *
+ * The token budget answers the same invariant from the other end, because it
+ * cannot move to the trigger layer: half its firings are between two phases of
+ * one job, with no signal to refuse. It stays inside the cascade and parks the
+ * issue in `FAILED` with a resume point instead — see `stopIfOverBudget`.
  *
  * Not moved here, and not kept as a second check either, because there is
  * nothing left for one to catch. `attempts` only ever grows on a `FAILED`
@@ -128,18 +122,17 @@ const totalTokens = async (input: MachineInput): Promise<number> =>
  * holds — so one gate, in the layer that owns the decision, is the whole rule.
  */
 const driveMachine = async (input: MachineInput): Promise<RunResult> => {
-  const { deps, state, thread } = input
+  const { state, thread } = input
 
   const handler = input.answer ? handleAnswer : HANDLERS[state.phase]
   if (handler === undefined) return settle(input)
 
-  // Before the handler, not after: the point of a ceiling is to stop the next
-  // expensive thing, and checking afterwards would let every phase overspend
-  // once. Checked per phase rather than per prompt because a phase is the
-  // granularity at which spend is knowable — the review loop's subprocesses run
-  // in their own sessions, which this total cannot see.
-  const spent = await totalTokens(input)
-  if (spent >= deps.config.maxTokens) return overBudget(input, spent)
+  // Before the handler, and it is `token-budget.ts` that decides what "stop"
+  // means: over budget the run parks in FAILED naming this phase, so raising
+  // `AGENT_MAX_TOKENS` and replying `/retry` resumes exactly here. Stopping in
+  // place used to leave the issue in a phase no trigger re-enters.
+  const stopped = await stopIfOverBudget(input)
+  if (stopped !== null) return stopped
 
   const attempt = await runHandler(handler, input)
   if (!attempt.ok) return input.answer ? failAnswer(input, attempt.error) : failRun(input, attempt.error)
@@ -170,23 +163,6 @@ const settle = async (input: MachineInput): Promise<RunResult> => {
   return state.phase === 'COMPLETE'
     ? { status: 'completed', reason: 'Pipeline finished', state }
     : { status: 'waiting', reason: `Waiting for a maintainer in ${state.phase}`, state }
-}
-
-/**
- * Stops an issue that has spent its token budget.
- *
- * Shaped like `refuseExhausted` in `triggers.ts` — post on the issue, leave the
- * phase alone, and report a failed run — because a guardrail that stops in
- * silence reads as an agent that lost interest.
- */
-const overBudget = async (input: MachineInput, spent: number): Promise<RunResult> => {
-  const { state, deps, thread } = input
-  const reason = `Token budget spent (${spent} of ${deps.config.maxTokens} tokens for this issue)`
-  deps.log.warn({ issue: state.issueId, spent, limit: deps.config.maxTokens }, 'Stopping: token budget spent')
-
-  await postAndAppend(thread, input, renderOverBudget(spent, deps.config.maxTokens), { ...state, tokensSpent: spent })
-
-  return { status: 'failed', reason, state: { ...state, tokensSpent: spent } }
 }
 
 type HandlerAttempt = { ok: true; outcome: PhaseOutcome; next: AgentState } | { ok: false; error: unknown }

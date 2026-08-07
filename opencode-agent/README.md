@@ -233,9 +233,29 @@ that invites a command the machine will refuse is worse than no notice.
 The token budget is the one bound that spans jobs. It is counted **per issue**
 and kept in the state block, because the runaway it stops is not a single run —
 it is an issue bouncing through retries and CI-fix rounds, each on a fresh runner
-with no memory of what the last one spent. When it runs out the agent says so on
-the issue and stops; `/retry` will not help, since the total is persisted, so the
-notice names `AGENT_MAX_TOKENS` instead.
+with no memory of what the last one spent.
+
+When it runs out the agent parks the issue in `FAILED`, with `resumeFrom` naming
+the phase it refused to start, and says so on the issue. Parking rather than
+stopping where it stands is the whole behaviour, and it is deliberately _not_
+the refusal the retry budget uses. The token check runs before each phase,
+inside the cascade, and half its firings have no trigger to refuse: it also
+fires between `REVIEW_AND_MUTATE`, `PR_DELIVERY` and `COMPLETE` inside a single
+job, where the earlier phase legitimately did its work and posted. Stopping in
+place left the issue in a phase with a handler that nothing re-enters — `/retry`
+needs `FAILED`, a plain comment needs a waiting phase — so `/cancel` was the
+only event left, and the notice's own "raise `AGENT_MAX_TOKENS` to continue" led
+nowhere at any ceiling. Reachable on a first `/approve` with no failure in the
+story at all. Parked, the remedy the notice names really works: raise
+`AGENT_MAX_TOKENS`, reply `/retry`, and the named phase runs.
+
+The stop carries `attempts` across rather than spending one, because running out
+of tokens is not a failed attempt at anything — and because spending one would
+collide the two budgets, letting the retry gate turn down the very `/retry` the
+token notice asks for over a ceiling it never mentioned. A question is the one
+exception: an over-budget `/ask` reports and moves nothing, since answering is a
+side conversation about work that lives elsewhere, `resumeFrom` may never name a
+waiting phase, and `COMPLETE` accepts no `FAILED` at all.
 
 Tokens rather than currency, deliberately. Token counts come from the provider's
 own usage block and are always right; the cost figure OpenCode reports is derived
@@ -625,6 +645,7 @@ Logs are NDJSON on stdout.
 | `src/orchestrator.ts`                         | The state machine: guardrails and the phase cascade                    |
 | `src/triggers.ts`                             | Turning a command, comment or red CI run into the state move to make   |
 | `src/run-report.ts`                           | Everything the orchestrator writes back to the issue                   |
+| `src/token-budget.ts`                         | The per-issue token ceiling, and how a run over it parks in `FAILED`   |
 | `src/state-manager.ts`                        | Transition table and the `AGENT_STATE` block                           |
 | `src/blocks.ts` / `src/artifacts.ts`          | The hidden-block channel and the spec/plan/report artefacts            |
 | `src/guardrails.ts`                           | Payload normalization (issue vs CI) and every abort rule               |
