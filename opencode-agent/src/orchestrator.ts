@@ -58,7 +58,9 @@ export const runPipeline = async (options: RunOptions): Promise<RunResult> => {
   })
   if (!guard.allowed) {
     deps.log.warn({ code: guard.code, event: event.eventName }, 'Trigger rejected by guardrails')
-    return { status: 'skipped', reason: guard.reason, state: null }
+    // `reported: false` and it has to stay that way: a rejection here is
+    // deliberately silent, so the issue carries nothing about this run.
+    return { status: 'skipped', reason: guard.reason, state: null, reported: false }
   }
 
   const thread = await deps.github.listIssueComments(event.issueNumber)
@@ -141,7 +143,7 @@ const driveMachine = async (input: MachineInput): Promise<RunResult> => {
   const grown = await postAndAppend(thread, input, outcome.comment, next, outcome.blocks)
 
   if (PAUSE_SIGNALS.has(outcome.signal)) {
-    return { status: 'waiting', reason: `Waiting for a maintainer in ${next.phase}`, state: next }
+    return { status: 'waiting', reason: `Waiting for a maintainer in ${next.phase}`, state: next, reported: true }
   }
 
   return driveMachine({ ...input, answer: false, state: next, thread: grown, posted: true })
@@ -154,6 +156,10 @@ const driveMachine = async (input: MachineInput): Promise<RunResult> => {
  * ran to write it down — `/cancel` is the case that matters. A state that is
  * never posted never happened: the next event would restore the old phase and
  * the cancel would silently undo itself. So the terminal path posts too.
+ *
+ * Which is exactly why `reported` is unconditionally true here rather than
+ * `posted`: the branch that has not posted is the branch that posts, so both
+ * ways out of this function leave a comment on the issue.
  */
 const settle = async (input: MachineInput): Promise<RunResult> => {
   const { state, thread, posted } = input
@@ -161,8 +167,8 @@ const settle = async (input: MachineInput): Promise<RunResult> => {
   if (!posted) await postAndAppend(thread, input, renderSettled(state), state)
 
   return state.phase === 'COMPLETE'
-    ? { status: 'completed', reason: 'Pipeline finished', state }
-    : { status: 'waiting', reason: `Waiting for a maintainer in ${state.phase}`, state }
+    ? { status: 'completed', reason: 'Pipeline finished', state, reported: true }
+    : { status: 'waiting', reason: `Waiting for a maintainer in ${state.phase}`, state, reported: true }
 }
 
 type HandlerAttempt = { ok: true; outcome: PhaseOutcome; next: AgentState } | { ok: false; error: unknown }
@@ -208,7 +214,10 @@ const failRun = async (input: MachineInput, error: unknown): Promise<RunResult> 
   const failed = transition(state, 'FAILED', await recordSpend(input, { lastError: message }))
   await postAndAppend(thread, input, renderFailure(state.phase, message, failed, deps.config.maxAttempts), failed)
 
-  return { status: 'failed', reason: message, state: failed }
+  // The comment above is what the workflow's fallback step would otherwise
+  // duplicate, contradicting it: this run has moved the issue to `FAILED`, so
+  // "the issue state is unchanged" is false the moment `postAndAppend` returns.
+  return { status: 'failed', reason: message, state: failed, reported: true }
 }
 
 /**
@@ -245,5 +254,5 @@ const failAnswer = async (input: MachineInput, error: unknown): Promise<RunResul
   const carried = { ...state, ...(await recordSpend(input)) }
   await postAndAppend(thread, input, renderAnswerFailure(state.phase, message), carried)
 
-  return { status: 'failed', reason: message, state: carried }
+  return { status: 'failed', reason: message, state: carried, reported: true }
 }

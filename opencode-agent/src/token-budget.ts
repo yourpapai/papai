@@ -78,7 +78,12 @@ export const recordSpend = async (input: MachineInput, patch: Partial<AgentState
  * their own sessions, which this total cannot see.
  *
  * Both stops below post on the issue, because a guardrail that stops in silence
- * reads as an agent that lost interest.
+ * reads as an agent that lost interest — which is also why both report
+ * `reported: true`. They are `failed` runs, so the job goes red and the
+ * workflow's fallback step is in scope; without the marker it appended "The
+ * issue state is unchanged; reply `/retry` once the cause is addressed" under a
+ * notice that had just parked the issue in `FAILED` and asked for
+ * `AGENT_MAX_TOKENS` to be raised **first**.
  */
 export const stopIfOverBudget = async (input: MachineInput): Promise<RunResult | null> => {
   const { state, deps } = input
@@ -133,7 +138,7 @@ const parkOverBudget = async (input: MachineInput, spent: number, reason: string
   const parked = transition(state, 'FAILED', spendPatch(spent, { attempts: state.attempts, lastError: reason }))
   await postAndAppend(thread, input, renderOverBudget(spent, deps.config.maxTokens, state.phase), parked)
 
-  return { status: 'failed', reason, state: parked }
+  return { status: 'failed', reason, state: parked, reported: true }
 }
 
 /**
@@ -160,5 +165,5 @@ const answerOverBudget = async (input: MachineInput, spent: number, reason: stri
 
   await postAndAppend(thread, input, renderAnswerOverBudget(spent, deps.config.maxTokens, state.phase), carried)
 
-  return { status: 'failed', reason, state: carried }
+  return { status: 'failed', reason, state: carried, reported: true }
 }

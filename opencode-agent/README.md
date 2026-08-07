@@ -606,6 +606,26 @@ Nothing to configure for `GITHUB_TOKEN` or `GITHUB_REPOSITORY` — see
 
 The workflow lives at `.github/workflows/agent-pipeline.yml`.
 
+### The fallback failure comment
+
+The workflow's last step posts an "Agent job failed" comment saying the issue
+state is unchanged and inviting a `/retry`. That is only ever true for a job
+that died with nothing on the issue: an install failure, a runner timeout, a
+cancelled job, a config error thrown before the first comment, a crash.
+
+It cannot be gated on `if: failure()` alone, which is what it used to be:
+`failure()` selects every red job, and the pipeline exits 1 from six paths that
+have already posted their own report — a failed phase, a failed answer, either
+over-budget stop, a refused `/retry` and the CI-fix give-up notice. Each of
+those drew a second comment contradicting the first, next to a state block that
+had just moved to `FAILED`.
+
+So the run step carries `id: pipeline` and the pipeline appends `reported=true`
+to `$GITHUB_OUTPUT` for every exit that posted; the fallback step is gated on
+`steps.pipeline.outputs.reported != 'true'`. The marker survives the run step's
+own exit 1 — the runner processes a step's file commands in a `finally` around
+the handler — and the job still goes red, because the exit code is real signal.
+
 ## Local runs
 
 ```bash
@@ -652,6 +672,9 @@ For the CI-fix path, pass a `workflow_run` payload with
 Exit code is `0` for skipped/waiting/completed, `1` only when a phase failed.
 Logs are NDJSON on stdout.
 
+`$GITHUB_OUTPUT` is absent on a local run, so the `reported` marker described
+under **Setup** is simply not written. Nothing else changes.
+
 ## Module map
 
 | File                                          | Responsibility                                                         |
@@ -660,6 +683,7 @@ Logs are NDJSON on stdout.
 | `src/orchestrator.ts`                         | The state machine: guardrails and the phase cascade                    |
 | `src/triggers.ts`                             | Turning a command, comment or red CI run into the state move to make   |
 | `src/run-report.ts`                           | Everything the orchestrator writes back to the issue                   |
+| `src/step-output.ts`                          | The one thing a run tells the rest of its own workflow job             |
 | `src/token-budget.ts`                         | The per-issue token ceiling, and how a run over it parks in `FAILED`   |
 | `src/state-manager.ts`                        | Transition table and the `AGENT_STATE` block                           |
 | `src/blocks.ts` / `src/artifacts.ts`          | The hidden-block channel and the spec/plan/report artefacts            |

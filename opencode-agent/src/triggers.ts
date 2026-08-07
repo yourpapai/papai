@@ -84,11 +84,13 @@ const applyCiTrigger = async (input: PhaseInput): Promise<TriggerOutcome> => {
 
   if (!spent) return moveOrSkip(state, 'CI_FAILED', deps, 'a red CI run')
 
-  const reported = markCiBudgetReported(state)
+  const marked = markCiBudgetReported(state)
   deps.log.warn({ issue: state.issueId, ciAttempts: state.ciAttempts }, 'CI-fix budget spent')
-  await postAndAppend(thread, input, renderCiExhausted(reason, state.prUrl), reported)
+  await postAndAppend(thread, input, renderCiExhausted(reason, state.prUrl), marked)
 
-  return { state: reported, halt: { status: 'failed', reason, state: reported }, answer: false }
+  // `reported: true` is about this run's comment, not about `ciBudgetReported`
+  // — the two happen to coincide here, and stay separate everywhere else.
+  return { state: marked, halt: { status: 'failed', reason, state: marked, reported: true }, answer: false }
 }
 
 /**
@@ -163,7 +165,7 @@ const refuseCommand = async (input: PhaseInput, command: string, reason: string)
 
   await postAndAppend(thread, input, renderRefusedCommand(command, state.phase, acceptedCommands(state.phase)), state)
 
-  return { state, halt: skip(state, reason), answer: false }
+  return { state, halt: skip(state, reason, true), answer: false }
 }
 
 /**
@@ -197,7 +199,7 @@ const refuseExhausted = async (input: PhaseInput): Promise<TriggerOutcome> => {
 
   await postAndAppend(thread, input, renderExhausted(reason), state)
 
-  return { state, halt: { status: 'failed', reason, state }, answer: false }
+  return { state, halt: { status: 'failed', reason, state, reported: true }, answer: false }
 }
 
 /** The commands `phase` would actually accept, straight from the transition table. */
@@ -273,4 +275,23 @@ const moveOrSkip = (state: AgentState, signal: TransitionSignal, deps: PhaseDeps
   }
 }
 
-const skip = (state: AgentState, reason: string): RunResult => ({ status: 'skipped', reason, state })
+/**
+ * A trigger that moved nothing.
+ *
+ * `reported` defaults to false because nearly every skip in this file is
+ * deliberately silent — a red run on a settled pull request, an empty comment, a
+ * classification of `none`, an already-reported CI budget. {@link refuseCommand}
+ * is the one that answers on the issue first, and passes `true`.
+ *
+ * That distinction is worth carrying even though a skipped run exits 0 and so
+ * never reaches the workflow's fallback step. The flag means "this run posted",
+ * full stop; a path where a comment exists and the flag says otherwise is
+ * exactly the shape of the bug it was added to fix, and the next reader of the
+ * flag will not know to check whether the status happened to make it moot.
+ */
+const skip = (state: AgentState, reason: string, reported = false): RunResult => ({
+  status: 'skipped',
+  reason,
+  state,
+  reported,
+})

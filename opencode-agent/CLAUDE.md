@@ -83,6 +83,22 @@ findings: `ROADMAP.md`.
   the deliberate exception and moves nothing, for the reasons `failAnswer` moves
   nothing — plus `COMPLETE` accepts no `FAILED`, so parking a question there
   would throw out of the pipeline.
+- **A run says whether it reported, and the workflow reads that.** `RunResult`
+  carries `reported`, and `step-output.ts` turns it into a `reported=true` line
+  in `$GITHUB_OUTPUT`; the workflow's fallback "Agent job failed" comment is
+  gated on `steps.pipeline.outputs.reported != 'true'`. It used to be gated on
+  `if: failure()` alone, which selects **every** red job — and six paths exit 1
+  only after posting their own report (`failRun`, `failAnswer`, both over-budget
+  stops, `refuseExhausted`, the CI-budget notice), so every genuine failure drew
+  a second comment claiming "the issue state is unchanged" beside a block that
+  had just moved to `FAILED`. Only CI runs escaped, by accident:
+  `github.event.issue.number` is empty on a `workflow_run` event. Set `reported`
+  on any new terminal path from what that path **posted**, never from its status
+  — `failed` covers both a reported failure and a crash, and `skipped` covers
+  both a silent guardrail drop and a refused command that answered on the issue.
+  A throw is deliberately unmarked: that is the crash the fallback comment is
+  for. Writing the marker is best-effort and must never throw — `GITHUB_OUTPUT`
+  is absent on every `--event-path` run.
 - **The token budget is per issue and persisted.** `tokensSpent` lives in the
   state block; the orchestrator checks it before each phase. Budget on
   **tokens**, never on `cost`: token counts come
