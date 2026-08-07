@@ -219,6 +219,17 @@ request, and repeating it three times only delays saying so. OpenCode retries a
 rate limit itself as well, with its own backoff, so this is a second and closer
 layer rather than the only one.
 
+The retry budget bounds the other loop: `AGENT_MAX_ATTEMPTS` consecutive
+failures, after which `/retry` is **refused where it stands** rather than
+applied and then regretted. That distinction is the whole behaviour. Applying it
+first clears `resumeFrom` and moves the issue into the phase it was resuming,
+and once the budget check then stops the run, the issue is parked in a phase
+nothing can re-enter — `/retry` needs `FAILED`, a plain comment needs a waiting
+phase — with only `/cancel` left. Refused, the issue stays in `FAILED` with its
+resume point intact, so raising `AGENT_MAX_ATTEMPTS` and replying `/retry`
+resumes exactly where it broke. The give-up notice says so, because a notice
+that invites a command the machine will refuse is worse than no notice.
+
 The token budget is the one bound that spans jobs. It is counted **per issue**
 and kept in the state block, because the runaway it stops is not a single run —
 it is an issue bouncing through retries and CI-fix rounds, each on a fresh runner

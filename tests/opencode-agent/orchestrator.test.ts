@@ -1096,6 +1096,110 @@ describe('commands and budgets', () => {
   })
 })
 
+describe('the retry budget', () => {
+  /** A failure an earlier job parked, with the last attempt already spent on it. */
+  const seedSpentBudget = (harness: Harness): void =>
+    seedState(harness, {
+      phase: 'FAILED',
+      resumeFrom: 'EXECUTION_PLAN',
+      attempts: 3,
+      lastError: 'the planning turn returned no JSON',
+    })
+
+  test('a /retry past the budget leaves the failure parked where it was', async () => {
+    // Spending the budget used to *move* the state: the signal was applied
+    // first and the ceiling checked a step later, so the give-up notice posted
+    // `EXECUTION_PLAN` with `resumeFrom` cleared — a handler phase that
+    // `/retry` (which needs FAILED) and a plain comment (which needs a waiting
+    // phase) both refuse. Only `/cancel` could reach the issue after that.
+    const harness = makeHarness({ maxAttempts: 3 })
+    seedSpentBudget(harness)
+
+    const result = await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(result.reason).toContain('Retry budget exhausted')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('FAILED')
+    expect(state?.resumeFrom).toBe('EXECUTION_PLAN')
+    expect(state?.attempts).toBe(3)
+  })
+
+  test('reports the spent budget on the issue without paying for a model turn', async () => {
+    const harness = makeHarness({ maxAttempts: 3 })
+    seedSpentBudget(harness)
+
+    await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    expect(harness.io.posted).toHaveLength(1)
+    expect(harness.io.posted[0]).toContain('### Giving up')
+    expect(harness.io.posted[0]).toContain('3 of 3 attempts')
+    // The notice may only offer what the machine will actually take. Bare
+    // "reply `/retry`" is not that: the budget is spent, so the next `/retry`
+    // lands straight back here. Raising the ceiling is the remedy that works.
+    expect(harness.io.posted[0]).toContain('AGENT_MAX_ATTEMPTS')
+    // Refused before the cascade, so no handler and no session was ever opened.
+    expect(harness.io.prompts).toEqual([])
+    expect(harness.io.gitCalls).toEqual([])
+  })
+
+  test('a second /retry is still answered by the budget, not by the transition table', async () => {
+    // The tell that the first one moved nothing. Against the moved state this
+    // came back as `/retry is not valid in EXECUTION_PLAN`, which is a true
+    // sentence about a phase the maintainer never asked to be in.
+    const harness = makeHarness({ maxAttempts: 3 })
+    seedSpentBudget(harness)
+    await runPipeline({ event: comment('/retry'), deps: harness.deps })
+    harness.io.posted.length = 0
+
+    const result = await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(result.reason).toContain('Retry budget exhausted')
+    expect(result.reason).not.toContain('not valid in')
+    expect(harness.io.posted[0]).toContain('### Giving up')
+    expect(latestPostedState(harness)?.resumeFrom).toBe('EXECUTION_PLAN')
+  })
+
+  test('raising the ceiling resumes the parked phase, which is what makes the notice honest', async () => {
+    // The notice names `AGENT_MAX_ATTEMPTS` as the way out, so the way out has
+    // to still exist: the resume point survives the refusal, and the same
+    // `/retry` picks the failed phase back up once the ceiling allows it.
+    const harness = makeHarness({ maxAttempts: 3 })
+    seedState(harness, { phase: 'FAILED', resumeFrom: 'INIT_OR_CLARIFY', attempts: 3 })
+    await runPipeline({ event: comment('/retry'), deps: harness.deps })
+    harness.io.posted.length = 0
+
+    harness.deps.config = config({ maxAttempts: 4 })
+    harness.io.replies = [SPEC_REPLY]
+    const result = await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted.at(-1)).toContain('### Design spec')
+    expect(latestPostedState(harness)?.phase).toBe('DESIGN_SPEC')
+  })
+
+  test('/ask still answers a failure whose budget is spent', async () => {
+    // Answering is not retrying: it spends no attempt and moves nothing, so the
+    // retry ceiling has no business stopping it. The check inside the cascade
+    // sat in front of the answer handler too, so this replied "Giving up" — in
+    // the one phase a maintainer most wants to ask "why did this fail?" in.
+    const harness = makeHarness({ maxAttempts: 3 })
+    seedSpentBudget(harness)
+    harness.io.replies = ['The planning prompt exceeded the model’s context.']
+
+    const result = await runPipeline({ event: comment('/ask why did this fail?'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted[0]).toContain('The planning prompt exceeded the model’s context.')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('FAILED')
+    expect(state?.resumeFrom).toBe('EXECUTION_PLAN')
+  })
+})
+
 describe('the token budget', () => {
   /** A prior job's state block, carrying what that job spent. */
   const seedSpend = (harness: Harness, tokensSpent: number): void => {

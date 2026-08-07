@@ -92,8 +92,27 @@ export const renderRefusedCommand = (command: string, phase: Phase, accepted: re
       : `What works here: ${accepted.map((name) => `\`${name}\``).join(', ')}.`,
   ].join('\n')
 
+/**
+ * The retry-budget notice.
+ *
+ * It used to end "Fix the underlying problem, then reply `/retry`", advice the
+ * pipeline itself made impossible to follow: the budget is spent, so that
+ * `/retry` is refused and lands straight back on this comment. What is true is
+ * that the failure stays parked with its resume point intact, so raising the
+ * ceiling makes the very same `/retry` work — and that is what the notice
+ * offers, the way {@link renderOverBudget} names `AGENT_MAX_TOKENS` instead of
+ * inviting a retry that cannot help either.
+ */
 export const renderExhausted = (reason: string): string =>
-  ['### Giving up', '', reason, '', 'Fix the underlying problem, then reply `/retry`.'].join('\n')
+  [
+    '### Giving up',
+    '',
+    reason,
+    '',
+    'The failure is still parked with its resume point, so raising `AGENT_MAX_ATTEMPTS` in the workflow and ' +
+      'replying `/retry` picks it up from exactly where it broke.',
+    'Otherwise take it from here yourself, or reply `/cancel` to stop.',
+  ].join('\n')
 
 /**
  * The CI-fix equivalent, and the one that matters more.

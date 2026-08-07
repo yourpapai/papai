@@ -53,9 +53,22 @@ findings: `ROADMAP.md`.
   it is the one layer that sees a real HTTP status and the only one the review
   loop's subprocesses also pass through; do not add a second retry in the
   adapter, where the status is already gone.
+- **The retry budget is refused, never applied-then-regretted.** A `/retry` past
+  `maxAttempts` is turned down in `src/triggers.ts` before the signal reaches
+  `transition`, so the issue keeps `FAILED` and its `resumeFrom` and raising
+  `AGENT_MAX_ATTEMPTS` still resumes it. It used to be checked in `driveMachine`,
+  after `applyTrigger` had applied `RETRY` — which clears `resumeFrom` — so
+  spending the budget parked the issue in a handler phase that `/retry` (needs
+  `FAILED`) and a plain comment (needs a waiting phase) both refuse, reachable
+  only by `/cancel`, under a notice inviting the `/retry` that had just become
+  impossible. There is deliberately **one** such check and no backstop in the
+  cascade: forward moves reset `attempts`, so `RETRY` is the only way a spent
+  count reaches a handler. The invariant to preserve: no path may leave the
+  persisted state in a phase that has a handler but that no trigger can
+  re-enter.
 - **The token budget is per issue and persisted.** `tokensSpent` lives in the
-  state block; the orchestrator checks it before each phase, beside the retry
-  budget it resembles. Budget on **tokens**, never on `cost`: token counts come
+  state block; the orchestrator checks it before each phase. Budget on
+  **tokens**, never on `cost`: token counts come
   from the provider's usage block, while cost is derived from OpenCode's model
   catalogue and is `0` for any model it does not price. Read the total from
   `session.get`, not by summing events — the check happens immediately after a

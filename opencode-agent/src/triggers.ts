@@ -7,7 +7,7 @@ import type { ParsedCommand } from './commands.js'
 import { branchNameFor } from './git.js'
 import { classifyComment } from './intent.js'
 import type { PhaseDeps, PhaseInput } from './phase-context.js'
-import { postAndAppend, renderCiExhausted, renderRefusedCommand } from './run-report.js'
+import { postAndAppend, renderCiExhausted, renderExhausted, renderRefusedCommand } from './run-report.js'
 import { canTransition, markCiBudgetReported, transition } from './state-manager.js'
 import { errorMessage, WAITING_PHASES } from './types.js'
 import type { AgentState, Phase, RunResult, TransitionSignal } from './types.js'
@@ -134,6 +134,14 @@ const applyCommand = (input: PhaseInput, command: ParsedCommand): Promise<Trigge
   const signal = COMMAND_SIGNALS[command.command]
   if (signal === undefined) return refuseCommand(input, command.command, `Unknown command ${command.command}`)
 
+  // Before the move, not after it — see `refuseExhausted` below. Asked of the
+  // transition table rather than of `state.phase` directly, so this cannot start
+  // answering for a `/retry` the phase was going to turn down anyway: a retry
+  // that does not apply here is a wrong-command refusal, not a spent budget.
+  if (signal === 'RETRY' && canTransition(state.phase, signal) && state.attempts >= deps.config.maxAttempts) {
+    return refuseExhausted(input)
+  }
+
   const outcome = moveOrSkip(state, signal, deps, command.command)
   if (outcome.halt === null) return Promise.resolve(outcome)
 
@@ -155,6 +163,40 @@ const refuseCommand = async (input: PhaseInput, command: string, reason: string)
   await postAndAppend(thread, input, renderRefusedCommand(command, state.phase, acceptedCommands(state.phase)), state)
 
   return { state, halt: skip(state, reason), answer: false }
+}
+
+/**
+ * Turns down a `/retry` the retry budget can no longer pay for, before the
+ * signal is applied.
+ *
+ * Before, because this is the last moment the state is still the one the
+ * maintainer is looking at. The ceiling used to be checked in `driveMachine`,
+ * one step too late: `applyTrigger` had already applied `RETRY`, which clears
+ * `resumeFrom` while carrying `attempts` across, so the give-up notice posted a
+ * state that had left `FAILED` for the handler phase it was resuming into.
+ * Nothing could re-enter that phase — `/retry` needs `FAILED` and a plain
+ * comment needs a waiting phase — so spending the budget parked the issue
+ * somewhere only `/cancel` reached, and the notice's own advice was guaranteed
+ * to be refused. Refusing here leaves `FAILED` and its `resumeFrom` untouched,
+ * which is what makes raising `AGENT_MAX_ATTEMPTS` and retrying a real remedy
+ * rather than a suggestion.
+ *
+ * Beside {@link refuseCommand} rather than inside it because the two say
+ * different things. That one lists the commands the phase does accept, which
+ * here would name `/retry` itself — the command being refused — and its "does
+ * not apply right now" is wrong twice over: the command applies perfectly, a
+ * bound was reached. So this one carries the give-up wording, logs a spent
+ * budget, and reports a `failed` run rather than a skipped one, exactly as the
+ * check it replaces did.
+ */
+const refuseExhausted = async (input: PhaseInput): Promise<TriggerOutcome> => {
+  const { state, thread, deps } = input
+  const reason = `Retry budget exhausted (${state.attempts} of ${deps.config.maxAttempts} attempts)`
+  deps.log.warn({ issue: state.issueId, attempts: state.attempts, resumeFrom: state.resumeFrom }, 'Retry budget spent')
+
+  await postAndAppend(thread, input, renderExhausted(reason), state)
+
+  return { state, halt: { status: 'failed', reason, state }, answer: false }
 }
 
 /** The commands `phase` would actually accept, straight from the transition table. */

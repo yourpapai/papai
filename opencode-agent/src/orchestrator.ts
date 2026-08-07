@@ -13,14 +13,7 @@ import { handleDeliver } from './phases/deliver.js'
 import { handleImplement } from './phases/implement.js'
 import { handlePlan } from './phases/plan.js'
 import { handleTriage } from './phases/triage.js'
-import {
-  postAndAppend,
-  renderAnswerFailure,
-  renderExhausted,
-  renderFailure,
-  renderOverBudget,
-  renderSettled,
-} from './run-report.js'
+import { postAndAppend, renderAnswerFailure, renderFailure, renderOverBudget, renderSettled } from './run-report.js'
 import { findLatestState, initialState, transition } from './state-manager.js'
 import { applyTrigger } from './triggers.js'
 import { errorMessage } from './types.js'
@@ -112,14 +105,33 @@ const totalTokens = async (input: MachineInput): Promise<number> =>
  * Runs handlers back-to-back. Recursion rather than a loop: each step's result
  * feeds the next call's state and thread, and the repo forbids awaiting inside
  * a loop body. The cascade ends at a phase with no handler.
+ *
+ * The **retry** budget is deliberately not checked here, unlike the token
+ * budget below. It used to be, and being inside the cascade was the whole
+ * problem: by this point `applyTrigger` has applied `RETRY`, which clears
+ * `resumeFrom`, so the give-up notice posted the state that had already left
+ * `FAILED` and stranded the issue in a handler phase nothing re-enters.
+ * `refuseExhausted` in `triggers.ts` turns the signal down instead.
+ *
+ * Not moved here, and not kept as a second check either, because there is
+ * nothing left for one to catch. `attempts` only ever grows on a `FAILED`
+ * transition, every forward move resets it to 0, and `RETRY` — the single
+ * signal that carries a non-zero count into a phase with a handler — is now
+ * gated on the budget before it is applied, so no state this pipeline writes
+ * can reach a handler over the ceiling. A backstop would only fire on a
+ * hand-edited state block, and the one that stood here made that case worse
+ * rather than better: it posted the state unchanged, re-creating in
+ * `INIT_OR_CLARIFY` the same unreachable park it was meant to report, and it
+ * sat in front of the answer handler too, so `/ask` in `FAILED` past the budget
+ * replied "Giving up" instead of an answer. A hand-edited count cannot run away
+ * on its own — every failure still lands in `FAILED`, where the trigger gate
+ * holds — so one gate, in the layer that owns the decision, is the whole rule.
  */
 const driveMachine = async (input: MachineInput): Promise<RunResult> => {
   const { deps, state, thread } = input
 
   const handler = input.answer ? handleAnswer : HANDLERS[state.phase]
   if (handler === undefined) return settle(input)
-
-  if (state.attempts >= deps.config.maxAttempts) return exhausted(input)
 
   // Before the handler, not after: the point of a ceiling is to stop the next
   // expensive thing, and checking afterwards would let every phase overspend
@@ -160,22 +172,12 @@ const settle = async (input: MachineInput): Promise<RunResult> => {
     : { status: 'waiting', reason: `Waiting for a maintainer in ${state.phase}`, state }
 }
 
-/** Reports the retry budget on the issue instead of failing in silence. */
-const exhausted = async (input: MachineInput): Promise<RunResult> => {
-  const { state, deps, thread } = input
-  const reason = `Retry budget exhausted (${state.attempts} of ${deps.config.maxAttempts} attempts)`
-
-  await postAndAppend(thread, input, renderExhausted(reason), state)
-
-  return { status: 'failed', reason, state }
-}
-
 /**
  * Stops an issue that has spent its token budget.
  *
- * Shaped like {@link exhausted} — post on the issue, leave the phase alone, and
- * report a failed run — because a guardrail that stops in silence reads as an
- * agent that lost interest.
+ * Shaped like `refuseExhausted` in `triggers.ts` — post on the issue, leave the
+ * phase alone, and report a failed run — because a guardrail that stops in
+ * silence reads as an agent that lost interest.
  */
 const overBudget = async (input: MachineInput, spent: number): Promise<RunResult> => {
   const { state, deps, thread } = input
