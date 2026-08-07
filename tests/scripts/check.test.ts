@@ -302,6 +302,73 @@ describe('check.sh --skip-tests', () => {
 })
 
 describe('check.sh full mode', () => {
+  // The mutation-improve build gate runs full mode in a worktree where the
+  // agent's spec/plan/test files are NEW (untracked). Enumerating only
+  // `git ls-files` (tracked) made them invisible until the pre-commit hook's
+  // --staged mode rejected them at `git commit`, discarding passed iterations.
+  test('flags headerless untracked docs files (the worktree new-file gap)', () => {
+    const { repoDir, binDir, logFile } = createTempRepo()
+
+    try {
+      mkdirSync(path.join(repoDir, 'docs'), { recursive: true })
+      writeFileSync(path.join(repoDir, 'docs', 'new-doc.md'), '# Doc without a license header\n')
+
+      const env = createEnv({
+        PATH: `${binDir}:${basePath}`,
+        CHECK_LOG_FILE: logFile,
+      })
+      const result = runCommand(repoDir, ['bash', 'scripts/check.sh'], env)
+
+      expect(result.exitCode).toBe(1)
+      expect(result.stdout).toContain('Missing BUSL-1.1 license header')
+      expect(result.stdout).toContain('docs/new-doc.md')
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+
+  test('still flags headerless tracked docs files', () => {
+    const { repoDir, binDir, logFile } = createTempRepo()
+
+    try {
+      mkdirSync(path.join(repoDir, 'docs'), { recursive: true })
+      writeFileSync(path.join(repoDir, 'docs', 'tracked.md'), '# Doc without a license header\n')
+      expectSuccess(runCommand(repoDir, ['git', 'add', 'docs/tracked.md']))
+
+      const env = createEnv({
+        PATH: `${binDir}:${basePath}`,
+        CHECK_LOG_FILE: logFile,
+      })
+      const result = runCommand(repoDir, ['bash', 'scripts/check.sh'], env)
+
+      expect(result.exitCode).toBe(1)
+      expect(result.stdout).toContain('docs/tracked.md')
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+
+  test('does not flag gitignored untracked files', () => {
+    const { repoDir, binDir, logFile } = createTempRepo()
+
+    try {
+      writeFileSync(path.join(repoDir, '.gitignore'), 'docs/ignored.md\n')
+      mkdirSync(path.join(repoDir, 'docs'), { recursive: true })
+      writeFileSync(path.join(repoDir, 'docs', 'ignored.md'), '# Generated doc without a license header\n')
+
+      const env = createEnv({
+        PATH: `${binDir}:${basePath}`,
+        CHECK_LOG_FILE: logFile,
+      })
+      const result = runCommand(repoDir, ['bash', 'scripts/check.sh'], env)
+
+      expect(result.exitCode).toBe(0)
+      expect(result.stdout).not.toContain('docs/ignored.md')
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+
   test('runs the server test suite serially when CI=true', () => {
     const { repoDir, binDir, logFile } = createTempRepo()
 

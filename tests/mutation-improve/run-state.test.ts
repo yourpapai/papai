@@ -71,4 +71,23 @@ describe('run-state', () => {
     expect(() => PersistedRunStateSchema.parse(valid)).not.toThrow()
     expect(() => PersistedRunStateSchema.parse({ ...valid, status: 'bogus' })).toThrow()
   })
+
+  test('merged entries round-trip the optional capped flag; absent on pre-capped states', async () => {
+    const entry = {
+      file: 'src/a.ts',
+      beforeScore: 0.3,
+      afterScore: 0.85,
+      iter: 1,
+      specPath: 's.md',
+      planPath: 'p.md',
+    }
+    const repoRoot = makeTempDir('rs-')
+    const config = baseConfig(repoRoot, path.join(repoRoot, '.mutation-improve'))
+    const created = await createRunState(config)
+    created.merged = [{ ...entry, capped: true }, entry]
+    await saveRunState(created)
+    const reloaded = await loadRunState(config.workDir, created.runId)
+    expect(reloaded.merged[0]?.capped).toBe(true)
+    expect(reloaded.merged[1]?.capped).toBeUndefined()
+  })
 })

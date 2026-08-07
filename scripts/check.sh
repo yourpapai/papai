@@ -329,13 +329,18 @@ else
       exit_code=0
       if [ "$check" = "license-headers" ]; then
         header_checked_files=()
+        # --cached --others --exclude-standard: tracked files PLUS untracked
+        # (not gitignored) ones. A consumer's gate may run full mode on a
+        # worktree containing brand-new, never-added files (agent-authored
+        # docs/tests); tracked-only enumeration would miss them here and let
+        # the pre-commit hook's --staged mode reject them later at git commit.
         while IFS= read -r file; do
           [ -n "$file" ] || continue
           [ -f "$file" ] || continue
           if is_license_header_file "$file"; then
             header_checked_files+=("$file")
           fi
-        done < <(git ls-files 2>/dev/null || true)
+        done < <(git ls-files --cached --others --exclude-standard 2>/dev/null || true)
         run_license_header_check "$TMPDIR/$fname.out" "${header_checked_files[@]+${header_checked_files[@]}}" || exit_code=$?
       elif [ "$check" = "test" ]; then
         # CI runners (4 vCPU, all checks already running concurrently) get

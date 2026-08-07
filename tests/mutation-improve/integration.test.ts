@@ -12,6 +12,7 @@ import { runFinalize } from '../../mutation-improve/src/finalize.js'
 import { runPipeline, type PipelineDeps } from '../../mutation-improve/src/pipeline.js'
 import type { Result } from '../../mutation-improve/src/result-schema.js'
 import { createRunState } from '../../mutation-improve/src/run-state.js'
+import type { MeasuredScore } from '../../mutation-improve/src/score-reader.js'
 import type { Selection } from '../../mutation-improve/src/selection-schema.js'
 import type { AgentUsage } from '../../review-loop/src/agent-runner.js'
 import { cleanupTempDirs, makeTempDir } from './test-helpers.js'
@@ -40,10 +41,10 @@ const improvedResult: Result = {
 // (above threshold so the iteration ratchets and merges).
 const sequenceMeasure = (scores: readonly number[]): PipelineDeps['measureScore'] => {
   let calls = 0
-  return (): Promise<number> => {
+  return (): Promise<MeasuredScore> => {
     calls += 1
     const idx = Math.min(calls - 1, scores.length - 1)
-    return Promise.resolve(scores[idx] ?? 0)
+    return Promise.resolve({ score: scores[idx] ?? 0, survivingMutantIds: [] })
   }
 }
 
@@ -93,6 +94,7 @@ describe('integration', () => {
       },
       runSelectAgent: () => Promise.resolve({ value: selection, usage: emptyUsage() }),
       runImproveAgent: () => Promise.resolve({ value: improvedResult, usage: emptyUsage() }),
+      cappedRegistry: { entries: [], record: () => Promise.resolve() },
       saveRunState: () => Promise.resolve(),
       log: { log: () => undefined },
     }
