@@ -55,7 +55,22 @@
     return row.server.startsWith('plugin:') || pluginServers.some((p) => p.name === row.server)
   }
 
-  const hasEmptyServer = $derived(rows.some((r) => r.server.trim().length === 0))
+  const BLANK_SERVER_MESSAGE = 'Choose an MCP server.'
+  const DUPLICATE_SERVER_MESSAGE = 'Already selected in another row.'
+
+  // A row is invalid when it names no server, or repeats one an *earlier* row already
+  // claimed. Marking the later occurrence is what lets the message point somewhere: the
+  // first row is the one the user keeps. This is not cosmetic — resolveMcpServers is
+  // fail-closed and all-or-nothing, so saving a duplicate costs the context every MCP
+  // server, and the failure surfaces in a coding session rather than here.
+  function rowProblem(all: McpRow[], row: McpRow, index: number): string | undefined {
+    if (row.server.length === 0) return BLANK_SERVER_MESSAGE
+    if (all.slice(0, index).some((earlier) => earlier.server === row.server)) return DUPLICATE_SERVER_MESSAGE
+    return undefined
+  }
+
+  const rowProblems = $derived(rows.map((row, index) => rowProblem(rows, row, index)))
+  const hasRowProblem = $derived(rowProblems.some((problem) => problem !== undefined))
   const atCap = $derived(rows.length >= maxMcpServers)
 
   function snapshotRows(rs: McpRow[]): string {
@@ -116,7 +131,7 @@
   }
 
   async function saveAll(): Promise<void> {
-    if (loading || saving || loadedContextId !== contextId || hasEmptyServer) return
+    if (loading || saving || loadedContextId !== contextId || hasRowProblem) return
     error = null
     status = null
     saving = true
@@ -198,7 +213,7 @@
         {#each rows as row, index (index)}
           <div class="settings-mcp__row" data-testid={`coding-mcp-row-${index}`}>
             <div class="settings-mcp__field settings-mcp__field--server">
-              <Field label="MCP server">
+              <Field label="MCP server" error={rowProblems[index]}>
                 <Select
                   value={row.server}
                   options={serverOptions}
@@ -263,7 +278,7 @@
               variant="primary"
               size="sm"
               testid="coding-mcp-save"
-              disabled={!formDirty || saving || loading || clearing || hasEmptyServer}
+              disabled={!formDirty || saving || loading || clearing || hasRowProblem}
               onClick={() => void saveAll()}>
               {#snippet children()}{saving ? 'Saving…' : 'Save'}{/snippet}
             </Btn>
