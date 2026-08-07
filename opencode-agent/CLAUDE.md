@@ -28,7 +28,11 @@ findings: `ROADMAP.md`.
   silently truncated specs at their first `---` rule; do not reintroduce it.
 - **The review loop is `review-loop/`, not a local reimplementation.** Phase 3
   drives that workspace through `review-runner.ts`. `check-loop.ts` exists only
-  for CI fixing, which the workspace does not cover.
+  for CI fixing, which the workspace does not cover. In that loop the first round
+  runs every check — one repair prompt seeing every failure fixes more than a
+  fail-fast round would — and later rounds re-run only what failed. Only a **full**
+  pass may return `passed`: a narrowed round has not looked at the checks it
+  skipped since before a repair edited the tree.
 - **One model endpoint.** Everything goes through `openai-config.ts`; there are
   no provider-specific keys and no second place a model is named. OpenCode is
   never handed the real key: `provider-proxy.ts` holds it and `contain()` in

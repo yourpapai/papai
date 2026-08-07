@@ -89,28 +89,70 @@ const collectFailures = async (
     }))
 }
 
+/** One pass of the loop: what it is about to run, and whether that is everything. */
+interface Round {
+  attempt: number
+  scope: readonly CheckSpec[]
+  /** Whether `scope` is every configured check. */
+  full: boolean
+}
+
 /**
- * Runs every check, and on failure hands the output back to the agent to
- * repair, up to `maxRounds` attempts.
+ * The checks that just failed, as the next round's scope.
  *
- * All checks run each round even after the first failure: a repair prompt that
- * sees the lint error *and* the failing test fixes both in one pass, where a
- * fail-fast loop would burn a round on each.
+ * No guard against this coming out empty, and deliberately so. It cannot — the
+ * failures were produced by running these same checks — and if it somehow did,
+ * an empty scope runs nothing, finds nothing, and lands in the verification
+ * branch below, which runs everything before anything can be called green. The
+ * bad outcome is unreachable twice over, so a fallback here would be a defence
+ * no test could hold in place.
+ */
+const narrowTo = (all: readonly CheckSpec[], failures: readonly CheckFailure[]): readonly CheckSpec[] => {
+  const failed = new Set(failures.map((failure) => failure.name))
+  return all.filter((check) => failed.has(check.name))
+}
+
+/**
+ * Runs the checks, and on failure hands the output back to the agent to repair,
+ * up to `maxRounds` attempts.
+ *
+ * **The first round runs everything; later rounds re-run only what failed.**
+ * Those are two different questions and the old loop answered both the same
+ * way. Running everything the first time is what lets one repair prompt see the
+ * lint error *and* the failing test and fix both at once, where a fail-fast
+ * loop would burn a round on each — that part is unchanged. Re-running the
+ * checks that already passed is what cost the time: on a repository with a
+ * twenty-minute test suite, a lint failure used to re-run the whole suite on
+ * every round to watch it pass again.
+ *
+ * A narrowed round that comes back green does **not** finish the loop. The
+ * checks it skipped have not been looked at since before a repair edited the
+ * tree, and a fix for one check is entirely capable of breaking another — so
+ * green on a subset is a reason to run everything, not a reason to stop. Only a
+ * full pass can return `passed`.
+ *
+ * That verification pass costs no model call and no attempt, so `rounds` still
+ * counts repairs rather than command runs.
  */
 export const runCheckLoop = (options: CheckLoopOptions): Promise<CheckLoopResult> => {
   const budget = options.outputBudget ?? DEFAULT_OUTPUT_BUDGET
   const maxRounds = Math.max(1, options.maxRounds)
+  const all = options.checks
 
-  const round = async (attempt: number): Promise<CheckLoopResult> => {
-    const failures = await collectFailures(options.checks, options.run, budget)
-    if (failures.length === 0) return { passed: true, rounds: attempt, failures: [] }
-    if (attempt >= maxRounds) return { passed: false, rounds: attempt, failures }
+  const round = async ({ attempt, scope, full }: Round): Promise<CheckLoopResult> => {
+    const failures = await collectFailures(scope, options.run, budget)
 
-    await options.repair(failures, attempt)
-    return round(attempt + 1)
+    if (failures.length > 0) {
+      if (attempt >= maxRounds) return { passed: false, rounds: attempt, failures }
+      await options.repair(failures, attempt)
+      return round({ attempt: attempt + 1, scope: narrowTo(all, failures), full: false })
+    }
+
+    if (full) return { passed: true, rounds: attempt, failures: [] }
+    return round({ attempt, scope: all, full: true })
   }
 
-  return round(1)
+  return round({ attempt: 1, scope: all, full: true })
 }
 
 /** Renders failures for an issue comment, capped to keep the comment readable. */

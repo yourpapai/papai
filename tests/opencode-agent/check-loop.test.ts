@@ -21,6 +21,34 @@ const result = (exitCode: number, stdout = '', stderr = ''): CommandResult => ({
   stderr,
 })
 
+/** Which checks are currently red. Mutated by a fake repair. */
+interface Broken {
+  lint: boolean
+  test: boolean
+}
+
+/**
+ * A runner over a mutable red/green map. The branching lives out here so no
+ * test body carries a conditional.
+ */
+const brokenRunner =
+  (broken: Broken, seen: string[] = []): ((check: CheckSpec) => Promise<CommandResult>) =>
+  (check) => {
+    seen.push(check.name)
+    const failing = check.name === 'lint' ? broken.lint : broken.test
+    return Promise.resolve(failing ? result(1, `${check.name} is red`) : result(0))
+  }
+
+/** Fixing lint breaks the tests — exactly what a narrowed round would miss. */
+const breakTestsWhileFixingLint =
+  (broken: Broken) =>
+  (failures: readonly { name: string }[]): Promise<void> => {
+    const touchedLint = failures.some((failure) => failure.name === 'lint')
+    broken.lint = touchedLint ? false : broken.lint
+    broken.test = touchedLint
+    return Promise.resolve()
+  }
+
 /**
  * Runner that fails until `state.fixed` flips. Defined outside the tests so the
  * branch does not live in a test body.
@@ -158,6 +186,83 @@ describe('runCheckLoop', () => {
     })
 
     expect(outcome.passed).toBe(true)
+  })
+
+  test('re-runs only what failed, not the whole suite, after a repair', async () => {
+    // The cost this saves: on a repository with a twenty-minute test suite, a
+    // lint failure used to re-run the suite every round to watch it pass again.
+    const broken: Broken = { lint: true, test: false }
+    const seen: string[] = []
+
+    await runCheckLoop({
+      checks: CHECKS,
+      run: brokenRunner(broken, seen),
+      repair: () => {
+        broken.lint = false
+        return Promise.resolve()
+      },
+      maxRounds: 3,
+    })
+
+    // Round 1 everything; round 2 lint alone; then one full verification pass.
+    expect(seen).toEqual(['lint', 'test', 'lint', 'lint', 'test'])
+  })
+
+  test('a green narrowed round is not the end — everything runs before it passes', async () => {
+    // A fix for one check is entirely capable of breaking another, and the
+    // checks a narrowed round skipped have not been looked at since before the
+    // repair edited the tree.
+    const broken: Broken = { lint: true, test: false }
+    const repair = breakTestsWhileFixingLint(broken)
+    let repairs = 0
+
+    const outcome = await runCheckLoop({
+      checks: CHECKS,
+      run: brokenRunner(broken),
+      repair: (failures) => {
+        repairs += 1
+        return repair(failures)
+      },
+      maxRounds: 4,
+    })
+
+    expect(outcome.passed).toBe(true)
+    expect(repairs).toBe(2)
+  })
+
+  test('reports a failure the verification pass turned up, not a stale green', async () => {
+    const broken: Broken = { lint: true, test: false }
+
+    const outcome = await runCheckLoop({
+      checks: CHECKS,
+      run: brokenRunner(broken),
+      repair: breakTestsWhileFixingLint(broken),
+      maxRounds: 2,
+    })
+
+    expect(outcome.passed).toBe(false)
+    expect(outcome.failures.map((failure) => failure.name)).toEqual(['test'])
+  })
+
+  test('the verification pass costs no repair attempt', async () => {
+    // It runs commands, not the model. Counting it as a round would spend the
+    // budget on confirming success.
+    const state = { fixed: false }
+    let repairs = 0
+
+    const outcome = await runCheckLoop({
+      checks: CHECKS,
+      run: healingRunner(state),
+      repair: () => {
+        repairs += 1
+        state.fixed = true
+        return Promise.resolve()
+      },
+      maxRounds: 3,
+    })
+
+    expect(outcome.rounds).toBe(2)
+    expect(repairs).toBe(1)
   })
 })
 

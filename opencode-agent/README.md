@@ -100,6 +100,14 @@ back: it checks out the branch, runs the configured checks locally, hands the
 real failure output to the model, and pushes a fix. Reproducing beats reading
 logs from another machine — and the runner has the branch anyway.
 
+The first round runs **every** configured check, so one repair prompt sees the
+lint error and the failing test together and can fix both at once. Later rounds
+re-run only what failed — re-running a twenty-minute test suite to watch it pass
+again is where the time went. A narrowed round going green does not end the loop:
+the checks it skipped have not been looked at since before a repair edited the
+tree, and a fix for one check can break another, so a **full pass is what
+declares green**. That pass costs commands but no model call, and so no round.
+
 Two budgets bound it. `AGENT_CI_FIX_MAX_ROUNDS` caps repair rounds within one
 job; `AGENT_MAX_CI_ATTEMPTS` caps rounds across the pull request's whole life, so
 a genuinely broken branch cannot bounce between the agent and CI forever. The
