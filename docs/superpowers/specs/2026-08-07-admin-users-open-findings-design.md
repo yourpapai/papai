@@ -155,8 +155,30 @@ carries the `placeholder-` prefix, else `active`. That gives a blocked user a sc
 screen-reader-visible marker — today the only trace is the word "Unblock" on a button at the far
 right edge of the row.
 
-`added_by` renders as prose: `admin` → `Admin`, `open_access` → `Open access`, null → `—`. The
-column header becomes `Added by`, which says what the value answers; `Source` did not.
+The column header becomes `Added by`, which says what the value answers; `Source` did not.
+
+`added_by` is an **open set**, not a two-value enum — a correction to an earlier draft of this
+design. Three writers exist in the server:
+
+| Writer                                        | Value stored                       |
+| --------------------------------------------- | ---------------------------------- |
+| `src/auth.ts:217,219`                         | `open-access`                      |
+| `src/announcements/store.ts:38`               | `announce-subscription`            |
+| `src/debug/settings/admin/system-access-routes.ts:54,70` | the acting admin's `platformUserId` |
+
+So the common case is an arbitrary id string, and the rendering must be total rather than a lookup
+table:
+
+- `open-access` → `Open access`, neutral `Pill`
+- `announce-subscription` → `Announcement signup`, neutral `Pill`
+- anything else → an admin's user id, rendered through `IdCell` so it truncates, carries a `title`,
+  and can be copied — it is an id, and should look like the one in the first column
+- empty → `—`
+
+**Both fixtures are wrong today** and must be corrected as part of this work: the Storybook
+fixture uses `open_access` (underscore — never written by anything) and both it and the unit-test
+fixture use `admin`, which no writer produces. Fixing them is what makes the finding testable
+against reality rather than against a fiction.
 
 Because `status` now carries the pending marker, the User ID cell no longer substitutes a badge for
 the id — every row keeps a truncating, `title`-bearing, copyable `IdCell`. Both hand-rolled classes,
