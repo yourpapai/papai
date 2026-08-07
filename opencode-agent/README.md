@@ -106,6 +106,21 @@ any classification failure, resolves to "question"** — answering a comment tha
 was really a change request costs one reply, whereas re-planning a comment that
 was really a question discards an approved artefact.
 
+**`INIT_OR_CLARIFY` classifies too, with that default inverted.** A comment
+arriving while the agent waits for answers to its own clarifying questions is
+skipped only when the classifier positively reports "no action" — a thanks, an
+emoji, a bystander's aside. Every other reading, including the "question" the
+classifier falls back to whenever it fails or cannot tell, re-runs triage, which
+is what this phase used to do for every comment unconditionally. The bias cannot
+be borrowed from the waiting phases, because it protects an approved artefact
+and there is none here: a maintainer's answer misread as a question would be
+answered rather than acted on, leaving the issue parked on the same questions
+and the maintainer repeating themselves. That is worse than the triage turn a
+"thanks" used to buy, so only the one verdict a classifier has to actively
+choose acts on anything. The classification prompt tells the model what this
+phase means, since a real answer is often a bare fragment that reads like
+chatter to anyone who has not matched it against the question it replies to.
+
 A command only counts on a line that _starts_ with it, and fenced code blocks
 are ignored, so the agent quoting its own instructions does not fire them.
 
@@ -314,9 +329,11 @@ that classifies a plain maintainer comment as needing no action. That last one i
 a deliberate residual. Classification happens before any phase runs, and when it
 answers "no action" the run posts nothing — replying to every "thanks!" would be
 spam — so there is no comment for a state block to ride on. What the agent does
-instead is refuse to pay for it: once an issue is over budget the comment goes
-straight to the answer path, which reports the ceiling without a model turn, so a
-maxed-out issue stops buying a classification per comment.
+instead is refuse to pay for it: once an issue is over budget the comment skips
+the classifier entirely and goes to the path that reports the ceiling without a
+model turn — the answer path on a waiting phase, triage's own stop in
+`INIT_OR_CLARIFY` — so a maxed-out issue stops buying a classification per
+comment.
 
 ## Watching a run
 

@@ -37,16 +37,20 @@ const COMMAND_SIGNALS: Record<string, TransitionSignal> = {
  * Turns the trigger into a state move.
  *
  * A red CI run enters `CI_FIX`. An explicit slash command wins outright. A
- * plain maintainer comment on a waiting phase is classified, because "review
- * and refine" is a conversation, not a command language — and the classifier
- * defaults to *question*, the only reading that cannot destroy approved work.
+ * plain maintainer comment is classified, because "review and refine" is a
+ * conversation, not a command language — but the two phases that classify want
+ * opposite defaults, so they read the same verdict through different branches.
+ * On a waiting phase, {@link applyIntent} defaults to *question*, the only
+ * reading that cannot destroy approved work. In `INIT_OR_CLARIFY` there is no
+ * approved work yet and the comment is probably an answer the agent asked for,
+ * so {@link applyClarifyIntent} defaults the other way — see there.
  */
 export const applyTrigger = (input: PhaseInput): Promise<TriggerOutcome> => {
   const { state, trigger, command } = input
 
   if (trigger.kind === 'ci') return applyCiTrigger(input)
   if (command !== null) return applyCommand(input, command)
-  if (state.phase === 'INIT_OR_CLARIFY') return Promise.resolve({ state, halt: null, answer: false })
+  if (state.phase === 'INIT_OR_CLARIFY') return applyClarifyIntent(input)
   if (!WAITING_PHASES.has(state.phase)) {
     return Promise.resolve({ state, halt: skip(state, `No actionable command while in ${state.phase}`), answer: false })
   }
@@ -87,8 +91,8 @@ const applyCommand = (input: PhaseInput, command: ParsedCommand): Promise<Trigge
  *
  * Only explicit commands come here. A classified plain comment cannot reach it
  * — `applyIntent` runs solely in the waiting phases, both of which accept both
- * of the signals it can produce — and the CI paths above have their own,
- * deliberately quieter, reporting.
+ * of the signals it can produce, and `applyClarifyIntent` produces no signal at
+ * all — and the CI paths above have their own, deliberately quieter, reporting.
  */
 const refuseCommand = async (input: PhaseInput, command: string, reason: string): Promise<TriggerOutcome> => {
   const { state, thread, deps } = input
@@ -190,6 +194,74 @@ const applyIntent = async (input: PhaseInput): Promise<TriggerOutcome> => {
 
   const signal: TransitionSignal = intent === 'approve' ? 'APPROVED' : 'CHANGES_REQUESTED'
   return moveOrSkip(state, signal, deps, `an implied ${intent}`)
+}
+
+/**
+ * Reads a plain comment that arrived while the agent is waiting for answers to
+ * its own clarifying questions, and lets through everything the classifier does
+ * not positively call chatter.
+ *
+ * This phase used to skip classification altogether and hand every comment
+ * straight to triage. That is a whole triage turn — the model re-reads the
+ * issue, the whole thread and the repository, then writes a fresh design spec or
+ * another round of questions — bought by a "thanks", a 👍, or one maintainer's
+ * aside to another while the agent waits. Cheap to say, expensive to answer.
+ *
+ * The fix cannot be to route this phase through {@link applyIntent}, because
+ * that function's default points the wrong way here. `classifyComment` resolves
+ * every failure and every ambiguity to `question`, chosen for the waiting phases
+ * where answering costs one reply while re-planning discards an approved
+ * artefact. There is no approved artefact in `INIT_OR_CLARIFY`, and the cost is
+ * reversed: a maintainer's answer misread as a question gets *answered* instead
+ * of acted on, so the agent replies about its own questions, stays parked, and
+ * the maintainer has to say the same thing a second time. So the default is
+ * inverted rather than borrowed — `none` is the only verdict that skips, and
+ * every other reading, including the one the classifier falls back to when it
+ * breaks, re-runs triage exactly as before.
+ *
+ * `question` is deliberately **not** admitted as a skip-to-answer, even though a
+ * maintainer really can ask "why do you need that?" mid-clarification. In this
+ * phase it is not a verdict: it is also the bucket a failed model call, an
+ * unparsable reply and a genuinely ambiguous comment all land in, so honouring
+ * it would route every one of those into an answer turn — precisely the stall
+ * above, on exactly the comments least able to survive it. `none` is the one
+ * reading the classifier has to actively choose, so `none` is the one that acts.
+ * The price of leaving `question` out is a wasted triage turn on a real
+ * mid-clarification question; the price of letting it in is a dropped answer,
+ * and only the first of those is recoverable without the maintainer noticing.
+ *
+ * Two comments never reach the classifier at all, and both fall through to
+ * triage rather than skipping. An **absent or blank** body is the
+ * `issues.opened` event that starts every issue — there is no comment to read,
+ * and skipping it would mean the agent never runs at all. **Over budget** is the
+ * rule {@link applyIntent} sets out at length: the classifier is the one turn
+ * whose spend can never be written down, so the ceiling has to stop it rather
+ * than count it. Falling through costs nothing, because the cascade's own stop
+ * fires before `handleTriage` and reports the ceiling on the issue — the same
+ * notice a maintainer would have got anyway, one model turn cheaper.
+ */
+const applyClarifyIntent = async (input: PhaseInput): Promise<TriggerOutcome> => {
+  const { state, trigger, deps } = input
+  const retriage: TriggerOutcome = { state, halt: null, answer: false }
+
+  const body = trigger.kind === 'issue' ? trigger.commentBody : null
+  if (body === null || body.trim().length === 0) return retriage
+
+  const spent = await totalTokens(deps, state.tokensSpent)
+  if (!withinBudget(spent, deps.config)) {
+    deps.log.warn(
+      { issue: state.issueId, phase: state.phase, spent, limit: deps.config.maxTokens },
+      'Over budget: not paying to classify a comment while clarifying',
+    )
+    return retriage
+  }
+
+  const intent = await classifyComment({ body, phase: state.phase, deps, state })
+  deps.log.info({ intent, phase: state.phase }, 'Classified a maintainer comment while clarifying')
+
+  if (intent !== 'none') return retriage
+
+  return { state, halt: skip(state, 'Comment needs no action'), answer: false }
 }
 
 const moveOrSkip = (state: AgentState, signal: TransitionSignal, deps: PhaseDeps, source: string): TriggerOutcome => {

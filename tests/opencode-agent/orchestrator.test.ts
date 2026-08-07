@@ -361,7 +361,13 @@ describe('phase 1 — triage', () => {
   })
 
   test('a plain reply while clarifying re-runs triage', async () => {
-    harness.io.replies = [JSON.stringify({ status: 'clarify', questions: ['Which client?'] }), SPEC_REPLY]
+    // Three replies for three turns: the clarification, the classification of
+    // the answer that comes back, and the triage that answer earns.
+    harness.io.replies = [
+      JSON.stringify({ status: 'clarify', questions: ['Which client?'] }),
+      JSON.stringify({ intent: 'question' }),
+      SPEC_REPLY,
+    ]
     await runPipeline({ event: issueEvent(), deps: harness.deps })
     harness.io.posted.length = 0
 
@@ -382,6 +388,91 @@ describe('phase 1 — triage', () => {
     const state = latestPostedState(harness)
     expect(state?.phase).toBe('FAILED')
     expect(state?.resumeFrom).toBe('INIT_OR_CLARIFY')
+  })
+})
+
+/**
+ * `INIT_OR_CLARIFY` used to skip classification altogether, so every comment
+ * that landed while the agent waited for its clarifying questions to be answered
+ * bought a full triage turn — a "thanks", a 👍 and a bystander's aside included.
+ * Classifying it is the fix, but the classifier's documented bias points the
+ * wrong way for this phase, so the branch inverts the default instead of
+ * borrowing `applyIntent`'s: `none` skips, and everything else — including the
+ * `question` a broken or unsure classifier falls back to — re-runs triage.
+ */
+describe('chatter while the agent is clarifying', () => {
+  let harness: Harness
+
+  beforeEach(() => {
+    harness = makeHarness()
+  })
+
+  test('a comment that needs no action runs no triage and posts nothing', async () => {
+    seedState(harness, { phase: 'INIT_OR_CLARIFY' })
+    harness.io.replies = [JSON.stringify({ intent: 'none' })]
+
+    const result = await runPipeline({ event: comment('thanks! 👍'), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(result.reason).toContain('needs no action')
+    expect(harness.io.posted).toEqual([])
+    // The classification is the only turn paid for; triage never ran.
+    expect(harness.io.prompts).toHaveLength(1)
+    expect(String(harness.io.prompts[0]?.prompt)).toContain('Classify this comment')
+    // State is persisted only by posting, so an untouched thread is itself the
+    // assertion that the issue is still parked on its clarifying questions.
+    expect(latestPostedState(harness)).toBeNull()
+    expect(result.state?.phase).toBe('INIT_OR_CLARIFY')
+  })
+
+  test('an answer read as a question still re-runs triage rather than being answered', async () => {
+    // `question` is the classifier's fallback bucket, not a verdict about this
+    // phase, so acting on it would answer the maintainer's answer and leave the
+    // issue parked on the same questions — the stall this branch exists to avoid.
+    seedState(harness, { phase: 'INIT_OR_CLARIFY' })
+    harness.io.replies = [JSON.stringify({ intent: 'question' }), SPEC_REPLY]
+
+    const result = await runPipeline({ event: comment('The HTTP client.'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(String(harness.io.prompts[0]?.prompt)).toContain('Classify this comment')
+    expect(harness.io.posted[0]).toContain('### Design spec')
+    expect(latestPostedState(harness)?.phase).toBe('DESIGN_SPEC')
+  })
+
+  test('a classifier that fails re-runs triage rather than dropping a possible answer', async () => {
+    // Two unusable replies exhaust `promptForJson`'s one re-ask, so
+    // `classifyComment` swallows the throw and reports `question`. Only `none`
+    // skips, so a classifier this run could not use costs the issue nothing.
+    seedState(harness, { phase: 'INIT_OR_CLARIFY' })
+    harness.io.replies = ['not json at all', 'still not json', SPEC_REPLY]
+
+    const result = await runPipeline({ event: comment('The HTTP client.'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted[0]).toContain('### Design spec')
+    expect(latestPostedState(harness)?.phase).toBe('DESIGN_SPEC')
+  })
+
+  test('an over-budget comment is reported without paying to classify it', async () => {
+    // The ceiling is asked before the classifier, not after: classification is
+    // the one turn whose spend can never be written down. The queued verdict is
+    // the tell — reaching for it would consume the reply, skip in silence, and
+    // leave the maintainer with no notice at all.
+    harness = makeHarness({ maxTokens: 100 })
+    seedState(harness, { phase: 'INIT_OR_CLARIFY', tokensSpent: 500 })
+    harness.io.replies = [JSON.stringify({ intent: 'none' })]
+
+    const result = await runPipeline({ event: comment('The HTTP client.'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.prompts).toEqual([])
+    expect(harness.io.posted[0]).toContain('### Token budget spent')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('FAILED')
+    expect(state?.resumeFrom).toBe('INIT_OR_CLARIFY')
+    expect(state?.tokensSpent).toBe(500)
   })
 })
 

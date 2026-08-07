@@ -172,6 +172,23 @@ findings: `ROADMAP.md`.
   `none` still leaks that turn; the known cost of not replying to every "thanks!",
   and not to be papered over with an `updateComment`-style write without deciding
   that larger question first.
+- **`INIT_OR_CLARIFY` classifies with the default inverted.** `applyClarifyIntent`
+  skips a comment only when the classifier positively reports `none`; every other
+  reading re-runs triage, which is what the phase used to do for every comment —
+  a "thanks", a 👍 or a bystander's aside each bought a full triage turn. It
+  cannot reuse `applyIntent`: that bias exists to protect an approved artefact and
+  there is none here, so a misread answer is not one cheap extra reply but a
+  stalled conversation, the agent answering its own clarifying questions back at
+  the maintainer while the issue stays parked. `question` is deliberately **not**
+  admitted as a skip-to-answer for the same reason — in this phase it is the
+  bucket every failure and ambiguity lands in, not a verdict, so honouring it
+  would stall exactly the comments least able to survive it. A blank body (the
+  `issues.opened` event that starts every issue) and an over-budget issue both
+  skip the classifier and fall through to triage, where the cascade's own stop
+  reports the ceiling — the rule above, one model turn cheaper. This is the one
+  phase `buildClassifyPrompt` briefs on what the phase means, because `none` is
+  now load-bearing and a real answer is often a bare fragment that reads as
+  chatter to a phase-blind classifier.
 - **Bounds go on the finished prompt, and on waiting.** `prompt-budget.ts` caps
   what reaches the model — per prompt, not per input, since a per-input cap
   bounds one log and nothing else. `deadline.ts` bounds waiting for a model turn;
