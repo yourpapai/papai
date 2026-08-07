@@ -89,9 +89,17 @@
       onRowClick?.(row)
     }
   }
+
+  // `table-layout: fixed` is required for a declared column `width` to actually hold (under the
+  // default `auto` layout it is only a hint content can override). Only opt in when EVERY column
+  // declares a width: a partial set is exactly the case where the browser must distribute leftover
+  // space across the width-less columns, which is unpredictable and can visibly reflow columns
+  // that were never meant to be pinned. A width-less consumer (no columns declare a width) also
+  // stays on auto layout — otherwise it would suddenly get equal-width columns.
+  const allColumnsHaveWidths = $derived(columns.every((c) => c.width !== undefined))
 </script>
 
-<table class="ui-datatable">
+<table class="ui-datatable" class:ui-datatable--fixed={allColumnsHaveWidths}>
   <thead>
     <tr>
       {#each columns as col (col.key)}
@@ -149,6 +157,9 @@
     width: 100%;
     border-collapse: collapse;
     font-family: var(--font-mono);
+  }
+  .ui-datatable--fixed {
+    table-layout: fixed;
   }
   .ui-datatable__th {
     font-size: 10px;
