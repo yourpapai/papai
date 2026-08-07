@@ -19,7 +19,7 @@ import type { PhaseDeps } from '../../opencode-agent/src/phase-context.js'
 import type { ReviewRunResult } from '../../opencode-agent/src/review-runner.js'
 import type { CommandResult } from '../../opencode-agent/src/shell.js'
 import { extractState, initialState, serializeState } from '../../opencode-agent/src/state-manager.js'
-import type { AgentState } from '../../opencode-agent/src/types.js'
+import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
 
 const AGENT_LOGIN = 'agent-bot'
 const ISSUE = 42
@@ -247,6 +247,12 @@ const latestPostedState = (harness: Harness): AgentState | null => {
   return last === undefined ? null : extractState(last)
 }
 
+/** A state block an earlier job left on the thread, as a later job reads it back. */
+const seedState = (harness: Harness, patch: Partial<AgentState>): void => {
+  const prior: AgentState = { ...initialState(ISSUE), ...patch }
+  harness.io.thread.push({ id: 800, body: `earlier\n\n${serializeState(prior)}`, authorLogin: AGENT_LOGIN })
+}
+
 /** Keeps the "did a run return a state?" narrowing out of the test bodies. */
 const spentIn = (result: { state: AgentState | null }): number => result.state?.tokensSpent ?? -1
 
@@ -455,6 +461,89 @@ describe('review conversation', () => {
     expect(result.status).toBe('waiting')
     expect(harness.io.posted[0]).toContain('### Answer')
     expect(latestPostedState(harness)?.revision).toBe(1)
+  })
+})
+
+describe('answering outside the review gates', () => {
+  let harness: Harness
+
+  beforeEach(() => {
+    harness = makeHarness()
+  })
+
+  test.each<Phase>(['COMPLETE', 'REVIEW_AND_MUTATE', 'PR_DELIVERY', 'CI_FIX'])(
+    '/ask in %s is answered and leaves the phase exactly there',
+    async (phase) => {
+      // `/ask` has always been accepted in every phase, but ANSWERED lived in
+      // three rows of the transition table, so each of these crashed the runner
+      // with an InvalidTransitionError after the model turn was paid for —
+      // nothing posted, exit code 1, the maintainer left staring at an issue.
+      seedState(harness, { phase })
+      harness.io.replies = ['Because the retry helper already exists there.']
+
+      const result = await runPipeline({ event: comment('/ask why that file?'), deps: harness.deps })
+
+      expect(result.status).toBe('waiting')
+      expect(harness.io.posted[0]).toContain('### Answer')
+      expect(harness.io.posted[0]).toContain('Because the retry helper already exists there.')
+      expect(latestPostedState(harness)?.phase).toBe(phase)
+    },
+  )
+
+  test('/ask in FAILED answers without disturbing the parked failure', async () => {
+    // The phase a maintainer most wants to ask a question in, and the one the
+    // crash hurt most: the run had already failed, so this was the only thing
+    // left to try.
+    seedState(harness, { phase: 'FAILED', resumeFrom: 'REVIEW_AND_MUTATE', attempts: 1, lastError: 'tests exploded' })
+    harness.io.replies = ['The check runner could not find bun on the PATH.']
+
+    const result = await runPipeline({ event: comment('/ask why did this fail?'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted[0]).toContain('The check runner could not find bun on the PATH.')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('FAILED')
+    // Still resumable: a question must not cost the maintainer the `/retry`.
+    expect(state?.resumeFrom).toBe('REVIEW_AND_MUTATE')
+  })
+
+  test('a failed /ask in COMPLETE reports without dragging a delivered issue backwards', async () => {
+    // Two crashes on one path: the answer's own ANSWERED was refused, and when
+    // the model call failed instead, the failure path's `transition(FAILED)`
+    // was refused too, because COMPLETE deliberately accepts neither.
+    seedState(harness, { phase: 'COMPLETE', prUrl: 'https://example.test/pull/7' })
+    harness.deps.agent = (): Promise<OpenCodeAgent> => Promise.reject(new Error('the model endpoint rejected it'))
+
+    const result = await runPipeline({ event: comment('/ask what did you change?'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.posted[0]).toContain('### I could not answer that')
+    expect(harness.io.posted[0]).toContain('the model endpoint rejected it')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('COMPLETE')
+    expect(state?.resumeFrom).toBeNull()
+    expect(state?.attempts).toBe(0)
+  })
+
+  test('a failed /ask spends no attempt and promises no retry', async () => {
+    // The related defect: a failed answer used to park the state with
+    // `resumeFrom: 'DESIGN_SPEC'` and invite `/retry`, which then resumed into a
+    // waiting phase with no handler and re-parked with "Parked in DESIGN_SPEC",
+    // one attempt poorer for a round trip that did nothing.
+    await toDesignSpec(harness)
+    harness.deps.agent = (): Promise<OpenCodeAgent> => Promise.reject(new Error('the model timed out'))
+
+    const result = await runPipeline({ event: comment('/ask why that file?'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.posted[0]).not.toContain('/retry')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('DESIGN_SPEC')
+    expect(state?.resumeFrom).toBeNull()
+    expect(state?.attempts).toBe(0)
   })
 })
 

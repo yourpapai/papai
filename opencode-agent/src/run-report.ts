@@ -124,6 +124,27 @@ export const renderFailure = (phase: Phase, message: string, next: AgentState, m
   ].join('\n')
 
 /**
+ * The reply to a question the agent could not answer.
+ *
+ * Separate from {@link renderFailure} because nothing failed *about the issue*:
+ * the phase has not moved, `resumeFrom` is untouched and no attempt was spent,
+ * so the wording has to say that rather than borrow the failure comment's. That
+ * comment invites `/retry`, which would be wrong here twice over — there is
+ * nothing parked in FAILED for it to resume, and back when a failed answer did
+ * park the state, the `/retry` it invited resumed into a waiting phase with no
+ * handler and re-parked with "Parked in `DESIGN_SPEC`", one attempt poorer.
+ */
+export const renderAnswerFailure = (phase: Phase, message: string): string =>
+  [
+    '### I could not answer that',
+    '',
+    // The message carries raw model output, which usually contains fences.
+    fence(message),
+    '',
+    `Nothing has changed: this issue is still in \`${phase}\`. Ask again, or carry on where you were.`,
+  ].join('\n')
+
+/**
  * The token-budget notice.
  *
  * Separate from {@link renderExhausted} because the remedy is different, and

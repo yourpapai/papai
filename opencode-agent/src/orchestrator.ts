@@ -13,11 +13,18 @@ import { handleDeliver } from './phases/deliver.js'
 import { handleImplement } from './phases/implement.js'
 import { handlePlan } from './phases/plan.js'
 import { handleTriage } from './phases/triage.js'
-import { postAndAppend, renderExhausted, renderFailure, renderOverBudget, renderSettled } from './run-report.js'
+import {
+  postAndAppend,
+  renderAnswerFailure,
+  renderExhausted,
+  renderFailure,
+  renderOverBudget,
+  renderSettled,
+} from './run-report.js'
 import { findLatestState, initialState, transition } from './state-manager.js'
 import { applyTrigger } from './triggers.js'
 import { errorMessage } from './types.js'
-import type { Phase, RunResult, TransitionSignal } from './types.js'
+import type { AgentState, Phase, RunResult, TransitionSignal } from './types.js'
 
 /**
  * Phases the pipeline can act on unattended. A phase with no handler is a
@@ -123,13 +130,12 @@ const driveMachine = async (input: MachineInput): Promise<RunResult> => {
   if (spent >= deps.config.maxTokens) return overBudget(input, spent)
 
   const attempt = await runHandler(handler, input)
-  if (!attempt.ok) return failRun(input, attempt.error)
+  if (!attempt.ok) return input.answer ? failAnswer(input, attempt.error) : failRun(input, attempt.error)
 
-  const { signal, comment, blocks, patch } = attempt.outcome
-  const next = transition(state, signal, { ...patch, tokensSpent: await totalTokens(input) })
-  const grown = await postAndAppend(thread, input, comment, next, blocks)
+  const { outcome, next } = attempt
+  const grown = await postAndAppend(thread, input, outcome.comment, next, outcome.blocks)
 
-  if (PAUSE_SIGNALS.has(signal)) {
+  if (PAUSE_SIGNALS.has(outcome.signal)) {
     return { status: 'waiting', reason: `Waiting for a maintainer in ${next.phase}`, state: next }
   }
 
@@ -181,11 +187,25 @@ const overBudget = async (input: MachineInput, spent: number): Promise<RunResult
   return { status: 'failed', reason, state: { ...state, tokensSpent: spent } }
 }
 
-type HandlerAttempt = { ok: true; outcome: PhaseOutcome } | { ok: false; error: unknown }
+type HandlerAttempt = { ok: true; outcome: PhaseOutcome; next: AgentState } | { ok: false; error: unknown }
 
-const runHandler = async (handler: PhaseHandler, input: PhaseInput): Promise<HandlerAttempt> => {
+/**
+ * Runs one handler and applies its signal, both inside the same guard.
+ *
+ * The `transition` used to sit outside it, on the caller's happy path. A
+ * handler reporting a signal its phase does not accept therefore threw straight
+ * out of `driveMachine`, past `runPipeline` and `runCli`, and `main` printed a
+ * stack trace and exited 1 — with the model turn already paid for and not a
+ * word posted on the issue. That is how `/ask` failed outside the three phases
+ * whose transition rows happened to name `ANSWERED`. Inside the guard, any
+ * future handler/phase mismatch is reported on the issue like any other phase
+ * failure, which is the only place a maintainer will ever see it.
+ */
+const runHandler = async (handler: PhaseHandler, input: MachineInput): Promise<HandlerAttempt> => {
   try {
-    return { ok: true, outcome: await handler(input) }
+    const outcome = await handler(input)
+    const patch = { ...outcome.patch, tokensSpent: await totalTokens(input) }
+    return { ok: true, outcome, next: transition(input.state, outcome.signal, patch) }
   } catch (error) {
     return { ok: false, error }
   }
@@ -205,4 +225,33 @@ const failRun = async (input: MachineInput, error: unknown): Promise<RunResult> 
   await postAndAppend(thread, input, renderFailure(state.phase, message, failed, deps.config.maxAttempts), failed)
 
   return { status: 'failed', reason: message, state: failed }
+}
+
+/**
+ * Reports a failed answer without moving the machine, and without spending an
+ * attempt.
+ *
+ * A question is a side conversation about work that lives elsewhere: the phase
+ * records where the *work* is, so parking a delivered pull request or an
+ * in-flight implementation in FAILED because a model turn about it broke is a
+ * lie about what happened. In COMPLETE it was not even reachable — the FAILED
+ * guard in `canTransition` refuses that move — so {@link failRun}'s own
+ * `transition` threw and took the whole runner with it.
+ *
+ * The retry budget is left alone for the same reason: `attempts` counts
+ * consecutive failures to make progress on the issue, and a question makes
+ * none either way. Leaving `resumeFrom` alone is what makes the notice honest.
+ * Answering in a waiting phase used to record `resumeFrom: 'DESIGN_SPEC'`, and
+ * the `/retry` the failure comment invited then resumed into a phase with no
+ * handler and re-parked with "Parked in `DESIGN_SPEC`" — one attempt poorer for
+ * a round trip that did nothing.
+ */
+const failAnswer = async (input: MachineInput, error: unknown): Promise<RunResult> => {
+  const { state, deps, thread } = input
+  const message = errorMessage(error)
+  deps.log.error({ issue: state.issueId, phase: state.phase, error: message }, 'Answering a question failed')
+
+  await postAndAppend(thread, input, renderAnswerFailure(state.phase, message), state)
+
+  return { status: 'failed', reason: message, state }
 }

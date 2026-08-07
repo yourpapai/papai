@@ -17,12 +17,16 @@ export const STATE_MARKER = 'AGENT_STATE'
  * Where each signal leads. Signals absent from a phase's row are rejected, so a
  * command arriving in the wrong phase is a loud no-op rather than a silent
  * corruption of the persisted state.
+ *
+ * `ANSWERED` is deliberately not in this table at all — see {@link transition}.
+ * Every entry here names a phase the machine *moves to*; a signal that leaves
+ * the phase alone has no business being expressed as a row per phase.
  */
 const TRANSITIONS: Record<Phase, Partial<Record<TransitionSignal, Phase>>> = {
-  INIT_OR_CLARIFY: { NEEDS_CLARIFICATION: 'INIT_OR_CLARIFY', ANSWERED: 'INIT_OR_CLARIFY', SPEC_POSTED: 'DESIGN_SPEC' },
-  DESIGN_SPEC: { ANSWERED: 'DESIGN_SPEC', CHANGES_REQUESTED: 'INIT_OR_CLARIFY', APPROVED: 'EXECUTION_PLAN' },
+  INIT_OR_CLARIFY: { NEEDS_CLARIFICATION: 'INIT_OR_CLARIFY', SPEC_POSTED: 'DESIGN_SPEC' },
+  DESIGN_SPEC: { CHANGES_REQUESTED: 'INIT_OR_CLARIFY', APPROVED: 'EXECUTION_PLAN' },
   EXECUTION_PLAN: { PLAN_POSTED: 'PLAN_REVIEW' },
-  PLAN_REVIEW: { ANSWERED: 'PLAN_REVIEW', CHANGES_REQUESTED: 'EXECUTION_PLAN', APPROVED: 'REVIEW_AND_MUTATE' },
+  PLAN_REVIEW: { CHANGES_REQUESTED: 'EXECUTION_PLAN', APPROVED: 'REVIEW_AND_MUTATE' },
   REVIEW_AND_MUTATE: { CHANGES_COMMITTED: 'PR_DELIVERY' },
   PR_DELIVERY: { PR_OPENED: 'COMPLETE' },
   CI_FIX: { CI_FIXED: 'COMPLETE' },
@@ -87,6 +91,7 @@ const ownedBy =
 
 /** Whether `signal` is accepted in `phase`. */
 export const canTransition = (phase: Phase, signal: TransitionSignal): boolean => {
+  if (signal === 'ANSWERED') return true
   if (signal === 'FAILED' || signal === 'CANCELLED') return phase !== 'COMPLETE'
   if (signal === 'RETRY') return phase === 'FAILED'
   return TRANSITIONS[phase][signal] !== undefined
@@ -112,7 +117,8 @@ const forwardTransition = (
   // question are handler successes, so a conversation with the odd hiccup
   // accumulated toward the cap across runs that all succeeded. `RETRY` is the
   // deliberate exception and preserves the count in its own branch, so a retry
-  // loop stays bounded.
+  // loop stays bounded, and `ANSWERED` clears it from its own branch below for
+  // exactly the same reason.
   attempts: 0,
   revision: REVISION_SIGNALS.has(signal) ? state.revision + 1 : state.revision,
   ciAttempts: signal === 'CI_FAILED' ? state.ciAttempts + 1 : state.ciAttempts,
@@ -131,6 +137,24 @@ export const transition = (
   patch: Partial<AgentState> = {},
 ): AgentState => {
   if (!canTransition(state.phase, signal)) throw new InvalidTransitionError(state.phase, signal)
+
+  // Answering is phase-neutral: it is accepted everywhere and moves nothing.
+  //
+  // It used to be three self-referencing rows in TRANSITIONS — INIT_OR_CLARIFY,
+  // DESIGN_SPEC, PLAN_REVIEW — while `/ask` was accepted in every phase, so the
+  // two disagreed and the disagreement was fatal: a question asked in COMPLETE,
+  // FAILED, REVIEW_AND_MUTATE, PR_DELIVERY or CI_FIX paid for the model turn and
+  // then threw `InvalidTransitionError` out of the pipeline, which the runner
+  // printed as a stack trace while the issue heard nothing at all. FAILED was
+  // the worst of them, being exactly the state a maintainer asks "why did this
+  // fail?" in.
+  //
+  // Handled here rather than by adding a row to every phase because two sources
+  // of truth for "stay put" is what let the table and `/ask`'s reach drift apart
+  // in the first place. The patch reproduces what the old rows did: `attempts`
+  // cleared, because answering is a handler success; `revision` and `ciAttempts`
+  // untouched, because no artefact was rewritten and no CI round was spent.
+  if (signal === 'ANSWERED') return applyPatch(state, { attempts: 0, lastError: null, ...patch })
 
   if (signal === 'FAILED') return applyPatch(state, failTransition(state, patch))
   if (signal === 'CANCELLED') return applyPatch(state, { phase: 'COMPLETE', resumeFrom: null, ...patch })

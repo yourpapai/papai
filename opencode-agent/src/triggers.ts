@@ -123,7 +123,12 @@ const settledPullRequest = async (input: PhaseInput): Promise<TriggerOutcome | n
 const applyCommand = (input: PhaseInput, command: ParsedCommand): Promise<TriggerOutcome> => {
   const { state, deps } = input
   // Always available: answering asks nothing of the state machine, so there is
-  // no phase in which it can be the wrong thing to do.
+  // no phase in which it can be the wrong thing to do. The machine now agrees —
+  // `ANSWERED` is a non-moving signal accepted in every phase. It did not use
+  // to: it lived in three rows of the transition table while this line let
+  // `/ask` through everywhere, so a question in COMPLETE, FAILED or any
+  // mid-pipeline phase paid for the model turn and then crashed the runner on
+  // an `InvalidTransitionError` nobody on the issue ever saw.
   if (command.command === '/ask') return Promise.resolve({ state, halt: null, answer: true })
 
   const signal = COMMAND_SIGNALS[command.command]

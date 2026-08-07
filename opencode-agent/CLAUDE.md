@@ -26,6 +26,16 @@ findings: `ROADMAP.md`.
 - **Never scrape prose to recover an artefact.** Spec, plan and report travel in
   hidden blocks via `blocks.ts` / `artifacts.ts`. Heading-and-trailer scraping
   silently truncated specs at their first `---` rule; do not reintroduce it.
+- **Answering is phase-neutral in both directions.** `ANSWERED` is deliberately
+  absent from `TRANSITIONS`; `transition` handles it as a non-moving signal
+  accepted in every phase, because `/ask` is accepted in every phase. Do not put
+  it back as a row per phase — the table and `/ask`'s reach drifting apart is
+  what made a question asked in `COMPLETE`, `FAILED` or mid-pipeline throw
+  `InvalidTransitionError` out of the pipeline, after the model turn was paid
+  for and with nothing posted on the issue. A **failed** answer does not move the
+  phase either: `failAnswer` posts and leaves `phase`, `resumeFrom` and
+  `attempts` alone, which is also why `resumeFrom` can never name a waiting phase
+  with no handler for `/retry` to resume into.
 - **The review loop is `review-loop/`, not a local reimplementation.** Phase 3
   drives that workspace through `review-runner.ts`. `check-loop.ts` exists only
   for CI fixing, which the workspace does not cover. In that loop the first round

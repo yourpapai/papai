@@ -61,7 +61,7 @@ value to point elsewhere.
 | `PR_DELIVERY`       | automatic                                 | Opens or refreshes the PR with `Closes #<n>`                          | PR opened                                 |
 | `CI_FIX`            | a red check run on `agent/issue-<n>`      | Reproduces CI locally, repairs, pushes                                | Fix pushed                                |
 | `COMPLETE`          | —                                         | Terminal, but re-enterable from `CI_FIX`                              | —                                         |
-| `FAILED`            | any handler throwing                      | Failure comment posted, `resumeFrom` recorded                         | `/retry` or `/cancel`                     |
+| `FAILED`            | any _phase_ handler throwing              | Failure comment posted, `resumeFrom` recorded                         | `/retry` or `/cancel`                     |
 
 There are two review gates, not one. The spec and the plan are each parked in
 front of a human before anything downstream is spent.
@@ -75,6 +75,16 @@ front of a human before anything downstream is spent.
 | `/ask <question>`           | anywhere                     | Answer, grounded in the repo, without moving the state machine |
 | `/retry`                    | `FAILED`                     | Resume the exact phase that failed                             |
 | `/cancel`                   | anything but `COMPLETE`      | Stop for good — a cancelled issue cannot be restarted          |
+
+**`/ask` really does mean anywhere,** and in both directions. `ANSWERED` is not
+in the transition table at all: it is a non-moving signal the machine accepts in
+every phase, so a question in `COMPLETE`, in `FAILED`, or halfway through the
+pipeline is answered exactly where the issue stands. A question that _fails_
+moves nothing either — the failure is posted, but the phase, `resumeFrom` and
+the retry budget are left alone, and the notice does not offer `/retry`. The
+phase records where the **work** is, and a side conversation about that work is
+not the work; parking a delivered pull request in `FAILED` because a model turn
+about it broke would be a lie about what happened.
 
 **Plain replies work too.** A comment with no command on a waiting phase is
 classified as a question, a change request, or an approval, and handled

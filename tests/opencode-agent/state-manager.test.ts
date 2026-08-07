@@ -18,7 +18,7 @@ import {
   STATE_MARKER,
   transition,
 } from '../../opencode-agent/src/state-manager.js'
-import { InvalidTransitionError, STATE_VERSION } from '../../opencode-agent/src/types.js'
+import { InvalidTransitionError, PHASES, STATE_VERSION } from '../../opencode-agent/src/types.js'
 import type { AgentState, Phase, TransitionSignal } from '../../opencode-agent/src/types.js'
 
 const comment = (authorLogin: string, body: string, id = 1): IssueComment => ({ id, body, authorLogin })
@@ -303,6 +303,34 @@ describe('transition', () => {
 
     expect(answered.phase).toBe('DESIGN_SPEC')
     expect(answered.revision).toBe(spec.revision)
+  })
+
+  test.each<Phase>([...PHASES])('a question asked in %s is answered where it stands', (phase) => {
+    // `/ask` is accepted in every phase, so the machine has to accept ANSWERED
+    // in every phase too. It used to live in three rows of the transition table
+    // — INIT_OR_CLARIFY, DESIGN_SPEC, PLAN_REVIEW — so a question asked in
+    // COMPLETE, FAILED or anywhere mid-pipeline threw InvalidTransitionError out
+    // of the pipeline with the model turn already paid for. FAILED mattered
+    // most: it is the phase a maintainer asks "why did this fail?" in.
+    const before: AgentState = { ...at(phase), attempts: 2, revision: 3, ciAttempts: 1 }
+    const answered = transition(before, 'ANSWERED')
+
+    expect(canTransition(phase, 'ANSWERED')).toBe(true)
+    expect(answered.phase).toBe(phase)
+    // No artefact was rewritten and no CI round was spent, but a handler did
+    // succeed — the same patch the three table rows used to produce.
+    expect(answered.revision).toBe(3)
+    expect(answered.ciAttempts).toBe(1)
+    expect(answered.attempts).toBe(0)
+  })
+
+  test('a question in FAILED leaves the phase its retry needs to resume from', () => {
+    const failed = transition(at('REVIEW_AND_MUTATE'), 'FAILED', { lastError: 'tests exploded' })
+    const answered = transition(failed, 'ANSWERED')
+
+    expect(answered.phase).toBe('FAILED')
+    expect(answered.resumeFrom).toBe('REVIEW_AND_MUTATE')
+    expect(transition(answered, 'RETRY').phase).toBe('REVIEW_AND_MUTATE')
   })
 
   test.each<[Phase, Phase]>([
