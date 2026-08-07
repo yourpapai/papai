@@ -379,7 +379,7 @@
   "src/tools/workspace-files.ts": 0.6382978723404256,
   "src/tools/wrap-tool-execution.ts": 0.6571428571428571,
   "src/users.ts": 0.6746987951807228,
-  "src/utils/scheduler.events.ts": 0.45,
+  "src/utils/scheduler.events.ts": 0.9,
   "src/utils/scheduler.helpers.ts": 1,
   "src/utils/scheduler.ts": 1
 }
