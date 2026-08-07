@@ -39,6 +39,22 @@ disappears entirely, with no scroll affordance left to reach it) and
 marker). Both are new, both are `open`, and neither existed before `9fb8d8018` — see each for the
 DOM measurement.
 
+**Third re-review pass (2026-08-07, same day).** `f5da228ac` landed an opt-in `minWidth` prop on
+`DataTable`/`SettingsTable`, set to `1200px` on the users table, so the ancestor
+`.settings-table__scroll`'s existing `overflow-x: auto` engages at narrow widths instead of the
+fixed-layout columns being crushed. Independently re-shot (`bun shoot -g AdminUsersSection`) and
+re-measured — not taken on the commit message's word — before closing anything: at 640px,
+`.settings-table__scroll` now measures `scrollWidth: 1200` vs `clientWidth: 638`; scrolling it
+right shows the `Remove` button at a full `57.75×24px` reading "Remove", and the "Announcement
+signup" pill renders complete alongside "Open access" on the other row. Both
+`admin-users-narrow-actions-column-hides-remove` and `admin-users-narrow-added-by-clips-mid-glyph`
+close for real. The long-username truncation this fix must not disturb was re-checked too: the
+48-character fixture username still clips with a visible ellipsis (`text-overflow: ellipsis`,
+`scrollWidth: 368` vs `clientWidth: 276`) and a working `title`, so
+`admin-users-username-truncates-silently`'s residue (no keyboard/touch equivalent to `title`)
+stays `open`, unchanged by this fix. Dimensions 7, 8, and 9 are re-scored below to drop the
+narrow-viewport clipping language now that it no longer reproduces.
+
 **Capture caveat — retired.** The fixture now carries a 48-character username
 (`a_very_long_telegram_username_that_will_not_fit`, `client/stories/msw/settings-handlers.ts`)
 and an `openAccessError` scenario, both added in Task 4. Every shot below is now backed by real
@@ -58,9 +74,9 @@ design; the shell supplies it. Not filed.
 | 4. Feedback & state             | pass  | Loading, a fatal load failure, a non-fatal open-access failure, and a genuinely empty list each render a distinct, correctly-worded state; a blank add is blocked and explained.        |
 | 5. Content & language           | pass  | `Added by` renders "Open access" / "Announcement signup" pills or a truncated id, the remove confirmation names the person, and the confirm dialog states how Block differs from Remove. |
 | 6. Accessibility                | warn  | Labels, focus rings, and `aria-busy` now come correct, but the live-region roles are mounted with their text already inside them — see `admin-users-live-region-mounts-with-text` below. |
-| 7. Responsive / layout          | warn  | The page itself never scrolls horizontally at 640px, but pinning the column widths that tightly now squeezes the Actions column enough to hide `Remove` entirely — see `admin-users-narrow-actions-column-hides-remove`. |
-| 8. Spacing, alignment & sizing  | warn  | The open-access card draws its radius/padding/margin from the token scale and column widths no longer shift, but the Added-by pill now clips mid-word with no ellipsis at 640px — see `admin-users-narrow-added-by-clips-mid-glyph`. |
-| 9. Interaction & micro-states   | warn  | Add has a real in-flight guard (`disabled`, "Adding…"), but the open-access toggle still never sets `aria-busy`, and at 640px `Remove` is not just visually squeezed but fully unreachable. |
+| 7. Responsive / layout          | warn  | `minWidth: 1200px` (`f5da228ac`) makes `.settings-table__scroll`'s existing `overflow-x: auto` engage at 640px instead of crushing columns — `Remove` and the Added-by pill are both fully reachable by scrolling now — but the long username still truncates with no non-hover way to recover it on keyboard or touch — see `admin-users-username-truncates-silently`. |
+| 8. Spacing, alignment & sizing  | pass  | The open-access card draws its radius/padding/margin from the token scale, column widths no longer shift, and the Added-by pill now renders complete at 640px once the table's own horizontal scroll engages — re-measured directly, no more mid-word clipping. |
+| 9. Interaction & micro-states   | warn  | Add has a real in-flight guard (`disabled`, "Adding…") and `Remove` is fully reachable at 640px via the table's own scroll, but the open-access toggle still never sets `aria-busy` (only `disabled`) while saving. |
 
 ## Findings
 
@@ -109,7 +125,8 @@ Severity-ranked, highest first.
 ### [High] At the narrow breakpoint, the Remove control disappears entirely
 
 - **Id:** admin-users-narrow-actions-column-hides-remove
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `f5da228ac` — `DataTable` gained an opt-in `minWidth` prop (forwarded through `SettingsTable`), set to `1200px` on the users table, so the ancestor `.settings-table__scroll`'s existing `overflow-x: auto` engages at narrow widths instead of the fixed-layout columns being crushed below their content's minimum. Re-shot (`bun shoot -g AdminUsersSection`) and independently re-measured at 640px: `.settings-table__scroll` reports `scrollWidth: 1200` vs `clientWidth: 638`, and scrolling it right renders the Remove button at a full `57.75×24px` reading "Remove" — no clipping, no hidden glyph.
 - **Dimension:** 9. Interaction & micro-states
 - **Where visible:** `AdminUsersSection-—-populated-narrow-1.png` at 640px — every row's Actions cell shows `Block`/`Unblock` followed by three literal dots where the `Remove` button used to read; no part of the button's label is visible. Confirmed by DOM measurement, not just the pixel: at 640px the Actions `<td>` is `127.625px` wide while its content (`Block`/`Unblock` + `Remove`) needs `141`–`154px`, and `.settings-table-wrap`/the document report zero horizontal overflow (`scrollWidth === clientWidth === 640` at every level) — so there is no scrollbar or any other affordance left to reach the hidden control. This is a direct side effect of `9fb8d8018`: before that fix, an unpinned `auto`-layout table simply grew wider than the 640px viewport and the existing `overflow-x: auto` on `.settings-table-wrap` let a user scroll to `Remove`; now that all five columns are pinned to their declared percentages, the table is forced to fit exactly inside 640px, and the 20%-wide Actions column is too narrow for two buttons once one of them says `Unblock` rather than `Block`.
 - **Source:** `client/settings/sections/admin/AdminUsersSection.svelte:193` (`{ key: 'actions', ..., width: '20%' }`) combined with `client/shared/ui/DataTable.svelte:161-163,198-206` (`table-layout: fixed` plus `.ui-datatable__td`'s `overflow: hidden; text-overflow: ellipsis`, which — for a `<td>` whose overflowing content is itself an atomic inline-block/`inline-flex` box such as `Btn` rather than plain text — hides the whole overflowing button and renders the ellipsis in its place instead of clipping it partially).
@@ -118,7 +135,8 @@ Severity-ranked, highest first.
 ### [Med] At the narrow breakpoint, the Added-by pill clips mid-word with no ellipsis
 
 - **Id:** admin-users-narrow-added-by-clips-mid-glyph
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** `f5da228ac` — the same `minWidth: 1200px` fix lets the Added-by column keep its content's full width instead of being squeezed to 15% of a 640px viewport. Re-shot and independently re-measured: after scrolling `.settings-table__scroll` into view, the "Announcement signup" pill renders complete (no clipped glyph, no bare cut edge) alongside the fully-visible "Open access" pill on the other row.
 - **Dimension:** 8. Spacing, alignment & sizing
 - **Where visible:** `AdminUsersSection-—-populated-narrow-1.png` at 640px — the `Announcement signup` pill in the Added-by column renders as `Announcemen`, missing its final letter, with no `…` marker anywhere. DOM measurement confirms the column itself is squeezed to `96px` while the pill's content needs up to `176px` at that row; the `Pill` component (`client/shared/ui/Pill.svelte:33-51`) sets no `overflow`/`text-overflow` of its own, so the parent `<td>`'s ellipsis rule is what's supposed to apply — but because the pill is an `inline-flex` box, the browser clips its box edge rather than substituting an ellipsis glyph, the same class of quirk as the Remove-button finding above but manifesting as a hard, silent cut instead of a fully-hidden control. This is new at the narrow breakpoint since `9fb8d8018` pinned the Added-by column to 15% of the viewport; under the previous `auto` layout the column was never squeezed this far because the table simply grew past 640px and scrolled instead.
 - **Source:** `client/shared/ui/DataTable.svelte:161-163,198-206`; `client/settings/sections/admin/admin-users-presenters.ts:24-31` (`describeAddedBy()` produces the `Announcement signup` / `Open access` prose that no longer reliably fits at 15% of a 640px viewport).
