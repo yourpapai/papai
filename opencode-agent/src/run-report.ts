@@ -69,6 +69,29 @@ export const renderClosing = (state: AgentState): string =>
 export const renderSettled = (state: AgentState): string =>
   state.phase === 'COMPLETE' ? renderClosing(state) : `### Waiting\n\nParked in \`${state.phase}\`.`
 
+/**
+ * The reply to a slash command the current phase cannot accept.
+ *
+ * A maintainer typed something and is waiting for it to happen; skipping in
+ * silence leaves them watching an issue that will never move, with the reason
+ * buried in an Actions log nobody opens. That is how a mis-set
+ * `AGENT_SELF_LOGIN` stayed invisible: every `/changes` was refused against a
+ * freshly-restarted state and nothing was ever posted.
+ *
+ * The accepted list is derived from the transition table rather than written
+ * out here, so it cannot drift away from what the machine will actually take.
+ */
+export const renderRefusedCommand = (command: string, phase: Phase, accepted: readonly string[]): string =>
+  [
+    `### \`${command}\` does not apply right now`,
+    '',
+    `I am parked in \`${phase}\`, which does not accept it, so nothing has changed.`,
+    '',
+    accepted.length === 0
+      ? 'No command moves this issue on from here.'
+      : `What works here: ${accepted.map((name) => `\`${name}\``).join(', ')}.`,
+  ].join('\n')
+
 export const renderExhausted = (reason: string): string =>
   ['### Giving up', '', reason, '', 'Fix the underlying problem, then reply `/retry`.'].join('\n')
 

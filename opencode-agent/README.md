@@ -396,10 +396,22 @@ It is now resolved, in order:
 1. `AGENT_SELF_LOGIN`, if set. An operator who knows the answer is not
    second-guessed, and this is the escape hatch for everything below.
 2. Otherwise the token's own identity. Exact for a personal access token.
-3. Otherwise the repository owner, **with a warning naming `AGENT_SELF_LOGIN`**.
+3. Otherwise `github-actions[bot]`, **with a warning naming `AGENT_SELF_LOGIN`**.
    A GitHub App installation token cannot read `/user`, so this is the expected
-   path for the token this README recommends — set the variable to
+   path for an Actions-issued token — and it is the account the runtime's own
+   `GITHUB_TOKEN` posts as. For any other app, set the variable to
    `<app-slug>[bot]`.
+
+Step 3 used to fall back to the repository owner, which was never a possible
+answer: the branch is only reached for an installation token, whose author is
+always a `[bot]` account.
+
+Because step 1 wins outright, **the workflow must pass `AGENT_SELF_LOGIN`
+through unset when the variable is unset** — no `|| github.repository_owner`
+default. Defaulting it upstream turned "nobody pinned a login" into "an operator
+pinned the owner", which skipped steps 2 and 3 and their warning with them. The
+agent then failed to recognise its own comments, restored a fresh state on every
+event, and refused `/approve` and `/changes` as invalid in `INIT_OR_CLARIFY`.
 
 Whatever it resolves to is checked against reality for free: a created comment
 comes back carrying its author, and a mismatch is logged at `error`. The in-job
@@ -524,8 +536,11 @@ both are 26–28 KB and neither applies to a single-session CI run.
 1. Repository secret `LLM_API_KEY`.
 2. Repository variables `LLM_MODEL` and `LLM_BASE_URL`.
 3. Repository variable `AGENT_SELF_LOGIN` — the login the agent comments under.
-   Optional for a PAT, but required for a GitHub App token, which cannot report
-   its own identity.
+   Leave it unset for a PAT (derived) or for the job's own `GITHUB_TOKEN`
+   (`github-actions[bot]`, the fallback). Set it to `<app-slug>[bot]` for any
+   other GitHub App token, which cannot report its own identity. Getting it
+   wrong is not silent: the first comment the agent posts logs the mismatch at
+   `error`, naming the account it actually posted as.
 4. Optionally `AGENT_GITHUB_TOKEN`, a GitHub App installation token. Without it
    the agent's pushes do not trigger CI, so the CI-fix path never runs.
 5. Actions needs write access to contents, issues and pull requests.

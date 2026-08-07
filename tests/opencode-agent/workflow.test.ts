@@ -238,6 +238,20 @@ describe('steps', () => {
     expect(Object.keys(step('agent pipeline').env)).not.toContain('AGENT_BASE_BRANCH')
   })
 
+  test('leaves an unset AGENT_SELF_LOGIN unset instead of guessing the owner', () => {
+    // `AGENT_SELF_LOGIN` is an override that wins outright in identity.ts, so a
+    // `|| github.repository_owner` default here is not a default at all — it is
+    // an operator pinning the wrong login, and it silences the resolution
+    // ladder and its warning. The agent posts as `github-actions[bot]`, stops
+    // recognising its own state comments, and restarts every issue at phase one
+    // on every event, so `/approve` and `/changes` are refused as invalid in
+    // INIT_OR_CLARIFY.
+    const pinned = step('agent pipeline').env['AGENT_SELF_LOGIN']
+
+    expect(pinned).toBe('${{ vars.AGENT_SELF_LOGIN }}')
+    expect(pinned).not.toContain('repository_owner')
+  })
+
   test('passes every knob the README documents, or names it as deliberately absent', () => {
     // The finding named two missing vars; there were five, two of which this
     // workspace added itself while fixing something else. A list that has to be

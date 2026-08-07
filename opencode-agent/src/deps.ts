@@ -115,9 +115,7 @@ export const assembleDeps = ({ config, secrets, event, env, run, log, agent, fet
     baseBranch: memoize(() =>
       resolveBaseBranch(env, { fromEvent: event.defaultBranch, fromGit: () => git.defaultBranch() }),
     ),
-    selfLogin: memoize(() =>
-      resolveSelfLogin({ override: config.selfLoginOverride, api: github, owner: config.owner, log }),
-    ),
+    selfLogin: memoize(() => resolveSelfLogin({ override: config.selfLoginOverride, api: github, log })),
     config,
     log,
   }

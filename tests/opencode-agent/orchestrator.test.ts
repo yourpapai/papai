@@ -919,7 +919,41 @@ describe('commands and budgets', () => {
 
     expect(result.status).toBe('skipped')
     expect(result.reason).toContain('not valid in INIT_OR_CLARIFY')
-    expect(harness.io.posted).toEqual([])
+  })
+
+  test('says so on the issue rather than only in the job log', async () => {
+    // This used to skip in silence. A maintainer who types a command and sees
+    // nothing has no way to tell a refusal from an agent that never woke up —
+    // which is how a mis-set AGENT_SELF_LOGIN went unnoticed while every
+    // `/changes` was refused against a state that had been restarted.
+    const harness = makeHarness()
+
+    await runPipeline({ event: comment('/changes do it differently'), deps: harness.deps })
+
+    const refusal = String(harness.io.posted.at(-1))
+    expect(refusal).toContain('/changes')
+    expect(refusal).toContain('INIT_OR_CLARIFY')
+    // Derived from the transition table, so it cannot promise a command the
+    // machine would refuse in turn.
+    expect(refusal).toContain('/cancel')
+    expect(refusal).toContain('/ask')
+    expect(refusal).not.toContain('`/approve`')
+  })
+
+  test('/changes is accepted once the agent can read back its own spec', async () => {
+    // The regression this file exists for: with the wrong self-login the spec
+    // comment is invisible, the state restores to INIT_OR_CLARIFY, and the
+    // maintainer's `/changes` is refused. Reading it back is what makes the
+    // command land in DESIGN_SPEC and send the issue round for a new spec.
+    const harness = makeHarness()
+    harness.io.replies = [SPEC_REPLY, SPEC_REPLY]
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    const result = await runPipeline({ event: comment('/changes narrow the scope'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(result.state?.phase).toBe('DESIGN_SPEC')
+    expect(harness.io.posted.at(-1)).toContain('### Design spec')
   })
 
   test('a single malformed reply is repaired rather than failing the run', async () => {

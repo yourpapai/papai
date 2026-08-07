@@ -146,7 +146,15 @@ jobs:
           LLM_MODEL: ${{ vars.LLM_MODEL }}
 
           # Pipeline configuration — see opencode-agent/README.md.
-          AGENT_SELF_LOGIN: ${{ vars.AGENT_SELF_LOGIN || github.repository_owner }}
+          # Passed through unset when the variable is unset, with no
+          # `|| github.repository_owner` default. That default looked harmless
+          # and was the bug: `AGENT_SELF_LOGIN` is an override that wins
+          # outright, so an owner-shaped value stopped src/identity.ts from ever
+          # asking the token who it is. The agent posts as `github-actions[bot]`,
+          # failed to recognise its own state comments, and restarted every
+          # issue at phase one on every event — `/approve` and `/changes` were
+          # rejected as invalid in INIT_OR_CLARIFY.
+          AGENT_SELF_LOGIN: ${{ vars.AGENT_SELF_LOGIN }}
           AGENT_WORKFLOW_NAME: OpenCode Issue Agent
           # AGENT_BASE_BRANCH is deliberately unset: the pipeline reads the
           # branch off the payload's repository.default_branch. Passing it here

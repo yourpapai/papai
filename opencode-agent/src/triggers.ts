@@ -7,10 +7,10 @@ import type { ParsedCommand } from './commands.js'
 import { branchNameFor } from './git.js'
 import { classifyComment } from './intent.js'
 import type { PhaseDeps, PhaseInput } from './phase-context.js'
-import { postAndAppend, renderCiExhausted } from './run-report.js'
-import { markCiBudgetReported, transition } from './state-manager.js'
+import { postAndAppend, renderCiExhausted, renderRefusedCommand } from './run-report.js'
+import { canTransition, markCiBudgetReported, transition } from './state-manager.js'
 import { errorMessage, WAITING_PHASES } from './types.js'
-import type { AgentState, RunResult, TransitionSignal } from './types.js'
+import type { AgentState, Phase, RunResult, TransitionSignal } from './types.js'
 
 /**
  * Turning a trigger — a slash command, a plain comment, a red CI run — into the
@@ -45,10 +45,10 @@ const COMMAND_SIGNALS: Record<string, TransitionSignal> = {
  * defaults to *question*, the only reading that cannot destroy approved work.
  */
 export const applyTrigger = (input: PhaseInput): Promise<TriggerOutcome> => {
-  const { state, trigger, command, deps } = input
+  const { state, trigger, command } = input
 
   if (trigger.kind === 'ci') return applyCiTrigger(input)
-  if (command !== null) return Promise.resolve(applyCommand(state, command, deps))
+  if (command !== null) return applyCommand(input, command)
   if (state.phase === 'INIT_OR_CLARIFY') return Promise.resolve({ state, halt: null, answer: false })
   if (!WAITING_PHASES.has(state.phase)) {
     return Promise.resolve({ state, halt: skip(state, `No actionable command while in ${state.phase}`), answer: false })
@@ -120,13 +120,45 @@ const settledPullRequest = async (input: PhaseInput): Promise<TriggerOutcome | n
   return { state, halt: skip(state, reason), answer: false }
 }
 
-const applyCommand = (state: AgentState, command: ParsedCommand, deps: PhaseDeps): TriggerOutcome => {
-  if (command.command === '/ask') return { state, halt: null, answer: true }
+const applyCommand = (input: PhaseInput, command: ParsedCommand): Promise<TriggerOutcome> => {
+  const { state, deps } = input
+  // Always available: answering asks nothing of the state machine, so there is
+  // no phase in which it can be the wrong thing to do.
+  if (command.command === '/ask') return Promise.resolve({ state, halt: null, answer: true })
 
   const signal = COMMAND_SIGNALS[command.command]
-  if (signal === undefined) return { state, halt: skip(state, `Unknown command ${command.command}`), answer: false }
-  return moveOrSkip(state, signal, deps, command.command)
+  if (signal === undefined) return refuseCommand(input, command.command, `Unknown command ${command.command}`)
+
+  const outcome = moveOrSkip(state, signal, deps, command.command)
+  if (outcome.halt === null) return Promise.resolve(outcome)
+
+  return refuseCommand(input, command.command, outcome.halt.reason)
 }
+
+/**
+ * Answers a refused command on the issue, then skips.
+ *
+ * Only explicit commands come here. A classified plain comment cannot reach it
+ * — `applyIntent` runs solely in the waiting phases, both of which accept both
+ * of the signals it can produce — and the CI paths above have their own,
+ * deliberately quieter, reporting.
+ */
+const refuseCommand = async (input: PhaseInput, command: string, reason: string): Promise<TriggerOutcome> => {
+  const { state, thread, deps } = input
+  deps.log.warn({ issue: state.issueId, phase: state.phase, command }, 'Refused a slash command')
+
+  await postAndAppend(thread, input, renderRefusedCommand(command, state.phase, acceptedCommands(state.phase)), state)
+
+  return { state, halt: skip(state, reason), answer: false }
+}
+
+/** The commands `phase` would actually accept, straight from the transition table. */
+const acceptedCommands = (phase: Phase): readonly string[] => [
+  ...Object.entries(COMMAND_SIGNALS)
+    .filter(([, signal]) => canTransition(phase, signal))
+    .map(([command]) => command),
+  '/ask',
+]
 
 const applyIntent = async (input: PhaseInput): Promise<TriggerOutcome> => {
   const { state, trigger, deps } = input
