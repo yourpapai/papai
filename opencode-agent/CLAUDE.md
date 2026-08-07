@@ -40,13 +40,13 @@ findings: `ROADMAP.md`.
   touch the network. The one exception is `live-sdk.integration.ts`, which is
   deliberately not a `*.test.ts` so default discovery skips it; it needs the
   `opencode` CLI and is run via `bun run opencode-agent:test:live`.
+- When a command test asserts an outcome, assert the **persisted state**, not
+  just the returned status — a state that is never posted never happened.
 - **The SDK response shapes are recorded, not guessed.** `decodeSessionId` and
   `decodeReply` decode `{ data, error }` through a schema; the fixtures in
   `adapters.test.ts` come from a live run. When the `@opencode-ai/sdk` pin moves,
   re-run the live check and re-record rather than adjusting the decoders by
-  inspection. When a command test asserts an outcome, assert the
-  **persisted state**, not just the returned status — a state that is never
-  posted never happened.
+  inspection.
 
 ## Dependencies
 
