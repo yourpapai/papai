@@ -348,7 +348,7 @@
   "src/tools/lookup-group-history.ts": 0.5,
   "src/tools/memory.ts": 0.4700854700854701,
   "src/tools/pause-recurring-task.ts": 0.56,
-  "src/tools/permission-gate.ts": 0.7380952380952381,
+  "src/tools/permission-gate.ts": 0.9682539682539683,
   "src/tools/promote-memo.ts": 0.4883720930232558,
   "src/tools/provider-independent-tools-builder.ts": 0.7310344827586207,
   "src/tools/remove-attachment.ts": 0.52,
