@@ -7,7 +7,7 @@ See LICENSE in the project root for details.
 
 # E2E Test Plan
 
-Copy this file and update the title to match the specific behavior or journey before saving it as `docs/superpowers/plans/YYYY-MM-DD-<topic>.md`.
+Copy this file and update the title to match the specific behavior or journey before saving it as `openspec/changes/<name>/e2e-plan.md` inside the OpenSpec change proposed for the work.
 
 **Objective:** State the user-visible behavior being validated.
 

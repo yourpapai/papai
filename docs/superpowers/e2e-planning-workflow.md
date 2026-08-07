@@ -35,7 +35,7 @@ Use this guide when you are:
 7. **Define fixtures and teardown**  
    State required config, auth state, test data, timing assumptions, and cleanup rules.
 8. **Emit the plan**  
-   Save the plan under `docs/superpowers/plans/YYYY-MM-DD-<topic>.md` using the shared template.
+   Propose an OpenSpec change (`/opsx:propose`) for the work and save the plan as `openspec/changes/<name>/e2e-plan.md` using the shared template, referenced from the change's `design.md` / `tasks.md`.
 
 ## Realism Tiers
 
@@ -107,4 +107,4 @@ Every E2E plan must contain:
 
 ## Starting Point
 
-Copy `docs/superpowers/templates/e2e-test-plan-template.md` into `docs/superpowers/plans/YYYY-MM-DD-<topic>.md` and fill it in with the workflow above.
+Copy `docs/superpowers/templates/e2e-test-plan-template.md` into `openspec/changes/<name>/e2e-plan.md` (inside the OpenSpec change proposed for the work) and fill it in with the workflow above.

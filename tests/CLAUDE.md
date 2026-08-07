@@ -126,11 +126,11 @@ When DI is not available and module evaluation order matters:
 - Run E2E with `bun test:e2e`.
 - The Docker-backed Kaneo harness is **Tier 1: Provider-Real E2E**. Tier 0 does not replace it; provider-real tests remain responsible for Kaneo/container/API behavior.
 - Every catalog record carries a **proving tier** — the lowest tier that can prove the behavior — in `tests/stories/catalog/coverage.ts`. Executable records may only claim a tier in `LIVE_STORY_TIERS`, and their story ids must sit under that tier's `TIER_SUITE_ROOTS` prefix. Seam-pending records name the tier that unblocks them; `blocked:missing-implementation` records name none, because no tier reaches them. The runner prints per-tier totals on every run.
-- The 0Q compatibility proof is Tier 0 only. Higher tiers are regression lanes and never gate a refactor qualification. Canonical tier definitions: `docs/superpowers/specs/2026-07-23-tier-expansion-roadmap-design.md`.
+- The 0Q compatibility proof is Tier 0 only. Higher tiers are regression lanes and never gate a refactor qualification. Canonical tier definitions: the tier-expansion roadmap design (`2026-07-23-tier-expansion-roadmap-design.md`, kept in the frozen legacy spec tree).
 - Prefer `KaneoTestClient` for new resource-management-heavy suites.
 - Track resources created outside the test client with `testClient.trackTask(...)` or the matching tracker helper when the suite uses `KaneoTestClient`.
 - The suite is in transition: many files already rely on shared preload/setup, but some older E2E files still use local `beforeAll`/`afterAll` hooks or manual cleanup. Follow the local pattern unless you are intentionally modernizing that suite.
-- Before proposing new E2E coverage, read `docs/superpowers/e2e-planning-workflow.md` and start from `docs/superpowers/templates/e2e-test-plan-template.md`.
+- Before proposing new E2E coverage, `/opsx:propose` a change and plan the coverage in its `openspec/changes/<name>/` artifacts; the e2e planning workflow (`e2e-planning-workflow.md`) and test-plan template (`e2e-test-plan-template.md`), kept in the frozen legacy tree, define the expected structure.
 
 ### Tier 3 — platform-adapter lane (`tests/platform/`, nightly)
 
