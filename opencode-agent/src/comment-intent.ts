@@ -6,10 +6,11 @@
 import { react } from './feedback.js'
 import { classifyComment } from './intent.js'
 import type { PhaseInput } from './phase-context.js'
+import { persistState } from './state-persist.js'
 import { totalTokens, withinBudget } from './token-budget.js'
 import { moveOrSkip, skip } from './trigger-outcome.js'
 import type { TriggerOutcome } from './trigger-outcome.js'
-import type { TransitionSignal } from './types.js'
+import type { AgentState, TransitionSignal } from './types.js'
 
 /**
  * What a plain maintainer comment — one carrying no slash command — means, and
@@ -44,34 +45,62 @@ import type { TransitionSignal } from './types.js'
  */
 export const readAndSkip = async (input: PhaseInput, reason: string): Promise<TriggerOutcome> => {
   await react(input.deps, input.trigger, '+1')
+  const state = await recordSkippedSpend(input)
 
-  return { state: input.state, halt: skip(input.state, reason), answer: false }
+  return { state, halt: skip(state, reason), answer: false }
+}
+
+/**
+ * Writes down what a skip cost, without posting.
+ *
+ * These are the paths that spend a model turn and then say nothing, which used
+ * to mean spending it and then *recording* nothing: this pipeline persists state
+ * only by posting a comment, so the classification that decided a comment needed
+ * no action vanished with the runner. An issue could buy one per comment for as
+ * long as anybody kept commenting, against a ceiling that never noticed.
+ *
+ * Here rather than in the `none` branches that pay for it, because
+ * {@link readAndSkip} is where "this comment asked for nothing" is decided for
+ * all three of them, and a fix that covered two would be this workspace's
+ * recurring defect exactly. The paths that spent nothing cost nothing to include
+ * — the total is unchanged, so there is no rewrite to issue.
+ *
+ * A failed rewrite reports the figure the issue actually carries, not the one
+ * this run hoped to write: `persistState` is best-effort, so the alternative is
+ * a `RunResult` claiming a total no reader will ever find.
+ */
+const recordSkippedSpend = async (input: PhaseInput): Promise<AgentState> => {
+  const { deps, state, thread } = input
+
+  const spent = await totalTokens(deps, state.tokensSpent)
+  if (spent === state.tokensSpent) return state
+
+  return (await persistState(deps, thread, { ...state, tokensSpent: spent })) ?? state
 }
 
 /**
  * Reads a plain comment as an intent, and decides first whether that reading is
  * affordable.
  *
- * Classifying costs a model turn, and it is the one turn in the pipeline whose
- * spend can never be written down. State is persisted only by posting a comment,
- * and the `none` branch below deliberately posts nothing — replying to every
- * "thanks!" would be spam — so a session that reported 40,000 tokens for the
- * classification vanishes with the runner. The ceiling is therefore asked
- * *before* the turn rather than after it: over budget there is nothing any
- * classification could buy, since every branch here leads either to a handler or
- * to the answer path and `stopIfOverBudget` refuses both. Handing the comment
- * straight to the answer path lets that one check report it, in the wording it
- * already has, without a second stop in this layer and without paying to learn
- * what to say — otherwise a maxed-out issue keeps buying a classification per
- * comment for as long as anyone keeps commenting on it.
+ * Classifying costs a model turn, and it is the one turn in the pipeline that
+ * posts nothing: state is persisted by posting a comment, and the `none` branch
+ * below deliberately posts none — replying to every "thanks!" would be spam. The
+ * ceiling is therefore asked *before* the turn rather than after it: over budget
+ * there is nothing any classification could buy, since every branch here leads
+ * either to a handler or to the answer path and `stopIfOverBudget` refuses both.
+ * Handing the comment straight to the answer path lets that one check report it,
+ * in the wording it already has, without a second stop in this layer and without
+ * paying to learn what to say — otherwise a maxed-out issue keeps buying a
+ * classification per comment for as long as anyone keeps commenting on it.
  *
- * That leaves one leak, knowingly: a run **under** budget whose classifier
- * answers `none` still spends a turn nothing records. Closing it needs a way to
- * persist state without posting — an `updateComment` on the last state block —
- * which is a larger design change than a stray few thousand tokens per no-op
- * comment justifies. The bound it erodes is per issue and human-paced, and every
- * other branch folds the classification in, because `deps.tokensUsed()` reports
- * the whole job's session and whatever the run goes on to post writes that total.
+ * A run **under** budget that classifies `none` used to leak that turn outright,
+ * and no longer does: {@link readAndSkip} records the spend by rewriting the
+ * state block in place instead of posting. That fix waited on an
+ * `updateComment` the pipeline had no other use for; the live status comment
+ * needed one anyway, so what was once the whole cost of closing this is now
+ * already paid for. Every other branch folds the classification in for free,
+ * because `deps.tokensUsed()` reports the whole job's session and whatever the
+ * run goes on to post writes that total.
  */
 export const applyIntent = async (input: PhaseInput): Promise<TriggerOutcome> => {
   const { state, trigger, deps } = input

@@ -111,7 +111,13 @@ const runAccepted = async (event: TriggerEvent, deps: PhaseDeps): Promise<RunRes
   // nothing adds the marker and takes it off again within the second, which is
   // two timeline entries on an issue where the agent did nothing, and precisely
   // the churn a diff instead of a clear-and-reapply exists to avoid.
-  if (willWork(entry)) await reconcileLabels(deps, entry.state, 'working')
+  // The status comment is opened on the same condition and for the same reason:
+  // it is the whole comment budget this plan allows itself, and spending it on a
+  // run that is about to do nothing is the noise the budget exists to prevent.
+  if (willWork(entry)) {
+    await reconcileLabels(deps, entry.state, 'working')
+    await deps.status.start(entry.state)
+  }
 
   const result = await driveMachine({
     ...base,
@@ -123,6 +129,12 @@ const runAccepted = async (event: TriggerEvent, deps: PhaseDeps): Promise<RunRes
     // adding it to each phase's own would count the earlier phases again.
     carriedTokens: restored.tokensSpent,
   })
+
+  // Finalising the status comment is deliberately not reporting: `finish`
+  // returns nothing, so this cannot touch `result.reported` even by accident. A
+  // run that died before reaching this line leaves "run in progress" on the
+  // issue, which is exactly what the workflow's fallback comment is for.
+  await deps.status.finish(result)
 
   return settleLabels(deps, result, entry.state)
 }
@@ -189,6 +201,10 @@ const driveMachine = async (input: MachineInput): Promise<RunResult> => {
   // place used to leave the issue in a phase no trigger re-enters.
   const stopped = await stopIfOverBudget(input)
   if (stopped !== null) return stopped
+
+  // After the budget stop, so a run that cannot afford this phase does not
+  // announce it as the one in flight.
+  await input.deps.status.enter(state)
 
   const attempt = await runHandler(handler, input)
   if (!attempt.ok) return input.answer ? failAnswer(input, attempt.error) : failRun(input, attempt.error)

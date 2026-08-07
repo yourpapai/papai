@@ -96,6 +96,21 @@ export interface GitHubApi extends LabelApi {
   listIssueComments(issueNumber: number): Promise<IssueComment[]>
   /** Returns the created comment, including the author GitHub recorded. */
   createComment(issueNumber: number, body: string): Promise<PostedComment>
+  /**
+   * Rewrites a comment this pipeline already posted.
+   *
+   * The second method that carries free text, and so the second that must be
+   * redacted — the rule is that a new `GitHubApi` method sending free text
+   * passes through `clean`, and this one carries a live status body assembled
+   * from the same activity summaries and state fields a comment is. It takes no
+   * exemption: unlike a reaction content or a label name, nothing here is drawn
+   * from a closed table the pipeline picks from.
+   *
+   * Two callers, both best-effort one layer up: `status-reporter.ts` edits the
+   * run's live status, and `state-persist.ts` rewrites a state block without
+   * posting. Neither rule lives here — this is the transport.
+   */
+  updateComment(commentId: number, body: string): Promise<void>
   getIssue(issueNumber: number): Promise<IssueContext>
   getAuthenticatedLogin(): Promise<string>
   /** The newest pull request from `head`, whatever became of it. */
@@ -235,6 +250,10 @@ export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
         body: clean(body),
       })
       return { id: data.id, url: data.html_url, authorLogin: data.user?.login ?? '' }
+    },
+
+    updateComment: async (commentId, body) => {
+      await octokit.rest.issues.updateComment({ ...repo, comment_id: commentId, body: clean(body) })
     },
 
     getIssue: async (issueNumber) => {

@@ -25,10 +25,14 @@ findings: `ROADMAP.md`.
   themselves.
 - Feedback on the issue that is not a comment lives apart from the machine that
   causes it: `src/presentation.ts` owns the one glyph/label/headline table every
-  renderer reads, `src/feedback.ts` the reaction channel, and `src/labels.ts` the
-  label reconcile over `src/github-labels.ts`'s endpoints. Each channel has
-  exactly one function that talks to GitHub, because "best-effort" has to be a
-  property of one function rather than a convention at each call site.
+  renderer reads, `src/feedback.ts` the reaction channel, `src/labels.ts` the
+  label reconcile over `src/github-labels.ts`'s endpoints, and
+  `src/status-reporter.ts` the run's live status comment over the body
+  `src/status-comment.ts` renders. Each channel has exactly one function that
+  talks to GitHub, because "best-effort" has to be a property of one function
+  rather than a convention at each call site. `src/state-persist.ts` is the same
+  shape for a write that is not feedback at all: rewriting the state block in
+  place, so a run that posts nothing can still record what it spent.
 - Every external boundary is an injected interface (`GitHubApi`, `Git`,
   `CheckRunner`, `RunReview`, `OpenCodeAgent`, `ReadSkillFile`).
 
@@ -174,12 +178,14 @@ findings: `ROADMAP.md`.
 - **Do not pay to classify a comment the budget cannot act on.** `applyIntent`
   asks `withinBudget` before `classifyComment` and routes an over-budget comment
   to the answer path, where the cascade's one stop reports it. The classifier is
-  the single model turn whose spend cannot be recorded — its `none` branch posts
-  nothing, and this pipeline persists state only by posting — so the ceiling has
+  the single model turn that posts nothing — its `none` branch deliberately
+  stays quiet, and this pipeline persists state by posting — so the ceiling has
   to stop the turn rather than count it. A run **under** budget that classifies
-  `none` still leaks that turn; the known cost of not replying to every "thanks!",
-  and not to be papered over with an `updateComment`-style write without deciding
-  that larger question first.
+  `none` used to leak that turn outright and no longer does: `readAndSkip`
+  records it through `state-persist.ts`, which rewrites the newest state block in
+  place instead of appending a comment. That write is best-effort like every
+  other one this pipeline added, so a refused rewrite reports the figure the
+  issue actually carries rather than the one the run hoped to write.
 - **`INIT_OR_CLARIFY` classifies with the default inverted.** `applyClarifyIntent`
   skips a comment only when the classifier positively reports `none`; every other
   reading re-runs triage, which is what the phase used to do for every comment —

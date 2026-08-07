@@ -1503,6 +1503,19 @@ describe('createOctokitApi', () => {
     expect(captured[0]?.body).toEqual({ content: 'rocket' })
   })
 
+  test('edits an existing comment rather than posting a new one', async () => {
+    // The distinction the whole one-comment budget rests on: a status comment
+    // that POSTed on every tick would be a comment a minute.
+    const captured: CapturedRequest[] = []
+
+    await recordingApi(captured).updateComment(9, 'still working')
+
+    const [request] = captured
+    expect(request?.method).toBe('PATCH')
+    expect(request?.url).toContain('/repos/acme/widgets/issues/comments/9')
+    expect(request?.body).toEqual({ body: 'still working' })
+  })
+
   test('reads the labels the issue carries', async () => {
     const captured: CapturedRequest[] = []
 
@@ -1606,6 +1619,10 @@ describe('createOctokitApi', () => {
 
   test.each([
     ['an issue comment', (api: GitHubApi): Promise<unknown> => api.createComment(42, `FAIL token=${LEAKED}`)],
+    // The second method that carries free text, and so the second that has to
+    // redact it. A status body is assembled from the same activity summaries and
+    // state fields a comment is, and an edit is no less public than a post.
+    ['an edited comment', (api: GitHubApi): Promise<unknown> => api.updateComment(9, `status token=${LEAKED}`)],
     [
       'a new pull request body',
       (api: GitHubApi): Promise<unknown> =>

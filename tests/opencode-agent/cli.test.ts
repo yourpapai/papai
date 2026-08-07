@@ -183,6 +183,13 @@ interface PostRecorder {
    * "posted exactly one comment" assertion in this file into a lie.
    */
   labelCalls: { method: string; url: string; body: string }[]
+  /**
+   * Comment *edits*, kept apart from `posted` for the reason the label writes
+   * are: an edit is not a comment, and folding the two together would let the
+   * status channel — which edits once a minute — read as a run that posted
+   * once a minute, which is the whole one-comment budget seen from the wire.
+   */
+  edits: { url: string; body: string }[]
   fetch: FetchLike
 }
 
@@ -197,6 +204,7 @@ const recordPosts = (thread: unknown): PostRecorder => {
   const posted: string[] = []
   const reactions: { url: string; body: string }[] = []
   const labelCalls: { method: string; url: string; body: string }[] = []
+  const edits: { url: string; body: string }[] = []
   const json = (payload: unknown, status: number): Response =>
     new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json' } })
 
@@ -206,6 +214,10 @@ const recordPosts = (thread: unknown): PostRecorder => {
     if (url.includes('/reactions')) {
       reactions.push({ url, body })
       return json({ id: 5, content: 'eyes' }, 201)
+    }
+    if (method === 'PATCH' && url.includes('/issues/comments/')) {
+      edits.push({ url, body })
+      return json({ id: 9, html_url: 'https://example.test/c/9' }, 200)
     }
     if (isLabelCall(url)) {
       labelCalls.push({ method, url, body })
@@ -232,6 +244,7 @@ const recordPosts = (thread: unknown): PostRecorder => {
     posted,
     reactions,
     labelCalls,
+    edits,
     fetch: (url, init) => {
       const method = init?.method ?? 'GET'
       return Promise.resolve((byMethod[method] ?? read)(method, url, bodyOf(init?.body)))
@@ -461,6 +474,88 @@ describe('runCli', () => {
     // And none of it became a comment: the label writes go to their own
     // endpoints, not through `createComment`.
     expect(github.posted).toHaveLength(1)
+  })
+
+  test('a real run opens a live status comment, links its job, and finalises it', async () => {
+    // Same lesson as the reaction and the labels above (ROADMAP S2-6, S3-3,
+    // S3-9): a correct channel that `contain` and `assembleDeps` never hand
+    // anything passes every phase test. A low ceiling reaches the answer path's
+    // budget stop, which posts and returns without ever booting a model.
+    const prior = [
+      {
+        id: 1,
+        user: { login: 'agent-bot' },
+        body: `parked\n\n<!-- AGENT_STATE: ${JSON.stringify({
+          v: 2,
+          phase: 'DESIGN_SPEC',
+          issueId: 42,
+          tokensSpent: 60_000,
+        })} -->`,
+      },
+    ]
+    const eventPath = await writeEvent('status', {
+      action: 'created',
+      sender: { login: 'maintainer', type: 'User' },
+      issue: { number: 42, title: 't', body: 'b', author_association: 'OWNER' },
+      comment: { id: 8811, body: '/ask why that file?', author_association: 'OWNER' },
+      repository: { owner: { login: 'acme' }, name: 'widgets', default_branch: 'master' },
+    })
+
+    const github = recordPosts(prior)
+    const result = await runCli({
+      argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
+      env: { ...env, GITHUB_RUN_ID: '1482', AGENT_MAX_TOKENS: '50000' },
+      logger: silentLogger,
+      fetch: github.fetch,
+    })
+
+    expect(result.status).toBe('failed')
+    // Two comments and no more: the run's status comment, and the notice that
+    // ended it. Everything in between is an edit.
+    expect(github.posted).toHaveLength(2)
+    expect(github.posted[0]).toContain('[this run](https://github.com/acme/widgets/actions/runs/1482)')
+    // Rule 4, at the wire: the state channel gains no second writer.
+    expect(github.posted[0]).not.toContain('AGENT_STATE')
+    expect(github.edits).toHaveLength(1)
+    expect(github.edits[0]?.url).toContain('/repos/acme/widgets/issues/comments/9')
+    expect(github.edits[0]?.body).not.toContain('run in progress')
+  })
+
+  test('a local run with no job to link to opens no status comment', async () => {
+    // The no-op reporter, from the outside: `--event-path` without a run is an
+    // ordinary way to drive this CLI, and every other test in this file relies
+    // on it posting nothing.
+    const prior = [
+      {
+        id: 1,
+        user: { login: 'agent-bot' },
+        body: `parked\n\n<!-- AGENT_STATE: ${JSON.stringify({
+          v: 2,
+          phase: 'DESIGN_SPEC',
+          issueId: 42,
+          tokensSpent: 60_000,
+        })} -->`,
+      },
+    ]
+    const eventPath = await writeEvent('status-local', {
+      action: 'created',
+      sender: { login: 'maintainer', type: 'User' },
+      issue: { number: 42, title: 't', body: 'b', author_association: 'OWNER' },
+      comment: { id: 8811, body: '/ask why that file?', author_association: 'OWNER' },
+      repository: { owner: { login: 'acme' }, name: 'widgets', default_branch: 'master' },
+    })
+
+    const github = recordPosts(prior)
+    const result = await runCli({
+      argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
+      env: { ...env, AGENT_MAX_TOKENS: '50000' },
+      logger: silentLogger,
+      fetch: github.fetch,
+    })
+
+    expect(result.status).toBe('failed')
+    expect(github.posted).toHaveLength(1)
+    expect(github.edits).toEqual([])
   })
 
   test('a repository that wants no labels gets none', async () => {

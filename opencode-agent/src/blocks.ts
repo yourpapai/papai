@@ -85,17 +85,31 @@ export const readBlock = (body: string, marker: string): unknown => {
   return found
 }
 
+/** A block, and the comment it was read out of. */
+export interface BlockLocation {
+  comment: IssueComment
+  block: unknown
+}
+
 /**
  * Walks the thread newest-first and returns the first block written by the
- * agent itself. Author filtering is the whole security model here: anyone can
- * paste a block into a comment, but only the agent's own comments are read.
+ * agent itself, **with the comment carrying it**. Author filtering is the whole
+ * security model here: anyone can paste a block into a comment, but only the
+ * agent's own comments are read.
+ *
+ * The comment is returned rather than only the payload because rewriting a
+ * block in place has to address the comment the *reader* selected. Two scans —
+ * one to read the state and another to find something to rewrite — can disagree
+ * whenever the thread has more than one candidate, and rewriting the wrong
+ * comment is the failure mode of an in-place update. One scan, and every caller
+ * derived from it, makes them agree by construction.
  */
-export const findLatestBlock = (
+export const locateLatestBlock = (
   thread: readonly IssueComment[],
   agentLogin: string,
   marker: string,
   accept: (block: unknown) => boolean = (): boolean => true,
-): unknown => {
+): BlockLocation | null => {
   const normalizedAgent = agentLogin.toLowerCase()
 
   for (let index = thread.length - 1; index >= 0; index -= 1) {
@@ -107,10 +121,43 @@ export const findLatestBlock = (
     // A block the caller rejects is walked past, not surrendered to. Returning
     // the newest *readable* block and letting the caller validate afterwards
     // meant one corrupt or foreign block masked every good one behind it.
-    if (block !== undefined && accept(block)) return block
+    if (block !== undefined && accept(block)) return { comment, block }
   }
 
-  return undefined
+  return null
+}
+
+/** The payload half of {@link locateLatestBlock}, for callers with no comment to rewrite. */
+export const findLatestBlock = (
+  thread: readonly IssueComment[],
+  agentLogin: string,
+  marker: string,
+  accept: (block: unknown) => boolean = (): boolean => true,
+): unknown => {
+  const found = locateLatestBlock(thread, agentLogin, marker, accept)
+  return found === null ? undefined : found.block
+}
+
+/**
+ * Rewrites a body's block with a new payload, or `null` when it carries none.
+ *
+ * Through {@link renderBlock} rather than by patching the JSON inside the
+ * delimiters, and that is the whole point of the function existing at all:
+ * `renderBlock` escapes every `<` and `>` so a payload cannot forge its own
+ * terminator, which a mermaid diagram (`A --> B`) and half the compiler
+ * diagnostics that land in `lastError` routinely would. An in-place rewrite that
+ * assembled the block itself would reintroduce that bug on a new surface, where
+ * the original test suite is not looking.
+ *
+ * The **last** block with this marker is the one replaced, because that is the
+ * one {@link readBlock} reads back. Rewriting an earlier one would leave the
+ * body parsing to whatever it said before.
+ */
+export const replaceBlock = (body: string, marker: string, payload: unknown): string | null => {
+  const last = [...body.matchAll(blockPattern(marker))].at(-1)
+  if (last === undefined || last.index === undefined) return null
+
+  return `${body.slice(0, last.index)}${renderBlock(marker, payload)}${body.slice(last.index + last[0].length)}`
 }
 
 /**

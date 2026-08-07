@@ -14,6 +14,7 @@ import type { Logger } from './logger.js'
 import type { SkillDocument } from './obra-skills.js'
 import type { OpenCodeAgent } from './opencode-adapter.js'
 import type { ReviewRunResult } from './review-runner.js'
+import type { StatusReporter } from './status-reporter.js'
 import type { AgentState, Phase } from './types.js'
 
 /** The issue a run is about, however the run was triggered. */
@@ -60,6 +61,14 @@ export interface PhaseDeps {
    * and artefacts are read back through, not just the recursion guard.
    */
   selfLogin: () => Promise<string>
+  /**
+   * The run's live status comment, as an injected boundary like every other.
+   *
+   * Required rather than optional so a caller has to decide, and
+   * `noopStatusReporter()` is a decision: a local run with no job to link to
+   * says nothing, and says so once, in `deps.ts`.
+   */
+  status: StatusReporter
   config: PipelineConfig
   log: Logger
 }
