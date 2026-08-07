@@ -106,7 +106,6 @@ const forwardTransition = (
   patch: Partial<AgentState>,
 ): Partial<AgentState> => ({
   phase: next,
-  approved: signal === 'APPROVED' ? true : state.approved,
   // Every forward move clears the failure budget, because `attempts` counts
   // *consecutive* failures. An allow-list of "real progress" signals looked
   // equivalent and was not: asking a clarifying question and answering a

@@ -75,7 +75,6 @@ export const agentStateSchema = z.object({
   // No `branch`: it is exactly `agent/issue-<issueId>`, every phase recomputes
   // it with `branchNameFor`, and persisting a derivable value only adds a field
   // that anyone able to edit the agent's comments could point somewhere else.
-  approved: z.boolean().default(false),
   /** Phase to resume from when a FAILED run is retried. */
   resumeFrom: z.enum(PHASES).nullable().default(null),
   /** Consecutive failures. Cleared by any forward move; preserved across `/retry`. */
@@ -92,7 +91,11 @@ export const agentStateSchema = z.object({
   lastError: z.string().nullable().default(null),
   prUrl: z.url().nullable().default(null),
   prNumber: z.number().int().positive().nullable().default(null),
-  updatedAt: z.string().nullable().default(null),
+  // No `approved` and no `updatedAt`. The phase *is* the approval gate, so a
+  // separate flag could only ever disagree with it, and the comment carrying
+  // this block is already timestamped by GitHub. Both were written and never
+  // read. Removing them needs no `STATE_VERSION` bump: zod strips unknown keys,
+  // so a block written with them still parses.
 })
 
 export type AgentState = z.infer<typeof agentStateSchema>

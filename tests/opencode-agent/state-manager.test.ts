@@ -98,7 +98,6 @@ describe('serializeState / extractState', () => {
       v: 1,
       phase: 'INIT_OR_CLARIFY',
       issueId: 5,
-      approved: false,
       resumeFrom: null,
       attempts: 0,
       ciAttempts: 0,
@@ -107,7 +106,6 @@ describe('serializeState / extractState', () => {
       lastError: null,
       prUrl: null,
       prNumber: null,
-      updatedAt: null,
     })
   })
 
@@ -273,7 +271,6 @@ describe('transition', () => {
 
     state = transition(state, 'APPROVED')
     expect(state.phase).toBe('EXECUTION_PLAN')
-    expect(state.approved).toBe(true)
 
     state = transition(state, 'PLAN_POSTED')
     expect(state.phase).toBe('PLAN_REVIEW')

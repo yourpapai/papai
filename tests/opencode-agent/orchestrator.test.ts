@@ -27,7 +27,7 @@ const BASE_BRANCH = 'trunk'
 const OPENING_TAG = /<untrusted_input source="[^"]*" id="([^"]+)">/u
 
 /** A newer state block for a different issue, as a comment edit could plant. */
-const PLANTED_STATE: AgentState = { ...initialState(7), phase: 'PLAN_REVIEW', approved: true }
+const PLANTED_STATE: AgentState = { ...initialState(7), phase: 'PLAN_REVIEW' }
 
 const silentLogger = (): Logger => ({
   debug: (): void => {},
@@ -182,7 +182,6 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       io.gitCalls.push(`push:${branch}`)
       return Promise.resolve()
     },
-    currentSha: () => Promise.resolve('deadbeef'),
     defaultBranch: () => Promise.resolve(io.detectedBranch),
   }
 
@@ -224,7 +223,6 @@ const hostileGit = (): Git => {
     ensureBranch: (): Promise<void> => refuse('ensureBranch'),
     commitAll: (): Promise<boolean> => refuse('commit'),
     push: (): Promise<void> => refuse('push'),
-    currentSha: (): Promise<string> => refuse('rev-parse'),
     defaultBranch: (): Promise<string | null> => refuse('symbolic-ref'),
   }
 }

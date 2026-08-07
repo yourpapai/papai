@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { z } from 'zod'
@@ -136,6 +137,36 @@ const step = (fragment: string): WorkflowStep =>
 
 const checkoutStep = steps.find((candidate) => candidate.uses.startsWith('actions/checkout')) ?? NO_STEP
 
+/**
+ * Knobs the workflow deliberately does not forward, each with a reason a reader
+ * can check. Anything else the README documents has to be passed through.
+ */
+const DELIBERATELY_ABSENT: ReadonlySet<string> = new Set([
+  // Read from the payload's `repository.default_branch`; forwarding it would
+  // mask that resolution path and let it rot untested. See S2-5.
+  'AGENT_BASE_BRANCH',
+])
+
+/** Documented knobs the workflow neither forwards nor excuses. The filtering
+ *  lives out here so no test body carries a conditional. */
+const notForwarded = (documented: readonly string[], passed: readonly string[]): string[] => {
+  const forwarded = new Set(passed)
+  return documented.filter((name) => !forwarded.has(name) && !DELIBERATELY_ABSENT.has(name))
+}
+
+/** Every `AGENT_*` name in the README's environment table, including the cells
+ *  that document two at once. */
+const documentedKnobs = (): string[] => {
+  const readme = readFileSync(path.join(import.meta.dir, '..', '..', 'opencode-agent', 'README.md'), 'utf8')
+  const names = new Set<string>()
+  for (const line of readme.split('\n')) {
+    if (!line.startsWith('| `')) continue
+    const cell = line.split('|')[1] ?? ''
+    for (const match of cell.matchAll(/`(AGENT_[A-Z_]+)`/gu)) names.add(match[1] ?? '')
+  }
+  return [...names].sort()
+}
+
 describe('steps', () => {
   test('checks out the branch whose checks went red, not the base', () => {
     expect(checkoutStep.with['ref']).toContain('github.event.workflow_run.head_branch')
@@ -191,6 +222,18 @@ describe('steps', () => {
     // Passing the default branch through would mask the pipeline's own
     // resolution chain and let it rot untested; the payload already carries it.
     expect(Object.keys(step('agent pipeline').env)).not.toContain('AGENT_BASE_BRANCH')
+  })
+
+  test('passes every knob the README documents, or names it as deliberately absent', () => {
+    // The finding named two missing vars; there were five, two of which this
+    // workspace added itself while fixing something else. A list that has to be
+    // kept in step by hand does not stay in step — so the README table is the
+    // source of truth and the gap is a test failure.
+    const documented = documentedKnobs()
+    const missing = notForwarded(documented, Object.keys(step('agent pipeline').env))
+
+    expect(documented.length).toBeGreaterThan(10)
+    expect(missing).toEqual([])
   })
 
   test('reports an infrastructure failure only when there is an issue to post to', () => {

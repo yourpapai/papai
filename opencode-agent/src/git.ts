@@ -75,7 +75,6 @@ export interface Git {
    */
   commitAll(message: string): Promise<boolean>
   push(branch: string): Promise<void>
-  currentSha(): Promise<string>
   /** The remote's default branch, or `null` when the checkout cannot tell. */
   defaultBranch(): Promise<string | null>
 }
@@ -216,10 +215,6 @@ export const createGit = (options: GitOptions): Git => {
     commitAll: (message) => commitAll(gitOrThrow, options, message),
     push: async (branch) => {
       await gitOrThrow('push', '-u', 'origin', branch)
-    },
-    currentSha: async () => {
-      const result = await gitOrThrow('rev-parse', 'HEAD')
-      return result.stdout.trim()
     },
     defaultBranch: () => defaultBranch(git),
   }

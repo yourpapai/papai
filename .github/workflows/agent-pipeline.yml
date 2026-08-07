@@ -143,7 +143,12 @@ jobs:
           # branch off the payload's repository.default_branch. Passing it here
           # would mask that path and let it rot untested.
           AGENT_CHECK_COMMAND: ${{ vars.AGENT_CHECK_COMMAND }}
+          AGENT_REVIEW_COMMAND: ${{ vars.AGENT_REVIEW_COMMAND }}
           AGENT_CHECKS: ${{ vars.AGENT_CHECKS }}
+          AGENT_COMMIT_NAME: ${{ vars.AGENT_COMMIT_NAME }}
+          AGENT_COMMIT_EMAIL: ${{ vars.AGENT_COMMIT_EMAIL }}
+          AGENT_MAX_CHANGED_FILES: ${{ vars.AGENT_MAX_CHANGED_FILES }}
+          AGENT_MAX_CHANGED_LINES: ${{ vars.AGENT_MAX_CHANGED_LINES }}
           AGENT_REVIEW_MAX_ROUNDS: ${{ vars.AGENT_REVIEW_MAX_ROUNDS }}
           AGENT_REVIEW_POOL_SIZE: ${{ vars.AGENT_REVIEW_POOL_SIZE }}
           AGENT_CI_FIX_MAX_ROUNDS: ${{ vars.AGENT_CI_FIX_MAX_ROUNDS }}
