@@ -37,6 +37,7 @@ import {
 import type { OpenCodeConnection, SdkPromptBody } from '../../opencode-agent/src/opencode-adapter.js'
 import { mintEnvelope } from '../../opencode-agent/src/phases/envelope.js'
 import { buildCiFixPrompt, createEnvelope, renderThread } from '../../opencode-agent/src/prompts.js'
+import { scrubSecrets } from '../../opencode-agent/src/secrets.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
 import { PHASES } from '../../opencode-agent/src/types.js'
 
@@ -390,6 +391,11 @@ describe('obra-skills', () => {
 const permissionsOf = (settings: OpenAiSettings): Record<string, unknown> =>
   (buildOpencodeConfig(settings).permission ?? {}) as Record<string, unknown>
 
+const agentPermission = (settings: OpenAiSettings, name: string): Record<string, unknown> => {
+  const agent = buildOpencodeConfig(settings).agent?.[name]
+  return (agent?.permission ?? {}) as Record<string, unknown>
+}
+
 const inlinedConfig = (settings: OpenAiSettings): unknown =>
   JSON.parse(opencodeConfigEnv(settings)['OPENCODE_CONFIG_CONTENT'] ?? '{}')
 
@@ -413,6 +419,32 @@ describe('openai-config', () => {
 
   test('leaves no permission set to "ask" — an unattended run cannot answer one', () => {
     expect(Object.values(permissionsOf(settings))).not.toContain('ask')
+    expect(Object.values(agentPermission(settings, 'plan'))).not.toContain('ask')
+    expect(Object.values(agentPermission(settings, 'build'))).not.toContain('ask')
+  })
+
+  test('denies by default, so a tool a later OpenCode release adds arrives off', () => {
+    // A forbid-list has to name every dangerous tool; deny-by-default is the
+    // only shape that survives the tool set growing underneath it.
+    expect(permissionsOf(settings)['*']).toBe('deny')
+    expect(agentPermission(settings, 'plan')['*']).toBe('deny')
+    expect(agentPermission(settings, 'build')['*']).toBe('deny')
+  })
+
+  test.each(['edit', 'bash'])('the read-only profile cannot %s', (tool) => {
+    // Triage, planning, answering and classification all prompt with
+    // `agent: 'plan'`, and run *before* a maintainer has approved anything.
+    expect(agentPermission(settings, 'plan')[tool]).toBeUndefined()
+    expect(agentPermission(settings, 'build')[tool]).toBe('allow')
+  })
+
+  test.each(['read', 'grep', 'glob', 'list'])('both profiles can still %s', (tool) => {
+    expect(agentPermission(settings, 'plan')[tool]).toBe('allow')
+    expect(agentPermission(settings, 'build')[tool]).toBe('allow')
+  })
+
+  test('the default profile is the restricted one, not the writing one', () => {
+    expect(permissionsOf(settings)).toEqual(agentPermission(settings, 'plan'))
   })
 
   test('delivers the same config inline for spawned opencode processes', () => {
@@ -712,6 +744,55 @@ describe('resolveReviewCommand', () => {
 
   test.each(['not json', '[]', '"a string"', '[1,2]'])('rejects %p', (raw) => {
     expect(() => resolveReviewCommand(raw, '/repo', present)).toThrow('AGENT_REVIEW_COMMAND')
+  })
+})
+
+describe('scrubSecrets', () => {
+  const TOKEN = 'ghp_0123456789abcdefghij'
+  const KEY = 'sk-0123456789abcdefghij'
+
+  test('removes every variable holding a loaded credential', () => {
+    // `createOpencodeServer` spawns `opencode serve` with `{ ...process.env }`
+    // and takes no env option, so anything left here is one `echo $VAR` away
+    // from the model.
+    const env: Env = { GITHUB_TOKEN: TOKEN, OPENAI_API_KEY: KEY, PATH: '/usr/bin' }
+
+    expect(scrubSecrets(env, [TOKEN, KEY]).sort()).toEqual(['GITHUB_TOKEN', 'OPENAI_API_KEY'])
+    expect(env).toEqual({ PATH: '/usr/bin' })
+  })
+
+  test('matches on the value, so an aliased export goes too', () => {
+    // A name list would have to be kept in step with the workflow; the value is
+    // the thing that must not survive.
+    const env: Env = { GITHUB_TOKEN: TOKEN, GH_TOKEN: TOKEN, BOT_PAT: TOKEN }
+
+    expect(scrubSecrets(env, [TOKEN])).toHaveLength(3)
+    expect(env).toEqual({})
+  })
+
+  test('really deletes the key rather than blanking it', () => {
+    // Assigning `undefined` to a `process.env` key stores the string
+    // "undefined", which a shell would happily read back.
+    const env: Env = { GITHUB_TOKEN: TOKEN }
+    scrubSecrets(env, [TOKEN])
+
+    expect(Object.hasOwn(env, 'GITHUB_TOKEN')).toBe(false)
+  })
+
+  test.each(['', 'true', 'short'])('ignores the too-short secret %p', (secret) => {
+    // A secret that collides with a common value must not blank unrelated
+    // variables; real tokens and provider keys are far longer.
+    const env: Env = { CI: 'true', DEBUG: 'short', EMPTY: '' }
+
+    expect(scrubSecrets(env, [secret])).toEqual([])
+    expect(env).toEqual({ CI: 'true', DEBUG: 'short', EMPTY: '' })
+  })
+
+  test('leaves everything else alone', () => {
+    const env: Env = { PATH: '/usr/bin', HOME: '/root' }
+
+    expect(scrubSecrets(env, [TOKEN])).toEqual([])
+    expect(env).toEqual({ PATH: '/usr/bin', HOME: '/root' })
   })
 })
 

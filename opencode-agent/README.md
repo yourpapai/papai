@@ -152,9 +152,38 @@ envelope together, and all three are load-bearing:
    to distrust but never where the untrusted region _ends_ — which is the only
    thing an injected terminator is lying about.
 
-This is prompt-level containment only; see S3-2 in `ROADMAP.md` for the
-capability-level gap it does not close. Commands are spawned as argv vectors with
-`shell: false`, so untrusted text never reaches a shell.
+Commands are spawned as argv vectors with `shell: false`, so untrusted text never
+reaches a shell.
+
+### Capability containment
+
+Prompt-level defences fail eventually, so the model's capabilities are bounded
+independently of what it is persuaded to attempt.
+
+The OpenCode config denies by default (`"*": "deny"`) and grants by name. A
+forbid-list would have to enumerate every dangerous tool, so a tool added by a
+later OpenCode release would arrive enabled.
+
+| profile                                     | reads | edits files | runs commands |
+| ------------------------------------------- | ----- | ----------- | ------------- |
+| `plan` — triage, planning, `/ask`, classify | ✅    | ❌          | ❌            |
+| `build` — implement, CI fix, review loop    | ✅    | ✅          | ✅            |
+
+Both review gates run on the read-only profile, so an injection landing before a
+maintainer has approved anything cannot reach the working tree. The **default**
+profile is the read-only one, which covers the agents this pipeline never names
+(`explore`, `general`, `summary`, …) rather than leaving them a free pass.
+
+Credentials are removed from the process environment once config is loaded and
+before anything can spawn. `createOpencodeServer` starts `opencode serve` with
+`{ ...process.env }` and offers no environment option, so a key left there is one
+`echo $VAR` away from the model. Nothing needs them there: the provider key
+travels in `OPENCODE_CONFIG_CONTENT`, the GitHub token goes to Octokit directly,
+and git reads `.git/config`. They are matched by **value**, not name, so an
+aliased export goes too.
+
+> **Still open:** `persist-credentials: true` leaves the repository token in
+> `.git/config`, which the `build` profile can read. See S3-7 in `ROADMAP.md`.
 
 ### A note on the "actor matches repository owner" rule
 

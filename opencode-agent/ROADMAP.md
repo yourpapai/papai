@@ -763,25 +763,69 @@ kills the tests that name it._
 _Prompt-level only. S3-2 (no capability-level containment) is untouched and is
 still the gap that matters most._
 
-### S3-2 The model runs unconstrained with repository and provider credentials — by inspection
+### S3-2 The model runs unconstrained with repository and provider credentials — verified — **[PARTIALLY FIXED]**
 
-The workflow checks out with `persist-credentials: true`
-(`agent-pipeline.yml:53`) and exports `GITHUB_TOKEN`, `ANTHROPIC_API_KEY`,
-`OPENAI_API_KEY` and `OPENCODE_API_KEY` into the same process
-(`:68`, `:73-75`). The OpenCode session runs the `build` profile with **no tool
-restrictions** — `AgentPromptRequest.tools` exists in the adapter
-(`src/opencode-adapter.ts:53-58`) and is never set by any caller.
+_Two of the three named directions are closed; the third is not, and is split out
+as S3-7 below rather than left implied._
 
-So a successful prompt injection reaches `.git/config` (which holds the token as
-an extraheader), the provider keys in `process.env`, and arbitrary `git push`.
-The defence is entirely prompt-level; there is no capability-level containment.
+_The finding's list of exported keys was stale — `ANTHROPIC_API_KEY` and
+`OPENCODE_API_KEY` went away with the single-endpoint change — but the substance
+held: the session ran the `build` profile with a global
+`permission: { edit: 'allow', bash: 'allow', webfetch: 'deny' }`, so **every**
+phase could write files and run commands, including the two review gates that
+run before a maintainer has approved anything._
 
-**Direction:** this is the gap that most deserves attention before the agent
-touches anything real. Options, roughly in order of value: pass an explicit
-`tools` allow-list per phase (planning phases need no write tools at all);
-use a short-lived GitHub App token scoped to the agent branch instead of
-`persist-credentials`; run the model in a container without the provider keys
-mounted for phases that do not need them.
+_**Per-phase capability profiles (closed).** `opencode agent list` shows the
+built-in profile carrying `{"permission": "*", "action": "allow"}` — so `"*"` is
+a real key and an allow-list is expressible. The config now denies by default and
+grants by name: a forbid-list would have to enumerate every dangerous tool, so a
+tool added by a later OpenCode release would arrive enabled — the same
+enumeration trap that kept the untrusted-input envelope escapable in S3-1._
+
+_Verified by feeding the pipeline's own emitted config to the real binary via
+`OPENCODE_CONFIG_CONTENT` and reading back the resolved rules:_
+
+| profile                                 | `*`  | read  | edit  | bash  |
+| --------------------------------------- | ---- | ----- | ----- | ----- |
+| `plan` (phases 1–2, `/ask`, classify)   | deny | allow | —     | —     |
+| `build` (phases 3, CI fix, review loop) | deny | allow | allow | allow |
+
+_The global default is the **read-only** profile, which matters more than it
+looks: the same listing shows `explore`, `general`, `summary`, `title` and
+`compaction` agents this pipeline never names. They inherit the global block, so
+they get the restricted set rather than a free pass. The review loop keeps
+working because `opencode run` without `--agent` resolves to the primary agent,
+which the same listing reports as `build`._
+
+_**Provider and repository credentials in the model's environment (closed).**
+`createOpencodeServer` spawns `opencode serve` with `{ ...process.env }` and
+exposes no environment option, so `echo $GITHUB_TOKEN` was all an injected prompt
+needed. `scrubSecrets` (`src/secrets.ts`) removes them once config is loaded and
+before anything can spawn. Nothing downstream loses them: the provider key
+reaches OpenCode through `OPENCODE_CONFIG_CONTENT`, the GitHub token reaches
+Octokit through the config object, and git reads `.git/config`. Matched by
+**value**, not name — the same secret is routinely exported under several names,
+and a name list would rot the moment a workflow added an alias._
+
+_Not verified end to end against a live model: this container has the `opencode`
+binary but no provider endpoint, so the resolved-permission table above is
+config resolution, not an observed tool denial. The first real run is worth
+watching for denial noise — particularly `task`, which is denied everywhere._
+
+### S3-7 The repository token still sits in `.git/config`, readable by the model
+
+Split out of S3-2, whose third direction this is. The workflow checks out with
+`persist-credentials: true`, so the token lives in `.git/config` as an
+`http.<url>.extraheader`. Scrubbing the environment does not touch it, and the
+`build` profile can `read` it.
+
+**Direction:** `persist-credentials: false`, and hand git its credential per
+invocation through `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_0` / `GIT_CONFIG_VALUE_0`
+in the child's environment — out of `.git/config`, out of argv (so it cannot
+surface in a `GitError`), and out of the OpenCode server's inherited env. Left
+undone deliberately: it changes how every git operation authenticates, and this
+container cannot verify a real push, so a wrong header format would break the
+whole pipeline rather than one phase.
 
 ### S3-3 Check output and git stderr are published verbatim to a public issue — by inspection
 

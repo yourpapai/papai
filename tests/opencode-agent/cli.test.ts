@@ -170,6 +170,35 @@ describe('runCli', () => {
     expect(result.reason).toContain('Bot')
   })
 
+  test('strips the credentials from the environment before anything can spawn', async () => {
+    // The OpenCode server inherits this process's environment wholesale, so a
+    // credential still present here is readable by the model's `bash` tool.
+    const eventPath = await writeEvent('scrub', {
+      action: 'created',
+      sender: { login: 'someone', type: 'Bot' },
+      issue: { number: 42, title: 't', body: 'b', author_association: 'OWNER' },
+      comment: { id: 1, body: 'hi', author_association: 'OWNER' },
+    })
+    const live = {
+      ...env,
+      GITHUB_TOKEN: 'ghp_0123456789abcdefghij',
+      OPENAI_API_KEY: 'sk-0123456789abcdefghij',
+      GH_TOKEN: 'ghp_0123456789abcdefghij',
+      PATH: '/usr/bin',
+    }
+
+    await runCli({
+      argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
+      env: live,
+      logger: silentLogger,
+    })
+
+    expect(Object.hasOwn(live, 'GITHUB_TOKEN')).toBe(false)
+    expect(Object.hasOwn(live, 'OPENAI_API_KEY')).toBe(false)
+    expect(Object.hasOwn(live, 'GH_TOKEN')).toBe(false)
+    expect(live.PATH).toBe('/usr/bin')
+  })
+
   test('a guarded run never shells out to work out a base branch', async () => {
     // Base-branch resolution can cost a round trip to the remote, so it has to
     // stay behind the guardrails: a bot comment must be dropped without ever

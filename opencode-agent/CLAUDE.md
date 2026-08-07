@@ -31,6 +31,13 @@ findings: `ROADMAP.md`.
   for CI fixing, which the workspace does not cover.
 - **One model endpoint.** Everything goes through `openai-config.ts`; there are
   no provider-specific keys and no second place a model is named.
+- **Capabilities are deny-by-default.** `openai-config.ts` grants tools by name
+  on top of `"*": "deny"`, per agent profile: `plan` (the read-only phases)
+  cannot edit or run commands, `build` can. Add a capability by naming it, never
+  by widening the wildcard. Credentials are scrubbed from `process.env`
+  (`secrets.ts`) before anything spawns, because the OpenCode server inherits it
+  wholesale — so never reintroduce a code path that reads a secret from `env`
+  after `runCli` has loaded config.
 - Untrusted text (issue bodies, comments, **check output**) must go through the
   envelope from `prompts.ts` before reaching a prompt, and commands must be
   spawned as argv vectors with `shell: false`. The envelope is only as good as

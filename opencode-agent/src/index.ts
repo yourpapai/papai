@@ -25,6 +25,7 @@ import type { OpenCodeAgent } from './opencode-adapter.js'
 import { runPipeline } from './orchestrator.js'
 import type { PhaseDeps, RunReview } from './phase-context.js'
 import { runReviewLoop } from './review-runner.js'
+import { scrubSecrets } from './secrets.js'
 import { runCommand } from './shell.js'
 import type { CommandRunner } from './shell.js'
 import { errorMessage } from './types.js'
@@ -210,6 +211,12 @@ export const runCli = async (options: MainOptions): Promise<RunResult> => {
   const args = parseArgs(options.argv, options.env)
   const log = options.logger ?? createLogger({ level: args.logLevel })
   const config = loadConfig(options.env, args.repoRoot)
+
+  // Before anything can spawn a child. The OpenCode server inherits this
+  // process's environment wholesale, so a credential left here is one the model
+  // can read with `bash`.
+  const scrubbed = scrubSecrets(options.env, [config.githubToken, config.openai.apiKey])
+  if (scrubbed.length > 0) log.debug({ variables: scrubbed }, 'Removed credentials from the environment')
 
   const payload: unknown = JSON.parse(await readFile(args.eventPath, 'utf8'))
   const event = parseTriggerEvent(args.eventName, payload)
