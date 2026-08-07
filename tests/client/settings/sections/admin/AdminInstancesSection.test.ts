@@ -199,6 +199,13 @@ const createProviderTypeFailureMock = () => {
   }
 }
 
+const createEmptyInstancesMock = () => {
+  return (url: string): Promise<Response> => {
+    if (url.includes('provider-types')) return Promise.resolve(json({ providerTypes: [] }))
+    return Promise.resolve(json({ instances: [] }))
+  }
+}
+
 const createUnreadableDiagnosticsMock = () => {
   const responses = new Map<string, Response>([
     [
@@ -536,7 +543,7 @@ describe('AdminInstancesSection', () => {
     void unmount(component)
   })
 
-  test('keeps instance rows visible when a provider types request fails', async () => {
+  test('a provider types request failure surfaces as a load ErrorState', async () => {
     setMockFetch(createProviderTypeFailureMock())
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
@@ -544,9 +551,8 @@ describe('AdminInstancesSection', () => {
 
     await drain()
 
-    expect(target.textContent).toContain('tg')
-    expect(target.textContent).toContain('k')
-    expect(target.querySelector('.status-error')).not.toBeNull()
+    expect(target.querySelector('.ui-error')).not.toBeNull()
+    expect(target.querySelector('[data-testid="error-retry"]')).not.toBeNull()
     void unmount(component)
   })
 
@@ -830,6 +836,28 @@ describe('AdminInstancesSection', () => {
     flushSync()
     expect(target.textContent).toContain('An instance with this id already exists')
     expect(target.querySelector<HTMLButtonElement>('[data-testid="platform-create"]')!.disabled).toBe(true)
+    void unmount(component)
+  })
+
+  test('a load failure shows an ErrorState with the raw text demoted to a detail', async () => {
+    setMockFetch(() => Promise.resolve(new Response('request failed with status 404', { status: 404 })))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+    expect(target.querySelector('.ui-error')).not.toBeNull()
+    expect(target.querySelector('.ui-error__detail')).not.toBeNull()
+    expect(target.querySelector('[data-testid="error-retry"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('an empty instance list renders EmptyState, not a bare string', async () => {
+    setMockFetch(createEmptyInstancesMock())
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+    expect(target.querySelectorAll('.ui-empty').length).toBe(2)
     void unmount(component)
   })
 })

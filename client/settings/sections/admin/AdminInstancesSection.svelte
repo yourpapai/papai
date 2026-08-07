@@ -21,6 +21,8 @@
   import Confirm from '../../../shared/Confirm.svelte'
   import Btn from '../../../shared/ui/Btn.svelte'
   import DataTable from '../../../shared/ui/DataTable.svelte'
+  import EmptyState from '../../../shared/ui/EmptyState.svelte'
+  import ErrorState from '../../../shared/ui/ErrorState.svelte'
   import Field from '../../../shared/ui/Field.svelte'
   import IconButton from '../../../shared/ui/IconButton.svelte'
   import Input from '../../../shared/ui/Input.svelte'
@@ -37,6 +39,8 @@
   let platformTypes: ProviderType[] = $state([])
   let taskTypes: ProviderType[] = $state([])
   let error: string | null = $state(null)
+  let loadError: string | null = $state(null)
+  let initialLoad = $state(true)
   let status: string | null = $state(null)
   let loading = $state(false)
 
@@ -98,7 +102,7 @@
   const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
   async function load(): Promise<void> {
-    error = null
+    loadError = null
     loading = true
     platformUnreadable = []
     taskUnreadable = []
@@ -143,9 +147,10 @@
         loadErrors.push(errorMessage(tt.reason))
       }
 
-      if (loadErrors.length > 0) error = loadErrors.join('; ')
+      if (loadErrors.length > 0) loadError = loadErrors.join('; ')
     } finally {
       loading = false
+      initialLoad = false
     }
   }
 
@@ -342,6 +347,14 @@
   {#if error !== null}<p class="status-error">{error}</p>{/if}
   {#if status !== null}<p class="status-success">{status}</p>{/if}
 
+  {#if loadError !== null}
+    <ErrorState
+      message="Could not load the platform and task instances."
+      detail={loadError}
+      onRetry={() => void load()} />
+  {:else if loading && initialLoad}
+    <p class="placeholder">Loading…</p>
+  {:else}
   <div class="instance-create" data-testid="platform-create-card">
     <div class="t-subhead">Add platform instance</div>
     <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void createPlatform() }}>
@@ -400,7 +413,11 @@
       {/if}
     {/snippet}
     <DataTable columns={instanceColumns} rows={platformRows} cell={platformCell} rowKey="id">
-      {#snippet empty()}No platform instances{/snippet}
+      {#snippet empty()}
+        <EmptyState
+          title="No platform instances"
+          hint="Create one above to connect the bot to a chat platform." />
+      {/snippet}
     </DataTable>
   </div>
   {#if platformUnreadable.length > 0}
@@ -467,13 +484,16 @@
       {/if}
     {/snippet}
     <DataTable columns={instanceColumns} rows={taskRows} cell={taskCell} rowKey="id">
-      {#snippet empty()}No task instances{/snippet}
+      {#snippet empty()}
+        <EmptyState title="No task instances" hint="Create one above to connect a task tracker." />
+      {/snippet}
     </DataTable>
   </div>
   {#if taskUnreadable.length > 0}
     <p class="status-error" data-testid="task-unreadable">
       Unreadable task instances hidden: {taskUnreadable.map((failure) => failure.id).join(', ')}
     </p>
+  {/if}
   {/if}
 
   <Confirm
