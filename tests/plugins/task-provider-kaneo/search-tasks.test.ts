@@ -9,8 +9,47 @@ import assert from 'node:assert/strict'
 // Import implementation to satisfy TDD hook requirement
 import '../../../plugins/task-provider-kaneo/operations/tasks.js'
 import type { KaneoConfig } from '../../../plugins/task-provider-kaneo/client.js'
-import { searchTasks, TaskResultSchema } from '../../../plugins/task-provider-kaneo/search-tasks.js'
+import type { GlobalSearchResponse } from '../../../plugins/task-provider-kaneo/schemas/global-search.js'
+import {
+  flattenGroupedTaskSearchResults,
+  searchTasks,
+  TaskResultSchema,
+} from '../../../plugins/task-provider-kaneo/search-tasks.js'
 import { mockLogger, setMockFetch, restoreFetch } from '../../utils/test-helpers.js'
+
+function makeFlattenTask(
+  id: string,
+  userId: string | null,
+  number: number | null,
+): GlobalSearchResponse['tasks'][number] {
+  return {
+    id,
+    projectId: 'proj-1',
+    position: null,
+    number,
+    userId,
+    title: 'Task',
+    description: null,
+    status: 'todo',
+    priority: 'medium',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  }
+}
+
+function makeApiTask(id: string, userId: string, number: number): Record<string, unknown> {
+  return {
+    id,
+    projectId: 'proj-1',
+    position: 1,
+    number,
+    userId,
+    title: `Task ${id}`,
+    description: null,
+    status: 'todo',
+    priority: 'medium',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  }
+}
 
 describe('searchTasks', () => {
   const mockConfig: KaneoConfig = {
@@ -446,5 +485,90 @@ describe('searchTasks', () => {
       comments: [],
       activities: [],
     })
+  })
+
+  test('TaskResultSchema retains every picked source field', () => {
+    const parsed = TaskResultSchema.safeParse({
+      id: 'task-pick',
+      title: 'Pick Title',
+      number: 9,
+      status: 'in-progress',
+      priority: 'high',
+      projectId: 'proj-pick',
+      userId: 'user-pick',
+    })
+    assert(parsed.success, 'Expected TaskResultSchema to parse successfully')
+    expect(parsed.data.id).toBe('task-pick')
+    expect(parsed.data.title).toBe('Pick Title')
+    expect(parsed.data.number).toBe(9)
+    expect(parsed.data.status).toBe('in-progress')
+    expect(parsed.data.priority).toBe('high')
+    expect(parsed.data.projectId).toBe('proj-pick')
+  })
+
+  test('flattenGroupedTaskSearchResults preserves number and defaults null number to 0', () => {
+    const response: GlobalSearchResponse = {
+      tasks: [makeFlattenTask('n1', 'u-1', 42), makeFlattenTask('n2', null, null)],
+      projects: [],
+      workspaces: [],
+      comments: [],
+      activities: [],
+    }
+    const [first, second] = flattenGroupedTaskSearchResults(response)
+    assert(first !== undefined, 'Expected first flattened task')
+    assert(second !== undefined, 'Expected second flattened task')
+    expect(first.number).toBe(42)
+    expect(second.number).toBe(0)
+  })
+
+  test('flattenGroupedTaskSearchResults defaults null userId to empty string', () => {
+    const response: GlobalSearchResponse = {
+      tasks: [makeFlattenTask('u-null', null, 1)],
+      projects: [],
+      workspaces: [],
+      comments: [],
+      activities: [],
+    }
+    const [only] = flattenGroupedTaskSearchResults(response)
+    assert(only !== undefined, 'Expected a flattened task')
+    expect(only.userId).toBe('')
+  })
+
+  test('applies offset without limit when filtering by assigneeId', async () => {
+    setMockFetch(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            tasks: [makeApiTask('s1', 'user-a', 1), makeApiTask('s2', 'user-b', 2), makeApiTask('s3', 'user-a', 3)],
+            projects: [],
+            workspaces: [],
+            comments: [],
+            activities: [],
+          }),
+          { status: 200 },
+        ),
+      ),
+    )
+
+    const result = await searchTasks({
+      config: mockConfig,
+      query: 'q',
+      workspaceId: 'ws-1',
+      assigneeId: 'user-a',
+      offset: 1,
+    })
+
+    expect(result.tasks).toHaveLength(1)
+    const [first] = result.tasks
+    assert(first !== undefined, 'Expected the offset-filtered task')
+    expect(first.id).toBe('s3')
+  })
+
+  test('rethrows a classified error when the search request fails', async () => {
+    setMockFetch(() => Promise.resolve(new Response('boom', { status: 500 })))
+
+    await expect(searchTasks({ config: mockConfig, query: 'q', workspaceId: 'ws-1' })).rejects.toThrow(
+      'Kaneo API GET request failed with status 500',
+    )
   })
 })

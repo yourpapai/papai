@@ -88,7 +88,7 @@
   "plugins/task-provider-kaneo/schemas/global-search.ts": 0.23529411764705882,
   "plugins/task-provider-kaneo/schemas/list-tasks.ts": 0.4666666666666667,
   "plugins/task-provider-kaneo/schemas/update-project.ts": 1,
-  "plugins/task-provider-kaneo/search-tasks.ts": 0.6326530612244898,
+  "plugins/task-provider-kaneo/search-tasks.ts": 0.8163265306122449,
   "plugins/task-provider-kaneo/task-relations.ts": 0.47058823529411764,
   "plugins/task-provider-kaneo/task-resource.ts": 0.4387755102040816,
   "plugins/task-provider-kaneo/task-status.ts": 0.875,
