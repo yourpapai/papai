@@ -6,6 +6,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { findArtifact, PLAN_MARKER, renderArtifact, SPEC_MARKER } from '../../opencode-agent/src/artifacts.js'
+import { readBlock } from '../../opencode-agent/src/blocks.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import { DEFAULT_CHECKS } from '../../opencode-agent/src/config.js'
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
@@ -31,6 +32,7 @@ import {
   serializeState,
   STATE_MARKER,
 } from '../../opencode-agent/src/state-manager.js'
+import { STATUS_MARKER } from '../../opencode-agent/src/status-comment.js'
 import { createStatusReporter } from '../../opencode-agent/src/status-reporter.js'
 import type { AgentState, Phase, RunResult } from '../../opencode-agent/src/types.js'
 
@@ -2663,6 +2665,10 @@ describe('the status comment — rule 4, the state channel is untouched', () => 
     expect(loud.io.thread.length).toBeGreaterThan(quiet.io.thread.length)
     expect(statusPosts(loud)).toHaveLength(1)
     expect(statusPosts(loud)[0]).not.toContain(STATE_MARKER)
+    // And the comment that really went out carries the marker the prompt layer
+    // filters on — a renderer that grew one is worth nothing if the pipeline
+    // posts something else.
+    expect(readBlock(String(statusPosts(loud)[0]), STATUS_MARKER)).toEqual({ run: JOB_URL })
   })
 
   test('the comment a later job restores from is a report, never the status', async () => {

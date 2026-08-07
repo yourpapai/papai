@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { readBlock } from '../../opencode-agent/src/blocks.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import { DEFAULT_CHECKS } from '../../opencode-agent/src/config.js'
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
@@ -12,6 +13,7 @@ import type { PostedComment } from '../../opencode-agent/src/github.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
 import type { ProgressSnapshot } from '../../opencode-agent/src/progress.js'
 import {
+  extractState,
   findLatestState,
   findLatestStateComment,
   initialState,
@@ -19,7 +21,7 @@ import {
 } from '../../opencode-agent/src/state-manager.js'
 import { persistState } from '../../opencode-agent/src/state-persist.js'
 import type { StatePersistDeps } from '../../opencode-agent/src/state-persist.js'
-import { renderStatus } from '../../opencode-agent/src/status-comment.js'
+import { renderStatus, STATUS_MARKER } from '../../opencode-agent/src/status-comment.js'
 import type { StatusView } from '../../opencode-agent/src/status-comment.js'
 import { createStatusReporter, MIN_EDIT_INTERVAL_MS } from '../../opencode-agent/src/status-reporter.js'
 import type { StatusDeps } from '../../opencode-agent/src/status-reporter.js'
@@ -202,7 +204,34 @@ describe('renderStatus', () => {
     // Rule 4, at the renderer: `findLatestState` restores from the newest agent
     // comment carrying one, so a second writer of that block is a second source
     // of truth.
-    expect(renderStatus(view())).not.toContain('AGENT_STATE')
+    const body = renderStatus(view())
+
+    expect(body).not.toContain('AGENT_STATE')
+    expect(extractState(body)).toBeNull()
+  })
+
+  test('carries a marker of its own, so the prompt layer can leave it out', () => {
+    // The comment has to be findable without being believable. A marker is
+    // matched exactly, so `AGENT_STATUS` cannot be read as `AGENT_STATE` by the
+    // restore scan — and `renderThread` drops what carries it, because one
+    // progress table per run would otherwise eat the window the model reads the
+    // conversation through.
+    expect(readBlock(renderStatus(view()), STATUS_MARKER)).toEqual({ run: RUN_URL })
+  })
+
+  test('the two markers do not read as each other', () => {
+    expect(readBlock(renderStatus(view()), 'AGENT_STATE')).toBeUndefined()
+    expect(readBlock(`prose\n\n${serializeState(state())}`, STATUS_MARKER)).toBeUndefined()
+  })
+
+  test('a thread carrying status comments restores the same state as one without', () => {
+    // The rule-4 invariant at the scan itself, with the marked comment newest —
+    // which is where a marker that collided would do its damage.
+    const conversation = [withState(1, { phase: 'PLAN_REVIEW', planRevision: 2 })]
+    const interleaved = [...conversation, agentComment(2, renderStatus(view()))]
+
+    expect(findLatestState(interleaved, AGENT_LOGIN, ISSUE)).toEqual(findLatestState(conversation, AGENT_LOGIN, ISSUE))
+    expect(findLatestStateComment(interleaved, AGENT_LOGIN, ISSUE)?.comment.id).toBe(1)
   })
 })
 

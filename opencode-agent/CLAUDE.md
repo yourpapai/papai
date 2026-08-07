@@ -12,7 +12,9 @@ findings: `ROADMAP.md`.
 
 - One CI job = one call to `runCli`. State lives in hidden blocks on the issue,
   not on disk: `AGENT_STATE` for the machine, `AGENT_SPEC` / `AGENT_PLAN` /
-  `AGENT_REPORT` for the artefacts.
+  `AGENT_REPORT` for the artefacts. `AGENT_STATUS` is the odd one out — it marks
+  the run's live status comment so `renderThread` can leave it out of a prompt,
+  and it is read by nothing else.
 - `src/triggers.ts` decides _whether and where_ an event moves the state — it
   keeps the slash commands and the dispatch — with the red-CI half in
   `src/ci-trigger.ts`, the plain-comment half in `src/comment-intent.ts`, and the
@@ -30,9 +32,16 @@ findings: `ROADMAP.md`.
   `src/status-reporter.ts` the run's live status comment over the body
   `src/status-comment.ts` renders. Each channel has exactly one function that
   talks to GitHub, because "best-effort" has to be a property of one function
-  rather than a convention at each call site. `src/state-persist.ts` is the same
-  shape for a write that is not feedback at all: rewriting the state block in
-  place, so a run that posts nothing can still record what it spent.
+  rather than a convention at each call site. The status comment carries an
+  `AGENT_STATUS` block — never `AGENT_STATE`, which would give the restore scan a
+  second source of truth — so that `prompt-budget.ts` can drop it before the
+  twenty-comment window is taken; without that, every previous run's progress
+  table would take a slot from the conversation triage, answering and the
+  classifier are being asked to read. Filter that channel by **marker**, never by
+  author: the agent writes the spec, the plan and every report too.
+  `src/state-persist.ts` is the same shape for a write that is not feedback at
+  all: rewriting the state block in place, so a run that posts nothing can still
+  record what it spent.
 - Every external boundary is an injected interface (`GitHubApi`, `Git`,
   `CheckRunner`, `RunReview`, `OpenCodeAgent`, `ReadSkillFile`).
 

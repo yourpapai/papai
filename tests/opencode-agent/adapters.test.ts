@@ -35,6 +35,7 @@ import { collectText, decodeReply, decodeSessionId, decodeSessionUsage } from '.
 import type { SessionUsage } from '../../opencode-agent/src/sdk-contract.js'
 import { redactSecrets, scrubSecrets } from '../../opencode-agent/src/secrets.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
+import { STATUS_MARKER } from '../../opencode-agent/src/status-comment.js'
 import { PHASES } from '../../opencode-agent/src/types.js'
 
 describe('collectText', () => {
@@ -873,6 +874,9 @@ describe('untrusted envelope', () => {
 describe('renderThread', () => {
   const envelope = createEnvelope('abc123')
   const at = (id: number, authorLogin: string, body: string): IssueComment => ({ id, body, authorLogin })
+  /** One run's status comment, as the pipeline posts it: marked, agent-authored. */
+  const statusAt = (id: number): IssueComment =>
+    at(id, 'agent', `### 🛠️ Working\n\n${renderBlock(STATUS_MARKER, { run: `https://run/${id}` })}`)
 
   test('renders the tail of a long thread', () => {
     const thread = Array.from({ length: 30 }, (_unused, index) => at(index, 'maintainer', `comment ${index}`))
@@ -923,6 +927,39 @@ describe('renderThread', () => {
 
     expect(rendered).toContain('Visible.')
     expect(rendered).not.toContain('AGENT_STATE')
+  })
+
+  test('leaves the run’s status comments out of the prompt entirely', () => {
+    // Stage 3 put one status comment on the issue per run, and this renderer
+    // hands the model the tail of the thread regardless of who wrote it. A
+    // conversation spanning several runs would spend its window on progress
+    // tables, degrading exactly the phases that read the thread — triage,
+    // answering, and the classifier.
+    const conversation = [at(1, 'maintainer', 'Please add retries.'), at(2, 'agent', 'Here is the spec.')]
+    const withStatus = [statusAt(9), ...conversation, statusAt(10)]
+
+    expect(renderThread(envelope, withStatus)).toBe(renderThread(envelope, conversation))
+  })
+
+  test('spends the whole window on real conversation, not on progress tables', () => {
+    // Dropped before the window is taken, not after: filtering afterwards would
+    // still let a status comment consume one of the twenty slots.
+    const thread = [0, 2, 4].flatMap((index) => [at(index, 'maintainer', `comment ${index}`), statusAt(index + 1)])
+
+    const rendered = renderThread(envelope, thread, 3)
+
+    expect(rendered).toContain('comment 0')
+    expect(rendered).toContain('comment 2')
+    expect(rendered).toContain('comment 4')
+  })
+
+  test('keeps the artefact comments the agent wrote, which are the point', () => {
+    // The reason the filter is by marker and not by author: the spec, the plan
+    // and every phase report carry the same login as the status comment, and
+    // they are what the model is being asked to read.
+    const rendered = renderThread(envelope, [at(1, 'agent', 'Here is the design spec.')])
+
+    expect(rendered).toContain('Here is the design spec.')
   })
 
   test('caps the rendered size regardless of comment count', () => {

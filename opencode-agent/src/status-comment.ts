@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { renderBlock } from './blocks.js'
 import type { PipelineConfig } from './config.js'
 import { branchNameFor } from './git.js'
 import { phaseHeading, PRESENTATION, presentationFor } from './presentation.js'
@@ -26,12 +27,33 @@ import type { AgentState, Phase } from './types.js'
  * is a second source of truth; the phase-end comments stay the only state
  * channel, and this comment is invisible to the restore scan.
  *
+ * It does carry a block of its own, under {@link STATUS_MARKER}, and that is not
+ * a hedge on the rule above — `findLatestBlock` matches a marker exactly, so
+ * `AGENT_STATUS` cannot be mistaken for `AGENT_STATE` by the scan or by
+ * `readBlock`. The marker exists because this comment must be kept out of the
+ * *prompt*: `renderThread` hands the model the last twenty comments of the
+ * thread, so from the next job onward every previous run's progress table would
+ * take a slot from the conversation the model is being asked to read, and a
+ * feedback channel that quietly makes the agent worse at reading its own issue
+ * is the wrong trade. Marked rather than filtered by author, because the agent
+ * writes the spec and the plan too and blinding the model to those would be a
+ * much subtler version of the same mistake.
+ *
  * It also carries no free model text. Every field here is a phase, a count or a
  * status: the activity line comes from `ProgressSnapshot`, which has nowhere for
  * tool input, tool output or model prose to land, so the rule that progress
  * reporting carries names and counts only holds by construction rather than by
  * care — and this surface is a public issue, not a log.
  */
+
+/**
+ * Marks a comment as this pipeline's own progress reporting.
+ *
+ * Deliberately **not** `AGENT_STATE`, and deliberately not a variant of it: the
+ * restore scan matches a marker exactly, and the two are read by different
+ * layers for opposite reasons — one to be believed, one to be left out.
+ */
+export const STATUS_MARKER = 'AGENT_STATUS'
 
 /** One row of the progress table. */
 interface RunStep {
@@ -247,5 +269,9 @@ export const renderStatus = (view: StatusView): string => {
     '',
     ...activity,
     budgetLine(view),
+    '',
+    // The marker the prompt layer leaves out, carrying the run it belongs to so
+    // a reader of the raw thread can tell two runs' status comments apart.
+    renderBlock(STATUS_MARKER, { run: view.runUrl }),
   ].join('\n')
 }
