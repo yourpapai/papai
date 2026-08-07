@@ -95,3 +95,38 @@ test('CodingMcp — internal server pre-selected has no credential input', async
   await switchStory(sharedPage, 'settings-sections-codingmcpsection--internal-selected')
   await expect(sharedPage.getByTestId('coding-mcp-token-0')).toHaveCount(0)
 })
+
+test('CodingMcp — populated, narrow', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-codingmcpsection--populated')
+  await sharedPage.setViewportSize({ width: 640, height: 900 })
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('CodingMcp — empty, narrow', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-codingmcpsection--empty')
+  await sharedPage.setViewportSize({ width: 640, height: 900 })
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('CodingMcp — at the server cap', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-codingmcpsection--populated')
+  await sharedPage.getByTestId('coding-mcp-add').click()
+  await expect(sharedPage.getByTestId('coding-mcp-add')).toBeDisabled()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('CodingMcp — a blank server row blocks Save', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-codingmcpsection--empty')
+  await sharedPage.getByTestId('coding-mcp-add').click()
+  await expect(sharedPage.getByTestId('coding-mcp-save')).toBeDisabled()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('CodingMcp — a filled row enables Save, hovered', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-codingmcpsection--internal-available')
+  await sharedPage.getByTestId('coding-mcp-add').click()
+  await sharedPage.getByTestId('coding-mcp-server-0').selectOption('plugin:synthetic-web-search')
+  await expect(sharedPage.getByTestId('coding-mcp-save')).toBeEnabled()
+  await sharedPage.getByTestId('coding-mcp-save').hover()
+  await expect(sharedPage).toHaveScreenshot()
+})
