@@ -5,12 +5,13 @@
 
 import { findArtifact, REPORT_MARKER } from '../artifacts.js'
 import { branchNameFor } from '../git.js'
-import type { PullRequestPresentation, PullRequestRef } from '../github.js'
+import type { PullRequestPresentation, PullRequestRef, PullRequestStatus } from '../github.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
 
 /**
- * Phase 4. Opens the pull request, or refreshes the open one when a retry
- * re-enters this phase.
+ * Phase 4. Opens the pull request, refreshes the open one when a retry
+ * re-enters this phase, or reports that the branch's pull request has already
+ * been settled and stands down.
  *
  * Purely API-side — phase 3 already pushed the branch. That split is what makes
  * this phase resumable at all: it needs nothing from a working tree, so it
@@ -20,11 +21,17 @@ import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js
 export const handleDeliver: PhaseHandler = async (input): Promise<PhaseOutcome> => {
   const { deps, state } = input
   const branch = branchNameFor(state.issueId)
-  // Rendered once and used by both paths, so a reused pull request presents
-  // exactly what a freshly opened one would.
-  const presentation = renderPresentation(input)
 
-  const existing = await deps.github.findOpenPullRequest(branch)
+  const existing = await deps.github.findPullRequest(branch)
+  const settled = settledOutcome(existing)
+  if (settled !== null) {
+    deps.log.info({ issue: state.issueId, branch, pr: existing?.number, state: existing?.state }, 'Delivery stood down')
+    return settled
+  }
+
+  // Rendered once and used by both live paths, so a reused pull request
+  // presents exactly what a freshly opened one would.
+  const presentation = renderPresentation(input)
   const pr =
     existing === null
       ? await openPullRequest(input, branch, presentation)
@@ -39,6 +46,37 @@ export const handleDeliver: PhaseHandler = async (input): Promise<PhaseOutcome> 
   }
 }
 
+/**
+ * Ends delivery when the branch's pull request is no longer live.
+ *
+ * Neither outcome should produce a second pull request. A merged one means the
+ * work landed; an unmerged closed one means a maintainer rejected it, and
+ * re-opening the same diff would override that decision. Both would otherwise
+ * come back from an open-only lookup as `null` — "no pull request" — and be
+ * delivered again from a branch with nothing left to merge.
+ */
+const settledOutcome = (pr: PullRequestStatus | null): PhaseOutcome | null =>
+  pr === null || pr.state === 'open'
+    ? null
+    : { signal: 'PR_OPENED', comment: renderSettled(pr), patch: { prUrl: pr.url, prNumber: pr.number } }
+
+const SETTLED_REPORT: Record<'merged' | 'closed', (pr: PullRequestStatus) => readonly string[]> = {
+  merged: (pr) => [
+    '### Already merged',
+    '',
+    `Pull request ${pr.url} carried this work and has already merged, so there is nothing left to deliver.`,
+  ],
+  closed: (pr) => [
+    '### Pull request was closed',
+    '',
+    `Pull request ${pr.url} was closed without merging, so I am not opening a replacement for the same branch.`,
+    'Reopen it if you want me to carry on, or open a fresh issue for a different approach.',
+  ],
+}
+
+const renderSettled = (pr: PullRequestStatus): string =>
+  SETTLED_REPORT[pr.state === 'merged' ? 'merged' : 'closed'](pr).join('\n')
+
 const openPullRequest = async (
   input: PhaseInput,
   branch: string,
@@ -49,7 +87,7 @@ const openPullRequest = async (
 /** Brings a reused pull request back in step with the issue as it reads now. */
 const refresh = async (
   input: PhaseInput,
-  pr: PullRequestRef,
+  pr: PullRequestStatus,
   presentation: PullRequestPresentation,
 ): Promise<PullRequestRef> => {
   await input.deps.github.updatePullRequest(pr.number, presentation)

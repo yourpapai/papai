@@ -20,7 +20,7 @@ import { PipelineError } from '../../opencode-agent/src/errors.js'
 import { createGit } from '../../opencode-agent/src/git.js'
 import type { GitOptions } from '../../opencode-agent/src/git.js'
 import { createOctokitApi } from '../../opencode-agent/src/github.js'
-import type { GitHubApi } from '../../opencode-agent/src/github.js'
+import type { GitHubApi, PullRequestState } from '../../opencode-agent/src/github.js'
 import { createLogger, redact } from '../../opencode-agent/src/logger.js'
 import { extractJsonObject, parseModelJson } from '../../opencode-agent/src/model-json.js'
 import { composeSystemPrompt, loadPhaseSkills, loadSkills, PHASE_SKILLS } from '../../opencode-agent/src/obra-skills.js'
@@ -613,11 +613,20 @@ interface CapturedRequest {
   body: Record<string, unknown>
 }
 
-const jsonResponse = (): Response =>
-  new Response(JSON.stringify({ number: 3, html_url: 'https://example.test/pull/3' }), {
-    status: 200,
-    headers: { 'content-type': 'application/json' },
-  })
+const PR_JSON = { number: 3, html_url: 'https://example.test/pull/3' }
+
+const jsonResponse = (payload: unknown): Response =>
+  new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json' } })
+
+/** `[what the adapter should report, the API's `state`, its `merged_at`]`. */
+const PR_STATE_CASES: readonly (readonly [PullRequestState, string, string | null])[] = [
+  ['merged', 'closed', '2026-01-01T00:00:00Z'],
+  ['closed', 'closed', null],
+  ['open', 'open', null],
+]
+
+/** One `pulls.list` row, shaped like the fields the adapter reads. */
+const listing = (state: string, mergedAt: string | null): unknown[] => [{ ...PR_JSON, state, merged_at: mergedAt }]
 
 const parseBody = (body: unknown): Record<string, unknown> => {
   const parsed: unknown = typeof body === 'string' ? JSON.parse(body) : {}
@@ -625,14 +634,14 @@ const parseBody = (body: unknown): Record<string, unknown> => {
 }
 
 /** A real Octokit whose transport is a recorder, so no socket is opened. */
-const recordingApi = (captured: CapturedRequest[]): GitHubApi =>
+const recordingApi = (captured: CapturedRequest[], payload: unknown = PR_JSON): GitHubApi =>
   createOctokitApi({
     token: 'tok',
     owner: 'acme',
     repo: 'widgets',
     fetch: (url, init) => {
       captured.push({ url, method: init?.method ?? 'GET', body: parseBody(init?.body) })
-      return Promise.resolve(jsonResponse())
+      return Promise.resolve(jsonResponse(payload))
     },
   })
 
@@ -648,6 +657,30 @@ describe('createOctokitApi', () => {
     expect(request?.method).toBe('PATCH')
     expect(request?.url).toContain('/repos/acme/widgets/pulls/3')
     expect(request?.body).toEqual({ title: 'Renamed (#42)', body: 'Closes #42' })
+  })
+
+  test('asks for pull requests in every state, so a merged one is not invisible', async () => {
+    // With `state=open` the API answers `[]` for a merged pull request — the
+    // same answer it gives for a branch that never had one — and delivery
+    // opened a second pull request from the fully-merged branch.
+    const captured: CapturedRequest[] = []
+
+    await recordingApi(captured, []).findPullRequest('agent/issue-42')
+
+    expect(captured[0]?.url).toContain('state=all')
+    expect(captured[0]?.url).not.toContain('state=open')
+    // Ordering is load-bearing next to `per_page=1`: a branch that was merged
+    // and delivered again has more than one pull request, and the newest is the
+    // live one. GitHub happens to default this way; the query does not rely on
+    // it staying that way.
+    expect(captured[0]?.url).toContain('sort=created')
+    expect(captured[0]?.url).toContain('direction=desc')
+  })
+
+  test.each(PR_STATE_CASES)('reports a %s pull request', async (expected, apiState, mergedAt) => {
+    const found = await recordingApi([], listing(apiState, mergedAt)).findPullRequest('agent/issue-42')
+
+    expect(found).toEqual({ number: 3, url: 'https://example.test/pull/3', state: expected })
   })
 
   test('opens a pull request with the head, base and presentation it was given', async () => {

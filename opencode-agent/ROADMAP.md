@@ -553,11 +553,45 @@ a stale presentation, skipping the update entirely, and ignoring the transport
 seam — each kills the tests that name it. The last mutant also takes ~350ms
 instead of ~10ms, because without the seam the request reaches the real network._
 
-### S2-7 A merged PR is not detected on retry — by inspection
+### S2-7 A merged PR is not detected on retry — verified — **[FIXED]**
 
-`findOpenPullRequest` (`src/github.ts:62-77`) filters `state: 'open'`. If the PR
-merged and someone `/retry`s, the pipeline opens a _second_ PR from the
-now-merged branch, almost certainly with an empty diff.
+_Verified against the real adapter through the new transport seam: the lookup
+sent `?state=open&head=acme%3Aagent%2Fissue-42&per_page=1` and returned `null`
+for a merged pull request — **the same answer it gives for a branch that never
+had one**. Delivery read that as "no pull request" and opened a second one from
+a fully-merged branch._
+
+_Fixed by widening the question rather than special-casing the merge.
+`findOpenPullRequest` became `findPullRequest`, querying `state: 'all'` and
+returning a `PullRequestStatus` whose `state` is `open | merged | closed`.
+Merged is read from `merged_at` — the list endpoint carries the timestamp but
+not the `merged` boolean, which only the single-pull-request endpoint returns —
+so no extra API call is needed._
+
+_Delivery now stands down on **either** settled state, not just the one the
+finding named. Merged means the work landed; closed-unmerged means a maintainer
+rejected it, and re-opening the same diff would override that decision. Both
+previously came back as `null` and produced a twin. Each posts a distinct comment
+and records the pull request in state, so the issue reads correctly either way._
+
+_`sort: 'created', direction: 'desc'` is now explicit. GitHub defaults to it, so
+dropping it is behaviourally equivalent today — the mutant survived until a test
+pinned the query — but ordering is load-bearing next to `per_page: 1`: a branch
+that merged and was delivered again has more than one pull request, and the
+newest is the live one._
+
+_Mutation-checked five ways — reverting to `state: 'open'`, ignoring `merged_at`,
+skipping the stand-down, standing down only for merged, and dropping the sort —
+each now kills the test that names it._
+
+### S2-11 CI-fixing continues on a merged branch — by inspection
+
+Same underlying blindness as S2-7, on the other code path, and deliberately left
+open rather than folded into that fix. `COMPLETE + CI_FAILED → CI_FIX` never asks
+what became of the pull request, so a red check on an already-merged
+`agent/issue-N` branch buys a full fix round whose commits are pushed somewhere
+nobody will look. `state.prNumber` is persisted, so the check is available; the
+cost is one API call per CI event and a transition for "nothing to fix".
 
 ### S2-8 `parseRepository` silently truncates — by inspection — **[FIXED]**
 

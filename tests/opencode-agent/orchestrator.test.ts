@@ -10,7 +10,7 @@ import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import { DEFAULT_CHECKS } from '../../opencode-agent/src/config.js'
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
 import type { Git } from '../../opencode-agent/src/git.js'
-import type { GitHubApi, PullRequestRef } from '../../opencode-agent/src/github.js'
+import type { GitHubApi, PullRequestRef, PullRequestStatus } from '../../opencode-agent/src/github.js'
 import type { CiTriggerEvent, IssueTriggerEvent } from '../../opencode-agent/src/guardrails.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
 import type { AgentPromptRequest, OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
@@ -101,7 +101,8 @@ interface PipelineIo {
   /** What `git` would report as the remote's default branch. */
   detectedBranch: string | null
   createdPr: PullRequestRef | null
-  openPr: PullRequestRef | null
+  /** What the branch's pull request lookup reports, whatever became of it. */
+  existingPr: PullRequestStatus | null
   prBodies: string[]
   prTitles: string[]
 }
@@ -129,7 +130,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     reviewResult: { outcome: 'passed', summary: 'no issues found', exitCode: 0 },
     detectedBranch: BASE_BRANCH,
     createdPr: null,
-    openPr: null,
+    existingPr: null,
     prBodies: [],
     prTitles: [],
   }
@@ -146,7 +147,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     },
     getIssue: () => Promise.resolve({ number: ISSUE, title: 'Add retries', body: 'Please add retries.' }),
     getAuthenticatedLogin: () => Promise.resolve(AGENT_LOGIN),
-    findOpenPullRequest: () => Promise.resolve(io.openPr),
+    findPullRequest: () => Promise.resolve(io.existingPr),
     createPullRequest: (input) => {
       io.prBodies.push(input.body)
       io.prTitles.push(input.title)
@@ -549,7 +550,7 @@ describe('implementation and delivery', () => {
   })
 
   test('refreshes an already-open pull request rather than opening a second', async () => {
-    harness.io.openPr = { number: 3, url: 'https://example.test/pull/3' }
+    harness.io.existingPr = { number: 3, url: 'https://example.test/pull/3', state: 'open' }
 
     await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
@@ -561,7 +562,7 @@ describe('implementation and delivery', () => {
   test('a reused pull request follows the issue as it reads now, not as it read when opened', async () => {
     // An earlier job opened the pull request under the old name. Refreshing
     // used to patch the body alone, so the title stayed frozen there forever.
-    harness.io.openPr = { number: 3, url: 'https://example.test/pull/3' }
+    harness.io.existingPr = { number: 3, url: 'https://example.test/pull/3', state: 'open' }
     const renamed = issueEvent({
       eventName: 'issue_comment',
       action: 'created',
@@ -573,6 +574,32 @@ describe('implementation and delivery', () => {
 
     expect(harness.io.createdPr).toBeNull()
     expect(harness.io.prTitles).toEqual([`Add retries and backoff (#${ISSUE})`])
+  })
+
+  test('stands down instead of opening a second pull request once the first merged', async () => {
+    // An open-only lookup reports a merged pull request as `[]` — identical to
+    // one that never existed — so delivery used to open a twin from a branch
+    // with nothing left to merge.
+    harness.io.existingPr = { number: 3, url: 'https://example.test/pull/3', state: 'merged' }
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.createdPr).toBeNull()
+    expect(harness.io.prTitles).toEqual([])
+    expect(harness.io.posted.at(-1)).toContain('already merged')
+    expect(latestPostedState(harness)?.prNumber).toBe(3)
+  })
+
+  test('does not re-open work a maintainer closed', async () => {
+    harness.io.existingPr = { number: 3, url: 'https://example.test/pull/3', state: 'closed' }
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.createdPr).toBeNull()
+    expect(harness.io.prTitles).toEqual([])
+    expect(harness.io.posted.at(-1)).toContain('closed without merging')
   })
 
   test('reports a repository with no review loop as unconfigured, not as red', async () => {

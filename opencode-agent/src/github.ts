@@ -34,6 +34,20 @@ export interface PullRequestRef {
 }
 
 /**
+ * What became of a branch's pull request.
+ *
+ * `merged` and `closed` are reported rather than filtered out. Asking only for
+ * *open* pull requests made a merged one indistinguishable from one that never
+ * existed — the query came back `[]` either way — so a retry after a merge
+ * opened a second pull request from the fully-merged branch.
+ */
+export type PullRequestState = 'open' | 'merged' | 'closed'
+
+export interface PullRequestStatus extends PullRequestRef {
+  state: PullRequestState
+}
+
+/**
  * The narrow GitHub surface the pipeline needs. Everything downstream depends on
  * this interface rather than Octokit, so phase handlers are testable without an
  * HTTP stub layer.
@@ -43,7 +57,8 @@ export interface GitHubApi {
   createComment(issueNumber: number, body: string): Promise<{ id: number; url: string }>
   getIssue(issueNumber: number): Promise<IssueContext>
   getAuthenticatedLogin(): Promise<string>
-  findOpenPullRequest(head: string): Promise<PullRequestRef | null>
+  /** The newest pull request from `head`, whatever became of it. */
+  findPullRequest(head: string): Promise<PullRequestStatus | null>
   createPullRequest(input: PullRequestInput): Promise<PullRequestRef>
   updatePullRequest(number: number, patch: PullRequestPresentation): Promise<void>
 }
@@ -87,17 +102,29 @@ const listIssueComments = async (octokit: Octokit, repo: Repo, issueNumber: numb
   }))
 }
 
-const findOpenPullRequest = async (octokit: Octokit, repo: Repo, head: string): Promise<PullRequestRef | null> => {
+const findPullRequest = async (octokit: Octokit, repo: Repo, head: string): Promise<PullRequestStatus | null> => {
   const { data } = await octokit.rest.pulls.list({
     ...repo,
-    state: 'open',
+    state: 'all',
     head: `${repo.owner}:${head}`,
+    sort: 'created',
+    direction: 'desc',
     per_page: 1,
   })
 
   const existing = data[0]
-  return existing === undefined ? null : { number: existing.number, url: existing.html_url }
+  if (existing === undefined) return null
+
+  return {
+    number: existing.number,
+    url: existing.html_url,
+    // `merged_at` rather than `merged`: the list endpoint carries the timestamp
+    // but not the boolean, which only the single-pull-request endpoint returns.
+    state: existing.merged_at === null ? closedOrOpen(existing.state) : 'merged',
+  }
 }
+
+const closedOrOpen = (state: string): PullRequestState => (state === 'open' ? 'open' : 'closed')
 
 /** Builds a {@link GitHubApi} backed by `@octokit/rest`. */
 export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
@@ -108,7 +135,7 @@ export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
 
   return {
     listIssueComments: (issueNumber) => listIssueComments(octokit, repo, issueNumber),
-    findOpenPullRequest: (head) => findOpenPullRequest(octokit, repo, head),
+    findPullRequest: (head) => findPullRequest(octokit, repo, head),
 
     createComment: async (issueNumber, body) => {
       const { data } = await octokit.rest.issues.createComment({
