@@ -1572,9 +1572,28 @@ dependency the agent adds on its own branch is not installed. That was already
 true of the issue-triggered path — it is uniform now rather than new — and
 belongs with S2 rather than here.
 
-**Not verified locally.** This container has neither a Semgrep binary nor Docker,
-so the fix is reasoned from the rule's published pattern, not from a green local
-run. CI is the check.
+**Verified after all.** Semgrep installs from PyPI, so the pinned 1.156.0 went
+into a virtualenv and the CI command ran here: `0 findings`. The rule no longer
+matches.
+
+That green finding count then exposed a second failure hiding behind it. With no
+findings to return, `--strict` surfaced exit code **3** — "could not fully parse
+a file" — which had been masked for as long as the scan had a finding to report,
+because a finding exits 1. The file is named only under `--verbose`:
+`opencode-agent/src/blocks.ts:117`, and the cause is three characters. Semgrep's
+TypeScript parser reads `<!--` as the Annex B HTML-like comment opener **inside a
+regex literal**, and skips the rest of the line. Isolated by bisecting the
+literal: a regex containing that sequence fails to parse, the same regex without
+it parses, and writing the `<` as a one-character class parses. A comment or a
+string holding the same sequence is fine — checked, not assumed, which is why the
+guard below exempts prose.
+
+The line predates this branch's recent work (`4319530`); nothing in the fix above
+caused it, the fix merely removed the finding that was hiding it. `stripBlocks`
+now writes `[<]!--`, identical at run time, and `tests/scripts/run-semgrep.test.ts`
+fails if anyone reintroduces the shape — a scan that fails with no finding to
+point at is the worst kind to inherit. Full scan afterwards: 0 findings, parsed
+lines ~100%.
 
 ### S5-8 — what the finding meant once its file was gone
 

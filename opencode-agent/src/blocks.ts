@@ -113,5 +113,16 @@ export const findLatestBlock = (
   return undefined
 }
 
-/** Strips every hidden block from a body — used before showing it to the model. */
-export const stripBlocks = (body: string): string => body.replace(/<!--\s*[A-Z][\dA-Z_]*:\s*[\S\s]*?-->/gu, '').trim()
+/**
+ * Strips every hidden block from a body — used before showing it to the model.
+ *
+ * `[<]` rather than a plain `<`, which is the same character class of one and
+ * changes nothing at run time. Semgrep's TypeScript parser reads the literal
+ * `<!--` as the Annex B HTML-like comment opener even inside a regex literal,
+ * fails to parse the rest of the line, and `--strict` turns that into a failed
+ * security scan with no finding to explain it. Isolated to the three characters:
+ * a regex containing `/<!--` fails to parse, the same regex without it parses,
+ * and this form parses. Every other `<!--` in this file is inside a string,
+ * which the parser handles.
+ */
+export const stripBlocks = (body: string): string => body.replace(/[<]!--\s*[A-Z][\dA-Z_]*:\s*[\S\s]*?-->/gu, '').trim()
