@@ -21,6 +21,10 @@ Run workspace commands from the repo root:
 - `bun run review-loop:format:check`
 - `bun run review-loop:start -- --config <path> --plan <path>`
 
+`--plan` is plan-format-agnostic (it parses `- [ ]` checkboxes from any markdown
+file resolved against the repo root). For OpenSpec-tracked work, point it at the
+change's task list: `--plan openspec/changes/<name>/tasks.md`.
+
 ## TDD Hooks
 
 The repo TDD resolver treats `review-loop/src/**` as gateable implementation code and maps it to `tests/review-loop/**`. New review-loop work must follow the same test-first flow used under `src/` and other repo-owned implementation paths.
