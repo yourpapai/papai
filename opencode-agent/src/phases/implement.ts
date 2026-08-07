@@ -10,7 +10,7 @@ import { fence } from '../markdown.js'
 import { composeSystemPrompt } from '../obra-skills.js'
 import type { PhaseHandler, PhaseOutcome } from '../phase-context.js'
 import { buildImplementPrompt } from '../prompts.js'
-import type { ReviewRunResult } from '../review-runner.js'
+import type { ReviewOutcome, ReviewRunResult } from '../review-runner.js'
 import { envelopeFor } from './envelope.js'
 
 const IMPLEMENT_INSTRUCTIONS = [
@@ -56,7 +56,7 @@ export const handleImplement: PhaseHandler = async (input): Promise<PhaseOutcome
   await deps.git.commitAll(reviewMessage(state.issueId))
   await deps.git.push(branch)
 
-  deps.log.info({ issue: state.issueId, branch, reviewPassed: review.passed }, 'Implementation pushed')
+  deps.log.info({ issue: state.issueId, branch, review: review.outcome }, 'Implementation pushed')
 
   const report = renderReport(review)
   return {
@@ -73,19 +73,28 @@ const implementMessage = (issueNumber: number): string =>
 const reviewMessage = (issueNumber: number): string =>
   `fix(agent): apply review-loop findings for issue #${issueNumber}\n\nRefs #${issueNumber}`
 
+const REVIEW_LINE: Record<ReviewOutcome, (exitCode: number) => string> = {
+  passed: () => '✅ clean',
+  failed: (exitCode) => `❌ exited ${exitCode}`,
+  // Not a failure: this repository simply has no review loop configured, and
+  // saying "❌" for that would report every run elsewhere as permanently red.
+  unavailable: () => '— not configured for this repository',
+}
+
 const renderReport = (review: ReviewRunResult): string => {
-  const lines = [
-    '### Implementation report',
-    '',
-    `- Review loop: ${review.passed ? '✅ clean' : `❌ exited ${review.exitCode}`}`,
-    '',
-    '<details><summary>review-loop summary</summary>',
-    '',
-    // The summary is the workspace's own output and can contain fences.
-    fence(review.summary),
-    '',
-    '</details>',
-  ]
+  const lines = ['### Implementation report', '', `- Review loop: ${REVIEW_LINE[review.outcome](review.exitCode)}`]
+
+  if (review.outcome !== 'unavailable') {
+    lines.push(
+      '',
+      '<details><summary>review-loop summary</summary>',
+      '',
+      // The summary is the workspace's own output and can contain fences.
+      fence(review.summary),
+      '',
+      '</details>',
+    )
+  }
 
   return lines.join('\n')
 }

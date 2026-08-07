@@ -3,6 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { existsSync } from 'node:fs'
+import path from 'node:path'
+
 import { z } from 'zod'
 
 import type { CheckSpec } from './check-loop.js'
@@ -30,8 +33,10 @@ export interface PipelineConfig {
   baseBranch: string
   commitAuthorName: string
   commitAuthorEmail: string
-  /** Build gate the review-loop workspace runs between rounds. */
+  /** Build gate the review loop runs between rounds. */
   checkCommand: string
+  /** Argv that runs the review loop, or `null` when this repo has none. */
+  reviewCommand: readonly string[] | null
   /** Commands the CI-fix phase runs locally to reproduce a red pull request. */
   checks: readonly CheckSpec[]
   reviewMaxRounds: number
@@ -122,6 +127,45 @@ export const loadOpenAiSettings = (env: Env): OpenAiSettings => ({
 /** Skill roots searched in order; the vendored superpowers checkout wins. */
 const DEFAULT_SKILL_ROOTS = ['.superpowers/skills', '.claude/skills'] as const
 
+/** This repository's own review-loop workspace, when the checkout has one. */
+const REVIEW_LOOP_ENTRY = 'review-loop/src/cli.ts'
+
+/**
+ * Resolves the review command.
+ *
+ * The default is this repository's `review-loop/` workspace, but it is detected
+ * rather than assumed: a checkout without it has *no review configured*, which
+ * is a different thing from a review that failed. Baking the path in made every
+ * run elsewhere report a permanently red review reading `Module not found` —
+ * the same papai-specific hardcoding the mutation check was removed for.
+ *
+ * `AGENT_REVIEW_COMMAND` overrides with a JSON argv array; `"none"` disables it.
+ */
+export const resolveReviewCommand = (
+  raw: string | undefined,
+  repoRoot: string,
+  exists: (filePath: string) => boolean,
+): readonly string[] | null => {
+  const configured = raw === undefined ? '' : raw.trim()
+  if (configured.toLowerCase() === 'none') return null
+
+  if (configured.length > 0) {
+    const parsed = z.array(z.string().min(1)).min(1).safeParse(safeJsonArgv(configured))
+    if (!parsed.success) throw new ConfigError(`AGENT_REVIEW_COMMAND must be a JSON array of strings`)
+    return parsed.data
+  }
+
+  return exists(path.join(repoRoot, REVIEW_LOOP_ENTRY)) ? ['bun', 'run', REVIEW_LOOP_ENTRY] : null
+}
+
+const safeJsonArgv = (raw: string): unknown => {
+  try {
+    return JSON.parse(raw)
+  } catch {
+    throw new ConfigError('AGENT_REVIEW_COMMAND must be valid JSON')
+  }
+}
+
 /** Builds the pipeline config from the runner environment. */
 export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
   const { owner, repo } = parseRepository(required(env, 'GITHUB_REPOSITORY'))
@@ -138,6 +182,7 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     commitAuthorName: optional(env, 'AGENT_COMMIT_NAME', 'opencode-agent[bot]'),
     commitAuthorEmail: optional(env, 'AGENT_COMMIT_EMAIL', 'opencode-agent@users.noreply.github.com'),
     checkCommand: optional(env, 'AGENT_CHECK_COMMAND', 'bun run lint && bun run typecheck && bun test'),
+    reviewCommand: resolveReviewCommand(env['AGENT_REVIEW_COMMAND'], repoRoot, existsSync),
     checks: parseChecks(env['AGENT_CHECKS']),
     reviewMaxRounds: positiveInt(env, 'AGENT_REVIEW_MAX_ROUNDS', 4),
     reviewPoolSize: positiveInt(env, 'AGENT_REVIEW_POOL_SIZE', 2),

@@ -111,6 +111,12 @@ The `mutation-improve/` workspace is deliberately _not_ wired in: it selects
 files and opens its own pull requests, which would conflict with a pipeline whose
 job is to open one. Run it separately.
 
+The workspace is **detected, not assumed**. A checkout without `review-loop/` has
+no review configured — which is a different thing from a review that failed — and
+the implementation report says so rather than showing a permanently red review.
+Point `AGENT_REVIEW_COMMAND` at your own reviewer to change that, or set it to
+`none` to skip the step deliberately.
+
 `check-loop.ts` remains, but only for CI fixing — "make these named commands
 green" is a different problem from "review this diff", and the workspace does not
 cover it.
@@ -152,26 +158,27 @@ used by the in-process SDK session _and_, via `OPENCODE_CONFIG_CONTENT`, by the
 `opencode run` subprocesses the review loop spawns — one definition, so the two
 cannot drift.
 
-| Variable                                   | Required | Default                                         | Purpose                                           |
-| ------------------------------------------ | -------- | ----------------------------------------------- | ------------------------------------------------- |
-| `OPENAI_API_KEY`                           | yes      | —                                               | Model credentials                                 |
-| `OPENAI_MODEL`                             | yes      | —                                               | Model name, e.g. `gpt-5`                          |
-| `OPENAI_BASE_URL`                          | no       | `https://api.openai.com/v1`                     | Any OpenAI-compatible endpoint                    |
-| `GITHUB_TOKEN`                             | yes      | —                                               | Comments, branches, pull requests                 |
-| `GITHUB_REPOSITORY`                        | yes      | —                                               | `owner/repo`                                      |
-| `AGENT_SELF_LOGIN`                         | no       | repository owner                                | Login treated as the agent itself                 |
-| `AGENT_WORKFLOW_NAME`                      | no       | `OpenCode Issue Agent`                          | This workflow's name, for the CI recursion guard  |
-| `AGENT_BASE_BRANCH`                        | no       | `main`                                          | Branch the PR targets                             |
-| `AGENT_CHECK_COMMAND`                      | no       | `bun run lint && bun run typecheck && bun test` | review-loop's build gate                          |
-| `AGENT_CHECKS`                             | no       | lint / typecheck / test                         | JSON `[{ "name", "argv" }]` the CI-fix phase runs |
-| `AGENT_REVIEW_MAX_ROUNDS`                  | no       | `4`                                             | review-loop rounds                                |
-| `AGENT_REVIEW_POOL_SIZE`                   | no       | `2`                                             | review-loop worker pool                           |
-| `AGENT_CI_FIX_MAX_ROUNDS`                  | no       | `2`                                             | Repair rounds per CI-fix job                      |
-| `AGENT_MAX_CI_ATTEMPTS`                    | no       | `3`                                             | CI-fix jobs per pull request                      |
-| `AGENT_MAX_ATTEMPTS`                       | no       | `3`                                             | Failures before `/retry` stops resuming           |
-| `AGENT_TIMEOUT_MS`                         | no       | `1800000`                                       | Per-subprocess timeout                            |
-| `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no       | `opencode-agent[bot]`                           | Commit identity                                   |
-| `AGENT_LOG_LEVEL`                          | no       | `info`                                          | `debug`, `info`, `warn`, `error`                  |
+| Variable                                   | Required | Default                                         | Purpose                                               |
+| ------------------------------------------ | -------- | ----------------------------------------------- | ----------------------------------------------------- |
+| `OPENAI_API_KEY`                           | yes      | —                                               | Model credentials                                     |
+| `OPENAI_MODEL`                             | yes      | —                                               | Model name, e.g. `gpt-5`                              |
+| `OPENAI_BASE_URL`                          | no       | `https://api.openai.com/v1`                     | Any OpenAI-compatible endpoint                        |
+| `GITHUB_TOKEN`                             | yes      | —                                               | Comments, branches, pull requests                     |
+| `GITHUB_REPOSITORY`                        | yes      | —                                               | `owner/repo`                                          |
+| `AGENT_SELF_LOGIN`                         | no       | repository owner                                | Login treated as the agent itself                     |
+| `AGENT_WORKFLOW_NAME`                      | no       | `OpenCode Issue Agent`                          | This workflow's name, for the CI recursion guard      |
+| `AGENT_BASE_BRANCH`                        | no       | `main`                                          | Branch the PR targets                                 |
+| `AGENT_CHECK_COMMAND`                      | no       | `bun run lint && bun run typecheck && bun test` | review-loop's build gate                              |
+| `AGENT_REVIEW_COMMAND`                     | no       | detected                                        | JSON argv running the review loop; `none` disables it |
+| `AGENT_CHECKS`                             | no       | lint / typecheck / test                         | JSON `[{ "name", "argv" }]` the CI-fix phase runs     |
+| `AGENT_REVIEW_MAX_ROUNDS`                  | no       | `4`                                             | review-loop rounds                                    |
+| `AGENT_REVIEW_POOL_SIZE`                   | no       | `2`                                             | review-loop worker pool                               |
+| `AGENT_CI_FIX_MAX_ROUNDS`                  | no       | `2`                                             | Repair rounds per CI-fix job                          |
+| `AGENT_MAX_CI_ATTEMPTS`                    | no       | `3`                                             | CI-fix jobs per pull request                          |
+| `AGENT_MAX_ATTEMPTS`                       | no       | `3`                                             | Failures before `/retry` stops resuming               |
+| `AGENT_TIMEOUT_MS`                         | no       | `1800000`                                       | Per-subprocess timeout                                |
+| `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no       | `opencode-agent[bot]`                           | Commit identity                                       |
+| `AGENT_LOG_LEVEL`                          | no       | `info`                                          | `debug`, `info`, `warn`, `error`                      |
 
 `OPENAI_MODEL` is required rather than defaulted: with a custom base URL there is
 no model name that is right by default, and a wrong guess surfaces deep inside

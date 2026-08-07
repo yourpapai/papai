@@ -39,9 +39,6 @@ export const openCodeError = (message: string): PipelineError => new PipelineErr
 export const modelResponseError = (message: string, raw: string): PipelineError =>
   new PipelineError('MODEL_RESPONSE', `${message}\n\nRaw reply:\n${raw.slice(0, 2000)}`)
 
-export const reviewLoopError = (exitCode: number, summary: string): PipelineError =>
-  new PipelineError('REVIEW_LOOP', `The review-loop workspace exited ${exitCode}.\n\n${summary}`)
-
 export const missingSkillError = (phase: string, names: readonly string[]): PipelineError =>
   new PipelineError(
     'MISSING_SKILL',

@@ -43,6 +43,7 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   commitAuthorName: 'agent',
   commitAuthorEmail: 'agent@example.com',
   checkCommand: 'bun test',
+  reviewCommand: ['bun', 'run', 'review-loop/src/cli.ts'],
   checks: DEFAULT_CHECKS,
   reviewMaxRounds: 2,
   reviewPoolSize: 1,
@@ -122,7 +123,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     gitCalls: [],
     checkResults: new Map(),
     replies: [],
-    reviewResult: { passed: true, summary: 'no issues found', exitCode: 0 },
+    reviewResult: { outcome: 'passed', summary: 'no issues found', exitCode: 0 },
     createdPr: null,
     openPr: null,
     prBodies: [],
@@ -547,8 +548,20 @@ describe('implementation and delivery', () => {
     expect(harness.io.posted.at(-1)).toContain('https://example.test/pull/3')
   })
 
+  test('reports a repository with no review loop as unconfigured, not as red', async () => {
+    // A checkout without the workspace has no review configured; that is not a
+    // review that failed, and calling it one made every run elsewhere red.
+    harness.io.reviewResult = { outcome: 'unavailable', summary: 'No review loop is configured.', exitCode: 0 }
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.posted[0]).toContain('not configured for this repository')
+    expect(harness.io.posted[0]).not.toContain('❌')
+  })
+
   test('still delivers when the review loop exits red, and says so', async () => {
-    harness.io.reviewResult = { passed: false, summary: 'two issues left open', exitCode: 1 }
+    harness.io.reviewResult = { outcome: 'failed', summary: 'two issues left open', exitCode: 1 }
 
     const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
 

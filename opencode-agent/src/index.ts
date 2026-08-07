@@ -126,6 +126,7 @@ const makeReviewRunner =
     runReviewLoop({
       settings: {
         repoRoot: config.repoRoot,
+        command: config.reviewCommand,
         openai: config.openai,
         checkCommand: config.checkCommand,
         maxRounds: config.reviewMaxRounds,

@@ -6,7 +6,6 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { reviewLoopError } from './errors.js'
 import type { Logger } from './logger.js'
 import { modelRef } from './openai-config.js'
 import type { OpenAiSettings } from './openai-config.js'
@@ -29,6 +28,8 @@ export const AGENT_WORK_DIR = '.opencode-agent'
 
 export interface ReviewLoopSettings {
   repoRoot: string
+  /** Argv that runs the review loop, or `null` when this repo has none. */
+  command: readonly string[] | null
   openai: OpenAiSettings
   /** Shell command the loop runs as its build gate between rounds. */
   checkCommand: string
@@ -61,8 +62,18 @@ export const buildReviewLoopConfig = (settings: ReviewLoopSettings): Record<stri
   }
 }
 
+/**
+ * `unavailable` is a distinct outcome, not a failure.
+ *
+ * The review loop is this repository's own workspace, so a checkout that does
+ * not have it is not a repository whose review failed — it is one with no review
+ * configured. Collapsing the two made every run in any other repository report a
+ * permanently red review whose summary read `Module not found`.
+ */
+export type ReviewOutcome = 'passed' | 'failed' | 'unavailable'
+
 export interface ReviewRunResult {
-  passed: boolean
+  outcome: ReviewOutcome
   /** The loop's own summary block, or the tail of its output when it crashed. */
   summary: string
   exitCode: number
@@ -116,23 +127,22 @@ export const writeReviewInputs = async (
  */
 export const runReviewLoop = async (options: RunReviewLoopOptions): Promise<ReviewRunResult> => {
   const { settings, log } = options
-  const { planPath, configPath } = await writeReviewInputs(settings, options.plan)
 
-  log.info({ planPath, configPath, maxRounds: settings.maxRounds }, 'Starting review-loop workspace')
+  if (settings.command === null) {
+    log.warn({ repoRoot: settings.repoRoot }, 'No review loop configured; skipping the review')
+    return { outcome: 'unavailable', summary: 'No review loop is configured for this repository.', exitCode: 0 }
+  }
+
+  const { planPath, configPath } = await writeReviewInputs(settings, options.plan)
+  log.info({ planPath, configPath, maxRounds: settings.maxRounds }, 'Starting review loop')
 
   const result = await options.run(
-    ['bun', 'run', 'review-loop/src/cli.ts', '--config', configPath, '--plan', planPath, '--repo', settings.repoRoot],
+    [...settings.command, '--config', configPath, '--plan', planPath, '--repo', settings.repoRoot],
     { cwd: settings.repoRoot, env: options.env, timeoutMs: options.timeoutMs },
   )
 
   const summary = extractSummary(result)
-  log.info({ exitCode: result.exitCode }, 'review-loop workspace finished')
+  log.info({ exitCode: result.exitCode }, 'Review loop finished')
 
-  return { passed: result.exitCode === 0, summary, exitCode: result.exitCode }
-}
-
-/** Raises the loop's failure as a pipeline error, with its summary attached. */
-export const assertReviewPassed = (result: ReviewRunResult): void => {
-  if (result.passed) return
-  throw reviewLoopError(result.exitCode, result.summary)
+  return { outcome: result.exitCode === 0 ? 'passed' : 'failed', summary, exitCode: result.exitCode }
 }

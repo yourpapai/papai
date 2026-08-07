@@ -449,7 +449,30 @@ author expected `attempts` to mean something it does not.
 
 ### S2-4 The mutation check is hardcoded and papai-specific — by inspection — **[FIXED]**
 
-_Fixed differently than suggested: the custom mutation loop is gone. `mutation-improve/` opens its own pull requests, so it is not wired into a pipeline whose job is to open one._
+_The custom mutation loop is gone — `mutation-improve/` opens its own pull
+requests, so it is not wired into a pipeline whose job is to open one.
+
+That removed the instance and reintroduced the class, more centrally. The
+review-loop integration that replaced it hardcoded `bun run
+review-loop/src/cli.ts`, a path that exists in exactly one repository, and phase
+3 depends on it. Reproduced: in a checkout without the workspace the review
+reports `Module not found`, so every run shows a permanently red review that has
+nothing to do with the code under change.
+
+Both halves of this finding's original direction now apply, to the review loop
+rather than to the mutation check:
+
+- **Configurable.** `AGENT_REVIEW_COMMAND` takes a JSON argv; `none` disables the
+  step deliberately.
+- **Missing runner is not a failed run.** The default is _detected_ — the
+  workspace is used when the checkout has it — and a repository without one
+  reports "not configured for this repository" instead of a red review.
+  `ReviewRunResult` carries a three-way `outcome` so the two cannot be collapsed
+  by accident.
+
+Mutation-checked in both directions: hardcoding the path again turns the
+detection test red, and collapsing `unavailable` into `failed` turns the report
+test red. The unreachable `reviewLoopError` factory is deleted._
 
 `src/config.ts:19-22` hardcodes `bun run test:mutate:changed`, and `:116` wires
 it in with no environment override (unlike `AGENT_CHECKS`). Any repository other

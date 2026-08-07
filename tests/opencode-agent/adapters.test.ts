@@ -8,7 +8,7 @@ import { describe, expect, test } from 'bun:test'
 import { z } from 'zod'
 
 import { renderBlock } from '../../opencode-agent/src/blocks.js'
-import { loadConfig, parseChecks, parseRepository } from '../../opencode-agent/src/config.js'
+import { loadConfig, parseChecks, parseRepository, resolveReviewCommand } from '../../opencode-agent/src/config.js'
 import type { Env } from '../../opencode-agent/src/config.js'
 import { PipelineError } from '../../opencode-agent/src/errors.js'
 import { createGit } from '../../opencode-agent/src/git.js'
@@ -534,6 +534,33 @@ describe('config', () => {
 
   test.each(['not json', '[]', '[{"name":"unit"}]'])('parseChecks rejects %p', (raw) => {
     expect(() => parseChecks(raw)).toThrow('AGENT_CHECKS')
+  })
+})
+
+describe('resolveReviewCommand', () => {
+  const present = (): boolean => true
+  const absent = (): boolean => false
+
+  test('defaults to this repository\u2019s review-loop workspace when it is there', () => {
+    expect(resolveReviewCommand(undefined, '/repo', present)).toEqual(['bun', 'run', 'review-loop/src/cli.ts'])
+  })
+
+  test('reports no review loop rather than a broken one when the workspace is absent', () => {
+    // Hardcoding the path made every run in any other repository report a
+    // permanently red review whose summary read "Module not found".
+    expect(resolveReviewCommand(undefined, '/repo', absent)).toBeNull()
+  })
+
+  test('an explicit command wins over detection', () => {
+    expect(resolveReviewCommand('["npm","run","review"]', '/repo', absent)).toEqual(['npm', 'run', 'review'])
+  })
+
+  test.each(['none', 'NONE', ' none '])('%p disables the review deliberately', (raw) => {
+    expect(resolveReviewCommand(raw, '/repo', present)).toBeNull()
+  })
+
+  test.each(['not json', '[]', '"a string"', '[1,2]'])('rejects %p', (raw) => {
+    expect(() => resolveReviewCommand(raw, '/repo', present)).toThrow('AGENT_REVIEW_COMMAND')
   })
 })
 
