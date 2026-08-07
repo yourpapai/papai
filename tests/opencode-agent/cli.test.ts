@@ -176,8 +176,18 @@ interface PostRecorder {
    * exists to make.
    */
   reactions: { url: string; body: string }[]
+  /**
+   * Label writes, kept apart for the same reason as the reactions, plus one of
+   * its own: labels are the channel most likely to be issued and least likely
+   * to be noticed, so a label POST landing in `posted` would quietly turn every
+   * "posted exactly one comment" assertion in this file into a lie.
+   */
+  labelCalls: { method: string; url: string; body: string }[]
   fetch: FetchLike
 }
+
+/** Labels the fake issue already carries, none of them this pipeline's. */
+const EXISTING_LABELS = [{ name: 'bug' }]
 
 /**
  * A GitHub transport that answers reads with `thread` and records writes.
@@ -186,19 +196,34 @@ interface PostRecorder {
 const recordPosts = (thread: unknown): PostRecorder => {
   const posted: string[] = []
   const reactions: { url: string; body: string }[] = []
+  const labelCalls: { method: string; url: string; body: string }[] = []
   const json = (payload: unknown, status: number): Response =>
     new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json' } })
 
-  const write = (url: string, body: string): Response => {
+  const isLabelCall = (url: string): boolean => /\/labels(\/|\?|$)/u.test(url)
+
+  const write = (method: string, url: string, body: string): Response => {
     if (url.includes('/reactions')) {
       reactions.push({ url, body })
       return json({ id: 5, content: 'eyes' }, 201)
     }
+    if (isLabelCall(url)) {
+      labelCalls.push({ method, url, body })
+      return json([], 200)
+    }
     posted.push(body)
     return json({ id: 9, html_url: 'https://example.test/c/9' }, 201)
   }
-  const read = (): Response => json(thread, 200)
-  const byMethod: Record<string, (url: string, body: string) => Response> = { POST: write, PATCH: write }
+  const read = (method: string, url: string, body: string): Response => {
+    if (!isLabelCall(url)) return json(thread, 200)
+    labelCalls.push({ method, url, body })
+    return json(EXISTING_LABELS, 200)
+  }
+  const byMethod: Record<string, (method: string, url: string, body: string) => Response> = {
+    POST: write,
+    PATCH: write,
+    DELETE: write,
+  }
   // Octokit always sends a string body; the wider `RequestInit` type does not
   // know that, and stringifying a non-string would silently record "[object Object]".
   const bodyOf = (body: BodyInit | null | undefined): string => (typeof body === 'string' ? body : '')
@@ -206,7 +231,11 @@ const recordPosts = (thread: unknown): PostRecorder => {
   return {
     posted,
     reactions,
-    fetch: (url, init) => Promise.resolve((byMethod[init?.method ?? 'GET'] ?? read)(url, bodyOf(init?.body))),
+    labelCalls,
+    fetch: (url, init) => {
+      const method = init?.method ?? 'GET'
+      return Promise.resolve((byMethod[method] ?? read)(method, url, bodyOf(init?.body)))
+    },
   }
 }
 
@@ -220,6 +249,17 @@ const refusingReactions = (inner: FetchLike): FetchLike => {
     Promise.resolve(new Response('{"message":"Resource not accessible by integration"}', { status: 403 }))
 
   return (url, init) => (url.includes('/reactions') ? refuse() : inner(url, init))
+}
+
+/**
+ * The same, for every label endpoint — including the read, because a token that
+ * cannot write labels is usually one that cannot see the issue at all.
+ */
+const refusingLabels = (inner: FetchLike): FetchLike => {
+  const refuse = (): Promise<Response> =>
+    Promise.resolve(new Response('{"message":"Resource not accessible by integration"}', { status: 403 }))
+
+  return (url, init) => (/\/labels(\/|\?|$)/u.test(url) ? refuse() : inner(url, init))
 }
 
 /**
@@ -370,6 +410,118 @@ describe('runCli', () => {
     expect(github.reactions).toHaveLength(1)
     expect(github.reactions[0]?.url).toContain('/repos/acme/widgets/issues/comments/8811/reactions')
     expect(github.reactions[0]?.body).toContain('"content":"eyes"')
+  })
+
+  test('a real run labels the issue it finished', async () => {
+    // Same lesson as the reaction above, and the label endpoints are four new
+    // chances to relearn it: a correct adapter that `contain` and
+    // `assembleDeps` never hand anything passes every phase test. `/cancel`
+    // reaches COMPLETE without a pull request, which is `agent:stopped`.
+    const prior = [
+      {
+        id: 1,
+        user: { login: 'agent-bot' },
+        body: `parked\n\n<!-- AGENT_STATE: ${JSON.stringify({ v: 2, phase: 'DESIGN_SPEC', issueId: 42 })} -->`,
+      },
+    ]
+    const eventPath = await writeEvent('labels', {
+      action: 'created',
+      sender: { login: 'maintainer', type: 'User' },
+      issue: { number: 42, title: 't', body: 'b', author_association: 'OWNER' },
+      comment: { id: 8811, body: '/cancel', author_association: 'OWNER' },
+      repository: { owner: { login: 'acme' }, name: 'widgets', default_branch: 'master' },
+    })
+
+    const github = recordPosts(prior)
+    const result = await runCli({
+      argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
+      env,
+      logger: silentLogger,
+      fetch: github.fetch,
+    })
+
+    expect(result.status).toBe('completed')
+    expect(github.labelCalls).toContainEqual({
+      method: 'GET',
+      url: 'https://api.github.com/repos/acme/widgets/issues/42/labels?per_page=100',
+      body: '',
+    })
+    expect(github.labelCalls).toContainEqual({
+      method: 'POST',
+      url: 'https://api.github.com/repos/acme/widgets/labels',
+      body: '{"name":"agent:stopped","color":"6a737d"}',
+    })
+    expect(github.labelCalls).toContainEqual({
+      method: 'POST',
+      url: 'https://api.github.com/repos/acme/widgets/issues/42/labels',
+      body: '{"labels":["agent:stopped"]}',
+    })
+    // `bug` is the repository's own and was on the issue before this run.
+    expect(github.labelCalls.filter((call) => call.url.endsWith('/labels/bug'))).toEqual([])
+    // And none of it became a comment: the label writes go to their own
+    // endpoints, not through `createComment`.
+    expect(github.posted).toHaveLength(1)
+  })
+
+  test('a repository that wants no labels gets none', async () => {
+    const prior = [
+      {
+        id: 1,
+        user: { login: 'agent-bot' },
+        body: `parked\n\n<!-- AGENT_STATE: ${JSON.stringify({ v: 2, phase: 'DESIGN_SPEC', issueId: 42 })} -->`,
+      },
+    ]
+    const eventPath = await writeEvent('labels-none', {
+      action: 'created',
+      sender: { login: 'maintainer', type: 'User' },
+      issue: { number: 42, title: 't', body: 'b', author_association: 'OWNER' },
+      comment: { id: 8811, body: '/cancel', author_association: 'OWNER' },
+      repository: { owner: { login: 'acme' }, name: 'widgets', default_branch: 'master' },
+    })
+
+    const github = recordPosts(prior)
+    const result = await runCli({
+      argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
+      env: { ...env, AGENT_LABEL_PREFIX: 'none' },
+      logger: silentLogger,
+      fetch: github.fetch,
+    })
+
+    expect(result.status).toBe('completed')
+    expect(github.labelCalls).toEqual([])
+    expect(github.posted).toHaveLength(1)
+  })
+
+  test('labels GitHub refuses do not fail the run', async () => {
+    // The rule-1 test at the transport: a token without `issues: write`, or a
+    // repository that restricts who may create a label, reaches the same
+    // result and posts the same comment as one where the channel worked.
+    const prior = [
+      {
+        id: 1,
+        user: { login: 'agent-bot' },
+        body: `parked\n\n<!-- AGENT_STATE: ${JSON.stringify({ v: 2, phase: 'DESIGN_SPEC', issueId: 42 })} -->`,
+      },
+    ]
+    const eventPath = await writeEvent('labels-403', {
+      action: 'created',
+      sender: { login: 'maintainer', type: 'User' },
+      issue: { number: 42, title: 't', body: 'b', author_association: 'OWNER' },
+      comment: { id: 8811, body: '/cancel', author_association: 'OWNER' },
+      repository: { owner: { login: 'acme' }, name: 'widgets', default_branch: 'master' },
+    })
+
+    const github = recordPosts(prior)
+    const result = await runCli({
+      argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
+      env,
+      logger: silentLogger,
+      fetch: refusingLabels(github.fetch),
+    })
+
+    expect(result.status).toBe('completed')
+    expect(result.reported).toBe(true)
+    expect(github.posted).toHaveLength(1)
   })
 
   test('a reaction GitHub refuses does not fail the run', async () => {

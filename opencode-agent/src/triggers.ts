@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { applyCiTrigger } from './ci-trigger.js'
+import { acceptedCommands, COMMAND_SIGNALS } from './commands.js'
 import type { ParsedCommand } from './commands.js'
 import { applyClarifyIntent, applyIntent, readAndSkip } from './comment-intent.js'
 import { react } from './feedback.js'
@@ -13,7 +14,6 @@ import { canTransition } from './state-manager.js'
 import { moveOrSkip, skip } from './trigger-outcome.js'
 import type { TriggerOutcome } from './trigger-outcome.js'
 import { WAITING_PHASES } from './types.js'
-import type { Phase, TransitionSignal } from './types.js'
 
 /**
  * Turning a trigger — a slash command, a plain comment, a red CI run — into the
@@ -24,17 +24,12 @@ import type { Phase, TransitionSignal } from './types.js'
  * one drives the handlers once the decision is made. Two halves have since gone
  * the same way, each time this file reached the length limit and each time along
  * a seam that was already there: the red-CI path into `ci-trigger.ts`, and
- * reading plain prose into `comment-intent.ts`. What is left here is the
- * commands and the dispatch that picks between the three.
+ * reading plain prose into `comment-intent.ts`. What is left here is applying a
+ * command and the dispatch that picks between the three — the command *table*
+ * moved to `commands.ts` once the waiting comment needed to read it too, since
+ * this file imports `run-report.ts` and a shared derivation in either of them is
+ * a cycle.
  */
-
-/** Slash commands, mapped to the signal they inject before handlers run. */
-const COMMAND_SIGNALS: Record<string, TransitionSignal> = {
-  '/approve': 'APPROVED',
-  '/changes': 'CHANGES_REQUESTED',
-  '/retry': 'RETRY',
-  '/cancel': 'CANCELLED',
-}
 
 /**
  * Turns the trigger into a state move.
@@ -142,11 +137,3 @@ const refuseExhausted = async (input: PhaseInput): Promise<TriggerOutcome> => {
 
   return { state, halt: { status: 'failed', reason, state, reported: true }, answer: false }
 }
-
-/** The commands `phase` would actually accept, straight from the transition table. */
-const acceptedCommands = (phase: Phase): readonly string[] => [
-  ...Object.entries(COMMAND_SIGNALS)
-    .filter(([, signal]) => canTransition(phase, signal))
-    .map(([command]) => command),
-  '/ask',
-]

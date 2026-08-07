@@ -365,6 +365,7 @@ describe('contain', () => {
     diffLimits: { maxFiles: 100, maxLines: 20_000 },
     gitRemoteBase: 'https://github.com/',
     runUrl: null,
+    labelPrefix: 'agent:',
     skillRoots: [],
   })
 

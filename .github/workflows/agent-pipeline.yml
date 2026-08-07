@@ -178,6 +178,10 @@ jobs:
           AGENT_MAX_ATTEMPTS: ${{ vars.AGENT_MAX_ATTEMPTS }}
           AGENT_TIMEOUT_MS: ${{ vars.AGENT_TIMEOUT_MS }}
           AGENT_MAX_TOKENS: ${{ vars.AGENT_MAX_TOKENS }}
+          # The namespace the status labels live under, or `none` to switch
+          # them off. Forwarded like the other knobs because a repository with
+          # its own label conventions is the ordinary case, not the exception.
+          AGENT_LABEL_PREFIX: ${{ vars.AGENT_LABEL_PREFIX }}
           AGENT_LOG_LEVEL: ${{ vars.AGENT_LOG_LEVEL || 'info' }}
         run: |
           bun run opencode-agent/src/index.ts \

@@ -13,6 +13,7 @@ import {
   boundedInt,
   ConfigError,
   FILES_RANGE,
+  labelPrefix,
   LINES_RANGE,
   optional,
   optionalOrNull,
@@ -91,8 +92,21 @@ export interface PipelineConfig {
    * that takes this has to be able to say nothing rather than link nowhere.
    */
   runUrl: string | null
+  /**
+   * Namespace every label this pipeline writes lives under, or `null` when
+   * `AGENT_LABEL_PREFIX=none` switches labelling off.
+   *
+   * Nullable rather than an empty string: an empty prefix would make *every*
+   * label on the issue look agent-owned to the reconcile, which removes any it
+   * cannot account for — so the one value that reads as "no namespace" is the
+   * one value that must never reach it.
+   */
+  labelPrefix: string | null
   skillRoots: readonly string[]
 }
+
+/** The namespace labels take when the operator names none. */
+const DEFAULT_LABEL_PREFIX = 'agent:'
 
 export const parseChecks = (raw: string | undefined): readonly CheckSpec[] => {
   if (raw === undefined || raw.trim().length === 0) return DEFAULT_CHECKS
@@ -246,6 +260,7 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     openai: loadOpenAiSettings(env),
     gitRemoteBase,
     runUrl: buildRunUrl(env, gitRemoteBase, owner, repo),
+    labelPrefix: labelPrefix(env, 'AGENT_LABEL_PREFIX', DEFAULT_LABEL_PREFIX),
     commitAuthorName: optional(env, 'AGENT_COMMIT_NAME', 'opencode-agent[bot]'),
     commitAuthorEmail: optional(env, 'AGENT_COMMIT_EMAIL', 'opencode-agent@users.noreply.github.com'),
     checkCommand: optional(env, 'AGENT_CHECK_COMMAND', 'bun run lint && bun run typecheck && bun test'),

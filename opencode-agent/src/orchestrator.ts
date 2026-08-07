@@ -7,18 +7,19 @@ import { parseSlashCommand } from './commands.js'
 import { react } from './feedback.js'
 import { evaluateGuardrails } from './guardrails.js'
 import type { TriggerEvent } from './guardrails.js'
+import { reconcileLabels, settleLabels } from './labels.js'
 import type { IssueContext, MachineInput, PhaseDeps, PhaseHandler, PhaseInput, PhaseOutcome } from './phase-context.js'
+import { failAnswer, failRun } from './phase-failure.js'
 import { handleAnswer } from './phases/answer.js'
 import { handleCiFix } from './phases/ci-fix.js'
 import { handleDeliver } from './phases/deliver.js'
 import { handleImplement } from './phases/implement.js'
 import { handlePlan } from './phases/plan.js'
 import { handleTriage } from './phases/triage.js'
-import { postAndAppend, renderAnswerFailure, renderFailure, renderSettled } from './run-report.js'
+import { postAndAppend, renderSettled } from './run-report.js'
 import { findLatestState, initialState, transition } from './state-manager.js'
 import { recordSpend, stopIfOverBudget } from './token-budget.js'
 import { applyTrigger } from './triggers.js'
-import { errorMessage } from './types.js'
 import type { AgentState, Phase, RunResult, TransitionSignal } from './types.js'
 
 /**
@@ -80,6 +81,21 @@ export const runPipeline = async (options: RunOptions): Promise<RunResult> => {
   // through it silently; `reactionTarget` decides that, not this call site.
   await react(deps, event, 'eyes')
 
+  return runAccepted(event, deps)
+}
+
+/**
+ * Everything a trigger the guardrails let through does.
+ *
+ * Split from {@link runPipeline}, which is now the guardrail and the
+ * acknowledgement, because the two halves answer different questions and the
+ * function was already at the length limit before the label reconciles arrived.
+ *
+ * Both of those reconciles live here rather than deeper down, because both are
+ * statements about the *run*: one marker goes on when work starts and comes off
+ * when it ends, whatever the outcome, and neither fact is known to a phase.
+ */
+const runAccepted = async (event: TriggerEvent, deps: PhaseDeps): Promise<RunResult> => {
   const thread = await deps.github.listIssueComments(event.issueNumber)
   const restored = findLatestState(thread, await deps.selfLogin(), event.issueNumber) ?? initialState(event.issueNumber)
   const issue = await resolveIssue(event, deps)
@@ -87,9 +103,16 @@ export const runPipeline = async (options: RunOptions): Promise<RunResult> => {
 
   const base: PhaseInput = { state: restored, issue, trigger: event, command, thread, deps }
   const entry = await applyTrigger(base)
-  if (entry.halt !== null) return entry.halt
+  // A trigger that moved nothing gets the closing reconcile and not the opening
+  // one. Marking a run that is about to skip as working would add the marker and
+  // remove it again within the second — two timeline entries on an issue where
+  // nothing happened, which is the noise this whole channel is sized to avoid.
+  // The closing one still runs, because it is also the repair.
+  if (entry.halt !== null) return settleLabels(deps, entry.halt, restored)
 
-  return driveMachine({
+  await reconcileLabels(deps, entry.state, 'working')
+
+  const result = await driveMachine({
     ...base,
     state: entry.state,
     answer: entry.answer,
@@ -99,6 +122,8 @@ export const runPipeline = async (options: RunOptions): Promise<RunResult> => {
     // adding it to each phase's own would count the earlier phases again.
     carriedTokens: restored.tokensSpent,
   })
+
+  return settleLabels(deps, result, entry.state)
 }
 
 /** The issue's title and body, from the payload when present, else the API. */
@@ -209,68 +234,4 @@ const runHandler = async (handler: PhaseHandler, input: MachineInput): Promise<H
   } catch (error) {
     return { ok: false, error }
   }
-}
-
-/**
- * Records the failure on the issue and parks the state in FAILED with
- * `resumeFrom` set, so `/retry` re-enters the exact phase that broke instead of
- * replaying the whole pipeline.
- *
- * Through `recordSpend`, exactly as the success path is. A failing phase spends
- * what it spent — the model turn is paid for long before the parse that rejects
- * its reply — and this used to write `lastError` and nothing else, so the tokens
- * went unrecorded and the next runner read `0`. That is the one path the ceiling
- * most needs to see: the state it parks in is `FAILED`, and `/retry` out of
- * `FAILED` is how an issue comes back for another expensive round.
- */
-const failRun = async (input: MachineInput, error: unknown): Promise<RunResult> => {
-  const { state, deps, thread } = input
-  const message = errorMessage(error)
-  deps.log.error({ issue: state.issueId, phase: state.phase, error: message }, 'Phase handler failed')
-
-  const failed = transition(state, 'FAILED', await recordSpend(input, { lastError: message }))
-  const report = renderFailure(state.phase, message, failed, deps.config.maxAttempts, deps.config.runUrl)
-  await postAndAppend(thread, input, report, failed)
-
-  // The comment above is what the workflow's fallback step would otherwise
-  // duplicate, contradicting it: this run has moved the issue to `FAILED`, so
-  // "the issue state is unchanged" is false the moment `postAndAppend` returns.
-  return { status: 'failed', reason: message, state: failed, reported: true }
-}
-
-/**
- * Reports a failed answer without moving the machine, and without spending an
- * attempt.
- *
- * A question is a side conversation about work that lives elsewhere: the phase
- * records where the *work* is, so parking a delivered pull request or an
- * in-flight implementation in FAILED because a model turn about it broke is a
- * lie about what happened. In COMPLETE it was not even reachable — the FAILED
- * guard in `canTransition` refuses that move — so {@link failRun}'s own
- * `transition` threw and took the whole runner with it.
- *
- * The retry budget is left alone for the same reason: `attempts` counts
- * consecutive failures to make progress on the issue, and a question makes
- * none either way. Leaving `resumeFrom` alone is what makes the notice honest.
- * Answering in a waiting phase used to record `resumeFrom: 'DESIGN_SPEC'`, and
- * the `/retry` the failure comment invited then resumed into a phase with no
- * handler and re-parked with "Parked in `DESIGN_SPEC`" — one attempt poorer for
- * a round trip that did nothing.
- *
- * Moving nothing is not the same as recording nothing, which is the distinction
- * this path missed: it posted the restored state verbatim, so a question that
- * reached the model and then failed on a deadline or a rejected request handed
- * the next job a total with that turn missing from it. The spend is the one
- * thing a failed answer really does change, and it is written the way every
- * other state block writes it — see {@link recordSpend}.
- */
-const failAnswer = async (input: MachineInput, error: unknown): Promise<RunResult> => {
-  const { state, deps, thread } = input
-  const message = errorMessage(error)
-  deps.log.error({ issue: state.issueId, phase: state.phase, error: message }, 'Answering a question failed')
-
-  const carried = { ...state, ...(await recordSpend(input)) }
-  await postAndAppend(thread, input, renderAnswerFailure(state.phase, message), carried)
-
-  return { status: 'failed', reason: message, state: carried, reported: true }
 }

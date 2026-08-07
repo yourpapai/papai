@@ -3,6 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { canTransition } from './state-manager.js'
+import type { Phase, TransitionSignal } from './types.js'
+
 /** Slash commands a maintainer can issue from an issue comment. */
 export const SLASH_COMMANDS = ['/approve', '/changes', '/ask', '/retry', '/cancel'] as const
 
@@ -77,3 +80,34 @@ export const parseSlashCommand = (body: string | null): ParsedCommand | null => 
 export const COMMENT_INTENTS = ['question', 'changes', 'approve', 'none'] as const
 
 export type CommentIntent = (typeof COMMENT_INTENTS)[number]
+
+/**
+ * Slash commands, mapped to the signal they inject before handlers run.
+ *
+ * Here rather than in `triggers.ts`, which applies them, because two callers now
+ * need to ask what a phase accepts: the refusal comment, and the waiting comment
+ * in `run-report.ts`. `triggers.ts` imports `run-report.ts`, so the derivation
+ * cannot live in either of them without a cycle — the reason `moveOrSkip` moved
+ * to `trigger-outcome.ts`. It belongs beside {@link SLASH_COMMANDS} anyway: this
+ * module is the command vocabulary, and what each command *means* to the machine
+ * is part of it.
+ */
+export const COMMAND_SIGNALS: Record<string, TransitionSignal> = {
+  '/approve': 'APPROVED',
+  '/changes': 'CHANGES_REQUESTED',
+  '/retry': 'RETRY',
+  '/cancel': 'CANCELLED',
+}
+
+/**
+ * The commands `phase` would actually accept, straight from the transition
+ * table, so a list shown to a maintainer cannot drift from what the machine will
+ * take. `/ask` is appended unconditionally: answering asks nothing of the state
+ * machine, so there is no phase in which it is refused.
+ */
+export const acceptedCommands = (phase: Phase): readonly string[] => [
+  ...Object.entries(COMMAND_SIGNALS)
+    .filter(([, signal]) => canTransition(phase, signal))
+    .map(([command]) => command),
+  '/ask',
+]

@@ -71,6 +71,7 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   diffLimits: { maxFiles: 100, maxLines: 20_000 },
   gitRemoteBase: 'https://github.com/',
   runUrl: null,
+  labelPrefix: 'agent:',
   skillRoots: ['.superpowers/skills'],
   ...overrides,
 })
@@ -144,6 +145,23 @@ interface PipelineIo {
    * about the run.
    */
   reactionError: Error | null
+  /**
+   * Labels the issue carries, as GitHub holds them — including any this
+   * pipeline did not put there.
+   */
+  labels: string[]
+  /**
+   * Every label *write*, in order, and deliberately not folded into `labels`:
+   * the point of a diff is what it did not ask for, and a set that ends up
+   * right cannot tell a single add from a clear-and-reapply.
+   */
+  labelWrites: string[]
+  /** Repository labels created on demand, by name and colour. */
+  labelsCreated: { name: string; color: string }[]
+  /** Reads attempted, so a run that is refused everything can still be shown to have asked. */
+  labelReads: number
+  /** What every label call rejects with, when set. */
+  labelError: Error | null
 }
 
 interface Harness {
@@ -176,9 +194,22 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     postedAs: AGENT_LOGIN,
     reactions: [],
     reactionError: null,
+    labels: [],
+    labelWrites: [],
+    labelsCreated: [],
+    labelReads: 0,
+    labelError: null,
   }
 
   let nextCommentId = 100
+
+  /** Records the ask, then answers the way `io.labelError` says to. */
+  const label = (write: string, apply: () => void): Promise<void> => {
+    io.labelWrites.push(write)
+    if (io.labelError !== null) return Promise.reject(io.labelError)
+    apply()
+    return Promise.resolve()
+  }
 
   const github: GitHubApi = {
     listIssueComments: () => Promise.resolve([...io.thread]),
@@ -214,6 +245,25 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       io.reactions.push({ target, content })
       return io.reactionError === null ? Promise.resolve() : Promise.reject(io.reactionError)
     },
+    // Reading is not a write, so it is not recorded as one — but it does fail
+    // when the token cannot see the issue at all, which is a real 403 and the
+    // one that reaches the reconcile before it has decided anything.
+    listLabels: () => {
+      io.labelReads += 1
+      return io.labelError === null ? Promise.resolve([...io.labels]) : Promise.reject(io.labelError)
+    },
+    addLabels: (_issueNumber, names) =>
+      label(`+${names.join(',')}`, () => {
+        io.labels.push(...names.filter((name) => !io.labels.includes(name)))
+      }),
+    removeLabel: (_issueNumber, name) =>
+      label(`-${name}`, () => {
+        io.labels = io.labels.filter((existing) => existing !== name)
+      }),
+    createLabel: (name, color) =>
+      label(`create:${name}`, () => {
+        io.labelsCreated.push({ name, color })
+      }),
   }
 
   const git: Git = {
@@ -2182,5 +2232,198 @@ describe('the run link', () => {
     const report = String(harness.io.posted[0])
     expect(report).toContain(`- Red run I am repairing: ${red}`)
     expect(report).toContain(`- This repair ran in: ${RUN_URL}`)
+  })
+})
+
+describe('labels — the state at a glance', () => {
+  test('a run marks the issue as worked on, then hands it back', async () => {
+    // The two orthogonal markers, over one run: `agent:working` goes on when
+    // work starts and comes off when it ends, and `agent:needs-you` takes its
+    // place because the plan is now parked in front of a human.
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    harness.io.replies = [PLAN_REPLY]
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.labels.sort()).toEqual(['agent:needs-you', 'agent:plan-review'])
+    expect(harness.io.labelWrites).toContain('+agent:planning,agent:working')
+    expect(harness.io.labelWrites).toContain('-agent:working')
+  })
+
+  test('the two markers never sit on the issue together', async () => {
+    // A run in flight is not waiting on anybody, and an issue that is both
+    // "happening now" and "blocked on me" answers neither question.
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    harness.io.replies = [PLAN_REPLY]
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.labels).not.toContain('agent:working')
+  })
+
+  test('a delivered issue is labelled done, a cancelled one stopped', async () => {
+    const delivered = makeHarness()
+    await driveDelivery(delivered)
+
+    const cancelled = makeHarness()
+    await toComplete(cancelled)
+
+    expect(delivered.io.labels).toEqual(['agent:done'])
+    expect(cancelled.io.labels).toEqual(['agent:stopped'])
+  })
+
+  test('a failure asks for a human', async () => {
+    const harness = makeHarness()
+    harness.io.replies = ['not json at all']
+
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(harness.io.labels.sort()).toEqual(['agent:failed', 'agent:needs-you'])
+  })
+
+  test('a labelled issue whose state has not moved is written to not at all', async () => {
+    // The diff, from the pipeline's side. Most runs move nothing, and a
+    // clear-and-reapply would leave two timeline entries on every one of them.
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    harness.io.labelWrites.length = 0
+    harness.io.replies = [JSON.stringify({ intent: 'none' })]
+
+    await runPipeline({ event: comment('thanks!'), deps: harness.deps })
+
+    expect(harness.io.labelWrites).toEqual([])
+    expect(harness.io.labels.sort()).toEqual(['agent:needs-you', 'agent:spec-review'])
+  })
+
+  test('a skipped run does not flash the working marker on and off', async () => {
+    // Marking a run that is about to skip would add the marker and remove it
+    // within the second — two timeline entries for an issue where nothing
+    // happened, which is the noise this channel is sized to avoid.
+    const harness = makeHarness()
+    await toComplete(harness)
+    harness.io.labelWrites.length = 0
+
+    await runPipeline({ event: comment('any plans to revisit?'), deps: harness.deps })
+
+    expect(harness.io.labelWrites).toEqual([])
+  })
+
+  test('a marker stranded by a killed runner is repaired on the next event', async () => {
+    // The failure mode `agent:working` has: a runner killed mid-flight leaves
+    // it on. The reconcile computes the desired set from the restored state,
+    // so any `agent:*` label that state does not imply comes off — no
+    // bookkeeping, and it repairs a hand-edited issue by the same rule.
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    harness.io.labels.push('agent:working', 'agent:implementing')
+    harness.io.labelWrites.length = 0
+    harness.io.replies = [JSON.stringify({ intent: 'none' })]
+
+    await runPipeline({ event: comment('thanks!'), deps: harness.deps })
+
+    expect(harness.io.labelWrites.sort()).toEqual(['-agent:implementing', '-agent:working'])
+    expect(harness.io.labels.sort()).toEqual(['agent:needs-you', 'agent:spec-review'])
+  })
+
+  test('the repository’s own labels are never touched', async () => {
+    // The worst thing this channel could do, and the one that would be found
+    // by somebody else losing their triage.
+    const harness = makeHarness()
+    harness.io.labels.push('bug', 'good first issue')
+    harness.io.replies = [SPEC_REPLY]
+
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(harness.io.labels).toContain('bug')
+    expect(harness.io.labels).toContain('good first issue')
+    expect(harness.io.labelWrites).not.toContain('-bug')
+    expect(harness.io.labelWrites).not.toContain('-good first issue')
+  })
+
+  test('labels are created with the palette before they are applied', async () => {
+    const harness = makeHarness()
+    harness.io.replies = [SPEC_REPLY]
+
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(harness.io.labelsCreated).toContainEqual({ name: 'agent:spec-review', color: 'd4a72c' })
+    expect(harness.io.labelsCreated).toContainEqual({ name: 'agent:needs-you', color: 'd4a72c' })
+  })
+
+  test('a custom prefix reaches every label the run writes', async () => {
+    const harness = makeHarness({ labelPrefix: 'bot/' })
+    harness.io.replies = [SPEC_REPLY]
+
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(harness.io.labels.sort()).toEqual(['bot/needs-you', 'bot/spec-review'])
+  })
+
+  test('`none` runs the whole pipeline without one label call', async () => {
+    // A repository that wants none of this must get none of it — not a
+    // different set of names.
+    const harness = makeHarness({ labelPrefix: null })
+    harness.io.labels.push('agent:working')
+
+    const result = await driveDelivery(harness)
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.labelWrites).toEqual([])
+    expect(harness.io.labels).toEqual(['agent:working'])
+  })
+})
+
+describe('labels — feedback never fails a run', () => {
+  test('a GitHub that refuses every label call changes nothing about the run', async () => {
+    // The rule-1 test for this stage. A token without `issues: write`, a
+    // repository that restricts label creation, and a fork run all present
+    // exactly this, and none of them may change what the run concludes or what
+    // it leaves on the issue.
+    const healthy = makeHarness()
+    const broken = makeHarness()
+    broken.io.labelError = new Error('Resource not accessible by integration')
+
+    const expected = await driveDelivery(healthy)
+    const actual = await driveDelivery(broken)
+
+    expect(actual).toEqual(expected)
+    // The persisted state, not just the returned status: a state that is never
+    // posted never happened, and that is the half a status cannot show.
+    expect(findLatestState(broken.io.thread, AGENT_LOGIN, ISSUE)).toEqual(
+      findLatestState(healthy.io.thread, AGENT_LOGIN, ISSUE),
+    )
+    expect(broken.io.posted).toEqual(healthy.io.posted)
+    // And it really did try, rather than passing by never asking. A 403 on this
+    // token refuses the read as well, which is why the ask is counted rather
+    // than looked for among the writes.
+    expect(broken.io.labelReads).toBeGreaterThan(0)
+    expect(broken.io.labelWrites).toEqual([])
+  })
+
+  test('a refused label still lets a failure report itself', async () => {
+    // The path where feedback failing on top of a failure would be worst: the
+    // comment explaining what broke is the only thing the maintainer gets.
+    const harness = makeHarness()
+    harness.io.labelError = new Error('403')
+    harness.io.replies = ['not json at all']
+
+    const result = await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(result.reported).toBe(true)
+    expect(harness.io.posted[0]).toContain('### Run failed in')
+  })
+
+  test('a label is not a report, so it never suppresses the fallback comment', async () => {
+    // `RunResult.reported` gates the workflow's "Agent job failed" comment. A
+    // run that only ever labelled has said nothing on the issue.
+    const harness = makeHarness()
+    await toComplete(harness)
+
+    const result = await runPipeline({ event: comment('any plans to revisit?'), deps: harness.deps })
+
+    expect(result.reported).toBe(false)
   })
 })

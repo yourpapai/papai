@@ -6,10 +6,13 @@
 import { describe, expect, test } from 'bun:test'
 
 import { formatFailures } from '../../opencode-agent/src/check-loop.js'
+import { acceptedCommands, SLASH_COMMANDS } from '../../opencode-agent/src/commands.js'
 import { modelResponseError } from '../../opencode-agent/src/errors.js'
 import { fence } from '../../opencode-agent/src/markdown.js'
-import { renderFailure } from '../../opencode-agent/src/run-report.js'
+import { presentationFor } from '../../opencode-agent/src/presentation.js'
+import { renderFailure, renderSettled } from '../../opencode-agent/src/run-report.js'
 import { initialState, transition } from '../../opencode-agent/src/state-manager.js'
+import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
 
 /**
  * Everything this pipeline fences is written by something else — a model reply,
@@ -121,6 +124,50 @@ describe('renderFailure', () => {
 
   test('leaves no unclosed fence', () => {
     expect(spans(render(modelResponseError('no JSON', FENCED_REPLY).message)).unclosed).toBe(false)
+  })
+})
+
+describe('renderSettled', () => {
+  const parked = (phase: Phase): AgentState => ({ ...initialState(42), phase })
+
+  /** Every phase the cascade can actually stop at without a handler. */
+  const WAITING: readonly Phase[] = ['DESIGN_SPEC', 'PLAN_REVIEW', 'FAILED']
+
+  test.each([...WAITING])('%s names exactly the commands the transition table accepts', (phase) => {
+    // The gap this closes: the comment used to be `### Waiting` over "Parked in
+    // `PLAN_REVIEW`." and nothing else, while every other waiting comment in
+    // the file carries a "what now". Derived from `acceptedCommands`, not
+    // written out here, so the assertion cannot drift from the machine either.
+    const rendered = renderSettled(parked(phase))
+    const accepted = acceptedCommands(phase)
+
+    for (const command of accepted) expect(rendered).toContain(`\`${command}\``)
+    for (const command of SLASH_COMMANDS.filter((name) => !accepted.includes(name))) {
+      expect(rendered).not.toContain(`\`${command}\``)
+    }
+  })
+
+  test.each([...WAITING])('%s leads with the headline the presentation table gives it', (phase) => {
+    // `PLAN_REVIEW` means nothing to a maintainer who has not read the state
+    // machine, which is why the phase name is no longer the whole comment.
+    const { glyph, headline } = presentationFor(parked(phase), 'waiting')
+
+    expect(renderSettled(parked(phase)).startsWith(`### ${glyph} ${headline}`)).toBe(true)
+  })
+
+  test('still says which phase it is parked in', () => {
+    // The name is what a maintainer quotes into an issue when asking about it,
+    // and what the hidden state block says a line below.
+    expect(renderSettled(parked('PLAN_REVIEW'))).toContain('`PLAN_REVIEW`')
+  })
+
+  test('a finished issue keeps the closing comment, not the waiting one', () => {
+    // COMPLETE accepts no command at all, so offering a list of them would be
+    // an invitation the state machine refuses.
+    const delivered: AgentState = { ...parked('COMPLETE'), prUrl: 'https://example.test/pull/7' }
+
+    expect(renderSettled(delivered)).toContain('### Done')
+    expect(renderSettled(parked('COMPLETE'))).toContain('### Stopped')
   })
 })
 

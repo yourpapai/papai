@@ -6,6 +6,8 @@
 import { Octokit } from '@octokit/rest'
 
 import type { IssueComment } from './blocks.js'
+import { createLabelEndpoints } from './github-labels.js'
+import type { LabelApi } from './github-labels.js'
 import type { IssueContext } from './phase-context.js'
 import { redactSecrets } from './secrets.js'
 
@@ -84,8 +86,13 @@ export type ReactionTarget = { kind: 'issue'; number: number } | { kind: 'commen
  * The narrow GitHub surface the pipeline needs. Everything downstream depends on
  * this interface rather than Octokit, so phase handlers are testable without an
  * HTTP stub layer.
+ *
+ * The label endpoints arrive through {@link LabelApi} rather than being written
+ * out again here: extending it is what keeps a fake that satisfies `GitHubApi`
+ * unable to leave one of them out, which is the property the whole interface
+ * exists for.
  */
-export interface GitHubApi {
+export interface GitHubApi extends LabelApi {
   listIssueComments(issueNumber: number): Promise<IssueComment[]>
   /** Returns the created comment, including the author GitHub recorded. */
   createComment(issueNumber: number, body: string): Promise<PostedComment>
@@ -217,6 +224,9 @@ export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
     // No `clean`: the content is a member of a four-value union this pipeline
     // picks, exactly like the `head`/`base` branch names above.
     addReaction: (target, content) => addReaction(octokit, repo, target, content),
+    // Nor here, and for the same reason — a label name is this pipeline's own
+    // prefix followed by a suffix from a closed table. See `github-labels.ts`.
+    ...createLabelEndpoints(octokit, repo),
 
     createComment: async (issueNumber, body) => {
       const { data } = await octokit.rest.issues.createComment({

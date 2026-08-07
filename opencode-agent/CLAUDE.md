@@ -18,10 +18,17 @@ findings: `ROADMAP.md`.
   `src/ci-trigger.ts`, the plain-comment half in `src/comment-intent.ts`, and the
   shared outcome shape plus `moveOrSkip` in `src/trigger-outcome.ts`;
   `src/orchestrator.ts` drives the phase cascade once that decision is made;
-  `src/token-budget.ts` decides whether the cascade may afford another step.
+  `src/token-budget.ts` decides whether the cascade may afford another step, and
+  `src/phase-failure.ts` decides what a run that broke is left looking like.
   Phase handlers in `src/phases/` return a `TransitionSignal`, a comment body and
   optional artefact blocks, and never write state or decide the next phase
   themselves.
+- Feedback on the issue that is not a comment lives apart from the machine that
+  causes it: `src/presentation.ts` owns the one glyph/label/headline table every
+  renderer reads, `src/feedback.ts` the reaction channel, and `src/labels.ts` the
+  label reconcile over `src/github-labels.ts`'s endpoints. Each channel has
+  exactly one function that talks to GitHub, because "best-effort" has to be a
+  property of one function rather than a convention at each call site.
 - Every external boundary is an injected interface (`GitHubApi`, `Git`,
   `CheckRunner`, `RunReview`, `OpenCodeAgent`, `ReadSkillFile`).
 

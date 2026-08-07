@@ -1224,6 +1224,33 @@ describe('config', () => {
     expect(loadConfig(enterprise, '/repo').runUrl).toBe('https://git.acme.internal/acme/widgets/actions/runs/7')
   })
 
+  test('labels live under `agent:` unless the repository says otherwise', () => {
+    expect(loadConfig(baseEnv, '/repo').labelPrefix).toBe('agent:')
+  })
+
+  test('a repository with its own conventions can name the namespace', () => {
+    // The same shape as `AGENT_REVIEW_COMMAND`, and for the same reason: a
+    // hardcoded label set is the papai-specific hardcoding S2-4 was re-opened
+    // for.
+    expect(loadConfig({ ...baseEnv, AGENT_LABEL_PREFIX: 'bot/' }, '/repo').labelPrefix).toBe('bot/')
+  })
+
+  test.each(['none', 'NONE', ' none '])('%p switches labelling off entirely', (raw) => {
+    expect(loadConfig({ ...baseEnv, AGENT_LABEL_PREFIX: raw }, '/repo').labelPrefix).toBeNull()
+  })
+
+  test.each(['a,b', 'ag\tent', 'x'.repeat(33)])('rejects the prefix %p at load', (raw) => {
+    // At load, where the message names the variable — not at the first API
+    // call, which is inside a best-effort path that swallows what it is told.
+    expect(() => loadConfig({ ...baseEnv, AGENT_LABEL_PREFIX: raw }, '/repo')).toThrow('AGENT_LABEL_PREFIX')
+  })
+
+  test('a blank prefix means unset, not an empty namespace', () => {
+    // An empty prefix would make every label on the issue look agent-owned to
+    // the reconcile, which removes any it cannot account for.
+    expect(loadConfig({ ...baseEnv, AGENT_LABEL_PREFIX: '   ' }, '/repo').labelPrefix).toBe('agent:')
+  })
+
   test('parseChecks falls back to the defaults', () => {
     expect(parseChecks(undefined).map((check) => check.name)).toEqual(['lint', 'typecheck', 'test'])
   })
@@ -1474,6 +1501,83 @@ describe('createOctokitApi', () => {
     await recordingApi(captured, PR_JSON, ['rocket']).addReaction({ kind: 'issue', number: 42 }, 'rocket')
 
     expect(captured[0]?.body).toEqual({ content: 'rocket' })
+  })
+
+  test('reads the labels the issue carries', async () => {
+    const captured: CapturedRequest[] = []
+
+    const names = await recordingApi(captured, [{ name: 'bug' }, { name: 'agent:working' }]).listLabels(42)
+
+    expect(names).toEqual(['bug', 'agent:working'])
+    expect(captured[0]?.method).toBe('GET')
+    expect(captured[0]?.url).toContain('/repos/acme/widgets/issues/42/labels')
+    // Paginated: an issue with more than a page of labels would otherwise look
+    // to the reconcile like one whose labels it does not own, and it would add
+    // its own back on every run.
+    expect(captured[0]?.url).toContain('per_page=100')
+  })
+
+  test('adds labels in one request rather than one apiece', async () => {
+    const captured: CapturedRequest[] = []
+
+    await recordingApi(captured).addLabels(42, ['agent:implementing', 'agent:working'])
+
+    expect(captured[0]?.method).toBe('POST')
+    expect(captured[0]?.url).toContain('/repos/acme/widgets/issues/42/labels')
+    expect(captured[0]?.body).toEqual({ labels: ['agent:implementing', 'agent:working'] })
+  })
+
+  test('removes one label from the issue, not from the repository', async () => {
+    // `DELETE /issues/{n}/labels/{name}` takes it off this issue;
+    // `DELETE /labels/{name}` deletes it everywhere, which would strip the
+    // label off every other issue that carries it.
+    const captured: CapturedRequest[] = []
+
+    await recordingApi(captured).removeLabel(42, 'agent:working')
+
+    expect(captured[0]?.method).toBe('DELETE')
+    expect(captured[0]?.url).toContain('/repos/acme/widgets/issues/42/labels/agent%3Aworking')
+  })
+
+  test('creates a label with the colour the palette gave it', async () => {
+    const captured: CapturedRequest[] = []
+
+    await recordingApi(captured).createLabel('agent:needs-you', 'd4a72c')
+
+    expect(captured[0]?.method).toBe('POST')
+    expect(captured[0]?.url).toContain('/repos/acme/widgets/labels')
+    expect(captured[0]?.body).toEqual({ name: 'agent:needs-you', color: 'd4a72c' })
+  })
+
+  test('treats a label that already exists as created', async () => {
+    // Creation is unconditional — the alternative is listing every repository
+    // label on every run — so the second run onwards answers 422. Swallowed
+    // here, where the HTTP status still exists: one layer up it is an `Error`
+    // message indistinguishable from a real refusal.
+    const api = createOctokitApi({
+      token: 'tok',
+      owner: 'acme',
+      repo: 'widgets',
+      secrets: [],
+      fetch: () => Promise.resolve(new Response('{"message":"Validation Failed"}', { status: 422 })),
+    })
+
+    expect(await api.createLabel('agent:done', '0e8a16')).toBeUndefined()
+  })
+
+  test('still reports a refusal that is not "it already exists"', async () => {
+    // A token without `issues: write` answers 403 here, and swallowing that
+    // would make the reconcile believe a label it cannot write exists.
+    const api = createOctokitApi({
+      token: 'tok',
+      owner: 'acme',
+      repo: 'widgets',
+      secrets: [],
+      fetch: () =>
+        Promise.resolve(new Response('{"message":"Resource not accessible by integration"}', { status: 403 })),
+    })
+
+    await expect(api.createLabel('agent:done', '0e8a16')).rejects.toThrow()
   })
 
   test('asks for pull requests in every state, so a merged one is not invisible', async () => {
