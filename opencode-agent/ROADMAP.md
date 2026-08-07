@@ -663,12 +663,28 @@ behaviour instead of the opposite._
 **Direction:** integer/range validation per key, and accept `95` as `0.95` for
 the threshold since that mistake is near-certain.
 
-### S2-10 `hasChanges()` then `commitAll()` runs `git status` twice — by inspection
+### S2-10 `hasChanges()` then `commitAll()` runs `git status` twice — verified — **[FIXED]**
 
-`src/phases/implement.ts:52` and `src/git.ts:72`. Harmless, but `commitAll`
-already returns `false` for a clean tree, so the guard is redundant — except
-that it produces a better error message. Worth collapsing deliberately rather
-than by accident.
+_Verified against a recording runner: one commit issued
+`git status --porcelain` twice before `git add --all`. Now once._
+
+_Collapsed into `commitAll`'s existing `false` return. The finding worried that
+the separate probe "produces a better error message" — it does not: both paths
+raise the same `noChangesError(issueId)`, so nothing was traded away._
+
+_The redundancy was slightly worse than a wasted round trip. Two reads of a tree
+that a long model turn had just finished writing to are free to disagree, and
+there was no rule for which one won — the guard could pass while the commit
+found nothing, or the reverse._
+
+_`hasChanges` is gone from the `Git` interface rather than left as an unused
+method: it had exactly one caller, and keeping it would have added to the dead
+surface S4 already tracks. Removing it also guards the fix structurally — the
+probe cannot be reintroduced without deliberately putting the method back._
+
+_Mutation-checked four ways — dropping the guard in the phase, making `commitAll`
+always claim success, staging before reading the tree, and reintroducing the
+second `status` — each kills the test that names it._
 
 ---
 

@@ -883,23 +883,22 @@ describe('createGit', () => {
     expect(calls).toContainEqual(['git', 'checkout', '-B', 'agent/issue-1', 'origin/agent/issue-1'])
   })
 
-  test('reports a clean tree as having no changes', async () => {
-    const { run } = captureGit()
-
-    expect(await createGit(gitOptions(run)).hasChanges()).toBe(false)
-  })
-
-  test('reports a dirty tree as having changes', async () => {
-    const { run } = captureGit({}, DIRTY_TREE)
-
-    expect(await createGit(gitOptions(run)).hasChanges()).toBe(true)
-  })
-
-  test('skips the commit when the tree is clean', async () => {
+  test('reports a clean tree by returning false, and stages nothing', async () => {
     const { calls, run } = captureGit()
 
     expect(await createGit(gitOptions(run)).commitAll('msg')).toBe(false)
     expect(calls.some((call) => call.includes('commit'))).toBe(false)
+    expect(calls.some((call) => call.includes('add'))).toBe(false)
+  })
+
+  test('reads the tree exactly once per commit', async () => {
+    // The phase used to probe with a separate `hasChanges` first, so one commit
+    // cost two `git status` runs over a tree a long model turn had just written.
+    const { calls, run } = captureGit({}, DIRTY_TREE)
+
+    await createGit(gitOptions(run)).commitAll('msg')
+
+    expect(calls.filter((call) => call[1] === 'status')).toHaveLength(1)
   })
 
   test('stamps the configured identity on the commit', async () => {

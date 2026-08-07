@@ -166,7 +166,6 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       io.gitCalls.push(`ensureBranch:${branch}:${base}`)
       return Promise.resolve()
     },
-    hasChanges: () => Promise.resolve(true),
     commitAll: (message) => {
       io.gitCalls.push(`commit:${message.split('\n')[0]}`)
       return Promise.resolve(true)
@@ -215,7 +214,6 @@ const hostileGit = (): Git => {
 
   return {
     ensureBranch: (): Promise<void> => refuse('ensureBranch'),
-    hasChanges: (): Promise<boolean> => refuse('status'),
     commitAll: (): Promise<boolean> => refuse('commit'),
     push: (): Promise<void> => refuse('push'),
     currentSha: (): Promise<string> => refuse('rev-parse'),
@@ -625,7 +623,8 @@ describe('implementation and delivery', () => {
   })
 
   test('fails when the agent produced no file changes', async () => {
-    harness.deps.git.hasChanges = (): Promise<boolean> => Promise.resolve(false)
+    // A clean tree is what `commitAll` reports, not something asked separately.
+    harness.deps.git.commitAll = (): Promise<boolean> => Promise.resolve(false)
 
     const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
 

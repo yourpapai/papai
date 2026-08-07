@@ -46,11 +46,15 @@ export const handleImplement: PhaseHandler = async (input): Promise<PhaseOutcome
     agent: 'build',
   })
 
-  if (!(await deps.git.hasChanges())) throw noChangesError(state.issueId)
-
   // Commit first so the review loop has a clean base to diff against, then let
   // it review, fix and merge its own work back into this branch.
-  await deps.git.commitAll(implementMessage(state.issueId))
+  //
+  // `commitAll` reports a clean tree itself, which is the same question a
+  // separate `hasChanges` probe asked one `git status` earlier — two reads of a
+  // tree that a long model turn had just finished writing to, free to disagree
+  // and with no rule for which one won.
+  if (!(await deps.git.commitAll(implementMessage(state.issueId)))) throw noChangesError(state.issueId)
+
   const review = await deps.runReview(plan)
 
   await deps.git.commitAll(reviewMessage(state.issueId))

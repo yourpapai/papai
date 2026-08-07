@@ -47,8 +47,12 @@ export class GitError extends Error {
 /** Git operations the pipeline performs, each returning plain data. */
 export interface Git {
   ensureBranch(branch: string, base: string): Promise<void>
-  hasChanges(): Promise<boolean>
-  /** Commits every change; resolves `false` when the tree was already clean. */
+  /**
+   * Commits every change; resolves `false` when the tree was already clean.
+   *
+   * That return is the only "did anything change?" answer the pipeline needs —
+   * a separate probe would just be a second `git status` reading the same tree.
+   */
   commitAll(message: string): Promise<boolean>
   push(branch: string): Promise<void>
   currentSha(): Promise<string>
@@ -138,10 +142,6 @@ export const createGit = (options: GitOptions): Git => {
   return {
     ensureBranch: (branch, base) => ensureBranch(git, gitOrThrow, branch, base),
     commitAll: (message) => commitAll(gitOrThrow, options, message),
-    hasChanges: async () => {
-      const result = await gitOrThrow('status', '--porcelain')
-      return result.stdout.trim().length > 0
-    },
     push: async (branch) => {
       await gitOrThrow('push', '-u', 'origin', branch)
     },
