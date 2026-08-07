@@ -93,6 +93,36 @@ cannot produce the shape twice will not produce it on the fifth attempt, and the
 job has its own timeout. A second bad reply fails the phase as before, with the
 raw text in the failure comment.
 
+## A worked example
+
+1. A maintainer opens issue #42: "Add retries to the HTTP client. Requests
+   should retry twice on 5xx." The `issues.opened` event fires the workflow;
+   the guardrails check the sender's `author_association` and let it through.
+2. The agent runs `INIT_OR_CLARIFY`: reads the issue and explores the repo,
+   then posts a design spec and parks in `DESIGN_SPEC`.
+3. The maintainer replies `/changes only retry on 502 and 503`. The agent
+   rewrites the spec from that feedback and posts it again, still in
+   `DESIGN_SPEC`.
+4. The maintainer replies `/approve`. The agent moves to `EXECUTION_PLAN`,
+   cuts `agent/issue-42` from the default branch, and posts a step-by-step
+   plan; `PLAN_REVIEW` waits for another `/approve`.
+5. Once approved, `REVIEW_AND_MUTATE` implements the plan, runs this
+   repository's own `review-loop/` workspace against the diff, and pushes to
+   `agent/issue-42`.
+6. `PR_DELIVERY` opens a pull request carrying `Closes #42`.
+7. CI runs on the branch — only if `AGENT_GITHUB_TOKEN` is configured, see
+   **Red pull requests** below — and comes back red. The `workflow_run` event
+   brings the agent back into `CI_FIX`: it checks out the branch, reproduces
+   the failing checks locally, hands the real output to the model, and
+   pushes a fix. This repeats, bounded by `AGENT_CI_FIX_MAX_ROUNDS` and
+   `AGENT_MAX_CI_ATTEMPTS`, until CI is green or the budget runs out.
+8. A maintainer merges the pull request like any other. `COMPLETE` stays
+   re-enterable from `CI_FIX`, in case a later push retriggers a check.
+
+A plain reply with no command — "why retry only on 502/503?" — is answered
+without moving the state machine at any of the waiting steps above, and
+`/cancel` stops the run for good from anywhere but `COMPLETE`.
+
 ## Red pull requests
 
 When the `CI` workflow concludes `failure` on `agent/issue-<n>`, the agent comes
