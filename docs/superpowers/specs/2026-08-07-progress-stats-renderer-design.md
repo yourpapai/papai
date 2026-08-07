@@ -115,6 +115,8 @@ Run summary (mutation-improve-13, 3 iterations, 12m40s)
 
 Non-TTY: no per-tick footer (unchanged); stats appear only in the final summary + artifacts.
 
+The footer's leading activity segments remain CLI-specific (review-loop: `round N/M · issues: N open`; mutation-improve: `iter N/M · current phase`); only the new trailing aggregate segments (`in/out · ~$ est · tools · +a/-r`) are shared.
+
 ## Error handling
 
 - **EPIPE/broken stream**: `RunStats` accumulates independently of stream state; existing `writeSafe` permanent downgrade preserved; summary still persisted (printed best-effort).
