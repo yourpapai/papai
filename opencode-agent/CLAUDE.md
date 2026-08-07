@@ -30,7 +30,12 @@ findings: `ROADMAP.md`.
   drives that workspace through `review-runner.ts`. `check-loop.ts` exists only
   for CI fixing, which the workspace does not cover.
 - **One model endpoint.** Everything goes through `openai-config.ts`; there are
-  no provider-specific keys and no second place a model is named.
+  no provider-specific keys and no second place a model is named. OpenCode is
+  never handed the real key: `provider-proxy.ts` holds it and `contain()` in
+  `index.ts` configures everything downstream with the placeholder, because the
+  SDK puts the config into the spawned server's environment where `bash` can
+  read it. Never pass `config.openai` to an OpenCode path — pass the contained
+  settings.
 - **Capabilities are deny-by-default.** `openai-config.ts` grants tools by name
   on top of `"*": "deny"`, per agent profile: `plan` (the read-only phases)
   cannot edit or run commands, `build` can. Add a capability by naming it, never

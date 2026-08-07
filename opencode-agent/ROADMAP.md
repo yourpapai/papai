@@ -850,6 +850,50 @@ step's configuration — half the fix lives in YAML, and a revert there would ha
 silently undone all of it. `workflow.test.ts` asserts it now, for **every**
 checkout step rather than the first._
 
+_**The class was not closed by this.** Verifying it turned up the same defect one
+credential over — see S3-9._
+
+### S3-9 The provider key reaches the model through `OPENCODE_CONFIG_CONTENT` — verified — **[FIXED]**
+
+_Found while checking whether S3-7 had closed its class, and it had not. The
+GitHub token was carefully removed from every place the model could read it while
+the **OpenAI key** sat in plain sight._
+
+_`createOpencodeServer` spawns `opencode serve` with `OPENCODE_CONFIG_CONTENT`
+set to the serialized config — and the config is where the provider key lives.
+Every process the model starts with `bash` inherits that variable, so
+`echo $OPENCODE_CONFIG_CONTENT` was a complete credential disclosure. The
+environment scrub from S3-2 cannot help: the SDK sets the variable on the child,
+after the scrub. Verified by reading `/proc/<pid>/environ` of a real spawned
+server — with `OPENAI_API_KEY` already removed from this process, the key was
+still there, under `OPENCODE_CONFIG_CONTENT`._
+
+_Fixed by never giving OpenCode the credential. `provider-proxy.ts` runs a
+loopback proxy that holds the key; OpenCode is configured with
+`PLACEHOLDER_API_KEY` and the proxy's URL, and the real `Authorization` is
+swapped in on the way out. The key stays in the parent process, which the model
+has no handle on. Both consumers are covered — the in-process session and the
+review loop's `opencode run` subprocesses read the same generated config._
+
+_Verified end to end, not just in unit tests: the live check now drives a real
+`opencode serve` through the proxy to a stub upstream and asserts the upstream
+saw `Bearer <real key>` while the config OpenCode held carried only the
+placeholder. That is also the only proof that a **streamed** completion survives
+the extra hop._
+
+_This is containment, not authentication: anything that can already run code on
+the runner can call the proxy. It removes the credential from the places an
+**injected prompt** can read, which is the threat S3-2 is about._
+
+_Mutation-checked ten ways. Two survived the first pass and both taught
+something. Dropping `authorization` from the copied-header deny-list killed
+nothing — because the unconditional `set` after the copy loop already overwrites
+it, making the deny-list entry unreachable. It read as a second defence while
+being dead, so it is gone rather than kept for looks. And replacing the contained
+config with the raw one killed nothing, because every test exercised the proxy
+module directly — the adapter can be perfect and never be wired in, exactly the
+gap S3-3 hit. `contain` is exported and tested now._
+
 ### S3-3 Check output and git stderr are published verbatim to a public issue — verified — **[FIXED]**
 
 _Verified on the wire with the transport recorder: a comment body carrying a

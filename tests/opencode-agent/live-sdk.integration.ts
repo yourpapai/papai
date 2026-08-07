@@ -31,6 +31,7 @@ import { z } from 'zod'
 
 import { createOpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
 import type { OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
+import { proxiedSettings, startProviderProxy } from '../../opencode-agent/src/provider-proxy.js'
 
 const REPLY_TEXT = '{"status":"spec","spec":"live round trip"}'
 
@@ -44,10 +45,14 @@ const chunk = (delta: object, finish: string | null): string =>
   })}\n\n`
 
 /** The smallest server that satisfies an OpenAI-compatible provider. */
+/** Authorization headers the stub upstream actually received. */
+const authorizations: string[] = []
+
 const startStubProvider = (): { port: number; stop: () => void } => {
   const server = Bun.serve({
     port: 0,
     fetch: async (request): Promise<Response> => {
+      authorizations.push(request.headers.get('authorization') ?? '(none)')
       const parsed = z.object({ stream: z.boolean().default(false) }).safeParse(await request.json())
       if (!parsed.success || !parsed.data.stream) {
         return Response.json({
@@ -94,9 +99,22 @@ const check = (label: string, condition: boolean, detail: string): boolean => {
   return condition
 }
 
+const silentLog = {
+  debug: (): void => {},
+  info: (): void => {},
+  warn: (): void => {},
+  error: (): void => {},
+}
+
 const run = async (): Promise<number> => {
   const stub = startStubProvider()
-  const openai = { apiKey: 'sk-stub', baseUrl: `http://127.0.0.1:${stub.port}`, model: 'gpt-5' }
+  const real = { apiKey: 'sk-stub-REAL-CREDENTIAL', baseUrl: `http://127.0.0.1:${stub.port}`, model: 'gpt-5' }
+  // The pipeline's own containment path: OpenCode is handed a placeholder key
+  // and a loopback URL, and the proxy swaps in the credential on the way out.
+  // Driving it here is the only proof that a *streamed* completion survives the
+  // hop — the unit tests exercise the handler, not a real model call.
+  const proxy = startProviderProxy(real, silentLog)
+  const openai = proxiedSettings(real, proxy)
   const agents: OpenCodeAgent[] = []
   const results: boolean[] = []
   const serversBefore = countServers()
@@ -133,9 +151,20 @@ const run = async (): Promise<number> => {
     results.push(
       check('the adapter decodes the reply text', reply.text === REPLY_TEXT, `got "${reply.text}"`),
       check('the reply carries the session id', reply.sessionId === first.sessionId, 'session id mismatch'),
+      check(
+        'the provider proxy carried a streamed completion',
+        authorizations.includes(`Bearer ${real.apiKey}`),
+        `upstream saw ${JSON.stringify(authorizations)}`,
+      ),
+      check(
+        'OpenCode never held the real credential',
+        !JSON.stringify(openai).includes(real.apiKey),
+        'the placeholder was not substituted',
+      ),
     )
   } finally {
     await Promise.all(agents.map((agent) => agent.close()))
+    await proxy.close()
     stub.stop()
   }
 

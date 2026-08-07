@@ -8,29 +8,25 @@ import path from 'node:path'
 import process from 'node:process'
 import { pathToFileURL } from 'node:url'
 
-import type { CheckRunner } from './check-loop.js'
-import { loadConfig, resolveBaseBranch } from './config.js'
-import type { Env, PipelineConfig } from './config.js'
-import { createGit } from './git.js'
-import { createOctokitApi } from './github.js'
+import { loadConfig } from './config.js'
+import type { PipelineConfig } from './config.js'
+import { assembleDeps } from './deps.js'
 import type { FetchLike } from './github.js'
 import { parseTriggerEvent } from './guardrails.js'
 import type { TriggerEvent } from './guardrails.js'
 import { createLogger } from './logger.js'
 import type { Logger, LogLevel } from './logger.js'
-import { loadPhaseSkills } from './obra-skills.js'
-import type { SkillDocument } from './obra-skills.js'
-import { opencodeConfigEnv } from './openai-config.js'
 import { createOpenCodeAgent } from './opencode-adapter.js'
 import type { OpenCodeAgent } from './opencode-adapter.js'
 import { runPipeline } from './orchestrator.js'
-import type { PhaseDeps, RunReview } from './phase-context.js'
-import { runReviewLoop } from './review-runner.js'
+import type { PhaseDeps } from './phase-context.js'
+import { proxiedSettings, startProviderProxy } from './provider-proxy.js'
+import type { ProviderProxy } from './provider-proxy.js'
 import { pipelineSecrets, scrubSecrets } from './secrets.js'
 import { runCommand } from './shell.js'
 import type { CommandRunner } from './shell.js'
 import { errorMessage } from './types.js'
-import type { Phase, RunResult } from './types.js'
+import type { RunResult } from './types.js'
 
 export interface CliArgs {
   eventPath: string
@@ -117,94 +113,6 @@ export const memoizeAgent = (create: () => Promise<OpenCodeAgent>): AgentHandle 
   }
 }
 
-const makeCheckRunner =
-  (run: CommandRunner, config: PipelineConfig): CheckRunner =>
-  (check) =>
-    run(check.argv, { cwd: config.repoRoot, timeoutMs: config.agentTimeoutMs })
-
-const makeReviewRunner =
-  (run: CommandRunner, config: PipelineConfig, log: Logger): RunReview =>
-  (plan) =>
-    runReviewLoop({
-      settings: {
-        repoRoot: config.repoRoot,
-        command: config.reviewCommand,
-        openai: config.openai,
-        checkCommand: config.checkCommand,
-        maxRounds: config.reviewMaxRounds,
-        poolSize: config.reviewPoolSize,
-        agentTimeoutMs: config.agentTimeoutMs,
-      },
-      plan,
-      run,
-      env: opencodeConfigEnv(config.openai),
-      log,
-      timeoutMs: config.agentTimeoutMs,
-    })
-
-const makeSkillLoader = (config: PipelineConfig, log: Logger): ((phase: Phase) => Promise<SkillDocument[]>) => {
-  const cache = new Map<Phase, Promise<SkillDocument[]>>()
-
-  return (phase) => {
-    const cached = cache.get(phase)
-    if (cached !== undefined) return cached
-    const loading = loadPhaseSkills(phase, { repoRoot: config.repoRoot, roots: config.skillRoots, log })
-    cache.set(phase, loading)
-    return loading
-  }
-}
-
-/**
- * Defers a one-shot async lookup until something asks for it, then keeps the
- * answer. Used for the base branch, whose resolution can cost a round trip.
- */
-const memoize = <T>(load: () => Promise<T>): (() => Promise<T>) => {
-  let pending: Promise<T> | null = null
-  return () => (pending ??= load())
-}
-
-interface DepsInput {
-  config: PipelineConfig
-  event: TriggerEvent
-  env: Env
-  run: CommandRunner
-  log: Logger
-  agent: AgentHandle
-  fetch?: FetchLike
-}
-
-const assembleDeps = ({ config, event, env, run, log, agent, fetch }: DepsInput): PhaseDeps => {
-  const git = createGit({
-    run,
-    cwd: config.repoRoot,
-    authorName: config.commitAuthorName,
-    authorEmail: config.commitAuthorEmail,
-    limits: config.diffLimits,
-    secrets: pipelineSecrets(config),
-    credential: { remote: config.gitRemoteBase, token: config.githubToken },
-  })
-
-  return {
-    github: createOctokitApi({
-      token: config.githubToken,
-      owner: config.owner,
-      repo: config.repo,
-      secrets: pipelineSecrets(config),
-      fetch,
-    }),
-    git,
-    runCheck: makeCheckRunner(run, config),
-    runReview: makeReviewRunner(run, config, log),
-    agent: agent.get,
-    skills: makeSkillLoader(config, log),
-    baseBranch: memoize(() =>
-      resolveBaseBranch(env, { fromEvent: event.defaultBranch, fromGit: () => git.defaultBranch() }),
-    ),
-    config,
-    log,
-  }
-}
-
 export interface MainOptions {
   argv: readonly string[]
   env: NodeJS.ProcessEnv
@@ -212,6 +120,50 @@ export interface MainOptions {
   run?: CommandRunner
   /** Transport seam for tests; the GitHub adapter's own `fetch` option. */
   fetch?: FetchLike
+}
+
+export interface ContainInput {
+  config: PipelineConfig
+  event: TriggerEvent
+  log: Logger
+  run: CommandRunner
+  options: MainOptions
+}
+
+export interface Contained {
+  proxy: ProviderProxy
+  agent: AgentHandle
+  deps: PhaseDeps
+}
+
+/**
+ * Assembles the run with the provider credential held back.
+ *
+ * Everything downstream — the in-process session and the review loop's
+ * `opencode run` subprocesses — is configured with the proxy and a placeholder
+ * key, because the SDK puts the config into the spawned server's environment
+ * where the model's `bash` can read it. `secrets` is taken from the **real**
+ * config, so scrubbing, redaction and the diff guard still know the value they
+ * are protecting.
+ */
+export const contain = ({ config, event, log, run, options }: ContainInput): Contained => {
+  const secrets = pipelineSecrets(config)
+  const proxy = startProviderProxy(config.openai, log)
+  const contained: PipelineConfig = { ...config, openai: proxiedSettings(config.openai, proxy) }
+
+  const agent = memoizeAgent(() =>
+    createOpenCodeAgent({
+      directory: contained.repoRoot,
+      openai: contained.openai,
+      sessionTitle: `issue-${event.issueNumber}`,
+    }),
+  )
+
+  return {
+    proxy,
+    agent,
+    deps: assembleDeps({ config: contained, secrets, event, env: options.env, run, log, agent, fetch: options.fetch }),
+  }
 }
 
 /**
@@ -238,15 +190,7 @@ export const runCli = async (options: MainOptions): Promise<RunResult> => {
     return { status: 'skipped', reason: 'Payload carries nothing to act on', state: null }
   }
 
-  const run = options.run ?? runCommand
-  const agent = memoizeAgent(() =>
-    createOpenCodeAgent({
-      directory: config.repoRoot,
-      openai: config.openai,
-      sessionTitle: `issue-${event.issueNumber}`,
-    }),
-  )
-  const deps = assembleDeps({ config, event, env: options.env, run, log, agent, fetch: options.fetch })
+  const { proxy, agent, deps } = contain({ config, event, log, run: options.run ?? runCommand, options })
 
   log.info(
     { event: args.eventName, kind: event.kind, issue: event.issueNumber, model: config.openai.model },
@@ -259,9 +203,10 @@ export const runCli = async (options: MainOptions): Promise<RunResult> => {
     log.info({ status: result.status, reason: result.reason, phase }, 'Pipeline finished')
     return result
   } finally {
-    // The OpenCode server holds a listening socket; without this the process
-    // stays alive after the work is done and the job dies on its timeout.
+    // Both hold listening sockets; without this the process stays alive after
+    // the work is done and the job dies on its timeout.
     await agent.close()
+    await proxy.close()
   }
 }
 

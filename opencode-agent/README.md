@@ -221,6 +221,14 @@ invocation's environment — so it is in no file the model can read, in no argv
 environment the OpenCode server inherits. The header is scoped to
 `GITHUB_SERVER_URL`; a header scoped to the wrong host is silently not sent.
 
+The **provider** key is never given to OpenCode either. The SDK spawns
+`opencode serve` with the serialized config in `OPENCODE_CONFIG_CONTENT`, and
+every process the model starts with `bash` inherits it — so a key in that config
+is one `echo` away. OpenCode is configured with a placeholder and a loopback URL
+instead, and a proxy holding the real key swaps in the `Authorization` on the way
+out. The same generated config drives the review loop's `opencode run`
+subprocesses, so both paths are covered.
+
 > **Still open:** there is no container or network boundary around the model,
 > only these capability and credential boundaries (S3-2), and the logger still
 > redacts by field name rather than by value (S3-8). Both are in `ROADMAP.md`.
