@@ -37,7 +37,7 @@ import {
 import type { OpenCodeConnection, SdkPromptBody } from '../../opencode-agent/src/opencode-adapter.js'
 import { mintEnvelope } from '../../opencode-agent/src/phases/envelope.js'
 import { buildCiFixPrompt, createEnvelope, renderThread } from '../../opencode-agent/src/prompts.js'
-import { scrubSecrets } from '../../opencode-agent/src/secrets.js'
+import { redactSecrets, scrubSecrets } from '../../opencode-agent/src/secrets.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
 import { PHASES } from '../../opencode-agent/src/types.js'
 
@@ -747,7 +747,7 @@ describe('resolveReviewCommand', () => {
   })
 })
 
-describe('scrubSecrets', () => {
+describe('scrubSecrets / redactSecrets', () => {
   const TOKEN = 'ghp_0123456789abcdefghij'
   const KEY = 'sk-0123456789abcdefghij'
 
@@ -786,6 +786,35 @@ describe('scrubSecrets', () => {
 
     expect(scrubSecrets(env, [secret])).toEqual([])
     expect(env).toEqual({ CI: 'true', DEBUG: 'short', EMPTY: '' })
+  })
+
+  test.each([
+    ['a fenced check failure', `\`\`\`\nFAIL auth.test.ts (token=${TOKEN})\n\`\`\``],
+    ['git stderr in an error message', `git failed (128): fatal: could not read ${TOKEN}`],
+    ['the hidden state block', `<!-- AGENT_STATE: {"lastError":"auth failed for ${TOKEN}"} -->`],
+    ['more than one occurrence', `${TOKEN} and again ${TOKEN}`],
+  ])('redacts %s', (_label, text) => {
+    const redacted = redactSecrets(text, [TOKEN, KEY])
+
+    expect(redacted).not.toContain(TOKEN)
+    expect(redacted).toContain('[redacted]')
+  })
+
+  test('redacts every loaded credential, not just the first', () => {
+    expect(redactSecrets(`${TOKEN} ${KEY}`, [TOKEN, KEY])).toBe('[redacted] [redacted]')
+  })
+
+  test.each(['', 'true', 'short'])('will not redact on the too-short secret %p', (secret) => {
+    // A short "secret" would shred ordinary prose.
+    const text = 'the build is true and the diff is short'
+
+    expect(redactSecrets(text, [secret])).toBe(text)
+  })
+
+  test('leaves text carrying no credential exactly as written', () => {
+    const text = '### CI fix\n\n- lint: clean\n- test: 2 failing'
+
+    expect(redactSecrets(text, [TOKEN, KEY])).toBe(text)
   })
 
   test('leaves everything else alone', () => {
@@ -858,11 +887,18 @@ const parseBody = (body: unknown): Record<string, unknown> => {
 }
 
 /** A real Octokit whose transport is a recorder, so no socket is opened. */
-const recordingApi = (captured: CapturedRequest[], payload: unknown = PR_JSON): GitHubApi =>
+const LEAKED = 'ghp_0123456789abcdefghijklmnopqrstuvwxyz'
+
+const recordingApi = (
+  captured: CapturedRequest[],
+  payload: unknown = PR_JSON,
+  secrets: readonly string[] = [],
+): GitHubApi =>
   createOctokitApi({
     token: 'tok',
     owner: 'acme',
     repo: 'widgets',
+    secrets,
     fetch: (url, init) => {
       captured.push({ url, method: init?.method ?? 'GET', body: parseBody(init?.body) })
       return Promise.resolve(jsonResponse(payload))
@@ -905,6 +941,42 @@ describe('createOctokitApi', () => {
     const found = await recordingApi([], listing(apiState, mergedAt)).findPullRequest('agent/issue-42')
 
     expect(found).toEqual({ number: 3, url: 'https://example.test/pull/3', state: expected })
+  })
+
+  test.each([
+    ['an issue comment', (api: GitHubApi): Promise<unknown> => api.createComment(42, `FAIL token=${LEAKED}`)],
+    [
+      'a new pull request body',
+      (api: GitHubApi): Promise<unknown> =>
+        api.createPullRequest({ head: 'agent/issue-42', base: 'master', title: 't', body: `see ${LEAKED}` }),
+    ],
+    [
+      'a refreshed pull request body',
+      (api: GitHubApi): Promise<unknown> => api.updatePullRequest(3, { title: 't', body: `see ${LEAKED}` }),
+    ],
+  ])('strips a credential that reached %s', async (_label, send) => {
+    // Check output, git stderr, review summaries and model prose all end up in
+    // these bodies. GitHub masks secrets in an Actions log; it does not mask an
+    // issue comment.
+    const captured: CapturedRequest[] = []
+
+    await send(recordingApi(captured, PR_JSON, [LEAKED]))
+
+    expect(JSON.stringify(captured[0]?.body)).not.toContain(LEAKED)
+    expect(JSON.stringify(captured[0]?.body)).toContain('[redacted]')
+  })
+
+  test('leaves the branch names it computed itself untouched', async () => {
+    const captured: CapturedRequest[] = []
+
+    await recordingApi(captured, PR_JSON, ['agent/issue-42']).createPullRequest({
+      head: 'agent/issue-42',
+      base: 'master',
+      title: 't',
+      body: 'b',
+    })
+
+    expect(captured[0]?.body).toMatchObject({ head: 'agent/issue-42', base: 'master' })
   })
 
   test('opens a pull request with the head, base and presentation it was given', async () => {

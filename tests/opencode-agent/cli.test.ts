@@ -8,6 +8,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
+import type { FetchLike } from '../../opencode-agent/src/github.js'
 import { memoizeAgent, parseArgs, runCli, UsageError } from '../../opencode-agent/src/index.js'
 import { createLogger } from '../../opencode-agent/src/logger.js'
 import type { OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
@@ -142,6 +143,36 @@ describe('memoizeAgent', () => {
   })
 })
 
+interface PostRecorder {
+  posted: string[]
+  fetch: FetchLike
+}
+
+/**
+ * A GitHub transport that answers reads with `thread` and records writes.
+ * The branching lives out here so no test body carries a conditional.
+ */
+const recordPosts = (thread: unknown): PostRecorder => {
+  const posted: string[] = []
+  const json = (payload: unknown, status: number): Response =>
+    new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json' } })
+
+  const write = (body: string): Response => {
+    posted.push(body)
+    return json({ id: 9, html_url: 'https://example.test/c/9' }, 201)
+  }
+  const read = (): Response => json(thread, 200)
+  const byMethod: Record<string, (body: string) => Response> = { POST: write, PATCH: write }
+  // Octokit always sends a string body; the wider `RequestInit` type does not
+  // know that, and stringifying a non-string would silently record "[object Object]".
+  const bodyOf = (body: BodyInit | null | undefined): string => (typeof body === 'string' ? body : '')
+
+  return {
+    posted,
+    fetch: (_url, init) => Promise.resolve((byMethod[init?.method ?? 'GET'] ?? read)(bodyOf(init?.body))),
+  }
+}
+
 describe('runCli', () => {
   const env = {
     GITHUB_REPOSITORY: 'acme/widgets',
@@ -197,6 +228,48 @@ describe('runCli', () => {
     expect(Object.hasOwn(live, 'OPENAI_API_KEY')).toBe(false)
     expect(Object.hasOwn(live, 'GH_TOKEN')).toBe(false)
     expect(live.PATH).toBe('/usr/bin')
+  })
+
+  test('a body posted by a real run carries no credential', async () => {
+    // End to end through the real GitHub adapter: proves the pipeline actually
+    // wires its secrets in, which a redaction test on the adapter alone cannot.
+    // `/cancel` reaches a posted comment without booting a model.
+    const token = 'ghp_0123456789abcdefghijklmnopqrst'
+    const prior = [
+      {
+        id: 1,
+        user: { login: 'agent-bot' },
+        body: `stopped\n\n<!-- AGENT_STATE: ${JSON.stringify({
+          v: 1,
+          phase: 'FAILED',
+          issueId: 42,
+          resumeFrom: 'EXECUTION_PLAN',
+          lastError: `git failed: remote rejected, token ${token}`,
+        })} -->`,
+      },
+    ]
+    const eventPath = await writeEvent('redact', {
+      action: 'created',
+      sender: { login: 'maintainer', type: 'User' },
+      issue: { number: 42, title: 't', body: 'b', author_association: 'OWNER' },
+      comment: { id: 2, body: '/cancel', author_association: 'OWNER' },
+      repository: { owner: { login: 'acme' }, name: 'widgets', default_branch: 'master' },
+    })
+
+    const github = recordPosts(prior)
+    const result = await runCli({
+      argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
+      env: { ...env, GITHUB_TOKEN: token },
+      logger: silentLogger,
+      fetch: github.fetch,
+    })
+
+    expect(result.status).toBe('completed')
+    expect(github.posted).toHaveLength(1)
+    // The credential arrived through the restored state's `lastError`, which
+    // the hidden block republishes on every comment.
+    expect(github.posted[0]).toContain('[redacted]')
+    expect(github.posted[0]).not.toContain(token)
   })
 
   test('a guarded run never shells out to work out a base branch', async () => {

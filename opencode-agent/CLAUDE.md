@@ -37,7 +37,9 @@ findings: `ROADMAP.md`.
   by widening the wildcard. Credentials are scrubbed from `process.env`
   (`secrets.ts`) before anything spawns, because the OpenCode server inherits it
   wholesale — so never reintroduce a code path that reads a secret from `env`
-  after `runCli` has loaded config.
+  after `runCli` has loaded config. Outbound text is redacted in `github.ts`, at
+  the boundary: never move that into a renderer, and never add a `GitHubApi`
+  method that sends free text without passing it through `clean`.
 - Untrusted text (issue bodies, comments, **check output**) must go through the
   envelope from `prompts.ts` before reaching a prompt, and commands must be
   spawned as argv vectors with `shell: false`. The envelope is only as good as

@@ -182,8 +182,16 @@ travels in `OPENCODE_CONFIG_CONTENT`, the GitHub token goes to Octokit directly,
 and git reads `.git/config`. They are matched by **value**, not name, so an
 aliased export goes too.
 
+Every outbound body — issue comments, pull request titles and bodies — is
+stripped of the pipeline's credentials at the GitHub adapter, not in the
+renderers. A comment is assembled from check output, git stderr, review
+summaries, model prose and the hidden state block's `lastError`; redacting at the
+boundary means none of those can forget. GitHub masks registered secrets in an
+Actions log, but it does not mask an issue comment.
+
 > **Still open:** `persist-credentials: true` leaves the repository token in
-> `.git/config`, which the `build` profile can read. See S3-7 in `ROADMAP.md`.
+> `.git/config`, which the `build` profile can read (S3-7), and the logger still
+> redacts by field name rather than by value (S3-8). Both are in `ROADMAP.md`.
 
 ### A note on the "actor matches repository owner" rule
 

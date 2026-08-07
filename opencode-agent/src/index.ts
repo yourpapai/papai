@@ -13,6 +13,7 @@ import { loadConfig, resolveBaseBranch } from './config.js'
 import type { Env, PipelineConfig } from './config.js'
 import { createGit } from './git.js'
 import { createOctokitApi } from './github.js'
+import type { FetchLike } from './github.js'
 import { parseTriggerEvent } from './guardrails.js'
 import type { TriggerEvent } from './guardrails.js'
 import { createLogger } from './logger.js'
@@ -25,7 +26,7 @@ import type { OpenCodeAgent } from './opencode-adapter.js'
 import { runPipeline } from './orchestrator.js'
 import type { PhaseDeps, RunReview } from './phase-context.js'
 import { runReviewLoop } from './review-runner.js'
-import { scrubSecrets } from './secrets.js'
+import { pipelineSecrets, scrubSecrets } from './secrets.js'
 import { runCommand } from './shell.js'
 import type { CommandRunner } from './shell.js'
 import { errorMessage } from './types.js'
@@ -169,9 +170,10 @@ interface DepsInput {
   run: CommandRunner
   log: Logger
   agent: AgentHandle
+  fetch?: FetchLike
 }
 
-const assembleDeps = ({ config, event, env, run, log, agent }: DepsInput): PhaseDeps => {
+const assembleDeps = ({ config, event, env, run, log, agent, fetch }: DepsInput): PhaseDeps => {
   const git = createGit({
     run,
     cwd: config.repoRoot,
@@ -180,7 +182,13 @@ const assembleDeps = ({ config, event, env, run, log, agent }: DepsInput): Phase
   })
 
   return {
-    github: createOctokitApi({ token: config.githubToken, owner: config.owner, repo: config.repo }),
+    github: createOctokitApi({
+      token: config.githubToken,
+      owner: config.owner,
+      repo: config.repo,
+      secrets: pipelineSecrets(config),
+      fetch,
+    }),
     git,
     runCheck: makeCheckRunner(run, config),
     runReview: makeReviewRunner(run, config, log),
@@ -199,6 +207,8 @@ export interface MainOptions {
   env: NodeJS.ProcessEnv
   logger?: Logger
   run?: CommandRunner
+  /** Transport seam for tests; the GitHub adapter's own `fetch` option. */
+  fetch?: FetchLike
 }
 
 /**
@@ -215,7 +225,7 @@ export const runCli = async (options: MainOptions): Promise<RunResult> => {
   // Before anything can spawn a child. The OpenCode server inherits this
   // process's environment wholesale, so a credential left here is one the model
   // can read with `bash`.
-  const scrubbed = scrubSecrets(options.env, [config.githubToken, config.openai.apiKey])
+  const scrubbed = scrubSecrets(options.env, pipelineSecrets(config))
   if (scrubbed.length > 0) log.debug({ variables: scrubbed }, 'Removed credentials from the environment')
 
   const payload: unknown = JSON.parse(await readFile(args.eventPath, 'utf8'))
@@ -233,7 +243,7 @@ export const runCli = async (options: MainOptions): Promise<RunResult> => {
       sessionTitle: `issue-${event.issueNumber}`,
     }),
   )
-  const deps = assembleDeps({ config, event, env: options.env, run, log, agent })
+  const deps = assembleDeps({ config, event, env: options.env, run, log, agent, fetch: options.fetch })
 
   log.info(
     { event: args.eventName, kind: event.kind, issue: event.issueNumber, model: config.openai.model },

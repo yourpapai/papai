@@ -827,19 +827,57 @@ undone deliberately: it changes how every git operation authenticates, and this
 container cannot verify a real push, so a wrong header format would break the
 whole pipeline rather than one phase.
 
-### S3-3 Check output and git stderr are published verbatim to a public issue — by inspection
+### S3-3 Check output and git stderr are published verbatim to a public issue — verified — **[FIXED]**
 
-`src/phases/implement.ts:117` embeds `formatFailures(...)` in the issue comment;
-`src/orchestrator.ts:181-192` posts raw error messages, including `GitError`,
-which carries git's stderr (`src/git.ts:23`).
+_Verified on the wire with the transport recorder: a comment body carrying a
+token went out to `POST /repos/acme/widgets/issues/42/comments` byte for byte._
 
-A failing integration test that prints an environment variable, or a git error
-echoing a credentialed remote, is published to a public issue. The logger's
-`REDACT_KEYS` (`src/logger.ts:27-36`) protects **stdout only** — nothing
-redacts the issue-comment path.
+_Redaction lives at the **GitHub adapter**, not in the renderers. A comment body
+is assembled from check output, git stderr, review summaries, model prose and the
+hidden state block's `lastError`, and every one of those is a place a future
+renderer could forget. `createOctokitApi` strips secrets from every outbound
+body — comments, new pull requests, refreshed ones — so nothing leaves the module
+unredacted, and `OctokitApiOptions.secrets` is **required** so a new construction
+site has to decide rather than default to silence._
 
-**Direction:** run every outbound comment body through a redaction pass, keyed
-on the known secret values from the environment rather than on key names.
+_Keyed on **values**, not names, and the reason is sharper than for the
+environment scrub: the logger redacts by field name, which only works when a
+secret arrives in a field somebody named. Check output and git stderr are free
+text — a token inside them has no key at all. Branch names are left alone; they
+are computed by this pipeline, and redacting them could corrupt a `head`._
+
+_`pipelineSecrets(config)` is the single list both consumers read, so a
+credential added to the config cannot be wired into the scrub and forgotten by
+the redaction._
+
+_A mutation survived the first pass and mattered: replacing the wired list with
+`[]` killed nothing, because every redaction test built the adapter directly. The
+adapter can be perfect and still be handed nothing. `MainOptions.fetch` now
+carries the transport into `runCli`, and a `/cancel` run — which reaches a posted
+comment without booting a model — asserts end to end that a body posted by the
+**real** pipeline carries no credential. That test kills the mutant._
+
+_Mutation-checked nine ways in total: un-redacting each of the three outbound
+paths, replacing only the first occurrence, stopping after the first secret,
+dropping the minimum-length guard, passing an empty list from `runCli`, and
+dropping either credential from `pipelineSecrets`._
+
+_Not covered: the logger still redacts by key name. That is a smaller exposure —
+GitHub masks registered secrets in Actions logs, and it does not mask issue
+comments — but it is name-based, so a token inside a logged free-text error
+message survives. Recorded as S3-8._
+
+### S3-8 The logger redacts by field name, so a secret inside a message survives
+
+`src/logger.ts` walks metadata keys against `REDACT_KEYS`. A credential that
+arrives inside a free-text `error` message — the same shape S3-3 fixed for issue
+comments — is logged verbatim. Lower severity than S3-3 because Actions masks
+registered secrets in its own logs, but the pipeline is also runnable locally,
+where nothing masks anything.
+
+**Direction:** run log lines through `redactSecrets` with `pipelineSecrets`, the
+way the GitHub adapter now does. The value list already exists; it is a wiring
+change plus a seam to hand the logger the secrets at construction.
 
 ### S3-4 The persisted branch name is never validated — by inspection
 

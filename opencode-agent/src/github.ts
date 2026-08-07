@@ -7,6 +7,7 @@ import { Octokit } from '@octokit/rest'
 
 import type { IssueComment } from './blocks.js'
 import type { IssueContext } from './phase-context.js'
+import { redactSecrets } from './secrets.js'
 
 /**
  * Everything about a pull request that is derived from live issue state, and so
@@ -68,6 +69,16 @@ export interface OctokitApiOptions {
   owner: string
   repo: string
   /**
+   * Credential values stripped from every outbound body.
+   *
+   * Required rather than optional so a new construction site has to decide.
+   * Redaction lives here, at the boundary, instead of in the renderers: a
+   * comment body is assembled from check output, git stderr, review summaries
+   * and model prose, and each of those is a place a future renderer could
+   * forget. Nothing leaves this module without passing through it.
+   */
+  secrets: readonly string[]
+  /**
    * Transport seam. Tests pass a recorder so they can assert what actually goes
    * over the wire without opening a socket — this is the one layer where a
    * dropped field is invisible to the phase tests, which only see what the
@@ -87,6 +98,16 @@ interface Repo {
   owner: string
   repo: string
 }
+
+/** The free-text half of a pull request, redacted. `head`/`base` are branch
+ * names this pipeline computes, so they are left exactly as given. */
+const presentable = (
+  presentation: PullRequestPresentation,
+  clean: (text: string) => string,
+): PullRequestPresentation => ({
+  title: clean(presentation.title),
+  body: clean(presentation.body),
+})
 
 const listIssueComments = async (octokit: Octokit, repo: Repo, issueNumber: number): Promise<IssueComment[]> => {
   const comments = await octokit.paginate(octokit.rest.issues.listComments, {
@@ -129,6 +150,7 @@ const closedOrOpen = (state: string): PullRequestState => (state === 'open' ? 'o
 /** Builds a {@link GitHubApi} backed by `@octokit/rest`. */
 export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
   const repo: Repo = { owner: options.owner, repo: options.repo }
+  const clean = (text: string): string => redactSecrets(text, options.secrets)
   // An undefined `fetch` falls through to `globalThis.fetch` inside
   // `@octokit/request`, so the production path is unchanged.
   const octokit = new Octokit({ auth: options.token, request: { fetch: options.fetch } })
@@ -141,7 +163,7 @@ export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
       const { data } = await octokit.rest.issues.createComment({
         ...repo,
         issue_number: issueNumber,
-        body,
+        body: clean(body),
       })
       return { id: data.id, url: data.html_url }
     },
@@ -152,7 +174,7 @@ export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
     },
 
     updatePullRequest: async (number, patch) => {
-      await octokit.rest.pulls.update({ ...repo, pull_number: number, ...patch })
+      await octokit.rest.pulls.update({ ...repo, pull_number: number, ...presentable(patch, clean) })
     },
 
     getAuthenticatedLogin: async () => {
@@ -161,7 +183,7 @@ export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
     },
 
     createPullRequest: async (input) => {
-      const { data } = await octokit.rest.pulls.create({ ...repo, ...input })
+      const { data } = await octokit.rest.pulls.create({ ...repo, ...input, ...presentable(input, clean) })
       return { number: data.number, url: data.html_url }
     },
   }

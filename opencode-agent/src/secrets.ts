@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { Env } from './config.js'
+import type { Env, PipelineConfig } from './config.js'
 
 /**
  * A value short enough that it could plausibly collide with an unrelated
@@ -41,3 +41,30 @@ export const scrubSecrets = (env: Env, secrets: readonly string[]): string[] => 
 
   return removed
 }
+
+/** Stand-in for a removed secret. Conspicuous on purpose. */
+const REDACTION = '[redacted]'
+
+/**
+ * Replaces every occurrence of a loaded credential with a placeholder.
+ *
+ * Keyed on **values**, like {@link scrubSecrets}, and for a sharper reason: the
+ * logger redacts by field name, which only works when a secret arrives in a
+ * field somebody named. Check output, git stderr and model prose are free text —
+ * a token inside them has no key at all, and the platform does not mask an issue
+ * comment the way it masks an Actions log.
+ */
+export const redactSecrets = (text: string, secrets: readonly string[]): string =>
+  secrets.reduce(
+    (redacted, secret) => (secret.length >= MIN_SECRET_LENGTH ? redacted.replaceAll(secret, REDACTION) : redacted),
+    text,
+  )
+
+/**
+ * Every credential the pipeline holds, in one place.
+ *
+ * Both consumers read from here — the environment scrub and the outbound
+ * redaction — so a credential added to the config cannot be wired into one and
+ * forgotten by the other.
+ */
+export const pipelineSecrets = (config: PipelineConfig): readonly string[] => [config.githubToken, config.openai.apiKey]
