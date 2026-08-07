@@ -354,8 +354,17 @@
   .settings-mcp__field--token {
     flex: 1 1 260px;
   }
-  .settings-mcp__field :global(.ui-input) {
+  .settings-mcp__field :global(.ui-input),
+  .settings-mcp__field :global(.ui-select) {
     width: 100%;
+  }
+  /* .ui-select is a flex row (select + caret) and only grants its <select> flex-grow
+     under the `block` variant -- which also forces --row-h height and 14px text, a new
+     mismatch against Input's 12px. Grow the select here instead, so the two peer fields
+     match in width without diverging in type size. */
+  .settings-mcp__field :global(.ui-select select) {
+    flex: 1;
+    min-width: 0;
   }
   .settings-mcp__trailing {
     margin-left: auto;
@@ -365,6 +374,12 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--gap-inline);
+    /* Measured against *this* section's card geometry: the row cards use
+       padding: var(--gap-inline) plus a 1px border, putting their content edge at 13px.
+       CodingCredentialsSection.svelte and CodeHostSection.svelte use 14px because they
+       measured their own, different cards. Re-measure before changing this; do not
+       "unify" it with the siblings' value. */
+    padding-inline: 13px;
   }
   .settings-mcp__add {
     display: flex;
