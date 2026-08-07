@@ -88,6 +88,39 @@ describe('ReviewLoopConfigSchema', () => {
     })
     expect(parsed.poolSize).toBe(5)
   })
+
+  test('accepts an optional pricing table', () => {
+    const parsed = ReviewLoopConfigSchema.parse({
+      workDir: '.review-loop',
+      reviewer: { model: 'm1' },
+      fixer: { model: 'm2' },
+      matcher: { model: 'm3' },
+      pricing: { 'm-*': { input: 3, output: 15 } },
+    })
+    expect(parsed.pricing).toEqual({ 'm-*': { input: 3, output: 15 } })
+  })
+
+  test('pricing is undefined when omitted', () => {
+    const parsed = ReviewLoopConfigSchema.parse({
+      workDir: '.review-loop',
+      reviewer: { model: 'm1' },
+      fixer: { model: 'm2' },
+      matcher: { model: 'm3' },
+    })
+    expect(parsed.pricing).toBeUndefined()
+  })
+
+  test('rejects a malformed pricing entry', () => {
+    expect(() =>
+      ReviewLoopConfigSchema.parse({
+        workDir: '.review-loop',
+        reviewer: { model: 'm1' },
+        fixer: { model: 'm2' },
+        matcher: { model: 'm3' },
+        pricing: { 'm-*': { input: 'x' } },
+      }),
+    ).toThrow()
+  })
 })
 
 function writeConfig(dir: string, config: Record<string, unknown>): string {

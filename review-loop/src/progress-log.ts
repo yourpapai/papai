@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { DiffStats } from './diff-stats.js'
+import type { RunStats } from './run-stats.js'
 import type { Severity } from './trace-log.js'
 
 export type IssueProgressEvent =
@@ -15,10 +17,13 @@ export interface UsageDelta {
   output: number
   reasoning: number
   cost: number
+  label?: string
+  model?: string
 }
 
 export interface ProgressReporter {
   readonly dynamic: boolean
+  readonly stats?: RunStats
   event(message: string): void
   live(lines: readonly string[]): void
   clearLive(): void
@@ -27,6 +32,7 @@ export interface ProgressReporter {
   statusSuffix?(): string
   slot?(key: string, line: string | null): void
   usage?(delta: UsageDelta): void
+  diff?(label: string, diff: DiffStats): void
 }
 
 export function emitDecision(

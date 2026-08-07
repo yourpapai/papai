@@ -8,6 +8,7 @@ import path from 'node:path'
 
 import { z } from 'zod'
 
+import { PricingTableSchema } from './cost.js'
 import { detectGitRoot } from './worktree.js'
 
 const AgentConfigSchema = z.object({
@@ -29,6 +30,7 @@ export const ReviewLoopConfigSchema = z.object({
   fixer: AgentConfigSchema,
   inspector: AgentConfigSchema.optional(),
   matcher: AgentConfigSchema,
+  pricing: PricingTableSchema.optional(),
 })
 
 export interface ReviewLoopConfig extends z.infer<typeof ReviewLoopConfigSchema> {

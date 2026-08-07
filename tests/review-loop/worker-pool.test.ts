@@ -181,3 +181,40 @@ describe('WorkerPool', () => {
     await pool.close()
   })
 })
+
+test('mergeWorkerIntoPrimary reports numstat diff via onMergeDiff hook', async () => {
+  const repoRoot = makeTempDir('pool-')
+  const config = createReviewLoopConfigFixture(repoRoot, { poolSize: 1 })
+  const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
+  await setupPrimary(repoRoot, runState.runId, runState.worktreePath)
+
+  const diffs: Array<{ workerId: number; added: number; removed: number }> = []
+  const pool = await createWorkerPool(config, runState, {
+    onMergeDiff: (workerId, diff) => {
+      diffs.push({ workerId, ...diff })
+    },
+    warn: () => undefined,
+  })
+  const worker = await pool.acquire('src/a.ts')
+  writeFileSync(path.join(worker.worktreePath, 'src-a.ts'), 'line1\nline2\nline3\n')
+  await execGit(worker.worktreePath, ['add', '.'])
+  await execGit(worker.worktreePath, ['commit', '-m', 'worker change'])
+  const result = await pool.mergeWorkerIntoPrimary(worker)
+  expect(result.ok).toBe(true)
+  expect(diffs).toEqual([{ workerId: worker.id, added: 3, removed: 0 }])
+  await pool.close()
+})
+
+test('mergeWorkerIntoPrimary without hooks still merges', async () => {
+  const repoRoot = makeTempDir('pool-')
+  const config = createReviewLoopConfigFixture(repoRoot, { poolSize: 1 })
+  const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
+  await setupPrimary(repoRoot, runState.runId, runState.worktreePath)
+  const pool = await createWorkerPool(config, runState)
+  const worker = await pool.acquire('src/a.ts')
+  writeFileSync(path.join(worker.worktreePath, 'x.ts'), 'x\n')
+  await execGit(worker.worktreePath, ['add', '.'])
+  await execGit(worker.worktreePath, ['commit', '-m', 'x'])
+  expect((await pool.mergeWorkerIntoPrimary(worker)).ok).toBe(true)
+  await pool.close()
+})

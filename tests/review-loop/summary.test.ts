@@ -223,6 +223,58 @@ describe('buildSummary artifacts', () => {
   })
 })
 
+describe('buildSummary stats line', () => {
+  test('buildSummary appends a Stats line when stats are present', () => {
+    const summary = buildSummary(
+      inputOf({
+        stats: {
+          totals: {
+            input: 228_800,
+            output: 41_200,
+            reasoning: 0,
+            toolCalls: 37,
+            added: 412,
+            removed: 87,
+            estimatedCostUsd: 1.02,
+            elapsedMs: 252_000,
+          },
+          perLabel: {},
+        },
+      }),
+    )
+    expect(summary).toContain('Stats: tools 37 · +412/-87 · ~$1.02 est')
+  })
+
+  test('buildSummary omits the Stats line when stats are absent', () => {
+    expect(buildSummary(inputOf())).not.toContain('Stats:')
+  })
+
+  test('buildSummary omits the Stats line when all totals are zero', () => {
+    const summary = buildSummary(
+      inputOf({
+        stats: {
+          totals: { input: 0, output: 0, reasoning: 0, toolCalls: 0, added: 0, removed: 0, elapsedMs: 1000 },
+          perLabel: {},
+        },
+      }),
+    )
+    expect(summary).not.toContain('Stats:')
+  })
+
+  test('buildSummary Stats line shows only non-zero segments', () => {
+    const summary = buildSummary(
+      inputOf({
+        stats: {
+          totals: { input: 0, output: 0, reasoning: 0, toolCalls: 0, added: 5, removed: 0, elapsedMs: 1000 },
+          perLabel: {},
+        },
+      }),
+    )
+    expect(summary).toContain('Stats: +5/-0')
+    expect(summary).not.toContain('tools 0')
+  })
+})
+
 describe('buildMetricsJson', () => {
   test('keeps the existing shape', () => {
     const json = buildMetricsJson('max_rounds', 2, 1, [busyMetric(1)], { poolSize: 1, inspect: false })
@@ -230,5 +282,14 @@ describe('buildMetricsJson', () => {
     expect(json.rounds).toBe(2)
     expect(json.totals.closed).toBe(1)
     expect(json.usage.inputTokens).toBe(120_000)
+  })
+
+  test('buildMetricsJson includes runStats when provided', () => {
+    const runStats = {
+      totals: { input: 1, output: 2, reasoning: 0, toolCalls: 3, added: 4, removed: 5, estimatedCostUsd: 0.01 },
+      perLabel: {},
+    }
+    const metrics = buildMetricsJson('clean', 1, 0, [], { poolSize: 1, inspect: false }, runStats)
+    expect(metrics.runStats).toEqual(runStats)
   })
 })

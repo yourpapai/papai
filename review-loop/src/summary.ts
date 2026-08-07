@@ -14,6 +14,7 @@ import {
 import type { IssueLedgerSnapshot, LedgerIssueRecord } from './issue-ledger.js'
 import { formatDuration } from './live-format.js'
 import type { ReviewLoopResult } from './loop-controller.js'
+import type { PersistedStats, StatsSnapshot } from './run-stats.js'
 import { burndownBlock } from './summary-burndown.js'
 import type { PhaseMs, RoundMetric, UsageTotals } from './trace-log.js'
 
@@ -39,6 +40,7 @@ export interface MetricsJson {
     reopened: number
     inspectorRejected: number
   }
+  runStats?: PersistedStats
 }
 
 export interface SummaryOptions {
@@ -54,6 +56,7 @@ export interface SummaryInput {
   runDir: string
   wallMs: number
   options: SummaryOptions
+  stats?: StatsSnapshot
 }
 
 interface IssueCounts {
@@ -173,6 +176,17 @@ function buildInspectorLine(metrics: readonly RoundMetric[], options: SummaryOpt
   return `Inspector: ${runs} runs, ${rejected} rejected (${rate} reject rate)`
 }
 
+function buildStatsLine(stats: StatsSnapshot | undefined): string | null {
+  if (stats === undefined) return null
+  const t = stats.totals
+  const parts: string[] = []
+  if (t.toolCalls > 0) parts.push(`tools ${t.toolCalls}`)
+  if (t.added > 0 || t.removed > 0) parts.push(`+${t.added}/-${t.removed}`)
+  if (t.estimatedCostUsd !== undefined) parts.push(`~$${t.estimatedCostUsd.toFixed(2)} est`)
+  if (parts.length === 0) return null
+  return `Stats: ${parts.join(' · ')}`
+}
+
 function issuesBlock(ledger: IssueLedgerSnapshot): string[] {
   const records = Object.values(ledger.issues)
   if (records.length === 0) return []
@@ -219,6 +233,9 @@ export function buildSummary(input: SummaryInput): string {
   const inspectorLine = buildInspectorLine(input.metrics, input.options)
   if (inspectorLine !== null) lines.push(inspectorLine)
 
+  const statsLine = buildStatsLine(input.stats)
+  if (statsLine !== null) lines.push(statsLine)
+
   const issues = issuesBlock(input.ledger)
   if (issues.length > 0) lines.push('', ...issues)
 
@@ -235,6 +252,7 @@ export function buildMetricsJson(
   closed: number,
   metrics: readonly RoundMetric[],
   options: SummaryOptions,
+  runStats?: PersistedStats,
 ): MetricsJson {
   const lastMetric = metrics.length > 0 ? metrics[metrics.length - 1] : undefined
   const openFromMetrics = lastMetric === undefined ? 0 : lastMetric.cumulativeOpen
@@ -254,5 +272,6 @@ export function buildMetricsJson(
       reopened: 0,
       inspectorRejected: metrics.reduce((s, m) => s + m.inspector.rejected, 0),
     },
+    ...(runStats === undefined ? {} : { runStats }),
   }
 }

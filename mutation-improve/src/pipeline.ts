@@ -7,20 +7,19 @@ import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
 
 import { agentWritePath, type AgentRunResult } from '../../review-loop/src/agent-runner.js'
+import { headSha, type DiffStats } from '../../review-loop/src/diff-stats.js'
 import type { MergeResult } from '../../review-loop/src/worktree.js'
 import { bumpScore, type BaselineMap } from './baseline.js'
 import type { CappedRegistryStore } from './capped-registry.js'
 import type { MutationImproveConfig } from './config.js'
 import { recordFailure, type FailureEntry } from './failure-recorder.js'
 import { gatePhase, type PhaseResult } from './gate.js'
+import { reportMergeDiff } from './merge-stats.js'
 import { buildImprovePrompt, buildSelectPrompt } from './prompt-templates.js'
-import type { Result } from './result-schema.js'
-import { ResultSchema } from './result-schema.js'
-import type { MutationImproveRunState } from './run-state.js'
-import { iterDir } from './run-state.js'
+import { ResultSchema, type Result } from './result-schema.js'
+import { iterDir, type MutationImproveRunState } from './run-state.js'
 import type { MeasuredScore } from './score-reader.js'
-import { SelectionSchema } from './selection-schema.js'
-import type { Selection } from './selection-schema.js'
+import { SelectionSchema, type Selection } from './selection-schema.js'
 import { ratchetVerifiedSkip } from './skip-ratchet.js'
 
 export interface IterationResult {
@@ -50,7 +49,7 @@ export interface PipelineDeps {
   runImproveAgent: (worktreePath: string, prompt: string, outputPath: string) => Promise<AgentRunResult<Result>>
   cappedRegistry: CappedRegistryStore
   saveRunState: (state: MutationImproveRunState) => Promise<void>
-  log: { log: (msg: string) => void; issue?: unknown }
+  log: { log: (msg: string) => void; issue?: unknown; diff?: (label: string, diff: DiffStats) => void }
 }
 
 function branchFor(deps: PipelineDeps, iter: number): string {
@@ -171,6 +170,7 @@ async function finalizePhase(
 ): Promise<IterationResult> {
   const { afterScore, result } = gate
   await commitRatchet(deps, worktreePath, file, afterScore, bumpScore(baseline, file, afterScore))
+  const beforeSha = await headSha(deps.execGit, deps.config.repoRoot)
   const merge = await deps.mergeWorktree(deps.config.repoRoot, branchFor(deps, iter))
   if (!merge.ok) {
     return {
@@ -183,6 +183,7 @@ async function finalizePhase(
       reason: `conflict: ${merge.conflictFiles.join(', ')}`,
     }
   }
+  await reportMergeDiff(deps, iter, beforeSha)
   // Record the cap only after the merge landed: an aborted run keeps the bump
   // on the unmerged iteration branch, and a persisted cap would wrongly block
   // the file in later runs whose baseline never received the tests.

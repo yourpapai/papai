@@ -16,5 +16,9 @@
     "extraArgs": [],
     "timeoutMs": 1800000
   },
-  "prBranchPrefix": "mutation-improve"
+  "prBranchPrefix": "mutation-improve",
+  "pricing": {
+    "anthropic/claude-sonnet-*": { "input": 3, "output": 15 },
+    "anthropic/claude-opus-*": { "input": 15, "output": 75 }
+  }
 }

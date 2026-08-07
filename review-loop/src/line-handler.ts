@@ -19,10 +19,12 @@ export interface LineHandler {
 
 export interface LiveCtx {
   readonly label: string
+  readonly model: string
   readonly logPath: string
   readonly reporter: ProgressReporter | undefined
   startedAt: number
   toolCount: number
+  reportedToolCalls: number
   tool: string
   arg: string
   readonly seenCalls: Set<string>
@@ -45,6 +47,32 @@ function renderLive(ctx: LiveCtx): void {
   } else {
     reporter.slot(ctx.label, line)
   }
+}
+
+function applyStepFinish(evt: Extract<OpencodeEvent, { type: 'step_finish' }>, ctx: LiveCtx): void {
+  const reporter = ctx.reporter
+  ctx.usage.inputTokens += evt.tokens.input
+  ctx.usage.outputTokens += evt.tokens.output
+  ctx.usage.reasoningTokens += evt.tokens.reasoning
+  ctx.usage.costUsd += evt.cost
+  if (reporter === undefined) return
+  reporter.usage?.({
+    input: evt.tokens.input,
+    output: evt.tokens.output,
+    reasoning: evt.tokens.reasoning,
+    cost: evt.cost,
+    label: ctx.label,
+    model: ctx.model,
+  })
+  const newToolCalls = ctx.toolCount - ctx.reportedToolCalls
+  if (newToolCalls > 0) {
+    ctx.reportedToolCalls = ctx.toolCount
+    reporter.stats?.addToolCalls(ctx.label, newToolCalls)
+  }
+  reporter.clearLive()
+  reporter.event(
+    formatStepFooter(ctx.label, ctx.startedAt === 0 ? 0 : Date.now() - ctx.startedAt, ctx.toolCount, evt.tokens),
+  )
 }
 
 function applyEvent(evt: OpencodeEvent, ctx: LiveCtx): void {
@@ -71,22 +99,7 @@ function applyEvent(evt: OpencodeEvent, ctx: LiveCtx): void {
       renderLive(ctx)
       break
     case 'step_finish':
-      ctx.usage.inputTokens += evt.tokens.input
-      ctx.usage.outputTokens += evt.tokens.output
-      ctx.usage.reasoningTokens += evt.tokens.reasoning
-      ctx.usage.costUsd += evt.cost
-      if (reporter !== undefined) {
-        reporter.usage?.({
-          input: evt.tokens.input,
-          output: evt.tokens.output,
-          reasoning: evt.tokens.reasoning,
-          cost: evt.cost,
-        })
-        reporter.clearLive()
-        reporter.event(
-          formatStepFooter(ctx.label, ctx.startedAt === 0 ? 0 : Date.now() - ctx.startedAt, ctx.toolCount, evt.tokens),
-        )
-      }
+      applyStepFinish(evt, ctx)
       break
     case 'text':
       break
@@ -96,10 +109,12 @@ function applyEvent(evt: OpencodeEvent, ctx: LiveCtx): void {
 export function createLineHandler<T>(options: RunAgentOptions<T>): LineHandler {
   const ctx: LiveCtx = {
     label: options.label,
+    model: options.model,
     logPath: options.logPath,
     reporter: options.reporter,
     startedAt: 0,
     toolCount: 0,
+    reportedToolCalls: 0,
     tool: '',
     arg: '',
     seenCalls: new Set<string>(),
