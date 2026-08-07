@@ -93,6 +93,36 @@ cannot produce the shape twice will not produce it on the fifth attempt, and the
 job has its own timeout. A second bad reply fails the phase as before, with the
 raw text in the failure comment.
 
+## A worked example
+
+1. A maintainer opens issue #42: "Add retries to the HTTP client. Requests
+   should retry twice on 5xx." The `issues.opened` event fires the workflow;
+   the guardrails check the sender's `author_association` and let it through.
+2. The agent runs `INIT_OR_CLARIFY`: reads the issue and explores the repo,
+   then posts a design spec and parks in `DESIGN_SPEC`.
+3. The maintainer replies `/changes only retry on 502 and 503`. The agent
+   rewrites the spec from that feedback and posts it again, still in
+   `DESIGN_SPEC`.
+4. The maintainer replies `/approve`. The agent moves to `EXECUTION_PLAN`,
+   cuts `agent/issue-42` from the default branch, and posts a step-by-step
+   plan; `PLAN_REVIEW` waits for another `/approve`.
+5. Once approved, `REVIEW_AND_MUTATE` implements the plan, runs this
+   repository's own `review-loop/` workspace against the diff, and pushes to
+   `agent/issue-42`.
+6. `PR_DELIVERY` opens a pull request carrying `Closes #42`.
+7. CI runs on the branch — only if `AGENT_GITHUB_TOKEN` is configured, see
+   **Red pull requests** below — and comes back red. The `workflow_run` event
+   brings the agent back into `CI_FIX`: it checks out the branch, reproduces
+   the failing checks locally, hands the real output to the model, and
+   pushes a fix. This repeats, bounded by `AGENT_CI_FIX_MAX_ROUNDS` and
+   `AGENT_MAX_CI_ATTEMPTS`, until CI is green or the budget runs out.
+8. A maintainer merges the pull request like any other. `COMPLETE` stays
+   re-enterable from `CI_FIX`, in case a later push retriggers a check.
+
+A plain reply with no command — "why retry only on 502/503?" — is answered
+without moving the state machine at any of the waiting steps above, and
+`/cancel` stops the run for good from anywhere but `COMPLETE`.
+
 ## Red pull requests
 
 When the `CI` workflow concludes `failure` on `agent/issue-<n>`, the agent comes
@@ -387,11 +417,11 @@ cannot drift.
 
 | Variable                                   | Required | Default                                         | Purpose                                               |
 | ------------------------------------------ | -------- | ----------------------------------------------- | ----------------------------------------------------- |
-| `OPENAI_API_KEY`                           | yes      | —                                               | Model credentials                                     |
-| `OPENAI_MODEL`                             | yes      | —                                               | Model name, e.g. `gpt-5`                              |
-| `OPENAI_BASE_URL`                          | no       | `https://api.openai.com/v1`                     | Any OpenAI-compatible endpoint                        |
-| `GITHUB_TOKEN`                             | yes      | —                                               | Comments, branches, pull requests                     |
-| `GITHUB_REPOSITORY`                        | yes      | —                                               | `owner/repo`                                          |
+| `LLM_API_KEY`                              | yes      | —                                               | Model credentials                                     |
+| `LLM_MODEL`                                | yes      | —                                               | Model name, e.g. `gpt-5`                              |
+| `LLM_BASE_URL`                             | yes      | —                                               | Any OpenAI-compatible endpoint                        |
+| `GITHUB_TOKEN`                             | no       | the job's own `secrets.GITHUB_TOKEN`            | Comments, branches, pull requests; see below          |
+| `GITHUB_REPOSITORY`                        | no       | the job's own `owner/repo`                      | `owner/repo`; see below                               |
 | `AGENT_SELF_LOGIN`                         | no       | derived from the token                          | Login the agent posts as; see above                   |
 | `AGENT_WORKFLOW_NAME`                      | no       | `OpenCode Issue Agent`                          | This workflow's name, for the CI recursion guard      |
 | `AGENT_BASE_BRANCH`                        | no       | detected                                        | Branch the PR targets; see below                      |
@@ -410,9 +440,29 @@ cannot drift.
 | `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no       | `opencode-agent[bot]`                           | Commit identity                                       |
 | `AGENT_LOG_LEVEL`                          | no       | `info`                                          | `debug`, `info`, `warn`, `error`                      |
 
-`OPENAI_MODEL` is required rather than defaulted: with a custom base URL there is
-no model name that is right by default, and a wrong guess surfaces deep inside
-the first model call instead of at config load.
+`LLM_MODEL` and `LLM_BASE_URL` are both required rather than defaulted: with a
+model gateway that is not necessarily OpenAI's own, there is no base URL or
+model name that is right by default, and a wrong guess surfaces deep inside the
+first model call instead of at config load. A default of
+`https://api.openai.com/v1` used to stand in for `LLM_BASE_URL`, which made a
+forgotten value indistinguishable from a deliberate one; this pipeline is built
+around one arbitrary configured endpoint, not OpenAI specifically, so there is
+no endpoint that is right unless someone said so.
+
+`GITHUB_TOKEN` and `GITHUB_REPOSITORY` need no operator setup on GitHub
+Actions, unlike the variables above. `GITHUB_REPOSITORY` is one of the
+[default environment variables](https://docs.github.com/en/actions/reference/workflows-and-actions/variables#default-environment-variables)
+every Actions job carries — it needs no `env:` entry to exist, and the
+workflow's `GITHUB_REPOSITORY: ${{ github.repository }}` line only makes that
+already-present value explicit. `GITHUB_TOKEN` is not a default environment
+variable — it is a secret every repository already has, and the shipped
+workflow wires it in from `secrets.GITHUB_TOKEN` (or `secrets.AGENT_GITHUB_TOKEN`
+when set) without the operator creating anything. Both stay `required()` at
+config load, because a genuinely missing value — a hand-edited workflow, or a
+local run that forgot to set one — should fail loudly rather than guess; the
+"no" above is about operator setup, not about the loader's validation. A local
+run has no Actions runtime to supply them and must set both explicitly, as
+shown under **Local runs** below.
 
 Every numeric knob is validated as an integer **and range-checked**, because
 rejecting non-integers only closes "not a number", never "a number that cannot
@@ -471,15 +521,17 @@ both are 26–28 KB and neither applies to a single-session CI run.
 
 ## Setup
 
-1. Repository secret `OPENAI_API_KEY`.
-2. Repository variable `OPENAI_MODEL` (and `OPENAI_BASE_URL` for a non-OpenAI
-   endpoint).
+1. Repository secret `LLM_API_KEY`.
+2. Repository variables `LLM_MODEL` and `LLM_BASE_URL`.
 3. Repository variable `AGENT_SELF_LOGIN` — the login the agent comments under.
    Optional for a PAT, but required for a GitHub App token, which cannot report
    its own identity.
 4. Optionally `AGENT_GITHUB_TOKEN`, a GitHub App installation token. Without it
    the agent's pushes do not trigger CI, so the CI-fix path never runs.
 5. Actions needs write access to contents, issues and pull requests.
+
+Nothing to configure for `GITHUB_TOKEN` or `GITHUB_REPOSITORY` — see
+**Configuration** above for why the Actions runtime already supplies both.
 
 The workflow lives at `.github/workflows/agent-pipeline.yml`.
 
@@ -488,8 +540,9 @@ The workflow lives at `.github/workflows/agent-pipeline.yml`.
 ```bash
 GITHUB_REPOSITORY=acme/widgets \
 GITHUB_TOKEN=ghp_… \
-OPENAI_API_KEY=sk-… \
-OPENAI_MODEL=gpt-5 \
+LLM_API_KEY=sk-… \
+LLM_MODEL=gpt-5 \
+LLM_BASE_URL=https://api.openai.com/v1 \
 AGENT_SELF_LOGIN=opencode-agent \
 bun run opencode-agent/src/index.ts \
   --event-path ./fixtures/issue-opened.json \

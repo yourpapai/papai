@@ -617,7 +617,7 @@ accepted `acme / widgets` (owner `"acme "`, with the space), `acme/wid gets`,
 ` acme/widgets`, `acme/widgets\n`, `-acme/widgets`, `acme/widgets?x=1`,
 `acme/wi%2fdgets` and `üñí/repo`. Every one of those parses here and then
 surfaces far away as an opaque 404 from the REST API mid-run — precisely the
-failure mode `OPENAI_MODEL` is required to avoid._
+failure mode `LLM_MODEL` is required to avoid._
 
 _Fixed by matching both halves against GitHub's own naming rules
 (`OWNER_PATTERN` / `REPO_PATTERN`, with their 39- and 100-character caps) instead
@@ -865,7 +865,7 @@ Every process the model starts with `bash` inherits that variable, so
 `echo $OPENCODE_CONFIG_CONTENT` was a complete credential disclosure. The
 environment scrub from S3-2 cannot help: the SDK sets the variable on the child,
 after the scrub. Verified by reading `/proc/<pid>/environ` of a real spawned
-server — with `OPENAI_API_KEY` already removed from this process, the key was
+server — with `LLM_API_KEY` already removed from this process, the key was
 still there, under `OPENCODE_CONFIG_CONTENT`._
 
 _Fixed by never giving OpenCode the credential. `provider-proxy.ts` runs a
@@ -984,7 +984,7 @@ Every process the model starts with `bash` inherits that variable, so
 `echo $OPENCODE_CONFIG_CONTENT` was a complete credential disclosure. The
 environment scrub from S3-2 cannot help: the SDK sets the variable on the child,
 after the scrub. Verified by reading `/proc/<pid>/environ` of a real spawned
-server — with `OPENAI_API_KEY` already removed from this process, the key was
+server — with `LLM_API_KEY` already removed from this process, the key was
 still there, under `OPENCODE_CONFIG_CONTENT`._
 
 _Fixed by never giving OpenCode the credential. `provider-proxy.ts` runs a

@@ -1049,11 +1049,12 @@ describe('config', () => {
   const baseEnv: Env = {
     GITHUB_REPOSITORY: 'acme/widgets',
     GITHUB_TOKEN: 'tok',
-    OPENAI_API_KEY: 'sk-test',
-    OPENAI_MODEL: 'gpt-5',
+    LLM_API_KEY: 'sk-test',
+    LLM_MODEL: 'gpt-5',
+    LLM_BASE_URL: 'https://api.openai.com/v1',
   }
 
-  test('reads the single OpenAI endpoint', () => {
+  test('reads the single model endpoint', () => {
     expect(loadConfig(baseEnv, '/repo').openai).toEqual({
       apiKey: 'sk-test',
       baseUrl: 'https://api.openai.com/v1',
@@ -1062,12 +1063,12 @@ describe('config', () => {
   })
 
   test('honours a custom base URL', () => {
-    const config = loadConfig({ ...baseEnv, OPENAI_BASE_URL: 'https://gateway.test/v1' }, '/repo')
+    const config = loadConfig({ ...baseEnv, LLM_BASE_URL: 'https://gateway.test/v1' }, '/repo')
 
     expect(config.openai.baseUrl).toBe('https://gateway.test/v1')
   })
 
-  test.each(['OPENAI_API_KEY', 'OPENAI_MODEL', 'GITHUB_TOKEN', 'GITHUB_REPOSITORY'])('requires %s', (key) => {
+  test.each(['LLM_API_KEY', 'LLM_MODEL', 'LLM_BASE_URL', 'GITHUB_TOKEN', 'GITHUB_REPOSITORY'])('requires %s', (key) => {
     const env: Env = Object.fromEntries(Object.entries(baseEnv).filter(([name]) => name !== key))
 
     expect(() => loadConfig(env, '/repo')).toThrow(key)
@@ -1232,9 +1233,9 @@ describe('scrubSecrets / redactSecrets', () => {
     // `createOpencodeServer` spawns `opencode serve` with `{ ...process.env }`
     // and takes no env option, so anything left here is one `echo $VAR` away
     // from the model.
-    const env: Env = { GITHUB_TOKEN: TOKEN, OPENAI_API_KEY: KEY, PATH: '/usr/bin' }
+    const env: Env = { GITHUB_TOKEN: TOKEN, LLM_API_KEY: KEY, PATH: '/usr/bin' }
 
-    expect(scrubSecrets(env, [TOKEN, KEY]).sort()).toEqual(['GITHUB_TOKEN', 'OPENAI_API_KEY'])
+    expect(scrubSecrets(env, [TOKEN, KEY]).sort()).toEqual(['GITHUB_TOKEN', 'LLM_API_KEY'])
     expect(env).toEqual({ PATH: '/usr/bin' })
   })
 

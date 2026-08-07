@@ -198,8 +198,9 @@ describe('runCli', () => {
   const env = {
     GITHUB_REPOSITORY: 'acme/widgets',
     GITHUB_TOKEN: 'tok',
-    OPENAI_API_KEY: 'sk-test',
-    OPENAI_MODEL: 'gpt-5',
+    LLM_API_KEY: 'sk-test',
+    LLM_MODEL: 'gpt-5',
+    LLM_BASE_URL: 'https://api.openai.com/v1',
     AGENT_SELF_LOGIN: 'agent-bot',
   }
 
@@ -234,7 +235,7 @@ describe('runCli', () => {
     const live = {
       ...env,
       GITHUB_TOKEN: 'ghp_0123456789abcdefghij',
-      OPENAI_API_KEY: 'sk-0123456789abcdefghij',
+      LLM_API_KEY: 'sk-0123456789abcdefghij',
       GH_TOKEN: 'ghp_0123456789abcdefghij',
       PATH: '/usr/bin',
     }
@@ -246,7 +247,7 @@ describe('runCli', () => {
     })
 
     expect(Object.hasOwn(live, 'GITHUB_TOKEN')).toBe(false)
-    expect(Object.hasOwn(live, 'OPENAI_API_KEY')).toBe(false)
+    expect(Object.hasOwn(live, 'LLM_API_KEY')).toBe(false)
     expect(Object.hasOwn(live, 'GH_TOKEN')).toBe(false)
     expect(live.PATH).toBe('/usr/bin')
   })
@@ -352,13 +353,13 @@ describe('runCli', () => {
     expect(result.status).toBe('skipped')
   })
 
-  test('requires the OpenAI model, rather than guessing one', async () => {
+  test('requires the model name, rather than guessing one', async () => {
     const eventPath = await writeEvent('nomodel', {
       action: 'opened',
       sender: { login: 'maintainer', type: 'User' },
       issue: { number: 1, title: 't', body: 'b', author_association: 'OWNER' },
     })
-    const { OPENAI_MODEL: _unused, ...withoutModel } = env
+    const { LLM_MODEL: _unused, ...withoutModel } = env
 
     const attempt = runCli({
       argv: ['--event-path', eventPath, '--event-name', 'issues'],
@@ -366,7 +367,7 @@ describe('runCli', () => {
       logger: silentLogger,
     })
 
-    await expect(attempt).rejects.toThrow('OPENAI_MODEL')
+    await expect(attempt).rejects.toThrow('LLM_MODEL')
   })
 
   test('fails loudly when the event file is missing', async () => {

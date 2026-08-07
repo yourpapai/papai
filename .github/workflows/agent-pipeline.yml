@@ -141,9 +141,9 @@ jobs:
           # The only model credentials. One OpenAI-compatible endpoint covers
           # OpenAI, Azure-style gateways, OpenRouter and self-hosted servers, so
           # there are no provider-specific keys to keep in step.
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
-          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
 
           # Pipeline configuration — see opencode-agent/README.md.
           AGENT_SELF_LOGIN: ${{ vars.AGENT_SELF_LOGIN || github.repository_owner }}
