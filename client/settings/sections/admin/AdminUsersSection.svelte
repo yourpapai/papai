@@ -26,6 +26,7 @@
   import { describeAddedBy, removeUserLabel, userStatus } from './admin-users-presenters.js'
   import type { UserStatus } from './admin-users-presenters.js'
   import { statusTone } from '../../../shared/ui/status-tone.js'
+  import { markTouched, shownError } from '../../../shared/ui/field-touched.js'
 
   interface UserRow {
     platform_user_id: string
@@ -47,6 +48,13 @@
   let initialLoad = $state(true)
   let newUserId = $state('')
   let newUsername = $state('')
+  let adding = $state(false)
+  let userTouched: string[] = $state([])
+
+  const userErrors = $derived<Record<string, string | undefined>>(
+    newUserId.trim() === '' ? { userId: 'Enter a numeric user ID or an @username.' } : {},
+  )
+  const addBlocked = $derived(userErrors.userId !== undefined)
   let pendingRemovalRow: UserRow | null = $state(null)
   let blocking: string | null = $state(null)
   let removing = $state(false)
@@ -101,20 +109,25 @@
   }
 
   async function add(): Promise<void> {
+    userTouched = markTouched(userTouched, 'userId')
+    if (addBlocked || adding) return
     error = null
     status = null
+    adding = true
     const userId = newUserId.trim()
-    if (userId === '') return
     try {
       const username = newUsername.trim()
       const result = await addAdminUser(username === '' ? { userId } : { userId, username })
       newUserId = ''
       newUsername = ''
+      userTouched = []
       await load()
       status =
         result.pending === true ? "User added — they'll be authorized when they first message the bot." : 'User added.'
     } catch (err) {
       error = errorMessage(err)
+    } finally {
+      adding = false
     }
   }
 
@@ -237,9 +250,17 @@
       }}>
       <Field
         label="User ID or @username"
+        error={shownError(userErrors, userTouched, 'userId')}
         hint="For Telegram, @username adds a pending entry that activates when the user first messages the bot">
         {#snippet children()}
-          <Input value={newUserId} onInput={(v) => (newUserId = v)} testid="user-add-input" placeholder="123456789 or @username" />
+          <Input
+            value={newUserId}
+            onInput={(v) => {
+              newUserId = v
+              userTouched = markTouched(userTouched, 'userId')
+            }}
+            testid="user-add-input"
+            placeholder="123456789 or @username" />
         {/snippet}
       </Field>
       <Field label="Username" hint="optional">
@@ -247,8 +268,8 @@
           <Input value={newUsername} onInput={(v) => (newUsername = v)} />
         {/snippet}
       </Field>
-      <Btn variant="primary" type="submit" testid="user-add">
-        {#snippet children()}Add user{/snippet}
+      <Btn variant="primary" type="submit" testid="user-add" disabled={addBlocked || adding} busy={adding}>
+        {#snippet children()}{adding ? 'Adding…' : 'Add user'}{/snippet}
       </Btn>
     </form>
 

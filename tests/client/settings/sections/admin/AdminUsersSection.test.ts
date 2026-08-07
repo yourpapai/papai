@@ -255,12 +255,25 @@ const openAccessFailMock = (url: string): Promise<Response> => {
 
 const neverResolvingMock = (): Promise<Response> => new Promise<Response>(() => {})
 
+let addPostCount = 0
+const countingAddMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/open-access')) return Promise.resolve(json(openAccessOff))
+  if (init.method === 'POST') {
+    addPostCount += 1
+    return new Promise<Response>((resolve) => {
+      setTimeout(() => resolve(json({ ok: true, pending: false })), 5)
+    })
+  }
+  return Promise.resolve(json(usersPayload))
+}
+
 afterEach(() => {
   capturedPostBody = undefined
   capturedDeleteBody = undefined
   capturedBlockBody = undefined
   enableToggleGetCount = 0
   disableToggleGetCount = 0
+  addPostCount = 0
   restoreFetch()
   setCsrfToken('')
 })
@@ -778,6 +791,61 @@ describe('AdminUsersSection', () => {
     const remove = target.querySelector('[data-testid="user-remove-42"]')!
     expect(block.className).not.toContain('danger')
     expect(remove.className).toContain('danger')
+    void unmount(component)
+  })
+
+  test('submitting a blank id explains why nothing happened', async () => {
+    setCsrfToken('c')
+    setMockFetch(countingAddMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    target
+      .querySelector<HTMLFormElement>('form.settings-form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    await drain()
+    expect(target.textContent).toContain('Enter a numeric user ID or an @username.')
+    expect(addPostCount).toBe(0)
+    void unmount(component)
+  })
+
+  test('the add button is disabled while the id is blank', async () => {
+    setMockFetch(openAccessOffMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.querySelector<HTMLButtonElement>('[data-testid="user-add"]')!.disabled).toBe(true)
+    void unmount(component)
+  })
+
+  test('a pristine form shows no validation error', async () => {
+    setMockFetch(openAccessOffMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.textContent).not.toContain('Enter a numeric user ID or an @username.')
+    void unmount(component)
+  })
+
+  test('a double submit posts once', async () => {
+    setCsrfToken('c')
+    setMockFetch(countingAddMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="user-add-input"]')!
+    input.value = '99'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    const button = target.querySelector<HTMLButtonElement>('[data-testid="user-add"]')!
+    button.click()
+    button.click()
+    await drain()
+    expect(addPostCount).toBe(1)
     void unmount(component)
   })
 })
