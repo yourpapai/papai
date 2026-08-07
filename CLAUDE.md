@@ -71,7 +71,17 @@ See `tests/CLAUDE.md`. Prefer DI over `mock.module()` where the module supports 
 
 ## Pi Workflow
 
-When the harness supports `obra/superpowers` skills, preserve that workflow. Load `using-superpowers` at session start before acting; load any other applicable skill before responding, editing, or running commands; do not rely on memory of skill contents — load the current text each time.
+When the harness supports `obra/superpowers` skills, preserve that workflow for what it still owns (see the routing table). Load `using-superpowers` at session start before acting; load any other applicable skill before responding, editing, or running commands; do not rely on memory of skill contents — load the current text each time.
+
+Planning runs on OpenSpec in this repo: code-behavior work enters through `/opsx:explore` / `/opsx:propose` and lives under `openspec/changes/<name>/`; `brainstorming` keeps non-code creative work only.
+
+| Trigger                                         | Route                                                                 |
+| ----------------------------------------------- | --------------------------------------------------------------------- |
+| "Let's build / add / change X" (code behavior)  | `/opsx:explore` or `/opsx:propose` — **not** brainstorming            |
+| Non-code creative work (docs, process, writing) | brainstorming (unchanged)                                             |
+| Bug / test failure                              | systematic-debugging; if root cause becomes a change, `/opsx:propose` |
+| Inside `/opsx:apply`                            | test-driven-development, verification-before-completion               |
+| Plan drifted from code                          | syncing-plan-with-code against `openspec/changes/<name>/` artifacts   |
 
 ## Codebase Search Protocol
 
