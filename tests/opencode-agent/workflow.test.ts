@@ -219,12 +219,12 @@ describe('steps', () => {
     expect(step('opencode cli').run).toContain('opencode-ai')
   })
 
-  test('passes only OpenAI credentials to the pipeline', () => {
+  test('passes only the single LLM endpoint credentials to the pipeline', () => {
     const env = step('agent pipeline').env
 
-    expect(Object.keys(env)).toContain('OPENAI_API_KEY')
-    expect(Object.keys(env)).toContain('OPENAI_BASE_URL')
-    expect(Object.keys(env)).toContain('OPENAI_MODEL')
+    expect(Object.keys(env)).toContain('LLM_API_KEY')
+    expect(Object.keys(env)).toContain('LLM_BASE_URL')
+    expect(Object.keys(env)).toContain('LLM_MODEL')
     expect(Object.keys(env).join(' ')).not.toContain('ANTHROPIC')
     expect(Object.keys(env).join(' ')).not.toContain('OPENCODE_API_KEY')
   })

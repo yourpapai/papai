@@ -22,7 +22,7 @@ export const OPENAI_PROVIDER_ID = 'openai'
 
 /**
  * The AI SDK package OpenCode loads for this provider. The `openai-compatible`
- * driver — not the first-party `openai` one — is what makes `OPENAI_BASE_URL`
+ * driver — not the first-party `openai` one — is what makes `LLM_BASE_URL`
  * meaningful for non-OpenAI endpoints.
  */
 const PROVIDER_NPM = '@ai-sdk/openai-compatible'

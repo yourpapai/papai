@@ -105,14 +105,18 @@ const safeJson = (raw: string): unknown => {
 /**
  * Reads the single model endpoint.
  *
- * `OPENAI_MODEL` is required rather than defaulted: with a custom base URL
- * there is no model name that is right by default, and a wrong guess surfaces
- * deep inside the first model call instead of here.
+ * `LLM_MODEL` is required rather than defaulted: with a custom base URL there
+ * is no model name that is right by default, and a wrong guess surfaces deep
+ * inside the first model call instead of here. `LLM_BASE_URL` is required for
+ * the same reason: defaulting it to OpenAI's own endpoint made a missing
+ * value look like a deliberate choice instead of a misconfiguration, and this
+ * pipeline is built around one arbitrary configured endpoint, not OpenAI
+ * specifically.
  */
 export const loadOpenAiSettings = (env: Env): OpenAiSettings => ({
-  apiKey: required(env, 'OPENAI_API_KEY'),
-  baseUrl: optional(env, 'OPENAI_BASE_URL', 'https://api.openai.com/v1'),
-  model: required(env, 'OPENAI_MODEL'),
+  apiKey: required(env, 'LLM_API_KEY'),
+  baseUrl: required(env, 'LLM_BASE_URL'),
+  model: required(env, 'LLM_MODEL'),
 })
 
 /** Skill roots searched in order; the vendored superpowers checkout wins. */

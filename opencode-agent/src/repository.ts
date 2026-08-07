@@ -26,7 +26,7 @@ const isRepoName = (candidate: string): boolean => REPO_PATTERN.test(candidate) 
  * that is not: `acme / widgets`, a value with the trailing newline a shell
  * heredoc leaves behind, `acme/widgets?x=1`. Each of those parses, then surfaces
  * far away as an opaque 404 from the REST API in the middle of a run — the same
- * argument `OPENAI_MODEL` is required for.
+ * argument `LLM_MODEL` is required for.
  *
  * The raw value is quoted with `JSON.stringify` so invisible characters, which
  * are the likeliest cause, are visible in the error.
