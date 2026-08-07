@@ -22,7 +22,7 @@ See LICENSE in the project root for details.
 - `bun test:mutate:changed` — paired mutation run vs `origin/master`; this is what CI uses.
 - `bun test:mutate:seed --scores=PATH [--fresh-base=SHA]` — re-apply a persisted per-file scores snapshot to `scripts/mutation/baseline.json` via `seedMerge` without re-running Stryker; the CI `mutation-baseline` commit step loops over this when master moves mid-run (`--fresh-base` drops scores for files changed on master since the run's checkout).
 - `bun test:mutate:file <paths...>` — fast per-file paired run (`ignoreStatic:false` + companion tests), bypasses the static-bucket artifact.
-- `bun check` — staged-file lint/typecheck/format; `bun check:full` runs `scripts/check.sh`.
+- `bun check` — staged-file lint/typecheck/format; `bun check:full` runs `scripts/check.sh`. The full-mode license-headers check enumerates `git ls-files --cached --others --exclude-standard` (tracked **plus** untracked non-ignored files) so brand-new files in a worktree are header-checked before commit, matching what the pre-commit hook's `--staged` mode will enforce.
 - `bun check:bundle-isolation` — asserts the dev-only `client/stories/**` harness never leaked into production bundles.
 
 Analytics operator CLIs (full operator flows: `docs/operations/analytics-runbook.md`):

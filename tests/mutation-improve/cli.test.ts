@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { existsSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { DEFAULT_CONFIG_PATH, parseCliArgs, resetRunWorktrees, runCli } from '../../mutation-improve/src/cli.js'
@@ -120,5 +120,21 @@ describe('runCli integration-branch guard', () => {
     writeFileSync(configPath, JSON.stringify({ repoRoot, workDir: '.mi', agent: { model: 'm' } }))
     await expect(runCli(['--config', configPath])).rejects.toThrow(/integration branch/u)
     expect(existsSync(path.join(repoRoot, '.mi', 'runs'))).toBe(false)
+  })
+
+  // The capped registry is cross-run memory: silently resetting a corrupt one
+  // would re-allow capped files and re-enter the re-pick loop. runCli must load
+  // it up front and surface the corruption instead of starting the pipeline.
+  test('rejects on a corrupt capped registry before the pipeline starts', async () => {
+    const { repoRoot } = await setupRepo()
+    await execGit(repoRoot, ['checkout', '-b', 'integr'])
+    const configPath = path.join(repoRoot, 'cfg.json')
+    writeFileSync(
+      configPath,
+      JSON.stringify({ repoRoot, workDir: '.mi', count: 1, agent: { model: 'm', timeoutMs: 1000 } }),
+    )
+    mkdirSync(path.join(repoRoot, '.mi'), { recursive: true })
+    writeFileSync(path.join(repoRoot, '.mi', 'capped.json'), 'not json')
+    await expect(runCli(['--config', configPath, '--no-pr'])).rejects.toThrow(SyntaxError)
   })
 })

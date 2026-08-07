@@ -17,6 +17,7 @@ import {
   resetWorktree,
 } from '../../review-loop/src/worktree.js'
 import { readBaseline, writeBaseline } from './baseline.js'
+import { type CappedRegistryStore, loadCappedRegistryStore } from './capped-registry.js'
 import { type MutationImproveConfig, loadMutationImproveConfig } from './config.js'
 import { assertIntegrationBranch, runFinalize } from './finalize.js'
 import { type IterationResult, runPipeline, type PipelineDeps } from './pipeline.js'
@@ -141,6 +142,7 @@ function buildPipelineDeps(
   config: MutationImproveConfig,
   runState: MutationImproveRunState,
   log: LiveRenderer,
+  cappedRegistry: CappedRegistryStore,
 ): PipelineDeps {
   return {
     config,
@@ -163,6 +165,7 @@ function buildPipelineDeps(
     writeBaseline,
     runSelectAgent: selectRunner(config, runState, log),
     runImproveAgent: improveRunner(config, runState, log),
+    cappedRegistry,
     saveRunState,
     log,
   }
@@ -218,8 +221,13 @@ export async function runCli(argv: readonly string[]): Promise<void> {
     await resetRunWorktrees(config.repoRoot, runState.runId, config.prBranchPrefix)
   }
 
+  // Loaded before the pipeline so a corrupt registry fails fast instead of
+  // being discovered mid-run (or worse, silently reset, which would re-allow
+  // capped files and re-enter the re-pick loop it exists to prevent).
+  const cappedRegistry = await loadCappedRegistryStore(config.workDir, runState.runId)
+
   const log = new LiveRenderer(process.stdout)
-  const deps = buildPipelineDeps(config, runState, log)
+  const deps = buildPipelineDeps(config, runState, log, cappedRegistry)
   // I1: try/finally guarantees saveRunState runs even if runPipeline throws
   // (e.g. AgentRunError mid-pipeline), so --resume-run sees the last-known
   // in-memory progress instead of losing everything to a throw.

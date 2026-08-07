@@ -9,22 +9,23 @@ import path from 'node:path'
 import { agentWritePath, type AgentRunResult } from '../../review-loop/src/agent-runner.js'
 import type { MergeResult } from '../../review-loop/src/worktree.js'
 import { bumpScore, type BaselineMap } from './baseline.js'
-import { runBuildGateWithRetries } from './build-gate.js'
+import type { CappedRegistryStore } from './capped-registry.js'
 import type { MutationImproveConfig } from './config.js'
-import { runDiffGuard } from './diff-guard.js'
 import { recordFailure, type FailureEntry } from './failure-recorder.js'
+import { gatePhase, type PhaseResult } from './gate.js'
 import { buildImprovePrompt, buildSelectPrompt } from './prompt-templates.js'
 import type { Result } from './result-schema.js'
 import { ResultSchema } from './result-schema.js'
 import type { MutationImproveRunState } from './run-state.js'
 import { iterDir } from './run-state.js'
+import type { MeasuredScore } from './score-reader.js'
 import { SelectionSchema } from './selection-schema.js'
 import type { Selection } from './selection-schema.js'
 import { ratchetVerifiedSkip } from './skip-ratchet.js'
 
 export interface IterationResult {
   iter: number
-  outcome: 'improved' | 'skipped' | 'failed'
+  outcome: 'improved' | 'skipped' | 'failed' | 'capped'
   file?: string
   beforeScore?: number
   afterScore?: number
@@ -42,18 +43,15 @@ export interface PipelineDeps {
   mergeWorktree: (repoRoot: string, branchName: string) => Promise<MergeResult>
   execGit: (cwd: string, args: readonly string[]) => Promise<{ stdout: string; stderr: string }>
   runBuildCheck: (worktreePath: string) => Promise<{ passed: boolean; stdout: string; stderr: string }>
-  measureScore: (worktreePath: string, srcFile: string) => Promise<number>
+  measureScore: (worktreePath: string, srcFile: string) => Promise<MeasuredScore>
   readBaseline: (repoRoot: string) => Promise<BaselineMap>
   writeBaseline: (repoRoot: string, map: BaselineMap) => Promise<void>
   runSelectAgent: (worktreePath: string, prompt: string, outputPath: string) => Promise<AgentRunResult<Selection>>
   runImproveAgent: (worktreePath: string, prompt: string, outputPath: string) => Promise<AgentRunResult<Result>>
+  cappedRegistry: CappedRegistryStore
   saveRunState: (state: MutationImproveRunState) => Promise<void>
   log: { log: (msg: string) => void; issue?: unknown }
 }
-
-type PhaseOk<T> = { ok: true; value: T }
-type PhaseFail = { ok: false; gate: string; reason: string; file?: string }
-type PhaseResult<T> = PhaseOk<T> | PhaseFail
 
 function branchFor(deps: PipelineDeps, iter: number): string {
   return `${deps.config.prBranchPrefix}/${deps.runState.runId}-iter${iter}`
@@ -68,18 +66,24 @@ function runIdFor(deps: PipelineDeps, iter: number): string {
 }
 
 // ① SELECT — runner reads baseline; agent only suggests. Reject picks not in baseline
-// (nothing to improve) or already done (would re-do work). Both are agent mistakes.
+// (nothing to improve), already done (would re-do work), already failed this run
+// (same gates, same model — a re-pick almost certainly re-fails and burns an
+// iteration), or capped by an earlier run (its tests-only ceiling is already
+// merged; re-picking can only re-discover it). All four are agent mistakes.
 async function selectPhase(
   deps: PipelineDeps,
   worktreePath: string,
   iterPath: string,
 ): Promise<PhaseResult<{ selection: Selection; baseline: BaselineMap }>> {
   const baseline = await deps.readBaseline(deps.config.repoRoot)
+  const failedFiles = deps.runState.failed.flatMap((f) => (f.file === undefined ? [] : [f.file]))
   const selectOut = path.join(iterPath, 'selection.json')
   const selectRes = await deps.runSelectAgent(
     worktreePath,
     buildSelectPrompt({
       doneSet: deps.runState.doneSet,
+      failedFiles,
+      cappedFiles: deps.cappedRegistry.entries,
       baselineSummary: JSON.stringify(baseline),
       outputPath: agentWritePath(worktreePath, selectOut),
     }),
@@ -88,6 +92,17 @@ async function selectPhase(
   const selection = SelectionSchema.parse(selectRes.value)
   if (deps.runState.doneSet.includes(selection.file) || baseline[selection.file] === undefined) {
     return { ok: false, gate: 'select', reason: 'selection file not in baseline or already done', file: selection.file }
+  }
+  if (failedFiles.includes(selection.file)) {
+    return { ok: false, gate: 'select', reason: 'selection file already failed this run', file: selection.file }
+  }
+  if (deps.cappedRegistry.entries.some((e) => e.file === selection.file)) {
+    return {
+      ok: false,
+      gate: 'select',
+      reason: 'selection file already capped at its declared residual ceiling',
+      file: selection.file,
+    }
   }
   return { ok: true, value: { selection, baseline } }
 }
@@ -117,35 +132,26 @@ async function improvePhase(
   return ResultSchema.parse(improveRes.value)
 }
 
-// ④a DIFF-GUARD → ④b BUILD → ⑤ VERIFY. Diff-guard runs BEFORE verify so any agent
-// attempt to edit baseline.json or src/ is caught before the runner spends a
-// mutation-score run on tampered inputs. The after-score is runner-measured;
-// the residual escape hatch only opens when the agent declared residuals AND
-// the measured score lands within epsilon of the threshold. Build-gate failures
-// are fed back to the agent for up to config.buildFixAttempts fix-and-re-gate
-// cycles (see runBuildGateWithRetries in build-gate.ts) before failing.
-async function gatePhase(
+// C1: write the baseline bump into the WORKTREE (not repoRoot) and commit the
+// agent's spec/plan/test outputs together with the bump on the worktree
+// branch BEFORE mergeWorktree. Without this, mergeWorktree merges an empty
+// branch ("Already up to date"), writeBaseline never propagates to base, and
+// removeWorktree --force discards the agent's uncommitted files.
+async function commitRatchet(
   deps: PipelineDeps,
-  iterPath: string,
   worktreePath: string,
   file: string,
-  improved: Result,
-): Promise<PhaseResult<{ afterScore: number; result: Result }>> {
-  const diff = await runDiffGuard(deps.execGit, worktreePath)
-  if (!diff.ok) {
-    return { ok: false, gate: 'diff-scope', reason: `forbidden paths changed: ${diff.violations.join(', ')}` }
-  }
-  const buildGate = await runBuildGateWithRetries(
-    { execGit: deps.execGit, runBuildCheck: deps.runBuildCheck, runImproveAgent: deps.runImproveAgent, log: deps.log },
-    { iterPath, worktreePath, file, attempt: 1, maxAttempts: deps.config.buildFixAttempts, improved },
-  )
-  if (!buildGate.ok) return buildGate
-  const afterScore = await deps.measureScore(worktreePath, file)
-  const justified = buildGate.value.residuals.length > 0 && afterScore >= deps.config.threshold - deps.config.epsilon
-  if (afterScore < deps.config.threshold && !justified) {
-    return { ok: false, gate: 'score', reason: `afterScore ${afterScore} < threshold ${deps.config.threshold}` }
-  }
-  return { ok: true, value: { afterScore, result: buildGate.value } }
+  afterScore: number,
+  bumped: BaselineMap,
+): Promise<void> {
+  await deps.writeBaseline(worktreePath, bumped)
+  await deps.execGit(worktreePath, ['add', '-A'])
+  await deps.execGit(worktreePath, [
+    'commit',
+    '--allow-empty',
+    '-m',
+    `chore(mutation): ratchet ${file} baseline to ${afterScore}`,
+  ])
 }
 
 // ⑥ RATCHET (runner-owned) → ⑦ MERGE. The baseline bump is written into the
@@ -161,23 +167,10 @@ async function finalizePhase(
   file: string,
   baseline: BaselineMap,
   beforeScore: number,
-  gate: { afterScore: number; result: Result },
+  gate: { afterScore: number; result: Result; capped: boolean },
 ): Promise<IterationResult> {
   const { afterScore, result } = gate
-  const bumped = bumpScore(baseline, file, afterScore)
-  // C1: write the baseline bump into the WORKTREE (not repoRoot) and commit the
-  // agent's spec/plan/test outputs together with the bump on the worktree
-  // branch BEFORE mergeWorktree. Without this, mergeWorktree merges an empty
-  // branch ("Already up to date"), writeBaseline never propagates to base, and
-  // removeWorktree --force discards the agent's uncommitted files.
-  await deps.writeBaseline(worktreePath, bumped)
-  await deps.execGit(worktreePath, ['add', '-A'])
-  await deps.execGit(worktreePath, [
-    'commit',
-    '--allow-empty',
-    '-m',
-    `chore(mutation): ratchet ${file} baseline to ${afterScore}`,
-  ])
+  await commitRatchet(deps, worktreePath, file, afterScore, bumpScore(baseline, file, afterScore))
   const merge = await deps.mergeWorktree(deps.config.repoRoot, branchFor(deps, iter))
   if (!merge.ok) {
     return {
@@ -190,6 +183,10 @@ async function finalizePhase(
       reason: `conflict: ${merge.conflictFiles.join(', ')}`,
     }
   }
+  // Record the cap only after the merge landed: an aborted run keeps the bump
+  // on the unmerged iteration branch, and a persisted cap would wrongly block
+  // the file in later runs whose baseline never received the tests.
+  if (gate.capped) await deps.cappedRegistry.record(file, afterScore)
   await deps.removeWorktree(deps.config.repoRoot, worktreePath, runIdFor(deps, iter), deps.config.prBranchPrefix)
   deps.runState.doneSet.push(file)
   deps.runState.merged.push({
@@ -199,8 +196,9 @@ async function finalizePhase(
     iter,
     specPath: result.specPath,
     planPath: result.planPath,
+    ...(gate.capped ? { capped: true } : {}),
   })
-  return { iter, outcome: 'improved', file, beforeScore, afterScore }
+  return { iter, outcome: gate.capped ? 'capped' : 'improved', file, beforeScore, afterScore }
 }
 
 async function failIter(
@@ -250,7 +248,8 @@ export async function runIteration(deps: PipelineDeps, iter: number): Promise<It
     file = selection.file
 
     // ② CAPTURE BEFORE (runner-owned). Already at threshold → nothing to do.
-    const beforeScore = await deps.measureScore(worktreePath, selection.file)
+    const before = await deps.measureScore(worktreePath, selection.file)
+    const beforeScore = before.score
     if (beforeScore >= deps.config.threshold) {
       deps.runState.doneSet.push(selection.file)
       await ratchetVerifiedSkip(deps, baseline, selection.file, beforeScore)
@@ -259,7 +258,7 @@ export async function runIteration(deps: PipelineDeps, iter: number): Promise<It
 
     const improved = await improvePhase(deps, worktreePath, iterPath, selection.file, beforeScore)
 
-    const gate = await gatePhase(deps, iterPath, worktreePath, selection.file, improved)
+    const gate = await gatePhase(deps, iterPath, worktreePath, selection.file, beforeScore, improved)
     if (!gate.ok) return await failIter(deps, iter, worktreePath, gate.gate, gate.reason, file)
 
     return await finalizePhase(deps, iter, worktreePath, selection.file, baseline, beforeScore, gate.value)

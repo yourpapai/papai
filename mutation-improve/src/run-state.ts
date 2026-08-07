@@ -18,6 +18,9 @@ const MergedEntrySchema = z.object({
   iter: z.number().int(),
   specPath: z.string().optional(),
   planPath: z.string().optional(),
+  // true when the iteration merged below threshold at its declared residual
+  // ceiling (outcome 'capped'); absent/false on fully-threshold-passing merges.
+  capped: z.boolean().optional(),
 })
 
 const FailedEntrySchema = z.object({

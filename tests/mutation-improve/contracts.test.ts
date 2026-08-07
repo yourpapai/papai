@@ -65,6 +65,39 @@ describe('contracts', () => {
     expect(() => ResultSchema.parse(base)).toThrow()
     expect(() => ResultSchema.parse({ ...base, testPaths: ['tests/x.test.ts'] })).not.toThrow()
   })
+
+  test('ResultSchema residual entries carry the Stryker mutant ids they cover', () => {
+    const parsed = ResultSchema.parse({
+      specPath: 'd.md',
+      planPath: 'p.md',
+      testPaths: ['tests/x.test.ts'],
+      residuals: [{ loc: 'src/x.ts:24', why: 'equivalent guard', mutantIds: ['2', '3', '4'] }],
+    })
+    expect(parsed.residuals[0]?.mutantIds).toEqual(['2', '3', '4'])
+  })
+
+  // Old agent outputs (and resumed runs) predate mutantIds; they must still
+  // parse — the capped gate treats a missing list as "covers nothing", which
+  // fails closed to the pre-change behaviour (iteration fails the score gate).
+  test('ResultSchema defaults residual mutantIds to empty when omitted', () => {
+    const parsed = ResultSchema.parse({
+      specPath: 'd.md',
+      planPath: 'p.md',
+      testPaths: ['tests/x.test.ts'],
+      residuals: [{ loc: 'src/x.ts:24', why: 'equivalent guard' }],
+    })
+    expect(parsed.residuals[0]?.mutantIds).toEqual([])
+  })
+
+  test('ResultSchema rejects non-string residual mutantIds', () => {
+    const base = {
+      specPath: 'd.md',
+      planPath: 'p.md',
+      testPaths: ['tests/x.test.ts'],
+      residuals: [{ loc: 'src/x.ts:24', why: 'equivalent guard', mutantIds: [2, 3] }],
+    }
+    expect(() => ResultSchema.parse(base)).toThrow()
+  })
 })
 
 describe('review-loop surface contract', () => {
