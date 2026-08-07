@@ -98,7 +98,6 @@ describe('serializeState / extractState', () => {
       v: 1,
       phase: 'INIT_OR_CLARIFY',
       issueId: 5,
-      branch: null,
       approved: false,
       resumeFrom: null,
       attempts: 0,
@@ -159,25 +158,29 @@ describe('state blocks survive hostile payload text', () => {
 
 describe('findLatestState', () => {
   const agent = 'agent-bot'
+  // The same issue `at()` builds states for, so one thread is coherent.
+  const ISSUE = 42
 
   test('reads the newest agent comment carrying a state block', () => {
     const thread = [
-      comment(agent, renderStateComment('one', initialState(9)), 1),
+      comment(agent, renderStateComment('one', initialState(ISSUE)), 1),
       comment('maintainer', 'looks good', 2),
       comment(agent, renderStateComment('two', at('EXECUTION_PLAN')), 3),
     ]
 
-    expect(findLatestState(thread, agent)?.phase).toBe('EXECUTION_PLAN')
+    expect(findLatestState(thread, agent, ISSUE)?.phase).toBe('EXECUTION_PLAN')
   })
 
   test('ignores state blocks authored by anyone but the agent', () => {
     const thread = [comment('impostor', renderStateComment('spoofed', at('COMPLETE')), 1)]
 
-    expect(findLatestState(thread, agent)).toBeNull()
+    expect(findLatestState(thread, agent, ISSUE)).toBeNull()
   })
 
   test('matches the agent login case-insensitively', () => {
-    expect(findLatestState([comment('Agent-Bot', renderStateComment('one', initialState(9)))], agent)?.issueId).toBe(9)
+    expect(
+      findLatestState([comment('Agent-Bot', renderStateComment('one', initialState(ISSUE)))], agent, ISSUE)?.issueId,
+    ).toBe(ISSUE)
   })
 
   test('skips a corrupt newer block and falls back to the last good one', () => {
@@ -186,11 +189,41 @@ describe('findLatestState', () => {
       comment(agent, `broken\n\n<!-- ${STATE_MARKER}: {oops -->`, 2),
     ]
 
-    expect(findLatestState(thread, agent)?.phase).toBe('DESIGN_SPEC')
+    expect(findLatestState(thread, agent, ISSUE)?.phase).toBe('DESIGN_SPEC')
+  })
+
+  test('walks past a block that parses but fails the schema', () => {
+    // The corrupt-block test above uses unparsable JSON, which `readBlock`
+    // already drops. A block that parses and then fails validation used to be
+    // returned and rejected afterwards, resetting the conversation.
+    const thread = [
+      comment(agent, renderStateComment('good', at('DESIGN_SPEC')), 1),
+      comment(agent, `stale\n\n<!-- ${STATE_MARKER}: {"v":99,"phase":"NONSENSE"} -->`, 2),
+    ]
+
+    expect(findLatestState(thread, agent, ISSUE)?.phase).toBe('DESIGN_SPEC')
+  })
+
+  test('refuses a block naming a different issue', () => {
+    // Anyone who can edit the agent's comments can edit this block, and
+    // `issueId` names the branch, the commit trailers and the `Closes #n`.
+    const foreign = { ...initialState(7), phase: 'REVIEW_AND_MUTATE' as const }
+    const thread = [comment(agent, renderStateComment('planted', foreign), 1)]
+
+    expect(findLatestState(thread, agent, ISSUE)).toBeNull()
+  })
+
+  test('walks past a foreign block to this issue\u2019s own state', () => {
+    const thread = [
+      comment(agent, renderStateComment('mine', at('DESIGN_SPEC')), 1),
+      comment(agent, renderStateComment('planted', initialState(7)), 2),
+    ]
+
+    expect(findLatestState(thread, agent, ISSUE)?.phase).toBe('DESIGN_SPEC')
   })
 
   test('returns null for an empty thread', () => {
-    expect(findLatestState([], agent)).toBeNull()
+    expect(findLatestState([], agent, ISSUE)).toBeNull()
   })
 })
 
@@ -242,7 +275,7 @@ describe('transition', () => {
     expect(state.phase).toBe('EXECUTION_PLAN')
     expect(state.approved).toBe(true)
 
-    state = transition(state, 'PLAN_POSTED', { branch: 'agent/issue-42' })
+    state = transition(state, 'PLAN_POSTED')
     expect(state.phase).toBe('PLAN_REVIEW')
 
     state = transition(state, 'APPROVED')

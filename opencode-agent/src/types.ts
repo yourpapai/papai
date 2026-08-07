@@ -72,7 +72,9 @@ export const agentStateSchema = z.object({
   v: z.number().int().min(1).default(1),
   phase: z.enum(PHASES),
   issueId: z.number().int().positive(),
-  branch: z.string().min(1).nullable().default(null),
+  // No `branch`: it is exactly `agent/issue-<issueId>`, every phase recomputes
+  // it with `branchNameFor`, and persisting a derivable value only adds a field
+  // that anyone able to edit the agent's comments could point somewhere else.
   approved: z.boolean().default(false),
   /** Phase to resume from when a FAILED run is retried. */
   resumeFrom: z.enum(PHASES).nullable().default(null),

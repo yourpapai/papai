@@ -21,7 +21,7 @@ Every step runs in its own short-lived job; nothing long-polls.
 An Actions job has no memory of the previous one, so state lives on the issue in
 hidden HTML blocks:
 
-- `<!-- AGENT_STATE: … -->` — phase, branch, counters. Rewritten on every comment.
+- `<!-- AGENT_STATE: … -->` — phase and counters. Rewritten on every comment.
 - `<!-- AGENT_SPEC: … -->` — the current design spec.
 - `<!-- AGENT_PLAN: … -->` — the current execution plan.
 - `<!-- AGENT_REPORT: … -->` — the implementation report.
@@ -36,9 +36,18 @@ Blocks are read back byte-exact, and a payload cannot forge its own delimiter:
 containing `-->` — a mermaid arrow, a compiler diagnostic in `lastError` — cannot
 terminate the block early.
 
-Only blocks authored by the configured agent login are read, and a block failing
-schema validation is skipped in favour of the last good one, so neither a
-planted block nor a corrupt one can steer the pipeline.
+Only blocks authored by the configured agent login are read. The scan then walks
+newest-first past any block that fails validation **or names a different issue**,
+down to the last good one for this issue — so neither a corrupt block nor a
+planted one can steer the pipeline, and one bad block cannot reset a
+conversation that has a good one behind it.
+
+The `issueId` check matters because maintainers can edit the agent's own
+comments, and that field is what the rest of the pipeline treats as
+authoritative: it names the branch, the commit trailers and the `Closes #n` the
+pull request carries. The branch itself is **not** persisted — it is exactly
+`agent/issue-<issueId>` and every phase recomputes it, so there is no stored
+value to point elsewhere.
 
 ## Phases
 
@@ -392,10 +401,10 @@ network.
 - Review-loop failures are reported, not enforced: the branch is pushed and the
   pull request opened with a red report. CI on the pull request is the real gate,
   and the CI-fix loop is what acts on it.
-- Bumping `STATE_VERSION` strands in-flight issues — old blocks fail validation
-  and the scan falls back to an older one, or to a fresh state. Drain before
+- Bumping `STATE_VERSION` strands in-flight issues — old blocks fail validation,
+  and the scan walks back to an older valid one or to a fresh state. Drain before
   bumping, or write a migration.
 - No cost ceiling beyond the round caps and the job timeout.
-- The model runs with unrestricted tools and repository credentials in the same
-  process. `AgentPromptRequest.tools` exists as the seam for narrowing this and
-  is not yet used — see `ROADMAP.md` S3-2.
+- Capability containment is config-level (see above), not process-level: there is
+  no container or network boundary around the model, and the repository token is
+  still in `.git/config` — see `ROADMAP.md` S3-7.

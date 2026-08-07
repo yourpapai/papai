@@ -90,7 +90,12 @@ export const readBlock = (body: string, marker: string): unknown => {
  * agent itself. Author filtering is the whole security model here: anyone can
  * paste a block into a comment, but only the agent's own comments are read.
  */
-export const findLatestBlock = (thread: readonly IssueComment[], agentLogin: string, marker: string): unknown => {
+export const findLatestBlock = (
+  thread: readonly IssueComment[],
+  agentLogin: string,
+  marker: string,
+  accept: (block: unknown) => boolean = (): boolean => true,
+): unknown => {
   const normalizedAgent = agentLogin.toLowerCase()
 
   for (let index = thread.length - 1; index >= 0; index -= 1) {
@@ -99,7 +104,10 @@ export const findLatestBlock = (thread: readonly IssueComment[], agentLogin: str
     if (comment.authorLogin.toLowerCase() !== normalizedAgent) continue
 
     const block = readBlock(comment.body, marker)
-    if (block !== undefined) return block
+    // A block the caller rejects is walked past, not surrendered to. Returning
+    // the newest *readable* block and letting the caller validate afterwards
+    // meant one corrupt or foreign block masked every good one behind it.
+    if (block !== undefined && accept(block)) return block
   }
 
   return undefined

@@ -73,7 +73,6 @@ export const handlePlan: PhaseHandler = async (input): Promise<PhaseOutcome> => 
     signal: 'PLAN_POSTED',
     comment: renderPlanComment(markdown, branch, state.revision + 1),
     blocks: [renderArtifact(PLAN_MARKER, markdown, state.revision + 1)],
-    patch: { branch },
   }
 }
 

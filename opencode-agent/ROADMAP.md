@@ -879,20 +879,51 @@ where nothing masks anything.
 way the GitHub adapter now does. The value list already exists; it is a wiring
 change plus a seam to hand the logger the secrets at construction.
 
-### S3-4 The persisted branch name is never validated — by inspection
+### S3-4 The persisted branch name is never validated — verified — **[FIXED]**
 
-`state.branch` is read straight from the hidden block and handed to
-`git checkout -B` and `git push -u origin` (`src/phases/implement.ts:35`,
-`src/phases/deliver.ts:20`). Maintainers can edit bot comments. Editing the
-block to `"branch": "master"` makes the pipeline commit and push directly to the
-default branch.
+_The finding's own instance was already gone: every phase recomputes
+`branchNameFor(state.issueId)`, and `state.branch` turned out to be **written and
+never read**. The class was wide open one field over._
 
-This requires maintainer rights — someone who could push anyway — but it routes
-around the expectation that the agent only ever touches `agent/issue-N`, and it
-does so without a reviewable diff.
+_Verified: a state block naming `issueId: 7` restored cleanly on issue 42. Since
+`issueId` is what `branchNameFor` consumes, an edited block sends the pipeline to
+`agent/issue-7`, stamps `Refs #7` on the commits, and opens a pull request saying
+`Closes #7`. Anyone able to edit the agent's comments can do that, and it leaves
+no reviewable diff._
 
-**Direction:** ignore the persisted branch and always recompute
-`branchNameFor(issueId)`, or assert the two match before any git write.
+_Fixed by re-deriving what is derivable and validating what is not:_
+
+- _`state.branch` is **gone from the schema**. It is exactly
+  `agent/issue-<issueId>`, so persisting it added nothing but a second field to
+  point somewhere else. Zod strips unknown keys, so old blocks still parse and no
+  `STATE_VERSION` bump is needed._
+- _`findLatestState` now takes the issue the event is about and refuses a block
+  claiming a different one._
+
+_A second, unrelated defect surfaced in the same function, and the fix depended
+on it. The docstring claimed "the scan simply keeps walking back" past invalid
+blocks. **It did not.** `findLatestBlock` returned the newest *readable* block
+and `findLatestState` validated afterwards, so one block that parsed but failed
+the schema — a stale `STATE_VERSION`, say — reset a conversation that had a
+perfectly good block right behind it. The existing test for this used
+*unparsable* JSON, which `readBlock` drops earlier, so it never exercised the
+path it was named for. `findLatestBlock` now takes an `accept` predicate and
+genuinely walks past what the caller rejects, which is also what makes the
+ownership check safe rather than destructive._
+
+_Also fixed in the tests themselves: the `findLatestState` suite built threads
+mixing `initialState(9)` and `at(...)`'s issue 42 in one conversation. Incoherent,
+and nothing noticed because nothing checked._
+
+_Mutation-checked five ways — dropping the ownership check, dropping the schema
+check, removing the `accept` predicate, reintroducing `branch`, and restoring
+against the wrong issue — each kills the tests that name it._
+
+_Note what this does **not** claim. `phase`, `resumeFrom` and `approved` are
+still restored from an editable block and cannot be re-derived, so a maintainer
+edit can still move the machine — including past the two review gates. That is
+inside the trust boundary the guardrails already draw (the same person can push),
+but it is worth stating rather than implying the block is now trusted._
 
 ### S3-5 `git add --all` commits whatever the model left behind — by inspection
 

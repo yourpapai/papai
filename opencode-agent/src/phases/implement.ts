@@ -69,7 +69,6 @@ export const handleImplement: PhaseHandler = async (input): Promise<PhaseOutcome
     signal: 'CHANGES_COMMITTED',
     comment: report,
     blocks: [renderArtifact(REPORT_MARKER, report, state.revision)],
-    patch: { branch },
   }
 }
 

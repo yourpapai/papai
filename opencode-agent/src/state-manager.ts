@@ -55,15 +55,35 @@ export const extractState = (commentBody: string): AgentState | null => toState(
 
 /**
  * Restores state from an issue thread: the newest comment authored by the agent
- * that carries a schema-valid state block.
+ * that carries a schema-valid state block **for this issue**.
  *
- * A block written by an older, incompatible state version is rejected the same
- * way a corrupt one is — the scan simply keeps walking back. That is safer than
- * coercing it, but it does mean a breaking `STATE_VERSION` bump strands
- * in-flight issues; see the migration note in the README before bumping.
+ * Two rejections, and the scan genuinely keeps walking back through both — it
+ * used to take the newest readable block and validate afterwards, so a single
+ * corrupt one reset a conversation that had a perfectly good block behind it.
+ *
+ * The `issueId` check is the security half. Anyone who can edit the agent's
+ * comments can edit this block, and `issueId` is the field the rest of the
+ * pipeline treats as authoritative: it names the branch through
+ * `branchNameFor`, the commit trailers, and the `Closes #n` the pull request
+ * carries. The event already knows which issue this is, so a block claiming a
+ * different one is discarded rather than believed.
+ *
+ * A block from an older, incompatible `STATE_VERSION` is rejected the same way,
+ * which does mean a breaking bump strands in-flight issues; see the migration
+ * note in the README before bumping.
  */
-export const findLatestState = (comments: readonly IssueComment[], agentLogin: string): AgentState | null =>
-  toState(findLatestBlock(comments, agentLogin, STATE_MARKER))
+export const findLatestState = (
+  comments: readonly IssueComment[],
+  agentLogin: string,
+  issueId: number,
+): AgentState | null => toState(findLatestBlock(comments, agentLogin, STATE_MARKER, ownedBy(issueId)))
+
+const ownedBy =
+  (issueId: number) =>
+  (candidate: unknown): boolean => {
+    const parsed = agentStateSchema.safeParse(candidate)
+    return parsed.success && parsed.data.issueId === issueId
+  }
 
 /** Whether `signal` is accepted in `phase`. */
 export const canTransition = (phase: Phase, signal: TransitionSignal): boolean => {
