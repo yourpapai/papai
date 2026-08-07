@@ -63,6 +63,7 @@
 
   let creatingPlatform = $state(false)
   let creatingTask = $state(false)
+  let togglingId: string | null = $state(null)
 
   const selectedPlatformType = $derived(platformTypes.find((t) => t.type === platformType))
   const selectedTaskType = $derived(taskTypes.find((t) => t.type === taskType))
@@ -218,24 +219,32 @@
   }
 
   async function toggleStatus(row: AdminInstanceRow): Promise<void> {
+    if (togglingId !== null) return
     error = null
     status = null
+    togglingId = row.id
     try {
       await updateAdminPlatformInstance(row.id, { status: row.status === 'active' ? 'stopped' : 'active' })
       await load()
     } catch (err) {
       setErr(err)
+    } finally {
+      togglingId = null
     }
   }
 
   async function toggleTaskStatus(row: AdminInstanceRow): Promise<void> {
+    if (togglingId !== null) return
     error = null
     status = null
+    togglingId = row.id
     try {
       await updateAdminTaskInstance(row.id, { status: row.status === 'active' ? 'stopped' : 'active' })
       await load()
     } catch (err) {
       setErr(err)
+    } finally {
+      togglingId = null
     }
   }
 
@@ -413,7 +422,13 @@
       {:else if col.key === 'status'}
         <StatusPill status={row.status} />
       {:else if col.key === 'actions'}
-        <Btn variant="outline" size="sm" testid={`platform-status-${row.id}`} onClick={() => (row.status === 'active' ? requestStop('platform', platforms.find((p) => p.id === row.id)!) : void toggleStatus(platforms.find((p) => p.id === row.id)!))}>
+        <Btn
+          variant="outline"
+          size="sm"
+          testid={`platform-status-${row.id}`}
+          busy={togglingId === row.id}
+          disabled={togglingId !== null}
+          onClick={() => (row.status === 'active' ? requestStop('platform', platforms.find((p) => p.id === row.id)!) : void toggleStatus(platforms.find((p) => p.id === row.id)!))}>
           {#snippet children()}{row.status === 'active' ? 'Stop' : 'Start'}{/snippet}
         </Btn>
         <Btn variant="danger" size="sm" testid={`platform-delete-${row.id}`} onClick={() => { deleteError = null; pendingDelete = { kind: 'platform', id: row.id } }}>
@@ -484,7 +499,13 @@
       {:else if col.key === 'status'}
         <StatusPill status={row.status} />
       {:else if col.key === 'actions'}
-        <Btn variant="outline" size="sm" testid={`task-status-${row.id}`} onClick={() => (row.status === 'active' ? requestStop('task', tasks.find((t) => t.id === row.id)!) : void toggleTaskStatus(tasks.find((t) => t.id === row.id)!))}>
+        <Btn
+          variant="outline"
+          size="sm"
+          testid={`task-status-${row.id}`}
+          busy={togglingId === row.id}
+          disabled={togglingId !== null}
+          onClick={() => (row.status === 'active' ? requestStop('task', tasks.find((t) => t.id === row.id)!) : void toggleTaskStatus(tasks.find((t) => t.id === row.id)!))}>
           {#snippet children()}{row.status === 'active' ? 'Stop' : 'Start'}{/snippet}
         </Btn>
         <Btn variant="danger" size="sm" testid={`task-delete-${row.id}`} onClick={() => { deleteError = null; pendingDelete = { kind: 'task', id: row.id } }}>

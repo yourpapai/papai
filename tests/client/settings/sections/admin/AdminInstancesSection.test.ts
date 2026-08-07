@@ -383,6 +383,24 @@ const baseInstances = (url: string): Response | null => {
   return null
 }
 
+const createPendingToggleMock = (counter: {
+  patches: number
+}): ((url: string, init?: RequestInit) => Promise<Response>) => {
+  return (url, init) => {
+    const method = requestMethod(init)
+    if (method === 'PATCH') {
+      counter.patches += 1
+      return new Promise<Response>(() => {})
+    }
+    if (url.includes('/admin/platform-instances'))
+      return Promise.resolve(
+        json({ instances: [{ id: 'tg', type: 'telegram', status: 'stopped', config: {}, createdAt: 1 }] }),
+      )
+    if (url.includes('/admin/task-instances')) return Promise.resolve(json({ instances: [] }))
+    return Promise.resolve(json({ providerTypes: [] }))
+  }
+}
+
 const createNeverResolvingPlatformCreateMock = (): ((url: string, init?: RequestInit) => Promise<Response>) => {
   return (url, init) => {
     const method = requestMethod(init)
@@ -897,6 +915,23 @@ describe('AdminInstancesSection', () => {
     const component = mount(AdminInstancesSection, { target })
     await drain()
     expect(target.querySelectorAll('.ui-empty').length).toBe(2)
+    void unmount(component)
+  })
+
+  test('a second click on a row action does not fire a second PATCH', async () => {
+    const counter = { patches: 0 }
+    setCsrfToken('c')
+    setMockFetch(createPendingToggleMock(counter))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+    const button = target.querySelector<HTMLButtonElement>('[data-testid="platform-status-tg"]')!
+    button.click()
+    await drain()
+    button.click()
+    await drain()
+    expect(counter.patches).toBe(1)
     void unmount(component)
   })
 })
