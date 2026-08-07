@@ -161,6 +161,13 @@ envelope together, and all three are load-bearing:
    to distrust but never where the untrusted region _ends_ — which is the only
    thing an injected terminator is lying about.
 
+Each comment in the thread gets **its own** envelope, with its author in the
+`source` attribute rather than as a text prefix. Anyone can comment on a public
+issue — the guardrails stop a non-maintainer triggering the agent, not their text
+reaching the prompt — so an in-band `[comment by maintainer]` line was a forged
+approval waiting to happen. The system prompt states that `source` is the only
+trustworthy attribution.
+
 Commands are spawned as argv vectors with `shell: false`, so untrusted text never
 reaches a shell.
 

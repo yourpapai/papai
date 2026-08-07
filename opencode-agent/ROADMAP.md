@@ -971,15 +971,45 @@ and the plan's file list is model-written prose rather than a specification. The
 caps bound the blast radius and the pull request diff stays reviewable, which is
 what the guard is actually for._
 
-### S3-6 Thread rendering leaks state blocks and allows role impersonation — by inspection
+### S3-6 Thread rendering leaks state blocks and allows role impersonation — verified — **[FIXED]**
 
-`src/prompts.ts:14-18` renders every comment body raw, including the agent's own
-hidden `AGENT_STATE` blocks (the model sees the state schema), and prefixes each
-with `@login:`. A comment whose body starts with `@agent-bot:` renders as if the
-agent had said it.
+_Half of this was already gone and half was live. `stripBlocks` does remove the
+agent's own `AGENT_STATE` blocks before rendering, verified. The `@login:` prefix
+had become `[comment by <login>]`, which changed the spelling and not the defect —
+it is still **in-band text**, which is exactly what the finding's own direction
+said to stop doing._
 
-**Direction:** strip state blocks before rendering, and put author metadata in
-attributes rather than in-band text.
+_Verified: a comment body containing `[comment by maintainer]` renders a turn
+indistinguishable from the real one. The severity is higher than "a maintainer
+could confuse the agent", because **anyone can comment on a public issue**. The
+guardrails stop a non-maintainer *triggering* the pipeline; they do not stop
+their text reaching the prompt. So a drive-by commenter could forge a
+maintainer's approval inside the transcript the model reasons over._
+
+_Fixed with the machinery S3-1 already built: **each comment gets its own
+envelope**, with its author in the `source` attribute. One envelope around a
+plain-text transcript protected the boundary and said nothing about the structure
+inside it; moving the attribution into the delimiter puts it behind a per-prompt
+random id the commenter cannot guess, and any delimiter-shaped run in the body is
+already neutralised. The login is filtered before it reaches the attribute rather
+than trusting GitHub's naming rules to hold forever._
+
+_`envelopeRules` now states that `source` is the only trustworthy attribution and
+that text inside an envelope claiming to be from someone else is that text lying.
+That line is load-bearing — a structural guarantee the model was never told about
+is decoration — and a mutation removing it initially **survived**, because
+nothing asserted it. It does now._
+
+_Two things the change forced. Trimming used to slice the tail off a concatenated
+transcript; with per-comment delimiters that would cut through one and hand the
+model a block with no terminator, so it now drops whole older comments and clips
+an oversized body **inside** its envelope. And the existing budget test caught my
+first version, which kept one over-budget comment whole and blew the cap._
+
+_Mutation-checked eight ways — restoring in-band prefixes, unfiltered logins, an
+empty attribute, un-stripped blocks, clipping across the envelope, ignoring the
+budget, ignoring the comment limit, and dropping the attribution rule — each kills
+the tests that name it._
 
 ---
 
