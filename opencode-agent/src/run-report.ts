@@ -8,7 +8,7 @@ import { acceptedCommands } from './commands.js'
 import { reportIdentityDrift } from './identity.js'
 import { fence } from './markdown.js'
 import type { PhaseInput } from './phase-context.js'
-import { presentationFor } from './presentation.js'
+import { outcomeHeading, phaseHeading, presentationFor } from './presentation.js'
 import { renderStateComment } from './state-manager.js'
 import type { AgentState, Phase } from './types.js'
 
@@ -55,13 +55,18 @@ export const postAndAppend = async (
 export const renderClosing = (state: AgentState): string =>
   state.prUrl === null
     ? [
-        '### Stopped',
+        // Through the *phase* table rather than the outcome one: these two
+        // headings are `COMPLETE:cancelled` and `COMPLETE:delivered`, the same
+        // two states the label reconciler is naming on this very comment, and a
+        // second copy of the glyph could only ever drift from the label beside
+        // it.
+        phaseHeading(state, 'waiting', 'Stopped'),
         '',
         'I am no longer working on this issue, and further comments here will not restart me.',
         'Open a new issue if you want this picked up again.',
       ].join('\n')
     : [
-        '### Done',
+        phaseHeading(state, 'waiting', 'Done'),
         '',
         `The work is in ${state.prUrl}.`,
         '',
@@ -94,10 +99,10 @@ const acceptedLine = (accepted: readonly string[]): string =>
  * refusal comment uses, so neither can drift from what the machine will take.
  */
 const renderWaiting = (state: AgentState): string => {
-  const { glyph, headline } = presentationFor(state, 'waiting')
+  const { headline } = presentationFor(state, 'waiting')
 
   return [
-    `### ${glyph} ${headline}`,
+    phaseHeading(state, 'waiting', headline),
     '',
     `Parked in \`${state.phase}\`, and nothing moves until you say so.`,
     '',
@@ -122,7 +127,7 @@ export const renderSettled = (state: AgentState): string =>
  */
 export const renderRefusedCommand = (command: string, phase: Phase, accepted: readonly string[]): string =>
   [
-    `### \`${command}\` does not apply right now`,
+    outcomeHeading('COMMAND_REFUSED', `\`${command}\` does not apply right now`),
     '',
     `I am parked in \`${phase}\`, which does not accept it, so nothing has changed.`,
     '',
@@ -142,7 +147,7 @@ export const renderRefusedCommand = (command: string, phase: Phase, accepted: re
  */
 export const renderExhausted = (reason: string): string =>
   [
-    '### Giving up',
+    outcomeHeading('RETRIES_SPENT', 'Giving up'),
     '',
     reason,
     '',
@@ -160,7 +165,7 @@ export const renderExhausted = (reason: string): string =>
  */
 export const renderCiExhausted = (reason: string, prUrl: string | null): string =>
   [
-    '### I have stopped trying to fix CI',
+    outcomeHeading('CI_GAVE_UP', 'I have stopped trying to fix CI'),
     '',
     reason,
     '',
@@ -188,7 +193,7 @@ export const renderFailure = (
   runUrl: string | null,
 ): string =>
   [
-    `### Run failed in ${phase}`,
+    outcomeHeading('RUN_FAILED', `Run failed in ${phase}`),
     '',
     // The message carries raw model output, which usually contains fences.
     fence(message),
@@ -214,7 +219,7 @@ export const renderFailure = (
  */
 export const renderAnswerFailure = (phase: Phase, message: string): string =>
   [
-    '### I could not answer that',
+    outcomeHeading('ANSWER_FAILED', 'I could not answer that'),
     '',
     // The message carries raw model output, which usually contains fences.
     fence(message),
@@ -250,7 +255,7 @@ const tokenLine = (spent: number, limit: number): string =>
  */
 export const renderOverBudget = (spent: number, limit: number, resumeFrom: Phase): string =>
   [
-    '### Token budget spent',
+    outcomeHeading('TOKENS_SPENT', 'Token budget spent'),
     '',
     tokenLine(spent, limit),
     '',
@@ -272,7 +277,7 @@ export const renderOverBudget = (spent: number, limit: number, resumeFrom: Phase
  */
 export const renderAnswerOverBudget = (spent: number, limit: number, phase: Phase): string =>
   [
-    '### Token budget spent',
+    outcomeHeading('ANSWER_TOKENS_SPENT', 'Token budget spent'),
     '',
     `${tokenLine(spent, limit)} I did not put that question to the model.`,
     '',

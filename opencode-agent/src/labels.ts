@@ -111,6 +111,16 @@ export const reconcileLabels = async (deps: LabelDeps, state: AgentState, stance
   try {
     await applyDiff(deps, prefix, state, stance)
   } catch (error) {
+    // Everything, and that includes a bug in this module: a `TypeError` from
+    // `applyDiff` degrades to exactly the same `warn` as a 403, so a broken
+    // reconcile is invisible unless somebody reads the log. That is the accepted
+    // cost of the rule rather than an oversight — a channel that re-throws on
+    // some classes of error is not best-effort any more, and deciding which is
+    // which *here*, on an `unknown`, is how that gets fragile. It is worth
+    // knowing how it will be found: this exact case appeared while writing the
+    // stage's tests, when a stubbed transport answered the label read with the
+    // wrong shape and `name.startsWith` threw into this catch, leaving a green
+    // suite that had never reconciled a thing.
     deps.log.warn(
       { issue: state.issueId, phase: state.phase, stance, error: errorMessage(error) },
       'Could not reconcile the issue labels',

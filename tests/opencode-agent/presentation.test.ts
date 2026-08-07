@@ -8,6 +8,10 @@ import { describe, expect, test } from 'bun:test'
 import { desiredLabels } from '../../opencode-agent/src/labels.js'
 import {
   NEEDS_YOU_LABEL,
+  OUTCOME_GLYPHS,
+  OUTCOME_KEYS,
+  outcomeHeading,
+  phaseHeading,
   PRESENTATION,
   PRESENTATION_KEYS,
   presentationFor,
@@ -100,6 +104,50 @@ describe('the presentation table', () => {
     reached.add(presentationKey(DELIVERED, 'waiting'))
 
     expect([...reached].sort()).toEqual([...PRESENTATION_KEYS].sort())
+  })
+})
+
+describe('the outcome table', () => {
+  test.each([...OUTCOME_KEYS])('%s has a glyph', (key) => {
+    expect(OUTCOME_GLYPHS[key].length).toBeGreaterThan(0)
+  })
+
+  test('a bound reached is not a thing that broke', () => {
+    // The whole argument for the budget notices being separate renderers is
+    // that a ceiling is not a failure: nothing broke, the run stopped because
+    // it was told to. Giving them ❌ would undo that in the one place a
+    // maintainer actually looks.
+    const bounds = [OUTCOME_GLYPHS.RETRIES_SPENT, OUTCOME_GLYPHS.TOKENS_SPENT, OUTCOME_GLYPHS.ANSWER_TOKENS_SPENT]
+
+    expect(new Set(bounds).size).toBe(1)
+    expect(bounds).not.toContain(OUTCOME_GLYPHS.RUN_FAILED)
+  })
+
+  test('a failed answer is not a failed run', () => {
+    // `failAnswer` moves nothing — no phase, no `resumeFrom`, no attempt spent.
+    // ❌ on that comment tells a maintainer their delivered pull request broke.
+    expect(OUTCOME_GLYPHS.ANSWER_FAILED).not.toBe(OUTCOME_GLYPHS.RUN_FAILED)
+  })
+
+  test('giving up on CI keeps the glyph the CI-fix phase wore', () => {
+    // The maintainer has been watching this glyph on the issue for however many
+    // rounds it took to give up; the ending belongs to the same story.
+    expect(OUTCOME_GLYPHS.CI_GAVE_UP).toBe(PRESENTATION.CI_FIX.glyph)
+  })
+
+  test('a refused command answers with the reaction it also gets', () => {
+    // `refuseCommand` places 😕 on the comment and posts this reply; two
+    // different faces for one event is the vocabulary spreading again.
+    expect(OUTCOME_GLYPHS.COMMAND_REFUSED).toBe('😕')
+  })
+
+  test('a heading is the glyph and the words, in that order', () => {
+    expect(outcomeHeading('RUN_FAILED', 'Run failed in EXECUTION_PLAN')).toBe('### ❌ Run failed in EXECUTION_PLAN')
+  })
+
+  test('a phase heading reads from the phase table, splits and all', () => {
+    expect(phaseHeading(DELIVERED, 'waiting', 'Done')).toBe('### ✅ Done')
+    expect(phaseHeading(CANCELLED, 'waiting', 'Stopped')).toBe('### 🛑 Stopped')
   })
 })
 

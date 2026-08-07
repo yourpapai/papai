@@ -556,7 +556,7 @@ describe('chatter while the agent is clarifying', () => {
 
     expect(result.status).toBe('failed')
     expect(harness.io.prompts).toEqual([])
-    expect(harness.io.posted[0]).toContain('### Token budget spent')
+    expect(harness.io.posted[0]).toContain('### ⛔ Token budget spent')
 
     const state = latestPostedState(harness)
     expect(state?.phase).toBe('FAILED')
@@ -698,7 +698,7 @@ describe('answering outside the review gates', () => {
     const result = await runPipeline({ event: comment('/ask what did you change?'), deps: harness.deps })
 
     expect(result.status).toBe('failed')
-    expect(harness.io.posted[0]).toContain('### I could not answer that')
+    expect(harness.io.posted[0]).toContain('### ⚠️ I could not answer that')
     expect(harness.io.posted[0]).toContain('the model endpoint rejected it')
 
     const state = latestPostedState(harness)
@@ -1369,7 +1369,7 @@ describe('commands and budgets', () => {
 
     // Delivery posts its own closing comment; no bare "Stopped" on a shipped issue.
     expect(harness.io.posted.at(-1)).toContain('https://example.test/pull/7')
-    expect(harness.io.posted.join('\n')).not.toContain('### Stopped')
+    expect(harness.io.posted.join('\n')).not.toContain('### 🛑 Stopped')
   })
 
   test('rejects /approve arriving in a phase that cannot accept it', async () => {
@@ -1463,7 +1463,7 @@ describe('commands and budgets', () => {
 
     expect(result.status).toBe('failed')
     expect(result.reason).toContain('Retry budget exhausted')
-    expect(harness.io.posted[0]).toContain('### Giving up')
+    expect(harness.io.posted[0]).toContain('### ⛔ Giving up')
   })
 })
 
@@ -1504,7 +1504,7 @@ describe('the retry budget', () => {
     await runPipeline({ event: comment('/retry'), deps: harness.deps })
 
     expect(harness.io.posted).toHaveLength(1)
-    expect(harness.io.posted[0]).toContain('### Giving up')
+    expect(harness.io.posted[0]).toContain('### ⛔ Giving up')
     expect(harness.io.posted[0]).toContain('3 of 3 attempts')
     // The notice may only offer what the machine will actually take. Bare
     // "reply `/retry`" is not that: the budget is spent, so the next `/retry`
@@ -1529,7 +1529,7 @@ describe('the retry budget', () => {
     expect(result.status).toBe('failed')
     expect(result.reason).toContain('Retry budget exhausted')
     expect(result.reason).not.toContain('not valid in')
-    expect(harness.io.posted[0]).toContain('### Giving up')
+    expect(harness.io.posted[0]).toContain('### ⛔ Giving up')
     expect(latestPostedState(harness)?.resumeFrom).toBe('EXECUTION_PLAN')
   })
 
@@ -1676,7 +1676,7 @@ describe('the token budget', () => {
     const result = await runPipeline({ event: comment('/ask why that file?'), deps: harness.deps })
 
     expect(result.status).toBe('failed')
-    expect(harness.io.posted[0]).toContain('### I could not answer that')
+    expect(harness.io.posted[0]).toContain('### ⚠️ I could not answer that')
 
     const state = latestPostedState(harness)
     expect(state?.phase).toBe('DESIGN_SPEC')
@@ -1693,7 +1693,7 @@ describe('the token budget', () => {
 
     expect(result.status).toBe('failed')
     expect(result.reason).toContain('Token budget spent')
-    expect(harness.io.posted[0]).toContain('### Token budget spent')
+    expect(harness.io.posted[0]).toContain('### ⛔ Token budget spent')
   })
 
   test('says why a bare /retry will not help, and names what makes it help', async () => {
@@ -1755,7 +1755,7 @@ describe('the token budget', () => {
     const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
     expect(result.status).toBe('failed')
-    expect(harness.io.posted[0]).toContain('### Token budget spent')
+    expect(harness.io.posted[0]).toContain('### ⛔ Token budget spent')
 
     const state = latestPostedState(harness)
     expect(state?.phase).toBe('FAILED')
@@ -1780,7 +1780,7 @@ describe('the token budget', () => {
     const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
     expect(result.status).toBe('failed')
-    expect(headings(harness)).toEqual(['### Implementation report', '### Token budget spent'])
+    expect(headings(harness)).toEqual(['### Implementation report', '### ⛔ Token budget spent'])
 
     const state = latestPostedState(harness)
     expect(state?.phase).toBe('FAILED')
@@ -1882,7 +1882,7 @@ describe('the token budget', () => {
 
     expect(result.status).toBe('failed')
     expect(harness.io.prompts).toEqual([])
-    expect(harness.io.posted[0]).toContain('### Token budget spent')
+    expect(harness.io.posted[0]).toContain('### ⛔ Token budget spent')
 
     const state = latestPostedState(harness)
     expect(state?.phase).toBe('DESIGN_SPEC')
@@ -1900,7 +1900,7 @@ describe('the token budget', () => {
     const result = await runPipeline({ event: comment('/ask what did you change?'), deps: harness.deps })
 
     expect(result.status).toBe('failed')
-    expect(harness.io.posted[0]).toContain('### Token budget spent')
+    expect(harness.io.posted[0]).toContain('### ⛔ Token budget spent')
     expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
   })
 })
@@ -2217,7 +2217,7 @@ describe('the run link', () => {
     await runPipeline({ event: issueEvent(), deps: harness.deps })
 
     expect(harness.io.posted[0]).not.toContain('The job that failed')
-    expect(harness.io.posted[0]).toContain('### Run failed in')
+    expect(harness.io.posted[0]).toContain('### ❌ Run failed in')
   })
 
   test('the CI-fix comment tells the red run from the run repairing it', async () => {
@@ -2294,6 +2294,38 @@ describe('labels — the state at a glance', () => {
     await runPipeline({ event: comment('thanks!'), deps: harness.deps })
 
     expect(harness.io.labelWrites).toEqual([])
+    expect(harness.io.labels.sort()).toEqual(['agent:needs-you', 'agent:spec-review'])
+  })
+
+  test('a state move with no handler behind it is not "working" either', async () => {
+    // `/cancel` moves the state and runs nothing. Marking it working would add
+    // the marker and take it off in the same second — the same two timeline
+    // entries a skipped run avoids, on a run that did move the issue.
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    harness.io.labelWrites.length = 0
+
+    await runPipeline({ event: comment('/cancel'), deps: harness.deps })
+
+    // Nothing mentions the marker in either direction: it was never put on, so
+    // there is nothing to take off.
+    expect(harness.io.labelWrites.filter((write) => write.includes('agent:working'))).toEqual([])
+    expect(harness.io.labels).toEqual(['agent:stopped'])
+  })
+
+  test('answering a question is work, even though it moves nothing', async () => {
+    // The other half of "will anything run": `/ask` leaves the phase exactly
+    // where it was, so the handler table says nothing about it — but it is a
+    // model turn, often the slowest thing the pipeline does, and an issue that
+    // shows no sign of it is the silence this whole plan is about.
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    harness.io.labelWrites.length = 0
+    harness.io.replies = ['Because the retry helper already exists there.']
+
+    await runPipeline({ event: comment('/ask why that file?'), deps: harness.deps })
+
+    expect(harness.io.labelWrites).toContain('+agent:working')
     expect(harness.io.labels.sort()).toEqual(['agent:needs-you', 'agent:spec-review'])
   })
 
@@ -2413,7 +2445,7 @@ describe('labels — feedback never fails a run', () => {
 
     expect(result.status).toBe('failed')
     expect(result.reported).toBe(true)
-    expect(harness.io.posted[0]).toContain('### Run failed in')
+    expect(harness.io.posted[0]).toContain('### ❌ Run failed in')
   })
 
   test('a label is not a report, so it never suppresses the fallback comment', async () => {

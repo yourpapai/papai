@@ -19,6 +19,7 @@ import { handleTriage } from './phases/triage.js'
 import { postAndAppend, renderSettled } from './run-report.js'
 import { findLatestState, initialState, transition } from './state-manager.js'
 import { recordSpend, stopIfOverBudget } from './token-budget.js'
+import type { TriggerOutcome } from './trigger-outcome.js'
 import { applyTrigger } from './triggers.js'
 import type { AgentState, Phase, RunResult, TransitionSignal } from './types.js'
 
@@ -103,14 +104,14 @@ const runAccepted = async (event: TriggerEvent, deps: PhaseDeps): Promise<RunRes
 
   const base: PhaseInput = { state: restored, issue, trigger: event, command, thread, deps }
   const entry = await applyTrigger(base)
-  // A trigger that moved nothing gets the closing reconcile and not the opening
-  // one. Marking a run that is about to skip as working would add the marker and
-  // remove it again within the second — two timeline entries on an issue where
-  // nothing happened, which is the noise this whole channel is sized to avoid.
-  // The closing one still runs, because it is also the repair.
   if (entry.halt !== null) return settleLabels(deps, entry.halt, restored)
 
-  await reconcileLabels(deps, entry.state, 'working')
+  // Only when something is actually going to run. The closing reconcile happens
+  // either way — it is also the repair — but marking a run that is about to do
+  // nothing adds the marker and takes it off again within the second, which is
+  // two timeline entries on an issue where the agent did nothing, and precisely
+  // the churn a diff instead of a clear-and-reapply exists to avoid.
+  if (willWork(entry)) await reconcileLabels(deps, entry.state, 'working')
 
   const result = await driveMachine({
     ...base,
@@ -125,6 +126,17 @@ const runAccepted = async (event: TriggerEvent, deps: PhaseDeps): Promise<RunRes
 
   return settleLabels(deps, result, entry.state)
 }
+
+/**
+ * Whether the cascade will actually run a handler for this entry.
+ *
+ * The two cases where it will not are a trigger that moved into a waiting phase
+ * and `/cancel`, which reaches `COMPLETE` — both of them state moves with no
+ * work behind them, and `agent:working` on either is a claim that nothing is
+ * happening. Asked of the same `HANDLERS` table {@link driveMachine} looks the
+ * phase up in, so the marker cannot disagree with what the machine does next.
+ */
+const willWork = (entry: TriggerOutcome): boolean => entry.answer || HANDLERS[entry.state.phase] !== undefined
 
 /** The issue's title and body, from the payload when present, else the API. */
 const resolveIssue = (event: TriggerEvent, deps: PhaseDeps): Promise<IssueContext> => {

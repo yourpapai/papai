@@ -4,13 +4,26 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 
 import { formatFailures } from '../../opencode-agent/src/check-loop.js'
 import { acceptedCommands, SLASH_COMMANDS } from '../../opencode-agent/src/commands.js'
 import { modelResponseError } from '../../opencode-agent/src/errors.js'
 import { fence } from '../../opencode-agent/src/markdown.js'
-import { presentationFor } from '../../opencode-agent/src/presentation.js'
-import { renderFailure, renderSettled } from '../../opencode-agent/src/run-report.js'
+import { OUTCOME_GLYPHS, PRESENTATION, presentationFor } from '../../opencode-agent/src/presentation.js'
+import type { OutcomeKey } from '../../opencode-agent/src/presentation.js'
+import {
+  renderAnswerFailure,
+  renderAnswerOverBudget,
+  renderCiExhausted,
+  renderClosing,
+  renderExhausted,
+  renderFailure,
+  renderOverBudget,
+  renderRefusedCommand,
+  renderSettled,
+} from '../../opencode-agent/src/run-report.js'
 import { initialState, transition } from '../../opencode-agent/src/state-manager.js'
 import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
 
@@ -106,7 +119,7 @@ describe('renderFailure', () => {
     const rendered = render(modelResponseError('no JSON object', FENCED_REPLY).message)
 
     expect(prose(rendered)).toContain('/retry')
-    expect(prose(rendered)).toContain('### Run failed in INIT_OR_CLARIFY')
+    expect(prose(rendered)).toContain('### ❌ Run failed in INIT_OR_CLARIFY')
   })
 
   test('keeps the whole error inside the block', () => {
@@ -166,8 +179,55 @@ describe('renderSettled', () => {
     // an invitation the state machine refuses.
     const delivered: AgentState = { ...parked('COMPLETE'), prUrl: 'https://example.test/pull/7' }
 
-    expect(renderSettled(delivered)).toContain('### Done')
-    expect(renderSettled(parked('COMPLETE'))).toContain('### Stopped')
+    expect(renderSettled(delivered)).toContain('### ✅ Done')
+    expect(renderSettled(parked('COMPLETE'))).toContain('### 🛑 Stopped')
+  })
+})
+
+describe('comment headings', () => {
+  const failed = transition(initialState(42), 'FAILED', { lastError: 'x' })
+
+  /** One entry per renderer that speaks about an outcome, with its key. */
+  const OUTCOME_COMMENTS: readonly (readonly [OutcomeKey, string])[] = [
+    ['RUN_FAILED', renderFailure('EXECUTION_PLAN', 'boom', failed, 3, null)],
+    ['ANSWER_FAILED', renderAnswerFailure('DESIGN_SPEC', 'boom')],
+    ['RETRIES_SPENT', renderExhausted('Retry budget exhausted')],
+    ['TOKENS_SPENT', renderOverBudget(1, 2, 'EXECUTION_PLAN')],
+    ['ANSWER_TOKENS_SPENT', renderAnswerOverBudget(1, 2, 'DESIGN_SPEC')],
+    ['CI_GAVE_UP', renderCiExhausted('spent', null)],
+    ['COMMAND_REFUSED', renderRefusedCommand('/approve', 'COMPLETE', [])],
+  ]
+
+  test.each(OUTCOME_COMMENTS)('%s leads with the glyph the outcome table gives it', (key, rendered) => {
+    // Read from the table rather than written out here: the point of the table
+    // is that no renderer picks its own glyph, and a test that hardcoded them
+    // would be a second place to change.
+    expect(rendered.startsWith(`### ${OUTCOME_GLYPHS[key]} `)).toBe(true)
+  })
+
+  test('the closing comment reads from the phase table, not the outcome one', () => {
+    // "Delivered" and "Stopped" are states, not outcomes — the same two the
+    // label reconciler names on this very comment, so they share one source.
+    const delivered: AgentState = { ...initialState(42), phase: 'COMPLETE', prUrl: 'https://example.test/pull/7' }
+    const cancelled: AgentState = { ...initialState(42), phase: 'COMPLETE' }
+
+    expect(renderClosing(delivered).startsWith(`### ${PRESENTATION['COMPLETE:delivered'].glyph} Done`)).toBe(true)
+    expect(renderClosing(cancelled).startsWith(`### ${PRESENTATION['COMPLETE:cancelled'].glyph} Stopped`)).toBe(true)
+  })
+
+  test('no renderer writes a heading of its own', () => {
+    // The class, not the instance. Nine renderers each picking a glyph by hand
+    // is the defect the tables exist to prevent, and it comes back the moment
+    // somebody adds a tenth with a literal `### ` — which every one of these
+    // renderers had until this stage. Comments are stripped first: several of
+    // them quote the old headings on purpose.
+    const source = readFileSync(
+      path.join(import.meta.dir, '..', '..', 'opencode-agent', 'src', 'run-report.ts'),
+      'utf8',
+    )
+    const stripped = source.replaceAll(/\/\*[\s\S]*?\*\//gu, '').replaceAll(/^\s*\/\/.*$/gmu, '')
+
+    expect(stripped).not.toMatch(/['"`]### /u)
   })
 })
 
