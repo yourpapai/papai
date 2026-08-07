@@ -6,6 +6,8 @@
 import { access, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
+import { z } from 'zod'
+
 import { createShellExec, runBuildCheck, type ShellExecFn } from './build-checker.js'
 import { MergeConflictError, formatBuildFailureMessage } from './cli-errors.js'
 import { loadReviewLoopConfig, type ReviewLoopConfig } from './config.js'
@@ -162,12 +164,14 @@ export async function prepareWorktree(config: ReviewLoopConfig, runState: RunSta
   }
 }
 
+const MetricsEnvelopeSchema = z.object({ runStats: PersistedStatsSchema.optional() })
+
 export async function readPersistedRunStats(runDir: string): Promise<PersistedStats | undefined> {
   try {
-    const raw: unknown = JSON.parse(await readFile(path.join(runDir, 'metrics.json'), 'utf8'))
-    const candidate = typeof raw === 'object' && raw !== null ? (raw as { runStats?: unknown }).runStats : undefined
-    const parsed = PersistedStatsSchema.safeParse(candidate)
-    return parsed.success ? parsed.data : undefined
+    const parsed = MetricsEnvelopeSchema.safeParse(
+      JSON.parse(await readFile(path.join(runDir, 'metrics.json'), 'utf8')),
+    )
+    return parsed.success ? parsed.data.runStats : undefined
   } catch {
     return undefined
   }

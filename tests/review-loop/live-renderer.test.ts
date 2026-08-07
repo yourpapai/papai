@@ -366,4 +366,41 @@ describe('LiveRenderer stats', () => {
     r.slot('a', 'x')
     expect(output[output.length - 1]!).toContain('in 5 / out 2')
   })
+
+  test('usage without a label accumulates under agent', () => {
+    const { stream } = makeStream()
+    const stats = new RunStats()
+    const r = new LiveRenderer(stream, stats)
+    r.usage({ input: 5, output: 2, reasoning: 0, cost: 0 })
+    expect(stats.snapshot().perLabel['agent']?.input).toBe(5)
+    expect(stats.snapshot().perLabel['']).toBeUndefined()
+  })
+
+  test('diff without stats is a no-op', () => {
+    const { stream } = makeStream()
+    const r = new LiveRenderer(stream)
+    expect(() => r.diff('iter-1', { added: 1, removed: 0 })).not.toThrow()
+  })
+
+  test('status line hides tools and diff segments at zero (TTY)', () => {
+    const { output, stream } = makeStream({ isTTY: true, columns: 300 })
+    const stats = new RunStats()
+    const r = new LiveRenderer(stream, stats)
+    r.usage({ input: 100, output: 10, reasoning: 0, cost: 0, label: 'a' })
+    r.slot('a', 'x')
+    const last = output[output.length - 1]!
+    expect(last).toContain('in 100 / out 10')
+    expect(last).not.toContain('tools')
+    expect(last).not.toContain('+0/-0')
+  })
+
+  test('status line shows diff segment when only added is positive (TTY)', () => {
+    const { output, stream } = makeStream({ isTTY: true, columns: 300 })
+    const stats = new RunStats()
+    const r = new LiveRenderer(stream, stats)
+    r.usage({ input: 1, output: 1, reasoning: 0, cost: 0, label: 'a' })
+    r.diff('iter-1', { added: 5, removed: 0 })
+    r.slot('a', 'x')
+    expect(output[output.length - 1]!).toContain('+5/-0')
+  })
 })

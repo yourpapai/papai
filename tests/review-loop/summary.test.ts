@@ -248,6 +248,31 @@ describe('buildSummary stats line', () => {
   test('buildSummary omits the Stats line when stats are absent', () => {
     expect(buildSummary(inputOf())).not.toContain('Stats:')
   })
+
+  test('buildSummary omits the Stats line when all totals are zero', () => {
+    const summary = buildSummary(
+      inputOf({
+        stats: {
+          totals: { input: 0, output: 0, reasoning: 0, toolCalls: 0, added: 0, removed: 0, elapsedMs: 1000 },
+          perLabel: {},
+        },
+      }),
+    )
+    expect(summary).not.toContain('Stats:')
+  })
+
+  test('buildSummary Stats line shows only non-zero segments', () => {
+    const summary = buildSummary(
+      inputOf({
+        stats: {
+          totals: { input: 0, output: 0, reasoning: 0, toolCalls: 0, added: 5, removed: 0, elapsedMs: 1000 },
+          perLabel: {},
+        },
+      }),
+    )
+    expect(summary).toContain('Stats: +5/-0')
+    expect(summary).not.toContain('tools 0')
+  })
 })
 
 describe('buildMetricsJson', () => {

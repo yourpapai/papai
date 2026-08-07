@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, spyOn, test } from 'bun:test'
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -594,6 +594,62 @@ describe('writeRunArtifacts stats persistence', () => {
 
   test('readPersistedRunStats returns undefined when metrics.json is missing or has no runStats', async () => {
     const runDir = makeTempDir('rl-nostats-')
+    await expect(readPersistedRunStats(runDir)).resolves.toBeUndefined()
+  })
+
+  test('writeRunArtifacts without stats writes no runStats and no Stats line', async () => {
+    const runDir = makeTempDir('rl-artifacts-nostats-')
+    await writeRunArtifacts(
+      runDir,
+      { doneReason: 'clean', rounds: 1, metrics: [], ledger: { issues: {} } },
+      { poolSize: 1, inspect: false, wallMs: 1000 },
+    )
+    const metricsText = await readFile(path.join(runDir, 'metrics.json'), 'utf8')
+    expect(metricsText).not.toContain('runStats')
+    const summary = await readFile(path.join(runDir, 'summary.txt'), 'utf8')
+    expect(summary).not.toContain('Stats:')
+  })
+
+  test('writeRunArtifacts tolerates a result without metrics', async () => {
+    const runDir = makeTempDir('rl-artifacts-nometrics-')
+    await writeRunArtifacts(
+      runDir,
+      { doneReason: 'clean', rounds: 1, ledger: { issues: {} } },
+      { poolSize: 1, inspect: false, wallMs: 1000 },
+    )
+    const metricsText = await readFile(path.join(runDir, 'metrics.json'), 'utf8')
+    expect(metricsText).toContain('"inputTokens": 0')
+  })
+
+  test('writeRunArtifacts warns and still writes summary when metrics.json write fails', async () => {
+    const runDir = makeTempDir('rl-artifacts-eisdir-')
+    mkdirSync(path.join(runDir, 'metrics.json'))
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    await writeRunArtifacts(
+      runDir,
+      { doneReason: 'clean', rounds: 1, metrics: [], ledger: { issues: {} } },
+      { poolSize: 1, inspect: false, wallMs: 1000 },
+    )
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(String(warn.mock.calls[0]![0])).toContain('metrics.json write failed')
+    expect(existsSync(path.join(runDir, 'summary.txt'))).toBe(true)
+  })
+
+  test('readPersistedRunStats returns undefined for invalid JSON', async () => {
+    const runDir = makeTempDir('rl-badstats-json-')
+    writeFileSync(path.join(runDir, 'metrics.json'), 'not json')
+    await expect(readPersistedRunStats(runDir)).resolves.toBeUndefined()
+  })
+
+  test('readPersistedRunStats returns undefined when runStats violates the schema', async () => {
+    const runDir = makeTempDir('rl-badstats-schema-')
+    writeFileSync(path.join(runDir, 'metrics.json'), JSON.stringify({ runStats: { totals: { input: 'x' } } }))
+    await expect(readPersistedRunStats(runDir)).resolves.toBeUndefined()
+  })
+
+  test('readPersistedRunStats returns undefined when metrics.json has no runStats key', async () => {
+    const runDir = makeTempDir('rl-badstats-key-')
+    writeFileSync(path.join(runDir, 'metrics.json'), JSON.stringify({ doneReason: 'clean' }))
     await expect(readPersistedRunStats(runDir)).resolves.toBeUndefined()
   })
 })
