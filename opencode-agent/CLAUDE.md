@@ -13,8 +13,11 @@ findings: `ROADMAP.md`.
 - One CI job = one call to `runCli`. State lives in hidden blocks on the issue,
   not on disk: `AGENT_STATE` for the machine, `AGENT_SPEC` / `AGENT_PLAN` /
   `AGENT_REPORT` for the artefacts.
-- `src/triggers.ts` decides _whether and where_ an event moves the state;
-  `src/orchestrator.ts` drives the phase cascade once that decision is made.
+- `src/triggers.ts` decides _whether and where_ an event moves the state, with
+  the red-CI half in `src/ci-trigger.ts` and the shared outcome shape in
+  `src/trigger-outcome.ts`; `src/orchestrator.ts` drives the phase cascade once
+  that decision is made;
+  `src/token-budget.ts` decides whether the cascade may afford another step.
   Phase handlers in `src/phases/` return a `TransitionSignal`, a comment body and
   optional artefact blocks, and never write state or decide the next phase
   themselves.
@@ -26,6 +29,27 @@ findings: `ROADMAP.md`.
 - **Never scrape prose to recover an artefact.** Spec, plan and report travel in
   hidden blocks via `blocks.ts` / `artifacts.ts`. Heading-and-trailer scraping
   silently truncated specs at their first `---` rule; do not reintroduce it.
+- **Each artefact counts its own revisions.** `specRevision` and `planRevision`
+  are separate fields and each handler renders and stores one of them, from a
+  single local so the visible heading and the hidden block cannot disagree. They
+  were one shared `revision` bumped by both `SPEC_POSTED` and `PLAN_POSTED`, so
+  the counts interleaved and the first execution plan on every issue announced
+  itself as revision 2 — revision 3 if the spec had been revised once first —
+  which is not a reading "the Nth version of this artefact" allows. The report
+  block stamps `planRevision`: it records which plan was implemented, and no
+  signal bumps a report counter. Splitting them needed no `STATE_VERSION` bump
+  because both fields default; the old key is dropped rather than mapped onto
+  either, since it was a sum and never a count of either artefact.
+- **Answering is phase-neutral in both directions.** `ANSWERED` is deliberately
+  absent from `TRANSITIONS`; `transition` handles it as a non-moving signal
+  accepted in every phase, because `/ask` is accepted in every phase. Do not put
+  it back as a row per phase — the table and `/ask`'s reach drifting apart is
+  what made a question asked in `COMPLETE`, `FAILED` or mid-pipeline throw
+  `InvalidTransitionError` out of the pipeline, after the model turn was paid
+  for and with nothing posted on the issue. A **failed** answer does not move the
+  phase either: `failAnswer` posts and leaves `phase`, `resumeFrom` and
+  `attempts` alone, which is also why `resumeFrom` can never name a waiting phase
+  with no handler for `/retry` to resume into.
 - **The review loop is `review-loop/`, not a local reimplementation.** Phase 3
   drives that workspace through `review-runner.ts`. `check-loop.ts` exists only
   for CI fixing, which the workspace does not cover. In that loop the first round
@@ -43,13 +67,128 @@ findings: `ROADMAP.md`.
   it is the one layer that sees a real HTTP status and the only one the review
   loop's subprocesses also pass through; do not add a second retry in the
   adapter, where the status is already gone.
+- **The retry budget is refused, never applied-then-regretted.** A `/retry` past
+  `maxAttempts` is turned down in `src/triggers.ts` before the signal reaches
+  `transition`, so the issue keeps `FAILED` and its `resumeFrom` and raising
+  `AGENT_MAX_ATTEMPTS` still resumes it. It used to be checked in `driveMachine`,
+  after `applyTrigger` had applied `RETRY` — which clears `resumeFrom` — so
+  spending the budget parked the issue in a handler phase that `/retry` (needs
+  `FAILED`) and a plain comment (needs a waiting phase) both refuse, reachable
+  only by `/cancel`, under a notice inviting the `/retry` that had just become
+  impossible. There is deliberately **one** such check and no backstop in the
+  cascade: forward moves reset `attempts`, so `RETRY` is the only way a spent
+  count reaches a handler. The invariant to preserve: no path may leave the
+  persisted state in a phase that has a handler but that no trigger can
+  re-enter.
+- **An over-budget stop parks in `FAILED`; it does not stay put.** The token
+  check sits inside the cascade, before each handler, and cannot move to the
+  trigger layer the way the retry gate did: half its firings are mid-cascade
+  (`REVIEW_AND_MUTATE` → `PR_DELIVERY` → `COMPLETE` in one job), where the phase
+  has rightly advanced and there is no signal to refuse. So the **stop** carries
+  the invariant instead — `transition(FAILED)` with `resumeFrom` naming the
+  phase it refused to start, which is the recovery path that already exists and
+  is what makes "raise `AGENT_MAX_TOKENS`, reply `/retry`" true. Leaving the
+  phase alone stranded the issue in a handler phase, reachable only by
+  `/cancel`, on a first `/approve` with no failure involved. `attempts` is
+  **carried, not incremented**: running out of tokens is not a failed attempt,
+  and spending one would let the retry gate refuse the very `/retry` the token
+  notice asks for, citing a ceiling it never mentioned. The **answer** path is
+  the deliberate exception and moves nothing, for the reasons `failAnswer` moves
+  nothing — plus `COMPLETE` accepts no `FAILED`, so parking a question there
+  would throw out of the pipeline.
+- **A red run is acted on where the branch is live and no job is on it.**
+  `CI_FAILED` names two rows in `TRANSITIONS`, `COMPLETE` and `PR_DELIVERY`, and
+  the absences are the design. `PR_DELIVERY` is the genuine race: phase 3 pushes
+  the branch and posts a block naming that phase before phase 4 opens the pull
+  request, so a job that died in between left a live branch whose red checks were
+  refused as an invalid transition and dropped — nothing posted, no `ciAttempts`
+  spent, no trace but a `reason` string nobody reads. The four phases before the
+  branch exists stay out because `handleCiFix` would run the checks against a
+  branch cut from the base; `REVIEW_AND_MUTATE` and `CI_FIX` stay out because the
+  machine never persists them (a block is written only when a handler posts, and
+  both post the phase they moved _to_), and honouring a hand-edited one would put
+  a second job on a branch another is mid-commit on — the workflow's concurrency
+  group queues those two, but only while `workflow_run.head_branch` and
+  `agent/issue-<n>` agree, which is a coincidence and not a proof. **`FAILED`
+  stays out deliberately**, the close call: the branch is pushed there, but
+  `CI_FAILED` is a forward move, so it would reset `attempts` and leave the one
+  phase `/retry` accepts, and a fix that went green would park the issue in
+  `COMPLETE` announcing success for a delivery that never finished. Those red
+  checks are deferred behind the `/retry` the failure comment already asked for,
+  not abandoned. A refused red run **logs at `warn` with the phase** and posts
+  nothing, for the reason `settledPullRequest` sets out: CI fires on every push,
+  so a comment per red run is spam.
+- **The CI-fix budget belongs to a pull request, not to an issue.**
+  `handleDeliver` clears `ciAttempts` and `ciBudgetReported` on its
+  `existing === null` branch — a genuinely new pull request — and leaves both
+  alone when it refreshes the open one. Neither used to reset at all, and `applyCiTrigger` short-circuits
+  on `ciBudgetReported` before it even looks the pull request up, so an issue
+  that burned its rounds on one pull request and then delivered a second got no
+  fix round on the new one and no comment explaining the silence. Do not extend
+  the reset to the refresh path: same branch, same commits, same checks that
+  spent the rounds, and a clean slate there is one broken branch bouncing off the
+  agent for as long as anyone keeps replying `/retry`.
+- **A run says whether it reported, and the workflow reads that.** `RunResult`
+  carries `reported`, and `step-output.ts` turns it into a `reported=true` line
+  in `$GITHUB_OUTPUT`; the workflow's fallback "Agent job failed" comment is
+  gated on `steps.pipeline.outputs.reported != 'true'`. It used to be gated on
+  `if: failure()` alone, which selects **every** red job — and six paths exit 1
+  only after posting their own report (`failRun`, `failAnswer`, both over-budget
+  stops, `refuseExhausted`, the CI-budget notice), so every genuine failure drew
+  a second comment claiming "the issue state is unchanged" beside a block that
+  had just moved to `FAILED`. Only CI runs escaped, by accident:
+  `github.event.issue.number` is empty on a `workflow_run` event. Set `reported`
+  on any new terminal path from what that path **posted**, never from its status
+  — `failed` covers both a reported failure and a crash, and `skipped` covers
+  both a silent guardrail drop and a refused command that answered on the issue.
+  A throw is deliberately unmarked: that is the crash the fallback comment is
+  for. Writing the marker is best-effort and must never throw — `GITHUB_OUTPUT`
+  is absent on every `--event-path` run.
 - **The token budget is per issue and persisted.** `tokensSpent` lives in the
-  state block; the orchestrator checks it before each phase, beside the retry
-  budget it resembles. Budget on **tokens**, never on `cost`: token counts come
+  state block; the orchestrator checks it before each phase. Budget on
+  **tokens**, never on `cost`: token counts come
   from the provider's usage block, while cost is derived from OpenCode's model
   catalogue and is `0` for any model it does not price. Read the total from
   `session.get`, not by summing events — the check happens immediately after a
   prompt returns, and an event-derived total is whatever has arrived by then.
+- **Every state block a job writes records the running total**, through
+  `recordSpend` in `token-budget.ts` — a phase that succeeded, one that threw,
+  and one the budget refused to start, all three. Written separately they drifted
+  apart at once: `runHandler` patched `tokensSpent` while `failRun` and
+  `failAnswer` did not, so a job that spent 250,000 tokens and then threw
+  persisted `0`. That is the worst possible place to be blind, because retries
+  **are** the failure path — the runaway this bounds is an issue bouncing through
+  `/retry` and CI-fix rounds, so an issue could burn the ceiling and hand the
+  next runner a clean slate, round after round. The figure is always
+  `carriedTokens` (the restored block, captured once) plus the job's session
+  total, never a per-phase sum: one job's session is already cumulative across
+  the phases it cascades through.
+- **Do not pay to classify a comment the budget cannot act on.** `applyIntent`
+  asks `withinBudget` before `classifyComment` and routes an over-budget comment
+  to the answer path, where the cascade's one stop reports it. The classifier is
+  the single model turn whose spend cannot be recorded — its `none` branch posts
+  nothing, and this pipeline persists state only by posting — so the ceiling has
+  to stop the turn rather than count it. A run **under** budget that classifies
+  `none` still leaks that turn; the known cost of not replying to every "thanks!",
+  and not to be papered over with an `updateComment`-style write without deciding
+  that larger question first.
+- **`INIT_OR_CLARIFY` classifies with the default inverted.** `applyClarifyIntent`
+  skips a comment only when the classifier positively reports `none`; every other
+  reading re-runs triage, which is what the phase used to do for every comment —
+  a "thanks", a 👍 or a bystander's aside each bought a full triage turn. It
+  cannot reuse `applyIntent`: that bias exists to protect an approved artefact and
+  there is none here, so a misread answer is not one cheap extra reply but a
+  stalled conversation, the agent answering its own clarifying questions back at
+  the maintainer while the issue stays parked. `question` is deliberately **not**
+  admitted as a skip-to-answer for the same reason — in this phase it is the
+  bucket every failure and ambiguity lands in, not a verdict, so honouring it
+  would stall exactly the comments least able to survive it. A blank body (the
+  `issues.opened` event that starts every issue) and an over-budget issue both
+  skip the classifier and fall through to triage, where the cascade's own stop
+  reports the ceiling — the rule above, one model turn cheaper. This is the one
+  phase `buildClassifyPrompt` briefs on what the phase means, because `none` is
+  now load-bearing and a real answer is often a bare fragment that reads as
+  chatter to a phase-blind classifier.
 - **Bounds go on the finished prompt, and on waiting.** `prompt-budget.ts` caps
   what reaches the model — per prompt, not per input, since a per-input cap
   bounds one log and nothing else. `deadline.ts` bounds waiting for a model turn;

@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { GitHubApi } from '../../opencode-agent/src/github.js'
-import { reportIdentityDrift, resolveSelfLogin } from '../../opencode-agent/src/identity.js'
+import { DEFAULT_BOT_LOGIN, reportIdentityDrift, resolveSelfLogin } from '../../opencode-agent/src/identity.js'
 import type { Logger, LogLevel } from '../../opencode-agent/src/logger.js'
 
 interface Recorded {
@@ -46,38 +46,36 @@ describe('resolveSelfLogin', () => {
   test('an explicit override wins outright', async () => {
     const { log } = recorder()
 
-    expect(await resolveSelfLogin({ override: 'agent-bot', api: refuses('never called'), owner: 'acme', log })).toBe(
-      'agent-bot',
-    )
+    expect(await resolveSelfLogin({ override: 'agent-bot', api: refuses('never called'), log })).toBe('agent-bot')
   })
 
   test.each(['', '   '])('a blank override %p is not an override', async (override) => {
     const { log } = recorder()
 
-    expect(await resolveSelfLogin({ override, api: answers('from-token'), owner: 'acme', log })).toBe('from-token')
+    expect(await resolveSelfLogin({ override, api: answers('from-token'), log })).toBe('from-token')
   })
 
   test('derives the identity from the token when nothing is pinned', async () => {
     const { log } = recorder()
 
-    expect(await resolveSelfLogin({ override: null, api: answers('agent-bot'), owner: 'acme', log })).toBe('agent-bot')
+    expect(await resolveSelfLogin({ override: null, api: answers('agent-bot'), log })).toBe('agent-bot')
   })
 
-  test('falls back to the owner when the token cannot say, and warns', async () => {
-    // A GitHub App installation token cannot read `/user`, and that is the token
-    // the workflow recommends — so this branch is the expected path, not an
+  test('falls back to the Actions bot when the token cannot say, and warns', async () => {
+    // A GitHub App installation token cannot read `/user`, and that is what the
+    // workflow's default token is — so this branch is the expected path, not an
     // exotic error. It has to be loud, because the failure it prevents is
-    // silent.
+    // silent. The repository owner, which this used to return, is the one
+    // answer that cannot be right here: no installation token posts as a human.
     const { lines, log } = recorder()
 
     const login = await resolveSelfLogin({
       override: null,
       api: refuses('Resource not accessible by integration'),
-      owner: 'acme',
       log,
     })
 
-    expect(login).toBe('acme')
+    expect(login).toBe(DEFAULT_BOT_LOGIN)
     expect(lines.filter((line) => line.level === 'warn')).toHaveLength(1)
     expect(lines[0]?.message).toContain('AGENT_SELF_LOGIN')
   })
@@ -85,7 +83,7 @@ describe('resolveSelfLogin', () => {
   test('treats an empty answer as no answer', async () => {
     const { lines, log } = recorder()
 
-    expect(await resolveSelfLogin({ override: null, api: answers('   '), owner: 'acme', log })).toBe('acme')
+    expect(await resolveSelfLogin({ override: null, api: answers('   '), log })).toBe(DEFAULT_BOT_LOGIN)
     expect(lines.some((line) => line.level === 'warn')).toBe(true)
   })
 })

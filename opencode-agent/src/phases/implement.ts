@@ -11,6 +11,7 @@ import { composeSystemPrompt } from '../obra-skills.js'
 import type { PhaseHandler, PhaseOutcome } from '../phase-context.js'
 import { buildImplementPrompt } from '../prompts.js'
 import type { ReviewOutcome, ReviewRunResult } from '../review-runner.js'
+import type { AgentState } from '../types.js'
 import { mintEnvelope } from './envelope.js'
 
 const IMPLEMENT_INSTRUCTIONS = [
@@ -65,12 +66,24 @@ export const handleImplement: PhaseHandler = async (input): Promise<PhaseOutcome
   deps.log.info({ issue: state.issueId, branch, review: review.outcome }, 'Implementation pushed')
 
   const report = renderReport(review)
-  return {
-    signal: 'CHANGES_COMMITTED',
-    comment: report,
-    blocks: [renderArtifact(REPORT_MARKER, report, state.revision)],
-  }
+  return { signal: 'CHANGES_COMMITTED', comment: report, blocks: [reportBlock(report, state)] }
 }
+
+/**
+ * The implementation report, stamped with the plan revision it implemented.
+ *
+ * Provenance rather than a revision of the report itself: nothing bumps a report
+ * counter — `CHANGES_COMMITTED` is not one of the artefact signals — so a second
+ * run over the same plan writes the same number, and what the figure answers is
+ * "was this report built from the plan currently on the issue?".
+ *
+ * It reads `planRevision` and not `specRevision` because that is what the one
+ * shared counter held here too: the plan is the last artefact posted before this
+ * phase, so the shared value had just been bumped to the plan's own heading
+ * number. The same figure, now by construction rather than by coincidence.
+ */
+const reportBlock = (report: string, state: AgentState): string =>
+  renderArtifact(REPORT_MARKER, report, state.planRevision)
 
 const implementMessage = (issueNumber: number): string =>
   `feat(agent): implement issue #${issueNumber}\n\nRefs #${issueNumber}`

@@ -25,6 +25,7 @@ import type { ProviderProxy } from './provider-proxy.js'
 import { pipelineSecrets, scrubSecrets } from './secrets.js'
 import { runCommand } from './shell.js'
 import type { CommandRunner } from './shell.js'
+import { recordReport } from './step-output.js'
 import { errorMessage } from './types.js'
 import type { RunResult } from './types.js'
 
@@ -214,7 +215,9 @@ export const runCli = async (options: MainOptions): Promise<RunResult> => {
   const event = parseTriggerEvent(args.eventName, payload)
   if (event === null) {
     log.warn({ eventName: args.eventName }, 'Payload carries nothing this pipeline acts on')
-    return { status: 'skipped', reason: 'Payload carries nothing to act on', state: null }
+    // No marker: nothing was posted, and nothing needs one — this exits 0, so
+    // the fallback step is out of scope either way.
+    return { status: 'skipped', reason: 'Payload carries nothing to act on', state: null, reported: false }
   }
 
   const { proxy, agent, deps } = contain({ config, event, log, run: options.run ?? runCommand, options })
@@ -228,6 +231,10 @@ export const runCli = async (options: MainOptions): Promise<RunResult> => {
     const result = await runPipeline({ event, deps })
     const phase = result.state === null ? null : result.state.phase
     log.info({ status: result.status, reason: result.reason, phase }, 'Pipeline finished')
+    // Only on the returning path. A `runPipeline` that throws is precisely the
+    // crash the fallback comment is for, and marking it here would silence the
+    // one comment the issue would otherwise get.
+    await recordReport(result, options.env, log)
     return result
   } finally {
     // Both hold listening sockets; without this the process stays alive after

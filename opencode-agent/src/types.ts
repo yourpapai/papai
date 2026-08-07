@@ -79,15 +79,46 @@ export const agentStateSchema = z.object({
   resumeFrom: z.enum(PHASES).nullable().default(null),
   /** Consecutive failures. Cleared by any forward move; preserved across `/retry`. */
   attempts: z.number().int().min(0).default(0),
-  /** CI-fix rounds spent on the delivered pull request. Never reset. */
+  /**
+   * CI-fix rounds spent on the delivered pull request.
+   *
+   * Per pull request, not per issue: `handleDeliver` clears it — with
+   * `ciBudgetReported` — when it opens a **new** one, and leaves both alone when
+   * it refreshes the one already open. Nothing else resets it, so within a
+   * single pull request the count only climbs, which is what bounds an agent and
+   * CI bouncing off each other.
+   */
   ciAttempts: z.number().int().min(0).default(0),
   /**
-   * Whether the "I have stopped fixing CI" notice has been posted. CI events
-   * arrive on every push and re-run, so without this the notice repeats forever.
+   * Whether the "I have stopped fixing CI" notice has been posted for the
+   * current pull request. CI events arrive on every push and re-run, so without
+   * this the notice repeats forever; cleared alongside `ciAttempts` when a new
+   * pull request is opened, or the notice could never be said again for it.
    */
   ciBudgetReported: z.boolean().default(false),
-  /** Bumped each time the spec or plan is revised, for the artefact blocks. */
-  revision: z.number().int().min(0).default(0),
+  /**
+   * Revisions of the design spec and of the execution plan, counted apart.
+   *
+   * One shared counter used to serve both, bumped on `SPEC_POSTED` and on
+   * `PLAN_POSTED` alike while each handler rendered it into its own heading, so
+   * the two numbers interleaved. On an issue that ran straight through, the
+   * first spec a maintainer ever saw was "revision 1" and the first plan
+   * "revision 2"; revise the spec once beforehand and that same first plan was
+   * "revision 3". A revision number on a heading is read as "the Nth version of
+   * this artefact" — there is nothing else it could mean — so neither figure
+   * meant what it said.
+   *
+   * Both carry defaults, so a block written before the split still parses and
+   * needs no `STATE_VERSION` bump, which would strand every in-flight issue (see
+   * the README's migration note). The old `revision` key is dropped as an
+   * unknown one, exactly as `approved` and `updatedAt` were. The price is that
+   * an issue mid-conversation across the change restarts both counts at 1, and
+   * that is the deliberate choice: the number it was carrying is a sum of two
+   * artefacts' revisions and was never the count of either, so carrying it into
+   * one of the new fields would preserve nothing but the wrong answer.
+   */
+  specRevision: z.number().int().min(0).default(0),
+  planRevision: z.number().int().min(0).default(0),
   /**
    * Model tokens this issue has consumed, across every job it has run.
    *
@@ -143,4 +174,32 @@ export interface RunResult {
   status: RunStatus
   reason: string
   state: AgentState | null
+  /**
+   * Whether this run has already said what happened on the issue itself.
+   *
+   * Not diagnostic — the workflow reads it. Its last step posts an "Agent job
+   * failed" comment under `if: failure()`, and `failure()` selects *every* red
+   * job, including the six paths that exit 1 only after posting their own
+   * report: `failRun`, `failAnswer`, both over-budget stops in
+   * `token-budget.ts`, `refuseExhausted` and the CI-budget notice in
+   * `triggers.ts`. So every genuine failure drew a second, contradicting
+   * comment — "The issue state is unchanged" beside a block that had just been
+   * moved to `FAILED` or parked with a resume point, and "reply `/retry`"
+   * beside a notice that had just explained why `/retry` is refused. Only the
+   * CI path escaped, by accident: `github.event.issue.number` is empty on a
+   * `workflow_run` event. `runCli` turns this flag into a `$GITHUB_OUTPUT`
+   * marker the fallback step is gated on, so it covers what its own wording
+   * claims and nothing else: a job that died with nothing on the issue at all.
+   *
+   * A field rather than something derived from `status` and `state`, because
+   * neither says it. `failed` covers both a reported failure and a crash;
+   * `skipped` covers both a silent guardrail rejection and a refused command
+   * that answered on the issue; and the state block rides on the same call that
+   * posts, so "the state moved" and "a comment exists" are one event seen from
+   * the side that cannot distinguish the paths that post from the ones that do
+   * not. Required rather than optional so a new terminal path has to decide,
+   * the way `SystemPromptInput.nonce` makes forgetting the envelope a type
+   * error.
+   */
+  reported: boolean
 }

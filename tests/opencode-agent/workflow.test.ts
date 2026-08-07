@@ -9,6 +9,8 @@ import path from 'node:path'
 
 import { z } from 'zod'
 
+import { REPORTED_OUTPUT } from '../../opencode-agent/src/step-output.js'
+
 /**
  * The workflow is the one part of this pipeline no other test reaches: its
  * trigger surface and job condition are GitHub expression language, evaluated
@@ -23,6 +25,7 @@ const WORKFLOW_PATH = path.join(import.meta.dir, '..', '..', '.github', 'workflo
 
 const stepSchema = z.object({
   name: z.string().default(''),
+  id: z.string().default(''),
   if: z.string().default(''),
   uses: z.string().default(''),
   with: z.record(z.string(), z.unknown()).default({}),
@@ -238,6 +241,20 @@ describe('steps', () => {
     expect(Object.keys(step('agent pipeline').env)).not.toContain('AGENT_BASE_BRANCH')
   })
 
+  test('leaves an unset AGENT_SELF_LOGIN unset instead of guessing the owner', () => {
+    // `AGENT_SELF_LOGIN` is an override that wins outright in identity.ts, so a
+    // `|| github.repository_owner` default here is not a default at all — it is
+    // an operator pinning the wrong login, and it silences the resolution
+    // ladder and its warning. The agent posts as `github-actions[bot]`, stops
+    // recognising its own state comments, and restarts every issue at phase one
+    // on every event, so `/approve` and `/changes` are refused as invalid in
+    // INIT_OR_CLARIFY.
+    const pinned = step('agent pipeline').env['AGENT_SELF_LOGIN']
+
+    expect(pinned).toBe('${{ vars.AGENT_SELF_LOGIN }}')
+    expect(pinned).not.toContain('repository_owner')
+  })
+
   test('passes every knob the README documents, or names it as deliberately absent', () => {
     // The finding named two missing vars; there were five, two of which this
     // workspace added itself while fixing something else. A list that has to be
@@ -253,6 +270,20 @@ describe('steps', () => {
   test('reports an infrastructure failure only when there is an issue to post to', () => {
     expect(step('infrastructure failure').if).toContain('failure()')
     expect(step('infrastructure failure').if).toContain('github.event.issue.number')
+  })
+
+  test('falls back only when the pipeline did not report on the issue itself', () => {
+    // `failure()` selects every red job, and six pipeline paths exit 1 only
+    // after posting their own report — so this step used to append "The issue
+    // state is unchanged; reply `/retry`" to every genuine failure, beside a
+    // state block that had just moved to FAILED and a notice explaining why
+    // that `/retry` would be refused. The run step marks what it posted through
+    // $GITHUB_OUTPUT; this gate is the half that reads it, and a marker written
+    // by a step nothing can name is no marker at all.
+    expect(step('agent pipeline').id).toBe('pipeline')
+    expect(step('infrastructure failure').if).toContain(
+      `steps.${step('agent pipeline').id}.outputs.${REPORTED_OUTPUT} != 'true'`,
+    )
   })
 })
 

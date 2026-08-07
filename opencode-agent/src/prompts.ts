@@ -7,6 +7,7 @@ import type { IssueComment } from './blocks.js'
 import { clipTail } from './check-loop.js'
 import type { CheckFailure } from './check-loop.js'
 import { CHECK_OUTPUT_BUDGET, renderThread, shareBudget } from './prompt-budget.js'
+import type { Phase } from './types.js'
 
 /**
  * Per-run envelope for text the pipeline did not write.
@@ -203,9 +204,40 @@ export const CLASSIFY_INSTRUCTIONS = [
   'When the comment is ambiguous, answer "question": answering costs one reply, whereas re-planning discards approved work.',
 ].join('\n')
 
-export const buildClassifyPrompt = (envelope: UntrustedEnvelope, comment: string, phase: string): string =>
-  [
+/**
+ * What being parked in a phase means for reading a comment that arrives in it.
+ *
+ * The phase name on its own is a label whose meaning the model has to guess, and
+ * `INIT_OR_CLARIFY` is where the guess costs the most: the agent has asked
+ * clarifying questions, so the next comment is usually an *answer* to them —
+ * often a bare fragment ("the HTTP client") that reads like chatter to anyone
+ * who has not matched it against the question it replies to. `applyClarifyIntent`
+ * acts on `none` and on nothing else, so a `none` reached by mistake is the one
+ * misread that can drop a maintainer's answer on the floor; every other verdict
+ * re-runs triage regardless. This brief exists to make that single verdict
+ * harder to reach by accident, not to steer the other three.
+ *
+ * The waiting phases get no brief. Their default is the opposite one — anything
+ * unclear is answered — so nothing there turns on the model knowing what the
+ * phase means, and a brief would only be prompt weight per classification.
+ */
+const CLASSIFY_PHASE_BRIEFS: Partial<Record<Phase, string>> = {
+  INIT_OR_CLARIFY: [
+    'The agent has asked this maintainer clarifying questions and is waiting for the answers,',
+    'so a comment here is most likely one of those answers — however short it is, and even when',
+    'it quotes no question and reads as a fragment rather than a sentence.',
+    'Answer "none" only for a comment that tells the agent nothing it could act on at all:',
+    'thanks, an acknowledgement, an emoji, or an aside between maintainers about something else.',
+  ].join('\n'),
+}
+
+export const buildClassifyPrompt = (envelope: UntrustedEnvelope, comment: string, phase: Phase): string => {
+  const brief = CLASSIFY_PHASE_BRIEFS[phase]
+
+  return [
     `The task is currently parked in phase ${phase}, waiting on a maintainer.`,
+    ...(brief === undefined ? [] : [brief]),
     'Classify this comment:',
     envelope.wrap('maintainer-comment', comment),
   ].join('\n\n')
+}

@@ -74,10 +74,14 @@ export const handlePlan: PhaseHandler = async (input): Promise<PhaseOutcome> => 
   await deps.git.ensureBranch(branch, await deps.baseBranch())
 
   const markdown = renderPlanMarkdown(plan)
+  // Counted over plans alone, and one local feeds both the heading and the
+  // block so the two cannot disagree. `PLAN_POSTED` bumps `planRevision` to
+  // exactly this value; revising the spec never moves it.
+  const revision = state.planRevision + 1
   return {
     signal: 'PLAN_POSTED',
-    comment: renderPlanComment(markdown, branch, state.revision + 1),
-    blocks: [renderArtifact(PLAN_MARKER, markdown, state.revision + 1)],
+    comment: renderPlanComment(markdown, branch, revision),
+    blocks: [renderArtifact(PLAN_MARKER, markdown, revision)],
   }
 }
 

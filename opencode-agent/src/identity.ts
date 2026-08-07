@@ -12,10 +12,19 @@ export interface SelfLoginSources {
   override: string | null
   /** Who the API says this token is. */
   api: GitHubApi
-  /** Last resort, and the pipeline's original behaviour. */
-  owner: string
   log: Logger
 }
+
+/**
+ * The account the Actions runtime's own `GITHUB_TOKEN` posts as.
+ *
+ * The last-resort guess, and deliberately not the repository owner. This branch
+ * is only ever reached when the token cannot read `/user`, which means it is an
+ * installation token — whose author is always some `<app-slug>[bot]` and never
+ * a human. The owner therefore had no chance of being right, while this is
+ * exactly right for the token the workflow uses by default.
+ */
+export const DEFAULT_BOT_LOGIN = 'github-actions[bot]'
 
 /**
  * Works out which login the pipeline should treat as its own.
@@ -28,23 +37,27 @@ export interface SelfLoginSources {
  * behaviour whenever the agent posts as anything else — which, for the GitHub
  * App token the README recommends, is always.
  *
- * The order is override, then the token's own identity, then the owner:
+ * The order is override, then the token's own identity, then a bot login:
  *
  * 1. An explicit `AGENT_SELF_LOGIN` always wins. An operator who knows the
  *    answer should not be second-guessed, and it is the escape hatch for every
- *    case below.
+ *    case below. Because it wins outright, the caller must pass it through
+ *    *unset* when nobody pinned one — an override defaulted upstream to
+ *    something plausible is the exact failure this ladder exists to prevent,
+ *    and it silences steps 2 and 3 along with their warning.
  * 2. Otherwise ask the API. For a personal access token this is exact.
- * 3. If that fails, fall back to the owner **and say so at `warn`**. A GitHub
- *    App installation token cannot read `/user` — the identity behind one is
- *    `<app-slug>[bot]`, which needs a JWT and a different endpoint — so this
- *    branch is the expected path for the token the workflow recommends, not an
- *    exotic error. The warning names `AGENT_SELF_LOGIN` because that is the fix.
+ * 3. If that fails, fall back to {@link DEFAULT_BOT_LOGIN} **and say so at
+ *    `warn`**. A GitHub App installation token cannot read `/user` — the
+ *    identity behind one is `<app-slug>[bot]`, which needs a JWT and a
+ *    different endpoint — so this branch is the expected path for an
+ *    Actions-issued token, not an exotic error. The warning names
+ *    `AGENT_SELF_LOGIN` because that is the fix for every other app slug.
  *
  * Deliberately shaped so correctness does not depend on knowing which token
  * types can answer: it asks, and falls back on any failure.
  */
 export const resolveSelfLogin = async (sources: SelfLoginSources): Promise<string> => {
-  const { override, owner, log } = sources
+  const { override, log } = sources
   if (override !== null && override.trim().length > 0) return override.trim()
 
   try {
@@ -55,10 +68,10 @@ export const resolveSelfLogin = async (sources: SelfLoginSources): Promise<strin
     return login
   } catch (error) {
     log.warn(
-      { owner, error: errorMessage(error) },
-      'Could not read the token identity; falling back to the repository owner. Set AGENT_SELF_LOGIN if the agent posts as anything else, or its own comments will be unreadable to it.',
+      { fallback: DEFAULT_BOT_LOGIN, error: errorMessage(error) },
+      `Could not read the token identity; assuming ${DEFAULT_BOT_LOGIN}. Set AGENT_SELF_LOGIN if the agent posts as anything else, or its own comments will be unreadable to it.`,
     )
-    return owner
+    return DEFAULT_BOT_LOGIN
   }
 }
 

@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterAll, describe, expect, test } from 'bun:test'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -13,6 +13,7 @@ import { memoizeAgent, parseArgs, runCli, UsageError } from '../../opencode-agen
 import { createLogger } from '../../opencode-agent/src/logger.js'
 import type { OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
+import { REPORTED_OUTPUT } from '../../opencode-agent/src/step-output.js'
 
 const workDir = await mkdtemp(path.join(tmpdir(), 'opencode-agent-cli-'))
 
@@ -194,6 +195,19 @@ const recordPosts = (thread: unknown): PostRecorder => {
   }
 }
 
+/**
+ * A fresh, empty `$GITHUB_OUTPUT`, and a reader for whatever the run appended.
+ *
+ * Empty rather than absent so the two marker tests differ only in the run, not
+ * in whether the file existed — an absent file would let a write that silently
+ * did nothing pass for a write that was correctly withheld.
+ */
+const outputFile = async (name: string): Promise<{ path: string; read: () => Promise<string> }> => {
+  const filePath = path.join(workDir, `${name}.output`)
+  await writeFile(filePath, '', 'utf8')
+  return { path: filePath, read: (): Promise<string> => readFile(filePath, 'utf8') }
+}
+
 describe('runCli', () => {
   const env = {
     GITHUB_REPOSITORY: 'acme/widgets',
@@ -292,6 +306,115 @@ describe('runCli', () => {
     // the hidden block republishes on every comment.
     expect(github.posted[0]).toContain('[redacted]')
     expect(github.posted[0]).not.toContain(token)
+  })
+
+  test('tells the workflow it has reported, when it posted the failure itself', async () => {
+    // The workflow's last step posts "The issue state is unchanged; reply
+    // `/retry` once the cause is addressed" under `if: failure()`, which selects
+    // every red job — including this one, which has just posted a give-up notice
+    // explaining that `/retry` is precisely what it will not accept. The marker
+    // is what keeps that step to the case its own wording describes.
+    //
+    // A spent retry budget is the failure path that needs no model: the run
+    // posts, halts `failed`, and `main` maps that to exit 1.
+    const output = await outputFile('reported')
+    const prior = [
+      {
+        id: 1,
+        user: { login: 'agent-bot' },
+        body: `parked\n\n<!-- AGENT_STATE: ${JSON.stringify({
+          v: 2,
+          phase: 'FAILED',
+          issueId: 42,
+          resumeFrom: 'EXECUTION_PLAN',
+          attempts: 3,
+        })} -->`,
+      },
+    ]
+    const eventPath = await writeEvent('reported', {
+      action: 'created',
+      sender: { login: 'maintainer', type: 'User' },
+      issue: { number: 42, title: 't', body: 'b', author_association: 'OWNER' },
+      comment: { id: 2, body: '/retry', author_association: 'OWNER' },
+      repository: { owner: { login: 'acme' }, name: 'widgets', default_branch: 'master' },
+    })
+
+    const github = recordPosts(prior)
+    const result = await runCli({
+      argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
+      env: { ...env, GITHUB_OUTPUT: output.path },
+      logger: silentLogger,
+      fetch: github.fetch,
+    })
+
+    expect(result.status).toBe('failed')
+    expect(result.reported).toBe(true)
+    // Asserting the flag alone is not enough: the workflow reads the file, and
+    // a flag that never reaches it gates nothing.
+    expect(github.posted).toHaveLength(1)
+    expect(await output.read()).toContain(`${REPORTED_OUTPUT}=true`)
+  })
+
+  test('leaves the marker unwritten when it posted nothing', async () => {
+    // The other half of the contract, and the one that decides whether the
+    // fallback comment still happens at all: a run that says nothing on the
+    // issue must not claim it did, or a job that dies with the issue silent goes
+    // unreported. A guardrail drop is the cheapest silent exit there is.
+    const output = await outputFile('unreported')
+    const eventPath = await writeEvent('unreported', {
+      action: 'created',
+      sender: { login: 'agent-bot', type: 'Bot' },
+      issue: { number: 42, title: 't', body: 'b', author_association: 'OWNER' },
+      comment: { id: 1, body: '/approve', author_association: 'OWNER' },
+      repository: { owner: { login: 'acme' }, name: 'widgets', default_branch: 'main' },
+    })
+
+    const result = await runCli({
+      argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
+      env: { ...env, GITHUB_OUTPUT: output.path },
+      logger: silentLogger,
+    })
+
+    expect(result.status).toBe('skipped')
+    expect(result.reported).toBe(false)
+    expect(await output.read()).toBe('')
+  })
+
+  test('a run with no $GITHUB_OUTPUT is a local run, not a failure', async () => {
+    // Every `--event-path` run is one: the variable only exists inside a step.
+    // Writing to it has to be optional, and must never be the thing that turns a
+    // reported failure into a crash that reports nothing.
+    const prior = [
+      {
+        id: 1,
+        user: { login: 'agent-bot' },
+        body: `parked\n\n<!-- AGENT_STATE: ${JSON.stringify({
+          v: 2,
+          phase: 'FAILED',
+          issueId: 42,
+          resumeFrom: 'EXECUTION_PLAN',
+          attempts: 3,
+        })} -->`,
+      },
+    ]
+    const eventPath = await writeEvent('nooutput', {
+      action: 'created',
+      sender: { login: 'maintainer', type: 'User' },
+      issue: { number: 42, title: 't', body: 'b', author_association: 'OWNER' },
+      comment: { id: 2, body: '/retry', author_association: 'OWNER' },
+      repository: { owner: { login: 'acme' }, name: 'widgets', default_branch: 'master' },
+    })
+
+    const github = recordPosts(prior)
+    const result = await runCli({
+      argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
+      env: { ...env },
+      logger: silentLogger,
+      fetch: github.fetch,
+    })
+
+    expect(result.reported).toBe(true)
+    expect(github.posted).toHaveLength(1)
   })
 
   test('a guarded run never shells out to work out a base branch', async () => {

@@ -31,6 +31,19 @@ markdown. That is not a style preference: a spec is model-written markdown full
 of headings and `---` rules, and any heading-and-trailer scraping truncates it at
 the first horizontal rule.
 
+The spec and the plan are numbered **separately**, each by its own revisions: the
+first spec is "Design spec (revision 1)" and the first plan is "Execution plan
+(revision 1)", whether or not the spec was revised on the way there. `AGENT_STATE`
+carries a counter each (`specRevision`, `planRevision`), and the number in a
+heading is the number in that artefact's own block — one value renders both. A
+single shared counter used to bump on either artefact, so the numbers interleaved
+and the first plan on a straight-through issue called itself revision 2. Both
+counters default, so blocks written before the split still parse; an issue
+mid-conversation across that change restarts its counts at 1, because the number
+it was carrying was the sum of two artefacts and never the count of either.
+`AGENT_REPORT` carries the revision of the plan it implemented — provenance, not
+a count of reports.
+
 Blocks are read back byte-exact, and a payload cannot forge its own delimiter:
 `<` and `>` are escaped as JSON unicode escapes before serialization, so text
 containing `-->` — a mermaid arrow, a compiler diagnostic in `lastError` — cannot
@@ -61,7 +74,7 @@ value to point elsewhere.
 | `PR_DELIVERY`       | automatic                                 | Opens or refreshes the PR with `Closes #<n>`                          | PR opened                                 |
 | `CI_FIX`            | a red check run on `agent/issue-<n>`      | Reproduces CI locally, repairs, pushes                                | Fix pushed                                |
 | `COMPLETE`          | —                                         | Terminal, but re-enterable from `CI_FIX`                              | —                                         |
-| `FAILED`            | any handler throwing                      | Failure comment posted, `resumeFrom` recorded                         | `/retry` or `/cancel`                     |
+| `FAILED`            | any _phase_ handler throwing              | Failure comment posted, `resumeFrom` recorded                         | `/retry` or `/cancel`                     |
 
 There are two review gates, not one. The spec and the plan are each parked in
 front of a human before anything downstream is spent.
@@ -76,12 +89,37 @@ front of a human before anything downstream is spent.
 | `/retry`                    | `FAILED`                     | Resume the exact phase that failed                             |
 | `/cancel`                   | anything but `COMPLETE`      | Stop for good — a cancelled issue cannot be restarted          |
 
+**`/ask` really does mean anywhere,** and in both directions. `ANSWERED` is not
+in the transition table at all: it is a non-moving signal the machine accepts in
+every phase, so a question in `COMPLETE`, in `FAILED`, or halfway through the
+pipeline is answered exactly where the issue stands. A question that _fails_
+moves nothing either — the failure is posted, but the phase, `resumeFrom` and
+the retry budget are left alone, and the notice does not offer `/retry`. The
+phase records where the **work** is, and a side conversation about that work is
+not the work; parking a delivered pull request in `FAILED` because a model turn
+about it broke would be a lie about what happened.
+
 **Plain replies work too.** A comment with no command on a waiting phase is
 classified as a question, a change request, or an approval, and handled
 accordingly. The classifier is deliberately biased: **anything ambiguous, and
 any classification failure, resolves to "question"** — answering a comment that
 was really a change request costs one reply, whereas re-planning a comment that
 was really a question discards an approved artefact.
+
+**`INIT_OR_CLARIFY` classifies too, with that default inverted.** A comment
+arriving while the agent waits for answers to its own clarifying questions is
+skipped only when the classifier positively reports "no action" — a thanks, an
+emoji, a bystander's aside. Every other reading, including the "question" the
+classifier falls back to whenever it fails or cannot tell, re-runs triage, which
+is what this phase used to do for every comment unconditionally. The bias cannot
+be borrowed from the waiting phases, because it protects an approved artefact
+and there is none here: a maintainer's answer misread as a question would be
+answered rather than acted on, leaving the issue parked on the same questions
+and the maintainer repeating themselves. That is worse than the triage turn a
+"thanks" used to buy, so only the one verdict a classifier has to actively
+choose acts on anything. The classification prompt tells the model what this
+phase means, since a real answer is often a bare fragment that reads like
+chatter to anyone who has not matched it against the question it replies to.
 
 A command only counts on a line that _starts_ with it, and fenced code blocks
 are ignored, so the agent quoting its own instructions does not fire them.
@@ -138,6 +176,20 @@ the checks it skipped have not been looked at since before a repair edited the
 tree, and a fix for one check can break another, so a **full pass is what
 declares green**. That pass costs commands but no model call, and so no round.
 
+A red run is acted on in `COMPLETE` and in `PR_DELIVERY`, and nowhere else.
+`PR_DELIVERY` is the race that matters: phase 3 pushes the branch and posts a
+state block naming that phase before phase 4 opens the pull request, so a job
+that died in between leaves a live branch whose checks go red against a state
+that is not `COMPLETE` yet. Before the branch exists there is nothing pushed to
+repair, and a fix round would run the configured checks against a branch cut
+fresh from the base. `FAILED` is deliberately left out even though its branch
+_is_ pushed: entering `CI_FIX` from there would leave the one phase `/retry`
+accepts and, once green, land the issue in `COMPLETE` claiming success for a
+delivery that never finished — and the issue is not silent in the meantime, it
+is sitting under a failure comment asking for that `/retry`. A refused red run
+is logged at `warn` with the phase; it draws no comment, for the same reason a
+red run on a merged pull request draws none.
+
 Two budgets bound it. `AGENT_CI_FIX_MAX_ROUNDS` caps repair rounds within one
 job; `AGENT_MAX_CI_ATTEMPTS` caps rounds across the pull request's whole life, so
 a genuinely broken branch cannot bounce between the agent and CI forever. The
@@ -146,6 +198,14 @@ agent's own workflow is excluded, so its failures never feed itself.
 When that lifetime budget runs out the agent says so on the issue, once, naming
 the pull request — it does not simply stop. Later red runs are then ignored
 silently, because CI fires on every push and repeating the notice would be spam.
+
+That budget is **per pull request**, not per issue: opening a _new_ pull request
+resets both the spent rounds and the "I have stopped trying" flag, so the second
+delivery gets its own rounds and can say its own piece. Refreshing the pull
+request that is already open does not reset anything — it is the same branch and
+the same commits whose checks spent the rounds, and handing it a clean slate is
+how one broken branch bounces off the agent for as long as anyone keeps replying
+`/retry`.
 
 > **This path only fires if CI runs on the agent's branch.** Pushes made with the
 > default `GITHUB_TOKEN` deliberately do not trigger other workflows. Set
@@ -209,12 +269,43 @@ request, and repeating it three times only delays saying so. OpenCode retries a
 rate limit itself as well, with its own backoff, so this is a second and closer
 layer rather than the only one.
 
+The retry budget bounds the other loop: `AGENT_MAX_ATTEMPTS` consecutive
+failures, after which `/retry` is **refused where it stands** rather than
+applied and then regretted. That distinction is the whole behaviour. Applying it
+first clears `resumeFrom` and moves the issue into the phase it was resuming,
+and once the budget check then stops the run, the issue is parked in a phase
+nothing can re-enter — `/retry` needs `FAILED`, a plain comment needs a waiting
+phase — with only `/cancel` left. Refused, the issue stays in `FAILED` with its
+resume point intact, so raising `AGENT_MAX_ATTEMPTS` and replying `/retry`
+resumes exactly where it broke. The give-up notice says so, because a notice
+that invites a command the machine will refuse is worse than no notice.
+
 The token budget is the one bound that spans jobs. It is counted **per issue**
 and kept in the state block, because the runaway it stops is not a single run —
 it is an issue bouncing through retries and CI-fix rounds, each on a fresh runner
-with no memory of what the last one spent. When it runs out the agent says so on
-the issue and stops; `/retry` will not help, since the total is persisted, so the
-notice names `AGENT_MAX_TOKENS` instead.
+with no memory of what the last one spent.
+
+When it runs out the agent parks the issue in `FAILED`, with `resumeFrom` naming
+the phase it refused to start, and says so on the issue. Parking rather than
+stopping where it stands is the whole behaviour, and it is deliberately _not_
+the refusal the retry budget uses. The token check runs before each phase,
+inside the cascade, and half its firings have no trigger to refuse: it also
+fires between `REVIEW_AND_MUTATE`, `PR_DELIVERY` and `COMPLETE` inside a single
+job, where the earlier phase legitimately did its work and posted. Stopping in
+place left the issue in a phase with a handler that nothing re-enters — `/retry`
+needs `FAILED`, a plain comment needs a waiting phase — so `/cancel` was the
+only event left, and the notice's own "raise `AGENT_MAX_TOKENS` to continue" led
+nowhere at any ceiling. Reachable on a first `/approve` with no failure in the
+story at all. Parked, the remedy the notice names really works: raise
+`AGENT_MAX_TOKENS`, reply `/retry`, and the named phase runs.
+
+The stop carries `attempts` across rather than spending one, because running out
+of tokens is not a failed attempt at anything — and because spending one would
+collide the two budgets, letting the retry gate turn down the very `/retry` the
+token notice asks for over a ceiling it never mentioned. A question is the one
+exception: an over-budget `/ask` reports and moves nothing, since answering is a
+side conversation about work that lives elsewhere, `resumeFrom` may never name a
+waiting phase, and `COMPLETE` accepts no `FAILED` at all.
 
 Tokens rather than currency, deliberately. Token counts come from the provider's
 own usage block and are always right; the cost figure OpenCode reports is derived
@@ -224,8 +315,25 @@ counts and zero cost. For a pipeline built around one arbitrary configured
 endpoint that is the ordinary case, and a ceiling that silently never fires is
 worse than none.
 
-Two things it cannot see: the review loop's `opencode run` subprocesses, which
-have their own sessions, and any spend before the first prompt of a job.
+Every state block a job writes carries the running total, whether the phase
+succeeded, threw, or was the one the budget refused to start. A failure counts
+for the same reason the budget is persisted at all: the model turn is paid for
+long before the parse that rejects its reply, and `/retry` out of `FAILED` is
+exactly how an issue comes back for another expensive round. A failure that
+recorded nothing let an issue burn the ceiling and then hand the next runner a
+clean slate, round after round.
+
+Three things it cannot see: the review loop's `opencode run` subprocesses, which
+have their own sessions; any spend before the first prompt of a job; and the turn
+that classifies a plain maintainer comment as needing no action. That last one is
+a deliberate residual. Classification happens before any phase runs, and when it
+answers "no action" the run posts nothing — replying to every "thanks!" would be
+spam — so there is no comment for a state block to ride on. What the agent does
+instead is refuse to pay for it: once an issue is over budget the comment skips
+the classifier entirely and goes to the path that reports the ceiling without a
+model turn — the answer path on a waiting phase, triage's own stop in
+`INIT_OR_CLARIFY` — so a maxed-out issue stops buying a classification per
+comment.
 
 ## Watching a run
 
@@ -396,10 +504,22 @@ It is now resolved, in order:
 1. `AGENT_SELF_LOGIN`, if set. An operator who knows the answer is not
    second-guessed, and this is the escape hatch for everything below.
 2. Otherwise the token's own identity. Exact for a personal access token.
-3. Otherwise the repository owner, **with a warning naming `AGENT_SELF_LOGIN`**.
+3. Otherwise `github-actions[bot]`, **with a warning naming `AGENT_SELF_LOGIN`**.
    A GitHub App installation token cannot read `/user`, so this is the expected
-   path for the token this README recommends — set the variable to
+   path for an Actions-issued token — and it is the account the runtime's own
+   `GITHUB_TOKEN` posts as. For any other app, set the variable to
    `<app-slug>[bot]`.
+
+Step 3 used to fall back to the repository owner, which was never a possible
+answer: the branch is only reached for an installation token, whose author is
+always a `[bot]` account.
+
+Because step 1 wins outright, **the workflow must pass `AGENT_SELF_LOGIN`
+through unset when the variable is unset** — no `|| github.repository_owner`
+default. Defaulting it upstream turned "nobody pinned a login" into "an operator
+pinned the owner", which skipped steps 2 and 3 and their warning with them. The
+agent then failed to recognise its own comments, restored a fresh state on every
+event, and refused `/approve` and `/changes` as invalid in `INIT_OR_CLARIFY`.
 
 Whatever it resolves to is checked against reality for free: a created comment
 comes back carrying its author, and a mismatch is logged at `error`. The in-job
@@ -524,8 +644,11 @@ both are 26–28 KB and neither applies to a single-session CI run.
 1. Repository secret `LLM_API_KEY`.
 2. Repository variables `LLM_MODEL` and `LLM_BASE_URL`.
 3. Repository variable `AGENT_SELF_LOGIN` — the login the agent comments under.
-   Optional for a PAT, but required for a GitHub App token, which cannot report
-   its own identity.
+   Leave it unset for a PAT (derived) or for the job's own `GITHUB_TOKEN`
+   (`github-actions[bot]`, the fallback). Set it to `<app-slug>[bot]` for any
+   other GitHub App token, which cannot report its own identity. Getting it
+   wrong is not silent: the first comment the agent posts logs the mismatch at
+   `error`, naming the account it actually posted as.
 4. Optionally `AGENT_GITHUB_TOKEN`, a GitHub App installation token. Without it
    the agent's pushes do not trigger CI, so the CI-fix path never runs.
 5. Actions needs write access to contents, issues and pull requests.
@@ -534,6 +657,26 @@ Nothing to configure for `GITHUB_TOKEN` or `GITHUB_REPOSITORY` — see
 **Configuration** above for why the Actions runtime already supplies both.
 
 The workflow lives at `.github/workflows/agent-pipeline.yml`.
+
+### The fallback failure comment
+
+The workflow's last step posts an "Agent job failed" comment saying the issue
+state is unchanged and inviting a `/retry`. That is only ever true for a job
+that died with nothing on the issue: an install failure, a runner timeout, a
+cancelled job, a config error thrown before the first comment, a crash.
+
+It cannot be gated on `if: failure()` alone, which is what it used to be:
+`failure()` selects every red job, and the pipeline exits 1 from six paths that
+have already posted their own report — a failed phase, a failed answer, either
+over-budget stop, a refused `/retry` and the CI-fix give-up notice. Each of
+those drew a second comment contradicting the first, next to a state block that
+had just moved to `FAILED`.
+
+So the run step carries `id: pipeline` and the pipeline appends `reported=true`
+to `$GITHUB_OUTPUT` for every exit that posted; the fallback step is gated on
+`steps.pipeline.outputs.reported != 'true'`. The marker survives the run step's
+own exit 1 — the runner processes a step's file commands in a `finally` around
+the handler — and the job still goes red, because the exit code is real signal.
 
 ## Local runs
 
@@ -581,14 +724,20 @@ For the CI-fix path, pass a `workflow_run` payload with
 Exit code is `0` for skipped/waiting/completed, `1` only when a phase failed.
 Logs are NDJSON on stdout.
 
+`$GITHUB_OUTPUT` is absent on a local run, so the `reported` marker described
+under **Setup** is simply not written. Nothing else changes.
+
 ## Module map
 
 | File                                          | Responsibility                                                         |
 | --------------------------------------------- | ---------------------------------------------------------------------- |
 | `src/index.ts`                                | CLI entry: flags, config, dependency wiring, agent teardown, exit code |
 | `src/orchestrator.ts`                         | The state machine: guardrails and the phase cascade                    |
-| `src/triggers.ts`                             | Turning a command, comment or red CI run into the state move to make   |
+| `src/triggers.ts`                             | Turning a command or comment into the state move to make               |
+| `src/ci-trigger.ts`                           | Whether a red check run buys a fix round, a notice, or nothing         |
 | `src/run-report.ts`                           | Everything the orchestrator writes back to the issue                   |
+| `src/step-output.ts`                          | The one thing a run tells the rest of its own workflow job             |
+| `src/token-budget.ts`                         | The per-issue token ceiling, and how a run over it parks in `FAILED`   |
 | `src/state-manager.ts`                        | Transition table and the `AGENT_STATE` block                           |
 | `src/blocks.ts` / `src/artifacts.ts`          | The hidden-block channel and the spec/plan/report artefacts            |
 | `src/guardrails.ts`                           | Payload normalization (issue vs CI) and every abort rule               |

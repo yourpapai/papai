@@ -129,7 +129,12 @@ jobs:
           bun add --global opencode-ai@1.18.7
           echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
 
+      # `id:` is load-bearing, not decoration: the pipeline writes
+      # `reported=true` to $GITHUB_OUTPUT for every path that has already put a
+      # comment on the issue, and the fallback step below is gated on
+      # `steps.pipeline.outputs.reported`.
       - name: Run the agent pipeline
+        id: pipeline
         env:
           # Repository access. Swap for a GitHub App installation token when you
           # want the agent's pull requests to trigger other workflows — pushes
@@ -146,7 +151,15 @@ jobs:
           LLM_MODEL: ${{ vars.LLM_MODEL }}
 
           # Pipeline configuration — see opencode-agent/README.md.
-          AGENT_SELF_LOGIN: ${{ vars.AGENT_SELF_LOGIN || github.repository_owner }}
+          # Passed through unset when the variable is unset, with no
+          # `|| github.repository_owner` default. That default looked harmless
+          # and was the bug: `AGENT_SELF_LOGIN` is an override that wins
+          # outright, so an owner-shaped value stopped src/identity.ts from ever
+          # asking the token who it is. The agent posts as `github-actions[bot]`,
+          # failed to recognise its own state comments, and restarted every
+          # issue at phase one on every event — `/approve` and `/changes` were
+          # rejected as invalid in INIT_OR_CLARIFY.
+          AGENT_SELF_LOGIN: ${{ vars.AGENT_SELF_LOGIN }}
           AGENT_WORKFLOW_NAME: OpenCode Issue Agent
           # AGENT_BASE_BRANCH is deliberately unset: the pipeline reads the
           # branch off the payload's repository.default_branch. Passing it here
@@ -172,12 +185,27 @@ jobs:
             --event-name "$GITHUB_EVENT_NAME" \
             --repo-root "$GITHUB_WORKSPACE"
 
-      # The pipeline posts its own failure comment and parks the state in FAILED
-      # before exiting non-zero. This step only covers the case where the job
-      # itself died first (install failure, runner timeout, cancelled job), where
-      # nothing would otherwise appear on the issue.
+      # For a job that died with nothing on the issue: an install failure, a
+      # runner timeout, a cancelled job, a config error thrown before the first
+      # comment could be posted, a crash.
+      #
+      # `if: failure()` alone did not select that, though the comment here used
+      # to claim it did. It selects every red job, and six pipeline paths exit 1
+      # only *after* posting their own report — `failRun` and `failAnswer`, both
+      # over-budget stops, `refuseExhausted` and the CI-budget notice. So every
+      # genuine failure drew a second comment contradicting the first: "The issue
+      # state is unchanged" beside a state block that had just moved to FAILED,
+      # and "reply `/retry`" beside a notice explaining why `/retry` would be
+      # refused. Only CI-triggered runs escaped, by accident —
+      # `github.event.issue.number` is empty on a workflow_run event.
+      #
+      # The pipeline knows which of its exits posted, so it says so: `runCli`
+      # appends `reported=true` to $GITHUB_OUTPUT before returning, and the
+      # runner processes a step's file commands in a `finally` around the
+      # handler, so the marker survives that same step exiting 1. The job stays
+      # red either way — the exit code is real signal.
       - name: Report an infrastructure failure on the issue
-        if: failure() && github.event.issue.number
+        if: failure() && github.event.issue.number && steps.pipeline.outputs.reported != 'true'
         env:
           GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}

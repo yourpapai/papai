@@ -5,7 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { findArtifact, PLAN_MARKER, SPEC_MARKER } from '../../opencode-agent/src/artifacts.js'
+import { findArtifact, PLAN_MARKER, renderArtifact, SPEC_MARKER } from '../../opencode-agent/src/artifacts.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import { DEFAULT_CHECKS } from '../../opencode-agent/src/config.js'
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
@@ -18,8 +18,8 @@ import { runPipeline } from '../../opencode-agent/src/orchestrator.js'
 import type { PhaseDeps } from '../../opencode-agent/src/phase-context.js'
 import type { ReviewRunResult } from '../../opencode-agent/src/review-runner.js'
 import type { CommandResult } from '../../opencode-agent/src/shell.js'
-import { extractState, initialState, serializeState } from '../../opencode-agent/src/state-manager.js'
-import type { AgentState } from '../../opencode-agent/src/types.js'
+import { extractState, initialState, serializeState, STATE_MARKER } from '../../opencode-agent/src/state-manager.js'
+import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
 
 const AGENT_LOGIN = 'agent-bot'
 const ISSUE = 42
@@ -247,6 +247,12 @@ const latestPostedState = (harness: Harness): AgentState | null => {
   return last === undefined ? null : extractState(last)
 }
 
+/** A state block an earlier job left on the thread, as a later job reads it back. */
+const seedState = (harness: Harness, patch: Partial<AgentState>): void => {
+  const prior: AgentState = { ...initialState(ISSUE), ...patch }
+  harness.io.thread.push({ id: 800, body: `earlier\n\n${serializeState(prior)}`, authorLogin: AGENT_LOGIN })
+}
+
 /** Keeps the "did a run return a state?" narrowing out of the test bodies. */
 const spentIn = (result: { state: AgentState | null }): number => result.state?.tokensSpent ?? -1
 
@@ -355,7 +361,13 @@ describe('phase 1 — triage', () => {
   })
 
   test('a plain reply while clarifying re-runs triage', async () => {
-    harness.io.replies = [JSON.stringify({ status: 'clarify', questions: ['Which client?'] }), SPEC_REPLY]
+    // Three replies for three turns: the clarification, the classification of
+    // the answer that comes back, and the triage that answer earns.
+    harness.io.replies = [
+      JSON.stringify({ status: 'clarify', questions: ['Which client?'] }),
+      JSON.stringify({ intent: 'question' }),
+      SPEC_REPLY,
+    ]
     await runPipeline({ event: issueEvent(), deps: harness.deps })
     harness.io.posted.length = 0
 
@@ -376,6 +388,91 @@ describe('phase 1 — triage', () => {
     const state = latestPostedState(harness)
     expect(state?.phase).toBe('FAILED')
     expect(state?.resumeFrom).toBe('INIT_OR_CLARIFY')
+  })
+})
+
+/**
+ * `INIT_OR_CLARIFY` used to skip classification altogether, so every comment
+ * that landed while the agent waited for its clarifying questions to be answered
+ * bought a full triage turn — a "thanks", a 👍 and a bystander's aside included.
+ * Classifying it is the fix, but the classifier's documented bias points the
+ * wrong way for this phase, so the branch inverts the default instead of
+ * borrowing `applyIntent`'s: `none` skips, and everything else — including the
+ * `question` a broken or unsure classifier falls back to — re-runs triage.
+ */
+describe('chatter while the agent is clarifying', () => {
+  let harness: Harness
+
+  beforeEach(() => {
+    harness = makeHarness()
+  })
+
+  test('a comment that needs no action runs no triage and posts nothing', async () => {
+    seedState(harness, { phase: 'INIT_OR_CLARIFY' })
+    harness.io.replies = [JSON.stringify({ intent: 'none' })]
+
+    const result = await runPipeline({ event: comment('thanks! 👍'), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(result.reason).toContain('needs no action')
+    expect(harness.io.posted).toEqual([])
+    // The classification is the only turn paid for; triage never ran.
+    expect(harness.io.prompts).toHaveLength(1)
+    expect(String(harness.io.prompts[0]?.prompt)).toContain('Classify this comment')
+    // State is persisted only by posting, so an untouched thread is itself the
+    // assertion that the issue is still parked on its clarifying questions.
+    expect(latestPostedState(harness)).toBeNull()
+    expect(result.state?.phase).toBe('INIT_OR_CLARIFY')
+  })
+
+  test('an answer read as a question still re-runs triage rather than being answered', async () => {
+    // `question` is the classifier's fallback bucket, not a verdict about this
+    // phase, so acting on it would answer the maintainer's answer and leave the
+    // issue parked on the same questions — the stall this branch exists to avoid.
+    seedState(harness, { phase: 'INIT_OR_CLARIFY' })
+    harness.io.replies = [JSON.stringify({ intent: 'question' }), SPEC_REPLY]
+
+    const result = await runPipeline({ event: comment('The HTTP client.'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(String(harness.io.prompts[0]?.prompt)).toContain('Classify this comment')
+    expect(harness.io.posted[0]).toContain('### Design spec')
+    expect(latestPostedState(harness)?.phase).toBe('DESIGN_SPEC')
+  })
+
+  test('a classifier that fails re-runs triage rather than dropping a possible answer', async () => {
+    // Two unusable replies exhaust `promptForJson`'s one re-ask, so
+    // `classifyComment` swallows the throw and reports `question`. Only `none`
+    // skips, so a classifier this run could not use costs the issue nothing.
+    seedState(harness, { phase: 'INIT_OR_CLARIFY' })
+    harness.io.replies = ['not json at all', 'still not json', SPEC_REPLY]
+
+    const result = await runPipeline({ event: comment('The HTTP client.'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted[0]).toContain('### Design spec')
+    expect(latestPostedState(harness)?.phase).toBe('DESIGN_SPEC')
+  })
+
+  test('an over-budget comment is reported without paying to classify it', async () => {
+    // The ceiling is asked before the classifier, not after: classification is
+    // the one turn whose spend can never be written down. The queued verdict is
+    // the tell — reaching for it would consume the reply, skip in silence, and
+    // leave the maintainer with no notice at all.
+    harness = makeHarness({ maxTokens: 100 })
+    seedState(harness, { phase: 'INIT_OR_CLARIFY', tokensSpent: 500 })
+    harness.io.replies = [JSON.stringify({ intent: 'none' })]
+
+    const result = await runPipeline({ event: comment('The HTTP client.'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.prompts).toEqual([])
+    expect(harness.io.posted[0]).toContain('### Token budget spent')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('FAILED')
+    expect(state?.resumeFrom).toBe('INIT_OR_CLARIFY')
+    expect(state?.tokensSpent).toBe(500)
   })
 })
 
@@ -454,7 +551,90 @@ describe('review conversation', () => {
 
     expect(result.status).toBe('waiting')
     expect(harness.io.posted[0]).toContain('### Answer')
-    expect(latestPostedState(harness)?.revision).toBe(1)
+    expect(latestPostedState(harness)?.specRevision).toBe(1)
+  })
+})
+
+describe('answering outside the review gates', () => {
+  let harness: Harness
+
+  beforeEach(() => {
+    harness = makeHarness()
+  })
+
+  test.each<Phase>(['COMPLETE', 'REVIEW_AND_MUTATE', 'PR_DELIVERY', 'CI_FIX'])(
+    '/ask in %s is answered and leaves the phase exactly there',
+    async (phase) => {
+      // `/ask` has always been accepted in every phase, but ANSWERED lived in
+      // three rows of the transition table, so each of these crashed the runner
+      // with an InvalidTransitionError after the model turn was paid for —
+      // nothing posted, exit code 1, the maintainer left staring at an issue.
+      seedState(harness, { phase })
+      harness.io.replies = ['Because the retry helper already exists there.']
+
+      const result = await runPipeline({ event: comment('/ask why that file?'), deps: harness.deps })
+
+      expect(result.status).toBe('waiting')
+      expect(harness.io.posted[0]).toContain('### Answer')
+      expect(harness.io.posted[0]).toContain('Because the retry helper already exists there.')
+      expect(latestPostedState(harness)?.phase).toBe(phase)
+    },
+  )
+
+  test('/ask in FAILED answers without disturbing the parked failure', async () => {
+    // The phase a maintainer most wants to ask a question in, and the one the
+    // crash hurt most: the run had already failed, so this was the only thing
+    // left to try.
+    seedState(harness, { phase: 'FAILED', resumeFrom: 'REVIEW_AND_MUTATE', attempts: 1, lastError: 'tests exploded' })
+    harness.io.replies = ['The check runner could not find bun on the PATH.']
+
+    const result = await runPipeline({ event: comment('/ask why did this fail?'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted[0]).toContain('The check runner could not find bun on the PATH.')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('FAILED')
+    // Still resumable: a question must not cost the maintainer the `/retry`.
+    expect(state?.resumeFrom).toBe('REVIEW_AND_MUTATE')
+  })
+
+  test('a failed /ask in COMPLETE reports without dragging a delivered issue backwards', async () => {
+    // Two crashes on one path: the answer's own ANSWERED was refused, and when
+    // the model call failed instead, the failure path's `transition(FAILED)`
+    // was refused too, because COMPLETE deliberately accepts neither.
+    seedState(harness, { phase: 'COMPLETE', prUrl: 'https://example.test/pull/7' })
+    harness.deps.agent = (): Promise<OpenCodeAgent> => Promise.reject(new Error('the model endpoint rejected it'))
+
+    const result = await runPipeline({ event: comment('/ask what did you change?'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.posted[0]).toContain('### I could not answer that')
+    expect(harness.io.posted[0]).toContain('the model endpoint rejected it')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('COMPLETE')
+    expect(state?.resumeFrom).toBeNull()
+    expect(state?.attempts).toBe(0)
+  })
+
+  test('a failed /ask spends no attempt and promises no retry', async () => {
+    // The related defect: a failed answer used to park the state with
+    // `resumeFrom: 'DESIGN_SPEC'` and invite `/retry`, which then resumed into a
+    // waiting phase with no handler and re-parked with "Parked in DESIGN_SPEC",
+    // one attempt poorer for a round trip that did nothing.
+    await toDesignSpec(harness)
+    harness.deps.agent = (): Promise<OpenCodeAgent> => Promise.reject(new Error('the model timed out'))
+
+    const result = await runPipeline({ event: comment('/ask why that file?'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.posted[0]).not.toContain('/retry')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('DESIGN_SPEC')
+    expect(state?.resumeFrom).toBeNull()
+    expect(state?.attempts).toBe(0)
   })
 })
 
@@ -472,7 +652,7 @@ describe('plan review gate', () => {
     const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
     expect(result.status).toBe('waiting')
-    expect(headings(harness)).toEqual(['### Execution plan (revision 2)'])
+    expect(headings(harness)).toEqual(['### Execution plan (revision 1)'])
     expect(latestPostedState(harness)?.phase).toBe('PLAN_REVIEW')
     expect(harness.io.gitCalls).toEqual([`ensureBranch:agent/issue-${ISSUE}:${BASE_BRANCH}`])
   })
@@ -483,8 +663,8 @@ describe('plan review gate', () => {
 
     await runPipeline({ event: comment('/changes split step 1'), deps: harness.deps })
 
-    expect(harness.io.posted[0]).toContain('### Execution plan (revision 3)')
-    expect(latestPostedState(harness)?.phase).toBe('PLAN_REVIEW')
+    expect(harness.io.posted[0]).toContain('### Execution plan (revision 2)')
+    expect(latestPostedState(harness)).toMatchObject({ phase: 'PLAN_REVIEW', specRevision: 1, planRevision: 2 })
   })
 
   test('/approve on the plan cascades through implementation and delivery', async () => {
@@ -496,6 +676,83 @@ describe('plan review gate', () => {
     expect(result.status).toBe('completed')
     expect(headings(harness)).toEqual(['### Implementation report', '### Pull request ready'])
     expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
+  })
+})
+
+/**
+ * The spec and the plan used to share one `revision`, bumped by both
+ * `SPEC_POSTED` and `PLAN_POSTED` and rendered into both headings, so the first
+ * execution plan a maintainer ever saw was labelled revision 2 — revision 3 if
+ * the spec had been revised once first. Nothing was corrupted; the numbers
+ * simply counted something no reader could name.
+ */
+describe('artefact revision numbering', () => {
+  let harness: Harness
+
+  beforeEach(() => {
+    harness = makeHarness()
+  })
+
+  test('the first execution plan is revision 1', async () => {
+    await toDesignSpec(harness)
+    harness.io.replies = [PLAN_REPLY]
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.posted[0]).toContain('### Execution plan (revision 1)')
+    expect(latestPostedState(harness)).toMatchObject({ specRevision: 1, planRevision: 1 })
+  })
+
+  test('revising the spec twice still leaves the first plan at revision 1', async () => {
+    await toDesignSpec(harness)
+    harness.io.replies = [JSON.stringify({ status: 'spec', spec: 'Second attempt.' })]
+    await runPipeline({ event: comment('/changes use the existing helper'), deps: harness.deps })
+    harness.io.replies = [JSON.stringify({ status: 'spec', spec: 'Third attempt.' })]
+    await runPipeline({ event: comment('/changes name the helper'), deps: harness.deps })
+
+    expect(harness.io.posted.at(-1)).toContain('### Design spec (revision 3)')
+
+    harness.io.posted.length = 0
+    harness.io.replies = [PLAN_REPLY]
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.posted[0]).toContain('### Execution plan (revision 1)')
+    expect(latestPostedState(harness)).toMatchObject({ specRevision: 3, planRevision: 1 })
+  })
+
+  test('revising the plan reaches revision 2 while the spec stays where it was', async () => {
+    await toPlanReview(harness)
+    harness.io.replies = [PLAN_REPLY]
+
+    await runPipeline({ event: comment('/changes split step 1'), deps: harness.deps })
+
+    expect(harness.io.posted[0]).toContain('### Execution plan (revision 2)')
+    // Read back the way the next job does: the hidden block's `revision` is
+    // written from the same local as the heading, so they cannot disagree.
+    expect(findArtifact(harness.io.thread, AGENT_LOGIN, PLAN_MARKER)?.revision).toBe(2)
+    expect(findArtifact(harness.io.thread, AGENT_LOGIN, SPEC_MARKER)?.revision).toBe(1)
+    expect(latestPostedState(harness)).toMatchObject({ specRevision: 1, planRevision: 2 })
+  })
+
+  test('a state block written before the counters split still drives the pipeline', async () => {
+    // Both fields default, so the split needed no `STATE_VERSION` bump and this
+    // issue is not stranded mid-conversation. What it loses is the old shared
+    // count, which was a sum of two artefacts and never the count of either —
+    // so its plan starts at 1, which is the number this change exists to make
+    // true.
+    const legacy = `<!-- ${STATE_MARKER}: {"v":2,"phase":"DESIGN_SPEC","issueId":${ISSUE},"revision":3} -->`
+    harness.io.thread.push({
+      id: 800,
+      body: [`earlier`, legacy, renderArtifact(SPEC_MARKER, 'Add a retry wrapper around fetch.', 3)].join('\n\n'),
+      authorLogin: AGENT_LOGIN,
+    })
+    harness.io.replies = [PLAN_REPLY]
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted[0]).toContain('### Execution plan (revision 1)')
+    expect(latestPostedState(harness)).toMatchObject({ phase: 'PLAN_REVIEW', specRevision: 0, planRevision: 1 })
   })
 })
 
@@ -859,6 +1116,120 @@ describe('CI fixing', () => {
   })
 })
 
+describe('a red run away from COMPLETE', () => {
+  let harness: Harness
+
+  beforeEach(() => {
+    harness = makeHarness()
+    // Every case here starts from a live pull request on the agent's branch, so
+    // the settled-pull-request guard is never what decides the outcome.
+    harness.io.existingPr = { number: 7, url: 'https://example.test/pull/7', state: 'open' }
+  })
+
+  test('a red run in PR_DELIVERY buys a fix round rather than vanishing', async () => {
+    // Phase 3 pushes the branch and posts a state block naming PR_DELIVERY
+    // before phase 4 opens the pull request, so a job that died in that window
+    // leaves this exact block behind a live branch. The transition table used to
+    // name CI_FAILED in COMPLETE alone, so the run was refused as invalid and
+    // ended `skipped` — nothing posted, nothing spent, nobody told.
+    seedState(harness, { phase: 'PR_DELIVERY', prUrl: 'https://example.test/pull/7', prNumber: 7 })
+
+    const result = await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.posted[0]).toContain('### CI fix attempt 1 of 2')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('COMPLETE')
+    expect(state?.ciAttempts).toBe(1)
+  })
+
+  test.each<Phase>(['INIT_OR_CLARIFY', 'DESIGN_SPEC', 'EXECUTION_PLAN', 'PLAN_REVIEW', 'FAILED'])(
+    'a red run in %s posts nothing and spends no CI-fix attempt',
+    async (phase) => {
+      // Nothing is pushed before PR_DELIVERY, so a fix round would run the
+      // checks against a branch cut fresh from the base; and FAILED is already
+      // parked under a failure comment asking for `/retry`, which is the path a
+      // forward move to CI_FIX would take away.
+      seedState(harness, { phase })
+
+      const result = await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+      expect(result.status).toBe('skipped')
+      expect(harness.io.posted).toEqual([])
+      expect(harness.io.gitCalls).toEqual([])
+      // State is persisted only by posting, so an untouched thread is itself the
+      // assertion that no attempt was spent; the returned state agrees.
+      expect(result.state?.ciAttempts).toBe(0)
+    },
+  )
+
+  test('a red run leaves a FAILED issue the /retry path its failure comment promised', async () => {
+    seedState(harness, { phase: 'FAILED', resumeFrom: 'PR_DELIVERY', attempts: 1 })
+
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+    const resumed = await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    expect(resumed.status).toBe('completed')
+    expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
+  })
+})
+
+describe('the CI-fix budget across pull requests', () => {
+  let harness: Harness
+
+  /** An issue whose first pull request burned every CI-fix round it had. */
+  const spentOnAnEarlierPullRequest = (): void => {
+    seedState(harness, { phase: 'FAILED', resumeFrom: 'PR_DELIVERY', ciAttempts: 2, ciBudgetReported: true })
+  }
+
+  beforeEach(() => {
+    harness = makeHarness()
+  })
+
+  test('a new pull request hands the CI-fix budget back', async () => {
+    spentOnAnEarlierPullRequest()
+    harness.io.existingPr = null
+
+    await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    const state = latestPostedState(harness)
+    expect(state?.prNumber).toBe(7)
+    expect(state?.ciAttempts).toBe(0)
+    expect(state?.ciBudgetReported).toBe(false)
+  })
+
+  test('a refreshed pull request keeps the budget its own checks spent', async () => {
+    // The same pull request, on the same commits, whose red checks spent the
+    // rounds. Handing it a clean slate is how one broken branch bounces off the
+    // agent for as long as anyone keeps replying `/retry`.
+    spentOnAnEarlierPullRequest()
+    harness.io.existingPr = { number: 3, url: 'https://example.test/pull/3', state: 'open' }
+
+    await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    const state = latestPostedState(harness)
+    expect(harness.io.createdPr).toBeNull()
+    expect(state?.ciAttempts).toBe(2)
+    expect(state?.ciBudgetReported).toBe(true)
+  })
+
+  test('the returned budget is real — a red run on the new pull request buys a fix round', async () => {
+    // `applyCiTrigger` short-circuits on `ciBudgetReported` before it even looks
+    // the pull request up, so a flag that outlived the pull request that set it
+    // meant no fix round *and* no notice explaining the silence.
+    spentOnAnEarlierPullRequest()
+    harness.io.existingPr = null
+    await runPipeline({ event: comment('/retry'), deps: harness.deps })
+    harness.io.posted.length = 0
+
+    const result = await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.posted[0]).toContain('### CI fix attempt 1 of 2')
+  })
+})
+
 describe('commands and budgets', () => {
   test('/cancel is durable — a later /approve does not resurrect the issue', async () => {
     const harness = makeHarness()
@@ -919,7 +1290,41 @@ describe('commands and budgets', () => {
 
     expect(result.status).toBe('skipped')
     expect(result.reason).toContain('not valid in INIT_OR_CLARIFY')
-    expect(harness.io.posted).toEqual([])
+  })
+
+  test('says so on the issue rather than only in the job log', async () => {
+    // This used to skip in silence. A maintainer who types a command and sees
+    // nothing has no way to tell a refusal from an agent that never woke up —
+    // which is how a mis-set AGENT_SELF_LOGIN went unnoticed while every
+    // `/changes` was refused against a state that had been restarted.
+    const harness = makeHarness()
+
+    await runPipeline({ event: comment('/changes do it differently'), deps: harness.deps })
+
+    const refusal = String(harness.io.posted.at(-1))
+    expect(refusal).toContain('/changes')
+    expect(refusal).toContain('INIT_OR_CLARIFY')
+    // Derived from the transition table, so it cannot promise a command the
+    // machine would refuse in turn.
+    expect(refusal).toContain('/cancel')
+    expect(refusal).toContain('/ask')
+    expect(refusal).not.toContain('`/approve`')
+  })
+
+  test('/changes is accepted once the agent can read back its own spec', async () => {
+    // The regression this file exists for: with the wrong self-login the spec
+    // comment is invisible, the state restores to INIT_OR_CLARIFY, and the
+    // maintainer's `/changes` is refused. Reading it back is what makes the
+    // command land in DESIGN_SPEC and send the issue round for a new spec.
+    const harness = makeHarness()
+    harness.io.replies = [SPEC_REPLY, SPEC_REPLY]
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    const result = await runPipeline({ event: comment('/changes narrow the scope'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(result.state?.phase).toBe('DESIGN_SPEC')
+    expect(harness.io.posted.at(-1)).toContain('### Design spec')
   })
 
   test('a single malformed reply is repaired rather than failing the run', async () => {
@@ -970,6 +1375,110 @@ describe('commands and budgets', () => {
     expect(result.status).toBe('failed')
     expect(result.reason).toContain('Retry budget exhausted')
     expect(harness.io.posted[0]).toContain('### Giving up')
+  })
+})
+
+describe('the retry budget', () => {
+  /** A failure an earlier job parked, with the last attempt already spent on it. */
+  const seedSpentBudget = (harness: Harness): void =>
+    seedState(harness, {
+      phase: 'FAILED',
+      resumeFrom: 'EXECUTION_PLAN',
+      attempts: 3,
+      lastError: 'the planning turn returned no JSON',
+    })
+
+  test('a /retry past the budget leaves the failure parked where it was', async () => {
+    // Spending the budget used to *move* the state: the signal was applied
+    // first and the ceiling checked a step later, so the give-up notice posted
+    // `EXECUTION_PLAN` with `resumeFrom` cleared — a handler phase that
+    // `/retry` (which needs FAILED) and a plain comment (which needs a waiting
+    // phase) both refuse. Only `/cancel` could reach the issue after that.
+    const harness = makeHarness({ maxAttempts: 3 })
+    seedSpentBudget(harness)
+
+    const result = await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(result.reason).toContain('Retry budget exhausted')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('FAILED')
+    expect(state?.resumeFrom).toBe('EXECUTION_PLAN')
+    expect(state?.attempts).toBe(3)
+  })
+
+  test('reports the spent budget on the issue without paying for a model turn', async () => {
+    const harness = makeHarness({ maxAttempts: 3 })
+    seedSpentBudget(harness)
+
+    await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    expect(harness.io.posted).toHaveLength(1)
+    expect(harness.io.posted[0]).toContain('### Giving up')
+    expect(harness.io.posted[0]).toContain('3 of 3 attempts')
+    // The notice may only offer what the machine will actually take. Bare
+    // "reply `/retry`" is not that: the budget is spent, so the next `/retry`
+    // lands straight back here. Raising the ceiling is the remedy that works.
+    expect(harness.io.posted[0]).toContain('AGENT_MAX_ATTEMPTS')
+    // Refused before the cascade, so no handler and no session was ever opened.
+    expect(harness.io.prompts).toEqual([])
+    expect(harness.io.gitCalls).toEqual([])
+  })
+
+  test('a second /retry is still answered by the budget, not by the transition table', async () => {
+    // The tell that the first one moved nothing. Against the moved state this
+    // came back as `/retry is not valid in EXECUTION_PLAN`, which is a true
+    // sentence about a phase the maintainer never asked to be in.
+    const harness = makeHarness({ maxAttempts: 3 })
+    seedSpentBudget(harness)
+    await runPipeline({ event: comment('/retry'), deps: harness.deps })
+    harness.io.posted.length = 0
+
+    const result = await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(result.reason).toContain('Retry budget exhausted')
+    expect(result.reason).not.toContain('not valid in')
+    expect(harness.io.posted[0]).toContain('### Giving up')
+    expect(latestPostedState(harness)?.resumeFrom).toBe('EXECUTION_PLAN')
+  })
+
+  test('raising the ceiling resumes the parked phase, which is what makes the notice honest', async () => {
+    // The notice names `AGENT_MAX_ATTEMPTS` as the way out, so the way out has
+    // to still exist: the resume point survives the refusal, and the same
+    // `/retry` picks the failed phase back up once the ceiling allows it.
+    const harness = makeHarness({ maxAttempts: 3 })
+    seedState(harness, { phase: 'FAILED', resumeFrom: 'INIT_OR_CLARIFY', attempts: 3 })
+    await runPipeline({ event: comment('/retry'), deps: harness.deps })
+    harness.io.posted.length = 0
+
+    harness.deps.config = config({ maxAttempts: 4 })
+    harness.io.replies = [SPEC_REPLY]
+    const result = await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted.at(-1)).toContain('### Design spec')
+    expect(latestPostedState(harness)?.phase).toBe('DESIGN_SPEC')
+  })
+
+  test('/ask still answers a failure whose budget is spent', async () => {
+    // Answering is not retrying: it spends no attempt and moves nothing, so the
+    // retry ceiling has no business stopping it. The check inside the cascade
+    // sat in front of the answer handler too, so this replied "Giving up" — in
+    // the one phase a maintainer most wants to ask "why did this fail?" in.
+    const harness = makeHarness({ maxAttempts: 3 })
+    seedSpentBudget(harness)
+    harness.io.replies = ['The planning prompt exceeded the model’s context.']
+
+    const result = await runPipeline({ event: comment('/ask why did this fail?'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted[0]).toContain('The planning prompt exceeded the model’s context.')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('FAILED')
+    expect(state?.resumeFrom).toBe('EXECUTION_PLAN')
   })
 })
 
@@ -1025,6 +1534,66 @@ describe('the token budget', () => {
     expect(result.state?.tokensSpent).toBe(spentIn(planned) + 900)
   })
 
+  test('a phase that fails records what it spent, so the next job does not start from zero', async () => {
+    // The counter used to be blind exactly where the ceiling was meant to bite.
+    // `runHandler` patched `tokensSpent` on the way out and `failRun` did not,
+    // so a job that spent a quarter of a million tokens and then threw persisted
+    // `0` — and retries *are* the failure path, so an issue could burn the
+    // ceiling round after round and restore a clean slate every time.
+    const harness = makeHarness()
+    harness.io.replies = ['not json', 'still not json']
+    harness.io.tokensUsed = 250_000
+
+    const result = await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('FAILED')
+    expect(state?.tokensSpent).toBe(250_000)
+  })
+
+  test('a failure adds this job’s spend to the earlier jobs’, counting neither twice', async () => {
+    // The figure a failure writes has to be the one the success path writes: the
+    // running total. 10,000 alone would drop everything the issue spent before
+    // this job; 90,000 would be the carried figure counted once by the restored
+    // state and again by the patch.
+    const harness = makeHarness()
+    seedSpend(harness, 40_000)
+    harness.io.replies = ['not json', 'still not json']
+    harness.io.tokensUsed = 10_000
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(latestPostedState(harness)?.tokensSpent).toBe(50_000)
+  })
+
+  test('a failed answer records what the question cost', async () => {
+    // A model turn that fails still spent what it spent — a deadline or a
+    // rejected request lands here with the provider's meter already run. The
+    // answer path posts the state unchanged, so it dropped the whole figure.
+    const harness = makeHarness()
+    seedSpend(harness, 40_000)
+    harness.io.tokensUsed = 10_000
+    harness.deps.agent = (): Promise<OpenCodeAgent> =>
+      Promise.resolve({
+        sessionId: 'session-1',
+        prompt: () => Promise.reject(new Error('the model timed out')),
+        tokensUsed: () => Promise.resolve(harness.io.tokensUsed),
+        close: () => Promise.resolve(),
+      })
+
+    const result = await runPipeline({ event: comment('/ask why that file?'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.posted[0]).toContain('### I could not answer that')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('DESIGN_SPEC')
+    expect(state?.tokensSpent).toBe(50_000)
+  })
+
   test('stops the issue once an earlier job has spent the budget', async () => {
     // The whole point of persisting it: this job's own session has spent
     // nothing, and it still must not start.
@@ -1038,16 +1607,19 @@ describe('the token budget', () => {
     expect(harness.io.posted[0]).toContain('### Token budget spent')
   })
 
-  test('says why /retry will not help, and names what would', async () => {
-    // The spend is persisted, so a retry re-reads the same total and stops
-    // again. Naming AGENT_MAX_TOKENS is the only advice that leads anywhere.
+  test('says why a bare /retry will not help, and names what makes it help', async () => {
+    // The spend is persisted, so a retry against the same ceiling re-reads the
+    // same total and stops again — but it is no longer a dead end, because the
+    // stop parks a resume point. So the notice has to name both halves in
+    // order: raise AGENT_MAX_TOKENS, *then* `/retry`.
     const harness = makeHarness({ maxTokens: 50_000 })
     seedSpend(harness, 60_000)
 
     await runPipeline({ event: comment('/changes again'), deps: harness.deps })
 
     expect(harness.io.posted[0]).toContain('AGENT_MAX_TOKENS')
-    expect(harness.io.posted[0]).toContain('will stop here again')
+    expect(harness.io.posted[0]).toContain('stops right back here')
+    expect(harness.io.posted[0]).toContain('/retry')
   })
 
   test('checks before the phase runs, not after it has spent more', async () => {
@@ -1079,5 +1651,167 @@ describe('the token budget', () => {
     const result = await runPipeline({ event: issueEvent(), deps: harness.deps })
 
     expect(result.status).toBe('waiting')
+  })
+
+  test('parks the stop in FAILED, resuming from the phase it refused to start', async () => {
+    // Trigger point one: the budget runs out on the *first* phase of a run,
+    // right after a trigger moved the state. The stop used to leave the state
+    // exactly where the trigger had put it — `EXECUTION_PLAN`, a phase with a
+    // handler — so the issue was parked somewhere `/retry` (needs FAILED) and a
+    // plain comment (needs a waiting phase) both refuse, and only `/cancel`
+    // reached it. Reachable on a first approval with no failure involved.
+    const harness = makeHarness({ maxTokens: 100 })
+    seedState(harness, { phase: 'DESIGN_SPEC', tokensSpent: 500 })
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.posted[0]).toContain('### Token budget spent')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('FAILED')
+    expect(state?.resumeFrom).toBe('EXECUTION_PLAN')
+    expect(state?.tokensSpent).toBe(500)
+  })
+
+  test('parks a mid-cascade stop too, where no trigger moved the state', async () => {
+    // Trigger point two, which no trigger-layer refusal can reach: the earlier
+    // phase legitimately did its work and posted, and the cascade stops before
+    // the next one. Stopping in `PR_DELIVERY` is the same dead end as stopping
+    // in `EXECUTION_PLAN` above — worse, in fact, since the branch is already
+    // pushed and only delivery is left.
+    const harness = makeHarness({ maxTokens: 50_000 })
+    await toPlanReview(harness)
+    harness.io.replies = ['Implemented.']
+    harness.deps.runReview = (): Promise<ReviewRunResult> => {
+      harness.io.tokensUsed = 60_000
+      return Promise.resolve(harness.io.reviewResult)
+    }
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(headings(harness)).toEqual(['### Implementation report', '### Token budget spent'])
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('FAILED')
+    expect(state?.resumeFrom).toBe('PR_DELIVERY')
+    expect(state?.tokensSpent).toBe(60_000)
+  })
+
+  test('names the phase it parked in, so the notice and the state block agree', async () => {
+    const harness = makeHarness({ maxTokens: 100 })
+    seedState(harness, { phase: 'DESIGN_SPEC', tokensSpent: 500 })
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.posted[0]).toContain('AGENT_MAX_TOKENS')
+    expect(harness.io.posted[0]).toContain('/retry')
+    expect(harness.io.posted[0]).toContain(`\`${String(latestPostedState(harness)?.resumeFrom)}\``)
+  })
+
+  test('raising the ceiling and replying /retry resumes the phase it stopped before', async () => {
+    // What makes the notice honest. It names `AGENT_MAX_TOKENS` and `/retry`,
+    // so both together have to actually finish the work — before, raising the
+    // ceiling left the issue in `PR_DELIVERY` with no event able to re-enter it.
+    const harness = makeHarness({ maxTokens: 50_000 })
+    await toPlanReview(harness)
+    harness.io.replies = ['Implemented.']
+    harness.deps.runReview = (): Promise<ReviewRunResult> => {
+      harness.io.tokensUsed = 60_000
+      return Promise.resolve(harness.io.reviewResult)
+    }
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+    harness.io.posted.length = 0
+
+    // A fresh runner: a new session that has spent nothing, under a raised ceiling.
+    harness.io.tokensUsed = 0
+    harness.deps.config = config({ maxTokens: 500_000 })
+    const result = await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.posted.at(-1)).toContain('### Pull request ready')
+    expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
+  })
+
+  test('an over-budget stop does not eat the retry budget', async () => {
+    // A stop for want of tokens is not a failed attempt, so it must not spend
+    // one — otherwise the two budgets collide: the token notice says to raise
+    // `AGENT_MAX_TOKENS` and reply `/retry`, and that `/retry` is then turned
+    // down by the *retry* gate in `triggers.ts` for a ceiling nobody mentioned.
+    const harness = makeHarness({ maxAttempts: 3 })
+    await toDesignSpec(harness)
+    seedState(harness, { phase: 'FAILED', resumeFrom: 'EXECUTION_PLAN', attempts: 2, tokensSpent: 500 })
+
+    harness.deps.config = config({ maxAttempts: 3, maxTokens: 100 })
+    await runPipeline({ event: comment('/retry'), deps: harness.deps })
+    expect(latestPostedState(harness)?.attempts).toBe(2)
+    harness.io.posted.length = 0
+
+    harness.deps.config = config({ maxAttempts: 3, maxTokens: 500_000 })
+    harness.io.replies = [PLAN_REPLY]
+    const result = await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    expect(result.reason).not.toContain('Retry budget exhausted')
+    expect(harness.io.posted.at(-1)).toContain('### Execution plan')
+    expect(latestPostedState(harness)?.phase).toBe('PLAN_REVIEW')
+  })
+
+  test('an over-budget /ask leaves the phase alone rather than parking a question', async () => {
+    // Answering is a side conversation about work that lives elsewhere, so the
+    // park above must not apply to it. `resumeFrom` may never name a waiting
+    // phase — a `/retry` into `DESIGN_SPEC` finds no handler and re-parks with
+    // "Parked in `DESIGN_SPEC`", one round trip for nothing — and the phase the
+    // question was asked in is one a trigger can already re-enter.
+    const harness = makeHarness({ maxTokens: 100 })
+    seedState(harness, { phase: 'DESIGN_SPEC', tokensSpent: 500 })
+
+    const result = await runPipeline({ event: comment('/ask why that file?'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.prompts).toEqual([])
+    expect(harness.io.posted[0]).toContain('AGENT_MAX_TOKENS')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('DESIGN_SPEC')
+    expect(state?.resumeFrom).toBeNull()
+    expect(state?.tokensSpent).toBe(500)
+  })
+
+  test('stops paying the classifier once the issue is over budget', async () => {
+    // Classifying a plain comment is the one model turn whose spend can never be
+    // written down: when the classifier answers `none` the run skips without
+    // posting, and this pipeline persists state only by posting a comment. Over
+    // budget nothing any classification could ask for is affordable — every
+    // branch below it leads to a handler the cascade will refuse — so the
+    // ceiling is asked *before* the classifier rather than after paying it,
+    // which is what stops a maxed-out issue paying a turn per comment for ever.
+    const harness = makeHarness({ maxTokens: 100 })
+    seedState(harness, { phase: 'DESIGN_SPEC', tokensSpent: 500 })
+
+    const result = await runPipeline({ event: comment('looks good to me'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.prompts).toEqual([])
+    expect(harness.io.posted[0]).toContain('### Token budget spent')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('DESIGN_SPEC')
+    expect(state?.tokensSpent).toBe(500)
+  })
+
+  test('an over-budget /ask in COMPLETE reports instead of crashing the runner', async () => {
+    // `COMPLETE` accepts neither FAILED nor CANCELLED, so parking a question
+    // there would throw `InvalidTransitionError` straight out of the pipeline —
+    // the runner exits 1 and the issue hears nothing, which is the failure the
+    // answer path has already been burned by twice.
+    const harness = makeHarness({ maxTokens: 100 })
+    seedState(harness, { phase: 'COMPLETE', tokensSpent: 500, prUrl: 'https://example.test/pull/7' })
+
+    const result = await runPipeline({ event: comment('/ask what did you change?'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.posted[0]).toContain('### Token budget spent')
+    expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
   })
 })
