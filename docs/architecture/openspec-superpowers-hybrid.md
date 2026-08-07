@@ -145,43 +145,17 @@ Optional later: `openspec schema fork spec-driven papai-sdd` to add e.g. a
 
 ## 4. Migration guide: brainstorming → OpenSpec
 
-1. **Install & init** (above). Verify: `openspec list`, autocomplete on `/opsx`.
-2. **Inventory existing docs.** Find prior outputs:
-   `docs/superpowers/specs/*.md` (designs) and any implementation plans.
-3. **Classify each document:**
-   - *Shipped feature* → write its requirements directly as main specs:
-     `openspec/specs/<capability>/spec.md` using `## ADDED Requirements` →
-     re-read as the current truth (drop "ADDED" framing: main specs state what
-     is). No change folder needed.
-   - *In-flight work* → create `openspec/changes/<name>/` via `/opsx:propose`,
-     then let the agent port the design doc into `proposal.md` + delta `specs/`
-     + `design.md`; port the plan's steps into `tasks.md` checkboxes.
-   - *Abandoned idea* → leave in place or delete; do not migrate.
-4. **Convert format**, per requirement: design-doc prose → SHALL statement +
-   at least one `#### Scenario:` with WHEN/THEN. Run `openspec validate
-   --strict` after each file.
-5. **Rewire CLAUDE.md** with the routing table in §3; delete the instruction
-   that brainstorming gates all creative work; keep every other skill
-   reference. Also update the `syncing-plan-with-code` skill's target path
-   language to point at `openspec/changes/<name>/` artifacts.
-6. **First new feature** runs the full loop explore → propose → apply → verify
-   → archive as a shakedown; adjust `config.yaml` rules from what you observe.
-7. **Ongoing:** `openspec update` after upgrading the npm package; treat
-   `openspec/specs/` as review-required surface in PRs.
+Superseded. The operational migration guide is the design document of the
+`migrate-brainstorming-to-openspec` change (the first dogfood change on the
+workflow above):
 
-Checklist mapping (brainstorming step → OpenSpec step):
+- While the change is active: `openspec/changes/migrate-brainstorming-to-openspec/design.md`
+- After it archives: `openspec/changes/archive/<date>-migrate-brainstorming-to-openspec/design.md`
 
-| brainstorming checklist item | OpenSpec |
-|---|---|
-| Explore project context | `/opsx:explore` reads code |
-| Clarifying questions, one at a time | explore dialogue (keep the discipline) |
-| Propose 2–3 approaches w/ trade-offs | explore; recommendation lands in proposal.md |
-| Present design sections, approval gate | human reviews `changes/<name>/` artifacts before `/opsx:apply` |
-| Write design doc + commit | `/opsx:propose` writes design.md; committed with the change |
-| Spec self-review (placeholders, contradictions) | `openspec validate --strict` + same manual pass |
-| User reviews spec | same gate, now on the artifact set |
-| → writing-plans | tasks.md artifact (no separate plan doc) |
-| → executing-plans | `/opsx:apply` (tasks.md checkboxes = progress) |
+That design covers the strangler/no-backfill decision, the frozen legacy tree
+rules for `docs/superpowers/`, the CLAUDE.md routing table, and the
+retargeting of repo-local skills and dev tooling. §1–§3 of this document
+remain the decision research.
 
 ## 5. Open questions
 
