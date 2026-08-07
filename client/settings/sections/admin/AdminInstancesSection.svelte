@@ -335,7 +335,10 @@
 </script>
 
 <section id="instances" class="settings-section">
-  <PageHeader eyebrow="Admin · Runtime" title="Instances">
+  <PageHeader
+    eyebrow="Admin · Runtime"
+    title="Instances"
+    sub="Apply starts and stops platform connections so the running bot matches the table below.">
     {#snippet action()}
       <Btn variant="outline" size="sm" testid="admin-instances-apply" disabled={loading} onClick={() => void applyPlatforms()}>
         {#snippet children()}Apply platform changes{/snippet}
@@ -344,8 +347,8 @@
     {/snippet}
   </PageHeader>
 
-  {#if error !== null}<p class="status-error">{error}</p>{/if}
-  {#if status !== null}<p class="status-success">{status}</p>{/if}
+  {#if error !== null}<p class="status-error" role="alert">{error}</p>{/if}
+  {#if status !== null}<p class="status-success" role="status">{status}</p>{/if}
 
   {#if loadError !== null}
     <ErrorState
@@ -356,7 +359,7 @@
     <p class="placeholder">Loading…</p>
   {:else}
   <div class="instance-create" data-testid="platform-create-card">
-    <div class="t-subhead">Add platform instance</div>
+    <h3 class="t-subhead">Add platform instance</h3>
     <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void createPlatform() }}>
       <Field label="ID" required error={shownError(platformErrors, platformTouched, 'id')}>
         {#snippet children()}
@@ -394,7 +397,7 @@
     </form>
   </div>
 
-  <div class="t-subhead">Platform instances</div>
+  <h3 class="t-subhead">Platform instances</h3>
   <div class="settings-table-wrap">
     {#snippet platformCell(row: InstanceRow, col: { key: string; label: string })}
       {#if col.key === 'id'}
@@ -427,7 +430,7 @@
   {/if}
 
   <div class="instance-create" data-testid="task-create-card">
-    <div class="t-subhead">Add task instance</div>
+    <h3 class="t-subhead">Add task instance</h3>
     <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void createTask() }}>
       <Field label="ID" required error={shownError(taskErrors, taskTouched, 'id')}>
         {#snippet children()}
@@ -465,7 +468,7 @@
     </form>
   </div>
 
-  <div class="t-subhead">Task instances</div>
+  <h3 class="t-subhead">Task instances</h3>
   <div class="settings-table-wrap">
     {#snippet taskCell(row: InstanceRow, col: { key: string; label: string })}
       {#if col.key === 'id'}
@@ -505,7 +508,10 @@
     onCancel={() => (pendingDelete = null)}
     onConfirm={() => void confirmDelete()}>
     {#snippet body()}
-      <p>Delete {pendingDeleteLabel}? This cannot be undone.</p>
+      <p>
+        Delete {pendingDeleteLabel}? Its platform stops being served and its stored credentials are
+        removed. This cannot be undone.
+      </p>
       {#if deleteError !== null}<p class="status-error">{deleteError}</p>{/if}
     {/snippet}
   </Confirm>
