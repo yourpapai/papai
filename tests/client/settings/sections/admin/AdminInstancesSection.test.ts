@@ -883,6 +883,9 @@ describe('AdminInstancesSection', () => {
     expect(target.querySelector('.ui-error')).not.toBeNull()
     expect(target.querySelector('.ui-error__detail')).not.toBeNull()
     expect(target.querySelector('[data-testid="error-retry"]')).not.toBeNull()
+    // Every request failed, so the provider-type failures must not also render inline
+    // above the panel that already reports them.
+    expect(target.querySelector('.status-error')).toBeNull()
     void unmount(component)
   })
 

@@ -152,8 +152,10 @@
         typeErrors.push(errorMessage(tt.reason))
       }
 
+      // When both kinds fail the ErrorState replaces the region, so the inline line would
+      // render above a panel that already reports the failure. loadError wins alone.
       if (instanceErrors.length > 0) loadError = instanceErrors.join('; ')
-      if (typeErrors.length > 0) error = typeErrors.join('; ')
+      else if (typeErrors.length > 0) error = typeErrors.join('; ')
     } finally {
       loading = false
       initialLoad = false
