@@ -231,3 +231,44 @@ describe('CodingMcpSection in-flight control state', () => {
     void unmount(component)
   })
 })
+
+describe('CodingMcpSection dead-end states', () => {
+  afterEach(() => {
+    restoreFetch()
+    document.body.innerHTML = ''
+  })
+
+  test('a load failure names the failed operation and demotes the exception', async () => {
+    setCsrfToken('c')
+    setMockFetch(() => Promise.resolve(new Response('boom', { status: 500 })))
+    const { target, component } = mountSection()
+    await drain()
+
+    expect(target.querySelector<HTMLElement>('.ui-error__message')!.textContent.trim()).toBe(
+      "Couldn't load the MCP server settings for this context.",
+    )
+    expect(target.querySelector('.ui-error__detail')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('an empty selection offers a next step instead of a bare gap', async () => {
+    setCsrfToken('c')
+    setMockFetch(() => Promise.resolve(json({ ...mcpPayload, configured: false, selections: [] })))
+    const { target, component } = mountSection()
+    await drain()
+
+    expect(target.querySelector<HTMLElement>('.ui-empty__title')!.textContent.trim()).toBe('No MCP servers selected')
+    void unmount(component)
+  })
+
+  test('an empty catalog is a titled dead end, not a dim line', async () => {
+    setCsrfToken('c')
+    setMockFetch(() => Promise.resolve(json({ ...mcpPayload, catalog: [], pluginServers: [], selections: [] })))
+    const { target, component } = mountSection()
+    await drain()
+
+    const empty = target.querySelector<HTMLElement>('[data-testid="coding-mcp-catalog-empty"]')!
+    expect(empty.querySelector<HTMLElement>('.ui-empty__title')!.textContent.trim()).toBe('No MCP servers available')
+    void unmount(component)
+  })
+})

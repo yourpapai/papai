@@ -8,6 +8,7 @@
 
   import Confirm from '../../shared/Confirm.svelte'
   import Btn from '../../shared/ui/Btn.svelte'
+  import EmptyState from '../../shared/ui/EmptyState.svelte'
   import ErrorState from '../../shared/ui/ErrorState.svelte'
   import Field from '../../shared/ui/Field.svelte'
   import IconButton from '../../shared/ui/IconButton.svelte'
@@ -202,13 +203,20 @@
   {#if currentData === null && loading}
     <p class="placeholder">Loading…</p>
   {:else if currentData === null && error !== null}
-    <ErrorState message={error} onRetry={() => void load(contextId)} />
+    <ErrorState
+      message="Couldn't load the MCP server settings for this context."
+      detail={error}
+      onRetry={() => void load(contextId)} />
   {:else if currentData !== null}
     {#if unreadableError !== null}
       <p class="status-error" role="alert">Stored credentials are unreadable. Re-enter your credentials to repair this context.</p>
     {/if}
     {#if noServersAvailable}
-      <p class="placeholder" data-testid="coding-mcp-catalog-empty">No MCP servers available — ask your operator.</p>
+      <div data-testid="coding-mcp-catalog-empty">
+        <EmptyState
+          title="No MCP servers available"
+          hint="Your operator hasn't published any MCP servers for this platform instance. Ask them to add one." />
+      </div>
     {:else}
       <p class="placeholder">
         Coding sessions can reach MCP servers on your behalf. Add a server per row — external servers need a credential;
@@ -216,6 +224,11 @@
       </p>
 
       <div class="settings-mcp">
+        {#if rows.length === 0}
+          <EmptyState
+            title="No MCP servers selected"
+            hint="Add a server to let coding sessions reach it on your behalf." />
+        {/if}
         {#each rows as row, index (index)}
           <div class="settings-mcp__row" data-testid={`coding-mcp-row-${index}`}>
             <div class="settings-mcp__field settings-mcp__field--server">
