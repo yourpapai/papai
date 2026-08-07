@@ -162,7 +162,7 @@
   "review-loop/src/worktree.ts": 0.8402366863905325,
   "src/analytics/intent/classifier.ts": 0.9672727272727273,
   "src/analytics/jobs/backfill.ts": 0.7741935483870968,
-  "src/announcements/humanize.ts": 0.3382352941176471,
+  "src/announcements/humanize.ts": 0.9117647058823529,
   "src/attachments/staged-download.ts": 1,
   "src/bot-attachments.ts": 0.5950413223140496,
   "src/bot-message-caching.ts": 0.9166666666666666,
