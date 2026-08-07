@@ -29,6 +29,7 @@
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
   import Select from '../../../shared/ui/Select.svelte'
   import StatusPill from '../../../shared/ui/StatusPill.svelte'
+  import { markTouched, shownError } from '../../../shared/ui/field-touched.js'
   import IdCell from '../../components/IdCell.svelte'
   import { DUPLICATE_ID_MESSAGE, validateInstanceCreate } from './instance-create.js'
 
@@ -86,19 +87,6 @@
    * type error means the option list is empty and there is nothing the operator can touch;
    * gating it on touch would make it unreachable. Its Field renders the error directly.
    */
-  const shownError = (
-    errors: { id?: string },
-    touched: readonly string[],
-    field: 'id',
-  ): string | undefined => {
-    const message = errors[field]
-    if (message === undefined) return undefined
-    if (message === DUPLICATE_ID_MESSAGE) return message
-    return touched.includes(field) ? message : undefined
-  }
-
-  const markTouched = (touched: string[], field: string): string[] =>
-    touched.includes(field) ? touched : [...touched, field]
 
   const setErr = (err: unknown): void => {
     error = err instanceof Error ? err.message : String(err)
@@ -390,7 +378,11 @@
   <div class="instance-create" data-testid="platform-create-card">
     <h3 class="t-subhead">Add platform instance</h3>
     <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void createPlatform() }}>
-      <Field label="ID" required error={shownError(platformErrors, platformTouched, 'id')}>
+      <Field
+        label="ID"
+        required
+        error={shownError(platformErrors, platformTouched, 'id', (m) => m === DUPLICATE_ID_MESSAGE)}
+      >
         {#snippet children()}
           <Input
             value={platformId}
@@ -467,7 +459,11 @@
   <div class="instance-create" data-testid="task-create-card">
     <h3 class="t-subhead">Add task instance</h3>
     <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void createTask() }}>
-      <Field label="ID" required error={shownError(taskErrors, taskTouched, 'id')}>
+      <Field
+        label="ID"
+        required
+        error={shownError(taskErrors, taskTouched, 'id', (m) => m === DUPLICATE_ID_MESSAGE)}
+      >
         {#snippet children()}
           <Input
             value={taskId}
