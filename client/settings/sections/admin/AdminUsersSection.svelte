@@ -192,6 +192,20 @@
     { key: 'added_by' as const, label: 'Added by', width: '15%', sortable: true },
     { key: 'actions' as const, label: 'Actions', align: 'right' as const, width: '20%' },
   ]
+
+  // Every column declares a width, so DataTable pins them (`table-layout: fixed`) — see
+  // DataTable's own doc. That means the 15%-wide "Added by" column's actual pixel width
+  // tracks the table's own width, and the longest "Added by" label ("Announcement
+  // signup") measures 176px of real content (Chromium, 640px viewport, .ui-datatable__td
+  // content+padding box — see .superpowers/sdd/datatable-narrow-fix-report.md). Below
+  // ~1173px table width, 15% of the table is narrower than that and the label's trailing
+  // glyphs get clipped by `.ui-datatable__td`'s `overflow: hidden` with no ellipsis (the
+  // Pill is a nested element, so the ellipsis rule on the td doesn't decorate it) — and at
+  // the same narrow widths the 20% Actions column can't fit both row buttons, so
+  // `text-overflow: ellipsis` hides the overflowing `Remove` button outright. 1200px
+  // (176px / 0.15, rounded up to a 4px buffer over the exact threshold) is the floor
+  // below which `.settings-table-wrap`'s ancestor `overflow-x: auto` scrolls the table
+  // instead of any column being crushed under its content's real minimum.
 </script>
 
 <section id="users" class="settings-section">
@@ -332,7 +346,8 @@
         searchKeys={['platform_user_id', 'username', 'status', 'added_by']}
         defaultSort={{ key: 'username', dir: 'asc' }}
         {cell}
-        searchPlaceholder="Search users by ID, name, or status…">
+        searchPlaceholder="Search users by ID, name, or status…"
+        minWidth="1200px">
         {#snippet empty()}
           <EmptyState
             title="No users yet"

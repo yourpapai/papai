@@ -204,4 +204,48 @@ describe('DataTable.svelte', () => {
     expect(table.classList.contains('ui-datatable--fixed')).toBe(false)
     void unmount(component)
   })
+
+  const fullWidthColumns = [
+    { key: 'id' as const, label: 'ID', width: '40%' },
+    { key: 'name' as const, label: 'Name', width: '40%' },
+    { key: 'count' as const, label: 'Count', align: 'right' as const, width: '20%' },
+  ]
+
+  test('minWidth is applied to a fixed-layout table', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(DataTable, {
+      target,
+      props: { columns: fullWidthColumns, rows: [], minWidth: '1200px' },
+    })
+    const table = target.querySelector('table')!
+    expect(table.style.minWidth).toBe('1200px')
+    void unmount(component)
+  })
+
+  test('minWidth is ignored on an auto-layout table (partial widths)', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const partialWidthColumns = [
+      { key: 'id' as const, label: 'ID', width: '40%' },
+      { key: 'name' as const, label: 'Name' },
+      { key: 'count' as const, label: 'Count', align: 'right' as const, width: '20%' },
+    ]
+    const component = mount(DataTable, {
+      target,
+      props: { columns: partialWidthColumns, rows: [], minWidth: '1200px' },
+    })
+    const table = target.querySelector('table')!
+    expect(table.style.minWidth).toBe('')
+    void unmount(component)
+  })
+
+  test('omitting minWidth on a fixed-layout table sets no min-width style', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(DataTable, { target, props: { columns: fullWidthColumns, rows: [] } })
+    const table = target.querySelector('table')!
+    expect(table.style.minWidth).toBe('')
+    void unmount(component)
+  })
 })

@@ -31,6 +31,8 @@
     pageSize?: number
     searchPlaceholder?: string
     defaultSort?: { key: keyof Row & string; dir: SortDir }
+    /** Forwarded to `DataTable` — see its own doc for when this matters. */
+    minWidth?: string
   }
   let {
     columns,
@@ -42,6 +44,7 @@
     pageSize = 25,
     searchPlaceholder = 'Search…',
     defaultSort,
+    minWidth,
   }: Props = $props()
 
   let query = $state('')
@@ -77,7 +80,7 @@
         {/snippet}
       </EmptyState>
     {:else}
-      <DataTable {columns} rows={pageRows} {cell} {rowKey} {empty} {defaultSort} />
+      <DataTable {columns} rows={pageRows} {cell} {rowKey} {empty} {defaultSort} {minWidth} />
     {/if}
   </div>
   {#if pageCount > 1}
