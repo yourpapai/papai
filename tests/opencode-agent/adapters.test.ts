@@ -19,7 +19,13 @@ import { composeSystemPrompt, loadPhaseSkills, loadSkills, PHASE_SKILLS } from '
 import type { ReadSkillFile } from '../../opencode-agent/src/obra-skills.js'
 import { buildOpencodeConfig, modelRef, opencodeConfigEnv } from '../../opencode-agent/src/openai-config.js'
 import type { OpenAiSettings } from '../../opencode-agent/src/openai-config.js'
-import { collectText, createOpenCodeAgent, parseModelRef } from '../../opencode-agent/src/opencode-adapter.js'
+import {
+  collectText,
+  createOpenCodeAgent,
+  decodeReply,
+  decodeSessionId,
+  parseModelRef,
+} from '../../opencode-agent/src/opencode-adapter.js'
 import type { OpenCodeConnection, SdkPromptBody } from '../../opencode-agent/src/opencode-adapter.js'
 import { createEnvelope, renderThread } from '../../opencode-agent/src/prompts.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
@@ -44,6 +50,75 @@ describe('collectText', () => {
   })
 })
 
+/**
+ * Envelopes recorded from a live `opencode serve` 1.18.7, driven through the
+ * pipeline's own generated config against a stub OpenAI endpoint. These are
+ * observations, not invented shapes — the SDK contract used to be guessed here,
+ * and the guess was the spike's largest untested assumption.
+ */
+const LIVE_SESSION_RESPONSE = {
+  data: {
+    id: 'ses_025b6542affe9vH9KUeHrDvyJF',
+    projectID: 'prj_1',
+    directory: '/repo',
+    title: 'probe',
+    version: '1.18.7',
+    time: { created: 1, updated: 1 },
+  },
+  request: {},
+  response: {},
+}
+
+const LIVE_PROMPT_RESPONSE = {
+  data: {
+    info: { id: 'msg_1', role: 'assistant', sessionID: 'ses_1' },
+    parts: [
+      { id: 'prt_1', type: 'step-start' },
+      { id: 'prt_2', type: 'text', text: '{"status":"spec","spec":"stub reply"}' },
+      { id: 'prt_3', type: 'step-finish' },
+    ],
+  },
+  request: {},
+  response: {},
+}
+
+describe('the recorded SDK contract', () => {
+  test('reads the session id from the envelope, not the top level', () => {
+    // `.id` at the top level is undefined on a real response; the payload sits
+    // under `.data` because the generated client uses ResponseStyle "fields".
+    expect(LIVE_SESSION_RESPONSE).not.toHaveProperty('id')
+    expect(decodeSessionId(LIVE_SESSION_RESPONSE)).toBe('ses_025b6542affe9vH9KUeHrDvyJF')
+  })
+
+  test('keeps only the text part of a reply, dropping the step markers', () => {
+    expect(decodeReply(LIVE_PROMPT_RESPONSE)).toBe('{"status":"spec","spec":"stub reply"}')
+  })
+
+  test.each([
+    ['a session', (): string => decodeSessionId({ data: undefined, error: { message: 'boom' } })],
+    ['a prompt', (): string => decodeReply({ data: undefined, error: { message: 'boom' } })],
+  ])('surfaces an envelope error from %s instead of reading it as empty', (_label, decode) => {
+    expect(decode).toThrow('boom')
+  })
+
+  test.each([
+    ['a session', (): string => decodeSessionId({ id: 'ses_top_level' })],
+    ['a prompt', (): string => decodeReply({ parts: [{ type: 'text', text: 'top level' }] })],
+  ])('a relocated %s payload fails naming the contract, not three layers away', (_label, decode) => {
+    // The failure mode this replaces: an SDK upgrade moving the payload yielded
+    // empty text, which surfaced much later as "the model returned no JSON".
+    expect(decode).toThrow(/no data|no id/u)
+  })
+
+  test('a reply of pure step markers is empty text, not a crash', () => {
+    expect(decodeReply({ data: { parts: [{ type: 'step-start' }, { type: 'step-finish' }] } })).toBe('')
+  })
+
+  test('a reply with no parts at all is empty text', () => {
+    expect(decodeReply({ data: {} })).toBe('')
+  })
+})
+
 describe('createOpenCodeAgent', () => {
   const fakeConnection = (sink: { bodies: SdkPromptBody[]; closed: number }, reply: unknown): OpenCodeConnection => ({
     createSession: (): Promise<string> => Promise.resolve('session-9'),
@@ -63,7 +138,7 @@ describe('createOpenCodeAgent', () => {
       directory: '/repo',
       openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5' },
       sessionTitle: 'issue-1',
-      connect: () => Promise.resolve(fakeConnection(sink, { parts: [{ type: 'text', text: 'done' }] })),
+      connect: () => Promise.resolve(fakeConnection(sink, { data: { parts: [{ type: 'text', text: 'done' }] } })),
     })
 
     const result = await agent.prompt({ prompt: 'go', system: 'rules', agent: 'build' })
@@ -78,16 +153,27 @@ describe('createOpenCodeAgent', () => {
     })
   })
 
-  test('reads a reply nested under data', async () => {
+  test('joins text parts and ignores the tool parts between them', async () => {
     const sink = { bodies: [] as SdkPromptBody[], closed: 0 }
+    const reply = {
+      data: {
+        parts: [
+          { type: 'step-start' },
+          { type: 'text', text: 'first' },
+          { type: 'tool', tool: 'bash' },
+          { type: 'text', text: 'second' },
+          { type: 'step-finish' },
+        ],
+      },
+    }
     const agent = await createOpenCodeAgent({
       directory: '/repo',
       openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
       sessionTitle: 't',
-      connect: () => Promise.resolve(fakeConnection(sink, { data: { parts: [{ type: 'text', text: 'nested' }] } })),
+      connect: () => Promise.resolve(fakeConnection(sink, reply)),
     })
 
-    expect((await agent.prompt({ prompt: 'go' })).text).toBe('nested')
+    expect((await agent.prompt({ prompt: 'go' })).text).toBe('first\nsecond')
   })
 
   test('surfaces an SDK error payload as a pipeline error', async () => {
@@ -96,7 +182,7 @@ describe('createOpenCodeAgent', () => {
       directory: '/repo',
       openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
       sessionTitle: 't',
-      connect: () => Promise.resolve(fakeConnection(sink, { error: { message: 'rate limited' } })),
+      connect: () => Promise.resolve(fakeConnection(sink, { data: undefined, error: { message: 'rate limited' } })),
     })
 
     await expect(agent.prompt({ prompt: 'go' })).rejects.toThrow('rate limited')
@@ -112,7 +198,7 @@ describe('createOpenCodeAgent', () => {
       connect: () =>
         Promise.resolve({
           createSession: () => Promise.reject(new Error('server down')),
-          sendPrompt: () => Promise.resolve({}),
+          sendPrompt: () => Promise.resolve({ data: { parts: [] } }),
           close: () => {
             closed += 1
             return Promise.resolve()

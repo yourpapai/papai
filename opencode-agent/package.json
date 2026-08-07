@@ -8,7 +8,8 @@
     "typecheck": "tsgo --project tsconfig.json --noEmit",
     "lint": "cd .. && oxlint --config .oxlintrc.json opencode-agent/src tests/opencode-agent",
     "format": "cd .. && oxfmt --write opencode-agent/src tests/opencode-agent --ignore-path=.oxfmtignore",
-    "format:check": "cd .. && oxfmt --check opencode-agent/src tests/opencode-agent --ignore-path=.oxfmtignore"
+    "format:check": "cd .. && oxfmt --check opencode-agent/src tests/opencode-agent --ignore-path=.oxfmtignore",
+    "test:live": "cd .. && bun run tests/opencode-agent/live-sdk.integration.ts"
   },
   "dependencies": {
     "zod": "^4.0.0"

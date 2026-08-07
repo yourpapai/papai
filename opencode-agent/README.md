@@ -269,6 +269,10 @@ Logs are NDJSON on stdout.
 bun run opencode-agent:test
 bun run opencode-agent:typecheck
 bun run opencode-agent:lint
+
+# Opt-in: drives a real `opencode serve` against a stub OpenAI endpoint.
+# Needs the opencode CLI on PATH; no model credentials.
+bun run opencode-agent:test:live
 ```
 
 Tests live in `tests/opencode-agent/`. Every external boundary — GitHub, git, the
@@ -278,9 +282,9 @@ network.
 
 ## Known limitations
 
-- **The OpenCode SDK response shapes are still unverified against a live server.**
-  `readSessionId` and `readReplyText` probe two plausible shapes each. This is the
-  spike's largest untested assumption.
+- The SDK contract is verified against a live `opencode serve` 1.18.7, but only
+  at that version. When the pin moves, re-run `bun run opencode-agent:test:live`
+  to confirm — and re-record the fixtures in `adapters.test.ts` from it.
 - Review-loop failures are reported, not enforced: the branch is pushed and the
   pull request opened with a red report. CI on the pull request is the real gate,
   and the CI-fix loop is what acts on it.

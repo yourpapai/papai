@@ -219,10 +219,37 @@ message that points at the model rather than at the adapter.
 `createOpencodeServer({ hostname: '127.0.0.1', port: 0 })` is likewise
 unverified — port `0` may or may not be honoured.
 
-**Direction:** one integration test that boots a real server against a stub
-provider, or at minimum a recorded fixture of a real `session.create` and
-`session.prompt` response asserted against `readSessionId` / `readReplyText`.
-This is the single highest-value test the spike is missing.
+**[FIXED]** _Settled empirically, not by inspection. A real `opencode serve`
+1.18.7 was booted and driven through the pipeline's own generated config against
+a stub OpenAI-compatible endpoint, which also proves the custom `baseUrl` is
+honoured end to end.
+
+The observed contract matches the generated types: the client returns
+`{ data, error, request, response }` (`ThrowOnError = false`,
+`ResponseStyle = "fields"`), so the session id is at `.data.id` and the reply
+parts at `.data.parts` — the old probing tried the **top level first**, a branch
+that never matches. A reply carries `step-start` / `text` / `step-finish` parts,
+so `collectText`'s `type === 'text'` filter was right.
+
+Probing is replaced by schema decoding: `decodeSessionId` and `decodeReply` are
+exported (they sit on the one path a `connect` seam cannot reach, which is how
+they stayed untested), and an SDK upgrade that relocates the payload now fails
+naming the contract instead of yielding empty text that surfaces three layers
+away as "the model returned no JSON". The `adapters.test.ts` fixtures are
+recorded from the live run, and the pre-existing fixtures that encoded the guess
+failed when the decoder landed — which is the point.
+
+`tests/opencode-agent/live-sdk.integration.ts` preserves the check; run it with
+`bun run opencode-agent:test:live`. It is deliberately not a `*.test.ts`: it
+needs the `opencode` CLI on PATH, so it stays out of default discovery and is not
+a gate.
+
+**Two further defects surfaced while verifying:** `createOpencodeServer` passes
+`port` straight to `opencode serve`, and `port: 0` there does **not** mean
+"ephemeral" — the server was observed booting on its 4096 default, so two agent
+processes on one host collide. A port is now reserved from the OS first, and the
+live check boots two servers concurrently to prove it. The SDK's 5-second boot
+timeout was also raised to 60s; a cold runner with a large repo can miss it._
 
 ### S1-6 No skills ever load; the superpowers integration is inert — **verified** — **[FIXED]**
 
@@ -524,7 +551,7 @@ Specific gaps worth closing, beyond the raw percentages:
 - **S6-1 [FIXED]** The `/cancel` test asserted status and git calls but not persistence — which is why S1-1 shipped green. Assert the posted state on every command test.
 - **S6-2** No test drives `handleDeliver` against a git fake that behaves like a _fresh runner_ (branch absent locally). That fake permissiveness is why S1-2 is invisible.
 - **S6-3 [FIXED]** Both are now covered: a spec with `---` round-trips through the block channel, and a forged envelope terminator is asserted inert.
-- **S6-4** No contract or integration test against the real OpenCode SDK (S1-5).
+- **S6-4 [FIXED]** `live-sdk.integration.ts` drives the real SDK; the unit fixtures are recorded from it.
 - **S6-5** **Stryker does not cover this workspace.** `stryker.config.json`'s `mutate` globs list `src/**` and `plugins/**` only, so the repo's strongest quality gate — the per-file mutation ratchet — never sees `opencode-agent/`. Ironic for a pipeline that runs a mutation loop. New files get a "first measurement, seeded" pass rather than an enforced floor, so this will not _block_ the PR; it just leaves the code unmeasured.
 - **S6-6** **Coverage-floor risk on CI.** `scripts/coverage/floor.json` enforces an aggregate 90% lines / 90% functions. Eight of the spike's files sit below that. papai is large enough (~289k lines) that ~1,200 new lines at roughly 75% should not push the aggregate under the floor, but this has not been measured against a full coverage run and should be checked before merge.
 - **S6-7** `opencode-agent:lint` / `:typecheck` / `:format:check` / `:test` are not in `scripts/check.sh`'s full check list (`:296`), unlike `review-loop:*`. They are covered transitively by the root `lint`, `typecheck` and `test`, so this is consistency rather than a hole — but the asymmetry will confuse the next person.
