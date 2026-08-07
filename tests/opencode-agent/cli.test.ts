@@ -8,8 +8,9 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
-import { parseArgs, runCli, UsageError } from '../../opencode-agent/src/index.js'
+import { memoizeAgent, parseArgs, runCli, UsageError } from '../../opencode-agent/src/index.js'
 import { createLogger } from '../../opencode-agent/src/logger.js'
+import type { OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
 
 const workDir = await mkdtemp(path.join(tmpdir(), 'opencode-agent-cli-'))
 
@@ -82,6 +83,61 @@ describe('parseArgs', () => {
     expect(() => parseArgs(['--event-path', 'e.json', '--event-name', 'issues', '--log-level', 'loud'], {})).toThrow(
       '--log-level',
     )
+  })
+})
+
+describe('memoizeAgent', () => {
+  const fakeAgent = (closed: { count: number }): OpenCodeAgent => ({
+    sessionId: 'session-1',
+    prompt: (): Promise<{ text: string; sessionId: string }> => Promise.resolve({ text: '', sessionId: 'session-1' }),
+    close: (): Promise<void> => {
+      closed.count += 1
+      return Promise.resolve()
+    },
+  })
+
+  test('never boots a server just to shut one down', async () => {
+    let booted = 0
+    const handle = memoizeAgent(() => {
+      booted += 1
+      return Promise.resolve(fakeAgent({ count: 0 }))
+    })
+
+    await handle.close()
+
+    expect(booted).toBe(0)
+  })
+
+  test('boots at most once, however many phases ask for it', async () => {
+    let booted = 0
+    const handle = memoizeAgent(() => {
+      booted += 1
+      return Promise.resolve(fakeAgent({ count: 0 }))
+    })
+
+    const [first, second] = await Promise.all([handle.get(), handle.get()])
+
+    expect(booted).toBe(1)
+    expect(first).toBe(second)
+  })
+
+  test('closes a booted session', async () => {
+    // The session owns a spawned `opencode serve` holding a listening socket;
+    // skipping this leaves it running after the job's work is done.
+    const closed = { count: 0 }
+    const handle = memoizeAgent(() => Promise.resolve(fakeAgent(closed)))
+
+    await handle.get()
+    await handle.close()
+
+    expect(closed.count).toBe(1)
+  })
+
+  test('a failed boot does not turn teardown into a second failure', async () => {
+    const handle = memoizeAgent(() => Promise.reject(new Error('server down')))
+
+    await expect(handle.get()).rejects.toThrow('server down')
+    await expect(handle.close()).resolves.toBeUndefined()
   })
 })
 

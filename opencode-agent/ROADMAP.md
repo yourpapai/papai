@@ -304,7 +304,33 @@ prompt noise.
 
 ### S1-7 The OpenCode server is never closed; the job may hang — by inspection — **[FIXED]**
 
-_Fixed: `runCli` closes the agent in a `finally`, and `main` exits explicitly._
+_Fixed and verified — the first S1 item whose original fix was wholly correct.
+`runCli` closes the agent in a `finally`, and `main` exits explicitly.
+
+Three things were checked rather than assumed, because `process.exit()` would
+_mask_ a leak rather than fix one:
+
+1. `close()` really terminates the child. The SDK's `close()` reaches
+   `proc.kill()`, and an observed run went from 3 live `opencode serve`
+   processes to 2 across a close.
+2. The process exits **naturally** in ~3 ms with no `process.exit()` at all, so
+   the `finally` is doing the work and the explicit exit is belt-and-braces
+   rather than a cover-up.
+3. `process.exit()` does not truncate piped stdout under Bun — 2000/2000 lines
+   survived — so the explicit exit costs nothing. A suspected log-truncation
+   problem was measured and found not to exist, so nothing was changed for it.
+
+A false alarm is worth recording: `pgrep -f "opencode serve"` matches the shell
+command doing the counting, which reads as a phantom leak. Matching the binary
+path instead shows zero leaked servers across repeated runs.
+
+The real gap was coverage — removing the `finally` broke nothing. `memoizeAgent`
+now takes its factory as an argument, so the lifecycle is testable without
+booting a server, and four tests pin it: never boot merely to close, boot at most
+once however many phases ask, close a booted session, and never turn a failed
+boot into a second failure during teardown. The live check additionally asserts
+no server is left behind, mutation-checked by removing the `close()` call — it
+reports `2 server(s) leaked` and exits 1._
 
 `src/index.ts:86-97` memoizes the agent but nothing ever calls
 `agent.close()`. `src/opencode-adapter.ts` exposes `close()` on the interface and

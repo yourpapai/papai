@@ -69,6 +69,21 @@ const startStubProvider = (): { port: number; stop: () => void } => {
   }
 }
 
+/**
+ * Counts live `opencode serve` processes.
+ *
+ * Matching the binary path, not a loose "opencode serve" substring: the naive
+ * pattern also matches the shell command doing the counting, which reads as a
+ * phantom leak.
+ */
+const countServers = (): number => {
+  const listing = Bun.spawnSync(['ps', '-eo', 'args='])
+  return new TextDecoder()
+    .decode(listing.stdout)
+    .split('\n')
+    .filter((line) => /opencode(?:\.exe)? serve/u.test(line)).length
+}
+
 const check = (label: string, condition: boolean, detail: string): boolean => {
   process.stdout.write(`${condition ? '✓' : '✗'} ${label}${condition ? '' : ` — ${detail}`}\n`)
   return condition
@@ -79,6 +94,7 @@ const run = async (): Promise<number> => {
   const openai = { apiKey: 'sk-stub', baseUrl: `http://127.0.0.1:${stub.port}`, model: 'gpt-5' }
   const agents: OpenCodeAgent[] = []
   const results: boolean[] = []
+  const serversBefore = countServers()
 
   try {
     // Two at once: the SDK ignores `port: 0` and falls back to its 4096 default,
@@ -107,6 +123,16 @@ const run = async (): Promise<number> => {
     await Promise.all(agents.map((agent) => agent.close()))
     stub.stop()
   }
+
+  // close() sends SIGTERM; give the children a moment to actually go away.
+  await Bun.sleep(2000)
+  results.push(
+    check(
+      'closing the agents leaves no server behind',
+      countServers() <= serversBefore,
+      `${countServers() - serversBefore} server(s) leaked`,
+    ),
+  )
 
   return results.every(Boolean) ? 0 : 1
 }

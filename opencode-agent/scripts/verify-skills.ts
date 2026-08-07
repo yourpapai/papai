@@ -22,32 +22,33 @@ import path from 'node:path'
 import process from 'node:process'
 
 import { loadPhaseSkills, PHASE_SKILLS } from '../src/obra-skills.js'
-import { PHASES } from '../src/types.js'
-import { errorMessage } from '../src/types.js'
+import { mapSeries } from '../src/sequence.js'
+import { errorMessage, PHASES } from '../src/types.js'
+import type { Phase } from '../src/types.js'
 
 const DEFAULT_ROOTS = ['.superpowers/skills', '.claude/skills']
 
-const run = async (repoRoot: string, roots: readonly string[]): Promise<number> => {
-  let failed = 0
+const verifyPhase = async (phase: Phase, repoRoot: string, roots: readonly string[]): Promise<boolean> => {
+  const wanted = [...PHASE_SKILLS[phase].required, ...PHASE_SKILLS[phase].optional]
+  if (wanted.length === 0) return true
 
-  for (const phase of PHASES) {
-    const wanted = [...PHASE_SKILLS[phase].required, ...PHASE_SKILLS[phase].optional]
-    if (wanted.length === 0) continue
+  try {
+    const skills = await loadPhaseSkills(phase, { repoRoot, roots })
+    const found = new Set(skills.map((skill) => skill.name))
+    const optionalMissing = PHASE_SKILLS[phase].optional.filter((name) => !found.has(name))
 
-    try {
-      const skills = await loadPhaseSkills(phase, { repoRoot, roots })
-      const found = new Set(skills.map((skill) => skill.name))
-      const optionalMissing = PHASE_SKILLS[phase].optional.filter((name) => !found.has(name))
-
-      const note = optionalMissing.length === 0 ? '' : ` (optional missing: ${optionalMissing.join(', ')})`
-      process.stdout.write(`✓ ${phase}: ${skills.length}/${wanted.length} skills${note}\n`)
-    } catch (error) {
-      failed += 1
-      process.stdout.write(`::error::${phase}: ${errorMessage(error)}\n`)
-    }
+    const note = optionalMissing.length === 0 ? '' : ` (optional missing: ${optionalMissing.join(', ')})`
+    process.stdout.write(`✓ ${phase}: ${skills.length}/${wanted.length} skills${note}\n`)
+    return true
+  } catch (error) {
+    process.stdout.write(`::error::${phase}: ${errorMessage(error)}\n`)
+    return false
   }
+}
 
-  return failed === 0 ? 0 : 1
+const run = async (repoRoot: string, roots: readonly string[]): Promise<number> => {
+  const results = await mapSeries(PHASES, (phase) => verifyPhase(phase, repoRoot, roots))
+  return results.every(Boolean) ? 0 : 1
 }
 
 const repoRoot = path.resolve(process.argv[2] ?? process.env['GITHUB_WORKSPACE'] ?? process.cwd())

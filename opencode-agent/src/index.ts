@@ -84,22 +84,26 @@ export const parseArgs = (argv: readonly string[], env: NodeJS.ProcessEnv): CliA
   }
 }
 
-/** Boots the OpenCode session at most once per job, and exposes it for closing. */
-interface AgentHandle {
+export interface AgentHandle {
   get: () => Promise<OpenCodeAgent>
   close: () => Promise<void>
 }
 
-const memoizeAgent = (config: PipelineConfig, issueNumber: number): AgentHandle => {
+/**
+ * Boots the OpenCode session at most once per job, and exposes it for closing.
+ *
+ * Closing matters more than it looks: the session owns a spawned
+ * `opencode serve` holding a listening socket, so a run that forgets to close
+ * leaves the process alive after its work is done. Takes the factory as an
+ * argument so this — the part with the actual logic — is testable without
+ * booting a real server.
+ */
+export const memoizeAgent = (create: () => Promise<OpenCodeAgent>): AgentHandle => {
   let pending: Promise<OpenCodeAgent> | null = null
 
   return {
     get: () => {
-      pending ??= createOpenCodeAgent({
-        directory: config.repoRoot,
-        openai: config.openai,
-        sessionTitle: `issue-${issueNumber}`,
-      })
+      pending ??= create()
       return pending
     },
     // Never boots a server just to shut one down, and never turns a teardown
@@ -147,6 +151,22 @@ const makeSkillLoader = (config: PipelineConfig, log: Logger): ((phase: Phase) =
   }
 }
 
+const assembleDeps = (config: PipelineConfig, run: CommandRunner, log: Logger, agent: AgentHandle): PhaseDeps => ({
+  github: createOctokitApi({ token: config.githubToken, owner: config.owner, repo: config.repo }),
+  git: createGit({
+    run,
+    cwd: config.repoRoot,
+    authorName: config.commitAuthorName,
+    authorEmail: config.commitAuthorEmail,
+  }),
+  runCheck: makeCheckRunner(run, config),
+  runReview: makeReviewRunner(run, config, log),
+  agent: agent.get,
+  skills: makeSkillLoader(config, log),
+  config,
+  log,
+})
+
 export interface MainOptions {
   argv: readonly string[]
   env: NodeJS.ProcessEnv
@@ -173,22 +193,14 @@ export const runCli = async (options: MainOptions): Promise<RunResult> => {
   }
 
   const run = options.run ?? runCommand
-  const agent = memoizeAgent(config, event.issueNumber)
-  const deps: PhaseDeps = {
-    github: createOctokitApi({ token: config.githubToken, owner: config.owner, repo: config.repo }),
-    git: createGit({
-      run,
-      cwd: config.repoRoot,
-      authorName: config.commitAuthorName,
-      authorEmail: config.commitAuthorEmail,
+  const agent = memoizeAgent(() =>
+    createOpenCodeAgent({
+      directory: config.repoRoot,
+      openai: config.openai,
+      sessionTitle: `issue-${event.issueNumber}`,
     }),
-    runCheck: makeCheckRunner(run, config),
-    runReview: makeReviewRunner(run, config, log),
-    agent: agent.get,
-    skills: makeSkillLoader(config, log),
-    config,
-    log,
-  }
+  )
+  const deps = assembleDeps(config, run, log, agent)
 
   log.info(
     { event: args.eventName, kind: event.kind, issue: event.issueNumber, model: config.openai.model },
