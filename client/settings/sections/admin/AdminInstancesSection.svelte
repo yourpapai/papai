@@ -79,15 +79,6 @@
     validateInstanceCreate({ id: taskId, type: taskType, existingIds: tasks.map((t) => t.id) }),
   )
 
-  /**
-   * Errors surface once the operator has touched the field, so a pristine form is never
-   * pre-reddened — except a duplicate id, which is worth saying before they press Create.
-   *
-   * Only the id field is gated this way. The type select auto-picks its first option, so a
-   * type error means the option list is empty and there is nothing the operator can touch;
-   * gating it on touch would make it unreachable. Its Field renders the error directly.
-   */
-
   const setErr = (err: unknown): void => {
     error = err instanceof Error ? err.message : String(err)
   }
@@ -391,6 +382,8 @@
             testid="platform-id" />
         {/snippet}
       </Field>
+      <!-- Not touch-gated like the id field above: the select auto-picks its first option, so
+           a type error means the option list is empty and there's nothing to touch. -->
       <Field label="Type" required error={platformErrors.type}>
         {#snippet children()}
           <Select
@@ -472,6 +465,7 @@
             testid="task-id" />
         {/snippet}
       </Field>
+      <!-- Not touch-gated; see the platform Type field above for why. -->
       <Field label="Type" required error={taskErrors.type}>
         {#snippet children()}
           <Select
