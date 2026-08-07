@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { findArtifact, REPORT_MARKER } from '../artifacts.js'
+import { react } from '../feedback.js'
 import { branchNameFor } from '../git.js'
 import type { PullRequestPresentation, PullRequestRef, PullRequestStatus } from '../github.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
@@ -39,6 +40,15 @@ export const handleDeliver: PhaseHandler = async (input): Promise<PhaseOutcome> 
       : await refresh(input, existing, presentation)
 
   deps.log.info({ issue: state.issueId, branch, pr: pr.number, reused: existing !== null }, 'Pull request ready')
+
+  // 🚀 here rather than at the end of the run, because here is the only place
+  // that knows the difference between a delivery and a stand-down: the settled
+  // branch above reports the same `PR_OPENED` signal and reaches the same
+  // `COMPLETE`, having opened and refreshed nothing. Both live paths below it
+  // have produced a pull request, and the cascade goes straight to `COMPLETE`
+  // from here, so "a run that finished having delivered one" is exactly this
+  // line. Best-effort like every reaction — `react` cannot throw.
+  await react(deps, input.trigger, 'rocket')
 
   return {
     signal: 'PR_OPENED',

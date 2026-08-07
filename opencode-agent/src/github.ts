@@ -56,6 +56,31 @@ export interface PullRequestStatus extends PullRequestRef {
 }
 
 /**
+ * The reactions this pipeline places, as a closed union rather than free text.
+ *
+ * That closure is what exempts it from `clean`. Outbound redaction exists
+ * because a comment body is assembled from check output, git stderr, review
+ * summaries and model prose, and any of those can carry a credential; a value
+ * drawn from four literals the pipeline picks itself has nowhere for one to
+ * hide. It is the same exemption the `head`/`base` branch names take in
+ * {@link PullRequestInput} — computed here, so passed through untouched — and it
+ * is stated rather than implied, because "a new `GitHubApi` method that sends
+ * free text must redact it" is a rule a silent exception erodes.
+ */
+export type ReactionContent = 'eyes' | '+1' | 'confused' | 'rocket'
+
+/**
+ * What a reaction lands on.
+ *
+ * One discriminated shape rather than an `addIssueReaction` and an
+ * `addCommentReaction`: the two REST endpoints differ only in the path segment
+ * they address — `issues/{n}/reactions` against `issues/comments/{id}/reactions`
+ * — and the callers all hold one id or the other without caring which endpoint
+ * that makes it. Two methods would put that mapping in every call site.
+ */
+export type ReactionTarget = { kind: 'issue'; number: number } | { kind: 'comment'; id: number }
+
+/**
  * The narrow GitHub surface the pipeline needs. Everything downstream depends on
  * this interface rather than Octokit, so phase handlers are testable without an
  * HTTP stub layer.
@@ -70,6 +95,15 @@ export interface GitHubApi {
   findPullRequest(head: string): Promise<PullRequestStatus | null>
   createPullRequest(input: PullRequestInput): Promise<PullRequestRef>
   updatePullRequest(number: number, patch: PullRequestPresentation): Promise<void>
+  /**
+   * Places one reaction. Rejects like any other call — `feedback.ts` owns the
+   * rule that a rejection here can never fail a run, because that is a decision
+   * about the pipeline, not about the transport.
+   *
+   * Idempotent server-side: a repeated reaction returns the existing one, so no
+   * caller has to record what it has already placed.
+   */
+  addReaction(target: ReactionTarget, content: ReactionContent): Promise<void>
 }
 
 export interface OctokitApiOptions {
@@ -155,6 +189,20 @@ const findPullRequest = async (octokit: Octokit, repo: Repo, head: string): Prom
 
 const closedOrOpen = (state: string): PullRequestState => (state === 'open' ? 'open' : 'closed')
 
+/** Routes to whichever of the two reaction endpoints the target names. */
+const addReaction = async (
+  octokit: Octokit,
+  repo: Repo,
+  target: ReactionTarget,
+  content: ReactionContent,
+): Promise<void> => {
+  if (target.kind === 'comment') {
+    await octokit.rest.reactions.createForIssueComment({ ...repo, comment_id: target.id, content })
+    return
+  }
+  await octokit.rest.reactions.createForIssue({ ...repo, issue_number: target.number, content })
+}
+
 /** Builds a {@link GitHubApi} backed by `@octokit/rest`. */
 export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
   const repo: Repo = { owner: options.owner, repo: options.repo }
@@ -166,6 +214,9 @@ export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
   return {
     listIssueComments: (issueNumber) => listIssueComments(octokit, repo, issueNumber),
     findPullRequest: (head) => findPullRequest(octokit, repo, head),
+    // No `clean`: the content is a member of a four-value union this pipeline
+    // picks, exactly like the `head`/`base` branch names above.
+    addReaction: (target, content) => addReaction(octokit, repo, target, content),
 
     createComment: async (issueNumber, body) => {
       const { data } = await octokit.rest.issues.createComment({

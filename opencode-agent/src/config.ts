@@ -83,6 +83,14 @@ export interface PipelineConfig {
    * own host, and a header scoped to the wrong one is silently not sent.
    */
   gitRemoteBase: string
+  /**
+   * The Actions run executing this pipeline, or `null` when there is not one.
+   *
+   * Nullable rather than required because a local `--event-path` run is an
+   * ordinary way to use this CLI, not a misconfiguration — so every renderer
+   * that takes this has to be able to say nothing rather than link nowhere.
+   */
+  runUrl: string | null
   skillRoots: readonly string[]
 }
 
@@ -197,9 +205,36 @@ export const resolveBaseBranch = async (env: Env, sources: BaseBranchSources): P
   )
 }
 
+/**
+ * Builds the URL of the run this process is executing in.
+ *
+ * No workflow change is needed for any of it: GitHub sets `GITHUB_RUN_ID`,
+ * `GITHUB_RUN_ATTEMPT`, `GITHUB_SERVER_URL` and `GITHUB_REPOSITORY` in the
+ * environment of every step, and `scrubSecrets` matches by *value*, so none of
+ * them is stripped on the way past. `serverBase` is the same value
+ * `gitRemoteBase` carries, for the same reason it is configurable at all — an
+ * Enterprise Server install answers on its own host.
+ *
+ * The attempt segment is appended only above 1. GitHub's own run link omits it
+ * on a first attempt, and a re-run's logs live under the attempt path, so a job
+ * on attempt 3 linking `/attempts/1` would point a maintainer at the logs of the
+ * run it superseded. An unparseable attempt is treated as a first one rather
+ * than rejected: this is a link, and a config error over decoration would fail
+ * the run the link exists to explain.
+ */
+const buildRunUrl = (env: Env, serverBase: string, owner: string, repo: string): string | null => {
+  const runId = optionalOrNull(env, 'GITHUB_RUN_ID')
+  if (runId === null) return null
+
+  const attempt = Number.parseInt(optional(env, 'GITHUB_RUN_ATTEMPT', '1'), 10)
+  const suffix = Number.isSafeInteger(attempt) && attempt > 1 ? `/attempts/${attempt}` : ''
+  return `${serverBase}${owner}/${repo}/actions/runs/${runId}${suffix}`
+}
+
 /** Builds the pipeline config from the runner environment. */
 export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
   const { owner, repo } = parseRepository(required(env, 'GITHUB_REPOSITORY'))
+  const gitRemoteBase = optional(env, 'GITHUB_SERVER_URL', 'https://github.com').replace(/\/*$/u, '/')
 
   return {
     repoRoot,
@@ -209,7 +244,8 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     selfLoginOverride: optionalOrNull(env, 'AGENT_SELF_LOGIN'),
     selfWorkflowName: optional(env, 'AGENT_WORKFLOW_NAME', 'OpenCode Issue Agent'),
     openai: loadOpenAiSettings(env),
-    gitRemoteBase: optional(env, 'GITHUB_SERVER_URL', 'https://github.com').replace(/\/*$/u, '/'),
+    gitRemoteBase,
+    runUrl: buildRunUrl(env, gitRemoteBase, owner, repo),
     commitAuthorName: optional(env, 'AGENT_COMMIT_NAME', 'opencode-agent[bot]'),
     commitAuthorEmail: optional(env, 'AGENT_COMMIT_EMAIL', 'opencode-agent@users.noreply.github.com'),
     checkCommand: optional(env, 'AGENT_CHECK_COMMAND', 'bun run lint && bun run typecheck && bun test'),

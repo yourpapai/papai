@@ -32,6 +32,7 @@ const issueEvent = (overrides: Partial<IssueTriggerEvent> = {}): IssueTriggerEve
   issueBody: 'Please add retries.',
   isPullRequest: false,
   commentBody: null,
+  commentId: null,
   repositoryOwner: 'acme',
   defaultBranch: 'main',
   ...overrides,
@@ -66,6 +67,23 @@ describe('parseTriggerEvent — issue events', () => {
     const parsed = parseTriggerEvent('issue_comment', payload)
 
     expect(parsed).toMatchObject({ kind: 'issue', authorAssociation: 'NONE', commentBody: '/approve' })
+  })
+
+  test('carries the id of the comment that triggered the run', () => {
+    // The schema always parsed it; the parser threw it away, so the pipeline
+    // could not address the one place the person waiting is looking.
+    const payload = issuePayload({
+      action: 'created',
+      comment: { id: 8811, body: 'looks right', author_association: 'OWNER' },
+    })
+
+    expect(parseTriggerEvent('issue_comment', payload)).toMatchObject({ commentId: 8811 })
+  })
+
+  test('reports no comment id for an issues.opened event', () => {
+    // There is no comment to address, and a fabricated id would be pointed at
+    // somebody else's. Feedback falls back to the issue itself.
+    expect(parseTriggerEvent('issues', issuePayload())).toMatchObject({ commentId: null })
   })
 
   test('flags a comment on a pull request', () => {

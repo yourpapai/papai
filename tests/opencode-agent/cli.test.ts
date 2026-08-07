@@ -167,6 +167,15 @@ describe('memoizeAgent', () => {
 
 interface PostRecorder {
   posted: string[]
+  /**
+   * Reaction writes, kept apart from `posted`.
+   *
+   * Not tidiness: a reaction is not a comment, and folding the two together
+   * would let a run that says nothing on the issue but reacts to it read as a
+   * run that reported — which is the exact distinction `RunResult.reported`
+   * exists to make.
+   */
+  reactions: { url: string; body: string }[]
   fetch: FetchLike
 }
 
@@ -176,23 +185,41 @@ interface PostRecorder {
  */
 const recordPosts = (thread: unknown): PostRecorder => {
   const posted: string[] = []
+  const reactions: { url: string; body: string }[] = []
   const json = (payload: unknown, status: number): Response =>
     new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json' } })
 
-  const write = (body: string): Response => {
+  const write = (url: string, body: string): Response => {
+    if (url.includes('/reactions')) {
+      reactions.push({ url, body })
+      return json({ id: 5, content: 'eyes' }, 201)
+    }
     posted.push(body)
     return json({ id: 9, html_url: 'https://example.test/c/9' }, 201)
   }
   const read = (): Response => json(thread, 200)
-  const byMethod: Record<string, (body: string) => Response> = { POST: write, PATCH: write }
+  const byMethod: Record<string, (url: string, body: string) => Response> = { POST: write, PATCH: write }
   // Octokit always sends a string body; the wider `RequestInit` type does not
   // know that, and stringifying a non-string would silently record "[object Object]".
   const bodyOf = (body: BodyInit | null | undefined): string => (typeof body === 'string' ? body : '')
 
   return {
     posted,
-    fetch: (_url, init) => Promise.resolve((byMethod[init?.method ?? 'GET'] ?? read)(bodyOf(init?.body))),
+    reactions,
+    fetch: (url, init) => Promise.resolve((byMethod[init?.method ?? 'GET'] ?? read)(url, bodyOf(init?.body))),
   }
+}
+
+/**
+ * A transport that turns down every reaction and passes everything else
+ * through — a token without `issues: write`, seen from the wire. Out here
+ * because a test body may carry no conditional.
+ */
+const refusingReactions = (inner: FetchLike): FetchLike => {
+  const refuse = (): Promise<Response> =>
+    Promise.resolve(new Response('{"message":"Resource not accessible by integration"}', { status: 403 }))
+
+  return (url, init) => (url.includes('/reactions') ? refuse() : inner(url, init))
 }
 
 /**
@@ -306,6 +333,74 @@ describe('runCli', () => {
     // the hidden block republishes on every comment.
     expect(github.posted[0]).toContain('[redacted]')
     expect(github.posted[0]).not.toContain(token)
+  })
+
+  test('a real run acknowledges the comment that triggered it', async () => {
+    // End to end through `contain`, `assembleDeps` and the real Octokit
+    // adapter. The recorded lesson of this workspace (ROADMAP S2-6, S3-3, S3-9)
+    // is that a correct adapter which is never wired in passes every phase
+    // test, so the wiring is what this exercises — not the module.
+    // `/cancel` reaches a finished run without booting a model.
+    const prior = [
+      {
+        id: 1,
+        user: { login: 'agent-bot' },
+        body: `parked\n\n<!-- AGENT_STATE: ${JSON.stringify({ v: 2, phase: 'DESIGN_SPEC', issueId: 42 })} -->`,
+      },
+    ]
+    const eventPath = await writeEvent('reaction', {
+      action: 'created',
+      sender: { login: 'maintainer', type: 'User' },
+      issue: { number: 42, title: 't', body: 'b', author_association: 'OWNER' },
+      comment: { id: 8811, body: '/cancel', author_association: 'OWNER' },
+      repository: { owner: { login: 'acme' }, name: 'widgets', default_branch: 'master' },
+    })
+
+    const github = recordPosts(prior)
+    const result = await runCli({
+      argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
+      env,
+      logger: silentLogger,
+      fetch: github.fetch,
+    })
+
+    expect(result.status).toBe('completed')
+    // On the comment the maintainer typed, which is the whole point — the id
+    // was parsed and thrown away until this stage carried it through.
+    expect(github.reactions).toHaveLength(1)
+    expect(github.reactions[0]?.url).toContain('/repos/acme/widgets/issues/comments/8811/reactions')
+    expect(github.reactions[0]?.body).toContain('"content":"eyes"')
+  })
+
+  test('a reaction GitHub refuses does not fail the run', async () => {
+    // A token without `issues: write`, a fork run, an org policy. The rule is
+    // that none of them may change what the run does or what it posts, and this
+    // is the only place the real adapter's rejection is on the path.
+    const prior = [
+      {
+        id: 1,
+        user: { login: 'agent-bot' },
+        body: `parked\n\n<!-- AGENT_STATE: ${JSON.stringify({ v: 2, phase: 'DESIGN_SPEC', issueId: 42 })} -->`,
+      },
+    ]
+    const eventPath = await writeEvent('reaction-403', {
+      action: 'created',
+      sender: { login: 'maintainer', type: 'User' },
+      issue: { number: 42, title: 't', body: 'b', author_association: 'OWNER' },
+      comment: { id: 8811, body: '/cancel', author_association: 'OWNER' },
+      repository: { owner: { login: 'acme' }, name: 'widgets', default_branch: 'master' },
+    })
+
+    const github = recordPosts(prior)
+    const result = await runCli({
+      argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
+      env,
+      logger: silentLogger,
+      fetch: refusingReactions(github.fetch),
+    })
+
+    expect(result.status).toBe('completed')
+    expect(github.posted).toHaveLength(1)
   })
 
   test('tells the workflow it has reported, when it posted the failure itself', async () => {

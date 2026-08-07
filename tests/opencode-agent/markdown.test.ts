@@ -95,7 +95,7 @@ describe('fence', () => {
 describe('renderFailure', () => {
   const failed = transition(initialState(1), 'FAILED', { lastError: 'x' })
 
-  const render = (message: string): string => renderFailure('INIT_OR_CLARIFY', message, failed, 3)
+  const render = (message: string): string => renderFailure('INIT_OR_CLARIFY', message, failed, 3, null)
 
   test('keeps the recovery instruction readable when the error carries a fence', () => {
     // This is the line the maintainer has to act on; a broken fence buries it

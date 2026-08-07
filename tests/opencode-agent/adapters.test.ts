@@ -1185,6 +1185,45 @@ describe('config', () => {
     expect(loadConfig({ ...baseEnv, AGENT_MAX_ATTEMPTS: raw }, '/repo').maxAttempts).toBe(3)
   })
 
+  test('builds the URL of the run doing the work', () => {
+    // Every one of these is set by GitHub in the environment of every step, and
+    // `scrubSecrets` matches by value, so none of them is stripped on the way
+    // past — which is why the run link needs no workflow change at all.
+    const config = loadConfig({ ...baseEnv, GITHUB_RUN_ID: '1482' }, '/repo')
+
+    expect(config.runUrl).toBe('https://github.com/acme/widgets/actions/runs/1482')
+  })
+
+  test('points a re-run at its own attempt', () => {
+    // A re-run's logs live under the attempt path. Linking the run without it
+    // from a job on attempt 3 points a maintainer at the run it superseded.
+    const config = loadConfig({ ...baseEnv, GITHUB_RUN_ID: '1482', GITHUB_RUN_ATTEMPT: '3' }, '/repo')
+
+    expect(config.runUrl).toBe('https://github.com/acme/widgets/actions/runs/1482/attempts/3')
+  })
+
+  test.each(['1', '', 'lots', undefined])('leaves the attempt off a first attempt (%p)', (attempt) => {
+    // GitHub's own run link omits it, and an unparseable value is a link
+    // problem, not a reason to refuse to start.
+    const config = loadConfig({ ...baseEnv, GITHUB_RUN_ID: '1482', GITHUB_RUN_ATTEMPT: attempt }, '/repo')
+
+    expect(config.runUrl).toBe('https://github.com/acme/widgets/actions/runs/1482')
+  })
+
+  test('has no run URL when there is no run', () => {
+    // A local `--event-path` run is an ordinary way to drive this CLI, not a
+    // misconfiguration, so this is `null` rather than a throw or a broken link.
+    expect(loadConfig(baseEnv, '/repo').runUrl).toBeNull()
+  })
+
+  test('links the run on the host the rest of the pipeline talks to', () => {
+    // Same reason `gitRemoteBase` is configurable: an Enterprise Server install
+    // answers on its own host, and github.com has none of its runs.
+    const enterprise = { ...baseEnv, GITHUB_SERVER_URL: 'https://git.acme.internal', GITHUB_RUN_ID: '7' }
+
+    expect(loadConfig(enterprise, '/repo').runUrl).toBe('https://git.acme.internal/acme/widgets/actions/runs/7')
+  })
+
   test('parseChecks falls back to the defaults', () => {
     expect(parseChecks(undefined).map((check) => check.name)).toEqual(['lint', 'typecheck', 'test'])
   })
@@ -1395,6 +1434,46 @@ describe('createOctokitApi', () => {
     expect(request?.method).toBe('PATCH')
     expect(request?.url).toContain('/repos/acme/widgets/pulls/3')
     expect(request?.body).toEqual({ title: 'Renamed (#42)', body: 'Closes #42' })
+  })
+
+  test('reacts on the comment that raised the run', async () => {
+    // The two reaction endpoints differ only in the path they address, and the
+    // adapter is the only layer that knows which is which: a phase test asserts
+    // the target the pipeline chose, never the URL that carried it.
+    const captured: CapturedRequest[] = []
+
+    await recordingApi(captured).addReaction({ kind: 'comment', id: 8811 }, 'eyes')
+
+    const [request] = captured
+    expect(request?.method).toBe('POST')
+    expect(request?.url).toContain('/repos/acme/widgets/issues/comments/8811/reactions')
+    expect(request?.body).toEqual({ content: 'eyes' })
+  })
+
+  test('reacts on the issue itself when no comment raised the run', async () => {
+    const captured: CapturedRequest[] = []
+
+    await recordingApi(captured).addReaction({ kind: 'issue', number: 42 }, 'confused')
+
+    const [request] = captured
+    expect(request?.method).toBe('POST')
+    expect(request?.url).toContain('/repos/acme/widgets/issues/42/reactions')
+    // Not `/issues/comments/42/reactions`: the same number means two different
+    // things to the two endpoints, and reacting to comment 42 would land on a
+    // stranger's comment in some other issue entirely.
+    expect(request?.url).not.toContain('/issues/comments/')
+    expect(request?.body).toEqual({ content: 'confused' })
+  })
+
+  test('leaves the reaction content alone, as it does the branch names', async () => {
+    // A four-value union the pipeline picks itself has nowhere for a credential
+    // to hide, so it takes the same exemption from `clean` that `head`/`base` do
+    // — and a redactor that rewrote it would send GitHub a content it rejects.
+    const captured: CapturedRequest[] = []
+
+    await recordingApi(captured, PR_JSON, ['rocket']).addReaction({ kind: 'issue', number: 42 }, 'rocket')
+
+    expect(captured[0]?.body).toEqual({ content: 'rocket' })
   })
 
   test('asks for pull requests in every state, so a merged one is not invisible', async () => {

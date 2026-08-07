@@ -13,10 +13,11 @@ findings: `ROADMAP.md`.
 - One CI job = one call to `runCli`. State lives in hidden blocks on the issue,
   not on disk: `AGENT_STATE` for the machine, `AGENT_SPEC` / `AGENT_PLAN` /
   `AGENT_REPORT` for the artefacts.
-- `src/triggers.ts` decides _whether and where_ an event moves the state, with
-  the red-CI half in `src/ci-trigger.ts` and the shared outcome shape in
-  `src/trigger-outcome.ts`; `src/orchestrator.ts` drives the phase cascade once
-  that decision is made;
+- `src/triggers.ts` decides _whether and where_ an event moves the state — it
+  keeps the slash commands and the dispatch — with the red-CI half in
+  `src/ci-trigger.ts`, the plain-comment half in `src/comment-intent.ts`, and the
+  shared outcome shape plus `moveOrSkip` in `src/trigger-outcome.ts`;
+  `src/orchestrator.ts` drives the phase cascade once that decision is made;
   `src/token-budget.ts` decides whether the cascade may afford another step.
   Phase handlers in `src/phases/` return a `TransitionSignal`, a comment body and
   optional artefact blocks, and never write state or decide the next phase

@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { parseSlashCommand } from './commands.js'
+import { react } from './feedback.js'
 import { evaluateGuardrails } from './guardrails.js'
 import type { TriggerEvent } from './guardrails.js'
 import type { IssueContext, MachineInput, PhaseDeps, PhaseHandler, PhaseInput, PhaseOutcome } from './phase-context.js'
@@ -58,10 +59,26 @@ export const runPipeline = async (options: RunOptions): Promise<RunResult> => {
   })
   if (!guard.allowed) {
     deps.log.warn({ code: guard.code, event: event.eventName }, 'Trigger rejected by guardrails')
-    // `reported: false` and it has to stay that way: a rejection here is
-    // deliberately silent, so the issue carries nothing about this run.
+    // The one denial with a person behind it. Every other code here is machine
+    // noise — a bot, the agent's own comment, a pull request, an event shape
+    // this pipeline does not handle — and reacting to those would be talking to
+    // nobody. `NOT_MAINTAINER` is a write triggered by an account without write
+    // access, which is the judgement call: it is bounded to one reaction on one
+    // comment with no content and no notification storm, and the alternative is
+    // that an outside contributor's comment vanishes into a log they cannot
+    // read.
+    if (guard.code === 'NOT_MAINTAINER') await react(deps, event, 'confused')
+    // `reported: false` and it has to stay that way: a reaction is not an
+    // account of what happened, so the issue still carries nothing about this
+    // run and the workflow's fallback comment must stay in scope.
     return { status: 'skipped', reason: guard.reason, state: null, reported: false }
   }
+
+  // Every accepted trigger, before anything else this run does — a reaction that
+  // arrives after the work is worth much less than one that arrives before it,
+  // and this is the only acknowledgement any trigger gets. CI events fall
+  // through it silently; `reactionTarget` decides that, not this call site.
+  await react(deps, event, 'eyes')
 
   const thread = await deps.github.listIssueComments(event.issueNumber)
   const restored = findLatestState(thread, await deps.selfLogin(), event.issueNumber) ?? initialState(event.issueNumber)
@@ -212,7 +229,8 @@ const failRun = async (input: MachineInput, error: unknown): Promise<RunResult> 
   deps.log.error({ issue: state.issueId, phase: state.phase, error: message }, 'Phase handler failed')
 
   const failed = transition(state, 'FAILED', await recordSpend(input, { lastError: message }))
-  await postAndAppend(thread, input, renderFailure(state.phase, message, failed, deps.config.maxAttempts), failed)
+  const report = renderFailure(state.phase, message, failed, deps.config.maxAttempts, deps.config.runUrl)
+  await postAndAppend(thread, input, report, failed)
 
   // The comment above is what the workflow's fallback step would otherwise
   // duplicate, contradicting it: this run has moved the issue to `FAILED`, so

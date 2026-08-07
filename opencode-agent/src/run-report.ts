@@ -131,12 +131,34 @@ export const renderCiExhausted = (reason: string, prUrl: string | null): string 
     'Its checks are red and I will not attempt another fix — take a look, or push a fix yourself.',
   ].join('\n')
 
-export const renderFailure = (phase: Phase, message: string, next: AgentState, maxAttempts: number): string =>
+/**
+ * A link to the job, for the comments a maintainer reads when something has
+ * gone wrong.
+ *
+ * Rendered as nothing at all when there is no run: a local `--event-path` run is
+ * an ordinary way to drive this CLI, and an empty "Job:" label is worse than a
+ * missing line. The URL arrives as an argument rather than being read from
+ * config here, so a renderer stays a function of what it is handed.
+ */
+const jobLink = (runUrl: string | null, label: string): readonly string[] =>
+  runUrl === null ? [] : ['', `${label}: ${runUrl}`]
+
+export const renderFailure = (
+  phase: Phase,
+  message: string,
+  next: AgentState,
+  maxAttempts: number,
+  runUrl: string | null,
+): string =>
   [
     `### Run failed in ${phase}`,
     '',
     // The message carries raw model output, which usually contains fences.
     fence(message),
+    // Until now the only lead a maintainer had from this comment was `/retry`.
+    // The job that produced the message above has the rest of the story in it,
+    // and nothing on the issue said where to find it.
+    ...jobLink(runUrl, 'The job that failed'),
     '',
     `Attempt ${next.attempts} of ${maxAttempts}. Reply **\`/retry\`** to resume from \`${phase}\`, ` +
       'or **`/cancel`** to stop.',
