@@ -67,6 +67,16 @@ test('AdminUsersSection — search with no matches', async ({ sharedPage }) => {
 
 test('AdminUsersSection — add submitted with blank id', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'settings-sections-admin-adminuserssection--populated')
-  await sharedPage.getByTestId('user-add').click()
+  // The Add button is now disabled while the User ID field is blank (Task 8), so it
+  // can no longer be clicked to trigger validation — touch the field instead by typing
+  // and clearing it, which reveals the same inline error the button-guard prevents.
+  const input = sharedPage.getByTestId('user-add-input')
+  await input.fill('x')
+  await input.fill('')
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('AdminUsersSection — open-access read failed', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-admin-adminuserssection--open-access-error')
   await expect(sharedPage).toHaveScreenshot()
 })
