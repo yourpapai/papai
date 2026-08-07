@@ -512,8 +512,44 @@ describe('config', () => {
     expect(parseRepository('acme/widgets')).toEqual({ owner: 'acme', repo: 'widgets' })
   })
 
-  test.each(['acme', '/widgets', 'acme/', 'a/b/c'])('parseRepository rejects %p', (raw) => {
+  test.each(['acme', '/widgets', 'acme/', 'a/b/c', '', 'acme//widgets'])(
+    'parseRepository rejects the wrong number of parts in %p',
+    (raw) => {
+      expect(() => parseRepository(raw)).toThrow('GITHUB_REPOSITORY')
+    },
+  )
+
+  // Counting separators is a proxy for well-formed and admits all of these,
+  // each of which parses here and then 404s from the REST API mid-run.
+  test.each([
+    'acme / widgets',
+    'acme/wid gets',
+    ' acme/widgets',
+    'acme/widgets\n',
+    '-acme/widgets',
+    'acme-/widgets',
+    'acme/widgets?x=1',
+    'acme/wi%2fdgets',
+    'acme/..',
+    'acme/.',
+    'a'.repeat(40) + '/widgets',
+  ])('parseRepository rejects the malformed name %p', (raw) => {
     expect(() => parseRepository(raw)).toThrow('GITHUB_REPOSITORY')
+  })
+
+  test.each([
+    ['acme/widgets', { owner: 'acme', repo: 'widgets' }],
+    ['a/b', { owner: 'a', repo: 'b' }],
+    ['Acme-Corp/widgets.js', { owner: 'Acme-Corp', repo: 'widgets.js' }],
+    ['a-b-c/d_e.f-g', { owner: 'a-b-c', repo: 'd_e.f-g' }],
+  ])('parseRepository still accepts the real name %p', (raw, expected) => {
+    expect(parseRepository(raw)).toEqual(expected)
+  })
+
+  test('names the offending value with its invisible characters intact', () => {
+    // A trailing newline from a shell heredoc is the likeliest cause, and the
+    // old message rendered it as a line break in the middle of the error.
+    expect(() => parseRepository('acme/widgets\n')).toThrow('"acme/widgets\\n"')
   })
 
   test('defaults selfLogin to the repository owner', () => {

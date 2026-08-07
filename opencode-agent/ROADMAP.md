@@ -593,10 +593,36 @@ what became of the pull request, so a red check on an already-merged
 nobody will look. `state.prNumber` is persisted, so the check is available; the
 cost is one API call per CI event and a transition for "nothing to fix".
 
-### S2-8 `parseRepository` silently truncates — by inspection — **[FIXED]**
+### S2-8 `parseRepository` silently truncates — verified — **[FIXED]**
 
-`src/config.ts:77` destructures `raw.split('/')` into two variables, so
-`a/b/c` parses as owner `a`, repo `b`, discarding `c` without complaint.
+_The first fix closed the instance. `a/b/c` was rejected by a `parts.length !== 2`
+guard — but counting separators is a **proxy** for well-formed, and the proxy
+still admitted plenty. Verified by feeding the parser a spread of values: it
+accepted `acme / widgets` (owner `"acme "`, with the space), `acme/wid gets`,
+` acme/widgets`, `acme/widgets\n`, `-acme/widgets`, `acme/widgets?x=1`,
+`acme/wi%2fdgets` and `üñí/repo`. Every one of those parses here and then
+surfaces far away as an opaque 404 from the REST API mid-run — precisely the
+failure mode `OPENAI_MODEL` is required to avoid._
+
+_Fixed by matching both halves against GitHub's own naming rules
+(`OWNER_PATTERN` / `REPO_PATTERN`, with their 39- and 100-character caps) instead
+of counting `/`. `.` and `..` are rejected separately: `REPO_PATTERN` admits them
+and Octokit's URL templating does not encode dots, so they would reach the API as
+live path traversal._
+
+_The error now quotes the raw value with `JSON.stringify`. A trailing newline
+from a shell heredoc is the likeliest cause of this failure, and the old message
+rendered it as an actual line break in the middle of the error text._
+
+_Checked for the same bug **shape** elsewhere before assuming it was local: the
+only other separator split is `parseModelRef`, which uses `indexOf` and keeps
+everything after the first `/` on purpose, because model ids legitimately contain
+slashes (`openrouter/anthropic/claude-3.5`). No second truncation site._
+
+_Mutation-checked six ways — reverting to a length check, allowing a
+leading/trailing hyphen in the owner, unanchoring the repo pattern, allowing the
+reserved names, removing the owner length cap, and dropping the `JSON.stringify`
+quoting — each kills the tests that name it._
 
 ### S2-9 Numeric configuration is unvalidated — by inspection — **[FIXED]**
 
