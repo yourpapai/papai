@@ -40,11 +40,11 @@ interface Harness {
 
 type Handler = (request: Request) => Promise<Response>
 
-/** Keeps the "did the fake `serve` hand us a handler?" narrowing out of the tests. */
 /** The serialized config the SDK puts in the spawned server's environment. */
 const inlinedConfig = (settings: OpenAiSettings): string =>
   opencodeConfigEnv(settings)['OPENCODE_CONFIG_CONTENT'] ?? '(absent)'
 
+/** Keeps the "did the fake `serve` hand us a handler?" narrowing out of the tests. */
 const dispatch = (handler: Handler | null): Handler =>
   handler ?? ((): Promise<Response> => Promise.reject(new Error('serve() was never called')))
 
