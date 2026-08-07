@@ -102,13 +102,25 @@ describe('serializeState / extractState', () => {
       attempts: 0,
       ciAttempts: 0,
       ciBudgetReported: false,
-      revision: 0,
+      specRevision: 0,
+      planRevision: 0,
       // Defaulted, which is why adding it needed no STATE_VERSION bump.
       tokensSpent: 0,
       lastError: null,
       prUrl: null,
       prNumber: null,
     })
+  })
+
+  test('a block written before the revision counters split still restores', () => {
+    // The two counters replaced one shared `revision`, and both default, so no
+    // STATE_VERSION bump was needed and an issue mid-conversation is not
+    // stranded. The old key is dropped rather than mapped onto either field: it
+    // was the sum of both artefacts' revisions and never the count of either.
+    const older = `<!-- ${STATE_MARKER}: {"v":2,"phase":"DESIGN_SPEC","issueId":5,"revision":3} -->`
+
+    expect(extractState(older)).toMatchObject({ phase: 'DESIGN_SPEC', specRevision: 0, planRevision: 0 })
+    expect(extractState(older)).not.toHaveProperty('revision')
   })
 
   test('a block written before a field existed still restores', () => {
@@ -287,14 +299,29 @@ describe('transition', () => {
     expect(state.phase).toBe('COMPLETE')
   })
 
-  test('bumps the artefact revision only when an artefact is rewritten', () => {
+  test('bumps an artefact revision only when that artefact is rewritten', () => {
     const spec = transition(initialState(1), 'SPEC_POSTED')
-    expect(spec.revision).toBe(1)
+    expect(spec).toMatchObject({ specRevision: 1, planRevision: 0 })
 
     const approved = transition(spec, 'APPROVED')
-    expect(approved.revision).toBe(1)
+    expect(approved).toMatchObject({ specRevision: 1, planRevision: 0 })
 
-    expect(transition(approved, 'PLAN_POSTED').revision).toBe(2)
+    // The plan's first revision is 1, not 2. One counter served both, so the
+    // first execution plan on every issue was labelled with the spec's count
+    // plus its own.
+    expect(transition(approved, 'PLAN_POSTED')).toMatchObject({ specRevision: 1, planRevision: 1 })
+  })
+
+  test('revising one artefact never moves the other one’s number', () => {
+    const twiceSpecced = transition(
+      transition(transition(initialState(1), 'SPEC_POSTED'), 'CHANGES_REQUESTED'),
+      'SPEC_POSTED',
+    )
+    const planned = transition(transition(twiceSpecced, 'APPROVED'), 'PLAN_POSTED')
+    expect(planned).toMatchObject({ specRevision: 2, planRevision: 1 })
+
+    const replanned = transition(transition(planned, 'CHANGES_REQUESTED'), 'PLAN_POSTED')
+    expect(replanned).toMatchObject({ specRevision: 2, planRevision: 2 })
   })
 
   test('a question is a self-loop that changes nothing else', () => {
@@ -302,7 +329,8 @@ describe('transition', () => {
     const answered = transition(spec, 'ANSWERED')
 
     expect(answered.phase).toBe('DESIGN_SPEC')
-    expect(answered.revision).toBe(spec.revision)
+    expect(answered.specRevision).toBe(spec.specRevision)
+    expect(answered.planRevision).toBe(spec.planRevision)
   })
 
   test.each<Phase>([...PHASES])('a question asked in %s is answered where it stands', (phase) => {
@@ -312,14 +340,15 @@ describe('transition', () => {
     // COMPLETE, FAILED or anywhere mid-pipeline threw InvalidTransitionError out
     // of the pipeline with the model turn already paid for. FAILED mattered
     // most: it is the phase a maintainer asks "why did this fail?" in.
-    const before: AgentState = { ...at(phase), attempts: 2, revision: 3, ciAttempts: 1 }
+    const before: AgentState = { ...at(phase), attempts: 2, specRevision: 3, planRevision: 2, ciAttempts: 1 }
     const answered = transition(before, 'ANSWERED')
 
     expect(canTransition(phase, 'ANSWERED')).toBe(true)
     expect(answered.phase).toBe(phase)
     // No artefact was rewritten and no CI round was spent, but a handler did
     // succeed — the same patch the three table rows used to produce.
-    expect(answered.revision).toBe(3)
+    expect(answered.specRevision).toBe(3)
+    expect(answered.planRevision).toBe(2)
     expect(answered.ciAttempts).toBe(1)
     expect(answered.attempts).toBe(0)
   })

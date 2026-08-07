@@ -5,7 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { findArtifact, PLAN_MARKER, SPEC_MARKER } from '../../opencode-agent/src/artifacts.js'
+import { findArtifact, PLAN_MARKER, renderArtifact, SPEC_MARKER } from '../../opencode-agent/src/artifacts.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import { DEFAULT_CHECKS } from '../../opencode-agent/src/config.js'
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
@@ -18,7 +18,7 @@ import { runPipeline } from '../../opencode-agent/src/orchestrator.js'
 import type { PhaseDeps } from '../../opencode-agent/src/phase-context.js'
 import type { ReviewRunResult } from '../../opencode-agent/src/review-runner.js'
 import type { CommandResult } from '../../opencode-agent/src/shell.js'
-import { extractState, initialState, serializeState } from '../../opencode-agent/src/state-manager.js'
+import { extractState, initialState, serializeState, STATE_MARKER } from '../../opencode-agent/src/state-manager.js'
 import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
 
 const AGENT_LOGIN = 'agent-bot'
@@ -460,7 +460,7 @@ describe('review conversation', () => {
 
     expect(result.status).toBe('waiting')
     expect(harness.io.posted[0]).toContain('### Answer')
-    expect(latestPostedState(harness)?.revision).toBe(1)
+    expect(latestPostedState(harness)?.specRevision).toBe(1)
   })
 })
 
@@ -561,7 +561,7 @@ describe('plan review gate', () => {
     const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
     expect(result.status).toBe('waiting')
-    expect(headings(harness)).toEqual(['### Execution plan (revision 2)'])
+    expect(headings(harness)).toEqual(['### Execution plan (revision 1)'])
     expect(latestPostedState(harness)?.phase).toBe('PLAN_REVIEW')
     expect(harness.io.gitCalls).toEqual([`ensureBranch:agent/issue-${ISSUE}:${BASE_BRANCH}`])
   })
@@ -572,8 +572,8 @@ describe('plan review gate', () => {
 
     await runPipeline({ event: comment('/changes split step 1'), deps: harness.deps })
 
-    expect(harness.io.posted[0]).toContain('### Execution plan (revision 3)')
-    expect(latestPostedState(harness)?.phase).toBe('PLAN_REVIEW')
+    expect(harness.io.posted[0]).toContain('### Execution plan (revision 2)')
+    expect(latestPostedState(harness)).toMatchObject({ phase: 'PLAN_REVIEW', specRevision: 1, planRevision: 2 })
   })
 
   test('/approve on the plan cascades through implementation and delivery', async () => {
@@ -585,6 +585,83 @@ describe('plan review gate', () => {
     expect(result.status).toBe('completed')
     expect(headings(harness)).toEqual(['### Implementation report', '### Pull request ready'])
     expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
+  })
+})
+
+/**
+ * The spec and the plan used to share one `revision`, bumped by both
+ * `SPEC_POSTED` and `PLAN_POSTED` and rendered into both headings, so the first
+ * execution plan a maintainer ever saw was labelled revision 2 — revision 3 if
+ * the spec had been revised once first. Nothing was corrupted; the numbers
+ * simply counted something no reader could name.
+ */
+describe('artefact revision numbering', () => {
+  let harness: Harness
+
+  beforeEach(() => {
+    harness = makeHarness()
+  })
+
+  test('the first execution plan is revision 1', async () => {
+    await toDesignSpec(harness)
+    harness.io.replies = [PLAN_REPLY]
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.posted[0]).toContain('### Execution plan (revision 1)')
+    expect(latestPostedState(harness)).toMatchObject({ specRevision: 1, planRevision: 1 })
+  })
+
+  test('revising the spec twice still leaves the first plan at revision 1', async () => {
+    await toDesignSpec(harness)
+    harness.io.replies = [JSON.stringify({ status: 'spec', spec: 'Second attempt.' })]
+    await runPipeline({ event: comment('/changes use the existing helper'), deps: harness.deps })
+    harness.io.replies = [JSON.stringify({ status: 'spec', spec: 'Third attempt.' })]
+    await runPipeline({ event: comment('/changes name the helper'), deps: harness.deps })
+
+    expect(harness.io.posted.at(-1)).toContain('### Design spec (revision 3)')
+
+    harness.io.posted.length = 0
+    harness.io.replies = [PLAN_REPLY]
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.posted[0]).toContain('### Execution plan (revision 1)')
+    expect(latestPostedState(harness)).toMatchObject({ specRevision: 3, planRevision: 1 })
+  })
+
+  test('revising the plan reaches revision 2 while the spec stays where it was', async () => {
+    await toPlanReview(harness)
+    harness.io.replies = [PLAN_REPLY]
+
+    await runPipeline({ event: comment('/changes split step 1'), deps: harness.deps })
+
+    expect(harness.io.posted[0]).toContain('### Execution plan (revision 2)')
+    // Read back the way the next job does: the hidden block's `revision` is
+    // written from the same local as the heading, so they cannot disagree.
+    expect(findArtifact(harness.io.thread, AGENT_LOGIN, PLAN_MARKER)?.revision).toBe(2)
+    expect(findArtifact(harness.io.thread, AGENT_LOGIN, SPEC_MARKER)?.revision).toBe(1)
+    expect(latestPostedState(harness)).toMatchObject({ specRevision: 1, planRevision: 2 })
+  })
+
+  test('a state block written before the counters split still drives the pipeline', async () => {
+    // Both fields default, so the split needed no `STATE_VERSION` bump and this
+    // issue is not stranded mid-conversation. What it loses is the old shared
+    // count, which was a sum of two artefacts and never the count of either —
+    // so its plan starts at 1, which is the number this change exists to make
+    // true.
+    const legacy = `<!-- ${STATE_MARKER}: {"v":2,"phase":"DESIGN_SPEC","issueId":${ISSUE},"revision":3} -->`
+    harness.io.thread.push({
+      id: 800,
+      body: [`earlier`, legacy, renderArtifact(SPEC_MARKER, 'Add a retry wrapper around fetch.', 3)].join('\n\n'),
+      authorLogin: AGENT_LOGIN,
+    })
+    harness.io.replies = [PLAN_REPLY]
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted[0]).toContain('### Execution plan (revision 1)')
+    expect(latestPostedState(harness)).toMatchObject({ phase: 'PLAN_REVIEW', specRevision: 0, planRevision: 1 })
   })
 })
 

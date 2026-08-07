@@ -29,6 +29,17 @@ findings: `ROADMAP.md`.
 - **Never scrape prose to recover an artefact.** Spec, plan and report travel in
   hidden blocks via `blocks.ts` / `artifacts.ts`. Heading-and-trailer scraping
   silently truncated specs at their first `---` rule; do not reintroduce it.
+- **Each artefact counts its own revisions.** `specRevision` and `planRevision`
+  are separate fields and each handler renders and stores one of them, from a
+  single local so the visible heading and the hidden block cannot disagree. They
+  were one shared `revision` bumped by both `SPEC_POSTED` and `PLAN_POSTED`, so
+  the counts interleaved and the first execution plan on every issue announced
+  itself as revision 2 — revision 3 if the spec had been revised once first —
+  which is not a reading "the Nth version of this artefact" allows. The report
+  block stamps `planRevision`: it records which plan was implemented, and no
+  signal bumps a report counter. Splitting them needed no `STATE_VERSION` bump
+  because both fields default; the old key is dropped rather than mapped onto
+  either, since it was a sum and never a count of either artefact.
 - **Answering is phase-neutral in both directions.** `ANSWERED` is deliberately
   absent from `TRANSITIONS`; `transition` handles it as a non-moving signal
   accepted in every phase, because `/ask` is accepted in every phase. Do not put

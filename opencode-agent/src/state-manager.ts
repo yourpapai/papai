@@ -75,9 +75,6 @@ const TRANSITIONS: Record<Phase, Partial<Record<TransitionSignal, Phase>>> = {
   FAILED: {},
 }
 
-/** Signals that produce a revised spec or plan, bumping the artefact revision. */
-const REVISION_SIGNALS: ReadonlySet<TransitionSignal> = new Set<TransitionSignal>(['SPEC_POSTED', 'PLAN_POSTED'])
-
 /** Fresh state for an issue the agent has not seen before. */
 export const initialState = (issueId: number): AgentState =>
   agentStateSchema.parse({ v: STATE_VERSION, phase: 'INIT_OR_CLARIFY', issueId })
@@ -145,6 +142,25 @@ const failTransition = (state: AgentState, patch: Partial<AgentState>): Partial<
   ...patch,
 })
 
+/**
+ * The artefact counter this move bumps, if it rewrites an artefact at all.
+ *
+ * Spec and plan are counted apart because the heading each handler renders reads
+ * as "the Nth version of *this* artefact" and cannot be read as anything else.
+ * One counter serving both had them interleave, so the first execution plan on
+ * every issue announced itself as revision 2 — and revision 3 if the spec had
+ * been revised once first.
+ *
+ * A branch per signal rather than a lookup table with a computed key: the two
+ * artefacts are the whole list, and naming the fields keeps a mistyped one a
+ * compile error rather than a counter that silently never moves.
+ */
+const revisionBump = (state: AgentState, signal: TransitionSignal): Partial<AgentState> => {
+  if (signal === 'SPEC_POSTED') return { specRevision: state.specRevision + 1 }
+  if (signal === 'PLAN_POSTED') return { planRevision: state.planRevision + 1 }
+  return {}
+}
+
 const forwardTransition = (
   state: AgentState,
   signal: TransitionSignal,
@@ -161,7 +177,7 @@ const forwardTransition = (
   // loop stays bounded, and `ANSWERED` clears it from its own branch below for
   // exactly the same reason.
   attempts: 0,
-  revision: REVISION_SIGNALS.has(signal) ? state.revision + 1 : state.revision,
+  ...revisionBump(state, signal),
   ciAttempts: signal === 'CI_FAILED' ? state.ciAttempts + 1 : state.ciAttempts,
   lastError: null,
   ...patch,
@@ -193,8 +209,9 @@ export const transition = (
   // Handled here rather than by adding a row to every phase because two sources
   // of truth for "stay put" is what let the table and `/ask`'s reach drift apart
   // in the first place. The patch reproduces what the old rows did: `attempts`
-  // cleared, because answering is a handler success; `revision` and `ciAttempts`
-  // untouched, because no artefact was rewritten and no CI round was spent.
+  // cleared, because answering is a handler success; the artefact revisions and
+  // `ciAttempts` untouched, because neither the spec nor the plan was rewritten
+  // and no CI round was spent.
   if (signal === 'ANSWERED') return applyPatch(state, { attempts: 0, lastError: null, ...patch })
 
   if (signal === 'FAILED') return applyPatch(state, failTransition(state, patch))

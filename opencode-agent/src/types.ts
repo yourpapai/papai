@@ -96,8 +96,29 @@ export const agentStateSchema = z.object({
    * pull request is opened, or the notice could never be said again for it.
    */
   ciBudgetReported: z.boolean().default(false),
-  /** Bumped each time the spec or plan is revised, for the artefact blocks. */
-  revision: z.number().int().min(0).default(0),
+  /**
+   * Revisions of the design spec and of the execution plan, counted apart.
+   *
+   * One shared counter used to serve both, bumped on `SPEC_POSTED` and on
+   * `PLAN_POSTED` alike while each handler rendered it into its own heading, so
+   * the two numbers interleaved. On an issue that ran straight through, the
+   * first spec a maintainer ever saw was "revision 1" and the first plan
+   * "revision 2"; revise the spec once beforehand and that same first plan was
+   * "revision 3". A revision number on a heading is read as "the Nth version of
+   * this artefact" — there is nothing else it could mean — so neither figure
+   * meant what it said.
+   *
+   * Both carry defaults, so a block written before the split still parses and
+   * needs no `STATE_VERSION` bump, which would strand every in-flight issue (see
+   * the README's migration note). The old `revision` key is dropped as an
+   * unknown one, exactly as `approved` and `updatedAt` were. The price is that
+   * an issue mid-conversation across the change restarts both counts at 1, and
+   * that is the deliberate choice: the number it was carrying is a sum of two
+   * artefacts' revisions and was never the count of either, so carrying it into
+   * one of the new fields would preserve nothing but the wrong answer.
+   */
+  specRevision: z.number().int().min(0).default(0),
+  planRevision: z.number().int().min(0).default(0),
   /**
    * Model tokens this issue has consumed, across every job it has run.
    *

@@ -31,6 +31,19 @@ markdown. That is not a style preference: a spec is model-written markdown full
 of headings and `---` rules, and any heading-and-trailer scraping truncates it at
 the first horizontal rule.
 
+The spec and the plan are numbered **separately**, each by its own revisions: the
+first spec is "Design spec (revision 1)" and the first plan is "Execution plan
+(revision 1)", whether or not the spec was revised on the way there. `AGENT_STATE`
+carries a counter each (`specRevision`, `planRevision`), and the number in a
+heading is the number in that artefact's own block — one value renders both. A
+single shared counter used to bump on either artefact, so the numbers interleaved
+and the first plan on a straight-through issue called itself revision 2. Both
+counters default, so blocks written before the split still parse; an issue
+mid-conversation across that change restarts its counts at 1, because the number
+it was carrying was the sum of two artefacts and never the count of either.
+`AGENT_REPORT` carries the revision of the plan it implemented — provenance, not
+a count of reports.
+
 Blocks are read back byte-exact, and a payload cannot forge its own delimiter:
 `<` and `>` are escaped as JSON unicode escapes before serialization, so text
 containing `-->` — a mermaid arrow, a compiler diagnostic in `lastError` — cannot

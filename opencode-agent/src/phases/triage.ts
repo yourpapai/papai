@@ -57,10 +57,16 @@ export const handleTriage: PhaseHandler = async (input): Promise<PhaseOutcome> =
     return { signal: 'NEEDS_CLARIFICATION', comment: renderQuestions(decision.questions) }
   }
 
+  // One local feeds both the visible heading and the hidden block, so the number
+  // a maintainer reads and the number the next job reads back cannot drift
+  // apart. `SPEC_POSTED` bumps `specRevision` to exactly this value, and counts
+  // only specs — the shared counter it replaced had the first plan on a fresh
+  // issue call itself revision 2.
+  const revision = state.specRevision + 1
   return {
     signal: 'SPEC_POSTED',
-    comment: renderSpec(decision.spec, state.revision + 1),
-    blocks: [renderArtifact(SPEC_MARKER, decision.spec, state.revision + 1)],
+    comment: renderSpec(decision.spec, revision),
+    blocks: [renderArtifact(SPEC_MARKER, decision.spec, revision)],
   }
 }
 
