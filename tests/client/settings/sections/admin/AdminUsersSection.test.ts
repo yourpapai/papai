@@ -189,6 +189,20 @@ const disableToggleMock = (url: string, init: RequestInit): Promise<Response> =>
   return Promise.resolve(json(usersPayload))
 }
 
+const usersFailMock = (url: string): Promise<Response> => {
+  if (url.includes('/open-access')) return Promise.resolve(json(openAccessOn))
+  return Promise.resolve(new Response(JSON.stringify({ error: 'users boom' }), { status: 500 }))
+}
+
+const openAccessFailMock = (url: string): Promise<Response> => {
+  if (url.includes('/open-access')) {
+    return Promise.resolve(new Response(JSON.stringify({ error: 'access boom' }), { status: 500 }))
+  }
+  return Promise.resolve(json(usersPayload))
+}
+
+const neverResolvingMock = (): Promise<Response> => new Promise<Response>(() => {})
+
 afterEach(() => {
   capturedPostBody = undefined
   capturedDeleteBody = undefined
@@ -521,6 +535,64 @@ describe('AdminUsersSection', () => {
     await drain()
     expect(target.querySelector('.modal')).not.toBeNull()
     expect(target.querySelector('.modal .status-error')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('a failed user list replaces the body with a retryable error state', async () => {
+    setMockFetch(usersFailMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.querySelector('.ui-error')).not.toBeNull()
+    expect(target.querySelector('[data-testid="error-retry"]')).not.toBeNull()
+    expect(target.querySelector('tbody')).toBeNull()
+    expect(target.querySelector('[data-testid="user-add"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('a failed open-access read keeps the user list and disables the toggle', async () => {
+    setMockFetch(openAccessFailMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.textContent).toContain('jane')
+    const toggle = target.querySelector<HTMLButtonElement>('[data-testid="open-access-toggle"]')!
+    expect(toggle.disabled).toBe(true)
+    expect(toggle.textContent).toContain('Unavailable')
+    expect(target.querySelector('[data-testid="open-access-error"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('the open-access state pill is hidden until the value loads', async () => {
+    setMockFetch(openAccessFailMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.querySelector('[data-testid="open-access-state"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('a loaded open-access setting shows an enabled pill', async () => {
+    setMockFetch(openAccessOnMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.querySelector('[data-testid="open-access-state"]')!.textContent).toContain('enabled')
+    void unmount(component)
+  })
+
+  test('the first load shows a loading placeholder rather than an empty table', async () => {
+    setMockFetch(neverResolvingMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.textContent).toContain('Loading…')
+    expect(target.textContent).not.toContain('No users')
     void unmount(component)
   })
 })

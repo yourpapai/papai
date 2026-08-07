@@ -21,13 +21,19 @@
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
   import SettingsTable from '../../components/SettingsTable.svelte'
   import IdCell from '../../components/IdCell.svelte'
+  import ErrorState from '../../../shared/ui/ErrorState.svelte'
+  import Pill from '../../../shared/ui/Pill.svelte'
 
   let users: AdminUserRow[] = $state([])
   let openDmAccess = $state(false)
+  let openAccessLoaded = $state(false)
   let togglingAccess = $state(false)
   let error: string | null = $state(null)
   let status: string | null = $state(null)
+  let usersLoadError: string | null = $state(null)
+  let openAccessError: string | null = $state(null)
   let loading = $state(false)
+  let initialLoad = $state(true)
   let newUserId = $state('')
   let newUsername = $state('')
   let pendingRemoval: string | null = $state(null)
@@ -36,22 +42,34 @@
   let removeError = $state<string | null>(null)
   const pendingRemovalLabel = $derived(pendingRemoval ?? '')
 
+  const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err))
+
   async function load(): Promise<void> {
     error = null
     status = null
+    usersLoadError = null
+    openAccessError = null
     loading = true
-    try {
-      const [usersResult, accessResult] = await Promise.all([fetchAdminUsers(), fetchOpenAccess()])
-      users = usersResult.users
-      openDmAccess = accessResult.openDmAccess
-    } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
-    } finally {
-      loading = false
+    const [usersResult, accessResult] = await Promise.allSettled([fetchAdminUsers(), fetchOpenAccess()])
+    if (usersResult.status === 'fulfilled') {
+      users = usersResult.value.users
+    } else {
+      users = []
+      usersLoadError = errorMessage(usersResult.reason)
     }
+    if (accessResult.status === 'fulfilled') {
+      openDmAccess = accessResult.value.openDmAccess
+      openAccessLoaded = true
+    } else {
+      openAccessLoaded = false
+      openAccessError = errorMessage(accessResult.reason)
+    }
+    loading = false
+    initialLoad = false
   }
 
   async function toggleAccess(): Promise<void> {
+    if (!openAccessLoaded) return
     error = null
     status = null
     togglingAccess = true
@@ -61,7 +79,7 @@
       await load()
       status = enabling ? 'Open DM access enabled.' : 'Open DM access disabled.'
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = errorMessage(err)
     } finally {
       togglingAccess = false
     }
@@ -81,7 +99,7 @@
       status =
         result.pending === true ? "User added — they'll be authorized when they first message the bot." : 'User added.'
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = errorMessage(err)
     }
   }
 
@@ -95,7 +113,7 @@
       await removeAdminUser({ userId })
       ok = true
     } catch (err) {
-      removeError = err instanceof Error ? err.message : String(err)
+      removeError = errorMessage(err)
     } finally {
       removing = false
     }
@@ -115,7 +133,7 @@
       await load()
       status = blocked ? 'User blocked.' : 'User unblocked.'
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = errorMessage(err)
     } finally {
       blocking = null
     }
@@ -156,93 +174,116 @@
     {/snippet}
   </PageHeader>
 
-  {#if error !== null}<p class="status-error">{error}</p>{/if}
-  {#if status !== null}<p class="status-success">{status}</p>{/if}
+  {#if error !== null}<p class="status-error" role="alert">{error}</p>{/if}
+  {#if status !== null}<p class="status-success" role="status">{status}</p>{/if}
 
-  <div class="open-access-card" data-testid="open-access-card">
-    <div>
-      <strong>Open DM access</strong>
-      <p class="open-access-hint">
-        Anyone can DM this bot. New users are added automatically and listed below; block individuals to revoke.
-      </p>
-    </div>
-    <Btn
-      variant={openDmAccess ? 'danger' : 'primary'}
-      size="sm"
-      testid="open-access-toggle"
-      disabled={togglingAccess}
-      onClick={() => void toggleAccess()}>
-      {#snippet children()}{togglingAccess ? 'Saving…' : openDmAccess ? 'Disable' : 'Enable'}{/snippet}
-    </Btn>
-  </div>
-
-  <form
-    class="settings-form"
-    onsubmit={(event) => {
-      event.preventDefault()
-      void add()
-    }}>
-    <Field
-      label="User ID or @username"
-      hint="For Telegram, @username adds a pending entry that activates when the user first messages the bot">
-      {#snippet children()}
-        <Input value={newUserId} onInput={(v) => (newUserId = v)} testid="user-add-input" placeholder="123456789 or @username" />
-      {/snippet}
-    </Field>
-    <Field label="Username" hint="optional">
-      {#snippet children()}
-        <Input value={newUsername} onInput={(v) => (newUsername = v)} />
-      {/snippet}
-    </Field>
-    <Btn variant="primary" type="submit" testid="user-add">
-      {#snippet children()}Add user{/snippet}
-    </Btn>
-  </form>
-
-  <div class="settings-table-wrap">
-    {#snippet cell(row: UserRow, col: { key: string; label: string })}
-      {#if col.key === 'actions'}
-        <Btn
-          variant={row.blocked ? 'secondary' : 'danger'}
-          size="sm"
-          testid={`user-block-${row.platform_user_id}`}
-          disabled={blocking === row.platform_user_id}
-          onClick={() => void toggleBlock(row.platform_user_id, !row.blocked)}>
-          {#snippet children()}{row.blocked ? 'Unblock' : 'Block'}{/snippet}
-        </Btn>
-        <Btn
-          variant="danger"
-          size="sm"
-          testid={`user-remove-${row.platform_user_id}`}
-          disabled={blocking === row.platform_user_id}
-          onClick={() => {
-            removeError = null
-            pendingRemoval = row.platform_user_id
-          }}>
-          {#snippet children()}Remove{/snippet}
-        </Btn>
-      {:else if col.key === 'platform_user_id'}
-        {#if row.platform_user_id.startsWith('placeholder-')}
-          <span class="pending-badge" data-testid="user-pending-badge">pending</span>
-        {:else}
-          <IdCell value={row.platform_user_id} />
+  {#if usersLoadError !== null}
+    <ErrorState
+      message="Could not load the user list."
+      detail={usersLoadError}
+      onRetry={() => void load()} />
+  {:else if loading && initialLoad}
+    <p class="placeholder">Loading…</p>
+  {:else}
+    <div class="open-access-card" data-testid="open-access-card">
+      <div>
+        <div class="open-access-title">
+          <strong>Open DM access</strong>
+          {#if openAccessLoaded}
+            <Pill tone={openDmAccess ? 'accent' : 'mute'} dot>
+              {#snippet children()}<span data-testid="open-access-state">{openDmAccess ? 'enabled' : 'disabled'}</span>{/snippet}
+            </Pill>
+          {/if}
+        </div>
+        <p class="open-access-hint">
+          Anyone can DM this bot. New users are added automatically and listed below; block individuals to revoke.
+        </p>
+        {#if openAccessError !== null}
+          <p class="status-error" role="alert" data-testid="open-access-error">
+            Could not read the open DM access setting — {openAccessError}
+          </p>
         {/if}
-      {:else if col.key === 'source'}
-        <span class="source-badge" data-testid={`user-source-${row.platform_user_id}`}>{row.source}</span>
-      {:else}
-        {String(row[col.key as keyof UserRow] ?? '')}
-      {/if}
-    {/snippet}
-    <SettingsTable
-      columns={userColumns}
-      rows={userRows}
-      rowKey="platform_user_id"
-      searchKeys={['platform_user_id', 'username']}
-      {cell}
-      searchPlaceholder="Search users by ID or name…">
-      {#snippet empty()}No users{/snippet}
-    </SettingsTable>
-  </div>
+      </div>
+      <Btn
+        variant={openDmAccess ? 'danger' : 'primary'}
+        size="sm"
+        testid="open-access-toggle"
+        disabled={togglingAccess || !openAccessLoaded}
+        onClick={() => void toggleAccess()}>
+        {#snippet children()}
+          {!openAccessLoaded ? 'Unavailable' : togglingAccess ? 'Saving…' : openDmAccess ? 'Disable' : 'Enable'}
+        {/snippet}
+      </Btn>
+    </div>
+
+    <form
+      class="settings-form"
+      onsubmit={(event) => {
+        event.preventDefault()
+        void add()
+      }}>
+      <Field
+        label="User ID or @username"
+        hint="For Telegram, @username adds a pending entry that activates when the user first messages the bot">
+        {#snippet children()}
+          <Input value={newUserId} onInput={(v) => (newUserId = v)} testid="user-add-input" placeholder="123456789 or @username" />
+        {/snippet}
+      </Field>
+      <Field label="Username" hint="optional">
+        {#snippet children()}
+          <Input value={newUsername} onInput={(v) => (newUsername = v)} />
+        {/snippet}
+      </Field>
+      <Btn variant="primary" type="submit" testid="user-add">
+        {#snippet children()}Add user{/snippet}
+      </Btn>
+    </form>
+
+    <div class="settings-table-wrap">
+      {#snippet cell(row: UserRow, col: { key: string; label: string })}
+        {#if col.key === 'actions'}
+          <Btn
+            variant={row.blocked ? 'secondary' : 'danger'}
+            size="sm"
+            testid={`user-block-${row.platform_user_id}`}
+            disabled={blocking === row.platform_user_id}
+            onClick={() => void toggleBlock(row.platform_user_id, !row.blocked)}>
+            {#snippet children()}{row.blocked ? 'Unblock' : 'Block'}{/snippet}
+          </Btn>
+          <Btn
+            variant="danger"
+            size="sm"
+            testid={`user-remove-${row.platform_user_id}`}
+            disabled={blocking === row.platform_user_id}
+            onClick={() => {
+              removeError = null
+              pendingRemoval = row.platform_user_id
+            }}>
+            {#snippet children()}Remove{/snippet}
+          </Btn>
+        {:else if col.key === 'platform_user_id'}
+          {#if row.platform_user_id.startsWith('placeholder-')}
+            <span class="pending-badge" data-testid="user-pending-badge">pending</span>
+          {:else}
+            <IdCell value={row.platform_user_id} />
+          {/if}
+        {:else if col.key === 'source'}
+          <span class="source-badge" data-testid={`user-source-${row.platform_user_id}`}>{row.source}</span>
+        {:else}
+          {String(row[col.key as keyof UserRow] ?? '')}
+        {/if}
+      {/snippet}
+      <SettingsTable
+        columns={userColumns}
+        rows={userRows}
+        rowKey="platform_user_id"
+        searchKeys={['platform_user_id', 'username']}
+        {cell}
+        searchPlaceholder="Search users by ID or name…">
+        {#snippet empty()}No users{/snippet}
+      </SettingsTable>
+    </div>
+  {/if}
 
   <Confirm
     open={pendingRemoval !== null}
@@ -282,5 +323,14 @@
     font-size: 12px;
     color: var(--text-muted);
     margin: 2px 0 0;
+  }
+  .open-access-title {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-inline);
+  }
+  .placeholder {
+    color: var(--text-muted);
+    font-size: 12px;
   }
 </style>
