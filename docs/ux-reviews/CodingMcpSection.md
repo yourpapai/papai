@@ -51,6 +51,7 @@ Severity-ranked, highest first.
 - **Dimension:** 4. Feedback & state
 - **Where visible:** Populated, after adding a row and re-picking a server already chosen in another row — measured live: `selectedServers: ['plugin:synthetic-web-search', 'search', 'plugin:synthetic-web-search']`, `duplicated: true`, `saveDisabled: false`
 - **Source:** `client/settings/sections/CodingMcpSection.svelte:99` (`updateRowServer` does not check the other rows) and `:266` (Save's disabled predicate tests only `hasEmptyServer`)
+- **Consequence:** The saved state is one the backend refuses. `src/coding-credentials/resolve-mcp-servers.ts:123-127` rejects a repeated selection, and the function is fail-closed and all-or-nothing (documented at `:94-97`), so a single duplicate costs the context **every** MCP server, not just the repeated one. The user is told nothing at save time and meets the failure later, inside a coding session, far from the settings page that caused it.
 - **Suggested fix:** Treat a duplicate server as a validation failure the same way a blank one is — block Save and mark the offending row — or drop already-selected servers from the remaining rows' options so the state cannot be produced.
 
 ### [High] Save blocks on a blank server row without saying so
