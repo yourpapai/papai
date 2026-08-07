@@ -89,9 +89,10 @@ describe('parseArgs', () => {
 })
 
 describe('memoizeAgent', () => {
-  const fakeAgent = (closed: { count: number }): OpenCodeAgent => ({
+  const fakeAgent = (closed: { count: number }, tokens = 0): OpenCodeAgent => ({
     sessionId: 'session-1',
     prompt: (): Promise<{ text: string; sessionId: string }> => Promise.resolve({ text: '', sessionId: 'session-1' }),
+    tokensUsed: (): Promise<number> => Promise.resolve(tokens),
     close: (): Promise<void> => {
       closed.count += 1
       return Promise.resolve()
@@ -108,6 +109,26 @@ describe('memoizeAgent', () => {
     await handle.close()
 
     expect(booted).toBe(0)
+  })
+
+  test('reports no spend without booting a server to ask', async () => {
+    // Most phases never prompt the model. Booting a server to be told it has
+    // spent nothing would cost more than the guardrail saves.
+    let booted = 0
+    const handle = memoizeAgent(() => {
+      booted += 1
+      return Promise.resolve(fakeAgent({ count: 0 }, 900))
+    })
+
+    expect(await handle.tokensUsed()).toBe(0)
+    expect(booted).toBe(0)
+  })
+
+  test('reports the session’s spend once one has been booted', async () => {
+    const handle = memoizeAgent(() => Promise.resolve(fakeAgent({ count: 0 }, 3602)))
+    await handle.get()
+
+    expect(await handle.tokensUsed()).toBe(3602)
   })
 
   test('boots at most once, however many phases ask for it', async () => {

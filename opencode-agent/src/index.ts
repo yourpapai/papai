@@ -84,6 +84,14 @@ export const parseArgs = (argv: readonly string[], env: NodeJS.ProcessEnv): CliA
 
 export interface AgentHandle {
   get: () => Promise<OpenCodeAgent>
+  /**
+   * Tokens this job has spent, or `0` when no session was ever opened.
+   *
+   * Zero is the honest answer, not a fallback: most phases never prompt the
+   * model, and booting a server to ask what it has not spent would cost more
+   * than the guardrail saves.
+   */
+  tokensUsed: () => Promise<number>
   close: () => Promise<void>
 }
 
@@ -103,6 +111,10 @@ export const memoizeAgent = (create: () => Promise<OpenCodeAgent>): AgentHandle 
     get: () => {
       pending ??= create()
       return pending
+    },
+    tokensUsed: async () => {
+      if (pending === null) return 0
+      return (await pending).tokensUsed()
     },
     // Never boots a server just to shut one down, and never turns a teardown
     // failure into a pipeline failure.

@@ -147,6 +147,7 @@ Four bounds, each on a different kind of runaway.
 | Turn duration    | `AGENT_TIMEOUT_MS`, applied in `deadline.ts`       | A model turn that never answers                                           |
 | Provider hiccups | `provider-proxy.ts` — 3 attempts, with backoff     | A single 429 or 5xx failing the phase                                     |
 | Rounds           | `AGENT_MAX_ATTEMPTS`, `AGENT_CI_FIX_MAX_ROUNDS`, … | An agent and CI bouncing off each other forever                           |
+| Total spend      | `AGENT_MAX_TOKENS`, per **issue**                  | An issue quietly costing more than it is worth                            |
 
 The prompt caps are on the **finished prompt**, not on any one input: a per-input
 cap bounds one log and nothing else, and three red checks at 8k each still put
@@ -169,6 +170,24 @@ Only 408, 429 and 5xx are retried — a 401 from a wrong key is a fact about the
 request, and repeating it three times only delays saying so. OpenCode retries a
 rate limit itself as well, with its own backoff, so this is a second and closer
 layer rather than the only one.
+
+The token budget is the one bound that spans jobs. It is counted **per issue**
+and kept in the state block, because the runaway it stops is not a single run —
+it is an issue bouncing through retries and CI-fix rounds, each on a fresh runner
+with no memory of what the last one spent. When it runs out the agent says so on
+the issue and stops; `/retry` will not help, since the total is persisted, so the
+notice names `AGENT_MAX_TOKENS` instead.
+
+Tokens rather than currency, deliberately. Token counts come from the provider's
+own usage block and are always right; the cost figure OpenCode reports is derived
+from its model catalogue and reads **0** for a model it does not price — verified
+against a real server with a made-up model id, which returned correct token
+counts and zero cost. For a pipeline built around one arbitrary configured
+endpoint that is the ordinary case, and a ceiling that silently never fires is
+worse than none.
+
+Two things it cannot see: the review loop's `opencode run` subprocesses, which
+have their own sessions, and any spend before the first prompt of a job.
 
 ## Watching a run
 
@@ -367,6 +386,7 @@ cannot drift.
 | `AGENT_MAX_CHANGED_FILES`                  | no       | `100`                                           | Files one commit may carry                            |
 | `AGENT_MAX_CHANGED_LINES`                  | no       | `20000`                                         | Lines one commit may change                           |
 | `AGENT_TIMEOUT_MS`                         | no       | `1800000`                                       | Timeout for one model turn, and for each subprocess   |
+| `AGENT_MAX_TOKENS`                         | no       | `5000000`                                       | Model tokens one issue may spend, across all its jobs |
 | `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no       | `opencode-agent[bot]`                           | Commit identity                                       |
 | `AGENT_LOG_LEVEL`                          | no       | `info`                                          | `debug`, `info`, `warn`, `error`                      |
 
@@ -377,7 +397,8 @@ the first model call instead of at config load.
 Every numeric knob is validated as an integer **and range-checked**, because
 rejecting non-integers only closes "not a number", never "a number that cannot
 work". Round counts accept 1–20, `AGENT_TIMEOUT_MS` accepts 1 000–7 200 000 (one
-second to two hours), and `AGENT_REVIEW_POOL_SIZE` accepts 1–16. `AGENT_TIMEOUT_MS=1`
+second to two hours), `AGENT_MAX_TOKENS` accepts 50 000–1 000 000 000, and
+`AGENT_REVIEW_POOL_SIZE` accepts 1–16. `AGENT_TIMEOUT_MS=1`
 is a positive integer that kills every subprocess after a millisecond, so the
 pipeline reports every check as failing; `AGENT_REVIEW_MAX_ROUNDS=9007199254740991`
 is a positive integer that removes the bound the knob exists to impose. A
@@ -505,7 +526,8 @@ Logs are NDJSON on stdout.
 | `src/prompt-budget.ts`                        | How much text a prompt carries, and what loses when it does not fit    |
 | `src/activity.ts`                             | What one OpenCode event means, and what of it may be said out loud     |
 | `src/progress.ts`                             | Reporting that, plus the heartbeat while a turn is outstanding         |
-| `src/sdk-contract.ts`                         | The recorded response shapes the SDK answers with                      |
+| `src/sdk-contract.ts`                         | The recorded request and response shapes the SDK speaks                |
+| `src/config-values.ts`                        | Reading and range-checking one scalar from the environment             |
 | `src/deadline.ts`                             | The upper bound on waiting for work that has none of its own           |
 | `src/provider-proxy.ts`                       | Holds the provider key, and retries a transient upstream failure       |
 | `src/obra-skills.ts`                          | Superpowers skill loading and system-prompt composition                |

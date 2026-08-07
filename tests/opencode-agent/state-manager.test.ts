@@ -103,6 +103,8 @@ describe('serializeState / extractState', () => {
       ciAttempts: 0,
       ciBudgetReported: false,
       revision: 0,
+      // Defaulted, which is why adding it needed no STATE_VERSION bump.
+      tokensSpent: 0,
       lastError: null,
       prUrl: null,
       prNumber: null,

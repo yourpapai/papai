@@ -155,6 +155,7 @@ jobs:
           AGENT_MAX_CI_ATTEMPTS: ${{ vars.AGENT_MAX_CI_ATTEMPTS }}
           AGENT_MAX_ATTEMPTS: ${{ vars.AGENT_MAX_ATTEMPTS }}
           AGENT_TIMEOUT_MS: ${{ vars.AGENT_TIMEOUT_MS }}
+          AGENT_MAX_TOKENS: ${{ vars.AGENT_MAX_TOKENS }}
           AGENT_LOG_LEVEL: ${{ vars.AGENT_LOG_LEVEL || 'info' }}
         run: |
           bun run opencode-agent/src/index.ts \

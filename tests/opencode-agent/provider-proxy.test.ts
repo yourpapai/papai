@@ -361,6 +361,7 @@ describe('contain', () => {
     ciFixMaxRounds: 2,
     maxCiAttempts: 2,
     maxAttempts: 3,
+    maxTokens: 5_000_000,
     diffLimits: { maxFiles: 100, maxLines: 20_000 },
     gitRemoteBase: 'https://github.com/',
     skillRoots: [],
@@ -430,6 +431,7 @@ describe('contain', () => {
         return Promise.resolve({
           sessionId: 's',
           prompt: () => Promise.resolve({ text: '', sessionId: 's' }),
+          tokensUsed: () => Promise.resolve(0),
           close: () => Promise.resolve(),
         })
       },

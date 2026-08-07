@@ -35,13 +35,17 @@ import { proxiedSettings, startProviderProxy } from '../../opencode-agent/src/pr
 
 const REPLY_TEXT = '{"status":"spec","spec":"live round trip"}'
 
-const chunk = (delta: object, finish: string | null): string =>
+/** A provider's own usage block, which is where the token budget's numbers start. */
+const USAGE = { prompt_tokens: 1234, completion_tokens: 567, total_tokens: 1801 }
+
+const chunk = (delta: object, finish: string | null, usage?: object): string =>
   `data: ${JSON.stringify({
     id: 'chatcmpl-live',
     object: 'chat.completion.chunk',
     created: 1,
     model: 'gpt-5',
     choices: [{ index: 0, delta, finish_reason: finish }],
+    ...(usage === undefined ? {} : { usage }),
   })}\n\n`
 
 /** The smallest server that satisfies an OpenAI-compatible provider. */
@@ -61,10 +65,11 @@ const startStubProvider = (): { port: number; stop: () => void } => {
           created: 1,
           model: 'gpt-5',
           choices: [{ index: 0, message: { role: 'assistant', content: REPLY_TEXT }, finish_reason: 'stop' }],
+          usage: USAGE,
         })
       }
       return new Response(
-        `${chunk({ role: 'assistant', content: REPLY_TEXT }, null)}${chunk({}, 'stop')}data: [DONE]\n\n`,
+        `${chunk({ role: 'assistant', content: REPLY_TEXT }, null)}${chunk({}, 'stop', USAGE)}data: [DONE]\n\n`,
         { headers: { 'content-type': 'text/event-stream' } },
       )
     },
@@ -162,6 +167,10 @@ const run = async (): Promise<number> => {
     )
 
     const reply = await first.prompt({ prompt: 'hello', system: 'be terse' })
+    // Read straight after the prompt, with no wait: the budget checks it at
+    // exactly this moment, so a figure that needs the event stream to catch up
+    // would be a budget that reads zero on the run that spent the tokens.
+    const spentTokens = await first.tokensUsed()
     results.push(
       check('the adapter decodes the reply text', reply.text === REPLY_TEXT, `got "${reply.text}"`),
       check('the reply carries the session id', reply.sessionId === first.sessionId, 'session id mismatch'),
@@ -176,6 +185,11 @@ const run = async (): Promise<number> => {
         'the placeholder was not substituted',
       ),
       check('the event stream reported progress', progressLines.length > 0, 'nothing was logged during a real turn'),
+      check(
+        'the session reports what it spent, which is what the budget enforces on',
+        spentTokens > 0,
+        `session.get reported ${spentTokens} tokens after a prompt the stub billed at ${USAGE.total_tokens}`,
+      ),
       check(
         'progress carried no model output',
         !JSON.stringify(progressLines).includes(REPLY_TEXT),

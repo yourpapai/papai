@@ -31,7 +31,8 @@ import { mintEnvelope } from '../../opencode-agent/src/phases/envelope.js'
 import { renderThread, shareBudget } from '../../opencode-agent/src/prompt-budget.js'
 import { buildCiFixPrompt, createEnvelope } from '../../opencode-agent/src/prompts.js'
 import { parseRepository } from '../../opencode-agent/src/repository.js'
-import { collectText, decodeReply, decodeSessionId } from '../../opencode-agent/src/sdk-contract.js'
+import { collectText, decodeReply, decodeSessionId, decodeSessionUsage } from '../../opencode-agent/src/sdk-contract.js'
+import type { SessionUsage } from '../../opencode-agent/src/sdk-contract.js'
 import { redactSecrets, scrubSecrets } from '../../opencode-agent/src/secrets.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
 import { PHASES } from '../../opencode-agent/src/types.js'
@@ -107,6 +108,22 @@ describe('the recorded SDK contract', () => {
   })
 
   test.each([
+    ['a session', (): string => decodeSessionId('not an envelope at all')],
+    ['a prompt', (): string => decodeReply(42)],
+  ])('a %s response that is not even an envelope names the contract', (_label, decode) => {
+    // The stated purpose of decoding through a schema: an SDK that answers with
+    // something else entirely fails here, by name.
+    expect(decode).toThrow('Unexpected')
+  })
+
+  test.each([
+    ['a session', (): string => decodeSessionId({ data: { id: 'ses_1' }, error: null })],
+    ['a prompt', (): string => decodeReply({ data: { parts: [] }, error: null })],
+  ])('an explicitly null error on %s is not an error', (_label, decode) => {
+    expect(decode).not.toThrow()
+  })
+
+  test.each([
     ['a session', (): string => decodeSessionId({ id: 'ses_top_level' })],
     ['a prompt', (): string => decodeReply({ parts: [{ type: 'text', text: 'top level' }] })],
   ])('a relocated %s payload fails naming the contract, not three layers away', (_label, decode) => {
@@ -121,6 +138,59 @@ describe('the recorded SDK contract', () => {
 
   test('a reply with no parts at all is empty text', () => {
     expect(decodeReply({ data: {} })).toBe('')
+  })
+
+  /**
+   * Recorded by running two prompts of 1234 input / 567 output tokens against a
+   * stub provider: `session.get` read back exactly the sum, which is why the
+   * budget reads it rather than adding up events as they arrive.
+   */
+  const LIVE_SESSION_USAGE = {
+    data: {
+      id: 'ses_1',
+      title: 'usage-probe',
+      tokens: { input: 2468, output: 1134, reasoning: 0, cache: { read: 0, write: 0 } },
+      cost: 0.014425,
+    },
+    request: {},
+    response: {},
+  }
+
+  test('reads a session’s running totals back from the envelope', () => {
+    expect(decodeSessionUsage(LIVE_SESSION_USAGE)).toEqual({ tokens: 3602, cost: 0.014425 })
+  })
+
+  test('counts reasoning tokens, which are spend like any other', () => {
+    // Every other fixture has `reasoning: 0`, which makes adding and
+    // subtracting it indistinguishable — and a reasoning model would then be
+    // billed as free by the budget.
+    const reasoning = {
+      ...LIVE_SESSION_USAGE,
+      data: { ...LIVE_SESSION_USAGE.data, tokens: { input: 100, output: 200, reasoning: 400, cache: {} } },
+    }
+
+    expect(decodeSessionUsage(reasoning)?.tokens).toBe(700)
+  })
+
+  test('reports zero cost for a model OpenCode cannot price, with the tokens intact', () => {
+    // Recorded against a made-up model id. This is why the ceiling is on tokens:
+    // a cost ceiling would be silently infinite for any model the catalogue does
+    // not know, which for an arbitrary configured endpoint is the ordinary case.
+    const unpriced = { ...LIVE_SESSION_USAGE, data: { ...LIVE_SESSION_USAGE.data, cost: 0 } }
+
+    expect(decodeSessionUsage(unpriced)).toEqual({ tokens: 3602, cost: 0 })
+  })
+
+  test.each([
+    [{ data: undefined, error: { message: 'no such session' } }],
+    [{ data: { id: 'ses_1' } }],
+    [{}],
+    ['nope'],
+  ])('reports %p as unknown rather than throwing', (fetched) => {
+    // Unlike the other decoders here. A budget is a guardrail on the work, not
+    // part of it, and an SDK upgrade that moves these fields must not turn
+    // every phase into a failure.
+    expect(decodeSessionUsage(fetched)).toBeNull()
   })
 })
 
@@ -154,6 +224,9 @@ const streamOf = (events: readonly unknown[], onDrained: () => void = (): void =
 /** An event stream that ends immediately, for the tests progress is not about. */
 const noEvents = (): Promise<AsyncIterable<unknown>> => Promise.resolve(streamOf([]))
 
+/** A session that has spent nothing, for the tests the budget is not about. */
+const noUsage = (): Promise<SessionUsage | null> => Promise.resolve({ tokens: 0, cost: 0 })
+
 describe('createOpenCodeAgent', () => {
   const fakeConnection = (sink: { bodies: SdkPromptBody[]; closed: number }, reply: unknown): OpenCodeConnection => ({
     createSession: (): Promise<string> => Promise.resolve('session-9'),
@@ -162,6 +235,7 @@ describe('createOpenCodeAgent', () => {
       return Promise.resolve(reply)
     },
     events: noEvents,
+    usage: noUsage,
     close: (): Promise<void> => {
       sink.closed += 1
       return Promise.resolve()
@@ -240,6 +314,7 @@ describe('createOpenCodeAgent', () => {
           createSession: () => Promise.reject(new Error('server down')),
           sendPrompt: () => Promise.resolve({ data: { parts: [] } }),
           events: noEvents,
+          usage: noUsage,
           close: () => {
             closed += 1
             return Promise.resolve()
@@ -264,6 +339,7 @@ describe('createOpenCodeAgent', () => {
           createSession: () => Promise.resolve('session-1'),
           sendPrompt: () => new Promise<unknown>(() => {}),
           events: noEvents,
+          usage: noUsage,
           close: () => Promise.resolve(),
         }),
     })
@@ -286,6 +362,7 @@ describe('createOpenCodeAgent', () => {
         Promise.resolve({
           createSession: () => Promise.resolve('session-1'),
           sendPrompt: () => Promise.resolve({ data: { parts: [] } }),
+          usage: noUsage,
           events: () =>
             Promise.resolve(
               streamOf(
@@ -302,6 +379,52 @@ describe('createOpenCodeAgent', () => {
     expect(lines).toEqual(['Model session status'])
   })
 
+  test('reports what the session has spent, from the server', async () => {
+    const agent = await createOpenCodeAgent({
+      directory: '/repo',
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      sessionTitle: 't',
+      log: silentLog,
+      connect: () =>
+        Promise.resolve({
+          createSession: () => Promise.resolve('session-1'),
+          sendPrompt: () => Promise.resolve({ data: { parts: [] } }),
+          events: noEvents,
+          usage: () => Promise.resolve({ tokens: 3602, cost: 0.014 }),
+          close: () => Promise.resolve(),
+        }),
+    })
+
+    expect(await agent.tokensUsed()).toBe(3602)
+  })
+
+  test.each([
+    ['the server cannot say', (): Promise<null> => Promise.resolve(null)],
+    ['the read fails outright', (): Promise<never> => Promise.reject(new Error('gone'))],
+  ])('reports zero when %s, rather than failing the phase', async (_label, usage) => {
+    // A budget is a guardrail on the work, not part of it. Reading zero loses
+    // the guardrail for this run; throwing would lose the run.
+    const warnings: string[] = []
+    const agent = await createOpenCodeAgent({
+      directory: '/repo',
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      sessionTitle: 't',
+      log: { ...silentLog, warn: (_meta, message): void => void warnings.push(message) },
+      connect: () =>
+        Promise.resolve({
+          createSession: () => Promise.resolve('session-1'),
+          sendPrompt: () => Promise.resolve({ data: { parts: [] } }),
+          events: noEvents,
+          usage,
+          close: () => Promise.resolve(),
+        }),
+    })
+
+    expect(await agent.tokensUsed()).toBe(0)
+    // Silently reading zero would be a budget that looks enforced and is not.
+    expect(warnings.join()).toContain('budget cannot see')
+  })
+
   test('a failing subscription costs the progress log and nothing else', async () => {
     // Reporting must not be able to fail the work it reports on.
     const agent = await createOpenCodeAgent({
@@ -313,6 +436,7 @@ describe('createOpenCodeAgent', () => {
         Promise.resolve({
           createSession: () => Promise.resolve('session-1'),
           sendPrompt: () => Promise.resolve({ data: { parts: [{ type: 'text', text: 'fine' }] } }),
+          usage: noUsage,
           events: () => Promise.reject(new Error('/event is not available')),
           close: () => Promise.resolve(),
         }),
@@ -343,6 +467,7 @@ describe('createOpenCodeAgent', () => {
           createSession: () => Promise.resolve('session-1'),
           sendPrompt: () => Promise.resolve({ data: { parts: [{ type: 'text', text: 'slow but fine' }] } }),
           events: noEvents,
+          usage: noUsage,
           close: () => Promise.resolve(),
         }),
     })
@@ -1017,6 +1142,9 @@ describe('config', () => {
     ['AGENT_MAX_ATTEMPTS', '999999999'],
     ['AGENT_MAX_CI_ATTEMPTS', '21'],
     ['AGENT_CI_FIX_MAX_ROUNDS', '0'],
+    // A budget below one phase's worth of work can only ever stop the run.
+    ['AGENT_MAX_TOKENS', '100'],
+    ['AGENT_MAX_TOKENS', '0'],
   ])('rejects %s=%p, which parses but cannot work', (key, raw) => {
     expect(() => loadConfig({ ...baseEnv, [key]: raw }, '/repo')).toThrow(key)
   })
@@ -1032,6 +1160,7 @@ describe('config', () => {
     ['AGENT_CI_FIX_MAX_ROUNDS', 'ciFixMaxRounds'],
     ['AGENT_MAX_CI_ATTEMPTS', 'maxCiAttempts'],
     ['AGENT_MAX_ATTEMPTS', 'maxAttempts'],
+    ['AGENT_MAX_TOKENS', 'maxTokens'],
   ] as const)('the default for %s would itself be accepted as an override', (key, field) => {
     // Guards the shape of bug where a default only works because nothing
     // validates it, and setting that same value explicitly is rejected.
@@ -1045,6 +1174,8 @@ describe('config', () => {
     ['AGENT_TIMEOUT_MS', '7200000', 'agentTimeoutMs', 7_200_000],
     ['AGENT_REVIEW_POOL_SIZE', '16', 'reviewPoolSize', 16],
     ['AGENT_MAX_ATTEMPTS', '20', 'maxAttempts', 20],
+    ['AGENT_MAX_TOKENS', '50000', 'maxTokens', 50_000],
+    ['AGENT_MAX_TOKENS', '1000000000', 'maxTokens', 1_000_000_000],
   ] as const)('accepts %s=%p at the edge of its range', (key, raw, field, expected) => {
     expect(loadConfig({ ...baseEnv, [key]: raw }, '/repo')[field]).toBe(expected)
   })

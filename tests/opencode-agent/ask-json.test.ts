@@ -46,6 +46,7 @@ const scripted = (replies: readonly string[]): Scripted => {
         prompts.push(request)
         return Promise.resolve({ text: queue.shift() ?? '', sessionId: 'session-1' })
       },
+      tokensUsed: () => Promise.resolve(0),
       close: () => Promise.resolve(),
     },
   }

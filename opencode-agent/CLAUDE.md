@@ -39,6 +39,13 @@ findings: `ROADMAP.md`.
   it is the one layer that sees a real HTTP status and the only one the review
   loop's subprocesses also pass through; do not add a second retry in the
   adapter, where the status is already gone.
+- **The token budget is per issue and persisted.** `tokensSpent` lives in the
+  state block; the orchestrator checks it before each phase, beside the retry
+  budget it resembles. Budget on **tokens**, never on `cost`: token counts come
+  from the provider's usage block, while cost is derived from OpenCode's model
+  catalogue and is `0` for any model it does not price. Read the total from
+  `session.get`, not by summing events — the check happens immediately after a
+  prompt returns, and an event-derived total is whatever has arrived by then.
 - **Bounds go on the finished prompt, and on waiting.** `prompt-budget.ts` caps
   what reaches the model — per prompt, not per input, since a per-input cap
   bounds one log and nothing else. `deadline.ts` bounds waiting for a model turn;

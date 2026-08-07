@@ -99,3 +99,21 @@ export const renderFailure = (phase: Phase, message: string, next: AgentState, m
     `Attempt ${next.attempts} of ${maxAttempts}. Reply **\`/retry\`** to resume from \`${phase}\`, ` +
       'or **`/cancel`** to stop.',
   ].join('\n')
+
+/**
+ * The token-budget notice.
+ *
+ * Separate from {@link renderExhausted} because the remedy is different, and
+ * telling someone to reply `/retry` here would be a lie: the spend is persisted,
+ * so a retry re-reads the same total and stops again immediately. The only ways
+ * forward are a bigger budget or a fresh issue, and the notice says so.
+ */
+export const renderOverBudget = (spent: number, limit: number): string =>
+  [
+    '### Token budget spent',
+    '',
+    `This issue has used ${spent.toLocaleString('en-US')} model tokens of the ${limit.toLocaleString('en-US')} it is allowed.`,
+    '',
+    'The count carries across every job this issue has run, so `/retry` will stop here again.',
+    'Raise `AGENT_MAX_TOKENS` in the workflow to continue, or open a fresh issue for the remaining work.',
+  ].join('\n')

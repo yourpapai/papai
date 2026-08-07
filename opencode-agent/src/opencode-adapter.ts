@@ -14,27 +14,12 @@ import { buildOpencodeConfig, modelRef } from './openai-config.js'
 import type { OpenAiSettings } from './openai-config.js'
 import { createProgressTracker, followEvents, withHeartbeat } from './progress.js'
 import type { EventFollower, ProgressTracker } from './progress.js'
-import { decodeReply, decodeSessionId } from './sdk-contract.js'
+import { buildBody, decodeReply, decodeSessionId, decodeSessionUsage, parseModelRef } from './sdk-contract.js'
+import type { SdkPromptBody, SessionUsage } from './sdk-contract.js'
+
+export type { ModelRef, SdkPromptBody } from './sdk-contract.js'
+export { parseModelRef } from './sdk-contract.js'
 import { errorMessage } from './types.js'
-
-/** `providerID/modelID`, e.g. `openai/gpt-5`. */
-export interface ModelRef {
-  providerID: string
-  modelID: string
-}
-
-/**
- * Splits `provider/model` into the shape the SDK expects. Model ids may contain
- * slashes themselves (`openrouter/anthropic/claude-3.5`), so only the first
- * segment is treated as the provider.
- */
-export const parseModelRef = (raw: string): ModelRef => {
-  const separator = raw.indexOf('/')
-  if (separator <= 0 || separator === raw.length - 1) {
-    throw openCodeError(`Model must be "provider/model", got "${raw}"`)
-  }
-  return { providerID: raw.slice(0, separator), modelID: raw.slice(separator + 1) }
-}
 
 export interface AgentPromptRequest {
   prompt: string
@@ -54,15 +39,13 @@ export interface AgentPromptResult {
 export interface OpenCodeAgent {
   readonly sessionId: string
   prompt(request: AgentPromptRequest): Promise<AgentPromptResult>
+  /**
+   * Tokens this session has consumed. Zero when the server cannot say — a
+   * budget is a guardrail on the work, not part of it, so a shape it fails to
+   * recognise must not turn every phase into a failure.
+   */
+  tokensUsed(): Promise<number>
   close(): Promise<void>
-}
-
-export interface SdkPromptBody {
-  model: ModelRef
-  agent?: string
-  system?: string
-  tools?: Record<string, boolean>
-  parts: Array<{ type: 'text'; text: string }>
 }
 
 /** Minimal slice of the SDK surface the adapter drives. */
@@ -79,6 +62,8 @@ export interface OpenCodeConnection {
    * iterable and says so.
    */
   events(): Promise<AsyncIterable<unknown>>
+  /** What this session has spent so far, as the server accounts for it. */
+  usage(sessionId: string): Promise<SessionUsage | null>
   close(): Promise<void>
 }
 
@@ -113,14 +98,6 @@ export interface OpenCodeAgentOptions {
  * rather than swamping the tool calls that carry the real information.
  */
 const DEFAULT_HEARTBEAT_MS = 60_000
-
-const buildBody = (model: ModelRef, request: AgentPromptRequest): SdkPromptBody => ({
-  model,
-  parts: [{ type: 'text', text: request.prompt }],
-  ...(request.agent === undefined ? {} : { agent: request.agent }),
-  ...(request.system === undefined ? {} : { system: request.system }),
-  ...(request.tools === undefined ? {} : { tools: request.tools }),
-})
 
 /**
  * Reserves a free TCP port.
@@ -180,6 +157,8 @@ const connectSdk = async (directory: string, openai: OpenAiSettings): Promise<Op
     // still open eight seconds after the server was closed, and a teardown that
     // waited on it hung the job until its own timeout.
     events: async () => (await client.event.subscribe({ sseMaxRetryAttempts: 0 })).stream,
+    usage: async (sessionId) =>
+      decodeSessionUsage(await client.session.get({ path: { id: sessionId }, query: { directory } })),
     close: (): Promise<void> => {
       server.close()
       return Promise.resolve()
@@ -212,6 +191,16 @@ export const createOpenCodeAgent = async (options: OpenCodeAgentOptions): Promis
     prompt: async (request) => {
       const reply = await bounded(connection.sendPrompt(sessionId, buildBody(model, request)), options, tracker)
       return { text: decodeReply(reply), sessionId }
+    },
+    tokensUsed: async (): Promise<number> => {
+      const usage = await connection.usage(sessionId).catch(() => null)
+      if (usage === null) {
+        options.log.warn({ sessionId }, 'The server did not report session usage; the token budget cannot see this run')
+        return 0
+      }
+
+      options.log.debug({ sessionId, tokens: usage.tokens, cost: usage.cost }, 'Session usage')
+      return usage.tokens
     },
     close: async (): Promise<void> => {
       // Reporting first. Closing the server does not, by itself, end the stream

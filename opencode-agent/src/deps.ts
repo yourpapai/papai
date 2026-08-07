@@ -110,6 +110,7 @@ export const assembleDeps = ({ config, secrets, event, env, run, log, agent, fet
     runCheck: makeCheckRunner(run, config),
     runReview: makeReviewRunner(run, config, log),
     agent: agent.get,
+    tokensUsed: agent.tokensUsed,
     skills: makeSkillLoader(config, log),
     baseBranch: memoize(() =>
       resolveBaseBranch(env, { fromEvent: event.defaultBranch, fromGit: () => git.defaultBranch() }),

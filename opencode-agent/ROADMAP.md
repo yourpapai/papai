@@ -1265,7 +1265,7 @@ two call sites that consume the identity.
 | S5-3 **[FIXED]**       | No JSON-repair retry                        | `ask-json.ts`                        | `promptForJson` re-asks **once**, carrying the validation complaint and the rejected reply back to the model. See below.                                                                            |
 | S5-4 **[FIXED]**       | No prompt size budget                       | `prompt-budget.ts`                   | The thread half was already capped at 12k characters. The CI-fix half now is too, across all failures rather than each. See below.                                                                  |
 | S5-5                   | `timeout-minutes: 45` is likely too low     | `agent-pipeline.yml:31`              | Implement + up to 3 review rounds + 2 mutation rounds on a real repo can exceed it. A timeout loses everything — no state comment is posted, so the issue is stuck in whatever phase it started in. |
-| S5-6                   | No cost ceiling                             | —                                    | Round caps and the job timeout are the only bounds. A token budget per issue would be a cheap guardrail.                                                                                            |
+| S5-6 **[FIXED]**       | No cost ceiling                             | `types.ts`; `orchestrator.ts`        | A per-issue **token** budget, persisted in the state block so it survives the jobs it bounds. Tokens rather than currency, for a recorded reason. See below.                                        |
 | S5-7 **[FIXED]**       | No progress output during a phase           | `activity.ts`; `progress.ts`         | The event stream says what the model is doing; a heartbeat says it is still doing it. Neither ever logs content. See below.                                                                         |
 | S5-8                   | Every check reruns every round              | `review-loop.ts:52-66`               | Deliberate and documented, but on a repo with a 20-minute test suite three rounds is an hour. Consider rerunning only previously-failing checks after round 1, with a full pass at the end.         |
 | S5-9                   | `parseMutationScore` is ambiguous at `1`    | `review-loop.ts:130`                 | `value > 1 ? value/100 : value` reads a bare `Mutation score: 1` as 100%, not 1%. Inherent to the format; worth documenting or requiring the `%`.                                                   |
@@ -1449,9 +1449,8 @@ second, closer layer rather than the only one — it acts before OpenCode sees a
 error at all, and covers transport failures that never become an OpenCode-visible
 status. Still worth having; less dramatic than the finding claimed.
 
-Cost and token totals now appear per step and in every heartbeat. That is **not**
-S5-6 and does not close it — there is still no ceiling, only visibility. It is
-the cheap half, and it arrived free with the event that carries it.
+Cost and token totals now appear per step and in every heartbeat. That is the
+visibility half of S5-6; the ceiling itself came next, and is described below.
 
 Mutation-checked: `activity.ts` 0.98, `progress.ts` 1.00. The first pass found
 one design flaw rather than a coverage gap. The tracker decided what to collapse
@@ -1465,6 +1464,66 @@ pair of one-ended cases to tell them apart), `realSchedule`'s actual interval
 never exercised because every test injects a fake, and `elapsedMs` never
 asserted, leaving a mutation that logged a wall-clock epoch instead of a
 duration.
+
+### S5-6 — a token budget, and why not a cost one
+
+**Tokens, not currency, and the reason is recorded rather than assumed.** Both
+numbers are available: OpenCode reports per-step and per-session `tokens` and
+`cost`. But the token counts come from the provider's own `usage` block, while
+`cost` is derived from OpenCode's model catalogue. Driving a real server with a
+made-up model id returned **the correct token counts and a cost of zero** — and
+for a pipeline whose whole point is one arbitrary configured
+OpenAI-compatible endpoint, an unpriced model is the ordinary case, not the
+exotic one. A currency ceiling would therefore have been silently infinite for
+most configurations, which is worse than no ceiling because it looks like one.
+
+**Per issue, not per job**, which is why it is persisted. The runaway this bounds
+is not a single run — it is an issue bouncing through retries and CI-fix rounds,
+each on a fresh runner with no memory of what the last one spent. `tokensSpent`
+therefore lives in the `AGENT_STATE` block. No `STATE_VERSION` bump: the field
+has a default, so blocks written before it existed still parse — the same
+reasoning that let `approved` and `updatedAt` be removed.
+
+**Read from `session.get`, not summed from the event stream.** Both agree, but
+only the direct read is free of a race: the budget is checked immediately after
+a prompt returns, and a total accumulated from events is whatever has arrived by
+then. Verified against a real server — two prompts of 1234/567 tokens read back
+as exactly 2468/1134, with no wait. The live check now asserts that, because a
+budget that reads zero on the run that spent the tokens is the failure mode
+worth guarding.
+
+**Enforced in the state machine, beside the retry budget it resembles.** Checked
+_before_ a phase runs, since the point of a ceiling is to stop the next expensive
+thing; checking afterwards lets every phase overspend once. Per phase rather than
+per prompt because a phase is the granularity at which spend is knowable at all —
+the review loop's `opencode run` subprocesses have their own sessions, which this
+total cannot see. That is a real limit of the guardrail and is documented as one.
+
+The notice deliberately does **not** say "reply `/retry`" the way the retry-budget
+notice does. The spend is persisted, so a retry re-reads the same total and stops
+again; it names `AGENT_MAX_TOKENS` instead, which is the only advice that leads
+anywhere.
+
+Two files crossed `max-lines` and were split rather than compressed:
+`config-values.ts` now holds reading and range-checking a scalar from the
+environment, and the SDK's **request** shapes moved into `sdk-contract.ts` beside
+the response decoders — a version bump is now one file to look at.
+
+Mutation-checked: `sdk-contract.ts` 0.77 → 0.84, `orchestrator.ts` 0.85. Four
+real gaps, two of them mine. Reasoning tokens were only ever tested at zero,
+where adding and subtracting them are indistinguishable — a reasoning model would
+have been billed as free. And the boundary test for "spent exactly the budget"
+**passed for the wrong reason**: with the check relaxed from `>=` to `>` the run
+still failed, because the phase it then reached had no scripted reply to parse.
+Asserting the reason rather than the status is what actually pinned it. The other
+two were pre-existing in code this change moved: no decoder had ever been handed
+something that was not an envelope at all, which is the stated purpose of
+decoding through a schema.
+
+One thing left open: the paired mutation runner reports "no covering test found"
+for `config-values.ts`, because pairing looks for a companion test file and its
+behaviour is covered through `loadConfig` in `adapters.test.ts`. The code is
+tested; the runner cannot see it. Belongs with S6.
 
 ---
 

@@ -55,6 +55,7 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   ciFixMaxRounds: 2,
   maxCiAttempts: 2,
   maxAttempts: 3,
+  maxTokens: 5_000_000,
   diffLimits: { maxFiles: 100, maxLines: 20_000 },
   gitRemoteBase: 'https://github.com/',
   skillRoots: ['.superpowers/skills'],
@@ -103,6 +104,8 @@ interface PipelineIo {
   checkResults: Map<string, CommandResult>
   /** Model replies, consumed in order by successive prompts. */
   replies: string[]
+  /** Tokens the fake session reports as spent this job. */
+  tokensUsed: number
   reviewResult: ReviewRunResult
   /** What `git` would report as the remote's default branch. */
   detectedBranch: string | null
@@ -135,6 +138,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     gitCalls: [],
     checkResults: new Map(),
     replies: [],
+    tokensUsed: 0,
     reviewResult: { outcome: 'passed', summary: 'no issues found', exitCode: 0 },
     detectedBranch: BASE_BRANCH,
     createdPr: null,
@@ -198,6 +202,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       io.prompts.push(request)
       return Promise.resolve({ text: io.replies.shift() ?? '', sessionId: 'session-1' })
     },
+    tokensUsed: () => Promise.resolve(io.tokensUsed),
     close: () => Promise.resolve(),
   }
 
@@ -207,6 +212,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     runCheck: (check) => Promise.resolve(io.checkResults.get(check.name) ?? OK_CHECK),
     runReview: () => Promise.resolve(io.reviewResult),
     agent: () => Promise.resolve(agent),
+    tokensUsed: () => Promise.resolve(io.tokensUsed),
     skills: () => Promise.resolve([]),
     baseBranch: () => Promise.resolve(BASE_BRANCH),
     selfLogin: () => Promise.resolve(AGENT_LOGIN),
@@ -239,6 +245,9 @@ const latestPostedState = (harness: Harness): AgentState | null => {
   const last = harness.io.posted.at(-1)
   return last === undefined ? null : extractState(last)
 }
+
+/** Keeps the "did a run return a state?" narrowing out of the test bodies. */
+const spentIn = (result: { state: AgentState | null }): number => result.state?.tokensSpent ?? -1
 
 const headings = (harness: Harness): string[] => harness.io.posted.map((body) => body.split('\n')[0] ?? '')
 
@@ -960,5 +969,114 @@ describe('commands and budgets', () => {
     expect(result.status).toBe('failed')
     expect(result.reason).toContain('Retry budget exhausted')
     expect(harness.io.posted[0]).toContain('### Giving up')
+  })
+})
+
+describe('the token budget', () => {
+  /** A prior job's state block, carrying what that job spent. */
+  const seedSpend = (harness: Harness, tokensSpent: number): void => {
+    const prior: AgentState = { ...initialState(ISSUE), phase: 'DESIGN_SPEC', tokensSpent }
+    harness.io.thread.push({ id: 900, body: `earlier\n\n${serializeState(prior)}`, authorLogin: AGENT_LOGIN })
+  }
+
+  test('records what the run spent, so the next job can see it', async () => {
+    const harness = makeHarness()
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.tokensUsed = 41_200
+
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(latestPostedState(harness)?.tokensSpent).toBe(41_200)
+  })
+
+  test('adds this job’s spend to what earlier jobs already spent', async () => {
+    // The runaway this bounds is not one job — it is an issue bouncing through
+    // retries and CI-fix rounds, each on a fresh runner with no memory.
+    const harness = makeHarness()
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.tokensUsed = 1_000
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.tokensUsed = 2_500
+    await runPipeline({ event: comment('/changes tighten it up'), deps: harness.deps })
+
+    expect(latestPostedState(harness)?.tokensSpent).toBe(3_500)
+  })
+
+  test('counts one job’s spend once, however many phases it cascades through', async () => {
+    // The session total is cumulative across the phases of a job, so adding it
+    // to each phase's own figure would count the earlier phases again. Approving
+    // the plan runs implement *and* deliver in a single job, which is the case
+    // that tells the two apart.
+    const harness = makeHarness()
+    harness.io.tokensUsed = 900
+    harness.io.replies = [SPEC_REPLY]
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+    harness.io.replies = [PLAN_REPLY]
+    const planned = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+    harness.io.posted.length = 0
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    // Two handlers ran in this one job, which is what makes the case.
+    expect(headings(harness)).toEqual(['### Implementation report', '### Pull request ready'])
+    expect(result.state?.tokensSpent).toBe(spentIn(planned) + 900)
+  })
+
+  test('stops the issue once an earlier job has spent the budget', async () => {
+    // The whole point of persisting it: this job's own session has spent
+    // nothing, and it still must not start.
+    const harness = makeHarness({ maxTokens: 50_000 })
+    seedSpend(harness, 60_000)
+
+    const result = await runPipeline({ event: comment('/changes again'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(result.reason).toContain('Token budget spent')
+    expect(harness.io.posted[0]).toContain('### Token budget spent')
+  })
+
+  test('says why /retry will not help, and names what would', async () => {
+    // The spend is persisted, so a retry re-reads the same total and stops
+    // again. Naming AGENT_MAX_TOKENS is the only advice that leads anywhere.
+    const harness = makeHarness({ maxTokens: 50_000 })
+    seedSpend(harness, 60_000)
+
+    await runPipeline({ event: comment('/changes again'), deps: harness.deps })
+
+    expect(harness.io.posted[0]).toContain('AGENT_MAX_TOKENS')
+    expect(harness.io.posted[0]).toContain('will stop here again')
+  })
+
+  test('checks before the phase runs, not after it has spent more', async () => {
+    const harness = makeHarness({ maxTokens: 50_000 })
+    seedSpend(harness, 60_000)
+
+    await runPipeline({ event: comment('/changes again'), deps: harness.deps })
+
+    expect(harness.io.prompts).toHaveLength(0)
+  })
+
+  test('stops at exactly the budget, not only past it', async () => {
+    // "Spent 5,000,000 of 5,000,000" is spent. Asserting the *reason*, not just
+    // the status: with the budget check relaxed to `>` this run still fails,
+    // because the triage handler it then reaches has no reply to parse.
+    const harness = makeHarness({ maxTokens: 50_000 })
+    seedSpend(harness, 50_000)
+
+    const result = await runPipeline({ event: comment('/changes again'), deps: harness.deps })
+
+    expect(result.reason).toContain('Token budget spent')
+  })
+
+  test('lets a run under the budget through', async () => {
+    const harness = makeHarness({ maxTokens: 5_000_000 })
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.tokensUsed = 41_200
+
+    const result = await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
   })
 })

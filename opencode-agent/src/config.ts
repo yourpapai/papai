@@ -9,9 +9,28 @@ import path from 'node:path'
 import { z } from 'zod'
 
 import type { CheckSpec } from './check-loop.js'
+import {
+  boundedInt,
+  ConfigError,
+  FILES_RANGE,
+  LINES_RANGE,
+  optional,
+  optionalOrNull,
+  POOL_RANGE,
+  required,
+  ROUND_RANGE,
+  TIMEOUT_RANGE,
+  TOKEN_RANGE,
+} from './config-values.js'
+import type { Env } from './config-values.js'
 import type { DiffLimits } from './diff-guard.js'
 import type { OpenAiSettings } from './openai-config.js'
 import { parseRepository } from './repository.js'
+
+// Re-exported so the many modules that already import them from here keep
+// working; they are declared next to the validators that raise and consume them.
+export { ConfigError } from './config-values.js'
+export type { Env } from './config-values.js'
 
 const checkSpecSchema = z.object({ name: z.string().min(1), argv: z.array(z.string().min(1)).min(1) })
 
@@ -49,6 +68,8 @@ export interface PipelineConfig {
   reviewMaxRounds: number
   reviewPoolSize: number
   agentTimeoutMs: number
+  /** Model tokens one issue may spend, across every job it runs. */
+  maxTokens: number
   ciFixMaxRounds: number
   /** Ceiling on CI-fix rounds across the whole life of one pull request. */
   maxCiAttempts: number
@@ -65,88 +86,6 @@ export interface PipelineConfig {
   skillRoots: readonly string[]
 }
 
-export class ConfigError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'ConfigError'
-  }
-}
-
-export type Env = Record<string, string | undefined>
-
-const required = (env: Env, key: string): string => {
-  const value = env[key]
-  if (value === undefined || value.trim().length === 0) {
-    throw new ConfigError(`Missing required environment variable ${key}`)
-  }
-  return value.trim()
-}
-
-/** A knob whose absence is meaningful, rather than something to default. */
-const optionalOrNull = (env: Env, key: string): string | null => {
-  const value = env[key]
-  return value === undefined || value.trim().length === 0 ? null : value.trim()
-}
-
-const optional = (env: Env, key: string, fallback: string): string => {
-  const value = env[key]
-  return value === undefined || value.trim().length === 0 ? fallback : value.trim()
-}
-
-/**
- * A knob's accepted range.
- *
- * Both ends carry weight. Rejecting non-integers only closes "not a number",
- * never "a number that cannot work", and the difference is not academic:
- * `AGENT_TIMEOUT_MS=1` is a positive integer that kills every subprocess after a
- * millisecond, so the pipeline reports every check as failing and every model
- * call as dead; `AGENT_REVIEW_MAX_ROUNDS=9007199254740991` is a positive integer
- * that removes the very bound the knob exists to impose. Both used to load.
- */
-interface IntRange {
-  min: number
-  max: number
-}
-
-/** Loop counters. Generous — the ceiling is there to stay finite, not to ration. */
-const ROUND_RANGE: IntRange = { min: 1, max: 20 }
-
-/**
- * One second to two hours. Under a second no real command completes, and an
- * Actions job is near its own ceiling well before two hours of one subprocess.
- */
-const TIMEOUT_RANGE: IntRange = { min: 1_000, max: 7_200_000 }
-
-/**
- * Bounds on one commit. Generous enough for a real feature and its tests, small
- * enough that a staged `node_modules`, a downloaded fixture or a build directory
- * stops the run instead of landing in a public pull request.
- */
-const FILES_RANGE: IntRange = { min: 1, max: 5_000 }
-const LINES_RANGE: IntRange = { min: 1, max: 1_000_000 }
-
-/** Concurrent `opencode run` subprocesses one runner can actually serve. */
-const POOL_RANGE: IntRange = { min: 1, max: 16 }
-
-/** Reads an integer knob, rejecting both malformed values and unusable ones. */
-const boundedInt = (env: Env, key: string, fallback: number, range: IntRange): number => {
-  const raw = env[key]
-  if (raw === undefined || raw.trim().length === 0) return fallback
-
-  const trimmed = raw.trim()
-  const parsed = Number.parseInt(trimmed, 10)
-  // The round-trip rejects what `parseInt` would otherwise salvage a prefix
-  // from — `2.5`, `1e3`, `01`, `7 rounds`.
-  if (!Number.isSafeInteger(parsed) || String(parsed) !== trimmed) {
-    throw new ConfigError(`${key} must be an integer, got ${JSON.stringify(raw)}`)
-  }
-  if (parsed < range.min || parsed > range.max) {
-    throw new ConfigError(`${key} must be between ${range.min} and ${range.max}, got ${parsed}`)
-  }
-  return parsed
-}
-
-/** Parses `AGENT_CHECKS` — a JSON array of `{ name, argv }`. */
 export const parseChecks = (raw: string | undefined): readonly CheckSpec[] => {
   if (raw === undefined || raw.trim().length === 0) return DEFAULT_CHECKS
 
@@ -278,6 +217,7 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     ciFixMaxRounds: boundedInt(env, 'AGENT_CI_FIX_MAX_ROUNDS', 2, ROUND_RANGE),
     maxCiAttempts: boundedInt(env, 'AGENT_MAX_CI_ATTEMPTS', 3, ROUND_RANGE),
     maxAttempts: boundedInt(env, 'AGENT_MAX_ATTEMPTS', 3, ROUND_RANGE),
+    maxTokens: boundedInt(env, 'AGENT_MAX_TOKENS', 5_000_000, TOKEN_RANGE),
     diffLimits: {
       maxFiles: boundedInt(env, 'AGENT_MAX_CHANGED_FILES', 100, FILES_RANGE),
       maxLines: boundedInt(env, 'AGENT_MAX_CHANGED_LINES', 20_000, LINES_RANGE),

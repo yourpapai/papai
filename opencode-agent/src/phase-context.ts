@@ -39,6 +39,14 @@ export interface PhaseDeps {
   runReview: RunReview
   /** Memoized: the OpenCode server only boots for phases that prompt the model. */
   agent: () => Promise<OpenCodeAgent>
+  /**
+   * Tokens this job has spent so far. `0` when no session was opened.
+   *
+   * On `PhaseDeps` rather than reached for through `agent()`, because asking
+   * costs nothing when nothing was spent and booting a server to find that out
+   * would cost a great deal.
+   */
+  tokensUsed: () => Promise<number>
   skills: (phase: Phase) => Promise<SkillDocument[]>
   /**
    * Branch new work forks from and pull requests target. Memoized and lazy:

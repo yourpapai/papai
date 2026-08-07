@@ -88,6 +88,26 @@ export const agentStateSchema = z.object({
   ciBudgetReported: z.boolean().default(false),
   /** Bumped each time the spec or plan is revised, for the artefact blocks. */
   revision: z.number().int().min(0).default(0),
+  /**
+   * Model tokens this issue has consumed, across every job it has run.
+   *
+   * Persisted because the runaway this bounds is not one job — it is an issue
+   * bouncing through retries and CI-fix rounds, each of which starts a fresh
+   * runner with no memory of what the last one spent.
+   *
+   * Tokens rather than currency. Token counts come from the provider's own
+   * usage block and are always right; the cost figure OpenCode reports is
+   * derived from its model catalogue and reads **0** for any model it does not
+   * price — which, for a pipeline whose whole point is an arbitrary configured
+   * model, is the ordinary case. Verified against a real server: a made-up model
+   * id reported the correct token counts and a cost of zero. A ceiling that
+   * silently never fires is worse than no ceiling, because it looks like one.
+   *
+   * Needs no `STATE_VERSION` bump: it has a default, so blocks written before it
+   * existed still parse — the same reasoning that let `approved` and `updatedAt`
+   * be removed.
+   */
+  tokensSpent: z.number().int().min(0).default(0),
   lastError: z.string().nullable().default(null),
   prUrl: z.url().nullable().default(null),
   prNumber: z.number().int().positive().nullable().default(null),

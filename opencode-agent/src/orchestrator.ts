@@ -13,7 +13,7 @@ import { handleDeliver } from './phases/deliver.js'
 import { handleImplement } from './phases/implement.js'
 import { handlePlan } from './phases/plan.js'
 import { handleTriage } from './phases/triage.js'
-import { postAndAppend, renderExhausted, renderFailure, renderSettled } from './run-report.js'
+import { postAndAppend, renderExhausted, renderFailure, renderOverBudget, renderSettled } from './run-report.js'
 import { findLatestState, initialState, transition } from './state-manager.js'
 import { applyTrigger } from './triggers.js'
 import { errorMessage } from './types.js'
@@ -69,7 +69,16 @@ export const runPipeline = async (options: RunOptions): Promise<RunResult> => {
   const entry = await applyTrigger(base)
   if (entry.halt !== null) return entry.halt
 
-  return driveMachine({ ...base, state: entry.state, answer: entry.answer, posted: false })
+  return driveMachine({
+    ...base,
+    state: entry.state,
+    answer: entry.answer,
+    posted: false,
+    // Captured once. This job's session total is cumulative across the phases it
+    // runs, so adding it to the *restored* figure gives a monotonic total;
+    // adding it to each phase's own would count the earlier phases again.
+    carriedTokens: restored.tokensSpent,
+  })
 }
 
 /** The issue's title and body, from the payload when present, else the API. */
@@ -84,7 +93,13 @@ interface MachineInput extends PhaseInput {
   answer: boolean
   /** Whether this run has already written a state block to the thread. */
   posted: boolean
+  /** Tokens this issue had spent before this job started. */
+  carriedTokens: number
 }
+
+/** Everything this issue has spent, prior jobs included. */
+const totalTokens = async (input: MachineInput): Promise<number> =>
+  input.carriedTokens + (await input.deps.tokensUsed())
 
 /**
  * Runs handlers back-to-back. Recursion rather than a loop: each step's result
@@ -99,11 +114,19 @@ const driveMachine = async (input: MachineInput): Promise<RunResult> => {
 
   if (state.attempts >= deps.config.maxAttempts) return exhausted(input)
 
+  // Before the handler, not after: the point of a ceiling is to stop the next
+  // expensive thing, and checking afterwards would let every phase overspend
+  // once. Checked per phase rather than per prompt because a phase is the
+  // granularity at which spend is knowable — the review loop's subprocesses run
+  // in their own sessions, which this total cannot see.
+  const spent = await totalTokens(input)
+  if (spent >= deps.config.maxTokens) return overBudget(input, spent)
+
   const attempt = await runHandler(handler, input)
   if (!attempt.ok) return failRun(input, attempt.error)
 
   const { signal, comment, blocks, patch } = attempt.outcome
-  const next = transition(state, signal, patch ?? {})
+  const next = transition(state, signal, { ...patch, tokensSpent: await totalTokens(input) })
   const grown = await postAndAppend(thread, input, comment, next, blocks)
 
   if (PAUSE_SIGNALS.has(signal)) {
@@ -139,6 +162,23 @@ const exhausted = async (input: MachineInput): Promise<RunResult> => {
   await postAndAppend(thread, input, renderExhausted(reason), state)
 
   return { status: 'failed', reason, state }
+}
+
+/**
+ * Stops an issue that has spent its token budget.
+ *
+ * Shaped like {@link exhausted} — post on the issue, leave the phase alone, and
+ * report a failed run — because a guardrail that stops in silence reads as an
+ * agent that lost interest.
+ */
+const overBudget = async (input: MachineInput, spent: number): Promise<RunResult> => {
+  const { state, deps, thread } = input
+  const reason = `Token budget spent (${spent} of ${deps.config.maxTokens} tokens for this issue)`
+  deps.log.warn({ issue: state.issueId, spent, limit: deps.config.maxTokens }, 'Stopping: token budget spent')
+
+  await postAndAppend(thread, input, renderOverBudget(spent, deps.config.maxTokens), { ...state, tokensSpent: spent })
+
+  return { status: 'failed', reason, state: { ...state, tokensSpent: spent } }
 }
 
 type HandlerAttempt = { ok: true; outcome: PhaseOutcome } | { ok: false; error: unknown }
