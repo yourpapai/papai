@@ -379,6 +379,25 @@ describe('AdminUsersSection', () => {
     void unmount(component)
   })
 
+  test('a failed add re-enables the Add button and restores its label', async () => {
+    setCsrfToken('c')
+    setMockFetch(postErrorMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="user-add-input"]')!
+    input.value = '77'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    const button = target.querySelector<HTMLButtonElement>('[data-testid="user-add"]')!
+    button.click()
+    await drain()
+    expect(button.disabled).toBe(false)
+    expect(button.textContent?.trim()).toBe('Add user')
+    void unmount(component)
+  })
+
   test('renders section header via PageHeader', async () => {
     setCsrfToken('c')
     setMockFetch(captureUsersMock)
