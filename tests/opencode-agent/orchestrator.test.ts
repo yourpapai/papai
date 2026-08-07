@@ -91,6 +91,7 @@ const ciEvent = (overrides: Partial<CiTriggerEvent> = {}): CiTriggerEvent => ({
   conclusion: 'failure',
   workflowName: 'CI',
   runUrl: 'https://example.test/run/1',
+  fromThisRepository: true,
   defaultBranch: BASE_BRANCH,
   ...overrides,
 })

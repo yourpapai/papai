@@ -237,8 +237,20 @@ Human events: supported event and action only; no comments on pull requests; no
 must be `OWNER`, `MEMBER`, or `COLLABORATOR` — read from the _commenter_, not the
 issue author.
 
-CI events: the run must have concluded `failure`, on a branch matching
-`agent/issue-<n>`, from a workflow that is not this one.
+CI events: the run must have concluded `failure`, **on this repository**, on a
+branch matching `agent/issue-<n>`, from a workflow that is not this one.
+
+The repository check is the one that is not bookkeeping. `head_branch` carries a
+fork's branch name verbatim, so a pull request opened from a branch called
+`agent/issue-42` produces a payload that passes every other test — and would
+start a privileged job that prompts the model, spends the issue's token budget
+and pushes a commit to a real agent branch.
+
+Relatedly, the checkout takes **no `ref:`**. Every event kind checks out the
+default branch and the pipeline switches to `agent/issue-<n>` itself. Checking
+the agent's branch out in the workflow would mean `bun install` and the
+pipeline's own source came from a branch the model writes to, in a job holding
+every repository secret.
 
 Text the pipeline did not write — issue bodies, comments, approved artefacts and
 **check output** — reaches the model inside an id-terminated envelope

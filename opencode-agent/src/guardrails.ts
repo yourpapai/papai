@@ -42,6 +42,15 @@ export interface CiTriggerEvent {
   conclusion: string
   workflowName: string
   runUrl: string
+  /**
+   * Whether the run that went red was on a branch of **this** repository.
+   *
+   * `head_branch` is attacker-controlled: a fork's branch name reaches this
+   * payload verbatim, so anyone can open a pull request from a branch called
+   * `agent/issue-42` and have its failing CI look, to every other field here,
+   * exactly like the agent's own branch going red.
+   */
+  fromThisRepository: boolean
   /** `repository.default_branch`; `null` when the payload omitted it. */
   defaultBranch: string | null
 }
@@ -83,8 +92,11 @@ const ciPayloadSchema = z.object({
     head_branch: z.string().nullable().default(null),
     conclusion: z.string().nullable().default(null),
     html_url: z.string().default(''),
+    // Absent on a payload shape that predates this check, and absent is not
+    // trusted: `fromThisRepository` below resolves it to `false`.
+    head_repository: z.object({ full_name: z.string().default('') }).optional(),
   }),
-  repository: z.object({ default_branch: z.string().min(1).optional() }).optional(),
+  repository: z.object({ default_branch: z.string().min(1).optional(), full_name: z.string().default('') }).optional(),
 })
 
 const parseIssueEvent = (eventName: string, payload: unknown): IssueTriggerEvent | null => {
@@ -130,6 +142,13 @@ const parseCiEvent = (eventName: string, payload: unknown): CiTriggerEvent | nul
     conclusion: run.conclusion ?? 'unknown',
     workflowName: run.name,
     runUrl: run.html_url,
+    // Compared, never defaulted to true: two absent names would otherwise be
+    // "equal" and wave through the very payload this exists to catch.
+    fromThisRepository:
+      run.head_repository !== undefined &&
+      repository !== undefined &&
+      run.head_repository.full_name.length > 0 &&
+      run.head_repository.full_name === repository.full_name,
     defaultBranch: repository?.default_branch ?? null,
   }
 }
@@ -153,6 +172,7 @@ export type GuardrailCode =
   | 'NOT_MAINTAINER'
   | 'CI_GREEN'
   | 'CI_SELF'
+  | 'CI_FOREIGN_REPOSITORY'
   | 'CI_FOREIGN_BRANCH'
 
 export type GuardrailDecision = { allowed: true } | { allowed: false; code: GuardrailCode; reason: string }
@@ -202,13 +222,26 @@ const evaluateIssueGuardrails = (event: IssueTriggerEvent, options: GuardrailOpt
 }
 
 /**
- * A red check run only earns a fix attempt when it is red, belongs to a branch
- * this pipeline owns, and did not come from the pipeline's own workflow — that
- * last one is the recursion guard, since a failing agent job would otherwise
- * trigger an agent job.
+ * A red check run only earns a fix attempt when it is red, came from this
+ * repository, belongs to a branch this pipeline owns, and did not come from the
+ * pipeline's own workflow — that last one is the recursion guard, since a
+ * failing agent job would otherwise trigger an agent job.
+ *
+ * The repository check is the one that is not about tidiness. `head_branch`
+ * comes from the run that failed, and a pull request opened from a fork carries
+ * that fork's branch name: name it `agent/issue-42`, let its checks go red, and
+ * every other test here passes. Without this, anyone who can open a pull request
+ * can start a privileged job that prompts the model, spends the issue's token
+ * budget and pushes a commit to a real agent branch.
+ *
+ * Mirrored in the workflow's own `if:`, so the runner never boots with the API
+ * keys mounted for an event this would reject anyway.
  */
 const evaluateCiGuardrails = (event: CiTriggerEvent, options: GuardrailOptions): GuardrailDecision => {
   if (event.conclusion !== 'failure') return deny('CI_GREEN', `Run concluded ${event.conclusion}, not failure`)
+  if (!event.fromThisRepository) {
+    return deny('CI_FOREIGN_REPOSITORY', `Run on ${event.branch} came from another repository, not this one`)
+  }
   if (event.workflowName === options.selfWorkflowName) {
     return deny('CI_SELF', 'Run belongs to the agent pipeline itself')
   }

@@ -46,6 +46,7 @@ const ciEvent = (overrides: Partial<CiTriggerEvent> = {}): CiTriggerEvent => ({
   conclusion: 'failure',
   workflowName: 'CI',
   runUrl: 'https://example.test/run/1',
+  fromThisRepository: true,
   defaultBranch: 'main',
   ...overrides,
 })
@@ -97,10 +98,23 @@ describe('parseTriggerEvent — CI events', () => {
       head_branch: 'agent/issue-42',
       conclusion: 'failure',
       html_url: 'https://example.test/run/1',
+      head_repository: { full_name: 'acme/widgets' },
     },
-    repository: { default_branch: 'main' },
+    repository: { default_branch: 'main', full_name: 'acme/widgets' },
     ...overrides,
   })
+
+  /** The same payload as a fork would produce: its own branch name, its own repo. */
+  const forkPayload = (branch = 'agent/issue-42'): Record<string, unknown> =>
+    ciPayload({
+      workflow_run: {
+        name: 'CI',
+        head_branch: branch,
+        conclusion: 'failure',
+        html_url: 'u',
+        head_repository: { full_name: 'attacker/widgets' },
+      },
+    })
 
   test('recovers the issue number from the agent branch', () => {
     expect(parseTriggerEvent('workflow_run', ciPayload())).toEqual(ciEvent())
@@ -127,6 +141,65 @@ describe('parseTriggerEvent — CI events', () => {
     const payload = ciPayload({ workflow_run: { name: 'CI', head_branch: null, conclusion: 'failure', html_url: 'u' } })
 
     expect(parseTriggerEvent('workflow_run', payload)).toBeNull()
+  })
+
+  test('marks a run from a fork as not being from this repository', () => {
+    expect(parseTriggerEvent('workflow_run', forkPayload())).toMatchObject({ fromThisRepository: false })
+  })
+
+  test.each([
+    [
+      'no head_repository at all',
+      ciPayload({ workflow_run: { name: 'CI', head_branch: 'agent/issue-42', conclusion: 'failure', html_url: 'u' } }),
+    ],
+    [
+      'no repository at all',
+      {
+        action: 'completed',
+        workflow_run: {
+          name: 'CI',
+          head_branch: 'agent/issue-42',
+          conclusion: 'failure',
+          html_url: 'u',
+          head_repository: { full_name: 'acme/widgets' },
+        },
+      },
+    ],
+    [
+      'both names empty',
+      ciPayload({
+        workflow_run: {
+          name: 'CI',
+          head_branch: 'agent/issue-42',
+          conclusion: 'failure',
+          html_url: 'u',
+          head_repository: { full_name: '' },
+        },
+        repository: { full_name: '' },
+      }),
+    ],
+  ])('treats %s as not from this repository', (_label, payload) => {
+    // Absent is not trusted, and two empty names are not "equal": defaulting
+    // either way would wave through exactly the payload this exists to catch.
+    expect(parseTriggerEvent('workflow_run', payload)).toMatchObject({ fromThisRepository: false })
+  })
+})
+
+describe('evaluateGuardrails — a run from another repository', () => {
+  test('rejects it, however much the rest of the payload looks right', () => {
+    // `head_branch` carries a fork's branch name verbatim, so anyone able to
+    // open a pull request could name a branch `agent/issue-42`, let its checks
+    // go red, and start a privileged job that prompts the model, spends the
+    // issue's token budget and pushes to a real agent branch.
+    const event = ciEvent({ fromThisRepository: false })
+
+    expect(evaluateGuardrails(event, OPTIONS)).toMatchObject({ allowed: false, code: 'CI_FOREIGN_REPOSITORY' })
+  })
+
+  test('names the branch it rejected, so the log says which one', () => {
+    const decision = evaluateGuardrails(ciEvent({ fromThisRepository: false }), OPTIONS)
+
+    expect(JSON.stringify(decision)).toContain('agent/issue-42')
   })
 })
 

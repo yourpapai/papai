@@ -1525,6 +1525,57 @@ for `config-values.ts`, because pairing looks for a companion test file and its
 behaviour is covered through `loadConfig` in `adapters.test.ts`. The code is
 tested; the runner cannot see it. Belongs with S6.
 
+### The Semgrep finding, and what was actually wrong
+
+`workflow-run-target-code-checkout` fired on `agent-pipeline.yml`. The rule's own
+statement of the danger — checking out _incoming pull-request code_ and running
+it with repository secrets — **did not apply**: `actions/checkout` had no
+`repository:` input, so it could only ever fetch refs from this repository, and
+a fork's code was never fetched. Read the rule to confirm rather than assuming:
+it has no `pattern-not` clauses at all and fires on `workflow_run` plus a
+checkout whose `ref` mentions `github.event.workflow_run`, whatever guards sit
+around it. So no amount of hardening would have silenced it.
+
+Two real weaknesses sat next to it, and both are now fixed.
+
+**The `ref:` was unnecessary and did weaken things.** `agent/issue-N` is a branch
+the _agent_ writes to. Checking it out in the workflow meant `bun install
+--frozen-lockfile` and the pipeline's own source came from a branch whose
+contents the model influences, inside a job holding every repository secret —
+which is the rule's underlying concern arriving by a different route. It bought
+nothing: `ensureBranch` already fetches and checks out the branch itself, and
+`fetch-depth: 0` fetches `+refs/heads/*:refs/remotes/origin/*` (checked against
+`actions/checkout`'s own `getRefSpecForAllHistory`), so the remote-tracking ref
+is present regardless. The issue-triggered path had always worked this way; the
+CI path was the odd one out. Removing it also removes the rule's match by
+construction, which matters because this repository does not permit inline
+suppressions.
+
+**Nothing checked that the red run came from this repository.** `head_branch` is
+attacker-controlled: a pull request opened from a fork branch named
+`agent/issue-42` produces a `workflow_run` payload that passes the conclusion
+test, the branch test and the not-my-own-workflow test. CI here runs on
+`pull_request`, so the precondition is real. The consequence was not secret
+theft — the checkout could not fetch fork code — but anyone able to open a pull
+request could start a privileged job that prompts the model, spends the issue's
+token budget and pushes a commit to a real agent branch. Now denied as
+`CI_FOREIGN_REPOSITORY`, in `guardrails.ts` and mirrored in the workflow's `if:`
+so the runner never boots with the keys mounted.
+
+Absent fields are not trusted: two missing repository names would compare equal
+and wave through the exact payload the check exists to catch, so an absent
+`head_repository` resolves to "not this repository".
+
+One wrinkle this surfaced but did not create: `bun install` runs against the
+default branch's lockfile, and `ensureBranch` switches the tree afterwards, so a
+dependency the agent adds on its own branch is not installed. That was already
+true of the issue-triggered path — it is uniform now rather than new — and
+belongs with S2 rather than here.
+
+**Not verified locally.** This container has neither a Semgrep binary nor Docker,
+so the fix is reasoned from the rule's published pattern, not from a green local
+run. CI is the check.
+
 ### S5-8 — what the finding meant once its file was gone
 
 Two S5 rows pointed at `review-loop.ts`, which no longer exists. They needed
@@ -1600,7 +1651,7 @@ Specific gaps worth closing, beyond the raw percentages:
 - **S6-6** **Coverage-floor risk on CI.** `scripts/coverage/floor.json` enforces an aggregate 90% lines / 90% functions. Eight of the spike's files sit below that. papai is large enough (~289k lines) that ~1,200 new lines at roughly 75% should not push the aggregate under the floor, but this has not been measured against a full coverage run and should be checked before merge.
 - **S6-7** `opencode-agent:lint` / `:typecheck` / `:format:check` / `:test` are not in `scripts/check.sh`'s full check list (`:296`), unlike `review-loop:*`. They are covered transitively by the root `lint`, `typecheck` and `test`, so this is consistency rather than a hole — but the asymmetry will confuse the next person.
 - **S6-8 [PARTLY FIXED]** `workflow.test.ts` now parses the workflow and asserts its trigger surface, condition, concurrency key, step wiring and permissions. That is a property check, not a linter: it cannot catch a shell-quoting or expression _syntax_ error the way `actionlint` would. Adding actionlint to CI is still worth doing.
-- **S6-9** `bun security` (Semgrep) could not run in the authoring environment — no Semgrep binary and no Docker. The spike has **not** been through the repo's security scan. Run it before merge; S3-1, S3-3 and S3-5 are the kind of thing its AI/LLM rules target.
+- **S6-9 [PARTLY CLOSED]** `bun security` (Semgrep) could not run in the authoring environment — no Semgrep binary and no Docker — so the spike had not been through the repo's security scan. CI has now run it, and it found one blocking issue in `agent-pipeline.yml`. See below.
 
 ---
 

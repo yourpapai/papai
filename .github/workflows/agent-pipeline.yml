@@ -60,6 +60,7 @@ jobs:
     if: >-
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.conclusion == 'failure' &&
+       github.event.workflow_run.head_repository.full_name == github.repository &&
        startsWith(github.event.workflow_run.head_branch, 'agent/issue-'))
       ||
       (github.event_name != 'workflow_run' &&
@@ -80,9 +81,17 @@ jobs:
           # about. The pipeline supplies the credential per git invocation
           # through GIT_CONFIG_* on the child instead.
           persist-credentials: false
-          # On workflow_run the default ref is the base branch; the agent needs
-          # the branch whose checks went red.
-          ref: ${{ github.event.workflow_run.head_branch || github.ref }}
+          # No `ref:`. Every event kind checks out the default branch, and the
+          # pipeline switches to `agent/issue-N` itself through `ensureBranch`,
+          # which fetches it — `fetch-depth: 0` fetches every head, so the
+          # remote-tracking ref is already here.
+          #
+          # This is the security-relevant half. `agent/issue-N` is a branch the
+          # agent writes to, so checking it out here would have `bun install`
+          # and the pipeline's own source come from a branch whose contents the
+          # model influences, in a job holding every repository secret. The
+          # issue-triggered path already worked this way; the CI path was the
+          # odd one out.
 
       # Skills are fetched rather than vendored: obra/superpowers is MIT and
       # separately maintained, and a pinned checkout keeps updates to a ref bump

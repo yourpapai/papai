@@ -104,6 +104,13 @@ describe('the job condition', () => {
     expect(condition).toContain("startsWith(github.event.workflow_run.head_branch, 'agent/issue-')")
   })
 
+  test('admits a CI event only from this repository, never a fork', () => {
+    // `head_branch` carries a fork's branch name verbatim, so the branch test
+    // above is not an ownership test on its own. Mirrored in `guardrails.ts`;
+    // here it keeps the runner from booting with the API keys mounted at all.
+    expect(condition).toContain('github.event.workflow_run.head_repository.full_name == github.repository')
+  })
+
   test('does not demand an author association from machine events', () => {
     // workflow_run carries no author association; requiring one would disable
     // the CI-fix path entirely.
@@ -168,8 +175,15 @@ const documentedKnobs = (): string[] => {
 }
 
 describe('steps', () => {
-  test('checks out the branch whose checks went red, not the base', () => {
-    expect(checkoutStep.with['ref']).toContain('github.event.workflow_run.head_branch')
+  test('checks out the default branch and lets the pipeline switch branches', () => {
+    // Never `ref: <the branch that went red>`. `agent/issue-N` is a branch the
+    // agent writes to, so checking it out here would have `bun install` and the
+    // pipeline's own source come from a branch the model influences, in a job
+    // holding every repository secret. `ensureBranch` switches to it after
+    // install, which is what the issue-triggered path already did.
+    expect(checkoutStep.with).not.toHaveProperty('ref')
+    // The switch depends on this: `fetch-depth: 0` fetches every head, so the
+    // remote-tracking ref for an existing agent branch is already present.
     expect(checkoutStep.with['fetch-depth']).toBe(0)
   })
 
