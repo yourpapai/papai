@@ -50,6 +50,12 @@ export interface PipelineConfig {
   maxAttempts: number
   /** Ceilings a staged change set must stay under before it is committed. */
   diffLimits: DiffLimits
+  /**
+   * Base URL the git credential header is scoped to. Configurable because the
+   * pipeline is not GitHub.com-only: an Enterprise Server install answers on its
+   * own host, and a header scoped to the wrong one is silently not sent.
+   */
+  gitRemoteBase: string
   skillRoots: readonly string[]
 }
 
@@ -248,6 +254,7 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     selfLogin: optional(env, 'AGENT_SELF_LOGIN', owner),
     selfWorkflowName: optional(env, 'AGENT_WORKFLOW_NAME', 'OpenCode Issue Agent'),
     openai: loadOpenAiSettings(env),
+    gitRemoteBase: optional(env, 'GITHUB_SERVER_URL', 'https://github.com').replace(/\/*$/u, '/'),
     commitAuthorName: optional(env, 'AGENT_COMMIT_NAME', 'opencode-agent[bot]'),
     commitAuthorEmail: optional(env, 'AGENT_COMMIT_EMAIL', 'opencode-agent@users.noreply.github.com'),
     checkCommand: optional(env, 'AGENT_CHECK_COMMAND', 'bun run lint && bun run typecheck && bun test'),

@@ -757,10 +757,10 @@ kills the tests that name it._
 _Prompt-level only. S3-2 (no capability-level containment) is untouched and is
 still the gap that matters most._
 
-### S3-2 The model runs unconstrained with repository and provider credentials — verified — **[PARTIALLY FIXED]**
+### S3-2 The model runs unconstrained with repository and provider credentials — verified — **[FIXED]**
 
-_Two of the three named directions are closed; the third is not, and is split out
-as S3-7 below rather than left implied._
+_All three named directions are closed. The third is written up as S3-7 below,
+because it is a distinct change with its own verification._
 
 _The finding's list of exported keys was stale — `ANTHROPIC_API_KEY` and
 `OPENCODE_API_KEY` went away with the single-endpoint change — but the substance
@@ -806,20 +806,49 @@ binary but no provider endpoint, so the resolved-permission table above is
 config resolution, not an observed tool denial. The first real run is worth
 watching for denial noise — particularly `task`, which is denied everywhere._
 
-### S3-7 The repository token still sits in `.git/config`, readable by the model
+_**Update:** the third direction is now done too — see S3-7. What remains
+unaddressed from this finding is process-level isolation: there is no container
+or network boundary around the model, only the capability and credential
+boundaries above._
 
-Split out of S3-2, whose third direction this is. The workflow checks out with
-`persist-credentials: true`, so the token lives in `.git/config` as an
-`http.<url>.extraheader`. Scrubbing the environment does not touch it, and the
-`build` profile can `read` it.
+### S3-7 The repository token still sits in `.git/config`, readable by the model — verified — **[FIXED]**
 
-**Direction:** `persist-credentials: false`, and hand git its credential per
-invocation through `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_0` / `GIT_CONFIG_VALUE_0`
-in the child's environment — out of `.git/config`, out of argv (so it cannot
-surface in a `GitError`), and out of the OpenCode server's inherited env. Left
-undone deliberately: it changes how every git operation authenticates, and this
-container cannot verify a real push, so a wrong header format would break the
-whole pipeline rather than one phase.
+_S3-2's third direction, done. `persist-credentials: false`, and the credential
+is handed to git per invocation through `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_0` /
+`GIT_CONFIG_VALUE_0` on the child's environment._
+
+_Three places a token must not be, and this is the only form that avoids all
+three:_
+
+- _**`.git/config`** — where `persist-credentials: true` wrote it as an
+  `http.<remote>.extraheader`. The `build` profile can `read` any file in the
+  checkout, and scrubbing `process.env` (S3-2) does nothing about a file._
+- _**argv** — where `https://x-access-token:…@host/` or `git -c …` would put it,
+  visible in `/proc` and in the `GitError` message that S3-3 publishes to the
+  issue._
+- _**the OpenCode server's environment** — which inherits this process's, so the
+  variables are set on the git child only, never on `process.env`._
+
+_Verified here, not assumed. git 2.43 honours the env-config mechanism, the value
+never appears in `.git/config`, and it is invisible to a later `git config --get`
+without the environment. Then end to end against a real local remote: `fetch`,
+`checkout`, `commit` and `push` all succeed with the credential supplied this
+way, the token appears in no argv, and `grep -r` finds it nowhere under the
+checkout._
+
+_**What is not verified:** the local remote is a `file://` path, so the
+`AUTHORIZATION: basic <base64("x-access-token:" + token)>` header is never
+actually presented for authentication. That format is what `actions/checkout`
+itself writes, but the first real run against GitHub is the proof. The scoping
+matters too and is now configurable via `GITHUB_SERVER_URL` — a header scoped to
+the wrong host is **silently not sent**, so an Enterprise Server install would
+fail to authenticate with no clue why._
+
+_Mutation-checked seven ways. The last one mattered: reverting the workflow to
+`persist-credentials: true` killed nothing, because no test read the checkout
+step's configuration — half the fix lives in YAML, and a revert there would have
+silently undone all of it. `workflow.test.ts` asserts it now, for **every**
+checkout step rather than the first._
 
 ### S3-3 Check output and git stderr are published verbatim to a public issue — verified — **[FIXED]**
 

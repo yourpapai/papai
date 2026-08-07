@@ -74,7 +74,12 @@ jobs:
           # Full history: the pipeline cuts agent/issue-N from origin/<base> and
           # fast-forwards an existing agent branch from a prior run.
           fetch-depth: 0
-          persist-credentials: true
+          # The token would otherwise be written into .git/config as an
+          # http.<remote>.extraheader — a file the model's `build` profile can
+          # read, and one that scrubbing the process environment does nothing
+          # about. The pipeline supplies the credential per git invocation
+          # through GIT_CONFIG_* on the child instead.
+          persist-credentials: false
           # On workflow_run the default ref is the base branch; the agent needs
           # the branch whose checks went red.
           ref: ${{ github.event.workflow_run.head_branch || github.ref }}

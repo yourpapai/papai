@@ -7,7 +7,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { inspectStaged, measure, parseNumstat } from '../../opencode-agent/src/diff-guard.js'
 import type { DiffLimits, DiffVerdict, StagedFile } from '../../opencode-agent/src/diff-guard.js'
-import { createGit } from '../../opencode-agent/src/git.js'
+import { createGit, credentialEnv } from '../../opencode-agent/src/git.js'
 import type { GitOptions } from '../../opencode-agent/src/git.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
 
@@ -162,6 +162,64 @@ const guardedGit = (run: CommandRunner, limits: DiffLimits, secrets: readonly st
   authorEmail: 'agent@example.com',
   limits,
   secrets,
+  credential: null,
+})
+
+describe('credentialEnv', () => {
+  const credential = { remote: 'https://github.com/', token: 'ghp_supersecrettoken12345' }
+
+  test('carries the token in a config env var, not in a file or argv', () => {
+    // `persist-credentials: true` wrote it into `.git/config`, which the model's
+    // `build` profile can read — scrubbing `process.env` does nothing about a
+    // file. A URL or `git -c` form would put it in argv, where `/proc` and the
+    // `GitError` message published to the issue would both carry it.
+    const env = credentialEnv(credential)
+
+    expect(env?.['GIT_CONFIG_COUNT']).toBe('1')
+    expect(env?.['GIT_CONFIG_KEY_0']).toBe('http.https://github.com/.extraheader')
+    expect(env?.['GIT_CONFIG_VALUE_0']).toBe(
+      `AUTHORIZATION: basic ${Buffer.from('x-access-token:ghp_supersecrettoken12345').toString('base64')}`,
+    )
+  })
+
+  test('scopes the header to the configured remote, not to github.com', () => {
+    // A header scoped to the wrong host is silently not sent, so an Enterprise
+    // Server install would fail to authenticate with no clue why.
+    const env = credentialEnv({ remote: 'https://git.acme.internal/', token: 'x' })
+
+    expect(env?.['GIT_CONFIG_KEY_0']).toBe('http.https://git.acme.internal/.extraheader')
+  })
+
+  test('supplies nothing for an anonymous checkout', () => {
+    expect(credentialEnv(null)).toBeUndefined()
+  })
+
+  test('every git invocation carries it, not just the push', async () => {
+    // `ensureBranch` fetches before anything is pushed, and a private repository
+    // needs the credential for that too.
+    const envs: (Record<string, string> | undefined)[] = []
+    const run: CommandRunner = (argv, options) => {
+      envs.push(options.env)
+      return Promise.resolve({ command: argv.join(' '), exitCode: 0, stdout: '', stderr: '' })
+    }
+
+    await createGit({ ...guardedGit(run, LIMITS), credential }).ensureBranch('agent/issue-1', 'master')
+
+    expect(envs.length).toBeGreaterThan(1)
+    expect(envs.every((env) => env?.['GIT_CONFIG_VALUE_0'] !== undefined)).toBe(true)
+  })
+
+  test('never puts the token in the argv git is spawned with', async () => {
+    const calls: string[][] = []
+    const run: CommandRunner = (argv) => {
+      calls.push([...argv])
+      return Promise.resolve({ command: argv.join(' '), exitCode: 0, stdout: '', stderr: '' })
+    }
+
+    await createGit({ ...guardedGit(run, LIMITS), credential }).push('agent/issue-1')
+
+    expect(calls.flat().join(' ')).not.toContain('ghp_')
+  })
 })
 
 describe('commitAll runs the guard', () => {

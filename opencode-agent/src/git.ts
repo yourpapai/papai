@@ -18,6 +18,19 @@ export interface GitOptions {
   limits: DiffLimits
   /** Credential values that must never reach a commit, whatever file holds them. */
   secrets: readonly string[]
+  /**
+   * How git authenticates to the remote, or `null` for an anonymous checkout.
+   *
+   * Supplied per invocation instead of persisted, so the token is in no file the
+   * model can read. See {@link credentialEnv}.
+   */
+  credential: GitCredential | null
+}
+
+export interface GitCredential {
+  /** Remote base the header applies to, e.g. `https://github.com/`. */
+  remote: string
+  token: string
 }
 
 /** Branch name the pipeline owns for a given issue. */
@@ -69,8 +82,37 @@ export interface Git {
 
 type GitFn = (...argv: readonly string[]) => Promise<CommandResult>
 
+/**
+ * Hands git its credential through the environment of each invocation.
+ *
+ * Three places a token must not be, and this is the only form that avoids all
+ * three. **`.git/config`**: `persist-credentials: true` writes the token there
+ * as an `http.<remote>.extraheader`, and the `build` profile can `read` any file
+ * in the checkout — scrubbing the process environment does nothing about a file.
+ * **argv**: a credential in `https://x-access-token:…@host/` or in `git -c …`
+ * shows up in `/proc` and in the `GitError` message, which is published to the
+ * issue. **The OpenCode server's environment**: it inherits this process's, so
+ * the variables are set on the git child only, never on `process.env`.
+ *
+ * `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_0` / `GIT_CONFIG_VALUE_0` is git's own
+ * mechanism for exactly this (git ≥ 2.31); verified against git 2.43 that the
+ * value is honoured, is never written to `.git/config`, and is invisible to a
+ * later `git config --get` without the environment.
+ */
+export const credentialEnv = (credential: GitCredential | null): Record<string, string> | undefined => {
+  if (credential === null) return undefined
+
+  const basic = Buffer.from(`x-access-token:${credential.token}`).toString('base64')
+  return {
+    GIT_CONFIG_COUNT: '1',
+    GIT_CONFIG_KEY_0: `http.${credential.remote}.extraheader`,
+    GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${basic}`,
+  }
+}
+
 const makeRunners = (options: GitOptions): { git: GitFn; gitOrThrow: GitFn } => {
-  const git: GitFn = (...argv) => options.run(['git', ...argv], { cwd: options.cwd })
+  const env = credentialEnv(options.credential)
+  const git: GitFn = (...argv) => options.run(['git', ...argv], { cwd: options.cwd, env })
 
   const gitOrThrow: GitFn = async (...argv) => {
     const result = await git(...argv)

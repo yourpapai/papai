@@ -213,8 +213,16 @@ summaries, model prose and the hidden state block's `lastError`; redacting at th
 boundary means none of those can forget. GitHub masks registered secrets in an
 Actions log, but it does not mask an issue comment.
 
-> **Still open:** `persist-credentials: true` leaves the repository token in
-> `.git/config`, which the `build` profile can read (S3-7), and the logger still
+The repository token is never persisted. The checkout runs with
+`persist-credentials: false`, and git receives its credential through
+`GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_0` / `GIT_CONFIG_VALUE_0` on each
+invocation's environment — so it is in no file the model can read, in no argv
+(where `/proc` and a published `GitError` would both carry it), and in no
+environment the OpenCode server inherits. The header is scoped to
+`GITHUB_SERVER_URL`; a header scoped to the wrong host is silently not sent.
+
+> **Still open:** there is no container or network boundary around the model,
+> only these capability and credential boundaries (S3-2), and the logger still
 > redacts by field name rather than by value (S3-8). Both are in `ROADMAP.md`.
 
 ### A note on the "actor matches repository owner" rule

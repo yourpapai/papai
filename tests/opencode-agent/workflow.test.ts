@@ -142,6 +142,16 @@ describe('steps', () => {
     expect(checkoutStep.with['fetch-depth']).toBe(0)
   })
 
+  test('never persists the token into .git/config', () => {
+    // `persist-credentials: true` writes it there as an
+    // `http.<remote>.extraheader`, and the model's `build` profile can read any
+    // file in the checkout. The pipeline supplies the credential per git
+    // invocation through GIT_CONFIG_* instead.
+    for (const candidate of steps.filter((entry) => entry.uses.startsWith('actions/checkout'))) {
+      expect(candidate.with['persist-credentials']).toBe(false)
+    }
+  })
+
   test('fetches the superpowers skills from a pinned commit, not a branch', () => {
     // Third-party markdown that goes straight into the system prompt. A moving
     // ref would let it change without review.
