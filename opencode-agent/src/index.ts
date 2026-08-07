@@ -23,13 +23,12 @@ import { opencodeConfigEnv } from './openai-config.js'
 import { createOpenCodeAgent } from './opencode-adapter.js'
 import type { OpenCodeAgent } from './opencode-adapter.js'
 import { runPipeline } from './orchestrator.js'
-import type { RunResult } from './orchestrator.js'
 import type { PhaseDeps, RunReview } from './phase-context.js'
 import { runReviewLoop } from './review-runner.js'
 import { runCommand } from './shell.js'
 import type { CommandRunner } from './shell.js'
 import { errorMessage } from './types.js'
-import type { Phase } from './types.js'
+import type { Phase, RunResult } from './types.js'
 
 export interface CliArgs {
   eventPath: string

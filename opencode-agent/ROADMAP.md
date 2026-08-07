@@ -584,14 +584,35 @@ _Mutation-checked five ways — reverting to `state: 'open'`, ignoring `merged_a
 skipping the stand-down, standing down only for merged, and dropping the sort —
 each now kills the test that names it._
 
-### S2-11 CI-fixing continues on a merged branch — by inspection
+### S2-11 CI-fixing continues on a merged branch — **[FIXED]**
 
-Same underlying blindness as S2-7, on the other code path, and deliberately left
-open rather than folded into that fix. `COMPLETE + CI_FAILED → CI_FIX` never asks
-what became of the pull request, so a red check on an already-merged
-`agent/issue-N` branch buys a full fix round whose commits are pushed somewhere
-nobody will look. `state.prNumber` is persisted, so the check is available; the
-cost is one API call per CI event and a transition for "nothing to fix".
+_Recorded while fixing S2-7 and fixed on its own, using the lookup that fix
+introduced. `applyCiTrigger` now asks `findPullRequest` what became of the branch
+and stands down for merged, closed **and absent** — the third because a fix with
+no pull request has nowhere to go. Standing down spends no CI-fix attempt, so a
+reopened pull request still arrives with its budget intact._
+
+_The lookup is placed after the "already reported" short-circuit, so a pull
+request whose budget is spent and reported does not pay for an API call on every
+subsequent red run. It sits before the budget notice, so "I have stopped trying
+to fix CI" is not posted to work that already landed._
+
+_Deliberately silent, unlike the spent-budget notice. That one breaks silence
+because a maintainer is waiting on work that stopped; here the work has landed or
+been rejected, the issue is already `COMPLETE`, and CI fires on every push — a
+comment per red run would be pure spam._
+
+_Two things this pulled in. The orchestrator crossed the 300-line `max-lines`
+limit, which the repo treats as a design signal rather than something to
+compress: the trigger layer moved to `src/triggers.ts`, leaving
+`orchestrator.ts` with the phase cascade. And the test harness's
+`findPullRequest` did not know about pull requests the harness itself had
+created, so `COMPLETE` states had no findable PR — a fake that disagreed with
+GitHub. `createPullRequest` now records it._
+
+_Mutation-checked five ways. Four kill tests; the fifth — mutating the state
+carried alongside a `halt` — is **equivalent**, because `runPipeline` returns
+`entry.halt` when it is non-null and never reads `entry.state`._
 
 ### S2-8 `parseRepository` silently truncates — verified — **[FIXED]**
 

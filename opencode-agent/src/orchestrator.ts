@@ -4,10 +4,8 @@
 // See LICENSE in the project root for details.
 
 import { parseSlashCommand } from './commands.js'
-import type { ParsedCommand } from './commands.js'
 import { evaluateGuardrails } from './guardrails.js'
 import type { TriggerEvent } from './guardrails.js'
-import { classifyComment } from './intent.js'
 import type { IssueContext, PhaseDeps, PhaseHandler, PhaseInput, PhaseOutcome } from './phase-context.js'
 import { handleAnswer } from './phases/answer.js'
 import { handleCiFix } from './phases/ci-fix.js'
@@ -15,10 +13,11 @@ import { handleDeliver } from './phases/deliver.js'
 import { handleImplement } from './phases/implement.js'
 import { handlePlan } from './phases/plan.js'
 import { handleTriage } from './phases/triage.js'
-import { postAndAppend, renderCiExhausted, renderExhausted, renderFailure, renderSettled } from './run-report.js'
-import { findLatestState, initialState, markCiBudgetReported, transition } from './state-manager.js'
-import { errorMessage, WAITING_PHASES } from './types.js'
-import type { AgentState, Phase, TransitionSignal } from './types.js'
+import { postAndAppend, renderExhausted, renderFailure, renderSettled } from './run-report.js'
+import { findLatestState, initialState, transition } from './state-manager.js'
+import { applyTrigger } from './triggers.js'
+import { errorMessage } from './types.js'
+import type { Phase, RunResult, TransitionSignal } from './types.js'
 
 /**
  * Phases the pipeline can act on unattended. A phase with no handler is a
@@ -38,14 +37,6 @@ const HANDLERS: Partial<Record<Phase, PhaseHandler>> = {
  * re-enter triage and ask again, forever.
  */
 const PAUSE_SIGNALS: ReadonlySet<TransitionSignal> = new Set<TransitionSignal>(['NEEDS_CLARIFICATION', 'ANSWERED'])
-
-export type RunStatus = 'skipped' | 'waiting' | 'completed' | 'failed'
-
-export interface RunResult {
-  status: RunStatus
-  reason: string
-  state: AgentState | null
-}
 
 export interface RunOptions {
   event: TriggerEvent
@@ -87,108 +78,6 @@ const resolveIssue = (event: TriggerEvent, deps: PhaseDeps): Promise<IssueContex
     return Promise.resolve({ number: event.issueNumber, title: event.issueTitle, body: event.issueBody })
   }
   return deps.github.getIssue(event.issueNumber)
-}
-
-interface TriggerOutcome {
-  state: AgentState
-  halt: RunResult | null
-  /** Set when the trigger should be handled as a question rather than a phase. */
-  answer: boolean
-}
-
-/** Slash commands, mapped to the signal they inject before handlers run. */
-const COMMAND_SIGNALS: Record<string, TransitionSignal> = {
-  '/approve': 'APPROVED',
-  '/changes': 'CHANGES_REQUESTED',
-  '/retry': 'RETRY',
-  '/cancel': 'CANCELLED',
-}
-
-/**
- * Turns the trigger into a state move.
- *
- * A red CI run enters `CI_FIX`. An explicit slash command wins outright. A
- * plain maintainer comment on a waiting phase is classified, because "review
- * and refine" is a conversation, not a command language — and the classifier
- * defaults to *question*, the only reading that cannot destroy approved work.
- */
-const applyTrigger = (input: PhaseInput): Promise<TriggerOutcome> => {
-  const { state, trigger, command, deps } = input
-
-  if (trigger.kind === 'ci') return applyCiTrigger(input)
-  if (command !== null) return Promise.resolve(applyCommand(state, command, deps))
-  if (state.phase === 'INIT_OR_CLARIFY') return Promise.resolve({ state, halt: null, answer: false })
-  if (!WAITING_PHASES.has(state.phase)) {
-    return Promise.resolve({ state, halt: skip(state, `No actionable command while in ${state.phase}`), answer: false })
-  }
-
-  return applyIntent(input)
-}
-
-/**
- * A red CI run either buys a fix attempt or, once the budget is spent, buys the
- * maintainer a notice — exactly once.
- *
- * Silence here is the failure mode: CI events arrive on their own schedule with
- * nobody reading the Actions log, so an agent that quietly stops fixing looks
- * identical to one still working. Repeating the notice on every later red run
- * would be the opposite mistake, which is what `ciBudgetReported` prevents.
- */
-const applyCiTrigger = async (input: PhaseInput): Promise<TriggerOutcome> => {
-  const { state, deps, thread } = input
-  if (state.ciAttempts < deps.config.maxCiAttempts) {
-    return moveOrSkip(state, 'CI_FAILED', deps, 'a red CI run')
-  }
-
-  const reason = `Spent the CI-fix budget (${state.ciAttempts} of ${deps.config.maxCiAttempts} attempts).`
-  if (state.ciBudgetReported) {
-    return { state, halt: skip(state, `${reason} Already reported.`), answer: false }
-  }
-
-  const reported = markCiBudgetReported(state)
-  deps.log.warn({ issue: state.issueId, ciAttempts: state.ciAttempts }, 'CI-fix budget spent')
-  await postAndAppend(thread, input, renderCiExhausted(reason, state.prUrl), reported)
-
-  return { state: reported, halt: { status: 'failed', reason, state: reported }, answer: false }
-}
-
-const applyCommand = (state: AgentState, command: ParsedCommand, deps: PhaseDeps): TriggerOutcome => {
-  if (command.command === '/ask') return { state, halt: null, answer: true }
-
-  const signal = COMMAND_SIGNALS[command.command]
-  if (signal === undefined) return { state, halt: skip(state, `Unknown command ${command.command}`), answer: false }
-  return moveOrSkip(state, signal, deps, command.command)
-}
-
-const applyIntent = async (input: PhaseInput): Promise<TriggerOutcome> => {
-  const { state, trigger, deps } = input
-  const body = trigger.kind === 'issue' ? trigger.commentBody : null
-  if (body === null || body.trim().length === 0) {
-    return { state, halt: skip(state, 'Empty comment'), answer: false }
-  }
-
-  const intent = await classifyComment({ body, phase: state.phase, deps, state })
-  deps.log.info({ intent, phase: state.phase }, 'Classified maintainer comment')
-
-  if (intent === 'none') return { state, halt: skip(state, 'Comment needs no action'), answer: false }
-  if (intent === 'question') return { state, halt: null, answer: true }
-
-  const signal: TransitionSignal = intent === 'approve' ? 'APPROVED' : 'CHANGES_REQUESTED'
-  return moveOrSkip(state, signal, deps, `an implied ${intent}`)
-}
-
-const moveOrSkip = (state: AgentState, signal: TransitionSignal, deps: PhaseDeps, source: string): TriggerOutcome => {
-  try {
-    const next = transition(state, signal)
-    deps.log.info({ source, signal, from: state.phase, to: next.phase }, 'Applied trigger')
-    return { state: next, halt: null, answer: false }
-  } catch (error) {
-    return {
-      state,
-      halt: skip(state, `${source} is not valid in ${state.phase}: ${errorMessage(error)}`),
-      answer: false,
-    }
-  }
 }
 
 interface MachineInput extends PhaseInput {
@@ -277,5 +166,3 @@ const failRun = async (input: MachineInput, error: unknown): Promise<RunResult> 
 
   return { status: 'failed', reason: message, state: failed }
 }
-
-const skip = (state: AgentState, reason: string): RunResult => ({ status: 'skipped', reason, state })

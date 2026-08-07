@@ -110,3 +110,12 @@ export class InvalidTransitionError extends Error {
 
 /** Extracts a message from an unknown thrown value. */
 export const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
+
+export type RunStatus = 'skipped' | 'waiting' | 'completed' | 'failed'
+
+/** What one call to the pipeline concluded. `state` is null when nothing ran. */
+export interface RunResult {
+  status: RunStatus
+  reason: string
+  state: AgentState | null
+}

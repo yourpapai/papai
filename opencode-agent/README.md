@@ -300,7 +300,8 @@ Logs are NDJSON on stdout.
 | File                                          | Responsibility                                                         |
 | --------------------------------------------- | ---------------------------------------------------------------------- |
 | `src/index.ts`                                | CLI entry: flags, config, dependency wiring, agent teardown, exit code |
-| `src/orchestrator.ts`                         | The state machine: guardrails, triggers, phase cascade                 |
+| `src/orchestrator.ts`                         | The state machine: guardrails and the phase cascade                    |
+| `src/triggers.ts`                             | Turning a command, comment or red CI run into the state move to make   |
 | `src/run-report.ts`                           | Everything the orchestrator writes back to the issue                   |
 | `src/state-manager.ts`                        | Transition table and the `AGENT_STATE` block                           |
 | `src/blocks.ts` / `src/artifacts.ts`          | The hidden-block channel and the spec/plan/report artefacts            |

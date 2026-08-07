@@ -13,9 +13,11 @@ findings: `ROADMAP.md`.
 - One CI job = one call to `runCli`. State lives in hidden blocks on the issue,
   not on disk: `AGENT_STATE` for the machine, `AGENT_SPEC` / `AGENT_PLAN` /
   `AGENT_REPORT` for the artefacts.
-- `src/orchestrator.ts` owns the state machine; phase handlers in `src/phases/`
-  return a `TransitionSignal`, a comment body and optional artefact blocks, and
-  never write state or decide the next phase themselves.
+- `src/triggers.ts` decides _whether and where_ an event moves the state;
+  `src/orchestrator.ts` drives the phase cascade once that decision is made.
+  Phase handlers in `src/phases/` return a `TransitionSignal`, a comment body and
+  optional artefact blocks, and never write state or decide the next phase
+  themselves.
 - Every external boundary is an injected interface (`GitHubApi`, `Git`,
   `CheckRunner`, `RunReview`, `OpenCodeAgent`, `ReadSkillFile`).
 

@@ -152,6 +152,8 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       io.prBodies.push(input.body)
       io.prTitles.push(input.title)
       io.createdPr = { number: 7, url: 'https://example.test/pull/7' }
+      // A pull request that has been opened is findable, as GitHub's is.
+      io.existingPr = { ...io.createdPr, state: 'open' }
       return Promise.resolve(io.createdPr)
     },
     updatePullRequest: (_number, patch) => {
@@ -723,6 +725,58 @@ describe('CI fixing', () => {
 
     expect(result.status).toBe('skipped')
     expect(result.reason).toContain('Already reported')
+    expect(harness.io.posted).toEqual([])
+  })
+
+  test.each(['merged', 'closed'] as const)('a red run on a %s pull request buys no fix round', async (state) => {
+    // CI keeps firing on a branch after its pull request settles — a later
+    // push, a re-run, a flake — and a fix round's commits would land somewhere
+    // nobody will merge again.
+    harness.io.existingPr = { number: 7, url: 'https://example.test/pull/7', state }
+
+    const result = await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(result.reason).toContain(state)
+    expect(harness.io.gitCalls).toEqual([])
+    expect(harness.io.posted).toEqual([])
+  })
+
+  test('a settled pull request does not spend a CI-fix attempt', async () => {
+    harness.io.existingPr = { number: 7, url: 'https://example.test/pull/7', state: 'merged' }
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    // The budget is for repairing a live pull request; standing down must not
+    // consume it, or a reopened one would arrive with nothing left to spend.
+    harness.io.existingPr = { number: 7, url: 'https://example.test/pull/7', state: 'open' }
+    const result = await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.posted.at(-1)).toContain('CI fix attempt 1 of 2')
+  })
+
+  test('a red run on a branch with no pull request has nowhere to go', async () => {
+    harness.io.existingPr = null
+
+    const result = await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(result.reason).toContain('nowhere to go')
+    expect(harness.io.gitCalls).toEqual([])
+  })
+
+  test('the spent-budget notice is not posted to a merged pull request', async () => {
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+    harness.io.posted.length = 0
+    harness.io.existingPr = { number: 7, url: 'https://example.test/pull/7', state: 'merged' }
+
+    const result = await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    // "I have stopped trying to fix CI" is noise on work that already landed.
+    expect(result.status).toBe('skipped')
     expect(harness.io.posted).toEqual([])
   })
 
