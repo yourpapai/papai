@@ -5,14 +5,24 @@
 
 import { afterEach, describe, expect, test } from 'bun:test'
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { runBuildCheck } from '../../review-loop/src/build-checker.js'
 import { MergeConflictError } from '../../review-loop/src/cli-errors.js'
-import { finalizeRun, parseCliArgs, resolvePlanPath, runCli, type FinalizeDeps } from '../../review-loop/src/cli.js'
+import {
+  finalizeRun,
+  parseCliArgs,
+  readPersistedRunStats,
+  resolvePlanPath,
+  runCli,
+  writeRunArtifacts,
+  type FinalizeDeps,
+} from '../../review-loop/src/cli.js'
 import type { ReviewLoopConfig } from '../../review-loop/src/config.js'
 import { createIssueLedger, saveIssueLedger, type IssueLedger } from '../../review-loop/src/issue-ledger.js'
 import { createRunState, PersistedRunStateSchema, type RunState } from '../../review-loop/src/run-state.js'
+import { RunStats } from '../../review-loop/src/run-stats.js'
 import { execGit } from '../../review-loop/src/worktree.js'
 import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir } from './test-helpers.js'
 
@@ -557,5 +567,33 @@ describe('runCli', () => {
 
     const runDir = fixture.getRunDir()
     expect(existsSync(path.join(runDir, 'summary.txt'))).toBe(true)
+  })
+})
+
+describe('writeRunArtifacts stats persistence', () => {
+  test('writeRunArtifacts persists runStats into metrics.json and a Stats line into summary.txt', async () => {
+    const runDir = makeTempDir('rl-artifacts-')
+    const stats = new RunStats({
+      pricing: { 'm-*': { input: 3, output: 15 } },
+      startedAt: 0,
+      now: (): number => 60_000,
+    })
+    stats.addUsage('reviewer', { input: 100_000, output: 10_000, reasoning: 0, model: 'm-x' })
+    stats.addToolCalls('reviewer', 5)
+    await writeRunArtifacts(
+      runDir,
+      { doneReason: 'clean', rounds: 1, metrics: [], ledger: { issues: {} } },
+      { poolSize: 1, inspect: false, wallMs: 60_000, stats },
+    )
+    const persisted = await readPersistedRunStats(runDir)
+    expect(persisted?.totals.toolCalls).toBe(5)
+    expect(persisted?.totals.estimatedCostUsd).toBeCloseTo(0.45, 10)
+    const summary = await readFile(path.join(runDir, 'summary.txt'), 'utf8')
+    expect(summary).toContain('Stats: tools 5')
+  })
+
+  test('readPersistedRunStats returns undefined when metrics.json is missing or has no runStats', async () => {
+    const runDir = makeTempDir('rl-nostats-')
+    await expect(readPersistedRunStats(runDir)).resolves.toBeUndefined()
   })
 })

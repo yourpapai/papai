@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { access, writeFile } from 'node:fs/promises'
+import { access, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { createShellExec, runBuildCheck, type ShellExecFn } from './build-checker.js'
@@ -14,6 +14,7 @@ import { LiveRenderer } from './live-renderer.js'
 import { runReviewLoop, type ReviewLoopResult } from './loop-controller.js'
 import type { ProgressReporter } from './progress-log.js'
 import { createRunState, loadRunState, type RunState } from './run-state.js'
+import { RunStats, PersistedStatsSchema, type PersistedStats } from './run-stats.js'
 import { realSpawn } from './spawn.js'
 import { buildMetricsJson, buildSummary } from './summary.js'
 import { createFileTraceLogger, type TraceLogger } from './trace-log.js'
@@ -161,10 +162,21 @@ export async function prepareWorktree(config: ReviewLoopConfig, runState: RunSta
   }
 }
 
+export async function readPersistedRunStats(runDir: string): Promise<PersistedStats | undefined> {
+  try {
+    const raw: unknown = JSON.parse(await readFile(path.join(runDir, 'metrics.json'), 'utf8'))
+    const candidate = typeof raw === 'object' && raw !== null ? (raw as { runStats?: unknown }).runStats : undefined
+    const parsed = PersistedStatsSchema.safeParse(candidate)
+    return parsed.success ? parsed.data : undefined
+  } catch {
+    return undefined
+  }
+}
+
 export async function writeRunArtifacts(
   runDir: string,
   result: ReviewLoopResult,
-  options: { poolSize: number; inspect: boolean; wallMs: number },
+  options: { poolSize: number; inspect: boolean; wallMs: number; stats?: RunStats },
 ): Promise<void> {
   const closed = Object.values(result.ledger.issues).filter((r) => r.status === 'closed').length
   const summary = buildSummary({
@@ -175,12 +187,24 @@ export async function writeRunArtifacts(
     runDir,
     wallMs: options.wallMs,
     options: { poolSize: options.poolSize, inspect: options.inspect },
+    stats: options.stats?.snapshot(),
   })
   await writeFile(path.join(runDir, 'summary.txt'), `${summary}\n`)
   try {
     await writeFile(
       path.join(runDir, 'metrics.json'),
-      `${JSON.stringify(buildMetricsJson(result.doneReason, result.rounds, closed, result.metrics ?? [], options), null, 2)}\n`,
+      `${JSON.stringify(
+        buildMetricsJson(
+          result.doneReason,
+          result.rounds,
+          closed,
+          result.metrics ?? [],
+          options,
+          options.stats?.persist(),
+        ),
+        null,
+        2,
+      )}\n`,
     )
   } catch (error) {
     console.warn(`[review-loop] metrics.json write failed: ${error instanceof Error ? error.message : String(error)}`)
@@ -216,6 +240,7 @@ async function executeReviewLoop(
     poolSize: config.poolSize,
     inspect,
     wallMs: Date.now() - startedAt,
+    stats: log.stats,
   })
   await finalizeRun(config, runState, { exec, runBuildCheck, mergeWorktree, removeWorktree })
 }
@@ -236,11 +261,20 @@ export async function runCli(argv: readonly string[]): Promise<void> {
 
   await prepareWorktree(config, runState, args.resetWorktree)
 
-  const log = new LiveRenderer(process.stdout)
+  const priorStats = args.resumeRunId === undefined ? undefined : await readPersistedRunStats(runState.runDir)
+  const stats = RunStats.rehydrate(priorStats, { pricing: config.pricing })
+  const log = new LiveRenderer(process.stdout, stats)
   const exec = createShellExec(runState.worktreePath, config.checkCommand, config.buildTimeoutMs)
   const trace = createFileTraceLogger(runState.tracePath)
   await cleanWorkerWorktrees(runState.worktreePath, args.resumeRunId)
-  const pool = await createWorkerPool(config, runState)
+  const pool = await createWorkerPool(config, runState, {
+    onMergeDiff: (workerId, diff) => {
+      log.diff(`worker-${workerId}`, diff)
+    },
+    warn: (message) => {
+      log.event(message)
+    },
+  })
 
   try {
     await executeReviewLoop(config, runState, ledger, exec, log, trace, pool, !args.noInspect, startedAt)
