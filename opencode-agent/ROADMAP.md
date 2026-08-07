@@ -525,17 +525,33 @@ that test asserted only `status === 'skipped'`, which an eagerly-created promise
 still satisfies because its rejection is never observed. The test now records the
 commands and asserts none ran._
 
-### S2-6 A reused pull request is never actually updated — by inspection — **[FIXED]**
+### S2-6 A reused pull request is never actually updated — verified — **[FIXED]**
 
-_Fixed: `updatePullRequest` refreshes the body on reuse._
+_The first fix closed the instance, not the class. `updatePullRequest` refreshed
+the body, but its patch type was literally `{ body: string }` — so the **title**,
+which `createPullRequest` derives from the issue title, could not be refreshed
+even in principle. Verified: rename the issue, re-enter delivery, and the pull
+request keeps the name it was opened under while its body updates._
 
-`src/phases/deliver.ts:24-33` reuses an existing open PR and
-`renderDelivery` (`:57-64`) announces "**Updated** existing pull request" — but
-nothing updates it. The fresh implementation report stays on the issue and never
-reaches the PR body.
+_Fixed at the seam rather than by adding one more field. `PullRequestPresentation`
+(`title` + `body`) is now the single shape both `createPullRequest` and
+`updatePullRequest` take, `PullRequestInput extends` it with `head`/`base`, and
+`deliver.ts` renders it **once** and hands the same object to whichever path
+runs. A field added to the presentation now fails to compile until both calls
+carry it, instead of silently applying to new pull requests only._
 
-**Direction:** either patch the PR body on reuse, or change the wording to match
-what happened.
+_A second gap surfaced while verifying: **nothing covered `createOctokitApi`**.
+Its `octokit?: Octokit` "injection seam for tests" had no callers, so the adapter
+could drop a field on the wire and every phase test would still pass — they
+assert what the pipeline asked for, not what was sent. That seam is now
+`fetch?: FetchLike`, which is narrower, reachable from the root test tree (the
+old one required importing `@octokit/rest`, a workspace-only dependency), and
+actually exercised: two tests record the HTTP request and assert the PATCH body._
+
+_Mutation-checked four ways — dropping the title in the adapter, refreshing with
+a stale presentation, skipping the update entirely, and ignoring the transport
+seam — each kills the tests that name it. The last mutant also takes ~350ms
+instead of ~10ms, because without the seam the request reaches the real network._
 
 ### S2-7 A merged PR is not detected on retry — by inspection
 

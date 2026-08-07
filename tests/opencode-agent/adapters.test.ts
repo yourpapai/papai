@@ -19,6 +19,8 @@ import type { Env } from '../../opencode-agent/src/config.js'
 import { PipelineError } from '../../opencode-agent/src/errors.js'
 import { createGit } from '../../opencode-agent/src/git.js'
 import type { GitOptions } from '../../opencode-agent/src/git.js'
+import { createOctokitApi } from '../../opencode-agent/src/github.js'
+import type { GitHubApi } from '../../opencode-agent/src/github.js'
 import { createLogger, redact } from '../../opencode-agent/src/logger.js'
 import { extractJsonObject, parseModelJson } from '../../opencode-agent/src/model-json.js'
 import { composeSystemPrompt, loadPhaseSkills, loadSkills, PHASE_SKILLS } from '../../opencode-agent/src/obra-skills.js'
@@ -602,6 +604,69 @@ describe('resolveBaseBranch', () => {
     const attempt = resolveBaseBranch(env, { fromEvent: null, fromGit: noGit })
 
     await expect(attempt).rejects.toThrow('AGENT_BASE_BRANCH')
+  })
+})
+
+interface CapturedRequest {
+  url: string
+  method: string
+  body: Record<string, unknown>
+}
+
+const jsonResponse = (): Response =>
+  new Response(JSON.stringify({ number: 3, html_url: 'https://example.test/pull/3' }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  })
+
+const parseBody = (body: unknown): Record<string, unknown> => {
+  const parsed: unknown = typeof body === 'string' ? JSON.parse(body) : {}
+  return z.record(z.string(), z.unknown()).parse(parsed)
+}
+
+/** A real Octokit whose transport is a recorder, so no socket is opened. */
+const recordingApi = (captured: CapturedRequest[]): GitHubApi =>
+  createOctokitApi({
+    token: 'tok',
+    owner: 'acme',
+    repo: 'widgets',
+    fetch: (url, init) => {
+      captured.push({ url, method: init?.method ?? 'GET', body: parseBody(init?.body) })
+      return Promise.resolve(jsonResponse())
+    },
+  })
+
+describe('createOctokitApi', () => {
+  test('sends both the title and the body when refreshing a pull request', async () => {
+    // The only layer where a dropped field is invisible to the phase tests:
+    // they assert what the pipeline asked for, not what went over the wire.
+    const captured: CapturedRequest[] = []
+
+    await recordingApi(captured).updatePullRequest(3, { title: 'Renamed (#42)', body: 'Closes #42' })
+
+    const [request] = captured
+    expect(request?.method).toBe('PATCH')
+    expect(request?.url).toContain('/repos/acme/widgets/pulls/3')
+    expect(request?.body).toEqual({ title: 'Renamed (#42)', body: 'Closes #42' })
+  })
+
+  test('opens a pull request with the head, base and presentation it was given', async () => {
+    const captured: CapturedRequest[] = []
+
+    const pr = await recordingApi(captured).createPullRequest({
+      head: 'agent/issue-42',
+      base: 'master',
+      title: 'Add retries (#42)',
+      body: 'Closes #42',
+    })
+
+    expect(pr).toEqual({ number: 3, url: 'https://example.test/pull/3' })
+    expect(captured[0]?.body).toEqual({
+      head: 'agent/issue-42',
+      base: 'master',
+      title: 'Add retries (#42)',
+      body: 'Closes #42',
+    })
   })
 })
 

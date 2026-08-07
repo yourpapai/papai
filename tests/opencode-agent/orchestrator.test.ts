@@ -103,6 +103,7 @@ interface PipelineIo {
   createdPr: PullRequestRef | null
   openPr: PullRequestRef | null
   prBodies: string[]
+  prTitles: string[]
 }
 
 interface Harness {
@@ -130,6 +131,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     createdPr: null,
     openPr: null,
     prBodies: [],
+    prTitles: [],
   }
 
   let nextCommentId = 100
@@ -147,11 +149,13 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     findOpenPullRequest: () => Promise.resolve(io.openPr),
     createPullRequest: (input) => {
       io.prBodies.push(input.body)
+      io.prTitles.push(input.title)
       io.createdPr = { number: 7, url: 'https://example.test/pull/7' }
       return Promise.resolve(io.createdPr)
     },
     updatePullRequest: (_number, patch) => {
       io.prBodies.push(patch.body)
+      io.prTitles.push(patch.title)
       return Promise.resolve()
     },
   }
@@ -552,6 +556,23 @@ describe('implementation and delivery', () => {
     expect(harness.io.createdPr).toBeNull()
     expect(harness.io.prBodies).toHaveLength(1)
     expect(harness.io.posted.at(-1)).toContain('https://example.test/pull/3')
+  })
+
+  test('a reused pull request follows the issue as it reads now, not as it read when opened', async () => {
+    // An earlier job opened the pull request under the old name. Refreshing
+    // used to patch the body alone, so the title stayed frozen there forever.
+    harness.io.openPr = { number: 3, url: 'https://example.test/pull/3' }
+    const renamed = issueEvent({
+      eventName: 'issue_comment',
+      action: 'created',
+      commentBody: '/approve',
+      issueTitle: 'Add retries and backoff',
+    })
+
+    await runPipeline({ event: renamed, deps: harness.deps })
+
+    expect(harness.io.createdPr).toBeNull()
+    expect(harness.io.prTitles).toEqual([`Add retries and backoff (#${ISSUE})`])
   })
 
   test('reports a repository with no review loop as unconfigured, not as red', async () => {

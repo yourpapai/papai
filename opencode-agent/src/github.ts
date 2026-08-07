@@ -8,11 +8,24 @@ import { Octokit } from '@octokit/rest'
 import type { IssueComment } from './blocks.js'
 import type { IssueContext } from './phase-context.js'
 
-export interface PullRequestInput {
-  head: string
-  base: string
+/**
+ * Everything about a pull request that is derived from live issue state, and so
+ * has to be re-rendered every time delivery runs — not just the first time.
+ *
+ * Create and update share this type deliberately. Refreshing a reused pull
+ * request used to patch the body alone, which left the title frozen at whatever
+ * the issue was called when the branch was first delivered. Tying both calls to
+ * one shape means a field added here cannot be wired into `create` and
+ * forgotten in `update`; it fails to compile instead.
+ */
+export interface PullRequestPresentation {
   title: string
   body: string
+}
+
+export interface PullRequestInput extends PullRequestPresentation {
+  head: string
+  base: string
 }
 
 export interface PullRequestRef {
@@ -32,16 +45,28 @@ export interface GitHubApi {
   getAuthenticatedLogin(): Promise<string>
   findOpenPullRequest(head: string): Promise<PullRequestRef | null>
   createPullRequest(input: PullRequestInput): Promise<PullRequestRef>
-  updatePullRequest(number: number, patch: { body: string }): Promise<void>
+  updatePullRequest(number: number, patch: PullRequestPresentation): Promise<void>
 }
 
 export interface OctokitApiOptions {
   token: string
   owner: string
   repo: string
-  /** Injection seam for tests; defaults to a real Octokit instance. */
-  octokit?: Octokit
+  /**
+   * Transport seam. Tests pass a recorder so they can assert what actually goes
+   * over the wire without opening a socket — this is the one layer where a
+   * dropped field is invisible to the phase tests, which only see what the
+   * pipeline asked for.
+   */
+  fetch?: FetchLike
 }
+
+/**
+ * The slice of `fetch` this adapter uses. Narrower than the runtime's global
+ * type, which carries Bun-only members a test recorder has no reason to supply;
+ * `@octokit/request` only ever calls it with a URL string.
+ */
+export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>
 
 interface Repo {
   owner: string
@@ -77,7 +102,9 @@ const findOpenPullRequest = async (octokit: Octokit, repo: Repo, head: string): 
 /** Builds a {@link GitHubApi} backed by `@octokit/rest`. */
 export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
   const repo: Repo = { owner: options.owner, repo: options.repo }
-  const octokit = options.octokit ?? new Octokit({ auth: options.token })
+  // An undefined `fetch` falls through to `globalThis.fetch` inside
+  // `@octokit/request`, so the production path is unchanged.
+  const octokit = new Octokit({ auth: options.token, request: { fetch: options.fetch } })
 
   return {
     listIssueComments: (issueNumber) => listIssueComments(octokit, repo, issueNumber),
@@ -98,7 +125,7 @@ export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
     },
 
     updatePullRequest: async (number, patch) => {
-      await octokit.rest.pulls.update({ ...repo, pull_number: number, body: patch.body })
+      await octokit.rest.pulls.update({ ...repo, pull_number: number, ...patch })
     },
 
     getAuthenticatedLogin: async () => {
