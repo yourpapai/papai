@@ -108,6 +108,10 @@ operations:
       - Run `bun security` when touching fetch, credentials, or plugin
         surfaces
       - Keep test output summaries concise; quote only the failing excerpts
+      - Commit each tasks.md section in its own commit as it completes; the
+        tasks.md checkbox state lands in the same commit as the work
+      - The change folder (openspec/changes/<name>/) rides with the code on
+        the same branch/PR; never commit implementation without artifacts
   archive:
     guidance:
       - Before archiving, confirm all tasks.md checkboxes are complete and
@@ -118,3 +122,5 @@ operations:
         commit or PR as the archive
       - Summarize the archive outcome (shipped capabilities, spec files
         touched) before finishing
+      - Archive after the PR merges, as a small follow-up commit on master —
+        not inside the implementation branch
