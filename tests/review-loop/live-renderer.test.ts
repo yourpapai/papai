@@ -7,6 +7,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { LiveRenderer, type RendererStream, withLivePhase } from '../../review-loop/src/live-renderer.js'
 import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
+import { RunStats } from '../../review-loop/src/run-stats.js'
 
 function makeStream(opts: { isTTY?: boolean; columns?: number } = {}): {
   stream: RendererStream
@@ -313,5 +314,56 @@ describe('withLivePhase', () => {
     const { result } = await withLivePhase(reporter, 'build', () => Promise.resolve('done'))
     expect(result).toBe('done')
     expect(slots[slots.length - 1]).toEqual(['build', null])
+  })
+})
+
+describe('LiveRenderer stats', () => {
+  test('routes usage deltas into RunStats with label and model', () => {
+    const { stream } = makeStream()
+    const stats = new RunStats({ pricing: { 'm-*': { input: 3, output: 15 } } })
+    const r = new LiveRenderer(stream, stats)
+    r.usage({ input: 100_000, output: 10_000, reasoning: 0, cost: 0, label: 'improve', model: 'm-x' })
+    expect(stats.snapshot().perLabel['improve']?.input).toBe(100_000)
+    expect(stats.snapshot().totals.estimatedCostUsd).toBeCloseTo(0.45, 10)
+  })
+
+  test('diff() routes into RunStats', () => {
+    const { stream } = makeStream()
+    const stats = new RunStats()
+    const r = new LiveRenderer(stream, stats)
+    r.diff('iter-1', { added: 12, removed: 3 })
+    expect(stats.snapshot().totals.added).toBe(12)
+  })
+
+  test('status line gains cost, tools and diff segments (TTY)', () => {
+    const { output, stream } = makeStream({ isTTY: true, columns: 300 })
+    const stats = new RunStats({ pricing: { 'm-*': { input: 3, output: 15 } } })
+    const r = new LiveRenderer(stream, stats)
+    r.usage({ input: 100_000, output: 10_000, reasoning: 0, cost: 0, label: 'improve', model: 'm-x' })
+    stats.addToolCalls('improve', 7)
+    r.diff('iter-1', { added: 12, removed: 3 })
+    r.slot('improve', '  improve   ▶ read a.ts · 1s · 1 tool')
+    const last = output[output.length - 1]!
+    expect(last).toContain('in 100.0k / out 10.0k')
+    expect(last).toContain('~$0.45 est')
+    expect(last).toContain('tools 7')
+    expect(last).toContain('+12/-3')
+  })
+
+  test('cost segment hidden when no pricing matches', () => {
+    const { output, stream } = makeStream({ isTTY: true, columns: 300 })
+    const stats = new RunStats()
+    const r = new LiveRenderer(stream, stats)
+    r.usage({ input: 100_000, output: 10_000, reasoning: 0, cost: 0, label: 'improve' })
+    r.slot('improve', 'x')
+    expect(output[output.length - 1]!).not.toContain('est')
+  })
+
+  test('works without stats (legacy single-arg construction)', () => {
+    const { output, stream } = makeStream({ isTTY: true, columns: 300 })
+    const r = new LiveRenderer(stream)
+    r.usage({ input: 5, output: 2, reasoning: 0, cost: 0 })
+    r.slot('a', 'x')
+    expect(output[output.length - 1]!).toContain('in 5 / out 2')
   })
 })
