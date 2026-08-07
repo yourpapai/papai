@@ -120,9 +120,23 @@ const openAccessOnMock = (url: string): Promise<Response> => {
   return Promise.resolve(json(usersPayload))
 }
 
-const pendingPayloadMock = (url: string): Promise<Response> => {
+// Distinct from `pendingPayload` above (which `pendingDeleteMock` also relies on for its
+// UUID-shaped id) so the status-pill test can assert against a realistic @handle-derived
+// placeholder id without disturbing that other test's fixture.
+const ghostPendingPayload = {
+  users: [
+    {
+      platform_user_id: 'placeholder-@ghost',
+      platform_instance_id: 'tg',
+      username: 'ghost',
+      added_by: 'admin',
+    },
+  ],
+}
+
+const ghostPendingMock = (url: string): Promise<Response> => {
   if (url.includes('/admin/open-access')) return Promise.resolve(json(openAccessOff))
-  return Promise.resolve(json(pendingPayload))
+  return Promise.resolve(json(ghostPendingPayload))
 }
 
 const openAccessUserMock = (url: string): Promise<Response> => {
@@ -333,16 +347,17 @@ describe('AdminUsersSection', () => {
     void unmount(component)
   })
 
-  test('renders a pending badge instead of the placeholder id', async () => {
-    setMockFetch(pendingPayloadMock)
+  test('a pending user shows a pending status pill and keeps a readable handle', async () => {
+    setMockFetch(ghostPendingMock)
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(AdminUsersSection, { target })
     await drain()
-    expect(target.querySelector('[data-testid="user-pending-badge"]')).not.toBeNull()
+    const pill = target.querySelector('[data-testid="user-status-placeholder-@ghost"]')!
+    expect(pill.textContent).toContain('pending')
     expect(target.textContent).toContain('ghost')
-    // the only row is pending → no IdCell rendered
-    expect(target.querySelector('.id-cell')).toBeNull()
+    // the placeholder prefix is machinery, not an identifier — it is not shown
+    expect(target.querySelector('tbody')!.textContent).not.toContain('placeholder-')
     void unmount(component)
   })
 
@@ -462,15 +477,59 @@ describe('AdminUsersSection', () => {
     void unmount(component)
   })
 
-  test('a user row with added_by open-access shows a source badge', async () => {
+  test('added_by open-access reads as a labelled provenance, not a raw value', async () => {
     setMockFetch(openAccessUserMock)
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(AdminUsersSection, { target })
     await drain()
-    const badge = target.querySelector('[data-testid="user-source-99"]')
-    expect(badge).not.toBeNull()
-    expect(badge?.textContent).toContain('open-access')
+    const cell = target.querySelector('[data-testid="user-added-by-99"]')!
+    expect(cell.textContent).toContain('Open access')
+    expect(cell.textContent).not.toContain('open-access')
+    void unmount(component)
+  })
+
+  test('a blocked user gets a danger status pill', async () => {
+    setMockFetch(blockedUserMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    const pill = target.querySelector('.ui-pill--danger')!
+    expect(pill.textContent).toContain('blocked')
+    void unmount(component)
+  })
+
+  test('an active user gets an accent status pill', async () => {
+    setMockFetch(openAccessOffMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.querySelector('.ui-pill--accent')!.textContent).toContain('active')
+    void unmount(component)
+  })
+
+  test('the username cell carries a title so a truncated name is readable', async () => {
+    setMockFetch(openAccessOffMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.querySelector('[data-testid="user-username-42"]')!.getAttribute('title')).toBe('jane')
+    void unmount(component)
+  })
+
+  test('every column is width-pinned and the data columns sort', async () => {
+    setMockFetch(openAccessOffMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    const headers = [...target.querySelectorAll('thead th')]
+    expect(headers.length).toBe(5)
+    const styles = headers.map((th) => String(th.getAttribute('style')))
+    expect(styles.every((style) => style.includes('width'))).toBe(true)
     void unmount(component)
   })
 

@@ -40,4 +40,7 @@ describe('statusTone', () => {
   test('falls back to neutral for unrecognized values', () => {
     expect(statusTone('frobnicated')).toBe('neutral')
   })
+  test('blocked reads as danger', () => {
+    expect(statusTone('blocked')).toBe('danger')
+  })
 })

@@ -23,6 +23,9 @@
   import IdCell from '../../components/IdCell.svelte'
   import ErrorState from '../../../shared/ui/ErrorState.svelte'
   import Pill from '../../../shared/ui/Pill.svelte'
+  import { describeAddedBy, userStatus } from './admin-users-presenters.js'
+  import type { UserStatus } from './admin-users-presenters.js'
+  import { statusTone } from '../../../shared/ui/status-tone.js'
 
   let users: AdminUserRow[] = $state([])
   let openDmAccess = $state(false)
@@ -146,24 +149,30 @@
   interface UserRow {
     platform_user_id: string
     username: string
-    source: string
+    status: UserStatus
+    added_by: string
     blocked: boolean
   }
 
   const userRows = $derived<UserRow[]>(
-    users.map((u) => ({
-      platform_user_id: u.platform_user_id,
-      username: u.username ?? '—',
-      source: u.added_by ?? '—',
-      blocked: u.blocked_at != null,
-    })),
+    users.map((u) => {
+      const blocked = u.blocked_at != null
+      return {
+        platform_user_id: u.platform_user_id,
+        username: u.username ?? '—',
+        status: userStatus({ userId: u.platform_user_id, blocked }),
+        added_by: u.added_by ?? '',
+        blocked,
+      }
+    }),
   )
 
   const userColumns = [
-    { key: 'platform_user_id' as const, label: 'User ID' },
-    { key: 'username' as const, label: 'Username' },
-    { key: 'source' as const, label: 'Source' },
-    { key: 'actions' as const, label: '', align: 'right' as const },
+    { key: 'platform_user_id' as const, label: 'User ID', width: '25%', sortable: true },
+    { key: 'username' as const, label: 'Username', width: '25%', sortable: true },
+    { key: 'status' as const, label: 'Status', width: '15%', sortable: true },
+    { key: 'added_by' as const, label: 'Added by', width: '15%', sortable: true },
+    { key: 'actions' as const, label: 'Actions', align: 'right' as const, width: '20%' },
   ]
 </script>
 
@@ -262,13 +271,30 @@
             {#snippet children()}Remove{/snippet}
           </Btn>
         {:else if col.key === 'platform_user_id'}
-          {#if row.platform_user_id.startsWith('placeholder-')}
-            <span class="pending-badge" data-testid="user-pending-badge">pending</span>
+          {#if row.status === 'pending'}
+            <span class="t-mono-data pending-id" title={row.username}>{row.username}</span>
           {:else}
             <IdCell value={row.platform_user_id} />
           {/if}
-        {:else if col.key === 'source'}
-          <span class="source-badge" data-testid={`user-source-${row.platform_user_id}`}>{row.source}</span>
+        {:else if col.key === 'username'}
+          <span class="cell-text" data-testid={`user-username-${row.platform_user_id}`} title={row.username}>
+            {row.username}
+          </span>
+        {:else if col.key === 'status'}
+          <Pill tone={statusTone(row.status)}>
+            {#snippet children()}<span data-testid={`user-status-${row.platform_user_id}`}>{row.status}</span>{/snippet}
+          </Pill>
+        {:else if col.key === 'added_by'}
+          {@const addedBy = describeAddedBy(row.added_by)}
+          <span data-testid={`user-added-by-${row.platform_user_id}`}>
+            {#if addedBy.kind === 'label'}
+              <Pill tone="neutral">{#snippet children()}{addedBy.text}{/snippet}</Pill>
+            {:else if addedBy.kind === 'id'}
+              <IdCell value={addedBy.value} head={4} tail={4} />
+            {:else}
+              <span class="t-dim">—</span>
+            {/if}
+          </span>
         {:else}
           {String(row[col.key as keyof UserRow] ?? '')}
         {/if}
@@ -277,9 +303,10 @@
         columns={userColumns}
         rows={userRows}
         rowKey="platform_user_id"
-        searchKeys={['platform_user_id', 'username']}
+        searchKeys={['platform_user_id', 'username', 'status', 'added_by']}
+        defaultSort={{ key: 'username', dir: 'asc' }}
         {cell}
-        searchPlaceholder="Search users by ID or name…">
+        searchPlaceholder="Search users by ID, name, or status…">
         {#snippet empty()}No users{/snippet}
       </SettingsTable>
     </div>
@@ -301,13 +328,13 @@
 </section>
 
 <style>
-  .pending-badge,
-  .source-badge {
-    font-size: 10px;
+  .pending-id {
     color: var(--text-muted);
-    border: 1px solid var(--border);
-    padding: 1px 4px;
-    border-radius: 2px;
+  }
+  .cell-text {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .open-access-card {
     display: flex;
