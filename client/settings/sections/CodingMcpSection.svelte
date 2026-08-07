@@ -250,6 +250,7 @@
                 variant="outline"
                 size="sm"
                 testid={`coding-mcp-remove-${index}`}
+                disabled={saving || loading}
                 onClick={() => removeRow(index)}>
                 {#snippet children()}Remove{/snippet}
               </Btn>
@@ -278,6 +279,7 @@
                 size="sm"
                 testid="coding-mcp-clear"
                 disabled={saving || loading || clearing}
+                busy={clearing}
                 onClick={() => {
                   pendingClear = true
                   clearError = null
@@ -290,6 +292,7 @@
               size="sm"
               testid="coding-mcp-save"
               disabled={!formDirty || saving || loading || clearing || hasRowProblem}
+              busy={saving}
               onClick={() => void saveAll()}>
               {#snippet children()}{saving ? 'Saving…' : 'Save'}{/snippet}
             </Btn>

@@ -157,3 +157,77 @@ describe('CodingMcpSection cap counter', () => {
     void unmount(component)
   })
 })
+
+const hangingPatchMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/coding-credentials') && init.method === 'PATCH') {
+    return new Promise<Response>(() => {})
+  }
+  return Promise.resolve(json(mcpPayload))
+}
+
+describe('CodingMcpSection in-flight control state', () => {
+  afterEach(() => {
+    restoreFetch()
+    document.body.innerHTML = ''
+  })
+
+  test('Save announces its in-flight state with aria-busy', async () => {
+    setCsrfToken('c')
+    setMockFetch(hangingPatchMock)
+    const { target, component } = mountSection()
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-mcp-add"]')!.click()
+    await drain()
+    pickServer(target, 1, 'docs')
+    await drain()
+
+    const save = saveButton(target)
+    expect(save.getAttribute('aria-busy')).toBe('false')
+    save.click()
+    await drain()
+
+    expect(save.textContent.trim()).toBe('Saving…')
+    expect(save.getAttribute('aria-busy')).toBe('true')
+    void unmount(component)
+  })
+
+  test('Remove is disabled while a save is in flight', async () => {
+    setCsrfToken('c')
+    setMockFetch(hangingPatchMock)
+    const { target, component } = mountSection()
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-mcp-add"]')!.click()
+    await drain()
+    pickServer(target, 1, 'docs')
+    await drain()
+
+    const remove = target.querySelector<HTMLButtonElement>('[data-testid="coding-mcp-remove-0"]')!
+    expect(remove.disabled).toBe(false)
+    saveButton(target).click()
+    await drain()
+
+    expect(remove.disabled).toBe(true)
+    void unmount(component)
+  })
+
+  test('Clear announces its in-flight state with aria-busy', async () => {
+    setCsrfToken('c')
+    setMockFetch(hangingPatchMock)
+    const { target, component } = mountSection()
+    await drain()
+
+    const clear = target.querySelector<HTMLButtonElement>('[data-testid="coding-mcp-clear"]')!
+    expect(clear.getAttribute('aria-busy')).toBe('false')
+    clear.click()
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="confirm-accept"]')!.click()
+    await drain()
+
+    expect(clear.textContent.trim()).toBe('Clearing…')
+    expect(clear.getAttribute('aria-busy')).toBe('true')
+    void unmount(component)
+  })
+})
