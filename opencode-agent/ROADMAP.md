@@ -1201,18 +1201,43 @@ the tests that name it._
 
 ## S4 — Spec gaps and dead code
 
-| #     | Item                                                | Where                              | Note                                                                                                                                                                                                                  |
-| ----- | --------------------------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| S4-1  | `dryRun` parsed, logged, never honoured             | `config.ts:42,121`; `index.ts:158` | `AGENT_DRY_RUN=true` does nothing. Either implement (skip all writes) or delete. A working dry run would also make S1-5 much cheaper to validate.                                                                     |
-| S4-2  | `updatedAt` never written                           | `types.ts:59`                      | Always `null`. Useful for staleness detection if actually set.                                                                                                                                                        |
-| S4-3  | `approved` written, never read                      | `types.ts:53`                      | The real gate is the phase. Dead flag.                                                                                                                                                                                |
-| S4-4  | `getAuthenticatedLogin()` implemented, never called | `github.ts:31,100-103`             | This is the fix for the `AGENT_SELF_LOGIN` footgun: derive the agent identity from the token instead of from an env var the operator must remember to set. Wiring it up removes a whole class of misconfiguration.    |
-| S4-5  | `currentSha()` implemented, never called            | `git.ts:36,101-104`                | Would be useful in the state block for provenance.                                                                                                                                                                    |
-| S4-6  | `buildPrBodyPrompt` / `PrPromptInput` dead          | `prompts.ts:97-107`                | Vestige of a design where the model wrote the PR body; `deliver.ts` builds it deterministically. Confirmed by coverage (lines 102-106 unhit).                                                                         |
-| S4-7  | No state schema version                             | `types.ts:48-60`                   | Any future field change invalidates live blocks; `findLatestState` then falls back to an older block or to `initialState`, silently restarting an in-flight issue at phase 1. Add a `v` field and a migration branch. |
-| S4-8  | `mutationCheck` not configurable                    | `config.ts:116`                    | Asymmetric with `AGENT_CHECKS`. See S2-4.                                                                                                                                                                             |
-| S4-9  | `TRIAGE_INSTRUCTIONS` sent twice                    | `triage.ts:33` + `prompts.ts:43`   | Once in the system prompt, once in the user prompt. Wasted tokens, and the two can drift.                                                                                                                             |
-| S4-10 | Commit identity vars undocumented in the workflow   | `agent-pipeline.yml`               | `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` are in the README table but not passed through.                                                                                                                            |
+Re-checked against the code rather than trusted from the original audit. Five of
+the ten had already been closed by unrelated work and were never marked.
+
+| #     | Item                                                | Status                | Note                                                                                                                                                                                                             |
+| ----- | --------------------------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S4-1  | `dryRun` parsed, logged, never honoured             | **[FIXED]** — no work | Zero references in `src/`. Went with the OpenAI-only rework, along with the config knob and the log line.                                                                                                        |
+| S4-2  | `updatedAt` never written                           | **[FIXED]**           | Deleted. Zero writes and zero reads; the comment carrying the block is already timestamped by GitHub, so the field only added a lie about freshness.                                                             |
+| S4-3  | `approved` written, never read                      | **[FIXED]**           | Deleted. Two writes, zero reads — the phase _is_ the gate, so the flag could only ever disagree with it.                                                                                                         |
+| S4-4  | `getAuthenticatedLogin()` implemented, never called | open                  | The one item of real substance left. See the note below the table.                                                                                                                                               |
+| S4-5  | `currentSha()` implemented, never called            | **[FIXED]**           | Deleted, rather than wired into the state block. A sha is not derivable, so it would be a legitimate field — but the pull request already shows it, and this workspace has just removed two fields nothing read. |
+| S4-6  | `buildPrBodyPrompt` / `PrPromptInput` dead          | **[FIXED]** — no work | Zero references. Removed when `deliver.ts` took over rendering the pull-request body deterministically.                                                                                                          |
+| S4-7  | No state schema version                             | **[FIXED]** — no work | `STATE_VERSION = 2`, with a `v` field that defaults to 1 so blocks written before versioning still parse.                                                                                                        |
+| S4-8  | `mutationCheck` not configurable                    | **[FIXED]** — no work | Zero references; the hardcoded mutation check was removed in S2-4 in favour of the detected `review-loop/` workspace.                                                                                            |
+| S4-9  | `TRIAGE_INSTRUCTIONS` sent twice                    | **[FIXED]** — no work | Now only in the system prompt. `buildTriagePrompt` does not carry it, so the two cannot drift.                                                                                                                   |
+| S4-10 | Commit identity vars undocumented in the workflow   | **[FIXED]**           | `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` are passed through, and `workflow.test.ts` asserts that every knob the README documents is either passed or deliberately absent.                                      |
+
+Removing `updatedAt`, `approved` and `currentSha` needed **no `STATE_VERSION`
+bump**: zod strips unknown keys, so a block written with the old fields still
+parses. Bumping would have stranded every in-flight issue for no gain — the same
+reasoning that let S3-4 drop `branch`.
+
+### S4-4 — why this one is more than dead code
+
+`AGENT_SELF_LOGIN` is not only the recursion guard. It is the **author filter**
+`findLatestState` and `findArtifact` read state back through. Set it wrong and
+nothing matches, so every event restores `initialState` and the issue silently
+restarts at phase 1 — forever, with no error anywhere. Deriving the identity from
+the token removes that whole class.
+
+The shape is S2-5's: an async lookup behind a lazy memoized `deps.selfLogin()`,
+with a fallback chain (`AGENT_SELF_LOGIN` → token identity → repository owner)
+and every read site updated. Worth checking first whether
+`users.getAuthenticated` returns anything usable for a **GitHub App installation
+token** — apps report as `<app>[bot]` through a different endpoint, and the
+workflow recommends an App token for the CI-fix path to fire at all. If it does
+not, the fallback chain carries most of the value and the derivation carries
+little.
 
 ---
 
