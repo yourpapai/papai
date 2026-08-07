@@ -8,6 +8,7 @@ import path from 'node:path'
 
 import { missingSkillError } from './errors.js'
 import type { Logger } from './logger.js'
+import { envelopeRules } from './prompts.js'
 import { firstMatch, mapSeries } from './sequence.js'
 import type { Phase } from './types.js'
 
@@ -115,6 +116,8 @@ export interface SystemPromptInput {
   phase: Phase
   skills: readonly SkillDocument[]
   repoRoot: string
+  /** The envelope id this prompt's untrusted blocks are terminated with. */
+  nonce: string
   /** Extra phase-specific rules appended after the skill bodies. */
   instructions: string
 }
@@ -131,7 +134,15 @@ const PREAMBLE = [
  * referenced by name because the CI runner has no skill-loading harness.
  */
 export const composeSystemPrompt = (input: SystemPromptInput): string => {
-  const sections = [PREAMBLE, `Repository root: ${input.repoRoot}`, `Current phase: ${input.phase}`]
+  // The envelope rules belong here and nowhere else: a delimiter is only
+  // decidable if the system prompt — which untrusted text cannot reach — says
+  // which id terminates one.
+  const sections = [
+    PREAMBLE,
+    envelopeRules(input.nonce),
+    `Repository root: ${input.repoRoot}`,
+    `Current phase: ${input.phase}`,
+  ]
 
   if (input.skills.length > 0) {
     sections.push('## Applicable skills')

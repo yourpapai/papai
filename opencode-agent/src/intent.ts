@@ -10,7 +10,7 @@ import type { CommentIntent } from './commands.js'
 import { parseModelJson } from './model-json.js'
 import { composeSystemPrompt } from './obra-skills.js'
 import type { PhaseDeps } from './phase-context.js'
-import { envelopeFor } from './phases/envelope.js'
+import { mintEnvelope } from './phases/envelope.js'
 import { buildClassifyPrompt, CLASSIFY_INSTRUCTIONS } from './prompts.js'
 import { errorMessage } from './types.js'
 import type { AgentState, Phase } from './types.js'
@@ -37,6 +37,8 @@ export interface ClassifyInput {
 export const classifyComment = async (input: ClassifyInput): Promise<CommentIntent> => {
   const { deps, state } = input
 
+  const envelope = mintEnvelope()
+
   try {
     const agent = await deps.agent()
     const reply = await agent.prompt({
@@ -44,9 +46,10 @@ export const classifyComment = async (input: ClassifyInput): Promise<CommentInte
         phase: state.phase,
         skills: [],
         repoRoot: deps.config.repoRoot,
+        nonce: envelope.nonce,
         instructions: CLASSIFY_INSTRUCTIONS,
       }),
-      prompt: buildClassifyPrompt(envelopeFor(state), input.body, input.phase),
+      prompt: buildClassifyPrompt(envelope, input.body, input.phase),
       agent: 'plan',
     })
 

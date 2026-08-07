@@ -7,7 +7,7 @@ import { findArtifact, PLAN_MARKER, SPEC_MARKER } from '../artifacts.js'
 import { composeSystemPrompt } from '../obra-skills.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
 import { ANSWER_INSTRUCTIONS, buildAnswerPrompt } from '../prompts.js'
-import { envelopeFor } from './envelope.js'
+import { mintEnvelope } from './envelope.js'
 
 /**
  * Answers a maintainer's question without moving the state machine.
@@ -22,13 +22,14 @@ export const handleAnswer: PhaseHandler = async (input): Promise<PhaseOutcome> =
   const question = questionText(input)
   deps.log.info({ issue: state.issueId, phase: state.phase }, 'Answering a maintainer question')
 
-  const envelope = envelopeFor(state)
+  const envelope = mintEnvelope()
   const agent = await deps.agent()
   const reply = await agent.prompt({
     system: composeSystemPrompt({
       phase: state.phase,
       skills: [],
       repoRoot: deps.config.repoRoot,
+      nonce: envelope.nonce,
       instructions: ANSWER_INSTRUCTIONS,
     }),
     prompt: buildAnswerPrompt(

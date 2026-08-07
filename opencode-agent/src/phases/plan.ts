@@ -12,7 +12,7 @@ import { parseModelJson } from '../model-json.js'
 import { composeSystemPrompt } from '../obra-skills.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
 import { buildPlanPrompt } from '../prompts.js'
-import { envelopeFor } from './envelope.js'
+import { mintEnvelope } from './envelope.js'
 
 const planStepSchema = z.object({
   title: z.string().min(1),
@@ -45,16 +45,18 @@ export const handlePlan: PhaseHandler = async (input): Promise<PhaseOutcome> => 
   const feedback = changeRequest(input)
   deps.log.info({ issue: state.issueId, branch, revising: feedback !== null }, 'Building execution plan')
 
+  const envelope = mintEnvelope()
   const agent = await deps.agent()
   const reply = await agent.prompt({
     system: composeSystemPrompt({
       phase: 'EXECUTION_PLAN',
       skills: await deps.skills('EXECUTION_PLAN'),
       repoRoot: deps.config.repoRoot,
+      nonce: envelope.nonce,
       instructions: PLAN_INSTRUCTIONS,
     }),
     prompt: buildPlanPrompt({
-      envelope: envelopeFor(state),
+      envelope,
       issueNumber: state.issueId,
       spec,
       branch,

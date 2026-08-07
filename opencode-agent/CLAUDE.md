@@ -31,9 +31,14 @@ findings: `ROADMAP.md`.
   for CI fixing, which the workspace does not cover.
 - **One model endpoint.** Everything goes through `openai-config.ts`; there are
   no provider-specific keys and no second place a model is named.
-- Untrusted text (issue bodies, comments, check output) must go through the
-  nonce envelope from `prompts.ts` before reaching a prompt, and commands must be
-  spawned as argv vectors with `shell: false`.
+- Untrusted text (issue bodies, comments, **check output**) must go through the
+  envelope from `prompts.ts` before reaching a prompt, and commands must be
+  spawned as argv vectors with `shell: false`. The envelope is only as good as
+  its three legs: a random per-prompt id, neutralising _every_ delimiter-shaped
+  run rather than the one that would have matched, and `composeSystemPrompt`
+  stating the rule for that same id. `mintEnvelope()` is called once per handler
+  and its `nonce` passed to both the system prompt and the user prompt — the
+  `SystemPromptInput.nonce` field exists to make forgetting that a type error.
 - No `await` inside a loop body (repo lint). Sequential iteration goes through
   `src/sequence.ts` (`mapSeries`, `firstMatch`) or tail recursion.
 - One class per file: pipeline failures are constructed through the factories in

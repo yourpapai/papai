@@ -10,7 +10,7 @@ import { parseModelJson } from '../model-json.js'
 import { composeSystemPrompt } from '../obra-skills.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
 import { buildTriagePrompt, TRIAGE_INSTRUCTIONS } from '../prompts.js'
-import { envelopeFor } from './envelope.js'
+import { mintEnvelope } from './envelope.js'
 
 const triageSchema = z.discriminatedUnion('status', [
   z.object({ status: z.literal('clarify'), questions: z.array(z.string().min(1)).min(1) }),
@@ -30,13 +30,14 @@ export const handleTriage: PhaseHandler = async (input): Promise<PhaseOutcome> =
   const feedback = changeRequest(input)
   deps.log.info({ issue: state.issueId, revising: feedback !== null }, 'Triaging issue')
 
-  const envelope = envelopeFor(state)
+  const envelope = mintEnvelope()
   const agent = await deps.agent()
   const reply = await agent.prompt({
     system: composeSystemPrompt({
       phase: 'INIT_OR_CLARIFY',
       skills: await deps.skills('INIT_OR_CLARIFY'),
       repoRoot: deps.config.repoRoot,
+      nonce: envelope.nonce,
       instructions: TRIAGE_INSTRUCTIONS,
     }),
     prompt: buildTriagePrompt(

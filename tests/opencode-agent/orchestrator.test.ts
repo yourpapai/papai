@@ -24,6 +24,7 @@ import type { AgentState } from '../../opencode-agent/src/types.js'
 const AGENT_LOGIN = 'agent-bot'
 const ISSUE = 42
 const BASE_BRANCH = 'trunk'
+const OPENING_TAG = /<untrusted_input source="[^"]*" id="([^"]+)">/u
 
 const silentLogger = (): Logger => ({
   debug: (): void => {},
@@ -632,6 +633,20 @@ describe('implementation and delivery', () => {
 
     expect(result.status).toBe('failed')
     expect(latestPostedState(harness)?.resumeFrom).toBe('REVIEW_AND_MUTATE')
+  })
+
+  test('every prompt states the envelope rule for the id that prompt actually uses', async () => {
+    // The rule and the terminator are minted together; if a handler ever built
+    // them from separate calls the model would be told to trust an id that
+    // never appears, and every real delimiter would look forged.
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.prompts.length).toBeGreaterThan(0)
+    for (const request of harness.io.prompts) {
+      const id = OPENING_TAG.exec(request.prompt)?.[1]
+      expect(id).toBeDefined()
+      expect(request.system).toContain(`</untrusted_input:${id}>`)
+    }
   })
 
   test('persists the plan so a later job reads it back verbatim', async () => {

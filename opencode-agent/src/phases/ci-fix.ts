@@ -9,7 +9,7 @@ import { branchNameFor } from '../git.js'
 import { composeSystemPrompt } from '../obra-skills.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
 import { buildCiFixPrompt } from '../prompts.js'
-import { envelopeFor } from './envelope.js'
+import { mintEnvelope } from './envelope.js'
 
 const CI_FIX_INSTRUCTIONS = [
   'Continuous integration is red on a pull request you opened. Diagnose and fix the root cause.',
@@ -32,15 +32,16 @@ export const handleCiFix: PhaseHandler = async (input): Promise<PhaseOutcome> =>
   const branch = branchNameFor(state.issueId)
   await deps.git.ensureBranch(branch, await deps.baseBranch())
 
+  const envelope = mintEnvelope()
   const agent = await deps.agent()
   const system = composeSystemPrompt({
     phase: 'CI_FIX',
     skills: await deps.skills('CI_FIX'),
     repoRoot: deps.config.repoRoot,
+    nonce: envelope.nonce,
     instructions: CI_FIX_INSTRUCTIONS,
   })
 
-  const envelope = envelopeFor(state)
   const outcome = await runCheckLoop({
     checks: deps.config.checks,
     run: deps.runCheck,

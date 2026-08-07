@@ -11,7 +11,7 @@ import { composeSystemPrompt } from '../obra-skills.js'
 import type { PhaseHandler, PhaseOutcome } from '../phase-context.js'
 import { buildImplementPrompt } from '../prompts.js'
 import type { ReviewOutcome, ReviewRunResult } from '../review-runner.js'
-import { envelopeFor } from './envelope.js'
+import { mintEnvelope } from './envelope.js'
 
 const IMPLEMENT_INSTRUCTIONS = [
   'Implement the approved plan in the working tree, test-first.',
@@ -34,15 +34,17 @@ export const handleImplement: PhaseHandler = async (input): Promise<PhaseOutcome
   const branch = branchNameFor(state.issueId)
   await deps.git.ensureBranch(branch, await deps.baseBranch())
 
+  const envelope = mintEnvelope()
   const agent = await deps.agent()
   await agent.prompt({
     system: composeSystemPrompt({
       phase: 'REVIEW_AND_MUTATE',
       skills: await deps.skills('REVIEW_AND_MUTATE'),
       repoRoot: deps.config.repoRoot,
+      nonce: envelope.nonce,
       instructions: IMPLEMENT_INSTRUCTIONS,
     }),
-    prompt: buildImplementPrompt(envelopeFor(state), state.issueId, plan),
+    prompt: buildImplementPrompt(envelope, state.issueId, plan),
     agent: 'build',
   })
 

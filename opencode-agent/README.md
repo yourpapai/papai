@@ -134,12 +134,27 @@ issue author.
 CI events: the run must have concluded `failure`, on a branch matching
 `agent/issue-<n>`, from a workflow that is not this one.
 
-Issue text reaches the model inside a nonce-terminated envelope
-(`<untrusted_input source="…" id="<nonce>">`). A fixed closing tag would be
-escapable by text containing that tag; the nonce is not guessable from the issue
-side, and a forged terminator is neutralised before wrapping. Commands are
-spawned as argv vectors with `shell: false`, so untrusted text never reaches a
-shell.
+Text the pipeline did not write — issue bodies, comments, approved artefacts and
+**check output** — reaches the model inside an id-terminated envelope
+(`<untrusted_input source="…" id="<id>"> … </untrusted_input:<id>>`). A fixed
+closing tag is escapable by text containing that tag, so three things hold the
+envelope together, and all three are load-bearing:
+
+1. The id is a random UUID minted per prompt. It used to be derived from
+   `issueId`, `revision` and the attempt counters — every one of which the agent
+   publishes in the `AGENT_STATE` block on the very issue an attacker is writing
+   into, and which collapses to `<number>-0-00` on a fresh one.
+2. **Every** delimiter-shaped run in the body is neutralised, not just the one
+   that would have matched. Rewriting the exact terminator alone left the plain
+   `</untrusted_input>` intact.
+3. The system prompt states the rule and names the id, so "is this a real
+   terminator?" is decidable. Telling the model to distrust issue text says what
+   to distrust but never where the untrusted region _ends_ — which is the only
+   thing an injected terminator is lying about.
+
+This is prompt-level containment only; see S3-2 in `ROADMAP.md` for the
+capability-level gap it does not close. Commands are spawned as argv vectors with
+`shell: false`, so untrusted text never reaches a shell.
 
 ### A note on the "actor matches repository owner" rule
 
