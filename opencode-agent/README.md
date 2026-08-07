@@ -148,6 +148,20 @@ the checks it skipped have not been looked at since before a repair edited the
 tree, and a fix for one check can break another, so a **full pass is what
 declares green**. That pass costs commands but no model call, and so no round.
 
+A red run is acted on in `COMPLETE` and in `PR_DELIVERY`, and nowhere else.
+`PR_DELIVERY` is the race that matters: phase 3 pushes the branch and posts a
+state block naming that phase before phase 4 opens the pull request, so a job
+that died in between leaves a live branch whose checks go red against a state
+that is not `COMPLETE` yet. Before the branch exists there is nothing pushed to
+repair, and a fix round would run the configured checks against a branch cut
+fresh from the base. `FAILED` is deliberately left out even though its branch
+_is_ pushed: entering `CI_FIX` from there would leave the one phase `/retry`
+accepts and, once green, land the issue in `COMPLETE` claiming success for a
+delivery that never finished — and the issue is not silent in the meantime, it
+is sitting under a failure comment asking for that `/retry`. A refused red run
+is logged at `warn` with the phase; it draws no comment, for the same reason a
+red run on a merged pull request draws none.
+
 Two budgets bound it. `AGENT_CI_FIX_MAX_ROUNDS` caps repair rounds within one
 job; `AGENT_MAX_CI_ATTEMPTS` caps rounds across the pull request's whole life, so
 a genuinely broken branch cannot bounce between the agent and CI forever. The
@@ -156,6 +170,14 @@ agent's own workflow is excluded, so its failures never feed itself.
 When that lifetime budget runs out the agent says so on the issue, once, naming
 the pull request — it does not simply stop. Later red runs are then ignored
 silently, because CI fires on every push and repeating the notice would be spam.
+
+That budget is **per pull request**, not per issue: opening a _new_ pull request
+resets both the spent rounds and the "I have stopped trying" flag, so the second
+delivery gets its own rounds and can say its own piece. Refreshing the pull
+request that is already open does not reset anything — it is the same branch and
+the same commits whose checks spent the rounds, and handing it a clean slate is
+how one broken branch bounces off the agent for as long as anyone keeps replying
+`/retry`.
 
 > **This path only fires if CI runs on the agent's branch.** Pushes made with the
 > default `GITHUB_TOKEN` deliberately do not trigger other workflows. Set
@@ -681,7 +703,8 @@ under **Setup** is simply not written. Nothing else changes.
 | --------------------------------------------- | ---------------------------------------------------------------------- |
 | `src/index.ts`                                | CLI entry: flags, config, dependency wiring, agent teardown, exit code |
 | `src/orchestrator.ts`                         | The state machine: guardrails and the phase cascade                    |
-| `src/triggers.ts`                             | Turning a command, comment or red CI run into the state move to make   |
+| `src/triggers.ts`                             | Turning a command or comment into the state move to make               |
+| `src/ci-trigger.ts`                           | Whether a red check run buys a fix round, a notice, or nothing         |
 | `src/run-report.ts`                           | Everything the orchestrator writes back to the issue                   |
 | `src/step-output.ts`                          | The one thing a run tells the rest of its own workflow job             |
 | `src/token-budget.ts`                         | The per-issue token ceiling, and how a run over it parks in `FAILED`   |

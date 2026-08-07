@@ -13,8 +13,10 @@ findings: `ROADMAP.md`.
 - One CI job = one call to `runCli`. State lives in hidden blocks on the issue,
   not on disk: `AGENT_STATE` for the machine, `AGENT_SPEC` / `AGENT_PLAN` /
   `AGENT_REPORT` for the artefacts.
-- `src/triggers.ts` decides _whether and where_ an event moves the state;
-  `src/orchestrator.ts` drives the phase cascade once that decision is made;
+- `src/triggers.ts` decides _whether and where_ an event moves the state, with
+  the red-CI half in `src/ci-trigger.ts` and the shared outcome shape in
+  `src/trigger-outcome.ts`; `src/orchestrator.ts` drives the phase cascade once
+  that decision is made;
   `src/token-budget.ts` decides whether the cascade may afford another step.
   Phase handlers in `src/phases/` return a `TransitionSignal`, a comment body and
   optional artefact blocks, and never write state or decide the next phase
@@ -83,6 +85,38 @@ findings: `ROADMAP.md`.
   the deliberate exception and moves nothing, for the reasons `failAnswer` moves
   nothing — plus `COMPLETE` accepts no `FAILED`, so parking a question there
   would throw out of the pipeline.
+- **A red run is acted on where the branch is live and no job is on it.**
+  `CI_FAILED` names two rows in `TRANSITIONS`, `COMPLETE` and `PR_DELIVERY`, and
+  the absences are the design. `PR_DELIVERY` is the genuine race: phase 3 pushes
+  the branch and posts a block naming that phase before phase 4 opens the pull
+  request, so a job that died in between left a live branch whose red checks were
+  refused as an invalid transition and dropped — nothing posted, no `ciAttempts`
+  spent, no trace but a `reason` string nobody reads. The four phases before the
+  branch exists stay out because `handleCiFix` would run the checks against a
+  branch cut from the base; `REVIEW_AND_MUTATE` and `CI_FIX` stay out because the
+  machine never persists them (a block is written only when a handler posts, and
+  both post the phase they moved _to_), and honouring a hand-edited one would put
+  a second job on a branch another is mid-commit on — the workflow's concurrency
+  group queues those two, but only while `workflow_run.head_branch` and
+  `agent/issue-<n>` agree, which is a coincidence and not a proof. **`FAILED`
+  stays out deliberately**, the close call: the branch is pushed there, but
+  `CI_FAILED` is a forward move, so it would reset `attempts` and leave the one
+  phase `/retry` accepts, and a fix that went green would park the issue in
+  `COMPLETE` announcing success for a delivery that never finished. Those red
+  checks are deferred behind the `/retry` the failure comment already asked for,
+  not abandoned. A refused red run **logs at `warn` with the phase** and posts
+  nothing, for the reason `settledPullRequest` sets out: CI fires on every push,
+  so a comment per red run is spam.
+- **The CI-fix budget belongs to a pull request, not to an issue.**
+  `handleDeliver` clears `ciAttempts` and `ciBudgetReported` on its
+  `existing === null` branch — a genuinely new pull request — and leaves both
+  alone when it refreshes the open one. Neither used to reset at all, and `applyCiTrigger` short-circuits
+  on `ciBudgetReported` before it even looks the pull request up, so an issue
+  that burned its rounds on one pull request and then delivered a second got no
+  fix round on the new one and no comment explaining the silence. Do not extend
+  the reset to the refresh path: same branch, same commits, same checks that
+  spent the rounds, and a clean slate there is one broken branch bouncing off the
+  agent for as long as anyone keeps replying `/retry`.
 - **A run says whether it reported, and the workflow reads that.** `RunResult`
   carries `reported`, and `step-output.ts` turns it into a `reported=true` line
   in `$GITHUB_OUTPUT`; the workflow's fallback "Agent job failed" comment is

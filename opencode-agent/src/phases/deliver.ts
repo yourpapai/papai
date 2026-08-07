@@ -7,6 +7,7 @@ import { findArtifact, REPORT_MARKER } from '../artifacts.js'
 import { branchNameFor } from '../git.js'
 import type { PullRequestPresentation, PullRequestRef, PullRequestStatus } from '../github.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
+import type { AgentState } from '../types.js'
 
 /**
  * Phase 4. Opens the pull request, refreshes the open one when a retry
@@ -42,9 +43,33 @@ export const handleDeliver: PhaseHandler = async (input): Promise<PhaseOutcome> 
   return {
     signal: 'PR_OPENED',
     comment: renderDelivery(pr, existing !== null),
-    patch: { prUrl: pr.url, prNumber: pr.number },
+    patch: { prUrl: pr.url, prNumber: pr.number, ...(existing === null ? FRESH_CI_BUDGET : {}) },
   }
 }
+
+/**
+ * The CI-fix budget, handed back to a pull request whose checks have not spent
+ * any of it.
+ *
+ * `ciAttempts` and `ciBudgetReported` count rounds against *a pull request*, not
+ * against the issue, and nothing used to reset either — `ciAttempts` was even
+ * documented as "Never reset". So an issue that burned its rounds on one pull
+ * request, said "I have stopped trying to fix CI", and then delivered a second
+ * one got no CI fixing at all on the new one, and said nothing about it either:
+ * `applyCiTrigger` short-circuits on `ciBudgetReported` before it even looks the
+ * pull request up, so the give-up notice could not repeat and no fix round could
+ * start. The remedy the notice suggests — push a fix yourself — is precisely
+ * what leads here, through a maintainer reopening the work and the pipeline
+ * delivering again.
+ *
+ * Applied on `existing === null` only, which is this phase's own distinction
+ * between opening a pull request and refreshing one. A refreshed pull request is
+ * the same pull request whose checks spent the budget, on the same branch and
+ * the same commits; handing it a clean slate would let one red branch bounce off
+ * the agent for as long as anyone keeps replying `/retry`, which is the runaway
+ * `AGENT_MAX_CI_ATTEMPTS` exists to bound.
+ */
+const FRESH_CI_BUDGET: Partial<AgentState> = { ciAttempts: 0, ciBudgetReported: false }
 
 /**
  * Ends delivery when the branch's pull request is no longer live.

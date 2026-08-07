@@ -79,11 +79,21 @@ export const agentStateSchema = z.object({
   resumeFrom: z.enum(PHASES).nullable().default(null),
   /** Consecutive failures. Cleared by any forward move; preserved across `/retry`. */
   attempts: z.number().int().min(0).default(0),
-  /** CI-fix rounds spent on the delivered pull request. Never reset. */
+  /**
+   * CI-fix rounds spent on the delivered pull request.
+   *
+   * Per pull request, not per issue: `handleDeliver` clears it — with
+   * `ciBudgetReported` — when it opens a **new** one, and leaves both alone when
+   * it refreshes the one already open. Nothing else resets it, so within a
+   * single pull request the count only climbs, which is what bounds an agent and
+   * CI bouncing off each other.
+   */
   ciAttempts: z.number().int().min(0).default(0),
   /**
-   * Whether the "I have stopped fixing CI" notice has been posted. CI events
-   * arrive on every push and re-run, so without this the notice repeats forever.
+   * Whether the "I have stopped fixing CI" notice has been posted for the
+   * current pull request. CI events arrive on every push and re-run, so without
+   * this the notice repeats forever; cleared alongside `ciAttempts` when a new
+   * pull request is opened, or the notice could never be said again for it.
    */
   ciBudgetReported: z.boolean().default(false),
   /** Bumped each time the spec or plan is revised, for the artefact blocks. */

@@ -21,6 +21,47 @@ export const STATE_MARKER = 'AGENT_STATE'
  * `ANSWERED` is deliberately not in this table at all — see {@link transition}.
  * Every entry here names a phase the machine *moves to*; a signal that leaves
  * the phase alone has no business being expressed as a row per phase.
+ *
+ * `CI_FAILED` appears in exactly two rows, and the four absences are the
+ * decision rather than an oversight. A red run is worth acting on only where
+ * the branch is already pushed *and* no job of this pipeline is working it:
+ * `COMPLETE` is the ordinary case, and `PR_DELIVERY` is the genuine race.
+ * Phase 3 pushes the branch and posts a state block naming `PR_DELIVERY`
+ * before phase 4 opens the pull request, and a delivery that dies after the
+ * pull request exists leaves exactly that block behind — so the branch is live,
+ * the checks are red, and the row that used to be missing had `applyCiTrigger`
+ * refuse the run, post nothing and spend nothing. Silence is the failure mode
+ * the whole CI path is built around, so it was the wrong row to leave out.
+ *
+ * The four phases before the branch exists — `INIT_OR_CLARIFY`, `DESIGN_SPEC`,
+ * `EXECUTION_PLAN`, `PLAN_REVIEW` — have nothing pushed to repair, and
+ * `handleCiFix` would happily run the configured checks against a branch cut
+ * fresh from the base and commit the base's own failures onto the issue.
+ *
+ * `REVIEW_AND_MUTATE` and `CI_FIX` are out because the machine never persists
+ * them: a state block is written only when a handler posts, and both of those
+ * handlers post the phase they moved *to* (`PR_DELIVERY`, `COMPLETE`). A red
+ * run appearing to find one is reading a hand-edited block, and honouring it
+ * would put a second agent job on a branch another job is mid-commit on. The
+ * workflow's concurrency group (`opencode-agent-<branch>`,
+ * `cancel-in-progress: false`) does queue those two runs rather than overlap
+ * them — but it keys a CI run off `workflow_run.head_branch` and an issue run
+ * off `agent/issue-<n>`, so it holds only while those two strings agree, which
+ * is a narrow coincidence to hang a push race on rather than a proof.
+ *
+ * `FAILED` is deliberately absent and is the close call, because there the
+ * branch *is* pushed, a pull request may well be open, and its checks do go red
+ * with nobody acting. It stays out because `FAILED`'s entire content is a
+ * recorded pipeline failure plus the `resumeFrom` that undoes it, and
+ * `CI_FAILED` is a forward move: it would reset `attempts`, and it would leave
+ * `FAILED` for a phase where `/retry` is refused — `resumeFrom` survives the
+ * move but nothing can ever act on it again — so a fix that went green would
+ * land the issue in `COMPLETE`, announcing success for a pipeline that never
+ * finished delivering. Nor is this the silence the `PR_DELIVERY` row is about:
+ * a failed run has already posted "this failed, reply `/retry`", and that
+ * `/retry` resumes the phase that broke, delivers, and reaches `COMPLETE`,
+ * where the next red run is picked up as usual. The red checks are deferred
+ * behind a maintainer, not abandoned.
  */
 const TRANSITIONS: Record<Phase, Partial<Record<TransitionSignal, Phase>>> = {
   INIT_OR_CLARIFY: { NEEDS_CLARIFICATION: 'INIT_OR_CLARIFY', SPEC_POSTED: 'DESIGN_SPEC' },
@@ -28,7 +69,7 @@ const TRANSITIONS: Record<Phase, Partial<Record<TransitionSignal, Phase>>> = {
   EXECUTION_PLAN: { PLAN_POSTED: 'PLAN_REVIEW' },
   PLAN_REVIEW: { CHANGES_REQUESTED: 'EXECUTION_PLAN', APPROVED: 'REVIEW_AND_MUTATE' },
   REVIEW_AND_MUTATE: { CHANGES_COMMITTED: 'PR_DELIVERY' },
-  PR_DELIVERY: { PR_OPENED: 'COMPLETE' },
+  PR_DELIVERY: { PR_OPENED: 'COMPLETE', CI_FAILED: 'CI_FIX' },
   CI_FIX: { CI_FIXED: 'COMPLETE' },
   COMPLETE: { CI_FAILED: 'CI_FIX' },
   FAILED: {},

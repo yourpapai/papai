@@ -432,7 +432,30 @@ describe('transition', () => {
     expect(transition(fixing, 'CI_FIXED').phase).toBe('COMPLETE')
   })
 
-  test('CI attempts accumulate across rounds and never reset', () => {
+  test('a delivery interrupted by a red run enters CI_FIX', () => {
+    // Phase 3 pushes the branch and posts a state block naming PR_DELIVERY
+    // before phase 4 opens the pull request, so the branch is live while this is
+    // the persisted phase. CI_FAILED named COMPLETE alone, and the run was
+    // refused as an invalid transition.
+    const fixing = transition(at('PR_DELIVERY'), 'CI_FAILED')
+
+    expect(fixing.phase).toBe('CI_FIX')
+    expect(fixing.ciAttempts).toBe(1)
+  })
+
+  test.each<Phase>(['INIT_OR_CLARIFY', 'DESIGN_SPEC', 'EXECUTION_PLAN', 'PLAN_REVIEW', 'REVIEW_AND_MUTATE', 'FAILED'])(
+    'a red run is refused in %s',
+    (phase) => {
+      // Four of these have no pushed branch, so a fix round would run the checks
+      // against a branch cut fresh from the base. REVIEW_AND_MUTATE is another
+      // job mid-commit on the branch. FAILED is the close call: a forward move
+      // would reset `attempts`, leave the one phase `/retry` accepts, and end in
+      // COMPLETE claiming success for a delivery that never finished.
+      expect(canTransition(phase, 'CI_FAILED')).toBe(false)
+    },
+  )
+
+  test('CI attempts accumulate across rounds within one pull request', () => {
     let state = at('COMPLETE')
     state = transition(transition(state, 'CI_FAILED'), 'CI_FIXED')
     state = transition(transition(state, 'CI_FAILED'), 'CI_FIXED')

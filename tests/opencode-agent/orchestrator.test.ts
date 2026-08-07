@@ -948,6 +948,120 @@ describe('CI fixing', () => {
   })
 })
 
+describe('a red run away from COMPLETE', () => {
+  let harness: Harness
+
+  beforeEach(() => {
+    harness = makeHarness()
+    // Every case here starts from a live pull request on the agent's branch, so
+    // the settled-pull-request guard is never what decides the outcome.
+    harness.io.existingPr = { number: 7, url: 'https://example.test/pull/7', state: 'open' }
+  })
+
+  test('a red run in PR_DELIVERY buys a fix round rather than vanishing', async () => {
+    // Phase 3 pushes the branch and posts a state block naming PR_DELIVERY
+    // before phase 4 opens the pull request, so a job that died in that window
+    // leaves this exact block behind a live branch. The transition table used to
+    // name CI_FAILED in COMPLETE alone, so the run was refused as invalid and
+    // ended `skipped` — nothing posted, nothing spent, nobody told.
+    seedState(harness, { phase: 'PR_DELIVERY', prUrl: 'https://example.test/pull/7', prNumber: 7 })
+
+    const result = await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.posted[0]).toContain('### CI fix attempt 1 of 2')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('COMPLETE')
+    expect(state?.ciAttempts).toBe(1)
+  })
+
+  test.each<Phase>(['INIT_OR_CLARIFY', 'DESIGN_SPEC', 'EXECUTION_PLAN', 'PLAN_REVIEW', 'FAILED'])(
+    'a red run in %s posts nothing and spends no CI-fix attempt',
+    async (phase) => {
+      // Nothing is pushed before PR_DELIVERY, so a fix round would run the
+      // checks against a branch cut fresh from the base; and FAILED is already
+      // parked under a failure comment asking for `/retry`, which is the path a
+      // forward move to CI_FIX would take away.
+      seedState(harness, { phase })
+
+      const result = await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+      expect(result.status).toBe('skipped')
+      expect(harness.io.posted).toEqual([])
+      expect(harness.io.gitCalls).toEqual([])
+      // State is persisted only by posting, so an untouched thread is itself the
+      // assertion that no attempt was spent; the returned state agrees.
+      expect(result.state?.ciAttempts).toBe(0)
+    },
+  )
+
+  test('a red run leaves a FAILED issue the /retry path its failure comment promised', async () => {
+    seedState(harness, { phase: 'FAILED', resumeFrom: 'PR_DELIVERY', attempts: 1 })
+
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+    const resumed = await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    expect(resumed.status).toBe('completed')
+    expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
+  })
+})
+
+describe('the CI-fix budget across pull requests', () => {
+  let harness: Harness
+
+  /** An issue whose first pull request burned every CI-fix round it had. */
+  const spentOnAnEarlierPullRequest = (): void => {
+    seedState(harness, { phase: 'FAILED', resumeFrom: 'PR_DELIVERY', ciAttempts: 2, ciBudgetReported: true })
+  }
+
+  beforeEach(() => {
+    harness = makeHarness()
+  })
+
+  test('a new pull request hands the CI-fix budget back', async () => {
+    spentOnAnEarlierPullRequest()
+    harness.io.existingPr = null
+
+    await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    const state = latestPostedState(harness)
+    expect(state?.prNumber).toBe(7)
+    expect(state?.ciAttempts).toBe(0)
+    expect(state?.ciBudgetReported).toBe(false)
+  })
+
+  test('a refreshed pull request keeps the budget its own checks spent', async () => {
+    // The same pull request, on the same commits, whose red checks spent the
+    // rounds. Handing it a clean slate is how one broken branch bounces off the
+    // agent for as long as anyone keeps replying `/retry`.
+    spentOnAnEarlierPullRequest()
+    harness.io.existingPr = { number: 3, url: 'https://example.test/pull/3', state: 'open' }
+
+    await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    const state = latestPostedState(harness)
+    expect(harness.io.createdPr).toBeNull()
+    expect(state?.ciAttempts).toBe(2)
+    expect(state?.ciBudgetReported).toBe(true)
+  })
+
+  test('the returned budget is real — a red run on the new pull request buys a fix round', async () => {
+    // `applyCiTrigger` short-circuits on `ciBudgetReported` before it even looks
+    // the pull request up, so a flag that outlived the pull request that set it
+    // meant no fix round *and* no notice explaining the silence.
+    spentOnAnEarlierPullRequest()
+    harness.io.existingPr = null
+    await runPipeline({ event: comment('/retry'), deps: harness.deps })
+    harness.io.posted.length = 0
+
+    const result = await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.posted[0]).toContain('### CI fix attempt 1 of 2')
+  })
+})
+
 describe('commands and budgets', () => {
   test('/cancel is durable — a later /approve does not resurrect the issue', async () => {
     const harness = makeHarness()

@@ -3,15 +3,17 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { applyCiTrigger } from './ci-trigger.js'
 import type { ParsedCommand } from './commands.js'
-import { branchNameFor } from './git.js'
 import { classifyComment } from './intent.js'
 import type { PhaseDeps, PhaseInput } from './phase-context.js'
-import { postAndAppend, renderCiExhausted, renderExhausted, renderRefusedCommand } from './run-report.js'
-import { canTransition, markCiBudgetReported, transition } from './state-manager.js'
+import { postAndAppend, renderExhausted, renderRefusedCommand } from './run-report.js'
+import { canTransition, transition } from './state-manager.js'
 import { totalTokens, withinBudget } from './token-budget.js'
+import { skip } from './trigger-outcome.js'
+import type { TriggerOutcome } from './trigger-outcome.js'
 import { errorMessage, WAITING_PHASES } from './types.js'
-import type { AgentState, Phase, RunResult, TransitionSignal } from './types.js'
+import type { AgentState, Phase, TransitionSignal } from './types.js'
 
 /**
  * Turning a trigger — a slash command, a plain comment, a red CI run — into the
@@ -19,15 +21,9 @@ import type { AgentState, Phase, RunResult, TransitionSignal } from './types.js'
  *
  * Split out of `orchestrator.ts`, which now owns only the phase cascade. The two
  * answer different questions: this one decides *whether and where* to go, that
- * one drives the handlers once the decision is made.
+ * one drives the handlers once the decision is made. The CI half went the same
+ * way, into `ci-trigger.ts`, when this file reached the length limit.
  */
-
-export interface TriggerOutcome {
-  state: AgentState
-  halt: RunResult | null
-  /** Set when the trigger should be handled as a question rather than a phase. */
-  answer: boolean
-}
 
 /** Slash commands, mapped to the signal they inject before handlers run. */
 const COMMAND_SIGNALS: Record<string, TransitionSignal> = {
@@ -56,71 +52,6 @@ export const applyTrigger = (input: PhaseInput): Promise<TriggerOutcome> => {
   }
 
   return applyIntent(input)
-}
-
-/**
- * A red CI run either buys a fix attempt or, once the budget is spent, buys the
- * maintainer a notice — exactly once. Neither, if the pull request it would be
- * fixing is no longer live.
- *
- * Silence on a spent budget is the failure mode: CI events arrive on their own
- * schedule with nobody reading the Actions log, so an agent that quietly stops
- * fixing looks identical to one still working. Repeating the notice on every
- * later red run would be the opposite mistake, which is what `ciBudgetReported`
- * prevents.
- */
-const applyCiTrigger = async (input: PhaseInput): Promise<TriggerOutcome> => {
-  const { state, deps, thread } = input
-  const spent = state.ciAttempts >= deps.config.maxCiAttempts
-  const reason = `Spent the CI-fix budget (${state.ciAttempts} of ${deps.config.maxCiAttempts} attempts).`
-
-  // Decided already, so do not pay for a pull-request lookup to re-decide it.
-  if (spent && state.ciBudgetReported) {
-    return { state, halt: skip(state, `${reason} Already reported.`), answer: false }
-  }
-
-  const settled = await settledPullRequest(input)
-  if (settled !== null) return settled
-
-  if (!spent) return moveOrSkip(state, 'CI_FAILED', deps, 'a red CI run')
-
-  const marked = markCiBudgetReported(state)
-  deps.log.warn({ issue: state.issueId, ciAttempts: state.ciAttempts }, 'CI-fix budget spent')
-  await postAndAppend(thread, input, renderCiExhausted(reason, state.prUrl), marked)
-
-  // `reported: true` is about this run's comment, not about `ciBudgetReported`
-  // — the two happen to coincide here, and stay separate everywhere else.
-  return { state: marked, halt: { status: 'failed', reason, state: marked, reported: true }, answer: false }
-}
-
-/**
- * Drops a red run whose pull request is no longer live.
- *
- * A merged branch's checks keep firing — a later push, a re-run, a flake — and
- * a fix round buys nothing: its commits land on a branch nobody will merge
- * again. A closed-unmerged one is the same with a maintainer's decision on top,
- * and no pull request at all leaves a fix with nowhere to go. None of the three
- * should spend a CI-fix attempt, and the delivery phase already refuses to open
- * a replacement for any of them.
- *
- * Deliberately silent, unlike the spent-budget notice above. That one breaks
- * silence because a maintainer is waiting on work that has stopped; here the
- * work has landed or been rejected, the issue is already `COMPLETE`, and CI
- * fires on every push — so a comment per red run would be pure spam.
- */
-const settledPullRequest = async (input: PhaseInput): Promise<TriggerOutcome | null> => {
-  const { state, deps } = input
-
-  const pr = await deps.github.findPullRequest(branchNameFor(state.issueId))
-  if (pr !== null && pr.state === 'open') return null
-
-  const reason =
-    pr === null
-      ? 'The branch has no pull request, so a CI fix has nowhere to go'
-      : `Pull request #${pr.number} is ${pr.state}, so there is nothing left to fix`
-  deps.log.info({ issue: state.issueId, pr: pr?.number, prState: pr?.state }, 'Red run on a settled pull request')
-
-  return { state, halt: skip(state, reason), answer: false }
 }
 
 const applyCommand = (input: PhaseInput, command: ParsedCommand): Promise<TriggerOutcome> => {
@@ -274,24 +205,3 @@ const moveOrSkip = (state: AgentState, signal: TransitionSignal, deps: PhaseDeps
     }
   }
 }
-
-/**
- * A trigger that moved nothing.
- *
- * `reported` defaults to false because nearly every skip in this file is
- * deliberately silent — a red run on a settled pull request, an empty comment, a
- * classification of `none`, an already-reported CI budget. {@link refuseCommand}
- * is the one that answers on the issue first, and passes `true`.
- *
- * That distinction is worth carrying even though a skipped run exits 0 and so
- * never reaches the workflow's fallback step. The flag means "this run posted",
- * full stop; a path where a comment exists and the flag says otherwise is
- * exactly the shape of the bug it was added to fix, and the next reader of the
- * flag will not know to check whether the status happened to make it moot.
- */
-const skip = (state: AgentState, reason: string, reported = false): RunResult => ({
-  status: 'skipped',
-  reason,
-  state,
-  reported,
-})
