@@ -30,16 +30,6 @@ const TRANSITIONS: Record<Phase, Partial<Record<TransitionSignal, Phase>>> = {
   FAILED: {},
 }
 
-/** Signals that count as forward progress and therefore clear the failure budget. */
-const PROGRESS_SIGNALS: ReadonlySet<TransitionSignal> = new Set<TransitionSignal>([
-  'SPEC_POSTED',
-  'APPROVED',
-  'PLAN_POSTED',
-  'CHANGES_COMMITTED',
-  'PR_OPENED',
-  'CI_FIXED',
-])
-
 /** Signals that produce a revised spec or plan, bumping the artefact revision. */
 const REVISION_SIGNALS: ReadonlySet<TransitionSignal> = new Set<TransitionSignal>(['SPEC_POSTED', 'PLAN_POSTED'])
 
@@ -97,7 +87,14 @@ const forwardTransition = (
 ): Partial<AgentState> => ({
   phase: next,
   approved: signal === 'APPROVED' ? true : state.approved,
-  attempts: PROGRESS_SIGNALS.has(signal) ? 0 : state.attempts,
+  // Every forward move clears the failure budget, because `attempts` counts
+  // *consecutive* failures. An allow-list of "real progress" signals looked
+  // equivalent and was not: asking a clarifying question and answering a
+  // question are handler successes, so a conversation with the odd hiccup
+  // accumulated toward the cap across runs that all succeeded. `RETRY` is the
+  // deliberate exception and preserves the count in its own branch, so a retry
+  // loop stays bounded.
+  attempts: 0,
   revision: REVISION_SIGNALS.has(signal) ? state.revision + 1 : state.revision,
   ciAttempts: signal === 'CI_FAILED' ? state.ciAttempts + 1 : state.ciAttempts,
   lastError: null,

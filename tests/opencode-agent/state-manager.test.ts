@@ -19,7 +19,7 @@ import {
   transition,
 } from '../../opencode-agent/src/state-manager.js'
 import { InvalidTransitionError, STATE_VERSION } from '../../opencode-agent/src/types.js'
-import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
+import type { AgentState, Phase, TransitionSignal } from '../../opencode-agent/src/types.js'
 
 const comment = (authorLogin: string, body: string, id = 1): IssueComment => ({ id, body, authorLogin })
 
@@ -305,6 +305,53 @@ describe('transition', () => {
     expect(recovered.attempts).toBe(1)
 
     expect(transition(recovered, 'PLAN_POSTED').attempts).toBe(0)
+  })
+
+  test.each<[TransitionSignal, Phase]>([
+    ['NEEDS_CLARIFICATION', 'INIT_OR_CLARIFY'],
+    ['ANSWERED', 'INIT_OR_CLARIFY'],
+    ['SPEC_POSTED', 'INIT_OR_CLARIFY'],
+    ['CHANGES_REQUESTED', 'DESIGN_SPEC'],
+    ['APPROVED', 'DESIGN_SPEC'],
+    ['PLAN_POSTED', 'EXECUTION_PLAN'],
+    ['CHANGES_COMMITTED', 'REVIEW_AND_MUTATE'],
+    ['PR_OPENED', 'PR_DELIVERY'],
+    ['CI_FIXED', 'CI_FIX'],
+  ])('%s from %s clears the failure budget', (signal, phase) => {
+    // `attempts` counts *consecutive* failures. Asking a clarifying question
+    // and answering a question are handler successes just as much as posting a
+    // spec is; treating only some of them as progress let a conversation with
+    // the odd hiccup climb to the cap across runs that all succeeded.
+    const failed = transition({ ...at(phase), attempts: 2 }, 'FAILED')
+    const resumed = transition(failed, 'RETRY')
+
+    expect(resumed.attempts).toBe(3)
+    expect(transition(resumed, signal).attempts).toBe(0)
+  })
+
+  test('a conversation that keeps succeeding never accumulates a budget', () => {
+    let state = initialState(1)
+
+    for (let round = 0; round < 5; round += 1) {
+      state = transition(state, 'FAILED', { lastError: 'hiccup' })
+      state = transition(state, 'RETRY')
+      state = transition(state, 'NEEDS_CLARIFICATION')
+      expect(state.attempts).toBe(0)
+    }
+  })
+
+  test('a genuinely broken issue still reaches the cap', () => {
+    // The counter must stay bounded, or the budget stops bounding anything.
+    let state = initialState(1)
+    const seen: number[] = []
+
+    for (let round = 0; round < 3; round += 1) {
+      state = transition(state, 'FAILED', { lastError: 'always broken' })
+      seen.push(state.attempts)
+      state = transition(state, 'RETRY')
+    }
+
+    expect(seen).toEqual([1, 2, 3])
   })
 
   test('a completed issue re-enters CI_FIX when its checks go red', () => {

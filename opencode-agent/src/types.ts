@@ -76,7 +76,7 @@ export const agentStateSchema = z.object({
   approved: z.boolean().default(false),
   /** Phase to resume from when a FAILED run is retried. */
   resumeFrom: z.enum(PHASES).nullable().default(null),
-  /** Consecutive failures since the last forward progress. Reset on success. */
+  /** Consecutive failures. Cleared by any forward move; preserved across `/retry`. */
   attempts: z.number().int().min(0).default(0),
   /** CI-fix rounds spent on the delivered pull request. Never reset. */
   ciAttempts: z.number().int().min(0).default(0),

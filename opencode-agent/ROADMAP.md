@@ -352,7 +352,23 @@ an explicit `process.exit(code)` after flushing logs.
 
 ### S2-1 `attempts` is never reset on success — **verified** — **[FIXED]**
 
-_Fixed: `PROGRESS_SIGNALS` clears the counter on forward progress._
+_Fixed in two steps. The first added a `PROGRESS_SIGNALS` allow-list, which
+looked equivalent to "reset on success" and was not: `NEEDS_CLARIFICATION`,
+`ANSWERED` and `CHANGES_REQUESTED` are forward moves that it omitted, and the
+first two are _handler successes_. Reproduced — a conversation that failed,
+retried, and successfully asked a clarifying question twice still reached
+`attempts = 3`, so the next hiccup locked the issue out at the default cap
+despite every clarification round having worked. A successful `/ask` did not
+clear it either.
+
+`attempts` now resets on **every** forward move, which is what "consecutive
+failures" means. `RETRY` is the deliberate exception and preserves the count in
+its own branch, so a genuinely broken issue still reaches the cap — verified as
+`1 → 2 → 3`, because a budget that never trips bounds nothing.
+
+Mutation-checked in both directions: restoring the allow-list turns the
+clarification and answer cases red, and making `RETRY` reset as well turns the
+boundedness case red._
 
 `src/state-manager.ts:139-143`: normal transitions carry `attempts` through from
 the previous state. Reproduced: a run that fails once, is `/retry`-ed, and then
