@@ -81,11 +81,15 @@
   /**
    * Errors surface once the operator has touched the field, so a pristine form is never
    * pre-reddened — except a duplicate id, which is worth saying before they press Create.
+   *
+   * Only the id field is gated this way. The type select auto-picks its first option, so a
+   * type error means the option list is empty and there is nothing the operator can touch;
+   * gating it on touch would make it unreachable. Its Field renders the error directly.
    */
   const shownError = (
-    errors: { id?: string; type?: string },
+    errors: { id?: string },
     touched: readonly string[],
-    field: 'id' | 'type',
+    field: 'id',
   ): string | undefined => {
     const message = errors[field]
     if (message === undefined) return undefined
@@ -395,7 +399,7 @@
             testid="platform-id" />
         {/snippet}
       </Field>
-      <Field label="Type" required error={shownError(platformErrors, platformTouched, 'type')}>
+      <Field label="Type" required error={platformErrors.type}>
         {#snippet children()}
           <Select
             value={platformType}
@@ -472,7 +476,7 @@
             testid="task-id" />
         {/snippet}
       </Field>
-      <Field label="Type" required error={shownError(taskErrors, taskTouched, 'type')}>
+      <Field label="Type" required error={taskErrors.type}>
         {#snippet children()}
           <Select
             value={taskType}

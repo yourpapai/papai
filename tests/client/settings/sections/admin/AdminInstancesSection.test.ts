@@ -939,6 +939,19 @@ describe('AdminInstancesSection', () => {
     void unmount(component)
   })
 
+  test('with no provider types to pick from, the Type field says so instead of silently disabling Create', async () => {
+    setMockFetch(createEmptyInstancesMock())
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+    // Nothing has been touched: the id error stays hidden, but the type error must show,
+    // because an empty option list is not something the operator can touch their way out of.
+    const errors = [...target.querySelectorAll('.ui-field__error')].map((n) => n.textContent)
+    expect(errors).toEqual(['Required', 'Required'])
+    void unmount(component)
+  })
+
   test('a second click on a row action does not fire a second PATCH', async () => {
     const counter = { patches: 0 }
     setCsrfToken('c')
