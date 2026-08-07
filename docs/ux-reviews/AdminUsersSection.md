@@ -76,7 +76,7 @@ design; the shell supplies it. Not filed.
 | 6. Accessibility                | warn  | Labels, focus rings, and `aria-busy` now come correct, but the live-region roles are mounted with their text already inside them — see `admin-users-live-region-mounts-with-text` below. |
 | 7. Responsive / layout          | warn  | `minWidth: 1200px` (`f5da228ac`) makes `.settings-table__scroll`'s existing `overflow-x: auto` engage at 640px instead of crushing columns — `Remove` and the Added-by pill are both fully reachable by scrolling now — but the long username still truncates with no non-hover way to recover it on keyboard or touch — see `admin-users-username-truncates-silently`. |
 | 8. Spacing, alignment & sizing  | pass  | The open-access card draws its radius/padding/margin from the token scale, column widths no longer shift, and the Added-by pill now renders complete at 640px once the table's own horizontal scroll engages — re-measured directly, no more mid-word clipping. |
-| 9. Interaction & micro-states   | warn  | Add has a real in-flight guard (`disabled`, "Adding…") and `Remove` is fully reachable at 640px via the table's own scroll, but the open-access toggle still never sets `aria-busy` (only `disabled`) while saving. |
+| 9. Interaction & micro-states   | pass  | Every asynchronous control now announces its in-flight state: Add (`disabled`, "Adding…"), Refresh (`IconButton busy`), Remove (`busy={removing}`), and the open-access toggle (`busy={togglingAccess}`, "Saving…", `38bcf5382`). `Remove` is fully reachable at 640px via the table's own scroll. |
 
 ## Findings
 
