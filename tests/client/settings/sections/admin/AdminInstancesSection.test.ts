@@ -588,6 +588,7 @@ describe('AdminInstancesSection', () => {
 
     expect(target.querySelector('.ui-error')).not.toBeNull()
     expect(target.querySelector('[data-testid="error-retry"]')).not.toBeNull()
+    expect(target.querySelector('.status-error')).toBeNull()
     void unmount(component)
   })
 
