@@ -14,6 +14,14 @@ Audit of the pipeline as it stands on `claude/opencode-agent-feedback-ux-mr89ep`
 then a staged plan. Nothing here is implemented yet; this is the design and the
 reasoning behind it, in the shape the rest of this workspace records decisions.
 
+**Re-anchored** against `origin/master` at `07b2586`, after nine state-machine
+fixes landed under this document. Three of them moved ground it stands on: a
+refused slash command now answers on the issue, `RunResult.reported` gave the
+pipeline a way to tell its own workflow whether it spoke, and the token-budget
+stop learned to park somewhere `/retry` can reach. What each one closed, left
+open, or made newly possible is recorded per finding below and summarised in the
+Drift Log at the end.
+
 ---
 
 ## 1. What a maintainer can see today
@@ -65,19 +73,32 @@ Answering "which of my twelve agent issues are waiting on me" means opening
 each one and reading the last comment's prose. An issue list, a project board, a
 notification — none of them carry a thing.
 
-**G4 — rejections are silent.** Every one of these produces a log line and
-nothing else:
+**G4 — rejections are silent — half closed upstream.** The premise was that a
+typo'd slash command and a broken pipeline look identical from the issue.
+`7d6958c` proved it the expensive way: a mis-set `AGENT_SELF_LOGIN` meant the
+agent could not read back its own state block, so every `/changes` was refused
+against a freshly-restarted state — and because refusals were silent, the bug was
+invisible for as long as nobody opened the Actions log. That commit closed the
+loudest half by adding `renderRefusedCommand`, which answers on the issue and
+lists what the current phase _does_ accept, derived from the transition table so
+it cannot drift from what the machine will take.
 
-| Path                                                      | What the maintainer typed                      |
-| --------------------------------------------------------- | ---------------------------------------------- |
-| `guardrails.ts` deny `NOT_MAINTAINER`                     | anything, from an account without write access |
-| `triggers.ts` `moveOrSkip` catch                          | `/approve` while in `REVIEW_AND_MUTATE`        |
-| `applyCommand` unknown command                            | `/aprove` — a typo                             |
-| `applyTrigger` `No actionable command while in ${phase}`  | a plain comment on a non-waiting phase         |
-| `applyIntent` `Comment needs no action` / `Empty comment` | a comment the classifier read as chatter       |
+What is still silent:
 
-A typo'd slash command and a broken pipeline look **exactly the same** from the
-issue. This is the cheapest gap to close and probably the most damaging one open.
+| Path                                                      | What the maintainer typed                      | Now                       |
+| --------------------------------------------------------- | ---------------------------------------------- | ------------------------- |
+| `triggers.ts` `moveOrSkip` catch → `refuseCommand`        | `/approve` while in `REVIEW_AND_MUTATE`        | **posts** a comment       |
+| `applyCommand` unknown command → `refuseCommand`          | `/aprove` — a typo                             | **posts** a comment       |
+| `guardrails.ts` deny `NOT_MAINTAINER`                     | anything, from an account without write access | silent                    |
+| `applyTrigger` `No actionable command while in ${phase}`  | a plain comment on a non-waiting phase         | silent                    |
+| `applyIntent` `Comment needs no action` / `Empty comment` | a comment the classifier read as chatter       | silent                    |
+| `ci-trigger.ts` `refuseUnfixablePhase` / settled PR       | nothing — a machine event                      | `warn`, silent on purpose |
+
+The three remaining human-facing rows are the ones where a comment would be the
+wrong instrument: a rejected outsider, and two readings of "this comment asked
+for nothing". Each still leaves a maintainer with no signal that the agent even
+saw them, which is what §4.1 is for — and the argument is now narrower and
+better, because the loud cases have a comment and these do not need one.
 
 **G5 — no live surface.** Comments are terminal by construction: `postAndAppend`
 is called with a finished `PhaseOutcome`. Nothing exists that can say "round 2 of
@@ -85,28 +106,60 @@ is called with a finished `PhaseOutcome`. Nothing exists that can say "round 2 o
 obviously wrong. The heartbeat that already knows all of this writes to a log
 nobody has a link to (G2).
 
-**G6 — no consistent visual vocabulary.** Emoji appear in exactly two places —
-`implement.ts`'s `REVIEW_LINE` (`✅ clean` / `❌ exited N` / `— not configured`)
-and `ci-fix.ts`'s check line — and nowhere else. Headings vary in register:
-`### Done`, `### Stopped`, `### Giving up`, `### Run failed in EXECUTION_PLAN`,
-`### Waiting`. There is no per-phase glyph, so nothing is scannable.
+**G6 — no consistent visual vocabulary — and it grew.** Emoji still appear in
+exactly two places: `implement.ts`'s `REVIEW_LINE` (`✅ clean` / `❌ exited N` /
+`— not configured`) and `ci-fix.ts`'s check line. `run-report.ts` went from six
+exported renderers to nine and carries **zero** — the new ones are
+`renderRefusedCommand`, `renderAnswerFailure` and `renderAnswerOverBudget`. So
+the register spread rather than settled: `### Done`, `### Stopped`,
+`### Giving up`, `### Waiting`, `### Run failed in EXECUTION_PLAN`,
+`### I could not answer that`, ``### `/approve` does not apply right now``,
+`### Token budget spent`. Every one of them is well-written and none of them is
+scannable as a class. Nine renderers is also past the point where a phase→glyph
+mapping can be added by hand without missing one, which is rule 5's whole
+argument.
 
-**G7 — spend is invisible until it is fatal.** `tokensSpent` is persisted and
-checked before every phase, and the only time it reaches the issue is
-`renderOverBudget`, at which point the issue is dead and `/retry` is explicitly a
-lie. A maintainer cannot see the burn approaching.
+**G7 — spend is invisible until it is fatal.** Still true, and the notice around
+it got much better without touching the gap. `af57837` made the over-budget stop
+park in `FAILED` with `resumeFrom`, and `renderOverBudget` now names the phase it
+parked, so "raise `AGENT_MAX_TOKENS`, reply `/retry`" is finally advice that
+works. `b3d4d3a` made every path that writes state record spend through one
+`recordSpend` seam, so the figure is no longer zero on the failure path. All of
+which improves what the issue says **at the wall** — none of it tells a
+maintainer they are approaching one. `tokensSpent` is read before every phase and
+surfaces to a human exactly once: when it is too late to act on.
 
 **G8 — the waiting comment says nothing useful.** `renderSettled` for a
 non-terminal phase renders `### Waiting\n\nParked in \`PLAN_REVIEW\`.` — the
 phase name, and no statement of what would move it. Every other waiting comment
 in the codebase carries a "What now?" block; this one does not.
 
-**G9 — the infrastructure fallback misses half its cases.** The workflow's
-`Report an infrastructure failure on the issue` step is gated on
-`failure() && github.event.issue.number`. A `workflow_run` event carries no
-`issue.number`, so a runner that dies during a CI-fix run posts **nothing**
-anywhere. `cancelled()` is not covered either, and a cancelled job is the
-documented consequence of G1 — a run that looks hung is a run someone cancels.
+**G9 — the infrastructure fallback misses two cases — narrowed.** This finding
+originally had two halves and the larger one is fixed. `04a324b` gave
+`RunResult` a required `reported` flag, wrote `reported=true` to `$GITHUB_OUTPUT`
+via `step-output.ts`, and gated the fallback step on it — so the six pipeline
+paths that exit 1 _after_ posting their own report no longer draw a second
+comment contradicting the first. That was the serious defect, and the fix is
+better than what this document would have proposed: the pipeline knows which of
+its exits spoke, so it says so, rather than the workflow guessing from a status
+that cannot distinguish them.
+
+What remains is coverage, on the line that commit deliberately left alone:
+
+```yaml
+if: failure() && github.event.issue.number && steps.pipeline.outputs.reported != 'true'
+```
+
+- `github.event.issue.number` is empty on a `workflow_run` event, so a runner
+  that dies during a **CI-fix** run still posts nothing anywhere. `04a324b`'s own
+  message names this — CI runs escaped the double-comment bug "by accident" —
+  which is the same fact seen from the side where it helps.
+- `cancelled()` is still not selected, and a cancelled job is the documented
+  consequence of G1: a run that looks hung is a run someone cancels.
+
+Kept here rather than split out, because both cases are the same failure this
+whole document is about — work happening, or stopping, with nothing on the issue
+to say so.
 
 ---
 
@@ -140,11 +193,21 @@ obvious designs.
    source of truth. Testable invariant, and worth pinning as one.
 5. **One place per vocabulary.** The recurring defect in this workspace is a fix
    that closes an instance and leaves the class open. A phase→emoji mapping
-   spread across five renderers is that defect waiting to happen; it goes in one
+   spread across nine renderers is that defect waiting to happen; it goes in one
    `Record<Phase, …>` so a phase added later fails to compile until it is named.
 6. **Comment budget.** More feedback fails by becoming noise. Hard budget: **at
    most one new comment per run** beyond the artefact comments that already
    exist. Everything else is a reaction, a label, or an edit.
+7. **A status comment is not a report.** `RunResult.reported` means "the issue
+   carries this run's account of what happened", and the workflow's fallback
+   comment is gated on it. A live status comment must therefore **never** set the
+   flag: a run killed mid-phase leaves "🛠️ Implementing — run in progress" on the
+   issue, which is the precise case the fallback exists for, and marking it
+   reported would suppress the one comment that would have explained the silence.
+   Finalising the status comment on a **returning** path is a different question
+   and still does not set it — the paths that report already do, and two writers
+   of one flag is how it drifts. The flag is required on every terminal path, so
+   a new one has to decide; this rule is what it decides.
 
 ---
 
@@ -205,17 +268,25 @@ label set is the papai-specific hardcoding S2-4 was reopened for.
 
 ### 4.1 Reactions — instant, zero-noise acknowledgement
 
-Closes **G1** and **G4**, and it is the cheapest thing in this document: one API
-call, no thread noise, and it lands on the comment the maintainer just wrote, so
-it is already where they are looking.
+Closes **G1** and what is left of **G4**, and it is the cheapest thing in this
+document: one API call, no thread noise, and it lands on the comment the
+maintainer just wrote, so it is already where they are looking.
 
 | Situation                                 | Reaction | Where                       |
 | ----------------------------------------- | -------- | --------------------------- |
 | Trigger accepted, work starting           | 👀       | triggering comment or issue |
 | Comment understood, nothing to do         | 👍       | triggering comment          |
-| Command rejected — wrong phase, unknown   | 😕       | triggering comment          |
 | Sender lacks maintainer rights            | 😕       | triggering comment          |
+| Command rejected — wrong phase, unknown   | 😕       | triggering comment          |
 | Run finished and delivered a pull request | 🚀       | triggering comment          |
+
+The fourth row is now **redundancy rather than the fix**: `refuseCommand` posts a
+comment naming the accepted commands, and that is the better answer. Keeping the
+reaction is still worth one call — it lands instantly, before the run has done
+anything, whereas the comment arrives after `postAndAppend` — but if the row has
+to be cut for noise, cut this one first. The rows that carry the argument now are
+the first two: 👀 is the only acknowledgement any trigger gets, and 👍 is the only
+trace a `Comment needs no action` classification leaves anywhere but the log.
 
 Silent on purpose, still: bot senders, self-recursion, pull-request targets and
 CI events. Those are machine noise with no human waiting on them, and the
@@ -269,6 +340,14 @@ entire comment budget from rule 6.
 **Budget:** 218k of 5,000,000 tokens · attempt 1 of 3
 ```
 
+The spec and plan rows carry their own revision numbers now — `418c1ad` split the
+shared `revision` counter into `specRevision` and `planRevision` precisely
+because one number could not honestly label two artefacts, and this table is the
+second place that would have gone wrong. It reads them, it does not recount.
+Likewise the CI budget line, when `CI_FIX` is the live phase, says "attempt 2 of
+3 **on this pull request**": `ciAttempts` is per pull request since `c4a43bd`,
+cleared when `handleDeliver` opens a new one.
+
 Design decisions worth recording, because each had a plausible alternative:
 
 - **One per run, not one per issue.** A single long-lived status comment edited
@@ -291,6 +370,39 @@ Design decisions worth recording, because each had a plausible alternative:
   grows an optional `onTick`; the log half is unchanged.
 - **A failed edit is a warning, not a failure** (rule 1), and a failed _create_
   degrades the run to today's behaviour exactly.
+- **It never sets `reported`** (rule 7). A stale "in progress" status is the
+  fallback comment's reason for existing, not a substitute for it.
+
+#### What `updateComment` also unlocks — and this plan now owns
+
+`applyIntent` records a leak it chose not to close: classification is the one
+model turn in the pipeline whose spend can never be written down, because state
+is persisted only by posting a comment and the `none` branch deliberately posts
+nothing. The comment names the fix — "a way to persist state without posting — an
+`updateComment` on the last state block" — and calls it a larger design change
+than a few thousand stray tokens justified. Stage 3 builds exactly that call for
+its own reasons, so the objection no longer holds, and the plan takes the fix on
+rather than leaving a documented leak beside the mechanism that closes it.
+
+This widens the goal by one sentence, deliberately: the plan is about feedback,
+and this is budget correctness. It is in scope because the cost of _not_ doing it
+once `updateComment` exists is a rule in three documents (the code comment,
+`CLAUDE.md`, the README) explaining why something is hard, next to the thing that
+made it easy.
+
+The mechanism is a `persistState` that rewrites the `AGENT_STATE` block in the
+comment that already carries the newest one, rather than appending. Two things it
+must respect, both already load-bearing:
+
+- **`findLatestState` scans newest-first for the newest agent comment with a
+  valid block.** Rewriting in place keeps that comment newest-with-a-block, so
+  the scan is unaffected. Rewriting the _wrong_ comment is the failure mode; the
+  target is the comment `findLatestState` itself selected, not the last comment
+  in the thread.
+- **The block escaping in `blocks.ts` is what makes this safe at all** —
+  `renderBlock` escapes every `<` and `>` so a payload cannot forge its own
+  terminator (S1-4). An in-place rewrite re-serialises through the same path or
+  it reintroduces that bug on a new surface.
 
 Shape: a `StatusReporter` interface on `PhaseDeps` — `start(state)`,
 `enter(phase)`, `tick(snapshot)`, `finish(result)` — with a no-op implementation
@@ -317,23 +429,32 @@ absent for local runs. Once it exists:
 Every skip path, with the decision. This table is the deliverable for **G4** —
 the point is that no row is left as "log only" by omission.
 
-| Path                                       | Today   | Proposed                                             |
-| ------------------------------------------ | ------- | ---------------------------------------------------- |
-| `NOT_MAINTAINER`                           | log     | 😕 reaction                                          |
-| `PULL_REQUEST` / `BOT_SENDER` / `SELF_*`   | log     | log — machine noise, nobody is waiting               |
-| `UNSUPPORTED_EVENT` / `UNSUPPORTED_ACTION` | log     | log                                                  |
-| `CI_*` denials                             | log     | log — no human triggered them                        |
-| Unknown command (`/aprove`)                | log     | 😕 reaction                                          |
-| Command invalid in phase                   | log     | 😕 reaction; the status comment lists valid commands |
-| Plain comment, non-waiting phase           | log     | 👍 reaction                                          |
-| `Comment needs no action` / empty          | log     | 👍 reaction                                          |
-| Retry / token / CI budget exhausted        | comment | unchanged — these are already right                  |
+| Path                                                    | Today       | Proposed                                   |
+| ------------------------------------------------------- | ----------- | ------------------------------------------ |
+| `NOT_MAINTAINER`                                        | log         | 😕 reaction                                |
+| `PULL_REQUEST` / `BOT_SENDER` / `SELF_*`                | log         | log — machine noise, nobody is waiting     |
+| `UNSUPPORTED_EVENT` / `UNSUPPORTED_ACTION`              | log         | log                                        |
+| `CI_*` guardrail denials                                | log         | log — no human triggered them              |
+| `refuseUnfixablePhase` (red run, no fixable phase)      | `warn`      | log — argued out in `ci-trigger.ts`        |
+| `settledPullRequest` (red run, merged/closed/absent PR) | log         | log — CI fires per push; a comment is spam |
+| Unknown command (`/aprove`)                             | **comment** | keep; add 😕 reaction as instant echo      |
+| Command invalid in phase                                | **comment** | keep; add 😕 reaction as instant echo      |
+| Plain comment, non-waiting phase                        | log         | 👍 reaction                                |
+| `Comment needs no action` / empty                       | log         | 👍 reaction                                |
+| Retry / token / CI budget exhausted                     | comment     | unchanged — these are already right        |
 
-Reaction rather than comment for the rejections, deliberately. A wrong-phase
-`/approve` is usually followed by a second attempt; a comment per attempt turns
-one confused maintainer into a thread of bot replies. The reaction says "seen and
-declined" and the status comment — which states the valid commands for the
-current phase — says why.
+Four rows changed since the first draft and all four moved the same way: toward
+the pipeline already doing the right thing. The two command refusals now post
+`renderRefusedCommand`, which is strictly better than the reaction this document
+proposed — it names the commands the phase accepts, from the transition table, so
+it cannot go stale. The two CI rows are silent by an argument written out at
+length in `ci-trigger.ts`, and it is a better argument than "add feedback here"
+would be: a red run fires on every push and re-run, the phases that refuse are
+ones where either nothing is pushed yet or the issue is already parked under a
+failure comment saying what to do.
+
+That leaves three genuinely silent human-facing rows, and the reaction channel is
+sized to exactly those.
 
 And **G8**: `renderSettled`'s non-terminal branch gains the same "What now?"
 block every other waiting comment carries, read from the presentation table.
@@ -342,13 +463,16 @@ block every other waiting comment carries, read from the presentation table.
 
 ## 6. Workflow changes
 
-Small, and only two of them matter.
+Smaller than they were — `04a324b` did the hard half.
 
-- **Fix the infrastructure fallback (G9).** Resolve the issue number from
+- **Finish the infrastructure fallback (G9).** Keep the
+  `steps.pipeline.outputs.reported != 'true'` gate exactly as it is; it is the
+  part that works. Widen the other two conditions: resolve the issue number from
   `github.event.issue.number` **or** the `workflow_run.head_branch`'s
-  `agent/issue-<n>` suffix, and fire on `failure() || cancelled()`. A cancelled
-  job is the documented consequence of a run that looks hung, and it currently
-  leaves the issue mid-phase with no explanation at all.
+  `agent/issue-<n>` suffix (`issueNumberFromBranch` already does this in
+  `git.ts`, so the workflow expression and the pipeline agree on the shape), and
+  fire on `failure() || cancelled()`. Both additions are inside the `reported`
+  gate, so neither can bring back the double comment.
 - **Add an `if: always()` label cleanup step** removing `agent:working`, so a
   killed runner cannot strand the marker (belt to the in-run reconcile's braces).
 - Optionally surface `AGENT_LABEL_PREFIX` alongside the other `vars.AGENT_*`
@@ -357,6 +481,10 @@ Small, and only two of them matter.
 No permission change: `issues: write` already covers labels, reactions and
 comment edits.
 
+`workflow.test.ts` already parses the workflow and pins its trigger surface,
+including that the fallback's `if:` names the same output key `step-output.ts`
+writes — so both changes here land in a file that is asserted, not assumed.
+
 ---
 
 ## 7. Sequencing
@@ -364,13 +492,18 @@ comment edits.
 Each stage is independently shippable and independently useful. Stage 1 alone
 closes the two worst gaps.
 
-| Stage | Contents                                                                                                                                                  | Closes                  |
-| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| **1** | `runUrl` in config; `commentId` on `IssueTriggerEvent`; `addReaction`; acknowledgement + rejection reactions; run link in the failure and CI-fix comments | G1, G2, G4              |
-| **2** | `presentation.ts`; label reconciler; `AGENT_LABEL_PREFIX`; `renderSettled` gains next steps                                                               | G3, G6, G8              |
-| **3** | `StatusReporter`; `updateComment`; the live status comment; heartbeat `onTick`; budget line                                                               | G5, G7, and G2 properly |
-| **4** | Workflow fallback and cleanup fixes                                                                                                                       | G9                      |
-| **5** | README "Watching a run" rewritten around the issue rather than the log; a `CLAUDE.md` local rule for the feedback-is-best-effort invariant                | —                       |
+| Stage | Contents                                                                                                                                                                                         | Closes                  |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------- |
+| **1** | `runUrl` in config; `commentId` on `IssueTriggerEvent`; `addReaction`; acknowledgement + remaining-silence reactions; run link in the failure and CI-fix comments                                | G1, G2, G4 remainder    |
+| **2** | `presentation.ts`; label reconciler; `AGENT_LABEL_PREFIX`; `renderSettled` gains next steps                                                                                                      | G3, G6, G8              |
+| **3** | `StatusReporter`; `updateComment`; the live status comment; heartbeat `onTick`; budget line; **`persistState` closing the classifier's accounting leak** (§4.3)                                  | G5, G7, and G2 properly |
+| **4** | Workflow fallback widened to `workflow_run` and `cancelled()`, inside the existing `reported` gate; `if: always()` label cleanup                                                                 | G9 remainder            |
+| **5** | README "Watching a run" rewritten around the issue rather than the log; `CLAUDE.md` local rules for rule 1 (best-effort) and rule 7 (`reported`); the three notes on the classifier leak retired | —                       |
+
+Stage 1 is unchanged in size but no longer the only thing standing between a
+maintainer and a silent refusal — `refuseCommand` shipped that. It is still where
+the acknowledgement and the run link live, which are the two things nothing else
+covers.
 
 ---
 
@@ -400,9 +533,21 @@ Following `tests/CLAUDE.md` and this workspace's own habits.
   new path rather than trusted to it.
 - **Rate limiting.** An injected clock proves a second `tick` inside the window
   issues no request, and that an unchanged body issues none regardless.
+- **`reported` stays false for a status comment** (rule 7). A run killed after
+  the status comment exists but before any report must still leave the flag
+  unset, so the workflow's fallback fires. `RunResult.reported` is required, so
+  the compiler catches a new terminal path that forgets to decide — but not one
+  that decides wrongly, which is what this test is for.
+- **`persistState` rewrites the right comment.** State restored after an in-place
+  rewrite equals the state written; the target is the comment `findLatestState`
+  selected, not the newest in the thread; and a payload containing `-->` survives
+  the round trip, because an in-place rewrite that bypasses `renderBlock`'s
+  escaping reintroduces S1-4 on a new surface.
 - Mutation-check hints for the reviewer: empty the reaction map; make the
   reconcile clear-and-reapply; drop the unchanged-body guard; let a thrown label
-  error propagate. Each should kill the test that names it.
+  error propagate; set `reported: true` when the status comment is created; point
+  `persistState` at the last comment instead of the selected one. Each should
+  kill the test that names it.
 
 ---
 
@@ -422,3 +567,23 @@ Following `tests/CLAUDE.md` and this workspace's own habits.
   text, not the agent's), GitHub Checks or Deployments as a status surface (a
   much larger integration for the same information), project-board automation,
   and any notification channel outside the issue.
+
+---
+
+## Drift Log
+
+Append-only. Each row is a reconciliation decision, not a change to the code.
+
+| Date       | Category               | Item                                                                                                    | Decision                                                                                                                   |
+| ---------- | ---------------------- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-07 | Base moved             | Rebased `069f96e` → `07b2586` (nine opencode-agent fixes)                                               | Plan re-anchored; every claim below re-verified against the tree at `07b2586`                                              |
+| 2026-08-07 | In-plan, partial       | **G4** — `7d6958c` added `renderRefusedCommand`                                                         | Rewritten: 2 of 5 rows closed by a comment. §4.1 and §5 narrowed to the three remaining silent rows                        |
+| 2026-08-07 | In-plan, partial       | **G9** — `04a324b` added `RunResult.reported` + `step-output.ts` + the gate                             | Narrowed to `workflow_run` coverage and `cancelled()`; the double-comment half recorded as fixed, and better than proposed |
+| 2026-08-07 | In-plan, stale framing | **G7** — `af57837`, `b3d4d3a` fixed the over-budget park and spend recording                            | Gap unchanged, framing rewritten: the notices at the wall are now right, the approach to it is still invisible             |
+| 2026-08-07 | In-plan, accurate      | **G6** — `run-report.ts` 6 → 9 renderers, still zero emoji                                              | Strengthened; nine renderers is past hand-maintainable, which is rule 5's argument                                         |
+| 2026-08-07 | In-plan, accurate      | **G1, G2, G3, G5, G8** — untouched by the nine fixes                                                    | Kept verbatim; `renderSettled` re-read and is byte-identical                                                               |
+| 2026-08-07 | Out-of-plan, on-goal   | `RunResult.reported` semantics vs. a live status comment                                                | **User: add.** New design rule 7 — a status comment never sets the flag; test row and mutation hint added                  |
+| 2026-08-07 | Out-of-plan, on-goal   | `applyIntent`'s documented accounting leak, whose stated fix is `updateComment`                         | **User: add as an explicit stage-3 task.** §4.3 gains `persistState`; goal widened by one sentence, stated in place        |
+| 2026-08-07 | In-plan, stale anchors | `triggers.ts` split; `ci-trigger.ts`, `token-budget.ts`, `trigger-outcome.ts`, `step-output.ts` are new | All module references refreshed; `skip()` now takes a `reported` argument stage 1 must pass                                |
+| 2026-08-07 | Out-of-plan, on-goal   | `specRevision` / `planRevision` split; `ciAttempts` now per pull request                                | Folded into the §4.3 status-comment spec — it reads both, and must not recount either                                      |
+| 2026-08-07 | No plan claim          | `identity.ts`, `deps.ts`, `prompts.ts`, `phases/*`, `state-manager.ts`, tests                           | No plan change. `identity.ts`'s bug is cited under G4 as evidence the audit's premise was real                             |
