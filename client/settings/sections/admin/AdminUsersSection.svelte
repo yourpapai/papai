@@ -250,6 +250,7 @@
         size="sm"
         testid="open-access-toggle"
         disabled={togglingAccess || !openAccessLoaded}
+        busy={togglingAccess}
         onClick={() => void toggleAccess()}>
         {#snippet children()}
           {!openAccessLoaded ? 'Unavailable' : togglingAccess ? 'Saving…' : openDmAccess ? 'Disable' : 'Enable'}

@@ -260,6 +260,12 @@ const openAccessFailMock = (url: string): Promise<Response> => {
 
 const neverResolvingMock = (): Promise<Response> => new Promise<Response>(() => {})
 
+const hangingTogglePostMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/admin/open-access') && init.method === 'POST') return new Promise<Response>(() => {})
+  if (url.includes('/admin/open-access')) return Promise.resolve(json(openAccessOff))
+  return Promise.resolve(json(usersPayload))
+}
+
 let addPostCount = 0
 const countingAddMock = (url: string, init: RequestInit): Promise<Response> => {
   if (url.includes('/open-access')) return Promise.resolve(json(openAccessOff))
@@ -515,6 +521,22 @@ describe('AdminUsersSection', () => {
     target.querySelector<HTMLButtonElement>('[data-testid="open-access-toggle"]')!.click()
     await drain()
     expect(capturedPostBody).toBe(JSON.stringify({ enabled: true }))
+    void unmount(component)
+  })
+
+  test('the open-access toggle announces its in-flight state with aria-busy', async () => {
+    setCsrfToken('c')
+    setMockFetch(hangingTogglePostMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    const toggle = target.querySelector<HTMLButtonElement>('[data-testid="open-access-toggle"]')!
+    expect(toggle.getAttribute('aria-busy')).toBe('false')
+    toggle.click()
+    await drain()
+    expect(toggle.textContent.trim()).toBe('Saving…')
+    expect(toggle.getAttribute('aria-busy')).toBe('true')
     void unmount(component)
   })
 
