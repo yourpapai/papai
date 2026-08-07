@@ -686,6 +686,27 @@ describe('AdminInstancesSection', () => {
     void unmount(component)
   })
 
+  test('the delete confirmation names the consequence that fits the instance kind', async () => {
+    installFetch()
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="platform-delete-tg"]')!.click()
+    flushSync()
+    expect(target.querySelector('.modal')!.textContent).toContain('Its platform stops being served')
+
+    target.querySelector<HTMLButtonElement>('[data-testid="confirm-cancel"]')!.click()
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="task-delete-k"]')!.click()
+    flushSync()
+    const taskBody = target.querySelector('.modal')!.textContent
+    expect(taskBody).toContain('Any context assigned to it loses its task tracker')
+    expect(taskBody).not.toContain('Its platform stops being served')
+    void unmount(component)
+  })
+
   test('deleting a task instance requires confirmation before DELETE fires', async () => {
     setCsrfToken('c')
     let deletedUrl: string | undefined

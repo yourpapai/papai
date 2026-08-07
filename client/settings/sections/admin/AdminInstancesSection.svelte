@@ -348,6 +348,14 @@
     pendingDelete !== null ? `${pendingDelete.kind} instance ${pendingDelete.id}` : '',
   )
 
+  // A platform instance serves a chat connection; a task instance backs the trackers
+  // contexts are assigned to. Naming the wrong one understates the cost of the other.
+  const pendingDeleteConsequence = $derived(
+    pendingDelete?.kind === 'task'
+      ? 'Any context assigned to it loses its task tracker'
+      : 'Its platform stops being served',
+  )
+
   const pendingStopId = $derived(pendingStop?.row.id ?? '')
 </script>
 
@@ -538,7 +546,7 @@
     onConfirm={() => void confirmDelete()}>
     {#snippet body()}
       <p>
-        Delete {pendingDeleteLabel}? Its platform stops being served and its stored credentials are
+        Delete {pendingDeleteLabel}? {pendingDeleteConsequence} and its stored credentials are
         removed. This cannot be undone.
       </p>
       {#if deleteError !== null}<p class="status-error">{deleteError}</p>{/if}
