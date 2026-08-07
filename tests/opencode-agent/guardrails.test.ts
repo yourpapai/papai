@@ -75,6 +75,14 @@ describe('parseTriggerEvent — issue events', () => {
     expect(parseTriggerEvent('issue_comment', payload)).toMatchObject({ isPullRequest: true })
   })
 
+  test('reports no default branch when the payload omitted the repository', () => {
+    // The parser used to substitute "main" here, which reached config as if
+    // GitHub had said it and pre-empted every other way of finding the answer.
+    const { repository: _dropped, ...withoutRepository } = issuePayload()
+
+    expect(parseTriggerEvent('issues', withoutRepository)).toMatchObject({ defaultBranch: null })
+  })
+
   test('returns null when the payload carries no issue', () => {
     expect(parseTriggerEvent('workflow_dispatch', { action: 'x', sender: { login: 'a' } })).toBeNull()
     expect(parseTriggerEvent('issues', 'not an object')).toBeNull()
@@ -96,6 +104,12 @@ describe('parseTriggerEvent — CI events', () => {
 
   test('recovers the issue number from the agent branch', () => {
     expect(parseTriggerEvent('workflow_run', ciPayload())).toEqual(ciEvent())
+  })
+
+  test('reports no default branch when a run payload omitted the repository', () => {
+    const { repository: _dropped, ...withoutRepository } = ciPayload()
+
+    expect(parseTriggerEvent('workflow_run', withoutRepository)).toMatchObject({ defaultBranch: null })
   })
 
   test.each([['main'], ['feature/thing'], ['agent/issue-abc'], ['agent/issue-']])(

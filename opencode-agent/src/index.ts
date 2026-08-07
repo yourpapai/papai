@@ -9,11 +9,12 @@ import process from 'node:process'
 import { pathToFileURL } from 'node:url'
 
 import type { CheckRunner } from './check-loop.js'
-import { loadConfig } from './config.js'
-import type { PipelineConfig } from './config.js'
+import { loadConfig, resolveBaseBranch } from './config.js'
+import type { Env, PipelineConfig } from './config.js'
 import { createGit } from './git.js'
 import { createOctokitApi } from './github.js'
 import { parseTriggerEvent } from './guardrails.js'
+import type { TriggerEvent } from './guardrails.js'
 import { createLogger } from './logger.js'
 import type { Logger, LogLevel } from './logger.js'
 import { loadPhaseSkills } from './obra-skills.js'
@@ -152,21 +153,46 @@ const makeSkillLoader = (config: PipelineConfig, log: Logger): ((phase: Phase) =
   }
 }
 
-const assembleDeps = (config: PipelineConfig, run: CommandRunner, log: Logger, agent: AgentHandle): PhaseDeps => ({
-  github: createOctokitApi({ token: config.githubToken, owner: config.owner, repo: config.repo }),
-  git: createGit({
+/**
+ * Defers a one-shot async lookup until something asks for it, then keeps the
+ * answer. Used for the base branch, whose resolution can cost a round trip.
+ */
+const memoize = <T>(load: () => Promise<T>): (() => Promise<T>) => {
+  let pending: Promise<T> | null = null
+  return () => (pending ??= load())
+}
+
+interface DepsInput {
+  config: PipelineConfig
+  event: TriggerEvent
+  env: Env
+  run: CommandRunner
+  log: Logger
+  agent: AgentHandle
+}
+
+const assembleDeps = ({ config, event, env, run, log, agent }: DepsInput): PhaseDeps => {
+  const git = createGit({
     run,
     cwd: config.repoRoot,
     authorName: config.commitAuthorName,
     authorEmail: config.commitAuthorEmail,
-  }),
-  runCheck: makeCheckRunner(run, config),
-  runReview: makeReviewRunner(run, config, log),
-  agent: agent.get,
-  skills: makeSkillLoader(config, log),
-  config,
-  log,
-})
+  })
+
+  return {
+    github: createOctokitApi({ token: config.githubToken, owner: config.owner, repo: config.repo }),
+    git,
+    runCheck: makeCheckRunner(run, config),
+    runReview: makeReviewRunner(run, config, log),
+    agent: agent.get,
+    skills: makeSkillLoader(config, log),
+    baseBranch: memoize(() =>
+      resolveBaseBranch(env, { fromEvent: event.defaultBranch, fromGit: () => git.defaultBranch() }),
+    ),
+    config,
+    log,
+  }
+}
 
 export interface MainOptions {
   argv: readonly string[]
@@ -201,7 +227,7 @@ export const runCli = async (options: MainOptions): Promise<RunResult> => {
       sessionTitle: `issue-${event.issueNumber}`,
     }),
   )
-  const deps = assembleDeps(config, run, log, agent)
+  const deps = assembleDeps({ config, event, env: options.env, run, log, agent })
 
   log.info(
     { event: args.eventName, kind: event.kind, issue: event.issueNumber, model: config.openai.model },

@@ -11,6 +11,7 @@ import path from 'node:path'
 import { memoizeAgent, parseArgs, runCli, UsageError } from '../../opencode-agent/src/index.js'
 import { createLogger } from '../../opencode-agent/src/logger.js'
 import type { OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
+import type { CommandRunner } from '../../opencode-agent/src/shell.js'
 
 const workDir = await mkdtemp(path.join(tmpdir(), 'opencode-agent-cli-'))
 
@@ -167,6 +168,36 @@ describe('runCli', () => {
 
     expect(result.status).toBe('skipped')
     expect(result.reason).toContain('Bot')
+  })
+
+  test('a guarded run never shells out to work out a base branch', async () => {
+    // Base-branch resolution can cost a round trip to the remote, so it has to
+    // stay behind the guardrails: a bot comment must be dropped without ever
+    // running git, let alone failing on it.
+    const eventPath = await writeEvent('lazy', {
+      action: 'created',
+      sender: { login: 'someone', type: 'Bot' },
+      issue: { number: 42, title: 't', body: 'b', author_association: 'OWNER' },
+      comment: { id: 1, body: 'hi', author_association: 'OWNER' },
+    })
+    const commands: string[] = []
+    const record: CommandRunner = (argv) => {
+      commands.push(argv.join(' '))
+      return Promise.resolve({ command: argv.join(' '), exitCode: 0, stdout: '', stderr: '' })
+    }
+
+    const result = await runCli({
+      argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
+      env,
+      logger: silentLogger,
+      run: record,
+    })
+
+    expect(result.status).toBe('skipped')
+    // Asserting the status alone is not enough: a resolution kicked off eagerly
+    // still runs git, and its rejection goes unobserved because nothing awaits
+    // the result on this path.
+    expect(commands).toEqual([])
   })
 
   test('skips a payload that carries no issue', async () => {

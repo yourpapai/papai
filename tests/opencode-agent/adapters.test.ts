@@ -8,7 +8,13 @@ import { describe, expect, test } from 'bun:test'
 import { z } from 'zod'
 
 import { renderBlock } from '../../opencode-agent/src/blocks.js'
-import { loadConfig, parseChecks, parseRepository, resolveReviewCommand } from '../../opencode-agent/src/config.js'
+import {
+  loadConfig,
+  parseChecks,
+  parseRepository,
+  resolveBaseBranch,
+  resolveReviewCommand,
+} from '../../opencode-agent/src/config.js'
 import type { Env } from '../../opencode-agent/src/config.js'
 import { PipelineError } from '../../opencode-agent/src/errors.js'
 import { createGit } from '../../opencode-agent/src/git.js'
@@ -564,6 +570,41 @@ describe('resolveReviewCommand', () => {
   })
 })
 
+describe('resolveBaseBranch', () => {
+  const env: Env = { GITHUB_REPOSITORY: 'acme/widgets' }
+  const noGit = (): Promise<string | null> => Promise.resolve(null)
+  const gitSays = (branch: string) => (): Promise<string | null> => Promise.resolve(branch)
+
+  test('takes the branch the webhook payload already reported', async () => {
+    // This is the whole point: the payload knows, so nothing downstream has to
+    // guess. Defaulting to "main" broke every run in this very repository,
+    // whose default branch is "master".
+    expect(await resolveBaseBranch(env, { fromEvent: 'master', fromGit: noGit })).toBe('master')
+  })
+
+  test('AGENT_BASE_BRANCH overrides the payload', async () => {
+    const pinned = { ...env, AGENT_BASE_BRANCH: 'release/2.x' }
+
+    expect(await resolveBaseBranch(pinned, { fromEvent: 'master', fromGit: noGit })).toBe('release/2.x')
+  })
+
+  test('an empty override is not an override', async () => {
+    const blank = { ...env, AGENT_BASE_BRANCH: '  ' }
+
+    expect(await resolveBaseBranch(blank, { fromEvent: 'master', fromGit: noGit })).toBe('master')
+  })
+
+  test('falls back to the checkout when the payload carried no repository', async () => {
+    expect(await resolveBaseBranch(env, { fromEvent: null, fromGit: gitSays('develop') })).toBe('develop')
+  })
+
+  test('never invents a name when nothing knows one', async () => {
+    const attempt = resolveBaseBranch(env, { fromEvent: null, fromGit: noGit })
+
+    await expect(attempt).rejects.toThrow('AGENT_BASE_BRANCH')
+  })
+})
+
 describe('logger', () => {
   test('redacts credential-shaped fields', () => {
     expect(redact({ token: 'abc', apiKey: 'k', issue: 42 })).toEqual({
@@ -701,6 +742,31 @@ describe('createGit', () => {
     await createGit(gitOptions(run)).push('agent/issue-1')
 
     expect(calls).toContainEqual(['git', 'push', '-u', 'origin', 'agent/issue-1'])
+  })
+
+  test('reads the default branch from the checkout\u2019s own origin/HEAD', async () => {
+    const { run } = captureGit({}, { 'git symbolic-ref --short refs/remotes/origin/HEAD': 'origin/master\n' })
+
+    expect(await createGit(gitOptions(run)).defaultBranch()).toBe('master')
+  })
+
+  test('asks the remote when origin/HEAD is unset, as it is under actions/checkout', async () => {
+    const { calls, run } = captureGit(
+      { 'git symbolic-ref --short refs/remotes/origin/HEAD': 128 },
+      { 'git ls-remote --symref origin HEAD': 'ref: refs/heads/master\tHEAD\nabc123\tHEAD\n' },
+    )
+
+    expect(await createGit(gitOptions(run)).defaultBranch()).toBe('master')
+    expect(calls).toContainEqual(['git', 'ls-remote', '--symref', 'origin', 'HEAD'])
+  })
+
+  test('reports null rather than a guess when neither probe answers', async () => {
+    const { run } = captureGit({
+      'git symbolic-ref --short refs/remotes/origin/HEAD': 128,
+      'git ls-remote --symref origin HEAD': 128,
+    })
+
+    expect(await createGit(gitOptions(run)).defaultBranch()).toBeNull()
   })
 
   test('throws a GitError carrying the failed command', async () => {

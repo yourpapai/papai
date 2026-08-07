@@ -30,7 +30,6 @@ export interface PipelineConfig {
   /** This pipeline's workflow name, so its own red runs do not re-trigger it. */
   selfWorkflowName: string
   openai: OpenAiSettings
-  baseBranch: string
   commitAuthorName: string
   commitAuthorEmail: string
   /** Build gate the review loop runs between rounds. */
@@ -166,6 +165,42 @@ const safeJsonArgv = (raw: string): unknown => {
   }
 }
 
+/** Where {@link resolveBaseBranch} looks once `AGENT_BASE_BRANCH` is unset. */
+export interface BaseBranchSources {
+  /** `repository.default_branch` from the webhook payload, when it carried one. */
+  fromEvent: string | null
+  /** The checkout's own view of `origin/HEAD`, for runs driven from a file. */
+  fromGit: () => Promise<string | null>
+}
+
+/**
+ * Resolves the branch new work forks from and pull requests target.
+ *
+ * There is deliberately no literal fallback. This used to default to `main`,
+ * which was wrong for the repository the spike lives in — its default branch is
+ * `master` — so every local run died on `fatal: couldn't find remote ref main`.
+ * Substituting `master` would only move the breakage elsewhere: the name is a
+ * per-repository fact, not something with a sensible default.
+ *
+ * Both callers above already know it — the webhook payload carries
+ * `repository.default_branch` and a checkout carries `origin/HEAD` — so this
+ * asks them in order and fails naming the override rather than guessing.
+ */
+export const resolveBaseBranch = async (env: Env, sources: BaseBranchSources): Promise<string> => {
+  const override = env['AGENT_BASE_BRANCH']
+  if (override !== undefined && override.trim().length > 0) return override.trim()
+
+  const fromEvent = sources.fromEvent
+  if (fromEvent !== null && fromEvent.trim().length > 0) return fromEvent.trim()
+
+  const detected = await sources.fromGit()
+  if (detected !== null && detected.trim().length > 0) return detected.trim()
+
+  throw new ConfigError(
+    'Cannot determine the base branch: the event payload carries no repository.default_branch and this checkout has no origin/HEAD. Set AGENT_BASE_BRANCH.',
+  )
+}
+
 /** Builds the pipeline config from the runner environment. */
 export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
   const { owner, repo } = parseRepository(required(env, 'GITHUB_REPOSITORY'))
@@ -178,7 +213,6 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     selfLogin: optional(env, 'AGENT_SELF_LOGIN', owner),
     selfWorkflowName: optional(env, 'AGENT_WORKFLOW_NAME', 'OpenCode Issue Agent'),
     openai: loadOpenAiSettings(env),
-    baseBranch: optional(env, 'AGENT_BASE_BRANCH', 'main'),
     commitAuthorName: optional(env, 'AGENT_COMMIT_NAME', 'opencode-agent[bot]'),
     commitAuthorEmail: optional(env, 'AGENT_COMMIT_EMAIL', 'opencode-agent@users.noreply.github.com'),
     checkCommand: optional(env, 'AGENT_CHECK_COMMAND', 'bun run lint && bun run typecheck && bun test'),

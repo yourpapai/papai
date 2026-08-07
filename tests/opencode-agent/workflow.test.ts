@@ -177,6 +177,10 @@ describe('steps', () => {
   test('tells the pipeline its own workflow name, for the CI recursion guard', () => {
     // If these drift, the agent treats its own red runs as work to fix.
     expect(step('agent pipeline').env['AGENT_WORKFLOW_NAME']).toBe(workflow.name)
+
+    // Passing the default branch through would mask the pipeline's own
+    // resolution chain and let it rot untested; the payload already carries it.
+    expect(Object.keys(step('agent pipeline').env)).not.toContain('AGENT_BASE_BRANCH')
   })
 
   test('reports an infrastructure failure only when there is an issue to post to', () => {

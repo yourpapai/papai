@@ -23,6 +23,7 @@ import type { AgentState } from '../../opencode-agent/src/types.js'
 
 const AGENT_LOGIN = 'agent-bot'
 const ISSUE = 42
+const BASE_BRANCH = 'trunk'
 
 const silentLogger = (): Logger => ({
   debug: (): void => {},
@@ -39,7 +40,6 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   selfLogin: AGENT_LOGIN,
   selfWorkflowName: 'OpenCode Issue Agent',
   openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5' },
-  baseBranch: 'main',
   commitAuthorName: 'agent',
   commitAuthorEmail: 'agent@example.com',
   checkCommand: 'bun test',
@@ -68,7 +68,7 @@ const issueEvent = (overrides: Partial<IssueTriggerEvent> = {}): IssueTriggerEve
   isPullRequest: false,
   commentBody: null,
   repositoryOwner: 'acme',
-  defaultBranch: 'main',
+  defaultBranch: BASE_BRANCH,
   ...overrides,
 })
 
@@ -84,7 +84,7 @@ const ciEvent = (overrides: Partial<CiTriggerEvent> = {}): CiTriggerEvent => ({
   conclusion: 'failure',
   workflowName: 'CI',
   runUrl: 'https://example.test/run/1',
-  defaultBranch: 'main',
+  defaultBranch: BASE_BRANCH,
   ...overrides,
 })
 
@@ -98,6 +98,8 @@ interface PipelineIo {
   /** Model replies, consumed in order by successive prompts. */
   replies: string[]
   reviewResult: ReviewRunResult
+  /** What `git` would report as the remote's default branch. */
+  detectedBranch: string | null
   createdPr: PullRequestRef | null
   openPr: PullRequestRef | null
   prBodies: string[]
@@ -124,6 +126,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     checkResults: new Map(),
     replies: [],
     reviewResult: { outcome: 'passed', summary: 'no issues found', exitCode: 0 },
+    detectedBranch: BASE_BRANCH,
     createdPr: null,
     openPr: null,
     prBodies: [],
@@ -168,6 +171,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       return Promise.resolve()
     },
     currentSha: () => Promise.resolve('deadbeef'),
+    defaultBranch: () => Promise.resolve(io.detectedBranch),
   }
 
   const agent: OpenCodeAgent = {
@@ -186,6 +190,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     runReview: () => Promise.resolve(io.reviewResult),
     agent: () => Promise.resolve(agent),
     skills: () => Promise.resolve([]),
+    baseBranch: () => Promise.resolve(BASE_BRANCH),
     config: config(overrides),
     log: silentLogger(),
   }
@@ -209,6 +214,7 @@ const hostileGit = (): Git => {
     commitAll: (): Promise<boolean> => refuse('commit'),
     push: (): Promise<void> => refuse('push'),
     currentSha: (): Promise<string> => refuse('rev-parse'),
+    defaultBranch: (): Promise<string | null> => refuse('symbolic-ref'),
   }
 }
 
@@ -441,7 +447,7 @@ describe('plan review gate', () => {
     expect(result.status).toBe('waiting')
     expect(headings(harness)).toEqual(['### Execution plan (revision 2)'])
     expect(latestPostedState(harness)?.phase).toBe('PLAN_REVIEW')
-    expect(harness.io.gitCalls).toEqual([`ensureBranch:agent/issue-${ISSUE}:main`])
+    expect(harness.io.gitCalls).toEqual([`ensureBranch:agent/issue-${ISSUE}:${BASE_BRANCH}`])
   })
 
   test('/changes on the plan re-plans without touching the spec', async () => {

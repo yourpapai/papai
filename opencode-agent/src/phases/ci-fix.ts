@@ -30,7 +30,7 @@ const CI_FIX_INSTRUCTIONS = [
 export const handleCiFix: PhaseHandler = async (input): Promise<PhaseOutcome> => {
   const { deps, state } = input
   const branch = branchNameFor(state.issueId)
-  await deps.git.ensureBranch(branch, deps.config.baseBranch)
+  await deps.git.ensureBranch(branch, await deps.baseBranch())
 
   const agent = await deps.agent()
   const system = composeSystemPrompt({

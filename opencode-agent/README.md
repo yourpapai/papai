@@ -167,7 +167,7 @@ cannot drift.
 | `GITHUB_REPOSITORY`                        | yes      | —                                               | `owner/repo`                                          |
 | `AGENT_SELF_LOGIN`                         | no       | repository owner                                | Login treated as the agent itself                     |
 | `AGENT_WORKFLOW_NAME`                      | no       | `OpenCode Issue Agent`                          | This workflow's name, for the CI recursion guard      |
-| `AGENT_BASE_BRANCH`                        | no       | `main`                                          | Branch the PR targets                                 |
+| `AGENT_BASE_BRANCH`                        | no       | detected                                        | Branch the PR targets; see below                      |
 | `AGENT_CHECK_COMMAND`                      | no       | `bun run lint && bun run typecheck && bun test` | review-loop's build gate                              |
 | `AGENT_REVIEW_COMMAND`                     | no       | detected                                        | JSON argv running the review loop; `none` disables it |
 | `AGENT_CHECKS`                             | no       | lint / typecheck / test                         | JSON `[{ "name", "argv" }]` the CI-fix phase runs     |
@@ -184,6 +184,25 @@ cannot drift.
 no model name that is right by default, and a wrong guess surfaces deep inside
 the first model call instead of at config load. Every numeric knob is validated
 as a positive integer.
+
+`AGENT_BASE_BRANCH` has no literal default for the same reason. It used to
+default to `main`, which is wrong for the repository this spike lives in — its
+default branch is `master` — so every local run died on `fatal: couldn't find
+remote ref main`; `master` would have been just as wrong elsewhere. The branch is
+resolved instead, in order:
+
+1. `AGENT_BASE_BRANCH`, when an operator pins one.
+2. `repository.default_branch` from the webhook payload — always present on the
+   events this pipeline listens to, so this is the normal path. The workflow
+   deliberately does **not** forward it as `AGENT_BASE_BRANCH`; doing so would
+   mask this rung and let it rot untested.
+3. The checkout's own `origin/HEAD`, for runs driven from an event file. Probed
+   locally first, then via `git ls-remote --symref`, because `git clone` writes
+   that ref and `actions/checkout` does not.
+4. Otherwise a `ConfigError` naming `AGENT_BASE_BRANCH` — never a guess.
+
+Resolution is lazy and memoized: it can cost a round trip to the remote, and a
+run that a guardrail stops must neither pay for that nor fail on it.
 
 ## Skills
 
@@ -256,6 +275,10 @@ A minimal `issues.opened` payload:
   }
 }
 ```
+
+`repository.default_branch` is what the pipeline forks from — set it to the
+branch your checkout actually has, or drop the whole `repository` object and let
+it read `origin/HEAD` from the checkout.
 
 For the CI-fix path, pass a `workflow_run` payload with
 `--event-name workflow_run`.

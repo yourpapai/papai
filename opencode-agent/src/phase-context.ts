@@ -40,6 +40,12 @@ export interface PhaseDeps {
   /** Memoized: the OpenCode server only boots for phases that prompt the model. */
   agent: () => Promise<OpenCodeAgent>
   skills: (phase: Phase) => Promise<SkillDocument[]>
+  /**
+   * Branch new work forks from and pull requests target. Memoized and lazy:
+   * resolving it can cost a round trip to the remote, and a run stopped by a
+   * guardrail must never pay that — or fail on it.
+   */
+  baseBranch: () => Promise<string>
   config: PipelineConfig
   log: Logger
 }

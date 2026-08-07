@@ -134,7 +134,9 @@ jobs:
           # Pipeline configuration — see opencode-agent/README.md.
           AGENT_SELF_LOGIN: ${{ vars.AGENT_SELF_LOGIN || github.repository_owner }}
           AGENT_WORKFLOW_NAME: OpenCode Issue Agent
-          AGENT_BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          # AGENT_BASE_BRANCH is deliberately unset: the pipeline reads the
+          # branch off the payload's repository.default_branch. Passing it here
+          # would mask that path and let it rot untested.
           AGENT_CHECK_COMMAND: ${{ vars.AGENT_CHECK_COMMAND }}
           AGENT_CHECKS: ${{ vars.AGENT_CHECKS }}
           AGENT_REVIEW_MAX_ROUNDS: ${{ vars.AGENT_REVIEW_MAX_ROUNDS }}

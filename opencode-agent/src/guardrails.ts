@@ -24,7 +24,8 @@ export interface IssueTriggerEvent {
   isPullRequest: boolean
   commentBody: string | null
   repositoryOwner: string | null
-  defaultBranch: string
+  /** `repository.default_branch`; `null` when the payload omitted it. */
+  defaultBranch: string | null
 }
 
 /**
@@ -41,7 +42,8 @@ export interface CiTriggerEvent {
   conclusion: string
   workflowName: string
   runUrl: string
-  defaultBranch: string
+  /** `repository.default_branch`; `null` when the payload omitted it. */
+  defaultBranch: string | null
 }
 
 export type TriggerEvent = IssueTriggerEvent | CiTriggerEvent
@@ -64,7 +66,13 @@ const issuePayloadSchema = z.object({
     })
     .optional(),
   repository: z
-    .object({ owner: z.object({ login: z.string() }), name: z.string(), default_branch: z.string().default('main') })
+    .object({
+      owner: z.object({ login: z.string() }),
+      name: z.string(),
+      // Not defaulted: an absent default branch has to stay visibly absent so
+      // config resolution falls through to git instead of inheriting a guess.
+      default_branch: z.string().min(1).optional(),
+    })
     .optional(),
 })
 
@@ -76,7 +84,7 @@ const ciPayloadSchema = z.object({
     conclusion: z.string().nullable().default(null),
     html_url: z.string().default(''),
   }),
-  repository: z.object({ default_branch: z.string().default('main') }).optional(),
+  repository: z.object({ default_branch: z.string().min(1).optional() }).optional(),
 })
 
 const parseIssueEvent = (eventName: string, payload: unknown): IssueTriggerEvent | null => {
@@ -98,7 +106,7 @@ const parseIssueEvent = (eventName: string, payload: unknown): IssueTriggerEvent
     isPullRequest: issue.pull_request !== undefined && issue.pull_request !== null,
     commentBody: comment === undefined ? null : comment.body,
     repositoryOwner: repository === undefined ? null : repository.owner.login,
-    defaultBranch: repository === undefined ? 'main' : repository.default_branch,
+    defaultBranch: repository?.default_branch ?? null,
   }
 }
 
@@ -122,7 +130,7 @@ const parseCiEvent = (eventName: string, payload: unknown): CiTriggerEvent | nul
     conclusion: run.conclusion ?? 'unknown',
     workflowName: run.name,
     runUrl: run.html_url,
-    defaultBranch: repository === undefined ? 'main' : repository.default_branch,
+    defaultBranch: repository?.default_branch ?? null,
   }
 }
 

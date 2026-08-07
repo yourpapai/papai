@@ -34,10 +34,10 @@ export const handleDeliver: PhaseHandler = async (input): Promise<PhaseOutcome> 
   }
 }
 
-const openPullRequest = (input: PhaseInput, branch: string, body: string): Promise<PullRequestRef> =>
+const openPullRequest = async (input: PhaseInput, branch: string, body: string): Promise<PullRequestRef> =>
   input.deps.github.createPullRequest({
     head: branch,
-    base: input.deps.config.baseBranch,
+    base: await input.deps.baseBranch(),
     title: `${input.issue.title} (#${input.state.issueId})`,
     body,
   })

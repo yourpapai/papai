@@ -64,7 +64,7 @@ export const handlePlan: PhaseHandler = async (input): Promise<PhaseOutcome> => 
   })
 
   const plan = parseModelJson(reply.text, planSchema)
-  await deps.git.ensureBranch(branch, deps.config.baseBranch)
+  await deps.git.ensureBranch(branch, await deps.baseBranch())
 
   const markdown = renderPlanMarkdown(plan)
   return {

@@ -483,15 +483,47 @@ found` log — then reports ❌ on the issue.
 
 **Direction:** add `AGENT_MUTATION_CHECK`, and treat "runner not found" (exit 127) as _skip the mutation phase_ rather than _fail it_.
 
-### S2-5 `AGENT_BASE_BRANCH` defaults to `main`; this repo's default is `master` — by inspection
+### S2-5 `AGENT_BASE_BRANCH` defaults to `main`; this repo's default is `master` — verified — **[FIXED]**
 
-`src/config.ts:112`. The workflow overrides it with
-`github.event.repository.default_branch`, so CI is fine — but every local run
-and every README example targets a branch that does not exist here, and
-`ensureBranch` fails at `git fetch origin main`.
+_Verified before the fix: `loadConfig` with no `AGENT_BASE_BRANCH` returned
+`"main"` in this checkout, and `git fetch origin main` — the first command
+`ensureBranch` runs — answered `fatal: couldn't find remote ref main`._
 
-**Direction:** make the default the detected default branch, or fail loudly when
-the configured base does not exist rather than surfacing a raw `GitError`.
+_Fixed by deleting the literal rather than replacing it. `master` would have been
+just as wrong somewhere else; the branch name is a per-repository fact with no
+defensible default. The answer was already in the process and being thrown away:
+`parseTriggerEvent` read `repository.default_branch` off the payload into
+`TriggerEvent.defaultBranch`, and **nothing ever read that field**._
+
+_`resolveBaseBranch` (`src/config.ts`) now walks explicit `AGENT_BASE_BRANCH` →
+the payload's `default_branch` → the checkout's own `origin/HEAD` → a
+`ConfigError` naming the override. Three supporting changes make the chain
+honest:_
+
+- _`guardrails.ts` stopped substituting `'main'` when a payload carries no
+  `repository`; `defaultBranch` is now `string | null`, so an absent value stays
+  visibly absent instead of pre-empting the rungs below it._
+- _`git.defaultBranch()` probes twice. `origin/HEAD` is a local ref `git clone`
+  writes but `actions/checkout` does not, so it is routinely missing — it is
+  missing in the container this was developed in — and `ls-remote --symref` is
+  the authoritative fallback. Verified against this repo's real git: the local
+  probe fails, the remote probe returns `master`._
+- _The workflow **stopped** passing `AGENT_BASE_BRANCH:
+${{ github.event.repository.default_branch }}`. That line was what masked the
+  bug in CI, and keeping it would have left the resolution chain untested on the
+  only path that runs for real._
+
+_Resolution moved from `PipelineConfig` to a lazy, memoized `deps.baseBranch()`,
+because it can cost a round trip to the remote and a run stopped by a guardrail
+must neither pay for it nor fail on it._
+
+_Mutation-checked in five directions — re-defaulting the parser to `'main'`,
+returning a guess instead of throwing, letting the payload outrank the operator
+override, dropping the `ls-remote` fallback, and resolving eagerly — each kills
+exactly one test. The eager mutant initially **survived**: the first version of
+that test asserted only `status === 'skipped'`, which an eagerly-created promise
+still satisfies because its rejection is never observed. The test now records the
+commands and asserts none ran._
 
 ### S2-6 A reused pull request is never actually updated — by inspection — **[FIXED]**
 

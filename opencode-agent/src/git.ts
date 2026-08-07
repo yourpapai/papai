@@ -52,6 +52,8 @@ export interface Git {
   commitAll(message: string): Promise<boolean>
   push(branch: string): Promise<void>
   currentSha(): Promise<string>
+  /** The remote's default branch, or `null` when the checkout cannot tell. */
+  defaultBranch(): Promise<string | null>
 }
 
 type GitFn = (...argv: readonly string[]) => Promise<CommandResult>
@@ -103,6 +105,33 @@ const commitAll = async (gitOrThrow: GitFn, options: GitOptions, message: string
   return true
 }
 
+const LOCAL_HEAD = /^origin\/(\S+)$/u
+const REMOTE_HEAD = /^ref:\s+refs\/heads\/(\S+)\s+HEAD$/mu
+
+const captured = (pattern: RegExp, text: string): string | null => {
+  const match = pattern.exec(text.trim())
+  return match?.[1] ?? null
+}
+
+/**
+ * Asks the checkout which branch the remote considers default.
+ *
+ * Two probes, because neither alone is enough: `origin/HEAD` is a local ref
+ * that `git clone` writes but `actions/checkout` does not, so it is routinely
+ * missing on a runner; `ls-remote` always knows but costs a round trip. Try the
+ * free one, fall back to the authoritative one, and report `null` rather than a
+ * guess when both fail — the caller turns that into an error naming the
+ * override.
+ */
+const defaultBranch = async (git: GitFn): Promise<string | null> => {
+  const local = await git('symbolic-ref', '--short', 'refs/remotes/origin/HEAD')
+  const fromLocal = local.exitCode === 0 ? captured(LOCAL_HEAD, local.stdout) : null
+  if (fromLocal !== null) return fromLocal
+
+  const remote = await git('ls-remote', '--symref', 'origin', 'HEAD')
+  return remote.exitCode === 0 ? captured(REMOTE_HEAD, remote.stdout) : null
+}
+
 export const createGit = (options: GitOptions): Git => {
   const { git, gitOrThrow } = makeRunners(options)
 
@@ -120,5 +149,6 @@ export const createGit = (options: GitOptions): Git => {
       const result = await gitOrThrow('rev-parse', 'HEAD')
       return result.stdout.trim()
     },
+    defaultBranch: () => defaultBranch(git),
   }
 }

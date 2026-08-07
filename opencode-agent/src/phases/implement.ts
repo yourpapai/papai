@@ -32,7 +32,7 @@ export const handleImplement: PhaseHandler = async (input): Promise<PhaseOutcome
   const plan = requireArtifact(input.thread, deps.config.selfLogin, PLAN_MARKER, () => missingPlanError(state.issueId))
 
   const branch = branchNameFor(state.issueId)
-  await deps.git.ensureBranch(branch, deps.config.baseBranch)
+  await deps.git.ensureBranch(branch, await deps.baseBranch())
 
   const agent = await deps.agent()
   await agent.prompt({
