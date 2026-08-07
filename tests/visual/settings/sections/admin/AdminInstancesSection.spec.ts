@@ -70,3 +70,9 @@ test('AdminInstancesSection — platform config fields for mattermost', async ({
   await sharedPage.locator('.ui-select select').first().selectOption('mattermost')
   await expect(sharedPage).toHaveScreenshot()
 })
+
+test('AdminInstancesSection — duplicate id blocks create', async ({ sharedPage }) => {
+  await switchStory(sharedPage, POPULATED)
+  await sharedPage.getByTestId('platform-id').fill('tg-main')
+  await expect(sharedPage).toHaveScreenshot()
+})

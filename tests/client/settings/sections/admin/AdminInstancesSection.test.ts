@@ -801,4 +801,35 @@ describe('AdminInstancesSection', () => {
     expect(platformSel.disabled).toBe(false)
     void unmount(component)
   })
+
+  test('Create is disabled until an id is entered', async () => {
+    installFetch()
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+    const button = target.querySelector<HTMLButtonElement>('[data-testid="platform-create"]')!
+    expect(button.disabled).toBe(true)
+    const input = target.querySelector<HTMLInputElement>('[data-testid="platform-id"]')!
+    input.value = 'tg-eu'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    expect(button.disabled).toBe(false)
+    void unmount(component)
+  })
+
+  test('a duplicate id blocks Create and says so without waiting for a blur', async () => {
+    installFetch()
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="platform-id"]')!
+    input.value = 'tg'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    expect(target.textContent).toContain('An instance with this id already exists')
+    expect(target.querySelector<HTMLButtonElement>('[data-testid="platform-create"]')!.disabled).toBe(true)
+    void unmount(component)
+  })
 })

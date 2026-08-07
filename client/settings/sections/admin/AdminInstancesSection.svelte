@@ -28,6 +28,7 @@
   import Select from '../../../shared/ui/Select.svelte'
   import StatusPill from '../../../shared/ui/StatusPill.svelte'
   import IdCell from '../../components/IdCell.svelte'
+  import { DUPLICATE_ID_MESSAGE, validateInstanceCreate } from './instance-create.js'
 
   let platforms: AdminInstanceRow[] = $state([])
   let tasks: AdminInstanceRow[] = $state([])
@@ -61,6 +62,34 @@
 
   const selectedPlatformType = $derived(platformTypes.find((t) => t.type === platformType))
   const selectedTaskType = $derived(taskTypes.find((t) => t.type === taskType))
+
+  let platformTouched: string[] = $state([])
+  let taskTouched: string[] = $state([])
+
+  const platformErrors = $derived(
+    validateInstanceCreate({ id: platformId, type: platformType, existingIds: platforms.map((p) => p.id) }),
+  )
+  const taskErrors = $derived(
+    validateInstanceCreate({ id: taskId, type: taskType, existingIds: tasks.map((t) => t.id) }),
+  )
+
+  /**
+   * Errors surface once the operator has touched the field, so a pristine form is never
+   * pre-reddened — except a duplicate id, which is worth saying before they press Create.
+   */
+  const shownError = (
+    errors: { id?: string; type?: string },
+    touched: readonly string[],
+    field: 'id' | 'type',
+  ): string | undefined => {
+    const message = errors[field]
+    if (message === undefined) return undefined
+    if (message === DUPLICATE_ID_MESSAGE) return message
+    return touched.includes(field) ? message : undefined
+  }
+
+  const markTouched = (touched: string[], field: string): string[] =>
+    touched.includes(field) ? touched : [...touched, field]
 
   const setErr = (err: unknown): void => {
     error = err instanceof Error ? err.message : String(err)
@@ -135,6 +164,7 @@
 
   async function createPlatform(): Promise<void> {
     if (creatingPlatform) return
+    if (Object.keys(platformErrors).length > 0) return
     error = null
     status = null
     creatingPlatform = true
@@ -143,6 +173,7 @@
       await createAdminPlatformInstance({ id: platformId.trim(), type: platformType, config })
       platformId = ''
       platformConfig = {}
+      platformTouched = []
       await load()
       status = 'Platform instance created.'
     } catch (err) {
@@ -154,6 +185,7 @@
 
   async function createTask(): Promise<void> {
     if (creatingTask) return
+    if (Object.keys(taskErrors).length > 0) return
     error = null
     status = null
     creatingTask = true
@@ -162,6 +194,7 @@
       await createAdminTaskInstance({ id: taskId.trim(), type: taskType, config })
       taskId = ''
       taskConfig = {}
+      taskTouched = []
       await load()
       status = 'Task instance created.'
     } catch (err) {
@@ -312,12 +345,16 @@
   <div class="instance-create" data-testid="platform-create-card">
     <div class="t-subhead">Add platform instance</div>
     <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void createPlatform() }}>
-      <Field label="ID">
+      <Field label="ID" required error={shownError(platformErrors, platformTouched, 'id')}>
         {#snippet children()}
-          <Input value={platformId} onInput={(v) => (platformId = v)} testid="platform-id" />
+          <Input
+            value={platformId}
+            onInput={(v) => (platformId = v)}
+            onBlur={() => (platformTouched = markTouched(platformTouched, 'id'))}
+            testid="platform-id" />
         {/snippet}
       </Field>
-      <Field label="Type">
+      <Field label="Type" required error={shownError(platformErrors, platformTouched, 'type')}>
         {#snippet children()}
           <Select
             value={platformType}
@@ -333,7 +370,12 @@
           {/snippet}
         </Field>
       {/each}
-      <Btn variant="primary" type="submit" disabled={creatingPlatform} busy={creatingPlatform} testid="platform-create">
+      <Btn
+        variant="primary"
+        type="submit"
+        disabled={creatingPlatform || Object.keys(platformErrors).length > 0}
+        busy={creatingPlatform}
+        testid="platform-create">
         {#snippet children()}+ Create{/snippet}
       </Btn>
     </form>
@@ -370,12 +412,16 @@
   <div class="instance-create" data-testid="task-create-card">
     <div class="t-subhead">Add task instance</div>
     <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void createTask() }}>
-      <Field label="ID">
+      <Field label="ID" required error={shownError(taskErrors, taskTouched, 'id')}>
         {#snippet children()}
-          <Input value={taskId} onInput={(v) => (taskId = v)} testid="task-id" />
+          <Input
+            value={taskId}
+            onInput={(v) => (taskId = v)}
+            onBlur={() => (taskTouched = markTouched(taskTouched, 'id'))}
+            testid="task-id" />
         {/snippet}
       </Field>
-      <Field label="Type">
+      <Field label="Type" required error={shownError(taskErrors, taskTouched, 'type')}>
         {#snippet children()}
           <Select
             value={taskType}
@@ -391,7 +437,12 @@
           {/snippet}
         </Field>
       {/each}
-      <Btn variant="primary" type="submit" disabled={creatingTask} busy={creatingTask} testid="task-create">
+      <Btn
+        variant="primary"
+        type="submit"
+        disabled={creatingTask || Object.keys(taskErrors).length > 0}
+        busy={creatingTask}
+        testid="task-create">
         {#snippet children()}+ Create{/snippet}
       </Btn>
     </form>
