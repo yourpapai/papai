@@ -11,7 +11,7 @@
 1. SELECT — runner reads the baseline; the agent only suggests. Picks outside the baseline or already in `doneSet` are rejected as agent mistakes.
 2. CAPTURE BEFORE — runner-measured score; already ≥ `threshold` → iteration is `skipped` and the file joins `doneSet`.
 3. IMPROVE — agent writes spec/plan/tests; its declared score is never trusted.
-4. GATES, in order: diff-guard (`src/diff-guard.ts`: agent may only touch `tests/` and `docs/superpowers/`) → build check (`checkCommand`) → runner-measured after-score via `mutateFileCommand <file>`, read from `reports/paired/<stem>.stryker-report.json` (`src/score-reader.ts`, one retry on missing/corrupt report). Below `threshold` fails unless the agent declared residuals AND the score lands within `epsilon` of it.
+4. GATES, in order: diff-guard (`src/diff-guard.ts`: agent may only touch `tests/` and `openspec/changes/`) → build check (`checkCommand`) → runner-measured after-score via `mutateFileCommand <file>`, read from `reports/paired/<stem>.stryker-report.json` (`src/score-reader.ts`, one retry on missing/corrupt report). Below `threshold` fails unless the agent declared residuals AND the score lands within `epsilon` of it.
 5. RATCHET + MERGE — the baseline bump is committed on the iteration branch inside the worktree, then merged into the integration branch. A merge conflict aborts the whole run (`gate: 'merge'`) so no later iteration chains off a stale base.
 
 Outcomes per iteration: `improved` | `skipped` | `failed`. The CLI exits 1 if any iteration failed or the run aborted. `runIteration` routes every throw through the same cleanup path so worktrees/branches are not leaked; `--reset-worktree` sweeps stale `<runId>-iterN` worktrees left by a killed process.

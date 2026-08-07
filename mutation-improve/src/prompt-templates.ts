@@ -49,8 +49,9 @@ export function buildImprovePrompt(input: {
   outputPath: string
 }): string {
   const stem = stemFrom(input.file)
-  const specPath = `docs/superpowers/specs/${input.date}-mutation-coverage-${stem}-design.md`
-  const planPath = `docs/superpowers/plans/${input.date}-mutation-coverage-${stem}.md`
+  const changeDir = `openspec/changes/mutation-coverage-${input.date}-${stem}`
+  const specPath = `${changeDir}/design.md`
+  const planPath = `${changeDir}/tasks.md`
   return [
     `You are the IMPROVE phase of an autonomous mutation-coverage improvement runner.`,
     `Target file: ${input.file} (current mutation score: ${input.beforeScore}; target: >= ${input.threshold})`,
