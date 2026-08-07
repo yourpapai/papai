@@ -1252,6 +1252,66 @@ describe('the token budget', () => {
     expect(result.state?.tokensSpent).toBe(spentIn(planned) + 900)
   })
 
+  test('a phase that fails records what it spent, so the next job does not start from zero', async () => {
+    // The counter used to be blind exactly where the ceiling was meant to bite.
+    // `runHandler` patched `tokensSpent` on the way out and `failRun` did not,
+    // so a job that spent a quarter of a million tokens and then threw persisted
+    // `0` — and retries *are* the failure path, so an issue could burn the
+    // ceiling round after round and restore a clean slate every time.
+    const harness = makeHarness()
+    harness.io.replies = ['not json', 'still not json']
+    harness.io.tokensUsed = 250_000
+
+    const result = await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('FAILED')
+    expect(state?.tokensSpent).toBe(250_000)
+  })
+
+  test('a failure adds this job’s spend to the earlier jobs’, counting neither twice', async () => {
+    // The figure a failure writes has to be the one the success path writes: the
+    // running total. 10,000 alone would drop everything the issue spent before
+    // this job; 90,000 would be the carried figure counted once by the restored
+    // state and again by the patch.
+    const harness = makeHarness()
+    seedSpend(harness, 40_000)
+    harness.io.replies = ['not json', 'still not json']
+    harness.io.tokensUsed = 10_000
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(latestPostedState(harness)?.tokensSpent).toBe(50_000)
+  })
+
+  test('a failed answer records what the question cost', async () => {
+    // A model turn that fails still spent what it spent — a deadline or a
+    // rejected request lands here with the provider's meter already run. The
+    // answer path posts the state unchanged, so it dropped the whole figure.
+    const harness = makeHarness()
+    seedSpend(harness, 40_000)
+    harness.io.tokensUsed = 10_000
+    harness.deps.agent = (): Promise<OpenCodeAgent> =>
+      Promise.resolve({
+        sessionId: 'session-1',
+        prompt: () => Promise.reject(new Error('the model timed out')),
+        tokensUsed: () => Promise.resolve(harness.io.tokensUsed),
+        close: () => Promise.resolve(),
+      })
+
+    const result = await runPipeline({ event: comment('/ask why that file?'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.posted[0]).toContain('### I could not answer that')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('DESIGN_SPEC')
+    expect(state?.tokensSpent).toBe(50_000)
+  })
+
   test('stops the issue once an earlier job has spent the budget', async () => {
     // The whole point of persisting it: this job's own session has spent
     // nothing, and it still must not start.
@@ -1433,6 +1493,28 @@ describe('the token budget', () => {
     const state = latestPostedState(harness)
     expect(state?.phase).toBe('DESIGN_SPEC')
     expect(state?.resumeFrom).toBeNull()
+    expect(state?.tokensSpent).toBe(500)
+  })
+
+  test('stops paying the classifier once the issue is over budget', async () => {
+    // Classifying a plain comment is the one model turn whose spend can never be
+    // written down: when the classifier answers `none` the run skips without
+    // posting, and this pipeline persists state only by posting a comment. Over
+    // budget nothing any classification could ask for is affordable — every
+    // branch below it leads to a handler the cascade will refuse — so the
+    // ceiling is asked *before* the classifier rather than after paying it,
+    // which is what stops a maxed-out issue paying a turn per comment for ever.
+    const harness = makeHarness({ maxTokens: 100 })
+    seedState(harness, { phase: 'DESIGN_SPEC', tokensSpent: 500 })
+
+    const result = await runPipeline({ event: comment('looks good to me'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.prompts).toEqual([])
+    expect(harness.io.posted[0]).toContain('### Token budget spent')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('DESIGN_SPEC')
     expect(state?.tokensSpent).toBe(500)
   })
 

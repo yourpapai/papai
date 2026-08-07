@@ -90,6 +90,27 @@ findings: `ROADMAP.md`.
   catalogue and is `0` for any model it does not price. Read the total from
   `session.get`, not by summing events — the check happens immediately after a
   prompt returns, and an event-derived total is whatever has arrived by then.
+- **Every state block a job writes records the running total**, through
+  `recordSpend` in `token-budget.ts` — a phase that succeeded, one that threw,
+  and one the budget refused to start, all three. Written separately they drifted
+  apart at once: `runHandler` patched `tokensSpent` while `failRun` and
+  `failAnswer` did not, so a job that spent 250,000 tokens and then threw
+  persisted `0`. That is the worst possible place to be blind, because retries
+  **are** the failure path — the runaway this bounds is an issue bouncing through
+  `/retry` and CI-fix rounds, so an issue could burn the ceiling and hand the
+  next runner a clean slate, round after round. The figure is always
+  `carriedTokens` (the restored block, captured once) plus the job's session
+  total, never a per-phase sum: one job's session is already cumulative across
+  the phases it cascades through.
+- **Do not pay to classify a comment the budget cannot act on.** `applyIntent`
+  asks `withinBudget` before `classifyComment` and routes an over-budget comment
+  to the answer path, where the cascade's one stop reports it. The classifier is
+  the single model turn whose spend cannot be recorded — its `none` branch posts
+  nothing, and this pipeline persists state only by posting — so the ceiling has
+  to stop the turn rather than count it. A run **under** budget that classifies
+  `none` still leaks that turn; the known cost of not replying to every "thanks!",
+  and not to be papered over with an `updateComment`-style write without deciding
+  that larger question first.
 - **Bounds go on the finished prompt, and on waiting.** `prompt-budget.ts` caps
   what reaches the model — per prompt, not per input, since a per-input cap
   bounds one log and nothing else. `deadline.ts` bounds waiting for a model turn;

@@ -265,8 +265,23 @@ counts and zero cost. For a pipeline built around one arbitrary configured
 endpoint that is the ordinary case, and a ceiling that silently never fires is
 worse than none.
 
-Two things it cannot see: the review loop's `opencode run` subprocesses, which
-have their own sessions, and any spend before the first prompt of a job.
+Every state block a job writes carries the running total, whether the phase
+succeeded, threw, or was the one the budget refused to start. A failure counts
+for the same reason the budget is persisted at all: the model turn is paid for
+long before the parse that rejects its reply, and `/retry` out of `FAILED` is
+exactly how an issue comes back for another expensive round. A failure that
+recorded nothing let an issue burn the ceiling and then hand the next runner a
+clean slate, round after round.
+
+Three things it cannot see: the review loop's `opencode run` subprocesses, which
+have their own sessions; any spend before the first prompt of a job; and the turn
+that classifies a plain maintainer comment as needing no action. That last one is
+a deliberate residual. Classification happens before any phase runs, and when it
+answers "no action" the run posts nothing — replying to every "thanks!" would be
+spam — so there is no comment for a state block to ride on. What the agent does
+instead is refuse to pay for it: once an issue is over budget the comment goes
+straight to the answer path, which reports the ceiling without a model turn, so a
+maxed-out issue stops buying a classification per comment.
 
 ## Watching a run
 

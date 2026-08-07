@@ -9,6 +9,7 @@ import { classifyComment } from './intent.js'
 import type { PhaseDeps, PhaseInput } from './phase-context.js'
 import { postAndAppend, renderCiExhausted, renderExhausted, renderRefusedCommand } from './run-report.js'
 import { canTransition, markCiBudgetReported, transition } from './state-manager.js'
+import { totalTokens, withinBudget } from './token-budget.js'
 import { errorMessage, WAITING_PHASES } from './types.js'
 import type { AgentState, Phase, RunResult, TransitionSignal } from './types.js'
 
@@ -207,11 +208,45 @@ const acceptedCommands = (phase: Phase): readonly string[] => [
   '/ask',
 ]
 
+/**
+ * Reads a plain comment as an intent, and decides first whether that reading is
+ * affordable.
+ *
+ * Classifying costs a model turn, and it is the one turn in the pipeline whose
+ * spend can never be written down. State is persisted only by posting a comment,
+ * and the `none` branch below deliberately posts nothing — replying to every
+ * "thanks!" would be spam — so a session that reported 40,000 tokens for the
+ * classification vanishes with the runner. The ceiling is therefore asked
+ * *before* the turn rather than after it: over budget there is nothing any
+ * classification could buy, since every branch here leads either to a handler or
+ * to the answer path and `stopIfOverBudget` refuses both. Handing the comment
+ * straight to the answer path lets that one check report it, in the wording it
+ * already has, without a second stop in this layer and without paying to learn
+ * what to say — otherwise a maxed-out issue keeps buying a classification per
+ * comment for as long as anyone keeps commenting on it.
+ *
+ * That leaves one leak, knowingly: a run **under** budget whose classifier
+ * answers `none` still spends a turn nothing records. Closing it needs a way to
+ * persist state without posting — an `updateComment` on the last state block —
+ * which is a larger design change than a stray few thousand tokens per no-op
+ * comment justifies. The bound it erodes is per issue and human-paced, and every
+ * other branch folds the classification in, because `deps.tokensUsed()` reports
+ * the whole job's session and whatever the run goes on to post writes that total.
+ */
 const applyIntent = async (input: PhaseInput): Promise<TriggerOutcome> => {
   const { state, trigger, deps } = input
   const body = trigger.kind === 'issue' ? trigger.commentBody : null
   if (body === null || body.trim().length === 0) {
     return { state, halt: skip(state, 'Empty comment'), answer: false }
+  }
+
+  const spent = await totalTokens(deps, state.tokensSpent)
+  if (!withinBudget(spent, deps.config)) {
+    deps.log.warn(
+      { issue: state.issueId, phase: state.phase, spent, limit: deps.config.maxTokens },
+      'Over budget: not paying to classify the comment',
+    )
+    return { state, halt: null, answer: true }
   }
 
   const intent = await classifyComment({ body, phase: state.phase, deps, state })

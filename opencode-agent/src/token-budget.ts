@@ -3,10 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { MachineInput } from './phase-context.js'
+import type { PipelineConfig } from './config.js'
+import type { MachineInput, PhaseDeps } from './phase-context.js'
 import { postAndAppend, renderAnswerOverBudget, renderOverBudget } from './run-report.js'
 import { transition } from './state-manager.js'
-import type { RunResult } from './types.js'
+import type { AgentState, RunResult } from './types.js'
 
 /**
  * The per-issue token ceiling: what an issue has spent, and how a run stops
@@ -19,9 +20,53 @@ import type { RunResult } from './types.js'
  * has to reason about a figure the running job did not produce.
  */
 
-/** Everything this issue has spent, prior jobs included. */
-export const totalTokens = async (input: MachineInput): Promise<number> =>
-  input.carriedTokens + (await input.deps.tokensUsed())
+/**
+ * Everything this issue has spent, prior jobs included.
+ *
+ * Takes the carried figure rather than reading it off the state, because the
+ * state moves under the run: `carriedTokens` is captured once from the *restored*
+ * block, since a job's session total is already cumulative across the phases it
+ * cascades through and adding it to each phase's own figure would count the
+ * earlier phases again. The trigger layer, which has no `MachineInput` and has
+ * opened no session yet, passes the restored figure directly.
+ */
+export const totalTokens = async (deps: PhaseDeps, carried: number): Promise<number> =>
+  carried + (await deps.tokensUsed())
+
+/**
+ * Whether an issue that has spent `spent` may still pay for a model turn.
+ *
+ * One comparison, in one place, because the boundary is exact: "spent 5,000,000
+ * of 5,000,000" is spent, and a `>` here would let every ceiling buy one more
+ * phase. Also asked from `triggers.ts`, which declines to pay for classifying a
+ * comment it could not afford to act on.
+ */
+export const withinBudget = (spent: number, config: PipelineConfig): boolean => spent < config.maxTokens
+
+/** The single field a state block records spend in, however the run ended. */
+const spendPatch = (spent: number, patch: Partial<AgentState>): Partial<AgentState> => ({
+  ...patch,
+  tokensSpent: spent,
+})
+
+/**
+ * That same patch for a caller that has not already measured — the three places
+ * `orchestrator.ts` writes a state block after a job has prompted the model.
+ *
+ * Shared because the paths silently disagreed for as long as they were written
+ * out separately: the success path patched `tokensSpent`, `failRun` transitioned
+ * to `FAILED` with only `lastError`, and `failAnswer` posted the restored state
+ * untouched. So a job whose session reported 250,000 tokens and whose handler
+ * then threw persisted `0`, and the ceiling was blind precisely where it was
+ * built to bite — the runaway it bounds is an issue bouncing through retries and
+ * CI-fix rounds, and retries *are* the failure path. An issue could spend the
+ * whole budget, fail, and hand the next runner a clean slate, round after round.
+ * The over-budget stops below never had the bug, having been written after it;
+ * they take the figure the check has already measured, so the notice and the
+ * block beside it cannot quote different totals.
+ */
+export const recordSpend = async (input: MachineInput, patch: Partial<AgentState> = {}): Promise<Partial<AgentState>> =>
+  spendPatch(await totalTokens(input.deps, input.carriedTokens), patch)
 
 /**
  * Stops a run that has spent its token budget, or `null` when it may carry on.
@@ -38,8 +83,8 @@ export const totalTokens = async (input: MachineInput): Promise<number> =>
 export const stopIfOverBudget = async (input: MachineInput): Promise<RunResult | null> => {
   const { state, deps } = input
 
-  const spent = await totalTokens(input)
-  if (spent < deps.config.maxTokens) return null
+  const spent = await totalTokens(deps, input.carriedTokens)
+  if (withinBudget(spent, deps.config)) return null
 
   const reason = `Token budget spent (${spent} of ${deps.config.maxTokens} tokens for this issue)`
   deps.log.warn(
@@ -85,7 +130,7 @@ export const stopIfOverBudget = async (input: MachineInput): Promise<RunResult |
 const parkOverBudget = async (input: MachineInput, spent: number, reason: string): Promise<RunResult> => {
   const { state, deps, thread } = input
 
-  const parked = transition(state, 'FAILED', { attempts: state.attempts, tokensSpent: spent, lastError: reason })
+  const parked = transition(state, 'FAILED', spendPatch(spent, { attempts: state.attempts, lastError: reason }))
   await postAndAppend(thread, input, renderOverBudget(spent, deps.config.maxTokens, state.phase), parked)
 
   return { status: 'failed', reason, state: parked }
@@ -111,7 +156,7 @@ const parkOverBudget = async (input: MachineInput, spent: number, reason: string
  */
 const answerOverBudget = async (input: MachineInput, spent: number, reason: string): Promise<RunResult> => {
   const { state, deps, thread } = input
-  const carried = { ...state, tokensSpent: spent }
+  const carried = { ...state, ...spendPatch(spent, {}) }
 
   await postAndAppend(thread, input, renderAnswerOverBudget(spent, deps.config.maxTokens, state.phase), carried)
 

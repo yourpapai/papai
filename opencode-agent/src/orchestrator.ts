@@ -15,7 +15,7 @@ import { handlePlan } from './phases/plan.js'
 import { handleTriage } from './phases/triage.js'
 import { postAndAppend, renderAnswerFailure, renderFailure, renderSettled } from './run-report.js'
 import { findLatestState, initialState, transition } from './state-manager.js'
-import { stopIfOverBudget, totalTokens } from './token-budget.js'
+import { recordSpend, stopIfOverBudget } from './token-budget.js'
 import { applyTrigger } from './triggers.js'
 import { errorMessage } from './types.js'
 import type { AgentState, Phase, RunResult, TransitionSignal } from './types.js'
@@ -182,8 +182,7 @@ type HandlerAttempt = { ok: true; outcome: PhaseOutcome; next: AgentState } | { 
 const runHandler = async (handler: PhaseHandler, input: MachineInput): Promise<HandlerAttempt> => {
   try {
     const outcome = await handler(input)
-    const patch = { ...outcome.patch, tokensSpent: await totalTokens(input) }
-    return { ok: true, outcome, next: transition(input.state, outcome.signal, patch) }
+    return { ok: true, outcome, next: transition(input.state, outcome.signal, await recordSpend(input, outcome.patch)) }
   } catch (error) {
     return { ok: false, error }
   }
@@ -193,13 +192,20 @@ const runHandler = async (handler: PhaseHandler, input: MachineInput): Promise<H
  * Records the failure on the issue and parks the state in FAILED with
  * `resumeFrom` set, so `/retry` re-enters the exact phase that broke instead of
  * replaying the whole pipeline.
+ *
+ * Through `recordSpend`, exactly as the success path is. A failing phase spends
+ * what it spent — the model turn is paid for long before the parse that rejects
+ * its reply — and this used to write `lastError` and nothing else, so the tokens
+ * went unrecorded and the next runner read `0`. That is the one path the ceiling
+ * most needs to see: the state it parks in is `FAILED`, and `/retry` out of
+ * `FAILED` is how an issue comes back for another expensive round.
  */
 const failRun = async (input: MachineInput, error: unknown): Promise<RunResult> => {
   const { state, deps, thread } = input
   const message = errorMessage(error)
   deps.log.error({ issue: state.issueId, phase: state.phase, error: message }, 'Phase handler failed')
 
-  const failed = transition(state, 'FAILED', { lastError: message })
+  const failed = transition(state, 'FAILED', await recordSpend(input, { lastError: message }))
   await postAndAppend(thread, input, renderFailure(state.phase, message, failed, deps.config.maxAttempts), failed)
 
   return { status: 'failed', reason: message, state: failed }
@@ -223,13 +229,21 @@ const failRun = async (input: MachineInput, error: unknown): Promise<RunResult> 
  * the `/retry` the failure comment invited then resumed into a phase with no
  * handler and re-parked with "Parked in `DESIGN_SPEC`" — one attempt poorer for
  * a round trip that did nothing.
+ *
+ * Moving nothing is not the same as recording nothing, which is the distinction
+ * this path missed: it posted the restored state verbatim, so a question that
+ * reached the model and then failed on a deadline or a rejected request handed
+ * the next job a total with that turn missing from it. The spend is the one
+ * thing a failed answer really does change, and it is written the way every
+ * other state block writes it — see {@link recordSpend}.
  */
 const failAnswer = async (input: MachineInput, error: unknown): Promise<RunResult> => {
   const { state, deps, thread } = input
   const message = errorMessage(error)
   deps.log.error({ issue: state.issueId, phase: state.phase, error: message }, 'Answering a question failed')
 
-  await postAndAppend(thread, input, renderAnswerFailure(state.phase, message), state)
+  const carried = { ...state, ...(await recordSpend(input)) }
+  await postAndAppend(thread, input, renderAnswerFailure(state.phase, message), carried)
 
-  return { status: 'failed', reason: message, state }
+  return { status: 'failed', reason: message, state: carried }
 }
