@@ -69,63 +69,75 @@
   })
 </script>
 
-<section id="reminders" class="admin-section" bind:this={rootEl}>
-  <Toolbar>
-    <Field label="user id">
-      <Input value={userId} onInput={(v) => (userId = v)} placeholder="user id" testid="reminders-user-id" />
-    </Field>
-    <Btn variant="primary" size="sm" testid="reminders-load" disabled={userId.trim() === '' || loading} onClick={() => { void loadReminders() }}>
-      {#snippet children()}{loading ? 'Loading…' : 'Load'}{/snippet}
-    </Btn>
-  </Toolbar>
+<section id="reminders" class="admin-data-section admin-section" bind:this={rootEl}>
+  <Panel title="reminders">
+    {#snippet action()}
+      <Toolbar>
+        <Field label="user id">
+          <Input value={userId} onInput={(v) => (userId = v)} placeholder="user id" testid="reminders-user-id" />
+        </Field>
+        <Btn
+          variant="primary"
+          size="sm"
+          testid="reminders-load"
+          disabled={userId.trim() === '' || loading}
+          onClick={() => {
+            void loadReminders()
+          }}>
+          {#snippet children()}{loading ? 'Loading reminders…' : 'Load reminders'}{/snippet}
+        </Btn>
+      </Toolbar>
+    {/snippet}
+    {#snippet body()}
+      {#if error !== null}
+        <p class="status-error">{error}</p>
+      {:else if hasLoaded && recurring.length === 0 && deferred.length === 0}
+        <p class="placeholder">No reminders found</p>
+      {:else}
+        <div class="reminders__grid">
+          <Panel title="recurring tasks" count={recurring.length}>
+            {#snippet body()}
+              {#if recurring.length === 0}
+                <p class="placeholder">No recurring reminders</p>
+              {:else}
+                <ul class="reminders__list">
+                  {#each recurring as r (r.id)}
+                    <li class="reminders__row">
+                      <div class="reminders__row-main">
+                        <span class="reminders__title">{r.title}</span>
+                        <span class="reminders__sub">{r.rrule ?? 'one-shot'}</span>
+                      </div>
+                      <StatusPill status={r.enabled ? 'enabled' : 'paused'} />
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            {/snippet}
+          </Panel>
 
-  {#if error !== null}
-    <p class="status-error">{error}</p>
-  {:else if hasLoaded && recurring.length === 0 && deferred.length === 0}
-    <p class="placeholder">No reminders found</p>
-  {:else}
-    <div class="reminders__grid">
-      <Panel title="recurring tasks" count={recurring.length}>
-        {#snippet body()}
-          {#if recurring.length === 0}
-            <p class="placeholder">No recurring reminders</p>
-          {:else}
-            <ul class="reminders__list">
-              {#each recurring as r (r.id)}
-                <li class="reminders__row">
-                  <div class="reminders__row-main">
-                    <span class="reminders__title">{r.title}</span>
-                    <span class="reminders__sub">{r.rrule ?? 'one-shot'}</span>
-                  </div>
-                  <StatusPill status={r.enabled ? 'enabled' : 'paused'} />
-                </li>
-              {/each}
-            </ul>
-          {/if}
-        {/snippet}
-      </Panel>
-
-      <Panel title="Reminders & alerts" count={deferred.length}>
-        {#snippet body()}
-          {#if deferred.length === 0}
-            <p class="placeholder">No reminders or alerts yet</p>
-          {:else}
-            <ul class="reminders__list">
-              {#each deferred as d (d.id)}
-                <li class="reminders__row">
-                  <div class="reminders__row-main">
-                    <span class="reminders__title">{d.prompt}</span>
-                    <span class="reminders__sub">fires at {d.fireAt}</span>
-                  </div>
-                  <StatusPill status={d.status} />
-                </li>
-              {/each}
-            </ul>
-          {/if}
-        {/snippet}
-      </Panel>
-    </div>
-  {/if}
+          <Panel title="Reminders & alerts" count={deferred.length}>
+            {#snippet body()}
+              {#if deferred.length === 0}
+                <p class="placeholder">No reminders or alerts yet</p>
+              {:else}
+                <ul class="reminders__list">
+                  {#each deferred as d (d.id)}
+                    <li class="reminders__row">
+                      <div class="reminders__row-main">
+                        <span class="reminders__title">{d.prompt}</span>
+                        <span class="reminders__sub">fires at {d.fireAt}</span>
+                      </div>
+                      <StatusPill status={d.status} />
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            {/snippet}
+          </Panel>
+        </div>
+      {/if}
+    {/snippet}
+  </Panel>
 </section>
 
 <style>

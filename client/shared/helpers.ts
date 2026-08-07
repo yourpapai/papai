@@ -89,3 +89,11 @@ export function formatDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`
   return `${fmtNum(ms / 1000, 1)}s`
 }
+
+/**
+ * True when a series has at least one positive, finite value worth charting. Shared so a
+ * chart and the empty state that replaces it can never disagree about which one shows.
+ */
+export function hasSeriesData(data: readonly number[] | undefined): boolean {
+  return data !== undefined && data.some((v) => Number.isFinite(v) && v > 0)
+}

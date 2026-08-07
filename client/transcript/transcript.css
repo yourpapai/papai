@@ -1,11 +1,14 @@
+/* 860px is deliberate and deliberately not a token. --content-max (760px) is tuned for prose and
+   --table-max (1100px) for wide tables; this view renders monospace tool output and raw JSON,
+   which wants a width between them. One consumer does not justify minting a token. */
 .tx-wrap {
   max-width: 860px;
   margin: 0 auto;
-  padding: 1.5rem 1rem 4rem;
+  padding: var(--s6) var(--s4) var(--s9);
 }
 
 .tx-timeline {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: var(--s3);
 }

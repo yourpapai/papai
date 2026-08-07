@@ -11,18 +11,43 @@
     label: string
   }
 
+  /** An <optgroup>: a labelled cluster of options. Mutually exclusive with `options`. */
+  interface OptionGroup {
+    label: string
+    options: Option[]
+  }
+
   interface Props {
     value: string
-    options: Option[]
+    options?: Option[]
+    groups?: OptionGroup[]
     onChange?: (value: string) => void
     testid?: string
     disabled?: boolean
     placeholder?: string
+    /** Full-width control at row height, for a select that owns its line. */
+    block?: boolean
+    /**
+     * Explicit `aria-labelledby` for callers that render their own label outside a
+     * `Field` (e.g. a standalone select with a plain `<span>` for a label). Takes
+     * precedence over a `Field` ancestor's label id, if any.
+     */
+    ariaLabelledby?: string
   }
 
-  let { value, options, onChange, testid, disabled = false, placeholder }: Props = $props()
+  let {
+    value,
+    options,
+    groups,
+    onChange,
+    testid,
+    disabled = false,
+    placeholder,
+    block = false,
+    ariaLabelledby,
+  }: Props = $props()
 
-  const labelId = getFieldLabelId()
+  const labelId = $derived(ariaLabelledby ?? getFieldLabelId())
   const fieldError = useFieldInvalid()
 
   function handleChange(event: Event): void {
@@ -30,7 +55,11 @@
   }
 </script>
 
-<div class="ui-select" class:ui-select--disabled={disabled} class:ui-select--invalid={fieldError.invalid}>
+<div
+  class="ui-select"
+  class:ui-select--block={block}
+  class:ui-select--disabled={disabled}
+  class:ui-select--invalid={fieldError.invalid}>
   <select
     {value}
     {disabled}
@@ -43,9 +72,19 @@
     {#if placeholder}
       <option value="" disabled>{placeholder}</option>
     {/if}
-    {#each options as opt (opt.value)}
-      <option value={opt.value}>{opt.label}</option>
-    {/each}
+    {#if groups !== undefined}
+      {#each groups as group (group.label)}
+        <optgroup label={group.label}>
+          {#each group.options as opt (opt.value)}
+            <option value={opt.value}>{opt.label}</option>
+          {/each}
+        </optgroup>
+      {/each}
+    {:else}
+      {#each options ?? [] as opt (opt.value)}
+        <option value={opt.value}>{opt.label}</option>
+      {/each}
+    {/if}
   </select>
   <span class="ui-select__caret">▾</span>
 </div>
@@ -63,9 +102,18 @@
     font-size: 12px;
     color: var(--text);
   }
+  .ui-select--block {
+    display: flex;
+    width: 100%;
+    height: var(--row-h);
+    font-size: 14px;
+  }
+  .ui-select--block select {
+    flex: 1;
+  }
   .ui-select:focus-within {
-    outline: 2px solid rgba(82, 224, 138, 0.4);
-    outline-offset: 1px;
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
   }
   .ui-select select {
     background: transparent;

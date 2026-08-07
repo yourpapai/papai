@@ -229,7 +229,7 @@ describe('the checked-in backlog', () => {
 
   test('covers every review document', async () => {
     const reviews = await collectReviews()
-    expect(reviews).toHaveLength(19)
+    expect(reviews).toHaveLength(23)
     expect(reviews.every((review) => review.findings.length > 0)).toBe(true)
   })
 

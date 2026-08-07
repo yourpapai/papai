@@ -8,7 +8,12 @@ export interface ScrollSpyHandle {
   stop: () => void
 }
 
-export const useScrollSpy = (sectionIds: readonly string[], onChange: (id: string) => void): ScrollSpyHandle => {
+export const useScrollSpy = (
+  sectionIds: readonly string[],
+  onChange: (id: string) => void,
+  /** The scroll container to measure against. null observes the viewport. */
+  root: Element | null = null,
+): ScrollSpyHandle => {
   let observer: IntersectionObserver | null = null
 
   const start = (): void => {
@@ -21,7 +26,7 @@ export const useScrollSpy = (sectionIds: readonly string[], onChange: (id: strin
           if (sectionIds.includes(id)) onChange(id)
         }
       },
-      { rootMargin: '-30% 0px -60% 0px' },
+      { root, rootMargin: '-30% 0px -60% 0px' },
     )
     for (const id of sectionIds) {
       const el = document.getElementById(id)

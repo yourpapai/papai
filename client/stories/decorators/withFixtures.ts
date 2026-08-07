@@ -8,6 +8,7 @@ import type { MswApi } from 'msw-storybook-addon'
 
 import { adminState } from '../../admin/admin.svelte.js'
 import { adminGlobals, refreshGlobals } from '../../admin/global-stats.svelte.js'
+import { resetNavCollapse } from '../../settings/nav.svelte.js'
 import { settingsSession } from '../../settings/session.svelte.js'
 import { scenarios } from '../msw/scenarios.js'
 import { sseStub } from '../stubs/sse.js'
@@ -25,6 +26,8 @@ export function resolveScenario(name: string): readonly HttpHandler[] {
 
 export function resetSettingsSession(): void {
   settingsSession.status = 'loading'
+  settingsSession.failureMessage = ''
+  resetNavCollapse()
   settingsSession.display = ''
   settingsSession.isBotAdmin = false
   settingsSession.isSuperAdmin = false
@@ -45,6 +48,12 @@ export function applyReadySettingsSession(mode: 'personal' | 'group' | 'admin' =
       : { kind: 'personal' as const, contextId: 'ctx-personal-1', label: 'Alice (personal)' }
   settingsSession.contexts = [ctx]
   settingsSession.activeContextId = ctx.contextId
+}
+
+// A non-ready gate: the screens a user hits before or instead of the shell.
+export function applyGateSettingsSession(gate: 'unauthenticated' | 'failed'): void {
+  settingsSession.status = gate
+  settingsSession.failureMessage = gate === 'failed' ? 'request failed with status 503' : ''
 }
 
 export function resetAllSingletons(): void {
@@ -86,6 +95,9 @@ export async function fixturesLoader(context: LoaderContext): Promise<Record<str
     if (ready === true || ready === 'personal') applyReadySettingsSession('personal')
     else if (ready === 'group') applyReadySettingsSession('group')
     else if (ready === 'admin') applyReadySettingsSession('admin')
+
+    const gate = context.parameters['settingsGate']
+    if (gate === 'unauthenticated' || gate === 'failed') applyGateSettingsSession(gate)
 
     const seed = context.parameters['sseSeed']
     if (Array.isArray(seed)) sseStub.seed(seed)

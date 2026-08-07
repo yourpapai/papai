@@ -4,6 +4,8 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
+  import { hasSeriesData } from '../helpers.js'
+
   interface Props {
     data: number[] | undefined
     width?: number
@@ -19,20 +21,31 @@
   const bw = $derived(safeData.length > 0 ? intrinsicW / safeData.length : 0)
 </script>
 
-{#if width !== undefined}
-  <svg {width} {height} class="ui-bars" aria-hidden="true">
-    {#each safeData as v, i (i)}
-      {@const h = Math.max(0, (v / max) * (height - 4))}
-      <rect x={i * bw + 1} y={height - h} width={bw - 2} height={h} fill={color} fill-opacity="0.85" />
-    {/each}
-  </svg>
-{:else}
-  <svg viewBox="0 0 {intrinsicW} {height}" preserveAspectRatio="none" class="ui-bars ui-bars--fluid" aria-hidden="true">
-    {#each safeData as v, i (i)}
-      {@const h = Math.max(0, (v / max) * (height - 4))}
-      <rect x={i * bw + 1} y={height - h} width={bw - 2} height={h} fill={color} fill-opacity="0.85" />
-    {/each}
-  </svg>
+{#snippet bars()}
+  {#each safeData as v, i (i)}
+    {@const h = Math.max(0, (v / max) * (height - 4))}
+    <rect x={i * bw + 1} y={height - h} width={bw - 2} height={h} fill={color} fill-opacity="0.85" />
+  {/each}
+{/snippet}
+
+{#if hasSeriesData(safeData)}
+  {#if width !== undefined}
+    <svg {width} {height} class="ui-bars" aria-hidden="true">
+      {@render bars()}
+    </svg>
+  {:else}
+    <!-- `preserveAspectRatio="none"` stretches the bars horizontally to fill the
+         panel. Without an explicit pixel height it also stretched them vertically,
+         turning the caller's `height` into an aspect-ratio denominator. -->
+    <svg
+      viewBox="0 0 {intrinsicW} {height}"
+      preserveAspectRatio="none"
+      class="ui-bars ui-bars--fluid"
+      style="height: {height}px"
+      aria-hidden="true">
+      {@render bars()}
+    </svg>
+  {/if}
 {/if}
 
 <style>
@@ -41,6 +54,5 @@
   }
   .ui-bars--fluid {
     width: 100%;
-    height: auto;
   }
 </style>

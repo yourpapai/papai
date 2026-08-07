@@ -36,4 +36,28 @@ describe('Shell.svelte', () => {
     expect(topBar.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     void unmount(component)
   })
+
+  test('the body scrolls by default', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Shell, {
+      target,
+      props: { topBar: textSnippet('TOP'), children: textSnippet('BODY') },
+    })
+    expect(target.querySelector('.ui-shell__body--fixed')).toBeNull()
+    void unmount(component)
+  })
+
+  test('bodyScroll false hands scrolling to the page content', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Shell, {
+      target,
+      props: { topBar: textSnippet('TOP'), children: textSnippet('BODY'), bodyScroll: false },
+    })
+    const body = target.querySelector('.ui-shell__body')!
+    expect(body.classList.contains('ui-shell__body--fixed')).toBe(true)
+    expect(body.textContent).toContain('BODY')
+    void unmount(component)
+  })
 })

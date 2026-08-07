@@ -7,11 +7,11 @@
   import { onMount } from 'svelte'
 
   import Shell from '../shared/ui/Shell.svelte'
+  import { useScrollSpy } from '../shared/scrollspy.js'
 
   import { adminSections, adminState, refreshAll, setSection } from './admin.svelte.js'
   import AdminSidebarPanel from './components/AdminSidebarPanel.svelte'
   import AdminTopBar from './components/AdminTopBar.svelte'
-  import { useScrollSpy } from './scrollspy.js'
   import BillingSection from './sections/BillingSection.svelte'
   import IdentitiesSection from './sections/IdentitiesSection.svelte'
   import MemosSection from './sections/MemosSection.svelte'
@@ -21,6 +21,9 @@
 
   const sectionIds = adminSections.map((s) => s.id)
 
+  // The scroll container after the shell stopped scrolling; the spy measures against it.
+  let mainEl: HTMLElement | null = $state(null)
+
   onMount(() => {
     void refreshAll()
     const initial = window.location.hash.replace(/^#/u, '')
@@ -28,18 +31,22 @@
       const target = document.querySelector<HTMLElement>(`#${initial}`)
       if (target !== null) target.scrollIntoView({ behavior: 'instant' as ScrollBehavior })
     }
-    const spy = useScrollSpy(sectionIds, (id) => {
-      setSection(id as typeof adminState.currentSection)
-      if (window.location.hash !== `#${id}`) {
-        window.history.replaceState(null, '', `#${id}`)
-      }
-    })
+    const spy = useScrollSpy(
+      sectionIds,
+      (id) => {
+        setSection(id as typeof adminState.currentSection)
+        if (window.location.hash !== `#${id}`) {
+          window.history.replaceState(null, '', `#${id}`)
+        }
+      },
+      mainEl,
+    )
     spy.start()
     return (): void => spy.stop()
   })
 </script>
 
-<Shell>
+<Shell bodyScroll={false}>
   {#snippet topBar()}
     <AdminTopBar />
   {/snippet}
@@ -47,7 +54,7 @@
     <div class="admin-grid">
       <h1 class="sr-only">Admin</h1>
       <AdminSidebarPanel activeId={adminState.currentSection} />
-      <main class="admin-grid__main">
+      <main class="admin-grid__main" bind:this={mainEl}>
         <OverviewSection />
         <BillingSection />
         <StatsSection />

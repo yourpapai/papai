@@ -9,7 +9,7 @@
   import KV from '../../shared/ui/KV.svelte'
 
   import { adminSections } from '../admin.svelte.js'
-  import { adminGlobals } from '../global-stats.svelte.js'
+  import { adminGlobals, toolTotalsFrom } from '../global-stats.svelte.js'
 
   const items = adminSections
 
@@ -18,15 +18,18 @@
   }
 
   let { activeId }: Props = $props()
+
+  const toolTotal = $derived(toolTotalsFrom(adminGlobals.data)?.total ?? '—')
 </script>
 
 <aside class="admin-sidebar">
   <Caption>{#snippet children()}sections{/snippet}</Caption>
-  <nav class="admin-sidebar__nav">
+  <nav class="admin-sidebar__nav" aria-label="Admin sections">
     {#each items as item (item.id)}
       <a
         class="admin-sidebar__link"
         class:admin-sidebar__link--active={activeId === item.id}
+        aria-current={activeId === item.id ? 'true' : undefined}
         href={`#${item.id}`}>
         {item.label}
       </a>
@@ -37,7 +40,7 @@
   <div class="admin-sidebar__kvs">
     <KV k="DM" v={adminGlobals.data?.subjects?.dmTotal ?? '—'} />
     <KV k="active" v={adminGlobals.data?.active?.activeIn30d ?? '—'} />
-    <KV k="tools" v="—" />
+    <KV k="tools" v={toolTotal} />
   </div>
 </aside>
 
@@ -45,12 +48,17 @@
   .admin-sidebar {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 12px;
+    gap: var(--s2);
+    padding: var(--s3);
     background: var(--surface-1);
     border-right: 1px solid var(--border);
-    min-height: 100vh;
+    /* Fills its grid track and scrolls inside it. No sticky/full-viewport-height box:
+       that box was taller than the scrollport it sat in, and being sticky, the outer
+       scroll could never bring its tail into view. */
+    height: 100%;
+    overflow-y: auto;
   }
+  /* 2px is below the 4px scale on purpose: this is a hairline marker, not spacing. */
   .admin-sidebar__nav {
     display: flex;
     flex-direction: column;
@@ -59,7 +67,7 @@
   .admin-sidebar__link {
     color: var(--text-muted);
     text-decoration: none;
-    padding: 6px 8px;
+    padding: var(--s2);
     font-family: var(--font-mono);
     font-size: 12px;
     border-left: 2px solid transparent;
@@ -76,6 +84,11 @@
   .admin-sidebar__kvs {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--s1);
+  }
+  @media (max-width: 900px) {
+    .admin-sidebar {
+      display: none;
+    }
   }
 </style>

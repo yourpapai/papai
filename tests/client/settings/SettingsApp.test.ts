@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 
 import { flushSync, mount, unmount } from 'svelte'
 
+import { resetNavCollapse } from '../../../client/settings/nav.svelte.js'
 import { settingsSession } from '../../../client/settings/session.svelte.js'
 import SettingsApp from '../../../client/settings/SettingsApp.svelte'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
@@ -34,6 +35,7 @@ const seed = (overrides: Partial<typeof settingsSession>): void => {
 }
 
 afterEach(() => {
+  resetNavCollapse()
   restoreFetch()
   settingsSession.status = 'loading'
   settingsSession.display = ''
@@ -48,7 +50,7 @@ describe('SettingsApp', () => {
     settingsSession.status = 'loading'
     const component = mountApp()
     await drain()
-    expect(document.body.textContent).toContain('Loading…')
+    expect(document.body.textContent).toContain('Loading your settings')
     expect(document.querySelector('#profile')).toBeNull()
     void unmount(component)
   })
@@ -97,10 +99,23 @@ describe('SettingsApp', () => {
     void unmount(component)
   })
 
-  test('shows admin sections for a bot admin and SA-only sections for a super admin', async () => {
+  test('the admin zone starts collapsed, so its sections do not mount or fetch', async () => {
     setMockFetch(() => Promise.resolve(new Response('{}')))
     seed({ isBotAdmin: true, isSuperAdmin: true })
     const component = mountApp()
+    await drain()
+    expect(document.querySelector('[data-testid="admin-toggle"]')).not.toBeNull()
+    expect(document.querySelector('#instances')).toBeNull()
+    expect(document.querySelector('#admins')).toBeNull()
+    void unmount(component)
+  })
+
+  test('expanding Admin mounts the bot-admin and super-admin sections', async () => {
+    setMockFetch(() => Promise.resolve(new Response('{}')))
+    seed({ isBotAdmin: true, isSuperAdmin: true })
+    const component = mountApp()
+    await drain()
+    document.querySelector<HTMLButtonElement>('[data-testid="admin-toggle"]')!.click()
     await drain()
     for (const id of [
       'instances',
@@ -120,16 +135,40 @@ describe('SettingsApp', () => {
     void unmount(component)
   })
 
-  test('hides SA-only sections for a non-super bot admin', async () => {
+  test('an expanded Admin hides SA-only sections from a non-super bot admin', async () => {
     setMockFetch(() => Promise.resolve(new Response('{}')))
     seed({ isBotAdmin: true, isSuperAdmin: false })
     const component = mountApp()
+    await drain()
+    document.querySelector<HTMLButtonElement>('[data-testid="admin-toggle"]')!.click()
     await drain()
     expect(document.querySelector('#instances')).not.toBeNull()
     expect(document.querySelector('#byok-admin')).not.toBeNull()
     expect(document.querySelector('#plugin-config')).not.toBeNull()
     expect(document.querySelector('#admins')).toBeNull()
     expect(document.querySelector('#plugin-approval')).toBeNull()
+    void unmount(component)
+  })
+
+  test('a deep link to an Admin section auto-expands the Admin group', async () => {
+    setMockFetch(() => Promise.resolve(new Response('{}')))
+    seed({ isBotAdmin: true, isSuperAdmin: true })
+    document.body.innerHTML = '<div id="root"></div>'
+    history.replaceState(null, '', '/settings#instances')
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(SettingsApp, { target })
+    await drain()
+    expect(document.querySelector('#instances')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('the Advanced hint is derived from its own items', async () => {
+    setMockFetch(() => Promise.resolve(new Response('{}')))
+    seed({})
+    const component = mountApp()
+    await drain()
+    const toggle = document.querySelector<HTMLElement>('[data-testid="advanced-toggle"]')!
+    expect(toggle.textContent).toContain('Memory, AI output, Identity + 7 more')
     void unmount(component)
   })
 
@@ -214,6 +253,18 @@ describe('SettingsApp', () => {
     expect(document.querySelector('#group-provider')).not.toBeNull()
     // still in collapsed Advanced
     expect(document.querySelector('#memory')).toBeNull()
+    void unmount(component)
+  })
+
+  test('a sidebar click is the only thing that writes the hash', async () => {
+    setMockFetch(() => Promise.resolve(new Response('{}')))
+    seed({})
+    const component = mountApp()
+    await drain()
+    expect(window.location.hash).toBe('')
+    document.querySelector<HTMLAnchorElement>('a[href="#tools"]')!.click()
+    await drain()
+    expect(window.location.hash).toBe('#tools')
     void unmount(component)
   })
 })

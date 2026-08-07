@@ -4,25 +4,28 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
-  import { fmtBytes, fmtNum, formatTokens } from '../../shared/helpers.js'
+  import { fmtBytes, fmtNum, formatTokens, hasSeriesData } from '../../shared/helpers.js'
   import Bars from '../../shared/ui/Bars.svelte'
+  import EmptyState from '../../shared/ui/EmptyState.svelte'
   import Meter from '../../shared/ui/Meter.svelte'
   import MetricCard from '../../shared/ui/MetricCard.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
   import Spark from '../../shared/ui/Spark.svelte'
 
-  import { adminGlobals } from '../global-stats.svelte.js'
+  import { adminGlobals, toolTotalsFrom } from '../global-stats.svelte.js'
 
   const subjectsTotal = $derived(
     adminGlobals.data?.subjects === undefined
       ? '—'
       : String(adminGlobals.data.subjects.dmTotal + adminGlobals.data.subjects.groupTotal),
   )
-  const subjectsSub = $derived(
-    adminGlobals.data?.subjects === undefined
-      ? undefined
-      : `${adminGlobals.data.subjects.dmTotal} dm · ${adminGlobals.data.subjects.groupTotal} group`,
-  )
+  const subjectsSub = $derived.by(() => {
+    const subjects = adminGlobals.data?.subjects
+    if (subjects === undefined) return undefined
+    const base = `${subjects.dmTotal} dm · ${subjects.groupTotal} group`
+    const active = adminGlobals.data?.active?.activeIn30d
+    return active === undefined ? base : `${base} · ${active} active 30d`
+  })
 
   const llmTotal = $derived(
     adminGlobals.data?.llmUsage === undefined
@@ -35,17 +38,7 @@
       : `${adminGlobals.data.llmUsage.mainCalls} main · ${adminGlobals.data.llmUsage.smallCalls} small`,
   )
 
-  const toolTotals = $derived.by(() => {
-    const tools = adminGlobals.data?.toolMix?.topTools
-    if (tools === undefined) return null
-    let total = 0
-    let ok = 0
-    for (const t of tools) {
-      total += t.count
-      ok += Math.round(t.count * t.successRate)
-    }
-    return { total, ok, fail: total - ok }
-  })
+  const toolTotals = $derived(toolTotalsFrom(adminGlobals.data))
   const toolTotal = $derived(toolTotals === null ? '—' : toolTotals.total.toLocaleString())
   const toolSub = $derived(toolTotals === null ? undefined : `${toolTotals.ok} ok · ${toolTotals.fail} fail`)
 
@@ -102,6 +95,8 @@
       { label: 'instructions', n: sm.subjectsWithInstructions, total },
     ]
   })
+
+  const hasSurfaceMix = $derived(surfaceMix.some((row) => row.n > 0))
 </script>
 
 <section id="overview" class="admin-section">
@@ -118,24 +113,32 @@
         <Panel title="activity · 30d">
           {#snippet body()}
             <div class="overview__chart-body">
-              <figure class="admin-overview__spark">
-                <Spark data={sparkData} />
-                <figcaption class="overview__caption">new subjects per day (dm + group) · last 30d</figcaption>
-              </figure>
-              <figure class="overview__bars-wrap">
-                <Bars data={barsData} height={56} />
-                <figcaption class="overview__caption">top tools by successful calls · all time</figcaption>
-              </figure>
+              {#if hasSeriesData(sparkData) || hasSeriesData(barsData)}
+                <figure class="admin-overview__spark">
+                  <Spark data={sparkData} />
+                  <figcaption class="overview__caption">new subjects per day (dm + group) · last 30d</figcaption>
+                </figure>
+                <figure class="overview__bars-wrap">
+                  <Bars data={barsData} height={56} />
+                  <figcaption class="overview__caption">top tools by successful calls · all time</figcaption>
+                </figure>
+              {:else}
+                <EmptyState title="No activity yet" />
+              {/if}
             </div>
           {/snippet}
         </Panel>
         <Panel title="surface mix">
           {#snippet body()}
-            <div class="overview__mix">
-              {#each surfaceMix as row (row.label)}
-                <Meter label={row.label} value={row.n} total={row.total} />
-              {/each}
-            </div>
+            {#if hasSurfaceMix}
+              <div class="overview__mix">
+                {#each surfaceMix as row (row.label)}
+                  <Meter label={row.label} value={row.n} total={row.total} />
+                {/each}
+              </div>
+            {:else}
+              <EmptyState title="No subjects yet" />
+            {/if}
           {/snippet}
         </Panel>
       </div>
@@ -147,11 +150,14 @@
   .admin-section {
     scroll-margin-top: 96px;
   }
+  /* 160px fits the widest realistic value (`27.6k` at the tile's headline size) inside
+     the 128px left after MetricCard's `padding: 14px 16px`, so tiles wrap to a second
+     row rather than ellipsing a headline number. */
   .overview__kpis {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 8px;
-    padding: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: var(--s2);
+    padding: var(--s3);
   }
   .overview__charts {
     display: grid;

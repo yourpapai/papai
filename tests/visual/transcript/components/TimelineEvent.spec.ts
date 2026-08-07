@@ -26,6 +26,46 @@ test.describe('transcript/TimelineEvent', () => {
     await switchStory(sharedPage, 'transcript-timelineevent--result')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('Thought', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'transcript-timelineevent--thought')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('Plan', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'transcript-timelineevent--plan')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('Permission decided', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'transcript-timelineevent--permission-decided')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('Unknown shape (raw fallback)', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'transcript-timelineevent--unknown-shape-raw-fallback')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('Long message (overflow)', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'transcript-timelineevent--long-message-overflow')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('Tool call failed', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'transcript-timelineevent--tool-call-failed')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('Prompt', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'transcript-timelineevent--prompt')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('Tool call pending', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'transcript-timelineevent--tool-call-pending')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots
 
