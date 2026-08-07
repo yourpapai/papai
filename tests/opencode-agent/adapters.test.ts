@@ -560,12 +560,54 @@ describe('config', () => {
     expect(loadConfig({ ...baseEnv, AGENT_SELF_LOGIN: 'agent-bot' }, '/repo').selfLogin).toBe('agent-bot')
   })
 
-  test.each(['0', '-1', '2.5', 'lots'])('rejects a non-positive-integer round count %p', (raw) => {
+  test.each(['0', '-1', '2.5', 'lots', '1e3', '01', '7 rounds'])('rejects the unparseable round count %p', (raw) => {
     expect(() => loadConfig({ ...baseEnv, AGENT_MAX_ATTEMPTS: raw }, '/repo')).toThrow('AGENT_MAX_ATTEMPTS')
   })
 
-  test('an empty knob falls back to its default', () => {
-    expect(loadConfig({ ...baseEnv, AGENT_MAX_ATTEMPTS: '' }, '/repo').maxAttempts).toBe(3)
+  // Rejecting non-integers only closes "not a number", never "a number that
+  // cannot work" — and every one of these used to load.
+  test.each([
+    ['AGENT_TIMEOUT_MS', '1'],
+    ['AGENT_TIMEOUT_MS', '86400000'],
+    ['AGENT_REVIEW_POOL_SIZE', '100000'],
+    ['AGENT_REVIEW_MAX_ROUNDS', '9007199254740991'],
+    ['AGENT_MAX_ATTEMPTS', '999999999'],
+    ['AGENT_MAX_CI_ATTEMPTS', '21'],
+    ['AGENT_CI_FIX_MAX_ROUNDS', '0'],
+  ])('rejects %s=%p, which parses but cannot work', (key, raw) => {
+    expect(() => loadConfig({ ...baseEnv, [key]: raw }, '/repo')).toThrow(key)
+  })
+
+  test('names the bounds it rejected against, so a legitimate need is not a guessing game', () => {
+    expect(() => loadConfig({ ...baseEnv, AGENT_REVIEW_POOL_SIZE: '64' }, '/repo')).toThrow('between 1 and 16')
+  })
+
+  test.each([
+    ['AGENT_REVIEW_MAX_ROUNDS', 'reviewMaxRounds'],
+    ['AGENT_REVIEW_POOL_SIZE', 'reviewPoolSize'],
+    ['AGENT_TIMEOUT_MS', 'agentTimeoutMs'],
+    ['AGENT_CI_FIX_MAX_ROUNDS', 'ciFixMaxRounds'],
+    ['AGENT_MAX_CI_ATTEMPTS', 'maxCiAttempts'],
+    ['AGENT_MAX_ATTEMPTS', 'maxAttempts'],
+  ] as const)('the default for %s would itself be accepted as an override', (key, field) => {
+    // Guards the shape of bug where a default only works because nothing
+    // validates it, and setting that same value explicitly is rejected.
+    const fallback = loadConfig(baseEnv, '/repo')[field]
+
+    expect(loadConfig({ ...baseEnv, [key]: String(fallback) }, '/repo')[field]).toBe(fallback)
+  })
+
+  test.each([
+    ['AGENT_TIMEOUT_MS', '1000', 'agentTimeoutMs', 1000],
+    ['AGENT_TIMEOUT_MS', '7200000', 'agentTimeoutMs', 7_200_000],
+    ['AGENT_REVIEW_POOL_SIZE', '16', 'reviewPoolSize', 16],
+    ['AGENT_MAX_ATTEMPTS', '20', 'maxAttempts', 20],
+  ] as const)('accepts %s=%p at the edge of its range', (key, raw, field, expected) => {
+    expect(loadConfig({ ...baseEnv, [key]: raw }, '/repo')[field]).toBe(expected)
+  })
+
+  test.each(['', ' ', '\n'])('a blank knob %p means unset, as it does for every other reader', (raw) => {
+    expect(loadConfig({ ...baseEnv, AGENT_MAX_ATTEMPTS: raw }, '/repo').maxAttempts).toBe(3)
   })
 
   test('parseChecks falls back to the defaults', () => {

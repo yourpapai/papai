@@ -182,8 +182,17 @@ cannot drift.
 
 `OPENAI_MODEL` is required rather than defaulted: with a custom base URL there is
 no model name that is right by default, and a wrong guess surfaces deep inside
-the first model call instead of at config load. Every numeric knob is validated
-as a positive integer.
+the first model call instead of at config load.
+
+Every numeric knob is validated as an integer **and range-checked**, because
+rejecting non-integers only closes "not a number", never "a number that cannot
+work". Round counts accept 1–20, `AGENT_TIMEOUT_MS` accepts 1 000–7 200 000 (one
+second to two hours), and `AGENT_REVIEW_POOL_SIZE` accepts 1–16. `AGENT_TIMEOUT_MS=1`
+is a positive integer that kills every subprocess after a millisecond, so the
+pipeline reports every check as failing; `AGENT_REVIEW_MAX_ROUNDS=9007199254740991`
+is a positive integer that removes the bound the knob exists to impose. A
+rejection names the range, so a legitimate need for a wider one is not a
+guessing game.
 
 `AGENT_BASE_BRANCH` has no literal default for the same reason. It used to
 default to `main`, which is wrong for the repository this spike lives in — its

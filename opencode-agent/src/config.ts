@@ -71,14 +71,47 @@ const optional = (env: Env, key: string, fallback: string): string => {
   return value === undefined || value.trim().length === 0 ? fallback : value.trim()
 }
 
-/** Reads a positive integer knob, rejecting the values that silently break loops. */
-const positiveInt = (env: Env, key: string, fallback: number): number => {
+/**
+ * A knob's accepted range.
+ *
+ * Both ends carry weight. Rejecting non-integers only closes "not a number",
+ * never "a number that cannot work", and the difference is not academic:
+ * `AGENT_TIMEOUT_MS=1` is a positive integer that kills every subprocess after a
+ * millisecond, so the pipeline reports every check as failing and every model
+ * call as dead; `AGENT_REVIEW_MAX_ROUNDS=9007199254740991` is a positive integer
+ * that removes the very bound the knob exists to impose. Both used to load.
+ */
+interface IntRange {
+  min: number
+  max: number
+}
+
+/** Loop counters. Generous — the ceiling is there to stay finite, not to ration. */
+const ROUND_RANGE: IntRange = { min: 1, max: 20 }
+
+/**
+ * One second to two hours. Under a second no real command completes, and an
+ * Actions job is near its own ceiling well before two hours of one subprocess.
+ */
+const TIMEOUT_RANGE: IntRange = { min: 1_000, max: 7_200_000 }
+
+/** Concurrent `opencode run` subprocesses one runner can actually serve. */
+const POOL_RANGE: IntRange = { min: 1, max: 16 }
+
+/** Reads an integer knob, rejecting both malformed values and unusable ones. */
+const boundedInt = (env: Env, key: string, fallback: number, range: IntRange): number => {
   const raw = env[key]
   if (raw === undefined || raw.trim().length === 0) return fallback
 
-  const parsed = Number.parseInt(raw.trim(), 10)
-  if (!Number.isSafeInteger(parsed) || parsed < 1 || String(parsed) !== raw.trim()) {
-    throw new ConfigError(`${key} must be a positive integer, got "${raw}"`)
+  const trimmed = raw.trim()
+  const parsed = Number.parseInt(trimmed, 10)
+  // The round-trip rejects what `parseInt` would otherwise salvage a prefix
+  // from — `2.5`, `1e3`, `01`, `7 rounds`.
+  if (!Number.isSafeInteger(parsed) || String(parsed) !== trimmed) {
+    throw new ConfigError(`${key} must be an integer, got ${JSON.stringify(raw)}`)
+  }
+  if (parsed < range.min || parsed > range.max) {
+    throw new ConfigError(`${key} must be between ${range.min} and ${range.max}, got ${parsed}`)
   }
   return parsed
 }
@@ -252,12 +285,12 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     checkCommand: optional(env, 'AGENT_CHECK_COMMAND', 'bun run lint && bun run typecheck && bun test'),
     reviewCommand: resolveReviewCommand(env['AGENT_REVIEW_COMMAND'], repoRoot, existsSync),
     checks: parseChecks(env['AGENT_CHECKS']),
-    reviewMaxRounds: positiveInt(env, 'AGENT_REVIEW_MAX_ROUNDS', 4),
-    reviewPoolSize: positiveInt(env, 'AGENT_REVIEW_POOL_SIZE', 2),
-    agentTimeoutMs: positiveInt(env, 'AGENT_TIMEOUT_MS', 1_800_000),
-    ciFixMaxRounds: positiveInt(env, 'AGENT_CI_FIX_MAX_ROUNDS', 2),
-    maxCiAttempts: positiveInt(env, 'AGENT_MAX_CI_ATTEMPTS', 3),
-    maxAttempts: positiveInt(env, 'AGENT_MAX_ATTEMPTS', 3),
+    reviewMaxRounds: boundedInt(env, 'AGENT_REVIEW_MAX_ROUNDS', 4, ROUND_RANGE),
+    reviewPoolSize: boundedInt(env, 'AGENT_REVIEW_POOL_SIZE', 2, POOL_RANGE),
+    agentTimeoutMs: boundedInt(env, 'AGENT_TIMEOUT_MS', 1_800_000, TIMEOUT_RANGE),
+    ciFixMaxRounds: boundedInt(env, 'AGENT_CI_FIX_MAX_ROUNDS', 2, ROUND_RANGE),
+    maxCiAttempts: boundedInt(env, 'AGENT_MAX_CI_ATTEMPTS', 3, ROUND_RANGE),
+    maxAttempts: boundedInt(env, 'AGENT_MAX_ATTEMPTS', 3, ROUND_RANGE),
     skillRoots: DEFAULT_SKILL_ROOTS,
   }
 }

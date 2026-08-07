@@ -624,14 +624,41 @@ leading/trailing hyphen in the owner, unanchoring the repo pattern, allowing the
 reserved names, removing the owner length cap, and dropping the `JSON.stringify`
 quoting — each kills the tests that name it._
 
-### S2-9 Numeric configuration is unvalidated — by inspection — **[FIXED]**
+### S2-9 Numeric configuration is unvalidated — verified — **[FIXED]**
 
-_Fixed: every knob is a validated positive integer._
+_The first fix made every knob a validated positive integer, which closed the
+parse half and left the range half open. Verified: `AGENT_TIMEOUT_MS=1`,
+`AGENT_REVIEW_POOL_SIZE=100000`, `AGENT_MAX_ATTEMPTS=999999999` and
+`AGENT_REVIEW_MAX_ROUNDS=9007199254740991` all loaded cleanly. Rejecting
+non-integers closes "not a number"; it never closes "a number that cannot work",
+and the difference is not academic — a one-millisecond timeout kills every
+subprocess, so the pipeline reports every check as failing and every model call
+as dead, and a `Number.MAX_SAFE_INTEGER` round cap removes the very bound the
+knob exists to impose._
 
-`src/config.ts:67-73` accepts any finite float. `AGENT_MAX_ATTEMPTS=0` makes
-every run fail instantly and silently (see S2-2). `AGENT_MUTATION_THRESHOLD=95`
-(meaning 95%) can never be satisfied, because the code expects 0–1.
-`AGENT_MAX_REVIEW_ROUNDS=2.5` is accepted and compared with `>=`.
+_The function's own doc comment claimed the thing it did not do — "rejecting the
+values that silently break loops" — which is the same overstatement corrected in
+the README earlier in this workspace's history. It now says what it does._
+
+_Fixed by giving each knob a declared `IntRange` rather than sharing one
+positivity test: `ROUND_RANGE` 1–20, `TIMEOUT_RANGE` 1 000–7 200 000 (a second is
+below anything real completing, two hours is near an Actions job's own ceiling),
+`POOL_RANGE` 1–16. Rejections name the range, so an operator with a legitimate
+need for more is not guessing._
+
+_Two tests guard shapes rather than values: every default must itself be
+accepted as an explicit override (catching a default that only works because
+nothing validated it), and each range's edges must be inclusive._
+
+_Mutation-checked seven ways — removing the upper bound, hardcoding the lower
+bound to 1, giving the timeout or the pool the round range, dropping the
+`String(parsed) !== trimmed` round-trip, dropping the bounds from the message,
+and making the comparison exclusive — each kills the tests that name it._
+
+_One test of mine was wrong and the code was right: I asserted `' '` should be
+rejected as unparseable, but a blank knob means **unset** here, exactly as it
+does for `optional` and `required`. That is now asserted as the intended
+behaviour instead of the opposite._
 
 **Direction:** integer/range validation per key, and accept `95` as `0.95` for
 the threshold since that mistake is near-certain.
