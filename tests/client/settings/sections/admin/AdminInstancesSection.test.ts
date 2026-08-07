@@ -199,6 +199,26 @@ const createProviderTypeFailureMock = () => {
   }
 }
 
+const createInstanceAndProviderTypeFailureMock = () => {
+  const responses = new Map<string, Response>([
+    ['GET /settings/api/admin/platform-instances', new Response('platform instances unavailable', { status: 500 })],
+    [
+      'GET /settings/api/admin/task-instances',
+      json({ instances: [{ id: 'k', type: 'kaneo', status: 'active', config: {}, createdAt: 1 }], unreadable: [] }),
+    ],
+    [
+      'GET /settings/api/admin/platform-provider-types',
+      json({ providerTypes: [{ type: 'telegram', displayName: 'Telegram', instanceConfigSchema: [] }] }),
+    ],
+    ['GET /settings/api/admin/task-provider-types', new Response('provider types unavailable', { status: 500 })],
+  ])
+
+  return (url: string, init?: RequestInit): Promise<Response> => {
+    const call = `${requestMethod(init)} ${url}`
+    return Promise.resolve(responseFor(responses, call))
+  }
+}
+
 const createEmptyInstancesMock = () => {
   return (url: string): Promise<Response> => {
     if (url.includes('provider-types')) return Promise.resolve(json({ providerTypes: [] }))
@@ -543,8 +563,23 @@ describe('AdminInstancesSection', () => {
     void unmount(component)
   })
 
-  test('a provider types request failure surfaces as a load ErrorState', async () => {
+  test('a provider types request failure keeps the tables visible with an inline error', async () => {
     setMockFetch(createProviderTypeFailureMock())
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+
+    await drain()
+
+    expect(target.textContent).toContain('tg')
+    expect(target.textContent).toContain('k')
+    expect(target.querySelector('.status-error')).not.toBeNull()
+    expect(target.querySelector('.ui-error')).toBeNull()
+    void unmount(component)
+  })
+
+  test('an instance-list failure alongside a provider types failure still shows the ErrorState', async () => {
+    setMockFetch(createInstanceAndProviderTypeFailureMock())
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(AdminInstancesSection, { target })

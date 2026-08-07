@@ -103,6 +103,7 @@
 
   async function load(): Promise<void> {
     loadError = null
+    error = null
     loading = true
     platformUnreadable = []
     taskUnreadable = []
@@ -113,14 +114,18 @@
         fetchAdminPlatformProviderTypes(),
         fetchAdminTaskProviderTypes(),
       ])
-      const loadErrors: string[] = []
+      // Instance-list failures are fatal (they replace the whole region with an ErrorState);
+      // provider-type failures are not (the tables stay visible and the affected Type select
+      // just has no options), so the two kinds are tracked and surfaced separately.
+      const instanceErrors: string[] = []
+      const typeErrors: string[] = []
 
       if (p.status === 'fulfilled') {
         platforms = p.value.instances
         platformUnreadable = p.value.unreadable ?? []
       } else {
         platforms = []
-        loadErrors.push(errorMessage(p.reason))
+        instanceErrors.push(errorMessage(p.reason))
       }
 
       if (t.status === 'fulfilled') {
@@ -128,7 +133,7 @@
         taskUnreadable = t.value.unreadable ?? []
       } else {
         tasks = []
-        loadErrors.push(errorMessage(t.reason))
+        instanceErrors.push(errorMessage(t.reason))
       }
 
       if (pt.status === 'fulfilled') {
@@ -136,7 +141,7 @@
         if (platformType === '' && platformTypes.length > 0) platformType = platformTypes[0]!.type
       } else {
         platformTypes = []
-        loadErrors.push(errorMessage(pt.reason))
+        typeErrors.push(errorMessage(pt.reason))
       }
 
       if (tt.status === 'fulfilled') {
@@ -144,10 +149,11 @@
         if (taskType === '' && taskTypes.length > 0) taskType = taskTypes[0]!.type
       } else {
         taskTypes = []
-        loadErrors.push(errorMessage(tt.reason))
+        typeErrors.push(errorMessage(tt.reason))
       }
 
-      if (loadErrors.length > 0) loadError = loadErrors.join('; ')
+      if (instanceErrors.length > 0) loadError = instanceErrors.join('; ')
+      if (typeErrors.length > 0) error = typeErrors.join('; ')
     } finally {
       loading = false
       initialLoad = false
