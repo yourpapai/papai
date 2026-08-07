@@ -327,7 +327,7 @@
         {/snippet}
       </Field>
       {#each selectedPlatformType?.instanceConfigSchema ?? [] as field (field.key)}
-        <Field label={`${field.label}${field.required ? ' *' : ''}`}>
+        <Field label={field.label} required={field.required}>
           {#snippet children()}
             <Input type={field.sensitive ? 'password' : 'text'} value={platformConfig[field.key] ?? ''} onInput={(v) => (platformConfig[field.key] = v)} />
           {/snippet}
@@ -385,7 +385,7 @@
         {/snippet}
       </Field>
       {#each selectedTaskType?.instanceConfigSchema ?? [] as field (field.key)}
-        <Field label={`${field.label}${field.required ? ' *' : ''}`}>
+        <Field label={field.label} required={field.required}>
           {#snippet children()}
             <Input type={field.sensitive ? 'password' : 'text'} value={taskConfig[field.key] ?? ''} onInput={(v) => (taskConfig[field.key] = v)} />
           {/snippet}

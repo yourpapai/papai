@@ -160,12 +160,34 @@ const taskInstancesSample = {
 }
 const platformProviderTypesSample = {
   providerTypes: [
-    { type: 'telegram', displayName: 'Telegram', instanceConfigSchema: [] },
-    { type: 'mattermost', displayName: 'Mattermost', instanceConfigSchema: [] },
+    {
+      type: 'telegram',
+      displayName: 'Telegram',
+      instanceConfigSchema: [
+        { key: 'botToken', storageKey: 'bot_token', label: 'Bot token', required: true, sensitive: true },
+      ],
+    },
+    {
+      type: 'mattermost',
+      displayName: 'Mattermost',
+      instanceConfigSchema: [
+        { key: 'serverUrl', storageKey: 'server_url', label: 'Server URL', required: true, sensitive: false },
+        { key: 'accessToken', storageKey: 'access_token', label: 'Access token', required: true, sensitive: true },
+      ],
+    },
   ],
 }
 const taskProviderTypesSample = {
-  providerTypes: [{ type: 'kaneo', displayName: 'Kaneo', instanceConfigSchema: [] }],
+  providerTypes: [
+    {
+      type: 'kaneo',
+      displayName: 'Kaneo',
+      instanceConfigSchema: [
+        { key: 'baseUrl', storageKey: 'tracker_url', label: 'Base URL', required: true, sensitive: false },
+        { key: 'apiKey', storageKey: 'api_key', label: 'API key', required: true, sensitive: true },
+      ],
+    },
+  ],
 }
 
 export const adminInstancesHandlers: HandlerFamily = {

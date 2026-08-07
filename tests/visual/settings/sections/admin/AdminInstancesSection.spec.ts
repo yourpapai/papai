@@ -64,3 +64,9 @@ test('AdminInstancesSection — keyboard focus on first control', async ({ share
   await sharedPage.keyboard.press('Tab')
   await expect(sharedPage).toHaveScreenshot()
 })
+
+test('AdminInstancesSection — platform config fields for mattermost', async ({ sharedPage }) => {
+  await switchStory(sharedPage, POPULATED)
+  await sharedPage.locator('.ui-select select').first().selectOption('mattermost')
+  await expect(sharedPage).toHaveScreenshot()
+})
