@@ -296,7 +296,7 @@
             {:else if addedBy.kind === 'id'}
               <IdCell value={addedBy.value} head={4} tail={4} />
             {:else}
-              <span class="t-dim">—</span>
+              <span class="t-help">—</span>
             {/if}
           </span>
         {:else}

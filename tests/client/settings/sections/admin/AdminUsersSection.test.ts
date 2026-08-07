@@ -37,6 +37,24 @@ const openAccessUserPayload = {
   ],
 }
 
+const sortCheckPayload = {
+  users: [
+    { platform_user_id: '30', platform_instance_id: 'tg', username: 'zoe', added_by: 'admin' },
+    { platform_user_id: '10', platform_instance_id: 'tg', username: 'amy', added_by: 'admin' },
+    { platform_user_id: '20', platform_instance_id: 'tg', username: 'mike', added_by: 'admin' },
+  ],
+}
+
+const sortCheckMock = (url: string): Promise<Response> => {
+  if (url.includes('/admin/open-access')) return Promise.resolve(json(openAccessOff))
+  return Promise.resolve(json(sortCheckPayload))
+}
+
+const usernamesInOrder = (target: HTMLElement): string[] =>
+  [...target.querySelectorAll<HTMLElement>('tbody tr [data-testid^="user-username-"]')].map((el) =>
+    el.textContent.trim(),
+  )
+
 const blockedUserPayload = {
   users: [
     {
@@ -540,7 +558,7 @@ describe('AdminUsersSection', () => {
     void unmount(component)
   })
 
-  test('every column is width-pinned and the data columns sort', async () => {
+  test('every column is width-pinned', async () => {
     setMockFetch(openAccessOffMock)
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
@@ -550,6 +568,53 @@ describe('AdminUsersSection', () => {
     expect(headers.length).toBe(5)
     const styles = headers.map((th) => String(th.getAttribute('style')))
     expect(styles.every((style) => style.includes('width'))).toBe(true)
+    void unmount(component)
+  })
+
+  test('the four data columns render a sort control and the Actions column does not', async () => {
+    setMockFetch(openAccessOffMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    const headers = [...target.querySelectorAll('thead th')]
+    expect(headers.length).toBe(5)
+    expect(headers[0]!.querySelector('button.ui-datatable__sort')).not.toBeNull()
+    expect(headers[1]!.querySelector('button.ui-datatable__sort')).not.toBeNull()
+    expect(headers[2]!.querySelector('button.ui-datatable__sort')).not.toBeNull()
+    expect(headers[3]!.querySelector('button.ui-datatable__sort')).not.toBeNull()
+    expect(headers[4]!.querySelector('button.ui-datatable__sort')).toBeNull()
+    void unmount(component)
+  })
+
+  test('the table arrives sorted by username ascending, per defaultSort', async () => {
+    setMockFetch(sortCheckMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(usernamesInOrder(target)).toEqual(['amy', 'mike', 'zoe'])
+    const usernameHeader = target.querySelectorAll('thead th')[1]!
+    expect(usernameHeader.getAttribute('aria-sort')).toBe('ascending')
+    void unmount(component)
+  })
+
+  test('activating the username sort control reverses row order, and again restores it', async () => {
+    setMockFetch(sortCheckMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    const usernameHeader = target.querySelectorAll('thead th')[1]!
+    const sortButton = usernameHeader.querySelector<HTMLButtonElement>('button.ui-datatable__sort')!
+    sortButton.click()
+    flushSync()
+    expect(usernamesInOrder(target)).toEqual(['zoe', 'mike', 'amy'])
+    expect(usernameHeader.getAttribute('aria-sort')).toBe('descending')
+    sortButton.click()
+    flushSync()
+    expect(usernamesInOrder(target)).toEqual(['amy', 'mike', 'zoe'])
+    expect(usernameHeader.getAttribute('aria-sort')).toBe('ascending')
     void unmount(component)
   })
 
@@ -696,7 +761,10 @@ describe('AdminUsersSection', () => {
     await drain()
     target.querySelector<HTMLButtonElement>('[data-testid="user-remove-42"]')!.click()
     flushSync()
-    expect(document.body.textContent).toContain('Block')
+    const hint = document.querySelector('.modal .confirm-hint')!
+    expect(hint.textContent.replace(/\s+/gu, ' ').trim()).toBe(
+      'They lose access entirely and drop off this list. To keep the record and revoke access reversibly, Block them instead.',
+    )
     void unmount(component)
   })
 
