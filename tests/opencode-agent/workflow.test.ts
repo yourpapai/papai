@@ -41,6 +41,7 @@ const workflowSchema = z.object({
     workflow_run: triggerSchema.extend({ workflows: z.array(z.string()) }),
   }),
   permissions: z.record(z.string(), z.string()),
+  env: z.record(z.string(), z.string()),
   concurrency: z.object({ group: z.string(), 'cancel-in-progress': z.boolean() }),
   jobs: z.object({
     agent: z.object({ if: z.string(), 'timeout-minutes': z.number(), steps: z.array(stepSchema) }),
@@ -141,9 +142,22 @@ describe('steps', () => {
     expect(checkoutStep.with['fetch-depth']).toBe(0)
   })
 
-  test('fetches the superpowers skills and verifies they landed', () => {
+  test('fetches the superpowers skills from a pinned commit, not a branch', () => {
+    // Third-party markdown that goes straight into the system prompt. A moving
+    // ref would let it change without review.
     expect(step('superpowers').with['repository']).toBe('obra/superpowers')
-    expect(step('skills landed').run).toContain('SKILL.md')
+    expect(workflow.env['SUPERPOWERS_REF']).toMatch(/^[\da-f]{40}$/u)
+  })
+
+  test('verifies the skills with the production loader, before using credentials', () => {
+    // A bash reimplementation would drift from PHASE_SKILLS; this runs the real
+    // loader. Ordering matters: a bad checkout should cost nothing.
+    expect(step('skills landed').run).toContain('opencode-agent:verify-skills')
+
+    const names = steps.map((candidate) => candidate.name.toLowerCase())
+    expect(names.findIndex((name) => name.includes('skills landed'))).toBeLessThan(
+      names.findIndex((name) => name.includes('agent pipeline')),
+    )
   })
 
   test('installs the opencode CLI the review-loop workspace shells out to', () => {

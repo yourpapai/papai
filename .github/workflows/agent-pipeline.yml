@@ -39,9 +39,11 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # Pinned obra/superpowers checkout. Bump deliberately: the skill names the
-  # phases require are asserted in tests/opencode-agent/adapters.test.ts.
-  SUPERPOWERS_REF: main
+  # obra/superpowers, pinned to a commit rather than a branch. This checkout is
+  # third-party markdown that goes straight into the agent's system prompt, so a
+  # moving ref would let it change under review. Bump deliberately, then re-run
+  # `bun run opencode-agent:verify-skills`.
+  SUPERPOWERS_REF: 44c9b2d6e889982ac18c27d05a19fefe335194e1
 
 jobs:
   agent:
@@ -90,17 +92,6 @@ jobs:
           path: .superpowers
           persist-credentials: false
 
-      - name: Verify the skills landed
-        run: |
-          missing=0
-          for skill in brainstorming writing-plans test-driven-development systematic-debugging; do
-            if [ ! -f ".superpowers/skills/$skill/SKILL.md" ]; then
-              echo "::error::Required skill $skill is missing from .superpowers/skills"
-              missing=1
-            fi
-          done
-          exit "$missing"
-
       - name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -108,6 +99,13 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      # Runs the production skill loader, not a bash reimplementation of it, so
+      # a checkout that is missing or has renamed a required skill fails here —
+      # named — instead of silently producing a thinner prompt. Placed before
+      # the model credentials are used so a bad checkout costs nothing.
+      - name: Verify the skills landed
+        run: bun run opencode-agent:verify-skills
 
       # The review-loop workspace shells out to `opencode run`, so the CLI has to
       # be on PATH. It reads its provider config from OPENCODE_CONFIG_CONTENT,

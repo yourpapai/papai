@@ -184,9 +184,17 @@ from a working one.
 
 Each phase declares required and optional skills. A missing **required** skill
 fails the phase with a message naming it; optional ones are logged and skipped.
-Skill names are asserted against the upstream list in
-`tests/opencode-agent/adapters.test.ts`, so a ref bump that renames one fails the
-test suite instead of the pipeline. YAML frontmatter is stripped before inlining.
+YAML frontmatter is stripped before inlining.
+
+The ref is pinned to a **commit**, not a branch: this is third-party markdown
+that goes straight into the system prompt, and a moving ref would let it change
+without review. After bumping it, run `bun run opencode-agent:verify-skills` —
+that drives the production loader against the actual fetched files, so a renamed
+or missing skill fails with the skill named. The workflow runs the same check
+before any model credentials are used.
+
+(The skill-name list in `tests/opencode-agent/adapters.test.ts` is a hand-copied
+snapshot. It catches a typo in `PHASE_SKILLS`; it cannot see upstream drift.)
 
 `subagent-driven-development` and `writing-skills` are deliberately excluded:
 both are 26–28 KB and neither applies to a single-session CI run.

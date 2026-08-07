@@ -262,10 +262,12 @@ describe('obra-skills', () => {
     }
   })
 
-  test('every named skill exists in obra/superpowers', () => {
-    // Guards against the previous state where all six names were invented and
-    // nothing ever loaded. Update this list when bumping the pinned checkout.
-    const upstream = new Set([
+  test('every named skill is one that exists upstream', () => {
+    // A hand-copied snapshot of obra/superpowers @ 44c9b2d, so this catches a
+    // typo in PHASE_SKILLS — not upstream drift, which it cannot see. The real
+    // guard against a bad checkout is `bun run opencode-agent:verify-skills`,
+    // which the workflow runs against the actual fetched files.
+    const upstreamAt44c9b2d = new Set([
       'brainstorming',
       'dispatching-parallel-agents',
       'executing-plans',
@@ -284,7 +286,7 @@ describe('obra-skills', () => {
 
     for (const phase of PHASES) {
       for (const name of [...PHASE_SKILLS[phase].required, ...PHASE_SKILLS[phase].optional]) {
-        expect(upstream.has(name), `${phase} asks for unknown skill ${name}`).toBe(true)
+        expect(upstreamAt44c9b2d.has(name), `${phase} asks for unknown skill ${name}`).toBe(true)
       }
     }
   })

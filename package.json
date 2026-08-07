@@ -39,6 +39,7 @@
     "mutation-improve:start": "bun run --filter mutation-improve start",
     "opencode-agent:test": "bun run --filter opencode-agent test",
     "opencode-agent:test:live": "bun run --filter opencode-agent test:live",
+    "opencode-agent:verify-skills": "bun run --filter opencode-agent verify-skills",
     "opencode-agent:typecheck": "bun run --filter opencode-agent typecheck",
     "opencode-agent:lint": "bun run --filter opencode-agent lint",
     "opencode-agent:format:check": "bun run --filter opencode-agent format:check",

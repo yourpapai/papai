@@ -253,7 +253,32 @@ timeout was also raised to 60s; a cold runner with a large repo can miss it._
 
 ### S1-6 No skills ever load; the superpowers integration is inert — **verified** — **[FIXED]**
 
-_Fixed: the workflow checks out `obra/superpowers` and verifies it; required skills are now fatal; names are asserted against upstream in tests._
+_Fixed and verified against the real files. `obra/superpowers` is checked out to
+a gitignored `.superpowers/`, and driving the production loader against an actual
+clone confirms every phase resolves all of its skills, frontmatter stripped,
+composing prompts of 9–18 KB. Required skills are fatal; optional misses are
+logged.
+
+Verifying it exposed two defects in the first fix:
+
+**The ref was not pinned.** The workflow comment read "Pinned obra/superpowers
+checkout. Bump deliberately" while the value was `main` — a moving branch. This
+is third-party markdown that goes straight into the system prompt, so a moving
+ref lets it change without review. Now pinned to `44c9b2d`, and a workflow test
+asserts the ref is a 40-character SHA (mutation-checked by reverting it to
+`main`).
+
+**The claim that a ref bump would fail the test suite was false.** The "upstream
+list" in `adapters.test.ts` is a set typed by hand, so it catches a typo in
+`PHASE_SKILLS` and cannot see upstream drift at all. The README said otherwise;
+it now says what the test really does.
+
+The real guard is new: `bun run opencode-agent:verify-skills` drives the
+production `loadPhaseSkills` against the fetched files — not a bash
+reimplementation that could drift from `PHASE_SKILLS`. Proven to fail both when
+one required skill is removed and when the whole checkout is absent, naming the
+skill each time. The workflow runs it after install and **before** the model
+credentials are used, so a bad checkout costs nothing._
 
 `src/obra-skills.ts:24` searches `.claude/skills/`,
 `docs/superpowers/extensions/` and `.superpowers/skills/` for
