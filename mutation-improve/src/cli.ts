@@ -26,6 +26,7 @@ import { ResultSchema } from './result-schema.js'
 import { createRunState, loadRunState, persistStats, saveRunState, type MutationImproveRunState } from './run-state.js'
 import { measureMutationScore } from './score-reader.js'
 import { SelectionSchema } from './selection-schema.js'
+import { buildRunSummary } from './summary.js'
 
 export interface CliArgs {
   configPath: string
@@ -244,8 +245,11 @@ export async function runCli(argv: readonly string[]): Promise<void> {
     results = pipelineOut.results
     aborted = pipelineOut.aborted
   } finally {
+    persistStats(runState, stats)
     await saveRunState(runState)
   }
+
+  console.log(buildRunSummary({ runState, results, stats: stats.snapshot(), aborted }))
 
   const failed = results.filter((r) => r.outcome === 'failed')
   if (!args.noPr && runState.merged.length > 0 && !aborted) {
