@@ -61,7 +61,7 @@
   "plugins/task-provider-kaneo/list-task-labels.ts": 0.18181818181818182,
   "plugins/task-provider-kaneo/list-tasks-query.ts": 0,
   "plugins/task-provider-kaneo/list-tasks.ts": 0,
-  "plugins/task-provider-kaneo/mappers.ts": 0.1111111111111111,
+  "plugins/task-provider-kaneo/mappers.ts": 0.7619047619047619,
   "plugins/task-provider-kaneo/operations/comments.ts": 0.2222222222222222,
   "plugins/task-provider-kaneo/operations/labels.ts": 0.6,
   "plugins/task-provider-kaneo/operations/members.ts": 0.5833333333333334,
