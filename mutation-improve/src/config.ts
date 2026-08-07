@@ -8,6 +8,7 @@ import path from 'node:path'
 
 import { z } from 'zod'
 
+import { PricingTableSchema } from '../../review-loop/src/cost.js'
 import { detectGitRoot } from '../../review-loop/src/worktree.js'
 
 const AgentConfigSchema = z.object({
@@ -37,6 +38,7 @@ export const MutationImproveConfigSchema = z.object({
   mutateFileCommand: z.string().min(1).default('bun test:mutate:file'),
   agent: AgentConfigSchema,
   prBranchPrefix: z.string().min(1).default('mutation-improve'),
+  pricing: PricingTableSchema.optional(),
 })
 
 export interface MutationImproveConfig extends z.infer<typeof MutationImproveConfigSchema> {

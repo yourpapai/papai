@@ -52,6 +52,28 @@ describe('config', () => {
     expect(() => MutationImproveConfigSchema.parse({ ...minimalValid, threshold: -0.1 })).toThrow()
   })
 
+  test('MutationImproveConfigSchema accepts an optional pricing table', () => {
+    const parsed = MutationImproveConfigSchema.parse({
+      ...minimalValid,
+      pricing: { 'm-*': { input: 3, output: 15 } },
+    })
+    expect(parsed.pricing).toEqual({ 'm-*': { input: 3, output: 15 } })
+  })
+
+  test('MutationImproveConfigSchema pricing is undefined when omitted', () => {
+    const parsed = MutationImproveConfigSchema.parse({ ...minimalValid })
+    expect(parsed.pricing).toBeUndefined()
+  })
+
+  test('MutationImproveConfigSchema rejects a malformed pricing entry', () => {
+    expect(() =>
+      MutationImproveConfigSchema.parse({
+        ...minimalValid,
+        pricing: { 'm-*': { input: 'x' } },
+      }),
+    ).toThrow()
+  })
+
   test('loadMutationImproveConfig resolves workDir against repoRoot and creates it', async () => {
     const repoRoot = makeTempDir('cfg-')
     const configPath = path.join(repoRoot, 'config.json')
