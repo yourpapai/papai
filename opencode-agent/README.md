@@ -166,7 +166,39 @@ that sees an actual HTTP status, so nothing has to guess which SDK error means
 and it is the only place where retrying is safe by construction, because the
 status arrives before the body and there is no half-streamed reply to replay.
 Only 408, 429 and 5xx are retried — a 401 from a wrong key is a fact about the
-request, and repeating it three times only delays saying so.
+request, and repeating it three times only delays saying so. OpenCode retries a
+rate limit itself as well, with its own backoff, so this is a second and closer
+layer rather than the only one.
+
+## Watching a run
+
+A phase that runs for twenty minutes emitting nothing is, in a CI log,
+indistinguishable from a hang — and the usual response to a job that looks hung
+is to cancel it. So the log says what is happening:
+
+```
+Model tool call        { tool: "read", status: "running", call: "call_1" }
+Model step finished    { inputTokens: 1200, outputTokens: 340, cost: 0.004 }
+Still waiting on the model; the job is not stuck
+                       { elapsedMs: 60011, lastAction: "read (running)", toolCalls: 7, tokens: 41200, cost: 0.31 }
+```
+
+Two halves, answering different questions. OpenCode's event stream says **what**
+the model is doing, and only fires when something happens. The heartbeat, once a
+minute while a turn is outstanding, says it is **still** doing it — which is the
+only thing that distinguishes slow from dead during a single long model call
+that uses no tools.
+
+**Progress never carries content.** Not tool input, not tool output, not the
+model's text, not the provider's error message on a retry — only names, statuses
+and counts. That is enforced by the decoding schemas rather than by care: they
+name the scalar fields they want and drop everything else, so there is nowhere
+for a `bash` command or a file's contents to land. It matters more here than
+elsewhere: a CI log is world-readable on a public repository and is **not**
+covered by the outbound redaction that guards issue comments.
+
+Token and cost totals ride along, per step and in every heartbeat. That is
+visibility, not a ceiling — see `ROADMAP.md` S5-6.
 
 ## Guardrails
 
@@ -471,6 +503,9 @@ Logs are NDJSON on stdout.
 | `src/opencode-adapter.ts`                     | Headless OpenCode server + session                                     |
 | `src/ask-json.ts`                             | Asking the model for JSON, with one repair re-ask on a bad reply       |
 | `src/prompt-budget.ts`                        | How much text a prompt carries, and what loses when it does not fit    |
+| `src/activity.ts`                             | What one OpenCode event means, and what of it may be said out loud     |
+| `src/progress.ts`                             | Reporting that, plus the heartbeat while a turn is outstanding         |
+| `src/sdk-contract.ts`                         | The recorded response shapes the SDK answers with                      |
 | `src/deadline.ts`                             | The upper bound on waiting for work that has none of its own           |
 | `src/provider-proxy.ts`                       | Holds the provider key, and retries a transient upstream failure       |
 | `src/obra-skills.ts`                          | Superpowers skill loading and system-prompt composition                |

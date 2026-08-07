@@ -1266,7 +1266,7 @@ two call sites that consume the identity.
 | S5-4 **[FIXED]**       | No prompt size budget                       | `prompt-budget.ts`                   | The thread half was already capped at 12k characters. The CI-fix half now is too, across all failures rather than each. See below.                                                                  |
 | S5-5                   | `timeout-minutes: 45` is likely too low     | `agent-pipeline.yml:31`              | Implement + up to 3 review rounds + 2 mutation rounds on a real repo can exceed it. A timeout loses everything — no state comment is posted, so the issue is stuck in whatever phase it started in. |
 | S5-6                   | No cost ceiling                             | —                                    | Round caps and the job timeout are the only bounds. A token budget per issue would be a cheap guardrail.                                                                                            |
-| S5-7                   | No progress output during a phase           | adapter                              | A 20-minute implement prompt emits nothing; the Actions log looks hung. The SDK supports streaming.                                                                                                 |
+| S5-7 **[FIXED]**       | No progress output during a phase           | `activity.ts`; `progress.ts`         | The event stream says what the model is doing; a heartbeat says it is still doing it. Neither ever logs content. See below.                                                                         |
 | S5-8                   | Every check reruns every round              | `review-loop.ts:52-66`               | Deliberate and documented, but on a repo with a 20-minute test suite three rounds is an hour. Consider rerunning only previously-failing checks after round 1, with a full pass at the end.         |
 | S5-9                   | `parseMutationScore` is ambiguous at `1`    | `review-loop.ts:130`                 | `value > 1 ? value/100 : value` reads a bare `Mutation score: 1` as 100%, not 1%. Inherent to the format; worth documenting or requiring the `%`.                                                   |
 | S5-10 **[SUPERSEDED]** | The comment filter is gone by design (S1-3) | `agent-pipeline.yml:41-44`           | A comment merely mentioning `/approve` starts a job that then correctly skips. Harmless, noisy, billable.                                                                                           |
@@ -1399,6 +1399,72 @@ would have been asserting nothing.
 socket and the real clock, which every test replaces by design — plus log
 message strings and `status < 600`, which no real status distinguishes from
 `<= 600`.
+
+### S5-7 — progress, and what it is deliberately not allowed to say
+
+A phase that runs for twenty minutes emitting nothing is, in a CI log,
+indistinguishable from a hang — and the usual response to a job that looks hung
+is to cancel it, which loses the whole run.
+
+Two halves, because they answer different questions. `activity.ts` decodes
+OpenCode's event stream: tool calls by name and status, the token and cost
+accounting a finished step carries, and session state including a provider
+retry. `progress.ts` logs those and keeps a running total, and beats once a
+minute while a turn is outstanding. The heartbeat is the half that actually
+closes the finding: events only fire when something happens, and the worst case
+— one model call thinking for twenty minutes with no tool use — produces none at
+all, which is exactly the stretch that reads as dead.
+
+**Nothing logged carries content**, and that is a property of the schemas rather
+than a habit of the callers. Each names the scalar fields it wants and Zod drops
+the rest, so `state.input` (a `bash` command, a file's new contents),
+`state.output` (an entire file), the model's text, and the provider's own error
+message in a retry status have nowhere to land. This matters more here than
+elsewhere in the pipeline: a CI log is world-readable on a public repository and
+is **not** covered by the outbound redaction in `github.ts` that guards issue
+comments. The rule is structural — names, statuses and counts only.
+
+Every shape is recorded off a live `opencode serve` 1.18.7 driven through this
+pipeline's own config, including the retry status, which was produced by
+pointing a stub provider at 429. Two things that recording settled and guessing
+would not have:
+
+- The SDK's generated `Event` union is **already behind its own server**. The
+  running server emits `message.part.delta`; the union does not list it. Every
+  decode is therefore a `safeParse` yielding `null`, never a validation error —
+  an unknown event is the normal case, not an error case.
+- **A stream does not end when its server does.** The SDK's SSE client
+  reconnects for ever by default, so `close()` killing the server left the
+  generator open — verified still open eight seconds later — and the first
+  version of teardown, which waited for the events to run out, hung the live
+  check until its own timeout. Fixed twice over: `sseMaxRetryAttempts: 0` so the
+  stream ends with the socket, and a `stop()` teardown that says stop rather
+  than waiting, bounded so it can never hang the thing it is shutting down.
+
+**A correction to S5-1's premise while I was here.** That finding said "a single
+429 or 5xx fails the phase and burns an attempt". The retry recording shows it
+does not: OpenCode retries a rate limit itself, with backoff, and publishes a
+`session.status` retry event each time. The proxy-level retry is therefore a
+second, closer layer rather than the only one — it acts before OpenCode sees an
+error at all, and covers transport failures that never become an OpenCode-visible
+status. Still worth having; less dramatic than the finding claimed.
+
+Cost and token totals now appear per step and in every heartbeat. That is **not**
+S5-6 and does not close it — there is still no ceiling, only visibility. It is
+the cheap half, and it arrived free with the event that carries it.
+
+Mutation-checked: `activity.ts` 0.98, `progress.ts` 1.00. The first pass found
+one design flaw rather than a coverage gap. The tracker decided what to collapse
+by sniffing metadata — "an activity carrying a `status` and no counts must be a
+session status" — and tool calls carry a status too, so two identical tool calls
+in a row would have been silently reported as one. Fixed the way `summary` was
+earlier in this file: the producer names a `collapseKey`, and nothing downstream
+guesses. The other three were ordinary gaps — a tool counted at the wrong end
+(both orderings sum to one for a call that starts _and_ finishes, so it took the
+pair of one-ended cases to tell them apart), `realSchedule`'s actual interval
+never exercised because every test injects a fake, and `elapsedMs` never
+asserted, leaving a mutation that logged a wall-clock epoch instead of a
+duration.
 
 ---
 

@@ -6,12 +6,15 @@
 import { createServer } from 'node:net'
 
 import { createOpencodeClient, createOpencodeServer } from '@opencode-ai/sdk'
-import { z } from 'zod'
 
 import { withDeadline } from './deadline.js'
 import { openCodeError } from './errors.js'
+import type { Logger } from './logger.js'
 import { buildOpencodeConfig, modelRef } from './openai-config.js'
 import type { OpenAiSettings } from './openai-config.js'
+import { createProgressTracker, followEvents, withHeartbeat } from './progress.js'
+import type { EventFollower, ProgressTracker } from './progress.js'
+import { decodeReply, decodeSessionId } from './sdk-contract.js'
 import { errorMessage } from './types.js'
 
 /** `providerID/modelID`, e.g. `openai/gpt-5`. */
@@ -31,26 +34,6 @@ export const parseModelRef = (raw: string): ModelRef => {
     throw openCodeError(`Model must be "provider/model", got "${raw}"`)
   }
   return { providerID: raw.slice(0, separator), modelID: raw.slice(separator + 1) }
-}
-
-interface TextLike {
-  type?: string
-  text?: string
-}
-
-/** Concatenates the text parts of an assistant reply, ignoring tool/file parts. */
-export const collectText = (parts: readonly unknown[] | undefined): string => {
-  if (parts === undefined) return ''
-
-  const chunks: string[] = []
-  for (const part of parts) {
-    if (typeof part !== 'object' || part === null) continue
-    const candidate = part as TextLike
-    if (candidate.type !== 'text') continue
-    if (typeof candidate.text === 'string' && candidate.text.length > 0) chunks.push(candidate.text)
-  }
-
-  return chunks.join('\n').trim()
 }
 
 export interface AgentPromptRequest {
@@ -86,6 +69,16 @@ export interface SdkPromptBody {
 export interface OpenCodeConnection {
   createSession(title: string): Promise<string>
   sendPrompt(sessionId: string, body: SdkPromptBody): Promise<unknown>
+  /**
+   * The server's event stream, used only to report progress.
+   *
+   * Required rather than optional, though nothing breaks without it: an
+   * optional method is one a connection can silently fail to provide, and this
+   * workspace's recurring bug is a feature that is wired everywhere except the
+   * one place that matters. A connection with nothing to say returns an empty
+   * iterable and says so.
+   */
+  events(): Promise<AsyncIterable<unknown>>
   close(): Promise<void>
 }
 
@@ -104,68 +97,22 @@ export interface OpenCodeAgentOptions {
    * the one turn that can run for twenty minutes, was the only path without.
    */
   timeoutMs?: number
+  /** Where progress goes. The adapter is the only thing that can see it. */
+  log: Logger
+  /** Heartbeat period while a turn is outstanding. `0` disables it. */
+  heartbeatMs?: number
   /** Injection seam for tests. Defaults to the real SDK server + client. */
   connect?: () => Promise<OpenCodeConnection>
 }
 
 /**
- * The SDK client's response envelope.
+ * How often a turn says it is still alive.
  *
- * Exported because these decoders *are* the contract with the SDK, and they sit
- * on the one path a `connect` seam cannot reach — which is exactly how they came
- * to be untested guesses in the first place.
- *
- * This is not a guess. The generated client returns
- * `RequestResult<…, ThrowOnError = false, ResponseStyle = "fields">`, i.e.
- * `{ data, error, request, response }` — it does not throw on a non-2xx, it
- * reports through `error`. Verified against a live `opencode serve`: a created
- * session answers `{ data: { id: "ses_…" }, request, response }` with `error`
- * undefined, and a prompt answers `{ data: { parts: [...] }, … }`.
- *
- * Decoding through a schema rather than probing for whichever field happens to
- * exist means an SDK upgrade that moves the payload fails here, naming the
- * contract, instead of yielding empty text that surfaces three layers away as
- * "the model returned no JSON".
+ * A minute is short enough that a stalled job is obvious within one screen of
+ * log, and long enough that a twenty-minute implement phase adds twenty lines
+ * rather than swamping the tool calls that carry the real information.
  */
-const sessionResponseSchema = z.object({
-  data: z.object({ id: z.string().min(1) }).optional(),
-  error: z.unknown().optional(),
-})
-
-const promptResponseSchema = z.object({
-  data: z.object({ parts: z.array(z.unknown()).default([]) }).optional(),
-  error: z.unknown().optional(),
-})
-
-const rejectEnvelopeError = (error: unknown, action: string): void => {
-  if (error === undefined || error === null) return
-  throw openCodeError(`OpenCode rejected the ${action}: ${JSON.stringify(error)}`)
-}
-
-export const decodeReply = (reply: unknown): string => {
-  const parsed = promptResponseSchema.safeParse(reply)
-  if (!parsed.success) {
-    throw openCodeError(`Unexpected prompt response from the OpenCode SDK: ${parsed.error.message}`)
-  }
-
-  rejectEnvelopeError(parsed.data.error, 'prompt')
-  if (parsed.data.data === undefined) throw openCodeError('OpenCode returned a prompt response with no data')
-
-  // A reply carries step-start / text / step-finish parts; only text is content.
-  return collectText(parsed.data.data.parts)
-}
-
-export const decodeSessionId = (created: unknown): string => {
-  const parsed = sessionResponseSchema.safeParse(created)
-  if (!parsed.success) {
-    throw openCodeError(`Unexpected session response from the OpenCode SDK: ${parsed.error.message}`)
-  }
-
-  rejectEnvelopeError(parsed.data.error, 'session creation')
-  if (parsed.data.data === undefined) throw openCodeError('OpenCode returned a session response with no id')
-
-  return parsed.data.data.id
-}
+const DEFAULT_HEARTBEAT_MS = 60_000
 
 const buildBody = (model: ModelRef, request: AgentPromptRequest): SdkPromptBody => ({
   model,
@@ -223,6 +170,16 @@ const connectSdk = async (directory: string, openai: OpenAiSettings): Promise<Op
       return decodeSessionId(created)
     },
     sendPrompt: (sessionId, body) => client.session.prompt({ path: { id: sessionId }, body, query: { directory } }),
+    // `/event` is a server-sent-event stream; the generated client hands back
+    // the parsed events as an async generator.
+    //
+    // `sseMaxRetryAttempts: 0` is load-bearing. The client's default is to
+    // reconnect for ever with no cap, so when `close()` kills the server the
+    // stream does not end — it starts retrying a socket that will never come
+    // back. Verified against a real server: without this the generator was
+    // still open eight seconds after the server was closed, and a teardown that
+    // waited on it hung the job until its own timeout.
+    events: async () => (await client.event.subscribe({ sseMaxRetryAttempts: 0 })).stream,
     close: (): Promise<void> => {
       server.close()
       return Promise.resolve()
@@ -248,19 +205,86 @@ export const createOpenCodeAgent = async (options: OpenCodeAgentOptions): Promis
     throw openCodeError(`Failed to open OpenCode session: ${errorMessage(error)}`)
   }
 
+  const { tracker, shutdown } = startReporting(connection, sessionId, options.log)
+
   return {
     sessionId,
     prompt: async (request) => {
-      const reply = await withDeadline(
-        connection.sendPrompt(sessionId, buildBody(model, request)),
-        options.timeoutMs ?? 0,
-        (elapsed) =>
-          openCodeError(
-            `The model did not answer within ${elapsed}ms (AGENT_TIMEOUT_MS). Raise it, or narrow the phase's work.`,
-          ),
-      )
+      const reply = await bounded(connection.sendPrompt(sessionId, buildBody(model, request)), options, tracker)
       return { text: decodeReply(reply), sessionId }
     },
-    close: (): Promise<void> => connection.close(),
+    close: async (): Promise<void> => {
+      // Reporting first. Closing the server does not, by itself, end the stream
+      // — see the `sseMaxRetryAttempts` note above — so teardown has to say stop
+      // rather than wait for the events to run out.
+      await shutdown()
+      await connection.close()
+    },
   }
 }
+
+/** How long teardown waits for reporting to wind down before giving up on it. */
+const SHUTDOWN_GRACE_MS = 5_000
+
+/**
+ * Starts draining the event stream into a tracker, and hands back the off switch.
+ *
+ * Detached on purpose: the stream runs for the life of the server, so awaiting
+ * it inline would never return. Nothing it does can reject, and a failed
+ * subscription costs the run its progress log and nothing else — this is
+ * reporting, and reporting must not be able to fail the work it reports on.
+ *
+ * `shutdown` stops the drain and then waits for it, so a `close()` that races a
+ * still-arriving event does not cut it off mid-observation. Bounded, because
+ * the one thing worse than losing a progress line is teardown hanging on the
+ * reporting it is trying to shut down.
+ */
+const startReporting = (
+  connection: OpenCodeConnection,
+  sessionId: string,
+  log: Logger,
+): { tracker: ProgressTracker; shutdown: () => Promise<void> } => {
+  const tracker = createProgressTracker(sessionId, log)
+  let follower: EventFollower | null = null
+  let stopped = false
+
+  const finished = connection
+    .events()
+    .then(async (stream) => {
+      follower = followEvents(stream, tracker)
+      // `shutdown()` can win the race against a slow subscription.
+      if (stopped) follower.stop()
+      await follower.done
+    })
+    .catch((error: unknown) => {
+      log.warn({ error: errorMessage(error) }, 'No progress events; the run is unaffected')
+    })
+
+  return {
+    tracker,
+    shutdown: async (): Promise<void> => {
+      stopped = true
+      follower?.stop()
+      await withDeadline(finished, SHUTDOWN_GRACE_MS, () => new Error('unused')).catch(() => {
+        log.debug({}, 'Progress reporting did not wind down in time; continuing teardown')
+      })
+    },
+  }
+}
+
+/**
+ * Wraps one turn in both of its bounds.
+ *
+ * Heartbeat outside the deadline, never inside it: a deadline that fires leaves
+ * the underlying call pending, so an inner heartbeat's cleanup would never run
+ * and its interval would hold the process open past the end of the job.
+ */
+const bounded = (work: Promise<unknown>, options: OpenCodeAgentOptions, tracker: ProgressTracker): Promise<unknown> =>
+  withHeartbeat(
+    withDeadline(work, options.timeoutMs ?? 0, (elapsed) =>
+      openCodeError(
+        `The model did not answer within ${elapsed}ms (AGENT_TIMEOUT_MS). Raise it, or narrow the phase's work.`,
+      ),
+    ),
+    { everyMs: options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS, log: options.log, snapshot: tracker.snapshot },
+  )

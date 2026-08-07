@@ -25,18 +25,13 @@ import { composeSystemPrompt, loadPhaseSkills, loadSkills, PHASE_SKILLS } from '
 import type { ReadSkillFile } from '../../opencode-agent/src/obra-skills.js'
 import { buildOpencodeConfig, modelRef, opencodeConfigEnv } from '../../opencode-agent/src/openai-config.js'
 import type { OpenAiSettings } from '../../opencode-agent/src/openai-config.js'
-import {
-  collectText,
-  createOpenCodeAgent,
-  decodeReply,
-  decodeSessionId,
-  parseModelRef,
-} from '../../opencode-agent/src/opencode-adapter.js'
+import { createOpenCodeAgent, parseModelRef } from '../../opencode-agent/src/opencode-adapter.js'
 import type { OpenCodeAgent, OpenCodeConnection, SdkPromptBody } from '../../opencode-agent/src/opencode-adapter.js'
 import { mintEnvelope } from '../../opencode-agent/src/phases/envelope.js'
 import { renderThread, shareBudget } from '../../opencode-agent/src/prompt-budget.js'
 import { buildCiFixPrompt, createEnvelope } from '../../opencode-agent/src/prompts.js'
 import { parseRepository } from '../../opencode-agent/src/repository.js'
+import { collectText, decodeReply, decodeSessionId } from '../../opencode-agent/src/sdk-contract.js'
 import { redactSecrets, scrubSecrets } from '../../opencode-agent/src/secrets.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
 import { PHASES } from '../../opencode-agent/src/types.js'
@@ -129,6 +124,36 @@ describe('the recorded SDK contract', () => {
   })
 })
 
+const silentLog: Logger = {
+  debug: (): void => {},
+  info: (): void => {},
+  warn: (): void => {},
+  error: (): void => {},
+}
+
+/**
+ * A finite event stream that says when it has been fully consumed.
+ *
+ * `onDrained` fires on the `next()` that reports done, which is after the last
+ * event was observed — so a test can await it instead of racing the microtask
+ * queue with `close()`.
+ */
+const streamOf = (events: readonly unknown[], onDrained: () => void = (): void => {}): AsyncIterable<unknown> => {
+  const queue = [...events]
+  return {
+    [Symbol.asyncIterator]: (): AsyncIterator<unknown> => ({
+      next: (): Promise<IteratorResult<unknown>> => {
+        if (queue.length > 0) return Promise.resolve({ value: queue.shift(), done: false })
+        onDrained()
+        return Promise.resolve({ value: undefined, done: true })
+      },
+    }),
+  }
+}
+
+/** An event stream that ends immediately, for the tests progress is not about. */
+const noEvents = (): Promise<AsyncIterable<unknown>> => Promise.resolve(streamOf([]))
+
 describe('createOpenCodeAgent', () => {
   const fakeConnection = (sink: { bodies: SdkPromptBody[]; closed: number }, reply: unknown): OpenCodeConnection => ({
     createSession: (): Promise<string> => Promise.resolve('session-9'),
@@ -136,6 +161,7 @@ describe('createOpenCodeAgent', () => {
       sink.bodies.push(body)
       return Promise.resolve(reply)
     },
+    events: noEvents,
     close: (): Promise<void> => {
       sink.closed += 1
       return Promise.resolve()
@@ -148,6 +174,7 @@ describe('createOpenCodeAgent', () => {
       directory: '/repo',
       openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5' },
       sessionTitle: 'issue-1',
+      log: silentLog,
       connect: () => Promise.resolve(fakeConnection(sink, { data: { parts: [{ type: 'text', text: 'done' }] } })),
     })
 
@@ -180,6 +207,7 @@ describe('createOpenCodeAgent', () => {
       directory: '/repo',
       openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
       sessionTitle: 't',
+      log: silentLog,
       connect: () => Promise.resolve(fakeConnection(sink, reply)),
     })
 
@@ -192,6 +220,7 @@ describe('createOpenCodeAgent', () => {
       directory: '/repo',
       openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
       sessionTitle: 't',
+      log: silentLog,
       connect: () => Promise.resolve(fakeConnection(sink, { data: undefined, error: { message: 'rate limited' } })),
     })
 
@@ -205,10 +234,12 @@ describe('createOpenCodeAgent', () => {
       directory: '/repo',
       openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
       sessionTitle: 't',
+      log: silentLog,
       connect: () =>
         Promise.resolve({
           createSession: () => Promise.reject(new Error('server down')),
           sendPrompt: () => Promise.resolve({ data: { parts: [] } }),
+          events: noEvents,
           close: () => {
             closed += 1
             return Promise.resolve()
@@ -226,14 +257,70 @@ describe('createOpenCodeAgent', () => {
       directory: '/repo',
       openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
       sessionTitle: 't',
+      log: silentLog,
       timeoutMs,
       connect: () =>
         Promise.resolve({
           createSession: () => Promise.resolve('session-1'),
           sendPrompt: () => new Promise<unknown>(() => {}),
+          events: noEvents,
           close: () => Promise.resolve(),
         }),
     })
+
+  test('subscribes to the event stream and reports what it carries', async () => {
+    // The wiring, not the reporter: `progress.ts` can decode perfectly and
+    // never be handed an event. A connection whose `events()` is ignored is the
+    // same shape of bug as the redaction, the proxy and the logger's secrets.
+    const lines: string[] = []
+    let drained = (): void => {}
+    const consumed = new Promise<void>((resolve) => {
+      drained = resolve
+    })
+    const agent = await createOpenCodeAgent({
+      directory: '/repo',
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      sessionTitle: 't',
+      log: { ...silentLog, info: (_meta, message): void => void lines.push(message) },
+      connect: () =>
+        Promise.resolve({
+          createSession: () => Promise.resolve('session-1'),
+          sendPrompt: () => Promise.resolve({ data: { parts: [] } }),
+          events: () =>
+            Promise.resolve(
+              streamOf(
+                [{ type: 'session.status', properties: { sessionID: 'session-1', status: { type: 'busy' } } }],
+                drained,
+              ),
+            ),
+          close: () => Promise.resolve(),
+        }),
+    })
+    await consumed
+    await agent.close()
+
+    expect(lines).toEqual(['Model session status'])
+  })
+
+  test('a failing subscription costs the progress log and nothing else', async () => {
+    // Reporting must not be able to fail the work it reports on.
+    const agent = await createOpenCodeAgent({
+      directory: '/repo',
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      sessionTitle: 't',
+      log: silentLog,
+      connect: () =>
+        Promise.resolve({
+          createSession: () => Promise.resolve('session-1'),
+          sendPrompt: () => Promise.resolve({ data: { parts: [{ type: 'text', text: 'fine' }] } }),
+          events: () => Promise.reject(new Error('/event is not available')),
+          close: () => Promise.resolve(),
+        }),
+    })
+
+    expect((await agent.prompt({ prompt: 'go' })).text).toBe('fine')
+    await agent.close()
+  })
 
   test('fails a prompt that never answers, rather than running to the job timeout', async () => {
     // A job killed by its own timeout posts nothing — no failure comment, no
@@ -249,11 +336,13 @@ describe('createOpenCodeAgent', () => {
       directory: '/repo',
       openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
       sessionTitle: 't',
+      log: silentLog,
       timeoutMs: 0,
       connect: () =>
         Promise.resolve({
           createSession: () => Promise.resolve('session-1'),
           sendPrompt: () => Promise.resolve({ data: { parts: [{ type: 'text', text: 'slow but fine' }] } }),
+          events: noEvents,
           close: () => Promise.resolve(),
         }),
     })

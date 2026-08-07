@@ -48,6 +48,15 @@ findings: `ROADMAP.md`.
 - **Ask for JSON through `promptForJson`, not `agent.prompt` + `parseModelJson`.**
   It re-asks once with the validation complaint attached. Once, not until it
   works.
+- **Progress reporting never carries content.** `activity.ts` decodes OpenCode's
+  event stream through schemas that name only the scalar fields they want, so
+  tool input, tool output, model text and a provider's error message have
+  nowhere to land. Do not widen a schema to "make the log more useful": a CI log
+  is world-readable on a public repository and is _not_ covered by the outbound
+  redaction in `github.ts`. Names, statuses and counts only. Every shape there is
+  recorded from a live server — re-record rather than adjusting by inspection,
+  and note that the SDK's generated `Event` union is already behind its own
+  server, which is why each decode is a `safeParse` yielding `null`.
 - **Capabilities are deny-by-default.** `openai-config.ts` grants tools by name
   on top of `"*": "deny"`, per agent profile: `plan` (the read-only phases)
   cannot edit or run commands, `build` can. Add a capability by naming it, never
@@ -78,11 +87,16 @@ findings: `ROADMAP.md`.
   `opencode` CLI and is run via `bun run opencode-agent:test:live`.
 - When a command test asserts an outcome, assert the **persisted state**, not
   just the returned status — a state that is never posted never happened.
-- **The SDK response shapes are recorded, not guessed.** `decodeSessionId` and
-  `decodeReply` decode `{ data, error }` through a schema; the fixtures in
-  `adapters.test.ts` come from a live run. When the `@opencode-ai/sdk` pin moves,
-  re-run the live check and re-record rather than adjusting the decoders by
-  inspection.
+- **The SDK response shapes are recorded, not guessed.** `sdk-contract.ts`'s
+  `decodeSessionId` and `decodeReply` decode `{ data, error }` through a schema;
+  the fixtures in `adapters.test.ts` come from a live run. When the
+  `@opencode-ai/sdk` pin moves, re-run the live check and re-record rather than
+  adjusting the decoders by inspection. Note the asymmetry: request/response
+  payloads sit under `data`, but an event from the `/event` stream carries its
+  `type` and `properties` at the top level. Note too that an SSE stream does
+  **not** end when its server does — the client reconnects for ever unless
+  `sseMaxRetryAttempts: 0` is passed, so never make teardown wait for a stream to
+  run out.
 
 ## Dependencies
 

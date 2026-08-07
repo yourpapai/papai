@@ -167,6 +167,7 @@ export const contain = ({ config, event, log, run, options, createAgent }: Conta
       openai: contained.openai,
       sessionTitle: `issue-${event.issueNumber}`,
       timeoutMs: contained.agentTimeoutMs,
+      log,
     }),
   )
 

@@ -438,6 +438,8 @@ describe('contain', () => {
     await run.deps.agent()
 
     expect(seen[0]?.timeoutMs).toBe(1000)
+    // And a logger, without which the adapter has nowhere to report progress.
+    expect(seen[0]?.log).toBeDefined()
     // And still the contained credential, not the real one.
     expect(seen[0]?.openai.apiKey).toBe(PLACEHOLDER_API_KEY)
     await run.proxy.close()

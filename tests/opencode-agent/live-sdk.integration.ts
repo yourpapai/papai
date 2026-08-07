@@ -106,6 +106,15 @@ const silentLog = {
   error: (): void => {},
 }
 
+/** Captures what the progress reporter said, so a real run can be checked. */
+const progressLines: Array<{ meta: unknown; message: string }> = []
+const progressLog = {
+  debug: (): void => {},
+  info: (meta: unknown, message: string): void => void progressLines.push({ meta, message }),
+  warn: (): void => {},
+  error: (): void => {},
+}
+
 const run = async (): Promise<number> => {
   const stub = startStubProvider()
   const real = { apiKey: 'sk-stub-REAL-CREDENTIAL', baseUrl: `http://127.0.0.1:${stub.port}`, model: 'gpt-5' }
@@ -127,14 +136,19 @@ const run = async (): Promise<number> => {
     // were observed. The pipeline itself boots one memoized server before the
     // review pool spawns anything, so this ordering is what production already
     // does; the check has to do it deliberately.
-    const warmup = await createOpenCodeAgent({ directory: process.cwd(), openai, sessionTitle: 'live-warmup' })
+    const warmup = await createOpenCodeAgent({
+      directory: process.cwd(),
+      openai,
+      sessionTitle: 'live-warmup',
+      log: silentLog,
+    })
     await warmup.close()
 
     // Two at once: the SDK ignores `port: 0` and falls back to its 4096 default,
     // so a shared-port bug shows up here and nowhere else.
     const [first, second] = await Promise.all([
-      createOpenCodeAgent({ directory: process.cwd(), openai, sessionTitle: 'live-a' }),
-      createOpenCodeAgent({ directory: process.cwd(), openai, sessionTitle: 'live-b' }),
+      createOpenCodeAgent({ directory: process.cwd(), openai, sessionTitle: 'live-a', log: progressLog }),
+      createOpenCodeAgent({ directory: process.cwd(), openai, sessionTitle: 'live-b', log: silentLog }),
     ])
     agents.push(first, second)
 
@@ -160,6 +174,12 @@ const run = async (): Promise<number> => {
         'OpenCode never held the real credential',
         !JSON.stringify(openai).includes(real.apiKey),
         'the placeholder was not substituted',
+      ),
+      check('the event stream reported progress', progressLines.length > 0, 'nothing was logged during a real turn'),
+      check(
+        'progress carried no model output',
+        !JSON.stringify(progressLines).includes(REPLY_TEXT),
+        `a reply leaked into ${JSON.stringify(progressLines).slice(0, 200)}`,
       ),
     )
   } finally {
