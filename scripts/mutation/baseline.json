@@ -157,7 +157,7 @@
   "review-loop/src/live-renderer.ts": 0.6678571428571428,
   "review-loop/src/loop-controller.ts": 0.6666666666666666,
   "review-loop/src/progress-log.ts": 1,
-  "review-loop/src/summary-burndown.ts": 0.74,
+  "review-loop/src/summary-burndown.ts": 0.96,
   "review-loop/src/summary.ts": 0.721030042918455,
   "review-loop/src/worktree.ts": 0.8402366863905325,
   "src/analytics/intent/classifier.ts": 0.9672727272727273,
