@@ -73,6 +73,12 @@
   const hasRowProblem = $derived(rowProblems.some((problem) => problem !== undefined))
   const atCap = $derived(rows.length >= maxMcpServers)
 
+  // `maxMcpServers` is optional in the client schema (fetcher-schemas.ts:94) and falls back
+  // to Infinity above, so guard on finiteness: a count is only meaningful against a real cap.
+  const capLabel = $derived(
+    Number.isFinite(maxMcpServers) ? `${rows.length} of ${maxMcpServers} servers used` : null,
+  )
+
   function snapshotRows(rs: McpRow[]): string {
     return JSON.stringify(rs.map((r) => ({ server: r.server, token: r.token })))
   }
@@ -252,14 +258,19 @@
         {/each}
 
         <div class="settings-field__actions">
-          <Btn
-            variant="secondary"
-            size="sm"
-            testid="coding-mcp-add"
-            disabled={saving || loading || atCap}
-            onClick={addRow}>
-            {#snippet children()}Add server{/snippet}
-          </Btn>
+          <div class="settings-mcp__add">
+            <Btn
+              variant="secondary"
+              size="sm"
+              testid="coding-mcp-add"
+              disabled={saving || loading || atCap}
+              onClick={addRow}>
+              {#snippet children()}Add server{/snippet}
+            </Btn>
+            {#if capLabel !== null}
+              <span class="settings-mcp__cap" data-testid="coding-mcp-cap">{capLabel}</span>
+            {/if}
+          </div>
           <div class="settings-field__actions-trailing">
             {#if currentData.configured}
               <Btn
@@ -338,6 +349,15 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--gap-inline);
+  }
+  .settings-mcp__add {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-inline);
+  }
+  .settings-mcp__cap {
+    font-size: 10px;
+    color: var(--text-dim);
   }
   .settings-field__actions-trailing {
     display: flex;

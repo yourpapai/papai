@@ -111,3 +111,49 @@ describe('CodingMcpSection row validation', () => {
     void unmount(component)
   })
 })
+
+describe('CodingMcpSection cap counter', () => {
+  afterEach(() => {
+    restoreFetch()
+    document.body.innerHTML = ''
+  })
+
+  test('a finite cap is stated as a used-of-total count', async () => {
+    setCsrfToken('c')
+    setMockFetch(loadedMock)
+    const { target, component } = mountSection()
+    await drain()
+
+    const cap = target.querySelector<HTMLElement>('[data-testid="coding-mcp-cap"]')!
+    expect(cap.textContent.trim()).toBe('1 of 3 servers used')
+    void unmount(component)
+  })
+
+  test('the count tracks rows as they are added', async () => {
+    setCsrfToken('c')
+    setMockFetch(loadedMock)
+    const { target, component } = mountSection()
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-mcp-add"]')!.click()
+    await drain()
+
+    expect(target.querySelector<HTMLElement>('[data-testid="coding-mcp-cap"]')!.textContent.trim()).toBe(
+      '2 of 3 servers used',
+    )
+    void unmount(component)
+  })
+
+  test('an absent cap renders no count rather than an infinite one', async () => {
+    setCsrfToken('c')
+    // JSON.stringify drops undefined-valued keys, so this serializes without the field —
+    // exactly the optional-cap payload the client schema permits.
+    setMockFetch(() => Promise.resolve(json({ ...mcpPayload, maxMcpServers: undefined })))
+    const { target, component } = mountSection()
+    await drain()
+
+    expect(target.querySelector('[data-testid="coding-mcp-cap"]')).toBeNull()
+    expect(target.textContent).not.toContain('∞')
+    void unmount(component)
+  })
+})
