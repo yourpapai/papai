@@ -1,0 +1,191 @@
+name: OpenCode Issue Agent
+
+# Event-driven, never long-polling: every trigger starts a fresh job that
+# restores its state from the hidden <!-- AGENT_STATE --> block on the issue,
+# advances the state machine as far as it can, and exits.
+#
+# `issue_comment` is intentionally unfiltered. The agent holds a conversation —
+# questions, requested changes, plain answers to its own clarifying questions —
+# and a `contains(…, '/approve')`-style filter would make every one of those
+# reachable only by slash command. The in-process guardrails drop what does not
+# apply, cheaply and with a reason in the log.
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+  # A red run on agent/issue-N brings the agent back to fix its own pull request.
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+# One run at a time per issue. `cancel-in-progress` stays false: a half-finished
+# run must be allowed to post its state comment, or the next trigger restores
+# stale state.
+#
+# Both event kinds must resolve to the *same* key. Keying issue events on the
+# issue number and CI events on the branch would put a CI-fix run and a
+# maintainer-triggered run for one issue in different groups, so they would not
+# serialize — and both push to the same branch. The branch name is the identity
+# they share.
+concurrency:
+  group: >-
+    opencode-agent-${{ github.event.workflow_run.head_branch || format('agent/issue-{0}', github.event.issue.number) }}
+  cancel-in-progress: false
+
+env:
+  # obra/superpowers, pinned to a commit rather than a branch. This checkout is
+  # third-party markdown that goes straight into the agent's system prompt, so a
+  # moving ref would let it change under review. Bump deliberately, then re-run
+  # `bun run opencode-agent:verify-skills`.
+  SUPERPOWERS_REF: 44c9b2d6e889982ac18c27d05a19fefe335194e1
+
+jobs:
+  agent:
+    name: Run agent pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    # First-pass filter, mirrored and unit-tested in src/guardrails.ts. Doing it
+    # here too keeps an unauthorized event from ever booting a runner with the
+    # API keys mounted.
+    #
+    # Human events need maintainer rights; workflow_run events are machine
+    # events on a branch the agent owns, so they carry no author association.
+    if: >-
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'failure' &&
+       github.event.workflow_run.head_repository.full_name == github.repository &&
+       startsWith(github.event.workflow_run.head_branch, 'agent/issue-'))
+      ||
+      (github.event_name != 'workflow_run' &&
+       github.event.issue.pull_request == null &&
+       github.event.sender.type != 'Bot' &&
+       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association || github.event.issue.author_association))
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history: the pipeline cuts agent/issue-N from origin/<base> and
+          # fast-forwards an existing agent branch from a prior run.
+          fetch-depth: 0
+          # The token would otherwise be written into .git/config as an
+          # http.<remote>.extraheader — a file the model's `build` profile can
+          # read, and one that scrubbing the process environment does nothing
+          # about. The pipeline supplies the credential per git invocation
+          # through GIT_CONFIG_* on the child instead.
+          persist-credentials: false
+          # No `ref:`. Every event kind checks out the default branch, and the
+          # pipeline switches to `agent/issue-N` itself through `ensureBranch`,
+          # which fetches it — `fetch-depth: 0` fetches every head, so the
+          # remote-tracking ref is already here.
+          #
+          # This is the security-relevant half. `agent/issue-N` is a branch the
+          # agent writes to, so checking it out here would have `bun install`
+          # and the pipeline's own source come from a branch whose contents the
+          # model influences, in a job holding every repository secret. The
+          # issue-triggered path already worked this way; the CI path was the
+          # odd one out.
+
+      # Skills are fetched rather than vendored: obra/superpowers is MIT and
+      # separately maintained, and a pinned checkout keeps updates to a ref bump
+      # instead of a copy. The loader treats a phase's required skills as
+      # mandatory, so a failed fetch surfaces on the issue instead of silently
+      # producing a thinner prompt.
+      - name: Fetch obra/superpowers skills
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: obra/superpowers
+          ref: ${{ env.SUPERPOWERS_REF }}
+          path: .superpowers
+          persist-credentials: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.13
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Runs the production skill loader, not a bash reimplementation of it, so
+      # a checkout that is missing or has renamed a required skill fails here —
+      # named — instead of silently producing a thinner prompt. Placed before
+      # the model credentials are used so a bad checkout costs nothing.
+      - name: Verify the skills landed
+        run: bun run opencode-agent:verify-skills
+
+      # The review-loop workspace shells out to `opencode run`, so the CLI has to
+      # be on PATH. It reads its provider config from OPENCODE_CONFIG_CONTENT,
+      # which the pipeline generates from the OpenAI settings below.
+      - name: Install the OpenCode CLI
+        run: |
+          bun add --global opencode-ai@1.18.7
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+
+      - name: Run the agent pipeline
+        env:
+          # Repository access. Swap for a GitHub App installation token when you
+          # want the agent's pull requests to trigger other workflows — pushes
+          # made with GITHUB_TOKEN deliberately do not, which also means CI will
+          # not run on the agent's branch and the CI-fix path never fires.
+          GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+
+          # The only model credentials. One OpenAI-compatible endpoint covers
+          # OpenAI, Azure-style gateways, OpenRouter and self-hosted servers, so
+          # there are no provider-specific keys to keep in step.
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+
+          # Pipeline configuration — see opencode-agent/README.md.
+          AGENT_SELF_LOGIN: ${{ vars.AGENT_SELF_LOGIN || github.repository_owner }}
+          AGENT_WORKFLOW_NAME: OpenCode Issue Agent
+          # AGENT_BASE_BRANCH is deliberately unset: the pipeline reads the
+          # branch off the payload's repository.default_branch. Passing it here
+          # would mask that path and let it rot untested.
+          AGENT_CHECK_COMMAND: ${{ vars.AGENT_CHECK_COMMAND }}
+          AGENT_REVIEW_COMMAND: ${{ vars.AGENT_REVIEW_COMMAND }}
+          AGENT_CHECKS: ${{ vars.AGENT_CHECKS }}
+          AGENT_COMMIT_NAME: ${{ vars.AGENT_COMMIT_NAME }}
+          AGENT_COMMIT_EMAIL: ${{ vars.AGENT_COMMIT_EMAIL }}
+          AGENT_MAX_CHANGED_FILES: ${{ vars.AGENT_MAX_CHANGED_FILES }}
+          AGENT_MAX_CHANGED_LINES: ${{ vars.AGENT_MAX_CHANGED_LINES }}
+          AGENT_REVIEW_MAX_ROUNDS: ${{ vars.AGENT_REVIEW_MAX_ROUNDS }}
+          AGENT_REVIEW_POOL_SIZE: ${{ vars.AGENT_REVIEW_POOL_SIZE }}
+          AGENT_CI_FIX_MAX_ROUNDS: ${{ vars.AGENT_CI_FIX_MAX_ROUNDS }}
+          AGENT_MAX_CI_ATTEMPTS: ${{ vars.AGENT_MAX_CI_ATTEMPTS }}
+          AGENT_MAX_ATTEMPTS: ${{ vars.AGENT_MAX_ATTEMPTS }}
+          AGENT_TIMEOUT_MS: ${{ vars.AGENT_TIMEOUT_MS }}
+          AGENT_MAX_TOKENS: ${{ vars.AGENT_MAX_TOKENS }}
+          AGENT_LOG_LEVEL: ${{ vars.AGENT_LOG_LEVEL || 'info' }}
+        run: |
+          bun run opencode-agent/src/index.ts \
+            --event-path "$GITHUB_EVENT_PATH" \
+            --event-name "$GITHUB_EVENT_NAME" \
+            --repo-root "$GITHUB_WORKSPACE"
+
+      # The pipeline posts its own failure comment and parks the state in FAILED
+      # before exiting non-zero. This step only covers the case where the job
+      # itself died first (install failure, runner timeout, cancelled job), where
+      # nothing would otherwise appear on the issue.
+      - name: Report an infrastructure failure on the issue
+        if: failure() && github.event.issue.number
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          printf '%s\n\n%s\n\n%s\n' \
+            '### Agent job failed' \
+            "The workflow run itself failed before or during the pipeline. Logs: $RUN_URL" \
+            'The issue state is unchanged; reply `/retry` once the cause is addressed.' \
+            > /tmp/agent-failure.md
+          gh issue comment "$ISSUE_NUMBER" --body-file /tmp/agent-failure.md
