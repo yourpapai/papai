@@ -103,12 +103,21 @@ describe('serializeState / extractState', () => {
       resumeFrom: null,
       attempts: 0,
       ciAttempts: 0,
+      ciBudgetReported: false,
       revision: 0,
       lastError: null,
       prUrl: null,
       prNumber: null,
       updatedAt: null,
     })
+  })
+
+  test('a block written before a field existed still restores', () => {
+    // Fields are added with defaults precisely so a live issue is not stranded
+    // mid-flight by a deploy. `ciBudgetReported` is the most recent addition.
+    const older = `<!-- ${STATE_MARKER}: {"phase":"COMPLETE","issueId":5,"ciAttempts":3} -->`
+
+    expect(extractState(older)).toMatchObject({ phase: 'COMPLETE', ciAttempts: 3, ciBudgetReported: false })
   })
 
   test('stamps the current version on every write', () => {

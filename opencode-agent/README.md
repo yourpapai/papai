@@ -89,6 +89,10 @@ job; `AGENT_MAX_CI_ATTEMPTS` caps rounds across the pull request's whole life, s
 a genuinely broken branch cannot bounce between the agent and CI forever. The
 agent's own workflow is excluded, so its failures never feed itself.
 
+When that lifetime budget runs out the agent says so on the issue, once, naming
+the pull request — it does not simply stop. Later red runs are then ignored
+silently, because CI fires on every push and repeating the notice would be spam.
+
 > **This path only fires if CI runs on the agent's branch.** Pushes made with the
 > default `GITHUB_TOKEN` deliberately do not trigger other workflows. Set
 > `AGENT_GITHUB_TOKEN` to a GitHub App installation token or a PAT if you want

@@ -129,5 +129,13 @@ export const transition = (
   return applyPatch(state, forwardTransition(state, signal, next, patch))
 }
 
+/**
+ * Records that the CI-fix give-up notice has been delivered.
+ *
+ * Not a transition: the phase does not move, the agent has simply stopped
+ * acting on this pull request's red checks.
+ */
+export const markCiBudgetReported = (state: AgentState): AgentState => applyPatch(state, { ciBudgetReported: true })
+
 const applyPatch = (state: AgentState, patch: Partial<AgentState>): AgentState =>
   agentStateSchema.parse({ ...state, ...patch, v: STATE_VERSION })

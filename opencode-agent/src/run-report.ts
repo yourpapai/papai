@@ -66,6 +66,23 @@ export const renderSettled = (state: AgentState): string =>
 export const renderExhausted = (reason: string): string =>
   ['### Giving up', '', reason, '', 'Fix the underlying problem, then reply `/retry`.'].join('\n')
 
+/**
+ * The CI-fix equivalent, and the one that matters more.
+ *
+ * A red check arrives asynchronously with nobody watching the Actions log, so a
+ * silent give-up looks exactly like an agent still working on it. Posted once —
+ * `ciBudgetReported` stops every later red run repeating it.
+ */
+export const renderCiExhausted = (reason: string, prUrl: string | null): string =>
+  [
+    '### I have stopped trying to fix CI',
+    '',
+    reason,
+    '',
+    prUrl === null ? 'The pull request is still open.' : `The pull request is still open: ${prUrl}`,
+    'Its checks are red and I will not attempt another fix — take a look, or push a fix yourself.',
+  ].join('\n')
+
 export const renderFailure = (phase: Phase, message: string, next: AgentState, deps: PhaseDeps): string =>
   [
     `### Run failed in ${phase}`,

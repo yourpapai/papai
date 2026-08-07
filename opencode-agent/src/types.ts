@@ -80,6 +80,11 @@ export const agentStateSchema = z.object({
   attempts: z.number().int().min(0).default(0),
   /** CI-fix rounds spent on the delivered pull request. Never reset. */
   ciAttempts: z.number().int().min(0).default(0),
+  /**
+   * Whether the "I have stopped fixing CI" notice has been posted. CI events
+   * arrive on every push and re-run, so without this the notice repeats forever.
+   */
+  ciBudgetReported: z.boolean().default(false),
   /** Bumped each time the spec or plan is revised, for the artefact blocks. */
   revision: z.number().int().min(0).default(0),
   lastError: z.string().nullable().default(null),

@@ -383,7 +383,25 @@ progress, or track it per `resumeFrom` phase.
 
 ### S2-2 Exhausting the retry budget is completely silent — by inspection — **[FIXED]**
 
-_Fixed: the budget path posts a "Giving up" comment._
+_Fixed in two steps. The first made the **retry** budget post a "Giving up"
+comment and stopped there, leaving its sibling untouched: the **CI-fix** budget
+still returned a bare `skip`, posting nothing. The test written alongside it
+asserted `posted).toEqual([])` — it pinned the defect rather than the fix.
+
+That gap mattered more than the one that was closed. A red check arrives on its
+own schedule with nobody reading the Actions log, so an agent that quietly stops
+fixing is indistinguishable from one still working; the pull request simply never
+improves again.
+
+Both budgets now report. The CI notice names the pull request and says plainly
+that no further attempt will be made. It posts **once** — CI fires on every push
+and re-run, so repeating it would be the opposite mistake, and a new
+`ciBudgetReported` flag on the state prevents that. The flag is added with a
+default, so a state block written before it existed still restores (covered by a
+test, since a mid-flight deploy must not strand a live issue).
+
+Mutation-checked in both directions: reverting to a silent `skip` turns two tests
+red, and dropping the already-reported guard turns the spam test red._
 
 `src/orchestrator.ts:132-134` returns `failed` when
 `attempts >= maxAttempts` **before** running a handler and without posting

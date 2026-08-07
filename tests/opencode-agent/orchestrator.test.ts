@@ -630,7 +630,25 @@ describe('CI fixing', () => {
     expect(harness.io.posted).toEqual([])
   })
 
-  test('stops after the CI-fix budget is spent', async () => {
+  test('says so on the issue when it stops trying, rather than going quiet', async () => {
+    // A red check arrives on its own schedule with nobody reading the Actions
+    // log, so a silent give-up is indistinguishable from an agent still working.
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+    harness.io.posted.length = 0
+
+    const result = await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.posted).toHaveLength(1)
+    expect(harness.io.posted[0]).toContain('I have stopped trying to fix CI')
+    expect(harness.io.posted[0]).toContain('https://example.test/pull/7')
+    expect(latestPostedState(harness)?.ciBudgetReported).toBe(true)
+  })
+
+  test('says it once, however many more red runs arrive', async () => {
+    // CI fires on every push and re-run; repeating the notice would be spam.
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
     await runPipeline({ event: ciEvent(), deps: harness.deps })
     await runPipeline({ event: ciEvent(), deps: harness.deps })
     harness.io.posted.length = 0
@@ -638,8 +656,18 @@ describe('CI fixing', () => {
     const result = await runPipeline({ event: ciEvent(), deps: harness.deps })
 
     expect(result.status).toBe('skipped')
-    expect(result.reason).toContain('CI-fix budget exhausted')
+    expect(result.reason).toContain('Already reported')
     expect(harness.io.posted).toEqual([])
+  })
+
+  test('does not touch the working tree once the budget is spent', async () => {
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+    harness.io.gitCalls.length = 0
+
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(harness.io.gitCalls).toEqual([])
   })
 })
 

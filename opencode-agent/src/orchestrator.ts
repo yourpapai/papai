@@ -15,8 +15,8 @@ import { handleDeliver } from './phases/deliver.js'
 import { handleImplement } from './phases/implement.js'
 import { handlePlan } from './phases/plan.js'
 import { handleTriage } from './phases/triage.js'
-import { postAndAppend, renderExhausted, renderFailure, renderSettled } from './run-report.js'
-import { findLatestState, initialState, transition } from './state-manager.js'
+import { postAndAppend, renderCiExhausted, renderExhausted, renderFailure, renderSettled } from './run-report.js'
+import { findLatestState, initialState, markCiBudgetReported, transition } from './state-manager.js'
 import { errorMessage, WAITING_PHASES } from './types.js'
 import type { AgentState, Phase, TransitionSignal } from './types.js'
 
@@ -115,7 +115,7 @@ const COMMAND_SIGNALS: Record<string, TransitionSignal> = {
 const applyTrigger = (input: PhaseInput): Promise<TriggerOutcome> => {
   const { state, trigger, command, deps } = input
 
-  if (trigger.kind === 'ci') return Promise.resolve(applyCiTrigger(state, deps))
+  if (trigger.kind === 'ci') return applyCiTrigger(input)
   if (command !== null) return Promise.resolve(applyCommand(state, command, deps))
   if (state.phase === 'INIT_OR_CLARIFY') return Promise.resolve({ state, halt: null, answer: false })
   if (!WAITING_PHASES.has(state.phase)) {
@@ -125,16 +125,31 @@ const applyTrigger = (input: PhaseInput): Promise<TriggerOutcome> => {
   return applyIntent(input)
 }
 
-const applyCiTrigger = (state: AgentState, deps: PhaseDeps): TriggerOutcome => {
-  if (state.ciAttempts >= deps.config.maxCiAttempts) {
-    return {
-      state,
-      halt: skip(state, `CI-fix budget exhausted (${state.ciAttempts} of ${deps.config.maxCiAttempts})`),
-      answer: false,
-    }
+/**
+ * A red CI run either buys a fix attempt or, once the budget is spent, buys the
+ * maintainer a notice — exactly once.
+ *
+ * Silence here is the failure mode: CI events arrive on their own schedule with
+ * nobody reading the Actions log, so an agent that quietly stops fixing looks
+ * identical to one still working. Repeating the notice on every later red run
+ * would be the opposite mistake, which is what `ciBudgetReported` prevents.
+ */
+const applyCiTrigger = async (input: PhaseInput): Promise<TriggerOutcome> => {
+  const { state, deps, thread } = input
+  if (state.ciAttempts < deps.config.maxCiAttempts) {
+    return moveOrSkip(state, 'CI_FAILED', deps, 'a red CI run')
   }
 
-  return moveOrSkip(state, 'CI_FAILED', deps, 'a red CI run')
+  const reason = `Spent the CI-fix budget (${state.ciAttempts} of ${deps.config.maxCiAttempts} attempts).`
+  if (state.ciBudgetReported) {
+    return { state, halt: skip(state, `${reason} Already reported.`), answer: false }
+  }
+
+  const reported = markCiBudgetReported(state)
+  deps.log.warn({ issue: state.issueId, ciAttempts: state.ciAttempts }, 'CI-fix budget spent')
+  await postAndAppend(thread, input, renderCiExhausted(reason, state.prUrl), reported)
+
+  return { state: reported, halt: { status: 'failed', reason, state: reported }, answer: false }
 }
 
 const applyCommand = (state: AgentState, command: ParsedCommand, deps: PhaseDeps): TriggerOutcome => {
