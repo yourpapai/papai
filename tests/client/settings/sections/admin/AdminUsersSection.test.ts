@@ -133,6 +133,11 @@ const openAccessOffMock = (url: string): Promise<Response> => {
   return Promise.resolve(json(usersPayload))
 }
 
+const noUsersMock = (url: string): Promise<Response> => {
+  if (url.includes('/open-access')) return Promise.resolve(json(openAccessOff))
+  return Promise.resolve(json({ users: [] }))
+}
+
 const openAccessOnMock = (url: string): Promise<Response> => {
   if (url.includes('/admin/open-access')) return Promise.resolve(json(openAccessOn))
   return Promise.resolve(json(usersPayload))
@@ -846,6 +851,48 @@ describe('AdminUsersSection', () => {
     button.click()
     await drain()
     expect(addPostCount).toBe(1)
+    void unmount(component)
+  })
+
+  test('the status line is announced politely', async () => {
+    setCsrfToken('c')
+    setMockFetch(unblockUserMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="user-block-77"]')!.click()
+    await drain()
+    const line = target.querySelector('.status-success')!
+    expect(line.getAttribute('role')).toBe('status')
+    void unmount(component)
+  })
+
+  test('the error line is announced assertively', async () => {
+    setCsrfToken('c')
+    setMockFetch(postErrorMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="user-add-input"]')!
+    input.value = '99'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="user-add"]')!.click()
+    await drain()
+    expect(target.querySelector('.status-error')!.getAttribute('role')).toBe('alert')
+    void unmount(component)
+  })
+
+  test('an empty list points at the add form instead of dead-ending', async () => {
+    setMockFetch(noUsersMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.textContent).toContain('No users yet')
+    expect(target.textContent).toContain('Add one above')
     void unmount(component)
   })
 })

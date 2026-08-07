@@ -21,6 +21,7 @@
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
   import SettingsTable from '../../components/SettingsTable.svelte'
   import IdCell from '../../components/IdCell.svelte'
+  import EmptyState from '../../../shared/ui/EmptyState.svelte'
   import ErrorState from '../../../shared/ui/ErrorState.svelte'
   import Pill from '../../../shared/ui/Pill.svelte'
   import { describeAddedBy, removeUserLabel, userStatus } from './admin-users-presenters.js'
@@ -332,7 +333,11 @@
         defaultSort={{ key: 'username', dir: 'asc' }}
         {cell}
         searchPlaceholder="Search users by ID, name, or status…">
-        {#snippet empty()}No users{/snippet}
+        {#snippet empty()}
+          <EmptyState
+            title="No users yet"
+            hint="Add one above by numeric ID, or by @username to create a pending entry that activates on their first message." />
+        {/snippet}
       </SettingsTable>
     </div>
   {/if}
@@ -369,11 +374,11 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: var(--gap-inline);
     border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 10px 12px;
-    margin-bottom: 12px;
+    border-radius: var(--radius);
+    padding: var(--s2) var(--s3);
+    margin-bottom: var(--s3);
   }
   .open-access-hint {
     font-size: 12px;
