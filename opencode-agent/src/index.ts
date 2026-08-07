@@ -14,7 +14,7 @@ import { assembleDeps } from './deps.js'
 import type { FetchLike } from './github.js'
 import { parseTriggerEvent } from './guardrails.js'
 import type { TriggerEvent } from './guardrails.js'
-import { createLogger } from './logger.js'
+import { createPipelineLogger } from './logger.js'
 import type { Logger, LogLevel } from './logger.js'
 import { createOpenCodeAgent } from './opencode-adapter.js'
 import type { OpenCodeAgent } from './opencode-adapter.js'
@@ -174,8 +174,11 @@ export const contain = ({ config, event, log, run, options }: ContainInput): Con
  */
 export const runCli = async (options: MainOptions): Promise<RunResult> => {
   const args = parseArgs(options.argv, options.env)
-  const log = options.logger ?? createLogger({ level: args.logLevel })
+  // Config first, so the logger is built knowing which values must never be
+  // printed. Nothing logs before this point; a config error propagates to
+  // `main` instead, and carries no credential.
   const config = loadConfig(options.env, args.repoRoot)
+  const log = options.logger ?? createPipelineLogger(args.logLevel, config)
 
   // Before anything can spawn a child. The OpenCode server inherits this
   // process's environment wholesale, so a credential left here is one the model

@@ -229,9 +229,13 @@ instead, and a proxy holding the real key swaps in the `Authorization` on the wa
 out. The same generated config drives the review loop's `opencode run`
 subprocesses, so both paths are covered.
 
+Log lines get the same treatment, and for the same reason: a credential quoted
+into a message or echoed into an `argv` array has no field name to match on. The
+value pass runs on the serialized line; the older name-based pass stays alongside
+it, because that one catches a third-party token the pipeline never loaded.
+
 > **Still open:** there is no container or network boundary around the model,
-> only these capability and credential boundaries (S3-2), and the logger still
-> redacts by field name rather than by value (S3-8). Both are in `ROADMAP.md`.
+> only these capability and credential boundaries — see S3-2 in `ROADMAP.md`.
 
 ### A note on the "actor matches repository owner" rule
 

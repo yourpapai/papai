@@ -17,6 +17,7 @@ import type { GitOptions } from '../../opencode-agent/src/git.js'
 import { createOctokitApi } from '../../opencode-agent/src/github.js'
 import type { GitHubApi, PullRequestState } from '../../opencode-agent/src/github.js'
 import { createLogger, redact } from '../../opencode-agent/src/logger.js'
+import type { Logger } from '../../opencode-agent/src/logger.js'
 import { extractJsonObject, parseModelJson } from '../../opencode-agent/src/model-json.js'
 import { composeSystemPrompt, loadPhaseSkills, loadSkills, PHASE_SKILLS } from '../../opencode-agent/src/obra-skills.js'
 import type { ReadSkillFile } from '../../opencode-agent/src/obra-skills.js'
@@ -1067,6 +1068,60 @@ describe('logger', () => {
       apiKey: '[redacted]',
       issue: 42,
     })
+  })
+
+  // Redacting by field name only works when a secret arrives in a field
+  // somebody named. None of these have a key to match on, and all printed in
+  // full before the value pass existed.
+  test.each([
+    ['the message itself', (log: Logger, key: string): void => log.error({ issue: 42 }, `git rejected: ${key}`)],
+    ['a free-text error field', (log: Logger, key: string): void => log.error({ error: `denied for ${key}` }, 'x')],
+    ['a nested array', (log: Logger, key: string): void => log.error({ argv: ['curl', `Bearer ${key}`] }, 'x')],
+    ['a key the logger never heard of', (log: Logger, key: string): void => log.warn({ somethingNew: key }, 'x')],
+  ])('strips a credential from %s', (_label, emit) => {
+    const key = 'sk-live-SUPERSECRET-0123456789'
+    const lines: string[] = []
+    const log = createLogger({
+      level: 'debug',
+      sink: (line): void => void lines.push(line),
+      now: () => 'T0',
+      secrets: [key],
+    })
+
+    emit(log, key)
+
+    expect(lines[0]).not.toContain(key)
+    expect(lines[0]).toContain('[redacted]')
+  })
+
+  test('still redacts a credential it does not know, by field name', () => {
+    // The two passes cover different things: this one is a third-party token
+    // the pipeline never loaded, so no value list could match it.
+    const lines: string[] = []
+    const log = createLogger({
+      level: 'debug',
+      sink: (line): void => void lines.push(line),
+      now: () => 'T0',
+      secrets: ['sk-ours'],
+    })
+
+    log.error({ token: 'somebody-elses-token' }, 'x')
+
+    expect(lines[0]).not.toContain('somebody-elses-token')
+  })
+
+  test('leaves an ordinary line untouched', () => {
+    const lines: string[] = []
+    const log = createLogger({
+      level: 'debug',
+      sink: (line): void => void lines.push(line),
+      now: () => 'T0',
+      secrets: ['sk-live-SUPERSECRET-0123456789'],
+    })
+
+    log.info({ issue: 42, phase: 'DESIGN_SPEC' }, 'Pipeline finished')
+
+    expect(lines[0]).toBe('{"time":"T0","level":"info","message":"Pipeline finished","issue":42,"phase":"DESIGN_SPEC"}')
   })
 
   test('emits NDJSON with the level and message', () => {

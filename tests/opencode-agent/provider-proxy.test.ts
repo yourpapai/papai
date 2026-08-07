@@ -9,6 +9,7 @@ import type { PipelineConfig } from '../../opencode-agent/src/config.js'
 import type { TriggerEvent } from '../../opencode-agent/src/guardrails.js'
 import { contain } from '../../opencode-agent/src/index.js'
 import type { Contained } from '../../opencode-agent/src/index.js'
+import { createPipelineLogger } from '../../opencode-agent/src/logger.js'
 import { buildOpencodeConfig, opencodeConfigEnv } from '../../opencode-agent/src/openai-config.js'
 import type { OpenAiSettings } from '../../opencode-agent/src/openai-config.js'
 import { PLACEHOLDER_API_KEY, proxiedSettings, startProviderProxy } from '../../opencode-agent/src/provider-proxy.js'
@@ -224,6 +225,19 @@ describe('contain', () => {
     expect(run.deps.config.openai.apiKey).toBe(PLACEHOLDER_API_KEY)
     expect(run.deps.config.openai.baseUrl).toStartWith('http://127.0.0.1:')
     await run.proxy.close()
+  })
+
+  test('the logger it builds knows the credentials it must never print', () => {
+    // The wiring, not the logger: dropping `secrets` from an inline
+    // `createLogger` call killed no test, because a call site is not something
+    // a test can hold. `createPipelineLogger` is.
+    const lines: string[] = []
+    const log = createPipelineLogger('debug', config(), (line) => void lines.push(line))
+
+    log.error({ issue: 42 }, `provider rejected the call for ${KEY}`)
+
+    expect(lines[0]).not.toContain(KEY)
+    expect(lines[0]).toContain('[redacted]')
   })
 
   test('keeps the real credentials for the guards that need them', async () => {

@@ -934,6 +934,125 @@ GitHub masks registered secrets in Actions logs, and it does not mask issue
 comments — but it is name-based, so a token inside a logged free-text error
 message survives. Recorded as S3-8._
 
+### S3-8 The logger redacts by field name, so a secret inside a message survives — verified — **[FIXED]**
+
+_Verified: only the *named* field was redacted. A key quoted into the message, a
+provider error repeated into a free-text `error` field, and a command echoed into
+an `argv` array all printed in full._
+
+_Fixed the same way S3-3 fixed the issue-comment path: by **value**, at the
+boundary. The serialized NDJSON line is redacted just before it reaches the sink,
+so the pass covers the message, any key a caller invented, and any depth of
+nesting — without this module having to walk an arbitrary object._
+
+_The name-based pass stays. Unlike the dead header deny-list removed in S3-9,
+these two genuinely cover different things and neither subsumes the other: the
+name pass catches a credential the pipeline never loaded — a third-party token
+that happens to arrive in a field called `token` — which no value list could
+match. Both are asserted._
+
+_The logger is now built **after** config, so it knows the values before it can
+print anything. Nothing logged before that point, so no coverage was lost; a
+config error still propagates to `main` and carries no credential._
+
+_Mutation-checked six ways. One survived and changed the design: dropping
+`secrets` from an inline `createLogger({ ... })` in `runCli` killed nothing,
+because a call site is not something a test can hold — the same wiring gap as
+S3-3 and S3-9. `createPipelineLogger(level, config)` is a named factory that
+tests can call, and dropping the argument **there** now fails._
+
+_What that leaves: the single line in `runCli` that chooses the factory. A
+mutation replacing it with a bare `createLogger` still passes, and no test short
+of capturing stdout through a full run can catch it. Recorded rather than
+papered over — it is a one-line review surface, not a silent hole._
+
+_Also unaddressed, and smaller: `main`'s `process.stderr.write` on an escaped
+throw is not redacted. It cannot be — a config failure happens before any secret
+is known. The realistic exposure is low, since phase failures are caught and
+reported inside the pipeline, and an Octokit error carries the URL but not the
+header._
+
+### S3-9 The provider key reaches the model through `OPENCODE_CONFIG_CONTENT` — verified — **[FIXED]**
+
+_Found while checking whether S3-7 had closed its class, and it had not. The
+GitHub token was carefully removed from every place the model could read it while
+the **OpenAI key** sat in plain sight._
+
+_`createOpencodeServer` spawns `opencode serve` with `OPENCODE_CONFIG_CONTENT`
+set to the serialized config — and the config is where the provider key lives.
+Every process the model starts with `bash` inherits that variable, so
+`echo $OPENCODE_CONFIG_CONTENT` was a complete credential disclosure. The
+environment scrub from S3-2 cannot help: the SDK sets the variable on the child,
+after the scrub. Verified by reading `/proc/<pid>/environ` of a real spawned
+server — with `OPENAI_API_KEY` already removed from this process, the key was
+still there, under `OPENCODE_CONFIG_CONTENT`._
+
+_Fixed by never giving OpenCode the credential. `provider-proxy.ts` runs a
+loopback proxy that holds the key; OpenCode is configured with
+`PLACEHOLDER_API_KEY` and the proxy's URL, and the real `Authorization` is
+swapped in on the way out. The key stays in the parent process, which the model
+has no handle on. Both consumers are covered — the in-process session and the
+review loop's `opencode run` subprocesses read the same generated config._
+
+_Verified end to end, not just in unit tests: the live check now drives a real
+`opencode serve` through the proxy to a stub upstream and asserts the upstream
+saw `Bearer <real key>` while the config OpenCode held carried only the
+placeholder. That is also the only proof that a **streamed** completion survives
+the extra hop._
+
+_This is containment, not authentication: anything that can already run code on
+the runner can call the proxy. It removes the credential from the places an
+**injected prompt** can read, which is the threat S3-2 is about._
+
+_Mutation-checked ten ways. Two survived the first pass and both taught
+something. Dropping `authorization` from the copied-header deny-list killed
+nothing — because the unconditional `set` after the copy loop already overwrites
+it, making the deny-list entry unreachable. It read as a second defence while
+being dead, so it is gone rather than kept for looks. And replacing the contained
+config with the raw one killed nothing, because every test exercised the proxy
+module directly — the adapter can be perfect and never be wired in, exactly the
+gap S3-3 hit. `contain` is exported and tested now._
+
+### S3-3 Check output and git stderr are published verbatim to a public issue — verified — **[FIXED]**
+
+_Verified on the wire with the transport recorder: a comment body carrying a
+token went out to `POST /repos/acme/widgets/issues/42/comments` byte for byte._
+
+_Redaction lives at the **GitHub adapter**, not in the renderers. A comment body
+is assembled from check output, git stderr, review summaries, model prose and the
+hidden state block's `lastError`, and every one of those is a place a future
+renderer could forget. `createOctokitApi` strips secrets from every outbound
+body — comments, new pull requests, refreshed ones — so nothing leaves the module
+unredacted, and `OctokitApiOptions.secrets` is **required** so a new construction
+site has to decide rather than default to silence._
+
+_Keyed on **values**, not names, and the reason is sharper than for the
+environment scrub: the logger redacts by field name, which only works when a
+secret arrives in a field somebody named. Check output and git stderr are free
+text — a token inside them has no key at all. Branch names are left alone; they
+are computed by this pipeline, and redacting them could corrupt a `head`._
+
+_`pipelineSecrets(config)` is the single list both consumers read, so a
+credential added to the config cannot be wired into the scrub and forgotten by
+the redaction._
+
+_A mutation survived the first pass and mattered: replacing the wired list with
+`[]` killed nothing, because every redaction test built the adapter directly. The
+adapter can be perfect and still be handed nothing. `MainOptions.fetch` now
+carries the transport into `runCli`, and a `/cancel` run — which reaches a posted
+comment without booting a model — asserts end to end that a body posted by the
+**real** pipeline carries no credential. That test kills the mutant._
+
+_Mutation-checked nine ways in total: un-redacting each of the three outbound
+paths, replacing only the first occurrence, stopping after the first secret,
+dropping the minimum-length guard, passing an empty list from `runCli`, and
+dropping either credential from `pipelineSecrets`._
+
+_Not covered: the logger still redacts by key name. That is a smaller exposure —
+GitHub masks registered secrets in Actions logs, and it does not mask issue
+comments — but it is name-based, so a token inside a logged free-text error
+message survives. Recorded as S3-8._
+
 ### S3-8 The logger redacts by field name, so a secret inside a message survives
 
 `src/logger.ts` walks metadata keys against `REDACT_KEYS`. A credential that
