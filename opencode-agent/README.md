@@ -137,6 +137,37 @@ Point `AGENT_REVIEW_COMMAND` at your own reviewer to change that, or set it to
 green" is a different problem from "review this diff", and the workspace does not
 cover it.
 
+## What bounds a run
+
+Four bounds, each on a different kind of runaway.
+
+| Bound            | Where                                              | What it stops                                                             |
+| ---------------- | -------------------------------------------------- | ------------------------------------------------------------------------- |
+| Prompt size      | `prompt-budget.ts`                                 | 12k characters of thread, and 12k across _all_ failing checks, per prompt |
+| Turn duration    | `AGENT_TIMEOUT_MS`, applied in `deadline.ts`       | A model turn that never answers                                           |
+| Provider hiccups | `provider-proxy.ts` — 3 attempts, with backoff     | A single 429 or 5xx failing the phase                                     |
+| Rounds           | `AGENT_MAX_ATTEMPTS`, `AGENT_CI_FIX_MAX_ROUNDS`, … | An agent and CI bouncing off each other forever                           |
+
+The prompt caps are on the **finished prompt**, not on any one input: a per-input
+cap bounds one log and nothing else, and three red checks at 8k each still put
+24k into a repair prompt that then gets re-sent every round. When several
+failures compete for the room, whoever fits inside an equal share is kept whole
+and the rest is re-divided among the others, so a 200-character lint error cannot
+crowd out the 20k test log that is the actual failure.
+
+The turn deadline bounds the **waiting**, not the work — nothing can cancel an
+in-flight request. What it buys is which failure happens: an error the pipeline
+can post to the issue, rather than a runner vanishing at `timeout-minutes` with
+no comment, no state block, and the issue left in whatever phase it started in.
+
+Retries live at the provider proxy rather than in the adapter. It is the layer
+that sees an actual HTTP status, so nothing has to guess which SDK error means
+"rate limited"; it is shared with the review loop's `opencode run` subprocesses;
+and it is the only place where retrying is safe by construction, because the
+status arrives before the body and there is no half-streamed reply to replay.
+Only 408, 429 and 5xx are retried — a 401 from a wrong key is a fact about the
+request, and repeating it three times only delays saying so.
+
 ## Guardrails
 
 Applied in `src/guardrails.ts`, and mirrored as a first-pass `if:` in the
@@ -303,7 +334,7 @@ cannot drift.
 | `AGENT_MAX_ATTEMPTS`                       | no       | `3`                                             | Failures before `/retry` stops resuming               |
 | `AGENT_MAX_CHANGED_FILES`                  | no       | `100`                                           | Files one commit may carry                            |
 | `AGENT_MAX_CHANGED_LINES`                  | no       | `20000`                                         | Lines one commit may change                           |
-| `AGENT_TIMEOUT_MS`                         | no       | `1800000`                                       | Per-subprocess timeout                                |
+| `AGENT_TIMEOUT_MS`                         | no       | `1800000`                                       | Timeout for one model turn, and for each subprocess   |
 | `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no       | `opencode-agent[bot]`                           | Commit identity                                       |
 | `AGENT_LOG_LEVEL`                          | no       | `info`                                          | `debug`, `info`, `warn`, `error`                      |
 
@@ -439,6 +470,9 @@ Logs are NDJSON on stdout.
 | `src/openai-config.ts`                        | The single endpoint, and the OpenCode config both paths share          |
 | `src/opencode-adapter.ts`                     | Headless OpenCode server + session                                     |
 | `src/ask-json.ts`                             | Asking the model for JSON, with one repair re-ask on a bad reply       |
+| `src/prompt-budget.ts`                        | How much text a prompt carries, and what loses when it does not fit    |
+| `src/deadline.ts`                             | The upper bound on waiting for work that has none of its own           |
+| `src/provider-proxy.ts`                       | Holds the provider key, and retries a transient upstream failure       |
 | `src/obra-skills.ts`                          | Superpowers skill loading and system-prompt composition                |
 | `src/review-runner.ts`                        | Drives the `review-loop/` workspace                                    |
 | `src/check-loop.ts`                           | The CI-fix repair loop                                                 |

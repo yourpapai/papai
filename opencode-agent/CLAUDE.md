@@ -35,7 +35,19 @@ findings: `ROADMAP.md`.
   `index.ts` configures everything downstream with the placeholder, because the
   SDK puts the config into the spawned server's environment where `bash` can
   read it. Never pass `config.openai` to an OpenCode path — pass the contained
-  settings.
+  settings. That proxy is also where **transient failures are retried**, because
+  it is the one layer that sees a real HTTP status and the only one the review
+  loop's subprocesses also pass through; do not add a second retry in the
+  adapter, where the status is already gone.
+- **Bounds go on the finished prompt, and on waiting.** `prompt-budget.ts` caps
+  what reaches the model — per prompt, not per input, since a per-input cap
+  bounds one log and nothing else. `deadline.ts` bounds waiting for a model turn;
+  it cannot cancel the request and does not claim to. What both buy is a failure
+  the pipeline can report, instead of a runner killed by `timeout-minutes`, which
+  posts nothing at all.
+- **Ask for JSON through `promptForJson`, not `agent.prompt` + `parseModelJson`.**
+  It re-asks once with the validation complaint attached. Once, not until it
+  works.
 - **Capabilities are deny-by-default.** `openai-config.ts` grants tools by name
   on top of `"*": "deny"`, per agent profile: `plan` (the read-only phases)
   cannot edit or run commands, `build` can. Add a capability by naming it, never

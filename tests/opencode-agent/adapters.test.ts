@@ -9,8 +9,10 @@ import { z } from 'zod'
 
 import { renderBlock } from '../../opencode-agent/src/blocks.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
+import type { CheckFailure } from '../../opencode-agent/src/check-loop.js'
 import { loadConfig, parseChecks, resolveBaseBranch, resolveReviewCommand } from '../../opencode-agent/src/config.js'
 import type { Env } from '../../opencode-agent/src/config.js'
+import { withDeadline } from '../../opencode-agent/src/deadline.js'
 import { PipelineError } from '../../opencode-agent/src/errors.js'
 import { createGit } from '../../opencode-agent/src/git.js'
 import type { GitOptions } from '../../opencode-agent/src/git.js'
@@ -30,9 +32,10 @@ import {
   decodeSessionId,
   parseModelRef,
 } from '../../opencode-agent/src/opencode-adapter.js'
-import type { OpenCodeConnection, SdkPromptBody } from '../../opencode-agent/src/opencode-adapter.js'
+import type { OpenCodeAgent, OpenCodeConnection, SdkPromptBody } from '../../opencode-agent/src/opencode-adapter.js'
 import { mintEnvelope } from '../../opencode-agent/src/phases/envelope.js'
-import { buildCiFixPrompt, createEnvelope, renderThread } from '../../opencode-agent/src/prompts.js'
+import { renderThread, shareBudget } from '../../opencode-agent/src/prompt-budget.js'
+import { buildCiFixPrompt, createEnvelope } from '../../opencode-agent/src/prompts.js'
 import { parseRepository } from '../../opencode-agent/src/repository.js'
 import { redactSecrets, scrubSecrets } from '../../opencode-agent/src/secrets.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
@@ -215,6 +218,95 @@ describe('createOpenCodeAgent', () => {
 
     await expect(attempt).rejects.toThrow('server down')
     expect(closed).toBe(1)
+  })
+
+  /** A prompt that never answers, which is the case with no bound of its own. */
+  const hangingAgent = (timeoutMs: number): Promise<OpenCodeAgent> =>
+    createOpenCodeAgent({
+      directory: '/repo',
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      sessionTitle: 't',
+      timeoutMs,
+      connect: () =>
+        Promise.resolve({
+          createSession: () => Promise.resolve('session-1'),
+          sendPrompt: () => new Promise<unknown>(() => {}),
+          close: () => Promise.resolve(),
+        }),
+    })
+
+  test('fails a prompt that never answers, rather than running to the job timeout', async () => {
+    // A job killed by its own timeout posts nothing — no failure comment, no
+    // state block — so the issue is left in whatever phase it started in with no
+    // record that anything went wrong.
+    const agent = await hangingAgent(5)
+
+    await expect(agent.prompt({ prompt: 'go' })).rejects.toThrow('AGENT_TIMEOUT_MS')
+  })
+
+  test('a zero timeout means no bound, not an instant failure', async () => {
+    const agent = await createOpenCodeAgent({
+      directory: '/repo',
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      sessionTitle: 't',
+      timeoutMs: 0,
+      connect: () =>
+        Promise.resolve({
+          createSession: () => Promise.resolve('session-1'),
+          sendPrompt: () => Promise.resolve({ data: { parts: [{ type: 'text', text: 'slow but fine' }] } }),
+          close: () => Promise.resolve(),
+        }),
+    })
+
+    expect((await agent.prompt({ prompt: 'go' })).text).toBe('slow but fine')
+  })
+})
+
+describe('withDeadline', () => {
+  const boom = (elapsed: number): Error => new Error(`gave up after ${elapsed}ms`)
+
+  test('passes a result through untouched', async () => {
+    expect(await withDeadline(Promise.resolve('done'), 1000, boom)).toBe('done')
+  })
+
+  test('passes the work’s own failure through, not the deadline’s', async () => {
+    await expect(withDeadline(Promise.reject(new Error('upstream said no')), 1000, boom)).rejects.toThrow(
+      'upstream said no',
+    )
+  })
+
+  test('a non-positive budget creates no timer at all', async () => {
+    // Not merely "loses the race to a fast result": a `setTimeout(…, 0)` is
+    // still scheduled ahead of the 5ms one below, so if the guard were dropped
+    // this would reject.
+    const work = new Promise<string>((resolve) => {
+      setTimeout(() => resolve('eventually'), 5)
+    })
+
+    expect(await withDeadline(work, 0, boom)).toBe('eventually')
+  })
+
+  test('names the budget it gave up on', async () => {
+    await expect(withDeadline(new Promise(() => {}), 5, boom)).rejects.toThrow('gave up after 5ms')
+  })
+
+  test('clears its timer once the work has finished', async () => {
+    // Not cosmetic: an uncleared timer keeps the event loop alive, and this
+    // process is meant to exit the moment the pipeline is done — the same reason
+    // the OpenCode server and the provider proxy are closed explicitly.
+    let fired = 0
+    const count = (): Error => {
+      fired += 1
+      return new Error('late')
+    }
+
+    await withDeadline(Promise.resolve('done'), 1, count)
+    // Queued after the 1ms timer, so an uncleared one would have fired by here.
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20)
+    })
+
+    expect(fired).toBe(0)
   })
 })
 
@@ -622,7 +714,9 @@ describe('renderThread', () => {
   test('caps the rendered size regardless of comment count', () => {
     const thread = [at(1, 'maintainer', 'x'.repeat(50_000))]
 
-    expect(renderThread(envelope, thread, 20, 500).length).toBeLessThan(600)
+    // The bound is exact, not approximate: `wrapWithin` gives the body exactly
+    // the room the envelope and the truncation note leave it.
+    expect(renderThread(envelope, thread, 20, 500).length).toBeLessThanOrEqual(500)
   })
 
   test('clips an oversized body inside its envelope, never across it', () => {
@@ -645,8 +739,95 @@ describe('renderThread', () => {
     expect(rendered.split('</untrusted_input:abc123>')).toHaveLength(2)
   })
 
+  test('says nothing about trimming when nothing was trimmed', () => {
+    expect(renderThread(envelope, [at(1, 'maintainer', 'short')])).not.toContain('earlier comments trimmed')
+  })
+
   test('renders a placeholder for an empty thread', () => {
     expect(renderThread(envelope, [])).toBe('(no comments yet)')
+  })
+})
+
+describe('shareBudget', () => {
+  test('gives everything to a single item', () => {
+    expect(shareBudget([9000], 1000)).toEqual([1000])
+  })
+
+  test('never hands out more than the budget', () => {
+    const shares = shareBudget([9000, 9000, 9000], 1200)
+
+    expect(shares.reduce((sum, share) => sum + share, 0)).toBeLessThanOrEqual(1200)
+  })
+
+  test('leaves an item that already fits whole', () => {
+    expect(shareBudget([10, 20], 1000)).toEqual([10, 20])
+  })
+
+  test('hands the room a small item did not need to the large one', () => {
+    // The point of the whole function: a flat budget/count would cut the 5000
+    // down to 500 while the 20-character lint error kept a share it cannot use.
+    expect(shareBudget([20, 5000], 1000)).toEqual([20, 980])
+  })
+
+  test('redistributes across several rounds, not just once', () => {
+    // 100 settles first at a share of 333; re-dividing 900 between the other two
+    // settles 400; the last then gets the remaining 500. A single pass would
+    // have stopped at 333 each and left 567 unspent.
+    expect(shareBudget([100, 400, 5000], 1000)).toEqual([100, 400, 500])
+  })
+
+  test('settles an item sitting exactly on its share', () => {
+    // The settled set and the still-contending set must be exact complements.
+    // Counting an item as both gives it its size and then re-divides a budget
+    // it has already spent, so everyone ends up with nothing.
+    expect(shareBudget([500, 500], 1000)).toEqual([500, 500])
+  })
+
+  test('splits evenly when nothing fits', () => {
+    expect(shareBudget([5000, 5000], 1000)).toEqual([500, 500])
+  })
+
+  test('returns nothing to share for no items', () => {
+    expect(shareBudget([], 1000)).toEqual([])
+  })
+})
+
+describe('buildCiFixPrompt', () => {
+  const envelope = createEnvelope('abc123')
+  const failure = (name: string, size: number): CheckFailure => ({ name, exitCode: 1, output: 'Z'.repeat(size) })
+
+  test('bounds the total check output, not each failure separately', () => {
+    // `check-loop.ts` caps each failure at 8k on the way in, which bounds one
+    // log and nothing else: three red checks put 24k into every repair round,
+    // and the round budget re-sends that prompt each time.
+    const prompt = buildCiFixPrompt(envelope, [failure('lint', 8000), failure('typecheck', 8000)], 1, 1000)
+
+    // 'Z' appears nowhere in the surrounding instructions, so this counts the
+    // check output alone.
+    expect(prompt.split('Z').length - 1).toBeLessThanOrEqual(1000)
+  })
+
+  test('spends the budget on the failure that actually has output', () => {
+    const prompt = buildCiFixPrompt(envelope, [failure('lint', 20), failure('test', 8000)], 1, 1000)
+
+    expect(prompt).toContain('## lint (exit 1)')
+    // The short one is whole; the long one got what it left behind.
+    expect(prompt).not.toContain('(truncated 0 chars)')
+    expect(prompt).toContain('(truncated 7020 chars)')
+  })
+
+  test('still names every failing check when the output is clipped', () => {
+    const prompt = buildCiFixPrompt(envelope, [failure('lint', 8000), failure('test', 8000)], 1, 100)
+
+    expect(prompt).toContain('## lint (exit 1)')
+    expect(prompt).toContain('## test (exit 1)')
+  })
+
+  test('keeps each clipped output inside its own envelope', () => {
+    const prompt = buildCiFixPrompt(envelope, [failure('lint', 8000), failure('test', 8000)], 1, 200)
+
+    // Two failures, two envelopes — clipping must not cut through a delimiter.
+    expect(prompt.split('</untrusted_input:abc123>')).toHaveLength(3)
   })
 })
 

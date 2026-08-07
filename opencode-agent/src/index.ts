@@ -17,7 +17,7 @@ import type { TriggerEvent } from './guardrails.js'
 import { createPipelineLogger } from './logger.js'
 import type { Logger, LogLevel } from './logger.js'
 import { createOpenCodeAgent } from './opencode-adapter.js'
-import type { OpenCodeAgent } from './opencode-adapter.js'
+import type { OpenCodeAgent, OpenCodeAgentOptions } from './opencode-adapter.js'
 import { runPipeline } from './orchestrator.js'
 import type { PhaseDeps } from './phase-context.js'
 import { proxiedSettings, startProviderProxy } from './provider-proxy.js'
@@ -128,6 +128,15 @@ export interface ContainInput {
   log: Logger
   run: CommandRunner
   options: MainOptions
+  /**
+   * Seam for tests, defaulting to the real adapter.
+   *
+   * Here because the recurring bug in this workspace is not a broken adapter but
+   * a correct one that is never handed anything — outbound redaction, the
+   * provider proxy and the logger's secret list each shipped that way. What
+   * `contain` passes to the session is only observable through a seam.
+   */
+  createAgent?: (options: OpenCodeAgentOptions) => Promise<OpenCodeAgent>
 }
 
 export interface Contained {
@@ -146,16 +155,18 @@ export interface Contained {
  * config, so scrubbing, redaction and the diff guard still know the value they
  * are protecting.
  */
-export const contain = ({ config, event, log, run, options }: ContainInput): Contained => {
+export const contain = ({ config, event, log, run, options, createAgent }: ContainInput): Contained => {
   const secrets = pipelineSecrets(config)
   const proxy = startProviderProxy(config.openai, log)
   const contained: PipelineConfig = { ...config, openai: proxiedSettings(config.openai, proxy) }
+  const create = createAgent ?? createOpenCodeAgent
 
   const agent = memoizeAgent(() =>
-    createOpenCodeAgent({
+    create({
       directory: contained.repoRoot,
       openai: contained.openai,
       sessionTitle: `issue-${event.issueNumber}`,
+      timeoutMs: contained.agentTimeoutMs,
     }),
   )
 

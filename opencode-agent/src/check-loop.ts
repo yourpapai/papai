@@ -41,7 +41,13 @@ export interface CheckLoopOptions {
   repair: RepairFn
   /** Total attempts, including the first. `1` disables self-repair. */
   maxRounds: number
-  /** Characters of check output handed to the repair agent, per failure. */
+  /**
+   * Characters kept from each failing check's output.
+   *
+   * Per failure, and therefore not a bound on the prompt: N red checks carry N
+   * times this into every repair round. `prompt-budget.ts` holds the aggregate
+   * cap that actually bounds what the model is sent.
+   */
   outputBudget?: number
 }
 
@@ -53,12 +59,19 @@ export interface CheckLoopResult {
 
 const DEFAULT_OUTPUT_BUDGET = 8000
 
-/** Keeps the tail of a log: failures and stack traces cluster at the end. */
-export const truncateOutput = (result: CommandResult, budget: number): string => {
-  const combined = `${result.stdout}\n${result.stderr}`.trim()
-  if (combined.length <= budget) return combined
-  return `…(truncated ${combined.length - budget} chars)…\n${combined.slice(-budget)}`
+/**
+ * Keeps the tail of a log: failures and stack traces cluster at the end.
+ *
+ * Says how much it dropped rather than trimming silently, so a reader — model or
+ * human — knows they are looking at an excerpt.
+ */
+export const clipTail = (text: string, budget: number): string => {
+  if (text.length <= budget) return text
+  return `…(truncated ${text.length - budget} chars)…\n${text.slice(-budget)}`
 }
+
+export const truncateOutput = (result: CommandResult, budget: number): string =>
+  clipTail(`${result.stdout}\n${result.stderr}`.trim(), budget)
 
 const collectFailures = async (
   checks: readonly CheckSpec[],

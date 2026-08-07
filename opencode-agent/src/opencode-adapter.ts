@@ -8,6 +8,7 @@ import { createServer } from 'node:net'
 import { createOpencodeClient, createOpencodeServer } from '@opencode-ai/sdk'
 import { z } from 'zod'
 
+import { withDeadline } from './deadline.js'
 import { openCodeError } from './errors.js'
 import { buildOpencodeConfig, modelRef } from './openai-config.js'
 import type { OpenAiSettings } from './openai-config.js'
@@ -93,6 +94,16 @@ export interface OpenCodeAgentOptions {
   /** The single OpenAI-compatible endpoint this pipeline talks to. */
   openai: OpenAiSettings
   sessionTitle: string
+  /**
+   * Upper bound on one model turn, from `AGENT_TIMEOUT_MS`. Omitted means
+   * unbounded, which only a caller with nothing to bound should want — config
+   * range-checks that variable to at least a second.
+   *
+   * Every subprocess this pipeline drives already had one — the check runner and
+   * the review loop both pass it to `runCommand` — and the in-process session,
+   * the one turn that can run for twenty minutes, was the only path without.
+   */
+  timeoutMs?: number
   /** Injection seam for tests. Defaults to the real SDK server + client. */
   connect?: () => Promise<OpenCodeConnection>
 }
@@ -240,7 +251,14 @@ export const createOpenCodeAgent = async (options: OpenCodeAgentOptions): Promis
   return {
     sessionId,
     prompt: async (request) => {
-      const reply = await connection.sendPrompt(sessionId, buildBody(model, request))
+      const reply = await withDeadline(
+        connection.sendPrompt(sessionId, buildBody(model, request)),
+        options.timeoutMs ?? 0,
+        (elapsed) =>
+          openCodeError(
+            `The model did not answer within ${elapsed}ms (AGENT_TIMEOUT_MS). Raise it, or narrow the phase's work.`,
+          ),
+      )
       return { text: decodeReply(reply), sessionId }
     },
     close: (): Promise<void> => connection.close(),

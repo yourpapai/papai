@@ -1258,18 +1258,18 @@ two call sites that consume the identity.
 
 ## S5 — Robustness, cost, operability
 
-| #                      | Item                                        | Where                                   | Note                                                                                                                                                                                                |
-| ---------------------- | ------------------------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| S5-1                   | No retry on transient model errors          | `opencode-adapter.ts:167-170`           | A single 429 or 5xx fails the phase and burns an attempt.                                                                                                                                           |
-| S5-2                   | No timeout on a prompt                      | `opencode-adapter.ts`                   | `ServerOptions.timeout` exists and is not passed. A hung call runs to the job timeout.                                                                                                              |
-| S5-3 **[FIXED]**       | No JSON-repair retry                        | `ask-json.ts`                           | `promptForJson` re-asks **once**, carrying the validation complaint and the rejected reply back to the model. See below.                                                                            |
-| S5-4                   | No prompt size budget                       | `prompts.ts:14-18`; `review-loop.ts:43` | `renderThread` caps at 20 comments but not at characters; `truncateOutput` caps 8k _per failure_, so three failures put 24k into each repair round.                                                 |
-| S5-5                   | `timeout-minutes: 45` is likely too low     | `agent-pipeline.yml:31`                 | Implement + up to 3 review rounds + 2 mutation rounds on a real repo can exceed it. A timeout loses everything — no state comment is posted, so the issue is stuck in whatever phase it started in. |
-| S5-6                   | No cost ceiling                             | —                                       | Round caps and the job timeout are the only bounds. A token budget per issue would be a cheap guardrail.                                                                                            |
-| S5-7                   | No progress output during a phase           | adapter                                 | A 20-minute implement prompt emits nothing; the Actions log looks hung. The SDK supports streaming.                                                                                                 |
-| S5-8                   | Every check reruns every round              | `review-loop.ts:52-66`                  | Deliberate and documented, but on a repo with a 20-minute test suite three rounds is an hour. Consider rerunning only previously-failing checks after round 1, with a full pass at the end.         |
-| S5-9                   | `parseMutationScore` is ambiguous at `1`    | `review-loop.ts:130`                    | `value > 1 ? value/100 : value` reads a bare `Mutation score: 1` as 100%, not 1%. Inherent to the format; worth documenting or requiring the `%`.                                                   |
-| S5-10 **[SUPERSEDED]** | The comment filter is gone by design (S1-3) | `agent-pipeline.yml:41-44`              | A comment merely mentioning `/approve` starts a job that then correctly skips. Harmless, noisy, billable.                                                                                           |
+| #                      | Item                                        | Where                                | Note                                                                                                                                                                                                |
+| ---------------------- | ------------------------------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S5-1 **[FIXED]**       | No retry on transient model errors          | `provider-proxy.ts`                  | Three attempts with backoff, at the proxy rather than the adapter — the one layer that sees a real HTTP status, and the only one the review loop's subprocesses also pass through. See below.       |
+| S5-2 **[FIXED]**       | No timeout on a prompt                      | `deadline.ts`; `opencode-adapter.ts` | `AGENT_TIMEOUT_MS` now bounds a model turn, as it already bounded every subprocess. Server boot had a timeout; the turn itself did not. See below.                                                  |
+| S5-3 **[FIXED]**       | No JSON-repair retry                        | `ask-json.ts`                        | `promptForJson` re-asks **once**, carrying the validation complaint and the rejected reply back to the model. See below.                                                                            |
+| S5-4 **[FIXED]**       | No prompt size budget                       | `prompt-budget.ts`                   | The thread half was already capped at 12k characters. The CI-fix half now is too, across all failures rather than each. See below.                                                                  |
+| S5-5                   | `timeout-minutes: 45` is likely too low     | `agent-pipeline.yml:31`              | Implement + up to 3 review rounds + 2 mutation rounds on a real repo can exceed it. A timeout loses everything — no state comment is posted, so the issue is stuck in whatever phase it started in. |
+| S5-6                   | No cost ceiling                             | —                                    | Round caps and the job timeout are the only bounds. A token budget per issue would be a cheap guardrail.                                                                                            |
+| S5-7                   | No progress output during a phase           | adapter                              | A 20-minute implement prompt emits nothing; the Actions log looks hung. The SDK supports streaming.                                                                                                 |
+| S5-8                   | Every check reruns every round              | `review-loop.ts:52-66`               | Deliberate and documented, but on a repo with a 20-minute test suite three rounds is an hour. Consider rerunning only previously-failing checks after round 1, with a full pass at the end.         |
+| S5-9                   | `parseMutationScore` is ambiguous at `1`    | `review-loop.ts:130`                 | `value > 1 ? value/100 : value` reads a bare `Mutation score: 1` as 100%, not 1%. Inherent to the format; worth documenting or requiring the `%`.                                                   |
+| S5-10 **[SUPERSEDED]** | The comment filter is gone by design (S1-3) | `agent-pipeline.yml:41-44`           | A comment merely mentioning `/approve` starts a job that then correctly skips. Harmless, noisy, billable.                                                                                           |
 
 ### S5-3 — what the fix is, and what it deliberately is not
 
@@ -1310,6 +1310,95 @@ equivalent: `end <= start` versus `end <`, which differ only when `{` and `}`
 share an index, and `||` versus `&&` on the same line, where both orderings hand
 `tryParse` an unparsable slice. The one real gap left is a fence containing valid
 JSON that is not an object (` ```\n5\n``` `); it belongs with S6, not here.
+
+### S5-4, S5-2, S5-1 — the three bounds a long-running phase never had
+
+Taken together because they are the same omission in three places: the pipeline
+bounded everything it _spawned_ and nothing it _waited on_.
+
+**S5-4 — the prompt is what gets paid for, so the cap belongs there.** The
+finding named two halves. The thread half was already closed: `renderThread` caps
+at 12k characters and drops whole comments rather than cutting one open. The
+check-output half was not. `check-loop.ts` caps each failure at 8k on the way in,
+which bounds one log and nothing else — three red checks put 24k into a repair
+prompt that the round budget then re-sends on every attempt.
+
+`buildCiFixPrompt` now takes an aggregate budget and divides it by max-min fair
+share: everyone gets an equal slice, whoever fits inside theirs is settled whole,
+and the remainder is re-divided among the rest. A flat `budget / count` would
+have spent a third of the room on a 200-character lint error while cutting the
+20k test log that is the actual failure. The clipping is per failure and inside
+its own envelope, never across one — the same rule the thread renderer already
+follows, and for the same reason.
+
+`prompts.ts` crossed `max-lines` doing this, which is the signal it is meant to
+be. `prompt-budget.ts` now holds every cap: that file says how much text a prompt
+gets, `prompts.ts` says what it says. They were already changing for different
+reasons.
+
+**S5-2 — a job killed by its own timeout posts nothing.** That is the whole
+argument. Every subprocess already had a bound — the check runner and the review
+loop both pass `AGENT_TIMEOUT_MS` to `runCommand` — and the in-process session,
+the one turn that legitimately runs for twenty minutes, was the only path
+without. `ServerOptions.timeout` had been wired for _boot_ by earlier work, which
+is a different thing from the turn.
+
+`withDeadline` bounds the waiting, not the work: nothing here can cancel an
+in-flight request, and claiming otherwise would be worse than saying so. What it
+buys is which failure happens — an error the orchestrator can report on an issue,
+instead of a runner disappearing at 45 minutes with no comment, no state block,
+and the issue left in whatever phase it started in.
+
+**S5-1 — retry at the proxy, not the adapter.** The finding pointed at
+`opencode-adapter.ts`, and that is the wrong layer for three reasons. The adapter
+sees an SDK envelope, so retrying there means guessing which error shape means
+"429"; the proxy sees the status. The `review-loop/` workspace's `opencode run`
+subprocesses are configured against the same proxy and no adapter-level retry
+could reach them. And retrying is only safe where nothing has been handed to the
+caller yet — at the proxy the status arrives before the body, so there is never a
+half-streamed completion to replay.
+
+Three attempts, exponential backoff, `Retry-After` honoured but capped at 20s so
+a provider cannot park the job. Retried by status — 408, 429, 5xx — and not by
+error shape; 400, 401, 404, 422 and 501 are statements about the request, and a
+wrong key would otherwise burn three calls being told so. A transport failure is
+reported as a synthetic 502 so the retry decision is made in one place rather
+than once on a status and again on whatever the runtime's `fetch` throws.
+
+The one real cost: the request body is now buffered instead of streamed, because
+a stream is consumed by the attempt that failed. Model requests are a prompt and
+its history, already fully in memory in the process that sent them. The response
+is still streamed.
+
+`contain` gained a `createAgent` seam while wiring S5-2. Not incidental — the
+recurring bug in this workspace is a correct adapter that is never handed
+anything (outbound redaction, the provider proxy, and the logger's secret list
+each shipped that way), and what `contain` passes to the session had no other way
+to be observed.
+
+Mutation-checked, and the first pass found four holes worth the run. The retry
+tested 429 and 500 and never 408, so the first clause of `isTransient` could be
+deleted for free. `bodyOf`'s bodiless-method branch had no test at all, which is
+the branch that stops `fetch` rejecting a GET carrying an empty buffer.
+`shareBudget` never saw an item sitting _exactly_ on its share — the case where
+treating the settled set and the contending set as anything but exact
+complements gives everyone nothing. And `renderThread`'s size assertion was
+`< 600` against a 500 budget, loose enough that inverting the sign on the
+truncation-note arithmetic still passed; the bound is exact, so the assertion is
+now exact.
+
+A fifth was found on the second pass, in code S5-1 only touched: the proxy's
+hop-by-hop header list had a test for `connection` and none for `host` or
+`content-length`, so two thirds of it could be emptied for free. Worth knowing
+that Bun does **not** apply the fetch spec's forbidden-header guard to a
+`Request` — those names really do arrive, and a test that assumed otherwise
+would have been asserting nothing.
+
+`deadline.ts` ends at 1.00, `prompt-budget.ts` at 0.86, `provider-proxy.ts` at
+0.83. What survives in the proxy is `defaultServe` and `defaultWait` — the real
+socket and the real clock, which every test replaces by design — plus log
+message strings and `status < 600`, which no real status distinguishes from
+`<= 600`.
 
 ---
 
