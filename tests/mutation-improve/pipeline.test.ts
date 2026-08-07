@@ -132,6 +132,14 @@ const sequenceGitStatus = (statuses: readonly string[]): PipelineDeps['execGit']
   }
 }
 
+// Subcommand-keyed execGit fake: returns canned stdout for args[0] (e.g.
+// 'rev-parse'/'diff'), empty otherwise. Keeps conditionals out of test bodies
+// (no-conditional-in-test) and yields zeros for unscripted subcommands.
+const scriptedExecGit =
+  (responses: Record<string, string>): PipelineDeps['execGit'] =>
+  (_cwd: string, args: readonly string[]): Promise<{ stdout: string; stderr: string }> =>
+    Promise.resolve({ stdout: responses[args[0] ?? ''] ?? '', stderr: '' })
+
 // Sequence-based runImproveAgent fake: records each prompt into `prompts` and
 // returns results[0] on first call, etc., clamping to the last element.
 const sequenceImprove = (
@@ -289,6 +297,40 @@ describe('pipeline runIteration', () => {
     const outcome = await runIteration(deps, 1)
     expect(outcome.outcome).toBe('failed')
     expect(outcome.gate).toBe('merge')
+  })
+
+  test('finalize measures merge diff and reports it via log.diff', async () => {
+    const deps = happyDeps()
+    const diffs: Array<{ label: string; added: number; removed: number }> = []
+    deps.log = {
+      log: (): void => undefined,
+      diff: (label: string, d: { added: number; removed: number }): void => {
+        diffs.push({ label, ...d })
+      },
+    }
+    deps.execGit = scriptedExecGit({
+      'rev-parse': 'abc123\n',
+      diff: '301\t12\ttests/x.test.ts\n',
+    })
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('improved')
+    expect(diffs).toEqual([{ label: 'iter-1', added: 301, removed: 12 }])
+  })
+
+  test('merge conflict reports no diff', async () => {
+    const deps = happyDeps()
+    const diffs: unknown[] = []
+    deps.log = {
+      log: (): void => undefined,
+      diff: (): void => {
+        diffs.push(1)
+      },
+    }
+    deps.mergeWorktree = (): Promise<{ ok: false; conflictFiles: string[] }> =>
+      Promise.resolve({ ok: false, conflictFiles: ['scripts/mutation/baseline.json'] })
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.gate).toBe('merge')
+    expect(diffs).toEqual([])
   })
 
   // C2: an unexpected throw mid-pipeline must route through failIter so the
