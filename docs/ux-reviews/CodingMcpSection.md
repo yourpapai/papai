@@ -32,13 +32,13 @@ values (a token typed into row 1 correctly follows its server when row 0 is remo
 | ------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1. Visual hierarchy & scanning  | pass  | Eyebrow → title → intro prose → row cards → actions reads in the same rhythm as its sibling coding sections; each row card groups its own controls and separates cleanly from its neighbours. |
 | 2. Affordance & signifiers      | pass  | Every action is a real `Btn`/`IconButton`, the `Select` carries a chevron, and disabled controls dim visibly; nothing interactive is styled as plain text.                                |
-| 3. Consistency w/ design system | warn  | Reuses `Btn`/`Field`/`Select`/`Input`/`PageHeader`/`IconButton`/`Confirm`/`ErrorState` correctly, but redefines the shared `.settings-field__actions` class name with geometry that diverges from the two sibling sections using it, and skips `EmptyState`. |
-| 4. Feedback & state             | fail  | The same server can be selected twice and saved with no warning; Save and Add each block silently with no discoverable reason — three of this dimension's four questions fail.            |
-| 5. Content & language           | warn  | Intro copy and the "Blank keeps the stored credential." hint are genuinely useful, but the error state headlines a raw exception and both empty states dead-end without a next step.      |
-| 6. Accessibility                | warn  | Focus ring (2px, measured), tab order, semantics and label association all verified correct; but Save and Clear never set `aria-busy`, and the status/error regions mount with their text already inside them. |
+| 3. Consistency w/ design system | pass  | `EmptyState` now used; `.settings-field__actions` carries a measured inset with its divergence from the siblings documented.               |
+| 4. Feedback & state             | pass  | Duplicate and blank rows are both blocked with the reason named on the offending row, and the cap is stated beside Add.                    |
+| 5. Content & language           | pass  | Error state names the failed operation; both dead ends carry a title and a next step.                                                      |
+| 6. Accessibility                | warn  | Focus ring (2px, measured), tab order, semantics and label association all verified correct; but the status/error regions still mount with their text already inside them. |
 | 7. Responsive / layout          | pass  | Measured at 640px: `scrollWidth === clientWidth === 640`, no overflow or clipping; the flex rows wrap cleanly and the credential input shrinks with the viewport.                          |
-| 8. Spacing, alignment & sizing  | fail  | Measured: the actions row's buttons sit 13px outside the card content edge on both sides (Save's right edge lands exactly on the viewport boundary), and two peer fields in one row differ by 3.8× with ~390px of dead gap between them. |
-| 9. Interaction & micro-states   | warn  | Hover, focus-visible and disabled states are all real and verified, but neither async action announces itself to assistive tech, and Remove stays live while every other control locks during a save. |
+| 8. Spacing, alignment & sizing  | pass  | Measured: the actions row aligns to the card content edge on both sides, peer fields match in width.                                       |
+| 9. Interaction & micro-states   | pass  | Both async actions announce via `aria-busy`; Remove locks with its siblings.                                                                |
 
 ## Findings
 
@@ -47,7 +47,7 @@ Severity-ranked, highest first.
 ### [High] The same MCP server can be selected twice and saved
 
 - **Id:** coding-mcp-duplicate-server-saves-silently
-- **Status:** open
+- **Status:** fixed
 - **Dimension:** 4. Feedback & state
 - **Where visible:** Populated, after adding a row and re-picking a server already chosen in another row — measured live: `selectedServers: ['plugin:synthetic-web-search', 'search', 'plugin:synthetic-web-search']`, `duplicated: true`, `saveDisabled: false`
 - **Source:** `client/settings/sections/CodingMcpSection.svelte:99` (`updateRowServer` does not check the other rows) and `:266` (Save's disabled predicate tests only `hasEmptyServer`)
@@ -57,7 +57,7 @@ Severity-ranked, highest first.
 ### [High] Save blocks on a blank server row without saying so
 
 - **Id:** coding-mcp-blank-row-blocks-save-silently
-- **Status:** open
+- **Status:** fixed
 - **Dimension:** 4. Feedback & state
 - **Where visible:** `CodingMcp-—-a-blank-server-row-blocks-Save-1.png` — the row shows the "Select an MCP server…" placeholder with no error styling, and Save is greyed with nothing explaining why
 - **Source:** `client/settings/sections/CodingMcpSection.svelte:266` (`hasEmptyServer` gates Save) and `:201` (the server `Field` never receives the `error` prop it already supports at `client/shared/ui/Field.svelte:23`)
@@ -66,7 +66,7 @@ Severity-ranked, highest first.
 ### [Med] The error state headlines a raw exception and never says what failed
 
 - **Id:** coding-mcp-error-state-buries-what-failed
-- **Status:** open
+- **Status:** fixed
 - **Dimension:** 5. Content & language
 - **Where visible:** `settings-sections-CodingMcpSection-Error-1.png` — renders "Something went wrong" over a red `boom`
 - **Source:** `client/settings/sections/CodingMcpSection.svelte:184` passes the raw exception as `message`; `client/shared/ui/ErrorState.svelte:13-14` documents `detail` as the slot for "Raw diagnostic text (e.g. an exception message) demoted to a collapsed disclosure"
@@ -75,7 +75,7 @@ Severity-ranked, highest first.
 ### [Med] The server cap disables Add with no indication a cap exists
 
 - **Id:** coding-mcp-server-cap-unexplained
-- **Status:** open
+- **Status:** fixed
 - **Dimension:** 4. Feedback & state
 - **Where visible:** `CodingMcp-—-at-the-server-cap-1.png` — measured: `addDisabled: true`, `aria-describedby: null`, and the section's full text contains no mention of a limit
 - **Source:** `client/settings/sections/CodingMcpSection.svelte:59` (`atCap`) and `:244`
@@ -84,7 +84,7 @@ Severity-ranked, highest first.
 ### [Med] The actions row is misaligned with the row cards on both edges
 
 - **Id:** coding-mcp-actions-row-escapes-card-alignment
-- **Status:** open
+- **Status:** fixed
 - **Dimension:** 8. Spacing, alignment & sizing
 - **Where visible:** Populated and `CodingMcp-—-populated-narrow-1.png` — measured at 1280px: card content starts at x=13 but "Add server" starts at x=0; Save's right edge is 1280.0, exactly the viewport boundary, against card content ending at 1197.3
 - **Source:** `client/settings/sections/CodingMcpSection.svelte:321` — the local `.settings-field__actions` sets no `padding-inline`, while `CodingCredentialsSection.svelte:419` and `CodeHostSection.svelte:378` both carry `padding-inline: 14px` with comments explaining it lands the row on the cards' content edge
@@ -93,7 +93,7 @@ Severity-ranked, highest first.
 ### [Med] Two peer fields in one row differ in width by nearly 4×
 
 - **Id:** coding-mcp-peer-field-widths-diverge
-- **Status:** open
+- **Status:** fixed
 - **Dimension:** 8. Spacing, alignment & sizing
 - **Where visible:** Populated and at-cap — measured: the server `<select>` is 152.0px inside a 566.1px flex item while the credential `<input>` is 584.1px inside a 606.1px one, leaving ~390px of dead space between the select and the "CREDENTIAL" label
 - **Source:** `client/settings/sections/CodingMcpSection.svelte:315` — `.settings-mcp__field :global(.ui-input) { width: 100% }` stretches the Input but has no counterpart for the Select, so the Select keeps its intrinsic width at every viewport (152px at both 1280px and 640px)
@@ -102,7 +102,7 @@ Severity-ranked, highest first.
 ### [Med] Save and Clear change their label while saving but never announce it
 
 - **Id:** coding-mcp-async-actions-never-announce-busy
-- **Status:** open
+- **Status:** fixed
 - **Dimension:** 9. Interaction & micro-states
 - **Where visible:** Not visible in a still frame — measured: Save reports `aria-busy="false"`, and neither button is passed the `busy` prop that `client/shared/ui/Btn.svelte:53` forwards to `aria-busy`
 - **Source:** `client/settings/sections/CodingMcpSection.svelte:262` (Save) and `:250` (Clear) — both drive only the visible label from `saving` / `clearing`
@@ -111,7 +111,7 @@ Severity-ranked, highest first.
 ### [Low] Remove stays clickable while every other control locks during a save
 
 - **Id:** coding-mcp-remove-live-during-save
-- **Status:** open
+- **Status:** fixed
 - **Dimension:** 9. Interaction & micro-states
 - **Where visible:** Not visible in a still frame — source-confirmed asymmetry
 - **Source:** `client/settings/sections/CodingMcpSection.svelte:228` — the Remove `Btn` takes no `disabled` prop, while the row's `Select` (`:206`) and the Add button (`:244`) both carry `disabled={saving || loading}`
@@ -120,7 +120,7 @@ Severity-ranked, highest first.
 ### [Low] Both empty states are bare prose rather than the shared empty-state primitive
 
 - **Id:** coding-mcp-empty-states-are-bare-prose
-- **Status:** open
+- **Status:** fixed
 - **Dimension:** 5. Content & language
 - **Where visible:** `settings-sections-CodingMcpSection-Empty-1.png` (an intro paragraph and a bare button row, no title or next step) and `settings-sections-CodingMcpSection-No-catalog-1.png` (a single dim line)
 - **Source:** `client/settings/sections/CodingMcpSection.svelte:190` and `:192`; the `EmptyState` primitive used by sibling sections is not imported here

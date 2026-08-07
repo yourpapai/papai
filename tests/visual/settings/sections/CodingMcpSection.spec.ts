@@ -130,3 +130,16 @@ test('CodingMcp — a filled row enables Save, hovered', async ({ sharedPage }) 
   await sharedPage.getByTestId('coding-mcp-save').hover()
   await expect(sharedPage).toHaveScreenshot()
 })
+
+test('CodingMcp — a duplicate server marks the later row and blocks Save', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-codingmcpsection--populated')
+  await sharedPage.getByTestId('coding-mcp-add').click()
+  await sharedPage.getByTestId('coding-mcp-server-2').selectOption('search')
+  await expect(sharedPage.getByTestId('coding-mcp-save')).toBeDisabled()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('CodingMcp — the server cap is stated beside Add', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-codingmcpsection--populated')
+  await expect(sharedPage.getByTestId('coding-mcp-cap')).toHaveText('2 of 3 servers used')
+})
