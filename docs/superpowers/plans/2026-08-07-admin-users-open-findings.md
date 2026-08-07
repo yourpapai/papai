@@ -27,6 +27,7 @@ See LICENSE in the project root for details.
 - `added_by` is an **open set**, not an enum. The only values the server writes are `open-access` (`src/auth.ts:217,219`), `announce-subscription` (`src/announcements/store.ts:38`), and the acting admin's raw platform user id (`src/debug/settings/admin/system-access-routes.ts:54,70`). The value `admin` is never written by anything and `open_access` (underscore) does not exist — both are fixture bugs corrected in Task 4.
 - A "pending" user is one whose `platform_user_id` starts with the literal prefix `placeholder-`.
 - Run `bun run format` before every commit; the pre-commit hook runs lint, typecheck, format:check, and license-headers on staged files.
+- **Client Svelte tests are excluded from default `bun test` discovery.** Every `bun test tests/client/…` command in the task steps below must be run as `bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' <path>`, or as `bun run test:client` for the whole client suite.
 
 ---
 
