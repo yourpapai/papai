@@ -184,20 +184,6 @@ describe('CodingMcpSection row validation', () => {
     void unmount(component)
   })
 
-  test('the duplicate check ignores surrounding whitespace', async () => {
-    setCsrfToken('c')
-    setMockFetch(loadedMock)
-    const { target, component } = mountSection()
-    await drain()
-
-    target.querySelector<HTMLButtonElement>('[data-testid="coding-mcp-add"]')!.click()
-    await drain()
-    pickServer(target, 1, 'search')
-    await drain()
-
-    expect(rowError(target, 1)).toBe('Already selected in another row.')
-    void unmount(component)
-  })
 })
 ```
 
@@ -225,9 +211,8 @@ In `client/settings/sections/CodingMcpSection.svelte`, delete the `hasEmptyServe
   // fail-closed and all-or-nothing, so saving a duplicate costs the context every MCP
   // server, and the failure surfaces in a coding session rather than here.
   function rowProblem(all: McpRow[], row: McpRow, index: number): string | undefined {
-    const server = row.server.trim()
-    if (server.length === 0) return BLANK_SERVER_MESSAGE
-    if (all.slice(0, index).some((earlier) => earlier.server.trim() === server)) return DUPLICATE_SERVER_MESSAGE
+    if (row.server.length === 0) return BLANK_SERVER_MESSAGE
+    if (all.slice(0, index).some((earlier) => earlier.server === row.server)) return DUPLICATE_SERVER_MESSAGE
     return undefined
   }
 
@@ -265,7 +250,7 @@ Run:
 bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/settings/sections/CodingMcpSection.test.ts
 ```
 
-Expected: PASS, 4 tests.
+Expected: PASS, 3 tests.
 
 - [ ] **Step 6: Verify no reference to the removed derivation survives**
 
@@ -356,8 +341,9 @@ describe('CodingMcpSection cap counter', () => {
 
   test('an absent cap renders no count rather than an infinite one', async () => {
     setCsrfToken('c')
-    const { maxMcpServers: _omitted, ...uncapped } = mcpPayload
-    setMockFetch(() => Promise.resolve(json(uncapped)))
+    // JSON.stringify drops undefined-valued keys, so this serializes without the field —
+    // exactly the optional-cap payload the client schema permits.
+    setMockFetch(() => Promise.resolve(json({ ...mcpPayload, maxMcpServers: undefined })))
     const { target, component } = mountSection()
     await drain()
 
@@ -432,7 +418,7 @@ Run:
 bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/settings/sections/CodingMcpSection.test.ts
 ```
 
-Expected: PASS, 7 tests.
+Expected: PASS, 6 tests.
 
 - [ ] **Step 6: Prove the infinite-cap guard is load-bearing**
 
@@ -630,7 +616,7 @@ Run:
 bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/settings/sections/CodingMcpSection.test.ts
 ```
 
-Expected: PASS, 10 tests.
+Expected: PASS, 9 tests.
 
 - [ ] **Step 5: Run the repo checks**
 
@@ -789,7 +775,7 @@ Run:
 bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/settings/sections/CodingMcpSection.test.ts
 ```
 
-Expected: PASS, 13 tests.
+Expected: PASS, 12 tests.
 
 - [ ] **Step 8: Run the repo checks**
 
@@ -944,7 +930,7 @@ Expected: all pass.
 bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/settings/sections/CodingMcpSection.test.ts
 ```
 
-Expected: PASS, 13 tests.
+Expected: PASS, 12 tests.
 
 - [ ] **Step 8: Commit**
 
