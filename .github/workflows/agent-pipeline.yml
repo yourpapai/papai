@@ -4,11 +4,18 @@ name: OpenCode Issue Agent
 # restores its state from the hidden <!-- AGENT_STATE --> block on the issue,
 # advances the state machine as far as it can, and exits.
 #
-# `issue_comment` is intentionally unfiltered. The agent holds a conversation —
-# questions, requested changes, plain answers to its own clarifying questions —
-# and a `contains(…, '/approve')`-style filter would make every one of those
-# reachable only by slash command. The in-process guardrails drop what does not
-# apply, cheaply and with a reason in the log.
+# `issue_comment` on an **issue** is intentionally unfiltered. The agent holds a
+# conversation — questions, requested changes, plain answers to its own
+# clarifying questions — and a `contains(…, '/approve')`-style filter would make
+# every one of those reachable only by slash command. The in-process guardrails
+# drop what does not apply, cheaply and with a reason in the log.
+#
+# On a **pull request** the trade runs the other way and the third arm of the
+# condition below does filter on the body. There is no conversation to strand
+# there: `/review` is the only command that door accepts, while every pull
+# request in a repository collects ordinary code-review comments, and each one
+# of those would otherwise start a job and buy an API call reading the pull
+# request's head.
 on:
   issues:
     types: [opened]
@@ -24,19 +31,9 @@ permissions:
   issues: write
   pull-requests: write
 
-# One run at a time per issue. `cancel-in-progress` stays false: a half-finished
-# run must be allowed to post its state comment, or the next trigger restores
-# stale state.
-#
-# Both event kinds must resolve to the *same* key. Keying issue events on the
-# issue number and CI events on the branch would put a CI-fix run and a
-# maintainer-triggered run for one issue in different groups, so they would not
-# serialize — and both push to the same branch. The branch name is the identity
-# they share.
-concurrency:
-  group: >-
-    opencode-agent-${{ github.event.workflow_run.head_branch || format('agent/issue-{0}', github.event.issue.number) }}
-  cancel-in-progress: false
+# No workflow-level `concurrency`. The group has to name the branch, and on a
+# pull-request comment the branch is only knowable after an API call — see the
+# `agent` job, which declares the group itself.
 
 env:
   # obra/superpowers, pinned to a commit rather than a branch. This checkout is
@@ -46,10 +43,40 @@ env:
   SUPERPOWERS_REF: 44c9b2d6e889982ac18c27d05a19fefe335194e1
 
 jobs:
-  agent:
-    name: Run agent pipeline
+  # The door. It decides whether this event may boot a runner at all, and names
+  # the issue the run belongs to; the job below does the work and holds every
+  # secret. Splitting them buys three things:
+  #
+  #   - the concurrency group can name the resolved branch. `jobs.<id>.concurrency`
+  #     may read `needs`, and on a pull-request comment the branch is knowable
+  #     only after an API call, so no workflow-level expression can produce it;
+  #   - "the issue number is resolved before anything that can fail" stops being
+  #     a fact about step order and becomes structural — nothing can be inserted
+  #     above it, because it is not in that job;
+  #   - the filter is asked once. Duplicating it on both jobs is how two copies
+  #     drift, and leaving this one unconditional would boot a runner for every
+  #     comment on every issue and pull request in the repository — and spend an
+  #     API call reading a pull request's head for every ordinary code-review
+  #     comment on it, the exact lookup `resolvePullRequestTrigger` orders its
+  #     checks to avoid.
+  resolve:
+    name: Resolve the issue this run belongs to
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 5
+
+    # No secret is mounted here and nothing is written. The workflow-level
+    # `write` grants stay with the job that writes; this one reads one pull
+    # request, and naming that permission drops every other to `none`.
+    permissions:
+      pull-requests: read
+
+    outputs:
+      issue: ${{ steps.issue.outputs.number }}
+      # Derived here rather than in the script so the parse below stays exactly
+      # the text `workflow.test.ts` differential-tests against
+      # `issueNumberFromBranch`. Guarded on the number: an unresolved run must
+      # not name a branch-shaped group, and `agent` refuses to start anyway.
+      branch: ${{ steps.issue.outputs.number && format('agent/issue-{0}', steps.issue.outputs.number) }}
 
     # First-pass filter, mirrored and unit-tested in src/guardrails.ts. Doing it
     # here too keeps an unauthorized event from ever booting a runner with the
@@ -57,6 +84,23 @@ jobs:
     #
     # Human events need maintainer rights; workflow_run events are machine
     # events on a branch the agent owns, so they carry no author association.
+    #
+    # The third arm is the pull-request door, and it mirrors what the pipeline
+    # now accepts: `parsePullRequestEvent`'s shape filter, the resolver's
+    # `/review` test, and `checkSender`. Four things about it are deliberate.
+    # It reads `github.event.comment.author_association` outright, with none of
+    # the `|| issue.author_association` fallback the arm above uses — that
+    # payload always carries a comment, `parsePullRequestEvent` takes the
+    # commenter's rights, and the pull request's own author has nothing to do
+    # with who may command the agent from it. The `contains(…, '/review')` is a
+    # first-pass filter only: `parseSlashCommand` re-parses, requires the
+    # command to start a line and ignores fenced code blocks, and none of that
+    # is expressible here — the arm exists so an event that will be dropped
+    # anyway never boots a runner. Everything the resolver refuses — a fork, a
+    # closed or merged pull request, a branch the agent does not own — needs an
+    # API call and is not attempted here. And the arm above keeps its
+    # `pull_request == null`: it is what still drops a pull-request comment
+    # carrying no `/review`.
     if: >-
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.conclusion == 'failure' &&
@@ -67,19 +111,61 @@ jobs:
        github.event.issue.pull_request == null &&
        github.event.sender.type != 'Bot' &&
        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association || github.event.issue.author_association))
+      ||
+      (github.event_name == 'issue_comment' &&
+       github.event.action == 'created' &&
+       github.event.issue.pull_request != null &&
+       contains(github.event.comment.body, '/review') &&
+       github.event.sender.type != 'Bot' &&
+       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
 
     steps:
-      # Which issue this run belongs to, resolved once and read by both feedback
-      # steps at the bottom of the job. First, before the checkout, because that
-      # is the point: a run that dies in `bun install`, or is cancelled while the
-      # model is thinking, must still know where to post — so this step may not
-      # depend on anything that can fail.
+      # The one fact a pull-request comment's payload does not carry. Every block
+      # of state lives on the **issue**, and `github.event.issue.number` there is
+      # the *pull request*; the link back is the branch, exactly as it is for a
+      # red CI run, because `head.ref` is `agent/issue-<n>`.
       #
-      # Two sources, because the two event kinds carry different things.
+      # Gated on the same shape the third arm admits, so the cost falls only on a
+      # comment that already looks like `/review` — the ordering
+      # `resolvePullRequestTrigger` keeps for the same reason.
+      #
+      # Nothing here judges the pull request. The fork guard, the open test and
+      # the branch shape belong to that resolver, in a job that can say on the
+      # issue what it refused; this step needs only a key to serialize on, and a
+      # fork's `agent/issue-42` queueing behind the real branch is the harmless
+      # direction to be wrong in — the job it queues behind is refused before it
+      # touches anything.
+      - name: Resolve the pull request's head branch
+        id: head
+        if: github.event.issue.pull_request != null
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          # Where `gh` expands `{owner}/{repo}` from. This job has no checkout to
+          # infer it from, and deliberately so.
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          # Deliberately not best-effort, unlike every feedback write this
+          # pipeline makes: this answer is the only thing that says which issue
+          # the run is about, and the concurrency key is computed from it. A
+          # failed lookup has to leave a red run somebody can see, not a job that
+          # silently reviews nothing.
+          ref="$(gh api "repos/{owner}/{repo}/pulls/$PR_NUMBER" --jq .head.ref)"
+          echo "branch=$ref" >> "$GITHUB_OUTPUT"
+
+      # Which issue this run belongs to, resolved once and read by both feedback
+      # steps at the bottom of the job below. In this job, before anything can
+      # fail, because that is the point: a run that dies in `bun install`, or is
+      # cancelled while the model is thinking, must still know where to post.
+      #
+      # Three sources, because the three event kinds carry different things.
       # `github.event.issue.number` is the issue-triggered path and is empty on a
       # `workflow_run` event, which knows only the branch that went red. That gap
       # is not cosmetic: the fallback step below was gated on the issue number
       # alone, so a runner that died during a CI-fix run posted nothing anywhere.
+      # On a pull-request comment that same field is the *pull request*, which is
+      # why it is passed through as empty there — a number no state block lives
+      # under is worse than none — and the head branch resolved above stands in.
       # `agent/issue-<n>` is the one link from a branch back to the conversation
       # that started it, and `issueNumberFromBranch` in opencode-agent/src/git.ts
       # already parses exactly that shape. The two must agree, so
@@ -89,8 +175,8 @@ jobs:
       - name: Resolve the issue number this run belongs to
         id: issue
         env:
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          ISSUE_NUMBER: ${{ github.event.issue.pull_request == null && github.event.issue.number || '' }}
+          HEAD_BRANCH: ${{ steps.head.outputs.branch || github.event.workflow_run.head_branch }}
         run: |
           number="$ISSUE_NUMBER"
           if [ -z "$number" ]; then
@@ -126,6 +212,46 @@ jobs:
           fi
           echo "number=$number" >> "$GITHUB_OUTPUT"
 
+  agent:
+    name: Run agent pipeline
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    # The only gate left here, and it is deliberate rather than a leftover: the
+    # filter ran on the door above, and what this adds is that a run whose issue
+    # could not be named never starts. Every path that leaves the output empty —
+    # a CI branch like `agent/issue-x` that passes `startsWith` and fails the
+    # parse, a `/review` on a pull request the agent did not open — is a path the
+    # pipeline would drop in-process with nothing posted anywhere, so refusing it
+    # a runner costs no feedback and saves a job with every secret mounted. It
+    # also keeps the two feedback steps below honest: they post to
+    # `needs.resolve.outputs.issue`, which cannot be empty by the time they run.
+    #
+    # A `resolve` that *failed* — the head lookup rejected — skips this job by
+    # the ordinary `needs` rule, and leaves a red run to look at.
+    if: needs.resolve.outputs.issue != ''
+
+    # One run at a time per issue. `cancel-in-progress` stays false: a
+    # half-finished run must be allowed to post its state comment, or the next
+    # trigger restores stale state.
+    #
+    # All three event kinds must resolve to the *same* key. Keying issue events
+    # on the issue number and CI events on the branch would put a CI-fix run and
+    # a maintainer-triggered run for one issue in different groups, so they would
+    # not serialize — and both push to the same branch. The branch name is the
+    # identity they share, and a pull-request comment is what makes that
+    # load-bearing rather than tidy: `github.event.issue.number` is the pull
+    # request there, so the group any workflow-level expression could compute is
+    # `agent/issue-<pr>` — a group nothing else uses, in which a `/review` job
+    # and a `/retry` job for one issue push the same branch at once. Resolving
+    # the branch first is the only way to spell this, and `jobs.<id>.concurrency`
+    # may read `needs`.
+    concurrency:
+      group: opencode-agent-${{ needs.resolve.outputs.branch }}
+      cancel-in-progress: false
+
+    steps:
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -272,10 +398,16 @@ jobs:
       # conditions were the ones still too narrow, and both widenings sit
       # *inside* it so neither can bring the double comment back:
       #
-      #   - the issue number now comes from the resolve step, so the accident
+      #   - the issue number now comes from the resolve job, so the accident
       #     above stops cutting both ways. A CI-fix runner that dies used to be
       #     spared the duplicate and denied the report; it gets the report now,
-      #     and the `reported` gate is what keeps the duplicate away.
+      #     and the `reported` gate is what keeps the duplicate away. Reading it
+      #     from another job is what keeps this working when this one dies
+      #     anywhere at all: the answer was computed before this job existed, so
+      #     there is no longer a step order to preserve, and no failure in this
+      #     job can take it away. It also cannot be empty here — the job's `if:`
+      #     said so — and the test is kept anyway, because a step that posts to
+      #     issue "" is a worse way to learn that somebody dropped the gate.
       #   - `cancelled()` joins `failure()`. A cancelled job is the documented
       #     consequence of a run with no visible progress: a run that looks hung
       #     is a run somebody cancels, and that is exactly when the issue must
@@ -289,10 +421,10 @@ jobs:
       # and a cancellation alike — which is exactly the set the `reported` gate
       # leaves for this step.
       - name: Report an infrastructure failure on the issue
-        if: (failure() || cancelled()) && steps.issue.outputs.number && steps.pipeline.outputs.reported != 'true'
+        if: (failure() || cancelled()) && needs.resolve.outputs.issue && steps.pipeline.outputs.reported != 'true'
         env:
           GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
-          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+          ISSUE_NUMBER: ${{ needs.resolve.outputs.issue }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           printf '%s\n\n%s\n\n%s\n' \
@@ -323,7 +455,12 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
-          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+          # From the resolve job, for the reason the step above reads it there:
+          # `always()` has to survive this job dying anywhere, and an answer
+          # computed in another job cannot be taken away by a failure in this
+          # one. The empty test in the body stays — it is what makes this script
+          # runnable on its own, and the test suite runs it.
+          ISSUE_NUMBER: ${{ needs.resolve.outputs.issue }}
           # Read exactly the way `labelPrefix()` in src/config-values.ts reads
           # it: trimmed, defaulted, and `none` compared case-insensitively. A
           # repository that switched labelling off must not have this step reach
