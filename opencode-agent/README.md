@@ -9,9 +9,10 @@ See LICENSE in the project root for details.
 
 An event-driven coding agent that lives in GitHub Actions. A maintainer opens an
 issue; the agent writes a design spec, discusses it, plans the work, discusses
-that, implements it on `agent/issue-<n>`, runs the repository's own review loop,
-and opens a pull request — then fixes that pull request when its checks go red.
-Every step runs in its own short-lived job; nothing long-polls.
+that, implements it on `agent/issue-<n>`, and opens a pull request — then fixes
+that pull request when its checks go red, and runs the repository's own review
+loop over the branch when somebody asks it to. Every step runs in its own
+short-lived job; nothing long-polls.
 
 > **Spike status.** This is a proof of concept, not a hardened product. See
 > `ROADMAP.md` for the open findings, including the ones that still matter.
@@ -26,7 +27,10 @@ hidden HTML blocks:
   model tokens and had nothing to post.
 - `<!-- AGENT_SPEC: … -->` — the current design spec.
 - `<!-- AGENT_PLAN: … -->` — the current execution plan.
-- `<!-- AGENT_REPORT: … -->` — the implementation report.
+- `<!-- AGENT_REPORT: … -->` — the newest report. The implementation one, until
+  a `/review` writes its own under the same marker: the scan takes the newest
+  block of a marker, and that is what a later pull-request refresh presents, so
+  the body and the thread cannot end up telling different stories.
 - `<!-- AGENT_STATUS: … -->` — the odd one out: it marks a run's live status
   comment so the prompt layer can leave that comment out, and nothing else reads
   it. It is deliberately not `AGENT_STATE`, or the restore scan would have two
@@ -70,20 +74,34 @@ value to point elsewhere.
 
 ## Phases
 
-| Phase               | Trigger                                   | What happens                                                          | Ends at                                   |
-| ------------------- | ----------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------- |
-| `INIT_OR_CLARIFY`   | issue opened, or a reply while clarifying | Reads the issue and thread, explores the repo                         | Questions (stays here) or a design spec   |
-| `DESIGN_SPEC`       | —                                         | Waiting. The spec is under review                                     | `/approve`, `/changes`, `/ask`, `/cancel` |
-| `EXECUTION_PLAN`    | spec approved                             | Planning skills produce a step breakdown; cuts `agent/issue-<n>`      | Plan posted                               |
-| `PLAN_REVIEW`       | —                                         | Waiting. The plan is under review                                     | `/approve`, `/changes`, `/ask`, `/cancel` |
-| `REVIEW_AND_MUTATE` | plan approved                             | Implements, runs the `review-loop/` workspace, commits **and pushes** | Changes pushed                            |
-| `PR_DELIVERY`       | automatic                                 | Opens or refreshes the PR with `Closes #<n>`                          | PR opened                                 |
-| `CI_FIX`            | a red check run on `agent/issue-<n>`      | Reproduces CI locally, repairs, pushes                                | Fix pushed                                |
-| `COMPLETE`          | —                                         | Terminal, but re-enterable from `CI_FIX`                              | —                                         |
-| `FAILED`            | any _phase_ handler throwing              | Failure comment posted, `resumeFrom` recorded                         | `/retry` or `/cancel`                     |
+| Phase               | Trigger                                   | What happens                                                     | Ends at                                   |
+| ------------------- | ----------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------- |
+| `INIT_OR_CLARIFY`   | issue opened, or a reply while clarifying | Reads the issue and thread, explores the repo                    | Questions (stays here) or a design spec   |
+| `DESIGN_SPEC`       | —                                         | Waiting. The spec is under review                                | `/approve`, `/changes`, `/ask`, `/cancel` |
+| `EXECUTION_PLAN`    | spec approved                             | Planning skills produce a step breakdown; cuts `agent/issue-<n>` | Plan posted                               |
+| `PLAN_REVIEW`       | —                                         | Waiting. The plan is under review                                | `/approve`, `/changes`, `/ask`, `/cancel` |
+| `REVIEW_AND_MUTATE` | plan approved                             | Implements the plan, commits **and pushes**. Nothing else        | Changes pushed                            |
+| `PR_DELIVERY`       | automatic                                 | Opens or refreshes the PR with `Closes #<n>`                     | PR opened                                 |
+| `CODE_REVIEW`       | `/review` on a delivered issue            | Runs the `review-loop/` workspace over the pushed branch         | Findings pushed, review reported          |
+| `CI_FIX`            | a red check run on `agent/issue-<n>`      | Reproduces CI locally, repairs, pushes                           | Fix pushed                                |
+| `COMPLETE`          | —                                         | Terminal, but re-enterable from `CI_FIX` and `CODE_REVIEW`       | —                                         |
+| `FAILED`            | any _phase_ handler throwing              | Failure comment posted, `resumeFrom` recorded                    | `/retry` or `/cancel`                     |
 
 There are two review gates, not one. The spec and the plan are each parked in
 front of a human before anything downstream is spent.
+
+`REVIEW_AND_MUTATE` no longer reviews anything and keeps the name anyway, which
+is worth knowing before reading the code: `IMPLEMENT` would be honest, but
+`phase` is read back out of hidden blocks on live issues, so _removing_ a member
+invalidates every conversation in flight — clarity in one file, paid for by
+stranding the field. **Adding** `CODE_REVIEW` cost nothing for the same reason:
+no block written before it existed names it, and `reviewAttempts` defaults, so
+there was no `STATE_VERSION` bump.
+
+`CODE_REVIEW` is not a waiting phase, although a human's `/review` is the only
+way into it. A waiting phase is one the cascade _stops_ at; here the command
+moves the phase and the handler runs behind it in the same job, exactly as
+`/approve` into `REVIEW_AND_MUTATE` does.
 
 ## Talking to the agent
 
@@ -92,8 +110,25 @@ front of a human before anything downstream is spent.
 | `/approve`                  | `DESIGN_SPEC`, `PLAN_REVIEW` | Proceed to the next phase                                      |
 | `/changes <what to change>` | `DESIGN_SPEC`, `PLAN_REVIEW` | Rewrite the spec or plan, with your feedback in the prompt     |
 | `/ask <question>`           | anywhere                     | Answer, grounded in the repo, without moving the state machine |
+| `/review`                   | a **delivered** `COMPLETE`   | Run the review loop over the branch and push what it finds     |
 | `/retry`                    | `FAILED`                     | Resume the exact phase that failed                             |
 | `/cancel`                   | anything but `COMPLETE`      | Stop for good — a cancelled issue cannot be restarted          |
+
+**`/review` is typed on the issue,** where every other command already works.
+The pull request is not a second door onto it — see `docs/review-command-plan.md`
+§4 for the design that would add one.
+
+It is also the first command `COMPLETE` has ever accepted, and the only one whose
+availability the transition table cannot decide alone. `COMPLETE` is where a
+**delivered** issue and a **cancelled** one both live, and the phase cannot tell
+them apart; a cancelled issue has no pull request, so a `/review` there would
+name a branch nobody asked for and report against a pull request that does not
+exist. One predicate on `prNumber` settles it, and the list a maintainer is shown
+and the gate the machine enforces both read that one function, so the offer and
+the refusal cannot drift apart — there it is turned down as the **wrong command**
+rather than as a spent budget, and the refusal answers on the issue naming what
+does work. Both the delivery comment and the closing comment name the command,
+because a command nobody can discover is not a feature.
 
 **`/ask` really does mean anywhere,** and in both directions. `ANSWERED` is not
 in the transition table at all: it is a non-moving signal the machine accepts in
@@ -150,18 +185,29 @@ raw text in the failure comment.
 4. The maintainer replies `/approve`. The agent moves to `EXECUTION_PLAN`,
    cuts `agent/issue-42` from the default branch, and posts a step-by-step
    plan; `PLAN_REVIEW` waits for another `/approve`.
-5. Once approved, `REVIEW_AND_MUTATE` implements the plan, runs this
-   repository's own `review-loop/` workspace against the diff, and pushes to
-   `agent/issue-42`.
-6. `PR_DELIVERY` opens a pull request carrying `Closes #42`.
-7. CI runs on the branch — only if `AGENT_GITHUB_TOKEN` is configured, see
+5. Once approved, `REVIEW_AND_MUTATE` implements the plan, commits it and
+   pushes `agent/issue-42`. That is the whole phase — nothing has reviewed the
+   diff, and nothing is waiting to.
+6. `PR_DELIVERY` opens a pull request carrying `Closes #42`, one model turn
+   after the approval. Its comment names `/review`; if the commit came to
+   `AGENT_REVIEW_HINT_LINES` changed lines or more it also says it would run
+   one, quoting both figures so the advice can be disagreed with.
+7. The maintainer replies `/review` on the issue — or does not, which is a
+   decision rather than an omission. `CODE_REVIEW` fast-forwards the branch back
+   into a fresh runner, runs this repository's own `review-loop/` workspace
+   against the approved plan, pushes whatever it finds as further commits,
+   refreshes the pull request body with the review report, and returns to
+   `COMPLETE`. `AGENT_MAX_REVIEW_ATTEMPTS` bounds how often that can be asked
+   for on one pull request.
+8. CI runs on the branch — only if `AGENT_GITHUB_TOKEN` is configured, see
    **Red pull requests** below — and comes back red. The `workflow_run` event
    brings the agent back into `CI_FIX`: it checks out the branch, reproduces
    the failing checks locally, hands the real output to the model, and
    pushes a fix. This repeats, bounded by `AGENT_CI_FIX_MAX_ROUNDS` and
    `AGENT_MAX_CI_ATTEMPTS`, until CI is green or the budget runs out.
-8. A maintainer merges the pull request like any other. `COMPLETE` stays
-   re-enterable from `CI_FIX`, in case a later push retriggers a check.
+9. A maintainer merges the pull request like any other. `COMPLETE` stays
+   re-enterable from `CI_FIX` and `CODE_REVIEW`, in case a later push
+   retriggers a check or somebody wants a second pass over the diff.
 
 A plain reply with no command — "why retry only on 502/503?" — is answered
 without moving the state machine at any of the waiting steps above, and
@@ -196,6 +242,13 @@ is sitting under a failure comment asking for that `/retry`. A refused red run
 is logged at `warn` with the phase; it draws no comment, for the same reason a
 red run on a merged pull request draws none.
 
+`CODE_REVIEW` needs no row of its own and the absence costs nothing: the machine
+never persists that phase — the handler posts the `COMPLETE` it moved to — so a
+check that goes red while a review is running is read against the `COMPLETE`
+block the issue is still carrying, and acted on there. What keeps the two jobs
+off the branch at once is the workflow's concurrency group, which both events
+resolve to the same `agent/issue-<n>`.
+
 Two budgets bound it. `AGENT_CI_FIX_MAX_ROUNDS` caps repair rounds within one
 job; `AGENT_MAX_CI_ATTEMPTS` caps rounds across the pull request's whole life, so
 a genuinely broken branch cannot bounce between the agent and CI forever. The
@@ -207,7 +260,10 @@ silently, because CI fires on every push and repeating the notice would be spam.
 
 That budget is **per pull request**, not per issue: opening a _new_ pull request
 resets both the spent rounds and the "I have stopped trying" flag, so the second
-delivery gets its own rounds and can say its own piece. Refreshing the pull
+delivery gets its own rounds and can say its own piece. The review budget below
+is handed back on that same branch and by the same rule, because it is the same
+kind of fact — a review round is spent on the diff one pull request carries, and
+a genuinely new one has never had a review. Refreshing the pull
 request that is already open does not reset anything — it is the same branch and
 the same commits whose checks spent the rounds, and handing it a clean slate is
 how one broken branch bounces off the agent for as long as anyone keeps replying
@@ -220,12 +276,45 @@ how one broken branch bounces off the agent for as long as anyone keeps replying
 
 ## The review loop is the repository's own
 
-Phase 3 does not implement a review loop; it drives the `review-loop/` workspace
-that already lives in this repo, via `bun run review-loop/src/cli.ts --config …
---plan …`. That workspace owns the hard parts — a durable issue ledger,
-reviewer/fixer rounds, worktree isolation, a build gate, and a merge back into
+The pipeline implements no review loop; `CODE_REVIEW` drives the `review-loop/`
+workspace that already lives in this repo, via `bun run review-loop/src/cli.ts
+--config … --plan …`. That workspace owns the hard parts — a durable issue
+ledger, reviewer/fixer rounds, worktree isolation, a build gate, and a merge into
 the working branch — and it is separately tested. `review-runner.ts` only
 generates its config, hands over the approved plan, and translates the exit code.
+
+It is a **phase** now, not a step inside phase 3. It used to run between the
+implementation commit and the push, and that one arrangement made three separate
+problems:
+
+1. **A review failure discarded a successful implementation.** The push sat on
+   the far side of the review, so everything between them — a job killed at
+   `timeout-minutes`, an OOM the loop's worker pool makes likelier, a tree the
+   loop left uncommittable — threw away a model turn that had already been paid
+   for.
+2. **Every task paid the loop's wall clock** before anybody saw a diff, whether
+   or not the diff warranted it.
+3. **`/retry` re-implemented.** The resume point was the whole phase, because the
+   phase was the whole of implement-and-review, so recovering from a broken
+   review bought a second full implementation turn.
+
+All three are one defect: two independently expensive operations, with two
+independent failure modes and two natural cadences, sharing one phase, one job,
+one retry budget and one resume point. Split, the branch is pushed and the pull
+request is open before the review is a decision anybody has taken; a failure
+costs the review and nothing else, because `resumeFrom` names `CODE_REVIEW` and
+`/retry` re-runs the loop alone; and the findings arrive as commits on a pull
+request somebody is already reading, rather than as a `<details>` block posted
+before the pull request it describes existed.
+
+The phase starts with `ensureBranch`, which the inline review never needed: this
+one usually runs in a job that implemented nothing, where the remote branch is
+the only copy of the work. It fast-forwards an existing remote branch and cuts a
+fresh one otherwise, so the one call serves both.
+
+A clean tree afterwards is a **result**, not a failure — it means the loop found
+nothing to change, which is the outcome a reviewer most wants to hear — so the
+report says so, nothing is pushed, and the phase still completes.
 
 The `mutation-improve/` workspace is deliberately _not_ wired in: it selects
 files and opens its own pull requests, which would conflict with a pipeline whose
@@ -233,9 +322,10 @@ job is to open one. Run it separately.
 
 The workspace is **detected, not assumed**. A checkout without `review-loop/` has
 no review configured — which is a different thing from a review that failed — and
-the implementation report says so rather than showing a permanently red review.
-Point `AGENT_REVIEW_COMMAND` at your own reviewer to change that, or set it to
-`none` to skip the step deliberately.
+the review report says so rather than showing a permanently red review. Point
+`AGENT_REVIEW_COMMAND` at your own reviewer to change that, or set it to `none`
+to disable it; `/review` then reports that this repository has no review loop,
+which is the honest answer and not an error.
 
 `check-loop.ts` remains, but only for CI fixing — "make these named commands
 green" is a different problem from "review this diff", and the workspace does not
@@ -243,15 +333,15 @@ cover it.
 
 ## What bounds a run
 
-Four bounds, each on a different kind of runaway.
+Five bounds, each on a different kind of runaway.
 
-| Bound            | Where                                              | What it stops                                                             |
-| ---------------- | -------------------------------------------------- | ------------------------------------------------------------------------- |
-| Prompt size      | `prompt-budget.ts`                                 | 12k characters of thread, and 12k across _all_ failing checks, per prompt |
-| Turn duration    | `AGENT_TIMEOUT_MS`, applied in `deadline.ts`       | A model turn that never answers                                           |
-| Provider hiccups | `provider-proxy.ts` — 3 attempts, with backoff     | A single 429 or 5xx failing the phase                                     |
-| Rounds           | `AGENT_MAX_ATTEMPTS`, `AGENT_CI_FIX_MAX_ROUNDS`, … | An agent and CI bouncing off each other forever                           |
-| Total spend      | `AGENT_MAX_TOKENS`, per **issue**                  | An issue quietly costing more than it is worth                            |
+| Bound            | Where                                                                        | What it stops                                                             |
+| ---------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Prompt size      | `prompt-budget.ts`                                                           | 12k characters of thread, and 12k across _all_ failing checks, per prompt |
+| Turn duration    | `AGENT_TIMEOUT_MS`, applied in `deadline.ts`                                 | A model turn that never answers                                           |
+| Provider hiccups | `provider-proxy.ts` — 3 attempts, with backoff                               | A single 429 or 5xx failing the phase                                     |
+| Rounds           | `AGENT_MAX_ATTEMPTS`, `AGENT_CI_FIX_MAX_ROUNDS`, `AGENT_MAX_REVIEW_ATTEMPTS` | An agent and CI bouncing off each other, and a review nothing else bounds |
+| Total spend      | `AGENT_MAX_TOKENS`, per **issue**                                            | An issue quietly costing more than it is worth                            |
 
 The prompt caps are on the **finished prompt**, not on any one input: a per-input
 cap bounds one log and nothing else, and three red checks at 8k each still put
@@ -285,6 +375,23 @@ phase — with only `/cancel` left. Refused, the issue stays in `FAILED` with it
 resume point intact, so raising `AGENT_MAX_ATTEMPTS` and replying `/retry`
 resumes exactly where it broke. The give-up notice says so, because a notice
 that invites a command the machine will refuse is worse than no notice.
+
+`AGENT_MAX_REVIEW_ATTEMPTS` is that same refusal against the other command with a
+budget, and it exists because of a hole in the ceiling below it: the review
+loop's `opencode run` subprocesses have sessions of their own, so
+`AGENT_MAX_TOKENS` cannot see a token of them. Without this, `/review` would be
+the one command in the pipeline that spawns a fleet of model runs and is bounded
+by nothing but the job timeout. It counts rounds against a **pull request**, like
+`AGENT_MAX_CI_ATTEMPTS` and handed back by the same genuinely new one, and it is
+refused before the signal is applied for exactly the reason the retry budget is:
+applied and then regretted, it would park the issue in `CODE_REVIEW`, a handler
+phase no trigger re-enters, under a notice inviting the command that had just
+become impossible. The notice names `AGENT_MAX_REVIEW_ATTEMPTS` rather than
+`/retry`, because nothing is parked and raising the ceiling is the only thing
+that makes another review possible — `/retry` in `COMPLETE` is refused outright.
+It carries no "I have said this already" flag either, unlike the CI one: it
+answers a command somebody typed, so repeating it is the acknowledgement rather
+than spam.
 
 The token budget is the one bound that spans jobs. It is counted **per issue**
 and kept in the state block, because the runaway it stops is not a single run —
@@ -352,7 +459,9 @@ actually carries, rather than one no reader will ever find.
 Two things the counter still cannot see: the review loop's `opencode run`
 subprocesses, which have their own sessions, and any spend before the first
 prompt of a job, since the running total comes from the job's own session and
-that session does not exist yet.
+that session does not exist yet. The first of those is why `/review` carries a
+round budget of its own — a ceiling that cannot see the spend it is meant to
+bound is not a ceiling.
 
 ## Watching a run
 
@@ -381,13 +490,13 @@ pipeline that used to work.
 One API call, no thread noise, and it lands on the comment you just typed, so it
 is already where you are looking.
 
-| What the run concluded                      | Reaction |
-| ------------------------------------------- | -------- |
-| Trigger accepted; work is starting          | 👀       |
-| Comment read, nothing to do about it        | 👍       |
-| Sender has no write access on the repo      | 😕       |
-| Command unknown, or not valid in this phase | 😕       |
-| A pull request was opened or refreshed      | 🚀       |
+| What the run concluded                        | Reaction |
+| --------------------------------------------- | -------- |
+| Trigger accepted; work is starting            | 👀       |
+| Comment read, nothing to do about it          | 👍       |
+| Sender has no write access on the repo        | 😕       |
+| Command unknown, or not accepted here         | 😕       |
+| A delivery opened or refreshed a pull request | 🚀       |
 
 They stack, because the first row happens before the run has decided anything: a
 refused `/approve` ends up wearing 👀 😕, a delivery 👀 🚀. The rejected outsider
@@ -425,8 +534,9 @@ notification all carry.
 | Parked on a design spec review | `agent:spec-review`  | amber  |
 | Being broken into steps        | `agent:planning`     | blue   |
 | Parked on a plan review        | `agent:plan-review`  | amber  |
-| Being written and reviewed     | `agent:implementing` | blue   |
+| Being written                  | `agent:implementing` | blue   |
 | Being delivered                | `agent:delivering`   | blue   |
+| Having its diff reviewed       | `agent:reviewing`    | blue   |
 | Having its red checks repaired | `agent:ci-fixing`    | blue   |
 | Delivered                      | `agent:done`         | green  |
 | Stopped — cancelled, no PR     | `agent:stopped`      | grey   |
@@ -502,11 +612,13 @@ terminal by construction.
 ```
 
 Five milestones rather than a row per phase: `PLAN_REVIEW` is the execution plan
-waiting for you rather than a sixth thing that happens, and `CI_FIX` is repair
-work on the pull request row. The question it answers is "how far along is my
-issue", not "draw me the state machine". The spec and plan rows print
-`specRevision` and `planRevision` and never recount them — the two counters were
-split apart precisely because one number could not honestly label two artefacts.
+waiting for you rather than a sixth thing that happens, and `CI_FIX` and
+`CODE_REVIEW` are both work _on_ the pull request row — the branch is pushed and
+the pull request open before either can start. The question it answers is "how
+far along is my issue", not "draw me the state machine". The spec and plan rows
+print `specRevision` and `planRevision` and never recount them — the two counters
+were split apart precisely because one number could not honestly label two
+artefacts.
 In `CI_FIX` the budget line says "attempt 2 of 3 **on this pull request**",
 because that budget is per pull request and reading it as per-issue would have
 you conclude the agent had given up when it had not started.
@@ -567,16 +679,17 @@ Every glyph above comes from `presentation.ts`, which holds two closed tables: a
 phase table (where the issue is) and an outcome table (what just happened to
 this run). Both are `Record`s over a closed union, so a phase added later fails
 to compile until it has been given a row, and a renderer cannot invent a glyph
-locally — `run-report.ts` builds every heading through one of two helpers, and a
-test asserts no `###` literal survives in that file. The distinction the two
-tables buy is worth stating: ❌ means the work **broke**, ⛔ means a **bound was
-reached** and nothing broke at all, and ⚠️ is a failed _answer_, where nothing
-moved and no attempt was spent.
+locally — `run-report.ts` and `budget-notices.ts` build every heading through one
+of two helpers, and a test asserts no `###` literal survives in either file. The
+distinction the two tables buy is worth stating: ❌ means the work **broke**, ⛔
+means a **bound was reached** and nothing broke at all, and ⚠️ is a failed
+_answer_, where nothing moved and no attempt was spent.
 
 The phase handlers' own artefact comments — `### Design spec (revision 1)`,
-`### Execution plan (revision 1)`, `### Implementation report`, `### Answer` —
-are outside that table and carry no glyph. They name an artefact rather than a
-state, and there is nothing for the label beside them to disagree with.
+`### Execution plan (revision 1)`, `### Implementation report`,
+`### Review report`, `### Answer` — are outside that table and carry no glyph.
+They name an artefact rather than a state, and there is nothing for the label
+beside them to disagree with.
 
 The glyph is decoration and never the only carrier of meaning. The headline sits
 next to it in every rendering and the label name is plain text, so a screen
@@ -804,6 +917,8 @@ cannot drift.
 | `AGENT_REVIEW_POOL_SIZE`                   | no       | `2`                                             | review-loop worker pool                               |
 | `AGENT_CI_FIX_MAX_ROUNDS`                  | no       | `2`                                             | Repair rounds per CI-fix job                          |
 | `AGENT_MAX_CI_ATTEMPTS`                    | no       | `3`                                             | CI-fix jobs per pull request                          |
+| `AGENT_MAX_REVIEW_ATTEMPTS`                | no       | `3`                                             | `/review` rounds per pull request                     |
+| `AGENT_REVIEW_HINT_LINES`                  | no       | `200`                                           | Diff size at which a delivery recommends `/review`    |
 | `AGENT_MAX_ATTEMPTS`                       | no       | `3`                                             | Failures before `/retry` stops resuming               |
 | `AGENT_MAX_CHANGED_FILES`                  | no       | `100`                                           | Files one commit may carry                            |
 | `AGENT_MAX_CHANGED_LINES`                  | no       | `20000`                                         | Lines one commit may change                           |
@@ -847,6 +962,11 @@ pipeline reports every check as failing; `AGENT_REVIEW_MAX_ROUNDS=90071992547409
 is a positive integer that removes the bound the knob exists to impose. A
 rejection names the range, so a legitimate need for a wider one is not a
 guessing game.
+
+`AGENT_REVIEW_HINT_LINES` takes the line range `AGENT_MAX_CHANGED_LINES` takes,
+1–1 000 000, because it is the same quantity read off the same measurement — and
+both ends matter here too. A threshold of 0 recommends a review on every
+delivery, which is the same as having no recommendation at all.
 
 `AGENT_LABEL_PREFIX` is validated at load for the same reason: at most 32
 characters, and only letters, digits and `-_./: `. That is narrower than what
@@ -1020,6 +1140,8 @@ under **Setup** is simply not written. Nothing else changes.
 | `src/triggers.ts`                             | Turning a command or comment into the state move to make               |
 | `src/ci-trigger.ts`                           | Whether a red check run buys a fix round, a notice, or nothing         |
 | `src/run-report.ts`                           | Everything the orchestrator writes back to the issue                   |
+| `src/budget-notices.ts`                       | What a run says when a ceiling stopped it and nothing broke            |
+| `src/pull-request-body.ts`                    | The pull request's own body, for a delivery and after a review alike   |
 | `src/presentation.ts`                         | One glyph, label, headline and whose-turn per state an issue can be in |
 | `src/feedback.ts` / `src/labels.ts`           | The reaction channel, and the label reconcile                          |
 | `src/status-comment.ts` / `-reporter.ts`      | What the run's live comment says, and when it is edited                |
@@ -1038,12 +1160,13 @@ under **Setup** is simply not written. Nothing else changes.
 | `src/progress.ts`                             | Reporting that, plus the heartbeat while a turn is outstanding         |
 | `src/sdk-contract.ts`                         | The recorded request and response shapes the SDK speaks                |
 | `src/config-values.ts`                        | Reading and range-checking one scalar from the environment             |
+| `src/config-discovery.ts`                     | The two settings asked of the checkout and the event, not the env      |
 | `src/deadline.ts`                             | The upper bound on waiting for work that has none of its own           |
 | `src/provider-proxy.ts`                       | Holds the provider key, and retries a transient upstream failure       |
 | `src/obra-skills.ts`                          | Superpowers skill loading and system-prompt composition                |
 | `src/review-runner.ts`                        | Drives the `review-loop/` workspace                                    |
 | `src/check-loop.ts`                           | The CI-fix repair loop                                                 |
-| `src/phases/*.ts`                             | One handler per acting phase                                           |
+| `src/phases/*.ts`                             | One handler per acting phase; `review.ts` is the review loop's own     |
 | `src/github.ts`, `src/git.ts`, `src/shell.ts` | Octokit, git and process boundaries                                    |
 
 ## Tests
@@ -1068,17 +1191,29 @@ network.
 - The SDK contract is verified against a live `opencode serve` 1.18.7, but only
   at that version. When the pin moves, re-run `bun run opencode-agent:test:live`
   to confirm — and re-record the fixtures in `adapters.test.ts` from it.
-- Review-loop failures are reported, not enforced: the branch is pushed and the
-  pull request opened with a red report. CI on the pull request is the real gate,
-  and the CI-fix loop is what acts on it.
+- Review-loop failures are reported, not enforced. The branch is pushed and the
+  pull request opened before a review has run at all, so a red loop cannot block
+  a delivery that already happened; what it does is post its report on the issue
+  and into the pull request body, and the phase still completes. CI on the pull
+  request is the real gate, and the CI-fix loop is what acts on it. A finding the
+  loop could not fix is something for a human to read, not a reason to park an
+  issue whose work is pushed.
+- `/review` is typed on the **issue**, not on the pull request where the diff is.
+  Both the workflow's `if:` and `guardrails.ts` refuse pull-request comments
+  outright, and opening them by the width of one command needs a resolver from a
+  pull request back to its issue, its own guardrail codes, and a concurrency
+  group that can only be computed after an API call. That is stage B of
+  `docs/review-command-plan.md`, and none of it is built.
 - Bumping `STATE_VERSION` strands in-flight issues — old blocks fail validation,
   and the scan walks back to an older valid one or to a fresh state. Drain before
   bumping, or write a migration.
 - Spend is bounded in **tokens per issue** (`AGENT_MAX_TOKENS`), never in
   currency, for the reason given under **What bounds a run**. That ceiling
-  cannot see the review loop's `opencode run` subprocesses, so a repository
-  whose review loop is the expensive half is bounded by the round caps and the
-  job timeout rather than by the token budget.
+  cannot see the review loop's `opencode run` subprocesses, and moving the loop
+  into `CODE_REVIEW` did not change that — it only moved the blind spot behind a
+  command. A repository whose review loop is the expensive half is bounded by
+  `AGENT_MAX_REVIEW_ATTEMPTS` (which exists for this reason), the loop's own
+  round caps and the job timeout, and not by the token budget.
 - A run killed mid-phase leaves its status comment reading "run in progress",
   and nothing ever corrects it: the process that owned that comment is gone, and
   the next run opens its own. The workflow's fallback comment is what explains

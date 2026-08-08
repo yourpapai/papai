@@ -24,7 +24,11 @@ findings: `ROADMAP.md`.
   `src/phase-failure.ts` decides what a run that broke is left looking like.
   Phase handlers in `src/phases/` return a `TransitionSignal`, a comment body and
   optional artefact blocks, and never write state or decide the next phase
-  themselves.
+  themselves. `src/phases/review.ts` is the `review-loop/` workspace as a phase
+  of its own, entered from `COMPLETE` on `/review`; `src/pull-request-body.ts`
+  renders the one pull request body both it and `handleDeliver` present, and
+  takes the report as **text** because a handler cannot read its own block back —
+  `postAndAppend` runs in the orchestrator after the handler returns.
 - Feedback on the issue that is not a comment lives apart from the machine that
   causes it: `src/presentation.ts` owns the one glyph/label/headline table every
   renderer reads, `src/feedback.ts` the reaction channel, `src/labels.ts` the
@@ -41,7 +45,19 @@ findings: `ROADMAP.md`.
   author: the agent writes the spec, the plan and every report too.
   `src/state-persist.ts` is the same shape for a write that is not feedback at
   all: rewriting the state block in place, so a run that posts nothing can still
-  record what it spent.
+  record what it spent. `src/budget-notices.ts` holds what a run says when a
+  **ceiling** stopped it and nothing broke, along the seam `presentation.ts` had
+  already drawn: ❌ means the work broke, ⛔ means a bound was reached in a run
+  where nothing did.
+- Config is read in two halves and discovered in a third. `src/config-values.ts`
+  reads and range-checks one scalar out of the environment, `src/config.ts` says
+  which values a run needs, and `src/config-discovery.ts` holds the two settings
+  that are **asked for** rather than read — the review command, from whether the
+  checkout has a `review-loop/`, and the base branch, from the event payload and
+  then `origin/HEAD`. Both take their probe as an argument, so both ladders are
+  testable without a filesystem or a remote, and neither has a literal fallback:
+  a baked-in review path reported every run outside this repository as
+  permanently red, and a `main` default killed every run inside it.
 - Every external boundary is an injected interface (`GitHubApi`, `Git`,
   `CheckRunner`, `RunReview`, `OpenCodeAgent`, `ReadSkillFile`).
 
@@ -71,13 +87,25 @@ findings: `ROADMAP.md`.
   phase either: `failAnswer` posts and leaves `phase`, `resumeFrom` and
   `attempts` alone, which is also why `resumeFrom` can never name a waiting phase
   with no handler for `/retry` to resume into.
-- **The review loop is `review-loop/`, not a local reimplementation.** Phase 3
-  drives that workspace through `review-runner.ts`. `check-loop.ts` exists only
-  for CI fixing, which the workspace does not cover. In that loop the first round
-  runs every check — one repair prompt seeing every failure fixes more than a
-  fail-fast round would — and later rounds re-run only what failed. Only a **full**
-  pass may return `passed`: a narrowed round has not looked at the checks it
-  skipped since before a repair edited the tree.
+- **The review loop is `review-loop/`, not a local reimplementation.**
+  `handleReview` in `src/phases/review.ts` drives that workspace through
+  `review-runner.ts`, reached from `CODE_REVIEW` on an explicit `/review` and by
+  no other route. It used to run inside `handleImplement`, between the
+  implementation commit and the push, and **must not grow back there**: one
+  arrangement made three problems. A review that broke discarded an
+  implementation that had not, because the push sat on the far side of it; every
+  task paid the loop's wall clock before anybody saw a diff; and `/retry` re-ran
+  the model turn that had already succeeded, because the resume point was the
+  whole phase. Two independently expensive operations, with two independent
+  failure modes and two natural cadences, do not share a phase, a job, a retry
+  budget and a resume point. `ensureBranch` at the top of the handler is not
+  optional for the same reason the split is: this review usually runs in a job
+  that implemented nothing, so the remote branch is the only copy of the work.
+  `check-loop.ts` exists only for CI fixing, which the workspace does not cover.
+  In that loop the first round runs every check — one repair prompt seeing every
+  failure fixes more than a fail-fast round would — and later rounds re-run only
+  what failed. Only a **full** pass may return `passed`: a narrowed round has not
+  looked at the checks it skipped since before a repair edited the tree.
 - **One model endpoint.** Everything goes through `openai-config.ts`; there are
   no provider-specific keys and no second place a model is named. OpenCode is
   never handed the real key: `provider-proxy.ts` holds it and `contain()` in
@@ -100,7 +128,14 @@ findings: `ROADMAP.md`.
   cascade: forward moves reset `attempts`, so `RETRY` is the only way a spent
   count reaches a handler. The invariant to preserve: no path may leave the
   persisted state in a phase that has a handler but that no trigger can
-  re-enter.
+  re-enter. `refuseReviews`, beside it in the same file, is that invariant on the
+  other ceiling: a `/review` past `maxReviewAttempts` is refused before the
+  signal is applied, because applied and then regretted it would park the issue
+  in `CODE_REVIEW`, a handler phase no trigger re-enters, under a notice
+  inviting the command that had just become impossible. It is a separate
+  function rather than a branch inside `refuseExhausted` because the remedy
+  differs: nothing is parked, so `/retry` cannot help, and the notice has to name
+  `AGENT_MAX_REVIEW_ATTEMPTS`.
 - **An over-budget stop parks in `FAILED`; it does not stay put.** The token
   check sits inside the cascade, before each handler, and cannot move to the
   trigger layer the way the retry gate did: half its firings are mid-cascade
@@ -125,10 +160,12 @@ findings: `ROADMAP.md`.
   refused as an invalid transition and dropped — nothing posted, no `ciAttempts`
   spent, no trace but a `reason` string nobody reads. The four phases before the
   branch exists stay out because `handleCiFix` would run the checks against a
-  branch cut from the base; `REVIEW_AND_MUTATE` and `CI_FIX` stay out because the
-  machine never persists them (a block is written only when a handler posts, and
-  both post the phase they moved _to_), and honouring a hand-edited one would put
-  a second job on a branch another is mid-commit on — the workflow's concurrency
+  branch cut from the base; `REVIEW_AND_MUTATE`, `CODE_REVIEW` and `CI_FIX` stay
+  out because the machine never persists them (a block is written only when a
+  handler posts, and all three post the phase they moved _to_ — which is also why
+  a check that goes red during a review is read against the `COMPLETE` block the
+  issue is still carrying), and honouring a hand-edited one would put a second
+  job on a branch another is mid-commit on — the workflow's concurrency
   group queues those two, but only while `workflow_run.head_branch` and
   `agent/issue-<n>` agree, which is a coincidence and not a proof. **`FAILED`
   stays out deliberately**, the close call: the branch is pushed there, but
@@ -139,24 +176,39 @@ findings: `ROADMAP.md`.
   not abandoned. A refused red run **logs at `warn` with the phase** and posts
   nothing, for the reason `settledPullRequest` sets out: CI fires on every push,
   so a comment per red run is spam.
-- **The CI-fix budget belongs to a pull request, not to an issue.**
-  `handleDeliver` clears `ciAttempts` and `ciBudgetReported` on its
-  `existing === null` branch — a genuinely new pull request — and leaves both
-  alone when it refreshes the open one. Neither used to reset at all, and `applyCiTrigger` short-circuits
-  on `ciBudgetReported` before it even looks the pull request up, so an issue
-  that burned its rounds on one pull request and then delivered a second got no
-  fix round on the new one and no comment explaining the silence. Do not extend
-  the reset to the refresh path: same branch, same commits, same checks that
+- **A round budget belongs to a pull request, not to an issue.**
+  `handleDeliver` clears `ciAttempts`, `ciBudgetReported` and `reviewAttempts`
+  through `FRESH_PR_BUDGETS` on its `existing === null` branch — a genuinely new
+  pull request — and leaves all three alone when it refreshes the open one. The
+  constant is named for the **class** rather than for CI, which is what keeps the
+  next per-pull-request counter from being added to the state and forgotten here;
+  `reviewAttempts` joined it exactly that way, being the same fact about the same
+  thing — a review round is spent on the diff one pull request carries. The CI
+  pair used to reset nowhere at all, and `applyCiTrigger` short-circuits on
+  `ciBudgetReported` before it even looks the pull request up, so an issue that
+  burned its rounds on one pull request and then delivered a second got no fix
+  round on the new one and no comment explaining the silence. Do not extend the
+  reset to the refresh path: same branch, same commits, same checks that
   spent the rounds, and a clean slate there is one broken branch bouncing off the
   agent for as long as anyone keeps replying `/retry`.
 - **A feedback channel has exactly one door, and that door swallows
   everything.** `react` in `feedback.ts`, `reconcileLabels` in `labels.ts`,
-  `attempt` in `status-reporter.ts` and `persistState` in `state-persist.ts` are
-  each the only function in their module that calls GitHub, and each catches
-  every rejection and degrades it to a `warn`; a caller reaches the same
-  `RunResult` and the same **persisted state** it would have reached with the
-  channel absent. One door rather than a `try` per call site because best-effort
-  has to be a property of a function, not a convention: every write these
+  `attempt` in `status-reporter.ts`, `persistState` in `state-persist.ts` and
+  `refreshPullRequest` in `phases/review.ts` are each the only function in their
+  module that calls GitHub, and each catches every rejection and degrades it to a
+  `warn`; a caller reaches the same `RunResult` and the same **persisted state**
+  it would have reached with the channel absent. `refreshPullRequest` is the one that shows what the rule is
+  about, because the very same `updatePullRequest` is not decoration everywhere:
+  in `handleDeliver` it **is** the work, so a rejection there is correctly fatal
+  and correctly resumed from `PR_DELIVERY`. In the review phase the loop has run
+  and its findings are already commits on a pushed branch, and the call only
+  re-renders a body around them — so letting it throw parked the issue in
+  `FAILED` with `resumeFrom: CODE_REVIEW`, and the `/retry` that failure comment
+  invites re-ran the _entire_ review loop, every `opencode run` subprocess of it
+  and another round off `AGENT_MAX_REVIEW_ATTEMPTS`, to repair a decoration.
+  Best-effort is a property of what a call is **for**, not of which endpoint it
+  hits. One door rather than a `try` per call site because best-effort has to be
+  a property of a function, not a convention: every write these
   channels make is decoration on work that matters and a fresh way to break a
   pipeline that used to work — a token without `issues: write`, a fork run, an
   organisation restricting who may create a label, a secondary rate limit — and a
@@ -287,7 +339,16 @@ findings: `ROADMAP.md`.
   method that sends free text without passing it through `clean`. `diff-guard.ts`
   inspects the index between `git add --all` and the commit; its `parseNumstat`
   fixtures are recorded from real git output, so re-record rather than adjust
-  them by inspection.
+  them by inspection. That inspection also **measures** what it lets through:
+  `commitAll` returns `StagedTotals | null` rather than a boolean — `null` for a
+  tree that was already clean — and `changedLines` rides out on it into the state
+  block, where the delivery comment sizes its `/review` recommendation against
+  `reviewHintLines`. The figure was already computed to refuse a runaway commit
+  and was being thrown away. Keep it a **count**, never a `shouldReview` flag: a
+  verdict frozen at commit time can only disagree with the threshold the config
+  carries when the comment is read. `measure`'s `binaries` deliberately does not
+  ride along — a commit that got past the guard has none, so that list is a
+  working detail of judging a change set rather than a fact about one.
 - Untrusted text (issue bodies, comments, **check output**) must go through the
   envelope from `prompts.ts` before reaching a prompt, and commands must be
   spawned as argv vectors with `shell: false`. The envelope is only as good as
