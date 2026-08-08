@@ -26,7 +26,7 @@ hidden HTML blocks:
   comment the pipeline posts, and rewritten **in place** by a run that spent
   model tokens and had nothing to post.
 - `<!-- AGENT_SPEC: … -->` — the current design spec.
-- `<!-- AGENT_PLAN: … -->` — the current execution plan.
+- `<!-- AGENT_PLAN: … -->` — the current implementation plan.
 - `<!-- AGENT_REPORT: … -->` — the newest report. The implementation one, until
   a `/review` writes its own under the same marker: the scan takes the newest
   block of a marker, and that is what a later pull-request refresh presents, so
@@ -42,7 +42,7 @@ of headings and `---` rules, and any heading-and-trailer scraping truncates it a
 the first horizontal rule.
 
 The spec and the plan are numbered **separately**, each by its own revisions: the
-first spec is "Design spec (revision 1)" and the first plan is "Execution plan
+first spec is "Design spec (revision 1)" and the first plan is "Plan
 (revision 1)", whether or not the spec was revised on the way there. `AGENT_STATE`
 carries a counter each (`specRevision`, `planRevision`), and the number in a
 heading is the number in that artefact's own block — one value renders both. A
@@ -78,7 +78,7 @@ value to point elsewhere.
 | ------------------- | ----------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------- |
 | `INIT_OR_CLARIFY`   | issue opened, or a reply while clarifying | Reads the issue and thread, explores the repo                    | Questions (stays here) or a design spec   |
 | `DESIGN_SPEC`       | —                                         | Waiting. The spec is under review                                | `/approve`, `/changes`, `/ask`, `/cancel` |
-| `EXECUTION_PLAN`    | spec approved                             | Planning skills produce a step breakdown; cuts `agent/issue-<n>` | Plan posted                               |
+| `PLANNING`          | spec approved                             | Planning skills produce a step breakdown; cuts `agent/issue-<n>` | Plan posted                               |
 | `PLAN_REVIEW`       | —                                         | Waiting. The plan is under review                                | `/approve`, `/changes`, `/ask`, `/cancel` |
 | `REVIEW_AND_MUTATE` | plan approved                             | Implements the plan, commits **and pushes**. Nothing else        | Changes pushed                            |
 | `PR_DELIVERY`       | automatic                                 | Opens or refreshes the PR with `Closes #<n>`                     | PR opened                                 |
@@ -235,7 +235,7 @@ raw text in the failure comment.
 3. The maintainer replies `/changes only retry on 502 and 503`. The agent
    rewrites the spec from that feedback and posts it again, still in
    `DESIGN_SPEC`.
-4. The maintainer replies `/approve`. The agent moves to `EXECUTION_PLAN`,
+4. The maintainer replies `/approve`. The agent moves to `PLANNING`,
    cuts `agent/issue-42` from the default branch, and posts a step-by-step
    plan; `PLAN_REVIEW` waits for another `/approve`.
 5. Once approved, `REVIEW_AND_MUTATE` implements the plan, commits it and
@@ -566,15 +566,31 @@ is already where you are looking.
 | What the run concluded                        | Reaction |
 | --------------------------------------------- | -------- |
 | Trigger accepted; work is starting            | 👀       |
+| Artefact posted, the issue is yours again     | 👍       |
 | Comment read, nothing to do about it          | 👍       |
 | Sender has no write access on the repo        | 😕       |
 | Command unknown, or not accepted here         | 😕       |
+| The run broke and parked in `FAILED`          | 😕       |
 | A delivery opened or refreshed a pull request | 🚀       |
 
-They stack, because the first row happens before the run has decided anything: a
-refused `/approve` ends up wearing 👀 😕, a delivery 👀 🚀. The rejected outsider
-is the exception — the guardrails turn that event away before the 👀, so it gets
-only the 😕.
+**👀 does not survive the run that placed it.** It means "this arrived and
+something is running", and a run is one CI job — so a job that ends without
+clearing it leaves that claim on a comment nobody will touch again, and every
+issue the agent had ever finished read as one it was still thinking about. The
+run's last act is therefore to place the outcome reaction and then take the 👀
+back off, in that order: both writes are best-effort, and the other order would
+leave the comment bare for the width of an API call, or for good if the second
+write failed. So a finished `/approve` wears 👍, a broken one 😕, a delivery 🚀 —
+one mark each, not a pile.
+
+Two endings deliberately leave nothing behind. `/cancel` reaches the same
+`COMPLETE` a delivery does, and so does a stand-down on a branch whose pull
+request had already merged or been closed; neither delivered anything, and 🚀
+there would announce a delivery that did not happen. Both post a comment saying
+what happened, which is the account — the reaction never is.
+
+The rejected outsider is the other exception: the guardrails turn that event away
+before the 👀 is ever placed, so it gets only the 😕.
 
 A reaction lands on the comment that triggered the run, or on the issue itself
 for `issues.opened`, which has no comment to address. A `/review` typed on a pull
@@ -681,7 +697,7 @@ terminal by construction.
 | ----------------- | --------------- |
 | 🔍 Triage         | ✅              |
 | 📋 Design spec    | ✅ · revision 2 |
-| 🗺️ Execution plan | ✅ · revision 1 |
+| 🗺️ Planning       | ✅ · revision 1 |
 | 🛠️ Implementation | ⏳ **now**      |
 | 📦 Pull request   | ⬜              |
 
@@ -689,14 +705,13 @@ terminal by construction.
 **Budget:** 218,400 of 5,000,000 tokens · attempt 1 of 3
 ```
 
-Five milestones rather than a row per phase: `PLAN_REVIEW` is the execution plan
-waiting for you rather than a sixth thing that happens, and `CI_FIX` and
-`CODE_REVIEW` are both work _on_ the pull request row — the branch is pushed and
-the pull request open before either can start. The question it answers is "how
-far along is my issue", not "draw me the state machine". The spec and plan rows
-print `specRevision` and `planRevision` and never recount them — the two counters
-were split apart precisely because one number could not honestly label two
-artefacts.
+Five milestones rather than a row per phase: `PLAN_REVIEW` is the plan waiting
+for you rather than a sixth thing that happens, and `CI_FIX` and `CODE_REVIEW`
+are both work _on_ the pull request row — the branch is pushed and the pull
+request open before either can start. The question it answers is "how far along
+is my issue", not "draw me the state machine". The spec and plan rows print
+`specRevision` and `planRevision` and never recount them — the two counters were
+split apart precisely because one number could not honestly label two artefacts.
 In `CI_FIX` the budget line says "attempt 2 of 3 **on this pull request**",
 because that budget is per pull request and reading it as per-issue would have
 you conclude the agent had given up when it had not started.
@@ -764,10 +779,10 @@ means a **bound was reached** and nothing broke at all, and ⚠️ is a failed
 _answer_, where nothing moved and no attempt was spent.
 
 The phase handlers' own artefact comments — `### Design spec (revision 1)`,
-`### Execution plan (revision 1)`, `### Implementation report`,
-`### Review report`, `### Answer` — are outside that table and carry no glyph.
-They name an artefact rather than a state, and there is nothing for the label
-beside them to disagree with.
+`### Plan (revision 1)`, `### Implementation report`, `### Review report`,
+`### Answer` — are outside that table and carry no glyph. They name an artefact
+rather than a state, and there is nothing for the label beside them to disagree
+with.
 
 The glyph is decoration and never the only carrier of meaning. The headline sits
 next to it in every rendering and the label name is plain text, so a screen
@@ -1146,6 +1161,24 @@ both are 26–28 KB and neither applies to a single-session CI run.
    whatever you put there needs to be able to read a pull request in this
    repository.
 5. Actions needs write access to contents, issues and pull requests.
+6. **Actions must be allowed to create pull requests.** The `permissions:` block
+   in the workflow is not enough on its own: without this, `PR_DELIVERY` fails
+   with _"GitHub Actions is not permitted to create or approve pull requests"_ on
+   a branch that is already pushed and complete, and no `/retry` can change that.
+
+   The repository setting is Settings → Actions → General → Workflow permissions
+   → "Allow GitHub Actions to create and approve pull requests". **If that
+   checkbox is greyed out, the organisation owns the setting** and the repository
+   cannot override it — change it under the organisation's own Actions settings,
+   which unlocks it for every repository in the organisation.
+
+   `AGENT_GITHUB_TOKEN` from step 4 is usually the smaller step: a PAT or App
+   installation token is not "GitHub Actions" as far as this rule is concerned,
+   so it needs no policy change, and it is what the CI-fix path needs anyway.
+
+   The failure comment names all of this and links a prefilled `compare` URL, so
+   the branch can be turned into a pull request by hand meanwhile; `/retry`
+   resumes from `PR_DELIVERY` once the token or the setting is in place.
 
 Those grants are workflow-level and unchanged, but only one job takes them. The
 `resolve` job names `permissions: pull-requests: read` for itself, which drops

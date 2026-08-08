@@ -24,6 +24,7 @@ import type { PhaseDeps } from './phase-context.js'
 import { resolvePullRequestTrigger } from './pr-trigger.js'
 import { proxiedSettings, startProviderProxy } from './provider-proxy.js'
 import type { ProviderProxy } from './provider-proxy.js'
+import type { RunResult } from './run-result.js'
 import { pipelineSecrets, scrubSecrets } from './secrets.js'
 import { runCommand } from './shell.js'
 import type { CommandRunner } from './shell.js'
@@ -32,7 +33,6 @@ import { recordReport } from './step-output.js'
 import { parseTriggerEvent } from './trigger-events.js'
 import type { TriggerEvent } from './trigger-events.js'
 import { errorMessage } from './types.js'
-import type { RunResult } from './types.js'
 
 export interface CliArgs {
   eventPath: string

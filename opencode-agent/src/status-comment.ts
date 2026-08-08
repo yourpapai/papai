@@ -65,8 +65,8 @@ interface RunStep {
 /**
  * The run, as five milestones.
  *
- * Fewer rows than there are phases, on purpose: `PLAN_REVIEW` is the execution
- * plan waiting to be approved rather than a sixth thing that happens, and
+ * Fewer rows than there are phases, on purpose: `PLAN_REVIEW` is the plan
+ * waiting to be approved rather than a sixth thing that happens, and
  * `CI_FIX` is repair work on the pull request row. A table with a row per phase
  * would be a state-machine diagram, and the question this answers is "how far
  * along is my issue".
@@ -78,7 +78,7 @@ interface RunStep {
 const RUN_STEPS: readonly RunStep[] = [
   { title: 'Triage', key: 'INIT_OR_CLARIFY:working' },
   { title: 'Design spec', key: 'DESIGN_SPEC' },
-  { title: 'Execution plan', key: 'EXECUTION_PLAN' },
+  { title: 'Planning', key: 'PLANNING' },
   { title: 'Implementation', key: 'REVIEW_AND_MUTATE' },
   { title: 'Pull request', key: 'PR_DELIVERY' },
 ]
@@ -97,7 +97,7 @@ const PLAN_STEP = 2
 const STEP_OF: Record<Phase, number | null> = {
   INIT_OR_CLARIFY: 0,
   DESIGN_SPEC: 1,
-  EXECUTION_PLAN: 2,
+  PLANNING: 2,
   PLAN_REVIEW: 2,
   REVIEW_AND_MUTATE: 3,
   PR_DELIVERY: 4,

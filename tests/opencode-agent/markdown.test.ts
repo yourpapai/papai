@@ -204,10 +204,10 @@ describe('comment headings', () => {
 
   /** One entry per renderer that speaks about an outcome, with its key. */
   const OUTCOME_COMMENTS: readonly (readonly [OutcomeKey, string])[] = [
-    ['RUN_FAILED', renderFailure('EXECUTION_PLAN', 'boom', failed, 3, null)],
+    ['RUN_FAILED', renderFailure('PLANNING', 'boom', failed, 3, null)],
     ['ANSWER_FAILED', renderAnswerFailure('DESIGN_SPEC', 'boom')],
     ['RETRIES_SPENT', renderExhausted('Retry budget exhausted')],
-    ['TOKENS_SPENT', renderOverBudget(1, 2, 'EXECUTION_PLAN')],
+    ['TOKENS_SPENT', renderOverBudget(1, 2, 'PLANNING')],
     ['ANSWER_TOKENS_SPENT', renderAnswerOverBudget(1, 2, 'DESIGN_SPEC')],
     ['CI_GAVE_UP', renderCiExhausted('spent', null)],
     ['REVIEWS_SPENT', renderReviewsExhausted('spent', null)],

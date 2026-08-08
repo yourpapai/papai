@@ -8,7 +8,7 @@ See LICENSE in the project root for details.
 # Phase 10: Notification Controls & User Preferences — Development Plan
 
 **Created**: 2026-03-20  
-**Scope**: User stories from `docs/user-stories/phase-10-notification-controls.md`  
+**Scope**: User stories from `docs/archive/user-stories/phase-10-notification-controls.md`  
 **Runtime**: Bun  
 **Test runner**: `bun:test`  
 **Linter**: oxlint (no `eslint-disable`, no `@ts-ignore`)

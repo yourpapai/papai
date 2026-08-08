@@ -28,7 +28,7 @@ import { z } from 'zod'
 export const PHASES = [
   'INIT_OR_CLARIFY',
   'DESIGN_SPEC',
-  'EXECUTION_PLAN',
+  'PLANNING',
   'PLAN_REVIEW',
   'REVIEW_AND_MUTATE',
   'PR_DELIVERY',
@@ -39,6 +39,42 @@ export const PHASES = [
 ] as const
 
 export type Phase = (typeof PHASES)[number]
+
+/**
+ * Phase names this pipeline has retired, mapped onto the ones that replaced them.
+ *
+ * `PLANNING` was `EXECUTION_PLAN`, and "execution plan" was the wrong name for
+ * the artefact: what the phase produces is the implementation plan the rest of
+ * the repository already calls a plan (`docs/superpowers/plans/`, `AGENT_PLAN`,
+ * `/approve to implement this plan`), and only this one phase, its status row and
+ * its heading called it something else.
+ *
+ * A rename is a persisted-shape change, because a phase name is written into
+ * every `AGENT_STATE` block as `phase` and `resumeFrom`. It is deliberately
+ * **not** a `STATE_VERSION` bump: a bump strands every in-flight issue, and there
+ * is nothing here a bump would protect against — the old name maps onto the new
+ * one exactly, with no field to reinterpret. So the schema migrates it on the way
+ * in ({@link phaseName}) and every block written afterwards carries the new name.
+ *
+ * Read through `Object.hasOwn`, never `in`: `'toString' in LEGACY_PHASE_NAMES` is
+ * true through the prototype, and a state block is attacker-editable text.
+ */
+export const LEGACY_PHASE_NAMES: Readonly<Record<string, Phase>> = { EXECUTION_PLAN: 'PLANNING' }
+
+/**
+ * A phase name as it may appear in a block on the issue, migrated to the name
+ * the machine uses now.
+ *
+ * On the schema rather than at the restore call sites, because there are four
+ * parse sites (`extractState`, `ownedBy`, `initialState`, `applyPatch`) and three
+ * of them are on the read path; a migration honoured at two of those is a state
+ * block that restores under one scan and is discarded by the other.
+ */
+const phaseName = z.preprocess(
+  (value) =>
+    typeof value === 'string' && Object.hasOwn(LEGACY_PHASE_NAMES, value) ? LEGACY_PHASE_NAMES[value] : value,
+  z.enum(PHASES),
+)
 
 /**
  * Phases that wait on a human and run no handler of their own.
@@ -89,13 +125,13 @@ export const STATE_VERSION = 2
 export const agentStateSchema = z.object({
   /** Absent on v1 blocks written before versioning; those are treated as v1. */
   v: z.number().int().min(1).default(1),
-  phase: z.enum(PHASES),
+  phase: phaseName,
   issueId: z.number().int().positive(),
   // No `branch`: it is exactly `agent/issue-<issueId>`, every phase recomputes
   // it with `branchNameFor`, and persisting a derivable value only adds a field
   // that anyone able to edit the agent's comments could point somewhere else.
   /** Phase to resume from when a FAILED run is retried. */
-  resumeFrom: z.enum(PHASES).nullable().default(null),
+  resumeFrom: phaseName.nullable().default(null),
   /** Consecutive failures. Cleared by any forward move; preserved across `/retry`. */
   attempts: z.number().int().min(0).default(0),
   /**
@@ -154,7 +190,7 @@ export const agentStateSchema = z.object({
    */
   changedLines: z.number().int().min(0).default(0),
   /**
-   * Revisions of the design spec and of the execution plan, counted apart.
+   * Revisions of the design spec and of the plan, counted apart.
    *
    * One shared counter used to serve both, bumped on `SPEC_POSTED` and on
    * `PLAN_POSTED` alike while each handler rendered it into its own heading, so
@@ -237,41 +273,4 @@ export const errorMessage = (error: unknown): string => (error instanceof Error 
  */
 export const unreachable = (value: never): never => {
   throw new Error(`Unreachable value: ${JSON.stringify(value)}`)
-}
-
-export type RunStatus = 'skipped' | 'waiting' | 'completed' | 'failed'
-
-/** What one call to the pipeline concluded. `state` is null when nothing ran. */
-export interface RunResult {
-  status: RunStatus
-  reason: string
-  state: AgentState | null
-  /**
-   * Whether this run has already said what happened on the issue itself.
-   *
-   * Not diagnostic — the workflow reads it. Its last step posts an "Agent job
-   * failed" comment under `if: failure()`, and `failure()` selects *every* red
-   * job, including the six paths that exit 1 only after posting their own
-   * report: `failRun`, `failAnswer`, both over-budget stops in
-   * `token-budget.ts`, `refuseExhausted` and the CI-budget notice in
-   * `triggers.ts`. So every genuine failure drew a second, contradicting
-   * comment — "The issue state is unchanged" beside a block that had just been
-   * moved to `FAILED` or parked with a resume point, and "reply `/retry`"
-   * beside a notice that had just explained why `/retry` is refused. Only the
-   * CI path escaped, by accident: `github.event.issue.number` is empty on a
-   * `workflow_run` event. `runCli` turns this flag into a `$GITHUB_OUTPUT`
-   * marker the fallback step is gated on, so it covers what its own wording
-   * claims and nothing else: a job that died with nothing on the issue at all.
-   *
-   * A field rather than something derived from `status` and `state`, because
-   * neither says it. `failed` covers both a reported failure and a crash;
-   * `skipped` covers both a silent guardrail rejection and a refused command
-   * that answered on the issue; and the state block rides on the same call that
-   * posts, so "the state moved" and "a comment exists" are one event seen from
-   * the side that cannot distinguish the paths that post from the ones that do
-   * not. Required rather than optional so a new terminal path has to decide,
-   * the way `SystemPromptInput.nonce` makes forgetting the envelope a type
-   * error.
-   */
-  reported: boolean
 }

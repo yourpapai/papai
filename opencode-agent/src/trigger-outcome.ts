@@ -4,9 +4,10 @@
 // See LICENSE in the project root for details.
 
 import type { PhaseDeps } from './phase-context.js'
+import type { RunResult } from './run-result.js'
 import { transition } from './state-manager.js'
 import { errorMessage } from './types.js'
-import type { AgentState, RunResult, TransitionSignal } from './types.js'
+import type { AgentState, TransitionSignal } from './types.js'
 
 /**
  * What the trigger layer concluded, shared by `triggers.ts`, `ci-trigger.ts` and

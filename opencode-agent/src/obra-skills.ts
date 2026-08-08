@@ -32,7 +32,7 @@ export interface SkillDocument {
 export const PHASE_SKILLS: Record<Phase, { required: readonly string[]; optional: readonly string[] }> = {
   INIT_OR_CLARIFY: { required: ['brainstorming'], optional: ['writing-plans'] },
   DESIGN_SPEC: { required: [], optional: [] },
-  EXECUTION_PLAN: { required: ['writing-plans'], optional: ['executing-plans'] },
+  PLANNING: { required: ['writing-plans'], optional: ['executing-plans'] },
   PLAN_REVIEW: { required: [], optional: [] },
   REVIEW_AND_MUTATE: {
     required: ['test-driven-development'],

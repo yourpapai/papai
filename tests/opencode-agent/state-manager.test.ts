@@ -160,6 +160,55 @@ describe('serializeState / extractState', () => {
   })
 })
 
+describe('a block written before the planning phase was renamed', () => {
+  test('restores EXECUTION_PLAN as the phase that replaced it', () => {
+    // `PLANNING` was `EXECUTION_PLAN`, and a phase name is written into every
+    // state block — so the rename is a persisted-shape change, and an unmigrated
+    // one would have `z.enum` reject the block outright: the scan would walk
+    // past it to an older comment, or start the conversation over.
+    const older = `<!-- ${STATE_MARKER}: {"v":2,"phase":"EXECUTION_PLAN","issueId":5} -->`
+
+    expect(extractState(older)?.phase).toBe('PLANNING')
+  })
+
+  test('migrates the resume point too, so a parked failure is still resumable', () => {
+    // The field that would fail latest and quietest: an issue parked in FAILED
+    // carries the phase `/retry` re-enters, and a block rejected for naming the
+    // old one takes the resume point with it.
+    const parked = `<!-- ${STATE_MARKER}: {"v":2,"phase":"FAILED","issueId":5,"resumeFrom":"EXECUTION_PLAN"} -->`
+
+    expect(extractState(parked)?.resumeFrom).toBe('PLANNING')
+  })
+
+  test('needs no STATE_VERSION bump, so an in-flight issue is not stranded', () => {
+    const older = `<!-- ${STATE_MARKER}: {"v":2,"phase":"EXECUTION_PLAN","issueId":5,"tokensSpent":900} -->`
+
+    // Everything else about the block is believed, including the spend — the
+    // one field a stranded issue would hand back to the next runner as zero.
+    expect(extractState(older)?.tokensSpent).toBe(900)
+  })
+
+  test('a phase name that was never a phase is still rejected', () => {
+    // The migration is a lookup over one retired name, not a loosening: a block
+    // is attacker-editable text, and anything else must fail the enum as before.
+    expect(extractState(`<!-- ${STATE_MARKER}: {"v":2,"phase":"WHATEVER","issueId":5} -->`)).toBeNull()
+  })
+
+  test('an inherited property name is not a migration', () => {
+    // Read through `Object.hasOwn`, never `in`: `'toString' in LEGACY_PHASE_NAMES`
+    // is true through the prototype, and the value it would substitute is a
+    // function.
+    expect(extractState(`<!-- ${STATE_MARKER}: {"v":2,"phase":"toString","issueId":5} -->`)).toBeNull()
+    expect(extractState(`<!-- ${STATE_MARKER}: {"v":2,"phase":"constructor","issueId":5} -->`)).toBeNull()
+  })
+
+  test('a state the machine writes now carries the new name', () => {
+    // The other half of "no bump": blocks written after the rename must not
+    // keep the old spelling alive, or the migration becomes permanent.
+    expect(transition(at('DESIGN_SPEC'), 'APPROVED').phase).toBe('PLANNING')
+  })
+})
+
 describe('state blocks survive hostile payload text', () => {
   const agent = 'agent-bot'
 
@@ -192,10 +241,10 @@ describe('findLatestState', () => {
     const thread = [
       comment(agent, renderStateComment('one', initialState(ISSUE)), 1),
       comment('maintainer', 'looks good', 2),
-      comment(agent, renderStateComment('two', at('EXECUTION_PLAN')), 3),
+      comment(agent, renderStateComment('two', at('PLANNING')), 3),
     ]
 
-    expect(findLatestState(thread, agent, ISSUE)?.phase).toBe('EXECUTION_PLAN')
+    expect(findLatestState(thread, agent, ISSUE)?.phase).toBe('PLANNING')
   })
 
   test('ignores state blocks authored by anyone but the agent', () => {
@@ -299,7 +348,7 @@ describe('transition', () => {
     expect(state.phase).toBe('DESIGN_SPEC')
 
     state = transition(state, 'APPROVED')
-    expect(state.phase).toBe('EXECUTION_PLAN')
+    expect(state.phase).toBe('PLANNING')
 
     state = transition(state, 'PLAN_POSTED')
     expect(state.phase).toBe('PLAN_REVIEW')
@@ -322,7 +371,7 @@ describe('transition', () => {
     expect(approved).toMatchObject({ specRevision: 1, planRevision: 0 })
 
     // The plan's first revision is 1, not 2. One counter served both, so the
-    // first execution plan on every issue was labelled with the spec's count
+    // first plan on every issue was labelled with the spec's count
     // plus its own.
     expect(transition(approved, 'PLAN_POSTED')).toMatchObject({ specRevision: 1, planRevision: 1 })
   })
@@ -379,7 +428,7 @@ describe('transition', () => {
 
   test.each<[Phase, Phase]>([
     ['DESIGN_SPEC', 'INIT_OR_CLARIFY'],
-    ['PLAN_REVIEW', 'EXECUTION_PLAN'],
+    ['PLAN_REVIEW', 'PLANNING'],
   ])('requested changes send %s back to %s', (from, to) => {
     expect(transition(at(from), 'CHANGES_REQUESTED').phase).toBe(to)
   })
@@ -399,9 +448,9 @@ describe('transition', () => {
   })
 
   test('a second failure keeps the original resume phase and counts up', () => {
-    const twice = transition(transition(at('EXECUTION_PLAN'), 'FAILED'), 'FAILED')
+    const twice = transition(transition(at('PLANNING'), 'FAILED'), 'FAILED')
 
-    expect(twice.resumeFrom).toBe('EXECUTION_PLAN')
+    expect(twice.resumeFrom).toBe('PLANNING')
     expect(twice.attempts).toBe(2)
   })
 
@@ -414,7 +463,7 @@ describe('transition', () => {
   })
 
   test('forward progress clears the failure budget', () => {
-    const recovered = transition(transition(at('EXECUTION_PLAN'), 'FAILED'), 'RETRY')
+    const recovered = transition(transition(at('PLANNING'), 'FAILED'), 'RETRY')
     expect(recovered.attempts).toBe(1)
 
     expect(transition(recovered, 'PLAN_POSTED').attempts).toBe(0)
@@ -426,7 +475,7 @@ describe('transition', () => {
     ['SPEC_POSTED', 'INIT_OR_CLARIFY'],
     ['CHANGES_REQUESTED', 'DESIGN_SPEC'],
     ['APPROVED', 'DESIGN_SPEC'],
-    ['PLAN_POSTED', 'EXECUTION_PLAN'],
+    ['PLAN_POSTED', 'PLANNING'],
     ['CHANGES_COMMITTED', 'REVIEW_AND_MUTATE'],
     ['PR_OPENED', 'PR_DELIVERY'],
     ['CI_FIXED', 'CI_FIX'],
@@ -491,7 +540,7 @@ describe('transition', () => {
   test.each<Phase>([
     'INIT_OR_CLARIFY',
     'DESIGN_SPEC',
-    'EXECUTION_PLAN',
+    'PLANNING',
     'PLAN_REVIEW',
     'REVIEW_AND_MUTATE',
     'CODE_REVIEW',
@@ -526,7 +575,7 @@ describe('transition', () => {
   test.each<Phase>([
     'INIT_OR_CLARIFY',
     'DESIGN_SPEC',
-    'EXECUTION_PLAN',
+    'PLANNING',
     'PLAN_REVIEW',
     'REVIEW_AND_MUTATE',
     'PR_DELIVERY',

@@ -13,13 +13,15 @@ import type { PipelineConfig } from '../../opencode-agent/src/config.js'
 import type { StagedTotals } from '../../opencode-agent/src/diff-guard.js'
 import type { Git } from '../../opencode-agent/src/git.js'
 import type { PullRequestHead, PullRequestRef, PullRequestStatus } from '../../opencode-agent/src/github-pulls.js'
-import type { GitHubApi, ReactionContent, ReactionTarget } from '../../opencode-agent/src/github.js'
+import type { ReactionContent, ReactionRef, ReactionTarget } from '../../opencode-agent/src/github-reactions.js'
+import type { GitHubApi } from '../../opencode-agent/src/github.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
 import type { AgentPromptRequest, OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
 import { runPipeline } from '../../opencode-agent/src/orchestrator.js'
 import type { PhaseDeps } from '../../opencode-agent/src/phase-context.js'
 import type { PullRequestTriggerEvent } from '../../opencode-agent/src/pr-trigger.js'
 import type { ReviewRunResult } from '../../opencode-agent/src/review-runner.js'
+import type { RunResult } from '../../opencode-agent/src/run-result.js'
 import type { CommandResult } from '../../opencode-agent/src/shell.js'
 import {
   extractState,
@@ -31,7 +33,7 @@ import {
 import { STATUS_MARKER } from '../../opencode-agent/src/status-comment.js'
 import { createStatusReporter } from '../../opencode-agent/src/status-reporter.js'
 import type { CiTriggerEvent, IssueTriggerEvent } from '../../opencode-agent/src/trigger-events.js'
-import type { AgentState, Phase, RunResult } from '../../opencode-agent/src/types.js'
+import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
 
 const AGENT_LOGIN = 'agent-bot'
 const ISSUE = 42
@@ -188,12 +190,33 @@ interface PipelineIo {
    * whole reason `pull-request` is a third kind and not a flag on the issue one.
    */
   getIssueCalls: number
+  /** What `createPullRequest` rejects with, when set. */
+  createPrError: Error | null
   prBodies: string[]
   prTitles: string[]
   /** The account GitHub records as the author of the agent's comments. */
   postedAs: string
   /** Every reaction the run placed, in order, with what it landed on. */
   reactions: { target: ReactionTarget; content: ReactionContent }[]
+  /**
+   * Every reaction the run took back off, by the id it was created with.
+   *
+   * Kept apart from `reactions` rather than modelled as a set that ends up
+   * right: the 👀 is placed and removed by the same run, so a set would show an
+   * empty comment either way and could not tell a run that cleared its
+   * acknowledgement from one that never placed it.
+   */
+  reactionRemovals: { target: ReactionTarget; id: number }[]
+  /**
+   * Both reaction writes in one array, in the order they were made.
+   *
+   * The two arrays above cannot answer the one question that matters about
+   * ordering — whether the outcome went on before the 👀 came off — because the
+   * order *between* them is exactly what they throw away. Recorded here rather
+   * than reconstructed by wrapping the fake, which would have a test reach past
+   * the harness into the interface it is meant to exercise.
+   */
+  reactionLog: string[]
   /**
    * What `addReaction` rejects with, when set.
    *
@@ -273,10 +296,13 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     createdPr: null,
     existingPr: null,
     getIssueCalls: 0,
+    createPrError: null,
     prBodies: [],
     prTitles: [],
     postedAs: AGENT_LOGIN,
     reactions: [],
+    reactionRemovals: [],
+    reactionLog: [],
     reactionError: null,
     labels: [],
     labelWrites: [],
@@ -355,6 +381,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       throw new Error('the head is resolved before the pipeline runs')
     },
     createPullRequest: (input) => {
+      if (io.createPrError !== null) return Promise.reject(io.createPrError)
       io.prBodies.push(input.body)
       io.prTitles.push(input.title)
       io.createdPr = { number: 7, url: 'https://example.test/pull/7' }
@@ -371,6 +398,16 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       // Recorded before the refusal, so a test can prove the pipeline *asked*
       // even in the run where every ask is turned down.
       io.reactions.push({ target, content })
+      io.reactionLog.push(`add:${content}`)
+      if (io.reactionError !== null) return Promise.reject(io.reactionError)
+      // Ids climb from the number of reactions placed, so a removal can be
+      // matched to the reaction it undoes rather than to a constant every
+      // reaction in the run would satisfy.
+      return Promise.resolve({ id: io.reactions.length })
+    },
+    removeReaction: (target, reaction) => {
+      io.reactionRemovals.push({ target, id: reaction.id })
+      io.reactionLog.push('remove')
       return io.reactionError === null ? Promise.resolve() : Promise.reject(io.reactionError)
     },
     // Reading is not a write, so it is not recorded as one — but it does fail
@@ -511,6 +548,8 @@ const toDesignSpec = async (harness: Harness): Promise<void> => {
   // starting position, and what the setup runs acknowledged is not part of the
   // test that follows.
   harness.io.reactions.length = 0
+  harness.io.reactionRemovals.length = 0
+  harness.io.reactionLog.length = 0
   harness.io.edits.length = 0
 }
 
@@ -521,6 +560,8 @@ const toPlanReview = async (harness: Harness): Promise<void> => {
   await runPipeline({ event: comment('/approve'), deps: harness.deps })
   harness.io.posted.length = 0
   harness.io.reactions.length = 0
+  harness.io.reactionRemovals.length = 0
+  harness.io.reactionLog.length = 0
   harness.io.edits.length = 0
 }
 
@@ -809,7 +850,7 @@ describe('review conversation', () => {
 
     await runPipeline({ event: comment('looks great, go ahead'), deps: harness.deps })
 
-    expect(harness.io.posted[0]).toContain('### Execution plan')
+    expect(harness.io.posted[0]).toContain('### Plan')
   })
 
   test('an unusable classification falls back to answering, never to re-planning', async () => {
@@ -920,7 +961,7 @@ describe('plan review gate', () => {
     const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
     expect(result.status).toBe('waiting')
-    expect(headings(harness)).toEqual(['### Execution plan (revision 1)'])
+    expect(headings(harness)).toEqual(['### Plan (revision 1)'])
     expect(latestPostedState(harness)?.phase).toBe('PLAN_REVIEW')
     expect(harness.io.gitCalls).toEqual([`ensureBranch:agent/issue-${ISSUE}:${BASE_BRANCH}`])
   })
@@ -931,7 +972,7 @@ describe('plan review gate', () => {
 
     await runPipeline({ event: comment('/changes split step 1'), deps: harness.deps })
 
-    expect(harness.io.posted[0]).toContain('### Execution plan (revision 2)')
+    expect(harness.io.posted[0]).toContain('### Plan (revision 2)')
     expect(latestPostedState(harness)).toMatchObject({ phase: 'PLAN_REVIEW', specRevision: 1, planRevision: 2 })
   })
 
@@ -950,7 +991,7 @@ describe('plan review gate', () => {
 /**
  * The spec and the plan used to share one `revision`, bumped by both
  * `SPEC_POSTED` and `PLAN_POSTED` and rendered into both headings, so the first
- * execution plan a maintainer ever saw was labelled revision 2 — revision 3 if
+ * plan a maintainer ever saw was labelled revision 2 — revision 3 if
  * the spec had been revised once first. Nothing was corrupted; the numbers
  * simply counted something no reader could name.
  */
@@ -961,13 +1002,13 @@ describe('artefact revision numbering', () => {
     harness = makeHarness()
   })
 
-  test('the first execution plan is revision 1', async () => {
+  test('the first plan is revision 1', async () => {
     await toDesignSpec(harness)
     harness.io.replies = [PLAN_REPLY]
 
     await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
-    expect(harness.io.posted[0]).toContain('### Execution plan (revision 1)')
+    expect(harness.io.posted[0]).toContain('### Plan (revision 1)')
     expect(latestPostedState(harness)).toMatchObject({ specRevision: 1, planRevision: 1 })
   })
 
@@ -984,7 +1025,7 @@ describe('artefact revision numbering', () => {
     harness.io.replies = [PLAN_REPLY]
     await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
-    expect(harness.io.posted[0]).toContain('### Execution plan (revision 1)')
+    expect(harness.io.posted[0]).toContain('### Plan (revision 1)')
     expect(latestPostedState(harness)).toMatchObject({ specRevision: 3, planRevision: 1 })
   })
 
@@ -994,7 +1035,7 @@ describe('artefact revision numbering', () => {
 
     await runPipeline({ event: comment('/changes split step 1'), deps: harness.deps })
 
-    expect(harness.io.posted[0]).toContain('### Execution plan (revision 2)')
+    expect(harness.io.posted[0]).toContain('### Plan (revision 2)')
     // Read back the way the next job does: the hidden block's `revision` is
     // written from the same local as the heading, so they cannot disagree.
     expect(findArtifact(harness.io.thread, AGENT_LOGIN, PLAN_MARKER)?.revision).toBe(2)
@@ -1019,7 +1060,7 @@ describe('artefact revision numbering', () => {
     const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
     expect(result.status).toBe('waiting')
-    expect(harness.io.posted[0]).toContain('### Execution plan (revision 1)')
+    expect(harness.io.posted[0]).toContain('### Plan (revision 1)')
     expect(latestPostedState(harness)).toMatchObject({ phase: 'PLAN_REVIEW', specRevision: 0, planRevision: 1 })
   })
 })
@@ -1687,6 +1728,77 @@ describe('the review budget across pull requests', () => {
   })
 })
 
+describe('delivery refused by the repository settings', () => {
+  /** GitHub's own words when Actions may not open pull requests. */
+  const forbidden = (): Error =>
+    new Error(
+      'GitHub Actions is not permitted to create or approve pull requests. - ' +
+        'https://docs.github.com/rest/pulls/pulls#create-a-pull-request',
+    )
+
+  test('says what to switch on rather than repeating the API', async () => {
+    // The bare API message is the least useful failure this pipeline can post.
+    // It names a setting without saying where it lives, reads like a bug in the
+    // agent, and hides the one fact that changes what a maintainer does next:
+    // the work is finished and pushed, so this is a click, not a rerun.
+    const harness = makeHarness()
+    harness.io.createPrError = forbidden()
+
+    const result = await driveDelivery(harness)
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.posted.at(-1)).toContain('Allow GitHub Actions to create and')
+    expect(harness.io.posted.at(-1)).toContain('AGENT_GITHUB_TOKEN')
+    // The greyed-out case matters on its own, and is the state the repository
+    // this was written for was in: an organisation can lock the whole Workflow
+    // permissions section, so "tick the box" sends a maintainer to a control
+    // they cannot click, with nothing saying where the setting really lives.
+    expect(harness.io.posted.at(-1)).toContain('greyed out')
+  })
+
+  test('offers the branch as a pull request anyone can open by hand', async () => {
+    // The third way out and the only one needing no permissions at all: phase 3
+    // pushed the branch, so the pull request exists in every sense but the API
+    // call. Built from `gitRemoteBase`, because an Enterprise Server install
+    // answers on its own host and a link into the wrong one is worse than none.
+    const harness = makeHarness()
+    harness.io.createPrError = forbidden()
+
+    await driveDelivery(harness)
+
+    expect(harness.io.posted.at(-1)).toContain(
+      `https://github.com/acme/widgets/compare/${BASE_BRANCH}...agent/issue-${ISSUE}?expand=1`,
+    )
+  })
+
+  test('parks in PR_DELIVERY so the fix and a /retry compose', async () => {
+    // Everything before delivery is done and paid for. Resuming anywhere else
+    // would re-run the model over work already on the branch.
+    const harness = makeHarness()
+    harness.io.createPrError = forbidden()
+
+    await driveDelivery(harness)
+
+    expect(latestPostedState(harness)?.phase).toBe('FAILED')
+    expect(latestPostedState(harness)?.resumeFrom).toBe('PR_DELIVERY')
+  })
+
+  test('any other refusal is reported as GitHub worded it', async () => {
+    // The substitution is worth having only because it names one cause and the
+    // settings that undo it. A token merely missing `pull-requests: write` fails
+    // with the same 403 and has a different remedy, so sending that maintainer
+    // to tick a box that was never the problem is worse than saying nothing.
+    const harness = makeHarness()
+    harness.io.createPrError = new Error('Resource not accessible by integration')
+
+    const result = await driveDelivery(harness)
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.posted.at(-1)).toContain('Resource not accessible by integration')
+    expect(harness.io.posted.at(-1)).not.toContain('AGENT_GITHUB_TOKEN')
+  })
+})
+
 describe('CI fixing', () => {
   let harness: Harness
 
@@ -1865,7 +1977,7 @@ describe('a red run away from COMPLETE', () => {
     expect(state?.ciAttempts).toBe(1)
   })
 
-  test.each<Phase>(['INIT_OR_CLARIFY', 'DESIGN_SPEC', 'EXECUTION_PLAN', 'PLAN_REVIEW', 'FAILED'])(
+  test.each<Phase>(['INIT_OR_CLARIFY', 'DESIGN_SPEC', 'PLANNING', 'PLAN_REVIEW', 'FAILED'])(
     'a red run in %s posts nothing and spends no CI-fix attempt',
     async (phase) => {
       // Nothing is pushed before PR_DELIVERY, so a fix round would run the
@@ -2104,7 +2216,7 @@ describe('the retry budget', () => {
   const seedSpentBudget = (harness: Harness): void =>
     seedState(harness, {
       phase: 'FAILED',
-      resumeFrom: 'EXECUTION_PLAN',
+      resumeFrom: 'PLANNING',
       attempts: 3,
       lastError: 'the planning turn returned no JSON',
     })
@@ -2112,7 +2224,7 @@ describe('the retry budget', () => {
   test('a /retry past the budget leaves the failure parked where it was', async () => {
     // Spending the budget used to *move* the state: the signal was applied
     // first and the ceiling checked a step later, so the give-up notice posted
-    // `EXECUTION_PLAN` with `resumeFrom` cleared — a handler phase that
+    // `PLANNING` with `resumeFrom` cleared — a handler phase that
     // `/retry` (which needs FAILED) and a plain comment (which needs a waiting
     // phase) both refuse. Only `/cancel` could reach the issue after that.
     const harness = makeHarness({ maxAttempts: 3 })
@@ -2125,7 +2237,7 @@ describe('the retry budget', () => {
 
     const state = latestPostedState(harness)
     expect(state?.phase).toBe('FAILED')
-    expect(state?.resumeFrom).toBe('EXECUTION_PLAN')
+    expect(state?.resumeFrom).toBe('PLANNING')
     expect(state?.attempts).toBe(3)
   })
 
@@ -2149,7 +2261,7 @@ describe('the retry budget', () => {
 
   test('a second /retry is still answered by the budget, not by the transition table', async () => {
     // The tell that the first one moved nothing. Against the moved state this
-    // came back as `/retry is not valid in EXECUTION_PLAN`, which is a true
+    // came back as `/retry is not valid in PLANNING`, which is a true
     // sentence about a phase the maintainer never asked to be in.
     const harness = makeHarness({ maxAttempts: 3 })
     seedSpentBudget(harness)
@@ -2162,7 +2274,7 @@ describe('the retry budget', () => {
     expect(result.reason).toContain('Retry budget exhausted')
     expect(result.reason).not.toContain('not valid in')
     expect(harness.io.posted[0]).toContain('### ⛔ Giving up')
-    expect(latestPostedState(harness)?.resumeFrom).toBe('EXECUTION_PLAN')
+    expect(latestPostedState(harness)?.resumeFrom).toBe('PLANNING')
   })
 
   test('raising the ceiling resumes the parked phase, which is what makes the notice honest', async () => {
@@ -2199,7 +2311,7 @@ describe('the retry budget', () => {
 
     const state = latestPostedState(harness)
     expect(state?.phase).toBe('FAILED')
-    expect(state?.resumeFrom).toBe('EXECUTION_PLAN')
+    expect(state?.resumeFrom).toBe('PLANNING')
   })
 })
 
@@ -2377,7 +2489,7 @@ describe('the token budget', () => {
   test('parks the stop in FAILED, resuming from the phase it refused to start', async () => {
     // Trigger point one: the budget runs out on the *first* phase of a run,
     // right after a trigger moved the state. The stop used to leave the state
-    // exactly where the trigger had put it — `EXECUTION_PLAN`, a phase with a
+    // exactly where the trigger had put it — `PLANNING`, a phase with a
     // handler — so the issue was parked somewhere `/retry` (needs FAILED) and a
     // plain comment (needs a waiting phase) both refuse, and only `/cancel`
     // reached it. Reachable on a first approval with no failure involved.
@@ -2391,7 +2503,7 @@ describe('the token budget', () => {
 
     const state = latestPostedState(harness)
     expect(state?.phase).toBe('FAILED')
-    expect(state?.resumeFrom).toBe('EXECUTION_PLAN')
+    expect(state?.resumeFrom).toBe('PLANNING')
     expect(state?.tokensSpent).toBe(500)
   })
 
@@ -2399,7 +2511,7 @@ describe('the token budget', () => {
     // Trigger point two, which no trigger-layer refusal can reach: the earlier
     // phase legitimately did its work and posted, and the cascade stops before
     // the next one. Stopping in `PR_DELIVERY` is the same dead end as stopping
-    // in `EXECUTION_PLAN` above — worse, in fact, since the branch is already
+    // in `PLANNING` above — worse, in fact, since the branch is already
     // pushed and only delivery is left.
     const harness = makeHarness({ maxTokens: 50_000 })
     await toPlanReview(harness)
@@ -2472,7 +2584,7 @@ describe('the token budget', () => {
     // down by the *retry* gate in `triggers.ts` for a ceiling nobody mentioned.
     const harness = makeHarness({ maxAttempts: 3 })
     await toDesignSpec(harness)
-    seedState(harness, { phase: 'FAILED', resumeFrom: 'EXECUTION_PLAN', attempts: 2, tokensSpent: 500 })
+    seedState(harness, { phase: 'FAILED', resumeFrom: 'PLANNING', attempts: 2, tokensSpent: 500 })
 
     harness.deps.config = config({ maxAttempts: 3, maxTokens: 100 })
     await runPipeline({ event: comment('/retry'), deps: harness.deps })
@@ -2484,7 +2596,7 @@ describe('the token budget', () => {
     const result = await runPipeline({ event: comment('/retry'), deps: harness.deps })
 
     expect(result.reason).not.toContain('Retry budget exhausted')
-    expect(harness.io.posted.at(-1)).toContain('### Execution plan')
+    expect(harness.io.posted.at(-1)).toContain('### Plan')
     expect(latestPostedState(harness)?.phase).toBe('PLAN_REVIEW')
   })
 
@@ -2563,6 +2675,8 @@ const toComplete = async (harness: Harness): Promise<void> => {
   await runPipeline({ event: comment('/cancel'), deps: harness.deps })
   harness.io.posted.length = 0
   harness.io.reactions.length = 0
+  harness.io.reactionRemovals.length = 0
+  harness.io.reactionLog.length = 0
   harness.io.edits.length = 0
 }
 
@@ -2601,9 +2715,9 @@ describe('reactions — acknowledging a trigger', () => {
       order.push('read-thread')
       return Promise.resolve([...harness.io.thread])
     }
-    harness.deps.github.addReaction = (): Promise<void> => {
+    harness.deps.github.addReaction = (): Promise<ReactionRef> => {
       order.push('react')
-      return Promise.resolve()
+      return Promise.resolve({ id: 1 })
     }
     harness.io.replies = [SPEC_REPLY]
 
@@ -2644,6 +2758,162 @@ describe('reactions — acknowledging a trigger', () => {
   })
 })
 
+/**
+ * Just the removals' contents, resolved back through what was placed.
+ *
+ * Through the id rather than by assuming order: the point of asserting a removal
+ * is that it names the reaction the run created, and a helper that reported the
+ * content by position would pass on a delete aimed at the wrong one.
+ */
+const removedContentsOf = (harness: Harness): (ReactionContent | 'unplaced')[] =>
+  harness.io.reactionRemovals.map((removal) => harness.io.reactions[removal.id - 1]?.content ?? 'unplaced')
+
+describe('reactions — the acknowledgement does not outlive the run', () => {
+  test('👀 comes back off the comment when the run ends', async () => {
+    // The bug this is for: 👀 says "this arrived and something is running", and
+    // a run is one CI job, so a job that ends without clearing it leaves that
+    // claim on a comment nobody will touch again. Every issue the agent had
+    // ever finished still read as one it was thinking about.
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    harness.io.replies = [PLAN_REPLY]
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.reactionRemovals).toEqual([{ target: { kind: 'comment', id: COMMENT_ID }, id: 1 }])
+    expect(removedContentsOf(harness)).toEqual(['eyes'])
+  })
+
+  test('the removal names the reaction that was placed, not a fresh lookup', async () => {
+    // GitHub has no "remove my 👀 from this" call — a delete is addressed by
+    // reaction id and nothing else — so the id has to survive from the top of
+    // the run to the bottom. Asserting the id is what proves it was carried
+    // rather than re-derived, which is how a run deletes somebody else's mark.
+    const harness = makeHarness()
+    harness.io.replies = [SPEC_REPLY]
+
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(harness.io.reactions[0]).toEqual({ target: { kind: 'issue', number: ISSUE }, content: 'eyes' })
+    expect(harness.io.reactionRemovals).toEqual([{ target: { kind: 'issue', number: ISSUE }, id: 1 }])
+  })
+
+  test('👍 replaces it when the run hands the issue back', async () => {
+    // The commonest ending by far: the agent posts an artefact and stops. There
+    // is nothing to celebrate and nothing went wrong — the comment was acted on
+    // and it is the maintainer's turn.
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    harness.io.replies = [PLAN_REPLY]
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(reactionsOf(harness)).toEqual(['eyes', '+1'])
+    expect(removedContentsOf(harness)).toEqual(['eyes'])
+  })
+
+  test('😕 replaces it when the run breaks', async () => {
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    harness.io.replies = ['not json at all']
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(reactionsOf(harness)).toEqual(['eyes', 'confused'])
+    expect(removedContentsOf(harness)).toEqual(['eyes'])
+  })
+
+  test('the outcome goes on before the 👀 comes off', async () => {
+    // Both writes are best-effort, so the order decides which way the failure
+    // modes fall. Removing first would leave the comment bare for the width of
+    // an API call — and, if the add then failed, bare for good, which is worse
+    // than the 👀 this exists to clear.
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    harness.io.replies = [PLAN_REPLY]
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.reactionLog).toEqual(['add:eyes', 'add:+1', 'remove'])
+  })
+
+  test('a delivery keeps its 🚀 and is not marked a second time', async () => {
+    // 🚀 is the one mark in this pipeline that means a pull request came out of
+    // the work, and `handleDeliver` is the only place that knows the difference
+    // between a delivery and a stand-down. A run-level 👍 beside it would be a
+    // second reaction saying less.
+    const harness = makeHarness()
+
+    const result = await driveDelivery(harness)
+
+    expect(result.status).toBe('completed')
+    expect(reactionsOf(harness)).toEqual(['eyes', 'rocket'])
+    expect(removedContentsOf(harness)).toEqual(['eyes'])
+  })
+
+  test('a cancelled run is left with nothing rather than a 🚀', async () => {
+    // `/cancel` reaches the same COMPLETE a delivery does, so a table keyed on
+    // the run status alone would celebrate it. Nothing was delivered; the
+    // comment saying so is the account, and the reaction is not.
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+
+    const result = await runPipeline({ event: comment('/cancel'), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(reactionsOf(harness)).toEqual(['eyes'])
+    expect(removedContentsOf(harness)).toEqual(['eyes'])
+  })
+
+  test('a refused command keeps its 😕 and loses the 👀', async () => {
+    // The skip that is a *reply* to somebody: `triggers.ts` has already said
+    // 😕, so the run-level table stays out of its way — but the 👀 is this
+    // run's and comes off like any other.
+    const harness = makeHarness()
+    await toComplete(harness)
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(reactionsOf(harness)).toEqual(['eyes', 'confused'])
+    expect(removedContentsOf(harness)).toEqual(['eyes'])
+  })
+
+  test('a run whose reactions are all refused ends exactly as it would have', async () => {
+    // The rule the whole channel rests on, now with a second write behind it:
+    // a token without `issues: write` must change nothing about the run, and a
+    // removal that rejects is not evidence of anything the pipeline can act on.
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    harness.io.replies = [PLAN_REPLY]
+    harness.io.reactionError = new Error('Resource not accessible by integration')
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(latestPostedState(harness)?.phase).toBe('PLAN_REVIEW')
+    // Asked, refused, and never retried as a delete against an id it never got.
+    expect(reactionsOf(harness)).toEqual(['eyes', '+1'])
+    expect(harness.io.reactionRemovals).toEqual([])
+  })
+
+  test('a CI run has nothing to acknowledge and nothing to clear', async () => {
+    const harness = makeHarness()
+    await driveDelivery(harness)
+    harness.io.reactions.length = 0
+    harness.io.reactionRemovals.length = 0
+    harness.io.reactionLog.length = 0
+    harness.io.reactionLog.length = 0
+
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(harness.io.reactions).toEqual([])
+    expect(harness.io.reactionRemovals).toEqual([])
+  })
+})
+
 describe('reactions — the silences that stay silent', () => {
   const onPullRequest = issueEvent({
     eventName: 'issue_comment',
@@ -2677,6 +2947,11 @@ describe('reactions — the silences that stay silent', () => {
     const harness = makeHarness()
     await driveDelivery(harness)
     harness.io.reactions.length = 0
+    harness.io.reactionRemovals.length = 0
+    harness.io.reactionLog.length = 0
+    harness.io.reactionLog.length = 0
+    harness.io.reactionRemovals.length = 0
+    harness.io.reactionLog.length = 0
 
     const result = await runPipeline({ event: ciEvent(), deps: harness.deps })
 
@@ -2762,6 +3037,11 @@ describe('reactions — breaking the remaining silences', () => {
     expect(parked?.phase).toBe('INIT_OR_CLARIFY')
     harness.io.posted.length = 0
     harness.io.reactions.length = 0
+    harness.io.reactionRemovals.length = 0
+    harness.io.reactionLog.length = 0
+    harness.io.reactionLog.length = 0
+    harness.io.reactionRemovals.length = 0
+    harness.io.reactionLog.length = 0
 
     harness.io.replies = [JSON.stringify({ intent: 'none' })]
     const result = await runPipeline({ event: comment('thanks!'), deps: harness.deps })

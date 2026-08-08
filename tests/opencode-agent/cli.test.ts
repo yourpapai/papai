@@ -176,7 +176,7 @@ interface PostRecorder {
    * run that reported — which is the exact distinction `RunResult.reported`
    * exists to make.
    */
-  reactions: { url: string; body: string }[]
+  reactions: { method: string; url: string; body: string }[]
   /**
    * Label writes, kept apart for the same reason as the reactions, plus one of
    * its own: labels are the channel most likely to be issued and least likely
@@ -222,7 +222,7 @@ const recordPosts = (thread: unknown, pullRequest: unknown = AGENT_HEAD): PostRe
   const posted: string[] = []
   const postUrls: string[] = []
   const reads: string[] = []
-  const reactions: { url: string; body: string }[] = []
+  const reactions: { method: string; url: string; body: string }[] = []
   const labelCalls: { method: string; url: string; body: string }[] = []
   const edits: { url: string; body: string }[] = []
   const json = (payload: unknown, status: number): Response =>
@@ -232,7 +232,7 @@ const recordPosts = (thread: unknown, pullRequest: unknown = AGENT_HEAD): PostRe
 
   const write = (method: string, url: string, body: string): Response => {
     if (url.includes('/reactions')) {
-      reactions.push({ url, body })
+      reactions.push({ method, url, body })
       return json({ id: 5, content: 'eyes' }, 201)
     }
     if (method === 'PATCH' && url.includes('/issues/comments/')) {
@@ -389,7 +389,7 @@ describe('runCli', () => {
           v: 1,
           phase: 'FAILED',
           issueId: 42,
-          resumeFrom: 'EXECUTION_PLAN',
+          resumeFrom: 'PLANNING',
           lastError: `git failed: remote rejected, token ${token}`,
         })} -->`,
       },
@@ -450,9 +450,16 @@ describe('runCli', () => {
     expect(result.status).toBe('completed')
     // On the comment the maintainer typed, which is the whole point — the id
     // was parsed and thrown away until this stage carried it through.
-    expect(github.reactions).toHaveLength(1)
+    expect(github.reactions[0]?.method).toBe('POST')
     expect(github.reactions[0]?.url).toContain('/repos/acme/widgets/issues/comments/8811/reactions')
     expect(github.reactions[0]?.body).toContain('"content":"eyes"')
+    // And taken off again by the end of the same run, addressed by the id the
+    // create answered with. The wiring is the point here as much as above: the
+    // adapter can route a delete perfectly and still never be handed one, and a
+    // 👀 that outlives its run is the state this whole channel was left in.
+    expect(github.reactions).toHaveLength(2)
+    expect(github.reactions[1]?.method).toBe('DELETE')
+    expect(github.reactions[1]?.url).toContain('/repos/acme/widgets/issues/comments/8811/reactions/5')
   })
 
   test('a real run labels the issue it finished', async () => {
@@ -698,7 +705,7 @@ describe('runCli', () => {
           v: 2,
           phase: 'FAILED',
           issueId: 42,
-          resumeFrom: 'EXECUTION_PLAN',
+          resumeFrom: 'PLANNING',
           attempts: 3,
         })} -->`,
       },
@@ -764,7 +771,7 @@ describe('runCli', () => {
           v: 2,
           phase: 'FAILED',
           issueId: 42,
-          resumeFrom: 'EXECUTION_PLAN',
+          resumeFrom: 'PLANNING',
           attempts: 3,
         })} -->`,
       },

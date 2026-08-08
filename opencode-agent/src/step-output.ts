@@ -6,8 +6,8 @@
 import { appendFile } from 'node:fs/promises'
 
 import type { Logger } from './logger.js'
+import type { RunResult } from './run-result.js'
 import { errorMessage } from './types.js'
-import type { RunResult } from './types.js'
 
 /**
  * The one thing this pipeline tells the rest of its own workflow.

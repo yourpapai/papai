@@ -121,7 +121,7 @@ export const buildPlanPrompt = (input: PlanPromptInput): string => {
     `The design spec below was approved by a maintainer for issue #${input.issueNumber}.`,
     input.envelope.wrap('approved-spec', input.spec),
     `Work happens on branch \`${input.branch}\`.`,
-    'Produce a granular execution plan as a single JSON object and nothing else:',
+    'Produce a granular implementation plan as a single JSON object and nothing else:',
     '{"steps":[{"title":"…","files":["…"],"verification":"…"}],"summary":"…"}',
     'Each step must be independently verifiable and touch a named set of files.',
     'Order steps so tests land before or alongside the implementation they cover.',

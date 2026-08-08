@@ -9,8 +9,9 @@ import type { LabelApi } from '../../opencode-agent/src/github-labels.js'
 import { reconcileLabels, settleLabels } from '../../opencode-agent/src/labels.js'
 import type { LabelDeps } from '../../opencode-agent/src/labels.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
+import type { RunResult } from '../../opencode-agent/src/run-result.js'
 import { initialState } from '../../opencode-agent/src/state-manager.js'
-import type { AgentState, Phase, RunResult } from '../../opencode-agent/src/types.js'
+import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
 
 const ISSUE = 42
 

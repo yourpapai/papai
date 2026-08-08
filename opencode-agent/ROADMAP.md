@@ -222,7 +222,7 @@ design spec. Reproduced: a spec reading
 `Goal: do the thing.` — the planning phase receives a mutilated spec and never
 knows.
 
-The same applies to the execution plan, and to the implementation report on its
+The same applies to the plan, and to the implementation report on its
 way into the PR body (a lint log containing `---` truncates it).
 
 **Direction:** stop parsing prose. Persist the spec, plan and report in the
@@ -314,7 +314,7 @@ module". As shipped it is a well-tested loader pointed at nothing.
 
 **Direction:** verify the real obra/superpowers vendored layout and skill names
 against the upstream repo; add a `log.warn` per missing skill; and decide
-whether a missing _planning_ skill should be fatal for `EXECUTION_PLAN` rather
+whether a missing _planning_ skill should be fatal for `PLANNING` rather
 than silently degrading. Also strip YAML frontmatter before inlining — it is
 prompt noise.
 

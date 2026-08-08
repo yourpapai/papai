@@ -12,6 +12,7 @@ import type { PipelineConfig } from '../../opencode-agent/src/config.js'
 import type { PostedComment } from '../../opencode-agent/src/github.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
 import type { ProgressSnapshot } from '../../opencode-agent/src/progress.js'
+import type { RunResult } from '../../opencode-agent/src/run-result.js'
 import {
   extractState,
   findLatestState,
@@ -25,7 +26,7 @@ import { renderStatus, STATUS_MARKER } from '../../opencode-agent/src/status-com
 import type { StatusView } from '../../opencode-agent/src/status-comment.js'
 import { createStatusReporter, MIN_EDIT_INTERVAL_MS } from '../../opencode-agent/src/status-reporter.js'
 import type { StatusDeps } from '../../opencode-agent/src/status-reporter.js'
-import type { AgentState, RunResult } from '../../opencode-agent/src/types.js'
+import type { AgentState } from '../../opencode-agent/src/types.js'
 
 const AGENT_LOGIN = 'agent-bot'
 const ISSUE = 42
@@ -125,13 +126,13 @@ describe('renderStatus', () => {
     const body = renderStatus(view({ state: state({ phase: 'REVIEW_AND_MUTATE', specRevision: 3, planRevision: 1 }) }))
 
     expect(rowFor(body, 'Design spec')).toContain('· revision 3')
-    expect(rowFor(body, 'Execution plan')).toContain('· revision 1')
+    expect(rowFor(body, 'Planning')).toContain('· revision 1')
   })
 
-  test('the plan waiting for approval is the execution-plan row, not a sixth one', () => {
+  test('the plan waiting for approval is the planning row, not a sixth one', () => {
     const body = renderStatus(view({ state: state({ phase: 'PLAN_REVIEW' }) }))
 
-    expect(rowFor(body, 'Execution plan')).toContain('⏳ **now**')
+    expect(rowFor(body, 'Planning')).toContain('⏳ **now**')
     expect(body.split('\n').filter((line) => line.startsWith('| ')).length).toBe(7)
   })
 
@@ -159,7 +160,7 @@ describe('renderStatus', () => {
   })
 
   test('the attempt in flight is the one a failure here would report', () => {
-    expect(renderStatus(view({ state: state({ phase: 'EXECUTION_PLAN', attempts: 1 }) }))).toContain('attempt 2 of 3')
+    expect(renderStatus(view({ state: state({ phase: 'PLANNING', attempts: 1 }) }))).toContain('attempt 2 of 3')
   })
 
   test('a CI round says it is counted per pull request', () => {
@@ -182,11 +183,11 @@ describe('renderStatus', () => {
   })
 
   test('a failed run marks the step it broke on with the failure’s own glyph', () => {
-    const broken = state({ phase: 'FAILED', resumeFrom: 'EXECUTION_PLAN' })
+    const broken = state({ phase: 'FAILED', resumeFrom: 'PLANNING' })
 
     const body = renderStatus(view({ state: broken, live: false }))
 
-    expect(rowFor(body, 'Execution plan')).toBe('| 🗺️ Execution plan | ❌ |')
+    expect(rowFor(body, 'Planning')).toBe('| 🗺️ Planning | ❌ |')
     expect(rowFor(body, 'Implementation')).toBe('| 🛠️ Implementation | ⬜ |')
   })
 
@@ -282,7 +283,7 @@ describe('createStatusReporter', () => {
     const reporter = createStatusReporter(deps)
 
     return (async (): Promise<void> => {
-      await reporter.start(state({ phase: 'EXECUTION_PLAN' }))
+      await reporter.start(state({ phase: 'PLANNING' }))
       io.nowMs += MIN_EDIT_INTERVAL_MS
       await reporter.enter(state({ phase: 'REVIEW_AND_MUTATE' }))
 
@@ -474,7 +475,7 @@ describe('persistState', () => {
     const hostile = 'error[E0308] expected struct\n  --> src/a.rs:3:9\n   |'
     const thread = [withState(1, { phase: 'FAILED', lastError: 'boom' })]
     const edits: { id: number; body: string }[] = []
-    const recorded = state({ phase: 'FAILED', resumeFrom: 'EXECUTION_PLAN', lastError: hostile, tokensSpent: 12 })
+    const recorded = state({ phase: 'FAILED', resumeFrom: 'PLANNING', lastError: hostile, tokensSpent: 12 })
 
     await persistState(persistDeps(edits), thread, recorded)
 

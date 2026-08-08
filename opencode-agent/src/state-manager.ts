@@ -34,7 +34,7 @@ export const STATE_MARKER = 'AGENT_STATE'
  * the whole CI path is built around, so it was the wrong row to leave out.
  *
  * The four phases before the branch exists — `INIT_OR_CLARIFY`, `DESIGN_SPEC`,
- * `EXECUTION_PLAN`, `PLAN_REVIEW` — have nothing pushed to repair, and
+ * `PLANNING`, `PLAN_REVIEW` — have nothing pushed to repair, and
  * `handleCiFix` would happily run the configured checks against a branch cut
  * fresh from the base and commit the base's own failures onto the issue.
  *
@@ -80,9 +80,9 @@ export const STATE_MARKER = 'AGENT_STATE'
  */
 const TRANSITIONS: Record<Phase, Partial<Record<TransitionSignal, Phase>>> = {
   INIT_OR_CLARIFY: { NEEDS_CLARIFICATION: 'INIT_OR_CLARIFY', SPEC_POSTED: 'DESIGN_SPEC' },
-  DESIGN_SPEC: { CHANGES_REQUESTED: 'INIT_OR_CLARIFY', APPROVED: 'EXECUTION_PLAN' },
-  EXECUTION_PLAN: { PLAN_POSTED: 'PLAN_REVIEW' },
-  PLAN_REVIEW: { CHANGES_REQUESTED: 'EXECUTION_PLAN', APPROVED: 'REVIEW_AND_MUTATE' },
+  DESIGN_SPEC: { CHANGES_REQUESTED: 'INIT_OR_CLARIFY', APPROVED: 'PLANNING' },
+  PLANNING: { PLAN_POSTED: 'PLAN_REVIEW' },
+  PLAN_REVIEW: { CHANGES_REQUESTED: 'PLANNING', APPROVED: 'REVIEW_AND_MUTATE' },
   REVIEW_AND_MUTATE: { CHANGES_COMMITTED: 'PR_DELIVERY' },
   PR_DELIVERY: { PR_OPENED: 'COMPLETE', CI_FAILED: 'CI_FIX' },
   CODE_REVIEW: { REVIEW_DONE: 'COMPLETE' },
@@ -194,7 +194,7 @@ const failTransition = (state: AgentState, patch: Partial<AgentState>): Partial<
  *
  * Spec and plan are counted apart because the heading each handler renders reads
  * as "the Nth version of *this* artefact" and cannot be read as anything else.
- * One counter serving both had them interleave, so the first execution plan on
+ * One counter serving both had them interleave, so the first plan on
  * every issue announced itself as revision 2 — and revision 3 if the spec had
  * been revised once first.
  *

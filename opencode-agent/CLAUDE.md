@@ -40,7 +40,8 @@ findings: `ROADMAP.md`.
   `postAndAppend` runs in the orchestrator after the handler returns.
 - Feedback on the issue that is not a comment lives apart from the machine that
   causes it: `src/presentation.ts` owns the one glyph/label/headline table every
-  renderer reads, `src/feedback.ts` the reaction channel, `src/labels.ts` the
+  renderer reads, `src/feedback.ts` the reaction channel over `src/github-reactions.ts`'s
+  endpoints, `src/labels.ts` the
   label reconcile over `src/github-labels.ts`'s endpoints, and
   `src/status-reporter.ts` the run's live status comment over the body
   `src/status-comment.ts` renders. Each channel has exactly one function that
@@ -79,13 +80,46 @@ findings: `ROADMAP.md`.
   are separate fields and each handler renders and stores one of them, from a
   single local so the visible heading and the hidden block cannot disagree. They
   were one shared `revision` bumped by both `SPEC_POSTED` and `PLAN_POSTED`, so
-  the counts interleaved and the first execution plan on every issue announced
+  the counts interleaved and the first plan on every issue announced
   itself as revision 2 — revision 3 if the spec had been revised once first —
   which is not a reading "the Nth version of this artefact" allows. The report
   block stamps `planRevision`: it records which plan was implemented, and no
   signal bumps a report counter. Splitting them needed no `STATE_VERSION` bump
   because both fields default; the old key is dropped rather than mapped onto
   either, since it was a sum and never a count of either artefact.
+- **A phase rename is a persisted-shape change, and is migrated rather than
+  bumped.** `PLANNING` was `EXECUTION_PLAN`; the name is written into every
+  `AGENT_STATE` block as `phase` and `resumeFrom`, so an unmigrated rename has
+  `z.enum` reject those blocks outright — the restore scan walks past them to an
+  older comment, or starts the conversation over, and a parked failure loses the
+  resume point `/retry` needs. `LEGACY_PHASE_NAMES` in `types.ts` maps the old
+  name onto the new one and `phaseName` applies it inside the schema, which is
+  where it has to live: there are four parse sites and three are on the read
+  path, and a migration honoured at two of them restores under one scan and is
+  discarded by the other. Deliberately **not** a `STATE_VERSION` bump — a bump
+  strands every in-flight issue, and there is nothing here it would protect
+  against, since the old name maps onto the new one exactly with no field to
+  reinterpret. Read the table through `Object.hasOwn`, never `in`: a state block
+  is attacker-editable text and `'toString' in` any object literal is true.
+- **The 👀 has a lifetime, and the run that placed it owns both ends.** A
+  reaction is the pipeline's only instant acknowledgement, and 👀 says "this
+  arrived and something is running" — a claim that a run is one CI job makes
+  temporary by definition. Leaving it on made every finished issue read as one
+  still being thought about, on a comment nobody would touch again. So
+  `runPipeline` holds the handle `react` now returns and `settleReaction` closes
+  it out: **outcome on, then acknowledgement off**, in that order, because both
+  writes are best-effort and the reverse leaves the comment bare for the width of
+  an API call — or for good, if the second write is the one that fails. The
+  handle lives in `runPipeline` rather than `runAccepted` because 👀 is placed
+  before the run knows which of its exits it will take. `OUTCOME_REACTIONS` maps
+  `RunStatus`, and its two `null` rows are the design: `completed` covers a
+  delivery (where `handleDeliver` has already placed 🚀 — the one place that can
+  tell a delivery from a stand-down), a `/cancel` and a stand-down, and the last
+  two delivered nothing; `skipped` covers a refused command that already reacted
+  😕 and a set of deliberate silences. Removal needs the reaction **id**, which
+  only the create returns — hence `ReactionRef` — so never re-derive the target
+  at removal time, and never treat a rejected delete as evidence the reaction
+  survived.
 - **Answering is phase-neutral in both directions.** `ANSWERED` is deliberately
   absent from `TRANSITIONS`; `transition` handles it as a non-moving signal
   accepted in every phase, because `/ask` is accepted in every phase. Do not put
@@ -224,6 +258,22 @@ findings: `ROADMAP.md`.
   not abandoned. A refused red run **logs at `warn` with the phase** and posts
   nothing, for the reason `settledPullRequest` sets out: CI fires on every push,
   so a comment per red run is spam.
+- **A refusal a `/retry` cannot change is translated, not repeated.** `Actions is
+not permitted to create or approve pull requests` is a repository or
+  organisation setting, and the bare API message posted as-is reads like a bug in
+  the agent: it names a setting without saying where it lives, hides the fact
+  that the branch is pushed and only the API call is left, and leaves `/retry` as
+  the only visible move — which fails again, until the retry budget is spent on a
+  condition no retry could ever change. `pullRequestForbiddenError` names the
+  repository toggle, the organisation policy that overrides it, the
+  `AGENT_GITHUB_TOKEN` secret the workflow already prefers, and a prefilled
+  `compare` URL that needs no permissions at all. Matched on GitHub's sentence
+  rather than the status, and **only** that one: the same 403 covers a token
+  merely missing `pull-requests: write`, whose remedy is different, so widening
+  it sends that maintainer to tick a box that was never the problem. The compare
+  URL is built from `gitRemoteBase`, not github.com — an Enterprise Server
+  install answers on its own host, and a link into the wrong one is worse than
+  no link.
 - **A round budget belongs to a pull request, not to an issue.**
   `handleDeliver` clears `ciAttempts`, `ciBudgetReported` and `reviewAttempts`
   through `FRESH_PR_BUDGETS` on its `existing === null` branch — a genuinely new
@@ -240,11 +290,13 @@ findings: `ROADMAP.md`.
   spent the rounds, and a clean slate there is one broken branch bouncing off the
   agent for as long as anyone keeps replying `/retry`.
 - **A feedback channel has exactly one door, and that door swallows
-  everything.** `react` in `feedback.ts`, `reconcileLabels` in `labels.ts`,
-  `attempt` in `status-reporter.ts`, `persistState` in `state-persist.ts`,
-  `refreshPullRequest` in `phases/review.ts` and `noteReview` in
-  `pull-request-note.ts` are each the only function in their module that calls
-  GitHub, and each catches every rejection and degrades it to a
+  everything.** `react` in `feedback.ts` — with `unreact`, its mirror, which is
+  the same door read the other way and takes the same catch —
+  `reconcileLabels` in `labels.ts`, `attempt` in `status-reporter.ts`,
+  `persistState` in `state-persist.ts`, `refreshPullRequest` in
+  `phases/review.ts` and `noteReview` in `pull-request-note.ts` are the only
+  functions in their modules that call GitHub, and each catches every rejection
+  and degrades it to a
   `warn`; a caller reaches the same `RunResult` and the same **persisted state**
   it would have reached with the channel absent. `noteReview` is the newest and
   the one that leaves the issue entirely: it posts the two-line pointer a

@@ -8,9 +8,10 @@ import type { LabelApi } from './github-labels.js'
 import type { Logger } from './logger.js'
 import { NEEDS_YOU_LABEL, presentationFor, WORKING_LABEL } from './presentation.js'
 import type { LabelSpec, RunStance, WhoseTurn } from './presentation.js'
+import type { RunResult } from './run-result.js'
 import { mapSeries } from './sequence.js'
 import { errorMessage } from './types.js'
-import type { AgentState, RunResult } from './types.js'
+import type { AgentState } from './types.js'
 
 /**
  * The label channel — what the issue says about itself from a list view.

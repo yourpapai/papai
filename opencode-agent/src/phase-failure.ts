@@ -5,10 +5,10 @@
 
 import type { MachineInput } from './phase-context.js'
 import { postAndAppend, renderAnswerFailure, renderFailure } from './run-report.js'
+import type { RunResult } from './run-result.js'
 import { transition } from './state-manager.js'
 import { recordSpend } from './token-budget.js'
 import { errorMessage } from './types.js'
-import type { RunResult } from './types.js'
 
 /**
  * Where the cascade parks a run that broke, and what it says about it.
