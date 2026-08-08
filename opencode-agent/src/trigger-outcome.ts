@@ -3,12 +3,16 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { AgentState, RunResult } from './types.js'
+import type { PhaseDeps } from './phase-context.js'
+import { transition } from './state-manager.js'
+import { errorMessage } from './types.js'
+import type { AgentState, RunResult, TransitionSignal } from './types.js'
 
 /**
- * What the trigger layer concluded, shared by `triggers.ts` and `ci-trigger.ts`.
+ * What the trigger layer concluded, shared by `triggers.ts`, `ci-trigger.ts` and
+ * `comment-intent.ts`.
  *
- * In its own module for the reason `MachineInput` is: two modules now decide
+ * In its own module for the reason `MachineInput` is: three modules now decide
  * trigger outcomes, and a shape owned by the file one of them lives in is how an
  * import cycle starts.
  */
@@ -40,3 +44,35 @@ export const skip = (state: AgentState, reason: string, reported = false): RunRe
   state,
   reported,
 })
+
+/**
+ * Applies a signal, or turns the refusal into a skip the caller can report on.
+ *
+ * Here rather than in `triggers.ts` because both halves of the trigger layer
+ * need it: the command half calls it for a slash command, and the plain-comment
+ * half in `comment-intent.ts` calls it for a classified approve or change
+ * request. Importing it from one of those into the other is the cycle this
+ * module exists to prevent.
+ *
+ * `ci-trigger.ts` deliberately does *not* use it, and says why at length: it
+ * asks `canTransition` first, so a throw there would mean the gate and the table
+ * disagree, and swallowing that into a silent skip is what hid a missing row.
+ */
+export const moveOrSkip = (
+  state: AgentState,
+  signal: TransitionSignal,
+  deps: PhaseDeps,
+  source: string,
+): TriggerOutcome => {
+  try {
+    const next = transition(state, signal)
+    deps.log.info({ source, signal, from: state.phase, to: next.phase }, 'Applied trigger')
+    return { state: next, halt: null, answer: false }
+  } catch (error) {
+    return {
+      state,
+      halt: skip(state, `${source} is not valid in ${state.phase}: ${errorMessage(error)}`),
+      answer: false,
+    }
+  }
+}

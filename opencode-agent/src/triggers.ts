@@ -4,16 +4,16 @@
 // See LICENSE in the project root for details.
 
 import { applyCiTrigger } from './ci-trigger.js'
+import { acceptedCommands, COMMAND_SIGNALS } from './commands.js'
 import type { ParsedCommand } from './commands.js'
-import { classifyComment } from './intent.js'
-import type { PhaseDeps, PhaseInput } from './phase-context.js'
+import { applyClarifyIntent, applyIntent, readAndSkip } from './comment-intent.js'
+import { react } from './feedback.js'
+import type { PhaseInput } from './phase-context.js'
 import { postAndAppend, renderExhausted, renderRefusedCommand } from './run-report.js'
-import { canTransition, transition } from './state-manager.js'
-import { totalTokens, withinBudget } from './token-budget.js'
-import { skip } from './trigger-outcome.js'
+import { canTransition } from './state-manager.js'
+import { moveOrSkip, skip } from './trigger-outcome.js'
 import type { TriggerOutcome } from './trigger-outcome.js'
-import { errorMessage, WAITING_PHASES } from './types.js'
-import type { AgentState, Phase, TransitionSignal } from './types.js'
+import { WAITING_PHASES } from './types.js'
 
 /**
  * Turning a trigger — a slash command, a plain comment, a red CI run — into the
@@ -21,17 +21,15 @@ import type { AgentState, Phase, TransitionSignal } from './types.js'
  *
  * Split out of `orchestrator.ts`, which now owns only the phase cascade. The two
  * answer different questions: this one decides *whether and where* to go, that
- * one drives the handlers once the decision is made. The CI half went the same
- * way, into `ci-trigger.ts`, when this file reached the length limit.
+ * one drives the handlers once the decision is made. Two halves have since gone
+ * the same way, each time this file reached the length limit and each time along
+ * a seam that was already there: the red-CI path into `ci-trigger.ts`, and
+ * reading plain prose into `comment-intent.ts`. What is left here is applying a
+ * command and the dispatch that picks between the three — the command *table*
+ * moved to `commands.ts` once the waiting comment needed to read it too, since
+ * this file imports `run-report.ts` and a shared derivation in either of them is
+ * a cycle.
  */
-
-/** Slash commands, mapped to the signal they inject before handlers run. */
-const COMMAND_SIGNALS: Record<string, TransitionSignal> = {
-  '/approve': 'APPROVED',
-  '/changes': 'CHANGES_REQUESTED',
-  '/retry': 'RETRY',
-  '/cancel': 'CANCELLED',
-}
 
 /**
  * Turns the trigger into a state move.
@@ -51,9 +49,7 @@ export const applyTrigger = (input: PhaseInput): Promise<TriggerOutcome> => {
   if (trigger.kind === 'ci') return applyCiTrigger(input)
   if (command !== null) return applyCommand(input, command)
   if (state.phase === 'INIT_OR_CLARIFY') return applyClarifyIntent(input)
-  if (!WAITING_PHASES.has(state.phase)) {
-    return Promise.resolve({ state, halt: skip(state, `No actionable command while in ${state.phase}`), answer: false })
-  }
+  if (!WAITING_PHASES.has(state.phase)) return readAndSkip(input, `No actionable command while in ${state.phase}`)
 
   return applyIntent(input)
 }
@@ -98,6 +94,11 @@ const refuseCommand = async (input: PhaseInput, command: string, reason: string)
   const { state, thread, deps } = input
   deps.log.warn({ issue: state.issueId, phase: state.phase, command }, 'Refused a slash command')
 
+  // Redundancy rather than the fix, and worth one call for the timing alone:
+  // the comment below is the better answer — it names what the phase *does*
+  // accept, from the transition table — but it arrives after `postAndAppend`,
+  // while the reaction lands before the run has done anything at all.
+  await react(deps, input.trigger, 'confused')
   await postAndAppend(thread, input, renderRefusedCommand(command, state.phase, acceptedCommands(state.phase)), state)
 
   return { state, halt: skip(state, reason, true), answer: false }
@@ -135,145 +136,4 @@ const refuseExhausted = async (input: PhaseInput): Promise<TriggerOutcome> => {
   await postAndAppend(thread, input, renderExhausted(reason), state)
 
   return { state, halt: { status: 'failed', reason, state, reported: true }, answer: false }
-}
-
-/** The commands `phase` would actually accept, straight from the transition table. */
-const acceptedCommands = (phase: Phase): readonly string[] => [
-  ...Object.entries(COMMAND_SIGNALS)
-    .filter(([, signal]) => canTransition(phase, signal))
-    .map(([command]) => command),
-  '/ask',
-]
-
-/**
- * Reads a plain comment as an intent, and decides first whether that reading is
- * affordable.
- *
- * Classifying costs a model turn, and it is the one turn in the pipeline whose
- * spend can never be written down. State is persisted only by posting a comment,
- * and the `none` branch below deliberately posts nothing — replying to every
- * "thanks!" would be spam — so a session that reported 40,000 tokens for the
- * classification vanishes with the runner. The ceiling is therefore asked
- * *before* the turn rather than after it: over budget there is nothing any
- * classification could buy, since every branch here leads either to a handler or
- * to the answer path and `stopIfOverBudget` refuses both. Handing the comment
- * straight to the answer path lets that one check report it, in the wording it
- * already has, without a second stop in this layer and without paying to learn
- * what to say — otherwise a maxed-out issue keeps buying a classification per
- * comment for as long as anyone keeps commenting on it.
- *
- * That leaves one leak, knowingly: a run **under** budget whose classifier
- * answers `none` still spends a turn nothing records. Closing it needs a way to
- * persist state without posting — an `updateComment` on the last state block —
- * which is a larger design change than a stray few thousand tokens per no-op
- * comment justifies. The bound it erodes is per issue and human-paced, and every
- * other branch folds the classification in, because `deps.tokensUsed()` reports
- * the whole job's session and whatever the run goes on to post writes that total.
- */
-const applyIntent = async (input: PhaseInput): Promise<TriggerOutcome> => {
-  const { state, trigger, deps } = input
-  const body = trigger.kind === 'issue' ? trigger.commentBody : null
-  if (body === null || body.trim().length === 0) {
-    return { state, halt: skip(state, 'Empty comment'), answer: false }
-  }
-
-  const spent = await totalTokens(deps, state.tokensSpent)
-  if (!withinBudget(spent, deps.config)) {
-    deps.log.warn(
-      { issue: state.issueId, phase: state.phase, spent, limit: deps.config.maxTokens },
-      'Over budget: not paying to classify the comment',
-    )
-    return { state, halt: null, answer: true }
-  }
-
-  const intent = await classifyComment({ body, phase: state.phase, deps, state })
-  deps.log.info({ intent, phase: state.phase }, 'Classified maintainer comment')
-
-  if (intent === 'none') return { state, halt: skip(state, 'Comment needs no action'), answer: false }
-  if (intent === 'question') return { state, halt: null, answer: true }
-
-  const signal: TransitionSignal = intent === 'approve' ? 'APPROVED' : 'CHANGES_REQUESTED'
-  return moveOrSkip(state, signal, deps, `an implied ${intent}`)
-}
-
-/**
- * Reads a plain comment that arrived while the agent is waiting for answers to
- * its own clarifying questions, and lets through everything the classifier does
- * not positively call chatter.
- *
- * This phase used to skip classification altogether and hand every comment
- * straight to triage. That is a whole triage turn — the model re-reads the
- * issue, the whole thread and the repository, then writes a fresh design spec or
- * another round of questions — bought by a "thanks", a 👍, or one maintainer's
- * aside to another while the agent waits. Cheap to say, expensive to answer.
- *
- * The fix cannot be to route this phase through {@link applyIntent}, because
- * that function's default points the wrong way here. `classifyComment` resolves
- * every failure and every ambiguity to `question`, chosen for the waiting phases
- * where answering costs one reply while re-planning discards an approved
- * artefact. There is no approved artefact in `INIT_OR_CLARIFY`, and the cost is
- * reversed: a maintainer's answer misread as a question gets *answered* instead
- * of acted on, so the agent replies about its own questions, stays parked, and
- * the maintainer has to say the same thing a second time. So the default is
- * inverted rather than borrowed — `none` is the only verdict that skips, and
- * every other reading, including the one the classifier falls back to when it
- * breaks, re-runs triage exactly as before.
- *
- * `question` is deliberately **not** admitted as a skip-to-answer, even though a
- * maintainer really can ask "why do you need that?" mid-clarification. In this
- * phase it is not a verdict: it is also the bucket a failed model call, an
- * unparsable reply and a genuinely ambiguous comment all land in, so honouring
- * it would route every one of those into an answer turn — precisely the stall
- * above, on exactly the comments least able to survive it. `none` is the one
- * reading the classifier has to actively choose, so `none` is the one that acts.
- * The price of leaving `question` out is a wasted triage turn on a real
- * mid-clarification question; the price of letting it in is a dropped answer,
- * and only the first of those is recoverable without the maintainer noticing.
- *
- * Two comments never reach the classifier at all, and both fall through to
- * triage rather than skipping. An **absent or blank** body is the
- * `issues.opened` event that starts every issue — there is no comment to read,
- * and skipping it would mean the agent never runs at all. **Over budget** is the
- * rule {@link applyIntent} sets out at length: the classifier is the one turn
- * whose spend can never be written down, so the ceiling has to stop it rather
- * than count it. Falling through costs nothing, because the cascade's own stop
- * fires before `handleTriage` and reports the ceiling on the issue — the same
- * notice a maintainer would have got anyway, one model turn cheaper.
- */
-const applyClarifyIntent = async (input: PhaseInput): Promise<TriggerOutcome> => {
-  const { state, trigger, deps } = input
-  const retriage: TriggerOutcome = { state, halt: null, answer: false }
-
-  const body = trigger.kind === 'issue' ? trigger.commentBody : null
-  if (body === null || body.trim().length === 0) return retriage
-
-  const spent = await totalTokens(deps, state.tokensSpent)
-  if (!withinBudget(spent, deps.config)) {
-    deps.log.warn(
-      { issue: state.issueId, phase: state.phase, spent, limit: deps.config.maxTokens },
-      'Over budget: not paying to classify a comment while clarifying',
-    )
-    return retriage
-  }
-
-  const intent = await classifyComment({ body, phase: state.phase, deps, state })
-  deps.log.info({ intent, phase: state.phase }, 'Classified a maintainer comment while clarifying')
-
-  if (intent !== 'none') return retriage
-
-  return { state, halt: skip(state, 'Comment needs no action'), answer: false }
-}
-
-const moveOrSkip = (state: AgentState, signal: TransitionSignal, deps: PhaseDeps, source: string): TriggerOutcome => {
-  try {
-    const next = transition(state, signal)
-    deps.log.info({ source, signal, from: state.phase, to: next.phase }, 'Applied trigger')
-    return { state: next, halt: null, answer: false }
-  } catch (error) {
-    return {
-      state,
-      halt: skip(state, `${source} is not valid in ${state.phase}: ${errorMessage(error)}`),
-      answer: false,
-    }
-  }
 }

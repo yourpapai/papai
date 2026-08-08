@@ -6,11 +6,18 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { findArtifact, PLAN_MARKER, renderArtifact, SPEC_MARKER } from '../../opencode-agent/src/artifacts.js'
+import { readBlock } from '../../opencode-agent/src/blocks.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import { DEFAULT_CHECKS } from '../../opencode-agent/src/config.js'
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
 import type { Git } from '../../opencode-agent/src/git.js'
-import type { GitHubApi, PullRequestRef, PullRequestStatus } from '../../opencode-agent/src/github.js'
+import type {
+  GitHubApi,
+  PullRequestRef,
+  PullRequestStatus,
+  ReactionContent,
+  ReactionTarget,
+} from '../../opencode-agent/src/github.js'
 import type { CiTriggerEvent, IssueTriggerEvent } from '../../opencode-agent/src/guardrails.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
 import type { AgentPromptRequest, OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
@@ -18,8 +25,16 @@ import { runPipeline } from '../../opencode-agent/src/orchestrator.js'
 import type { PhaseDeps } from '../../opencode-agent/src/phase-context.js'
 import type { ReviewRunResult } from '../../opencode-agent/src/review-runner.js'
 import type { CommandResult } from '../../opencode-agent/src/shell.js'
-import { extractState, initialState, serializeState, STATE_MARKER } from '../../opencode-agent/src/state-manager.js'
-import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
+import {
+  extractState,
+  findLatestState,
+  initialState,
+  serializeState,
+  STATE_MARKER,
+} from '../../opencode-agent/src/state-manager.js'
+import { STATUS_MARKER } from '../../opencode-agent/src/status-comment.js'
+import { createStatusReporter } from '../../opencode-agent/src/status-reporter.js'
+import type { AgentState, Phase, RunResult } from '../../opencode-agent/src/types.js'
 
 const AGENT_LOGIN = 'agent-bot'
 const ISSUE = 42
@@ -58,6 +73,8 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   maxTokens: 5_000_000,
   diffLimits: { maxFiles: 100, maxLines: 20_000 },
   gitRemoteBase: 'https://github.com/',
+  runUrl: null,
+  labelPrefix: 'agent:',
   skillRoots: ['.superpowers/skills'],
   ...overrides,
 })
@@ -74,13 +91,17 @@ const issueEvent = (overrides: Partial<IssueTriggerEvent> = {}): IssueTriggerEve
   issueBody: 'Please add retries to the HTTP client.',
   isPullRequest: false,
   commentBody: null,
+  commentId: null,
   repositoryOwner: 'acme',
   defaultBranch: BASE_BRANCH,
   ...overrides,
 })
 
+/** The comment a maintainer typed, which feedback lands on rather than the issue. */
+const COMMENT_ID = 555
+
 const comment = (body: string): IssueTriggerEvent =>
-  issueEvent({ eventName: 'issue_comment', action: 'created', commentBody: body })
+  issueEvent({ eventName: 'issue_comment', action: 'created', commentBody: body, commentId: COMMENT_ID })
 
 const ciEvent = (overrides: Partial<CiTriggerEvent> = {}): CiTriggerEvent => ({
   kind: 'ci',
@@ -117,6 +138,54 @@ interface PipelineIo {
   prTitles: string[]
   /** The account GitHub records as the author of the agent's comments. */
   postedAs: string
+  /** Every reaction the run placed, in order, with what it landed on. */
+  reactions: { target: ReactionTarget; content: ReactionContent }[]
+  /**
+   * What `addReaction` rejects with, when set.
+   *
+   * A token without `issues: write`, a fork run and an org policy all produce
+   * exactly this, and the rule is that none of them may change a single thing
+   * about the run.
+   */
+  reactionError: Error | null
+  /**
+   * Labels the issue carries, as GitHub holds them — including any this
+   * pipeline did not put there.
+   */
+  labels: string[]
+  /**
+   * Every label *write*, in order, and deliberately not folded into `labels`:
+   * the point of a diff is what it did not ask for, and a set that ends up
+   * right cannot tell a single add from a clear-and-reapply.
+   */
+  labelWrites: string[]
+  /** Repository labels created on demand, by name and colour. */
+  labelsCreated: { name: string; color: string }[]
+  /** Reads attempted, so a run that is refused everything can still be shown to have asked. */
+  labelReads: number
+  /** What every label call rejects with, when set. */
+  labelError: Error | null
+  /** Every comment edit, in order — the status comment's and the state rewrites'. */
+  edits: { id: number; body: string }[]
+  /**
+   * What the status channel rejects with, when set.
+   *
+   * Turns down every edit, and the one *create* that carries no `AGENT_STATE`
+   * block. That is not a trick: the status comment is the only comment this
+   * pipeline posts without one — rule 4 — so the discriminator is the invariant
+   * itself, and a status comment that ever grew a block would take this harness
+   * down with it rather than quietly passing.
+   */
+  statusError: Error | null
+  /**
+   * The mirror image: what a *report* create rejects with, when set.
+   *
+   * A 502 on the comment that carries the state block is how a run dies
+   * mid-phase with its status comment already on the issue.
+   */
+  postError: Error | null
+  /** The clock the status reporter reads, so its rate limit is provable. */
+  nowMs: number
 }
 
 interface Harness {
@@ -147,13 +216,37 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     prBodies: [],
     prTitles: [],
     postedAs: AGENT_LOGIN,
+    reactions: [],
+    reactionError: null,
+    labels: [],
+    labelWrites: [],
+    labelsCreated: [],
+    labelReads: 0,
+    labelError: null,
+    edits: [],
+    statusError: null,
+    postError: null,
+    nowMs: Date.UTC(2026, 7, 7, 14, 2),
   }
 
   let nextCommentId = 100
 
+  /** Records the ask, then answers the way `io.labelError` says to. */
+  const label = (write: string, apply: () => void): Promise<void> => {
+    io.labelWrites.push(write)
+    if (io.labelError !== null) return Promise.reject(io.labelError)
+    apply()
+    return Promise.resolve()
+  }
+
+  /** True for the status comment and for nothing else — see `io.statusError`. */
+  const isStatus = (body: string): boolean => !body.includes(STATE_MARKER)
+
   const github: GitHubApi = {
     listIssueComments: () => Promise.resolve([...io.thread]),
     createComment: (_issueNumber, body) => {
+      if (io.statusError !== null && isStatus(body)) return Promise.reject(io.statusError)
+      if (io.postError !== null && !isStatus(body)) return Promise.reject(io.postError)
       nextCommentId += 1
       io.posted.push(body)
       io.thread.push({ id: nextCommentId, body, authorLogin: io.postedAs })
@@ -162,6 +255,20 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
         url: `https://example.test/c/${nextCommentId}`,
         authorLogin: io.postedAs,
       })
+    },
+    // Edits land on the thread the way GitHub's do, so a rewritten state block
+    // is read back by the next `findLatestState` rather than only recorded.
+    updateComment: (commentId, body) => {
+      io.edits.push({ id: commentId, body })
+      if (io.statusError !== null) return Promise.reject(io.statusError)
+
+      const index = io.thread.findIndex((existing) => existing.id === commentId)
+      const target = io.thread[index]
+      if (target !== undefined) io.thread[index] = { ...target, body }
+      // A status comment is not one of the run's *posts*; folding the two would
+      // let an edit read as a comment, which is the distinction the whole
+      // one-comment budget rests on.
+      return Promise.resolve()
     },
     getIssue: () => Promise.resolve({ number: ISSUE, title: 'Add retries', body: 'Please add retries.' }),
     getAuthenticatedLogin: () => Promise.resolve(AGENT_LOGIN),
@@ -179,6 +286,31 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       io.prTitles.push(patch.title)
       return Promise.resolve()
     },
+    addReaction: (target, content) => {
+      // Recorded before the refusal, so a test can prove the pipeline *asked*
+      // even in the run where every ask is turned down.
+      io.reactions.push({ target, content })
+      return io.reactionError === null ? Promise.resolve() : Promise.reject(io.reactionError)
+    },
+    // Reading is not a write, so it is not recorded as one — but it does fail
+    // when the token cannot see the issue at all, which is a real 403 and the
+    // one that reaches the reconcile before it has decided anything.
+    listLabels: () => {
+      io.labelReads += 1
+      return io.labelError === null ? Promise.resolve([...io.labels]) : Promise.reject(io.labelError)
+    },
+    addLabels: (_issueNumber, names) =>
+      label(`+${names.join(',')}`, () => {
+        io.labels.push(...names.filter((name) => !io.labels.includes(name)))
+      }),
+    removeLabel: (_issueNumber, name) =>
+      label(`-${name}`, () => {
+        io.labels = io.labels.filter((existing) => existing !== name)
+      }),
+    createLabel: (name, color) =>
+      label(`create:${name}`, () => {
+        io.labelsCreated.push({ name, color })
+      }),
   }
 
   const git: Git = {
@@ -207,8 +339,15 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     close: () => Promise.resolve(),
   }
 
+  const pipelineConfig = config(overrides)
+  const log = silentLogger()
+
   const deps: PhaseDeps = {
     github,
+    // The real reporter, built the way `contain` builds it — which for the
+    // default config (`runUrl: null`) hands back the no-op, so every test that
+    // is not about this channel drives exactly what it drove before.
+    status: createStatusReporter({ github, log, config: pipelineConfig, now: () => io.nowMs }),
     git,
     runCheck: (check) => Promise.resolve(io.checkResults.get(check.name) ?? OK_CHECK),
     runReview: () => Promise.resolve(io.reviewResult),
@@ -217,8 +356,8 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     skills: () => Promise.resolve([]),
     baseBranch: () => Promise.resolve(BASE_BRANCH),
     selfLogin: () => Promise.resolve(AGENT_LOGIN),
-    config: config(overrides),
-    log: silentLogger(),
+    config: pipelineConfig,
+    log,
   }
 
   return { deps, io }
@@ -258,11 +397,26 @@ const spentIn = (result: { state: AgentState | null }): number => result.state?.
 
 const headings = (harness: Harness): string[] => harness.io.posted.map((body) => body.split('\n')[0] ?? '')
 
+/**
+ * The comments that carry a state block — every post except the run's status
+ * comment, which by rule 4 carries none.
+ *
+ * `io.posted` stays the truthful count of comments created, because that is what
+ * the one-comment budget is asserted against; a test about what the pipeline
+ * *said* asks for the reports.
+ */
+const reportsOf = (harness: Harness): string[] => harness.io.posted.filter((body) => body.includes(STATE_MARKER))
+
 /** Drives an issue as far as DESIGN_SPEC, ready for the review conversation. */
 const toDesignSpec = async (harness: Harness): Promise<void> => {
   harness.io.replies = [SPEC_REPLY]
   await runPipeline({ event: issueEvent(), deps: harness.deps })
   harness.io.posted.length = 0
+  // Reactions and status edits too: these helpers exist to put an issue in a
+  // starting position, and what the setup runs acknowledged is not part of the
+  // test that follows.
+  harness.io.reactions.length = 0
+  harness.io.edits.length = 0
 }
 
 /** Drives an issue as far as PLAN_REVIEW. */
@@ -271,6 +425,8 @@ const toPlanReview = async (harness: Harness): Promise<void> => {
   harness.io.replies = [PLAN_REPLY]
   await runPipeline({ event: comment('/approve'), deps: harness.deps })
   harness.io.posted.length = 0
+  harness.io.reactions.length = 0
+  harness.io.edits.length = 0
 }
 
 describe('guardrails', () => {
@@ -467,7 +623,7 @@ describe('chatter while the agent is clarifying', () => {
 
     expect(result.status).toBe('failed')
     expect(harness.io.prompts).toEqual([])
-    expect(harness.io.posted[0]).toContain('### Token budget spent')
+    expect(harness.io.posted[0]).toContain('### ⛔ Token budget spent')
 
     const state = latestPostedState(harness)
     expect(state?.phase).toBe('FAILED')
@@ -609,7 +765,7 @@ describe('answering outside the review gates', () => {
     const result = await runPipeline({ event: comment('/ask what did you change?'), deps: harness.deps })
 
     expect(result.status).toBe('failed')
-    expect(harness.io.posted[0]).toContain('### I could not answer that')
+    expect(harness.io.posted[0]).toContain('### ⚠️ I could not answer that')
     expect(harness.io.posted[0]).toContain('the model endpoint rejected it')
 
     const state = latestPostedState(harness)
@@ -1280,7 +1436,7 @@ describe('commands and budgets', () => {
 
     // Delivery posts its own closing comment; no bare "Stopped" on a shipped issue.
     expect(harness.io.posted.at(-1)).toContain('https://example.test/pull/7')
-    expect(harness.io.posted.join('\n')).not.toContain('### Stopped')
+    expect(harness.io.posted.join('\n')).not.toContain('### 🛑 Stopped')
   })
 
   test('rejects /approve arriving in a phase that cannot accept it', async () => {
@@ -1374,7 +1530,7 @@ describe('commands and budgets', () => {
 
     expect(result.status).toBe('failed')
     expect(result.reason).toContain('Retry budget exhausted')
-    expect(harness.io.posted[0]).toContain('### Giving up')
+    expect(harness.io.posted[0]).toContain('### ⛔ Giving up')
   })
 })
 
@@ -1415,7 +1571,7 @@ describe('the retry budget', () => {
     await runPipeline({ event: comment('/retry'), deps: harness.deps })
 
     expect(harness.io.posted).toHaveLength(1)
-    expect(harness.io.posted[0]).toContain('### Giving up')
+    expect(harness.io.posted[0]).toContain('### ⛔ Giving up')
     expect(harness.io.posted[0]).toContain('3 of 3 attempts')
     // The notice may only offer what the machine will actually take. Bare
     // "reply `/retry`" is not that: the budget is spent, so the next `/retry`
@@ -1440,7 +1596,7 @@ describe('the retry budget', () => {
     expect(result.status).toBe('failed')
     expect(result.reason).toContain('Retry budget exhausted')
     expect(result.reason).not.toContain('not valid in')
-    expect(harness.io.posted[0]).toContain('### Giving up')
+    expect(harness.io.posted[0]).toContain('### ⛔ Giving up')
     expect(latestPostedState(harness)?.resumeFrom).toBe('EXECUTION_PLAN')
   })
 
@@ -1587,7 +1743,7 @@ describe('the token budget', () => {
     const result = await runPipeline({ event: comment('/ask why that file?'), deps: harness.deps })
 
     expect(result.status).toBe('failed')
-    expect(harness.io.posted[0]).toContain('### I could not answer that')
+    expect(harness.io.posted[0]).toContain('### ⚠️ I could not answer that')
 
     const state = latestPostedState(harness)
     expect(state?.phase).toBe('DESIGN_SPEC')
@@ -1604,7 +1760,7 @@ describe('the token budget', () => {
 
     expect(result.status).toBe('failed')
     expect(result.reason).toContain('Token budget spent')
-    expect(harness.io.posted[0]).toContain('### Token budget spent')
+    expect(harness.io.posted[0]).toContain('### ⛔ Token budget spent')
   })
 
   test('says why a bare /retry will not help, and names what makes it help', async () => {
@@ -1666,7 +1822,7 @@ describe('the token budget', () => {
     const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
     expect(result.status).toBe('failed')
-    expect(harness.io.posted[0]).toContain('### Token budget spent')
+    expect(harness.io.posted[0]).toContain('### ⛔ Token budget spent')
 
     const state = latestPostedState(harness)
     expect(state?.phase).toBe('FAILED')
@@ -1691,7 +1847,7 @@ describe('the token budget', () => {
     const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
     expect(result.status).toBe('failed')
-    expect(headings(harness)).toEqual(['### Implementation report', '### Token budget spent'])
+    expect(headings(harness)).toEqual(['### Implementation report', '### ⛔ Token budget spent'])
 
     const state = latestPostedState(harness)
     expect(state?.phase).toBe('FAILED')
@@ -1793,7 +1949,7 @@ describe('the token budget', () => {
 
     expect(result.status).toBe('failed')
     expect(harness.io.prompts).toEqual([])
-    expect(harness.io.posted[0]).toContain('### Token budget spent')
+    expect(harness.io.posted[0]).toContain('### ⛔ Token budget spent')
 
     const state = latestPostedState(harness)
     expect(state?.phase).toBe('DESIGN_SPEC')
@@ -1811,7 +1967,814 @@ describe('the token budget', () => {
     const result = await runPipeline({ event: comment('/ask what did you change?'), deps: harness.deps })
 
     expect(result.status).toBe('failed')
-    expect(harness.io.posted[0]).toContain('### Token budget spent')
+    expect(harness.io.posted[0]).toContain('### ⛔ Token budget spent')
     expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
+  })
+})
+
+/** Just the contents, in order — the target is asserted where it is the point. */
+const reactionsOf = (harness: Harness): ReactionContent[] => harness.io.reactions.map((entry) => entry.content)
+
+/** A run that goes all the way from an approved plan to an open pull request. */
+const driveDelivery = async (harness: Harness): Promise<RunResult> => {
+  await toPlanReview(harness)
+  harness.io.replies = ['Implemented.']
+  return runPipeline({ event: comment('/approve'), deps: harness.deps })
+}
+
+/** An issue parked in COMPLETE, where no command and no comment is actionable. */
+const toComplete = async (harness: Harness): Promise<void> => {
+  await toDesignSpec(harness)
+  await runPipeline({ event: comment('/cancel'), deps: harness.deps })
+  harness.io.posted.length = 0
+  harness.io.reactions.length = 0
+  harness.io.edits.length = 0
+}
+
+describe('reactions — acknowledging a trigger', () => {
+  test('👀 on the comment that asked for the work, before any of it happens', async () => {
+    // The gap this closes: a maintainer types `/approve` and the next thing on
+    // the issue is the finished artefact, up to `AGENT_TIMEOUT_MS` later. For
+    // that whole window the issue looks exactly like one where the workflow
+    // never fired — which is also a real outcome, since a guardrail can drop
+    // the event.
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    harness.io.replies = [PLAN_REPLY]
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.reactions[0]).toEqual({ target: { kind: 'comment', id: COMMENT_ID }, content: 'eyes' })
+  })
+
+  test('👀 lands on the issue when no comment raised the run', async () => {
+    const harness = makeHarness()
+    harness.io.replies = [SPEC_REPLY]
+
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(harness.io.reactions[0]).toEqual({ target: { kind: 'issue', number: ISSUE }, content: 'eyes' })
+  })
+
+  test('👀 arrives before the pipeline even reads the thread', async () => {
+    // Ordering is the whole value of this reaction. One placed after the phase
+    // handler would land at the same moment as the comment it is meant to
+    // precede, and buy nothing at all.
+    const harness = makeHarness()
+    const order: string[] = []
+    harness.deps.github.listIssueComments = (): Promise<IssueComment[]> => {
+      order.push('read-thread')
+      return Promise.resolve([...harness.io.thread])
+    }
+    harness.deps.github.addReaction = (): Promise<void> => {
+      order.push('react')
+      return Promise.resolve()
+    }
+    harness.io.replies = [SPEC_REPLY]
+
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(order[0]).toBe('react')
+  })
+
+  test('🚀 once a run has actually delivered a pull request', async () => {
+    const harness = makeHarness()
+
+    const result = await driveDelivery(harness)
+
+    expect(result.status).toBe('completed')
+    expect(reactionsOf(harness)).toEqual(['eyes', 'rocket'])
+  })
+
+  test('🚀 for a refreshed pull request too — the work is still delivered', async () => {
+    const harness = makeHarness()
+    harness.io.existingPr = { number: 3, url: 'https://example.test/pull/3', state: 'open' }
+
+    await driveDelivery(harness)
+
+    expect(reactionsOf(harness)).toEqual(['eyes', 'rocket'])
+  })
+
+  test('no 🚀 when delivery stands down instead of delivering', async () => {
+    // The settled branch reports the same `PR_OPENED` signal and reaches the
+    // same `COMPLETE`, having opened and refreshed nothing. A rocket there would
+    // announce a delivery that did not happen.
+    const harness = makeHarness()
+    harness.io.existingPr = { number: 3, url: 'https://example.test/pull/3', state: 'merged' }
+
+    const result = await driveDelivery(harness)
+
+    expect(result.status).toBe('completed')
+    expect(reactionsOf(harness)).toEqual(['eyes'])
+  })
+})
+
+describe('reactions — the silences that stay silent', () => {
+  const onPullRequest = issueEvent({
+    eventName: 'issue_comment',
+    action: 'created',
+    commentBody: '/approve',
+    commentId: COMMENT_ID,
+    isPullRequest: true,
+  })
+
+  test.each([
+    ['a bot sender', issueEvent({ senderType: 'Bot' })],
+    ['the agent talking to itself', issueEvent({ senderLogin: AGENT_LOGIN })],
+    ['a comment on a pull request', onPullRequest],
+    ['an event this pipeline does not handle', issueEvent({ eventName: 'push' })],
+    ['an action this pipeline does not handle', issueEvent({ action: 'edited' })],
+  ])('says nothing to %s', async (_label, event) => {
+    // Machine noise with nobody waiting on it. The existing log line is the
+    // right amount of record, and a reaction is a write to somebody else's
+    // timeline for no reader's benefit.
+    const harness = makeHarness()
+
+    const result = await runPipeline({ event, deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(harness.io.reactions).toEqual([])
+  })
+
+  test('a whole CI-fix run reacts to nothing', async () => {
+    // A `workflow_run` payload names no comment and nobody typed it, so there
+    // is no timeline a reaction would reach and no person it would reach.
+    const harness = makeHarness()
+    await driveDelivery(harness)
+    harness.io.reactions.length = 0
+
+    const result = await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.reactions).toEqual([])
+  })
+})
+
+describe('reactions — breaking the remaining silences', () => {
+  test('😕 to a sender without maintainer rights', async () => {
+    // A write triggered by an account without write access, and the judgement
+    // call is deliberate: one reaction, no content, no notification storm —
+    // against an outsider's comment vanishing into a log they cannot read.
+    const harness = makeHarness()
+    const outsider = issueEvent({
+      eventName: 'issue_comment',
+      action: 'created',
+      commentBody: 'please fix this',
+      commentId: 901,
+      authorAssociation: 'CONTRIBUTOR',
+    })
+
+    const result = await runPipeline({ event: outsider, deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(harness.io.reactions).toEqual([{ target: { kind: 'comment', id: 901 }, content: 'confused' }])
+    // A reaction is not a report: the issue still carries nothing about this
+    // run, so the workflow's fallback comment must stay in scope for it.
+    expect(result.reported).toBe(false)
+    expect(harness.io.posted).toEqual([])
+  })
+
+  test('😕 to a command the current phase cannot take', async () => {
+    // Both `refuseCommand` call sites — an unknown command and one the phase
+    // refuses — react through the same function, so this covers the pair.
+    const harness = makeHarness()
+    await toComplete(harness)
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(reactionsOf(harness)).toEqual(['eyes', 'confused'])
+    // The comment is still the better answer; the reaction only beats it there.
+    expect(harness.io.posted[0]).toContain('does not apply right now')
+  })
+
+  test('👍 to a plain comment on a phase that is not waiting for one', async () => {
+    const harness = makeHarness()
+    await toComplete(harness)
+
+    const result = await runPipeline({ event: comment('ok, can we revisit this?'), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(reactionsOf(harness)).toEqual(['eyes', '+1'])
+    // 👍 rather than a comment: "I have decided to do nothing", said out loud to
+    // every aside, is the noise this channel exists to avoid.
+    expect(harness.io.posted).toEqual([])
+  })
+
+  test('👍 to a comment the classifier read as chatter', async () => {
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    harness.io.replies = [JSON.stringify({ intent: 'none' })]
+
+    const result = await runPipeline({ event: comment('thanks!'), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(reactionsOf(harness)).toEqual(['eyes', '+1'])
+    expect(harness.io.posted).toEqual([])
+  })
+
+  test('👍 to chatter while the agent is waiting on its own clarifying questions', async () => {
+    // The third instance of one silence, and the one most likely to be reached:
+    // `INIT_OR_CLARIFY` is where the agent parks waiting for a maintainer to
+    // answer, so it is where a maintainer is most likely to be typing. Reacting
+    // on two of the three call sites would be this workspace's recurring defect
+    // exactly — the fix that closes the instance and leaves the class open.
+    const harness = makeHarness()
+    harness.io.replies = [JSON.stringify({ status: 'clarify', questions: ['Which client?'] })]
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    const parked = latestPostedState(harness)
+    expect(parked?.phase).toBe('INIT_OR_CLARIFY')
+    harness.io.posted.length = 0
+    harness.io.reactions.length = 0
+
+    harness.io.replies = [JSON.stringify({ intent: 'none' })]
+    const result = await runPipeline({ event: comment('thanks!'), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(reactionsOf(harness)).toEqual(['eyes', '+1'])
+    expect(harness.io.posted).toEqual([])
+    // The persisted state, not just the status. Nothing was posted, so the block
+    // the next job restores from must still be the one the clarification left —
+    // read back the way that job would read it, off the thread.
+    expect(findLatestState(harness.io.thread, AGENT_LOGIN, ISSUE)).toEqual(parked)
+    expect(result.reported).toBe(false)
+  })
+
+  test('👍 to an empty comment', async () => {
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+
+    const result = await runPipeline({ event: comment('   '), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(reactionsOf(harness)).toEqual(['eyes', '+1'])
+  })
+})
+
+describe('reactions — feedback never fails a run', () => {
+  test('a GitHub that refuses every reaction changes nothing about the run', async () => {
+    // The most important property in this stage. A token without
+    // `issues: write`, a fork run and an org policy all present exactly this,
+    // and every one of them is real — so the run has to reach the same result,
+    // and leave the same block on the issue, as one where the channel worked.
+    const healthy = makeHarness()
+    const broken = makeHarness()
+    broken.io.reactionError = new Error('Resource not accessible by integration')
+
+    const expected = await driveDelivery(healthy)
+    const actual = await driveDelivery(broken)
+
+    expect(actual).toEqual(expected)
+    // The persisted state, not just the returned status: a state that is never
+    // posted never happened, and that is the half a status cannot show.
+    expect(latestPostedState(broken)).toEqual(latestPostedState(healthy))
+    expect(broken.io.posted).toEqual(healthy.io.posted)
+    // And it really did try, rather than passing by never asking.
+    expect(reactionsOf(broken)).toEqual(['eyes', 'rocket'])
+  })
+
+  test('a refused reaction leaves a guardrail denial exactly as it was', async () => {
+    const harness = makeHarness()
+    harness.io.reactionError = new Error('403 Resource not accessible by integration')
+
+    const result = await runPipeline({ event: issueEvent({ authorAssociation: 'CONTRIBUTOR' }), deps: harness.deps })
+
+    expect(result).toEqual({
+      status: 'skipped',
+      reason: 'Author association CONTRIBUTOR lacks maintainer rights',
+      state: null,
+      reported: false,
+    })
+  })
+
+  test('a refused reaction still lets a refused command answer on the issue', async () => {
+    const harness = makeHarness()
+    await toComplete(harness)
+    harness.io.reactionError = new Error('403')
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(result.reported).toBe(true)
+    expect(harness.io.posted[0]).toContain('does not apply right now')
+  })
+})
+
+describe('the run link', () => {
+  const RUN_URL = 'https://github.test/acme/widgets/actions/runs/1482/attempts/2'
+
+  test('the failure comment says which job failed', async () => {
+    // `/retry` used to be the only lead a maintainer had from this comment. The
+    // job that produced the error above carries the rest of the story.
+    const harness = makeHarness({ runUrl: RUN_URL })
+    harness.io.replies = ['not json at all']
+
+    const result = await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(reportsOf(harness)[0]).toContain(`The job that failed: ${RUN_URL}`)
+  })
+
+  test('a local run says nothing rather than linking nowhere', async () => {
+    // Driving this CLI from an `--event-path` file is an ordinary thing to do,
+    // and an empty label is worse than a missing line.
+    const harness = makeHarness()
+    harness.io.replies = ['not json at all']
+
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(harness.io.posted[0]).not.toContain('The job that failed')
+    expect(harness.io.posted[0]).toContain('### ❌ Run failed in')
+  })
+
+  test('the CI-fix comment tells the red run from the run repairing it', async () => {
+    // Both were "run" in this comment, and only the red one was ever printed.
+    const harness = makeHarness({ runUrl: RUN_URL })
+    await driveDelivery(harness)
+    harness.io.posted.length = 0
+    const red = 'https://github.test/acme/widgets/actions/runs/77'
+
+    await runPipeline({ event: ciEvent({ runUrl: red }), deps: harness.deps })
+
+    const report = String(reportsOf(harness)[0])
+    expect(report).toContain(`- Red run I am repairing: ${red}`)
+    expect(report).toContain(`- This repair ran in: ${RUN_URL}`)
+  })
+})
+
+describe('labels — the state at a glance', () => {
+  test('a run marks the issue as worked on, then hands it back', async () => {
+    // The two orthogonal markers, over one run: `agent:working` goes on when
+    // work starts and comes off when it ends, and `agent:needs-you` takes its
+    // place because the plan is now parked in front of a human.
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    harness.io.replies = [PLAN_REPLY]
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.labels.sort()).toEqual(['agent:needs-you', 'agent:plan-review'])
+    expect(harness.io.labelWrites).toContain('+agent:planning,agent:working')
+    expect(harness.io.labelWrites).toContain('-agent:working')
+  })
+
+  test('the two markers never sit on the issue together', async () => {
+    // A run in flight is not waiting on anybody, and an issue that is both
+    // "happening now" and "blocked on me" answers neither question.
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    harness.io.replies = [PLAN_REPLY]
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.labels).not.toContain('agent:working')
+  })
+
+  test('a delivered issue is labelled done, a cancelled one stopped', async () => {
+    const delivered = makeHarness()
+    await driveDelivery(delivered)
+
+    const cancelled = makeHarness()
+    await toComplete(cancelled)
+
+    expect(delivered.io.labels).toEqual(['agent:done'])
+    expect(cancelled.io.labels).toEqual(['agent:stopped'])
+  })
+
+  test('a failure asks for a human', async () => {
+    const harness = makeHarness()
+    harness.io.replies = ['not json at all']
+
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(harness.io.labels.sort()).toEqual(['agent:failed', 'agent:needs-you'])
+  })
+
+  test('a labelled issue whose state has not moved is written to not at all', async () => {
+    // The diff, from the pipeline's side. Most runs move nothing, and a
+    // clear-and-reapply would leave two timeline entries on every one of them.
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    harness.io.labelWrites.length = 0
+    harness.io.replies = [JSON.stringify({ intent: 'none' })]
+
+    await runPipeline({ event: comment('thanks!'), deps: harness.deps })
+
+    expect(harness.io.labelWrites).toEqual([])
+    expect(harness.io.labels.sort()).toEqual(['agent:needs-you', 'agent:spec-review'])
+  })
+
+  test('a state move with no handler behind it is not "working" either', async () => {
+    // `/cancel` moves the state and runs nothing. Marking it working would add
+    // the marker and take it off in the same second — the same two timeline
+    // entries a skipped run avoids, on a run that did move the issue.
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    harness.io.labelWrites.length = 0
+
+    await runPipeline({ event: comment('/cancel'), deps: harness.deps })
+
+    // Nothing mentions the marker in either direction: it was never put on, so
+    // there is nothing to take off.
+    expect(harness.io.labelWrites.filter((write) => write.includes('agent:working'))).toEqual([])
+    expect(harness.io.labels).toEqual(['agent:stopped'])
+  })
+
+  test('answering a question is work, even though it moves nothing', async () => {
+    // The other half of "will anything run": `/ask` leaves the phase exactly
+    // where it was, so the handler table says nothing about it — but it is a
+    // model turn, often the slowest thing the pipeline does, and an issue that
+    // shows no sign of it is the silence this whole plan is about.
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    harness.io.labelWrites.length = 0
+    harness.io.replies = ['Because the retry helper already exists there.']
+
+    await runPipeline({ event: comment('/ask why that file?'), deps: harness.deps })
+
+    expect(harness.io.labelWrites).toContain('+agent:working')
+    expect(harness.io.labels.sort()).toEqual(['agent:needs-you', 'agent:spec-review'])
+  })
+
+  test('a skipped run does not flash the working marker on and off', async () => {
+    // Marking a run that is about to skip would add the marker and remove it
+    // within the second — two timeline entries for an issue where nothing
+    // happened, which is the noise this channel is sized to avoid.
+    const harness = makeHarness()
+    await toComplete(harness)
+    harness.io.labelWrites.length = 0
+
+    await runPipeline({ event: comment('any plans to revisit?'), deps: harness.deps })
+
+    expect(harness.io.labelWrites).toEqual([])
+  })
+
+  test('a marker stranded by a killed runner is repaired on the next event', async () => {
+    // The failure mode `agent:working` has: a runner killed mid-flight leaves
+    // it on. The reconcile computes the desired set from the restored state,
+    // so any `agent:*` label that state does not imply comes off — no
+    // bookkeeping, and it repairs a hand-edited issue by the same rule.
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    harness.io.labels.push('agent:working', 'agent:implementing')
+    harness.io.labelWrites.length = 0
+    harness.io.replies = [JSON.stringify({ intent: 'none' })]
+
+    await runPipeline({ event: comment('thanks!'), deps: harness.deps })
+
+    expect(harness.io.labelWrites.sort()).toEqual(['-agent:implementing', '-agent:working'])
+    expect(harness.io.labels.sort()).toEqual(['agent:needs-you', 'agent:spec-review'])
+  })
+
+  test('the repository’s own labels are never touched', async () => {
+    // The worst thing this channel could do, and the one that would be found
+    // by somebody else losing their triage.
+    const harness = makeHarness()
+    harness.io.labels.push('bug', 'good first issue')
+    harness.io.replies = [SPEC_REPLY]
+
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(harness.io.labels).toContain('bug')
+    expect(harness.io.labels).toContain('good first issue')
+    expect(harness.io.labelWrites).not.toContain('-bug')
+    expect(harness.io.labelWrites).not.toContain('-good first issue')
+  })
+
+  test('labels are created with the palette before they are applied', async () => {
+    const harness = makeHarness()
+    harness.io.replies = [SPEC_REPLY]
+
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(harness.io.labelsCreated).toContainEqual({ name: 'agent:spec-review', color: 'd4a72c' })
+    expect(harness.io.labelsCreated).toContainEqual({ name: 'agent:needs-you', color: 'd4a72c' })
+  })
+
+  test('a custom prefix reaches every label the run writes', async () => {
+    const harness = makeHarness({ labelPrefix: 'bot/' })
+    harness.io.replies = [SPEC_REPLY]
+
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(harness.io.labels.sort()).toEqual(['bot/needs-you', 'bot/spec-review'])
+  })
+
+  test('`none` runs the whole pipeline without one label call', async () => {
+    // A repository that wants none of this must get none of it — not a
+    // different set of names.
+    const harness = makeHarness({ labelPrefix: null })
+    harness.io.labels.push('agent:working')
+
+    const result = await driveDelivery(harness)
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.labelWrites).toEqual([])
+    expect(harness.io.labels).toEqual(['agent:working'])
+  })
+})
+
+describe('labels — feedback never fails a run', () => {
+  test('a GitHub that refuses every label call changes nothing about the run', async () => {
+    // The rule-1 test for this stage. A token without `issues: write`, a
+    // repository that restricts label creation, and a fork run all present
+    // exactly this, and none of them may change what the run concludes or what
+    // it leaves on the issue.
+    const healthy = makeHarness()
+    const broken = makeHarness()
+    broken.io.labelError = new Error('Resource not accessible by integration')
+
+    const expected = await driveDelivery(healthy)
+    const actual = await driveDelivery(broken)
+
+    expect(actual).toEqual(expected)
+    // The persisted state, not just the returned status: a state that is never
+    // posted never happened, and that is the half a status cannot show.
+    expect(findLatestState(broken.io.thread, AGENT_LOGIN, ISSUE)).toEqual(
+      findLatestState(healthy.io.thread, AGENT_LOGIN, ISSUE),
+    )
+    expect(broken.io.posted).toEqual(healthy.io.posted)
+    // And it really did try, rather than passing by never asking. A 403 on this
+    // token refuses the read as well, which is why the ask is counted rather
+    // than looked for among the writes.
+    expect(broken.io.labelReads).toBeGreaterThan(0)
+    expect(broken.io.labelWrites).toEqual([])
+  })
+
+  test('a refused label still lets a failure report itself', async () => {
+    // The path where feedback failing on top of a failure would be worst: the
+    // comment explaining what broke is the only thing the maintainer gets.
+    const harness = makeHarness()
+    harness.io.labelError = new Error('403')
+    harness.io.replies = ['not json at all']
+
+    const result = await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(result.reported).toBe(true)
+    expect(harness.io.posted[0]).toContain('### ❌ Run failed in')
+  })
+
+  test('a label is not a report, so it never suppresses the fallback comment', async () => {
+    // `RunResult.reported` gates the workflow's "Agent job did not finish"
+    // comment. A
+    // run that only ever labelled has said nothing on the issue.
+    const harness = makeHarness()
+    await toComplete(harness)
+
+    const result = await runPipeline({ event: comment('any plans to revisit?'), deps: harness.deps })
+
+    expect(result.reported).toBe(false)
+  })
+})
+
+/** A harness whose run has a job to link to, so the status channel is live. */
+const JOB_URL = 'https://github.test/acme/widgets/actions/runs/1482'
+
+const withStatus = (overrides: Partial<PipelineConfig> = {}): Harness => makeHarness({ runUrl: JOB_URL, ...overrides })
+
+/** Bodies the run created that carry no state block — the status comment, and nothing else. */
+const statusPosts = (harness: Harness): string[] => harness.io.posted.filter((body) => !body.includes(STATE_MARKER))
+
+describe('the live status comment', () => {
+  test('one comment per run, opened when the work starts and edited as it moves', async () => {
+    // The whole comment budget this plan allows itself. A run that added a
+    // comment per phase would be the noise the budget exists to prevent.
+    const harness = withStatus()
+
+    await driveDelivery(harness)
+
+    expect(statusPosts(harness)).toHaveLength(1)
+    expect(harness.io.edits.length).toBeGreaterThan(0)
+    expect(new Set(harness.io.edits.map((edit) => edit.id)).size).toBe(1)
+  })
+
+  test('it says which job is doing the work, and what phase it is on', async () => {
+    const harness = withStatus()
+    await toDesignSpec(harness)
+    harness.io.replies = [PLAN_REPLY]
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    const opened = String(statusPosts(harness)[0])
+    expect(opened).toContain(`[this run](${JOB_URL})`)
+    expect(opened.split('\n')[0]).toBe('### 🗺️ Breaking the spec into steps — run in progress')
+  })
+
+  test('it is finalised where the run stopped', async () => {
+    const harness = withStatus()
+    await toDesignSpec(harness)
+    harness.io.replies = [PLAN_REPLY]
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    const last = harness.io.edits.at(-1)
+    expect(last?.body.split('\n')[0]).toBe('### 🧭 Plan is waiting for you')
+    expect(last?.body).not.toContain('run in progress')
+  })
+
+  test('a run that does nothing opens no comment at all', async () => {
+    // Same gate as the working label, for the same reason: opening a status
+    // comment for a run that is about to skip spends the whole budget on
+    // nothing.
+    const harness = withStatus()
+    await toComplete(harness)
+    harness.io.edits.length = 0
+
+    await runPipeline({ event: comment('any plans to revisit?'), deps: harness.deps })
+
+    expect(harness.io.posted).toEqual([])
+    expect(harness.io.edits).toEqual([])
+  })
+
+  test('a guardrail denial opens no comment either', async () => {
+    const harness = withStatus()
+
+    await runPipeline({ event: issueEvent({ authorAssociation: 'CONTRIBUTOR' }), deps: harness.deps })
+
+    expect(harness.io.posted).toEqual([])
+  })
+})
+
+describe('the status comment — rule 7, it is not a report', () => {
+  test('a run that only ever wrote status has still said nothing about itself', async () => {
+    // `RunResult.reported` means the issue carries this run's account of what
+    // happened, and the workflow's fallback comment is gated on it. A status
+    // comment is not an account of anything, so a run whose only writes were on
+    // that channel leaves the flag exactly where a run without the channel
+    // would.
+    const harness = withStatus()
+    await toDesignSpec(harness)
+    harness.io.replies = [JSON.stringify({ intent: 'none' })]
+
+    const result = await runPipeline({ event: comment('thanks!'), deps: harness.deps })
+
+    expect(result.reported).toBe(false)
+  })
+
+  test('a run killed mid-phase leaves the status mid-flight and yields no result to mark', async () => {
+    // The case rule 7 is really about. The report comment never lands, so the
+    // run dies with "run in progress" on the issue and hands back no
+    // `RunResult` at all — which is exactly why the flag must never be set from
+    // the status comment's existence: there would be nothing left to explain
+    // the silence.
+    const harness = withStatus()
+    await toDesignSpec(harness)
+    harness.io.replies = [PLAN_REPLY]
+    harness.io.postError = new Error('502 from GitHub')
+
+    await expect(runPipeline({ event: comment('/approve'), deps: harness.deps })).rejects.toThrow('502')
+
+    expect(harness.io.thread.at(-1)?.body).toContain('run in progress')
+    // `step-output.ts` writes the marker only on a returning path, and nothing
+    // returned; the state block on the issue is still the one from before.
+    expect(harness.io.thread.filter((entry) => entry.body.includes(STATE_MARKER))).toHaveLength(1)
+  })
+
+  test('finalising it on a returning path does not set the flag either', async () => {
+    // Two writers of one flag is how it drifts. The paths that report already
+    // do; this one has nothing to add.
+    const harness = withStatus()
+    harness.io.replies = [JSON.stringify({ intent: 'none' })]
+    seedState(harness, { phase: 'DESIGN_SPEC' })
+
+    const result = await runPipeline({ event: comment('nice work'), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(result.reported).toBe(false)
+    expect(statusPosts(harness)).toEqual([])
+  })
+})
+
+describe('the status comment — rule 4, the state channel is untouched', () => {
+  test('state restored from a thread with status comments equals the same thread without them', async () => {
+    // The invariant, stated as one. `findLatestState` restores from the newest
+    // agent comment carrying a valid block, so a status comment that ever grew
+    // one would become a second, competing source of truth — and it is written
+    // by the channel least likely to be looked at.
+    const quiet = makeHarness()
+    const loud = withStatus()
+
+    await driveDelivery(quiet)
+    await driveDelivery(loud)
+
+    expect(findLatestState(loud.io.thread, AGENT_LOGIN, ISSUE)).toEqual(
+      findLatestState(quiet.io.thread, AGENT_LOGIN, ISSUE),
+    )
+    // And it really did interleave them, rather than passing by never writing.
+    expect(loud.io.thread.length).toBeGreaterThan(quiet.io.thread.length)
+    expect(statusPosts(loud)).toHaveLength(1)
+    expect(statusPosts(loud)[0]).not.toContain(STATE_MARKER)
+    // And the comment that really went out carries the marker the prompt layer
+    // filters on — a renderer that grew one is worth nothing if the pipeline
+    // posts something else.
+    expect(readBlock(String(statusPosts(loud)[0]), STATUS_MARKER)).toEqual({ run: JOB_URL })
+  })
+
+  test('the comment a later job restores from is a report, never the status', async () => {
+    const harness = withStatus()
+    await driveDelivery(harness)
+
+    const restored = harness.io.thread.filter((entry) => extractState(entry.body) !== null)
+
+    expect(restored.length).toBeGreaterThan(0)
+    expect(restored.every((entry) => !entry.body.includes('run in progress'))).toBe(true)
+  })
+})
+
+describe('the status comment — rule 1, feedback never fails a run', () => {
+  test('a GitHub that refuses every status write changes nothing about the run', async () => {
+    // Measured against a run with no status channel at all, which is the exact
+    // degradation the rule allows: a failed create leaves the pipeline where it
+    // was before this stage, and a failed edit is a warning.
+    const silent = makeHarness()
+    const broken = withStatus()
+    broken.io.statusError = new Error('Resource not accessible by integration')
+
+    const expected = await driveDelivery(silent)
+    const actual = await driveDelivery(broken)
+
+    expect(actual).toEqual(expected)
+    // The persisted state, not just the returned status: a state that is never
+    // posted never happened, and that is the half a status cannot show.
+    expect(findLatestState(broken.io.thread, AGENT_LOGIN, ISSUE)).toEqual(
+      findLatestState(silent.io.thread, AGENT_LOGIN, ISSUE),
+    )
+    expect(broken.io.posted).toEqual(silent.io.posted)
+  })
+
+  test('a refused status write still lets a failure report itself', async () => {
+    const harness = withStatus()
+    harness.io.statusError = new Error('403')
+    harness.io.replies = ['not json at all']
+
+    const result = await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(result.reported).toBe(true)
+    expect(reportsOf(harness)[0]).toContain('### ❌ Run failed in')
+  })
+})
+
+describe('recording what a skipped classification cost', () => {
+  test('a comment the classifier reads as chatter records its spend without posting', async () => {
+    // The one model turn in this pipeline that posts nothing, and so the one
+    // whose spend used to vanish with the runner. An issue could buy one per
+    // comment for as long as anybody kept commenting.
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    harness.io.tokensUsed = 40_000
+    harness.io.replies = [JSON.stringify({ intent: 'none' })]
+
+    const result = await runPipeline({ event: comment('thanks!'), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(harness.io.posted).toEqual([])
+    expect(spentIn(result)).toBe(40_000)
+    expect(findLatestState(harness.io.thread, AGENT_LOGIN, ISSUE)?.tokensSpent).toBe(40_000)
+  })
+
+  test('the rewrite lands on the comment the next job will restore from', async () => {
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    const restoredFrom = harness.io.thread.at(-1)?.id
+    harness.io.tokensUsed = 12_000
+    harness.io.replies = [JSON.stringify({ intent: 'none' })]
+
+    await runPipeline({ event: comment('thanks!'), deps: harness.deps })
+
+    expect(harness.io.edits).toHaveLength(1)
+    expect(harness.io.edits[0]?.id).toBe(restoredFrom)
+    // The phase is untouched: this records spend, it does not move anything.
+    expect(findLatestState(harness.io.thread, AGENT_LOGIN, ISSUE)?.phase).toBe('DESIGN_SPEC')
+  })
+
+  test('a skip that spent nothing writes nothing', async () => {
+    // Most skips never open a session. A rewrite that only ever restated the
+    // figure already on the issue would be a request per "thanks!".
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    harness.io.replies = [JSON.stringify({ intent: 'none' })]
+
+    await runPipeline({ event: comment('thanks!'), deps: harness.deps })
+
+    expect(harness.io.edits).toEqual([])
+  })
+
+  test('a refused rewrite reports the figure the issue actually carries', async () => {
+    // Best-effort, like every other write this stage adds: a `RunResult`
+    // claiming a total no reader will ever find would be worse than the leak.
+    const harness = makeHarness()
+    await toDesignSpec(harness)
+    harness.io.statusError = new Error('403')
+    harness.io.tokensUsed = 40_000
+    harness.io.replies = [JSON.stringify({ intent: 'none' })]
+
+    const result = await runPipeline({ event: comment('thanks!'), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(spentIn(result)).toBe(0)
+    expect(findLatestState(harness.io.thread, AGENT_LOGIN, ISSUE)?.tokensSpent).toBe(0)
   })
 })

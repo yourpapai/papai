@@ -7,8 +7,7 @@ import type { CheckRunner } from './check-loop.js'
 import { resolveBaseBranch } from './config.js'
 import type { Env, PipelineConfig } from './config.js'
 import { createGit } from './git.js'
-import { createOctokitApi } from './github.js'
-import type { FetchLike } from './github.js'
+import type { GitHubApi } from './github.js'
 import type { TriggerEvent } from './guardrails.js'
 import { resolveSelfLogin } from './identity.js'
 import type { AgentHandle } from './index.js'
@@ -19,6 +18,7 @@ import { opencodeConfigEnv } from './openai-config.js'
 import type { PhaseDeps, RunReview } from './phase-context.js'
 import { runReviewLoop } from './review-runner.js'
 import type { CommandRunner } from './shell.js'
+import type { StatusReporter } from './status-reporter.js'
 import type { Phase } from './types.js'
 
 /**
@@ -83,10 +83,29 @@ export interface DepsInput {
   run: CommandRunner
   log: Logger
   agent: AgentHandle
-  fetch?: FetchLike
+  /**
+   * Built by `contain` rather than here, unlike every other boundary below.
+   *
+   * The status reporter needs it, and the OpenCode session needs the *reporter*
+   * — its heartbeat is what feeds the live status comment — so the session
+   * cannot be built before both. One of the three has to be assembled outside
+   * this function, and the GitHub adapter is the one with no other dependency.
+   */
+  github: GitHubApi
+  status: StatusReporter
 }
 
-export const assembleDeps = ({ config, secrets, event, env, run, log, agent, fetch }: DepsInput): PhaseDeps => {
+export const assembleDeps = ({
+  config,
+  secrets,
+  event,
+  env,
+  run,
+  log,
+  agent,
+  github,
+  status,
+}: DepsInput): PhaseDeps => {
   const git = createGit({
     run,
     cwd: config.repoRoot,
@@ -96,16 +115,10 @@ export const assembleDeps = ({ config, secrets, event, env, run, log, agent, fet
     secrets,
     credential: { remote: config.gitRemoteBase, token: config.githubToken },
   })
-  const github = createOctokitApi({
-    token: config.githubToken,
-    owner: config.owner,
-    repo: config.repo,
-    secrets,
-    fetch,
-  })
 
   return {
     github,
+    status,
     git,
     runCheck: makeCheckRunner(run, config),
     runReview: makeReviewRunner(run, config, log),

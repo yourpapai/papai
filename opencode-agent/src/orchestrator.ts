@@ -4,20 +4,23 @@
 // See LICENSE in the project root for details.
 
 import { parseSlashCommand } from './commands.js'
+import { react } from './feedback.js'
 import { evaluateGuardrails } from './guardrails.js'
 import type { TriggerEvent } from './guardrails.js'
+import { reconcileLabels, settleLabels } from './labels.js'
 import type { IssueContext, MachineInput, PhaseDeps, PhaseHandler, PhaseInput, PhaseOutcome } from './phase-context.js'
+import { failAnswer, failRun } from './phase-failure.js'
 import { handleAnswer } from './phases/answer.js'
 import { handleCiFix } from './phases/ci-fix.js'
 import { handleDeliver } from './phases/deliver.js'
 import { handleImplement } from './phases/implement.js'
 import { handlePlan } from './phases/plan.js'
 import { handleTriage } from './phases/triage.js'
-import { postAndAppend, renderAnswerFailure, renderFailure, renderSettled } from './run-report.js'
+import { postAndAppend, renderSettled } from './run-report.js'
 import { findLatestState, initialState, transition } from './state-manager.js'
 import { recordSpend, stopIfOverBudget } from './token-budget.js'
+import type { TriggerOutcome } from './trigger-outcome.js'
 import { applyTrigger } from './triggers.js'
-import { errorMessage } from './types.js'
 import type { AgentState, Phase, RunResult, TransitionSignal } from './types.js'
 
 /**
@@ -58,11 +61,42 @@ export const runPipeline = async (options: RunOptions): Promise<RunResult> => {
   })
   if (!guard.allowed) {
     deps.log.warn({ code: guard.code, event: event.eventName }, 'Trigger rejected by guardrails')
-    // `reported: false` and it has to stay that way: a rejection here is
-    // deliberately silent, so the issue carries nothing about this run.
+    // The one denial with a person behind it. Every other code here is machine
+    // noise — a bot, the agent's own comment, a pull request, an event shape
+    // this pipeline does not handle — and reacting to those would be talking to
+    // nobody. `NOT_MAINTAINER` is a write triggered by an account without write
+    // access, which is the judgement call: it is bounded to one reaction on one
+    // comment with no content and no notification storm, and the alternative is
+    // that an outside contributor's comment vanishes into a log they cannot
+    // read.
+    if (guard.code === 'NOT_MAINTAINER') await react(deps, event, 'confused')
+    // `reported: false` and it has to stay that way: a reaction is not an
+    // account of what happened, so the issue still carries nothing about this
+    // run and the workflow's fallback comment must stay in scope.
     return { status: 'skipped', reason: guard.reason, state: null, reported: false }
   }
 
+  // Every accepted trigger, before anything else this run does — a reaction that
+  // arrives after the work is worth much less than one that arrives before it,
+  // and this is the only acknowledgement any trigger gets. CI events fall
+  // through it silently; `reactionTarget` decides that, not this call site.
+  await react(deps, event, 'eyes')
+
+  return runAccepted(event, deps)
+}
+
+/**
+ * Everything a trigger the guardrails let through does.
+ *
+ * Split from {@link runPipeline}, which is now the guardrail and the
+ * acknowledgement, because the two halves answer different questions and the
+ * function was already at the length limit before the label reconciles arrived.
+ *
+ * Both of those reconciles live here rather than deeper down, because both are
+ * statements about the *run*: one marker goes on when work starts and comes off
+ * when it ends, whatever the outcome, and neither fact is known to a phase.
+ */
+const runAccepted = async (event: TriggerEvent, deps: PhaseDeps): Promise<RunResult> => {
   const thread = await deps.github.listIssueComments(event.issueNumber)
   const restored = findLatestState(thread, await deps.selfLogin(), event.issueNumber) ?? initialState(event.issueNumber)
   const issue = await resolveIssue(event, deps)
@@ -70,9 +104,22 @@ export const runPipeline = async (options: RunOptions): Promise<RunResult> => {
 
   const base: PhaseInput = { state: restored, issue, trigger: event, command, thread, deps }
   const entry = await applyTrigger(base)
-  if (entry.halt !== null) return entry.halt
+  if (entry.halt !== null) return settleLabels(deps, entry.halt, restored)
 
-  return driveMachine({
+  // Only when something is actually going to run. The closing reconcile happens
+  // either way — it is also the repair — but marking a run that is about to do
+  // nothing adds the marker and takes it off again within the second, which is
+  // two timeline entries on an issue where the agent did nothing, and precisely
+  // the churn a diff instead of a clear-and-reapply exists to avoid.
+  // The status comment is opened on the same condition and for the same reason:
+  // it is the whole comment budget this plan allows itself, and spending it on a
+  // run that is about to do nothing is the noise the budget exists to prevent.
+  if (willWork(entry)) {
+    await reconcileLabels(deps, entry.state, 'working')
+    await deps.status.start(entry.state)
+  }
+
+  const result = await driveMachine({
     ...base,
     state: entry.state,
     answer: entry.answer,
@@ -82,7 +129,26 @@ export const runPipeline = async (options: RunOptions): Promise<RunResult> => {
     // adding it to each phase's own would count the earlier phases again.
     carriedTokens: restored.tokensSpent,
   })
+
+  // Finalising the status comment is deliberately not reporting: `finish`
+  // returns nothing, so this cannot touch `result.reported` even by accident. A
+  // run that died before reaching this line leaves "run in progress" on the
+  // issue, which is exactly what the workflow's fallback comment is for.
+  await deps.status.finish(result)
+
+  return settleLabels(deps, result, entry.state)
 }
+
+/**
+ * Whether the cascade will actually run a handler for this entry.
+ *
+ * The two cases where it will not are a trigger that moved into a waiting phase
+ * and `/cancel`, which reaches `COMPLETE` — both of them state moves with no
+ * work behind them, and `agent:working` on either is a claim that nothing is
+ * happening. Asked of the same `HANDLERS` table {@link driveMachine} looks the
+ * phase up in, so the marker cannot disagree with what the machine does next.
+ */
+const willWork = (entry: TriggerOutcome): boolean => entry.answer || HANDLERS[entry.state.phase] !== undefined
 
 /** The issue's title and body, from the payload when present, else the API. */
 const resolveIssue = (event: TriggerEvent, deps: PhaseDeps): Promise<IssueContext> => {
@@ -135,6 +201,10 @@ const driveMachine = async (input: MachineInput): Promise<RunResult> => {
   // place used to leave the issue in a phase no trigger re-enters.
   const stopped = await stopIfOverBudget(input)
   if (stopped !== null) return stopped
+
+  // After the budget stop, so a run that cannot afford this phase does not
+  // announce it as the one in flight.
+  await input.deps.status.enter(state)
 
   const attempt = await runHandler(handler, input)
   if (!attempt.ok) return input.answer ? failAnswer(input, attempt.error) : failRun(input, attempt.error)
@@ -192,67 +262,4 @@ const runHandler = async (handler: PhaseHandler, input: MachineInput): Promise<H
   } catch (error) {
     return { ok: false, error }
   }
-}
-
-/**
- * Records the failure on the issue and parks the state in FAILED with
- * `resumeFrom` set, so `/retry` re-enters the exact phase that broke instead of
- * replaying the whole pipeline.
- *
- * Through `recordSpend`, exactly as the success path is. A failing phase spends
- * what it spent — the model turn is paid for long before the parse that rejects
- * its reply — and this used to write `lastError` and nothing else, so the tokens
- * went unrecorded and the next runner read `0`. That is the one path the ceiling
- * most needs to see: the state it parks in is `FAILED`, and `/retry` out of
- * `FAILED` is how an issue comes back for another expensive round.
- */
-const failRun = async (input: MachineInput, error: unknown): Promise<RunResult> => {
-  const { state, deps, thread } = input
-  const message = errorMessage(error)
-  deps.log.error({ issue: state.issueId, phase: state.phase, error: message }, 'Phase handler failed')
-
-  const failed = transition(state, 'FAILED', await recordSpend(input, { lastError: message }))
-  await postAndAppend(thread, input, renderFailure(state.phase, message, failed, deps.config.maxAttempts), failed)
-
-  // The comment above is what the workflow's fallback step would otherwise
-  // duplicate, contradicting it: this run has moved the issue to `FAILED`, so
-  // "the issue state is unchanged" is false the moment `postAndAppend` returns.
-  return { status: 'failed', reason: message, state: failed, reported: true }
-}
-
-/**
- * Reports a failed answer without moving the machine, and without spending an
- * attempt.
- *
- * A question is a side conversation about work that lives elsewhere: the phase
- * records where the *work* is, so parking a delivered pull request or an
- * in-flight implementation in FAILED because a model turn about it broke is a
- * lie about what happened. In COMPLETE it was not even reachable — the FAILED
- * guard in `canTransition` refuses that move — so {@link failRun}'s own
- * `transition` threw and took the whole runner with it.
- *
- * The retry budget is left alone for the same reason: `attempts` counts
- * consecutive failures to make progress on the issue, and a question makes
- * none either way. Leaving `resumeFrom` alone is what makes the notice honest.
- * Answering in a waiting phase used to record `resumeFrom: 'DESIGN_SPEC'`, and
- * the `/retry` the failure comment invited then resumed into a phase with no
- * handler and re-parked with "Parked in `DESIGN_SPEC`" — one attempt poorer for
- * a round trip that did nothing.
- *
- * Moving nothing is not the same as recording nothing, which is the distinction
- * this path missed: it posted the restored state verbatim, so a question that
- * reached the model and then failed on a deadline or a rejected request handed
- * the next job a total with that turn missing from it. The spend is the one
- * thing a failed answer really does change, and it is written the way every
- * other state block writes it — see {@link recordSpend}.
- */
-const failAnswer = async (input: MachineInput, error: unknown): Promise<RunResult> => {
-  const { state, deps, thread } = input
-  const message = errorMessage(error)
-  deps.log.error({ issue: state.issueId, phase: state.phase, error: message }, 'Answering a question failed')
-
-  const carried = { ...state, ...(await recordSpend(input)) }
-  await postAndAppend(thread, input, renderAnswerFailure(state.phase, message), carried)
-
-  return { status: 'failed', reason: message, state: carried, reported: true }
 }

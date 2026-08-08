@@ -4,9 +4,11 @@
 // See LICENSE in the project root for details.
 
 import type { IssueComment } from './blocks.js'
+import { acceptedCommands } from './commands.js'
 import { reportIdentityDrift } from './identity.js'
 import { fence } from './markdown.js'
 import type { PhaseInput } from './phase-context.js'
+import { outcomeHeading, phaseHeading, presentationFor } from './presentation.js'
 import { renderStateComment } from './state-manager.js'
 import type { AgentState, Phase } from './types.js'
 
@@ -53,21 +55,63 @@ export const postAndAppend = async (
 export const renderClosing = (state: AgentState): string =>
   state.prUrl === null
     ? [
-        '### Stopped',
+        // Through the *phase* table rather than the outcome one: these two
+        // headings are `COMPLETE:cancelled` and `COMPLETE:delivered`, the same
+        // two states the label reconciler is naming on this very comment, and a
+        // second copy of the glyph could only ever drift from the label beside
+        // it.
+        phaseHeading(state, 'waiting', 'Stopped'),
         '',
         'I am no longer working on this issue, and further comments here will not restart me.',
         'Open a new issue if you want this picked up again.',
       ].join('\n')
     : [
-        '### Done',
+        phaseHeading(state, 'waiting', 'Done'),
         '',
         `The work is in ${state.prUrl}.`,
         '',
         'If that pull request goes red I will still pick it up and push a fix.',
       ].join('\n')
 
+/**
+ * What a maintainer can type from here, named from the transition table.
+ *
+ * Shared by the two comments that have to answer that question — a refused
+ * command and a parked phase — because they are the same sentence and were on
+ * their way to being two.
+ */
+const acceptedLine = (accepted: readonly string[]): string =>
+  accepted.length === 0
+    ? 'No command moves this issue on from here.'
+    : `What works here: ${accepted.map((name) => `\`${name}\``).join(', ')}.`
+
+/**
+ * The comment that ends a run at a phase with no handler.
+ *
+ * It used to render `### Waiting` over `Parked in \`PLAN_REVIEW\`.` and stop
+ * there — the phase name, and no statement of what would move it, while every
+ * other waiting comment in this file carries a "what now". A maintainer reading
+ * it learned only that the agent had stopped, in a vocabulary (`PLAN_REVIEW`)
+ * that means nothing to anyone who has not read the state machine.
+ *
+ * Both halves are derived rather than written: the headline and glyph come from
+ * the presentation table, and the commands from the same `acceptedCommands` the
+ * refusal comment uses, so neither can drift from what the machine will take.
+ */
+const renderWaiting = (state: AgentState): string => {
+  const { headline } = presentationFor(state, 'waiting')
+
+  return [
+    phaseHeading(state, 'waiting', headline),
+    '',
+    `Parked in \`${state.phase}\`, and nothing moves until you say so.`,
+    '',
+    acceptedLine(acceptedCommands(state.phase)),
+  ].join('\n')
+}
+
 export const renderSettled = (state: AgentState): string =>
-  state.phase === 'COMPLETE' ? renderClosing(state) : `### Waiting\n\nParked in \`${state.phase}\`.`
+  state.phase === 'COMPLETE' ? renderClosing(state) : renderWaiting(state)
 
 /**
  * The reply to a slash command the current phase cannot accept.
@@ -83,13 +127,11 @@ export const renderSettled = (state: AgentState): string =>
  */
 export const renderRefusedCommand = (command: string, phase: Phase, accepted: readonly string[]): string =>
   [
-    `### \`${command}\` does not apply right now`,
+    outcomeHeading('COMMAND_REFUSED', `\`${command}\` does not apply right now`),
     '',
     `I am parked in \`${phase}\`, which does not accept it, so nothing has changed.`,
     '',
-    accepted.length === 0
-      ? 'No command moves this issue on from here.'
-      : `What works here: ${accepted.map((name) => `\`${name}\``).join(', ')}.`,
+    acceptedLine(accepted),
   ].join('\n')
 
 /**
@@ -105,7 +147,7 @@ export const renderRefusedCommand = (command: string, phase: Phase, accepted: re
  */
 export const renderExhausted = (reason: string): string =>
   [
-    '### Giving up',
+    outcomeHeading('RETRIES_SPENT', 'Giving up'),
     '',
     reason,
     '',
@@ -123,7 +165,7 @@ export const renderExhausted = (reason: string): string =>
  */
 export const renderCiExhausted = (reason: string, prUrl: string | null): string =>
   [
-    '### I have stopped trying to fix CI',
+    outcomeHeading('CI_GAVE_UP', 'I have stopped trying to fix CI'),
     '',
     reason,
     '',
@@ -131,12 +173,34 @@ export const renderCiExhausted = (reason: string, prUrl: string | null): string 
     'Its checks are red and I will not attempt another fix — take a look, or push a fix yourself.',
   ].join('\n')
 
-export const renderFailure = (phase: Phase, message: string, next: AgentState, maxAttempts: number): string =>
+/**
+ * A link to the job, for the comments a maintainer reads when something has
+ * gone wrong.
+ *
+ * Rendered as nothing at all when there is no run: a local `--event-path` run is
+ * an ordinary way to drive this CLI, and an empty "Job:" label is worse than a
+ * missing line. The URL arrives as an argument rather than being read from
+ * config here, so a renderer stays a function of what it is handed.
+ */
+const jobLink = (runUrl: string | null, label: string): readonly string[] =>
+  runUrl === null ? [] : ['', `${label}: ${runUrl}`]
+
+export const renderFailure = (
+  phase: Phase,
+  message: string,
+  next: AgentState,
+  maxAttempts: number,
+  runUrl: string | null,
+): string =>
   [
-    `### Run failed in ${phase}`,
+    outcomeHeading('RUN_FAILED', `Run failed in ${phase}`),
     '',
     // The message carries raw model output, which usually contains fences.
     fence(message),
+    // Until now the only lead a maintainer had from this comment was `/retry`.
+    // The job that produced the message above has the rest of the story in it,
+    // and nothing on the issue said where to find it.
+    ...jobLink(runUrl, 'The job that failed'),
     '',
     `Attempt ${next.attempts} of ${maxAttempts}. Reply **\`/retry\`** to resume from \`${phase}\`, ` +
       'or **`/cancel`** to stop.',
@@ -155,7 +219,7 @@ export const renderFailure = (phase: Phase, message: string, next: AgentState, m
  */
 export const renderAnswerFailure = (phase: Phase, message: string): string =>
   [
-    '### I could not answer that',
+    outcomeHeading('ANSWER_FAILED', 'I could not answer that'),
     '',
     // The message carries raw model output, which usually contains fences.
     fence(message),
@@ -191,7 +255,7 @@ const tokenLine = (spent: number, limit: number): string =>
  */
 export const renderOverBudget = (spent: number, limit: number, resumeFrom: Phase): string =>
   [
-    '### Token budget spent',
+    outcomeHeading('TOKENS_SPENT', 'Token budget spent'),
     '',
     tokenLine(spent, limit),
     '',
@@ -213,7 +277,7 @@ export const renderOverBudget = (spent: number, limit: number, resumeFrom: Phase
  */
 export const renderAnswerOverBudget = (spent: number, limit: number, phase: Phase): string =>
   [
-    '### Token budget spent',
+    outcomeHeading('ANSWER_TOKENS_SPENT', 'Token budget spent'),
     '',
     `${tokenLine(spent, limit)} I did not put that question to the model.`,
     '',

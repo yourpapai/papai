@@ -6,6 +6,8 @@
 import { Octokit } from '@octokit/rest'
 
 import type { IssueComment } from './blocks.js'
+import { createLabelEndpoints } from './github-labels.js'
+import type { LabelApi } from './github-labels.js'
 import type { IssueContext } from './phase-context.js'
 import { redactSecrets } from './secrets.js'
 
@@ -56,20 +58,74 @@ export interface PullRequestStatus extends PullRequestRef {
 }
 
 /**
+ * The reactions this pipeline places, as a closed union rather than free text.
+ *
+ * That closure is what exempts it from `clean`. Outbound redaction exists
+ * because a comment body is assembled from check output, git stderr, review
+ * summaries and model prose, and any of those can carry a credential; a value
+ * drawn from four literals the pipeline picks itself has nowhere for one to
+ * hide. It is the same exemption the `head`/`base` branch names take in
+ * {@link PullRequestInput} — computed here, so passed through untouched — and it
+ * is stated rather than implied, because "a new `GitHubApi` method that sends
+ * free text must redact it" is a rule a silent exception erodes.
+ */
+export type ReactionContent = 'eyes' | '+1' | 'confused' | 'rocket'
+
+/**
+ * What a reaction lands on.
+ *
+ * One discriminated shape rather than an `addIssueReaction` and an
+ * `addCommentReaction`: the two REST endpoints differ only in the path segment
+ * they address — `issues/{n}/reactions` against `issues/comments/{id}/reactions`
+ * — and the callers all hold one id or the other without caring which endpoint
+ * that makes it. Two methods would put that mapping in every call site.
+ */
+export type ReactionTarget = { kind: 'issue'; number: number } | { kind: 'comment'; id: number }
+
+/**
  * The narrow GitHub surface the pipeline needs. Everything downstream depends on
  * this interface rather than Octokit, so phase handlers are testable without an
  * HTTP stub layer.
+ *
+ * The label endpoints arrive through {@link LabelApi} rather than being written
+ * out again here: extending it is what keeps a fake that satisfies `GitHubApi`
+ * unable to leave one of them out, which is the property the whole interface
+ * exists for.
  */
-export interface GitHubApi {
+export interface GitHubApi extends LabelApi {
   listIssueComments(issueNumber: number): Promise<IssueComment[]>
   /** Returns the created comment, including the author GitHub recorded. */
   createComment(issueNumber: number, body: string): Promise<PostedComment>
+  /**
+   * Rewrites a comment this pipeline already posted.
+   *
+   * The second method that carries free text, and so the second that must be
+   * redacted — the rule is that a new `GitHubApi` method sending free text
+   * passes through `clean`, and this one carries a live status body assembled
+   * from the same activity summaries and state fields a comment is. It takes no
+   * exemption: unlike a reaction content or a label name, nothing here is drawn
+   * from a closed table the pipeline picks from.
+   *
+   * Two callers, both best-effort one layer up: `status-reporter.ts` edits the
+   * run's live status, and `state-persist.ts` rewrites a state block without
+   * posting. Neither rule lives here — this is the transport.
+   */
+  updateComment(commentId: number, body: string): Promise<void>
   getIssue(issueNumber: number): Promise<IssueContext>
   getAuthenticatedLogin(): Promise<string>
   /** The newest pull request from `head`, whatever became of it. */
   findPullRequest(head: string): Promise<PullRequestStatus | null>
   createPullRequest(input: PullRequestInput): Promise<PullRequestRef>
   updatePullRequest(number: number, patch: PullRequestPresentation): Promise<void>
+  /**
+   * Places one reaction. Rejects like any other call — `feedback.ts` owns the
+   * rule that a rejection here can never fail a run, because that is a decision
+   * about the pipeline, not about the transport.
+   *
+   * Idempotent server-side: a repeated reaction returns the existing one, so no
+   * caller has to record what it has already placed.
+   */
+  addReaction(target: ReactionTarget, content: ReactionContent): Promise<void>
 }
 
 export interface OctokitApiOptions {
@@ -155,6 +211,20 @@ const findPullRequest = async (octokit: Octokit, repo: Repo, head: string): Prom
 
 const closedOrOpen = (state: string): PullRequestState => (state === 'open' ? 'open' : 'closed')
 
+/** Routes to whichever of the two reaction endpoints the target names. */
+const addReaction = async (
+  octokit: Octokit,
+  repo: Repo,
+  target: ReactionTarget,
+  content: ReactionContent,
+): Promise<void> => {
+  if (target.kind === 'comment') {
+    await octokit.rest.reactions.createForIssueComment({ ...repo, comment_id: target.id, content })
+    return
+  }
+  await octokit.rest.reactions.createForIssue({ ...repo, issue_number: target.number, content })
+}
+
 /** Builds a {@link GitHubApi} backed by `@octokit/rest`. */
 export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
   const repo: Repo = { owner: options.owner, repo: options.repo }
@@ -166,6 +236,12 @@ export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
   return {
     listIssueComments: (issueNumber) => listIssueComments(octokit, repo, issueNumber),
     findPullRequest: (head) => findPullRequest(octokit, repo, head),
+    // No `clean`: the content is a member of a four-value union this pipeline
+    // picks, exactly like the `head`/`base` branch names above.
+    addReaction: (target, content) => addReaction(octokit, repo, target, content),
+    // Nor here, and for the same reason — a label name is this pipeline's own
+    // prefix followed by a suffix from a closed table. See `github-labels.ts`.
+    ...createLabelEndpoints(octokit, repo),
 
     createComment: async (issueNumber, body) => {
       const { data } = await octokit.rest.issues.createComment({
@@ -174,6 +250,10 @@ export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
         body: clean(body),
       })
       return { id: data.id, url: data.html_url, authorLogin: data.user?.login ?? '' }
+    },
+
+    updateComment: async (commentId, body) => {
+      await octokit.rest.issues.updateComment({ ...repo, comment_id: commentId, body: clean(body) })
     },
 
     getIssue: async (issueNumber) => {

@@ -93,6 +93,49 @@ export const POOL_RANGE: IntRange = { min: 1, max: 16 }
  */
 export const TOKEN_RANGE: IntRange = { min: 50_000, max: 1_000_000_000 }
 
+/**
+ * Longest prefix accepted, and it is not arbitrary: GitHub caps a label name at
+ * 50 characters, and the longest suffix in `presentation.ts` is `implementing`.
+ */
+const PREFIX_MAX_LENGTH = 32
+
+/**
+ * Characters a label name may carry here.
+ *
+ * Deliberately narrower than GitHub's own rules. A prefix is compared with
+ * `startsWith` to decide which of an issue's labels this pipeline owns and may
+ * remove, so it has to be a plain, predictable string — a comma splits a label
+ * list in half of GitHub's own UI, and leading or trailing whitespace makes two
+ * labels that look identical.
+ */
+const PREFIX_PATTERN = /^[\w\-./: ]+$/u
+
+/**
+ * Reads the label namespace, or `null` when labelling is switched off.
+ *
+ * Same shape as `AGENT_REVIEW_COMMAND`, and for the same reason: this pipeline
+ * runs in repositories with their own label conventions, so a hardcoded
+ * `agent:` set is exactly the papai-specific hardcoding S2-4 was re-opened for.
+ * `none` disables the channel outright rather than making an operator find a
+ * prefix nothing collides with.
+ *
+ * The value is validated at load, where a bad one is a message naming the
+ * variable, rather than at the first API call, where it is a 422 inside a
+ * best-effort path that swallows it.
+ */
+export const labelPrefix = (env: Env, key: string, fallback: string): string | null => {
+  const configured = optional(env, key, fallback)
+  if (configured.toLowerCase() === 'none') return null
+
+  if (configured.length > PREFIX_MAX_LENGTH) {
+    throw new ConfigError(`${key} must be at most ${PREFIX_MAX_LENGTH} characters, got ${configured.length}`)
+  }
+  if (!PREFIX_PATTERN.test(configured)) {
+    throw new ConfigError(`${key} may only contain letters, digits and \`-_./: \`, got ${JSON.stringify(configured)}`)
+  }
+  return configured
+}
+
 /** Reads an integer knob, rejecting both malformed values and unusable ones. */
 export const boundedInt = (env: Env, key: string, fallback: number, range: IntRange): number => {
   const raw = env[key]

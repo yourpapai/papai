@@ -9,11 +9,26 @@ See LICENSE in the project root for details.
 
 > **Status.** This began as a report-only audit; much of it has since been fixed.
 > Resolved items are marked **[FIXED]** inline, each with what was verified and —
-> where it applies — what the first attempt at the fix got wrong. All of **S1**
-> and **S2** are closed, as is **S3** apart from **S3-7** (the repository token
-> still lives in `.git/config`) and **S3-8** (the logger redacts by field name
-> rather than by value), which were split out of larger findings rather than left
-> implied. **S4** onwards is untouched.
+> where it applies — what the first attempt at the fix got wrong. All of **S1**,
+> **S2** and **S3** are closed, including **S3-7** and **S3-8**, which were split
+> out of larger findings rather than left implied and were the last two open. What
+> remains in S3 is the boundary S3-2 names in its closing note: containment is
+> config-level, not process-level, so there is no container or network boundary
+> around the model.
+>
+> **S4** is closed too — all ten items, five of which unrelated work had already
+> closed without anyone marking them. **S5** is closed apart from S5-5, whose
+> premise has been overtaken twice, and S5-10, which is accepted rather than
+> fixed. **S6** is where the real remainder is: S6-5 (the mutation ratchet has
+> never seen this workspace) and S6-7 (`check.sh`'s full list omits it). Both,
+> with what they cost and what fixing them costs, are evaluated in
+> [`docs/remaining-findings-evaluation.md`](docs/remaining-findings-evaluation.md).
+>
+> That paragraph replaces "**S4** onwards is untouched", which was false when it
+> was written and stayed in this blurb through a correction of the sentence beside
+> it — the same way S3-7 and S3-8 came to be listed as open. A status line nobody
+> re-derives is the most reliably wrong part of any long document, which is why
+> what remains is now named positively rather than by omission.
 >
 > A recurring pattern is worth stating once: several items marked `[FIXED]` were
 > re-opened on inspection because the fix had closed the _instance_ and left the
@@ -971,89 +986,6 @@ throw is not redacted. It cannot be — a config failure happens before any secr
 is known. The realistic exposure is low, since phase failures are caught and
 reported inside the pipeline, and an Octokit error carries the URL but not the
 header._
-
-### S3-9 The provider key reaches the model through `OPENCODE_CONFIG_CONTENT` — verified — **[FIXED]**
-
-_Found while checking whether S3-7 had closed its class, and it had not. The
-GitHub token was carefully removed from every place the model could read it while
-the **OpenAI key** sat in plain sight._
-
-_`createOpencodeServer` spawns `opencode serve` with `OPENCODE_CONFIG_CONTENT`
-set to the serialized config — and the config is where the provider key lives.
-Every process the model starts with `bash` inherits that variable, so
-`echo $OPENCODE_CONFIG_CONTENT` was a complete credential disclosure. The
-environment scrub from S3-2 cannot help: the SDK sets the variable on the child,
-after the scrub. Verified by reading `/proc/<pid>/environ` of a real spawned
-server — with `LLM_API_KEY` already removed from this process, the key was
-still there, under `OPENCODE_CONFIG_CONTENT`._
-
-_Fixed by never giving OpenCode the credential. `provider-proxy.ts` runs a
-loopback proxy that holds the key; OpenCode is configured with
-`PLACEHOLDER_API_KEY` and the proxy's URL, and the real `Authorization` is
-swapped in on the way out. The key stays in the parent process, which the model
-has no handle on. Both consumers are covered — the in-process session and the
-review loop's `opencode run` subprocesses read the same generated config._
-
-_Verified end to end, not just in unit tests: the live check now drives a real
-`opencode serve` through the proxy to a stub upstream and asserts the upstream
-saw `Bearer <real key>` while the config OpenCode held carried only the
-placeholder. That is also the only proof that a **streamed** completion survives
-the extra hop._
-
-_This is containment, not authentication: anything that can already run code on
-the runner can call the proxy. It removes the credential from the places an
-**injected prompt** can read, which is the threat S3-2 is about._
-
-_Mutation-checked ten ways. Two survived the first pass and both taught
-something. Dropping `authorization` from the copied-header deny-list killed
-nothing — because the unconditional `set` after the copy loop already overwrites
-it, making the deny-list entry unreachable. It read as a second defence while
-being dead, so it is gone rather than kept for looks. And replacing the contained
-config with the raw one killed nothing, because every test exercised the proxy
-module directly — the adapter can be perfect and never be wired in, exactly the
-gap S3-3 hit. `contain` is exported and tested now._
-
-### S3-3 Check output and git stderr are published verbatim to a public issue — verified — **[FIXED]**
-
-_Verified on the wire with the transport recorder: a comment body carrying a
-token went out to `POST /repos/acme/widgets/issues/42/comments` byte for byte._
-
-_Redaction lives at the **GitHub adapter**, not in the renderers. A comment body
-is assembled from check output, git stderr, review summaries, model prose and the
-hidden state block's `lastError`, and every one of those is a place a future
-renderer could forget. `createOctokitApi` strips secrets from every outbound
-body — comments, new pull requests, refreshed ones — so nothing leaves the module
-unredacted, and `OctokitApiOptions.secrets` is **required** so a new construction
-site has to decide rather than default to silence._
-
-_Keyed on **values**, not names, and the reason is sharper than for the
-environment scrub: the logger redacts by field name, which only works when a
-secret arrives in a field somebody named. Check output and git stderr are free
-text — a token inside them has no key at all. Branch names are left alone; they
-are computed by this pipeline, and redacting them could corrupt a `head`._
-
-_`pipelineSecrets(config)` is the single list both consumers read, so a
-credential added to the config cannot be wired into the scrub and forgotten by
-the redaction._
-
-_A mutation survived the first pass and mattered: replacing the wired list with
-`[]` killed nothing, because every redaction test built the adapter directly. The
-adapter can be perfect and still be handed nothing. `MainOptions.fetch` now
-carries the transport into `runCli`, and a `/cancel` run — which reaches a posted
-comment without booting a model — asserts end to end that a body posted by the
-**real** pipeline carries no credential. That test kills the mutant._
-
-_Mutation-checked nine ways in total: un-redacting each of the three outbound
-paths, replacing only the first occurrence, stopping after the first secret,
-dropping the minimum-length guard, passing an empty list from `runCli`, and
-dropping either credential from `pipelineSecrets`._
-
-_Not covered: the logger still redacts by key name. That is a smaller exposure —
-GitHub masks registered secrets in Actions logs, and it does not mask issue
-comments — but it is name-based, so a token inside a logged free-text error
-message survives. Recorded as S3-8._
-
-### S3-8 The logger redacts by field name, so a secret inside a message survives
 
 `src/logger.ts` walks metadata keys against `REDACT_KEYS`. A credential that
 arrives inside a free-text `error` message — the same shape S3-3 fixed for issue

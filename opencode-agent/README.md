@@ -21,10 +21,16 @@ Every step runs in its own short-lived job; nothing long-polls.
 An Actions job has no memory of the previous one, so state lives on the issue in
 hidden HTML blocks:
 
-- `<!-- AGENT_STATE: … -->` — phase and counters. Rewritten on every comment.
+- `<!-- AGENT_STATE: … -->` — phase and counters. Written afresh with every
+  comment the pipeline posts, and rewritten **in place** by a run that spent
+  model tokens and had nothing to post.
 - `<!-- AGENT_SPEC: … -->` — the current design spec.
 - `<!-- AGENT_PLAN: … -->` — the current execution plan.
 - `<!-- AGENT_REPORT: … -->` — the implementation report.
+- `<!-- AGENT_STATUS: … -->` — the odd one out: it marks a run's live status
+  comment so the prompt layer can leave that comment out, and nothing else reads
+  it. It is deliberately not `AGENT_STATE`, or the restore scan would have two
+  sources of truth.
 
 Artefacts get their own blocks rather than being scraped back out of the visible
 markdown. That is not a style preference: a spec is model-written markdown full
@@ -323,23 +329,264 @@ exactly how an issue comes back for another expensive round. A failure that
 recorded nothing let an issue burn the ceiling and then hand the next runner a
 clean slate, round after round.
 
-Three things it cannot see: the review loop's `opencode run` subprocesses, which
-have their own sessions; any spend before the first prompt of a job; and the turn
-that classifies a plain maintainer comment as needing no action. That last one is
-a deliberate residual. Classification happens before any phase runs, and when it
-answers "no action" the run posts nothing — replying to every "thanks!" would be
-spam — so there is no comment for a state block to ride on. What the agent does
-instead is refuse to pay for it: once an issue is over budget the comment skips
-the classifier entirely and goes to the path that reports the ceiling without a
-model turn — the answer path on a waiting phase, triage's own stop in
-`INIT_OR_CLARIFY` — so a maxed-out issue stops buying a classification per
-comment.
+Classifying a plain comment used to be the hole in that. Classification happens
+before any phase runs, and when it answers "no action" the run posts nothing —
+replying to every "thanks!" would be spam — so there was no comment for a state
+block to ride on, and an issue could buy one classification per comment for as
+long as anybody kept commenting. It is closed now, from both ends. Over budget,
+the comment skips the classifier entirely and goes to the path that reports the
+ceiling without a model turn — the answer path on a waiting phase, triage's own
+stop in `INIT_OR_CLARIFY`. Under budget, the skip **rewrites the newest state
+block in place** rather than appending a comment, so the turn is written down
+without anything being said. That fix waited on an `updateComment` the pipeline
+had no other use for; the live status comment needed one anyway.
+
+The in-place rewrite targets the comment the restore scan itself selected, not
+the newest in the thread, so that comment stays the newest-with-a-block and the
+scan is unaffected — and it re-serializes through the same `renderBlock`
+escaping, because a rewrite that assembled the block by hand would reintroduce
+the forged-terminator bug on a new surface. It is best-effort like every other
+write this pipeline added: a refused rewrite reports the figure the issue
+actually carries, rather than one no reader will ever find.
+
+Two things the counter still cannot see: the review loop's `opencode run`
+subprocesses, which have their own sessions, and any spend before the first
+prompt of a job, since the running total comes from the job's own session and
+that session does not exist yet.
 
 ## Watching a run
 
-A phase that runs for twenty minutes emitting nothing is, in a CI log,
-indistinguishable from a hang — and the usual response to a job that looks hung
-is to cancel it. So the log says what is happening:
+**The issue is the surface; the Actions log is the deep dive.** This section
+used to teach the opposite, and that was the bug. A phase can run for tens of
+minutes emitting nothing, and for that whole window an issue where the agent is
+working looks exactly like an issue where the workflow never fired — which is a
+real outcome, because a guardrail can drop the event. A log nobody has a link to
+does not close that gap, and the usual response to a job that looks hung is to
+cancel it.
+
+Four things now speak on the issue itself: a reaction, a pair of labels, one
+live comment, and a link to the job in every comment a maintainer reads when
+something has gone wrong. Between them they cost **one** extra comment per run;
+everything else is a reaction, a label, or an edit to that same comment.
+
+Every one of them is best-effort by construction. Each channel has exactly one
+function that talks to GitHub and that function swallows every rejection into a
+`log.warn`, so a repository whose token cannot write labels, a fork run, or an
+organisation policy on reactions all reach the same result and the same
+persisted state as a run with no feedback at all. Nothing here can fail a
+pipeline that used to work.
+
+### Reactions — the instant acknowledgement
+
+One API call, no thread noise, and it lands on the comment you just typed, so it
+is already where you are looking.
+
+| What the run concluded                      | Reaction |
+| ------------------------------------------- | -------- |
+| Trigger accepted; work is starting          | 👀       |
+| Comment read, nothing to do about it        | 👍       |
+| Sender has no write access on the repo      | 😕       |
+| Command unknown, or not valid in this phase | 😕       |
+| A pull request was opened or refreshed      | 🚀       |
+
+They stack, because the first row happens before the run has decided anything: a
+refused `/approve` ends up wearing 👀 😕, a delivery 👀 🚀. The rejected outsider
+is the exception — the guardrails turn that event away before the 👀, so it gets
+only the 😕.
+
+A reaction lands on the comment that triggered the run, or on the issue itself
+for `issues.opened`, which has no comment to address. A red-CI `workflow_run`
+event gets nothing at all: nobody typed it and nobody is waiting on an answer to
+it, so the log line is the whole of the right record. That decision lives in one
+function (`reactionTarget`), not in a check at each call site.
+
+👍 is the one worth understanding, because it is the only trace four paths leave
+anywhere but the log: an empty comment, a comment the classifier read as chatter
+on a waiting phase, the same reading in `INIT_OR_CLARIFY`, and a plain comment on
+a phase that is not waiting for one at all. A comment would be the wrong
+instrument for any of them — answering "I have decided to do nothing" to every
+"thanks!" is exactly the noise the one-comment budget exists to prevent — but
+silence left no way to tell a comment the agent read and set aside from a
+workflow that never ran. All four go through one function, because a fix that
+acknowledged three of them is the close-the-instance-leave-the-class defect this
+workspace keeps re-opening.
+
+### Labels — the state, from a list view
+
+The phase lives in a hidden HTML block, so "which of my twelve agent issues are
+waiting on me" used to mean opening each one and reading the last comment's
+prose. A label is the only thing an issue list, a project board and a
+notification all carry.
+
+| The issue is                   | Label                | Colour |
+| ------------------------------ | -------------------- | ------ |
+| Being read for the first time  | `agent:triaging`     | blue   |
+| Waiting on your answers        | `agent:clarifying`   | amber  |
+| Parked on a design spec review | `agent:spec-review`  | amber  |
+| Being broken into steps        | `agent:planning`     | blue   |
+| Parked on a plan review        | `agent:plan-review`  | amber  |
+| Being written and reviewed     | `agent:implementing` | blue   |
+| Being delivered                | `agent:delivering`   | blue   |
+| Having its red checks repaired | `agent:ci-fixing`    | blue   |
+| Delivered                      | `agent:done`         | green  |
+| Stopped — cancelled, no PR     | `agent:stopped`      | grey   |
+| Parked in `FAILED`             | `agent:failed`       | red    |
+
+Two more carry the filtering value, and they are the part worth having even if
+the per-phase set were dropped, because each answers a question a phase name
+does not:
+
+- **`agent:working`** — a run is holding this issue right now. That is "is
+  anything actually happening", answerable from a list view.
+- **`agent:needs-you`** — the run ended and the next move is yours. That is
+  "which of my issues am I blocking", which is the one that costs a maintainer
+  time.
+
+They are mutually exclusive by construction: while the agent holds the issue it
+is not waiting on anybody, so a run in flight must not also appear in the filter
+it is busy clearing. `agent:needs-you` goes on exactly the amber and red rows
+above.
+
+Labels are reconciled at most **twice per run**, not per phase move: once when a
+run is about to do real work, and once when it ends, whatever the outcome — a
+run that only skipped gets the closing one alone. The live detail in between is
+the status comment's job, below. Each reconcile is a diff — the desired set is
+computed and only the difference issued — so a run that moved nothing writes
+nothing, rather than clearing and reapplying and costing two timeline entries
+and a visible flicker per phase.
+
+Each reconcile is also a **repair**, which is the half that is easy to leave
+out. Any `agent:*` label the state does not imply is removed, so an issue
+whose labels were edited by hand and an issue left carrying `agent:working` by a
+killed runner both heal on the next event. Labels outside the prefix are never
+touched in either direction: they are the repository's own, and removing one is
+the worst thing this channel could do.
+
+A killed runner is the one failure mode the marker has, so it has two
+mitigations and neither covers the other. The reconcile above repairs it on the
+next event; an `if: always()` workflow step takes `<prefix>working` off as the
+job exits, including a job that was cancelled or timed out. That step cannot
+know which labels the state implies and cannot repair a hand edit; the reconcile
+cannot run in a process that is already gone.
+
+`AGENT_LABEL_PREFIX` namespaces the lot — a repository with its own label
+conventions is the ordinary case, not the exception. Set it to `none` and the
+channel is off: the pipeline reconciles nothing and the workflow's cleanup step
+reads the same variable the same way and leaves the issue's labels alone, since
+opting out of a channel has to opt out of every writer on it.
+
+### The live status comment
+
+One comment per run, created when the run is about to do work, edited as it
+moves, finalised when it ends. It is the only comment any of this adds, and the
+only surface that can say "still working" without posting again — every other
+comment in this pipeline is written from a finished phase outcome and is
+terminal by construction.
+
+```markdown
+### 🛠️ Writing and reviewing the code — run in progress
+
+**Job:** [this run](https://github.com/acme/widgets/actions/runs/1482) · started 14:02 UTC
+**Branch:** `agent/issue-42` · **Pull request:** _not opened yet_
+
+| Phase             |                 |
+| ----------------- | --------------- |
+| 🔍 Triage         | ✅              |
+| 📋 Design spec    | ✅ · revision 2 |
+| 🗺️ Execution plan | ✅ · revision 1 |
+| 🛠️ Implementation | ⏳ **now**      |
+| 📦 Pull request   | ⬜              |
+
+**Doing:** read (running) · 34 tool calls
+**Budget:** 218,400 of 5,000,000 tokens · attempt 1 of 3
+```
+
+Five milestones rather than a row per phase: `PLAN_REVIEW` is the execution plan
+waiting for you rather than a sixth thing that happens, and `CI_FIX` is repair
+work on the pull request row. The question it answers is "how far along is my
+issue", not "draw me the state machine". The spec and plan rows print
+`specRevision` and `planRevision` and never recount them — the two counters were
+split apart precisely because one number could not honestly label two artefacts.
+In `CI_FIX` the budget line says "attempt 2 of 3 **on this pull request**",
+because that budget is per pull request and reading it as per-issue would have
+you conclude the agent had given up when it had not started.
+
+There is deliberately no "6m elapsed". A figure that changes every minute
+changes the whole body every minute, and the whole body changing every minute
+defeats the rule below. A start time and GitHub's own "edited N minutes ago"
+answer the same question between them and cost nothing.
+
+Two bounds on the cost, because this is the only sustained writer the pipeline
+has: an edit is skipped outright when the rendered body has not changed, and
+otherwise at most one edit is issued per minute. A 90-minute run costs about 90
+edits, comfortably inside GitHub's secondary rate limit on content-mutating
+requests, and a quiet stretch costs nothing. The closing edit is the one caller
+allowed to skip the clock — a run that ends inside the window would otherwise
+leave "run in progress" on the issue for good — but it still skips an unchanged
+body, and the body is never unchanged, because ending the run is what takes "run
+in progress" out of the heading.
+
+Three things it deliberately is not:
+
+- **It is not a state channel.** It carries no `AGENT_STATE` block, so the
+  restore scan cannot see it and there is no second source of truth. It does
+  carry an `AGENT_STATUS` block of its own — markers are matched exactly, so the
+  two cannot be confused — and that marker is what keeps it out of the model's
+  prompt. `renderThread` hands the model the last twenty comments, and dropping
+  status comments **before** that window is taken is the difference between the
+  model reading the conversation and reading a quarter-window of its own
+  previous runs' progress tables. Filtered by marker, never by author: the agent
+  writes the spec, the plan and every report too.
+- **It is not a report.** It never sets `reported`, so a run killed mid-phase
+  leaves "run in progress" on the issue _and_ still draws the workflow's
+  fallback comment — which is the case that comment exists for. Marking it
+  reported would suppress the one comment that explains the silence.
+- **It is not required.** A local `--event-path` run has no job to link to, so
+  the channel is a no-op there; and if creating the comment fails, every later
+  edit is a no-op too and the run reports exactly as it did before this existed.
+
+### Where the run link is
+
+`GITHUB_RUN_ID`, `GITHUB_RUN_ATTEMPT`, `GITHUB_SERVER_URL` and
+`GITHUB_REPOSITORY` are in every step's environment already, so the link needed
+no workflow change — only a nullable `runUrl` in the config, absent on a local
+run, where the line is omitted rather than left pointing nowhere. The attempt
+segment is appended only above 1, because a re-run's logs live under the attempt
+path and a job on attempt 3 linking `/attempts/1` would point you at the run it
+superseded.
+
+It appears in four places: the status comment's first line, the failure comment
+("The job that failed"), the CI-fix report, and the workflow's own fallback
+comment. The CI-fix report is the one that changed meaning — it names **two**
+runs now, "Red run I am repairing" and "This repair ran in", which until now
+were the same word.
+
+### One vocabulary for the glyphs
+
+Every glyph above comes from `presentation.ts`, which holds two closed tables: a
+phase table (where the issue is) and an outcome table (what just happened to
+this run). Both are `Record`s over a closed union, so a phase added later fails
+to compile until it has been given a row, and a renderer cannot invent a glyph
+locally — `run-report.ts` builds every heading through one of two helpers, and a
+test asserts no `###` literal survives in that file. The distinction the two
+tables buy is worth stating: ❌ means the work **broke**, ⛔ means a **bound was
+reached** and nothing broke at all, and ⚠️ is a failed _answer_, where nothing
+moved and no attempt was spent.
+
+The phase handlers' own artefact comments — `### Design spec (revision 1)`,
+`### Execution plan (revision 1)`, `### Implementation report`, `### Answer` —
+are outside that table and carry no glyph. They name an artefact rather than a
+state, and there is nothing for the label beside them to disagree with.
+
+The glyph is decoration and never the only carrier of meaning. The headline sits
+next to it in every rendering and the label name is plain text, so a screen
+reader that announces "clipboard, design spec is waiting for you" loses nothing
+by dropping the first word.
+
+### The Actions log
+
+Still the deep dive, and the only place that says what the model is doing
+second by second:
 
 ```
 Model tool call        { tool: "read", status: "running", call: "call_1" }
@@ -352,18 +599,23 @@ Two halves, answering different questions. OpenCode's event stream says **what**
 the model is doing, and only fires when something happens. The heartbeat, once a
 minute while a turn is outstanding, says it is **still** doing it — which is the
 only thing that distinguishes slow from dead during a single long model call
-that uses no tools.
+that uses no tools. That same heartbeat is what feeds the status comment's
+**Doing:** line, so the two surfaces cannot disagree about what is running.
 
 **Progress never carries content.** Not tool input, not tool output, not the
 model's text, not the provider's error message on a retry — only names, statuses
 and counts. That is enforced by the decoding schemas rather than by care: they
 name the scalar fields they want and drop everything else, so there is nowhere
-for a `bash` command or a file's contents to land. It matters more here than
-elsewhere: a CI log is world-readable on a public repository and is **not**
-covered by the outbound redaction that guards issue comments.
+for a `bash` command or a file's contents to land. It mattered here because a CI
+log is world-readable on a public repository and is **not** covered by the
+outbound redaction that guards issue comments — and it matters twice over now
+that the same snapshot is published to the issue. The status comment satisfies
+the rule by construction rather than by care: everything it can say about the
+model is a name, a status or a count, because that is all a `ProgressSnapshot`
+holds.
 
-Token and cost totals ride along, per step and in every heartbeat. That is
-visibility, not a ceiling — see `ROADMAP.md` S5-6.
+Token and cost totals ride along, per step and in every heartbeat, and the token
+half is now a ceiling as well as a reading — see **What bounds a run** above.
 
 ## Guardrails
 
@@ -558,6 +810,7 @@ cannot drift.
 | `AGENT_TIMEOUT_MS`                         | no       | `1800000`                                       | Timeout for one model turn, and for each subprocess   |
 | `AGENT_MAX_TOKENS`                         | no       | `5000000`                                       | Model tokens one issue may spend, across all its jobs |
 | `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no       | `opencode-agent[bot]`                           | Commit identity                                       |
+| `AGENT_LABEL_PREFIX`                       | no       | `agent:`                                        | Namespace for the status labels; `none` disables them |
 | `AGENT_LOG_LEVEL`                          | no       | `info`                                          | `debug`, `info`, `warn`, `error`                      |
 
 `LLM_MODEL` and `LLM_BASE_URL` are both required rather than defaulted: with a
@@ -594,6 +847,15 @@ pipeline reports every check as failing; `AGENT_REVIEW_MAX_ROUNDS=90071992547409
 is a positive integer that removes the bound the knob exists to impose. A
 rejection names the range, so a legitimate need for a wider one is not a
 guessing game.
+
+`AGENT_LABEL_PREFIX` is validated at load for the same reason: at most 32
+characters, and only letters, digits and `-_./: `. That is narrower than what
+GitHub itself accepts on a label, deliberately — the prefix is what decides by
+`startsWith` which of an issue's labels this pipeline owns and may remove, so it
+has to be a plain, predictable string. A comma splits a label list in half of
+GitHub's own UI, and a leading or trailing space makes two labels that look
+identical. Checking it here turns a bad value into a message naming the
+variable, rather than a 422 inside a best-effort path that swallows it.
 
 `AGENT_BASE_BRANCH` has no literal default for the same reason. It used to
 default to `main`, which is wrong for the repository this spike lives in — its
@@ -658,11 +920,11 @@ Nothing to configure for `GITHUB_TOKEN` or `GITHUB_REPOSITORY` — see
 
 The workflow lives at `.github/workflows/agent-pipeline.yml`.
 
-### The fallback failure comment
+### The fallback comment for a job that never spoke
 
-The workflow's last step posts an "Agent job failed" comment saying the issue
-state is unchanged and inviting a `/retry`. That is only ever true for a job
-that died with nothing on the issue: an install failure, a runner timeout, a
+The workflow posts an "Agent job did not finish" comment saying the issue state
+is unchanged and inviting a `/retry`. That is only ever true for a job that
+stopped with nothing on the issue: an install failure, a runner timeout, a
 cancelled job, a config error thrown before the first comment, a crash.
 
 It cannot be gated on `if: failure()` alone, which is what it used to be:
@@ -677,6 +939,28 @@ to `$GITHUB_OUTPUT` for every exit that posted; the fallback step is gated on
 `steps.pipeline.outputs.reported != 'true'`. The marker survives the run step's
 own exit 1 — the runner processes a step's file commands in a `finally` around
 the handler — and the job still goes red, because the exit code is real signal.
+
+Two conditions beside that gate were still too narrow, and both widenings sit
+**inside** it, so neither can bring the double comment back:
+
+- The issue number comes from a resolve step that runs **first**, before the
+  checkout, because a run that dies in `bun install` must still know where to
+  post. It reads `github.event.issue.number`, and falls back to the
+  `agent/issue-<n>` suffix of `workflow_run.head_branch` — which is empty on one
+  event kind and present on the other. Gating on the payload field alone meant a
+  runner that died mid-CI-repair posted nothing anywhere. The shell parse and
+  `issueNumberFromBranch` must agree, so `workflow.test.ts` runs _that script_
+  against _that function_ over a corpus of branch names rather than trusting two
+  hand-written parsers to stay in step.
+- `cancelled()` joins `failure()`, which does not select a cancelled job. A run
+  that looks hung is a run somebody cancels, and that is precisely the moment
+  the issue must not fall silent. The heading followed: "Agent job failed" is
+  not true of a cancellation, and "did not finish" is true of every job this
+  step now speaks for.
+
+A second `if: always()` step takes the `agent:working` label off, and the
+comment above it explains why that has to live in YAML rather than in the
+pipeline — see **Watching a run**.
 
 ## Local runs
 
@@ -736,6 +1020,10 @@ under **Setup** is simply not written. Nothing else changes.
 | `src/triggers.ts`                             | Turning a command or comment into the state move to make               |
 | `src/ci-trigger.ts`                           | Whether a red check run buys a fix round, a notice, or nothing         |
 | `src/run-report.ts`                           | Everything the orchestrator writes back to the issue                   |
+| `src/presentation.ts`                         | One glyph, label, headline and whose-turn per state an issue can be in |
+| `src/feedback.ts` / `src/labels.ts`           | The reaction channel, and the label reconcile                          |
+| `src/status-comment.ts` / `-reporter.ts`      | What the run's live comment says, and when it is edited                |
+| `src/state-persist.ts`                        | Recording what a run spent without posting a comment                   |
 | `src/step-output.ts`                          | The one thing a run tells the rest of its own workflow job             |
 | `src/token-budget.ts`                         | The per-issue token ceiling, and how a run over it parks in `FAILED`   |
 | `src/state-manager.ts`                        | Transition table and the `AGENT_STATE` block                           |
@@ -786,7 +1074,22 @@ network.
 - Bumping `STATE_VERSION` strands in-flight issues — old blocks fail validation,
   and the scan walks back to an older valid one or to a fresh state. Drain before
   bumping, or write a migration.
-- No cost ceiling beyond the round caps and the job timeout.
+- Spend is bounded in **tokens per issue** (`AGENT_MAX_TOKENS`), never in
+  currency, for the reason given under **What bounds a run**. That ceiling
+  cannot see the review loop's `opencode run` subprocesses, so a repository
+  whose review loop is the expensive half is bounded by the round caps and the
+  job timeout rather than by the token budget.
+- A run killed mid-phase leaves its status comment reading "run in progress",
+  and nothing ever corrects it: the process that owned that comment is gone, and
+  the next run opens its own. The workflow's fallback comment is what explains
+  the silence — the stale status comment is deliberately not treated as one, or
+  it would suppress it. `agent:working` is the labelling half of the same
+  problem and does get repaired, twice over.
+- Feedback is best-effort in one function per channel, which means a channel
+  that is broken — a token without `issues: write`, an organisation policy, or a
+  bug inside the reconcile — degrades to a `log.warn` and nothing else. The run
+  is unaffected, which is the point, but nobody finds out without reading the
+  Actions log.
 - Capability containment is config-level (see above), not process-level: there is
-  no container or network boundary around the model, and the repository token is
-  still in `.git/config` — see `ROADMAP.md` S3-7.
+  no container or network boundary around the model — the last direction of
+  `ROADMAP.md` S3-2 still open.

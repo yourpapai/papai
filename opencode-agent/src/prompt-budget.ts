@@ -3,9 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { stripBlocks } from './blocks.js'
+import { readBlock, stripBlocks } from './blocks.js'
 import type { IssueComment } from './blocks.js'
 import type { UntrustedEnvelope } from './prompts.js'
+import { STATUS_MARKER } from './status-comment.js'
 
 /**
  * How much text a prompt is allowed to carry, and which text loses when it does
@@ -34,6 +35,16 @@ const authorAttribute = (login: string): string => {
 }
 
 /**
+ * Whether a comment is the pipeline's own progress reporting.
+ *
+ * By **marker**, never by author. The agent writes the design spec, the
+ * execution plan and every phase report as well, and those are precisely what
+ * the model is being asked to read — so filtering on the login would blind it to
+ * its own artefacts, which is a much quieter version of the bug this prevents.
+ */
+const isStatusComment = (comment: IssueComment): boolean => readBlock(comment.body, STATUS_MARKER) !== undefined
+
+/**
  * Renders the issue thread for prompt context, newest last.
  *
  * **Each comment gets its own envelope**, with its author in the `source`
@@ -48,6 +59,13 @@ const authorAttribute = (login: string): string => {
  *
  * Hidden blocks are stripped: they are the pipeline's own bookkeeping, they are
  * large, and showing the model its own state schema invites it to write one.
+ *
+ * The run's live status comment is dropped outright rather than stripped, and
+ * **before** the window is taken, not after: it is one comment per run, so a
+ * conversation spanning five runs would otherwise spend a quarter of the twenty
+ * slots on progress tables the model has no use for — and the phases that read
+ * the thread are triage, answering and the classifier, which is to say the ones
+ * whose whole job is understanding what the humans said.
  */
 export const renderThread = (
   envelope: UntrustedEnvelope,
@@ -56,6 +74,7 @@ export const renderThread = (
   budget = THREAD_BUDGET,
 ): string => {
   const rendered = thread
+    .filter((comment) => !isStatusComment(comment))
     .slice(-limit)
     .map((comment) => wrapWithin(envelope, authorAttribute(comment.authorLogin), stripBlocks(comment.body), budget))
   if (rendered.length === 0) return '(no comments yet)'

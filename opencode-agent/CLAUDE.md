@@ -12,15 +12,36 @@ findings: `ROADMAP.md`.
 
 - One CI job = one call to `runCli`. State lives in hidden blocks on the issue,
   not on disk: `AGENT_STATE` for the machine, `AGENT_SPEC` / `AGENT_PLAN` /
-  `AGENT_REPORT` for the artefacts.
-- `src/triggers.ts` decides _whether and where_ an event moves the state, with
-  the red-CI half in `src/ci-trigger.ts` and the shared outcome shape in
-  `src/trigger-outcome.ts`; `src/orchestrator.ts` drives the phase cascade once
-  that decision is made;
-  `src/token-budget.ts` decides whether the cascade may afford another step.
+  `AGENT_REPORT` for the artefacts. `AGENT_STATUS` is the odd one out — it marks
+  the run's live status comment so `renderThread` can leave it out of a prompt,
+  and it is read by nothing else.
+- `src/triggers.ts` decides _whether and where_ an event moves the state — it
+  keeps the slash commands and the dispatch — with the red-CI half in
+  `src/ci-trigger.ts`, the plain-comment half in `src/comment-intent.ts`, and the
+  shared outcome shape plus `moveOrSkip` in `src/trigger-outcome.ts`;
+  `src/orchestrator.ts` drives the phase cascade once that decision is made;
+  `src/token-budget.ts` decides whether the cascade may afford another step, and
+  `src/phase-failure.ts` decides what a run that broke is left looking like.
   Phase handlers in `src/phases/` return a `TransitionSignal`, a comment body and
   optional artefact blocks, and never write state or decide the next phase
   themselves.
+- Feedback on the issue that is not a comment lives apart from the machine that
+  causes it: `src/presentation.ts` owns the one glyph/label/headline table every
+  renderer reads, `src/feedback.ts` the reaction channel, `src/labels.ts` the
+  label reconcile over `src/github-labels.ts`'s endpoints, and
+  `src/status-reporter.ts` the run's live status comment over the body
+  `src/status-comment.ts` renders. Each channel has exactly one function that
+  talks to GitHub, because "best-effort" has to be a property of one function
+  rather than a convention at each call site. The status comment carries an
+  `AGENT_STATUS` block — never `AGENT_STATE`, which would give the restore scan a
+  second source of truth — so that `prompt-budget.ts` can drop it before the
+  twenty-comment window is taken; without that, every previous run's progress
+  table would take a slot from the conversation triage, answering and the
+  classifier are being asked to read. Filter that channel by **marker**, never by
+  author: the agent writes the spec, the plan and every report too.
+  `src/state-persist.ts` is the same shape for a write that is not feedback at
+  all: rewriting the state block in place, so a run that posts nothing can still
+  record what it spent.
 - Every external boundary is an injected interface (`GitHubApi`, `Git`,
   `CheckRunner`, `RunReview`, `OpenCodeAgent`, `ReadSkillFile`).
 
@@ -128,22 +149,68 @@ findings: `ROADMAP.md`.
   the reset to the refresh path: same branch, same commits, same checks that
   spent the rounds, and a clean slate there is one broken branch bouncing off the
   agent for as long as anyone keeps replying `/retry`.
+- **A feedback channel has exactly one door, and that door swallows
+  everything.** `react` in `feedback.ts`, `reconcileLabels` in `labels.ts`,
+  `attempt` in `status-reporter.ts` and `persistState` in `state-persist.ts` are
+  each the only function in their module that calls GitHub, and each catches
+  every rejection and degrades it to a `warn`; a caller reaches the same
+  `RunResult` and the same **persisted state** it would have reached with the
+  channel absent. One door rather than a `try` per call site because best-effort
+  has to be a property of a function, not a convention: every write these
+  channels make is decoration on work that matters and a fresh way to break a
+  pipeline that used to work — a token without `issues: write`, a fork run, an
+  organisation restricting who may create a label, a secondary rate limit — and a
+  convention honoured at five call sites is honoured at four the day somebody
+  adds a sixth. Adapters do **not** anticipate the rule: `github-labels.ts`
+  rejects a 403 like any other transport, and only swallows the 422 that means
+  "this label already exists", because that is idempotence at the layer where an
+  HTTP status still exists. The accepted cost is stated at the catch in
+  `labels.ts` and is not an oversight: a `TypeError` from inside the reconcile
+  degrades to exactly the same `warn` as a 403, so a bug in a channel is
+  invisible to anyone not reading the log. It has been paid once already — a
+  stubbed transport answered the label read with the wrong shape,
+  `name.startsWith` threw into that catch, and the suite stayed green having
+  reconciled nothing. Sorting an `unknown` at the catch into "mine" and "theirs"
+  is how that gets fragile, so do not add the discrimination; add a test that
+  asserts the write. The workflow's `if: always()` label cleanup obeys the same
+  rule in YAML, with `|| echo`: a job whose only red step is the one taking a
+  label off has reported a failure that did not happen.
 - **A run says whether it reported, and the workflow reads that.** `RunResult`
   carries `reported`, and `step-output.ts` turns it into a `reported=true` line
-  in `$GITHUB_OUTPUT`; the workflow's fallback "Agent job failed" comment is
-  gated on `steps.pipeline.outputs.reported != 'true'`. It used to be gated on
+  in `$GITHUB_OUTPUT`; the workflow's fallback "Agent job did not finish" comment
+  is gated on `steps.pipeline.outputs.reported != 'true'`. It used to be gated on
   `if: failure()` alone, which selects **every** red job — and six paths exit 1
   only after posting their own report (`failRun`, `failAnswer`, both over-budget
   stops, `refuseExhausted`, the CI-budget notice), so every genuine failure drew
   a second comment claiming "the issue state is unchanged" beside a block that
   had just moved to `FAILED`. Only CI runs escaped, by accident:
-  `github.event.issue.number` is empty on a `workflow_run` event. Set `reported`
-  on any new terminal path from what that path **posted**, never from its status
+  `github.event.issue.number` is empty on a `workflow_run` event — which is why
+  the workflow now resolves the number from `workflow_run.head_branch` too, and
+  why that widening had to sit _inside_ the `reported` gate. Set `reported` on
+  any new terminal path from what that path **posted**, never from its status
   — `failed` covers both a reported failure and a crash, and `skipped` covers
   both a silent guardrail drop and a refused command that answered on the issue.
   A throw is deliberately unmarked: that is the crash the fallback comment is
   for. Writing the marker is best-effort and must never throw — `GITHUB_OUTPUT`
   is absent on every `--event-path` run.
+- **`reported` means an account of what happened, so a status comment never sets
+  it.** The live status comment is what makes that distinction load-bearing
+  rather than pedantic: a run killed mid-phase leaves "🛠️ Writing and reviewing
+  the code — run in progress" on the issue, which is precisely the silence the
+  fallback comment exists to explain, and nothing ever corrects it — the process
+  that owned that comment is gone, and the next run opens its own. Marking it
+  reported would suppress the only comment that would have said why the issue
+  stopped. So `StatusReporter.finish` takes the `RunResult` and returns `void`:
+  the flag is **unreachable** from the channel, not merely left alone by habit,
+  and an edit that wanted to set it would have to change the interface first.
+  Keep it that way, and keep `finish` unable to _reject_: `runAccepted` awaits it
+  on the way out with the result already decided, so a channel that could throw
+  there would turn a finished run into a failed one. The rule above is what makes
+  that impossible. The finalising edit on a _returning_ path does not set the
+  flag either, though it safely could: the paths that report already do, and two
+  writers of one flag is how it drifts. Reactions and labels are the same
+  argument one step shorter — an emoji is not an account of anything, and
+  neither is a label.
 - **The token budget is per issue and persisted.** `tokensSpent` lives in the
   state block; the orchestrator checks it before each phase. Budget on
   **tokens**, never on `cost`: token counts come
@@ -166,12 +233,14 @@ findings: `ROADMAP.md`.
 - **Do not pay to classify a comment the budget cannot act on.** `applyIntent`
   asks `withinBudget` before `classifyComment` and routes an over-budget comment
   to the answer path, where the cascade's one stop reports it. The classifier is
-  the single model turn whose spend cannot be recorded — its `none` branch posts
-  nothing, and this pipeline persists state only by posting — so the ceiling has
+  the single model turn that posts nothing — its `none` branch deliberately
+  stays quiet, and this pipeline persists state by posting — so the ceiling has
   to stop the turn rather than count it. A run **under** budget that classifies
-  `none` still leaks that turn; the known cost of not replying to every "thanks!",
-  and not to be papered over with an `updateComment`-style write without deciding
-  that larger question first.
+  `none` used to leak that turn outright and no longer does: `readAndSkip`
+  records it through `state-persist.ts`, which rewrites the newest state block in
+  place instead of appending a comment. That write is best-effort like every
+  other one this pipeline added, so a refused rewrite reports the figure the
+  issue actually carries rather than the one the run hoped to write.
 - **`INIT_OR_CLARIFY` classifies with the default inverted.** `applyClarifyIntent`
   skips a comment only when the classifier positively reports `none`; every other
   reading re-runs triage, which is what the phase used to do for every comment —
