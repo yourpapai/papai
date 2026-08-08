@@ -170,7 +170,7 @@ Starter dispositions; each item still gets the triage pass above.
 | `plans/2026-04-11-audio-message-transcription-implementation.md` | 11/60 boxes, no `src/stt`                  | triage; Lane 1 or 3                         |
 | `plans/2026-04-17-calendar-sync-implementation.md`               | docs-only commits, no code                 | Lane 3 likely; verify first                 |
 | ~~`plans/2026-04-26-telemetry-metrics.md`~~                      | adopted 2026-08-09 → `openspec/changes/telemetry-metrics/`        | done                                      |
-| `plans/2026-07-08-plugin-core-separation-phase-0-1-*.md`         | shipped under different shape (`plugins/`) | Lane 0                                      |
+| ~~`plans/2026-07-08-plugin-core-separation-phase-0-1-*.md`~~     | adopted 2026-08-09 → `openspec/changes/plugin-core-separation-toolgate/` (design spec archived) | done |
 | `plans/2026-07-23-alert-polling-optimization.md`                 | partial file evidence (2/3)                | triage; Lane 0 with brief, or Lane 1        |
 | `plans/2026-08-02-history-mutation-coverage.md`                  | partial file evidence (1/2)                | triage; Lane 0 with brief, or Lane 1        |
 | All other `plans/` (~58–60)                                      | shipped, file-verified                     | Lane 0 bulk drain                           |
