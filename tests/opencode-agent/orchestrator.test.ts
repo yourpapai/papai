@@ -146,6 +146,16 @@ const ciEvent = (overrides: Partial<CiTriggerEvent> = {}): CiTriggerEvent => ({
 interface PipelineIo {
   thread: IssueComment[]
   posted: string[]
+  /**
+   * Comments this run put on the **pull request**, kept apart from `posted`.
+   *
+   * Not a nicety: `listIssueComments(ISSUE)` never returns a pull request's own
+   * thread, so folding the two would let a note pass for a comment on the issue
+   * — and "typed there, answered here" is the entire shape of this path.
+   */
+  prNotes: string[]
+  /** What a create addressed at the pull request rejects with, when set. */
+  noteError: Error | null
   prompts: AgentPromptRequest[]
   gitCalls: string[]
   checkResults: Map<string, CommandResult>
@@ -248,6 +258,8 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
   const io: PipelineIo = {
     thread: [],
     posted: [],
+    prNotes: [],
+    noteError: null,
     prompts: [],
     gitCalls: [],
     checkResults: new Map(),
@@ -292,7 +304,19 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
 
   const github: GitHubApi = {
     listIssueComments: () => Promise.resolve([...io.thread]),
-    createComment: (_issueNumber, body) => {
+    createComment: (issueNumber, body) => {
+      // The pull request's thread is a different thread, and the fake keeps it
+      // that way: nothing addressed there is ever read back by the restore scan.
+      if (issueNumber !== ISSUE) {
+        io.prNotes.push(body)
+        if (io.noteError !== null) return Promise.reject(io.noteError)
+        nextCommentId += 1
+        return Promise.resolve({
+          id: nextCommentId,
+          url: `https://example.test/c/${nextCommentId}`,
+          authorLogin: io.postedAs,
+        })
+      }
       if (io.statusError !== null && isStatus(body)) return Promise.reject(io.statusError)
       if (io.postError !== null && !isStatus(body)) return Promise.reject(io.postError)
       nextCommentId += 1
@@ -1285,6 +1309,15 @@ describe('/review — the review loop as a command', () => {
     expect(latestPostedState(harness)).toMatchObject({ phase: 'COMPLETE', reviewAttempts: 1 })
   })
 
+  test('draws no note on the pull request, because the report is already here', async () => {
+    // Decided from the trigger kind and not from the phase: `CODE_REVIEW` is
+    // reached identically through both doors, so a phase test would put a
+    // pointer on the pull request for a maintainer already reading the report.
+    await runPipeline({ event: comment('/review'), deps: harness.deps })
+
+    expect(harness.io.prNotes).toEqual([])
+  })
+
   test('hands the loop the approved plan, not the issue body', async () => {
     await runPipeline({ event: comment('/review'), deps: harness.deps })
 
@@ -1483,6 +1516,43 @@ describe('/review — typed on the pull request', () => {
     // Every comment this run posted went to the issue thread, which is the one
     // the restore scan reads.
     expect(harness.io.posted.at(-1)).toContain('Review report')
+    expect(latestPostedState(harness)).toMatchObject({ phase: 'COMPLETE', reviewAttempts: 1 })
+  })
+
+  test('leaves a note on the pull request pointing at the issue', async () => {
+    // The other half of the acknowledgement. The 👀 says the command arrived and
+    // the commits say something changed, but neither says what the loop
+    // concluded — that account is on the issue, and without this the pull
+    // request never names where to find it.
+    await runPipeline({ event: prComment('/review'), deps: harness.deps })
+
+    expect(harness.io.prNotes).toHaveLength(1)
+    expect(harness.io.prNotes[0]).toContain(`#${ISSUE}`)
+    expect(harness.io.prNotes[0]).toContain('✅ clean')
+    // A pointer, not a second report: the report itself stays on the issue.
+    expect(harness.io.prNotes[0]).not.toContain('<details>')
+    expect(harness.io.posted.at(-1)).toContain('Review report')
+  })
+
+  test('a red loop is what the note says it is', async () => {
+    harness.io.reviewResult = { outcome: 'failed', summary: 'two issues left open', exitCode: 1 }
+
+    await runPipeline({ event: prComment('/review'), deps: harness.deps })
+
+    expect(harness.io.prNotes[0]).toContain('❌ exited 1')
+  })
+
+  test('a note the pull request will not take costs the review nothing', async () => {
+    // Asserted as a *write that was attempted*, not as the absence of a throw:
+    // this door degrades a bug in itself to the same `warn` as a 403, so a test
+    // that only watched the result would pass over a channel posting nothing.
+    harness.io.noteError = new Error('403 Resource not accessible by integration')
+
+    const result = await runPipeline({ event: prComment('/review'), deps: harness.deps })
+
+    expect(harness.io.prNotes).toHaveLength(1)
+    expect(result.status).toBe('completed')
+    expect(result.reported).toBe(true)
     expect(latestPostedState(harness)).toMatchObject({ phase: 'COMPLETE', reviewAttempts: 1 })
   })
 

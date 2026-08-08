@@ -9,6 +9,7 @@ import { branchNameFor } from '../git.js'
 import { fence } from '../markdown.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
 import { renderPresentation } from '../pull-request-body.js'
+import { noteReview } from '../pull-request-note.js'
 import type { ReviewOutcome, ReviewRunResult } from '../review-runner.js'
 import { errorMessage } from '../types.js'
 import type { AgentState } from '../types.js'
@@ -58,8 +59,23 @@ export const handleReview: PhaseHandler = async (input): Promise<PhaseOutcome> =
 
   deps.log.info({ issue: state.issueId, branch, review: review.outcome, applied }, 'Review finished')
 
-  const report = renderReport(review, applied)
+  // One reading of the outcome table, handed to both renderers, so the note and
+  // the report cannot describe the same loop differently.
+  const verdict = reviewLine(review)
+  const report = renderReport(review, applied, verdict)
   await refreshPullRequest(input, report)
+  // Both writes are the handler's, and neither breaks its contract: a handler
+  // returns a signal, a comment and blocks and never writes state or decides the
+  // next phase, and these do neither — they are decoration around a result that
+  // is already fixed by the time they run. The orchestrator is the wrong home
+  // for the second one in particular: it posts the run's *account* on the issue
+  // and knows nothing of review outcomes, so putting this there would mean
+  // widening `PhaseOutcome` to carry a verdict the cascade cannot read, for one
+  // phase out of six. What that costs is ordering: the note names a report the
+  // orchestrator has not posted yet, which is exactly why it points at the
+  // **issue** and not at a comment — an issue is there to be read the moment the
+  // pointer is written, and a comment id would not be.
+  await noteReview(deps, input.trigger, { issueNumber: state.issueId, verdict, applied })
 
   return { signal: 'REVIEW_DONE', comment: report, blocks: [reportBlock(report, state)] }
 }
@@ -133,17 +149,27 @@ const REVIEW_LINE: Record<ReviewOutcome, (exitCode: number) => string> = {
 }
 
 /**
+ * The one verdict on the loop, read by the report and by the pull-request note.
+ *
+ * A function rather than two lookups of {@link REVIEW_LINE}, because the two
+ * readers are in different modules and the note's shape is "hand it the string"
+ * for exactly this reason: one table with two readers cannot disagree with
+ * itself, and a second table over `ReviewOutcome` eventually would.
+ */
+const reviewLine = (review: ReviewRunResult): string => REVIEW_LINE[review.outcome](review.exitCode)
+
+/**
  * A red loop is reported and does not block, exactly as it did inside phase 3.
  *
  * CI on the pull request is the gate, and the CI-fix loop is what acts on it; a
  * finding the loop could not fix is something for a human to read, not a reason
  * to park an issue whose work is already pushed.
  */
-const renderReport = (review: ReviewRunResult, applied: boolean): string => {
+const renderReport = (review: ReviewRunResult, applied: boolean, verdict: string): string => {
   const lines = [
     '### Review report',
     '',
-    `- Review loop: ${REVIEW_LINE[review.outcome](review.exitCode)}`,
+    `- Review loop: ${verdict}`,
     `- Findings applied: ${applied ? 'pushed as further commits on the branch' : 'nothing to apply'}`,
   ]
 
