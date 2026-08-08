@@ -14,8 +14,9 @@ import { handleReview } from './phases/review.js'
 import { handleTriage } from './phases/triage.js'
 import { postAndAppend, renderSettled } from './run-report.js'
 import type { RunResult } from './run-result.js'
-import { transition } from './state-manager.js'
+import { stopIfOutOfTime } from './time-budget.js'
 import { recordSpend, stopIfOverBudget } from './token-budget.js'
+import { transition } from './transitions.js'
 import type { AgentState, Phase, TransitionSignal } from './types.js'
 
 /**
@@ -31,8 +32,13 @@ import type { AgentState, Phase, TransitionSignal } from './types.js'
  */
 
 /**
- * Phases the pipeline can act on unattended. A phase with no handler is a
- * waiting state: the run stops there until a maintainer comments.
+ * Phases the pipeline can act on unattended. A phase with no handler is a waiting
+ * state: the run stops there until a maintainer comments.
+ *
+ * `INCOMPLETE` is deliberately absent, and that absence *is* the phase: a
+ * wall-clock stop parks there and the cascade settles, because the only thing that
+ * moves it on is a human typing `/continue`. A handler here would re-enter the
+ * work in the same job that had just run out of time for it.
  */
 const HANDLERS: Partial<Record<Phase, PhaseHandler>> = {
   INIT_OR_CLARIFY: handleTriage,
@@ -105,8 +111,20 @@ export const driveMachine = async (input: MachineInput): Promise<RunResult> => {
   const stopped = await stopIfOverBudget(input)
   if (stopped !== null) return stopped
 
-  // After the budget stop, so a run that cannot afford this phase does not
-  // announce it as the one in flight.
+  // The other ceiling, and the order between the two is the decision. Tokens
+  // first, because that bound spans jobs and this one does not: a `/continue`
+  // gets a whole fresh clock, so an issue stopped for time and *also* over its
+  // token ceiling would be told to reply `/continue`, spend a job, and be told
+  // the real answer on the next run. Reported the other way round, the notice
+  // names `AGENT_MAX_TOKENS` — the thing that actually has to change — and the
+  // clock is still there to stop the run after it has been raised. The cost of
+  // that order is one `tokensUsed()` round trip on a job that was about to stop
+  // anyway, which is nothing next to a wasted job and a misleading remedy.
+  const timedOut = await stopIfOutOfTime(input)
+  if (timedOut !== null) return timedOut
+
+  // After both stops, so a run that cannot afford this phase does not announce it
+  // as the one in flight.
   await input.deps.status.enter(state)
 
   const attempt = await runHandler(handler, input)

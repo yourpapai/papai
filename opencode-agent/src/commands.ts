@@ -3,11 +3,19 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { canTransition } from './state-manager.js'
+import { canTransition } from './transitions.js'
 import type { AgentState, TransitionSignal } from './types.js'
 
-/** Slash commands a maintainer can issue from an issue comment. */
-export const SLASH_COMMANDS = ['/approve', '/changes', '/ask', '/retry', '/cancel', '/review'] as const
+/**
+ * Slash commands a maintainer can issue from an issue comment.
+ *
+ * `/continue` is deliberately not a second spelling of `/retry`. That one means
+ * "the thing that broke, again" and is accepted in `FAILED`; this one means "you
+ * were not finished" and is accepted only in `INCOMPLETE`, where a wall-clock
+ * stop parks. One command for both would need the state to say which kind of park
+ * it is carrying, and every reader of the phase would have to ask.
+ */
+export const SLASH_COMMANDS = ['/approve', '/changes', '/ask', '/retry', '/cancel', '/review', '/continue'] as const
 
 export type SlashCommand = (typeof SLASH_COMMANDS)[number]
 
@@ -98,6 +106,7 @@ export const COMMAND_SIGNALS: Partial<Record<SlashCommand, TransitionSignal>> = 
   '/retry': 'RETRY',
   '/cancel': 'CANCELLED',
   '/review': 'REVIEW_REQUESTED',
+  '/continue': 'CONTINUE',
 }
 
 /**

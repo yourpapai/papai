@@ -222,7 +222,16 @@ jobs:
     name: Run agent pipeline
     needs: resolve
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+
+    # One source of truth for this job's ceiling, read here **and** forwarded to
+    # the pipeline as `AGENT_JOB_TIMEOUT_MINUTES` below. It used to be a literal
+    # here and a separate `AGENT_TIMEOUT_MS` there, two numbers in two files kept
+    # in step by hand — and a live run died 30 minutes into a turn with 59 minutes
+    # of runner it was never allowed to use, reporting a hang that had not
+    # happened. A **repository variable** rather than a workflow-level `env`
+    # because `vars` is available to a job-level `timeout-minutes` and `env` is
+    # not, which is the whole reason one spelling is expressible at all.
+    timeout-minutes: ${{ vars.AGENT_JOB_TIMEOUT_MINUTES || 90 }}
 
     # The only gate left here, and it is deliberate rather than a leftover: the
     # filter ran on the door above, and what this adds is that a run whose issue
@@ -258,6 +267,19 @@ jobs:
       cancel-in-progress: false
 
     steps:
+      # First, before anything that takes time, because what it records is when
+      # *this job* started — which is when `timeout-minutes` above starts counting
+      # and is a fact no event payload carries. The pipeline adds the ceiling to it
+      # and gets the moment the runner will be killed, so it can stop and report
+      # before that happens instead of vanishing mid-turn.
+      #
+      # A few seconds late by construction: the job spends a moment on setup before
+      # any step runs, so the derived deadline sits slightly *after* the real one.
+      # `AGENT_TEARDOWN_RESERVE_MS` is minutes wide and absorbs it.
+      - name: Record when this job started
+        id: started
+        run: echo "epoch=$(date +%s%3N)" >> "$GITHUB_OUTPUT"
+
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -368,6 +390,15 @@ jobs:
           AGENT_REVIEW_HINT_LINES: ${{ vars.AGENT_REVIEW_HINT_LINES }}
           AGENT_MAX_ATTEMPTS: ${{ vars.AGENT_MAX_ATTEMPTS }}
           AGENT_TIMEOUT_MS: ${{ vars.AGENT_TIMEOUT_MS }}
+          # The job's own clock, as the two facts that describe it. The start comes
+          # from the step above — nothing in the payload says when a job began — and
+          # the ceiling is the *same* expression the job's `timeout-minutes:` reads,
+          # deliberately: one value, two readers, no pair to keep in step by hand.
+          # With either unset there is no job deadline and the pipeline behaves
+          # exactly as it did before, bounded by `AGENT_TIMEOUT_MS` alone.
+          AGENT_JOB_STARTED_MS: ${{ steps.started.outputs.epoch }}
+          AGENT_JOB_TIMEOUT_MINUTES: ${{ vars.AGENT_JOB_TIMEOUT_MINUTES || 90 }}
+          AGENT_TEARDOWN_RESERVE_MS: ${{ vars.AGENT_TEARDOWN_RESERVE_MS }}
           AGENT_MAX_TOKENS: ${{ vars.AGENT_MAX_TOKENS }}
           # The namespace the status labels live under, or `none` to switch
           # them off. Forwarded like the other knobs because a repository with

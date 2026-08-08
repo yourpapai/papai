@@ -96,6 +96,12 @@ export interface DepsInput {
    */
   github: GitHubApi
   status: StatusReporter
+  /**
+   * The run's clock, built by `runCli` for the same reason `github` is: the status
+   * reporter and the per-turn deadline are both handed it before this function
+   * runs, and three readers of one clock have to be one clock.
+   */
+  now: () => number
 }
 
 export const assembleDeps = ({
@@ -108,6 +114,7 @@ export const assembleDeps = ({
   agent,
   github,
   status,
+  now,
 }: DepsInput): PhaseDeps => {
   const git = createGit({
     run,
@@ -132,6 +139,7 @@ export const assembleDeps = ({
       resolveBaseBranch(env, { fromEvent: event.defaultBranch, fromGit: () => git.defaultBranch() }),
     ),
     selfLogin: memoize(() => resolveSelfLogin({ override: config.selfLoginOverride, api: github, log })),
+    now,
     config,
     log,
   }

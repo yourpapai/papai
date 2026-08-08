@@ -18,12 +18,24 @@ import { z } from 'zod'
  * runs the `review-loop/` workspace over the pushed branch on an explicit
  * `/review`, and returns to `COMPLETE` too.
  *
+ * `INCOMPLETE` is where a **wall-clock** stop parks: no handler, `resumeFrom`
+ * recorded, left by `/continue`. A waiting state and not a failure — nothing broke, a
+ * bound was reached — which is why it is a phase rather than a second kind of park in
+ * `FAILED`: telling those apart would need a field every reader of `FAILED` had to
+ * consult, and `/retry` means "the thing that broke, again" where `/continue` means
+ * "you were not finished".
+ *
  * `REVIEW_AND_MUTATE` keeps its name although it no longer reviews anything —
  * it implements and pushes, and `IMPLEMENT` would be the honest name. `phase` is
  * read back out of hidden blocks on live issues, so *removing* a member
  * invalidates every conversation in flight, which buys clarity in one file at
  * the price of stranding the field. **Adding** one costs nothing for the same
- * reason: no block written before this change names `CODE_REVIEW`.
+ * reason: no block written before this change names `CODE_REVIEW`, and none names
+ * `INCOMPLETE` either — so neither needed a `STATE_VERSION` bump. It does make a
+ * rollback **one-way**, which is worth recording: older code parses `phase` through
+ * a `z.enum(PHASES)` without `INCOMPLETE` in it and rejects a block naming that
+ * phase outright, so the restore scan walks past it to an older comment — losing the
+ * resume point a `/continue` needed — or starts the conversation over.
  */
 export const PHASES = [
   'INIT_OR_CLARIFY',
@@ -36,6 +48,7 @@ export const PHASES = [
   'CI_FIX',
   'COMPLETE',
   'FAILED',
+  'INCOMPLETE',
 ] as const
 
 export type Phase = (typeof PHASES)[number]
@@ -83,12 +96,23 @@ const phaseName = z.preprocess(
  * only way in: the command moves the phase and the handler runs in the same job,
  * exactly as `/approve` into `REVIEW_AND_MUTATE` does. A waiting phase is one
  * the cascade *stops* at, and this one it never does.
+ *
+ * `FAILED` and `INCOMPLETE` are the other side of that: the cascade does stop at
+ * both, and neither belongs here, because this set has one reader — the dispatch in
+ * `triggers.ts` deciding whether a **plain** comment is worth a classifier turn.
+ * Neither park accepts either signal a classifier can produce, so a comment typed
+ * under one is read and set aside with a 👍, and `INCOMPLETE` mirrors `FAILED` here
+ * deliberately: what moves a park on is a command, and prose is not one.
  */
 export const WAITING_PHASES: ReadonlySet<Phase> = new Set<Phase>(['DESIGN_SPEC', 'PLAN_REVIEW'])
 
 /**
  * Outcomes a phase handler reports back to the state machine. The machine — not
  * the handler — decides which phase follows, so handlers stay dumb about order.
+ *
+ * Three are reported by nothing in `phases/`: `RETRY` and `CONTINUE` are typed by a
+ * human and injected by the trigger layer, and `OUT_OF_TIME` comes from the
+ * cascade's own wall-clock stop before any handler runs.
  */
 export const TRANSITION_SIGNALS = [
   'NEEDS_CLARIFICATION',
@@ -106,6 +130,8 @@ export const TRANSITION_SIGNALS = [
   'CANCELLED',
   'FAILED',
   'RETRY',
+  'OUT_OF_TIME',
+  'CONTINUE',
 ] as const
 
 export type TransitionSignal = (typeof TRANSITION_SIGNALS)[number]
@@ -259,18 +285,3 @@ export class InvalidTransitionError extends Error {
 
 /** Extracts a message from an unknown thrown value. */
 export const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
-
-/**
- * The end of an exhaustive `switch` over a discriminated union.
- *
- * Written out rather than left implicit for two reasons, and the second is the
- * one that matters. The lint rule wanting every path to return cannot see that
- * TypeScript has already proved this one unreachable — and the `never` parameter
- * is what turns *adding* a union member into a compile error at every switch
- * that did not grow a case for it. Which is exactly the property the `kind`
- * switches were written for: a third trigger kind arrived, and the tests that
- * had been spelled `!== 'issue'` would have bucketed it in silence.
- */
-export const unreachable = (value: never): never => {
-  throw new Error(`Unreachable value: ${JSON.stringify(value)}`)
-}

@@ -1603,8 +1603,13 @@ awaiting a human": a phase with no handler in `HANDLERS`, entered by a signal
 and left by a command. Concretely:
 
 - `INCOMPLETE`, no handler, `resumeFrom` naming the phase that ran out of time.
-- A signal into it, accepted from the phases that can be time-stopped —
-  `REVIEW_AND_MUTATE`, `CI_FIX`, `CODE_REVIEW`.
+- A signal into it, accepted from **every phase that has a handler** — corrected
+  from this document's first draft, which named only `REVIEW_AND_MUTATE`, `CI_FIX`
+  and `CODE_REVIEW`. The stop fires _before_ any handler, so the narrower list
+  throws `InvalidTransitionError` out of the pipeline the first time a job runs out
+  of time in `INIT_OR_CLARIFY`, `PLANNING` or `PR_DELIVERY`. A test asserts the set
+  against `cascade.ts`'s `hasHandler` for every phase, since `transitions.ts` may
+  not import the cascade.
 - `CONTINUE`, accepted **only** in `INCOMPLETE`, moving to `resumeFrom` and
   clearing it. That is `RETRY`'s branch in `transition` with a different guard,
   so it should reuse that shape rather than grow a parallel one.
@@ -1636,7 +1641,7 @@ Three consequences to settle rather than discover:
 
 #### Staging
 
-**Stage 1 — the stop tells the truth, and knows the real clock.** No new SDK
+**Stage 1 — the stop tells the truth, and knows the real clock. [DONE]** No new SDK
 surface. `INCOMPLETE`, the signal into it and `/continue` out of it; a ⛔-family
 renderer in `budget-notices.ts` and the rows in `presentation.ts` and
 `status-comment.ts`; the park carrying `attempts`; the run reported as `waiting`.

@@ -86,6 +86,7 @@ value to point elsewhere.
 | `CI_FIX`            | a red check run on `agent/issue-<n>`      | Reproduces CI locally, repairs, pushes                           | Fix pushed                                |
 | `COMPLETE`          | —                                         | Terminal, but re-enterable from `CI_FIX` and `CODE_REVIEW`       | —                                         |
 | `FAILED`            | any _phase_ handler throwing              | Failure comment posted, `resumeFrom` recorded                    | `/retry` or `/cancel`                     |
+| `INCOMPLETE`        | the job running out of wall clock         | Time notice posted, `resumeFrom` recorded, no attempt spent      | `/continue` or `/cancel`                  |
 
 There are two review gates, not one. The spec and the plan are each parked in
 front of a human before anything downstream is spent.
@@ -112,6 +113,7 @@ moves the phase and the handler runs behind it in the same job, exactly as
 | `/ask <question>`           | anywhere                     | Answer, grounded in the repo, without moving the state machine |
 | `/review`                   | a **delivered** `COMPLETE`   | Run the review loop over the branch and push what it finds     |
 | `/retry`                    | `FAILED`                     | Resume the exact phase that failed                             |
+| `/continue`                 | `INCOMPLETE`                 | Pick up the phase the job ran out of time for                  |
 | `/cancel`                   | anything but `COMPLETE`      | Stop for good — a cancelled issue cannot be restarted          |
 
 **`/review` has two doors and one answer.** It is typed on the issue, where every
@@ -402,12 +404,13 @@ cover it.
 
 ## What bounds a run
 
-Five bounds, each on a different kind of runaway.
+Six bounds, each on a different kind of runaway.
 
 | Bound            | Where                                                                        | What it stops                                                             |
 | ---------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | Prompt size      | `prompt-budget.ts`                                                           | 12k characters of thread, and 12k across _all_ failing checks, per prompt |
 | Turn duration    | `AGENT_TIMEOUT_MS`, applied in `deadline.ts`                                 | A model turn that never answers                                           |
+| Job wall clock   | `AGENT_JOB_TIMEOUT_MINUTES`, applied in `time-budget.ts`                     | A job dying on `timeout-minutes` with nothing posted at all               |
 | Provider hiccups | `provider-proxy.ts` — 3 attempts, with backoff                               | A single 429 or 5xx failing the phase                                     |
 | Rounds           | `AGENT_MAX_ATTEMPTS`, `AGENT_CI_FIX_MAX_ROUNDS`, `AGENT_MAX_REVIEW_ATTEMPTS` | An agent and CI bouncing off each other, and a review nothing else bounds |
 | Total spend      | `AGENT_MAX_TOKENS`, per **issue**                                            | An issue quietly costing more than it is worth                            |
@@ -531,6 +534,70 @@ prompt of a job, since the running total comes from the job's own session and
 that session does not exist yet. The first of those is why `/review` carries a
 round budget of its own — a ceiling that cannot see the spend it is meant to
 bound is not a ceiling.
+
+### The job's wall clock, and `INCOMPLETE`
+
+The last bound is the runner's own, and it is the one that used to be invisible.
+An Actions job dies at `timeout-minutes` and a job killed that way posts
+**nothing** — no comment, no state block — so the issue is left in whatever phase
+it started in with no record that anything happened. The per-turn deadline
+(`AGENT_TIMEOUT_MS`) was meant to stay ahead of that and did not: it was a
+separate number in a separate file, defaulting to 30 minutes against a job ceiling
+of 90, so a turn opened at minute 75 was allowed to wait until minute 105 — past a
+runner that dies at 90. A live run died the other way round, cut off 30 minutes
+into a healthy turn with 59 minutes of its cap unused, and reported as "the model
+did not answer" about a turn that had answered 355 times.
+
+Both halves are fixed by deriving the clock from the job instead of guessing at
+it. `AGENT_JOB_STARTED_MS` is recorded by the workflow's first step and
+`AGENT_JOB_TIMEOUT_MINUTES` is the same repository variable the job's own
+`timeout-minutes:` reads — one value with two readers rather than a pair kept in
+step by hand. From those two the pipeline knows the moment the runner will be
+killed, and does two things with it: it shrinks each turn's deadline to
+`min(AGENT_TIMEOUT_MS, time left − reserve)`, so a per-turn bound can never fire
+after the process is gone; and it checks before every phase, exactly where the
+token ceiling is checked, whether there is time to start another one.
+`AGENT_TEARDOWN_RESERVE_MS` is the slice held back from that — three minutes for
+the `git add`, the commit, the push, the comment, the state block and the label a
+stop still has to do, against an observed tail of about ten seconds.
+
+**A wall-clock stop is a ceiling reached, not work that broke**, and the pipeline
+says so in the vocabulary it already had: ⛔ rather than ❌, and a park in
+`INCOMPLETE` rather than in `FAILED`. That is a phase of its own, not a flag,
+because the command that gets out of it is not the same command — `/retry` means
+"the thing that broke, again" and `/continue` means "you were not finished". One
+phase carrying both would need a field on the state to tell the two parks apart,
+consulted by every reader of `FAILED`.
+
+Three consequences worth stating outright:
+
+- the run reports **`waiting`**, not `failed`, so it exits 0. A run that saved
+  what it had and handed the issue back did not fail, and the Actions page should
+  not be red for it. `reported` is true either way, so the workflow's fallback
+  comment stays out of scope;
+- `attempts` is **carried, not spent**, exactly as the token stop carries it.
+  Otherwise the notice would invite a `/continue` that the retry gate eventually
+  refuses over a ceiling the notice never mentioned;
+- what bounds a chain of continuations is the **token budget**, not `attempts`.
+  That budget is per issue and persisted, so it already spans an unbounded chain —
+  and every link in that chain is a human typing a command.
+
+`CI_FAILED` and `REVIEW_REQUESTED` are deliberately refused in `INCOMPLETE`, even
+though the branch is pushed there, which is the one condition those signals
+normally want. The work is by definition unfinished, and CI-fixing or reviewing a
+half-done increment is worse than waiting for the `/continue` that finishes it.
+
+With neither job knob set — every local `--event-path` run, and any workflow that
+has not been updated — there is no job deadline at all and nothing here fires; the
+run is bounded by `AGENT_TIMEOUT_MS` alone, exactly as it was before.
+
+What this does **not** yet do is keep the work of a turn that is cut off part-way
+through. The stop above sits _before_ a handler, so the phase it refuses never
+starts and nothing is lost — but a turn interrupted mid-edit still throws away its
+tree, because nothing can cancel the model's in-flight tool commands and a
+half-written file cannot be committed past the repository's own pre-commit hook.
+That needs `session.abort` and a salvage commit, and it is the next stage of the
+same finding.
 
 ## Watching a run
 
@@ -1047,6 +1114,9 @@ cannot drift.
 | `AGENT_MAX_CHANGED_FILES`                  | no       | `100`                                           | Files one commit may carry                            |
 | `AGENT_MAX_CHANGED_LINES`                  | no       | `20000`                                         | Lines one commit may change                           |
 | `AGENT_TIMEOUT_MS`                         | no       | `1800000`                                       | Timeout for one model turn, and for each subprocess   |
+| `AGENT_JOB_STARTED_MS`                     | no       | unset — no job deadline                         | Epoch ms this job began; the workflow's first step    |
+| `AGENT_JOB_TIMEOUT_MINUTES`                | no       | unset — no job deadline                         | The job's own ceiling, shared with `timeout-minutes:` |
+| `AGENT_TEARDOWN_RESERVE_MS`                | no       | `180000`                                        | Held back from the job so a time stop can report      |
 | `AGENT_MAX_TOKENS`                         | no       | `5000000`                                       | Model tokens one issue may spend, across all its jobs |
 | `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no       | `opencode-agent[bot]`                           | Commit identity                                       |
 | `AGENT_LABEL_PREFIX`                       | no       | `agent:`                                        | Namespace for the status labels; `none` disables them |
@@ -1086,6 +1156,23 @@ pipeline reports every check as failing; `AGENT_REVIEW_MAX_ROUNDS=90071992547409
 is a positive integer that removes the bound the knob exists to impose. A
 rejection names the range, so a legitimate need for a wider one is not a
 guessing game.
+
+The three job-clock knobs are read the same way and are worth reading together.
+`AGENT_JOB_STARTED_MS` and `AGENT_JOB_TIMEOUT_MINUTES` have **no defaults**,
+because half a deadline is not a bound: with either unset there is no job deadline
+at all and a run is bounded by `AGENT_TIMEOUT_MS` alone, exactly as every run was
+before they existed — which is what every local `--event-path` run gets.
+`AGENT_JOB_STARTED_MS` accepts 1 577 836 800 000–4 000 000 000 000 (2020 to 2096):
+a value in seconds rather than milliseconds reads as 1970, putting the derived
+deadline permanently behind the clock so **every** run parks before it starts, and
+an extra digit puts it past any job's life, removing the bound instead. Both are
+positive integers that used to be accepted.
+`AGENT_JOB_TIMEOUT_MINUTES` accepts 1–1 440 and is the same repository variable the
+workflow's own `timeout-minutes:` reads — deliberately one value with two readers,
+since the pair kept in step by hand is the defect S5-11 records.
+`AGENT_TEARDOWN_RESERVE_MS` accepts 1 000–1 800 000: below a second the reserve
+cannot post the comment and write the state block it exists for, and above half an
+hour it is larger than most jobs and stops every run before any phase begins.
 
 `AGENT_REVIEW_HINT_LINES` takes the line range `AGENT_MAX_CHANGED_LINES` takes,
 1–1 000 000, because it is the same quantity read off the same measurement — and
@@ -1304,46 +1391,49 @@ under **Setup** is simply not written. Nothing else changes.
 
 ## Module map
 
-| File                                          | Responsibility                                                         |
-| --------------------------------------------- | ---------------------------------------------------------------------- |
-| `src/index.ts`                                | CLI entry: flags, config, dependency wiring, agent teardown, exit code |
-| `src/agent-handle.ts`                         | The OpenCode session's lifetime within one job                         |
-| `src/orchestrator.ts`                         | The state machine: guardrails and the phase cascade                    |
-| `src/trigger-events.ts`                       | What a raw webhook payload becomes, for each of the three kinds        |
-| `src/pr-trigger.ts`                           | Resolving a `/review` typed on a pull request back to its issue        |
-| `src/triggers.ts`                             | Turning a command or comment into the state move to make               |
-| `src/ci-trigger.ts`                           | Whether a red check run buys a fix round, a notice, or nothing         |
-| `src/run-report.ts`                           | Everything the orchestrator writes back to the issue                   |
-| `src/budget-notices.ts`                       | What a run says when a ceiling stopped it and nothing broke            |
-| `src/pull-request-body.ts`                    | The pull request's own body, for a delivery and after a review alike   |
-| `src/pull-request-note.ts`                    | What a run says where the command was typed, not where it answers      |
-| `src/presentation.ts`                         | One glyph, label, headline and whose-turn per state an issue can be in |
-| `src/feedback.ts` / `src/labels.ts`           | The reaction channel, and the label reconcile                          |
-| `src/status-comment.ts` / `-reporter.ts`      | What the run's live comment says, and when it is edited                |
-| `src/state-persist.ts`                        | Recording what a run spent without posting a comment                   |
-| `src/step-output.ts`                          | The one thing a run tells the rest of its own workflow job             |
-| `src/token-budget.ts`                         | The per-issue token ceiling, and how a run over it parks in `FAILED`   |
-| `src/state-manager.ts`                        | Transition table and the `AGENT_STATE` block                           |
-| `src/blocks.ts` / `src/artifacts.ts`          | The hidden-block channel and the spec/plan/report artefacts            |
-| `src/guardrails.ts`                           | Every abort rule, for each of the three kinds of event                 |
-| `src/commands.ts` / `src/intent.ts`           | Slash commands, and classifying plain replies                          |
-| `src/openai-config.ts`                        | The single endpoint, and the OpenCode config both paths share          |
-| `src/opencode-adapter.ts`                     | Headless OpenCode server + session                                     |
-| `src/ask-json.ts`                             | Asking the model for JSON, with one repair re-ask on a bad reply       |
-| `src/prompt-budget.ts`                        | How much text a prompt carries, and what loses when it does not fit    |
-| `src/activity.ts`                             | What one OpenCode event means, and what of it may be said out loud     |
-| `src/progress.ts`                             | Reporting that, plus the heartbeat while a turn is outstanding         |
-| `src/sdk-contract.ts`                         | The recorded request and response shapes the SDK speaks                |
-| `src/config-values.ts`                        | Reading and range-checking one scalar from the environment             |
-| `src/config-discovery.ts`                     | The two settings asked of the checkout and the event, not the env      |
-| `src/deadline.ts`                             | The upper bound on waiting for work that has none of its own           |
-| `src/provider-proxy.ts`                       | Holds the provider key, and retries a transient upstream failure       |
-| `src/obra-skills.ts`                          | Superpowers skill loading and system-prompt composition                |
-| `src/review-runner.ts`                        | Drives the `review-loop/` workspace                                    |
-| `src/check-loop.ts`                           | The CI-fix repair loop                                                 |
-| `src/phases/*.ts`                             | One handler per acting phase; `review.ts` is the review loop's own     |
-| `src/github-pulls.ts`                         | Pull-request endpoints, and what became of a branch's pull request     |
-| `src/github.ts`, `src/git.ts`, `src/shell.ts` | Octokit, git and process boundaries                                    |
+| File                                          | Responsibility                                                          |
+| --------------------------------------------- | ----------------------------------------------------------------------- |
+| `src/index.ts`                                | CLI entry: flags, config, dependency wiring, agent teardown, exit code  |
+| `src/agent-handle.ts`                         | The OpenCode session's lifetime within one job                          |
+| `src/orchestrator.ts`                         | The state machine: guardrails and the phase cascade                     |
+| `src/trigger-events.ts`                       | What a raw webhook payload becomes, for each of the three kinds         |
+| `src/pr-trigger.ts`                           | Resolving a `/review` typed on a pull request back to its issue         |
+| `src/triggers.ts`                             | Turning a command or comment into the state move to make                |
+| `src/ci-trigger.ts`                           | Whether a red check run buys a fix round, a notice, or nothing          |
+| `src/run-report.ts`                           | Everything the orchestrator writes back to the issue                    |
+| `src/budget-notices.ts`                       | What a run says when a ceiling stopped it and nothing broke             |
+| `src/pull-request-body.ts`                    | The pull request's own body, for a delivery and after a review alike    |
+| `src/pull-request-note.ts`                    | What a run says where the command was typed, not where it answers       |
+| `src/presentation.ts`                         | One glyph, label, headline and whose-turn per state an issue can be in  |
+| `src/outcomes.ts`                             | The second vocabulary: one glyph per outcome a comment announces        |
+| `src/feedback.ts` / `src/labels.ts`           | The reaction channel, and the label reconcile                           |
+| `src/status-comment.ts` / `-reporter.ts`      | What the run's live comment says, and when it is edited                 |
+| `src/state-persist.ts`                        | Recording what a run spent without posting a comment                    |
+| `src/step-output.ts`                          | The one thing a run tells the rest of its own workflow job              |
+| `src/token-budget.ts`                         | The per-issue token ceiling, and how a run over it parks in `FAILED`    |
+| `src/time-budget.ts`                          | The job's own wall clock, and how a run out of it parks in `INCOMPLETE` |
+| `src/state-manager.ts`                        | The `AGENT_STATE` block: rendering it, and restoring it from a thread   |
+| `src/transitions.ts`                          | The machine: which signals a phase accepts, and what each one does      |
+| `src/blocks.ts` / `src/artifacts.ts`          | The hidden-block channel and the spec/plan/report artefacts             |
+| `src/guardrails.ts`                           | Every abort rule, for each of the three kinds of event                  |
+| `src/commands.ts` / `src/intent.ts`           | Slash commands, and classifying plain replies                           |
+| `src/openai-config.ts`                        | The single endpoint, and the OpenCode config both paths share           |
+| `src/opencode-adapter.ts`                     | Headless OpenCode server + session                                      |
+| `src/ask-json.ts`                             | Asking the model for JSON, with one repair re-ask on a bad reply        |
+| `src/prompt-budget.ts`                        | How much text a prompt carries, and what loses when it does not fit     |
+| `src/activity.ts`                             | What one OpenCode event means, and what of it may be said out loud      |
+| `src/progress.ts`                             | Reporting that, plus the heartbeat while a turn is outstanding          |
+| `src/sdk-contract.ts`                         | The recorded request and response shapes the SDK speaks                 |
+| `src/config-values.ts`                        | Reading and range-checking one scalar from the environment              |
+| `src/config-discovery.ts`                     | The two settings asked of the checkout and the event, not the env       |
+| `src/deadline.ts`                             | The upper bound on waiting for work that has none of its own            |
+| `src/provider-proxy.ts`                       | Holds the provider key, and retries a transient upstream failure        |
+| `src/obra-skills.ts`                          | Superpowers skill loading and system-prompt composition                 |
+| `src/review-runner.ts`                        | Drives the `review-loop/` workspace                                     |
+| `src/check-loop.ts`                           | The CI-fix repair loop                                                  |
+| `src/phases/*.ts`                             | One handler per acting phase; `review.ts` is the review loop's own      |
+| `src/github-pulls.ts`                         | Pull-request endpoints, and what became of a branch's pull request      |
+| `src/github.ts`, `src/git.ts`, `src/shell.ts` | Octokit, git and process boundaries                                     |
 
 ## Tests
 

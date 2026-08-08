@@ -1189,6 +1189,19 @@ describe('config', () => {
     // A budget below one phase's worth of work can only ever stop the run.
     ['AGENT_MAX_TOKENS', '100'],
     ['AGENT_MAX_TOKENS', '0'],
+    // A start time in the past puts the derived deadline permanently behind the
+    // clock, so every run parks before it starts, citing a ceiling nobody set.
+    // Seconds instead of milliseconds is the likeliest way to write one.
+    ['AGENT_JOB_STARTED_MS', '0'],
+    ['AGENT_JOB_STARTED_MS', '1767225600'],
+    // And an extra digit removes the bound by putting the deadline past any job.
+    ['AGENT_JOB_STARTED_MS', '17672256000000'],
+    ['AGENT_JOB_TIMEOUT_MINUTES', '0'],
+    ['AGENT_JOB_TIMEOUT_MINUTES', '9007199254740991'],
+    // A reserve below a second cannot post a comment; one above the job it is
+    // carved out of stops every run before any phase begins.
+    ['AGENT_TEARDOWN_RESERVE_MS', '10'],
+    ['AGENT_TEARDOWN_RESERVE_MS', '7200000'],
   ])('rejects %s=%p, which parses but cannot work', (key, raw) => {
     expect(() => loadConfig({ ...baseEnv, [key]: raw }, '/repo')).toThrow(key)
   })
@@ -1227,6 +1240,45 @@ describe('config', () => {
 
   test.each(['', ' ', '\n'])('a blank knob %p means unset, as it does for every other reader', (raw) => {
     expect(loadConfig({ ...baseEnv, AGENT_MAX_ATTEMPTS: raw }, '/repo').maxAttempts).toBe(3)
+  })
+
+  /** Two facts a runner knows and nothing else does, as the workflow forwards them. */
+  const JOB_STARTED = Date.UTC(2026, 7, 8, 12, 0)
+  const jobEnv: Env = {
+    ...baseEnv,
+    AGENT_JOB_STARTED_MS: String(JOB_STARTED),
+    AGENT_JOB_TIMEOUT_MINUTES: '90',
+  }
+
+  test('derives one absolute job deadline from the start and the ceiling', () => {
+    // Absolute rather than a duration, because that is the only form both halves
+    // survive in: the start comes from a first step in the workflow and the length
+    // from a repository variable, and neither is knowable from the other.
+    expect(loadConfig(jobEnv, '/repo').jobDeadlineMs).toBe(JOB_STARTED + 90 * 60_000)
+  })
+
+  test.each([
+    ['neither', {}],
+    ['no start', { AGENT_JOB_TIMEOUT_MINUTES: '90' }],
+    ['no ceiling', { AGENT_JOB_STARTED_MS: String(JOB_STARTED) }],
+  ])('has no job deadline with %s, so a local run behaves exactly as before', (_label, extra) => {
+    // Half a deadline is not a bound, and every `--event-path` run has none at
+    // all. Defaulting the missing half would be `AGENT_TIMEOUT_MS` guessing at a
+    // runner cap all over again, with a clock attached.
+    expect(loadConfig({ ...baseEnv, ...extra }, '/repo').jobDeadlineMs).toBeNull()
+  })
+
+  test('holds three minutes back for the stop unless told otherwise', () => {
+    expect(loadConfig(baseEnv, '/repo').teardownReserveMs).toBe(180_000)
+    expect(loadConfig({ ...baseEnv, AGENT_TEARDOWN_RESERVE_MS: '60000' }, '/repo').teardownReserveMs).toBe(60_000)
+  })
+
+  test.each(['', ' '])('a blank job knob %p means unset, not a deadline in 1970', (raw) => {
+    // The workflow forwards `${{ vars.X }}` unconditionally, so an unset repository
+    // variable arrives as the empty string — the one value that must not parse.
+    const env = { ...baseEnv, AGENT_JOB_STARTED_MS: raw, AGENT_JOB_TIMEOUT_MINUTES: raw }
+
+    expect(loadConfig(env, '/repo').jobDeadlineMs).toBeNull()
   })
 
   test('sizes the delivery hint against a line count, not against a file count', () => {

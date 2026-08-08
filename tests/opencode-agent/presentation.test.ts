@@ -6,11 +6,9 @@
 import { describe, expect, test } from 'bun:test'
 
 import { desiredLabels } from '../../opencode-agent/src/labels.js'
+import { OUTCOME_GLYPHS, OUTCOME_KEYS, outcomeHeading } from '../../opencode-agent/src/outcomes.js'
 import {
   NEEDS_YOU_LABEL,
-  OUTCOME_GLYPHS,
-  OUTCOME_KEYS,
-  outcomeHeading,
   phaseHeading,
   PRESENTATION,
   PRESENTATION_KEYS,
@@ -108,6 +106,25 @@ describe('the presentation table', () => {
     expect(presentationFor(stateIn('FAILED'), 'waiting').whoseTurn).toBe('you')
   })
 
+  test('a time stop is your turn too, and is not dressed as a failure', () => {
+    // The whole point of `INCOMPLETE` being a phase: a run that hit the job's wall
+    // clock and parked with a resume point did not break. The list view is the one
+    // surface a maintainer scans without opening anything, so red there would say
+    // the opposite of what happened.
+    const parked = presentationFor(stateIn('INCOMPLETE'), 'waiting')
+    const failed = presentationFor(stateIn('FAILED'), 'waiting')
+
+    expect(parked.whoseTurn).toBe('you')
+    expect(parked.glyph).not.toBe(failed.glyph)
+    expect(parked.label.color).not.toBe(failed.label.color)
+  })
+
+  test('the parked phase does not borrow the outcome table’s ⛔', () => {
+    // Two vocabularies, deliberately: ⛔ belongs to the *comment* announcing a
+    // bound was reached, and this is the state the issue is left in.
+    expect(presentationFor(stateIn('INCOMPLETE'), 'waiting').glyph).not.toBe(OUTCOME_GLYPHS.TIME_SPENT)
+  })
+
   test('every key the table declares is reachable from some state', () => {
     // The other direction of totality: a row nothing resolves to is a row that
     // was renamed on one side only.
@@ -134,6 +151,11 @@ describe('the outcome table', () => {
       OUTCOME_GLYPHS.TOKENS_SPENT,
       OUTCOME_GLYPHS.ANSWER_TOKENS_SPENT,
       OUTCOME_GLYPHS.REVIEWS_SPENT,
+      // The newest member, and the one this rule was re-stated for: a wall-clock
+      // stop arrived as ❌ "the model did not answer within 1800000ms" about a turn
+      // that had answered 355 times, which sent every reader looking for a hang.
+      OUTCOME_GLYPHS.TIME_SPENT,
+      OUTCOME_GLYPHS.ANSWER_TIME_SPENT,
     ]
 
     expect(new Set(bounds).size).toBe(1)

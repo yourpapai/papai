@@ -126,3 +126,23 @@ export const missingSkillError = (phase: string, names: readonly string[]): Pipe
     `Phase ${phase} requires skills that are not installed: ${names.join(', ')}. ` +
       'Check that the superpowers checkout step ran and populated .superpowers/skills.',
   )
+
+/**
+ * The end of an exhaustive `switch` over a discriminated union.
+ *
+ * Written out rather than left implicit for two reasons, and the second is the
+ * one that matters. The lint rule wanting every path to return cannot see that
+ * TypeScript has already proved this one unreachable — and the `never` parameter
+ * is what turns *adding* a union member into a compile error at every switch
+ * that did not grow a case for it. Which is exactly the property the `kind`
+ * switches were written for: a third trigger kind arrived, and the tests that
+ * had been spelled `!== 'issue'` would have bucketed it in silence.
+ *
+ * Here rather than in `types.ts`, where it began: it is not a type, it is a throw,
+ * and this is the file that says how this pipeline throws. Deliberately **not** a
+ * `PipelineError` — those are failures a phase reports on the issue and a `/retry`
+ * might fix, and this one can only ever mean the code is wrong.
+ */
+export const unreachable = (value: never): never => {
+  throw new Error(`Unreachable value: ${JSON.stringify(value)}`)
+}

@@ -3,12 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { unreachable } from './errors.js'
 import type { ReactionContent, ReactionRef, ReactionTarget } from './github-reactions.js'
 import type { GitHubApi } from './github.js'
 import type { Logger } from './logger.js'
 import type { RunStatus } from './run-result.js'
 import type { TriggerEvent } from './trigger-events.js'
-import { errorMessage, unreachable } from './types.js'
+import { errorMessage } from './types.js'
 
 /**
  * The reaction channel — the pipeline's only instant acknowledgement.

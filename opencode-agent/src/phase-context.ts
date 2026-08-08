@@ -69,6 +69,15 @@ export interface PhaseDeps {
    * says nothing, and says so once, in `deps.ts`.
    */
   status: StatusReporter
+  /**
+   * The clock, as an injected boundary like every other.
+   *
+   * `time-budget.ts` decides whether the job has time for another phase, and a
+   * bound that reads `Date.now()` directly is one no test can put on either side
+   * of. One clock per run rather than one per module, so the deadline the cascade
+   * checks and the deadline the session is handed cannot disagree.
+   */
+  now: () => number
   config: PipelineConfig
   log: Logger
 }

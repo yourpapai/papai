@@ -88,8 +88,9 @@ const SPEC_STEP = 1
 const PLAN_STEP = 2
 
 /**
- * Which row a phase sits on. `null` for the two phases that are not a step —
- * `COMPLETE` is past the end and `FAILED` is wherever it broke.
+ * Which row a phase sits on. `null` for the three phases that are not a step —
+ * `COMPLETE` is past the end, and `FAILED` and `INCOMPLETE` are each wherever the
+ * run stopped, which their `resumeFrom` names rather than their phase.
  *
  * A `Record<Phase, …>` so a phase added later fails to compile until it has been
  * placed, the same property `PRESENTATION` has.
@@ -107,7 +108,11 @@ const STEP_OF: Record<Phase, number | null> = {
   CI_FIX: 4,
   COMPLETE: null,
   FAILED: null,
+  INCOMPLETE: null,
 }
+
+/** Phases whose row is the one they are parked *before*, read from `resumeFrom`. */
+const PARKED_PHASES: ReadonlySet<Phase> = new Set<Phase>(['FAILED', 'INCOMPLETE'])
 
 /** Everything the status comment is a function of. */
 export interface StatusView {
@@ -130,11 +135,16 @@ export interface StatusView {
  * conversation is over, not where it stopped. The artefacts do say — a plan
  * exists or it does not — so the row it stops on is read off those rather than
  * claiming every step finished on an issue somebody cancelled during triage.
+ *
+ * The two parked phases are the easy case, and they share one branch because they
+ * carry the same field for the same purpose: `resumeFrom` is the phase the run
+ * would re-enter, so it is also the row the table should mark. A `⏸️` on
+ * "Implementation" says where a `/continue` picks up.
  */
 const stepIndex = (state: AgentState): number => {
   const direct = STEP_OF[state.phase]
   if (direct !== null) return direct
-  if (state.phase === 'FAILED') return STEP_OF[state.resumeFrom ?? 'INIT_OR_CLARIFY'] ?? 0
+  if (PARKED_PHASES.has(state.phase)) return STEP_OF[state.resumeFrom ?? 'INIT_OR_CLARIFY'] ?? 0
   if (state.prUrl !== null) return RUN_STEPS.length
 
   if (state.planRevision > 0) return PLAN_STEP

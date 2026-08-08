@@ -29,8 +29,13 @@ findings: `ROADMAP.md`.
   `src/ci-trigger.ts`, the plain-comment half in `src/comment-intent.ts`, and the
   shared outcome shape plus `moveOrSkip` in `src/trigger-outcome.ts`;
   `src/orchestrator.ts` drives the phase cascade once that decision is made;
-  `src/token-budget.ts` decides whether the cascade may afford another step, and
-  `src/phase-failure.ts` decides what a run that broke is left looking like.
+  `src/token-budget.ts` and `src/time-budget.ts` each decide whether the cascade
+  may afford another step — one in tokens, one in wall clock, deliberately the
+  same shape, and asked in that order because tokens span jobs and a fresh clock
+  does not; `src/transitions.ts` holds the state machine itself (the table,
+  `canTransition`, `transition`) while `src/state-manager.ts` keeps only the block
+  channel that restores it from the issue; and `src/phase-failure.ts` decides what
+  a run that broke is left looking like.
   Phase handlers in `src/phases/` return a `TransitionSignal`, a comment body and
   optional artefact blocks, and never write state or decide the next phase
   themselves. `src/phases/review.ts` is the `review-loop/` workspace as a phase
@@ -39,8 +44,10 @@ findings: `ROADMAP.md`.
   takes the report as **text** because a handler cannot read its own block back —
   `postAndAppend` runs in the orchestrator after the handler returns.
 - Feedback on the issue that is not a comment lives apart from the machine that
-  causes it: `src/presentation.ts` owns the one glyph/label/headline table every
-  renderer reads, `src/feedback.ts` the reaction channel over `src/github-reactions.ts`'s
+  causes it: `src/presentation.ts` owns the one phase glyph/label/headline table
+  every renderer reads and `src/outcomes.ts` the second vocabulary beside it — the
+  outcome glyphs, which are keyed by how a run _ended_ rather than by which phase
+  it is in, which is why they are not one table; `src/feedback.ts` the reaction channel over `src/github-reactions.ts`'s
   endpoints, `src/labels.ts` the
   label reconcile over `src/github-labels.ts`'s endpoints, and
   `src/status-reporter.ts` the run's live status comment over the body
@@ -228,6 +235,29 @@ findings: `ROADMAP.md`.
   the deliberate exception and moves nothing, for the reasons `failAnswer` moves
   nothing — plus `COMPLETE` accepts no `FAILED`, so parking a question there
   would throw out of the pipeline.
+- **A wall-clock stop parks in `INCOMPLETE` and is left by `/continue`, not
+  `/retry`.** `time-budget.ts` mirrors `token-budget.ts` deliberately, and the
+  three places it differs are each a decision. The bound may be **absent** — a job
+  deadline is derived from two facts only an Actions runner knows
+  (`AGENT_JOB_STARTED_MS` + `AGENT_JOB_TIMEOUT_MINUTES`, the latter the same
+  expression the workflow's own `timeout-minutes:` reads, so there is one value and
+  not a pair kept in step by hand), so every `--event-path` run has none and must
+  behave exactly as it did before. The park is its **own phase**, not a second kind
+  of park in `FAILED`: telling them apart there would need a field every reader of
+  `FAILED` consulted, because `/retry` means "the thing that broke, again" where
+  `/continue` means "you were not finished". And the run reports **`waiting`**, not
+  `failed` — a token stop starts no work, this one finished some and stopped to
+  hand it over, so the job exits 0 and the Actions page does not go red for a run
+  that behaved correctly. `attempts` is carried and `lastError` stays `null`, for
+  the reasons the token stop carries `attempts`. `OUT_OF_TIME` is accepted in
+  exactly the phases that have a handler and a test asserts that set against
+  `hasHandler` — the stop fires before _any_ handler, so a narrower list throws
+  `InvalidTransitionError` out of the pipeline from the phases it left out.
+  `turnTimeoutMs` clamps to **1 ms, never 0**: `withDeadline` treats a
+  non-positive budget as "no bound", so the obvious `Math.min` removes the bound
+  exactly when the job has least time left. `INCOMPLETE` is deliberately **not** in
+  `WAITING_PHASES` — that set's one reader decides whether a plain comment buys a
+  classifier turn, and a park is moved on by a command, not by prose.
 - **A red run is acted on where the branch is live and no job is on it.**
   `CI_FAILED` names two rows in `TRANSITIONS`, `COMPLETE` and `PR_DELIVERY`, and
   the absences are the design. `PR_DELIVERY` is the genuine race: phase 3 pushes

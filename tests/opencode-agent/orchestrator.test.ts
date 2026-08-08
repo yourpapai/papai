@@ -37,6 +37,12 @@ import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
 
 const AGENT_LOGIN = 'agent-bot'
 const ISSUE = 42
+/**
+ * The clock every fake in a harness reads, so a job deadline can be expressed
+ * relative to it. A constant rather than the real clock: the whole point of the
+ * wall-clock bound is being able to stand on either side of it.
+ */
+const RUN_NOW_MS = Date.UTC(2026, 7, 7, 14, 2)
 const BASE_BRANCH = 'trunk'
 const OPENING_TAG = /<untrusted_input source="[^"]*" id="([^"]+)">/u
 
@@ -66,6 +72,10 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   reviewMaxRounds: 2,
   reviewPoolSize: 1,
   agentTimeoutMs: 1000,
+  // No job deadline by default, which is what every run had before it existed:
+  // the wall-clock stop is off unless a test switches it on.
+  jobDeadlineMs: null,
+  teardownReserveMs: 180_000,
   ciFixMaxRounds: 2,
   maxCiAttempts: 2,
   maxAttempts: 3,
@@ -312,7 +322,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     edits: [],
     statusError: null,
     postError: null,
-    nowMs: Date.UTC(2026, 7, 7, 14, 2),
+    nowMs: RUN_NOW_MS,
   }
 
   let nextCommentId = 100
@@ -477,6 +487,9 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     skills: () => Promise.resolve([]),
     baseBranch: () => Promise.resolve(BASE_BRANCH),
     selfLogin: () => Promise.resolve(AGENT_LOGIN),
+    // The same clock the status reporter reads, so a test that moves time moves it
+    // for the job deadline and for the status comment at once.
+    now: () => io.nowMs,
     config: pipelineConfig,
     log,
   }
@@ -2656,6 +2669,292 @@ describe('the token budget', () => {
     expect(result.status).toBe('failed')
     expect(harness.io.posted[0]).toContain('### ⛔ Token budget spent')
     expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
+  })
+})
+
+describe('the job’s wall clock', () => {
+  const MINUTE = 60_000
+
+  /**
+   * A job whose deadline is `left` from now, with the default three-minute reserve.
+   *
+   * Anything at or below the reserve is out of time; anything above it is not. The
+   * two live side by side in most of these tests, because "it stopped" is only half
+   * the assertion — the other half is that a run with room carries on.
+   */
+  const withClock = (left: number, overrides: Partial<PipelineConfig> = {}): Harness =>
+    makeHarness({ jobDeadlineMs: RUN_NOW_MS + left, teardownReserveMs: 3 * MINUTE, ...overrides })
+
+  test('parks in INCOMPLETE before starting a phase it cannot finish', async () => {
+    // The stop the whole finding is about, in the shape it should have had: not a
+    // runner killed at `timeout-minutes` with nothing on the issue, and not a
+    // handler crash reported as ❌, but a bound reached and said out loud.
+    const harness = withClock(MINUTE)
+    seedState(harness, { phase: 'DESIGN_SPEC' })
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.posted[0]).toContain('### ⛔ Out of time for this job')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('INCOMPLETE')
+    expect(state?.resumeFrom).toBe('PLANNING')
+    expect(state?.lastError).toBeNull()
+    expect(result.reported).toBe(true)
+  })
+
+  test('reports waiting rather than failed, so a job that behaved does not go red', async () => {
+    // Deliberately unlike the token stop, which reports `failed`: that one starts
+    // no work, and this one has finished some and stopped in order to hand it over.
+    // `waiting` exits 0, so the Actions page stops showing red for runs that did
+    // exactly the right thing.
+    const harness = withClock(MINUTE)
+    seedState(harness, { phase: 'DESIGN_SPEC' })
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+  })
+
+  test('starts the phase when there is time over the reserve', async () => {
+    const harness = withClock(40 * MINUTE)
+    await toDesignSpec(harness)
+    harness.io.replies = [PLAN_REPLY]
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(latestPostedState(harness)?.phase).toBe('PLAN_REVIEW')
+  })
+
+  test('checks before the phase runs, not after it has spent the time', async () => {
+    const harness = withClock(MINUTE)
+    seedState(harness, { phase: 'DESIGN_SPEC' })
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.prompts).toHaveLength(0)
+  })
+
+  test('records what the job spent, because the next job reads it', async () => {
+    // The rule this pipeline is emphatic about: every state block a job writes
+    // carries the running total, a phase that succeeded, one that threw and one a
+    // ceiling refused to start alike. This is the worst place to be blind, because
+    // `INCOMPLETE` is exactly the state a `/continue` comes back out of.
+    const harness = withClock(MINUTE)
+    seedState(harness, { phase: 'DESIGN_SPEC', tokensSpent: 40_000 })
+    harness.io.tokensUsed = 10_000
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(latestPostedState(harness)?.tokensSpent).toBe(50_000)
+  })
+
+  test('spends no attempt, so the /continue it invites is never refused', async () => {
+    // Entered through `/retry`, which is the one trigger that carries a non-zero
+    // count into a handler phase — every forward move resets it. A stop that spent
+    // one would collide the two bounds: the notice asks for `/continue`, and the
+    // retry gate would eventually turn down the run it resumes over a ceiling this
+    // comment never mentioned.
+    const harness = withClock(MINUTE, { maxAttempts: 3 })
+    seedState(harness, { phase: 'FAILED', resumeFrom: 'PLANNING', attempts: 2 })
+
+    await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('INCOMPLETE')
+    expect(state?.attempts).toBe(2)
+  })
+
+  test('a /continue on a fresh job picks up the phase that ran out of time', async () => {
+    // What makes the notice honest. It offers `/continue` with no variable to raise
+    // first, which is only true because a new job gets a whole new clock — the
+    // difference from the token ceiling, where the same `/retry` stops right back
+    // where it was.
+    const harness = withClock(60 * MINUTE)
+    await toDesignSpec(harness)
+
+    // The job the clock ran out on, and then a fresh one: same issue, same thread,
+    // a new runner with its own deadline.
+    harness.deps.config = config({ jobDeadlineMs: RUN_NOW_MS + MINUTE, teardownReserveMs: 3 * MINUTE })
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+    expect(latestPostedState(harness)?.phase).toBe('INCOMPLETE')
+    harness.io.posted.length = 0
+
+    harness.deps.config = config({ jobDeadlineMs: RUN_NOW_MS + 60 * MINUTE, teardownReserveMs: 3 * MINUTE })
+    harness.io.replies = [PLAN_REPLY]
+    const result = await runPipeline({ event: comment('/continue'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted.at(-1)).toContain('### Plan')
+    expect(latestPostedState(harness)?.phase).toBe('PLAN_REVIEW')
+    expect(latestPostedState(harness)?.resumeFrom).toBeNull()
+  })
+
+  test('a /continue that runs out of time again parks again rather than failing', async () => {
+    // The chain is bounded by the token budget and by a human typing the command,
+    // not by `attempts` — which is why it must be able to happen twice without the
+    // retry gate acquiring an opinion about it.
+    const harness = withClock(MINUTE, { maxAttempts: 3 })
+    seedState(harness, { phase: 'DESIGN_SPEC' })
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    const again = await runPipeline({ event: comment('/continue'), deps: harness.deps })
+
+    expect(again.status).toBe('waiting')
+    expect(latestPostedState(harness)?.phase).toBe('INCOMPLETE')
+    expect(latestPostedState(harness)?.resumeFrom).toBe('PLANNING')
+    expect(latestPostedState(harness)?.attempts).toBe(0)
+  })
+
+  test.each(['/approve', '/retry', '/review'])('%s is refused in INCOMPLETE, naming what does work', async (typed) => {
+    // Through the same door a wrong-phase command has always been refused, so the
+    // list a maintainer is shown comes from the transition table rather than from a
+    // sentence somebody kept in step by hand.
+    const harness = makeHarness()
+    seedState(harness, { phase: 'INCOMPLETE', resumeFrom: 'REVIEW_AND_MUTATE' })
+
+    const result = await runPipeline({ event: comment(typed), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(harness.io.posted[0]).toContain('does not apply right now')
+    expect(harness.io.posted[0]).toContain('`/continue`')
+    expect(latestPostedState(harness)?.phase).toBe('INCOMPLETE')
+  })
+
+  test('a /continue anywhere else is refused, and moves nothing', async () => {
+    // `/continue` means "you were not finished", a claim only a wall-clock park can
+    // make. In `FAILED` the command that resumes is `/retry`, and the two must not
+    // become interchangeable — the state block is the assertion, because a state
+    // that is never posted never happened.
+    const harness = makeHarness()
+    seedState(harness, { phase: 'FAILED', resumeFrom: 'PLANNING', lastError: 'boom' })
+
+    const result = await runPipeline({ event: comment('/continue'), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(harness.io.prompts).toHaveLength(0)
+    expect(latestPostedState(harness)?.phase).toBe('FAILED')
+    expect(latestPostedState(harness)?.resumeFrom).toBe('PLANNING')
+  })
+
+  test('a plain comment in INCOMPLETE is read and set aside, exactly as in FAILED', async () => {
+    // The two parked phases answer prose the same way, and neither classifies it:
+    // nothing the classifier can report moves either phase on, so a triage turn
+    // bought here buys nothing at all.
+    const harness = makeHarness()
+    seedState(harness, { phase: 'INCOMPLETE', resumeFrom: 'REVIEW_AND_MUTATE' })
+
+    const result = await runPipeline({ event: comment('thanks!'), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(result.reason).toContain('No actionable command while in INCOMPLETE')
+    expect(harness.io.prompts).toHaveLength(0)
+    expect(harness.io.posted).toEqual([])
+    expect(reactionsOf(harness)).toContain('+1')
+  })
+
+  test('an out-of-time /ask leaves the phase alone rather than parking a question', async () => {
+    // Answering is a side conversation about work that lives elsewhere, so the park
+    // must not apply to it — `resumeFrom` may never name a waiting phase, and
+    // `INCOMPLETE` would claim a delivered pull request was unfinished because
+    // somebody asked what had changed.
+    const harness = withClock(MINUTE)
+    seedState(harness, { phase: 'DESIGN_SPEC', tokensSpent: 500 })
+
+    const result = await runPipeline({ event: comment('/ask why that file?'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.prompts).toEqual([])
+    expect(harness.io.posted[0]).toContain('### ⛔ Out of time for this job')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('DESIGN_SPEC')
+    expect(state?.resumeFrom).toBeNull()
+    expect(state?.tokensSpent).toBe(500)
+  })
+
+  test('an out-of-time /ask in COMPLETE reports instead of crashing the runner', async () => {
+    // `OUT_OF_TIME` is accepted only where a handler exists, so parking a question
+    // asked in `COMPLETE` would throw `InvalidTransitionError` out of the pipeline
+    // — the runner exits 1 and the issue hears nothing, which is the failure the
+    // answer path has already been burned by twice.
+    const harness = withClock(MINUTE)
+    seedState(harness, { phase: 'COMPLETE', prUrl: 'https://example.test/pull/7' })
+
+    const result = await runPipeline({ event: comment('/ask what changed?'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted[0]).toContain('### ⛔ Out of time for this job')
+    expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
+  })
+
+  test('the token ceiling is reported first when both bounds are reached at once', async () => {
+    // The order between the two stops is a decision, not an accident. The token
+    // budget spans jobs and the clock does not, so telling a maintainer to
+    // `/continue` here would spend a whole job to learn that the real answer is
+    // `AGENT_MAX_TOKENS`. Reported the other way round, the notice names the thing
+    // that actually has to change.
+    const harness = withClock(MINUTE, { maxTokens: 50_000 })
+    seedState(harness, { phase: 'DESIGN_SPEC', tokensSpent: 60_000 })
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.posted[0]).toContain('### ⛔ Token budget spent')
+    expect(latestPostedState(harness)?.phase).toBe('FAILED')
+  })
+
+  test('a mid-cascade stop parks too, where no trigger moved the state', async () => {
+    // The firing no trigger-layer refusal could ever reach: the earlier phase
+    // legitimately did its work and posted, and the clock runs out before the next
+    // one. `PR_DELIVERY` is the worst place to be stranded, since the branch is
+    // already pushed and only the pull request is left.
+    const harness = withClock(40 * MINUTE)
+    await toPlanReview(harness)
+    harness.io.replies = ['Implemented.']
+    harness.deps.git.push = (branch): Promise<void> => {
+      harness.io.gitCalls.push(`push:${branch}`)
+      harness.io.nowMs += 39 * MINUTE
+      return Promise.resolve()
+    }
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(headings(harness)).toEqual(['### Implementation report', '### ⛔ Out of time for this job'])
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('INCOMPLETE')
+    expect(state?.resumeFrom).toBe('PR_DELIVERY')
+  })
+
+  test('a run with no job deadline is bounded by the per-turn cap alone, as before', async () => {
+    // Every `--event-path` run, and every workflow that has not been updated. The
+    // knobs are absent, so `jobDeadlineMs` is null and this path must be
+    // indistinguishable from the one that existed before the bound did.
+    const harness = makeHarness({ jobDeadlineMs: null })
+    await toDesignSpec(harness)
+    harness.io.replies = [PLAN_REPLY]
+    // Well past any plausible deadline, which must mean nothing without one.
+    harness.io.nowMs = RUN_NOW_MS + 10 * 60 * MINUTE
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(latestPostedState(harness)?.phase).toBe('PLAN_REVIEW')
+  })
+
+  test('the parked issue carries the amber marker, not the failure one', async () => {
+    const harness = withClock(MINUTE)
+    seedState(harness, { phase: 'DESIGN_SPEC' })
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.labels).toContain('agent:incomplete')
+    expect(harness.io.labels).toContain('agent:needs-you')
+    expect(harness.io.labels).not.toContain('agent:failed')
+    expect(harness.io.labels).not.toContain('agent:working')
   })
 })
 

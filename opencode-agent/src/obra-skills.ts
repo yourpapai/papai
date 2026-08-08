@@ -46,6 +46,10 @@ export const PHASE_SKILLS: Record<Phase, { required: readonly string[]; optional
   CI_FIX: { required: ['systematic-debugging'], optional: ['test-driven-development'] },
   COMPLETE: { required: [], optional: [] },
   FAILED: { required: [], optional: [] },
+  // Empty like every other phase with no handler: nothing runs in `INCOMPLETE`, so
+  // there is no system prompt for a skill to be inlined into. The phase a
+  // `/continue` resumes asks for its own.
+  INCOMPLETE: { required: [], optional: [] },
 }
 
 export type ReadSkillFile = (filePath: string) => Promise<string>

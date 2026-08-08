@@ -8,9 +8,11 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import {
+  renderAnswerOutOfTime,
   renderAnswerOverBudget,
   renderCiExhausted,
   renderExhausted,
+  renderOutOfTime,
   renderOverBudget,
   renderReviewsExhausted,
 } from '../../opencode-agent/src/budget-notices.js'
@@ -18,8 +20,9 @@ import { formatFailures } from '../../opencode-agent/src/check-loop.js'
 import { acceptedCommands, SLASH_COMMANDS } from '../../opencode-agent/src/commands.js'
 import { modelResponseError } from '../../opencode-agent/src/errors.js'
 import { fence } from '../../opencode-agent/src/markdown.js'
-import { OUTCOME_GLYPHS, PRESENTATION, presentationFor } from '../../opencode-agent/src/presentation.js'
-import type { OutcomeKey } from '../../opencode-agent/src/presentation.js'
+import { OUTCOME_GLYPHS } from '../../opencode-agent/src/outcomes.js'
+import type { OutcomeKey } from '../../opencode-agent/src/outcomes.js'
+import { PRESENTATION, presentationFor } from '../../opencode-agent/src/presentation.js'
 import {
   renderAnswerFailure,
   renderClosing,
@@ -27,7 +30,8 @@ import {
   renderRefusedCommand,
   renderSettled,
 } from '../../opencode-agent/src/run-report.js'
-import { initialState, transition } from '../../opencode-agent/src/state-manager.js'
+import { initialState } from '../../opencode-agent/src/state-manager.js'
+import { transition } from '../../opencode-agent/src/transitions.js'
 import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
 
 /**
@@ -147,7 +151,7 @@ describe('renderSettled', () => {
   const parked = (phase: Phase): AgentState => ({ ...initialState(42), phase })
 
   /** Every phase the cascade can actually stop at without a handler. */
-  const WAITING: readonly Phase[] = ['DESIGN_SPEC', 'PLAN_REVIEW', 'FAILED']
+  const WAITING: readonly Phase[] = ['DESIGN_SPEC', 'PLAN_REVIEW', 'FAILED', 'INCOMPLETE']
 
   test.each([...WAITING])('%s names exactly the commands the transition table accepts', (phase) => {
     // The gap this closes: the comment used to be `### Waiting` over "Parked in
@@ -199,6 +203,56 @@ describe('renderSettled', () => {
   })
 })
 
+describe('the wall-clock notice', () => {
+  const notice = renderOutOfTime(45_000, 180_000, 'REVIEW_AND_MUTATE')
+
+  test('offers both halves of the remedy, and the one that works alone first', () => {
+    // The trap every notice in that module is written against: a comment about a
+    // ceiling may only offer a remedy that works. Here there are two, and they are
+    // not equivalent — `/continue` works on its own, because the next job gets a
+    // fresh clock, which is exactly what a `/retry` under the token ceiling does
+    // not get. So it is named, and the variable is named beside it for the phase
+    // that cannot fit in a job at all.
+    expect(notice).toContain('`/continue`')
+    expect(notice).toContain('AGENT_JOB_TIMEOUT_MINUTES')
+    expect(notice.indexOf('/continue')).toBeLessThan(notice.indexOf('AGENT_JOB_TIMEOUT_MINUTES'))
+  })
+
+  test('names the phase a continuation picks up, and the phase it parked in', () => {
+    // The state block posted beside it says both; a notice that quoted neither
+    // would leave a maintainer to guess how much of the work survived.
+    expect(notice).toContain('`REVIEW_AND_MUTATE`')
+    expect(notice).toContain('`INCOMPLETE`')
+  })
+
+  test('does not offer /retry, which the phase it parks in refuses', () => {
+    // The other ceiling's notice offers it, and that is the whole reason these are
+    // separate renderers: `/retry` needs `FAILED`, and this park is not one.
+    expect(notice).not.toContain('/retry')
+  })
+
+  test('speaks in minutes, which is the unit both bounds are set in', () => {
+    expect(notice).toContain('0.8 minutes')
+    expect(notice).toContain('3.0 minutes')
+    expect(notice).not.toContain('45000')
+  })
+
+  test('reads a job already past its deadline as no time left, not negative time', () => {
+    expect(renderOutOfTime(-90_000, 180_000, 'CI_FIX')).toContain('0.0 minutes')
+  })
+
+  test('the answer notice promises no park, because it made none', () => {
+    // `answerOutOfTime` moves nothing, so a `/continue` here would name a state
+    // block that does not exist — the same reason the answer budget notice does
+    // not offer `/retry`.
+    const answer = renderAnswerOutOfTime(45_000, 180_000, 'COMPLETE')
+
+    expect(answer).toContain('`COMPLETE`')
+    expect(answer).not.toContain('/continue')
+    expect(answer).toContain('AGENT_JOB_TIMEOUT_MINUTES')
+  })
+})
+
 describe('comment headings', () => {
   const failed = transition(initialState(42), 'FAILED', { lastError: 'x' })
 
@@ -209,6 +263,8 @@ describe('comment headings', () => {
     ['RETRIES_SPENT', renderExhausted('Retry budget exhausted')],
     ['TOKENS_SPENT', renderOverBudget(1, 2, 'PLANNING')],
     ['ANSWER_TOKENS_SPENT', renderAnswerOverBudget(1, 2, 'DESIGN_SPEC')],
+    ['TIME_SPENT', renderOutOfTime(60_000, 180_000, 'REVIEW_AND_MUTATE')],
+    ['ANSWER_TIME_SPENT', renderAnswerOutOfTime(60_000, 180_000, 'DESIGN_SPEC')],
     ['CI_GAVE_UP', renderCiExhausted('spent', null)],
     ['REVIEWS_SPENT', renderReviewsExhausted('spent', null)],
     ['COMMAND_REFUSED', renderRefusedCommand('/approve', 'COMPLETE', [])],

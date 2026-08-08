@@ -8,7 +8,7 @@ import type { PipelineConfig } from './config.js'
 import type { MachineInput, PhaseDeps } from './phase-context.js'
 import { postAndAppend } from './run-report.js'
 import type { RunResult } from './run-result.js'
-import { transition } from './state-manager.js'
+import { transition } from './transitions.js'
 import type { AgentState } from './types.js'
 
 /**

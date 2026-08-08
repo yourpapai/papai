@@ -360,6 +360,8 @@ describe('contain', () => {
     reviewMaxRounds: 2,
     reviewPoolSize: 1,
     agentTimeoutMs: 1000,
+    jobDeadlineMs: null,
+    teardownReserveMs: 180_000,
     ciFixMaxRounds: 2,
     maxCiAttempts: 2,
     maxReviewAttempts: 3,
@@ -459,6 +461,61 @@ describe('contain', () => {
     expect(seen[0]?.log).toBeDefined()
     // And still the contained credential, not the real one.
     expect(seen[0]?.openai.apiKey).toBe(PLACEHOLDER_API_KEY)
+    await run.proxy.close()
+  })
+
+  test('shrinks the turn timeout to what is left of the job', async () => {
+    // The same wiring gap one level along, and the one the finding is about: the
+    // turn cap and the job's own `timeout-minutes` were two numbers in two files
+    // kept in step by hand, so a turn opened near the end of a job was allowed to
+    // wait past the runner that kills it — which posts nothing at all. Asserted
+    // here because `turnTimeoutMs` being correct and never reaching the session is
+    // exactly how the deadline shipped broken once already.
+    const seen: OpenCodeAgentOptions[] = []
+    const nowMs = Date.UTC(2026, 7, 8, 12, 0)
+    const run = contain({
+      // 90 seconds of job left, three of it reserved for the stop: nothing like
+      // the 1000ms cap, and the smaller number has to win.
+      config: { ...config(), agentTimeoutMs: 600_000, jobDeadlineMs: nowMs + 90_000, teardownReserveMs: 30_000 },
+      event,
+      log: silentLog,
+      run: () => Promise.resolve({ command: '', exitCode: 0, stdout: '', stderr: '' }),
+      options: { argv: [], env: {} },
+      github: github(),
+      now: () => nowMs,
+      createAgent: (agentOptions) => {
+        seen.push(agentOptions)
+        return Promise.resolve({
+          sessionId: 's',
+          prompt: () => Promise.resolve({ text: '', sessionId: 's' }),
+          tokensUsed: () => Promise.resolve(0),
+          close: () => Promise.resolve(),
+        })
+      },
+    })
+
+    await run.deps.agent()
+
+    expect(seen[0]?.timeoutMs).toBe(60_000)
+    await run.proxy.close()
+  })
+
+  test('hands the phases the same clock the session was sized against', async () => {
+    // One clock per run, not one per module: the deadline the cascade checks and
+    // the deadline the session was handed have to be the same wall clock, or a
+    // phase can be refused for want of time the turn thinks it has.
+    const nowMs = Date.UTC(2026, 7, 8, 12, 0)
+    const run = contain({
+      config: config(),
+      event,
+      log: silentLog,
+      run: () => Promise.resolve({ command: '', exitCode: 0, stdout: '', stderr: '' }),
+      options: { argv: [], env: {} },
+      github: github(),
+      now: () => nowMs,
+    })
+
+    expect(run.deps.now()).toBe(nowMs)
     await run.proxy.close()
   })
 
