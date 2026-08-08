@@ -208,6 +208,20 @@ if [ "$STAGED_MODE" = true ]; then
       case "$file" in
         package-lock.json|*/package-lock.json) keep=false ;;
       esac
+      # oxfmt formats JS/TS/JSON and nothing else, so a file it cannot format is
+      # not a format failure — it is not a target. `relevant_files` carries .md
+      # too, because lint and the license-header check both want it, and handing
+      # one to oxfmt makes it exit 2 with "Expected at least one target file"
+      # whenever the whole staged set is prose. That is every docs-only commit,
+      # and it reported a formatting failure for a file the formatter does not
+      # own. The `.oxfmtignore` sweep below cannot cover it: its patterns are
+      # matched with a leading anchor here (`docs/` catches `docs/a.md` but not
+      # `opencode-agent/docs/a.md`) while oxfmt resolves the same file against
+      # the same ignore file and drops it, so the two disagree by construction.
+      case "$file" in
+        *.ts | *.tsx | *.js | *.jsx | *.mjs | *.cjs | *.json) ;;
+        *) keep=false ;;
+      esac
       if $keep && [ -f .oxfmtignore ]; then
         while IFS= read -r pattern; do
           [ -z "$pattern" ] && continue

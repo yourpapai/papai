@@ -502,11 +502,15 @@ cancel-in-progress: false }`; the workflow-level block is removed;
   in `bun install` still knows where to post, and a separate job makes that
   structural rather than positional.
 
-**Verify before building:** that job-level `concurrency` accepts `needs`. If it
-does not, the fallback is to keep the workflow-level group, accept that a
-pull-request-triggered review runs in its own group, and make the review
-handler's push resilient (`fetch` + fast-forward check before `push`, fail
-loudly rather than force). That is strictly worse and should be a last resort.
+**Verified.** GitHub's context-availability table gives
+`jobs.<job_id>.concurrency` the contexts `github, needs, strategy, matrix,
+inputs, vars` — `needs` is among them, so the design above stands and the
+fallback below is not needed. It is recorded anyway, because the question will
+be asked again: keep the workflow-level group, accept that a
+pull-request-triggered review runs in its own, and make the review handler's
+push resilient (`fetch` + fast-forward check before `push`, fail loudly rather
+than force). That is strictly worse — it turns a queue into a race with a
+detector — and would have been a last resort.
 
 ---
 
