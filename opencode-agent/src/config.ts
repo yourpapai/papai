@@ -105,8 +105,15 @@ export interface PipelineConfig {
   skillRoots: readonly string[]
 }
 
-/** The namespace labels take when the operator names none. */
-const DEFAULT_LABEL_PREFIX = 'agent:'
+/**
+ * The namespace labels take when the operator names none.
+ *
+ * Exported for the same reason `REPORTED_OUTPUT` is: the workflow's label
+ * cleanup step has to default the prefix in shell, where it cannot import
+ * anything, so `tests/opencode-agent/workflow.test.ts` pins that literal against
+ * this one rather than letting two spellings of the default drift apart.
+ */
+export const DEFAULT_LABEL_PREFIX = 'agent:'
 
 export const parseChecks = (raw: string | undefined): readonly CheckSpec[] => {
   if (raw === undefined || raw.trim().length === 0) return DEFAULT_CHECKS
