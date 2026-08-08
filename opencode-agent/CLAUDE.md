@@ -149,22 +149,68 @@ findings: `ROADMAP.md`.
   the reset to the refresh path: same branch, same commits, same checks that
   spent the rounds, and a clean slate there is one broken branch bouncing off the
   agent for as long as anyone keeps replying `/retry`.
+- **A feedback channel has exactly one door, and that door swallows
+  everything.** `react` in `feedback.ts`, `reconcileLabels` in `labels.ts`,
+  `attempt` in `status-reporter.ts` and `persistState` in `state-persist.ts` are
+  each the only function in their module that calls GitHub, and each catches
+  every rejection and degrades it to a `warn`; a caller reaches the same
+  `RunResult` and the same **persisted state** it would have reached with the
+  channel absent. One door rather than a `try` per call site because best-effort
+  has to be a property of a function, not a convention: every write these
+  channels make is decoration on work that matters and a fresh way to break a
+  pipeline that used to work — a token without `issues: write`, a fork run, an
+  organisation restricting who may create a label, a secondary rate limit — and a
+  convention honoured at five call sites is honoured at four the day somebody
+  adds a sixth. Adapters do **not** anticipate the rule: `github-labels.ts`
+  rejects a 403 like any other transport, and only swallows the 422 that means
+  "this label already exists", because that is idempotence at the layer where an
+  HTTP status still exists. The accepted cost is stated at the catch in
+  `labels.ts` and is not an oversight: a `TypeError` from inside the reconcile
+  degrades to exactly the same `warn` as a 403, so a bug in a channel is
+  invisible to anyone not reading the log. It has been paid once already — a
+  stubbed transport answered the label read with the wrong shape,
+  `name.startsWith` threw into that catch, and the suite stayed green having
+  reconciled nothing. Sorting an `unknown` at the catch into "mine" and "theirs"
+  is how that gets fragile, so do not add the discrimination; add a test that
+  asserts the write. The workflow's `if: always()` label cleanup obeys the same
+  rule in YAML, with `|| echo`: a job whose only red step is the one taking a
+  label off has reported a failure that did not happen.
 - **A run says whether it reported, and the workflow reads that.** `RunResult`
   carries `reported`, and `step-output.ts` turns it into a `reported=true` line
-  in `$GITHUB_OUTPUT`; the workflow's fallback "Agent job failed" comment is
-  gated on `steps.pipeline.outputs.reported != 'true'`. It used to be gated on
+  in `$GITHUB_OUTPUT`; the workflow's fallback "Agent job did not finish" comment
+  is gated on `steps.pipeline.outputs.reported != 'true'`. It used to be gated on
   `if: failure()` alone, which selects **every** red job — and six paths exit 1
   only after posting their own report (`failRun`, `failAnswer`, both over-budget
   stops, `refuseExhausted`, the CI-budget notice), so every genuine failure drew
   a second comment claiming "the issue state is unchanged" beside a block that
   had just moved to `FAILED`. Only CI runs escaped, by accident:
-  `github.event.issue.number` is empty on a `workflow_run` event. Set `reported`
-  on any new terminal path from what that path **posted**, never from its status
+  `github.event.issue.number` is empty on a `workflow_run` event — which is why
+  the workflow now resolves the number from `workflow_run.head_branch` too, and
+  why that widening had to sit _inside_ the `reported` gate. Set `reported` on
+  any new terminal path from what that path **posted**, never from its status
   — `failed` covers both a reported failure and a crash, and `skipped` covers
   both a silent guardrail drop and a refused command that answered on the issue.
   A throw is deliberately unmarked: that is the crash the fallback comment is
   for. Writing the marker is best-effort and must never throw — `GITHUB_OUTPUT`
   is absent on every `--event-path` run.
+- **`reported` means an account of what happened, so a status comment never sets
+  it.** The live status comment is what makes that distinction load-bearing
+  rather than pedantic: a run killed mid-phase leaves "🛠️ Writing and reviewing
+  the code — run in progress" on the issue, which is precisely the silence the
+  fallback comment exists to explain, and nothing ever corrects it — the process
+  that owned that comment is gone, and the next run opens its own. Marking it
+  reported would suppress the only comment that would have said why the issue
+  stopped. So `StatusReporter.finish` takes the `RunResult` and returns `void`:
+  the flag is **unreachable** from the channel, not merely left alone by habit,
+  and an edit that wanted to set it would have to change the interface first.
+  Keep it that way, and keep `finish` unable to _reject_: `runAccepted` awaits it
+  on the way out with the result already decided, so a channel that could throw
+  there would turn a finished run into a failed one. The rule above is what makes
+  that impossible. The finalising edit on a _returning_ path does not set the
+  flag either, though it safely could: the paths that report already do, and two
+  writers of one flag is how it drifts. Reactions and labels are the same
+  argument one step shorter — an emoji is not an account of anything, and
+  neither is a label.
 - **The token budget is per issue and persisted.** `tokensSpent` lives in the
   state block; the orchestrator checks it before each phase. Budget on
   **tokens**, never on `cost`: token counts come

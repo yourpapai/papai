@@ -269,6 +269,13 @@ jobs:
       #     is a run somebody cancels, and that is exactly when the issue must
       #     not fall silent. `failure()` is false for a cancelled job, so it was
       #     never covered.
+      #
+      # The heading followed `cancelled()` in: it read "Agent job failed", which
+      # is now wrong for half of what this step speaks for. Telling a maintainer
+      # who cancelled a run that it failed is a small lie the comment has no
+      # need to tell, and "did not finish" is true of a crash, a runner timeout
+      # and a cancellation alike — which is exactly the set the `reported` gate
+      # leaves for this step.
       - name: Report an infrastructure failure on the issue
         if: (failure() || cancelled()) && steps.issue.outputs.number && steps.pipeline.outputs.reported != 'true'
         env:
@@ -277,7 +284,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           printf '%s\n\n%s\n\n%s\n' \
-            '### Agent job failed' \
+            '### Agent job did not finish' \
             "The workflow run failed or was cancelled before or during the pipeline. Logs: $RUN_URL" \
             'The issue state is unchanged; reply `/retry` once the cause is addressed.' \
             > /tmp/agent-failure.md

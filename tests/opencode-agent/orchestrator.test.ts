@@ -2517,7 +2517,8 @@ describe('labels — feedback never fails a run', () => {
   })
 
   test('a label is not a report, so it never suppresses the fallback comment', async () => {
-    // `RunResult.reported` gates the workflow's "Agent job failed" comment. A
+    // `RunResult.reported` gates the workflow's "Agent job did not finish"
+    // comment. A
     // run that only ever labelled has said nothing on the issue.
     const harness = makeHarness()
     await toComplete(harness)
