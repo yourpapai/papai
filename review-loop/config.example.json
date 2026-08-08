@@ -25,5 +25,9 @@
     "model": "ollama-cloud/kimi-k2.6:cloud",
     "extraArgs": [],
     "timeoutMs": 1800000
+  },
+  "pricing": {
+    "anthropic/claude-sonnet-*": { "input": 3, "output": 15 },
+    "anthropic/claude-opus-*": { "input": 15, "output": 75 }
   }
 }

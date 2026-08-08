@@ -22,16 +22,17 @@ Detailed reference moved out of this file to keep it short. Read the relevant do
 
 ### Path-scoped `CLAUDE.md` files (read when working under that path)
 
-| Path                         | Covers                                                                                        |
-| ---------------------------- | --------------------------------------------------------------------------------------------- |
-| `src/providers/CLAUDE.md`    | normalized provider interface, capabilities, provider-layer rules                             |
-| `src/tools/CLAUDE.md`        | tool assembly, execution wrapping, confirmations, context gating                              |
-| `src/commands/CLAUDE.md`     | command handler rules and current command surface                                             |
-| `src/chat/CLAUDE.md`         | chat provider interface, capabilities, context rendering, interactions                        |
-| `src/mcp/CLAUDE.md`          | external MCP server adapter, connection pooling, tool namespacing                             |
-| `tests/CLAUDE.md`            | helpers, mocks, mock reset, E2E guidance                                                      |
-| `review-loop/CLAUDE.md`      | review-loop workspace structure, scripts, storage, TDD rules                                  |
-| `mutation-improve/CLAUDE.md` | mutation-improve workspace: select/improve pipeline, gates, repoRoot snap, storage, TDD rules |
+| Path                         | Covers                                                                                         |
+| ---------------------------- | ---------------------------------------------------------------------------------------------- |
+| `src/providers/CLAUDE.md`    | normalized provider interface, capabilities, provider-layer rules                              |
+| `src/tools/CLAUDE.md`        | tool assembly, execution wrapping, confirmations, context gating                               |
+| `src/commands/CLAUDE.md`     | command handler rules and current command surface                                              |
+| `src/chat/CLAUDE.md`         | chat provider interface, capabilities, context rendering, interactions                         |
+| `src/mcp/CLAUDE.md`          | external MCP server adapter, connection pooling, tool namespacing                              |
+| `tests/CLAUDE.md`            | helpers, mocks, mock reset, E2E guidance                                                       |
+| `review-loop/CLAUDE.md`      | review-loop workspace structure, scripts, storage, TDD rules                                   |
+| `mutation-improve/CLAUDE.md` | mutation-improve workspace: select/improve pipeline, gates, repoRoot snap, storage, TDD rules  |
+| `opencode-agent/CLAUDE.md`   | opencode-agent workspace (spike): GitHub Actions issue agent, phase state machine, local rules |
 
 Plugin authors: `docs/plugins/developer-guide.md` + `docs/plugins/examples/hello-world/`. The `codeindex` MCP server lives in a separate project at `~/Projects/papai/codeindex/`.
 

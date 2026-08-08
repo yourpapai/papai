@@ -1,0 +1,512 @@
+# opencode-agent Workspace
+
+## Purpose
+
+`opencode-agent/` is a standalone Bun workspace holding a **spike**: an
+event-driven GitHub Actions coding agent built on the OpenCode SDK and
+obra/superpowers skills. It is not a papai runtime dependency and nothing under
+`src/` imports it. Full behaviour, configuration and setup: `README.md`. Open
+findings: `ROADMAP.md`.
+
+## Shape
+
+- One CI job = one call to `runCli`. State lives in hidden blocks on the issue,
+  not on disk: `AGENT_STATE` for the machine, `AGENT_SPEC` / `AGENT_PLAN` /
+  `AGENT_REPORT` for the artefacts. `AGENT_STATUS` is the odd one out — it marks
+  the run's live status comment so `renderThread` can leave it out of a prompt,
+  and it is read by nothing else.
+- An event is parsed before it is judged: `src/trigger-events.ts` says what a raw
+  payload **is** and `src/guardrails.ts` whether the pipeline may act on it. That
+  split is not tidiness — it is what lets `src/pr-trigger.ts` finish a parse
+  without importing the policy layer that will judge the finished event, which
+  would be a cycle. There are **three** doors, not two: an issue event, a red CI
+  run, and a comment typed on a pull request, which is the one `parseTriggerEvent`
+  cannot finish alone (`src/github-pulls.ts` reads the head that names its issue).
+  `src/agent-handle.ts` holds the memoized OpenCode session `index.ts` used to
+  own, which also ends `deps.ts` importing back from the module it was split from.
+- `src/triggers.ts` decides _whether and where_ an event moves the state — it
+  keeps the slash commands and the dispatch — with the red-CI half in
+  `src/ci-trigger.ts`, the plain-comment half in `src/comment-intent.ts`, and the
+  shared outcome shape plus `moveOrSkip` in `src/trigger-outcome.ts`;
+  `src/orchestrator.ts` drives the phase cascade once that decision is made;
+  `src/token-budget.ts` decides whether the cascade may afford another step, and
+  `src/phase-failure.ts` decides what a run that broke is left looking like.
+  Phase handlers in `src/phases/` return a `TransitionSignal`, a comment body and
+  optional artefact blocks, and never write state or decide the next phase
+  themselves. `src/phases/review.ts` is the `review-loop/` workspace as a phase
+  of its own, entered from `COMPLETE` on `/review`; `src/pull-request-body.ts`
+  renders the one pull request body both it and `handleDeliver` present, and
+  takes the report as **text** because a handler cannot read its own block back —
+  `postAndAppend` runs in the orchestrator after the handler returns.
+- Feedback on the issue that is not a comment lives apart from the machine that
+  causes it: `src/presentation.ts` owns the one glyph/label/headline table every
+  renderer reads, `src/feedback.ts` the reaction channel over `src/github-reactions.ts`'s
+  endpoints, `src/labels.ts` the
+  label reconcile over `src/github-labels.ts`'s endpoints, and
+  `src/status-reporter.ts` the run's live status comment over the body
+  `src/status-comment.ts` renders. Each channel has exactly one function that
+  talks to GitHub, because "best-effort" has to be a property of one function
+  rather than a convention at each call site. The status comment carries an
+  `AGENT_STATUS` block — never `AGENT_STATE`, which would give the restore scan a
+  second source of truth — so that `prompt-budget.ts` can drop it before the
+  twenty-comment window is taken; without that, every previous run's progress
+  table would take a slot from the conversation triage, answering and the
+  classifier are being asked to read. Filter that channel by **marker**, never by
+  author: the agent writes the spec, the plan and every report too.
+  `src/state-persist.ts` is the same shape for a write that is not feedback at
+  all: rewriting the state block in place, so a run that posts nothing can still
+  record what it spent. `src/budget-notices.ts` holds what a run says when a
+  **ceiling** stopped it and nothing broke, along the seam `presentation.ts` had
+  already drawn: ❌ means the work broke, ⛔ means a bound was reached in a run
+  where nothing did.
+- Config is read in two halves and discovered in a third. `src/config-values.ts`
+  reads and range-checks one scalar out of the environment, `src/config.ts` says
+  which values a run needs, and `src/config-discovery.ts` holds the two settings
+  that are **asked for** rather than read — the review command, from whether the
+  checkout has a `review-loop/`, and the base branch, from the event payload and
+  then `origin/HEAD`. Both take their probe as an argument, so both ladders are
+  testable without a filesystem or a remote, and neither has a literal fallback:
+  a baked-in review path reported every run outside this repository as
+  permanently red, and a `main` default killed every run inside it.
+- Every external boundary is an injected interface (`GitHubApi`, `Git`,
+  `CheckRunner`, `RunReview`, `OpenCodeAgent`, `ReadSkillFile`).
+
+## Local rules
+
+- **Never scrape prose to recover an artefact.** Spec, plan and report travel in
+  hidden blocks via `blocks.ts` / `artifacts.ts`. Heading-and-trailer scraping
+  silently truncated specs at their first `---` rule; do not reintroduce it.
+- **Each artefact counts its own revisions.** `specRevision` and `planRevision`
+  are separate fields and each handler renders and stores one of them, from a
+  single local so the visible heading and the hidden block cannot disagree. They
+  were one shared `revision` bumped by both `SPEC_POSTED` and `PLAN_POSTED`, so
+  the counts interleaved and the first plan on every issue announced
+  itself as revision 2 — revision 3 if the spec had been revised once first —
+  which is not a reading "the Nth version of this artefact" allows. The report
+  block stamps `planRevision`: it records which plan was implemented, and no
+  signal bumps a report counter. Splitting them needed no `STATE_VERSION` bump
+  because both fields default; the old key is dropped rather than mapped onto
+  either, since it was a sum and never a count of either artefact.
+- **A phase rename is a persisted-shape change, and is migrated rather than
+  bumped.** `PLANNING` was `EXECUTION_PLAN`; the name is written into every
+  `AGENT_STATE` block as `phase` and `resumeFrom`, so an unmigrated rename has
+  `z.enum` reject those blocks outright — the restore scan walks past them to an
+  older comment, or starts the conversation over, and a parked failure loses the
+  resume point `/retry` needs. `LEGACY_PHASE_NAMES` in `types.ts` maps the old
+  name onto the new one and `phaseName` applies it inside the schema, which is
+  where it has to live: there are four parse sites and three are on the read
+  path, and a migration honoured at two of them restores under one scan and is
+  discarded by the other. Deliberately **not** a `STATE_VERSION` bump — a bump
+  strands every in-flight issue, and there is nothing here it would protect
+  against, since the old name maps onto the new one exactly with no field to
+  reinterpret. Read the table through `Object.hasOwn`, never `in`: a state block
+  is attacker-editable text and `'toString' in` any object literal is true.
+- **The 👀 has a lifetime, and the run that placed it owns both ends.** A
+  reaction is the pipeline's only instant acknowledgement, and 👀 says "this
+  arrived and something is running" — a claim that a run is one CI job makes
+  temporary by definition. Leaving it on made every finished issue read as one
+  still being thought about, on a comment nobody would touch again. So
+  `runPipeline` holds the handle `react` now returns and `settleReaction` closes
+  it out: **outcome on, then acknowledgement off**, in that order, because both
+  writes are best-effort and the reverse leaves the comment bare for the width of
+  an API call — or for good, if the second write is the one that fails. The
+  handle lives in `runPipeline` rather than `runAccepted` because 👀 is placed
+  before the run knows which of its exits it will take. `OUTCOME_REACTIONS` maps
+  `RunStatus`, and its two `null` rows are the design: `completed` covers a
+  delivery (where `handleDeliver` has already placed 🚀 — the one place that can
+  tell a delivery from a stand-down), a `/cancel` and a stand-down, and the last
+  two delivered nothing; `skipped` covers a refused command that already reacted
+  😕 and a set of deliberate silences. Removal needs the reaction **id**, which
+  only the create returns — hence `ReactionRef` — so never re-derive the target
+  at removal time, and never treat a rejected delete as evidence the reaction
+  survived.
+- **Answering is phase-neutral in both directions.** `ANSWERED` is deliberately
+  absent from `TRANSITIONS`; `transition` handles it as a non-moving signal
+  accepted in every phase, because `/ask` is accepted in every phase. Do not put
+  it back as a row per phase — the table and `/ask`'s reach drifting apart is
+  what made a question asked in `COMPLETE`, `FAILED` or mid-pipeline throw
+  `InvalidTransitionError` out of the pipeline, after the model turn was paid
+  for and with nothing posted on the issue. A **failed** answer does not move the
+  phase either: `failAnswer` posts and leaves `phase`, `resumeFrom` and
+  `attempts` alone, which is also why `resumeFrom` can never name a waiting phase
+  with no handler for `/retry` to resume into.
+- **The review loop is `review-loop/`, not a local reimplementation.**
+  `handleReview` in `src/phases/review.ts` drives that workspace through
+  `review-runner.ts`, reached from `CODE_REVIEW` on an explicit `/review` and by
+  no other route. It used to run inside `handleImplement`, between the
+  implementation commit and the push, and **must not grow back there**: one
+  arrangement made three problems. A review that broke discarded an
+  implementation that had not, because the push sat on the far side of it; every
+  task paid the loop's wall clock before anybody saw a diff; and `/retry` re-ran
+  the model turn that had already succeeded, because the resume point was the
+  whole phase. Two independently expensive operations, with two independent
+  failure modes and two natural cadences, do not share a phase, a job, a retry
+  budget and a resume point. `ensureBranch` at the top of the handler is not
+  optional for the same reason the split is: this review usually runs in a job
+  that implemented nothing, so the remote branch is the only copy of the work.
+  `check-loop.ts` exists only for CI fixing, which the workspace does not cover.
+  In that loop the first round runs every check — one repair prompt seeing every
+  failure fixes more than a fail-fast round would — and later rounds re-run only
+  what failed. Only a **full** pass may return `passed`: a narrowed round has not
+  looked at the checks it skipped since before a repair edited the tree.
+- **The pull-request door resolves before it acts, and its lookup is not
+  swallowed.** State lives in hidden blocks on the **issue** and `findLatestState`
+  scans the issue thread, so a comment typed on a pull request names nothing this
+  pipeline can restore — `github.event.issue.number` there is the _pull request_.
+  `resolvePullRequestTrigger` in `pr-trigger.ts` recovers the issue from the head
+  branch, `agent/issue-<n>`, the same link a red CI run travels; that costs an API
+  call, which is why it is a second step and not a branch of the pure
+  `parseTriggerEvent`. Its **order is the design**: the `/review` test is free and
+  comes first, so every ordinary code-review comment on every pull request in the
+  repository is dropped with no lookup at all — the head lookup that follows is
+  not free, so nothing may be moved in front of it and nothing that reads its
+  answer may be moved behind. The fork check is the one to get right. `head.ref`
+  is attacker-controlled, so a pull request opened from a fork whose branch is
+  named `agent/issue-42` looks like the agent's own to every other field here;
+  without `PR_FOREIGN_REPOSITORY`, anyone who can open a pull request could type
+  `/review` and buy a privileged job that prompts the model, spends issue 42's
+  token budget and pushes commits to a real agent branch — the same attack
+  `CI_FOREIGN_REPOSITORY` answers through the other door. The lookup itself is
+  deliberately **not** caught, unlike every other GitHub call this pipeline
+  degrades to a `warn`: it is the only thing that says which issue the run is
+  about, and the fork guard reads its answer, so a rejection has to reach `runCli`
+  and leave the job red rather than become a skip indistinguishable from a comment
+  nobody typed. `TriggerEvent` gains a third member rather than a flag on the
+  issue one, because `resolveIssue` reads the issue's title and body straight off
+  that shape and this payload carries the _pull request's_ — a flag hands every
+  phase the wrong document under the right field names. Every `kind` test is an
+  exhaustive `switch` for the same reason, with `unreachable` making a fourth kind
+  a compile error rather than a silent bucketing. The report and the state block
+  still go to the issue whichever door was used, and that is not a preference: a
+  block on the pull request is a second source of truth the restore scan cannot
+  see. `applyPullRequestCommand` keeps refusing everything but `/review` even
+  though the resolver means nothing else can reach it, because a decision enforced
+  only by whichever layer filters first is one a second door quietly repeals.
+- **One model endpoint.** Everything goes through `openai-config.ts`; there are
+  no provider-specific keys and no second place a model is named. OpenCode is
+  never handed the real key: `provider-proxy.ts` holds it and `contain()` in
+  `index.ts` configures everything downstream with the placeholder, because the
+  SDK puts the config into the spawned server's environment where `bash` can
+  read it. Never pass `config.openai` to an OpenCode path — pass the contained
+  settings. That proxy is also where **transient failures are retried**, because
+  it is the one layer that sees a real HTTP status and the only one the review
+  loop's subprocesses also pass through; do not add a second retry in the
+  adapter, where the status is already gone.
+- **The retry budget is refused, never applied-then-regretted.** A `/retry` past
+  `maxAttempts` is turned down in `src/triggers.ts` before the signal reaches
+  `transition`, so the issue keeps `FAILED` and its `resumeFrom` and raising
+  `AGENT_MAX_ATTEMPTS` still resumes it. It used to be checked in `driveMachine`,
+  after `applyTrigger` had applied `RETRY` — which clears `resumeFrom` — so
+  spending the budget parked the issue in a handler phase that `/retry` (needs
+  `FAILED`) and a plain comment (needs a waiting phase) both refuse, reachable
+  only by `/cancel`, under a notice inviting the `/retry` that had just become
+  impossible. There is deliberately **one** such check and no backstop in the
+  cascade: forward moves reset `attempts`, so `RETRY` is the only way a spent
+  count reaches a handler. The invariant to preserve: no path may leave the
+  persisted state in a phase that has a handler but that no trigger can
+  re-enter. `refuseReviews`, beside it in the same file, is that invariant on the
+  other ceiling: a `/review` past `maxReviewAttempts` is refused before the
+  signal is applied, because applied and then regretted it would park the issue
+  in `CODE_REVIEW`, a handler phase no trigger re-enters, under a notice
+  inviting the command that had just become impossible. It is a separate
+  function rather than a branch inside `refuseExhausted` because the remedy
+  differs: nothing is parked, so `/retry` cannot help, and the notice has to name
+  `AGENT_MAX_REVIEW_ATTEMPTS`.
+- **An over-budget stop parks in `FAILED`; it does not stay put.** The token
+  check sits inside the cascade, before each handler, and cannot move to the
+  trigger layer the way the retry gate did: half its firings are mid-cascade
+  (`REVIEW_AND_MUTATE` → `PR_DELIVERY` → `COMPLETE` in one job), where the phase
+  has rightly advanced and there is no signal to refuse. So the **stop** carries
+  the invariant instead — `transition(FAILED)` with `resumeFrom` naming the
+  phase it refused to start, which is the recovery path that already exists and
+  is what makes "raise `AGENT_MAX_TOKENS`, reply `/retry`" true. Leaving the
+  phase alone stranded the issue in a handler phase, reachable only by
+  `/cancel`, on a first `/approve` with no failure involved. `attempts` is
+  **carried, not incremented**: running out of tokens is not a failed attempt,
+  and spending one would let the retry gate refuse the very `/retry` the token
+  notice asks for, citing a ceiling it never mentioned. The **answer** path is
+  the deliberate exception and moves nothing, for the reasons `failAnswer` moves
+  nothing — plus `COMPLETE` accepts no `FAILED`, so parking a question there
+  would throw out of the pipeline.
+- **A red run is acted on where the branch is live and no job is on it.**
+  `CI_FAILED` names two rows in `TRANSITIONS`, `COMPLETE` and `PR_DELIVERY`, and
+  the absences are the design. `PR_DELIVERY` is the genuine race: phase 3 pushes
+  the branch and posts a block naming that phase before phase 4 opens the pull
+  request, so a job that died in between left a live branch whose red checks were
+  refused as an invalid transition and dropped — nothing posted, no `ciAttempts`
+  spent, no trace but a `reason` string nobody reads. The four phases before the
+  branch exists stay out because `handleCiFix` would run the checks against a
+  branch cut from the base; `REVIEW_AND_MUTATE`, `CODE_REVIEW` and `CI_FIX` stay
+  out because the machine never persists them (a block is written only when a
+  handler posts, and all three post the phase they moved _to_ — which is also why
+  a check that goes red during a review is read against the `COMPLETE` block the
+  issue is still carrying), and honouring a hand-edited one would put a second
+  job on a branch another is mid-commit on — the concurrency group queues those
+  two, and since the pull-request door it does so by construction rather than by
+  coincidence: the group is the `agent` job's own, keyed on
+  `needs.resolve.outputs.branch`, and `resolve` derives that branch from the issue
+  number it parsed, whichever of the three kinds the event was. Two spellings
+  happening to agree was the old proof and it was never one; one number is. What
+  that buys is ordering and not safety — the second job is queued rather than
+  concurrent, which is exactly why the hand-edited block still must not be
+  honoured. **`FAILED`
+  stays out deliberately**, the close call: the branch is pushed there, but
+  `CI_FAILED` is a forward move, so it would reset `attempts` and leave the one
+  phase `/retry` accepts, and a fix that went green would park the issue in
+  `COMPLETE` announcing success for a delivery that never finished. Those red
+  checks are deferred behind the `/retry` the failure comment already asked for,
+  not abandoned. A refused red run **logs at `warn` with the phase** and posts
+  nothing, for the reason `settledPullRequest` sets out: CI fires on every push,
+  so a comment per red run is spam.
+- **A refusal a `/retry` cannot change is translated, not repeated.** `Actions is
+not permitted to create or approve pull requests` is a repository or
+  organisation setting, and the bare API message posted as-is reads like a bug in
+  the agent: it names a setting without saying where it lives, hides the fact
+  that the branch is pushed and only the API call is left, and leaves `/retry` as
+  the only visible move — which fails again, until the retry budget is spent on a
+  condition no retry could ever change. `pullRequestForbiddenError` names the
+  repository toggle, the organisation policy that overrides it, the
+  `AGENT_GITHUB_TOKEN` secret the workflow already prefers, and a prefilled
+  `compare` URL that needs no permissions at all. Matched on GitHub's sentence
+  rather than the status, and **only** that one: the same 403 covers a token
+  merely missing `pull-requests: write`, whose remedy is different, so widening
+  it sends that maintainer to tick a box that was never the problem. The compare
+  URL is built from `gitRemoteBase`, not github.com — an Enterprise Server
+  install answers on its own host, and a link into the wrong one is worse than
+  no link.
+- **A round budget belongs to a pull request, not to an issue.**
+  `handleDeliver` clears `ciAttempts`, `ciBudgetReported` and `reviewAttempts`
+  through `FRESH_PR_BUDGETS` on its `existing === null` branch — a genuinely new
+  pull request — and leaves all three alone when it refreshes the open one. The
+  constant is named for the **class** rather than for CI, which is what keeps the
+  next per-pull-request counter from being added to the state and forgotten here;
+  `reviewAttempts` joined it exactly that way, being the same fact about the same
+  thing — a review round is spent on the diff one pull request carries. The CI
+  pair used to reset nowhere at all, and `applyCiTrigger` short-circuits on
+  `ciBudgetReported` before it even looks the pull request up, so an issue that
+  burned its rounds on one pull request and then delivered a second got no fix
+  round on the new one and no comment explaining the silence. Do not extend the
+  reset to the refresh path: same branch, same commits, same checks that
+  spent the rounds, and a clean slate there is one broken branch bouncing off the
+  agent for as long as anyone keeps replying `/retry`.
+- **A feedback channel has exactly one door, and that door swallows
+  everything.** `react` in `feedback.ts` — with `unreact`, its mirror, which is
+  the same door read the other way and takes the same catch —
+  `reconcileLabels` in `labels.ts`, `attempt` in `status-reporter.ts`,
+  `persistState` in `state-persist.ts`, `refreshPullRequest` in
+  `phases/review.ts` and `noteReview` in `pull-request-note.ts` are the only
+  functions in their modules that call GitHub, and each catches every rejection
+  and degrades it to a
+  `warn`; a caller reaches the same `RunResult` and the same **persisted state**
+  it would have reached with the channel absent. `noteReview` is the newest and
+  the one that leaves the issue entirely: it posts the two-line pointer a
+  `/review` typed on a **pull request** earns — the loop's verdict, whether the
+  findings became commits, and the `#n` where the report and the state block went
+  — and it fires on the trigger **kind**, in a `switch` beside `feedback.ts`'s,
+  never on the phase, since `CODE_REVIEW` is reached identically through both
+  doors and a phase test would draw a pointer for a maintainer already reading the
+  report. It is its own module rather than a second `try` beside
+  `refreshPullRequest` for the reason the rule states, and `RunResult` is absent
+  from its signature the way it is from `StatusReporter.finish`: `reported` means
+  "the issue carries this run's account of what happened" and gates the workflow's
+  fallback comment, so a note on the pull request — which that comment neither
+  reads nor could reach — must leave the flag **unreachable**, not merely
+  untouched. An edit that wanted to set it would have to change the interface
+  first. `refreshPullRequest` is the one that shows what the rule is about,
+  because the very same `updatePullRequest` is not decoration everywhere:
+  in `handleDeliver` it **is** the work, so a rejection there is correctly fatal
+  and correctly resumed from `PR_DELIVERY`. In the review phase the loop has run
+  and its findings are already commits on a pushed branch, and the call only
+  re-renders a body around them — so letting it throw parked the issue in
+  `FAILED` with `resumeFrom: CODE_REVIEW`, and the `/retry` that failure comment
+  invites re-ran the _entire_ review loop, every `opencode run` subprocess of it
+  and another round off `AGENT_MAX_REVIEW_ATTEMPTS`, to repair a decoration.
+  Best-effort is a property of what a call is **for**, not of which endpoint it
+  hits. One door rather than a `try` per call site because best-effort has to be
+  a property of a function, not a convention: every write these
+  channels make is decoration on work that matters and a fresh way to break a
+  pipeline that used to work — a token without `issues: write`, a fork run, an
+  organisation restricting who may create a label, a secondary rate limit — and a
+  convention honoured at six call sites is honoured at five the day somebody
+  adds a seventh. Adapters do **not** anticipate the rule: `github-labels.ts`
+  rejects a 403 like any other transport, and only swallows the 422 that means
+  "this label already exists", because that is idempotence at the layer where an
+  HTTP status still exists. The accepted cost is stated at the catch in
+  `labels.ts` and is not an oversight: a `TypeError` from inside the reconcile
+  degrades to exactly the same `warn` as a 403, so a bug in a channel is
+  invisible to anyone not reading the log. It has been paid once already — a
+  stubbed transport answered the label read with the wrong shape,
+  `name.startsWith` threw into that catch, and the suite stayed green having
+  reconciled nothing. Sorting an `unknown` at the catch into "mine" and "theirs"
+  is how that gets fragile, so do not add the discrimination; add a test that
+  asserts the write. The workflow's `if: always()` label cleanup obeys the same
+  rule in YAML, with `|| echo`: a job whose only red step is the one taking a
+  label off has reported a failure that did not happen.
+- **A run says whether it reported, and the workflow reads that.** `RunResult`
+  carries `reported`, and `step-output.ts` turns it into a `reported=true` line
+  in `$GITHUB_OUTPUT`; the workflow's fallback "Agent job did not finish" comment
+  is gated on `steps.pipeline.outputs.reported != 'true'`. It used to be gated on
+  `if: failure()` alone, which selects **every** red job — and six paths exit 1
+  only after posting their own report (`failRun`, `failAnswer`, both over-budget
+  stops, `refuseExhausted`, the CI-budget notice), so every genuine failure drew
+  a second comment claiming "the issue state is unchanged" beside a block that
+  had just moved to `FAILED`. Only CI runs escaped, by accident:
+  `github.event.issue.number` is empty on a `workflow_run` event — which is why
+  the workflow now resolves the number from `workflow_run.head_branch` too, and
+  why that widening had to sit _inside_ the `reported` gate. Set `reported` on
+  any new terminal path from what that path **posted**, never from its status
+  — `failed` covers both a reported failure and a crash, and `skipped` covers
+  both a silent guardrail drop and a refused command that answered on the issue.
+  A throw is deliberately unmarked: that is the crash the fallback comment is
+  for. Writing the marker is best-effort and must never throw — `GITHUB_OUTPUT`
+  is absent on every `--event-path` run.
+- **`reported` means an account of what happened, so a status comment never sets
+  it.** The live status comment is what makes that distinction load-bearing
+  rather than pedantic: a run killed mid-phase leaves "🛠️ Writing and reviewing
+  the code — run in progress" on the issue, which is precisely the silence the
+  fallback comment exists to explain, and nothing ever corrects it — the process
+  that owned that comment is gone, and the next run opens its own. Marking it
+  reported would suppress the only comment that would have said why the issue
+  stopped. So `StatusReporter.finish` takes the `RunResult` and returns `void`:
+  the flag is **unreachable** from the channel, not merely left alone by habit,
+  and an edit that wanted to set it would have to change the interface first.
+  Keep it that way, and keep `finish` unable to _reject_: `runAccepted` awaits it
+  on the way out with the result already decided, so a channel that could throw
+  there would turn a finished run into a failed one. The rule above is what makes
+  that impossible. The finalising edit on a _returning_ path does not set the
+  flag either, though it safely could: the paths that report already do, and two
+  writers of one flag is how it drifts. Reactions and labels are the same
+  argument one step shorter — an emoji is not an account of anything, and
+  neither is a label.
+- **The token budget is per issue and persisted.** `tokensSpent` lives in the
+  state block; the orchestrator checks it before each phase. Budget on
+  **tokens**, never on `cost`: token counts come
+  from the provider's usage block, while cost is derived from OpenCode's model
+  catalogue and is `0` for any model it does not price. Read the total from
+  `session.get`, not by summing events — the check happens immediately after a
+  prompt returns, and an event-derived total is whatever has arrived by then.
+- **Every state block a job writes records the running total**, through
+  `recordSpend` in `token-budget.ts` — a phase that succeeded, one that threw,
+  and one the budget refused to start, all three. Written separately they drifted
+  apart at once: `runHandler` patched `tokensSpent` while `failRun` and
+  `failAnswer` did not, so a job that spent 250,000 tokens and then threw
+  persisted `0`. That is the worst possible place to be blind, because retries
+  **are** the failure path — the runaway this bounds is an issue bouncing through
+  `/retry` and CI-fix rounds, so an issue could burn the ceiling and hand the
+  next runner a clean slate, round after round. The figure is always
+  `carriedTokens` (the restored block, captured once) plus the job's session
+  total, never a per-phase sum: one job's session is already cumulative across
+  the phases it cascades through.
+- **Do not pay to classify a comment the budget cannot act on.** `applyIntent`
+  asks `withinBudget` before `classifyComment` and routes an over-budget comment
+  to the answer path, where the cascade's one stop reports it. The classifier is
+  the single model turn that posts nothing — its `none` branch deliberately
+  stays quiet, and this pipeline persists state by posting — so the ceiling has
+  to stop the turn rather than count it. A run **under** budget that classifies
+  `none` used to leak that turn outright and no longer does: `readAndSkip`
+  records it through `state-persist.ts`, which rewrites the newest state block in
+  place instead of appending a comment. That write is best-effort like every
+  other one this pipeline added, so a refused rewrite reports the figure the
+  issue actually carries rather than the one the run hoped to write.
+- **`INIT_OR_CLARIFY` classifies with the default inverted.** `applyClarifyIntent`
+  skips a comment only when the classifier positively reports `none`; every other
+  reading re-runs triage, which is what the phase used to do for every comment —
+  a "thanks", a 👍 or a bystander's aside each bought a full triage turn. It
+  cannot reuse `applyIntent`: that bias exists to protect an approved artefact and
+  there is none here, so a misread answer is not one cheap extra reply but a
+  stalled conversation, the agent answering its own clarifying questions back at
+  the maintainer while the issue stays parked. `question` is deliberately **not**
+  admitted as a skip-to-answer for the same reason — in this phase it is the
+  bucket every failure and ambiguity lands in, not a verdict, so honouring it
+  would stall exactly the comments least able to survive it. A blank body (the
+  `issues.opened` event that starts every issue) and an over-budget issue both
+  skip the classifier and fall through to triage, where the cascade's own stop
+  reports the ceiling — the rule above, one model turn cheaper. This is the one
+  phase `buildClassifyPrompt` briefs on what the phase means, because `none` is
+  now load-bearing and a real answer is often a bare fragment that reads as
+  chatter to a phase-blind classifier.
+- **Bounds go on the finished prompt, and on waiting.** `prompt-budget.ts` caps
+  what reaches the model — per prompt, not per input, since a per-input cap
+  bounds one log and nothing else. `deadline.ts` bounds waiting for a model turn;
+  it cannot cancel the request and does not claim to. What both buy is a failure
+  the pipeline can report, instead of a runner killed by `timeout-minutes`, which
+  posts nothing at all.
+- **Ask for JSON through `promptForJson`, not `agent.prompt` + `parseModelJson`.**
+  It re-asks once with the validation complaint attached. Once, not until it
+  works.
+- **Progress reporting never carries content.** `activity.ts` decodes OpenCode's
+  event stream through schemas that name only the scalar fields they want, so
+  tool input, tool output, model text and a provider's error message have
+  nowhere to land. Do not widen a schema to "make the log more useful": a CI log
+  is world-readable on a public repository and is _not_ covered by the outbound
+  redaction in `github.ts`. Names, statuses and counts only. Every shape there is
+  recorded from a live server — re-record rather than adjusting by inspection,
+  and note that the SDK's generated `Event` union is already behind its own
+  server, which is why each decode is a `safeParse` yielding `null`.
+- **Capabilities are deny-by-default.** `openai-config.ts` grants tools by name
+  on top of `"*": "deny"`, per agent profile: `plan` (the read-only phases)
+  cannot edit or run commands, `build` can. Add a capability by naming it, never
+  by widening the wildcard. Credentials are scrubbed from `process.env`
+  (`secrets.ts`) before anything spawns, because the OpenCode server inherits it
+  wholesale — so never reintroduce a code path that reads a secret from `env`
+  after `runCli` has loaded config. Outbound text is redacted in `github.ts`, at
+  the boundary: never move that into a renderer, and never add a `GitHubApi`
+  method that sends free text without passing it through `clean`. `diff-guard.ts`
+  inspects the index between `git add --all` and the commit; its `parseNumstat`
+  fixtures are recorded from real git output, so re-record rather than adjust
+  them by inspection. That inspection also **measures** what it lets through:
+  `commitAll` returns `StagedTotals | null` rather than a boolean — `null` for a
+  tree that was already clean — and `changedLines` rides out on it into the state
+  block, where the delivery comment sizes its `/review` recommendation against
+  `reviewHintLines`. The figure was already computed to refuse a runaway commit
+  and was being thrown away. Keep it a **count**, never a `shouldReview` flag: a
+  verdict frozen at commit time can only disagree with the threshold the config
+  carries when the comment is read. `measure`'s `binaries` deliberately does not
+  ride along — a commit that got past the guard has none, so that list is a
+  working detail of judging a change set rather than a fact about one.
+- Untrusted text (issue bodies, comments, **check output**) must go through the
+  envelope from `prompts.ts` before reaching a prompt, and commands must be
+  spawned as argv vectors with `shell: false`. The envelope is only as good as
+  its three legs: a random per-prompt id, neutralising _every_ delimiter-shaped
+  run rather than the one that would have matched, and `composeSystemPrompt`
+  stating the rule for that same id. `mintEnvelope()` is called once per handler
+  and its `nonce` passed to both the system prompt and the user prompt — the
+  `SystemPromptInput.nonce` field exists to make forgetting that a type error.
+- No `await` inside a loop body (repo lint). Sequential iteration goes through
+  `src/sequence.ts` (`mapSeries`, `firstMatch`) or tail recursion.
+- One class per file: pipeline failures are constructed through the factories in
+  `src/errors.ts` rather than new error subclasses.
+- Tests live in `tests/opencode-agent/`, follow `tests/CLAUDE.md`, and must not
+  touch the network. The one exception is `live-sdk.integration.ts`, which is
+  deliberately not a `*.test.ts` so default discovery skips it; it needs the
+  `opencode` CLI and is run via `bun run opencode-agent:test:live`.
+- When a command test asserts an outcome, assert the **persisted state**, not
+  just the returned status — a state that is never posted never happened.
+- **The SDK response shapes are recorded, not guessed.** `sdk-contract.ts`'s
+  `decodeSessionId` and `decodeReply` decode `{ data, error }` through a schema;
+  the fixtures in `adapters.test.ts` come from a live run. When the
+  `@opencode-ai/sdk` pin moves, re-run the live check and re-record rather than
+  adjusting the decoders by inspection. Note the asymmetry: request/response
+  payloads sit under `data`, but an event from the `/event` stream carries its
+  `type` and `properties` at the top level. Note too that an SSE stream does
+  **not** end when its server does — the client reconnects for ever unless
+  `sseMaxRetryAttempts: 0` is passed, so never make teardown wait for a stream to
+  run out.
+
+## Dependencies
+
+- `@octokit/rest` — GitHub REST access, behind `src/github.ts`.
+- `@opencode-ai/sdk` — headless OpenCode server + session, behind
+  `src/opencode-adapter.ts`.
+- `zod` — payload, config and model-reply validation (shared with root).
+
+The first two sit in `devDependencies` even though the pipeline needs them at
+run time: this workspace is developer tooling that never runs inside the papai
+container, and the Dockerfile's `prod-deps` stage installs with `--production`.
+The Actions workflow runs a plain `bun install --frozen-lockfile`, so both are
+present there.
+
+The workflow additionally installs the `opencode` CLI (the review-loop workspace
+shells out to `opencode run`) and checks out `obra/superpowers` to `.superpowers/`.
+Both of those paths, plus the generated `.opencode-agent/` run inputs, are
+gitignored — `git add --all` in the implement phase would otherwise commit them.

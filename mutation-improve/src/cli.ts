@@ -8,6 +8,7 @@ import path from 'node:path'
 import { runAgent } from '../../review-loop/src/agent-runner.js'
 import { createShellExec, runBuildCheck } from '../../review-loop/src/build-checker.js'
 import { LiveRenderer } from '../../review-loop/src/live-renderer.js'
+import { RunStats } from '../../review-loop/src/run-stats.js'
 import { realSpawn } from '../../review-loop/src/spawn.js'
 import {
   createWorktree,
@@ -22,9 +23,10 @@ import { type MutationImproveConfig, loadMutationImproveConfig } from './config.
 import { assertIntegrationBranch, runFinalize } from './finalize.js'
 import { type IterationResult, runPipeline, type PipelineDeps } from './pipeline.js'
 import { ResultSchema } from './result-schema.js'
-import { createRunState, loadRunState, saveRunState, type MutationImproveRunState } from './run-state.js'
+import { createRunState, loadRunState, persistStats, saveRunState, type MutationImproveRunState } from './run-state.js'
 import { measureMutationScore } from './score-reader.js'
 import { SelectionSchema } from './selection-schema.js'
+import { buildRunSummary } from './summary.js'
 
 export interface CliArgs {
   configPath: string
@@ -143,6 +145,7 @@ function buildPipelineDeps(
   runState: MutationImproveRunState,
   log: LiveRenderer,
   cappedRegistry: CappedRegistryStore,
+  stats: RunStats,
 ): PipelineDeps {
   return {
     config,
@@ -166,7 +169,10 @@ function buildPipelineDeps(
     runSelectAgent: selectRunner(config, runState, log),
     runImproveAgent: improveRunner(config, runState, log),
     cappedRegistry,
-    saveRunState,
+    saveRunState: async (state) => {
+      persistStats(state, stats)
+      await saveRunState(state)
+    },
     log,
   }
 }
@@ -226,8 +232,9 @@ export async function runCli(argv: readonly string[]): Promise<void> {
   // capped files and re-enter the re-pick loop it exists to prevent).
   const cappedRegistry = await loadCappedRegistryStore(config.workDir, runState.runId)
 
-  const log = new LiveRenderer(process.stdout)
-  const deps = buildPipelineDeps(config, runState, log, cappedRegistry)
+  const stats = RunStats.rehydrate(runState.stats, { pricing: config.pricing })
+  const log = new LiveRenderer(process.stdout, stats)
+  const deps = buildPipelineDeps(config, runState, log, cappedRegistry, stats)
   // I1: try/finally guarantees saveRunState runs even if runPipeline throws
   // (e.g. AgentRunError mid-pipeline), so --resume-run sees the last-known
   // in-memory progress instead of losing everything to a throw.
@@ -238,8 +245,11 @@ export async function runCli(argv: readonly string[]): Promise<void> {
     results = pipelineOut.results
     aborted = pipelineOut.aborted
   } finally {
+    persistStats(runState, stats)
     await saveRunState(runState)
   }
+
+  console.log(buildRunSummary({ runState, results, stats: stats.snapshot(), aborted }))
 
   const failed = results.filter((r) => r.outcome === 'failed')
   if (!args.noPr && runState.merged.length > 0 && !aborted) {

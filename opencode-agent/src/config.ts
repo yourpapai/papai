@@ -1,0 +1,232 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { existsSync } from 'node:fs'
+
+import { z } from 'zod'
+
+import type { CheckSpec } from './check-loop.js'
+import { resolveReviewCommand } from './config-discovery.js'
+import {
+  boundedInt,
+  ConfigError,
+  FILES_RANGE,
+  labelPrefix,
+  LINES_RANGE,
+  optional,
+  optionalOrNull,
+  POOL_RANGE,
+  required,
+  ROUND_RANGE,
+  TIMEOUT_RANGE,
+  TOKEN_RANGE,
+} from './config-values.js'
+import type { Env } from './config-values.js'
+import type { DiffLimits } from './diff-guard.js'
+import type { OpenAiSettings } from './openai-config.js'
+import { parseRepository } from './repository.js'
+
+// Re-exported so the many modules that already import them from here keep
+// working; they are declared next to the validators that raise and consume them.
+export { ConfigError } from './config-values.js'
+export type { Env } from './config-values.js'
+
+const checkSpecSchema = z.object({ name: z.string().min(1), argv: z.array(z.string().min(1)).min(1) })
+
+/** Checks the CI-fix loop runs when the repo does not declare its own. */
+export const DEFAULT_CHECKS: readonly CheckSpec[] = [
+  { name: 'lint', argv: ['bun', 'run', 'lint'] },
+  { name: 'typecheck', argv: ['bun', 'run', 'typecheck'] },
+  { name: 'test', argv: ['bun', 'test'] },
+]
+
+export interface PipelineConfig {
+  repoRoot: string
+  owner: string
+  repo: string
+  githubToken: string
+  /**
+   * `AGENT_SELF_LOGIN`, or `null` to derive it from the token.
+   *
+   * Not defaulted to the owner here: that default was indistinguishable from a
+   * deliberate choice, and it is wrong for every token that posts as a bot.
+   * `resolveSelfLogin` owns the fallback, and warns when it takes it.
+   */
+  selfLoginOverride: string | null
+  /** This pipeline's workflow name, so its own red runs do not re-trigger it. */
+  selfWorkflowName: string
+  openai: OpenAiSettings
+  commitAuthorName: string
+  commitAuthorEmail: string
+  /** Build gate the review loop runs between rounds. */
+  checkCommand: string
+  /** Argv that runs the review loop, or `null` when this repo has none. */
+  reviewCommand: readonly string[] | null
+  /** Commands the CI-fix phase runs locally to reproduce a red pull request. */
+  checks: readonly CheckSpec[]
+  reviewMaxRounds: number
+  reviewPoolSize: number
+  agentTimeoutMs: number
+  /** Model tokens one issue may spend, across every job it runs. */
+  maxTokens: number
+  ciFixMaxRounds: number
+  /** Ceiling on CI-fix rounds across the whole life of one pull request. */
+  maxCiAttempts: number
+  /** Ceiling on `/review` rounds across the whole life of one pull request. */
+  maxReviewAttempts: number
+  /**
+   * Diff size, in changed lines, above which a delivery recommends `/review`.
+   *
+   * A threshold rather than a rule: the delivery comment names the command
+   * whatever the figure is, and this only decides whether it also says it would
+   * run it. Read where the comment is written rather than baked into the state
+   * block, so lowering it applies to every issue in flight rather than only to
+   * the ones implemented after the change.
+   */
+  reviewHintLines: number
+  /** Above this, a FAILED issue stops auto-retrying and waits for `/retry`. */
+  maxAttempts: number
+  /** Ceilings a staged change set must stay under before it is committed. */
+  diffLimits: DiffLimits
+  /**
+   * Base URL the git credential header is scoped to. Configurable because the
+   * pipeline is not GitHub.com-only: an Enterprise Server install answers on its
+   * own host, and a header scoped to the wrong one is silently not sent.
+   */
+  gitRemoteBase: string
+  /**
+   * The Actions run executing this pipeline, or `null` when there is not one.
+   *
+   * Nullable rather than required because a local `--event-path` run is an
+   * ordinary way to use this CLI, not a misconfiguration — so every renderer
+   * that takes this has to be able to say nothing rather than link nowhere.
+   */
+  runUrl: string | null
+  /**
+   * Namespace every label this pipeline writes lives under, or `null` when
+   * `AGENT_LABEL_PREFIX=none` switches labelling off.
+   *
+   * Nullable rather than an empty string: an empty prefix would make *every*
+   * label on the issue look agent-owned to the reconcile, which removes any it
+   * cannot account for — so the one value that reads as "no namespace" is the
+   * one value that must never reach it.
+   */
+  labelPrefix: string | null
+  skillRoots: readonly string[]
+}
+
+/**
+ * The namespace labels take when the operator names none.
+ *
+ * Exported for the same reason `REPORTED_OUTPUT` is: the workflow's label
+ * cleanup step has to default the prefix in shell, where it cannot import
+ * anything, so `tests/opencode-agent/workflow.test.ts` pins that literal against
+ * this one rather than letting two spellings of the default drift apart.
+ */
+export const DEFAULT_LABEL_PREFIX = 'agent:'
+
+export const parseChecks = (raw: string | undefined): readonly CheckSpec[] => {
+  if (raw === undefined || raw.trim().length === 0) return DEFAULT_CHECKS
+
+  const parsed = z.array(checkSpecSchema).min(1).safeParse(safeJson(raw))
+  if (!parsed.success) throw new ConfigError(`AGENT_CHECKS is not a valid check list: ${parsed.error.message}`)
+  return parsed.data
+}
+
+const safeJson = (raw: string): unknown => {
+  try {
+    return JSON.parse(raw)
+  } catch {
+    throw new ConfigError('AGENT_CHECKS must be valid JSON')
+  }
+}
+
+/**
+ * Reads the single model endpoint.
+ *
+ * `LLM_MODEL` is required rather than defaulted: with a custom base URL there
+ * is no model name that is right by default, and a wrong guess surfaces deep
+ * inside the first model call instead of here. `LLM_BASE_URL` is required for
+ * the same reason: defaulting it to OpenAI's own endpoint made a missing
+ * value look like a deliberate choice instead of a misconfiguration, and this
+ * pipeline is built around one arbitrary configured endpoint, not OpenAI
+ * specifically.
+ */
+export const loadOpenAiSettings = (env: Env): OpenAiSettings => ({
+  apiKey: required(env, 'LLM_API_KEY'),
+  baseUrl: required(env, 'LLM_BASE_URL'),
+  model: required(env, 'LLM_MODEL'),
+})
+
+/** Skill roots searched in order; the vendored superpowers checkout wins. */
+const DEFAULT_SKILL_ROOTS = ['.superpowers/skills', '.claude/skills'] as const
+
+/**
+ * Builds the URL of the run this process is executing in.
+ *
+ * No workflow change is needed for any of it: GitHub sets `GITHUB_RUN_ID`,
+ * `GITHUB_RUN_ATTEMPT`, `GITHUB_SERVER_URL` and `GITHUB_REPOSITORY` in the
+ * environment of every step, and `scrubSecrets` matches by *value*, so none of
+ * them is stripped on the way past. `serverBase` is the same value
+ * `gitRemoteBase` carries, for the same reason it is configurable at all — an
+ * Enterprise Server install answers on its own host.
+ *
+ * The attempt segment is appended only above 1. GitHub's own run link omits it
+ * on a first attempt, and a re-run's logs live under the attempt path, so a job
+ * on attempt 3 linking `/attempts/1` would point a maintainer at the logs of the
+ * run it superseded. An unparseable attempt is treated as a first one rather
+ * than rejected: this is a link, and a config error over decoration would fail
+ * the run the link exists to explain.
+ */
+const buildRunUrl = (env: Env, serverBase: string, owner: string, repo: string): string | null => {
+  const runId = optionalOrNull(env, 'GITHUB_RUN_ID')
+  if (runId === null) return null
+
+  const attempt = Number.parseInt(optional(env, 'GITHUB_RUN_ATTEMPT', '1'), 10)
+  const suffix = Number.isSafeInteger(attempt) && attempt > 1 ? `/attempts/${attempt}` : ''
+  return `${serverBase}${owner}/${repo}/actions/runs/${runId}${suffix}`
+}
+
+/** Builds the pipeline config from the runner environment. */
+export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
+  const { owner, repo } = parseRepository(required(env, 'GITHUB_REPOSITORY'))
+  const gitRemoteBase = optional(env, 'GITHUB_SERVER_URL', 'https://github.com').replace(/\/*$/u, '/')
+
+  return {
+    repoRoot,
+    owner,
+    repo,
+    githubToken: required(env, 'GITHUB_TOKEN'),
+    selfLoginOverride: optionalOrNull(env, 'AGENT_SELF_LOGIN'),
+    selfWorkflowName: optional(env, 'AGENT_WORKFLOW_NAME', 'OpenCode Issue Agent'),
+    openai: loadOpenAiSettings(env),
+    gitRemoteBase,
+    runUrl: buildRunUrl(env, gitRemoteBase, owner, repo),
+    labelPrefix: labelPrefix(env, 'AGENT_LABEL_PREFIX', DEFAULT_LABEL_PREFIX),
+    commitAuthorName: optional(env, 'AGENT_COMMIT_NAME', 'opencode-agent[bot]'),
+    commitAuthorEmail: optional(env, 'AGENT_COMMIT_EMAIL', 'opencode-agent@users.noreply.github.com'),
+    checkCommand: optional(env, 'AGENT_CHECK_COMMAND', 'bun run lint && bun run typecheck && bun test'),
+    reviewCommand: resolveReviewCommand(env['AGENT_REVIEW_COMMAND'], repoRoot, existsSync),
+    checks: parseChecks(env['AGENT_CHECKS']),
+    reviewMaxRounds: boundedInt(env, 'AGENT_REVIEW_MAX_ROUNDS', 4, ROUND_RANGE),
+    reviewPoolSize: boundedInt(env, 'AGENT_REVIEW_POOL_SIZE', 2, POOL_RANGE),
+    agentTimeoutMs: boundedInt(env, 'AGENT_TIMEOUT_MS', 1_800_000, TIMEOUT_RANGE),
+    ciFixMaxRounds: boundedInt(env, 'AGENT_CI_FIX_MAX_ROUNDS', 2, ROUND_RANGE),
+    maxCiAttempts: boundedInt(env, 'AGENT_MAX_CI_ATTEMPTS', 3, ROUND_RANGE),
+    maxReviewAttempts: boundedInt(env, 'AGENT_MAX_REVIEW_ATTEMPTS', 3, ROUND_RANGE),
+    // `LINES_RANGE`, the same bound `AGENT_MAX_CHANGED_LINES` takes, because it
+    // is the same quantity read off the same measurement — and because both ends
+    // matter here too: 0 would recommend a review on every delivery, which is
+    // the same as having no recommendation.
+    reviewHintLines: boundedInt(env, 'AGENT_REVIEW_HINT_LINES', 200, LINES_RANGE),
+    maxAttempts: boundedInt(env, 'AGENT_MAX_ATTEMPTS', 3, ROUND_RANGE),
+    maxTokens: boundedInt(env, 'AGENT_MAX_TOKENS', 5_000_000, TOKEN_RANGE),
+    diffLimits: {
+      maxFiles: boundedInt(env, 'AGENT_MAX_CHANGED_FILES', 100, FILES_RANGE),
+      maxLines: boundedInt(env, 'AGENT_MAX_CHANGED_LINES', 20_000, LINES_RANGE),
+    },
+    skillRoots: DEFAULT_SKILL_ROOTS,
+  }
+}

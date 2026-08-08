@@ -223,6 +223,58 @@ describe('buildSummary artifacts', () => {
   })
 })
 
+describe('buildSummary stats line', () => {
+  test('buildSummary appends a Stats line when stats are present', () => {
+    const summary = buildSummary(
+      inputOf({
+        stats: {
+          totals: {
+            input: 228_800,
+            output: 41_200,
+            reasoning: 0,
+            toolCalls: 37,
+            added: 412,
+            removed: 87,
+            estimatedCostUsd: 1.02,
+            elapsedMs: 252_000,
+          },
+          perLabel: {},
+        },
+      }),
+    )
+    expect(summary).toContain('Stats: tools 37 · +412/-87 · ~$1.02 est')
+  })
+
+  test('buildSummary omits the Stats line when stats are absent', () => {
+    expect(buildSummary(inputOf())).not.toContain('Stats:')
+  })
+
+  test('buildSummary omits the Stats line when all totals are zero', () => {
+    const summary = buildSummary(
+      inputOf({
+        stats: {
+          totals: { input: 0, output: 0, reasoning: 0, toolCalls: 0, added: 0, removed: 0, elapsedMs: 1000 },
+          perLabel: {},
+        },
+      }),
+    )
+    expect(summary).not.toContain('Stats:')
+  })
+
+  test('buildSummary Stats line shows only non-zero segments', () => {
+    const summary = buildSummary(
+      inputOf({
+        stats: {
+          totals: { input: 0, output: 0, reasoning: 0, toolCalls: 0, added: 5, removed: 0, elapsedMs: 1000 },
+          perLabel: {},
+        },
+      }),
+    )
+    expect(summary).toContain('Stats: +5/-0')
+    expect(summary).not.toContain('tools 0')
+  })
+})
+
 describe('buildMetricsJson', () => {
   test('keeps the existing shape', () => {
     const json = buildMetricsJson('max_rounds', 2, 1, [busyMetric(1)], { poolSize: 1, inspect: false })
@@ -230,5 +282,168 @@ describe('buildMetricsJson', () => {
     expect(json.rounds).toBe(2)
     expect(json.totals.closed).toBe(1)
     expect(json.usage.inputTokens).toBe(120_000)
+  })
+
+  test('buildMetricsJson includes runStats when provided', () => {
+    const runStats = {
+      totals: { input: 1, output: 2, reasoning: 0, toolCalls: 3, added: 4, removed: 5, estimatedCostUsd: 0.01 },
+      perLabel: {},
+    }
+    const metrics = buildMetricsJson('clean', 1, 0, [], { poolSize: 1, inspect: false }, runStats)
+    expect(metrics.runStats).toEqual(runStats)
+  })
+
+  test('buildMetricsJson omits the runStats key when not provided', () => {
+    const json = buildMetricsJson('max_rounds', 2, 1, [busyMetric(1)], { poolSize: 1, inspect: false })
+    expect('runStats' in json).toBe(false)
+  })
+})
+
+describe('buildSummary verdict edges', () => {
+  test('alreadyFixed issues appear in the done verdict breakdown', () => {
+    const ledger = ledgerOf(makeRecord('already_fixed'))
+    const summary = buildSummary(inputOf({ ledger }))
+    expect(summary.split('\n')[0]).toBe('Review loop finished: done — 1 issue: 1 already fixed.')
+  })
+
+  test('zero fixed count is omitted from the done breakdown', () => {
+    const ledger = ledgerOf(makeRecord('rejected'))
+    const summary = buildSummary(inputOf({ ledger }))
+    expect(summary.split('\n')[0]).toBe('Review loop finished: done — 1 issue: 1 rejected.')
+  })
+
+  test('open issues with no decided issues produce no breakdown suffix', () => {
+    const ledger = ledgerOf(makeRecord('verified'))
+    const summary = buildSummary(inputOf({ ledger }))
+    expect(summary.split('\n')[0]).toBe('Review loop finished: issues remaining — 1 open.')
+  })
+})
+
+const MINIMAL_SUMMARY = [
+  'Review loop finished: clean — reviewer found no issues in 1 round.',
+  'Duration: 3m20s wall · phases 0s (no phase timing recorded) · Tokens: in 0 / out 0 / reasoning 0',
+  '',
+  'Artifacts (/repo/.review-loop/runs/run-1):',
+  '  summary.txt · metrics.json · ledger.json · trace.jsonl · agent-output.log · state.json',
+].join('\n')
+
+describe('buildSummary exact structure', () => {
+  test('minimal summary with no optional sections has exact five-line structure', () => {
+    expect(buildSummary(inputOf())).toBe(MINIMAL_SUMMARY)
+  })
+
+  test('inspector line is omitted when inspect is disabled even with runs', () => {
+    const metric = zeroMetric(1)
+    metric.inspector = { runs: 4, rejected: 2 }
+    const summary = buildSummary(inputOf({ metrics: [metric], options: { poolSize: 1, inspect: false } }))
+    expect(summary).toBe(MINIMAL_SUMMARY)
+  })
+
+  test('multiple nonzero phases join with comma separator', () => {
+    const metric = busyMetric(1)
+    metric.phaseMs = { review: 1000, match: 0, verify: 0, build: 0, inspect: 0, fix: 2000 }
+    const summary = buildSummary(inputOf({ metrics: [metric] }))
+    expect(summary.split('\n')[1]).toBe(
+      'Duration: 3m20s wall · phases 3s (review 1.0s, fix 2.0s) · Cost: $1.234 (in 120,000 / out 8,000 / reasoning 3,000)',
+    )
+  })
+
+  test('rounds line omits pool when poolSize is 1', () => {
+    const summary = buildSummary(inputOf({ rounds: 3 }))
+    expect(summary.split('\n')[2]).toBe('Rounds: 3')
+  })
+})
+
+describe('buildSummary inspector line', () => {
+  test('inspector line shows runs, rejected, and reject rate when inspect is enabled', () => {
+    const metric = busyMetric(1)
+    metric.inspector = { runs: 4, rejected: 2 }
+    const summary = buildSummary(inputOf({ metrics: [metric], options: { poolSize: 1, inspect: true } }))
+    expect(summary.split('\n')[2]).toBe('Inspector: 4 runs, 2 rejected (50.0% reject rate)')
+  })
+
+  test('inspector line is omitted when inspect is enabled but runs is zero', () => {
+    const metric = zeroMetric(1)
+    metric.inspector = { runs: 0, rejected: 0 }
+    const summary = buildSummary(inputOf({ metrics: [metric], options: { poolSize: 1, inspect: true } }))
+    expect(summary).toBe(MINIMAL_SUMMARY)
+  })
+})
+
+describe('buildSummary stats and issues edges', () => {
+  test('stats line shows diff with zero added and nonzero removed', () => {
+    const summary = buildSummary(
+      inputOf({
+        stats: {
+          totals: { input: 0, output: 0, reasoning: 0, toolCalls: 0, added: 0, removed: 7, elapsedMs: 1000 },
+          perLabel: {},
+        },
+      }),
+    )
+    expect(summary.split('\n')[2]).toBe('Stats: +0/-7')
+  })
+
+  test('issues block has blank separator then Issues header', () => {
+    const ledger = ledgerOf(makeRecord('closed'))
+    const summary = buildSummary(inputOf({ ledger }))
+    const lines = summary.split('\n')
+    expect(lines[2]).toBe('')
+    expect(lines[3]).toBe('Issues:')
+  })
+
+  test('exactly 20 issues in a group produce no overflow note', () => {
+    const records = Array.from({ length: 20 }, () => makeRecord('needs_human'))
+    const summary = buildSummary(inputOf({ ledger: ledgerOf(...records) }))
+    const lines = summary.split('\n')
+    const bangLines = lines.filter((l) => l.startsWith('    ! #'))
+    const overflowLines = lines.filter((l) => l.startsWith('    …and'))
+    expect(bangLines.length).toBe(20)
+    expect(overflowLines.length).toBe(0)
+  })
+
+  test('burndown block is preceded by exactly one blank separator', () => {
+    const summary = buildSummary(inputOf({ metrics: [busyMetric(1)] }))
+    const lines = summary.split('\n')
+    const burndownIdx = lines.findIndex((l) => l === 'Burndown:')
+    expect(lines[burndownIdx - 1]).toBe('')
+  })
+})
+
+describe('buildMetricsJson aggregation', () => {
+  test('sums decision keys across rounds', () => {
+    const m1 = busyMetric(1)
+    const m2 = zeroMetric(2)
+    m2.decisions.invalid = 2
+    m2.decisions.already_fixed = 3
+    m2.decisions.needs_human = 1
+    const json = buildMetricsJson('max_rounds', 2, 5, [m1, m2], { poolSize: 1, inspect: false })
+    expect(json.totals.rejected).toBe(3)
+    expect(json.totals.alreadyFixed).toBe(3)
+    expect(json.totals.needsHuman).toBe(1)
+  })
+
+  test('reads open from the last metric cumulativeOpen', () => {
+    const m1 = busyMetric(1)
+    const m2 = zeroMetric(2)
+    m2.cumulativeOpen = 5
+    const json = buildMetricsJson('max_rounds', 2, 3, [m1, m2], { poolSize: 1, inspect: false })
+    expect(json.totals.open).toBe(5)
+  })
+
+  test('burndown copies every metric in order', () => {
+    const json = buildMetricsJson('max_rounds', 2, 1, [busyMetric(1), zeroMetric(2)], {
+      poolSize: 1,
+      inspect: false,
+    })
+    expect(json.burndown.length).toBe(2)
+    expect(json.burndown[0]!.round).toBe(1)
+    expect(json.burndown[1]!.round).toBe(2)
+  })
+
+  test('sums inspector rejected across rounds', () => {
+    const metric = busyMetric(1)
+    metric.inspector = { runs: 4, rejected: 2 }
+    const json = buildMetricsJson('max_rounds', 2, 1, [metric], { poolSize: 1, inspect: true })
+    expect(json.totals.inspectorRejected).toBe(2)
   })
 })

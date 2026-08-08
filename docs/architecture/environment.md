@@ -51,7 +51,7 @@ Both keyrings are parsed into typed states and are never logged or echoed. Aggre
 
 **File attachments (S3-compatible):** required to receive/persist/attach files. `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` (required); `S3_ENDPOINT` (required for non-AWS: MinIO/R2/B2), `S3_REGION`, `S3_PREFIX`, `S3_FORCE_PATH_STYLE=true` for MinIO (optional).
 
-**Dashboard (`DEBUG_SERVER=true`):** the dashboard requires a session cookie minted via the bot — DM `/dashboard` for a one-time sign-in link. `DASHBOARD_BASE_URL` (default `SETTINGS_PUBLIC_BASE_URL`, else `http://{DEBUG_HOSTNAME}:{DEBUG_PORT}`), `DASHBOARD_SESSION_TTL_SECONDS` (default `28800`), `DASHBOARD_CLAIM_TTL_SECONDS` (default `300`). See `docs/deployment/dashboard-access.md`.
+**Dashboard (`DEBUG_SERVER=true`):** the dashboard requires a session cookie minted via the bot — DM `/dashboard` for a one-time sign-in link. `DASHBOARD_BASE_URL` (default `SETTINGS_PUBLIC_BASE_URL`, else `http://{DEBUG_HOSTNAME}:{DEBUG_PORT}`), `DASHBOARD_SESSION_TTL_SECONDS` (default `28800`), `DASHBOARD_CLAIM_TTL_SECONDS` (default `300`).
 
 **`MAGI_TRANSCRIPT_BASE_URL`** — **not** a papai env var. It configures the external **magi** control service with papai's public origin, which magi uses to build the `transcriptUrl` it mints and returns per coding session (see `docs/architecture/coding-sessions.md` § Transcript viewer). papai's `/t/*` viewer routes need **no** new env var of their own — the proxy reads magi's base URL and bearer token from the acp plugin's admin config (`magi_base_url`/`magi_token` via `getPluginAdminConfig`), the same config already used for outbound ACP calls.
 

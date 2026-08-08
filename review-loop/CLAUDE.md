@@ -9,7 +9,11 @@
 - The default `workDir` is `.review-loop/` relative to `repoRoot` (see `config.example.json`). The directory is created on demand via `mkdir`.
 - Per-run state lives at `<workDir>/runs/<runId>/state.json` (see `src/run-state.ts`).
 - Progress logs and transcripts land alongside the run state (see `src/progress-log.ts`).
-- `config.example.json` at the workspace root documents the expected config shape; real configs are loaded from the path passed via `--config` (defaults to `.review-loop/config.json`).
+- `config.example.json` at the workspace root documents the expected config shape; real configs are loaded from the path passed via `--config` (defaults to `.review-loop/config.json`). The optional top-level `pricing` map (USD per 1M tokens, glob-matched against the agent model) enables estimated-cost display.
+
+## Run Stats
+
+`src/run-stats.ts` (pure aggregate), `src/cost.ts` (pricing lookup), and `src/diff-stats.ts` (git numstat at worker merges) feed the `LiveRenderer` footer's aggregate segments (total tokens, `~$ est`, tool calls, `+a/-r`) and the final summary's `Stats:` line. Aggregates persist to `metrics.json` (`runStats` block) and rehydrate on `--resume-run`; stats accumulation is independent of the EPIPE downgrade, and segments are hidden when zero/unpriced.
 
 ## Scripts
 

@@ -35,7 +35,7 @@ is_license_header_file() {
         *) return 1 ;;
       esac
       ;;
-    src/*|client/*|scripts/*|review-loop/src/*|tests/*|drizzle.config.ts)
+    src/*|client/*|scripts/*|review-loop/src/*|opencode-agent/src/*|tests/*|drizzle.config.ts)
       case "$file" in
         *.ts|*.tsx|*.js|*.jsx) return 0 ;;
         *) return 1 ;;
@@ -48,7 +48,7 @@ is_license_header_file() {
 is_oxlint_scoped_file() {
   local file="$1"
   case "$file" in
-    src/*|client/*|scripts/*|review-loop/src/*|tests/*|drizzle.config.ts)
+    src/*|client/*|scripts/*|review-loop/src/*|opencode-agent/src/*|tests/*|drizzle.config.ts)
       case "$file" in
         *.ts|*.tsx|*.js|*.jsx) return 0 ;;
         *) return 1 ;;
@@ -208,15 +208,39 @@ if [ "$STAGED_MODE" = true ]; then
       case "$file" in
         package-lock.json|*/package-lock.json) keep=false ;;
       esac
+      # This sweep has to reach the same verdict oxfmt will, because the two
+      # disagreeing is not a mismatched warning — it is a failed commit. oxfmt
+      # exits 2 with "Expected at least one target file" when everything handed
+      # to it is ignored, so a staged set this loop thinks is formattable and
+      # oxfmt thinks is empty reports a formatting failure that does not exist.
+      # That was every commit touching only `opencode-agent/docs/`: the patterns
+      # were matched anchored at the start of the path, so `docs/` caught
+      # `docs/a.md` and missed `opencode-agent/docs/a.md`, while oxfmt read the
+      # same pattern out of the same file and dropped it.
+      #
+      # So match them the way a `.gitignore` is read, which is what oxfmt does.
+      # A pattern with an internal slash (`client/assets/`, `.opencode/package.json`)
+      # is anchored to the repository root; one without (`docs/`, `CHANGELOG.md`)
+      # matches at any depth. Only these two forms appear in `.oxfmtignore`; a
+      # pattern needing globs or negation would need this to grow with it.
       if $keep && [ -f .oxfmtignore ]; then
         while IFS= read -r pattern; do
           [ -z "$pattern" ] && continue
           case "$pattern" in
             \#*) continue ;;
           esac
+          case "${pattern%/}" in
+            */*) anchored=true ;;
+            *) anchored=false ;;
+          esac
           case "$file" in
             ${pattern}*) keep=false; break ;;
           esac
+          if ! $anchored; then
+            case "$file" in
+              */${pattern}*) keep=false; break ;;
+            esac
+          fi
         done < .oxfmtignore
       fi
       if $keep; then

@@ -22,7 +22,7 @@ Outcomes per iteration: `improved` | `skipped` | `capped` | `failed`. The CLI ex
 
 ## Storage / Artifacts
 
-- `<workDir>/runs/<runId>/state.json` — persisted run state (Zod-validated on `--resume-run <runId>`).
+- `<workDir>/runs/<runId>/state.json` — persisted run state (Zod-validated on `--resume-run <runId>`); its optional `stats` block carries the run's aggregate usage/diff totals, rehydrated into the live footer on resume.
 - `<workDir>/capped.json` — cross-run registry of files merged at their tests-only ceiling; select-gate rejects them. Delete an entry to make a file eligible again (e.g. after a src refactor raised its ceiling).
 - `<workDir>/runs/<runId>/agent-output.log` + `iter/<N>/{selection,result}.json` — agent transcripts and structured outputs.
 - `iter/<N>/build-output.log` — full combined stdout+stderr of a failed build gate (the recorded reason is tail-bounded).
@@ -46,5 +46,5 @@ The repo TDD resolver treats `mutation-improve/src/**` as gateable implementatio
 ## Dependencies
 
 - `zod` — config/run-state/agent-output validation (shared with root).
-- `review-loop/src/*` — imported by relative path (not a package dependency): agent runner, build checker, live renderer, spawn, worktree/git helpers.
+- `review-loop/src/*` — imported by relative path (not a package dependency): agent runner, build checker, live renderer, run-stats/cost/diff-stats, spawn, worktree/git helpers. The optional top-level `pricing` map (same shape as review-loop's) enables estimated-cost display; each iteration's merge numstat diff is recorded via `src/merge-stats.ts`, and `src/summary.ts` prints the end-of-run terminal summary (per-file scores/outcomes/±lines + totals).
 - `scripts/mutation/*` — Stryker report reading/merging for runner-side score measurement.
