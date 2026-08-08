@@ -157,7 +157,7 @@ Starter dispositions; each item still gets the triage pass above.
 | ---------------------------------------------------------------- | ------------------------------------------ | ------------------------------------------- |
 | `specs/2026-06-30-readonly-exploration-sessions-design.md`       | pending, no plan, cross-service (magi)     | Lane 1                                      |
 | `plans/2026-08-04-knip-facade-import-triage.md`                  | pending, plan-only, unstarted              | Lane 1 or Lane 3                            |
-| `remaining/2025-03-24-prompt-injection-defense.md`               | brief, partially implemented               | Lane 1 (residual) or Lane 3                 |
+| ~~`remaining/2025-03-24-prompt-injection-defense.md`~~           | adopted 2026-08-09 → `openspec/changes/prompt-injection-defense/` | done                                      |
 | `remaining/2026-03-20-phase-09-event-driven-suggestions.md`      | brief                                      | Lane 1 (residual) or Lane 3                 |
 | `remaining/2026-03-20-phase-10-notification-controls.md`         | brief                                      | Lane 1 (residual) or Lane 3                 |
 | `remaining/2026-03-30-plugin-system-implementation.md`           | brief, MVP shipped ("true follow-ups")     | Lane 1 per follow-up or Lane 3              |
