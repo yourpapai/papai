@@ -379,7 +379,7 @@
   "src/tools/skip-recurring-task.ts": 0.5384615384615384,
   "src/tools/staged-tools.ts": 0.5757575757575758,
   "src/tools/tool-aliases.ts": 1,
-  "src/tools/tool-metadata.ts": 0.29444444444444445,
+  "src/tools/tool-metadata.ts": 1,
   "src/tools/tool-preferences.ts": 0.8455882352941176,
   "src/tools/tools-builder.ts": 0.7450331125827815,
   "src/tools/update-comment.ts": 0.5333333333333333,
