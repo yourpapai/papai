@@ -116,6 +116,7 @@ function selectRunner(
       extraArgs: config.agent.extraArgs,
       reporter: log,
       timeoutMs: config.agent.timeoutMs,
+      inactivityTimeoutMs: config.agent.inactivityTimeoutMs,
     })
 }
 
@@ -137,6 +138,7 @@ function improveRunner(
       extraArgs: config.agent.extraArgs,
       reporter: log,
       timeoutMs: config.agent.timeoutMs,
+      inactivityTimeoutMs: config.agent.inactivityTimeoutMs,
     })
 }
 

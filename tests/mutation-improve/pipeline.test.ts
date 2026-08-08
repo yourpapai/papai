@@ -35,7 +35,7 @@ const config = (repoRoot: string, overrides: Partial<MutationImproveConfig> = {}
   buildFixAttempts: 2,
   checkCommand: 'bun check:full',
   mutateFileCommand: 'bun test:mutate:file',
-  agent: { model: 'm', extraArgs: [], timeoutMs: 1_800_000 },
+  agent: { model: 'm', extraArgs: [], timeoutMs: 1_800_000, inactivityTimeoutMs: 600_000 },
   prBranchPrefix: 'mutation-improve',
   ...overrides,
 })
