@@ -161,7 +161,7 @@ Starter dispositions; each item still gets the triage pass above.
 | `remaining/2026-03-20-phase-09-event-driven-suggestions.md`      | brief                                      | Lane 1 (residual) or Lane 3                 |
 | `remaining/2026-03-20-phase-10-notification-controls.md`         | brief                                      | Lane 1 (residual) or Lane 3                 |
 | `remaining/2026-03-30-plugin-system-implementation.md`           | brief, MVP shipped ("true follow-ups")     | Lane 1 per follow-up or Lane 3              |
-| `remaining/2026-04-04-db-foreign-keys-orphan-prevention.md`      | brief                                      | Lane 1 (residual) or Lane 3                 |
+| ~~`remaining/2026-04-04-db-foreign-keys-orphan-prevention.md`~~  | adopted 2026-08-09 → `openspec/changes/db-foreign-keys-orphan-prevention/` | done                      |
 | `plans/2026-03-22-preprocessing-classifier-implementation.md`    | no `src/classifier*`                       | Lane 3 likely; verify first                 |
 | `plans/2026-03-22-test-improvement-roadmap.md`                   | old, unverified                            | triage; Lane 0 or 3                         |
 | `plans/2026-03-26-layered-architecture-violations-fix.md`        | no created files                           | triage; Lane 0 or 3                         |
