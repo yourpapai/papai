@@ -374,6 +374,17 @@ const runStepScript = async (script: string, env: Record<string, string>, ghExit
 }
 
 /**
+ * The cleanup step's `run:` uses bash 4 parameter expansion (`${prefix,,}`),
+ * which the workflow ships because GitHub Actions runs it under Linux bash 5.
+ * macOS ships bash 3.2 as `/bin/bash`, which rejects that substitution, so the
+ * execution assertions on the cleanup step can only run where the host bash
+ * matches the runner the workflow targets. Probed directly rather than by
+ * version string: the feature the script depends on is the thing under test.
+ */
+const HOST_BASH_RUNS_CLEANUP_SCRIPT =
+  Bun.spawnSync(['bash', '-c', 'prefix=NoNe; [ "${prefix,,}" = none ]']).exitCode === 0
+
+/**
  * Knobs the workflow deliberately does not forward, each with a reason a reader
  * can check. Anything else the README documents has to be passed through.
  */
@@ -644,7 +655,7 @@ describe('the working-label cleanup', () => {
     expect(cleanupStep.env['ISSUE_NUMBER']).toBe('${{ needs.resolve.outputs.issue }}')
   })
 
-  test('removes the working label and touches nothing else', async () => {
+  test.if(HOST_BASH_RUNS_CLEANUP_SCRIPT)('removes the working label and touches nothing else', async () => {
     const run = await runStepScript(cleanupStep.run, { ISSUE_NUMBER: '42', LABEL_PREFIX: '' })
 
     // Not a clear-and-reapply: every other agent label names the state the issue
@@ -653,13 +664,13 @@ describe('the working-label cleanup', () => {
     expect(run.exitCode).toBe(0)
   })
 
-  test('applies the operator prefix rather than a hardcoded namespace', async () => {
+  test.if(HOST_BASH_RUNS_CLEANUP_SCRIPT)('applies the operator prefix rather than a hardcoded namespace', async () => {
     const run = await runStepScript(cleanupStep.run, { ISSUE_NUMBER: '42', LABEL_PREFIX: 'bot/' })
 
     expect(run.gh).toEqual([`issue edit 42 --remove-label bot/${WORKING_LABEL.suffix}`])
   })
 
-  test('touches no label at all when labelling is switched off', async () => {
+  test.if(HOST_BASH_RUNS_CLEANUP_SCRIPT)('touches no label at all when labelling is switched off', async () => {
     // A repository that opted out of the channel opted out of every writer on
     // it. `labelPrefix()` trims and compares case-insensitively, so this does.
     const runs = await Promise.all(
@@ -672,14 +683,14 @@ describe('the working-label cleanup', () => {
     expect(runs.map((run) => run.exitCode)).toEqual([0, 0, 0])
   })
 
-  test('does nothing when no issue number could be resolved', async () => {
+  test.if(HOST_BASH_RUNS_CLEANUP_SCRIPT)('does nothing when no issue number could be resolved', async () => {
     const run = await runStepScript(cleanupStep.run, { ISSUE_NUMBER: '', LABEL_PREFIX: '' })
 
     expect(run.gh).toEqual([])
     expect(run.exitCode).toBe(0)
   })
 
-  test('never fails the job when the label write fails', async () => {
+  test.if(HOST_BASH_RUNS_CLEANUP_SCRIPT)('never fails the job when the label write fails', async () => {
     // The rule labels.ts states, on the one writer that is not in labels.ts. A
     // rejected removal is the *ordinary* case on a healthy run — the in-run
     // reconcile already took the label off, and removing a label an issue does
