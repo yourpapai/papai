@@ -74,6 +74,12 @@
   const hasRowProblem = $derived(rowProblems.some((problem) => problem !== undefined))
   const atCap = $derived(rows.length >= maxMcpServers)
 
+  // Removing every row on a context that already has stored servers makes Save an
+  // unconfirmed alias for Clear: hasRowProblem is vacuously false on an empty list, so
+  // Save would PATCH servers: [] without the danger-styled confirm dialog Clear requires.
+  // Disabling Save here leaves Clear as the one confirmed entrance to that outcome.
+  const wouldSilentlyClear = $derived(rows.length === 0 && currentData?.configured === true)
+
   // `maxMcpServers` is optional in the client schema (fetcher-schemas.ts:94) and falls back
   // to Infinity above, so guard on finiteness: a count is only meaningful against a real cap.
   const capLabel = $derived(
@@ -304,7 +310,7 @@
               variant="primary"
               size="sm"
               testid="coding-mcp-save"
-              disabled={!formDirty || saving || loading || clearing || hasRowProblem}
+              disabled={!formDirty || saving || loading || clearing || hasRowProblem || wouldSilentlyClear}
               busy={saving}
               onClick={() => void saveAll()}>
               {#snippet children()}{saving ? 'Saving…' : 'Save'}{/snippet}
@@ -387,6 +393,7 @@
     gap: var(--gap-inline);
   }
   .settings-mcp__cap {
+    font-family: var(--font-mono);
     font-size: 10px;
     color: var(--text-dim);
   }

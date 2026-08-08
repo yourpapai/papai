@@ -232,6 +232,48 @@ describe('CodingMcpSection in-flight control state', () => {
   })
 })
 
+describe('CodingMcpSection empty-row Save guard', () => {
+  afterEach(() => {
+    restoreFetch()
+    document.body.innerHTML = ''
+  })
+
+  test('removing the last row on a configured context leaves Save disabled', async () => {
+    setCsrfToken('c')
+    setMockFetch(loadedMock)
+    const { target, component } = mountSection()
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-mcp-remove-0"]')!.click()
+    await drain()
+
+    expect(target.querySelector('[data-testid="coding-mcp-row-0"]')).toBeNull()
+    expect(saveButton(target).disabled).toBe(true)
+    void unmount(component)
+  })
+
+  test('an unconfigured context that has rows added and then removed is unaffected', async () => {
+    setCsrfToken('c')
+    setMockFetch(() => Promise.resolve(json({ ...mcpPayload, configured: false })))
+    const { target, component } = mountSection()
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-mcp-add"]')!.click()
+    await drain()
+    pickServer(target, 1, 'docs')
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-mcp-remove-1"]')!.click()
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-mcp-remove-0"]')!.click()
+    await drain()
+
+    expect(target.querySelector('[data-testid="coding-mcp-row-0"]')).toBeNull()
+    expect(saveButton(target).disabled).toBe(false)
+    void unmount(component)
+  })
+})
+
 describe('CodingMcpSection dead-end states', () => {
   afterEach(() => {
     restoreFetch()
