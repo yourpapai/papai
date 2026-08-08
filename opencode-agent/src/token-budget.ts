@@ -108,8 +108,8 @@ export const stopIfOverBudget = async (input: MachineInput): Promise<RunResult |
  * `triggers.ts` takes for the retry budget — and here that shape strands the
  * issue, because unlike a `/retry` this check is not standing in front of a
  * trigger. Leaving the phase alone left it *in a handler phase*: `/approve`
- * from `DESIGN_SPEC` had already moved the state to `EXECUTION_PLAN` by the time
- * this stopped the run, and nothing can re-enter `EXECUTION_PLAN` — `/retry`
+ * from `DESIGN_SPEC` had already moved the state to `PLANNING` by the time
+ * this stopped the run, and nothing can re-enter `PLANNING` — `/retry`
  * needs `FAILED`, a plain comment needs a waiting phase — so `/cancel` was the
  * only event left, under a notice pointing at `AGENT_MAX_TOKENS` as though
  * raising it would help. It never could: no event re-enters that phase at any

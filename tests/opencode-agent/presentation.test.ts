@@ -142,7 +142,7 @@ describe('the outcome table', () => {
   })
 
   test('a heading is the glyph and the words, in that order', () => {
-    expect(outcomeHeading('RUN_FAILED', 'Run failed in EXECUTION_PLAN')).toBe('### ❌ Run failed in EXECUTION_PLAN')
+    expect(outcomeHeading('RUN_FAILED', 'Run failed in PLANNING')).toBe('### ❌ Run failed in PLANNING')
   })
 
   test('a phase heading reads from the phase table, splits and all', () => {

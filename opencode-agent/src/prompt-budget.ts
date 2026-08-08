@@ -38,7 +38,7 @@ const authorAttribute = (login: string): string => {
  * Whether a comment is the pipeline's own progress reporting.
  *
  * By **marker**, never by author. The agent writes the design spec, the
- * execution plan and every phase report as well, and those are precisely what
+ * plan and every phase report as well, and those are precisely what
  * the model is being asked to read — so filtering on the login would blind it to
  * its own artefacts, which is a much quieter version of the bug this prevents.
  */

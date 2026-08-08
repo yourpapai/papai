@@ -10,7 +10,7 @@ import type { IssueComment } from './blocks.js'
 
 /**
  * Artefacts the pipeline writes once and reads back in a later job: the design
- * spec, the execution plan, and the implementation report.
+ * spec, the plan, and the implementation report.
  *
  * Each is persisted in its own hidden block rather than recovered by matching a
  * markdown heading in the visible comment. That distinction matters: these
