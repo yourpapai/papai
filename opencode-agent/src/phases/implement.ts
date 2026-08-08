@@ -119,6 +119,10 @@ const renderReport = (): string =>
     '',
     '- Review loop: not run — it is a separate step now',
     '',
-    'Reply `/review` on the issue and I will run the `review-loop/` workspace over this branch and push ' +
-      'whatever it finds as further commits.',
+    // Both doors, because both are open. This line said "on the issue" while the
+    // pull-request one was still unbuilt, and it is the last surface that did:
+    // naming a door before the workflow opens it is a promise the pipeline
+    // cannot keep, and leaving it named after it opens is an offer withheld.
+    'Reply `/review` — here, or on the pull request once it is open — and I will run the `review-loop/` ' +
+      'workspace over this branch and push whatever it finds as further commits.',
   ].join('\n')

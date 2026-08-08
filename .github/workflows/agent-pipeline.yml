@@ -125,9 +125,15 @@ jobs:
       # the *pull request*; the link back is the branch, exactly as it is for a
       # red CI run, because `head.ref` is `agent/issue-<n>`.
       #
-      # Gated on the same shape the third arm admits, so the cost falls only on a
-      # comment that already looks like `/review` — the ordering
-      # `resolvePullRequestTrigger` keeps for the same reason.
+      # The `/review` filter that keeps this lookup off every ordinary
+      # code-review comment is the **job's** `if:` above, not this step's: by
+      # the time any step runs, the third arm has already required it. This
+      # condition only picks the pull-request kind out of the three the job
+      # admits, so an issue comment and a red CI run skip it. Worth stating,
+      # because the step reads as if it carried that filter itself — and the
+      # day somebody relaxes the job condition, this is where the cost lands.
+      # `resolvePullRequestTrigger` orders its own checks the same way and for
+      # the same reason.
       #
       # Nothing here judges the pull request. The fork guard, the open test and
       # the branch shape belong to that resolver, in a job that can say on the
