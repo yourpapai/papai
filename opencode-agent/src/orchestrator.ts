@@ -6,6 +6,7 @@
 import { driveMachine, hasHandler } from './cascade.js'
 import { parseSlashCommand } from './commands.js'
 import type { ParsedCommand } from './commands.js'
+import { unreachable } from './errors.js'
 import { react, settleReaction } from './feedback.js'
 import { evaluateGuardrails } from './guardrails.js'
 import { reconcileLabels, settleLabels } from './labels.js'
@@ -15,7 +16,6 @@ import { findLatestState, initialState } from './state-manager.js'
 import type { TriggerEvent } from './trigger-events.js'
 import type { TriggerOutcome } from './trigger-outcome.js'
 import { applyTrigger } from './triggers.js'
-import { unreachable } from './types.js'
 
 export interface RunOptions {
   event: TriggerEvent

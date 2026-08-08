@@ -3,10 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { unreachable } from './errors.js'
 import type { GitHubApi } from './github.js'
 import type { Logger } from './logger.js'
 import type { TriggerEvent } from './trigger-events.js'
-import { errorMessage, unreachable } from './types.js'
+import { errorMessage } from './types.js'
 
 /**
  * The note back onto the pull request — the one thing this pipeline says where

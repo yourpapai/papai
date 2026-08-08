@@ -27,11 +27,15 @@
  * `step-start` / `text` / `step-finish`, of which only `text` carries content.
  */
 
+import { createOpencodeClient, createOpencodeServer } from '@opencode-ai/sdk'
 import { z } from 'zod'
 
+import { buildOpencodeConfig } from '../../opencode-agent/src/openai-config.js'
+import type { OpenAiSettings } from '../../opencode-agent/src/openai-config.js'
 import { createOpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
 import type { OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
 import { proxiedSettings, startProviderProxy } from '../../opencode-agent/src/provider-proxy.js'
+import { decodeAbort, decodeSessionId } from '../../opencode-agent/src/sdk-contract.js'
 
 const REPLY_TEXT = '{"status":"spec","spec":"live round trip"}'
 
@@ -102,6 +106,132 @@ const countServers = (): number => {
 const check = (label: string, condition: boolean, detail: string): boolean => {
   process.stdout.write(`${condition ? '✓' : '✗'} ${label}${condition ? '' : ` — ${detail}`}\n`)
   return condition
+}
+
+/**
+ * Whether a pid is alive, without signalling it.
+ *
+ * `kill -0` is the portable ask, and `ps` is how this file already reads process
+ * state elsewhere: a tool child reparented to init is still `ps`-visible, which is
+ * the whole finding below.
+ */
+const alive = (pid: number): boolean => Bun.spawnSync(['kill', '-0', String(pid)]).exitCode === 0
+
+/** Pids of the direct children of `pid`, which for the server is its tool child. */
+const childrenOf = (pid: number): number[] =>
+  new TextDecoder()
+    .decode(Bun.spawnSync(['ps', '-o', 'pid=', '--ppid', String(pid)]).stdout)
+    .split('\n')
+    .map((line) => Number.parseInt(line.trim(), 10))
+    .filter((child) => Number.isSafeInteger(child) && child > 0)
+
+/**
+ * The two measurements the wall-clock stop is built on, re-run against the pin.
+ *
+ * Driven **without a model**: `POST /session/:id/shell` spawns the same `bash -l -c`
+ * child the bash *tool* does, it merely blocks until the command exits — so a `sleep`
+ * is enough to hold a tool child open and no provider credentials are needed.
+ *
+ * What is being checked is not the response shape (`adapters.test.ts` has the
+ * fixture) but the two facts a type cannot state, and a pin bump can change either:
+ *
+ *  1. an abort **kills the running tool child and leaves the server up**;
+ *  2. `close()` — a bare `proc.kill()` on one pid on POSIX, which is what the SDK's
+ *     `stop()` does — **kills the server and orphans the tool child**, reparented to
+ *     init. A tool command is a session leader in its own process group, so no group
+ *     kill aimed at the server reaches it.
+ *
+ * Together: `abort` is the stop and `close()` is the leak. If (2) ever stops being
+ * true the leak is fixed upstream; if (1) stops being true the salvage has no fence
+ * left and must not stage anything.
+ */
+const checkTheStop = async (openai: OpenAiSettings): Promise<boolean[]> => {
+  const port = await reservePortForProbe()
+  const server = await createOpencodeServer({
+    hostname: '127.0.0.1',
+    port,
+    config: buildOpencodeConfig(openai),
+    timeout: 60_000,
+  })
+  const client = createOpencodeClient({ baseUrl: server.url, directory: process.cwd() })
+  const serverPid = serverPidOn(port)
+
+  const created = await client.session.create({ body: { title: 'live-abort' }, query: { directory: process.cwd() } })
+  const sessionId = decodeSessionId(created)
+
+  // Held open, not awaited: the shell call blocks until the command exits, and the
+  // whole point is to abort it while it is still running.
+  const running = client.session.shell({
+    path: { id: sessionId },
+    body: { command: 'sleep 120', agent: 'build' },
+    query: { directory: process.cwd() },
+  })
+  void running.catch(() => undefined)
+  await Bun.sleep(3000)
+
+  const toolChildren = childrenOf(serverPid)
+  const results = [
+    check('a tool command runs as a child of the server', toolChildren.length > 0, 'no child was spawned by `sleep`'),
+    check('the abort envelope decodes as accepted', decodeAbort(await abortNow(client, sessionId)), 'abort refused'),
+  ]
+
+  await Bun.sleep(1000)
+  results.push(
+    check(
+      'the abort killed the tool child',
+      toolChildren.every((pid) => !alive(pid)),
+      `${toolChildren.join(',')} still alive`,
+    ),
+    check('the abort left the server up, which is why it is not close()', alive(serverPid), 'the server went away'),
+  )
+
+  // Now the other half, on a second tool child: close the server and watch the child
+  // survive it. This is the leak the production log was showing all along — the
+  // runner's own cleanup printed `Terminate orphan process` for two `opencode`, two
+  // `bun`, three `bash` children and a `curl` at the end of the failed run.
+  const orphan = client.session.shell({
+    path: { id: sessionId },
+    body: { command: 'sleep 120', agent: 'build' },
+    query: { directory: process.cwd() },
+  })
+  void orphan.catch(() => undefined)
+  await Bun.sleep(3000)
+  const doomed = childrenOf(serverPid)
+
+  server.close()
+  await Bun.sleep(2000)
+  results.push(
+    check('close() removed the server', !alive(serverPid), 'the server survived close()'),
+    check(
+      'close() orphaned the tool child rather than stopping it — the leak abort exists to avoid',
+      doomed.length > 0 && doomed.some((pid) => alive(pid)),
+      `close() happened to take ${doomed.join(',')} with it; re-record the finding`,
+    ),
+  )
+
+  // Whatever survived is this check's own mess to clean up, not the runner's.
+  for (const pid of doomed) Bun.spawnSync(['kill', '-9', String(pid)])
+  return results
+}
+
+/** The abort call, kept out of the sequence above so it reads as one step. */
+const abortNow = (client: ReturnType<typeof createOpencodeClient>, sessionId: string): Promise<unknown> =>
+  client.session.abort({ path: { id: sessionId }, query: { directory: process.cwd() } })
+
+/** The server's pid, read from whoever is listening on the port it was given. */
+const serverPidOn = (port: number): number => {
+  const listing = Bun.spawnSync(['sh', '-c', `lsof -ti tcp:${port} -sTCP:LISTEN || true`])
+  const pid = Number.parseInt(new TextDecoder().decode(listing.stdout).trim().split('\n')[0] ?? '', 10)
+  return Number.isSafeInteger(pid) ? pid : 0
+}
+
+/** A free port, the way the adapter reserves one — see `opencode-connect.ts`. */
+const reservePortForProbe = async (): Promise<number> => {
+  const probe = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data: (): void => {} } })
+  const port = probe.port
+  probe.stop(true)
+  await Bun.sleep(50)
+  return port
 }
 
 const silentLog = {
@@ -196,6 +326,10 @@ const run = async (): Promise<number> => {
         `a reply leaked into ${JSON.stringify(progressLines).slice(0, 200)}`,
       ),
     )
+
+    // The two measurements the wall-clock stop is built on, on their own server so
+    // that closing it does not disturb the agents above.
+    results.push(...(await checkTheStop(openai)))
   } finally {
     await Promise.all(agents.map((agent) => agent.close()))
     await proxy.close()

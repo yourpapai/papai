@@ -3,19 +3,38 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { ProgressSnapshot } from './progress.js'
+
 /**
- * Failures a phase handler can raise. They all end the same way — the
+ * Failures a phase handler can raise. Almost all of them end the same way — the
  * orchestrator parks the run in FAILED and posts the message on the issue — so
- * the message text is the whole contract.
+ * the message text is very nearly the whole contract.
+ *
+ * `code` is the exception, and {@link TURN_DEADLINE} is why it now matters to more
+ * than a log reader: one failure here is **not** the work breaking, and the
+ * handler that raised it has to be able to tell. One class per file is the
+ * workspace's rule, so that distinction is a code and a payload on this class
+ * rather than a subclass of it — which also keeps every existing `catch` and every
+ * renderer reading a `PipelineError` exactly as it was.
  */
 export class PipelineError extends Error {
   /** Machine-readable tag, useful when scanning job logs. */
   readonly code: string
+  /**
+   * What the model turn had achieved when a bound stopped it, and `null` for
+   * every other failure — which is not the same fact as a turn that did nothing.
+   *
+   * Carried rather than re-measured because only the adapter can see it: the
+   * tracker lives beside the event stream, and by the time a phase has the
+   * rejection in hand there is nothing left to ask.
+   */
+  readonly progress: ProgressSnapshot | null
 
-  constructor(code: string, message: string) {
+  constructor(code: string, message: string, progress: ProgressSnapshot | null = null) {
     super(message)
     this.name = 'PipelineError'
     this.code = code
+    this.progress = progress
   }
 }
 
@@ -117,6 +136,46 @@ export const pullRequestForbiddenError = (compareUrl: string, branch: string): P
 
 export const openCodeError = (message: string): PipelineError => new PipelineError('OPENCODE', message)
 
+/** The one code a handler branches on rather than merely logs. */
+const TURN_DEADLINE = 'TURN_DEADLINE'
+
+/**
+ * A model turn stopped by its own bound, said in a way the phase can act on and a
+ * reader can believe.
+ *
+ * The message this replaces was `The model did not answer within 1800000ms`, about
+ * a turn that answered **355 times** at roughly twelve tool calls a minute and was
+ * cut off mid-`bash`. That wording describes a hang, so it sent whoever read it
+ * looking for one and gave them a healthy turn and no explanation. What is true is
+ * that the turn was working and ran out of clock, and the numbers saying so were
+ * already in hand — the heartbeat had been printing them once a minute.
+ *
+ * Distinguishable by code because the consequence differs, which is the whole
+ * finding: every other rejection out of a prompt means the work broke and belongs
+ * in `failRun` as ❌ with an attempt spent, and this one means a ceiling was
+ * reached in a run where nothing broke — so it salvages the tree, parks in
+ * `INCOMPLETE` and spends nothing.
+ */
+export const turnDeadlineError = (elapsedMs: number, progress: ProgressSnapshot): PipelineError =>
+  new PipelineError(
+    TURN_DEADLINE,
+    `The turn ran out of time after ${elapsedMs}ms and was stopped part-way through: ` +
+      `${progress.toolCalls} tool calls, ${progress.tokens.toLocaleString('en-US')} tokens, ` +
+      `last action "${progress.lastAction}". The bound is \`AGENT_TIMEOUT_MS\`, shrunk to fit what was left of ` +
+      "the job's own deadline.",
+    progress,
+  )
+
+/**
+ * Whether a rejection is that stop.
+ *
+ * A predicate here rather than a `code` comparison at the call site, for the reason
+ * {@link isPullRequestCreationForbidden} is one: the tag is this module's business,
+ * and a handler spelling it out is a second copy of a string that has to agree.
+ */
+export const isTurnDeadline = (error: unknown): error is PipelineError =>
+  error instanceof PipelineError && error.code === TURN_DEADLINE
+
 export const modelResponseError = (message: string, raw: string): PipelineError =>
   new PipelineError('MODEL_RESPONSE', `${message}\n\nRaw reply:\n${raw.slice(0, 2000)}`)
 
@@ -126,3 +185,23 @@ export const missingSkillError = (phase: string, names: readonly string[]): Pipe
     `Phase ${phase} requires skills that are not installed: ${names.join(', ')}. ` +
       'Check that the superpowers checkout step ran and populated .superpowers/skills.',
   )
+
+/**
+ * The end of an exhaustive `switch` over a discriminated union.
+ *
+ * Written out rather than left implicit for two reasons, and the second is the
+ * one that matters. The lint rule wanting every path to return cannot see that
+ * TypeScript has already proved this one unreachable — and the `never` parameter
+ * is what turns *adding* a union member into a compile error at every switch
+ * that did not grow a case for it. Which is exactly the property the `kind`
+ * switches were written for: a third trigger kind arrived, and the tests that
+ * had been spelled `!== 'issue'` would have bucketed it in silence.
+ *
+ * Here rather than in `types.ts`, where it began: it is not a type, it is a throw,
+ * and this is the file that says how this pipeline throws. Deliberately **not** a
+ * `PipelineError` — those are failures a phase reports on the issue and a `/retry`
+ * might fix, and this one can only ever mean the code is wrong.
+ */
+export const unreachable = (value: never): never => {
+  throw new Error(`Unreachable value: ${JSON.stringify(value)}`)
+}

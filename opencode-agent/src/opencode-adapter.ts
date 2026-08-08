@@ -3,18 +3,15 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { createServer } from 'node:net'
-
-import { createOpencodeClient, createOpencodeServer } from '@opencode-ai/sdk'
-
 import { withDeadline } from './deadline.js'
-import { openCodeError } from './errors.js'
+import { openCodeError, turnDeadlineError } from './errors.js'
 import type { Logger } from './logger.js'
-import { buildOpencodeConfig, modelRef } from './openai-config.js'
+import { modelRef } from './openai-config.js'
 import type { OpenAiSettings } from './openai-config.js'
+import { connectSdk } from './opencode-connect.js'
 import { createProgressTracker, followEvents, withHeartbeat } from './progress.js'
 import type { EventFollower, ProgressSnapshot, ProgressTracker } from './progress.js'
-import { buildBody, decodeReply, decodeSessionId, decodeSessionUsage, parseModelRef } from './sdk-contract.js'
+import { buildBody, decodeAbort, decodeReply, parseModelRef } from './sdk-contract.js'
 import type { SdkPromptBody, SessionUsage } from './sdk-contract.js'
 
 export type { ModelRef, SdkPromptBody } from './sdk-contract.js'
@@ -45,6 +42,22 @@ export interface OpenCodeAgent {
    * recognise must not turn every phase into a failure.
    */
   tokensUsed(): Promise<number>
+  /**
+   * Stops whatever the model is running, and says whether the server took it.
+   *
+   * The one boundary in this pipeline that is best-effort **and** reports.
+   * Measured against a live server: an abort kills the tool child and leaves the
+   * server up, while `close()` — a bare SIGTERM to one pid on POSIX — kills the
+   * server and leaves the tool child running, reparented to init. So this is the
+   * stop and `close()` is the leak, and the two are not each other's fallback.
+   *
+   * A refused abort must not become the run's failure — the stop it belongs to is
+   * already out of time and cannot afford a second thing to go wrong — but unlike
+   * the feedback channels it cannot swallow the answer either: the salvage stages
+   * a working tree, and staging one whose writer may still be running is the only
+   * thing that path must never do. Hence `boolean` rather than `void`.
+   */
+  abort(): Promise<boolean>
   close(): Promise<void>
 }
 
@@ -64,6 +77,14 @@ export interface OpenCodeConnection {
   events(): Promise<AsyncIterable<unknown>>
   /** What this session has spent so far, as the server accounts for it. */
   usage(sessionId: string): Promise<SessionUsage | null>
+  /**
+   * Asks the server to stop what this session is running, envelope and all.
+   *
+   * Required rather than optional, for the reason `events` is: an optional method
+   * is one a connection can silently fail to provide, and a stop nobody wired is
+   * the failure this whole finding is about.
+   */
+  abort(sessionId: string): Promise<unknown>
   close(): Promise<void>
 }
 
@@ -73,15 +94,25 @@ export interface OpenCodeAgentOptions {
   openai: OpenAiSettings
   sessionTitle: string
   /**
-   * Upper bound on one model turn, from `AGENT_TIMEOUT_MS`. Omitted means
-   * unbounded, which only a caller with nothing to bound should want — config
-   * range-checks that variable to at least a second.
+   * Upper bound on one model turn, from `AGENT_TIMEOUT_MS` shrunk to fit the job.
+   * Omitted means unbounded, which only a caller with nothing to bound should want —
+   * config range-checks that variable to at least a second.
    *
    * Every subprocess this pipeline drives already had one — the check runner and
    * the review loop both pass it to `runCommand` — and the in-process session,
    * the one turn that can run for twenty minutes, was the only path without.
+   *
+   * A **function** is the form that matters, and a number is kept only for callers
+   * with a fixed bound. The session is memoized for the whole job and the bound is
+   * derived from the job's remaining clock, so a number is read once — when the
+   * server first boots — and every later turn in that job carries a bound sized for a
+   * clock that has since moved. That was survivable while a job ran one turn per
+   * phase; with one turn per plan step it is the silence this bound exists to
+   * prevent, because a step starting six minutes before the runner's own
+   * `timeout-minutes` would be handed the thirty-minute cap and killed with the job.
+   * Resolved per turn in {@link bounded}, so the bound tracks the resource it protects.
    */
-  timeoutMs?: number
+  timeoutMs?: number | (() => number)
   /** Where progress goes. The adapter is the only thing that can see it. */
   log: Logger
   /** Heartbeat period while a turn is outstanding. `0` disables it. */
@@ -108,73 +139,6 @@ export interface OpenCodeAgentOptions {
  * rather than swamping the tool calls that carry the real information.
  */
 const DEFAULT_HEARTBEAT_MS = 60_000
-
-/**
- * Reserves a free TCP port.
- *
- * `createOpencodeServer` passes its `port` straight to `opencode serve`, and
- * port `0` there does *not* mean "pick an ephemeral one" — the server was
- * observed booting on its 4096 default instead, so two agent processes on one
- * host would collide. Binding a listener and reading back the assigned port
- * gets a real free one. The window between closing this and the server binding
- * is a race in theory; in practice it beats a fixed port that is guaranteed to
- * clash.
- */
-const reservePort = (): Promise<number> => {
-  const probe = createServer()
-  return new Promise((resolve, reject) => {
-    probe.once('error', reject)
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address()
-      const port = typeof address === 'object' && address !== null ? address.port : 0
-      probe.close(() => {
-        if (port === 0) reject(new Error('Could not reserve a port for the OpenCode server'))
-        else resolve(port)
-      })
-    })
-  })
-}
-
-/** The SDK's own default is 5s, which a cold runner with a large repo can miss. */
-const SERVER_BOOT_TIMEOUT_MS = 60_000
-
-const connectSdk = async (directory: string, openai: OpenAiSettings): Promise<OpenCodeConnection> => {
-  // The provider, endpoint and model are pinned in the server's own config, so
-  // the session cannot fall back to whatever credentials happen to be in env.
-  // The SDK delivers this to `opencode serve` through OPENCODE_CONFIG_CONTENT —
-  // the same channel the review-loop subprocesses use.
-  const server = await createOpencodeServer({
-    hostname: '127.0.0.1',
-    port: await reservePort(),
-    config: buildOpencodeConfig(openai),
-    timeout: SERVER_BOOT_TIMEOUT_MS,
-  })
-  const client = createOpencodeClient({ baseUrl: server.url, directory })
-
-  return {
-    createSession: async (title) => {
-      const created = await client.session.create({ body: { title }, query: { directory } })
-      return decodeSessionId(created)
-    },
-    sendPrompt: (sessionId, body) => client.session.prompt({ path: { id: sessionId }, body, query: { directory } }),
-    // `/event` is a server-sent-event stream; the generated client hands back
-    // the parsed events as an async generator.
-    //
-    // `sseMaxRetryAttempts: 0` is load-bearing. The client's default is to
-    // reconnect for ever with no cap, so when `close()` kills the server the
-    // stream does not end — it starts retrying a socket that will never come
-    // back. Verified against a real server: without this the generator was
-    // still open eight seconds after the server was closed, and a teardown that
-    // waited on it hung the job until its own timeout.
-    events: async () => (await client.event.subscribe({ sseMaxRetryAttempts: 0 })).stream,
-    usage: async (sessionId) =>
-      decodeSessionUsage(await client.session.get({ path: { id: sessionId }, query: { directory } })),
-    close: (): Promise<void> => {
-      server.close()
-      return Promise.resolve()
-    },
-  }
-}
 
 /**
  * Boots a headless OpenCode server in-process and opens one session against the
@@ -212,6 +176,7 @@ export const createOpenCodeAgent = async (options: OpenCodeAgentOptions): Promis
       options.log.debug({ sessionId, tokens: usage.tokens, cost: usage.cost }, 'Session usage')
       return usage.tokens
     },
+    abort: () => abortSession(connection, sessionId, options.log),
     close: async (): Promise<void> => {
       // Reporting first. Closing the server does not, by itself, end the stream
       // — see the `sseMaxRetryAttempts` note above — so teardown has to say stop
@@ -219,6 +184,30 @@ export const createOpenCodeAgent = async (options: OpenCodeAgentOptions): Promis
       await shutdown()
       await connection.close()
     },
+  }
+}
+
+/**
+ * Asks the server to stop, and turns every way that can go wrong into an answer.
+ *
+ * Three cases collapse to `false`, and each is a real one: the server declines
+ * (`{ data: false }`), the call never lands (a socket refused mid-teardown), or
+ * the envelope is a shape this pin does not know — which `decodeAbort` throws
+ * about on purpose, so a moved payload is named in the log rather than degrading
+ * to a permanent silent "the abort did not take".
+ *
+ * `warn` and not `error`, because nothing has failed: the caller's own next step
+ * is to say so on the issue.
+ */
+const abortSession = async (connection: OpenCodeConnection, sessionId: string, log: Logger): Promise<boolean> => {
+  try {
+    const accepted = decodeAbort(await connection.abort(sessionId))
+    if (accepted) log.info({ sessionId }, 'Aborted the model turn; the tool it was running is stopped')
+    else log.warn({ sessionId }, 'The server did not accept the abort; the model may still be running')
+    return accepted
+  } catch (error) {
+    log.warn({ sessionId, error: errorMessage(error) }, 'Could not abort the model turn')
+    return false
   }
 }
 
@@ -271,6 +260,12 @@ const startReporting = (
   }
 }
 
+/** This turn's bound: asked afresh when the caller supplied a way to ask. */
+const turnBound = (options: OpenCodeAgentOptions): number => {
+  const bound = options.timeoutMs ?? 0
+  return typeof bound === 'function' ? bound() : bound
+}
+
 /**
  * Wraps one turn in both of its bounds.
  *
@@ -280,11 +275,14 @@ const startReporting = (
  */
 const bounded = (work: Promise<unknown>, options: OpenCodeAgentOptions, tracker: ProgressTracker): Promise<unknown> =>
   withHeartbeat(
-    withDeadline(work, options.timeoutMs ?? 0, (elapsed) =>
-      openCodeError(
-        `The model did not answer within ${elapsed}ms (AGENT_TIMEOUT_MS). Raise it, or narrow the phase's work.`,
-      ),
-    ),
+    // The snapshot is read *at the rejection*, not when the bound was armed: what
+    // the phase needs to report is what the turn had managed by the time it was
+    // stopped, and this is the last frame that can still see the tracker.
+    //
+    // The bound itself is read here, per turn, for the reason `timeoutMs` may be a
+    // function: a job now runs a turn per plan step, and a bound derived from the
+    // job's remaining clock has to be asked again each time or it stops tracking it.
+    withDeadline(work, turnBound(options), (elapsed) => turnDeadlineError(elapsed, tracker.snapshot())),
     {
       everyMs: options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS,
       log: options.log,

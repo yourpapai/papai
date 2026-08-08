@@ -5,13 +5,22 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { findArtifact, PLAN_MARKER, renderArtifact, SPEC_MARKER } from '../../opencode-agent/src/artifacts.js'
+import {
+  findArtifact,
+  findHandoff,
+  findPlan,
+  HANDOFF_MARKER,
+  PLAN_MARKER,
+  renderArtifact,
+  SPEC_MARKER,
+} from '../../opencode-agent/src/artifacts.js'
 import { readBlock } from '../../opencode-agent/src/blocks.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import { DEFAULT_CHECKS } from '../../opencode-agent/src/config.js'
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
 import type { StagedTotals } from '../../opencode-agent/src/diff-guard.js'
-import type { Git } from '../../opencode-agent/src/git.js'
+import { turnDeadlineError } from '../../opencode-agent/src/errors.js'
+import type { Git, Salvage } from '../../opencode-agent/src/git.js'
 import type { PullRequestHead, PullRequestRef, PullRequestStatus } from '../../opencode-agent/src/github-pulls.js'
 import type { ReactionContent, ReactionRef, ReactionTarget } from '../../opencode-agent/src/github-reactions.js'
 import type { GitHubApi } from '../../opencode-agent/src/github.js'
@@ -37,6 +46,12 @@ import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
 
 const AGENT_LOGIN = 'agent-bot'
 const ISSUE = 42
+/**
+ * The clock every fake in a harness reads, so a job deadline can be expressed
+ * relative to it. A constant rather than the real clock: the whole point of the
+ * wall-clock bound is being able to stand on either side of it.
+ */
+const RUN_NOW_MS = Date.UTC(2026, 7, 7, 14, 2)
 const BASE_BRANCH = 'trunk'
 const OPENING_TAG = /<untrusted_input source="[^"]*" id="([^"]+)">/u
 
@@ -66,6 +81,11 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   reviewMaxRounds: 2,
   reviewPoolSize: 1,
   agentTimeoutMs: 1000,
+  // No job deadline by default, which is what every run had before it existed:
+  // the wall-clock stop is off unless a test switches it on.
+  jobDeadlineMs: null,
+  teardownReserveMs: 180_000,
+  wrapUpMs: 120_000,
   ciFixMaxRounds: 2,
   maxCiAttempts: 2,
   maxAttempts: 3,
@@ -159,6 +179,28 @@ interface PipelineIo {
   /** What a create addressed at the pull request rejects with, when set. */
   noteError: Error | null
   prompts: AgentPromptRequest[]
+  /**
+   * What successive prompts reject with, consumed in order; `null` or a short list
+   * means the rest answer normally.
+   *
+   * Per prompt rather than one flag, because the wall-clock stop is exactly the case
+   * where the first turn fails and a second one in the same session still runs: the
+   * implementation turn runs out of time and the wrap-up prompt is what recovers the
+   * handoff from it. Both halves have to be scriptable independently.
+   */
+  promptFailures: (Error | null)[]
+  /** Aborts the run asked for, and whether the fake server accepted them. */
+  aborts: number
+  abortAccepted: boolean
+  /**
+   * Whether the session has been closed.
+   *
+   * Recorded because the ordering it protects is silent when it is wrong: the fake
+   * `tokensUsed` degrades to `0` once closed, exactly as the real one does when the
+   * server cannot answer, so a stop that tore the server down before recording its
+   * spend persists a total with this whole job missing from it.
+   */
+  agentClosed: boolean
   gitCalls: string[]
   checkResults: Map<string, CommandResult>
   /** Model replies, consumed in order by successive prompts. */
@@ -179,6 +221,9 @@ interface PipelineIo {
    * ordinary delivery is the one that names `/review` without pressing it.
    */
   committedTotals: StagedTotals | null
+  /** What the salvage commit reports, and what it rejects with when set. */
+  salvaged: Salvage
+  salvageError: Error | null
   createdPr: PullRequestRef | null
   /** What the branch's pull request lookup reports, whatever became of it. */
   existingPr: PullRequestStatus | null
@@ -284,6 +329,10 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     prNotes: [],
     noteError: null,
     prompts: [],
+    promptFailures: [],
+    aborts: 0,
+    abortAccepted: true,
+    agentClosed: false,
     gitCalls: [],
     checkResults: new Map(),
     replies: [],
@@ -293,6 +342,8 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     reviewError: null,
     detectedBranch: BASE_BRANCH,
     committedTotals: { files: 2, lines: 12 },
+    salvaged: { kind: 'committed', totals: { files: 3, lines: 140 }, overCap: null },
+    salvageError: null,
     createdPr: null,
     existingPr: null,
     getIssueCalls: 0,
@@ -312,7 +363,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     edits: [],
     statusError: null,
     postError: null,
-    nowMs: Date.UTC(2026, 7, 7, 14, 2),
+    nowMs: RUN_NOW_MS,
   }
 
   let nextCommentId = 100
@@ -440,8 +491,12 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       io.gitCalls.push(`commit:${message.split('\n')[0]}`)
       return Promise.resolve(io.committedTotals)
     },
-    push: (branch) => {
-      io.gitCalls.push(`push:${branch}`)
+    salvageAll: (message) => {
+      io.gitCalls.push(`salvage:${message.split('\n')[0]}`)
+      return io.salvageError === null ? Promise.resolve(io.salvaged) : Promise.reject(io.salvageError)
+    },
+    push: (branch, options) => {
+      io.gitCalls.push(`push:${branch}${options?.noVerify === true ? ':no-verify' : ''}`)
       return Promise.resolve()
     },
     defaultBranch: () => Promise.resolve(io.detectedBranch),
@@ -451,10 +506,22 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     sessionId: 'session-1',
     prompt: (request) => {
       io.prompts.push(request)
+      const failure = io.promptFailures.shift()
+      if (failure !== undefined && failure !== null) return Promise.reject(failure)
       return Promise.resolve({ text: io.replies.shift() ?? '', sessionId: 'session-1' })
     },
-    tokensUsed: () => Promise.resolve(io.tokensUsed),
-    close: () => Promise.resolve(),
+    // Degrades to zero once closed, exactly as the real one does when the server
+    // cannot answer — which is what makes "record the spend before anything closes
+    // the server" a testable claim rather than a comment.
+    tokensUsed: () => Promise.resolve(io.agentClosed ? 0 : io.tokensUsed),
+    abort: () => {
+      io.aborts += 1
+      return Promise.resolve(io.abortAccepted)
+    },
+    close: () => {
+      io.agentClosed = true
+      return Promise.resolve()
+    },
   }
 
   const pipelineConfig = config(overrides)
@@ -473,10 +540,15 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       return io.reviewError === null ? Promise.resolve(io.reviewResult) : Promise.reject(io.reviewError)
     },
     agent: () => Promise.resolve(agent),
-    tokensUsed: () => Promise.resolve(io.tokensUsed),
+    // Through the session, the way `memoizeAgent` wires it, so a run that closed
+    // the server reads what a closed server answers.
+    tokensUsed: () => agent.tokensUsed(),
     skills: () => Promise.resolve([]),
     baseBranch: () => Promise.resolve(BASE_BRANCH),
     selfLogin: () => Promise.resolve(AGENT_LOGIN),
+    // The same clock the status reporter reads, so a test that moves time moves it
+    // for the job deadline and for the status comment at once.
+    now: () => io.nowMs,
     config: pipelineConfig,
     log,
   }
@@ -497,6 +569,7 @@ const hostileGit = (): Git => {
   return {
     ensureBranch: (): Promise<void> => refuse('ensureBranch'),
     commitAll: (): Promise<StagedTotals | null> => refuse('commit'),
+    salvageAll: (): Promise<Salvage> => refuse('salvage'),
     push: (): Promise<void> => refuse('push'),
     defaultBranch: (): Promise<string | null> => refuse('symbolic-ref'),
   }
@@ -553,10 +626,26 @@ const toDesignSpec = async (harness: Harness): Promise<void> => {
   harness.io.edits.length = 0
 }
 
-/** Drives an issue as far as PLAN_REVIEW. */
-const toPlanReview = async (harness: Harness): Promise<void> => {
+/**
+ * A plan of `count` steps, as the planning turn reports it.
+ *
+ * The titles are numbered so a test can tell which step a prompt is about, which is
+ * the whole assertion of a step-wise implementation.
+ */
+const planReply = (count: number): string =>
+  JSON.stringify({
+    steps: Array.from({ length: count }, (_value, index) => ({
+      title: `Step ${index + 1} work`,
+      files: [`src/step-${index + 1}.ts`],
+      verification: 'bun test',
+    })),
+    summary: `${count} steps.`,
+  })
+
+/** Drives an issue as far as PLAN_REVIEW, optionally with a plan of several steps. */
+const toPlanReview = async (harness: Harness, plan: string = PLAN_REPLY): Promise<void> => {
   await toDesignSpec(harness)
-  harness.io.replies = [PLAN_REPLY]
+  harness.io.replies = [plan]
   await runPipeline({ event: comment('/approve'), deps: harness.deps })
   harness.io.posted.length = 0
   harness.io.reactions.length = 0
@@ -2414,6 +2503,7 @@ describe('the token budget', () => {
         sessionId: 'session-1',
         prompt: () => Promise.reject(new Error('the model timed out')),
         tokensUsed: () => Promise.resolve(harness.io.tokensUsed),
+        abort: () => Promise.resolve(true),
         close: () => Promise.resolve(),
       })
 
@@ -2656,6 +2746,932 @@ describe('the token budget', () => {
     expect(result.status).toBe('failed')
     expect(harness.io.posted[0]).toContain('### ⛔ Token budget spent')
     expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
+  })
+})
+
+describe('the job’s wall clock', () => {
+  const MINUTE = 60_000
+
+  /**
+   * A job whose deadline is `left` from now, with the default three-minute reserve.
+   *
+   * Anything at or below the reserve is out of time; anything above it is not. The
+   * two live side by side in most of these tests, because "it stopped" is only half
+   * the assertion — the other half is that a run with room carries on.
+   */
+  const withClock = (left: number, overrides: Partial<PipelineConfig> = {}): Harness =>
+    makeHarness({ jobDeadlineMs: RUN_NOW_MS + left, teardownReserveMs: 3 * MINUTE, ...overrides })
+
+  test('parks in INCOMPLETE before starting a phase it cannot finish', async () => {
+    // The stop the whole finding is about, in the shape it should have had: not a
+    // runner killed at `timeout-minutes` with nothing on the issue, and not a
+    // handler crash reported as ❌, but a bound reached and said out loud.
+    const harness = withClock(MINUTE)
+    seedState(harness, { phase: 'DESIGN_SPEC' })
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.posted[0]).toContain('### ⛔ Out of time for this job')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('INCOMPLETE')
+    expect(state?.resumeFrom).toBe('PLANNING')
+    expect(state?.lastError).toBeNull()
+    expect(result.reported).toBe(true)
+  })
+
+  test('reports waiting rather than failed, so a job that behaved does not go red', async () => {
+    // Deliberately unlike the token stop, which reports `failed`: that one starts
+    // no work, and this one has finished some and stopped in order to hand it over.
+    // `waiting` exits 0, so the Actions page stops showing red for runs that did
+    // exactly the right thing.
+    const harness = withClock(MINUTE)
+    seedState(harness, { phase: 'DESIGN_SPEC' })
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+  })
+
+  test('starts the phase when there is time over the reserve', async () => {
+    const harness = withClock(40 * MINUTE)
+    await toDesignSpec(harness)
+    harness.io.replies = [PLAN_REPLY]
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(latestPostedState(harness)?.phase).toBe('PLAN_REVIEW')
+  })
+
+  test('checks before the phase runs, not after it has spent the time', async () => {
+    const harness = withClock(MINUTE)
+    seedState(harness, { phase: 'DESIGN_SPEC' })
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.prompts).toHaveLength(0)
+  })
+
+  test('records what the job spent, because the next job reads it', async () => {
+    // The rule this pipeline is emphatic about: every state block a job writes
+    // carries the running total, a phase that succeeded, one that threw and one a
+    // ceiling refused to start alike. This is the worst place to be blind, because
+    // `INCOMPLETE` is exactly the state a `/continue` comes back out of.
+    const harness = withClock(MINUTE)
+    seedState(harness, { phase: 'DESIGN_SPEC', tokensSpent: 40_000 })
+    harness.io.tokensUsed = 10_000
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(latestPostedState(harness)?.tokensSpent).toBe(50_000)
+  })
+
+  test('spends no attempt, so the /continue it invites is never refused', async () => {
+    // Entered through `/retry`, which is the one trigger that carries a non-zero
+    // count into a handler phase — every forward move resets it. A stop that spent
+    // one would collide the two bounds: the notice asks for `/continue`, and the
+    // retry gate would eventually turn down the run it resumes over a ceiling this
+    // comment never mentioned.
+    const harness = withClock(MINUTE, { maxAttempts: 3 })
+    seedState(harness, { phase: 'FAILED', resumeFrom: 'PLANNING', attempts: 2 })
+
+    await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('INCOMPLETE')
+    expect(state?.attempts).toBe(2)
+  })
+
+  test('a /continue on a fresh job picks up the phase that ran out of time', async () => {
+    // What makes the notice honest. It offers `/continue` with no variable to raise
+    // first, which is only true because a new job gets a whole new clock — the
+    // difference from the token ceiling, where the same `/retry` stops right back
+    // where it was.
+    const harness = withClock(60 * MINUTE)
+    await toDesignSpec(harness)
+
+    // The job the clock ran out on, and then a fresh one: same issue, same thread,
+    // a new runner with its own deadline.
+    harness.deps.config = config({ jobDeadlineMs: RUN_NOW_MS + MINUTE, teardownReserveMs: 3 * MINUTE })
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+    expect(latestPostedState(harness)?.phase).toBe('INCOMPLETE')
+    harness.io.posted.length = 0
+
+    harness.deps.config = config({ jobDeadlineMs: RUN_NOW_MS + 60 * MINUTE, teardownReserveMs: 3 * MINUTE })
+    harness.io.replies = [PLAN_REPLY]
+    const result = await runPipeline({ event: comment('/continue'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted.at(-1)).toContain('### Plan')
+    expect(latestPostedState(harness)?.phase).toBe('PLAN_REVIEW')
+    expect(latestPostedState(harness)?.resumeFrom).toBeNull()
+  })
+
+  test('a /continue that runs out of time again parks again rather than failing', async () => {
+    // The chain is bounded by the token budget and by a human typing the command,
+    // not by `attempts` — which is why it must be able to happen twice without the
+    // retry gate acquiring an opinion about it.
+    const harness = withClock(MINUTE, { maxAttempts: 3 })
+    seedState(harness, { phase: 'DESIGN_SPEC' })
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    const again = await runPipeline({ event: comment('/continue'), deps: harness.deps })
+
+    expect(again.status).toBe('waiting')
+    expect(latestPostedState(harness)?.phase).toBe('INCOMPLETE')
+    expect(latestPostedState(harness)?.resumeFrom).toBe('PLANNING')
+    expect(latestPostedState(harness)?.attempts).toBe(0)
+  })
+
+  test.each(['/approve', '/retry', '/review'])('%s is refused in INCOMPLETE, naming what does work', async (typed) => {
+    // Through the same door a wrong-phase command has always been refused, so the
+    // list a maintainer is shown comes from the transition table rather than from a
+    // sentence somebody kept in step by hand.
+    const harness = makeHarness()
+    seedState(harness, { phase: 'INCOMPLETE', resumeFrom: 'REVIEW_AND_MUTATE' })
+
+    const result = await runPipeline({ event: comment(typed), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(harness.io.posted[0]).toContain('does not apply right now')
+    expect(harness.io.posted[0]).toContain('`/continue`')
+    expect(latestPostedState(harness)?.phase).toBe('INCOMPLETE')
+  })
+
+  test('a /continue anywhere else is refused, and moves nothing', async () => {
+    // `/continue` means "you were not finished", a claim only a wall-clock park can
+    // make. In `FAILED` the command that resumes is `/retry`, and the two must not
+    // become interchangeable — the state block is the assertion, because a state
+    // that is never posted never happened.
+    const harness = makeHarness()
+    seedState(harness, { phase: 'FAILED', resumeFrom: 'PLANNING', lastError: 'boom' })
+
+    const result = await runPipeline({ event: comment('/continue'), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(harness.io.prompts).toHaveLength(0)
+    expect(latestPostedState(harness)?.phase).toBe('FAILED')
+    expect(latestPostedState(harness)?.resumeFrom).toBe('PLANNING')
+  })
+
+  test('a plain comment in INCOMPLETE is read and set aside, exactly as in FAILED', async () => {
+    // The two parked phases answer prose the same way, and neither classifies it:
+    // nothing the classifier can report moves either phase on, so a triage turn
+    // bought here buys nothing at all.
+    const harness = makeHarness()
+    seedState(harness, { phase: 'INCOMPLETE', resumeFrom: 'REVIEW_AND_MUTATE' })
+
+    const result = await runPipeline({ event: comment('thanks!'), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(result.reason).toContain('No actionable command while in INCOMPLETE')
+    expect(harness.io.prompts).toHaveLength(0)
+    expect(harness.io.posted).toEqual([])
+    expect(reactionsOf(harness)).toContain('+1')
+  })
+
+  test('an out-of-time /ask leaves the phase alone rather than parking a question', async () => {
+    // Answering is a side conversation about work that lives elsewhere, so the park
+    // must not apply to it — `resumeFrom` may never name a waiting phase, and
+    // `INCOMPLETE` would claim a delivered pull request was unfinished because
+    // somebody asked what had changed.
+    const harness = withClock(MINUTE)
+    seedState(harness, { phase: 'DESIGN_SPEC', tokensSpent: 500 })
+
+    const result = await runPipeline({ event: comment('/ask why that file?'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.prompts).toEqual([])
+    expect(harness.io.posted[0]).toContain('### ⛔ Out of time for this job')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('DESIGN_SPEC')
+    expect(state?.resumeFrom).toBeNull()
+    expect(state?.tokensSpent).toBe(500)
+  })
+
+  test('an out-of-time /ask in COMPLETE reports instead of crashing the runner', async () => {
+    // `OUT_OF_TIME` is accepted only where a handler exists, so parking a question
+    // asked in `COMPLETE` would throw `InvalidTransitionError` out of the pipeline
+    // — the runner exits 1 and the issue hears nothing, which is the failure the
+    // answer path has already been burned by twice.
+    const harness = withClock(MINUTE)
+    seedState(harness, { phase: 'COMPLETE', prUrl: 'https://example.test/pull/7' })
+
+    const result = await runPipeline({ event: comment('/ask what changed?'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted[0]).toContain('### ⛔ Out of time for this job')
+    expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
+  })
+
+  test('the token ceiling is reported first when both bounds are reached at once', async () => {
+    // The order between the two stops is a decision, not an accident. The token
+    // budget spans jobs and the clock does not, so telling a maintainer to
+    // `/continue` here would spend a whole job to learn that the real answer is
+    // `AGENT_MAX_TOKENS`. Reported the other way round, the notice names the thing
+    // that actually has to change.
+    const harness = withClock(MINUTE, { maxTokens: 50_000 })
+    seedState(harness, { phase: 'DESIGN_SPEC', tokensSpent: 60_000 })
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.posted[0]).toContain('### ⛔ Token budget spent')
+    expect(latestPostedState(harness)?.phase).toBe('FAILED')
+  })
+
+  test('a mid-cascade stop parks too, where no trigger moved the state', async () => {
+    // The firing no trigger-layer refusal could ever reach: the earlier phase
+    // legitimately did its work and posted, and the clock runs out before the next
+    // one. `PR_DELIVERY` is the worst place to be stranded, since the branch is
+    // already pushed and only the pull request is left.
+    const harness = withClock(40 * MINUTE)
+    await toPlanReview(harness)
+    harness.io.replies = ['Implemented.']
+    harness.deps.git.push = (branch): Promise<void> => {
+      harness.io.gitCalls.push(`push:${branch}`)
+      harness.io.nowMs += 39 * MINUTE
+      return Promise.resolve()
+    }
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(headings(harness)).toEqual(['### Implementation report', '### ⛔ Out of time for this job'])
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('INCOMPLETE')
+    expect(state?.resumeFrom).toBe('PR_DELIVERY')
+  })
+
+  test('a run with no job deadline is bounded by the per-turn cap alone, as before', async () => {
+    // Every `--event-path` run, and every workflow that has not been updated. The
+    // knobs are absent, so `jobDeadlineMs` is null and this path must be
+    // indistinguishable from the one that existed before the bound did.
+    const harness = makeHarness({ jobDeadlineMs: null })
+    await toDesignSpec(harness)
+    harness.io.replies = [PLAN_REPLY]
+    // Well past any plausible deadline, which must mean nothing without one.
+    harness.io.nowMs = RUN_NOW_MS + 10 * 60 * MINUTE
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(latestPostedState(harness)?.phase).toBe('PLAN_REVIEW')
+  })
+
+  test('the parked issue carries the amber marker, not the failure one', async () => {
+    const harness = withClock(MINUTE)
+    seedState(harness, { phase: 'DESIGN_SPEC' })
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.labels).toContain('agent:incomplete')
+    expect(harness.io.labels).toContain('agent:needs-you')
+    expect(harness.io.labels).not.toContain('agent:failed')
+    expect(harness.io.labels).not.toContain('agent:working')
+  })
+})
+
+/**
+ * The finding itself: the clock runs out **inside** the implementation turn.
+ *
+ * Everything above is the stop in front of a phase, which loses nothing because the
+ * phase never starts. This is the run that produced the finding — thirty minutes of
+ * steady progress, 355 tool calls, discarded and reported as "the model did not
+ * answer" — and the assertion throughout is the **persisted state** plus what the
+ * branch carries, never a returned status.
+ */
+describe('a turn stopped part-way through', () => {
+  /**
+   * An issue with an approved plan, whose implementation turn runs out of time.
+   *
+   * The wrap-up is the second prompt in the same session, so it is the reply queue's
+   * first entry: `failNextPrompt` accounts for the turn that never answered.
+   */
+  const stoppedMidTurn = async (overrides: Partial<PipelineConfig> = {}): Promise<Harness> => {
+    const harness = makeHarness({ wrapUpMs: 30_000, ...overrides })
+    await toPlanReview(harness)
+    harness.io.prompts.length = 0
+    harness.io.promptFailures = [outOfTime()]
+    harness.io.replies = [HANDOFF]
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+    return harness
+  }
+
+  test('parks in INCOMPLETE with the phase it was interrupted in, and nothing broke', async () => {
+    const harness = await stoppedMidTurn()
+
+    expect(harness.io.posted.at(-1)).toContain('### ⛔ Out of time part-way through the work')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('INCOMPLETE')
+    expect(state?.resumeFrom).toBe('REVIEW_AND_MUTATE')
+    // Not a failure: no error recorded, no attempt spent, so the `/continue` the
+    // notice invites can never be refused by the retry gate.
+    expect(state?.lastError).toBeNull()
+    expect(state?.attempts).toBe(0)
+  })
+
+  test('reports waiting rather than failed, and says the issue was told', async () => {
+    // The turn was cut off mid-`bash` and its work is on the branch. A red Actions
+    // page for that is the ❌-for-a-ceiling category error the whole item is about.
+    const harness = makeHarness({ wrapUpMs: 30_000 })
+    await toPlanReview(harness)
+    harness.io.promptFailures = [outOfTime()]
+    harness.io.replies = [HANDOFF]
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(result.reported).toBe(true)
+  })
+
+  test('aborts twice — once to ask, once regardless of the answer', async () => {
+    // The soft stop is what makes the wrap-up possible; the hard stop is what makes
+    // the run independent of the model cooperating. Neither is `close()`, which the
+    // measurement showed orphans the tool child rather than stopping it.
+    const harness = await stoppedMidTurn()
+
+    expect(harness.io.aborts).toBe(2)
+    expect(harness.io.agentClosed).toBe(false)
+  })
+
+  test('asks the same session for a handoff, and posts what it said', async () => {
+    const harness = await stoppedMidTurn()
+
+    const wrapUp = harness.io.prompts.at(-1)
+    expect(wrapUp?.prompt).toContain('Start nothing new')
+    expect(wrapUp?.prompt).toContain('Tried and rejected')
+    // The reply reaches the issue where a human decides whether to continue at all.
+    expect(harness.io.posted.at(-1)).toContain('a decorator, which broke the generic typing')
+  })
+
+  test('the wrap-up reuses the interrupted turn’s system prompt, envelope id and all', async () => {
+    // A second `mintEnvelope` would tell the model to trust an id that appears in no
+    // delimiter, which makes every real one in the session look forged.
+    const harness = await stoppedMidTurn()
+
+    const [implement, wrapUp] = harness.io.prompts
+    expect(harness.io.prompts).toHaveLength(2)
+    expect(wrapUp?.system).toBe(implement?.system)
+  })
+
+  test('commits with the hooks bypassed and pushes the same way', async () => {
+    // `prepare` installs a pre-commit hook that runs lint, typecheck and format over
+    // the staged files, so a tree interrupted mid-edit cannot be committed at all
+    // without this — `git commit` exits non-zero and the salvage loses everything.
+    const harness = await stoppedMidTurn()
+
+    expect(harness.io.gitCalls).toContain(`salvage:chore(agent): salvage partial work on issue #${ISSUE}`)
+    expect(harness.io.gitCalls).toContain(`push:agent/issue-${ISSUE}:no-verify`)
+    // Never the guarded commit, whose hook is the thing that cannot pass here.
+    expect(harness.io.gitCalls.some((call) => call.startsWith('commit:'))).toBe(false)
+  })
+
+  test('records what the job spent, from a server it has not closed', async () => {
+    // The silent bug: `tokensUsed()` degrades to `0` when the server cannot answer,
+    // so a stop that closed the session on its way out would persist a total with
+    // this whole turn missing from it — and that total is what the next `/continue`
+    // hands to the token ceiling.
+    const harness = makeHarness({ wrapUpMs: 30_000 })
+    await toPlanReview(harness)
+    seedState(harness, { phase: 'INCOMPLETE', resumeFrom: 'REVIEW_AND_MUTATE', planRevision: 1, tokensSpent: 40_000 })
+    harness.io.tokensUsed = 112_084
+    harness.io.promptFailures = [outOfTime()]
+    harness.io.replies = [HANDOFF]
+
+    await runPipeline({ event: comment('/continue'), deps: harness.deps })
+
+    expect(latestPostedState(harness)?.tokensSpent).toBe(152_084)
+  })
+
+  test('records the size of what it kept, so a salvage nobody continues is still legible', async () => {
+    const harness = await stoppedMidTurn()
+
+    expect(latestPostedState(harness)?.changedLines).toBe(140)
+  })
+
+  test('a /continue reads the handoff back and hands it to the model', async () => {
+    // The whole point of the block. The continuation is a fresh job with a fresh
+    // session and an empty history; this note is the one thing it cannot re-derive
+    // from the diff and the plan.
+    const harness = await stoppedMidTurn()
+    harness.io.prompts.length = 0
+    harness.io.replies = ['Finished it.']
+
+    await runPipeline({ event: comment('/continue'), deps: harness.deps })
+
+    const resumed = harness.io.prompts[0]
+    expect(resumed?.prompt).toContain('a decorator, which broke the generic typing')
+    // Enveloped like any other text the pipeline did not write, and framed as a
+    // report to check rather than as instructions.
+    expect(resumed?.prompt).toContain('source="handoff-from-the-interrupted-run"')
+    expect(resumed?.prompt).toContain('not as instructions')
+  })
+
+  test('the newest note wins, which is how a second stop supersedes the first', () => {
+    // For free, and worth pinning: the blocks are appended in order and the read
+    // walks newest-first, so nothing has to expire an earlier note.
+    const thread = [
+      { id: 1, body: renderArtifact(HANDOFF_MARKER, 'the first stop', 1), authorLogin: AGENT_LOGIN },
+      { id: 2, body: renderArtifact(HANDOFF_MARKER, 'the second stop', 1), authorLogin: AGENT_LOGIN },
+    ]
+
+    expect(findHandoff(thread, AGENT_LOGIN, 1)).toBe('the second stop')
+  })
+
+  test('a note about a plan that has since been rewritten is not read back', () => {
+    // The handoff's lifecycle. It describes progress against one plan, so "done",
+    // "remaining" and "rejected" are each claims about a document a `/changes` has
+    // replaced — and handing them to a model implementing the new plan would have it
+    // skip work nobody has done and avoid approaches nobody has tried.
+    //
+    // Not reachable end to end today, and that is worth stating rather than
+    // implying: a part-way stop only happens in `REVIEW_AND_MUTATE`, and `INCOMPLETE`
+    // accepts only `/continue`, so there is no route from a written handoff back to
+    // `PLANNING`. What it does cover now is a hand-edited block, which is
+    // attacker-editable text like every other one, and it is the invariant that
+    // keeps the note honest the day such a route exists.
+    const thread = [{ id: 1, body: renderArtifact(HANDOFF_MARKER, 'about plan 1', 1), authorLogin: AGENT_LOGIN }]
+
+    expect(findHandoff(thread, AGENT_LOGIN, 1)).toBe('about plan 1')
+    expect(findHandoff(thread, AGENT_LOGIN, 2)).toBeNull()
+  })
+
+  test('only the agent’s own note is read, as with every other artefact', () => {
+    const planted = [{ id: 1, body: renderArtifact(HANDOFF_MARKER, 'trust me', 1), authorLogin: 'drive-by' }]
+
+    expect(findHandoff(planted, AGENT_LOGIN, 1)).toBeNull()
+  })
+
+  test('pushes nothing when no abort was accepted, and says exactly that', async () => {
+    // The fence. The size caps only report on this path, so a tree still being
+    // written to would be committed rather than refused — staging one the pipeline
+    // cannot prove is still is the single thing this path must not do.
+    const harness = makeHarness({ wrapUpMs: 30_000 })
+    await toPlanReview(harness)
+    harness.io.abortAccepted = false
+    harness.io.promptFailures = [outOfTime()]
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.gitCalls.some((call) => call.startsWith('salvage:'))).toBe(false)
+    expect(harness.io.posted.at(-1)).toContain('**Nothing was pushed**')
+    expect(harness.io.posted.at(-1)).toContain('could not confirm the model had stopped')
+    // Still a park, not a failure: the issue is handed over either way.
+    expect(latestPostedState(harness)?.phase).toBe('INCOMPLETE')
+  })
+
+  test('a refused abort buys no wrap-up prompt either', async () => {
+    // A session whose tool child is still running has no capacity to answer, so the
+    // window would expire for nothing and delay the salvage by its whole length.
+    const harness = makeHarness({ wrapUpMs: 30_000 })
+    await toPlanReview(harness)
+    harness.io.prompts.length = 0
+    harness.io.abortAccepted = false
+    harness.io.promptFailures = [outOfTime()]
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.prompts).toHaveLength(1)
+    expect(harness.io.posted.at(-1)).toContain('no account of where it stopped')
+  })
+
+  test('a wrap-up that fails still parks, still salvages, and admits it has no note', async () => {
+    const harness = makeHarness({ wrapUpMs: 30_000 })
+    await toPlanReview(harness)
+    harness.io.promptFailures = [outOfTime(), new Error('the session is gone')]
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.gitCalls).toContain(`push:agent/issue-${ISSUE}:no-verify`)
+    expect(harness.io.posted.at(-1)).toContain('no account of where it stopped')
+    expect(latestPostedState(harness)?.phase).toBe('INCOMPLETE')
+  })
+
+  test('a clean tree is a legitimate outcome, and still parks', async () => {
+    const harness = makeHarness({ wrapUpMs: 30_000 })
+    await toPlanReview(harness)
+    harness.io.salvaged = { kind: 'clean' }
+    harness.io.promptFailures = [outOfTime()]
+    harness.io.replies = [HANDOFF]
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted.at(-1)).toContain('nothing had been written to the working tree yet')
+    expect(harness.io.gitCalls.some((call) => call.startsWith('push:'))).toBe(false)
+    expect(latestPostedState(harness)?.phase).toBe('INCOMPLETE')
+  })
+
+  test('a guard refusal pushes nothing and names the reason without repeating it', async () => {
+    // The refusals that stay hard: a credential is in history whether the file is
+    // later deleted or not, and being out of time does not make that acceptable.
+    const harness = makeHarness({ wrapUpMs: 30_000 })
+    await toPlanReview(harness)
+    harness.io.salvaged = { kind: 'refused', reason: "the staged changes contain 1 of this pipeline's own credentials" }
+    harness.io.promptFailures = [outOfTime()]
+    harness.io.replies = [HANDOFF]
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.posted.at(-1)).toContain('**Nothing was pushed**')
+    expect(harness.io.posted.at(-1)).toContain('credentials')
+    expect(harness.io.gitCalls.some((call) => call.startsWith('push:'))).toBe(false)
+    // The handoff survives the refusal: it is the only thing left to hand over.
+    expect(harness.io.posted.at(-1)).toContain('a decorator')
+  })
+
+  test('a commit over the size caps is reported rather than thrown away', async () => {
+    // Discarding a real 3,000-line increment because the cap says 2,000 recreates
+    // the exact loss this whole finding is about.
+    const harness = makeHarness({ wrapUpMs: 30_000 })
+    await toPlanReview(harness)
+    harness.io.salvaged = {
+      kind: 'committed',
+      totals: { files: 40, lines: 3_000 },
+      overCap: '3000 lines changed, over the limit of 2000',
+    }
+    harness.io.promptFailures = [outOfTime()]
+    harness.io.replies = [HANDOFF]
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.posted.at(-1)).toContain('3,000 lines')
+    expect(harness.io.posted.at(-1)).toContain('over the limit of 2000')
+    expect(harness.io.gitCalls).toContain(`push:agent/issue-${ISSUE}:no-verify`)
+  })
+
+  test('a salvage that breaks degrades to “nothing pushed”, never to a second failure', async () => {
+    // The run being rescued is already out of time and cannot afford a second thing
+    // to go wrong — so a git that rejects must not turn a park into a ❌.
+    const harness = makeHarness({ wrapUpMs: 30_000 })
+    await toPlanReview(harness)
+    harness.io.salvageError = new Error('git failed (128): index.lock exists')
+    harness.io.promptFailures = [outOfTime()]
+    harness.io.replies = [HANDOFF]
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted.at(-1)).toContain('**Nothing was pushed**')
+    expect(harness.io.posted.at(-1)).toContain('index.lock')
+    expect(latestPostedState(harness)?.phase).toBe('INCOMPLETE')
+  })
+
+  test('a push that cannot reach the remote is “nothing pushed”, which is the truth', async () => {
+    // A commit that exists only in a working tree the job is about to destroy is not
+    // something a maintainer can act on.
+    const harness = makeHarness({ wrapUpMs: 30_000 })
+    await toPlanReview(harness)
+    harness.deps.git.push = (): Promise<void> => Promise.reject(new Error('failed to push some refs'))
+    harness.io.promptFailures = [outOfTime()]
+    harness.io.replies = [HANDOFF]
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.posted.at(-1)).toContain('**Nothing was pushed**')
+    expect(latestPostedState(harness)?.phase).toBe('INCOMPLETE')
+  })
+
+  test('every other way a turn can fail is still a failure', async () => {
+    // The regression this stage could most easily introduce. A rate limit, a dead
+    // provider or a bad reply is the work breaking: ❌, an attempt spent, and
+    // `/retry` — and none of them may quietly start salvaging a half-written tree.
+    const harness = makeHarness()
+    await toPlanReview(harness)
+    harness.io.promptFailures = [new Error('429 rate limited')]
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.posted.at(-1)).toContain('### ❌ Run failed in REVIEW_AND_MUTATE')
+    expect(harness.io.gitCalls.some((call) => call.startsWith('salvage:'))).toBe(false)
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('FAILED')
+    expect(state?.resumeFrom).toBe('REVIEW_AND_MUTATE')
+    expect(state?.attempts).toBe(1)
+  })
+
+  test('the parked issue carries the amber marker, exactly as the stop in front of a phase does', async () => {
+    const harness = await stoppedMidTurn()
+
+    expect(harness.io.labels).toContain('agent:incomplete')
+    expect(harness.io.labels).not.toContain('agent:failed')
+  })
+})
+
+/** What the heartbeat had counted when a turn was cut off mid-`bash`. */
+const PROGRESS = { lastAction: 'ran bash', toolCalls: 355, tokens: 112_084, cost: 0 }
+
+/** What the adapter rejects with when a turn is stopped by its own bound. */
+const outOfTime = (): Error => turnDeadlineError(1_800_000, PROGRESS)
+
+/** The wrap-up's reply, as the model that was interrupted writes it. */
+const HANDOFF = [
+  '**Done** — the retry wrapper and its tests.',
+  '**Remaining** — wire it into the client.',
+  '**Tried and rejected** — a decorator, which broke the generic typing.',
+].join('\n')
+
+/**
+ * The unit of work is a **plan step**: one turn, then a commit, then a push.
+ *
+ * Everything above is about a stop that costs whatever one atomic turn had not yet
+ * committed — stage 2 salvages that, and salvaging is the consolation prize. These
+ * are the runs where the clock lands *between* two steps, which is the state this
+ * pipeline is designed to be interrupted in: the tree is clean, the branch carries
+ * every finished step, and the cursor in the state block says which one is next. The
+ * assertion is the **persisted state** and what git was asked to do, never a status.
+ */
+describe('implementing the plan a step at a time', () => {
+  const MINUTE = 60_000
+
+  /** Every git call that changed the remote or the history, in order. */
+  const writes = (harness: Harness): string[] =>
+    harness.io.gitCalls.filter((call) => call.startsWith('commit:') || call.startsWith('push:'))
+
+  /** What a prompt was told to implement, out of its own envelope. */
+  const stepSection = (prompt: string): string =>
+    prompt.split('source="plan-step"')[1]?.split('</untrusted_input')[0] ?? ''
+
+  /** The nth prompt's body, so a test asserting on it carries no narrowing of its own. */
+  const promptAt = (harness: Harness, index: number): string => harness.io.prompts[index]?.prompt ?? ''
+
+  /**
+   * A git whose first commit finds a clean tree and whose later ones do not.
+   *
+   * A step whose turn touched no file is an ordinary outcome — only a walk where *no*
+   * step committed anything is `noChangesError` — and the fake has to be able to say
+   * so per step rather than per phase.
+   */
+  const cleanFirstCommit = (harness: Harness): void => {
+    let commits = 0
+    harness.deps.git.commitAll = (message): Promise<StagedTotals | null> => {
+      commits += 1
+      harness.io.gitCalls.push(`commit:${message.split('\n')[0]}`)
+      return Promise.resolve(commits === 1 ? null : { files: 1, lines: 7 })
+    }
+  }
+
+  /** A job with `left` of clock, and the three-slice split the workflow uses. */
+  const withClock = (left: number): Harness =>
+    makeHarness({ jobDeadlineMs: RUN_NOW_MS + left, teardownReserveMs: 3 * MINUTE, wrapUpMs: 2 * MINUTE })
+
+  /** Advances the fake clock the moment a step's push lands, so the next one is refused. */
+  const burnClockOnPush = (harness: Harness, byMs: number): void => {
+    harness.deps.git.push = (branch, options): Promise<void> => {
+      harness.io.gitCalls.push(`push:${branch}${options?.noVerify === true ? ':no-verify' : ''}`)
+      harness.io.nowMs += byMs
+      return Promise.resolve()
+    }
+  }
+
+  test('runs one turn per step, and commits and pushes between them', async () => {
+    // The whole point: a job killed after step 2 has step 1 and step 2 on the remote.
+    // An Actions working tree dies with the job, so a commit nobody pushed until the
+    // end of the phase is a commit the job's death takes with it.
+    const harness = makeHarness()
+    await toPlanReview(harness, planReply(3))
+    harness.io.prompts.length = 0
+    harness.io.replies = ['one', 'two', 'three']
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.prompts).toHaveLength(3)
+    expect(writes(harness)).toEqual([
+      `commit:feat(agent): implement issue #${ISSUE} — step 1/3: Step 1 work`,
+      `push:agent/issue-${ISSUE}`,
+      `commit:feat(agent): implement issue #${ISSUE} — step 2/3: Step 2 work`,
+      `push:agent/issue-${ISSUE}`,
+      `commit:feat(agent): implement issue #${ISSUE} — step 3/3: Step 3 work`,
+      `push:agent/issue-${ISSUE}`,
+    ])
+  })
+
+  test('asks for one step at a time, naming which', async () => {
+    const harness = makeHarness()
+    await toPlanReview(harness, planReply(3))
+    harness.io.prompts.length = 0
+    harness.io.replies = ['one', 'two', 'three']
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(promptAt(harness, 1)).toContain('step 2 of 3')
+    // The step it is on is enveloped on its own, so "do this one" cannot be confused
+    // with the plan it came out of — which is in the same prompt, as context.
+    expect(stepSection(promptAt(harness, 1))).toContain('Step 2 work')
+    expect(stepSection(promptAt(harness, 1))).not.toContain('Step 3 work')
+    expect(promptAt(harness, 1)).toContain('Step 3 work')
+  })
+
+  test('sums the lines its steps committed rather than recording only the last', async () => {
+    // `changedLines` was overwritten per commit, which was harmless while there was
+    // one commit per phase and is a three-fold under-report now. It means "lines this
+    // run's implementation committed, across its steps".
+    const harness = makeHarness()
+    await toPlanReview(harness, planReply(3))
+    harness.io.replies = ['one', 'two', 'three']
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(latestPostedState(harness)?.changedLines).toBe(36)
+  })
+
+  test('a step that changed nothing is not a failure, as long as some step did', async () => {
+    // Each step is guarded and committed on its own, so a step whose turn touched no
+    // file is an ordinary outcome — the plan is not finished, and the run carries on.
+    const harness = makeHarness()
+    await toPlanReview(harness, planReply(2))
+    harness.io.replies = ['nothing to do', 'two']
+    cleanFirstCommit(harness)
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    // Nothing was committed for step 1, so nothing was pushed for it either.
+    expect(writes(harness).filter((call) => call.startsWith('push:'))).toHaveLength(1)
+    expect(latestPostedState(harness)?.changedLines).toBe(7)
+  })
+
+  test('a plan with no steps runs in one turn, exactly as before steps existed', async () => {
+    // Live issues carry plans approved before this stage, and the fallback is
+    // permanent: nothing can invent steps for a document a maintainer signed off on.
+    const harness = makeHarness()
+    seedState(harness, { phase: 'PLAN_REVIEW', planRevision: 1 })
+    seedPlan(harness)
+    harness.io.replies = ['Implemented.']
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.prompts).toHaveLength(1)
+    expect(harness.io.prompts[0]?.prompt).not.toContain('step 1 of')
+    expect(writes(harness)).toEqual([`commit:feat(agent): implement issue #${ISSUE}`, `push:agent/issue-${ISSUE}`])
+  })
+
+  test('stops cleanly between steps rather than starting one it cannot finish', async () => {
+    // The prize of the whole stage. There is time for another *phase* here — the
+    // cascade's own check would have let this through — and not enough for another
+    // step, which is exactly the window where a step would be cut off mid-file.
+    const harness = withClock(40 * MINUTE)
+    await toPlanReview(harness, planReply(3))
+    harness.io.prompts.length = 0
+    harness.io.replies = ['one', 'two', 'three']
+    burnClockOnPush(harness, 36 * MINUTE)
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted.at(-1)).toContain('### ⛔ Out of time between plan steps')
+    expect(harness.io.posted.at(-1)).toContain('1 of 3')
+    // Not a salvage: nothing was aborted, nothing was staged with the hooks off, and
+    // no wrap-up was paid for — the session was idle and the tree was clean.
+    expect(harness.io.aborts).toBe(0)
+    expect(harness.io.prompts).toHaveLength(1)
+    expect(harness.io.gitCalls.some((call) => call.startsWith('salvage:'))).toBe(false)
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('INCOMPLETE')
+    expect(state?.resumeFrom).toBe('REVIEW_AND_MUTATE')
+    expect(state?.stepsDone).toBe(1)
+    expect(state?.changedLines).toBe(12)
+    expect(state?.attempts).toBe(0)
+    expect(state?.lastError).toBeNull()
+  })
+
+  test('a /continue picks the plan up at the step the cursor recorded', async () => {
+    // The cursor is why the park costs nothing: without it a continuation would redo
+    // the steps already on the branch, paying for them twice.
+    const harness = withClock(40 * MINUTE)
+    await toPlanReview(harness, planReply(3))
+    harness.io.replies = ['one', 'two', 'three']
+    burnClockOnPush(harness, 36 * MINUTE)
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+    expect(latestPostedState(harness)?.stepsDone).toBe(1)
+
+    harness.io.prompts.length = 0
+    harness.io.replies = ['two', 'three']
+    harness.deps.config = { ...harness.deps.config, jobDeadlineMs: harness.io.nowMs + 60 * MINUTE }
+    harness.deps.git.push = (branch): Promise<void> => {
+      harness.io.gitCalls.push(`push:${branch}`)
+      return Promise.resolve()
+    }
+
+    const result = await runPipeline({ event: comment('/continue'), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.prompts).toHaveLength(2)
+    expect(harness.io.prompts[0]?.prompt).toContain('step 2 of 3')
+    expect(harness.io.prompts[1]?.prompt).toContain('step 3 of 3')
+    expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
+  })
+
+  test('a step interrupted mid-turn says which step, everywhere it says anything', async () => {
+    // Stage 2's path, now with a step to name. The handoff is an account of one step
+    // rather than of a whole plan, so the prompt that asks for it has to say which.
+    const harness = makeHarness({ wrapUpMs: 30_000 })
+    await toPlanReview(harness, planReply(3))
+    harness.io.prompts.length = 0
+    harness.io.promptFailures = [null, turnDeadlineError(1_800_000, PROGRESS)]
+    harness.io.replies = ['one', HANDOFF]
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.posted.at(-1)).toContain('### ⛔ Out of time part-way through the work')
+    expect(harness.io.posted.at(-1)).toContain('step 2 of 3')
+    expect(harness.io.prompts.at(-1)?.prompt).toContain('step 2 of 3')
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('INCOMPLETE')
+    // Step 2 was *not* finished, so the continuation redoes it with the handoff in
+    // hand rather than skipping to step 3.
+    expect(state?.stepsDone).toBe(1)
+    // What the finished step committed plus what the interrupted one salvaged.
+    expect(state?.changedLines).toBe(152)
+    expect(harness.io.gitCalls).toContain(`push:agent/issue-${ISSUE}:no-verify`)
+  })
+
+  test('a revised plan is walked from its first step again', async () => {
+    // The cursor belongs to the plan it counts into. A `/changes` replaces that plan,
+    // so a cursor carried across would skip work nobody has done — the same argument
+    // that retires the handoff on a plan revision.
+    const harness = makeHarness()
+    await toPlanReview(harness, planReply(3))
+    seedState(harness, { phase: 'PLAN_REVIEW', planRevision: 1, stepsDone: 4 })
+    harness.io.replies = [planReply(2)]
+
+    await runPipeline({ event: comment('/changes make it smaller'), deps: harness.deps })
+
+    expect(latestPostedState(harness)?.phase).toBe('PLAN_REVIEW')
+    expect(latestPostedState(harness)?.stepsDone).toBe(0)
+  })
+
+  test('the handoff reaches the step it was written about, and no step after it', async () => {
+    // The note describes how far into *one* step the interrupted turn got, and the
+    // cursor points at that same step — so the first step of a continuation is the one
+    // it is about. Carried further it would arrive as a report about finished work,
+    // framed as context for work that has not started.
+    const harness = makeHarness({ wrapUpMs: 30_000 })
+    await toPlanReview(harness, planReply(3))
+    harness.io.promptFailures = [outOfTime()]
+    harness.io.replies = [HANDOFF]
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    harness.io.prompts.length = 0
+    harness.io.replies = ['one', 'two', 'three']
+    const result = await runPipeline({ event: comment('/continue'), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(promptAt(harness, 0)).toContain('a decorator, which broke the generic typing')
+    expect(promptAt(harness, 1)).not.toContain('a decorator, which broke the generic typing')
+  })
+
+  test('a cursor past the end of the plan starts it over rather than stranding it', async () => {
+    // A state block is attacker-editable text. A cursor naming a step this plan does
+    // not have would leave the walk with nothing to do, which reads as "finished the
+    // plan without touching a file" — parked in `FAILED`, where every `/retry` reaches
+    // the same conclusion. Walking from the top is recoverable: the finished steps
+    // commit nothing and the run carries on.
+    const harness = makeHarness()
+    await toPlanReview(harness, planReply(2))
+    seedState(harness, { phase: 'PLAN_REVIEW', planRevision: 1, stepsDone: 99 })
+    harness.io.prompts.length = 0
+    harness.io.replies = ['one', 'two']
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.prompts[0]?.prompt).toContain('step 1 of 2')
+  })
+
+  test('the plan comment a maintainer approves lists the steps the run will walk', async () => {
+    // One value renders the comment and fills the block, so the plan somebody
+    // approved and the steps the implementation walks cannot disagree.
+    const harness = makeHarness()
+    await toPlanReview(harness, planReply(2))
+
+    const posted = harness.io.thread.map((entry) => entry.body).join('\n')
+    expect(posted).toContain('1. **Step 1 work**')
+    expect(posted).toContain('2. **Step 2 work**')
+    expect(findPlan(harness.io.thread, AGENT_LOGIN)?.steps).toHaveLength(2)
+  })
+
+  test('tells the model a clock may stop it, without depending on the answer', async () => {
+    // A complement, never the mechanism: a model cannot estimate wall clock, so this
+    // only biases a turn toward leaving the tree committable. Every bound that
+    // matters is enforced outside the model.
+    const harness = makeHarness()
+    await toPlanReview(harness, planReply(2))
+    harness.io.prompts.length = 0
+    harness.io.replies = ['one', 'two']
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.prompts[0]?.system).toContain('stopped at any moment')
   })
 })
 

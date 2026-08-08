@@ -14,7 +14,7 @@ import { resolveBaseBranch, resolveReviewCommand } from '../../opencode-agent/sr
 import { loadConfig, parseChecks } from '../../opencode-agent/src/config.js'
 import type { Env } from '../../opencode-agent/src/config.js'
 import { withDeadline } from '../../opencode-agent/src/deadline.js'
-import { PipelineError } from '../../opencode-agent/src/errors.js'
+import { isTurnDeadline, openCodeError, PipelineError, turnDeadlineError } from '../../opencode-agent/src/errors.js'
 import { createGit } from '../../opencode-agent/src/git.js'
 import type { GitOptions } from '../../opencode-agent/src/git.js'
 import type { PullRequestState } from '../../opencode-agent/src/github-pulls.js'
@@ -33,7 +33,13 @@ import { mintEnvelope } from '../../opencode-agent/src/phases/envelope.js'
 import { renderThread, shareBudget } from '../../opencode-agent/src/prompt-budget.js'
 import { buildCiFixPrompt, createEnvelope } from '../../opencode-agent/src/prompts.js'
 import { parseRepository } from '../../opencode-agent/src/repository.js'
-import { collectText, decodeReply, decodeSessionId, decodeSessionUsage } from '../../opencode-agent/src/sdk-contract.js'
+import {
+  collectText,
+  decodeAbort,
+  decodeReply,
+  decodeSessionId,
+  decodeSessionUsage,
+} from '../../opencode-agent/src/sdk-contract.js'
 import type { SessionUsage } from '../../opencode-agent/src/sdk-contract.js'
 import { redactSecrets, scrubSecrets } from '../../opencode-agent/src/secrets.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
@@ -195,6 +201,84 @@ describe('the recorded SDK contract', () => {
     // every phase into a failure.
     expect(decodeSessionUsage(fetched)).toBeNull()
   })
+
+  /**
+   * The abort envelope.
+   *
+   * `POST /session/:id/abort` is declared `200: boolean` by the pinned SDK's own
+   * generated types, and every response above puts its payload under `data` — so
+   * this fixture is that recorded convention applied to a boolean. The half that
+   * cannot be recorded from types is what the call *does*, and that is measured:
+   * `live-sdk.integration.ts` drives a real server and asserts that an abort kills
+   * a running tool child while the server stays up.
+   */
+  const LIVE_ABORT_RESPONSE = { data: true, request: {}, response: {} }
+
+  test('reads the abort acknowledgement out of the envelope, not the top level', () => {
+    expect(LIVE_ABORT_RESPONSE).not.toHaveProperty('aborted')
+    expect(decodeAbort(LIVE_ABORT_RESPONSE)).toBe(true)
+  })
+
+  test.each([[{ data: false }], [{}], [{ data: undefined }]])(
+    'reads %p as "the abort did not take", which is not the same as stopped',
+    (answer) => {
+      // The one decode whose `false` is load-bearing rather than cosmetic: the
+      // salvage stages a working tree, and staging one whose writer may still be
+      // running is the single thing that path must never do.
+      expect(decodeAbort(answer)).toBe(false)
+    },
+  )
+
+  test('surfaces an abort envelope error rather than reading it as stopped', () => {
+    expect(() => decodeAbort({ data: undefined, error: { message: 'no such session' } })).toThrow('no such session')
+  })
+
+  test('an abort response that is not an envelope names the contract', () => {
+    // Deliberately a throw and not a `false`, unlike `decodeSessionUsage`: read as
+    // `false` for ever, an SDK that moved this payload would silently turn every
+    // wall-clock stop into "nothing pushed". The adapter catches it and reports
+    // `false` anyway — with the contract named in the log rather than nowhere.
+    expect(() => decodeAbort('true')).toThrow('Unexpected')
+  })
+})
+
+describe('the turn deadline as a failure the phase can recognise', () => {
+  const stopped = turnDeadlineError(1_800_000, {
+    lastAction: 'ran bash',
+    toolCalls: 355,
+    tokens: 112_084,
+    cost: 0,
+  })
+
+  test('says what the turn actually did, not that the model never answered', () => {
+    // The message this replaces read "The model did not answer within 1800000ms",
+    // about a turn that answered 355 times at roughly twelve tool calls a minute.
+    // A reader sent to look for a hang found a healthy turn and no explanation.
+    expect(stopped.message).toContain('355 tool calls')
+    expect(stopped.message).toContain('112,084 tokens')
+    expect(stopped.message).toContain('ran bash')
+    expect(stopped.message).not.toContain('did not answer')
+  })
+
+  test('carries the snapshot, so the stop can report it without asking again', () => {
+    expect(stopped.progress).toEqual({ lastAction: 'ran bash', toolCalls: 355, tokens: 112_084, cost: 0 })
+  })
+
+  test('is distinguishable from every other way a turn can fail', () => {
+    // The whole point. `handleImplement` could not tell a timed-out turn from a
+    // rate limit or a bad reply, so every one of them landed in `failRun` as ❌
+    // with a spent attempt and the working tree thrown away.
+    expect(isTurnDeadline(stopped)).toBe(true)
+    expect(isTurnDeadline(openCodeError('rate limited'))).toBe(false)
+    expect(isTurnDeadline(new Error('rate limited'))).toBe(false)
+    expect(isTurnDeadline(null)).toBe(false)
+  })
+
+  test('every other pipeline failure carries no progress at all', () => {
+    // `null` rather than a zeroed snapshot: "this failure has nothing to say about
+    // a turn" and "a turn that did nothing" are different facts.
+    expect(openCodeError('rate limited').progress).toBeNull()
+  })
 })
 
 const silentLog: Logger = {
@@ -230,6 +314,9 @@ const noEvents = (): Promise<AsyncIterable<unknown>> => Promise.resolve(streamOf
 /** A session that has spent nothing, for the tests the budget is not about. */
 const noUsage = (): Promise<SessionUsage | null> => Promise.resolve({ tokens: 0, cost: 0 })
 
+/** An abort nobody in this test is asking about, answering the recorded shape. */
+const noAbort = (): Promise<unknown> => Promise.resolve({ data: true })
+
 describe('createOpenCodeAgent', () => {
   const fakeConnection = (sink: { bodies: SdkPromptBody[]; closed: number }, reply: unknown): OpenCodeConnection => ({
     createSession: (): Promise<string> => Promise.resolve('session-9'),
@@ -239,6 +326,7 @@ describe('createOpenCodeAgent', () => {
     },
     events: noEvents,
     usage: noUsage,
+    abort: noAbort,
     close: (): Promise<void> => {
       sink.closed += 1
       return Promise.resolve()
@@ -318,6 +406,7 @@ describe('createOpenCodeAgent', () => {
           sendPrompt: () => Promise.resolve({ data: { parts: [] } }),
           events: noEvents,
           usage: noUsage,
+          abort: noAbort,
           close: () => {
             closed += 1
             return Promise.resolve()
@@ -343,6 +432,7 @@ describe('createOpenCodeAgent', () => {
           sendPrompt: () => new Promise<unknown>(() => {}),
           events: noEvents,
           usage: noUsage,
+          abort: noAbort,
           close: () => Promise.resolve(),
         }),
     })
@@ -366,6 +456,7 @@ describe('createOpenCodeAgent', () => {
           createSession: () => Promise.resolve('session-1'),
           sendPrompt: () => Promise.resolve({ data: { parts: [] } }),
           usage: noUsage,
+          abort: noAbort,
           events: () =>
             Promise.resolve(
               streamOf(
@@ -394,6 +485,7 @@ describe('createOpenCodeAgent', () => {
           sendPrompt: () => Promise.resolve({ data: { parts: [] } }),
           events: noEvents,
           usage: () => Promise.resolve({ tokens: 3602, cost: 0.014 }),
+          abort: noAbort,
           close: () => Promise.resolve(),
         }),
     })
@@ -419,6 +511,7 @@ describe('createOpenCodeAgent', () => {
           sendPrompt: () => Promise.resolve({ data: { parts: [] } }),
           events: noEvents,
           usage,
+          abort: noAbort,
           close: () => Promise.resolve(),
         }),
     })
@@ -440,6 +533,7 @@ describe('createOpenCodeAgent', () => {
           createSession: () => Promise.resolve('session-1'),
           sendPrompt: () => Promise.resolve({ data: { parts: [{ type: 'text', text: 'fine' }] } }),
           usage: noUsage,
+          abort: noAbort,
           events: () => Promise.reject(new Error('/event is not available')),
           close: () => Promise.resolve(),
         }),
@@ -458,6 +552,77 @@ describe('createOpenCodeAgent', () => {
     await expect(agent.prompt({ prompt: 'go' })).rejects.toThrow('AGENT_TIMEOUT_MS')
   })
 
+  test('a turn its own bound stopped rejects with the failure the phase can act on', async () => {
+    // Not merely "an error": the implementation phase reads this to decide between
+    // salvaging the working tree and reporting a crash, and every other rejection
+    // out of `prompt` has to keep meaning "this broke".
+    const agent = await hangingAgent(5)
+
+    const rejection = await agent.prompt({ prompt: 'go' }).catch((error: unknown) => error)
+
+    expect(isTurnDeadline(rejection)).toBe(true)
+  })
+
+  /** A connection whose `abort` answers however the test wants it to. */
+  const abortingAgent = (answer: () => Promise<unknown>, log = silentLog): Promise<OpenCodeAgent> =>
+    createOpenCodeAgent({
+      directory: '/repo',
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      sessionTitle: 't',
+      log,
+      connect: () =>
+        Promise.resolve({
+          createSession: () => Promise.resolve('session-1'),
+          sendPrompt: () => Promise.resolve({ data: { parts: [] } }),
+          events: noEvents,
+          usage: noUsage,
+          abort: answer,
+          close: () => Promise.resolve(),
+        }),
+    })
+
+  test('aborts the session it opened, and reports that the server took it', async () => {
+    // Measured against a live server: an abort kills the running tool child and
+    // leaves the server up, which is why this — and not `close()` — is the stop.
+    const asked: string[] = []
+    const agent = await abortingAgent((sessionId?: string) => {
+      asked.push(String(sessionId))
+      return Promise.resolve({ data: true })
+    })
+
+    expect(await agent.abort()).toBe(true)
+    expect(asked).toEqual(['session-1'])
+  })
+
+  test.each([
+    ['the server declines it', (): Promise<unknown> => Promise.resolve({ data: false })],
+    ['the call fails outright', (): Promise<never> => Promise.reject(new Error('connection refused'))],
+    ['the shape is not one this pin knows', (): Promise<unknown> => Promise.resolve('true')],
+  ])('reports a failed abort when %s, rather than failing the run', async (_label, answer) => {
+    // Best-effort in the sense every other channel is — a stop that cannot abort
+    // must still post, park and hand the issue over — but *reported*, unlike the
+    // feedback channels, because the caller's next decision depends on it.
+    const warnings: string[] = []
+    const agent = await abortingAgent(answer, {
+      ...silentLog,
+      warn: (_meta, message): void => void warnings.push(message),
+    })
+
+    expect(await agent.abort()).toBe(false)
+    expect(warnings.join()).toContain('abort')
+  })
+
+  test('an abort leaves the session usable, because the wrap-up prompt needs it', async () => {
+    // The soft stop's whole premise: abort the tool child, then ask the same
+    // session what it managed. A stop that had to close the server to stop the work
+    // would have nowhere to ask.
+    const agent = await abortingAgent(() => Promise.resolve({ data: true }))
+
+    await agent.abort()
+
+    expect((await agent.prompt({ prompt: 'what did you finish?' })).sessionId).toBe('session-1')
+  })
+
   test('a zero timeout means no bound, not an instant failure', async () => {
     const agent = await createOpenCodeAgent({
       directory: '/repo',
@@ -471,6 +636,7 @@ describe('createOpenCodeAgent', () => {
           sendPrompt: () => Promise.resolve({ data: { parts: [{ type: 'text', text: 'slow but fine' }] } }),
           events: noEvents,
           usage: noUsage,
+          abort: noAbort,
           close: () => Promise.resolve(),
         }),
     })
@@ -1189,6 +1355,24 @@ describe('config', () => {
     // A budget below one phase's worth of work can only ever stop the run.
     ['AGENT_MAX_TOKENS', '100'],
     ['AGENT_MAX_TOKENS', '0'],
+    // A start time in the past puts the derived deadline permanently behind the
+    // clock, so every run parks before it starts, citing a ceiling nobody set.
+    // Seconds instead of milliseconds is the likeliest way to write one.
+    ['AGENT_JOB_STARTED_MS', '0'],
+    ['AGENT_JOB_STARTED_MS', '1767225600'],
+    // And an extra digit removes the bound by putting the deadline past any job.
+    ['AGENT_JOB_STARTED_MS', '17672256000000'],
+    ['AGENT_JOB_TIMEOUT_MINUTES', '0'],
+    ['AGENT_JOB_TIMEOUT_MINUTES', '9007199254740991'],
+    // A reserve below a second cannot post a comment; one above the job it is
+    // carved out of stops every run before any phase begins.
+    ['AGENT_TEARDOWN_RESERVE_MS', '10'],
+    ['AGENT_TEARDOWN_RESERVE_MS', '7200000'],
+    // A wrap-up window too short to answer in buys nothing but a second abort;
+    // one measured in hours is the work slice given away to the tidying.
+    ['AGENT_WRAP_UP_MS', '0'],
+    ['AGENT_WRAP_UP_MS', '4000'],
+    ['AGENT_WRAP_UP_MS', '3600000'],
   ])('rejects %s=%p, which parses but cannot work', (key, raw) => {
     expect(() => loadConfig({ ...baseEnv, [key]: raw }, '/repo')).toThrow(key)
   })
@@ -1206,6 +1390,7 @@ describe('config', () => {
     ['AGENT_MAX_ATTEMPTS', 'maxAttempts'],
     ['AGENT_MAX_TOKENS', 'maxTokens'],
     ['AGENT_REVIEW_HINT_LINES', 'reviewHintLines'],
+    ['AGENT_WRAP_UP_MS', 'wrapUpMs'],
   ] as const)('the default for %s would itself be accepted as an override', (key, field) => {
     // Guards the shape of bug where a default only works because nothing
     // validates it, and setting that same value explicitly is rejected.
@@ -1227,6 +1412,54 @@ describe('config', () => {
 
   test.each(['', ' ', '\n'])('a blank knob %p means unset, as it does for every other reader', (raw) => {
     expect(loadConfig({ ...baseEnv, AGENT_MAX_ATTEMPTS: raw }, '/repo').maxAttempts).toBe(3)
+  })
+
+  /** Two facts a runner knows and nothing else does, as the workflow forwards them. */
+  const JOB_STARTED = Date.UTC(2026, 7, 8, 12, 0)
+  const jobEnv: Env = {
+    ...baseEnv,
+    AGENT_JOB_STARTED_MS: String(JOB_STARTED),
+    AGENT_JOB_TIMEOUT_MINUTES: '90',
+  }
+
+  test('derives one absolute job deadline from the start and the ceiling', () => {
+    // Absolute rather than a duration, because that is the only form both halves
+    // survive in: the start comes from a first step in the workflow and the length
+    // from a repository variable, and neither is knowable from the other.
+    expect(loadConfig(jobEnv, '/repo').jobDeadlineMs).toBe(JOB_STARTED + 90 * 60_000)
+  })
+
+  test.each([
+    ['neither', {}],
+    ['no start', { AGENT_JOB_TIMEOUT_MINUTES: '90' }],
+    ['no ceiling', { AGENT_JOB_STARTED_MS: String(JOB_STARTED) }],
+  ])('has no job deadline with %s, so a local run behaves exactly as before', (_label, extra) => {
+    // Half a deadline is not a bound, and every `--event-path` run has none at
+    // all. Defaulting the missing half would be `AGENT_TIMEOUT_MS` guessing at a
+    // runner cap all over again, with a clock attached.
+    expect(loadConfig({ ...baseEnv, ...extra }, '/repo').jobDeadlineMs).toBeNull()
+  })
+
+  test('holds three minutes back for the stop unless told otherwise', () => {
+    expect(loadConfig(baseEnv, '/repo').teardownReserveMs).toBe(180_000)
+    expect(loadConfig({ ...baseEnv, AGENT_TEARDOWN_RESERVE_MS: '60000' }, '/repo').teardownReserveMs).toBe(60_000)
+  })
+
+  test('holds two minutes back for the wrap-up, which is the model’s slice of the stop', () => {
+    // The third slice of the budget, and the only one the model spends: enough to
+    // finish the file it is part-way through and say what it tried, not enough to
+    // start anything. Separate from the teardown reserve because that one pays for
+    // git and a comment and cannot be given away to a prompt.
+    expect(loadConfig(baseEnv, '/repo').wrapUpMs).toBe(120_000)
+    expect(loadConfig({ ...baseEnv, AGENT_WRAP_UP_MS: '30000' }, '/repo').wrapUpMs).toBe(30_000)
+  })
+
+  test.each(['', ' '])('a blank job knob %p means unset, not a deadline in 1970', (raw) => {
+    // The workflow forwards `${{ vars.X }}` unconditionally, so an unset repository
+    // variable arrives as the empty string — the one value that must not parse.
+    const env = { ...baseEnv, AGENT_JOB_STARTED_MS: raw, AGENT_JOB_TIMEOUT_MINUTES: raw }
+
+    expect(loadConfig(env, '/repo').jobDeadlineMs).toBeNull()
   })
 
   test('sizes the delivery hint against a line count, not against a file count', () => {

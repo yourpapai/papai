@@ -72,6 +72,56 @@ export const ROUND_RANGE: IntRange = { min: 1, max: 20 }
 export const TIMEOUT_RANGE: IntRange = { min: 1_000, max: 7_200_000 }
 
 /**
+ * When the job began, as epoch milliseconds, from the runner rather than from an
+ * operator.
+ *
+ * Both ends are about a value that parses and cannot work, and here the failure is
+ * total in one direction: a start time in the past — `0`, a seconds-rather-than-
+ * milliseconds value, a truncated digit — puts the derived deadline permanently
+ * behind the clock, so **every** run stops before it starts, reporting a ceiling
+ * nobody set. The floor is 2020, comfortably before this pipeline existed and
+ * comfortably after any plausible unit mix-up (`1e9` seconds reads as 1970 in
+ * milliseconds). The ceiling is 2096, which catches the extra digit that would
+ * otherwise disable the bound by putting the deadline beyond any job's life.
+ */
+export const EPOCH_MS_RANGE: IntRange = { min: 1_577_836_800_000, max: 4_000_000_000_000 }
+
+/**
+ * The job's own ceiling, in minutes, mirroring the workflow's `timeout-minutes`.
+ *
+ * A minute is the shortest job worth deriving a deadline from — below the
+ * teardown reserve, every run parks immediately — and a day is longer than any
+ * hosted Actions job may run (six hours) with room for a self-hosted runner.
+ * Minutes rather than milliseconds because it is the unit `timeout-minutes:`
+ * takes, and the whole point of this knob is that one value feeds both.
+ */
+export const JOB_MINUTES_RANGE: IntRange = { min: 1, max: 1_440 }
+
+/**
+ * The slice of the job held back so a stop can post a comment, write the state
+ * block and reconcile a label.
+ *
+ * The observed tail for all of that is about ten seconds, so the floor is a
+ * second — below which the reserve buys nothing and the stop is killed doing the
+ * one thing it exists to do. The ceiling is half an hour: a reserve larger than
+ * the job it is carved out of stops every run before any phase begins, which is
+ * the same "a number that cannot work" failure read from the other end.
+ */
+export const RESERVE_RANGE: IntRange = { min: 1_000, max: 1_800_000 }
+
+/**
+ * The model's own slice of the stop: one short prompt to finish the file it is
+ * part-way through and say what it tried.
+ *
+ * Five seconds is the floor because anything under it is a window that can only
+ * ever expire, buying a second abort and no handoff. Fifteen minutes is the
+ * ceiling, and it is the end that matters: this slice is taken off the *work*, so
+ * a large value is a job that spends its afternoon tidying — and the wrap-up has
+ * one paragraph to write, not a file to refactor.
+ */
+export const WRAP_UP_RANGE: IntRange = { min: 5_000, max: 900_000 }
+
+/**
  * Bounds on one commit. Generous enough for a real feature and its tests, small
  * enough that a staged `node_modules`, a downloaded fixture or a build directory
  * stops the run instead of landing in a public pull request.
@@ -138,15 +188,31 @@ export const labelPrefix = (env: Env, key: string, fallback: string): string | n
 
 /** Reads an integer knob, rejecting both malformed values and unusable ones. */
 export const boundedInt = (env: Env, key: string, fallback: number, range: IntRange): number => {
-  const raw = env[key]
-  if (raw === undefined || raw.trim().length === 0) return fallback
+  const raw = optionalOrNull(env, key)
+  return raw === null ? fallback : parseBounded(key, raw, range)
+}
 
-  const trimmed = raw.trim()
+/**
+ * The same read for a knob whose **absence is meaningful** rather than something
+ * to default — the shape {@link optionalOrNull} has for strings.
+ *
+ * `AGENT_JOB_STARTED_MS` and `AGENT_JOB_TIMEOUT_MINUTES` are the two: with either
+ * unset there is no job deadline to derive at all, and every default anyone could
+ * pick here is a lie about a runner nobody has described. A local `--event-path`
+ * run has neither, and must behave exactly as it did before they existed.
+ */
+export const boundedIntOrNull = (env: Env, key: string, range: IntRange): number | null => {
+  const raw = optionalOrNull(env, key)
+  return raw === null ? null : parseBounded(key, raw, range)
+}
+
+/** The validation both readers share, on an already-trimmed, non-blank value. */
+const parseBounded = (key: string, trimmed: string, range: IntRange): number => {
   const parsed = Number.parseInt(trimmed, 10)
   // The round-trip rejects what `parseInt` would otherwise salvage a prefix
   // from — `2.5`, `1e3`, `01`, `7 rounds`.
   if (!Number.isSafeInteger(parsed) || String(parsed) !== trimmed) {
-    throw new ConfigError(`${key} must be an integer, got ${JSON.stringify(raw)}`)
+    throw new ConfigError(`${key} must be an integer, got ${JSON.stringify(trimmed)}`)
   }
   if (parsed < range.min || parsed > range.max) {
     throw new ConfigError(`${key} must be between ${range.min} and ${range.max}, got ${parsed}`)

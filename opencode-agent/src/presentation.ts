@@ -84,10 +84,10 @@ export const NEEDS_YOU_LABEL: LabelSpec = { suffix: 'needs-you', color: AMBER }
  * Every row of the table, as a closed union.
  *
  * Two phases carry a suffix because two phases are genuinely two states:
- * `INIT_OR_CLARIFY` splits on whether the agent is reading the issue or waiting
- * on the answers it asked for, and `COMPLETE` splits on `state.prUrl` exactly as
- * `renderClosing` already does — a delivered issue and a cancelled one are not
- * the same outcome and must not carry the same label.
+ * `INIT_OR_CLARIFY` splits on whether the agent is reading the issue or waiting on
+ * the answers it asked for, and `COMPLETE` splits on `state.prUrl` exactly as
+ * `renderClosing` already does — a delivered issue and a cancelled one are not the
+ * same outcome and must not carry the same label.
  */
 export const PRESENTATION_KEYS = [
   'INIT_OR_CLARIFY:working',
@@ -102,6 +102,7 @@ export const PRESENTATION_KEYS = [
   'COMPLETE:delivered',
   'COMPLETE:cancelled',
   'FAILED',
+  'INCOMPLETE',
 ] as const
 
 export type PresentationKey = (typeof PRESENTATION_KEYS)[number]
@@ -191,6 +192,17 @@ export const PRESENTATION: Record<PresentationKey, PhasePresentation> = {
     whoseTurn: 'you',
     headline: 'Run failed',
   },
+  // Amber and not red, which is the point of the phase existing: a run that hit the
+  // job's wall clock and parked with a resume point did not break, so it must not
+  // wear the failure colour in the one surface a maintainer scans without opening
+  // anything. ⏸️ rather than ⛔ because the outcome table owns ⛔, and this is a
+  // *state* rather than the comment announcing one.
+  INCOMPLETE: {
+    glyph: '⏸️',
+    label: { suffix: 'incomplete', color: AMBER },
+    whoseTurn: 'you',
+    headline: 'Out of time, not finished',
+  },
 }
 
 /**
@@ -214,75 +226,6 @@ export const presentationKey = (state: AgentState, stance: RunStance): Presentat
 /** How this state should be presented right now. Total by construction. */
 export const presentationFor = (state: AgentState, stance: RunStance): PhasePresentation =>
   PRESENTATION[presentationKey(state, stance)]
-
-/**
- * The second vocabulary: what just happened to this **run**.
- *
- * Deliberately not the table above, and not folded into it. That one is keyed on
- * a *phase* — where the issue is — while "the retry budget is spent", "I could
- * not answer that" and "that command does not apply here" are keyed on an
- * outcome, and every one of them can happen in several phases and leave the
- * phase exactly where it was. Forcing them through a phase key would either
- * invent phases that do not exist or make one row mean two things, which is the
- * failure the phase table is itself built to avoid.
- *
- * Two renderers are deliberately **absent** and read the phase table instead:
- * `renderClosing`'s delivered and cancelled headings are `COMPLETE:delivered`
- * and `COMPLETE:cancelled` — the same two states the label reconciler is naming
- * on the same comment, so a second copy of ✅ and 🛑 here could only ever drift
- * away from the label sitting beside them.
- */
-export const OUTCOME_KEYS = [
-  'RUN_FAILED',
-  'ANSWER_FAILED',
-  'RETRIES_SPENT',
-  'TOKENS_SPENT',
-  'ANSWER_TOKENS_SPENT',
-  'CI_GAVE_UP',
-  'REVIEWS_SPENT',
-  'COMMAND_REFUSED',
-] as const
-
-export type OutcomeKey = (typeof OUTCOME_KEYS)[number]
-
-/**
- * A `Record` over the closed union, for the reason {@link PRESENTATION} is one.
- *
- * The distinctions here are the point, not the glyphs:
- *
- * - ❌ means the work **broke**. ⛔ means a **bound was reached** and nothing
- *   broke at all — which is the whole argument for the budget notices being
- *   separate renderers in the first place, and it would be undone by giving a
- *   spent ceiling the same glyph as a crash.
- * - ⚠️ is a failed *answer*: the model turn broke but nothing moved, no attempt
- *   was spent and the issue is exactly where it was. ❌ there would tell a
- *   maintainer their delivered pull request had failed.
- * - 🚑 is `CI_FIX`'s own glyph from the phase table, reused on purpose: this is
- *   that story ending, and the maintainer has been watching 🚑 on the issue for
- *   however many rounds it took to give up.
- * - 😕 matches the reaction `refuseCommand` places on the very same comment, so
- *   the emoji on the maintainer's comment and the heading of the reply agree.
- */
-export const OUTCOME_GLYPHS: Record<OutcomeKey, string> = {
-  RUN_FAILED: '❌',
-  ANSWER_FAILED: '⚠️',
-  RETRIES_SPENT: '⛔',
-  TOKENS_SPENT: '⛔',
-  ANSWER_TOKENS_SPENT: '⛔',
-  CI_GAVE_UP: '🚑',
-  REVIEWS_SPENT: '⛔',
-  COMMAND_REFUSED: '😕',
-}
-
-/**
- * The heading of a comment, glyph included.
- *
- * Every renderer builds its first line through this or through
- * {@link phaseHeading}, so writing a glyph inline is not something a new one
- * falls into by accident — it has to go out of its way, past a function that is
- * already imported, to invent a vocabulary of its own.
- */
-export const outcomeHeading = (key: OutcomeKey, text: string): string => `### ${OUTCOME_GLYPHS[key]} ${text}`
 
 /** The same, for a comment that speaks about where the issue is. */
 export const phaseHeading = (state: AgentState, stance: RunStance, text: string): string =>

@@ -26,7 +26,11 @@ hidden HTML blocks:
   comment the pipeline posts, and rewritten **in place** by a run that spent
   model tokens and had nothing to post.
 - `<!-- AGENT_SPEC: … -->` — the current design spec.
-- `<!-- AGENT_PLAN: … -->` — the current implementation plan.
+- `<!-- AGENT_PLAN: … -->` — the current implementation plan, as **both** the
+  markdown a maintainer approved and the ordered steps it was rendered from. The
+  implementation walks those steps; it never parses the markdown back, which is the
+  rule the whole block channel exists for. A plan block without them — every plan
+  approved before they were carried — is implemented in one turn, permanently.
 - `<!-- AGENT_REPORT: … -->` — the newest report. The implementation one, until
   a `/review` writes its own under the same marker: the scan takes the newest
   block of a marker, and that is what a later pull-request refresh presents, so
@@ -80,12 +84,13 @@ value to point elsewhere.
 | `DESIGN_SPEC`       | —                                         | Waiting. The spec is under review                                | `/approve`, `/changes`, `/ask`, `/cancel` |
 | `PLANNING`          | spec approved                             | Planning skills produce a step breakdown; cuts `agent/issue-<n>` | Plan posted                               |
 | `PLAN_REVIEW`       | —                                         | Waiting. The plan is under review                                | `/approve`, `/changes`, `/ask`, `/cancel` |
-| `REVIEW_AND_MUTATE` | plan approved                             | Implements the plan, commits **and pushes**. Nothing else        | Changes pushed                            |
+| `REVIEW_AND_MUTATE` | plan approved                             | One turn per plan step, each committed **and pushed**            | Changes pushed                            |
 | `PR_DELIVERY`       | automatic                                 | Opens or refreshes the PR with `Closes #<n>`                     | PR opened                                 |
 | `CODE_REVIEW`       | `/review`, on the issue or its PR         | Runs the `review-loop/` workspace over the pushed branch         | Findings pushed, review reported          |
 | `CI_FIX`            | a red check run on `agent/issue-<n>`      | Reproduces CI locally, repairs, pushes                           | Fix pushed                                |
 | `COMPLETE`          | —                                         | Terminal, but re-enterable from `CI_FIX` and `CODE_REVIEW`       | —                                         |
 | `FAILED`            | any _phase_ handler throwing              | Failure comment posted, `resumeFrom` recorded                    | `/retry` or `/cancel`                     |
+| `INCOMPLETE`        | the job running out of wall clock         | Time notice posted, `resumeFrom` recorded, no attempt spent      | `/continue` or `/cancel`                  |
 
 There are two review gates, not one. The spec and the plan are each parked in
 front of a human before anything downstream is spent.
@@ -112,6 +117,7 @@ moves the phase and the handler runs behind it in the same job, exactly as
 | `/ask <question>`           | anywhere                     | Answer, grounded in the repo, without moving the state machine |
 | `/review`                   | a **delivered** `COMPLETE`   | Run the review loop over the branch and push what it finds     |
 | `/retry`                    | `FAILED`                     | Resume the exact phase that failed                             |
+| `/continue`                 | `INCOMPLETE`                 | Pick up the phase the job ran out of time for                  |
 | `/cancel`                   | anything but `COMPLETE`      | Stop for good — a cancelled issue cannot be restarted          |
 
 **`/review` has two doors and one answer.** It is typed on the issue, where every
@@ -238,9 +244,10 @@ raw text in the failure comment.
 4. The maintainer replies `/approve`. The agent moves to `PLANNING`,
    cuts `agent/issue-42` from the default branch, and posts a step-by-step
    plan; `PLAN_REVIEW` waits for another `/approve`.
-5. Once approved, `REVIEW_AND_MUTATE` implements the plan, commits it and
-   pushes `agent/issue-42`. That is the whole phase — nothing has reviewed the
-   diff, and nothing is waiting to.
+5. Once approved, `REVIEW_AND_MUTATE` implements the plan **a step at a time**:
+   one model turn per step, each committed and pushed to `agent/issue-42` before
+   the next one starts. That is the whole phase — nothing has reviewed the diff,
+   and nothing is waiting to.
 6. `PR_DELIVERY` opens a pull request carrying `Closes #42`, one model turn
    after the approval. Its comment names `/review`; if the commit came to
    `AGENT_REVIEW_HINT_LINES` changed lines or more it also says it would run
@@ -402,12 +409,13 @@ cover it.
 
 ## What bounds a run
 
-Five bounds, each on a different kind of runaway.
+Six bounds, each on a different kind of runaway.
 
 | Bound            | Where                                                                        | What it stops                                                             |
 | ---------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | Prompt size      | `prompt-budget.ts`                                                           | 12k characters of thread, and 12k across _all_ failing checks, per prompt |
-| Turn duration    | `AGENT_TIMEOUT_MS`, applied in `deadline.ts`                                 | A model turn that never answers                                           |
+| Turn duration    | `AGENT_TIMEOUT_MS`, applied in `deadline.ts`                                 | A turn that never answers — and one merely too slow, whose work is kept   |
+| Job wall clock   | `AGENT_JOB_TIMEOUT_MINUTES`, applied in `time-budget.ts`                     | A job dying on `timeout-minutes` with nothing posted at all               |
 | Provider hiccups | `provider-proxy.ts` — 3 attempts, with backoff                               | A single 429 or 5xx failing the phase                                     |
 | Rounds           | `AGENT_MAX_ATTEMPTS`, `AGENT_CI_FIX_MAX_ROUNDS`, `AGENT_MAX_REVIEW_ATTEMPTS` | An agent and CI bouncing off each other, and a review nothing else bounds |
 | Total spend      | `AGENT_MAX_TOKENS`, per **issue**                                            | An issue quietly costing more than it is worth                            |
@@ -531,6 +539,180 @@ prompt of a job, since the running total comes from the job's own session and
 that session does not exist yet. The first of those is why `/review` carries a
 round budget of its own — a ceiling that cannot see the spend it is meant to
 bound is not a ceiling.
+
+### The job's wall clock, and `INCOMPLETE`
+
+The last bound is the runner's own, and it is the one that used to be invisible.
+An Actions job dies at `timeout-minutes` and a job killed that way posts
+**nothing** — no comment, no state block — so the issue is left in whatever phase
+it started in with no record that anything happened. The per-turn deadline
+(`AGENT_TIMEOUT_MS`) was meant to stay ahead of that and did not: it was a
+separate number in a separate file, defaulting to 30 minutes against a job ceiling
+of 90, so a turn opened at minute 75 was allowed to wait until minute 105 — past a
+runner that dies at 90. A live run died the other way round, cut off 30 minutes
+into a healthy turn with 59 minutes of its cap unused, and reported as "the model
+did not answer" about a turn that had answered 355 times.
+
+Both halves are fixed by deriving the clock from the job instead of guessing at
+it. `AGENT_JOB_STARTED_MS` is recorded by the workflow's first step and
+`AGENT_JOB_TIMEOUT_MINUTES` is the same repository variable the job's own
+`timeout-minutes:` reads — one value with two readers rather than a pair kept in
+step by hand. From those two the pipeline knows the moment the runner will be
+killed, and does two things with it: it shrinks each turn's deadline to
+`min(AGENT_TIMEOUT_MS, time left − reserve)`, so a per-turn bound can never fire
+after the process is gone; and it checks before every phase, exactly where the
+token ceiling is checked, whether there is time to start another one.
+`AGENT_TEARDOWN_RESERVE_MS` is the slice held back from that — three minutes for
+the `git add`, the commit, the push, the comment, the state block and the label a
+stop still has to do, against an observed tail of about ten seconds.
+
+**A wall-clock stop is a ceiling reached, not work that broke**, and the pipeline
+says so in the vocabulary it already had: ⛔ rather than ❌, and a park in
+`INCOMPLETE` rather than in `FAILED`. That is a phase of its own, not a flag,
+because the command that gets out of it is not the same command — `/retry` means
+"the thing that broke, again" and `/continue` means "you were not finished". One
+phase carrying both would need a field on the state to tell the two parks apart,
+consulted by every reader of `FAILED`.
+
+Three consequences worth stating outright:
+
+- the run reports **`waiting`**, not `failed`, so it exits 0. A run that saved
+  what it had and handed the issue back did not fail, and the Actions page should
+  not be red for it. `reported` is true either way, so the workflow's fallback
+  comment stays out of scope;
+- `attempts` is **carried, not spent**, exactly as the token stop carries it.
+  Otherwise the notice would invite a `/continue` that the retry gate eventually
+  refuses over a ceiling the notice never mentioned;
+- what bounds a chain of continuations is the **token budget**, not `attempts`.
+  That budget is per issue and persisted, so it already spans an unbounded chain —
+  and every link in that chain is a human typing a command.
+
+`CI_FAILED` and `REVIEW_REQUESTED` are deliberately refused in `INCOMPLETE`, even
+though the branch is pushed there, which is the one condition those signals
+normally want. The work is by definition unfinished, and CI-fixing or reviewing a
+half-done increment is worse than waiting for the `/continue` that finishes it.
+
+With neither job knob set — every local `--event-path` run, and any workflow that
+has not been updated — there is no job deadline at all and nothing here fires; the
+run is bounded by `AGENT_TIMEOUT_MS` alone, exactly as it was before.
+
+### The other stop: when the clock runs out _inside_ a turn
+
+The stop above sits _before_ a handler, so the phase it refuses never starts and
+nothing is lost. The stop that matters more is the one the finding actually came
+from: a turn already running when the clock ran out, cut off mid-`bash` with half a
+module written and thirty minutes of work in the tree. That one used to arrive as
+`❌ the model did not answer`, spend an attempt, and throw the tree away.
+
+It now spends the budget in **three** slices — work, wrap-up, teardown — and only
+the first is the model's to use freely. `turnTimeoutMs` subtracts both of the
+others, so a turn's own bound fires with room still left in the job:
+
+1. **Soft stop.** `session.abort`, then one prompt in the same session under
+   `AGENT_WRAP_UP_MS`: stop, start nothing new, finish only the file you are
+   part-way through, then say what you completed, what remains, and **what you tried
+   that did not work**. That last clause is what the window is for — a continuation
+   can read the diff and the plan, but nothing else can recover a rejected approach,
+   and a fresh session would try it again.
+2. **Hard stop.** `abort` again, unconditionally, whether the wrap-up replied,
+   refused or started editing. Nothing here depends on the model cooperating, and
+   `close()` is never the fallback: measured against a live server, an abort kills
+   the running tool child and leaves the server up, while `close()` — one SIGTERM to
+   one pid on POSIX — kills the server and **orphans** the tool child. `abort` is
+   the stop; `close()` is the leak, and the production log had been showing it all
+   along in the runner's `Terminate orphan process` lines.
+3. **Teardown.** `git.salvageAll`, which commits with `--no-verify` and pushes the
+   same way, then the notice, the handoff block and the state block.
+
+`--no-verify` is not a preference. `package.json`'s `prepare` copies
+`scripts/pre-commit.sh` into `.git/hooks/pre-commit` on any install where `.git`
+exists — the Actions runner included — and that hook runs lint, typecheck and
+format over the staged files. A tree interrupted mid-edit fails all of them, so
+without the flag `git commit` exits non-zero and the salvage loses exactly what it
+exists to keep. The diff guard still runs, and its four refusals split in two on
+this path: **secrets by value and binaries stay absolute**, because a credential is
+in history whether the file is later deleted or not, while the **file and line caps
+drop to reporting**, because discarding a real 3,000-line increment over a 2,000
+cap recreates the loss this whole item is about. The count rides out on
+`StagedTotals` into the notice and the state block.
+
+Everything about the salvage degrades to **"nothing pushed, and here is why"** and
+never to a new failure: the run it is rescuing is already out of time and cannot
+afford a second thing to go wrong. That covers a refused guard, a git that rejects,
+a push that cannot reach the remote — and a clean tree, which is a legitimate
+outcome rather than an error. One case pushes nothing on purpose: if **no** abort
+was accepted, the pipeline cannot show the tree has stopped being written to, and
+staging one in that state is the single thing this path must not do now that the
+size caps only report.
+
+The wrap-up's reply travels to the next job in an `AGENT_HANDOFF` block, like the
+spec, the plan and the report, and the implement prompt includes it — enveloped
+as untrusted text, framed as a report to check rather than as instructions. It is
+stamped with the plan revision it describes, so a re-planned issue is never handed
+an account of work measured against a document that has been replaced, and it is
+handed to the **first** step of a continuation and to no later one, because that is
+the step it is an account of.
+
+### The unit of work is a plan step
+
+Salvaging an interrupted turn is the consolation prize. The prize is not needing to:
+if the implementation is one turn for the whole plan then a clock reached anywhere
+inside it costs whatever that turn had not written down, and if the unit of work is a
+**step** it costs at most one step — and usually nothing at all, because it lands
+between two of them.
+
+So the plan travels as data. The planning turn already produced JSON and the phase
+already threw the structure away, keeping only the markdown; now the steps ride in the
+`AGENT_PLAN` block beside the text, and the text a maintainer approves is _rendered
+from them_, so the plan somebody signed off on and the steps the implementation walks
+cannot disagree. They are never recovered by parsing the markdown back — that is the
+oldest rule here, and it exists because heading-scraping once truncated specs at their
+first `---`. `AGENT_PLAN` blocks with no steps in them are implemented in one turn,
+exactly as before, and that fallback is **permanent rather than a migration**: nothing
+can invent a step breakdown for a document a maintainer has already approved without
+one, and re-deriving it would mean a second planning turn inside the phase whose job is
+to implement.
+
+Then the walk: one turn per step, `commitAll`, `push`, next step. Pushing per step
+rather than once at the end is the same argument that put the push in this phase at
+all — an Actions working tree dies with the job, so work is durable the moment it is
+pushed and not before. Between two steps the tree is clean, the branch carries every
+finished step, and the state block records the cursor, which makes it the **best moment
+in the pipeline to stop**: the clock is checked in front of every step, and a step that
+cannot fit is not started. The run parks in `INCOMPLETE` under a notice of its own —
+one that can say both "work was done" and "nothing was lost", which neither of the
+other two wall-clock notices can — and the `/continue` picks up at the recorded step
+rather than re-implementing the branch.
+
+Five things worth stating outright, because each is a decision:
+
+- **the cursor is `stepsDone`**, a count in the state block, reset whenever a plan is
+  posted and when an implementation finishes. It counts into the plan
+  `planRevision` names, so a `/changes` starts the new plan from its first step;
+- **a step's turn gets the whole remaining clock**, not a share of it. A share needs an
+  estimate of what a step costs, which nothing here has, and it would bound an early
+  step tightly to reserve time a later one may not need. A step that finishes early
+  hands the rest to the next one;
+- **the per-turn bound is re-read for every turn.** It is derived from the job's
+  remaining clock, and one job now takes many turns, so a bound computed once when the
+  session booted would hand the last step of a long plan a bound sized against a clock
+  half an hour stale — which is the runner death this bound exists to prevent;
+- **a plan may declare at most `MAX_PLAN_STEPS` (25) steps.** Enforced on the ask, so
+  `promptForJson`'s single re-ask carries zod's own complaint and the ordinary outcome
+  is a coarser breakdown from the same planning turn. A step is a turn plus a commit
+  plus a push, so a step per edit spends the job on the boundaries rather than the work;
+- **`changedLines` sums across the steps of a run**, where it used to be overwritten by
+  each commit — harmless with one commit per phase, an under-report by a factor of the
+  plan's length now. It stays a raw count and never a verdict. The diff guard runs per
+  commit, so `AGENT_MAX_CHANGED_FILES` / `AGENT_MAX_CHANGED_LINES` now bound a **step**
+  rather than a whole implementation; those caps exist to refuse a runaway
+  `git add --all`, which is a property of one staging operation.
+
+The token ceiling deliberately stays **per phase**: its stop parks in `FAILED`, and
+firing it mid-walk would leave a `FAILED` issue whose branch carries half a plan, under
+a notice inviting a `/retry` into a phase that is partly done. The runaway it bounds is
+an issue across many jobs, which the check in front of the next phase still catches,
+and one job's overshoot is itself bounded by the clock this walk does check per step.
 
 ## Watching a run
 
@@ -1047,6 +1229,10 @@ cannot drift.
 | `AGENT_MAX_CHANGED_FILES`                  | no       | `100`                                           | Files one commit may carry                            |
 | `AGENT_MAX_CHANGED_LINES`                  | no       | `20000`                                         | Lines one commit may change                           |
 | `AGENT_TIMEOUT_MS`                         | no       | `1800000`                                       | Timeout for one model turn, and for each subprocess   |
+| `AGENT_JOB_STARTED_MS`                     | no       | unset — no job deadline                         | Epoch ms this job began; the workflow's first step    |
+| `AGENT_JOB_TIMEOUT_MINUTES`                | no       | unset — no job deadline                         | The job's own ceiling, shared with `timeout-minutes:` |
+| `AGENT_TEARDOWN_RESERVE_MS`                | no       | `180000`                                        | Held back from the job so a time stop can report      |
+| `AGENT_WRAP_UP_MS`                         | no       | `120000`                                        | The model's slice of a stop: finish up and hand over  |
 | `AGENT_MAX_TOKENS`                         | no       | `5000000`                                       | Model tokens one issue may spend, across all its jobs |
 | `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no       | `opencode-agent[bot]`                           | Commit identity                                       |
 | `AGENT_LABEL_PREFIX`                       | no       | `agent:`                                        | Namespace for the status labels; `none` disables them |
@@ -1086,6 +1272,29 @@ pipeline reports every check as failing; `AGENT_REVIEW_MAX_ROUNDS=90071992547409
 is a positive integer that removes the bound the knob exists to impose. A
 rejection names the range, so a legitimate need for a wider one is not a
 guessing game.
+
+The three job-clock knobs are read the same way and are worth reading together.
+`AGENT_JOB_STARTED_MS` and `AGENT_JOB_TIMEOUT_MINUTES` have **no defaults**,
+because half a deadline is not a bound: with either unset there is no job deadline
+at all and a run is bounded by `AGENT_TIMEOUT_MS` alone, exactly as every run was
+before they existed — which is what every local `--event-path` run gets.
+`AGENT_JOB_STARTED_MS` accepts 1 577 836 800 000–4 000 000 000 000 (2020 to 2096):
+a value in seconds rather than milliseconds reads as 1970, putting the derived
+deadline permanently behind the clock so **every** run parks before it starts, and
+an extra digit puts it past any job's life, removing the bound instead. Both are
+positive integers that used to be accepted.
+`AGENT_JOB_TIMEOUT_MINUTES` accepts 1–1 440 and is the same repository variable the
+workflow's own `timeout-minutes:` reads — deliberately one value with two readers,
+since the pair kept in step by hand is the defect S5-11 records.
+`AGENT_TEARDOWN_RESERVE_MS` accepts 1 000–1 800 000: below a second the reserve
+cannot post the comment and write the state block it exists for, and above half an
+hour it is larger than most jobs and stops every run before any phase begins.
+`AGENT_WRAP_UP_MS` accepts 5 000–900 000 and is the **third** slice of the same
+clock: below five seconds the window can only ever expire, buying a second abort
+and no handoff, and above fifteen minutes it is the work slice given away to the
+tidying — the wrap-up has one paragraph to write, not a file to refactor. Unlike
+the reserve it is taken off the _work_, which is why `turnTimeoutMs` subtracts
+both: a turn allowed to run right up to the reserve leaves nothing to ask it in.
 
 `AGENT_REVIEW_HINT_LINES` takes the line range `AGENT_MAX_CHANGED_LINES` takes,
 1–1 000 000, because it is the same quantity read off the same measurement — and
@@ -1304,46 +1513,55 @@ under **Setup** is simply not written. Nothing else changes.
 
 ## Module map
 
-| File                                          | Responsibility                                                         |
-| --------------------------------------------- | ---------------------------------------------------------------------- |
-| `src/index.ts`                                | CLI entry: flags, config, dependency wiring, agent teardown, exit code |
-| `src/agent-handle.ts`                         | The OpenCode session's lifetime within one job                         |
-| `src/orchestrator.ts`                         | The state machine: guardrails and the phase cascade                    |
-| `src/trigger-events.ts`                       | What a raw webhook payload becomes, for each of the three kinds        |
-| `src/pr-trigger.ts`                           | Resolving a `/review` typed on a pull request back to its issue        |
-| `src/triggers.ts`                             | Turning a command or comment into the state move to make               |
-| `src/ci-trigger.ts`                           | Whether a red check run buys a fix round, a notice, or nothing         |
-| `src/run-report.ts`                           | Everything the orchestrator writes back to the issue                   |
-| `src/budget-notices.ts`                       | What a run says when a ceiling stopped it and nothing broke            |
-| `src/pull-request-body.ts`                    | The pull request's own body, for a delivery and after a review alike   |
-| `src/pull-request-note.ts`                    | What a run says where the command was typed, not where it answers      |
-| `src/presentation.ts`                         | One glyph, label, headline and whose-turn per state an issue can be in |
-| `src/feedback.ts` / `src/labels.ts`           | The reaction channel, and the label reconcile                          |
-| `src/status-comment.ts` / `-reporter.ts`      | What the run's live comment says, and when it is edited                |
-| `src/state-persist.ts`                        | Recording what a run spent without posting a comment                   |
-| `src/step-output.ts`                          | The one thing a run tells the rest of its own workflow job             |
-| `src/token-budget.ts`                         | The per-issue token ceiling, and how a run over it parks in `FAILED`   |
-| `src/state-manager.ts`                        | Transition table and the `AGENT_STATE` block                           |
-| `src/blocks.ts` / `src/artifacts.ts`          | The hidden-block channel and the spec/plan/report artefacts            |
-| `src/guardrails.ts`                           | Every abort rule, for each of the three kinds of event                 |
-| `src/commands.ts` / `src/intent.ts`           | Slash commands, and classifying plain replies                          |
-| `src/openai-config.ts`                        | The single endpoint, and the OpenCode config both paths share          |
-| `src/opencode-adapter.ts`                     | Headless OpenCode server + session                                     |
-| `src/ask-json.ts`                             | Asking the model for JSON, with one repair re-ask on a bad reply       |
-| `src/prompt-budget.ts`                        | How much text a prompt carries, and what loses when it does not fit    |
-| `src/activity.ts`                             | What one OpenCode event means, and what of it may be said out loud     |
-| `src/progress.ts`                             | Reporting that, plus the heartbeat while a turn is outstanding         |
-| `src/sdk-contract.ts`                         | The recorded request and response shapes the SDK speaks                |
-| `src/config-values.ts`                        | Reading and range-checking one scalar from the environment             |
-| `src/config-discovery.ts`                     | The two settings asked of the checkout and the event, not the env      |
-| `src/deadline.ts`                             | The upper bound on waiting for work that has none of its own           |
-| `src/provider-proxy.ts`                       | Holds the provider key, and retries a transient upstream failure       |
-| `src/obra-skills.ts`                          | Superpowers skill loading and system-prompt composition                |
-| `src/review-runner.ts`                        | Drives the `review-loop/` workspace                                    |
-| `src/check-loop.ts`                           | The CI-fix repair loop                                                 |
-| `src/phases/*.ts`                             | One handler per acting phase; `review.ts` is the review loop's own     |
-| `src/github-pulls.ts`                         | Pull-request endpoints, and what became of a branch's pull request     |
-| `src/github.ts`, `src/git.ts`, `src/shell.ts` | Octokit, git and process boundaries                                    |
+| File                                          | Responsibility                                                          |
+| --------------------------------------------- | ----------------------------------------------------------------------- |
+| `src/index.ts`                                | CLI entry: flags, config, dependency wiring, agent teardown, exit code  |
+| `src/agent-handle.ts`                         | The OpenCode session's lifetime within one job                          |
+| `src/orchestrator.ts`                         | The state machine: guardrails and the phase cascade                     |
+| `src/trigger-events.ts`                       | What a raw webhook payload becomes, for each of the three kinds         |
+| `src/pr-trigger.ts`                           | Resolving a `/review` typed on a pull request back to its issue         |
+| `src/triggers.ts`                             | Turning a command or comment into the state move to make                |
+| `src/ci-trigger.ts`                           | Whether a red check run buys a fix round, a notice, or nothing          |
+| `src/run-report.ts`                           | Everything the orchestrator writes back to the issue                    |
+| `src/budget-notices.ts`                       | What a run says when a ceiling stopped it and nothing broke             |
+| `src/pull-request-body.ts`                    | The pull request's own body, for a delivery and after a review alike    |
+| `src/pull-request-note.ts`                    | What a run says where the command was typed, not where it answers       |
+| `src/presentation.ts`                         | One glyph, label, headline and whose-turn per state an issue can be in  |
+| `src/outcomes.ts`                             | The second vocabulary: one glyph per outcome a comment announces        |
+| `src/feedback.ts` / `src/labels.ts`           | The reaction channel, and the label reconcile                           |
+| `src/status-comment.ts` / `-reporter.ts`      | What the run's live comment says, and when it is edited                 |
+| `src/state-persist.ts`                        | Recording what a run spent without posting a comment                    |
+| `src/step-output.ts`                          | The one thing a run tells the rest of its own workflow job              |
+| `src/token-budget.ts`                         | The per-issue token ceiling, and how a run over it parks in `FAILED`    |
+| `src/time-budget.ts`                          | The job's own wall clock, and how a run out of it parks in `INCOMPLETE` |
+| `src/state-manager.ts`                        | The `AGENT_STATE` block: rendering it, and restoring it from a thread   |
+| `src/transitions.ts`                          | The machine: which signals a phase accepts, and what each one does      |
+| `src/blocks.ts` / `src/artifacts.ts`          | The hidden-block channel and the spec/plan/report artefacts             |
+| `src/plan-steps.ts`                           | What a plan step is, and the markdown a plan's own steps render into    |
+| `src/phases/implement-steps.ts`               | Walking those steps: a turn, a commit, a push, and then the clock       |
+| `src/implement-prompts.ts`                    | What the model is told while implementing, and asked when interrupted   |
+| `src/turn-stop.ts` / `src/salvage.ts`         | Stopping a turn part-way through, and keeping what it had written       |
+| `src/time-notices.ts`                         | What a run says when the job's own wall clock stopped it                |
+| `src/phase-names.ts`                          | What a phase is called, including what it used to be called             |
+| `src/guardrails.ts`                           | Every abort rule, for each of the three kinds of event                  |
+| `src/commands.ts` / `src/intent.ts`           | Slash commands, and classifying plain replies                           |
+| `src/openai-config.ts`                        | The single endpoint, and the OpenCode config both paths share           |
+| `src/opencode-adapter.ts`                     | Headless OpenCode server + session                                      |
+| `src/ask-json.ts`                             | Asking the model for JSON, with one repair re-ask on a bad reply        |
+| `src/prompt-budget.ts`                        | How much text a prompt carries, and what loses when it does not fit     |
+| `src/activity.ts`                             | What one OpenCode event means, and what of it may be said out loud      |
+| `src/progress.ts`                             | Reporting that, plus the heartbeat while a turn is outstanding          |
+| `src/sdk-contract.ts`                         | The recorded request and response shapes the SDK speaks                 |
+| `src/config-values.ts`                        | Reading and range-checking one scalar from the environment              |
+| `src/config-discovery.ts`                     | The two settings asked of the checkout and the event, not the env       |
+| `src/deadline.ts`                             | The upper bound on waiting for work that has none of its own            |
+| `src/provider-proxy.ts`                       | Holds the provider key, and retries a transient upstream failure        |
+| `src/obra-skills.ts`                          | Superpowers skill loading and system-prompt composition                 |
+| `src/review-runner.ts`                        | Drives the `review-loop/` workspace                                     |
+| `src/check-loop.ts`                           | The CI-fix repair loop                                                  |
+| `src/phases/*.ts`                             | One handler per acting phase; `review.ts` is the review loop's own      |
+| `src/github-pulls.ts`                         | Pull-request endpoints, and what became of a branch's pull request      |
+| `src/github.ts`, `src/git.ts`, `src/shell.ts` | Octokit, git and process boundaries                                     |
 
 ## Tests
 

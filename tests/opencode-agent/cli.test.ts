@@ -95,6 +95,7 @@ describe('memoizeAgent', () => {
     sessionId: 'session-1',
     prompt: (): Promise<{ text: string; sessionId: string }> => Promise.resolve({ text: '', sessionId: 'session-1' }),
     tokensUsed: (): Promise<number> => Promise.resolve(tokens),
+    abort: (): Promise<boolean> => Promise.resolve(true),
     close: (): Promise<void> => {
       closed.count += 1
       return Promise.resolve()

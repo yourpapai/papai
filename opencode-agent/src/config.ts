@@ -11,17 +11,22 @@ import type { CheckSpec } from './check-loop.js'
 import { resolveReviewCommand } from './config-discovery.js'
 import {
   boundedInt,
+  boundedIntOrNull,
   ConfigError,
+  EPOCH_MS_RANGE,
   FILES_RANGE,
+  JOB_MINUTES_RANGE,
   labelPrefix,
   LINES_RANGE,
   optional,
   optionalOrNull,
   POOL_RANGE,
   required,
+  RESERVE_RANGE,
   ROUND_RANGE,
   TIMEOUT_RANGE,
   TOKEN_RANGE,
+  WRAP_UP_RANGE,
 } from './config-values.js'
 import type { Env } from './config-values.js'
 import type { DiffLimits } from './diff-guard.js'
@@ -69,6 +74,44 @@ export interface PipelineConfig {
   reviewMaxRounds: number
   reviewPoolSize: number
   agentTimeoutMs: number
+  /**
+   * Epoch ms at which this **job** is killed by its own `timeout-minutes`, or
+   * `null` when nothing has said.
+   *
+   * Absolute rather than a duration, because that is the only form both halves of
+   * the answer survive in: the job's start comes from a first step in the
+   * workflow and its length from a repository variable, and neither is knowable
+   * from the other. Derived once at load, so nothing downstream has to remember
+   * to add them up.
+   *
+   * `null` is the ordinary local case — a `--event-path` run has no Actions job
+   * and no ceiling to stay under, and is bounded by {@link agentTimeoutMs} alone,
+   * exactly as every run was before this existed. It is deliberately not defaulted
+   * to "now plus something": `AGENT_TIMEOUT_MS` guessed at a runner cap for
+   * exactly one release and this is that mistake with a clock attached.
+   */
+  jobDeadlineMs: number | null
+  /**
+   * How much of the job is held back from the work, so the stop can be reported.
+   *
+   * `git add`, the diff guard, the commit, the push, the comment, the state block
+   * and the label are what a stop still has to do, and the observed tail for all
+   * of it is about ten seconds. Reserving minutes is cheap; not reserving them is
+   * the runner death this whole bound exists to replace.
+   */
+  teardownReserveMs: number
+  /**
+   * The middle slice: how long the model gets to wrap up after a turn is stopped.
+   *
+   * Held back from the **work**, not from the teardown reserve: the reserve buys the
+   * commit, the comment and the state block that make a stop something other than a
+   * silence, and a wrap-up that ate it would leave nothing to report with.
+   *
+   * What it buys is the handoff note, the one thing only the model that did the work
+   * can write: what it finished, what remains, and what it tried that did not work.
+   * A fresh session can read the diff and the plan; it cannot recover that last line.
+   */
+  wrapUpMs: number
   /** Model tokens one issue may spend, across every job it runs. */
   maxTokens: number
   ciFixMaxRounds: number
@@ -189,6 +232,27 @@ const buildRunUrl = (env: Env, serverBase: string, owner: string, repo: string):
   return `${serverBase}${owner}/${repo}/actions/runs/${runId}${suffix}`
 }
 
+/**
+ * When this job is killed by its own timeout, from the two facts that say so.
+ *
+ * Both or neither: a start with no ceiling and a ceiling with no start each
+ * describe half a deadline, and half a deadline is not a bound. Returning `null`
+ * rather than guessing the missing half is what keeps a local run — and any
+ * workflow that has not been updated — behaving exactly as it did before.
+ *
+ * The start is recorded by a step rather than read from the payload, because
+ * `timeout-minutes` counts from when the **job** started and nothing in the event
+ * says when that was. That step runs a few seconds after the job itself, so this
+ * lands a few seconds late — absorbed by the teardown reserve, which is minutes.
+ */
+const buildJobDeadline = (env: Env): number | null => {
+  const startedMs = boundedIntOrNull(env, 'AGENT_JOB_STARTED_MS', EPOCH_MS_RANGE)
+  const timeoutMinutes = boundedIntOrNull(env, 'AGENT_JOB_TIMEOUT_MINUTES', JOB_MINUTES_RANGE)
+  if (startedMs === null || timeoutMinutes === null) return null
+
+  return startedMs + timeoutMinutes * 60_000
+}
+
 /** Builds the pipeline config from the runner environment. */
 export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
   const { owner, repo } = parseRepository(required(env, 'GITHUB_REPOSITORY'))
@@ -213,6 +277,9 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     reviewMaxRounds: boundedInt(env, 'AGENT_REVIEW_MAX_ROUNDS', 4, ROUND_RANGE),
     reviewPoolSize: boundedInt(env, 'AGENT_REVIEW_POOL_SIZE', 2, POOL_RANGE),
     agentTimeoutMs: boundedInt(env, 'AGENT_TIMEOUT_MS', 1_800_000, TIMEOUT_RANGE),
+    jobDeadlineMs: buildJobDeadline(env),
+    teardownReserveMs: boundedInt(env, 'AGENT_TEARDOWN_RESERVE_MS', 180_000, RESERVE_RANGE),
+    wrapUpMs: boundedInt(env, 'AGENT_WRAP_UP_MS', 120_000, WRAP_UP_RANGE),
     ciFixMaxRounds: boundedInt(env, 'AGENT_CI_FIX_MAX_ROUNDS', 2, ROUND_RANGE),
     maxCiAttempts: boundedInt(env, 'AGENT_MAX_CI_ATTEMPTS', 3, ROUND_RANGE),
     maxReviewAttempts: boundedInt(env, 'AGENT_MAX_REVIEW_ATTEMPTS', 3, ROUND_RANGE),

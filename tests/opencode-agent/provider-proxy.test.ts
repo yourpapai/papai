@@ -75,6 +75,18 @@ const replyFor = (script: readonly Upstream[], attempt: number): Upstream =>
 /** Keeps the "was anything captured?" narrowing out of the test bodies. */
 const headerNames = (call: Captured | undefined): string[] => Object.keys(call?.headers ?? {})
 
+/**
+ * The bound the session would hand the turn it is about to take.
+ *
+ * A function rather than a number on the options, so a test has to *ask* — which is
+ * the property being asserted: one job runs a turn per plan step, and each of them
+ * needs a bound sized against the clock as it reads then.
+ */
+const asked = (options: OpenCodeAgentOptions | undefined): number | undefined => {
+  const bound = options?.timeoutMs
+  return typeof bound === 'function' ? bound() : bound
+}
+
 const answer = (reply: Upstream): Promise<Response> => {
   if (reply.throws !== undefined) return Promise.reject(new Error(reply.throws))
   return Promise.resolve(new Response(reply.body ?? 'ok', { status: reply.status ?? 200, headers: reply.headers }))
@@ -360,6 +372,9 @@ describe('contain', () => {
     reviewMaxRounds: 2,
     reviewPoolSize: 1,
     agentTimeoutMs: 1000,
+    jobDeadlineMs: null,
+    teardownReserveMs: 180_000,
+    wrapUpMs: 120_000,
     ciFixMaxRounds: 2,
     maxCiAttempts: 2,
     maxReviewAttempts: 3,
@@ -447,6 +462,7 @@ describe('contain', () => {
           sessionId: 's',
           prompt: () => Promise.resolve({ text: '', sessionId: 's' }),
           tokensUsed: () => Promise.resolve(0),
+          abort: () => Promise.resolve(true),
           close: () => Promise.resolve(),
         })
       },
@@ -454,11 +470,119 @@ describe('contain', () => {
 
     await run.deps.agent()
 
-    expect(seen[0]?.timeoutMs).toBe(1000)
+    // Asked rather than read: the bound is a function so that every turn in a job
+    // gets one sized against the clock as it reads *then*, which is what a job
+    // running a turn per plan step needs and a number could not give it.
+    expect(asked(seen[0])).toBe(1000)
     // And a logger, without which the adapter has nowhere to report progress.
     expect(seen[0]?.log).toBeDefined()
     // And still the contained credential, not the real one.
     expect(seen[0]?.openai.apiKey).toBe(PLACEHOLDER_API_KEY)
+    await run.proxy.close()
+  })
+
+  test('shrinks the turn timeout to what is left of the job', async () => {
+    // The same wiring gap one level along, and the one the finding is about: the
+    // turn cap and the job's own `timeout-minutes` were two numbers in two files
+    // kept in step by hand, so a turn opened near the end of a job was allowed to
+    // wait past the runner that kills it — which posts nothing at all. Asserted
+    // here because `turnTimeoutMs` being correct and never reaching the session is
+    // exactly how the deadline shipped broken once already.
+    const seen: OpenCodeAgentOptions[] = []
+    const nowMs = Date.UTC(2026, 7, 8, 12, 0)
+    const run = contain({
+      // 90 seconds of job left, 30 of it reserved for the stop and 10 for the
+      // wrap-up: nothing like the 600s cap, and the smaller number has to win.
+      config: {
+        ...config(),
+        agentTimeoutMs: 600_000,
+        jobDeadlineMs: nowMs + 90_000,
+        teardownReserveMs: 30_000,
+        wrapUpMs: 10_000,
+      },
+      event,
+      log: silentLog,
+      run: () => Promise.resolve({ command: '', exitCode: 0, stdout: '', stderr: '' }),
+      options: { argv: [], env: {} },
+      github: github(),
+      now: () => nowMs,
+      createAgent: (agentOptions) => {
+        seen.push(agentOptions)
+        return Promise.resolve({
+          sessionId: 's',
+          prompt: () => Promise.resolve({ text: '', sessionId: 's' }),
+          tokensUsed: () => Promise.resolve(0),
+          abort: () => Promise.resolve(true),
+          close: () => Promise.resolve(),
+        })
+      },
+    })
+
+    await run.deps.agent()
+
+    expect(asked(seen[0])).toBe(50_000)
+    await run.proxy.close()
+  })
+
+  test('re-reads the turn bound for every turn, not once when the session boots', async () => {
+    // The hole stage 3 would otherwise open. The session is memoized for the whole
+    // job and a job now runs one turn per plan step, so a bound read once is a bound
+    // sized against a clock that has since moved: a step starting six minutes before
+    // the runner's own `timeout-minutes` would carry the thirty-minute cap and be
+    // killed with the job, which posts nothing at all.
+    const seen: OpenCodeAgentOptions[] = []
+    const nowMs = Date.UTC(2026, 7, 8, 12, 0)
+    let clock = nowMs
+    const run = contain({
+      config: {
+        ...config(),
+        agentTimeoutMs: 600_000,
+        jobDeadlineMs: nowMs + 300_000,
+        teardownReserveMs: 30_000,
+        wrapUpMs: 10_000,
+      },
+      event,
+      log: silentLog,
+      run: () => Promise.resolve({ command: '', exitCode: 0, stdout: '', stderr: '' }),
+      options: { argv: [], env: {} },
+      github: github(),
+      now: () => clock,
+      createAgent: (agentOptions) => {
+        seen.push(agentOptions)
+        return Promise.resolve({
+          sessionId: 's',
+          prompt: () => Promise.resolve({ text: '', sessionId: 's' }),
+          tokensUsed: () => Promise.resolve(0),
+          abort: () => Promise.resolve(true),
+          close: () => Promise.resolve(),
+        })
+      },
+    })
+
+    await run.deps.agent()
+    expect(asked(seen[0])).toBe(260_000)
+
+    clock += 120_000
+    expect(asked(seen[0])).toBe(140_000)
+    await run.proxy.close()
+  })
+
+  test('hands the phases the same clock the session was sized against', async () => {
+    // One clock per run, not one per module: the deadline the cascade checks and
+    // the deadline the session was handed have to be the same wall clock, or a
+    // phase can be refused for want of time the turn thinks it has.
+    const nowMs = Date.UTC(2026, 7, 8, 12, 0)
+    const run = contain({
+      config: config(),
+      event,
+      log: silentLog,
+      run: () => Promise.resolve({ command: '', exitCode: 0, stdout: '', stderr: '' }),
+      options: { argv: [], env: {} },
+      github: github(),
+      now: () => nowMs,
+    })
+
+    expect(run.deps.now()).toBe(nowMs)
     await run.proxy.close()
   })
 

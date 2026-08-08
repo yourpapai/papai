@@ -58,7 +58,11 @@ const resolveJobSchema = z.object({
 const agentJobSchema = z.object({
   needs: z.string(),
   if: z.string(),
-  'timeout-minutes': z.number(),
+  // A string, not a number: the ceiling is a repository variable read by this
+  // field *and* forwarded to the pipeline, which is what makes it one value rather
+  // than two kept in step by hand. `vars` is available here and workflow `env` is
+  // not, which is the whole reason it is a repository variable.
+  'timeout-minutes': z.string(),
   concurrency: z.object({ group: z.string(), 'cancel-in-progress': z.boolean() }),
   steps: z.array(stepSchema),
 })
@@ -491,6 +495,36 @@ describe('steps', () => {
 
     expect(documented.length).toBeGreaterThan(10)
     expect(missing).toEqual([])
+  })
+
+  test('reads the job ceiling from one place, and the pipeline is told the same value', () => {
+    // The finding this closes, D3: `AGENT_TIMEOUT_MS` defaulted to 30 minutes while
+    // this job's ceiling was a literal 90, two numbers in two files kept in step by
+    // hand — and a live run died 30 minutes into a healthy turn with 59 minutes of
+    // runner it was never allowed to use. Byte-for-byte the same expression, so a
+    // change to one is a change to both.
+    expect(agentJob['timeout-minutes']).toBe('${{ vars.AGENT_JOB_TIMEOUT_MINUTES || 90 }}')
+    expect(step('agent pipeline').env['AGENT_JOB_TIMEOUT_MINUTES']).toBe(agentJob['timeout-minutes'])
+  })
+
+  test('records the job’s start before anything that takes time', () => {
+    // `timeout-minutes` counts from when the *job* started, and no event payload
+    // says when that was — so a step has to record it, and every step in front of
+    // it is time the derived deadline is wrong by. First, therefore, ahead of the
+    // checkout and the install.
+    const started = step('when this job started')
+
+    expect(steps[0]?.name).toBe(started.name)
+    expect(started.run).toContain('$GITHUB_OUTPUT')
+    expect(step('agent pipeline').env['AGENT_JOB_STARTED_MS']).toBe(`\${{ steps.${started.id}.outputs.epoch }}`)
+  })
+
+  test('records the start in milliseconds, which is the unit the config reads', () => {
+    // `date +%s` would be seconds, and seconds read as milliseconds put the derived
+    // deadline in 1970 — permanently behind the clock, so every run would park
+    // before it started. `EPOCH_MS_RANGE` rejects that value rather than acting on
+    // it, but the workflow is where it would be introduced.
+    expect(step('when this job started').run).toContain('%s%3N')
   })
 
   test('reports an infrastructure failure only when there is an issue to post to', () => {

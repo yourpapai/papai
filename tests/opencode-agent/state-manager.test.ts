@@ -8,16 +8,16 @@ import { describe, expect, test } from 'bun:test'
 import { findArtifact, PLAN_MARKER, renderArtifact, SPEC_MARKER } from '../../opencode-agent/src/artifacts.js'
 import { readBlock, renderBlock, stripBlocks } from '../../opencode-agent/src/blocks.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
+import { hasHandler } from '../../opencode-agent/src/cascade.js'
 import {
-  canTransition,
   extractState,
   findLatestState,
   initialState,
   renderStateComment,
   serializeState,
   STATE_MARKER,
-  transition,
 } from '../../opencode-agent/src/state-manager.js'
+import { canTransition, transition } from '../../opencode-agent/src/transitions.js'
 import { InvalidTransitionError, PHASES, STATE_VERSION } from '../../opencode-agent/src/types.js'
 import type { AgentState, Phase, TransitionSignal } from '../../opencode-agent/src/types.js'
 
@@ -107,6 +107,9 @@ describe('serializeState / extractState', () => {
       // below every threshold `LINES_RANGE` lets an operator set, so a block
       // written before the count existed recommends nothing.
       changedLines: 0,
+      // The plan-step cursor, defaulted for the same reason: 0 is "start at the
+      // first step", which is what every block written before it existed means.
+      stepsDone: 0,
       specRevision: 0,
       planRevision: 0,
       // Defaulted, which is why adding it needed no STATE_VERSION bump.
@@ -144,6 +147,16 @@ describe('serializeState / extractState', () => {
     const older = `<!-- ${STATE_MARKER}: {"v":2,"phase":"COMPLETE","issueId":5,"prNumber":7} -->`
 
     expect(extractState(older)).toMatchObject({ phase: 'COMPLETE', prNumber: 7, reviewAttempts: 0 })
+  })
+
+  test('a v2 block written before the plan-step cursor existed still restores', () => {
+    // `stepsDone` is additive with a default, so no `STATE_VERSION` bump — a bump
+    // strands every in-flight issue, and there is nothing here it would protect
+    // against: 0 means "start at the first step", and the plans those issues carry
+    // have no steps anyway, so they run as one turn exactly as they always did.
+    const older = `<!-- ${STATE_MARKER}: {"v":2,"phase":"REVIEW_AND_MUTATE","issueId":5} -->`
+
+    expect(extractState(older)).toMatchObject({ phase: 'REVIEW_AND_MUTATE', stepsDone: 0 })
   })
 
   test('stamps the current version on every write', () => {
@@ -617,6 +630,97 @@ describe('transition', () => {
     state = transition(transition(state, 'REVIEW_REQUESTED'), 'REVIEW_DONE')
 
     expect(state.reviewAttempts).toBe(2)
+  })
+
+  test('OUT_OF_TIME parks in INCOMPLETE, naming the phase it stopped in', () => {
+    const parked = transition(at('REVIEW_AND_MUTATE'), 'OUT_OF_TIME')
+
+    expect(parked.phase).toBe('INCOMPLETE')
+    expect(parked.resumeFrom).toBe('REVIEW_AND_MUTATE')
+    expect(parked.lastError).toBeNull()
+  })
+
+  test('a wall-clock stop spends no attempt, so the /continue it invites is never refused', () => {
+    // The same argument the token stop makes: running out of a resource is not a
+    // failed attempt at anything, and spending one would let a retry ceiling
+    // turn down the command the notice asks for, citing a bound it never named.
+    const parked = transition({ ...at('CI_FIX'), attempts: 2 }, 'OUT_OF_TIME')
+
+    expect(parked.attempts).toBe(2)
+  })
+
+  test.each<Phase>([...PHASES])('OUT_OF_TIME is accepted in %s exactly when the phase has a handler', (phase) => {
+    // The stop fires before the handler, so the phases it can park are the
+    // phases the cascade would have run something in. `state-manager.ts` may not
+    // import `cascade.ts`, so the list is spelled out there — and this is what
+    // keeps the two spellings one answer rather than a coincidence.
+    expect(canTransition(phase, 'OUT_OF_TIME')).toBe(hasHandler(phase))
+  })
+
+  test('CONTINUE resumes the phase that ran out of time and clears the resume point', () => {
+    const parked = transition(at('REVIEW_AND_MUTATE'), 'OUT_OF_TIME')
+    const resumed = transition(parked, 'CONTINUE')
+
+    expect(resumed.phase).toBe('REVIEW_AND_MUTATE')
+    expect(resumed.resumeFrom).toBeNull()
+    expect(resumed.lastError).toBeNull()
+  })
+
+  test('a continuation carries the failure budget rather than resetting it', () => {
+    // `RETRY`'s shape with a different guard, and that includes this: a forward
+    // move would clear `attempts`, so an issue alternating a failure with a
+    // continuation would never reach the retry ceiling at all.
+    const parked = transition({ ...at('CI_FIX'), attempts: 2 }, 'OUT_OF_TIME')
+
+    expect(transition(parked, 'CONTINUE').attempts).toBe(2)
+  })
+
+  test.each<Phase>([...PHASES].filter((phase) => phase !== 'INCOMPLETE'))('CONTINUE is refused in %s', (phase) => {
+    // `/continue` means "you were not finished", which is a claim only the phase
+    // a wall-clock stop parks in can make. Everywhere else it is refused through
+    // `refuseCommand`, which names what the phase does accept.
+    expect(canTransition(phase, 'CONTINUE')).toBe(false)
+  })
+
+  test('a continuation with no resume point falls back to triage rather than throwing', () => {
+    // The same fallback `RETRY` takes: `resumeFrom` is nullable, and a
+    // hand-edited block naming none must not crash the runner.
+    const parked: AgentState = { ...at('INCOMPLETE'), resumeFrom: null }
+
+    expect(transition(parked, 'CONTINUE').phase).toBe('INIT_OR_CLARIFY')
+  })
+
+  test('INCOMPLETE is left by a command, so nothing is stranded there', () => {
+    // The workspace invariant: no path may leave the state in a phase that has
+    // a handler but that no trigger can re-enter. INCOMPLETE has no handler, and
+    // both of these get out of it.
+    const parked = transition(at('PLANNING'), 'OUT_OF_TIME')
+
+    expect(canTransition(parked.phase, 'CONTINUE')).toBe(true)
+    expect(canTransition(parked.phase, 'CANCELLED')).toBe(true)
+    expect(canTransition(parked.phase, 'ANSWERED')).toBe(true)
+  })
+
+  test.each<Phase>(['INCOMPLETE'])('a red run and a review request are both refused in %s', (phase) => {
+    // Recorded as a decision, in the spirit of the absences already audited for
+    // these two signals. The branch *is* pushed in INCOMPLETE, which is what
+    // those rows normally want — but the work is by definition unfinished, and
+    // CI-fixing or reviewing a half-done increment is worse than waiting for the
+    // `/continue` that finishes it.
+    expect(canTransition(phase, 'CI_FAILED')).toBe(false)
+    expect(canTransition(phase, 'REVIEW_REQUESTED')).toBe(false)
+  })
+
+  test('a failure while parked keeps the resume point a retry can act on', () => {
+    // `resumeFrom` may never name a phase with no handler, or the `/retry` a
+    // failure comment invites resumes into nothing and re-parks. FAILED was
+    // already excluded from becoming its own resume point; INCOMPLETE is the
+    // second parked phase and needs the same exclusion.
+    const parked = transition(at('PR_DELIVERY'), 'OUT_OF_TIME')
+    const failed = transition(parked, 'FAILED', { lastError: 'boom' })
+
+    expect(failed.resumeFrom).toBe('PR_DELIVERY')
+    expect(transition(failed, 'RETRY').phase).toBe('PR_DELIVERY')
   })
 
   test('CANCELLED parks any live phase in COMPLETE', () => {

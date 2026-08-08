@@ -5,10 +5,10 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { inspectStaged, measure, parseNumstat } from '../../opencode-agent/src/diff-guard.js'
-import type { DiffLimits, DiffVerdict, StagedFile } from '../../opencode-agent/src/diff-guard.js'
+import { inspectSalvage, inspectStaged, measure, parseNumstat } from '../../opencode-agent/src/diff-guard.js'
+import type { DiffLimits, DiffVerdict, SalvageVerdict, StagedFile } from '../../opencode-agent/src/diff-guard.js'
 import { createGit, credentialEnv } from '../../opencode-agent/src/git.js'
-import type { GitOptions } from '../../opencode-agent/src/git.js'
+import type { GitOptions, Salvage } from '../../opencode-agent/src/git.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
 
 const LIMITS: DiffLimits = { maxFiles: 10, maxLines: 100 }
@@ -32,6 +32,10 @@ const file = (path: string, lines: number | null = 1): StagedFile => ({ path, li
 /** The reason a verdict carries, or '' when it passed. Keeps the narrowing out
  *  of the test bodies, per repo lint. */
 const reasonOf = (verdict: DiffVerdict): string => (verdict.ok ? '' : verdict.reason)
+
+/** The same two readings of a salvage verdict, for the same reason. */
+const refusalOf = (verdict: SalvageVerdict): string => (verdict.ok ? '' : verdict.reason)
+const capOf = (verdict: SalvageVerdict): string => (verdict.ok ? (verdict.overCap ?? '') : '')
 
 describe('parseNumstat', () => {
   test('reads a recorded change set', () => {
@@ -133,6 +137,57 @@ describe('inspectStaged', () => {
   test('sits exactly on the limits without complaint', () => {
     expect(ok([file('a.ts', 100)])).toEqual({ ok: true })
     expect(ok(Array.from({ length: 10 }, (_, index) => file(`f${index}.ts`, 0)))).toEqual({ ok: true })
+  })
+})
+
+describe('inspectSalvage', () => {
+  const salvage = (files: StagedFile[], diff = '', limits = LIMITS): ReturnType<typeof inspectSalvage> =>
+    inspectSalvage(files, diff, limits, [TOKEN])
+
+  test('accepts an ordinary change set with nothing to report', () => {
+    expect(salvage([file('src/a.ts', 40)])).toEqual({ ok: true, overCap: null })
+  })
+
+  test.each([
+    ['a credential, whatever the file is called', [file('notes.txt')], `+OPENAI_KEY=${TOKEN}`, 'credentials'],
+    ['a binary it cannot size-check', [file('src/a.ts', 3), file('fixture.bin', null)], '', 'fixture.bin'],
+  ])('still refuses %s, because being out of time does not make it acceptable', (_label, files, diff, expected) => {
+    // A credential is in git history whether or not the file is later deleted, and
+    // a blob is a blob. Both refusals stay absolute on this path: a salvage that
+    // trips either pushes nothing and says so.
+    const verdict = salvage(files, diff)
+
+    expect(verdict).toMatchObject({ ok: false })
+    expect(refusalOf(verdict)).toContain(expected)
+  })
+
+  test.each([
+    ['too many files', Array.from({ length: 11 }, (_, index) => file(`f${index}.ts`)), '11 files changed'],
+    ['too many lines', [file('generated.ts', 101)], '101 lines changed'],
+  ])('reports %s rather than refusing it', (_label, files, expected) => {
+    // The caps exist to turn down a runaway `git add --all`. On a partial tree they
+    // can refuse for a reason that has nothing to do with a runaway, and discarding
+    // a real 3,000-line increment because the cap says 2,000 recreates the exact
+    // loss the salvage exists to prevent.
+    const verdict = salvage(files)
+
+    expect(verdict.ok).toBe(true)
+    expect(capOf(verdict)).toContain(expected)
+  })
+
+  test('the very same change set is refused on the ordinary path', () => {
+    // The widening is scoped to the salvage and nowhere else — asserted as one
+    // comparison, because "we relaxed it here" is only true if it still bites there.
+    const runaway = Array.from({ length: 11 }, (_, index) => file(`node_modules/p${index}.js`))
+
+    expect(inspectStaged(runaway, '', LIMITS, [TOKEN]).ok).toBe(false)
+    expect(inspectSalvage(runaway, '', LIMITS, [TOKEN]).ok).toBe(true)
+  })
+
+  test('checks the credential before the caps here too, so a leak is never merely reported', () => {
+    const verdict = salvage([file('a.ts', 5_000)], `+${TOKEN}`)
+
+    expect(verdict).toMatchObject({ ok: false })
   })
 })
 
@@ -271,5 +326,85 @@ describe('commitAll runs the guard', () => {
     // implementation phase turns into a failure.
     expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toBeNull()
     expect(calls.some((call) => call.includes('--cached'))).toBe(false)
+  })
+
+  test('runs the repository’s hooks on the ordinary commit', async () => {
+    // The other half of the salvage's `--no-verify`: the normal implementation
+    // commit is still gated on this repository's own pre-commit hook passing on the
+    // runner, which is a coupling nothing in this workspace declares. Pinned here so
+    // that bypassing it stays a decision about one path rather than a habit.
+    const { calls, run } = captureGit({ ...DIRTY, 'git diff --cached --numstat': '3\t1\tsrc/a.ts' })
+
+    await createGit(guardedGit(run, LIMITS)).commitAll('msg')
+
+    expect(calls.find((call) => call.includes('commit'))).not.toContain('--no-verify')
+  })
+})
+
+describe('salvageAll — the commit a wall-clock stop makes', () => {
+  /** The reason or cap note a salvage carries, whichever it has. Keeps the
+   *  narrowing out of the test bodies, per repo lint. */
+  const noteOf = (salvage: Salvage): string => {
+    if (salvage.kind === 'refused') return salvage.reason
+    return salvage.kind === 'committed' ? (salvage.overCap ?? '') : ''
+  }
+
+  test('commits with --no-verify, because otherwise it cannot commit at all', async () => {
+    // Not an optimisation. `prepare` copies `scripts/pre-commit.sh` into
+    // `.git/hooks/pre-commit` on any install where `.git` exists — the Actions
+    // runner included — and that hook runs lint, typecheck and format over the
+    // staged files. A tree interrupted mid-edit fails all of them, so without this
+    // `git commit` exits non-zero and the salvage loses everything it exists to keep.
+    const { calls, run } = captureGit({ ...DIRTY, 'git diff --cached --numstat': '60\t20\tsrc/a.ts' })
+
+    const salvaged = await createGit(guardedGit(run, LIMITS)).salvageAll('msg')
+
+    expect(salvaged).toEqual({ kind: 'committed', totals: { files: 1, lines: 80 }, overCap: null })
+    expect(calls.find((call) => call.includes('commit'))).toContain('--no-verify')
+  })
+
+  test('reports a change set over the caps and commits it anyway', async () => {
+    const numstat = Array.from({ length: 11 }, (_, index) => `1\t0\tsrc/f${index}.ts`).join('\n')
+    const { calls, run } = captureGit({ ...DIRTY, 'git diff --cached --numstat': numstat })
+
+    const salvaged = await createGit(guardedGit(run, LIMITS)).salvageAll('msg')
+
+    expect(salvaged.kind).toBe('committed')
+    expect(noteOf(salvaged)).toContain('11 files changed')
+    expect(calls.some((call) => call.includes('commit'))).toBe(true)
+  })
+
+  test.each([
+    ['a staged credential', { 'git diff --cached --numstat': '1\t0\t.env', 'git diff --cached': `+KEY=${TOKEN}` }],
+    ['a staged binary', { 'git diff --cached --numstat': '-\t-\tfixture.bin' }],
+  ])('refuses %s, unstages, and commits nothing', async (_label, stdouts) => {
+    const { calls, run } = captureGit({ ...DIRTY, ...stdouts })
+
+    const salvaged = await createGit(guardedGit(run, LIMITS, [TOKEN])).salvageAll('msg')
+
+    expect(salvaged.kind).toBe('refused')
+    expect(noteOf(salvaged)).not.toContain(TOKEN)
+    expect(calls.some((call) => call.includes('commit'))).toBe(false)
+    expect(calls).toContainEqual(['git', 'reset'])
+  })
+
+  test('reports a clean tree as clean rather than as a failure', async () => {
+    // A turn stopped before it wrote anything is a legitimate outcome: the stop
+    // still parks and still hands over, it simply has nothing to keep.
+    const { calls, run } = captureGit({})
+
+    expect(await createGit(guardedGit(run, LIMITS)).salvageAll('msg')).toEqual({ kind: 'clean' })
+    expect(calls.some((call) => call.includes('--cached'))).toBe(false)
+  })
+
+  test('pushes with --no-verify only when asked, and plainly otherwise', async () => {
+    const { calls, run } = captureGit({})
+    const git = createGit(guardedGit(run, LIMITS))
+
+    await git.push('agent/issue-1')
+    await git.push('agent/issue-1', { noVerify: true })
+
+    expect(calls).toContainEqual(['git', 'push', '-u', 'origin', 'agent/issue-1'])
+    expect(calls).toContainEqual(['git', 'push', '--no-verify', '-u', 'origin', 'agent/issue-1'])
   })
 })

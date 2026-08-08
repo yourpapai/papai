@@ -6,8 +6,8 @@
 import type { MachineInput } from './phase-context.js'
 import { postAndAppend, renderAnswerFailure, renderFailure } from './run-report.js'
 import type { RunResult } from './run-result.js'
-import { transition } from './state-manager.js'
 import { recordSpend } from './token-budget.js'
+import { transition } from './transitions.js'
 import { errorMessage } from './types.js'
 
 /**

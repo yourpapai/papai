@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { outcomeHeading } from './presentation.js'
+import { outcomeHeading } from './outcomes.js'
 import type { Phase } from './types.js'
 
 /**
@@ -22,10 +22,13 @@ import type { Phase } from './types.js'
  * had just made impossible. Each now names the variable to raise, and the
  * command that works once it has been.
  *
- * These carry no heading of their own — `outcomeHeading` and the outcome table
- * own the glyphs — and `tests/opencode-agent/markdown.test.ts` asserts that for
- * this file as well as for `run-report.ts`, because a rule enforced only on the
- * file the renderers used to live in stops being a rule the moment they move.
+ * These carry no heading of their own — `outcomeHeading` and the outcome table in
+ * `outcomes.ts` own the glyphs — and `tests/opencode-agent/markdown.test.ts` asserts
+ * that for this file as well as for `run-report.ts`, because a rule enforced only on
+ * the file the renderers used to live in stops being a rule the moment they move.
+ * The **wall-clock** notices have since moved again, to `time-notices.ts`, when a
+ * third of them would not fit beside these — the same reason this module exists —
+ * and that test names all three files for the same reason.
  */
 
 /**

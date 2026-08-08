@@ -3,10 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { inspectStaged, measure, parseNumstat } from './diff-guard.js'
 import type { DiffLimits, StagedTotals } from './diff-guard.js'
-import { diffGuardError } from './errors.js'
+import { commitAll, salvageAll } from './git-commit.js'
+import type { GitFn, Salvage } from './git-commit.js'
 import type { CommandResult, CommandRunner } from './shell.js'
+
+// Re-exported so every caller keeps naming one module for "what git does here";
+// it is declared next to the commit that produces it.
+export type { Salvage } from './git-commit.js'
 
 export interface GitOptions {
   run: CommandRunner
@@ -78,12 +82,39 @@ export interface Git {
    * costs nothing where re-deriving it later would cost a second checkout.
    */
   commitAll(message: string): Promise<StagedTotals | null>
-  push(branch: string): Promise<void>
+  /**
+   * The same commit for a tree a wall-clock stop is trying to keep: hooks
+   * bypassed, size caps demoted to a report, secrets and binaries still refused.
+   *
+   * A separate operation rather than a flag on {@link commitAll}, and the return
+   * type is the argument. A flag would have one function answer three questions at
+   * once — did anything change, was it acceptable, and was it merely large — with
+   * `StagedTotals | null` and a throw as the only vocabulary, so a caller could not
+   * tell "nothing was written yet" from "a credential was staged" without reading
+   * an error message. Both of those are ordinary outcomes on this path and each
+   * gets a different sentence on the issue, so they are values: see {@link Salvage}.
+   * The two also differ in what a failure *means* — `commitAll` throwing is a run
+   * that broke, and this refusing is a run that was already out of time.
+   */
+  salvageAll(message: string): Promise<Salvage>
+  push(branch: string, options?: PushOptions): Promise<void>
   /** The remote's default branch, or `null` when the checkout cannot tell. */
   defaultBranch(): Promise<string | null>
 }
 
-type GitFn = (...argv: readonly string[]) => Promise<CommandResult>
+export interface PushOptions {
+  /**
+   * Skip the repository's own `pre-push` hook.
+   *
+   * A flag here where the commit is a whole operation, because a push has nothing
+   * else to say: there is no verdict, no measurement and no third outcome — only
+   * whether the hooks run. Mandatory on the salvage path for the same reason
+   * `--no-verify` is on the commit: this repository's `prepare` script installs a
+   * hook that runs lint, typecheck and format over the staged files, and a tree
+   * interrupted mid-edit fails all three.
+   */
+  noVerify?: boolean
+}
 
 /**
  * Hands git its credential through the environment of each invocation.
@@ -144,55 +175,6 @@ const ensureBranch = async (git: GitFn, gitOrThrow: GitFn, branch: string, base:
   await gitOrThrow('checkout', '-B', branch, `origin/${base}`)
 }
 
-/**
- * Checks what `git add --all` actually staged, unstages it if the answer is
- * unacceptable, and reports the size of what it let through.
- *
- * Measured after staging rather than before: `--numstat` on the index lists
- * every file individually, including the untracked ones that
- * `status --porcelain` collapses into a single directory entry — which is
- * precisely how a whole `node_modules` reads as one line.
- *
- * The totals come from a second `measure` over the same array `inspectStaged`
- * judged, rather than from widening `DiffVerdict` to carry them: `measure` is a
- * fold over an array already in hand, so the two calls cannot disagree, and a
- * verdict that answered "yes, and here are the numbers" would make every caller
- * that only wants the yes narrow past them.
- */
-const guardStaged = async (gitOrThrow: GitFn, options: GitOptions): Promise<StagedTotals> => {
-  const staged = parseNumstat((await gitOrThrow('diff', '--cached', '--numstat')).stdout)
-  const diff = (await gitOrThrow('diff', '--cached')).stdout
-
-  const verdict = inspectStaged(staged, diff, options.limits, options.secrets)
-  if (!verdict.ok) {
-    // Leave the tree as it was found. A retry lands on a fresh runner in the
-    // normal case, but a half-staged index is a poor thing to hand anyone.
-    await gitOrThrow('reset')
-    throw diffGuardError(verdict.reason)
-  }
-
-  const { files, lines } = measure(staged)
-  return { files, lines }
-}
-
-const commitAll = async (gitOrThrow: GitFn, options: GitOptions, message: string): Promise<StagedTotals | null> => {
-  const status = await gitOrThrow('status', '--porcelain')
-  if (status.stdout.trim().length === 0) return null
-
-  await gitOrThrow('add', '--all')
-  const totals = await guardStaged(gitOrThrow, options)
-  await gitOrThrow(
-    '-c',
-    `user.name=${options.authorName}`,
-    '-c',
-    `user.email=${options.authorEmail}`,
-    'commit',
-    '-m',
-    message,
-  )
-  return totals
-}
-
 const LOCAL_HEAD = /^origin\/(\S+)$/u
 const REMOTE_HEAD = /^ref:\s+refs\/heads\/(\S+)\s+HEAD$/mu
 
@@ -226,8 +208,10 @@ export const createGit = (options: GitOptions): Git => {
   return {
     ensureBranch: (branch, base) => ensureBranch(git, gitOrThrow, branch, base),
     commitAll: (message) => commitAll(gitOrThrow, options, message),
-    push: async (branch) => {
-      await gitOrThrow('push', '-u', 'origin', branch)
+    salvageAll: (message) => salvageAll(gitOrThrow, options, message),
+    push: async (branch, pushOptions) => {
+      const verify = pushOptions?.noVerify === true ? ['--no-verify'] : []
+      await gitOrThrow('push', ...verify, '-u', 'origin', branch)
     },
     defaultBranch: () => defaultBranch(git),
   }

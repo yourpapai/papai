@@ -12,7 +12,7 @@ findings: `ROADMAP.md`.
 
 - One CI job = one call to `runCli`. State lives in hidden blocks on the issue,
   not on disk: `AGENT_STATE` for the machine, `AGENT_SPEC` / `AGENT_PLAN` /
-  `AGENT_REPORT` for the artefacts. `AGENT_STATUS` is the odd one out — it marks
+  `AGENT_REPORT` / `AGENT_HANDOFF` for the artefacts. `AGENT_STATUS` is the odd one out — it marks
   the run's live status comment so `renderThread` can leave it out of a prompt,
   and it is read by nothing else.
 - An event is parsed before it is judged: `src/trigger-events.ts` says what a raw
@@ -29,18 +29,35 @@ findings: `ROADMAP.md`.
   `src/ci-trigger.ts`, the plain-comment half in `src/comment-intent.ts`, and the
   shared outcome shape plus `moveOrSkip` in `src/trigger-outcome.ts`;
   `src/orchestrator.ts` drives the phase cascade once that decision is made;
-  `src/token-budget.ts` decides whether the cascade may afford another step, and
-  `src/phase-failure.ts` decides what a run that broke is left looking like.
+  `src/token-budget.ts` and `src/time-budget.ts` each decide whether the cascade
+  may afford another step — one in tokens, one in wall clock, deliberately the
+  same shape, and asked in that order because tokens span jobs and a fresh clock
+  does not; `src/turn-stop.ts` is the _other_ wall-clock stop, the one reached
+  from inside a running turn, with `src/salvage.ts` holding the git half of it;
+  `src/transitions.ts` holds the state machine itself (the table,
+  `canTransition`, `transition`) while `src/state-manager.ts` keeps only the block
+  channel that restores it from the issue, `src/phase-names.ts` holds what a phase is
+  **called** — the enum, the retired names and the migration that maps them, split
+  from `types.ts` and re-exported by it so callers keep naming one module for the
+  vocabulary; and `src/phase-failure.ts` decides what
+  a run that broke is left looking like.
   Phase handlers in `src/phases/` return a `TransitionSignal`, a comment body and
   optional artefact blocks, and never write state or decide the next phase
-  themselves. `src/phases/review.ts` is the `review-loop/` workspace as a phase
+  themselves. `src/phases/implement.ts` is the one that delegates: `src/plan-steps.ts`
+  says what a step is, `src/phases/implement-steps.ts` walks them, and
+  `src/implement-prompts.ts` holds the three things said to the model inside that phase
+  — the standing instructions, one step, and the wrap-up asked for when a turn is cut
+  off — split from `prompts.ts` because they are the only prompts that arrive in
+  sequence within one phase, one session, one system prompt and one envelope. `src/phases/review.ts` is the `review-loop/` workspace as a phase
   of its own, entered from `COMPLETE` on `/review`; `src/pull-request-body.ts`
   renders the one pull request body both it and `handleDeliver` present, and
   takes the report as **text** because a handler cannot read its own block back —
   `postAndAppend` runs in the orchestrator after the handler returns.
 - Feedback on the issue that is not a comment lives apart from the machine that
-  causes it: `src/presentation.ts` owns the one glyph/label/headline table every
-  renderer reads, `src/feedback.ts` the reaction channel over `src/github-reactions.ts`'s
+  causes it: `src/presentation.ts` owns the one phase glyph/label/headline table
+  every renderer reads and `src/outcomes.ts` the second vocabulary beside it — the
+  outcome glyphs, which are keyed by how a run _ended_ rather than by which phase
+  it is in, which is why they are not one table; `src/feedback.ts` the reaction channel over `src/github-reactions.ts`'s
   endpoints, `src/labels.ts` the
   label reconcile over `src/github-labels.ts`'s endpoints, and
   `src/status-reporter.ts` the run's live status comment over the body
@@ -58,7 +75,8 @@ findings: `ROADMAP.md`.
   record what it spent. `src/budget-notices.ts` holds what a run says when a
   **ceiling** stopped it and nothing broke, along the seam `presentation.ts` had
   already drawn: ❌ means the work broke, ⛔ means a bound was reached in a run
-  where nothing did.
+  where nothing did — with the **wall-clock** three in `src/time-notices.ts`,
+  split off when a third of them would not fit beside the counter ceilings.
 - Config is read in two halves and discovered in a third. `src/config-values.ts`
   reads and range-checks one scalar out of the environment, `src/config.ts` says
   which values a run needs, and `src/config-discovery.ts` holds the two settings
@@ -73,9 +91,17 @@ findings: `ROADMAP.md`.
 
 ## Local rules
 
-- **Never scrape prose to recover an artefact.** Spec, plan and report travel in
-  hidden blocks via `blocks.ts` / `artifacts.ts`. Heading-and-trailer scraping
-  silently truncated specs at their first `---` rule; do not reintroduce it.
+- **Never scrape prose to recover an artefact.** Spec, plan, report and the
+  wall-clock handoff travel in hidden blocks via `blocks.ts` / `artifacts.ts`.
+  Heading-and-trailer scraping silently truncated specs at their first `---` rule;
+  do not reintroduce it. The plan is the case that had to grow a second half: its
+  block carries the ordered **steps** beside the text, and the text is _rendered from
+  them_ by `renderPlanMarkdown`, so the comment a maintainer approved and the list the
+  implementation walks cannot disagree. Reading the steps back out of the markdown
+  would be that same bug on a new surface, which is why `findPlan` exists and why a
+  `steps` field the schema cannot vouch for degrades to **no steps at all** rather than
+  to the steps it could parse — half a plan read as a whole plan is the failure being
+  avoided, and no steps is a shape this pipeline already runs correctly.
 - **Each artefact counts its own revisions.** `specRevision` and `planRevision`
   are separate fields and each handler renders and stores one of them, from a
   single local so the visible heading and the hidden block cannot disagree. They
@@ -228,6 +254,109 @@ findings: `ROADMAP.md`.
   the deliberate exception and moves nothing, for the reasons `failAnswer` moves
   nothing — plus `COMPLETE` accepts no `FAILED`, so parking a question there
   would throw out of the pipeline.
+- **A wall-clock stop parks in `INCOMPLETE` and is left by `/continue`, not
+  `/retry`.** `time-budget.ts` mirrors `token-budget.ts` deliberately, and the
+  three places it differs are each a decision. The bound may be **absent** — a job
+  deadline is derived from two facts only an Actions runner knows
+  (`AGENT_JOB_STARTED_MS` + `AGENT_JOB_TIMEOUT_MINUTES`, the latter the same
+  expression the workflow's own `timeout-minutes:` reads, so there is one value and
+  not a pair kept in step by hand), so every `--event-path` run has none and must
+  behave exactly as it did before. The park is its **own phase**, not a second kind
+  of park in `FAILED`: telling them apart there would need a field every reader of
+  `FAILED` consulted, because `/retry` means "the thing that broke, again" where
+  `/continue` means "you were not finished". And the run reports **`waiting`**, not
+  `failed` — a token stop starts no work, this one finished some and stopped to
+  hand it over, so the job exits 0 and the Actions page does not go red for a run
+  that behaved correctly. `attempts` is carried and `lastError` stays `null`, for
+  the reasons the token stop carries `attempts`. `OUT_OF_TIME` is accepted in
+  exactly the phases that have a handler and a test asserts that set against
+  `hasHandler` — the stop fires before _any_ handler, so a narrower list throws
+  `InvalidTransitionError` out of the pipeline from the phases it left out.
+  `turnTimeoutMs` clamps to **1 ms, never 0**: `withDeadline` treats a
+  non-positive budget as "no bound", so the obvious `Math.min` removes the bound
+  exactly when the job has least time left. `INCOMPLETE` is deliberately **not** in
+  `WAITING_PHASES` — that set's one reader decides whether a plain comment buys a
+  classifier turn, and a park is moved on by a command, not by prose.
+- **`abort` is the stop; `close()` is the leak.** Measured against a live
+  `opencode-ai@1.18.7`: `POST /session/:id/abort` kills the running tool child and
+  leaves the server up, while `close()` — which on POSIX is one `proc.kill()` on
+  one pid, no group, no escalation — kills the server and **orphans** the tool
+  child, reparented to init. A tool command is a session leader in its own process
+  group, so no group kill aimed at the server reaches it. So `turn-stop.ts` never
+  treats `close()` as the fallback for an abort that did not take, and `abort()` is
+  the one boundary here that is best-effort **and reports**: a failed abort must not
+  become the run's failure, but the caller's next decision depends on the answer.
+  Both cases are in `live-sdk.integration.ts`, driven through `/session/:id/shell`
+  — the same `bash -l -c` child the bash tool spawns, needing no model — because a
+  pin bump can change either. `abort` is also synchronous with respect to its
+  writer (29 ms to return, and a file being appended to did not grow by a byte in
+  the five seconds after), which is what collapses the staging fence from a polling
+  wait into a cheap assertion.
+- **A turn stopped part-way through is salvaged, and salvage never becomes a
+  second failure.** `turn-stop.ts` runs three steps in a fixed order and each one is
+  a decision. The **soft** stop aborts and asks for a handoff, bounded by
+  `AGENT_WRAP_UP_MS`, and asks only if the abort was accepted — the premise of a
+  second prompt is an idle session. The **hard** stop aborts again unconditionally,
+  depending on nothing the model chose to do. Only then the salvage, fenced on
+  _some_ abort having been accepted: the size caps merely report on this path, so a
+  tree still being written to would be committed rather than refused, and that is
+  the one thing this path must not do. **Read the token usage before anything closes
+  the server** — nothing in `turn-stop.ts` closes anything, and it must stay that
+  way: `tokensUsed()` degrades to `0` with a `warn`, `recordSpend` runs _after_ the
+  handler returns, and `INCOMPLETE` is exactly the state a `/continue` comes back
+  out of, so a total missing this job's turn is the total the next job hands to the
+  token ceiling. Everything in `salvage.ts` degrades to "nothing pushed, and here is
+  why" and nothing in it throws — a clean tree included, which is a legitimate
+  outcome rather than an error. The `--no-verify` is **mandatory, not an
+  optimisation**: `package.json`'s `prepare` installs `scripts/pre-commit.sh` as
+  `.git/hooks/pre-commit` on any install where `.git` exists, the Actions runner
+  included, and that hook runs lint, typecheck, format and the licence scan over the
+  staged files — all four of which a mid-edit tree fails, verified by staging one and
+  running the installed hook. Without the flag the salvage cannot commit at all.
+  `salvageAll` is a separate `Git` operation rather than a flag on `commitAll`
+  because its **return type** is the point: clean, refused and committed-but-large
+  are three ordinary outcomes here that each earn a different sentence on the issue,
+  where `commitAll` has only `StagedTotals | null` and a throw.
+- **The unit of work is a plan step, and between two of them is where a run wants to
+  stop.** `handleImplement` reads the plan's steps and `phases/implement-steps.ts`
+  walks them: one turn, `commitAll`, `push`, next. Pushing **per step** is the same
+  argument that put the push in this phase rather than the next one — an Actions
+  working tree dies with the job, so work is durable the moment it is pushed and not
+  before — and it is what makes the wall clock cheap: at a step boundary the tree is
+  clean, the branch carries every finished step and `stepsDone` records the cursor, so
+  the clock is checked in front of every step (`timeForAnotherStep`, whose threshold is
+  exactly where `turnTimeoutMs` would have to clamp to 1 ms) and a step that cannot fit
+  is **not started**. That park is `OUT_OF_TIME` with a notice of its own, the only one
+  of the three that may say both "work was done" and "nothing was lost". Four things
+  not to undo. The gate is asked **only of a declared step**: a plan with no steps is
+  one indivisible turn, where refusing to start costs everything the turn would have
+  written and being interrupted salvages what it did. A step's turn gets the **whole**
+  remaining clock rather than a share, since a share needs an estimate of a step's cost
+  that nothing here has. `mintEnvelope` and `composeSystemPrompt` are called **once per
+  handler** and reused by every step and by the wrap-up, for the reason stage 2 already
+  reused them. And the per-turn bound handed to the adapter is a **function**, not a
+  number: it is derived from the job's remaining clock and one job now takes many
+  turns, so a number read when the session booted would hand the last step a bound
+  sized against a clock half an hour stale, which is the silent runner death the bound
+  exists to prevent. `stepsDone` is additive with a default and needed no
+  `STATE_VERSION` bump (rollback is one-way in the same narrow sense `INCOMPLETE`'s
+  was); it is reset by `handlePlan` and by a finished implementation, and a cursor past
+  the end of the plan walks from the top rather than reporting a plan nobody
+  implemented.
+- **The handoff is an artefact, and it is retired by a new plan.** The wrap-up's
+  reply travels in an `AGENT_HANDOFF` block via `artifacts.ts` — never scraped out
+  of the notice's prose — and `buildImplementPrompt` includes it enveloped, framed
+  as a report to verify rather than as instructions. `findHandoff` owns the
+  lifecycle: superseded for free by the next stop (blocks append in order, the read
+  walks newest-first), and **retired by a plan revision it does not match**, since
+  "done", "remaining" and "tried and rejected" are all claims about the plan the
+  interrupted turn was implementing. A `/retry` after a failed implementation of the
+  _same_ plan deliberately keeps it — the branch still carries the work it describes.
+  Note that the revision guard is not reachable end to end today: a part-way stop
+  only happens in `REVIEW_AND_MUTATE` and `INCOMPLETE` accepts only `/continue`, so
+  there is no route from a written handoff back to `PLANNING`. It still covers a
+  hand-edited block, and it is the invariant that keeps the note honest the day such
+  a route exists.
 - **A red run is acted on where the branch is live and no job is on it.**
   `CI_FAILED` names two rows in `TRANSITIONS`, `COMPLETE` and `PR_DELIVERY`, and
   the absences are the design. `PR_DELIVERY` is the genuine race: phase 3 pushes
@@ -428,9 +557,13 @@ not permitted to create or approve pull requests` is a repository or
 - **Bounds go on the finished prompt, and on waiting.** `prompt-budget.ts` caps
   what reaches the model — per prompt, not per input, since a per-input cap
   bounds one log and nothing else. `deadline.ts` bounds waiting for a model turn;
-  it cannot cancel the request and does not claim to. What both buy is a failure
-  the pipeline can report, instead of a runner killed by `timeout-minutes`, which
-  posts nothing at all.
+  it cannot cancel the request and does not claim to, which is why the _phase_ now
+  aborts on the way out rather than treating the abandoned turn as finished. What
+  both buy is a failure the pipeline can report, instead of a runner killed by
+  `timeout-minutes`, which posts nothing at all. That failure is
+  `turnDeadlineError`, distinguishable by **code** so `handleImplement` can tell a
+  ceiling from a crash — every other rejection out of a prompt still means the work
+  broke — and carrying the `ProgressSnapshot`, because only the adapter can see it.
 - **Ask for JSON through `promptForJson`, not `agent.prompt` + `parseModelJson`.**
   It re-asks once with the validation complaint attached. Once, not until it
   works.
@@ -461,7 +594,15 @@ not permitted to create or approve pull requests` is a repository or
   `reviewHintLines`. The figure was already computed to refuse a runaway commit
   and was being thrown away. Keep it a **count**, never a `shouldReview` flag: a
   verdict frozen at commit time can only disagree with the threshold the config
-  carries when the comment is read. `measure`'s `binaries` deliberately does not
+  carries when the comment is read. It is **summed across the steps of one run** and no
+  longer overwritten per commit — harmless while a phase made one commit, an
+  under-report by a factor of the plan's length once it makes one per step — and it is
+  patched only when the run committed something, so a continuation that kept nothing
+  does not overwrite an earlier run's figure with a 0 that reads as a small diff. Note
+  what a commit per step does to the guard's other half: the file and line caps now
+  bound a **step** rather than a whole implementation, which is right, since they exist
+  to refuse a runaway `git add --all` and that is a property of one staging operation
+  rather than of a plan. `measure`'s `binaries` deliberately does not
   ride along — a commit that got past the guard has none, so that list is a
   working detail of judging a change set rather than a fact about one.
 - Untrusted text (issue bodies, comments, **check output**) must go through the
@@ -483,7 +624,8 @@ not permitted to create or approve pull requests` is a repository or
 - When a command test asserts an outcome, assert the **persisted state**, not
   just the returned status — a state that is never posted never happened.
 - **The SDK response shapes are recorded, not guessed.** `sdk-contract.ts`'s
-  `decodeSessionId` and `decodeReply` decode `{ data, error }` through a schema;
+  `decodeSessionId`, `decodeReply` and `decodeAbort` decode `{ data, error }`
+  through a schema;
   the fixtures in `adapters.test.ts` come from a live run. When the
   `@opencode-ai/sdk` pin moves, re-run the live check and re-record rather than
   adjusting the decoders by inspection. Note the asymmetry: request/response

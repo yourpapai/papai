@@ -5,7 +5,7 @@
 
 import type { PhaseDeps } from './phase-context.js'
 import type { RunResult } from './run-result.js'
-import { transition } from './state-manager.js'
+import { transition } from './transitions.js'
 import { errorMessage } from './types.js'
 import type { AgentState, TransitionSignal } from './types.js'
 

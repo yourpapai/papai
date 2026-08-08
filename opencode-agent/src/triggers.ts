@@ -11,7 +11,7 @@ import { applyClarifyIntent, applyIntent, readAndSkip } from './comment-intent.j
 import { react } from './feedback.js'
 import type { PhaseInput } from './phase-context.js'
 import { postAndAppend, renderRefusedCommand } from './run-report.js'
-import { canTransition } from './state-manager.js'
+import { canTransition } from './transitions.js'
 import { moveOrSkip, skip } from './trigger-outcome.js'
 import type { TriggerOutcome } from './trigger-outcome.js'
 import { WAITING_PHASES } from './types.js'

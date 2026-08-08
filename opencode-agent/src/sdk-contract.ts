@@ -141,6 +141,37 @@ export const decodeSessionId = (created: unknown): string => {
 }
 
 /**
+ * Whether the server accepted an abort.
+ *
+ * `POST /session/:id/abort` is declared `200: boolean` by the pinned SDK, and the
+ * payload sits under `data` like every other response above — so the shape is the
+ * recorded convention rather than a guess, and `live-sdk.integration.ts` checks
+ * it against a running server along with the thing types cannot state: an abort
+ * kills the running tool child and leaves the server up.
+ *
+ * This one throws on an unrecognised **shape** and reports `false` on a refusal,
+ * which is the split that matters. Read as `false` for ever, an SDK that moved
+ * this payload would silently turn every wall-clock stop into "nothing pushed" —
+ * so the contract failure is loud. The adapter still catches it and answers
+ * `false`, because a stop that cannot abort must post, park and hand over rather
+ * than become a second failure.
+ */
+const abortResponseSchema = z.object({
+  data: z.boolean().optional(),
+  error: z.unknown().optional(),
+})
+
+export const decodeAbort = (aborted: unknown): boolean => {
+  const parsed = abortResponseSchema.safeParse(aborted)
+  if (!parsed.success) {
+    throw openCodeError(`Unexpected abort response from the OpenCode SDK: ${parsed.error.message}`)
+  }
+
+  rejectEnvelopeError(parsed.data.error, 'abort')
+  return parsed.data.data === true
+}
+
+/**
  * What a session has spent so far, as the server itself accounts for it.
  *
  * Read back from `session.get` rather than summed from the event stream. Both

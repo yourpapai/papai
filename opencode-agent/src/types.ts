@@ -5,90 +5,28 @@
 
 import { z } from 'zod'
 
-/**
- * Phases of the issue-driven agent state machine.
- *
- * `DESIGN_SPEC` and `PLAN_REVIEW` are deliberate stops: each artefact the agent
- * produces is parked in front of a human who can question it, refine it, or
- * approve it before the pipeline spends anything on the next step.
- *
- * `CI_FIX` is entered from outside the issue conversation — a red check run on
- * the agent's own pull request — and returns to `COMPLETE` once the branch is
- * green again. `CODE_REVIEW` is the other way back into a finished issue: it
- * runs the `review-loop/` workspace over the pushed branch on an explicit
- * `/review`, and returns to `COMPLETE` too.
- *
- * `REVIEW_AND_MUTATE` keeps its name although it no longer reviews anything —
- * it implements and pushes, and `IMPLEMENT` would be the honest name. `phase` is
- * read back out of hidden blocks on live issues, so *removing* a member
- * invalidates every conversation in flight, which buys clarity in one file at
- * the price of stranding the field. **Adding** one costs nothing for the same
- * reason: no block written before this change names `CODE_REVIEW`.
- */
-export const PHASES = [
-  'INIT_OR_CLARIFY',
-  'DESIGN_SPEC',
-  'PLANNING',
-  'PLAN_REVIEW',
-  'REVIEW_AND_MUTATE',
-  'PR_DELIVERY',
-  'CODE_REVIEW',
-  'CI_FIX',
-  'COMPLETE',
-  'FAILED',
-] as const
-
-export type Phase = (typeof PHASES)[number]
+import { phaseName } from './phase-names.js'
+import type { Phase } from './phase-names.js'
 
 /**
- * Phase names this pipeline has retired, mapped onto the ones that replaced them.
+ * What one run of this pipeline hands the next, and the vocabulary it is written in.
  *
- * `PLANNING` was `EXECUTION_PLAN`, and "execution plan" was the wrong name for
- * the artefact: what the phase produces is the implementation plan the rest of
- * the repository already calls a plan (`docs/superpowers/plans/`, `AGENT_PLAN`,
- * `/approve to implement this plan`), and only this one phase, its status row and
- * its heading called it something else.
- *
- * A rename is a persisted-shape change, because a phase name is written into
- * every `AGENT_STATE` block as `phase` and `resumeFrom`. It is deliberately
- * **not** a `STATE_VERSION` bump: a bump strands every in-flight issue, and there
- * is nothing here a bump would protect against — the old name maps onto the new
- * one exactly, with no field to reinterpret. So the schema migrates it on the way
- * in ({@link phaseName}) and every block written afterwards carries the new name.
- *
- * Read through `Object.hasOwn`, never `in`: `'toString' in LEGACY_PHASE_NAMES` is
- * true through the prototype, and a state block is attacker-editable text.
+ * The phase **names** live next door in `phase-names.ts` — they were split out when
+ * this file and their migration would no longer fit together — and are re-exported
+ * here so every caller keeps naming one module for the machine's vocabulary, the same
+ * reason `git.ts` re-exports `Salvage`. What is left in this file is the shape: which
+ * signals a handler may report, and field by field what survives between two jobs.
  */
-export const LEGACY_PHASE_NAMES: Readonly<Record<string, Phase>> = { EXECUTION_PLAN: 'PLANNING' }
-
-/**
- * A phase name as it may appear in a block on the issue, migrated to the name
- * the machine uses now.
- *
- * On the schema rather than at the restore call sites, because there are four
- * parse sites (`extractState`, `ownedBy`, `initialState`, `applyPatch`) and three
- * of them are on the read path; a migration honoured at two of those is a state
- * block that restores under one scan and is discarded by the other.
- */
-const phaseName = z.preprocess(
-  (value) =>
-    typeof value === 'string' && Object.hasOwn(LEGACY_PHASE_NAMES, value) ? LEGACY_PHASE_NAMES[value] : value,
-  z.enum(PHASES),
-)
-
-/**
- * Phases that wait on a human and run no handler of their own.
- *
- * `CODE_REVIEW` is deliberately not one, although a human's `/review` is the
- * only way in: the command moves the phase and the handler runs in the same job,
- * exactly as `/approve` into `REVIEW_AND_MUTATE` does. A waiting phase is one
- * the cascade *stops* at, and this one it never does.
- */
-export const WAITING_PHASES: ReadonlySet<Phase> = new Set<Phase>(['DESIGN_SPEC', 'PLAN_REVIEW'])
+export type { Phase } from './phase-names.js'
+export { LEGACY_PHASE_NAMES, PHASES, WAITING_PHASES } from './phase-names.js'
 
 /**
  * Outcomes a phase handler reports back to the state machine. The machine — not
  * the handler — decides which phase follows, so handlers stay dumb about order.
+ *
+ * Three are reported by nothing in `phases/`: `RETRY` and `CONTINUE` are typed by a
+ * human and injected by the trigger layer, and `OUT_OF_TIME` comes from the
+ * cascade's own wall-clock stop before any handler runs.
  */
 export const TRANSITION_SIGNALS = [
   'NEEDS_CLARIFICATION',
@@ -106,6 +44,8 @@ export const TRANSITION_SIGNALS = [
   'CANCELLED',
   'FAILED',
   'RETRY',
+  'OUT_OF_TIME',
+  'CONTINUE',
 ] as const
 
 export type TransitionSignal = (typeof TRANSITION_SIGNALS)[number]
@@ -190,6 +130,39 @@ export const agentStateSchema = z.object({
    */
   changedLines: z.number().int().min(0).default(0),
   /**
+   * Steps of the **current plan** already finished, and therefore where the next
+   * implementation run starts.
+   *
+   * The implementation is one model turn per plan step, committed and pushed between
+   * them, so a wall-clock stop that lands between two steps costs the run nothing at
+   * all — but only if the next job knows which step is next. Without this the
+   * `/continue` the stop invites would re-implement the steps already on the branch,
+   * paying for them a second time and asking the model to redo work it can see is
+   * done.
+   *
+   * A count rather than an index, so `0` is both the default and the truthful reading
+   * of a block written before this field existed: start at the first step. It counts
+   * into the plan the state block's `planRevision` names, so `handlePlan` resets it
+   * whenever it posts a plan — a cursor carried across a `/changes` would skip work
+   * nobody has done, which is the same argument that retires the handoff note on a
+   * plan revision. It is reset on a finished implementation too, so a re-entry walks
+   * the plan rather than resuming past its end.
+   *
+   * Written by `REVIEW_AND_MUTATE` and by `PLANNING`, and only ever *forward* within
+   * one plan. Note the one thing it deliberately does not survive: a run whose step
+   * **threw** posts no outcome patch, so a `/retry` after a crash mid-plan walks the
+   * plan from the cursor the last *stop* recorded rather than from the crash. The
+   * steps it repeats are already committed, so it costs turns rather than
+   * correctness.
+   *
+   * Needs no `STATE_VERSION` bump — it defaults, exactly as `changedLines`,
+   * `tokensSpent` and the two revision counters do, and a bump strands every issue in
+   * flight. That does make a rollback **one-way** in the same narrow sense
+   * `INCOMPLETE` does: older code drops the key as unknown, so a continuation that
+   * was mid-plan starts the plan again rather than resuming it.
+   */
+  stepsDone: z.number().int().min(0).default(0),
+  /**
    * Revisions of the design spec and of the plan, counted apart.
    *
    * One shared counter used to serve both, bumped on `SPEC_POSTED` and on
@@ -259,18 +232,3 @@ export class InvalidTransitionError extends Error {
 
 /** Extracts a message from an unknown thrown value. */
 export const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
-
-/**
- * The end of an exhaustive `switch` over a discriminated union.
- *
- * Written out rather than left implicit for two reasons, and the second is the
- * one that matters. The lint rule wanting every path to return cannot see that
- * TypeScript has already proved this one unreachable — and the `never` parameter
- * is what turns *adding* a union member into a compile error at every switch
- * that did not grow a case for it. Which is exactly the property the `kind`
- * switches were written for: a third trigger kind arrived, and the tests that
- * had been spelled `!== 'issue'` would have bucketed it in silence.
- */
-export const unreachable = (value: never): never => {
-  throw new Error(`Unreachable value: ${JSON.stringify(value)}`)
-}

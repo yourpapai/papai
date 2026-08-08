@@ -3,10 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { unreachable } from './errors.js'
 import { branchNameFor } from './git.js'
 import type { PullRequestRefusal, PullRequestTriggerEvent } from './pr-trigger.js'
 import type { CiTriggerEvent, IssueTriggerEvent, TriggerEvent } from './trigger-events.js'
-import { unreachable } from './types.js'
 
 /**
  * Whether the pipeline may act on an event it has already understood.
