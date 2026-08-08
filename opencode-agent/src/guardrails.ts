@@ -142,10 +142,20 @@ const evaluateCiGuardrails = (event: CiTriggerEvent, options: GuardrailOptions):
 /**
  * A resolved pull-request comment is nothing but a human write.
  *
- * Everything structural about it was settled by `resolvePullRequestTrigger`,
- * which had to settle it in order to know which issue the run is even about:
- * the event and action, the `/review`, the repository the branch lives in, that
- * pull request's state, and the branch name itself. What is left is the sender,
+ * Everything structural about it was settled before this, and had to be in order
+ * to know which issue the run is even about: `parseTriggerEvent` admits only an
+ * `issue_comment` carrying a comment on a pull request, and
+ * `resolvePullRequestTrigger` then settles the `/review`, the repository the
+ * branch lives in, that pull request's state, and the branch name itself.
+ *
+ * The **action** is the one thing nothing here checks, unlike the issue path's
+ * `SUPPORTED_ISSUE_ACTIONS`: the workflow's `on: issue_comment: types:
+ * [created]` is the only constraint, and the `if:` arm mirrors that filter
+ * rather than an in-process rule. There is no gap today — no other action
+ * reaches this pipeline — but it is a constraint held in YAML alone, which is
+ * worth knowing before anyone widens that `types:` list.
+ *
+ * What is left is the sender,
  * asked in the same words the issue path asks it — including the `confused`
  * reaction `NOT_MAINTAINER` earns, which is placed by `runPipeline` on the code
  * rather than on the kind and so needs nothing here to stay true.
