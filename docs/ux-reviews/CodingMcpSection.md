@@ -48,6 +48,7 @@ Severity-ranked, highest first.
 
 - **Id:** coding-mcp-duplicate-server-saves-silently
 - **Status:** fixed
+- **Resolved:** sub-project `2026-08-08-coding-mcp-open-findings`, Task 1
 - **Dimension:** 4. Feedback & state
 - **Where visible:** Populated, after adding a row and re-picking a server already chosen in another row — measured live: `selectedServers: ['plugin:synthetic-web-search', 'search', 'plugin:synthetic-web-search']`, `duplicated: true`, `saveDisabled: false`
 - **Source:** `client/settings/sections/CodingMcpSection.svelte:99` (`updateRowServer` does not check the other rows) and `:266` (Save's disabled predicate tests only `hasEmptyServer`)
@@ -58,6 +59,7 @@ Severity-ranked, highest first.
 
 - **Id:** coding-mcp-blank-row-blocks-save-silently
 - **Status:** fixed
+- **Resolved:** sub-project `2026-08-08-coding-mcp-open-findings`, Task 1
 - **Dimension:** 4. Feedback & state
 - **Where visible:** `CodingMcp-—-a-blank-server-row-blocks-Save-1.png` — the row shows the "Select an MCP server…" placeholder with no error styling, and Save is greyed with nothing explaining why
 - **Source:** `client/settings/sections/CodingMcpSection.svelte:266` (`hasEmptyServer` gates Save) and `:201` (the server `Field` never receives the `error` prop it already supports at `client/shared/ui/Field.svelte:23`)
@@ -67,6 +69,7 @@ Severity-ranked, highest first.
 
 - **Id:** coding-mcp-error-state-buries-what-failed
 - **Status:** fixed
+- **Resolved:** sub-project `2026-08-08-coding-mcp-open-findings`, Task 4
 - **Dimension:** 5. Content & language
 - **Where visible:** `settings-sections-CodingMcpSection-Error-1.png` — renders "Something went wrong" over a red `boom`
 - **Source:** `client/settings/sections/CodingMcpSection.svelte:184` passes the raw exception as `message`; `client/shared/ui/ErrorState.svelte:13-14` documents `detail` as the slot for "Raw diagnostic text (e.g. an exception message) demoted to a collapsed disclosure"
@@ -76,6 +79,7 @@ Severity-ranked, highest first.
 
 - **Id:** coding-mcp-server-cap-unexplained
 - **Status:** fixed
+- **Resolved:** sub-project `2026-08-08-coding-mcp-open-findings`, Task 2
 - **Dimension:** 4. Feedback & state
 - **Where visible:** `CodingMcp-—-at-the-server-cap-1.png` — measured: `addDisabled: true`, `aria-describedby: null`, and the section's full text contains no mention of a limit
 - **Source:** `client/settings/sections/CodingMcpSection.svelte:59` (`atCap`) and `:244`
@@ -85,6 +89,7 @@ Severity-ranked, highest first.
 
 - **Id:** coding-mcp-actions-row-escapes-card-alignment
 - **Status:** fixed
+- **Resolved:** sub-project `2026-08-08-coding-mcp-open-findings`, Task 5
 - **Dimension:** 8. Spacing, alignment & sizing
 - **Where visible:** Populated and `CodingMcp-—-populated-narrow-1.png` — measured at 1280px: card content starts at x=13 but "Add server" starts at x=0; Save's right edge is 1280.0, exactly the viewport boundary, against card content ending at 1197.3
 - **Source:** `client/settings/sections/CodingMcpSection.svelte:321` — the local `.settings-field__actions` sets no `padding-inline`, while `CodingCredentialsSection.svelte:419` and `CodeHostSection.svelte:378` both carry `padding-inline: 14px` with comments explaining it lands the row on the cards' content edge
@@ -94,6 +99,7 @@ Severity-ranked, highest first.
 
 - **Id:** coding-mcp-peer-field-widths-diverge
 - **Status:** fixed
+- **Resolved:** sub-project `2026-08-08-coding-mcp-open-findings`, Task 5
 - **Dimension:** 8. Spacing, alignment & sizing
 - **Where visible:** Populated and at-cap — measured: the server `<select>` is 152.0px inside a 566.1px flex item while the credential `<input>` is 584.1px inside a 606.1px one, leaving ~390px of dead space between the select and the "CREDENTIAL" label
 - **Source:** `client/settings/sections/CodingMcpSection.svelte:315` — `.settings-mcp__field :global(.ui-input) { width: 100% }` stretches the Input but has no counterpart for the Select, so the Select keeps its intrinsic width at every viewport (152px at both 1280px and 640px)
@@ -103,6 +109,7 @@ Severity-ranked, highest first.
 
 - **Id:** coding-mcp-async-actions-never-announce-busy
 - **Status:** fixed
+- **Resolved:** sub-project `2026-08-08-coding-mcp-open-findings`, Task 3
 - **Dimension:** 9. Interaction & micro-states
 - **Where visible:** Not visible in a still frame — measured: Save reports `aria-busy="false"`, and neither button is passed the `busy` prop that `client/shared/ui/Btn.svelte:53` forwards to `aria-busy`
 - **Source:** `client/settings/sections/CodingMcpSection.svelte:262` (Save) and `:250` (Clear) — both drive only the visible label from `saving` / `clearing`
@@ -112,6 +119,7 @@ Severity-ranked, highest first.
 
 - **Id:** coding-mcp-remove-live-during-save
 - **Status:** fixed
+- **Resolved:** sub-project `2026-08-08-coding-mcp-open-findings`, Task 3
 - **Dimension:** 9. Interaction & micro-states
 - **Where visible:** Not visible in a still frame — source-confirmed asymmetry
 - **Source:** `client/settings/sections/CodingMcpSection.svelte:228` — the Remove `Btn` takes no `disabled` prop, while the row's `Select` (`:206`) and the Add button (`:244`) both carry `disabled={saving || loading}`
@@ -121,6 +129,7 @@ Severity-ranked, highest first.
 
 - **Id:** coding-mcp-empty-states-are-bare-prose
 - **Status:** fixed
+- **Resolved:** sub-project `2026-08-08-coding-mcp-open-findings`, Task 4
 - **Dimension:** 5. Content & language
 - **Where visible:** `settings-sections-CodingMcpSection-Empty-1.png` (an intro paragraph and a bare button row, no title or next step) and `settings-sections-CodingMcpSection-No-catalog-1.png` (a single dim line)
 - **Source:** `client/settings/sections/CodingMcpSection.svelte:190` and `:192`; the `EmptyState` primitive used by sibling sections is not imported here

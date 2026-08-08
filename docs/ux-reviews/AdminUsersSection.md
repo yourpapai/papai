@@ -246,6 +246,7 @@ Severity-ranked, highest first.
 
 - **Id:** admin-users-username-truncates-silently
 - **Status:** fixed
+- **Resolved:** closed by decision on 2026-08-08, accepting `title` as the remedy — no code change
 - **Resolution (2026-08-08):** Closed by decision, accepting `title` as the remedy. The value
   truncates with a visible ellipsis and a working native tooltip; the pointer-only reach of that
   tooltip is accepted rather than replaced. The suggested fix below is recorded as the option not
