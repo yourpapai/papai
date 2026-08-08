@@ -12,7 +12,7 @@
   "client/settings/sections/admin/instance-create.ts": 1,
   "client/settings/session.svelte.ts": 0.7142857142857143,
   "client/shared/fetcher-helpers.ts": 1,
-  "client/shared/helpers.ts": 0.8711656441717791,
+  "client/shared/helpers.ts": 0.9447852760736196,
   "client/shared/scrollspy.ts": 0.8571428571428571,
   "client/shared/ui/field-context.ts": 0.9,
   "client/stories/decorators/withFixtures.ts": 0.797979797979798,
