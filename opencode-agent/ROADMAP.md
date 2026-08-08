@@ -14,7 +14,21 @@ See LICENSE in the project root for details.
 > out of larger findings rather than left implied and were the last two open. What
 > remains in S3 is the boundary S3-2 names in its closing note: containment is
 > config-level, not process-level, so there is no container or network boundary
-> around the model. **S4** onwards is untouched.
+> around the model.
+>
+> **S4** is closed too — all ten items, five of which unrelated work had already
+> closed without anyone marking them. **S5** is closed apart from S5-5, whose
+> premise has been overtaken twice, and S5-10, which is accepted rather than
+> fixed. **S6** is where the real remainder is: S6-5 (the mutation ratchet has
+> never seen this workspace) and S6-7 (`check.sh`'s full list omits it). Both,
+> with what they cost and what fixing them costs, are evaluated in
+> [`docs/remaining-findings-evaluation.md`](docs/remaining-findings-evaluation.md).
+>
+> That paragraph replaces "**S4** onwards is untouched", which was false when it
+> was written and stayed in this blurb through a correction of the sentence beside
+> it — the same way S3-7 and S3-8 came to be listed as open. A status line nobody
+> re-derives is the most reliably wrong part of any long document, which is why
+> what remains is now named positively rather than by omission.
 >
 > A recurring pattern is worth stating once: several items marked `[FIXED]` were
 > re-opened on inspection because the fix had closed the _instance_ and left the
