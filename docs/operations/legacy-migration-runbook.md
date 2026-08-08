@@ -166,7 +166,7 @@ Starter dispositions; each item still gets the triage pass above.
 | `plans/2026-03-22-test-improvement-roadmap.md`                   | old, unverified                            | triage; Lane 0 or 3                         |
 | `plans/2026-03-26-layered-architecture-violations-fix.md`        | no created files                           | triage; Lane 0 or 3                         |
 | `plans/2026-04-03-deep-thinking-tool-research.md`                | research plan, no created files            | triage; Lane 0 or 3                         |
-| `plans/2026-04-08-user-profile-memory.md`                        | no migration/trace in `src/db`             | triage; likely superseded by memory work    |
+| ~~`plans/2026-04-08-user-profile-memory.md`~~                    | re-proposed 2026-08-09 → `openspec/changes/user-profile-memory/`  | done                                      |
 | `plans/2026-04-11-audio-message-transcription-implementation.md` | 11/60 boxes, no `src/stt`                  | triage; Lane 1 or 3                         |
 | `plans/2026-04-17-calendar-sync-implementation.md`               | docs-only commits, no code                 | Lane 3 likely; verify first                 |
 | ~~`plans/2026-04-26-telemetry-metrics.md`~~                      | adopted 2026-08-09 → `openspec/changes/telemetry-metrics/`        | done                                      |
