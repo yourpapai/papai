@@ -10,6 +10,7 @@ import { fence } from '../markdown.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
 import { renderPresentation } from '../pull-request-body.js'
 import type { ReviewOutcome, ReviewRunResult } from '../review-runner.js'
+import { errorMessage } from '../types.js'
 import type { AgentState } from '../types.js'
 
 /**
@@ -47,19 +48,26 @@ export const handleReview: PhaseHandler = async (input): Promise<PhaseOutcome> =
   // to change, which is the outcome a reviewer most wants to hear. So it is
   // reported and the phase still completes — and nothing is pushed, because
   // there is nothing to push.
-  const committed = await deps.git.commitAll(reviewMessage(state.issueId))
-  if (committed) await deps.git.push(branch)
+  //
+  // `commitAll` hands back the totals it measured, and this phase deliberately
+  // does nothing with them: `changedLines` sizes the recommendation to run
+  // *this*, so a review updating it would have the hint describe the diff after
+  // the second pass it was arguing for.
+  const applied = (await deps.git.commitAll(reviewMessage(state.issueId))) !== null
+  if (applied) await deps.git.push(branch)
 
-  deps.log.info({ issue: state.issueId, branch, review: review.outcome, committed }, 'Review finished')
+  deps.log.info({ issue: state.issueId, branch, review: review.outcome, applied }, 'Review finished')
 
-  const report = renderReport(review, committed)
+  const report = renderReport(review, applied)
   await refreshPullRequest(input, report)
 
   return { signal: 'REVIEW_DONE', comment: report, blocks: [reportBlock(report, state)] }
 }
 
 /**
- * Brings the pull request back in step with what the review just found.
+ * Brings the pull request back in step with what the review just found, and is
+ * this module's one door to GitHub — so, per the workspace rule, it swallows
+ * everything.
  *
  * The report is handed over rather than read back out of the thread, because
  * `postAndAppend` runs in the orchestrator *after* this handler returns: a
@@ -71,6 +79,18 @@ export const handleReview: PhaseHandler = async (input): Promise<PhaseOutcome> =
  * `REVIEW_REQUESTED` moves from, and `commands.ts` refuses `/review` there
  * without a pull request. It is narrowed rather than asserted because that is a
  * rule in another module, and a warn beats a crash if it ever loosens.
+ *
+ * Best-effort, and the asymmetry with `handleDeliver` is the point: there the
+ * very same `updatePullRequest` **is** the work, so a rejection is correctly
+ * fatal and correctly resumed from `PR_DELIVERY`. Here the work is already done
+ * and pushed — the loop has run, its findings are commits on the branch — and
+ * this call only re-renders a body around them. Letting it throw parked the
+ * issue in `FAILED` with `resumeFrom: CODE_REVIEW`, so the `/retry` the failure
+ * comment invites re-ran the *entire* review loop, every `opencode run`
+ * subprocess of it and another round off `AGENT_MAX_REVIEW_ATTEMPTS`, to repair
+ * a decoration. The cost is the one `labels.ts` states and accepts: a bug in
+ * here degrades to the same `warn` as a 403, so the test that proves the write
+ * happens is what stands in for the crash that no longer does.
  */
 const refreshPullRequest = async (input: PhaseInput, report: string): Promise<void> => {
   const { deps, state } = input
@@ -79,7 +99,14 @@ const refreshPullRequest = async (input: PhaseInput, report: string): Promise<vo
     return
   }
 
-  await deps.github.updatePullRequest(state.prNumber, renderPresentation(input.issue, state, report))
+  try {
+    await deps.github.updatePullRequest(state.prNumber, renderPresentation(input.issue, state, report))
+  } catch (error) {
+    deps.log.warn(
+      { issue: state.issueId, pr: state.prNumber, error: errorMessage(error) },
+      'Could not refresh the pull request after the review; its findings are pushed either way',
+    )
+  }
 }
 
 /**
@@ -112,12 +139,12 @@ const REVIEW_LINE: Record<ReviewOutcome, (exitCode: number) => string> = {
  * finding the loop could not fix is something for a human to read, not a reason
  * to park an issue whose work is already pushed.
  */
-const renderReport = (review: ReviewRunResult, committed: boolean): string => {
+const renderReport = (review: ReviewRunResult, applied: boolean): string => {
   const lines = [
     '### Review report',
     '',
     `- Review loop: ${REVIEW_LINE[review.outcome](review.exitCode)}`,
-    `- Findings applied: ${committed ? 'pushed as further commits on the branch' : 'nothing to apply'}`,
+    `- Findings applied: ${applied ? 'pushed as further commits on the branch' : 'nothing to apply'}`,
   ]
 
   if (review.outcome !== 'unavailable') {

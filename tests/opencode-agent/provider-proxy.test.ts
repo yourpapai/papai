@@ -361,6 +361,7 @@ describe('contain', () => {
     ciFixMaxRounds: 2,
     maxCiAttempts: 2,
     maxReviewAttempts: 3,
+    reviewHintLines: 200,
     maxAttempts: 3,
     maxTokens: 5_000_000,
     diffLimits: { maxFiles: 100, maxLines: 20_000 },

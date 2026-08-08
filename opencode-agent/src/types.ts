@@ -127,6 +127,33 @@ export const agentStateSchema = z.object({
    */
   reviewAttempts: z.number().int().min(0).default(0),
   /**
+   * Lines the implementation commit changed, as the diff guard measured them.
+   *
+   * The pipeline already held this figure and threw it away: `guardStaged` folds
+   * `git diff --cached --numstat` between `git add --all` and the commit, so the
+   * one fact that says whether a diff is worth reviewing was computed, used to
+   * refuse a runaway commit, and discarded. `/review` being explicit only helps
+   * a maintainer who knows when to reach for it, and this is what the delivery
+   * comment sizes that recommendation against.
+   *
+   * The **raw count**, never a `shouldReview` boolean. A flag decided at commit
+   * time and frozen into the block could only ever disagree with
+   * `reviewHintLines` as the config carries it when the comment is read — the
+   * same argument that keeps `approved` out of this schema, where the phase
+   * already is the approval gate. It is also the more honest thing to print: a
+   * recommendation that states its own figure can be judged rather than trusted.
+   *
+   * Written by the implementation phase and by nothing else. The review phase's
+   * own commits deliberately do not update it: what this sizes is the diff one
+   * model turn wrote with nothing having read it, and a `/review` that has since
+   * run is the very thing being recommended.
+   *
+   * Needs no `STATE_VERSION` bump — it defaults, so a block written before it
+   * existed still parses, and 0 is below every threshold `LINES_RANGE` allows,
+   * which reads as "a small diff" rather than as "one nobody measured".
+   */
+  changedLines: z.number().int().min(0).default(0),
+  /**
    * Revisions of the design spec and of the execution plan, counted apart.
    *
    * One shared counter used to serve both, bumped on `SPEC_POSTED` and on

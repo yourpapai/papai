@@ -10,6 +10,7 @@ import { readBlock } from '../../opencode-agent/src/blocks.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import { DEFAULT_CHECKS } from '../../opencode-agent/src/config.js'
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
+import type { StagedTotals } from '../../opencode-agent/src/diff-guard.js'
 import type { Git } from '../../opencode-agent/src/git.js'
 import type {
   GitHubApi,
@@ -71,6 +72,7 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   maxCiAttempts: 2,
   maxAttempts: 3,
   maxReviewAttempts: 2,
+  reviewHintLines: 200,
   maxTokens: 5_000_000,
   diffLimits: { maxFiles: 100, maxLines: 20_000 },
   gitRemoteBase: 'https://github.com/',
@@ -136,6 +138,13 @@ interface PipelineIo {
   reviewError: Error | null
   /** What `git` would report as the remote's default branch. */
   detectedBranch: string | null
+  /**
+   * What the diff guard measured for the commit `commitAll` made.
+   *
+   * The default sits under the harness config's `reviewHintLines`, so the
+   * ordinary delivery is the one that names `/review` without pressing it.
+   */
+  committedTotals: StagedTotals | null
   createdPr: PullRequestRef | null
   /** What the branch's pull request lookup reports, whatever became of it. */
   existingPr: PullRequestStatus | null
@@ -218,6 +227,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     reviewCalls: [],
     reviewError: null,
     detectedBranch: BASE_BRANCH,
+    committedTotals: { files: 2, lines: 12 },
     createdPr: null,
     existingPr: null,
     prBodies: [],
@@ -327,7 +337,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     },
     commitAll: (message) => {
       io.gitCalls.push(`commit:${message.split('\n')[0]}`)
-      return Promise.resolve(true)
+      return Promise.resolve(io.committedTotals)
     },
     push: (branch) => {
       io.gitCalls.push(`push:${branch}`)
@@ -385,7 +395,7 @@ const hostileGit = (): Git => {
 
   return {
     ensureBranch: (): Promise<void> => refuse('ensureBranch'),
-    commitAll: (): Promise<boolean> => refuse('commit'),
+    commitAll: (): Promise<StagedTotals | null> => refuse('commit'),
     push: (): Promise<void> => refuse('push'),
     defaultBranch: (): Promise<string | null> => refuse('symbolic-ref'),
   }
@@ -1039,6 +1049,47 @@ describe('implementation and delivery', () => {
     expect(harness.io.posted.at(-1)).toContain('`/review`')
   })
 
+  test('records the size of the diff it committed, not a verdict on it', async () => {
+    // The raw count, never a `shouldReview` flag: the threshold is read from
+    // config when the delivery comment is written, and a flag frozen at commit
+    // time could only ever disagree with it.
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(latestPostedState(harness)?.changedLines).toBe(12)
+  })
+
+  test('states that /review exists without pressing it for a small diff', async () => {
+    // 12 lines against the harness's 200-line threshold. Both halves matter:
+    // the command has to be discoverable on every delivery, and a recommendation
+    // attached to every delivery is not a recommendation.
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.posted.at(-1)).toContain('`/review`')
+    expect(harness.io.posted.at(-1)).not.toContain('worth a second pass')
+  })
+
+  test('recommends the review when the diff it just committed is a big one', async () => {
+    harness.io.committedTotals = { files: 30, lines: 900 }
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    // The figure is stated, so a maintainer can judge the recommendation rather
+    // than take it on trust.
+    expect(harness.io.posted.at(-1)).toContain('900 lines')
+    expect(harness.io.posted.at(-1)).toContain('worth a second pass')
+  })
+
+  test('recommends nothing for an issue delivered before the count existed', async () => {
+    // `changedLines` defaults to 0 on a state block written before this field,
+    // and 0 is below every threshold the range allows — so an in-flight issue
+    // reads as a small diff rather than as one nobody measured.
+    harness.io.committedTotals = { files: 1, lines: 0 }
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.posted.at(-1)).not.toContain('worth a second pass')
+  })
+
   test('records the pull request in the persisted state', async () => {
     await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
@@ -1102,7 +1153,7 @@ describe('implementation and delivery', () => {
 
   test('fails when the agent produced no file changes', async () => {
     // A clean tree is what `commitAll` reports, not something asked separately.
-    harness.deps.git.commitAll = (): Promise<boolean> => Promise.resolve(false)
+    harness.deps.git.commitAll = (): Promise<StagedTotals | null> => Promise.resolve(null)
 
     const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
@@ -1211,6 +1262,20 @@ describe('/review — the review loop as a command', () => {
     expect(harness.io.prBodies.at(-1)).toContain('Review report')
   })
 
+  test('a pull request that will not take the refresh does not cost the review', async () => {
+    // The refresh is decoration on work already pushed. Letting it throw parked
+    // the issue in FAILED with `resumeFrom: CODE_REVIEW`, so the `/retry` that
+    // followed re-ran the whole loop — every `opencode run` subprocess of it,
+    // and another round off `AGENT_MAX_REVIEW_ATTEMPTS` — for a failed body edit.
+    harness.deps.github.updatePullRequest = (): Promise<void> => Promise.reject(new Error('422 Unprocessable'))
+
+    const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.posted.at(-1)).toContain('Review report')
+    expect(latestPostedState(harness)).toMatchObject({ phase: 'COMPLETE', reviewAttempts: 1 })
+  })
+
   test('a review that throws leaves the pull request open and parks in CODE_REVIEW', async () => {
     harness.io.reviewError = new Error('the review loop exploded')
 
@@ -1271,7 +1336,7 @@ describe('/review — the review loop as a command', () => {
   test('a clean tree is a result, not a failure', async () => {
     // The loop finding nothing to change is the outcome a reviewer most wants
     // to hear, so it is reported and the phase still completes.
-    harness.deps.git.commitAll = (): Promise<boolean> => Promise.resolve(false)
+    harness.deps.git.commitAll = (): Promise<StagedTotals | null> => Promise.resolve(null)
 
     const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
 

@@ -226,8 +226,20 @@ describe('commitAll runs the guard', () => {
   test('commits a change set inside the limits', async () => {
     const { calls, run } = captureGit({ ...DIRTY, 'git diff --cached --numstat': '3\t1\tsrc/a.ts' })
 
-    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toBe(true)
+    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toEqual({ files: 1, lines: 4 })
     expect(calls.some((call) => call.includes('commit'))).toBe(true)
+  })
+
+  test('reports the totals it measured for the commit it made', async () => {
+    // The guard measures the index between `git add --all` and the commit, and
+    // used to throw the figure away — so the pipeline held the one fact that
+    // says whether a diff is worth reviewing and told nobody. `toEqual` is the
+    // assertion on purpose: `measure`'s `binaries` is a guard's working detail
+    // and must not ride out to a state block.
+    const numstat = ['3\t1\tsrc/a.ts', '10\t2\ttests/a.test.ts'].join('\n')
+    const { run } = captureGit({ ...DIRTY, 'git diff --cached --numstat': numstat })
+
+    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toEqual({ files: 2, lines: 16 })
   })
 
   test('refuses, unstages, and never commits when the guard trips', async () => {
@@ -254,7 +266,10 @@ describe('commitAll runs the guard', () => {
   test('does not stage or inspect anything when the tree is clean', async () => {
     const { calls, run } = captureGit({})
 
-    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toBe(false)
+    // `null` rather than zero totals: a tree with nothing to commit and a commit
+    // that changed nothing are different answers, and only the first is one the
+    // implementation phase turns into a failure.
+    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toBeNull()
     expect(calls.some((call) => call.includes('--cached'))).toBe(false)
   })
 })

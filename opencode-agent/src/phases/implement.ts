@@ -59,14 +59,27 @@ export const handleImplement: PhaseHandler = async (input): Promise<PhaseOutcome
   // `commitAll` reports a clean tree itself, which is the same question a
   // separate `hasChanges` probe asked one `git status` earlier — two reads of a
   // tree that a long model turn had just finished writing to, free to disagree
-  // and with no rule for which one won.
-  if (!(await deps.git.commitAll(implementMessage(state.issueId)))) throw noChangesError(state.issueId)
+  // and with no rule for which one won. It also reports how much it committed,
+  // measured by the guard that had already counted it in order to refuse a
+  // runaway commit; the figure used to be thrown away here.
+  const committed = await deps.git.commitAll(implementMessage(state.issueId))
+  if (committed === null) throw noChangesError(state.issueId)
 
   await deps.git.push(branch)
-  deps.log.info({ issue: state.issueId, branch }, 'Implementation pushed')
+  deps.log.info(
+    { issue: state.issueId, branch, files: committed.files, lines: committed.lines },
+    'Implementation pushed',
+  )
 
   const report = renderReport()
-  return { signal: 'CHANGES_COMMITTED', comment: report, blocks: [reportBlock(report, state)] }
+  return {
+    signal: 'CHANGES_COMMITTED',
+    comment: report,
+    blocks: [reportBlock(report, state)],
+    // The raw count, not a verdict on it: `renderDelivery` compares it against
+    // `reviewHintLines` as the config reads at delivery time, one phase later.
+    patch: { changedLines: committed.lines },
+  }
 }
 
 /**

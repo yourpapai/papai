@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { CheckRunner } from './check-loop.js'
-import { resolveBaseBranch } from './config.js'
+import { resolveBaseBranch } from './config-discovery.js'
 import type { Env, PipelineConfig } from './config.js'
 import { createGit } from './git.js'
 import type { GitHubApi } from './github.js'

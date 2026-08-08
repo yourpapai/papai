@@ -10,7 +10,8 @@ import { z } from 'zod'
 import { renderBlock } from '../../opencode-agent/src/blocks.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import type { CheckFailure } from '../../opencode-agent/src/check-loop.js'
-import { loadConfig, parseChecks, resolveBaseBranch, resolveReviewCommand } from '../../opencode-agent/src/config.js'
+import { resolveBaseBranch, resolveReviewCommand } from '../../opencode-agent/src/config-discovery.js'
+import { loadConfig, parseChecks } from '../../opencode-agent/src/config.js'
 import type { Env } from '../../opencode-agent/src/config.js'
 import { withDeadline } from '../../opencode-agent/src/deadline.js'
 import { PipelineError } from '../../opencode-agent/src/errors.js'
@@ -1180,6 +1181,10 @@ describe('config', () => {
     ['AGENT_MAX_ATTEMPTS', '999999999'],
     ['AGENT_MAX_CI_ATTEMPTS', '21'],
     ['AGENT_CI_FIX_MAX_ROUNDS', '0'],
+    // A hint threshold of zero recommends `/review` on every delivery, which is
+    // the same as not having a threshold at all.
+    ['AGENT_REVIEW_HINT_LINES', '0'],
+    ['AGENT_REVIEW_HINT_LINES', '9007199254740991'],
     // A budget below one phase's worth of work can only ever stop the run.
     ['AGENT_MAX_TOKENS', '100'],
     ['AGENT_MAX_TOKENS', '0'],
@@ -1199,6 +1204,7 @@ describe('config', () => {
     ['AGENT_MAX_CI_ATTEMPTS', 'maxCiAttempts'],
     ['AGENT_MAX_ATTEMPTS', 'maxAttempts'],
     ['AGENT_MAX_TOKENS', 'maxTokens'],
+    ['AGENT_REVIEW_HINT_LINES', 'reviewHintLines'],
   ] as const)('the default for %s would itself be accepted as an override', (key, field) => {
     // Guards the shape of bug where a default only works because nothing
     // validates it, and setting that same value explicitly is rejected.
@@ -1220,6 +1226,13 @@ describe('config', () => {
 
   test.each(['', ' ', '\n'])('a blank knob %p means unset, as it does for every other reader', (raw) => {
     expect(loadConfig({ ...baseEnv, AGENT_MAX_ATTEMPTS: raw }, '/repo').maxAttempts).toBe(3)
+  })
+
+  test('sizes the delivery hint against a line count, not against a file count', () => {
+    // Lines rather than files because that is what a reviewer's time is spent
+    // on, and it is the figure the diff guard already measures for the commit.
+    expect(loadConfig(baseEnv, '/repo').reviewHintLines).toBe(200)
+    expect(loadConfig({ ...baseEnv, AGENT_REVIEW_HINT_LINES: '40' }, '/repo').reviewHintLines).toBe(40)
   })
 
   test('builds the URL of the run doing the work', () => {
@@ -1874,10 +1887,10 @@ describe('createGit', () => {
     expect(calls).toContainEqual(['git', 'checkout', '-B', 'agent/issue-1', 'origin/agent/issue-1'])
   })
 
-  test('reports a clean tree by returning false, and stages nothing', async () => {
+  test('reports a clean tree by returning null, and stages nothing', async () => {
     const { calls, run } = captureGit()
 
-    expect(await createGit(gitOptions(run)).commitAll('msg')).toBe(false)
+    expect(await createGit(gitOptions(run)).commitAll('msg')).toBeNull()
     expect(calls.some((call) => call.includes('commit'))).toBe(false)
     expect(calls.some((call) => call.includes('add'))).toBe(false)
   })
@@ -1895,7 +1908,7 @@ describe('createGit', () => {
   test('stamps the configured identity on the commit', async () => {
     const { calls, run } = captureGit({}, DIRTY_TREE)
 
-    expect(await createGit(gitOptions(run)).commitAll('msg')).toBe(true)
+    expect(await createGit(gitOptions(run)).commitAll('msg')).not.toBeNull()
     const commit = calls.find((call) => call.includes('commit'))
     expect(commit).toContain('user.name=agent')
     expect(commit).toContain('user.email=agent@example.com')

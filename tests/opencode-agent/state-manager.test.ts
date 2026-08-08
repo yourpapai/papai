@@ -103,6 +103,10 @@ describe('serializeState / extractState', () => {
       ciAttempts: 0,
       ciBudgetReported: false,
       reviewAttempts: 0,
+      // Defaulted for the same reason, and 0 reads as "a small diff": it is
+      // below every threshold `LINES_RANGE` lets an operator set, so a block
+      // written before the count existed recommends nothing.
+      changedLines: 0,
       specRevision: 0,
       planRevision: 0,
       // Defaulted, which is why adding it needed no STATE_VERSION bump.

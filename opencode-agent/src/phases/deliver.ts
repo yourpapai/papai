@@ -53,7 +53,12 @@ export const handleDeliver: PhaseHandler = async (input): Promise<PhaseOutcome> 
 
   return {
     signal: 'PR_OPENED',
-    comment: renderDelivery(pr, existing !== null),
+    comment: renderDelivery({
+      pr,
+      reused: existing !== null,
+      changedLines: state.changedLines,
+      hintLines: deps.config.reviewHintLines,
+    }),
     patch: { prUrl: pr.url, prNumber: pr.number, ...(existing === null ? FRESH_PR_BUDGETS : {}) },
   }
 }
@@ -143,6 +148,16 @@ const deliveredReport = async (input: PhaseInput): Promise<string | null> => {
   return report === null ? null : report.text
 }
 
+/** Everything the delivery comment says, gathered so no renderer fetches. */
+interface DeliveryView {
+  pr: PullRequestRef
+  reused: boolean
+  /** Lines the implementation phase committed, as the diff guard measured them. */
+  changedLines: number
+  /** Diff size above which this comment recommends the review, not just names it. */
+  hintLines: number
+}
+
 /**
  * What a delivered pull request says on the issue.
  *
@@ -152,14 +167,33 @@ const deliveredReport = async (input: PhaseInput): Promise<string | null> => {
  * description of what has and has not happened — one model turn wrote this diff
  * and nothing has reviewed it.
  */
-const renderDelivery = (pr: PullRequestRef, reused: boolean): string =>
+const renderDelivery = (view: DeliveryView): string =>
   [
     '### Pull request ready',
     '',
-    `${reused ? 'Refreshed' : 'Opened'} pull request: ${pr.url}`,
+    `${view.reused ? 'Refreshed' : 'Opened'} pull request: ${view.pr.url}`,
     '',
     'If its checks go red I will pick that up automatically and push a fix.',
     'Nothing has reviewed the diff yet — reply **`/review`** here and I will run the review loop over the ' +
       'branch and push whatever it finds.',
+    ...recommendation(view),
     'This issue closes when the pull request merges.',
   ].join('\n')
+
+/**
+ * The extra line a big diff earns, on top of the one every delivery carries.
+ *
+ * Two figures rather than a yes: a recommendation that states what it is based
+ * on can be disagreed with, and the threshold is the operator's own
+ * `AGENT_REVIEW_HINT_LINES`, so naming it is how a maintainer learns which knob
+ * to turn when the advice reads wrong. The comparison happens here rather than
+ * at commit time for the reason `changedLines` is a count and not a flag: the
+ * config that decides is the one in force when the comment is written.
+ */
+const recommendation = (view: DeliveryView): readonly string[] =>
+  view.changedLines < view.hintLines
+    ? []
+    : [
+        `This one is ${view.changedLines} lines, past the ${view.hintLines} I treat as worth a second pass, ` +
+          'so I would run it before merging.',
+      ]
