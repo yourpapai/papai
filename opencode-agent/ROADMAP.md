@@ -1604,6 +1604,79 @@ already out of time and cannot afford a second thing to go wrong.
 **Stage 3 — the deadline stops mattering.** Step-wise implement, one plan step per
 turn, and the soft-deadline line in `IMPLEMENT_INSTRUCTIONS`.
 
+#### Deferred: carrying the OpenCode session across runs
+
+**What exists today.** Within one job the session is memoized in
+`agent-handle.ts` and shared by every phase that job cascades through — which is
+why one job's token total is already cumulative. **Between** jobs there is
+nothing: `sessionId` appears nowhere in `agentStateSchema`, no block carries it,
+and the next job creates a fresh session with an empty history. That is not an
+omission, it is the workspace's first structural decision — state lives in hidden
+blocks on the issue, not on disk — and what survives a job is deliberately the
+*durable artefacts*: the phase and its counters, the spec, the plan, the report,
+and the branch. A session restore would be the first thing to break that rule,
+so it needs to earn it.
+
+**What it would take.** OpenCode has an export path and **no import path**.
+`session.messages` reads a session out; `session.create` takes a title and a
+parent and nothing else, and `fork` copies within one server. So "restore" means
+replaying OpenCode's own storage tree — `session/{projectID}/`,
+`message/{sessionID}/`, `part/{messageID}/`, `session_diff/` under its data
+directory — into place before the server boots. That layout is documented only by
+community tooling and upstream issues, not by OpenCode itself, which puts it
+squarely against this workspace's hardest-won rule: shapes are recorded from a
+live server, never guessed. Here there is no API to record against at all, only a
+directory another program owns, keyed by a project id it derives internally, on a
+pin that reads `^1.18.7`.
+
+**Why `AGENT_LOG_KEY` (#240) is the right key and the wrong channel.** Sharing
+32 bytes is free and there is no reason to mint a second key. But the transcript
+that key exists for is built with four properties that are each the opposite of
+what a restore store needs: it is **write-only** (nothing in the pipeline reads
+it back), deliberately **whitelisted** down to command names, paths and patterns
+so that tool output, file contents and model text have nowhere to land, delivered
+as an artefact with **7-day retention**, and keyed by a **debug** secret a
+maintainer may rotate at will. Make pipeline correctness depend on that channel
+and a key rotation breaks every in-flight continuation, an issue idle for eight
+days cannot continue, and the narrow whitelist that makes the artefact safe to
+publish has to be abandoned — because a session's `part/` files hold exactly the
+file contents and tool output the whitelist exists to exclude. One leaked debug
+key would then expose the entire working history rather than a list of command
+names.
+
+**Why the payoff is smaller than it looks.** Two arguments, and the second is the
+one that decides it:
+
+- **Cost.** A restored 112k-token history is re-sent on every turn of every
+  continuation; a handoff note is a few thousand tokens. Roughly twenty-five
+  times the input for the same next step, compounding with each continuation,
+  against a budget that is per issue and persisted.
+- **Staleness.** Most of that history is tool output and file snapshots taken
+  _before_ the salvage commit. Restoring it hands the model file contents that
+  are no longer true, so the expensive context is also the misleading kind. Git
+  is the only thing that knows what the tree says now, and git is already
+  carried.
+
+**So: carry the intent, not the session.** The three things that actually
+continue work already survive — the diff on the branch says what was done, the
+plan says what was intended, and the handoff note says where it stopped. The one
+thing genuinely lost is the model's private reasoning, and the valuable part of
+that is not "which files did I open" but **"what did I try that did not work"**.
+Ask the wrap-up prompt for that line explicitly and most of the benefit arrives
+for none of the cost — and it arrives on the issue, in public-safe text that
+needs no key, no artefact and no expiry to read.
+
+**What is left for after #240 lands**, therefore, is not session restore. It is
+the narrower thing: a handoff richer than a public comment should carry — exact
+paths touched, exact commands that failed — written to the encrypted transcript's
+_own_ channel and read back by a `/continue` when it is present. That keeps the
+public comment as the source of truth, degrades to today's behaviour whenever the
+key is unset or the artefact has expired, and never makes correctness depend on a
+debug secret. Revisit only if continuations are observed re-treading ground the
+handoff note already described, which is the evidence that would show the note is
+too thin — and note that OpenCode's own `session.summarize` is a cheaper first
+answer to that than any storage-tree smuggling.
+
 #### To verify before building
 
 Per the workspace rule, nothing here may be guessed from the SDK's types.
