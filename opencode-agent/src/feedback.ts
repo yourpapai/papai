@@ -5,10 +5,10 @@
 
 import type { ReactionContent, ReactionRef, ReactionTarget } from './github-reactions.js'
 import type { GitHubApi } from './github.js'
-import type { TriggerEvent } from './guardrails.js'
 import type { Logger } from './logger.js'
-import { errorMessage } from './types.js'
-import type { RunStatus } from './types.js'
+import type { RunStatus } from './run-result.js'
+import type { TriggerEvent } from './trigger-events.js'
+import { errorMessage, unreachable } from './types.js'
 
 /**
  * The reaction channel — the pipeline's only instant acknowledgement.
@@ -61,13 +61,31 @@ export interface ReactionDeps {
  * waiting on an answer to it — the existing log line is the right amount of
  * record. `issues.opened` has no comment either but very much has someone
  * waiting, so it falls back to the issue itself.
+ *
+ * A pull-request comment **must** be reacted to, and it is the one kind where
+ * that is not obvious: this run will answer on the issue, and the person waiting
+ * is reading the pull request. The 👀 is the only thing that reaches them there
+ * before the work is done. It needs no new endpoint — an issue comment and a
+ * pull-request comment share `issues/comments/{id}/reactions`, which is exactly
+ * why {@link ReactionTarget} is one discriminated shape and not two methods.
+ *
+ * A `switch` rather than the `!== 'issue'` this was: that test read as "only the
+ * issue kind gets one" and meant "every kind added later is silently a CI
+ * event", which is precisely how this door would have shipped mute.
  */
 export const reactionTarget = (trigger: TriggerEvent): ReactionTarget | null => {
-  if (trigger.kind !== 'issue') return null
-
-  return trigger.commentId === null
-    ? { kind: 'issue', number: trigger.issueNumber }
-    : { kind: 'comment', id: trigger.commentId }
+  switch (trigger.kind) {
+    case 'ci':
+      return null
+    case 'issue':
+      return trigger.commentId === null
+        ? { kind: 'issue', number: trigger.issueNumber }
+        : { kind: 'comment', id: trigger.commentId }
+    case 'pull-request':
+      return { kind: 'comment', id: trigger.commentId }
+    default:
+      return unreachable(trigger)
+  }
 }
 
 /**

@@ -101,6 +101,9 @@ const STEP_OF: Record<Phase, number | null> = {
   PLAN_REVIEW: 2,
   REVIEW_AND_MUTATE: 3,
   PR_DELIVERY: 4,
+  // Both of these are work *on* the pull request rather than a sixth milestone:
+  // the branch is pushed and the pull request open before either can start.
+  CODE_REVIEW: 4,
   CI_FIX: 4,
   COMPLETE: null,
   FAILED: null,

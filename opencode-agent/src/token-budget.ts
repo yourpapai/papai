@@ -3,11 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { renderAnswerOverBudget, renderOverBudget } from './budget-notices.js'
 import type { PipelineConfig } from './config.js'
 import type { MachineInput, PhaseDeps } from './phase-context.js'
-import { postAndAppend, renderAnswerOverBudget, renderOverBudget } from './run-report.js'
+import { postAndAppend } from './run-report.js'
+import type { RunResult } from './run-result.js'
 import { transition } from './state-manager.js'
-import type { AgentState, RunResult } from './types.js'
+import type { AgentState } from './types.js'
 
 /**
  * The per-issue token ceiling: what an issue has spent, and how a run stops

@@ -3,8 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { inspectStaged, parseNumstat } from './diff-guard.js'
-import type { DiffLimits } from './diff-guard.js'
+import { inspectStaged, measure, parseNumstat } from './diff-guard.js'
+import type { DiffLimits, StagedTotals } from './diff-guard.js'
 import { diffGuardError } from './errors.js'
 import type { CommandResult, CommandRunner } from './shell.js'
 
@@ -68,12 +68,16 @@ export class GitError extends Error {
 export interface Git {
   ensureBranch(branch: string, base: string): Promise<void>
   /**
-   * Commits every change; resolves `false` when the tree was already clean.
+   * Commits every change; resolves `null` when the tree was already clean.
    *
    * That return is the only "did anything change?" answer the pipeline needs —
    * a separate probe would just be a second `git status` reading the same tree.
+   * It carries **how much** changed for the same reason: the guard measures the
+   * index between `git add --all` and the commit, so the one figure that says
+   * whether a diff is worth reviewing is already computed here, and returning it
+   * costs nothing where re-deriving it later would cost a second checkout.
    */
-  commitAll(message: string): Promise<boolean>
+  commitAll(message: string): Promise<StagedTotals | null>
   push(branch: string): Promise<void>
   /** The remote's default branch, or `null` when the checkout cannot tell. */
   defaultBranch(): Promise<string | null>
@@ -141,33 +145,42 @@ const ensureBranch = async (git: GitFn, gitOrThrow: GitFn, branch: string, base:
 }
 
 /**
- * Checks what `git add --all` actually staged, and unstages it if the answer is
- * unacceptable.
+ * Checks what `git add --all` actually staged, unstages it if the answer is
+ * unacceptable, and reports the size of what it let through.
  *
  * Measured after staging rather than before: `--numstat` on the index lists
  * every file individually, including the untracked ones that
  * `status --porcelain` collapses into a single directory entry — which is
  * precisely how a whole `node_modules` reads as one line.
+ *
+ * The totals come from a second `measure` over the same array `inspectStaged`
+ * judged, rather than from widening `DiffVerdict` to carry them: `measure` is a
+ * fold over an array already in hand, so the two calls cannot disagree, and a
+ * verdict that answered "yes, and here are the numbers" would make every caller
+ * that only wants the yes narrow past them.
  */
-const guardStaged = async (gitOrThrow: GitFn, options: GitOptions): Promise<void> => {
+const guardStaged = async (gitOrThrow: GitFn, options: GitOptions): Promise<StagedTotals> => {
   const staged = parseNumstat((await gitOrThrow('diff', '--cached', '--numstat')).stdout)
   const diff = (await gitOrThrow('diff', '--cached')).stdout
 
   const verdict = inspectStaged(staged, diff, options.limits, options.secrets)
-  if (verdict.ok) return
+  if (!verdict.ok) {
+    // Leave the tree as it was found. A retry lands on a fresh runner in the
+    // normal case, but a half-staged index is a poor thing to hand anyone.
+    await gitOrThrow('reset')
+    throw diffGuardError(verdict.reason)
+  }
 
-  // Leave the tree as it was found. A retry lands on a fresh runner in the
-  // normal case, but a half-staged index is a poor thing to hand anyone.
-  await gitOrThrow('reset')
-  throw diffGuardError(verdict.reason)
+  const { files, lines } = measure(staged)
+  return { files, lines }
 }
 
-const commitAll = async (gitOrThrow: GitFn, options: GitOptions, message: string): Promise<boolean> => {
+const commitAll = async (gitOrThrow: GitFn, options: GitOptions, message: string): Promise<StagedTotals | null> => {
   const status = await gitOrThrow('status', '--porcelain')
-  if (status.stdout.trim().length === 0) return false
+  if (status.stdout.trim().length === 0) return null
 
   await gitOrThrow('add', '--all')
-  await guardStaged(gitOrThrow, options)
+  const totals = await guardStaged(gitOrThrow, options)
   await gitOrThrow(
     '-c',
     `user.name=${options.authorName}`,
@@ -177,7 +190,7 @@ const commitAll = async (gitOrThrow: GitFn, options: GitOptions, message: string
     '-m',
     message,
   )
-  return true
+  return totals
 }
 
 const LOCAL_HEAD = /^origin\/(\S+)$/u

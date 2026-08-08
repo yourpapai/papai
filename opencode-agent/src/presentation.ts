@@ -97,6 +97,7 @@ export const PRESENTATION_KEYS = [
   'PLAN_REVIEW',
   'REVIEW_AND_MUTATE',
   'PR_DELIVERY',
+  'CODE_REVIEW',
   'CI_FIX',
   'COMPLETE:delivered',
   'COMPLETE:cancelled',
@@ -137,17 +138,31 @@ export const PRESENTATION: Record<PresentationKey, PhasePresentation> = {
     whoseTurn: 'you',
     headline: 'Plan is waiting for you',
   },
+  // "Writing **and reviewing** the code" until the review became `CODE_REVIEW`.
+  // A headline is not decoration here: it is what the live status comment says
+  // while the phase runs, so it was promising a review this phase no longer does
+  // — to the one reader who cannot check, since the run they are watching has
+  // not finished. The label suffix stays `implementing`, which was already true.
   REVIEW_AND_MUTATE: {
     glyph: '🛠️',
     label: { suffix: 'implementing', color: BLUE },
     whoseTurn: 'agent',
-    headline: 'Writing and reviewing the code',
+    headline: 'Writing the code',
   },
   PR_DELIVERY: {
     glyph: '📦',
     label: { suffix: 'delivering', color: BLUE },
     whoseTurn: 'agent',
     headline: 'Opening the pull request',
+  },
+  // The agent's turn, not the maintainer's, although a maintainer's `/review`
+  // is what starts it: the command and the handler are one job, so the issue is
+  // held throughout and `needs-you` would be wrong for the whole of it.
+  CODE_REVIEW: {
+    glyph: '🔬',
+    label: { suffix: 'reviewing', color: BLUE },
+    whoseTurn: 'agent',
+    headline: 'Reviewing the pull request',
   },
   CI_FIX: {
     glyph: '🚑',
@@ -224,6 +239,7 @@ export const OUTCOME_KEYS = [
   'TOKENS_SPENT',
   'ANSWER_TOKENS_SPENT',
   'CI_GAVE_UP',
+  'REVIEWS_SPENT',
   'COMMAND_REFUSED',
 ] as const
 
@@ -254,6 +270,7 @@ export const OUTCOME_GLYPHS: Record<OutcomeKey, string> = {
   TOKENS_SPENT: '⛔',
   ANSWER_TOKENS_SPENT: '⛔',
   CI_GAVE_UP: '🚑',
+  REVIEWS_SPENT: '⛔',
   COMMAND_REFUSED: '😕',
 }
 

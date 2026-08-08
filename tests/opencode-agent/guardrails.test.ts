@@ -7,10 +7,22 @@ import { describe, expect, test } from 'bun:test'
 
 import { parseSlashCommand, SLASH_COMMANDS } from '../../opencode-agent/src/commands.js'
 import type { SlashCommand } from '../../opencode-agent/src/commands.js'
-import { evaluateGuardrails, parseTriggerEvent } from '../../opencode-agent/src/guardrails.js'
-import type { CiTriggerEvent, IssueTriggerEvent } from '../../opencode-agent/src/guardrails.js'
+import type { PullRequestHead } from '../../opencode-agent/src/github-pulls.js'
+import { evaluateGuardrails } from '../../opencode-agent/src/guardrails.js'
+import type { Logger } from '../../opencode-agent/src/logger.js'
+import { resolvePullRequestTrigger } from '../../opencode-agent/src/pr-trigger.js'
+import type { PendingPullRequestEvent, PullRequestTriggerEvent } from '../../opencode-agent/src/pr-trigger.js'
+import { parseTriggerEvent } from '../../opencode-agent/src/trigger-events.js'
+import type { CiTriggerEvent, IssueTriggerEvent } from '../../opencode-agent/src/trigger-events.js'
 
 const OPTIONS = { selfLogin: 'agent-bot', selfWorkflowName: 'OpenCode Issue Agent' }
+
+const silentLogger = (): Logger => ({
+  debug: (): void => {},
+  info: (): void => {},
+  warn: (): void => {},
+  error: (): void => {},
+})
 
 const issuePayload = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
   action: 'opened',
@@ -34,6 +46,52 @@ const issueEvent = (overrides: Partial<IssueTriggerEvent> = {}): IssueTriggerEve
   commentBody: null,
   commentId: null,
   repositoryOwner: 'acme',
+  defaultBranch: 'main',
+  ...overrides,
+})
+
+/** The `issue_comment.created` payload GitHub sends for a comment on a pull request. */
+const pullRequestPayload = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+  action: 'created',
+  sender: { login: 'maintainer', type: 'User' },
+  issue: {
+    number: 7,
+    title: 'Add retries (#42)',
+    body: 'Closes #42',
+    author_association: 'NONE',
+    pull_request: { url: 'https://api.github.test/pulls/7' },
+  },
+  comment: { id: 99, body: '/review', author_association: 'COLLABORATOR' },
+  repository: { owner: { login: 'acme' }, name: 'widgets', full_name: 'acme/widgets', default_branch: 'main' },
+  ...overrides,
+})
+
+const pendingPullRequest = (overrides: Partial<PendingPullRequestEvent> = {}): PendingPullRequestEvent => ({
+  kind: 'pending-pull-request',
+  eventName: 'issue_comment',
+  action: 'created',
+  senderLogin: 'maintainer',
+  senderType: 'User',
+  authorAssociation: 'COLLABORATOR',
+  prNumber: 7,
+  commentBody: '/review',
+  commentId: 99,
+  repositoryFullName: 'acme/widgets',
+  defaultBranch: 'main',
+  ...overrides,
+})
+
+const pullRequestEvent = (overrides: Partial<PullRequestTriggerEvent> = {}): PullRequestTriggerEvent => ({
+  kind: 'pull-request',
+  eventName: 'issue_comment',
+  action: 'created',
+  senderLogin: 'maintainer',
+  senderType: 'User',
+  authorAssociation: 'COLLABORATOR',
+  issueNumber: 42,
+  prNumber: 7,
+  commentBody: '/review',
+  commentId: 99,
   defaultBranch: 'main',
   ...overrides,
 })
@@ -203,6 +261,208 @@ describe('parseTriggerEvent — CI events', () => {
   })
 })
 
+describe('parseTriggerEvent — pull-request comments', () => {
+  test('normalizes one as pending, with no issue number to be had', () => {
+    // `github.event.issue.number` on this payload is the **pull request**, and
+    // every block of state lives on the issue — so the parse can only get as far
+    // as saying which pull request was commented on.
+    expect(parseTriggerEvent('issue_comment', pullRequestPayload())).toEqual(pendingPullRequest())
+  })
+
+  test('leaves an ordinary issue comment on the issue path', () => {
+    const payload = issuePayload({
+      action: 'created',
+      comment: { id: 9, body: '/review', author_association: 'OWNER' },
+    })
+
+    expect(parseTriggerEvent('issue_comment', payload)).toMatchObject({ kind: 'issue', isPullRequest: false })
+  })
+
+  test.each([['edited'], ['deleted']])('falls through to the issue path for action %p', (action) => {
+    // The pull-request door opens for exactly the event and action that can
+    // carry a typed command. Everything else pull-request-shaped stays where it
+    // has always been refused — `PULL_REQUEST` and `UNSUPPORTED_ACTION` — rather
+    // than costing an API call to resolve a comment nobody typed now.
+    expect(parseTriggerEvent('issue_comment', pullRequestPayload({ action }))).toMatchObject({
+      kind: 'issue',
+      isPullRequest: true,
+    })
+  })
+
+  test('falls through to the issue path for an explicitly null pull_request', () => {
+    // The schema requires the key, so an ordinary issue comment fails it
+    // outright; a `null` value is the one shape that gets past the schema and
+    // has to be turned down by the parser.
+    const payload = pullRequestPayload({
+      issue: { number: 7, title: 't', body: 'b', author_association: 'OWNER', pull_request: null },
+    })
+
+    expect(parseTriggerEvent('issue_comment', payload)).toMatchObject({ kind: 'issue', isPullRequest: false })
+  })
+
+  test('falls through to the issue path when the payload carries no comment', () => {
+    const { comment: _dropped, ...withoutComment } = pullRequestPayload()
+
+    expect(parseTriggerEvent('issue_comment', withoutComment)).toMatchObject({ kind: 'issue', isPullRequest: true })
+  })
+
+  test('reports no repository name when the payload omitted one', () => {
+    // Not defaulted, for the reason `fromThisRepository` is not: the fork guard
+    // compares this against the head repository, and a name invented here would
+    // wave through exactly the payload it exists to catch.
+    const { repository: _dropped, ...withoutRepository } = pullRequestPayload()
+
+    expect(parseTriggerEvent('issue_comment', withoutRepository)).toMatchObject({
+      kind: 'pending-pull-request',
+      repositoryFullName: null,
+      defaultBranch: null,
+    })
+  })
+
+  test('reads an empty comment body as no command at all', () => {
+    const payload = pullRequestPayload({ comment: { id: 99, body: null, author_association: 'OWNER' } })
+
+    expect(parseTriggerEvent('issue_comment', payload)).toMatchObject({ commentBody: '' })
+  })
+})
+
+describe('resolvePullRequestTrigger', () => {
+  const head = (overrides: Partial<PullRequestHead> = {}): PullRequestHead => ({
+    ref: 'agent/issue-42',
+    repoFullName: 'acme/widgets',
+    state: 'open',
+    ...overrides,
+  })
+
+  /** A head lookup that counts its calls, so "no API call at all" is provable. */
+  const lookup = (
+    answer: PullRequestHead,
+  ): { calls: () => number; github: { getPullRequestHead: (prNumber: number) => Promise<PullRequestHead> } } => {
+    let calls = 0
+    return {
+      calls: () => calls,
+      github: {
+        getPullRequestHead: (): Promise<PullRequestHead> => {
+          calls += 1
+          return Promise.resolve(answer)
+        },
+      },
+    }
+  }
+
+  test('resolves the comment to the issue the branch names', async () => {
+    const api = lookup(head())
+
+    const resolved = await resolvePullRequestTrigger(pendingPullRequest(), api.github, silentLogger())
+
+    expect(resolved).toEqual(pullRequestEvent())
+  })
+
+  test.each([['looks good to me'], ['/approve'], ['/ask why that file?'], ['/retry'], ['']])(
+    'drops %p with no API call at all',
+    async (body) => {
+      // The cheap filter that keeps every ordinary code-review comment free.
+      // Every pull request in a repository gets them; without this, every one of
+      // them would cost a pull-request lookup before being thrown away.
+      const api = lookup(head())
+
+      expect(
+        await resolvePullRequestTrigger(pendingPullRequest({ commentBody: body }), api.github, silentLogger()),
+      ).toBeNull()
+      expect(api.calls()).toBe(0)
+    },
+  )
+
+  test('ignores a /review inside a fenced block, exactly as the issue path does', async () => {
+    const api = lookup(head())
+    const body = 'Try this:\n```\n/review\n```\n'
+
+    expect(
+      await resolvePullRequestTrigger(pendingPullRequest({ commentBody: body }), api.github, silentLogger()),
+    ).toBeNull()
+    expect(api.calls()).toBe(0)
+  })
+
+  test('reads a /review that a maintainer wrote under some prose', async () => {
+    const api = lookup(head())
+    const body = 'this deserves another pass\n\n/review'
+
+    const resolved = await resolvePullRequestTrigger(
+      pendingPullRequest({ commentBody: body }),
+      api.github,
+      silentLogger(),
+    )
+
+    expect(resolved).toMatchObject({ kind: 'pull-request', issueNumber: 42 })
+  })
+
+  test('refuses a fork whose branch is named like the agent’s', async () => {
+    // The same attack `CI_FOREIGN_REPOSITORY` exists for: `head.ref` reaches
+    // this payload verbatim from a fork, so anyone who can open a pull request
+    // can name a branch `agent/issue-42` and have it look, to every other field,
+    // exactly like the agent's own — then type `/review` and buy a privileged
+    // job that prompts the model, spends the issue's budget and pushes commits.
+    const api = lookup(head({ repoFullName: 'attacker/widgets' }))
+
+    expect(await resolvePullRequestTrigger(pendingPullRequest(), api.github, silentLogger())).toBeNull()
+  })
+
+  test('refuses when the payload named no repository to compare against', async () => {
+    const api = lookup(head())
+
+    expect(
+      await resolvePullRequestTrigger(pendingPullRequest({ repositoryFullName: null }), api.github, silentLogger()),
+    ).toBeNull()
+  })
+
+  test.each<PullRequestHead['state']>(['closed', 'merged'])('refuses a %s pull request', async (state) => {
+    const api = lookup(head({ state }))
+
+    expect(await resolvePullRequestTrigger(pendingPullRequest(), api.github, silentLogger())).toBeNull()
+  })
+
+  test.each([['main'], ['feature/thing'], ['agent/issue-abc'], ['agent/issue-']])(
+    'refuses a pull request from branch %p',
+    async (ref) => {
+      const api = lookup(head({ ref }))
+
+      expect(await resolvePullRequestTrigger(pendingPullRequest(), api.github, silentLogger())).toBeNull()
+    },
+  )
+})
+
+describe('evaluateGuardrails — pull-request comments', () => {
+  test('allows a maintainer’s /review', () => {
+    expect(evaluateGuardrails(pullRequestEvent(), OPTIONS)).toEqual({ allowed: true })
+  })
+
+  test.each(['OWNER', 'MEMBER', 'COLLABORATOR'])('allows association %s', (association) => {
+    expect(evaluateGuardrails(pullRequestEvent({ authorAssociation: association }), OPTIONS).allowed).toBe(true)
+  })
+
+  test.each(['CONTRIBUTOR', 'FIRST_TIME_CONTRIBUTOR', 'NONE', ''])('rejects association %s', (association) => {
+    // The same code the issue path uses, so the same `confused` reaction lands
+    // on the comment: a pull-request comment is a human write with the same
+    // reach, and a rule that held on one door and not the other would be a hole.
+    expect(evaluateGuardrails(pullRequestEvent({ authorAssociation: association }), OPTIONS)).toMatchObject({
+      allowed: false,
+      code: 'NOT_MAINTAINER',
+    })
+  })
+
+  test('rejects a Bot sender even when it has maintainer rights', () => {
+    expect(
+      evaluateGuardrails(pullRequestEvent({ senderType: 'Bot', authorAssociation: 'OWNER' }), OPTIONS),
+    ).toMatchObject({ code: 'BOT_SENDER' })
+  })
+
+  test('rejects the agent identity to stop a comment loop', () => {
+    expect(
+      evaluateGuardrails(pullRequestEvent({ senderLogin: 'Agent-Bot', authorAssociation: 'OWNER' }), OPTIONS),
+    ).toMatchObject({ code: 'SELF_RECURSION' })
+  })
+})
+
 describe('evaluateGuardrails — a run from another repository', () => {
   test('rejects it, however much the rest of the payload looks right', () => {
     // `head_branch` carries a fork's branch name verbatim, so anyone able to
@@ -328,6 +588,6 @@ describe('parseSlashCommand', () => {
   })
 
   test('exposes exactly the documented command surface', () => {
-    expect([...SLASH_COMMANDS]).toEqual(['/approve', '/changes', '/ask', '/retry', '/cancel'])
+    expect([...SLASH_COMMANDS]).toEqual(['/approve', '/changes', '/ask', '/retry', '/cancel', '/review'])
   })
 })

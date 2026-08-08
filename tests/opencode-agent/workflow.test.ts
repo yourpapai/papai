@@ -41,6 +41,28 @@ type WorkflowStep = z.infer<typeof stepSchema>
 
 const triggerSchema = z.object({ types: z.array(z.string()) })
 
+/**
+ * The door: the first-pass filter and the issue number every later step reads.
+ * It holds no credentials, so every field here is required — a resolve job that
+ * loses its `if:` or its outputs fails at the parse rather than in a test that
+ * quietly reads `undefined`.
+ */
+const resolveJobSchema = z.object({
+  if: z.string(),
+  permissions: z.record(z.string(), z.string()),
+  outputs: z.record(z.string(), z.string()),
+  steps: z.array(stepSchema),
+})
+
+/** The job that holds the credentials, and the only one with a concurrency group. */
+const agentJobSchema = z.object({
+  needs: z.string(),
+  if: z.string(),
+  'timeout-minutes': z.number(),
+  concurrency: z.object({ group: z.string(), 'cancel-in-progress': z.boolean() }),
+  steps: z.array(stepSchema),
+})
+
 const workflowSchema = z.object({
   name: z.string(),
   on: z.object({
@@ -50,18 +72,68 @@ const workflowSchema = z.object({
   }),
   permissions: z.record(z.string(), z.string()),
   env: z.record(z.string(), z.string()),
-  concurrency: z.object({ group: z.string(), 'cancel-in-progress': z.boolean() }),
-  jobs: z.object({
-    agent: z.object({ if: z.string(), 'timeout-minutes': z.number(), steps: z.array(stepSchema) }),
-  }),
+  jobs: z.object({ resolve: resolveJobSchema, agent: agentJobSchema }),
 })
+
+const source = await Bun.file(WORKFLOW_PATH).text()
 
 // Parsing through the schema is itself an assertion: a workflow that loses a
 // trigger, a permission or the job condition fails here rather than silently
 // skipping the tests that read those fields.
-const workflow = workflowSchema.parse(Bun.YAML.parse(await Bun.file(WORKFLOW_PATH).text()))
-const condition = workflow.jobs.agent.if
-const steps = workflow.jobs.agent.steps
+const workflow = workflowSchema.parse(Bun.YAML.parse(source))
+/** The same document with nothing required, for asserting a key is *absent*. */
+const rawWorkflow = z.record(z.string(), z.unknown()).parse(Bun.YAML.parse(source))
+
+const resolveJob = workflow.jobs.resolve
+const agentJob = workflow.jobs.agent
+// The filter lives on the resolve job, which is the door: `agent` is reached
+// only through it, so a condition in one place gates both.
+const condition = resolveJob.if
+const steps = agentJob.steps
+
+/**
+ * The condition's top-level `||` arms, split on parenthesis depth.
+ *
+ * Three arms now answer for three different events, and an assertion against the
+ * whole string can no longer tell them apart — the pull-request arm *does* filter
+ * on the comment body, and the issue arm still must not. Splitting is what keeps
+ * "no body filter" a statement about the arm it would break.
+ */
+const topLevelArms = (expression: string): string[] => {
+  const arms: string[] = []
+  let depth = 0
+  let start = 0
+
+  for (let index = 0; index < expression.length; index += 1) {
+    const char = expression.charAt(index)
+    if (char === '(') depth += 1
+    if (char === ')') depth -= 1
+    if (depth === 0 && char === '|' && expression.charAt(index + 1) === '|') {
+      arms.push(expression.slice(start, index))
+      start = index + 2
+    }
+  }
+  arms.push(expression.slice(start))
+
+  return arms.map((arm) => arm.trim())
+}
+
+/** One arm, found by a clause only it carries. `''` when the arm is gone, so the
+ *  assertion that reads it fails rather than the lookup. */
+const arm = (marker: string): string => topLevelArms(condition).find((candidate) => candidate.includes(marker)) ?? ''
+
+const ciArm = arm('github.event.workflow_run.conclusion')
+const issueArm = arm('github.event.issue.pull_request == null')
+const pullRequestArm = arm('github.event.issue.pull_request != null')
+
+/** An arm's `&&` clauses, unwrapped and whitespace-normalised, so a list of them
+ *  can be compared to the events they admit and refuse. */
+const clausesOf = (expression: string): string[] =>
+  expression
+    .replace(/^\(/u, '')
+    .replace(/\)$/u, '')
+    .split('&&')
+    .map((clause) => clause.trim().replace(/\s+/gu, ' '))
 
 describe('trigger surface', () => {
   test('listens for opened issues and created comments', () => {
@@ -76,84 +148,164 @@ describe('trigger surface', () => {
 })
 
 describe('the job condition', () => {
-  test('does not filter comments by body, so a plain reply reaches the pipeline', () => {
+  test('does not filter issue comments by body, so a plain reply reaches the pipeline', () => {
     // The agent holds a conversation: clarifying answers, questions and change
     // requests all arrive as ordinary comments. A `contains(comment.body, '/…')`
     // filter here would make every one of them reachable only by slash command
     // and silently strand the clarification loop — which is exactly what it did.
-    expect(condition).not.toContain('comment.body')
-    expect(condition).not.toContain('/approve')
-    expect(condition).not.toContain('/changes')
-    expect(condition).not.toContain('/ask')
+    //
+    // Asserted on the arm rather than on the whole condition: the pull-request
+    // arm is deliberately body-filtered, and a test that could not tell the two
+    // apart would have to be deleted to admit it.
+    expect(issueArm).not.toContain('comment.body')
+    expect(issueArm).not.toContain('/approve')
+    expect(issueArm).not.toContain('/changes')
+    expect(issueArm).not.toContain('/ask')
   })
 
   test('reads the commenter rights, not the issue author rights', () => {
     // Order matters: `issue.author_association` first would let anyone comment
     // on a maintainer-opened issue and drive the agent.
-    const commenter = condition.indexOf('github.event.comment.author_association')
-    const author = condition.indexOf('github.event.issue.author_association')
+    const commenter = issueArm.indexOf('github.event.comment.author_association')
+    const author = issueArm.indexOf('github.event.issue.author_association')
 
     expect(commenter).toBeGreaterThan(-1)
     expect(author).toBeGreaterThan(commenter)
   })
 
   test('requires maintainer rights for human events', () => {
-    expect(condition).toContain('"OWNER", "MEMBER", "COLLABORATOR"')
+    expect(issueArm).toContain('"OWNER", "MEMBER", "COLLABORATOR"')
+    expect(pullRequestArm).toContain('"OWNER", "MEMBER", "COLLABORATOR"')
   })
 
-  test('drops bot senders and pull-request comments', () => {
-    expect(condition).toContain("github.event.sender.type != 'Bot'")
-    expect(condition).toContain('github.event.issue.pull_request == null')
+  test('drops bot senders, and keeps pull-request comments out of the issue arm', () => {
+    // The issue arm's `== null` is what still drops a pull-request comment
+    // carrying no `/review`; the arm below is the only way one gets in.
+    expect(issueArm).toContain("github.event.sender.type != 'Bot'")
+    expect(issueArm).toContain('github.event.issue.pull_request == null')
+  })
+
+  test('admits a maintainer /review typed on a pull request, and nothing else', () => {
+    // The whole arm, clause by clause, because each clause refuses one thing and
+    // a `toContain` per clause could not tell a missing one from a reordered one:
+    //
+    //   - `issue_comment` + `created` refuse an `issue_comment.edited` — an
+    //     already-read command must not re-fire when its comment is edited;
+    //   - `pull_request != null` is what makes this the pull-request door;
+    //   - the `/review` `contains` refuses every ordinary code-review comment,
+    //     and every pull request in a repository gets those. It is a first-pass
+    //     filter only: `parseSlashCommand` re-parses, requires the command to
+    //     start a line and ignores fenced blocks, and none of that is expressible
+    //     here. The arm exists so an event that will be dropped anyway never
+    //     boots a runner;
+    //   - `sender.type` refuses a bot, and the association refuses a
+    //     non-maintainer.
+    //
+    // Everything `resolvePullRequestTrigger` refuses — a fork, a closed or merged
+    // pull request, a branch the agent does not own — needs an API call and is
+    // deliberately not attempted here.
+    expect(clausesOf(pullRequestArm)).toEqual([
+      "github.event_name == 'issue_comment'",
+      "github.event.action == 'created'",
+      'github.event.issue.pull_request != null',
+      "contains(github.event.comment.body, '/review')",
+      "github.event.sender.type != 'Bot'",
+      'contains(fromJSON(\'["OWNER", "MEMBER", "COLLABORATOR"]\'), github.event.comment.author_association)',
+    ])
+  })
+
+  test('reads the commenter rights on a pull request, never the fallback the issue arm uses', () => {
+    // `parsePullRequestEvent` takes `comment.author_association` outright, with
+    // no `|| issue.author_association` — a pull request's own author has nothing
+    // to do with who may command the agent from it, and on a payload that always
+    // carries a comment the fallback can only ever widen the arm.
+    expect(pullRequestArm).toContain('github.event.comment.author_association')
+    expect(pullRequestArm).not.toContain('github.event.issue.author_association')
   })
 
   test('admits a CI event only when it is red and on an agent branch', () => {
-    expect(condition).toContain("github.event.workflow_run.conclusion == 'failure'")
-    expect(condition).toContain("startsWith(github.event.workflow_run.head_branch, 'agent/issue-')")
+    expect(ciArm).toContain("github.event.workflow_run.conclusion == 'failure'")
+    expect(ciArm).toContain("startsWith(github.event.workflow_run.head_branch, 'agent/issue-')")
   })
 
   test('admits a CI event only from this repository, never a fork', () => {
     // `head_branch` carries a fork's branch name verbatim, so the branch test
     // above is not an ownership test on its own. Mirrored in `guardrails.ts`;
     // here it keeps the runner from booting with the API keys mounted at all.
-    expect(condition).toContain('github.event.workflow_run.head_repository.full_name == github.repository')
+    expect(ciArm).toContain('github.event.workflow_run.head_repository.full_name == github.repository')
   })
 
   test('does not demand an author association from machine events', () => {
     // workflow_run carries no author association; requiring one would disable
     // the CI-fix path entirely.
-    expect(condition).toContain("github.event_name != 'workflow_run'")
+    expect(issueArm).toContain("github.event_name != 'workflow_run'")
+  })
+
+  test('gates the job that holds the credentials on a resolved issue', () => {
+    // The filter is asked once, on the door. Duplicating it on both jobs is how
+    // two copies drift; leaving `resolve` unconditional would boot a runner for
+    // every comment in the repository and spend an API call reading the head of
+    // a pull request for every ordinary code-review comment on it — the very
+    // lookup `resolvePullRequestTrigger` orders its checks to avoid.
+    expect(agentJob.if).toBe("needs.resolve.outputs.issue != ''")
   })
 })
 
-describe('concurrency', () => {
-  test('both event kinds resolve to the same key for one issue', () => {
-    const { group } = workflow.concurrency
+/** The group the workflow computes for a resolved issue number: the agent job's
+ *  template, with `needs.resolve.outputs.branch` filled in the way the resolve
+ *  job's own `branch` output fills it. */
+const groupFor = (number: string): string =>
+  agentJob.concurrency.group.replace('${{ needs.resolve.outputs.branch }}', `agent/issue-${number}`)
 
-    // Keying issue events on the number and CI events on the branch would put
-    // them in different groups, so a CI-fix run and a maintainer-triggered run
-    // for one issue would not serialize — and both push the same branch.
-    expect(group).toContain('github.event.workflow_run.head_branch')
-    expect(group).toContain("format('agent/issue-{0}', github.event.issue.number)")
+describe('concurrency', () => {
+  test('is declared on the job, keyed on the branch the resolve job named', () => {
+    // It cannot be declared on the workflow any more. On a pull-request comment
+    // `github.event.issue.number` is the *pull request*, so a workflow-level
+    // `format('agent/issue-{0}', …)` resolves to a group nothing else uses — and
+    // a `/review` job and a `/retry` job for one issue would not serialize while
+    // both push the same branch. `jobs.<id>.concurrency` may read `needs`, which
+    // is the whole reason the resolve is a job.
+    expect(Object.keys(rawWorkflow)).not.toContain('concurrency')
+    expect(agentJob.concurrency.group).toBe('opencode-agent-${{ needs.resolve.outputs.branch }}')
+    expect(resolveJob.outputs['issue']).toBe('${{ steps.issue.outputs.number }}')
+    expect(resolveJob.outputs['branch']).toContain("format('agent/issue-{0}', steps.issue.outputs.number)")
+  })
+
+  test('a pull-request comment and an issue comment for one issue land in the same group', async () => {
+    // The property the whole resolve job exists for. Both are run through the
+    // real script: an issue comment carries the number outright, a pull-request
+    // comment carries only the head branch the lookup step read — and the two
+    // have to arrive at one key, or two jobs push the same branch at once.
+    const fromIssue = await resolvedNumber({ ISSUE_NUMBER: '42', HEAD_BRANCH: '' })
+    const fromPullRequest = await resolvedNumber({ ISSUE_NUMBER: '', HEAD_BRANCH: 'agent/issue-42' })
+
+    expect(groupFor(fromIssue)).toBe('opencode-agent-agent/issue-42')
+    expect(groupFor(fromPullRequest)).toBe(groupFor(fromIssue))
   })
 
   test('never cancels a run in flight', () => {
     // A half-finished run must still post its state comment, or the next
     // trigger restores stale state.
-    expect(workflow.concurrency['cancel-in-progress']).toBe(false)
+    expect(agentJob.concurrency['cancel-in-progress']).toBe(false)
   })
 })
 
 const NO_STEP: WorkflowStep = stepSchema.parse({})
 
 /** Named-step lookup, defaulting to an empty step so no test branches on undefined. */
-const step = (fragment: string): WorkflowStep =>
-  steps.find((candidate) => candidate.name.toLowerCase().includes(fragment)) ?? NO_STEP
+const stepOf = (jobSteps: readonly WorkflowStep[], fragment: string): WorkflowStep =>
+  jobSteps.find((candidate) => candidate.name.toLowerCase().includes(fragment)) ?? NO_STEP
+
+const step = (fragment: string): WorkflowStep => stepOf(steps, fragment)
 
 const checkoutStep = steps.find((candidate) => candidate.uses.startsWith('actions/checkout')) ?? NO_STEP
 
 /** The two steps whose bodies are executed below, rather than only read. */
-const resolveStep = step('resolve the issue number')
+const resolveStep = stepOf(resolveJob.steps, 'resolve the issue number')
 const cleanupStep = step('working label')
+
+/** The lookup that gives a pull-request comment the one thing its payload lacks. */
+const headStep = stepOf(resolveJob.steps, 'head branch')
 
 interface StepRun {
   /** What the runner would colour the step by — and, for a best-effort step, the assertion. */
@@ -342,14 +494,16 @@ describe('steps', () => {
   })
 
   test('reports an infrastructure failure only when there is an issue to post to', () => {
-    // The issue number comes from the resolve step, never from the payload
-    // field directly: `github.event.issue.number` is empty on a `workflow_run`
-    // event, so gating on it here excluded every CI-fix run — a runner that died
-    // mid-repair posted nothing anywhere at all.
+    // The issue number comes from the resolve job, never from the payload field
+    // directly: `github.event.issue.number` is empty on a `workflow_run` event
+    // and is the *pull request* on a pull-request comment, so gating on it here
+    // both excluded every CI-fix run — a runner that died mid-repair posted
+    // nothing anywhere at all — and would now post a review's obituary onto the
+    // pull request instead of the issue that carries the state.
     expect(step('infrastructure failure').if).toContain('failure()')
-    expect(step('infrastructure failure').if).toContain(`steps.${resolveStep.id}.outputs.number`)
+    expect(step('infrastructure failure').if).toContain('needs.resolve.outputs.issue')
     expect(step('infrastructure failure').if).not.toContain('github.event.issue.number')
-    expect(step('infrastructure failure').env['ISSUE_NUMBER']).toBe(`\${{ steps.${resolveStep.id}.outputs.number }}`)
+    expect(step('infrastructure failure').env['ISSUE_NUMBER']).toBe('${{ needs.resolve.outputs.issue }}')
   })
 
   test('covers a cancelled job, which failure() does not select', () => {
@@ -417,13 +571,40 @@ const resolvedNumber = async (env: Record<string, string>): Promise<string> => {
 const parsedNumber = (branch: string): string => String(issueNumberFromBranch(branch) ?? '')
 
 describe('the issue number both feedback steps read', () => {
-  test('resolves before anything that can fail', () => {
-    // The whole point of the step: a job that dies in `bun install`, or is
-    // cancelled while the model is thinking, still has to know where to post. A
-    // resolve that depends on the checkout is a resolve that is absent in the
-    // cases it exists for.
-    expect(steps[0]?.name.toLowerCase()).toContain('resolve the issue number')
-    expect(steps[0]?.uses).toBe('')
+  test('resolves in a job of its own, before anything that can fail', () => {
+    // The whole point of the resolve: a job that dies in `bun install`, or is
+    // cancelled while the model is thinking, still has to know where to post. It
+    // used to be the agent job's first step, which made that a property of step
+    // order — true only for as long as nobody inserted a step above it. A
+    // separate job makes it structural: the agent job cannot start until this
+    // one has answered, and this one runs nothing that the agent job's failures
+    // come from.
+    expect(agentJob.needs).toBe('resolve')
+    // No action, so nothing here can fail for a reason the agent job's steps
+    // fail for: no checkout, no toolchain, no install.
+    expect(resolveJob.steps.filter((candidate) => candidate.uses !== '')).toEqual([])
+  })
+
+  test('resolves with no model credentials and no more rights than reading a pull request', () => {
+    // The door is not the place any secret is mounted. It reads one pull
+    // request and prints two strings; the workflow-level `write` permissions
+    // stay with the job that writes.
+    const names = resolveJob.steps.flatMap((candidate) => Object.keys(candidate.env)).join(' ')
+
+    expect(resolveJob.permissions).toEqual({ 'pull-requests': 'read' })
+    expect(names).not.toContain('LLM_')
+  })
+
+  test('never mistakes a pull request number for an issue number', () => {
+    // `github.event.issue.number` on a pull-request comment is the pull request,
+    // so feeding it to the parse below would resolve the run to a number no
+    // state block lives under and key its concurrency group on a branch nothing
+    // else uses. The branch is the one link back, exactly as it is for CI, and
+    // it costs the lookup step above.
+    expect(resolveStep.env['ISSUE_NUMBER']).toContain('github.event.issue.pull_request == null')
+    expect(resolveStep.env['HEAD_BRANCH']).toContain('steps.head.outputs.branch')
+    expect(headStep.if).toBe('github.event.issue.pull_request != null')
+    expect(headStep.run).toContain('.head.ref')
   })
 
   test('agrees with issueNumberFromBranch on every branch shape', async () => {
@@ -460,7 +641,7 @@ describe('the working-label cleanup', () => {
     // leaves it on. Every condition narrower than `always()` is a condition the
     // kill can land outside of.
     expect(cleanupStep.if).toBe('always()')
-    expect(cleanupStep.env['ISSUE_NUMBER']).toBe(`\${{ steps.${resolveStep.id}.outputs.number }}`)
+    expect(cleanupStep.env['ISSUE_NUMBER']).toBe('${{ needs.resolve.outputs.issue }}')
   })
 
   test('removes the working label and touches nothing else', async () => {

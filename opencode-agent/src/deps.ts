@@ -3,14 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { AgentHandle } from './agent-handle.js'
 import type { CheckRunner } from './check-loop.js'
-import { resolveBaseBranch } from './config.js'
+import { resolveBaseBranch } from './config-discovery.js'
 import type { Env, PipelineConfig } from './config.js'
 import { createGit } from './git.js'
 import type { GitHubApi } from './github.js'
-import type { TriggerEvent } from './guardrails.js'
 import { resolveSelfLogin } from './identity.js'
-import type { AgentHandle } from './index.js'
 import type { Logger } from './logger.js'
 import { loadPhaseSkills } from './obra-skills.js'
 import type { SkillDocument } from './obra-skills.js'
@@ -19,6 +18,7 @@ import type { PhaseDeps, RunReview } from './phase-context.js'
 import { runReviewLoop } from './review-runner.js'
 import type { CommandRunner } from './shell.js'
 import type { StatusReporter } from './status-reporter.js'
+import type { TriggerEvent } from './trigger-events.js'
 import type { Phase } from './types.js'
 
 /**
@@ -84,12 +84,15 @@ export interface DepsInput {
   log: Logger
   agent: AgentHandle
   /**
-   * Built by `contain` rather than here, unlike every other boundary below.
+   * Built by `runCli` rather than here, unlike every other boundary below.
    *
    * The status reporter needs it, and the OpenCode session needs the *reporter*
    * — its heartbeat is what feeds the live status comment — so the session
    * cannot be built before both. One of the three has to be assembled outside
    * this function, and the GitHub adapter is the one with no other dependency.
+   * It has since moved one step further out again, past `contain`: a comment
+   * typed on a pull request names no issue, so the adapter has to answer
+   * `getPullRequestHead` before there is a `TriggerEvent` to assemble against.
    */
   github: GitHubApi
   status: StatusReporter

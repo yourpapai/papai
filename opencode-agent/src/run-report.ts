@@ -18,6 +18,12 @@ import type { AgentState, Phase } from './types.js'
  * Split out because the state machine and the way it narrates itself change for
  * different reasons — and because every one of these functions ends in the same
  * `postAndAppend`, which is the pipeline's only durable write.
+ *
+ * What a **bound reached** says lives next door in `budget-notices.ts`, along a
+ * seam `presentation.ts` had already drawn: ❌ means the work broke, ⛔ means a
+ * ceiling stopped a run in which nothing broke at all. This file is the first
+ * half — a failure, a park, a refusal, a closing — and it moved when a fourth
+ * budget notice would not fit beside the others.
  */
 
 /**
@@ -46,11 +52,16 @@ export const postAndAppend = async (
 /**
  * The comment that ends a run in `COMPLETE`.
  *
- * `COMPLETE` accepts no command and no plain comment — the only way back in is a
- * red CI run on the delivered branch. So the cancelled wording has to say that
- * plainly: an earlier draft invited the maintainer to "comment again to restart
- * the conversation", which the state machine then refused with an unhelpful
- * `No actionable command while in COMPLETE`.
+ * The two branches say opposite things about what happens next, and both are
+ * checked against the machine. A **delivered** issue now accepts one command —
+ * `/review`, the first `COMPLETE` has ever taken — so the closing comment names
+ * it: a command nobody can discover is not a feature. A **cancelled** issue
+ * accepts none, and its wording has to say that plainly; an earlier draft
+ * invited the maintainer to "comment again to restart the conversation", which
+ * the state machine then refused with an unhelpful `No actionable command while
+ * in COMPLETE`. That line stays true beside the new offer above it, because the
+ * applicability predicate in `commands.ts` refuses `/review` without a pull
+ * request — which is exactly what a cancelled issue has none of.
  */
 export const renderClosing = (state: AgentState): string =>
   state.prUrl === null
@@ -71,6 +82,7 @@ export const renderClosing = (state: AgentState): string =>
         `The work is in ${state.prUrl}.`,
         '',
         'If that pull request goes red I will still pick it up and push a fix.',
+        'Reply **`/review`** here to run the review loop over the branch and push whatever it finds.',
       ].join('\n')
 
 /**
@@ -106,7 +118,7 @@ const renderWaiting = (state: AgentState): string => {
     '',
     `Parked in \`${state.phase}\`, and nothing moves until you say so.`,
     '',
-    acceptedLine(acceptedCommands(state.phase)),
+    acceptedLine(acceptedCommands(state)),
   ].join('\n')
 }
 
@@ -132,45 +144,6 @@ export const renderRefusedCommand = (command: string, phase: Phase, accepted: re
     `I am parked in \`${phase}\`, which does not accept it, so nothing has changed.`,
     '',
     acceptedLine(accepted),
-  ].join('\n')
-
-/**
- * The retry-budget notice.
- *
- * It used to end "Fix the underlying problem, then reply `/retry`", advice the
- * pipeline itself made impossible to follow: the budget is spent, so that
- * `/retry` is refused and lands straight back on this comment. What is true is
- * that the failure stays parked with its resume point intact, so raising the
- * ceiling makes the very same `/retry` work — and that is what the notice
- * offers, the way {@link renderOverBudget} names `AGENT_MAX_TOKENS` instead of
- * inviting a retry that cannot help either.
- */
-export const renderExhausted = (reason: string): string =>
-  [
-    outcomeHeading('RETRIES_SPENT', 'Giving up'),
-    '',
-    reason,
-    '',
-    'The failure is still parked with its resume point, so raising `AGENT_MAX_ATTEMPTS` in the workflow and ' +
-      'replying `/retry` picks it up from exactly where it broke.',
-    'Otherwise take it from here yourself, or reply `/cancel` to stop.',
-  ].join('\n')
-
-/**
- * The CI-fix equivalent, and the one that matters more.
- *
- * A red check arrives asynchronously with nobody watching the Actions log, so a
- * silent give-up looks exactly like an agent still working on it. Posted once —
- * `ciBudgetReported` stops every later red run repeating it.
- */
-export const renderCiExhausted = (reason: string, prUrl: string | null): string =>
-  [
-    outcomeHeading('CI_GAVE_UP', 'I have stopped trying to fix CI'),
-    '',
-    reason,
-    '',
-    prUrl === null ? 'The pull request is still open.' : `The pull request is still open: ${prUrl}`,
-    'Its checks are red and I will not attempt another fix — take a look, or push a fix yourself.',
   ].join('\n')
 
 /**
@@ -225,62 +198,4 @@ export const renderAnswerFailure = (phase: Phase, message: string): string =>
     fence(message),
     '',
     `Nothing has changed: this issue is still in \`${phase}\`. Ask again, or carry on where you were.`,
-  ].join('\n')
-
-/** Both token-budget notices open on the same fact, so they state it identically. */
-const tokenLine = (spent: number, limit: number): string =>
-  `This issue has used ${spent.toLocaleString('en-US')} model tokens of the ${limit.toLocaleString('en-US')} it is allowed.`
-
-/**
- * The token-budget notice, naming the phase the stop parked in.
- *
- * Every claim here has to survive the state block posted beside it, and this
- * one did not. It read "raise `AGENT_MAX_TOKENS` in the workflow to continue"
- * while the stop left the issue in the handler phase a trigger had just moved
- * it into — a phase no event re-enters at any ceiling, so the advice led
- * nowhere and `/cancel` was the only thing that still worked. Its other line,
- * "so `/retry` will stop here again", was misleading in a second way: `/retry`
- * was not being refused over tokens at all, it was refused because the phase
- * was not `FAILED`.
- *
- * Now the stop parks in `FAILED` with a resume point, so the two commands the
- * notice names really do compose: raise the ceiling, reply `/retry`, and
- * `resumeFrom` runs. Naming the phase is not decoration — it tells a maintainer
- * deciding whether to bother that the branch is already pushed and only
- * delivery is left, or that nothing has been written yet.
- *
- * Still distinct from {@link renderExhausted}, which offers the same `/retry`
- * against the other ceiling: getting the variable name wrong sends someone to
- * raise a bound that was never the one that stopped them.
- */
-export const renderOverBudget = (spent: number, limit: number, resumeFrom: Phase): string =>
-  [
-    outcomeHeading('TOKENS_SPENT', 'Token budget spent'),
-    '',
-    tokenLine(spent, limit),
-    '',
-    `I have parked this in \`FAILED\`, resuming from \`${resumeFrom}\`, so nothing already done is lost.`,
-    'The count carries across every job this issue has run, so a `/retry` on the same ceiling stops right back ' +
-      `here. Raise \`AGENT_MAX_TOKENS\` in the workflow **first**, then reply \`/retry\` and I pick \`${resumeFrom}\` ` +
-      'back up.',
-    'Otherwise open a fresh issue for the remaining work, or reply `/cancel` to stop.',
-  ].join('\n')
-
-/**
- * The same budget, reported for a question rather than for the work.
- *
- * Separate from {@link renderOverBudget} for the reason {@link renderAnswerFailure}
- * is separate from {@link renderFailure}: nothing was parked and nothing moved,
- * so promising a `/retry` that resumes a phase would describe a state block
- * that does not exist. What is true is narrower — the question was not put to
- * the model, and asking it again under a bigger ceiling is the whole remedy.
- */
-export const renderAnswerOverBudget = (spent: number, limit: number, phase: Phase): string =>
-  [
-    outcomeHeading('ANSWER_TOKENS_SPENT', 'Token budget spent'),
-    '',
-    `${tokenLine(spent, limit)} I did not put that question to the model.`,
-    '',
-    `Nothing has changed: this issue is still in \`${phase}\`. Raise \`AGENT_MAX_TOKENS\` in the workflow and ask ` +
-      'again.',
   ].join('\n')

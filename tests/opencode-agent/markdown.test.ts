@@ -7,6 +7,13 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
+import {
+  renderAnswerOverBudget,
+  renderCiExhausted,
+  renderExhausted,
+  renderOverBudget,
+  renderReviewsExhausted,
+} from '../../opencode-agent/src/budget-notices.js'
 import { formatFailures } from '../../opencode-agent/src/check-loop.js'
 import { acceptedCommands, SLASH_COMMANDS } from '../../opencode-agent/src/commands.js'
 import { modelResponseError } from '../../opencode-agent/src/errors.js'
@@ -15,12 +22,8 @@ import { OUTCOME_GLYPHS, PRESENTATION, presentationFor } from '../../opencode-ag
 import type { OutcomeKey } from '../../opencode-agent/src/presentation.js'
 import {
   renderAnswerFailure,
-  renderAnswerOverBudget,
-  renderCiExhausted,
   renderClosing,
-  renderExhausted,
   renderFailure,
-  renderOverBudget,
   renderRefusedCommand,
   renderSettled,
 } from '../../opencode-agent/src/run-report.js'
@@ -152,7 +155,7 @@ describe('renderSettled', () => {
     // the file carries a "what now". Derived from `acceptedCommands`, not
     // written out here, so the assertion cannot drift from the machine either.
     const rendered = renderSettled(parked(phase))
-    const accepted = acceptedCommands(phase)
+    const accepted = acceptedCommands(parked(phase))
 
     for (const command of accepted) expect(rendered).toContain(`\`${command}\``)
     for (const command of SLASH_COMMANDS.filter((name) => !accepted.includes(name))) {
@@ -182,6 +185,18 @@ describe('renderSettled', () => {
     expect(renderSettled(delivered)).toContain('### ✅ Done')
     expect(renderSettled(parked('COMPLETE'))).toContain('### 🛑 Stopped')
   })
+
+  test('a delivered issue offers the one command it now accepts; a cancelled one does not', () => {
+    // `/review` is the first command `COMPLETE` has ever taken, and a command
+    // nobody can discover is not a feature. The cancelled branch must stay
+    // silent about it, and its "further comments will not restart me" stays
+    // true because the applicability predicate refuses `/review` with no pull
+    // request — the same rule, read by the comment and by the machine.
+    const delivered: AgentState = { ...parked('COMPLETE'), prUrl: 'https://example.test/pull/7', prNumber: 7 }
+
+    expect(renderClosing(delivered)).toContain('`/review`')
+    expect(renderClosing(parked('COMPLETE'))).not.toContain('`/review`')
+  })
 })
 
 describe('comment headings', () => {
@@ -195,6 +210,7 @@ describe('comment headings', () => {
     ['TOKENS_SPENT', renderOverBudget(1, 2, 'PLANNING')],
     ['ANSWER_TOKENS_SPENT', renderAnswerOverBudget(1, 2, 'DESIGN_SPEC')],
     ['CI_GAVE_UP', renderCiExhausted('spent', null)],
+    ['REVIEWS_SPENT', renderReviewsExhausted('spent', null)],
     ['COMMAND_REFUSED', renderRefusedCommand('/approve', 'COMPLETE', [])],
   ]
 
@@ -215,16 +231,18 @@ describe('comment headings', () => {
     expect(renderClosing(cancelled).startsWith(`### ${PRESENTATION['COMPLETE:cancelled'].glyph} Stopped`)).toBe(true)
   })
 
-  test('no renderer writes a heading of its own', () => {
+  test.each(['run-report.ts', 'budget-notices.ts'])('no renderer in %s writes a heading of its own', (file) => {
     // The class, not the instance. Nine renderers each picking a glyph by hand
     // is the defect the tables exist to prevent, and it comes back the moment
     // somebody adds a tenth with a literal `### ` — which every one of these
     // renderers had until this stage. Comments are stripped first: several of
     // them quote the old headings on purpose.
-    const source = readFileSync(
-      path.join(import.meta.dir, '..', '..', 'opencode-agent', 'src', 'run-report.ts'),
-      'utf8',
-    )
+    //
+    // Both files, because the guard is on the *class* and the budget notices
+    // moved into their own module when a third one would not fit beside them.
+    // A rule enforced on the file the renderers used to live in is a rule that
+    // stops being enforced the moment they move.
+    const source = readFileSync(path.join(import.meta.dir, '..', '..', 'opencode-agent', 'src', file), 'utf8')
     const stripped = source.replaceAll(/\/\*[\s\S]*?\*\//gu, '').replaceAll(/^\s*\/\/.*$/gmu, '')
 
     expect(stripped).not.toMatch(/['"`]### /u)

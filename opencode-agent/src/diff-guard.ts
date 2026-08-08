@@ -64,8 +64,23 @@ const renameTarget = (path: string): string => {
   return arrow === -1 ? path : path.slice(arrow + 4)
 }
 
+/**
+ * The size of a commit, as the guard measured the index that became it.
+ *
+ * Named and exported because it outlives the guard: `commitAll` hands it back,
+ * the implementation phase records `lines` in the state block, and the delivery
+ * comment sizes its `/review` recommendation against it. `binaries` is
+ * deliberately not part of it — a commit that gets past {@link inspectStaged}
+ * has none, so the list is a working detail of judging a change set rather than
+ * a fact about one that was made.
+ */
+export interface StagedTotals {
+  files: number
+  lines: number
+}
+
 /** The number of files a commit would carry, and the lines it would change. */
-export const measure = (files: readonly StagedFile[]): { files: number; lines: number; binaries: string[] } => ({
+export const measure = (files: readonly StagedFile[]): StagedTotals & { binaries: string[] } => ({
   files: files.length,
   lines: files.reduce((total, file) => total + (file.lines ?? 0), 0),
   binaries: files.filter((file) => file.lines === null).map((file) => file.path),

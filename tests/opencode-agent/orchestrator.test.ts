@@ -10,15 +10,18 @@ import { readBlock } from '../../opencode-agent/src/blocks.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import { DEFAULT_CHECKS } from '../../opencode-agent/src/config.js'
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
+import type { StagedTotals } from '../../opencode-agent/src/diff-guard.js'
 import type { Git } from '../../opencode-agent/src/git.js'
+import type { PullRequestHead, PullRequestRef, PullRequestStatus } from '../../opencode-agent/src/github-pulls.js'
 import type { ReactionContent, ReactionRef, ReactionTarget } from '../../opencode-agent/src/github-reactions.js'
-import type { GitHubApi, PullRequestRef, PullRequestStatus } from '../../opencode-agent/src/github.js'
-import type { CiTriggerEvent, IssueTriggerEvent } from '../../opencode-agent/src/guardrails.js'
+import type { GitHubApi } from '../../opencode-agent/src/github.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
 import type { AgentPromptRequest, OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
 import { runPipeline } from '../../opencode-agent/src/orchestrator.js'
 import type { PhaseDeps } from '../../opencode-agent/src/phase-context.js'
+import type { PullRequestTriggerEvent } from '../../opencode-agent/src/pr-trigger.js'
 import type { ReviewRunResult } from '../../opencode-agent/src/review-runner.js'
+import type { RunResult } from '../../opencode-agent/src/run-result.js'
 import type { CommandResult } from '../../opencode-agent/src/shell.js'
 import {
   extractState,
@@ -29,7 +32,8 @@ import {
 } from '../../opencode-agent/src/state-manager.js'
 import { STATUS_MARKER } from '../../opencode-agent/src/status-comment.js'
 import { createStatusReporter } from '../../opencode-agent/src/status-reporter.js'
-import type { AgentState, Phase, RunResult } from '../../opencode-agent/src/types.js'
+import type { CiTriggerEvent, IssueTriggerEvent } from '../../opencode-agent/src/trigger-events.js'
+import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
 
 const AGENT_LOGIN = 'agent-bot'
 const ISSUE = 42
@@ -65,6 +69,8 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   ciFixMaxRounds: 2,
   maxCiAttempts: 2,
   maxAttempts: 3,
+  maxReviewAttempts: 2,
+  reviewHintLines: 200,
   maxTokens: 5_000_000,
   diffLimits: { maxFiles: 100, maxLines: 20_000 },
   gitRemoteBase: 'https://github.com/',
@@ -98,6 +104,32 @@ const COMMENT_ID = 555
 const comment = (body: string): IssueTriggerEvent =>
   issueEvent({ eventName: 'issue_comment', action: 'created', commentBody: body, commentId: COMMENT_ID })
 
+/** The pull request the agent delivers this issue into, and a comment on it. */
+const PR_NUMBER = 7
+const PR_COMMENT_ID = 777
+
+/**
+ * A `/review` typed where the diff is, already resolved back to its issue.
+ *
+ * The resolution itself is `pr-trigger.ts`'s and is tested there; what these
+ * exercise is everything downstream of it, where a third `kind` either had to be
+ * decided or would have been bucketed with the issue events by an `!== 'issue'`.
+ */
+const prComment = (body: string, overrides: Partial<PullRequestTriggerEvent> = {}): PullRequestTriggerEvent => ({
+  kind: 'pull-request',
+  eventName: 'issue_comment',
+  action: 'created',
+  senderLogin: 'maintainer',
+  senderType: 'User',
+  authorAssociation: 'COLLABORATOR',
+  issueNumber: ISSUE,
+  prNumber: PR_NUMBER,
+  commentBody: body,
+  commentId: PR_COMMENT_ID,
+  defaultBranch: BASE_BRANCH,
+  ...overrides,
+})
+
 const ciEvent = (overrides: Partial<CiTriggerEvent> = {}): CiTriggerEvent => ({
   kind: 'ci',
   eventName: 'workflow_run',
@@ -116,6 +148,16 @@ const ciEvent = (overrides: Partial<CiTriggerEvent> = {}): CiTriggerEvent => ({
 interface PipelineIo {
   thread: IssueComment[]
   posted: string[]
+  /**
+   * Comments this run put on the **pull request**, kept apart from `posted`.
+   *
+   * Not a nicety: `listIssueComments(ISSUE)` never returns a pull request's own
+   * thread, so folding the two would let a note pass for a comment on the issue
+   * — and "typed there, answered here" is the entire shape of this path.
+   */
+  prNotes: string[]
+  /** What a create addressed at the pull request rejects with, when set. */
+  noteError: Error | null
   prompts: AgentPromptRequest[]
   gitCalls: string[]
   checkResults: Map<string, CommandResult>
@@ -124,11 +166,30 @@ interface PipelineIo {
   /** Tokens the fake session reports as spent this job. */
   tokensUsed: number
   reviewResult: ReviewRunResult
+  /** Every plan the review loop was handed, in order — `/review` is now a phase. */
+  reviewCalls: string[]
+  /** What `runReview` rejects with, when set: the loop crashing rather than exiting red. */
+  reviewError: Error | null
   /** What `git` would report as the remote's default branch. */
   detectedBranch: string | null
+  /**
+   * What the diff guard measured for the commit `commitAll` made.
+   *
+   * The default sits under the harness config's `reviewHintLines`, so the
+   * ordinary delivery is the one that names `/review` without pressing it.
+   */
+  committedTotals: StagedTotals | null
   createdPr: PullRequestRef | null
   /** What the branch's pull request lookup reports, whatever became of it. */
   existingPr: PullRequestStatus | null
+  /**
+   * Times the run asked the API for the issue's own title and body.
+   *
+   * Counted rather than inferred from what was posted: a pull-request comment
+   * carries the *pull request's* title, so "did this run read the issue?" is the
+   * whole reason `pull-request` is a third kind and not a flag on the issue one.
+   */
+  getIssueCalls: number
   /** What `createPullRequest` rejects with, when set. */
   createPrError: Error | null
   prBodies: string[]
@@ -220,15 +281,21 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
   const io: PipelineIo = {
     thread: [],
     posted: [],
+    prNotes: [],
+    noteError: null,
     prompts: [],
     gitCalls: [],
     checkResults: new Map(),
     replies: [],
     tokensUsed: 0,
     reviewResult: { outcome: 'passed', summary: 'no issues found', exitCode: 0 },
+    reviewCalls: [],
+    reviewError: null,
     detectedBranch: BASE_BRANCH,
+    committedTotals: { files: 2, lines: 12 },
     createdPr: null,
     existingPr: null,
+    getIssueCalls: 0,
     createPrError: null,
     prBodies: [],
     prTitles: [],
@@ -263,7 +330,19 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
 
   const github: GitHubApi = {
     listIssueComments: () => Promise.resolve([...io.thread]),
-    createComment: (_issueNumber, body) => {
+    createComment: (issueNumber, body) => {
+      // The pull request's thread is a different thread, and the fake keeps it
+      // that way: nothing addressed there is ever read back by the restore scan.
+      if (issueNumber !== ISSUE) {
+        io.prNotes.push(body)
+        if (io.noteError !== null) return Promise.reject(io.noteError)
+        nextCommentId += 1
+        return Promise.resolve({
+          id: nextCommentId,
+          url: `https://example.test/c/${nextCommentId}`,
+          authorLogin: io.postedAs,
+        })
+      }
       if (io.statusError !== null && isStatus(body)) return Promise.reject(io.statusError)
       if (io.postError !== null && !isStatus(body)) return Promise.reject(io.postError)
       nextCommentId += 1
@@ -289,9 +368,18 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       // one-comment budget rests on.
       return Promise.resolve()
     },
-    getIssue: () => Promise.resolve({ number: ISSUE, title: 'Add retries', body: 'Please add retries.' }),
+    getIssue: () => {
+      io.getIssueCalls += 1
+      return Promise.resolve({ number: ISSUE, title: 'Add retries', body: 'Please add retries.' })
+    },
     getAuthenticatedLogin: () => Promise.resolve(AGENT_LOGIN),
     findPullRequest: () => Promise.resolve(io.existingPr),
+    // Only `pr-trigger.ts` reads this, and it runs before `runPipeline` is
+    // called at all — so a pipeline test that reaches it has resolved a
+    // pull-request comment twice.
+    getPullRequestHead: (): Promise<PullRequestHead> => {
+      throw new Error('the head is resolved before the pipeline runs')
+    },
     createPullRequest: (input) => {
       if (io.createPrError !== null) return Promise.reject(io.createPrError)
       io.prBodies.push(input.body)
@@ -350,7 +438,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     },
     commitAll: (message) => {
       io.gitCalls.push(`commit:${message.split('\n')[0]}`)
-      return Promise.resolve(true)
+      return Promise.resolve(io.committedTotals)
     },
     push: (branch) => {
       io.gitCalls.push(`push:${branch}`)
@@ -380,7 +468,10 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     status: createStatusReporter({ github, log, config: pipelineConfig, now: () => io.nowMs }),
     git,
     runCheck: (check) => Promise.resolve(io.checkResults.get(check.name) ?? OK_CHECK),
-    runReview: () => Promise.resolve(io.reviewResult),
+    runReview: (plan) => {
+      io.reviewCalls.push(plan)
+      return io.reviewError === null ? Promise.resolve(io.reviewResult) : Promise.reject(io.reviewError)
+    },
     agent: () => Promise.resolve(agent),
     tokensUsed: () => Promise.resolve(io.tokensUsed),
     skills: () => Promise.resolve([]),
@@ -405,7 +496,7 @@ const hostileGit = (): Git => {
 
   return {
     ensureBranch: (): Promise<void> => refuse('ensureBranch'),
-    commitAll: (): Promise<boolean> => refuse('commit'),
+    commitAll: (): Promise<StagedTotals | null> => refuse('commit'),
     push: (): Promise<void> => refuse('push'),
     defaultBranch: (): Promise<string | null> => refuse('symbolic-ref'),
   }
@@ -420,6 +511,17 @@ const latestPostedState = (harness: Harness): AgentState | null => {
 const seedState = (harness: Harness, patch: Partial<AgentState>): void => {
   const prior: AgentState = { ...initialState(ISSUE), ...patch }
   harness.io.thread.push({ id: 800, body: `earlier\n\n${serializeState(prior)}`, authorLogin: AGENT_LOGIN })
+}
+
+/**
+ * An approved plan an earlier job left on the thread.
+ *
+ * `CODE_REVIEW` reads it back the same way `REVIEW_AND_MUTATE` does — the review
+ * loop is handed the plan, not the issue — so a seeded state alone is not enough
+ * to reach that handler.
+ */
+const seedPlan = (harness: Harness, text = 'Write retry tests'): void => {
+  harness.io.thread.push({ id: 801, body: renderArtifact(PLAN_MARKER, text, 1), authorLogin: AGENT_LOGIN })
 }
 
 /** Keeps the "did a run return a state?" narrowing out of the test bodies. */
@@ -460,6 +562,23 @@ const toPlanReview = async (harness: Harness): Promise<void> => {
   harness.io.reactions.length = 0
   harness.io.reactionRemovals.length = 0
   harness.io.reactionLog.length = 0
+  harness.io.edits.length = 0
+}
+
+/**
+ * Drives an issue all the way to a delivered pull request — the state `/review`
+ * is typed against, and the only one it applies in.
+ */
+const toDelivered = async (harness: Harness): Promise<void> => {
+  await toPlanReview(harness)
+  harness.io.replies = ['Implemented.']
+  await runPipeline({ event: comment('/approve'), deps: harness.deps })
+  harness.io.posted.length = 0
+  harness.io.gitCalls.length = 0
+  harness.io.prompts.length = 0
+  harness.io.prBodies.length = 0
+  harness.io.prTitles.length = 0
+  harness.io.reactions.length = 0
   harness.io.edits.length = 0
 }
 
@@ -961,7 +1080,21 @@ describe('implementation and delivery', () => {
     // Delivery must not depend on a working tree; the push happens in phase 3.
     const pushIndex = harness.io.gitCalls.indexOf(`push:agent/issue-${ISSUE}`)
     expect(pushIndex).toBeGreaterThan(-1)
-    expect(harness.io.gitCalls.filter((call) => call.startsWith('commit:'))).toHaveLength(2)
+    // One commit, not two: the review loop's own commit belongs to `/review`
+    // now, and this phase has nothing left between its commit and its push.
+    expect(harness.io.gitCalls.filter((call) => call.startsWith('commit:'))).toHaveLength(1)
+  })
+
+  test('delivers without running the review loop at all', async () => {
+    // The whole point of the split: a pull request after one model turn, with
+    // the review loop still a decision nobody has taken. It used to sit between
+    // the implementation commit and the push, so every task paid its wall clock
+    // and a review that broke discarded an implementation that had not.
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.reviewCalls).toEqual([])
+    expect(latestPostedState(harness)).toMatchObject({ phase: 'COMPLETE', prNumber: 7, reviewAttempts: 0 })
   })
 
   test('pushes before the phase ends, so the commit outlives the job', async () => {
@@ -1007,7 +1140,59 @@ describe('implementation and delivery', () => {
     await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
     expect(harness.io.prBodies[0]).toContain(`Closes #${ISSUE}`)
-    expect(harness.io.prBodies[0]).toContain('review-loop summary')
+    // The implementation report, which now says the review has not run and
+    // names the command that runs it.
+    expect(harness.io.prBodies[0]).toContain('/review')
+  })
+
+  test('the delivery comment names the review a maintainer can now ask for', async () => {
+    // A command nobody can discover is not a feature, and `COMPLETE` had never
+    // accepted one before this stage.
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.posted.at(-1)).toContain('### Pull request ready')
+    expect(harness.io.posted.at(-1)).toContain('`/review`')
+  })
+
+  test('records the size of the diff it committed, not a verdict on it', async () => {
+    // The raw count, never a `shouldReview` flag: the threshold is read from
+    // config when the delivery comment is written, and a flag frozen at commit
+    // time could only ever disagree with it.
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(latestPostedState(harness)?.changedLines).toBe(12)
+  })
+
+  test('states that /review exists without pressing it for a small diff', async () => {
+    // 12 lines against the harness's 200-line threshold. Both halves matter:
+    // the command has to be discoverable on every delivery, and a recommendation
+    // attached to every delivery is not a recommendation.
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.posted.at(-1)).toContain('`/review`')
+    expect(harness.io.posted.at(-1)).not.toContain('worth a second pass')
+  })
+
+  test('recommends the review when the diff it just committed is a big one', async () => {
+    harness.io.committedTotals = { files: 30, lines: 900 }
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    // The figure is stated, so a maintainer can judge the recommendation rather
+    // than take it on trust.
+    expect(harness.io.posted.at(-1)).toContain('900 lines')
+    expect(harness.io.posted.at(-1)).toContain('worth a second pass')
+  })
+
+  test('recommends nothing for an issue delivered before the count existed', async () => {
+    // `changedLines` defaults to 0 on a state block written before this field,
+    // and 0 is below every threshold the range allows — so an in-flight issue
+    // reads as a small diff rather than as one nobody measured.
+    harness.io.committedTotals = { files: 1, lines: 0 }
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.posted.at(-1)).not.toContain('worth a second pass')
   })
 
   test('records the pull request in the persisted state', async () => {
@@ -1071,31 +1256,9 @@ describe('implementation and delivery', () => {
     expect(harness.io.posted.at(-1)).toContain('closed without merging')
   })
 
-  test('reports a repository with no review loop as unconfigured, not as red', async () => {
-    // A checkout without the workspace has no review configured; that is not a
-    // review that failed, and calling it one made every run elsewhere red.
-    harness.io.reviewResult = { outcome: 'unavailable', summary: 'No review loop is configured.', exitCode: 0 }
-
-    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
-
-    expect(result.status).toBe('completed')
-    expect(harness.io.posted[0]).toContain('not configured for this repository')
-    expect(harness.io.posted[0]).not.toContain('❌')
-  })
-
-  test('still delivers when the review loop exits red, and says so', async () => {
-    harness.io.reviewResult = { outcome: 'failed', summary: 'two issues left open', exitCode: 1 }
-
-    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
-
-    expect(result.status).toBe('completed')
-    expect(harness.io.posted[0]).toContain('❌ exited 1')
-    expect(harness.io.posted[0]).toContain('two issues left open')
-  })
-
   test('fails when the agent produced no file changes', async () => {
     // A clean tree is what `commitAll` reports, not something asked separately.
-    harness.deps.git.commitAll = (): Promise<boolean> => Promise.resolve(false)
+    harness.deps.git.commitAll = (): Promise<StagedTotals | null> => Promise.resolve(null)
 
     const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
@@ -1153,6 +1316,415 @@ describe('implementation and delivery', () => {
     await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
     expect(harness.io.thread.some((entry) => entry.body.includes(PLAN_MARKER))).toBe(true)
+  })
+})
+
+/**
+ * The review loop used to sit inside phase 3, between the implementation commit
+ * and the push, so a review that broke discarded an implementation that had
+ * not, every task paid its wall clock whether or not the diff warranted it, and
+ * `/retry` re-ran the model turn that had already succeeded. It is a phase of
+ * its own now, entered by `/review` from `COMPLETE` and returning there.
+ */
+describe('/review — the review loop as a command', () => {
+  let harness: Harness
+
+  beforeEach(async () => {
+    harness = makeHarness()
+    await toDelivered(harness)
+  })
+
+  test('runs the loop over the pushed branch and returns to COMPLETE', async () => {
+    const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.reviewCalls).toHaveLength(1)
+    // `ensureBranch` first, and it is not optional: unlike the review that used
+    // to run inside phase 3, this one usually runs in a job that implemented
+    // nothing, so the remote branch is the only copy of the work.
+    expect(harness.io.gitCalls).toEqual([
+      `ensureBranch:agent/issue-${ISSUE}:${BASE_BRANCH}`,
+      `commit:fix(agent): apply review-loop findings for issue #${ISSUE}`,
+      `push:agent/issue-${ISSUE}`,
+    ])
+    expect(latestPostedState(harness)).toMatchObject({ phase: 'COMPLETE', reviewAttempts: 1 })
+  })
+
+  test('draws no note on the pull request, because the report is already here', async () => {
+    // Decided from the trigger kind and not from the phase: `CODE_REVIEW` is
+    // reached identically through both doors, so a phase test would put a
+    // pointer on the pull request for a maintainer already reading the report.
+    await runPipeline({ event: comment('/review'), deps: harness.deps })
+
+    expect(harness.io.prNotes).toEqual([])
+  })
+
+  test('hands the loop the approved plan, not the issue body', async () => {
+    await runPipeline({ event: comment('/review'), deps: harness.deps })
+
+    expect(harness.io.reviewCalls[0]).toContain('Write retry tests')
+  })
+
+  test('refreshes the pull request with what the review found', async () => {
+    // One renderer for both, so a pull request refreshed after a review presents
+    // exactly what a freshly opened one would. The handler passes the report it
+    // has just built rather than reading it back: `postAndAppend` runs in the
+    // orchestrator *after* the handler returns.
+    await runPipeline({ event: comment('/review'), deps: harness.deps })
+
+    expect(harness.io.prBodies.at(-1)).toContain(`Closes #${ISSUE}`)
+    expect(harness.io.prBodies.at(-1)).toContain('Review report')
+  })
+
+  test('a pull request that will not take the refresh does not cost the review', async () => {
+    // The refresh is decoration on work already pushed. Letting it throw parked
+    // the issue in FAILED with `resumeFrom: CODE_REVIEW`, so the `/retry` that
+    // followed re-ran the whole loop — every `opencode run` subprocess of it,
+    // and another round off `AGENT_MAX_REVIEW_ATTEMPTS` — for a failed body edit.
+    harness.deps.github.updatePullRequest = (): Promise<void> => Promise.reject(new Error('422 Unprocessable'))
+
+    const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.posted.at(-1)).toContain('Review report')
+    expect(latestPostedState(harness)).toMatchObject({ phase: 'COMPLETE', reviewAttempts: 1 })
+  })
+
+  test('a review that throws leaves the pull request open and parks in CODE_REVIEW', async () => {
+    harness.io.reviewError = new Error('the review loop exploded')
+
+    const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    // The branch was pushed by phase 3 and the pull request opened by phase 4,
+    // so a failed review costs the review and nothing else.
+    expect(latestPostedState(harness)).toMatchObject({
+      phase: 'FAILED',
+      resumeFrom: 'CODE_REVIEW',
+      prNumber: 7,
+      prUrl: 'https://example.test/pull/7',
+    })
+  })
+
+  test('/retry after a failed review re-runs the review and re-implements nothing', async () => {
+    harness.io.reviewError = new Error('the review loop exploded')
+    await runPipeline({ event: comment('/review'), deps: harness.deps })
+    harness.io.reviewError = null
+    harness.io.posted.length = 0
+
+    const retried = await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    expect(retried.status).toBe('completed')
+    expect(harness.io.reviewCalls).toHaveLength(2)
+    // Not one model turn: the implementation is already pushed, and paying for
+    // it twice is what the resume point exists to prevent.
+    expect(harness.io.prompts).toEqual([])
+    expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
+  })
+
+  test('a red review is reported and still reaches COMPLETE', async () => {
+    // CI on the pull request is the gate, and the CI-fix loop is what acts on
+    // it; a red review is a finding, not a blocker.
+    harness.io.reviewResult = { outcome: 'failed', summary: 'two issues left open', exitCode: 1 }
+
+    const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.posted[0]).toContain('❌ exited 1')
+    expect(harness.io.posted[0]).toContain('two issues left open')
+    expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
+  })
+
+  test('reports a repository with no review loop as unconfigured, not as red', async () => {
+    // A checkout without the workspace has no review configured; that is not a
+    // review that failed, and calling it one made every run elsewhere red.
+    harness.io.reviewResult = { outcome: 'unavailable', summary: 'No review loop is configured.', exitCode: 0 }
+
+    const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.posted[0]).toContain('not configured for this repository')
+    expect(harness.io.posted[0]).not.toContain('❌')
+  })
+
+  test('a clean tree is a result, not a failure', async () => {
+    // The loop finding nothing to change is the outcome a reviewer most wants
+    // to hear, so it is reported and the phase still completes.
+    harness.deps.git.commitAll = (): Promise<StagedTotals | null> => Promise.resolve(null)
+
+    const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.gitCalls).not.toContain(`push:agent/issue-${ISSUE}`)
+    expect(harness.io.posted[0]).toContain('nothing to apply')
+    expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
+  })
+})
+
+describe('/review — where it does not apply', () => {
+  let harness: Harness
+
+  beforeEach(() => {
+    harness = makeHarness()
+  })
+
+  test('a cancelled issue is refused, and the refusal does not offer it', async () => {
+    // `COMPLETE` is where a delivered issue and a cancelled one both live, and
+    // the transition table cannot tell them apart. The applicability predicate
+    // can, and the comment a maintainer reads is derived from that same
+    // predicate, so the offer and the gate cannot disagree.
+    seedState(harness, { phase: 'COMPLETE' })
+
+    const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(harness.io.reviewCalls).toEqual([])
+    expect(harness.io.posted[0]).toContain('does not apply right now')
+    expect(harness.io.posted[0]).toContain('What works here: `/ask`.')
+    expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
+  })
+
+  test.each<Phase>(['DESIGN_SPEC', 'PLAN_REVIEW', 'PR_DELIVERY', 'FAILED'])(
+    'a review asked for in %s is refused without touching the branch',
+    async (phase) => {
+      seedState(harness, { phase, prUrl: 'https://example.test/pull/7', prNumber: 7 })
+
+      const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
+
+      expect(result.status).toBe('skipped')
+      expect(harness.io.reviewCalls).toEqual([])
+      expect(harness.io.gitCalls).toEqual([])
+      expect(latestPostedState(harness)?.phase).toBe(phase)
+    },
+  )
+
+  test('past the budget it is refused before the signal is applied', async () => {
+    // The invariant `refuseExhausted` exists to protect, on the other budget: a
+    // refusal after the move would park the issue in `CODE_REVIEW`, a handler
+    // phase no trigger re-enters, under a notice suggesting a bigger ceiling
+    // that could then never be used.
+    harness = makeHarness({ maxReviewAttempts: 2 })
+    seedState(harness, { phase: 'COMPLETE', prUrl: 'https://example.test/pull/7', prNumber: 7, reviewAttempts: 2 })
+
+    const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.reviewCalls).toEqual([])
+    expect(harness.io.posted[0]).toContain('AGENT_MAX_REVIEW_ATTEMPTS')
+    expect(latestPostedState(harness)).toMatchObject({ phase: 'COMPLETE', reviewAttempts: 2 })
+  })
+
+  test('raising the ceiling makes the refused review run, which is what makes the notice honest', async () => {
+    harness = makeHarness({ maxReviewAttempts: 2 })
+    seedState(harness, { phase: 'COMPLETE', prUrl: 'https://example.test/pull/7', prNumber: 7, reviewAttempts: 2 })
+    seedPlan(harness)
+    await runPipeline({ event: comment('/review'), deps: harness.deps })
+
+    harness.deps.config.maxReviewAttempts = 3
+    harness.io.posted.length = 0
+
+    const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.reviewCalls).toHaveLength(1)
+    expect(latestPostedState(harness)).toMatchObject({ phase: 'COMPLETE', reviewAttempts: 3 })
+  })
+})
+
+/**
+ * The second door onto the same command: `/review` typed on the pull request,
+ * where the diff is, rather than on the issue.
+ *
+ * The asymmetry below is deliberate and is the whole shape of this path — typed
+ * on the pull request, answered on the **issue**. `findLatestState` scans the
+ * issue thread, so a block posted on the pull request would be a second source
+ * of truth the restore scan cannot see; what lands where the maintainer is
+ * looking is the 👀 on their comment and the loop's findings as commits.
+ */
+describe('/review — typed on the pull request', () => {
+  let harness: Harness
+
+  beforeEach(async () => {
+    harness = makeHarness()
+    await toDelivered(harness)
+  })
+
+  test('runs the loop and answers on the issue, not on the pull request', async () => {
+    const result = await runPipeline({ event: prComment('/review'), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.reviewCalls).toHaveLength(1)
+    // Every comment this run posted went to the issue thread, which is the one
+    // the restore scan reads.
+    expect(harness.io.posted.at(-1)).toContain('Review report')
+    expect(latestPostedState(harness)).toMatchObject({ phase: 'COMPLETE', reviewAttempts: 1 })
+  })
+
+  test('leaves a note on the pull request pointing at the issue', async () => {
+    // The other half of the acknowledgement. The 👀 says the command arrived and
+    // the commits say something changed, but neither says what the loop
+    // concluded — that account is on the issue, and without this the pull
+    // request never names where to find it.
+    await runPipeline({ event: prComment('/review'), deps: harness.deps })
+
+    expect(harness.io.prNotes).toHaveLength(1)
+    expect(harness.io.prNotes[0]).toContain(`#${ISSUE}`)
+    expect(harness.io.prNotes[0]).toContain('✅ clean')
+    // A pointer, not a second report: the report itself stays on the issue.
+    expect(harness.io.prNotes[0]).not.toContain('<details>')
+    expect(harness.io.posted.at(-1)).toContain('Review report')
+  })
+
+  test('a red loop is what the note says it is', async () => {
+    harness.io.reviewResult = { outcome: 'failed', summary: 'two issues left open', exitCode: 1 }
+
+    await runPipeline({ event: prComment('/review'), deps: harness.deps })
+
+    expect(harness.io.prNotes[0]).toContain('❌ exited 1')
+  })
+
+  test('a note the pull request will not take costs the review nothing', async () => {
+    // Asserted as a *write that was attempted*, not as the absence of a throw:
+    // this door degrades a bug in itself to the same `warn` as a 403, so a test
+    // that only watched the result would pass over a channel posting nothing.
+    harness.io.noteError = new Error('403 Resource not accessible by integration')
+
+    const result = await runPipeline({ event: prComment('/review'), deps: harness.deps })
+
+    expect(harness.io.prNotes).toHaveLength(1)
+    expect(result.status).toBe('completed')
+    expect(result.reported).toBe(true)
+    expect(latestPostedState(harness)).toMatchObject({ phase: 'COMPLETE', reviewAttempts: 1 })
+  })
+
+  test('the 👀 lands on the comment the maintainer typed', async () => {
+    // On the pull request, not on the issue this run answers on: the whole
+    // reaction channel exists to acknowledge the person waiting, and they are
+    // looking at the diff. One REST endpoint addresses either id, so the target
+    // is all that has to be right.
+    await runPipeline({ event: prComment('/review'), deps: harness.deps })
+
+    expect(harness.io.reactions[0]).toEqual({ target: { kind: 'comment', id: PR_COMMENT_ID }, content: 'eyes' })
+  })
+
+  test('reads the issue’s own title and body from the API', async () => {
+    // The payload carries the *pull request's*, which is why this is a third
+    // kind rather than a flag on the issue one: handed straight through, every
+    // phase would reason over the pull request as if it were the issue.
+    await runPipeline({ event: prComment('/review'), deps: harness.deps })
+
+    expect(harness.io.getIssueCalls).toBe(1)
+    expect(harness.io.prTitles.at(-1)).toContain('Add retries')
+  })
+
+  test.each([['/approve'], ['/cancel'], ['/retry'], ['/ask why that file?']])(
+    'refuses %p, because a pull request accepts one command',
+    async (body) => {
+      // Unreachable through the resolver, which drops anything but `/review`
+      // before it makes an API call — this is the door itself holding the same
+      // line, so a second way in cannot widen the surface by accident.
+      const result = await runPipeline({ event: prComment(body), deps: harness.deps })
+
+      expect(result.status).toBe('skipped')
+      expect(harness.io.reviewCalls).toEqual([])
+      expect(harness.io.posted.at(-1)).toContain('does not apply right now')
+      expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
+    },
+  )
+
+  test('a comment carrying no command at all moves nothing and pays no classifier', async () => {
+    // Also unreachable, and it must never reach `applyIntent`: that path reads
+    // `commentBody` off the *issue* kind alone, so a pull-request comment
+    // arriving there would be classified as an empty one — a model turn bought
+    // to misread a comment the resolver had already declined to claim.
+    const result = await runPipeline({ event: prComment('looks good to me'), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(harness.io.prompts).toEqual([])
+    expect(harness.io.posted).toEqual([])
+  })
+
+  test('a cancelled issue is refused through the same predicate the issue door uses', async () => {
+    // One rule with two doors, not two spellings of it: `commandApplies` is what
+    // refuses `/review` without a pull request, and it is the same function that
+    // builds the list the refusal comment offers.
+    harness = makeHarness()
+    seedState(harness, { phase: 'COMPLETE' })
+
+    const result = await runPipeline({ event: prComment('/review'), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(harness.io.reviewCalls).toEqual([])
+    expect(harness.io.posted[0]).toContain('What works here: `/ask`.')
+  })
+
+  test('past the budget it is refused before the signal is applied', async () => {
+    harness = makeHarness({ maxReviewAttempts: 2 })
+    seedState(harness, {
+      phase: 'COMPLETE',
+      prUrl: 'https://example.test/pull/7',
+      prNumber: PR_NUMBER,
+      reviewAttempts: 2,
+    })
+
+    const result = await runPipeline({ event: prComment('/review'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.reviewCalls).toEqual([])
+    expect(harness.io.posted[0]).toContain('AGENT_MAX_REVIEW_ATTEMPTS')
+    expect(latestPostedState(harness)).toMatchObject({ phase: 'COMPLETE', reviewAttempts: 2 })
+  })
+
+  test.each([
+    ['a bot', { senderType: 'Bot' }],
+    ['the agent itself', { senderLogin: AGENT_LOGIN }],
+  ])('drops %s in silence', async (_label, overrides) => {
+    const result = await runPipeline({ event: prComment('/review', overrides), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(harness.io.posted).toEqual([])
+    expect(harness.io.reactions).toEqual([])
+  })
+
+  test('answers a non-maintainer with the one reaction the issue path gives them', async () => {
+    // The sender rules are shared verbatim, so the judgement call made for the
+    // issue door — an outside contributor's comment must not vanish into a log
+    // they cannot read — holds here without being made a second time.
+    const result = await runPipeline({
+      event: prComment('/review', { authorAssociation: 'CONTRIBUTOR' }),
+      deps: harness.deps,
+    })
+
+    expect(result.status).toBe('skipped')
+    expect(result.reported).toBe(false)
+    expect(harness.io.reactions).toEqual([{ target: { kind: 'comment', id: PR_COMMENT_ID }, content: 'confused' }])
+    expect(harness.io.posted).toEqual([])
+  })
+})
+
+describe('the review budget across pull requests', () => {
+  test('a new pull request hands the review budget back', async () => {
+    // The budget belongs to a pull request, exactly as the CI-fix one does: the
+    // loop's spend is invisible to `AGENT_MAX_TOKENS`, so a genuinely new pull
+    // request has to start with its rounds intact.
+    const harness = makeHarness()
+    seedState(harness, { phase: 'FAILED', resumeFrom: 'PR_DELIVERY', reviewAttempts: 2, ciAttempts: 2 })
+    harness.io.existingPr = null
+
+    await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    expect(latestPostedState(harness)).toMatchObject({ prNumber: 7, reviewAttempts: 0, ciAttempts: 0 })
+  })
+
+  test('a refreshed pull request keeps the rounds its own reviews spent', async () => {
+    const harness = makeHarness()
+    seedState(harness, { phase: 'FAILED', resumeFrom: 'PR_DELIVERY', reviewAttempts: 2, ciAttempts: 2 })
+    harness.io.existingPr = { number: 3, url: 'https://example.test/pull/3', state: 'open' }
+
+    await runPipeline({ event: comment('/retry'), deps: harness.deps })
+
+    expect(harness.io.createdPr).toBeNull()
+    expect(latestPostedState(harness)).toMatchObject({ reviewAttempts: 2, ciAttempts: 2 })
   })
 })
 
@@ -1944,9 +2516,14 @@ describe('the token budget', () => {
     const harness = makeHarness({ maxTokens: 50_000 })
     await toPlanReview(harness)
     harness.io.replies = ['Implemented.']
-    harness.deps.runReview = (): Promise<ReviewRunResult> => {
+    // The counter reaches the ceiling as phase 3 finishes, so the stop lands
+    // between two phases of one job — the firing no trigger-layer refusal can
+    // reach. Hung on the push because that is the last thing phase 3 does; it
+    // used to hang on the review loop, which phase 3 no longer runs.
+    harness.deps.git.push = (branch): Promise<void> => {
+      harness.io.gitCalls.push(`push:${branch}`)
       harness.io.tokensUsed = 60_000
-      return Promise.resolve(harness.io.reviewResult)
+      return Promise.resolve()
     }
 
     const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
@@ -1978,9 +2555,14 @@ describe('the token budget', () => {
     const harness = makeHarness({ maxTokens: 50_000 })
     await toPlanReview(harness)
     harness.io.replies = ['Implemented.']
-    harness.deps.runReview = (): Promise<ReviewRunResult> => {
+    // The counter reaches the ceiling as phase 3 finishes, so the stop lands
+    // between two phases of one job — the firing no trigger-layer refusal can
+    // reach. Hung on the push because that is the last thing phase 3 does; it
+    // used to hang on the review loop, which phase 3 no longer runs.
+    harness.deps.git.push = (branch): Promise<void> => {
+      harness.io.gitCalls.push(`push:${branch}`)
       harness.io.tokensUsed = 60_000
-      return Promise.resolve(harness.io.reviewResult)
+      return Promise.resolve()
     }
     await runPipeline({ event: comment('/approve'), deps: harness.deps })
     harness.io.posted.length = 0

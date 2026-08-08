@@ -6,7 +6,8 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
-import type { TriggerEvent } from '../../opencode-agent/src/guardrails.js'
+import { createOctokitApi } from '../../opencode-agent/src/github.js'
+import type { GitHubApi } from '../../opencode-agent/src/github.js'
 import { contain } from '../../opencode-agent/src/index.js'
 import type { Contained } from '../../opencode-agent/src/index.js'
 import { createPipelineLogger } from '../../opencode-agent/src/logger.js'
@@ -20,6 +21,7 @@ import {
   startProviderProxy,
 } from '../../opencode-agent/src/provider-proxy.js'
 import type { ProviderProxy, Serve, UpstreamFetch } from '../../opencode-agent/src/provider-proxy.js'
+import type { TriggerEvent } from '../../opencode-agent/src/trigger-events.js'
 
 const KEY = 'sk-live-SUPERSECRET-0123456789'
 const SETTINGS: OpenAiSettings = { apiKey: KEY, baseUrl: 'https://api.upstream.test/v1', model: 'gpt-5' }
@@ -360,6 +362,8 @@ describe('contain', () => {
     agentTimeoutMs: 1000,
     ciFixMaxRounds: 2,
     maxCiAttempts: 2,
+    maxReviewAttempts: 3,
+    reviewHintLines: 200,
     maxAttempts: 3,
     maxTokens: 5_000_000,
     diffLimits: { maxFiles: 100, maxLines: 20_000 },
@@ -386,6 +390,12 @@ describe('contain', () => {
     defaultBranch: 'master',
   }
 
+  /**
+   * The real adapter, built the way `runCli` builds it — it opens no socket
+   * until something calls it, and `contain` only hands it on.
+   */
+  const github = (): GitHubApi => createOctokitApi({ token: 'tok', owner: 'acme', repo: 'widgets', secrets: [KEY] })
+
   const contained = (): Contained =>
     contain({
       config: config(),
@@ -393,6 +403,7 @@ describe('contain', () => {
       log: silentLog,
       run: () => Promise.resolve({ command: '', exitCode: 0, stdout: '', stderr: '' }),
       options: { argv: [], env: {} },
+      github: github(),
     })
 
   test('the pipeline actually applies it, not just the proxy module', async () => {
@@ -429,6 +440,7 @@ describe('contain', () => {
       log: silentLog,
       run: () => Promise.resolve({ command: '', exitCode: 0, stdout: '', stderr: '' }),
       options: { argv: [], env: {} },
+      github: github(),
       createAgent: (agentOptions) => {
         seen.push(agentOptions)
         return Promise.resolve({

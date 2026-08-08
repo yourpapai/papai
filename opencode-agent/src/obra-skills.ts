@@ -39,6 +39,10 @@ export const PHASE_SKILLS: Record<Phase, { required: readonly string[]; optional
     optional: ['executing-plans', 'verification-before-completion'],
   },
   PR_DELIVERY: { required: [], optional: [] },
+  // Empty on purpose: `CODE_REVIEW` shells out to the `review-loop/` workspace
+  // and prompts no model of its own, so a skill loaded here would be inlined
+  // into nothing.
+  CODE_REVIEW: { required: [], optional: [] },
   CI_FIX: { required: ['systematic-debugging'], optional: ['test-driven-development'] },
   COMPLETE: { required: [], optional: [] },
   FAILED: { required: [], optional: [] },

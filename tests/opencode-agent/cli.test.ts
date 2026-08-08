@@ -8,8 +8,9 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
+import { memoizeAgent } from '../../opencode-agent/src/agent-handle.js'
 import type { FetchLike } from '../../opencode-agent/src/github.js'
-import { memoizeAgent, parseArgs, runCli, UsageError } from '../../opencode-agent/src/index.js'
+import { parseArgs, runCli, UsageError } from '../../opencode-agent/src/index.js'
 import { createLogger } from '../../opencode-agent/src/logger.js'
 import type { OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
@@ -190,7 +191,24 @@ interface PostRecorder {
    * once a minute, which is the whole one-comment budget seen from the wire.
    */
   edits: { url: string; body: string }[]
+  /**
+   * Where each comment went, kept beside `posted` rather than folded into it.
+   *
+   * A pull-request comment is answered on the **issue**, and a body alone cannot
+   * show that: the two threads are the same endpoint with a different number in
+   * the path, so the number is the only place the asymmetry is visible.
+   */
+  postUrls: string[]
+  /** Every read, so "resolved without an API call" can be asserted rather than assumed. */
+  reads: string[]
   fetch: FetchLike
+}
+
+/** What the fake API says a pull request merges from, unless a test says otherwise. */
+const AGENT_HEAD = {
+  merged: false,
+  state: 'open',
+  head: { ref: 'agent/issue-42', repo: { full_name: 'acme/widgets' } },
 }
 
 /** Labels the fake issue already carries, none of them this pipeline's. */
@@ -200,8 +218,10 @@ const EXISTING_LABELS = [{ name: 'bug' }]
  * A GitHub transport that answers reads with `thread` and records writes.
  * The branching lives out here so no test body carries a conditional.
  */
-const recordPosts = (thread: unknown): PostRecorder => {
+const recordPosts = (thread: unknown, pullRequest: unknown = AGENT_HEAD): PostRecorder => {
   const posted: string[] = []
+  const postUrls: string[] = []
+  const reads: string[] = []
   const reactions: { method: string; url: string; body: string }[] = []
   const labelCalls: { method: string; url: string; body: string }[] = []
   const edits: { url: string; body: string }[] = []
@@ -224,12 +244,20 @@ const recordPosts = (thread: unknown): PostRecorder => {
       return json([], 200)
     }
     posted.push(body)
+    postUrls.push(url)
     return json({ id: 9, html_url: 'https://example.test/c/9' }, 201)
   }
   const read = (method: string, url: string, body: string): Response => {
-    if (!isLabelCall(url)) return json(thread, 200)
-    labelCalls.push({ method, url, body })
-    return json(EXISTING_LABELS, 200)
+    reads.push(url)
+    if (isLabelCall(url)) {
+      labelCalls.push({ method, url, body })
+      return json(EXISTING_LABELS, 200)
+    }
+    // Three reads share one shape, and the path is all that tells them apart:
+    // the pull request's head, the issue's own title and body, and the thread.
+    if (/\/pulls\/\d+$/u.test(url)) return json(pullRequest, 200)
+    if (/\/issues\/\d+$/u.test(url)) return json({ number: 42, title: 'Add retries', body: 'Please add retries.' }, 200)
+    return json(thread, 200)
   }
   const byMethod: Record<string, (method: string, url: string, body: string) => Response> = {
     POST: write,
@@ -242,6 +270,8 @@ const recordPosts = (thread: unknown): PostRecorder => {
 
   return {
     posted,
+    postUrls,
+    reads,
     reactions,
     labelCalls,
     edits,
@@ -794,6 +824,108 @@ describe('runCli', () => {
     // still runs git, and its rejection goes unobserved because nothing awaits
     // the result on this path.
     expect(commands).toEqual([])
+  })
+
+  /** The `issue_comment` payload GitHub sends for a comment on a pull request. */
+  const pullRequestComment = (body: string): Record<string, unknown> => ({
+    action: 'created',
+    sender: { login: 'maintainer', type: 'User' },
+    issue: {
+      number: 7,
+      title: 'Add retries (#42)',
+      body: 'Closes #42',
+      author_association: 'NONE',
+      pull_request: { url: 'https://api.github.test/pulls/7' },
+    },
+    comment: { id: 8811, body, author_association: 'OWNER' },
+    repository: { owner: { login: 'acme' }, name: 'widgets', full_name: 'acme/widgets', default_branch: 'master' },
+  })
+
+  /** A pull request whose state block says the issue is cancelled, so `/review` is refused cheaply. */
+  const cancelled = [
+    {
+      id: 1,
+      user: { login: 'agent-bot' },
+      body: `stopped\n\n<!-- AGENT_STATE: ${JSON.stringify({ v: 2, phase: 'COMPLETE', issueId: 42 })} -->`,
+    },
+  ]
+
+  test('resolves a pull-request comment to its issue before it contains anything', async () => {
+    // The payload names the *pull request*: `github.event.issue.number` is 7
+    // here. Nothing downstream of this could work out that the run is about
+    // issue 42, because every block of state lives on the issue thread and the
+    // restore scan reads it by number.
+    const eventPath = await writeEvent('pr-review', pullRequestComment('/review'))
+
+    const github = recordPosts(cancelled)
+    const result = await runCli({
+      argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
+      env,
+      logger: silentLogger,
+      fetch: github.fetch,
+    })
+
+    // `COMPLETE` with no pull request in the block is a cancelled issue, which
+    // refuses `/review` through the same predicate the issue door uses — a
+    // refusal is all this needs, since what is under test is where it landed.
+    expect(result.status).toBe('skipped')
+    expect(github.reads.filter((url) => url.includes('/repos/acme/widgets/pulls/7'))).toHaveLength(1)
+    // Typed on the pull request, answered on the issue.
+    expect(github.postUrls).toEqual(['https://api.github.com/repos/acme/widgets/issues/42/comments'])
+    // And acknowledged where the maintainer is actually looking.
+    expect(github.reactions[0]?.url).toContain('/repos/acme/widgets/issues/comments/8811/reactions')
+  })
+
+  test('drops a pull-request comment carrying no /review without looking anything up', async () => {
+    // The cheap filter, at the outermost layer: every pull request in a
+    // repository gets ordinary review comments, and not one of them may cost an
+    // API call before being thrown away.
+    const output = await outputFile('pr-no-command')
+    const eventPath = await writeEvent('pr-plain', pullRequestComment('looks good to me'))
+
+    const github = recordPosts(cancelled)
+    const result = await runCli({
+      argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
+      env: { ...env, GITHUB_OUTPUT: output.path },
+      logger: silentLogger,
+      fetch: github.fetch,
+    })
+
+    expect(result.status).toBe('skipped')
+    // Nothing was posted, so the workflow's fallback comment must stay in scope.
+    expect(result.reported).toBe(false)
+    expect(github.reads).toEqual([])
+    expect(github.posted).toEqual([])
+    expect(await output.read()).toBe('')
+  })
+
+  test('refuses a /review on a pull request opened from a fork', async () => {
+    // `head.ref` is attacker-controlled, so a fork can name its branch
+    // `agent/issue-42` and look, to every other field, exactly like the agent's
+    // own. Without the repository comparison, anyone able to open a pull request
+    // could type `/review` and buy a privileged job.
+    const forked = {
+      merged: false,
+      state: 'open',
+      head: { ref: 'agent/issue-42', repo: { full_name: 'evil/widgets' } },
+    }
+    const eventPath = await writeEvent('pr-fork', pullRequestComment('/review'))
+
+    const github = recordPosts(cancelled, forked)
+    const result = await runCli({
+      argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
+      env,
+      logger: silentLogger,
+      fetch: github.fetch,
+    })
+
+    expect(result.status).toBe('skipped')
+    expect(result.reported).toBe(false)
+    // It got exactly as far as the one lookup that refused it: no thread read,
+    // no comment, no reaction, no label.
+    expect(github.reads).toEqual(['https://api.github.com/repos/acme/widgets/pulls/7'])
+    expect(github.posted).toEqual([])
+    expect(github.reactions).toEqual([])
   })
 
   test('skips a payload that carries no issue', async () => {

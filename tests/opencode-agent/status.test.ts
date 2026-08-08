@@ -12,6 +12,7 @@ import type { PipelineConfig } from '../../opencode-agent/src/config.js'
 import type { PostedComment } from '../../opencode-agent/src/github.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
 import type { ProgressSnapshot } from '../../opencode-agent/src/progress.js'
+import type { RunResult } from '../../opencode-agent/src/run-result.js'
 import {
   extractState,
   findLatestState,
@@ -25,7 +26,7 @@ import { renderStatus, STATUS_MARKER } from '../../opencode-agent/src/status-com
 import type { StatusView } from '../../opencode-agent/src/status-comment.js'
 import { createStatusReporter, MIN_EDIT_INTERVAL_MS } from '../../opencode-agent/src/status-reporter.js'
 import type { StatusDeps } from '../../opencode-agent/src/status-reporter.js'
-import type { AgentState, RunResult } from '../../opencode-agent/src/types.js'
+import type { AgentState } from '../../opencode-agent/src/types.js'
 
 const AGENT_LOGIN = 'agent-bot'
 const ISSUE = 42
@@ -57,6 +58,8 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   agentTimeoutMs: 1000,
   ciFixMaxRounds: 2,
   maxCiAttempts: 3,
+  maxReviewAttempts: 3,
+  reviewHintLines: 200,
   maxAttempts: 3,
   maxTokens: 5_000_000,
   diffLimits: { maxFiles: 100, maxLines: 20_000 },
@@ -90,7 +93,7 @@ describe('renderStatus', () => {
     // is exactly what one presentation table exists to prevent.
     const body = renderStatus(view())
 
-    expect(body.split('\n')[0]).toBe('### 🛠️ Writing and reviewing the code — run in progress')
+    expect(body.split('\n')[0]).toBe('### 🛠️ Writing the code — run in progress')
   })
 
   test('links the job that is doing the work, and says when it started', () => {
@@ -287,7 +290,7 @@ describe('createStatusReporter', () => {
       expect(io.created).toHaveLength(1)
       expect(io.edits).toHaveLength(1)
       expect(io.edits[0]?.id).toBe(900)
-      expect(io.edits[0]?.body).toContain('Writing and reviewing the code')
+      expect(io.edits[0]?.body).toContain('Writing the code')
     })()
   })
 
@@ -435,7 +438,7 @@ describe('persistState', () => {
       withState(1, { phase: 'DESIGN_SPEC' }),
       withState(2, { phase: 'PLAN_REVIEW', tokensSpent: 100 }),
       { id: 3, body: 'looks good to me', authorLogin: 'maintainer' },
-      agentComment(4, '### 🛠️ Writing and reviewing the code — run in progress'),
+      agentComment(4, '### 🛠️ Writing the code — run in progress'),
     ]
     const edits: { id: number; body: string }[] = []
 

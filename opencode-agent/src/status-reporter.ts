@@ -7,10 +7,11 @@ import type { PipelineConfig } from './config.js'
 import type { GitHubApi } from './github.js'
 import type { Logger } from './logger.js'
 import type { ProgressSnapshot } from './progress.js'
+import type { RunResult } from './run-result.js'
 import { renderStatus } from './status-comment.js'
 import type { StatusView } from './status-comment.js'
 import { errorMessage } from './types.js'
-import type { AgentState, RunResult } from './types.js'
+import type { AgentState } from './types.js'
 
 /**
  * The live status channel: one comment per run, opened when the run starts,

@@ -14,7 +14,16 @@ import { z } from 'zod'
  *
  * `CI_FIX` is entered from outside the issue conversation — a red check run on
  * the agent's own pull request — and returns to `COMPLETE` once the branch is
- * green again.
+ * green again. `CODE_REVIEW` is the other way back into a finished issue: it
+ * runs the `review-loop/` workspace over the pushed branch on an explicit
+ * `/review`, and returns to `COMPLETE` too.
+ *
+ * `REVIEW_AND_MUTATE` keeps its name although it no longer reviews anything —
+ * it implements and pushes, and `IMPLEMENT` would be the honest name. `phase` is
+ * read back out of hidden blocks on live issues, so *removing* a member
+ * invalidates every conversation in flight, which buys clarity in one file at
+ * the price of stranding the field. **Adding** one costs nothing for the same
+ * reason: no block written before this change names `CODE_REVIEW`.
  */
 export const PHASES = [
   'INIT_OR_CLARIFY',
@@ -23,6 +32,7 @@ export const PHASES = [
   'PLAN_REVIEW',
   'REVIEW_AND_MUTATE',
   'PR_DELIVERY',
+  'CODE_REVIEW',
   'CI_FIX',
   'COMPLETE',
   'FAILED',
@@ -66,7 +76,14 @@ const phaseName = z.preprocess(
   z.enum(PHASES),
 )
 
-/** Phases that wait on a human and run no handler of their own. */
+/**
+ * Phases that wait on a human and run no handler of their own.
+ *
+ * `CODE_REVIEW` is deliberately not one, although a human's `/review` is the
+ * only way in: the command moves the phase and the handler runs in the same job,
+ * exactly as `/approve` into `REVIEW_AND_MUTATE` does. A waiting phase is one
+ * the cascade *stops* at, and this one it never does.
+ */
 export const WAITING_PHASES: ReadonlySet<Phase> = new Set<Phase>(['DESIGN_SPEC', 'PLAN_REVIEW'])
 
 /**
@@ -84,6 +101,8 @@ export const TRANSITION_SIGNALS = [
   'PR_OPENED',
   'CI_FAILED',
   'CI_FIXED',
+  'REVIEW_REQUESTED',
+  'REVIEW_DONE',
   'CANCELLED',
   'FAILED',
   'RETRY',
@@ -132,6 +151,44 @@ export const agentStateSchema = z.object({
    * pull request is opened, or the notice could never be said again for it.
    */
   ciBudgetReported: z.boolean().default(false),
+  /**
+   * Review-loop rounds `/review` has spent on the delivered pull request.
+   *
+   * Per pull request, not per issue, and reset exactly where `ciAttempts` is —
+   * `handleDeliver`'s `existing === null` branch, a genuinely new pull request.
+   * It is also the *only* bound on `/review`: the loop's `opencode run`
+   * subprocesses are invisible to `AGENT_MAX_TOKENS`, so without this the one
+   * command in the pipeline that spawns a fleet of them is bounded by nothing
+   * but the job timeout.
+   */
+  reviewAttempts: z.number().int().min(0).default(0),
+  /**
+   * Lines the implementation commit changed, as the diff guard measured them.
+   *
+   * The pipeline already held this figure and threw it away: `guardStaged` folds
+   * `git diff --cached --numstat` between `git add --all` and the commit, so the
+   * one fact that says whether a diff is worth reviewing was computed, used to
+   * refuse a runaway commit, and discarded. `/review` being explicit only helps
+   * a maintainer who knows when to reach for it, and this is what the delivery
+   * comment sizes that recommendation against.
+   *
+   * The **raw count**, never a `shouldReview` boolean. A flag decided at commit
+   * time and frozen into the block could only ever disagree with
+   * `reviewHintLines` as the config carries it when the comment is read — the
+   * same argument that keeps `approved` out of this schema, where the phase
+   * already is the approval gate. It is also the more honest thing to print: a
+   * recommendation that states its own figure can be judged rather than trusted.
+   *
+   * Written by the implementation phase and by nothing else. The review phase's
+   * own commits deliberately do not update it: what this sizes is the diff one
+   * model turn wrote with nothing having read it, and a `/review` that has since
+   * run is the very thing being recommended.
+   *
+   * Needs no `STATE_VERSION` bump — it defaults, so a block written before it
+   * existed still parses, and 0 is below every threshold `LINES_RANGE` allows,
+   * which reads as "a small diff" rather than as "one nobody measured".
+   */
+  changedLines: z.number().int().min(0).default(0),
   /**
    * Revisions of the design spec and of the plan, counted apart.
    *
@@ -203,39 +260,17 @@ export class InvalidTransitionError extends Error {
 /** Extracts a message from an unknown thrown value. */
 export const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
-export type RunStatus = 'skipped' | 'waiting' | 'completed' | 'failed'
-
-/** What one call to the pipeline concluded. `state` is null when nothing ran. */
-export interface RunResult {
-  status: RunStatus
-  reason: string
-  state: AgentState | null
-  /**
-   * Whether this run has already said what happened on the issue itself.
-   *
-   * Not diagnostic — the workflow reads it. Its last step posts an "Agent job
-   * failed" comment under `if: failure()`, and `failure()` selects *every* red
-   * job, including the six paths that exit 1 only after posting their own
-   * report: `failRun`, `failAnswer`, both over-budget stops in
-   * `token-budget.ts`, `refuseExhausted` and the CI-budget notice in
-   * `triggers.ts`. So every genuine failure drew a second, contradicting
-   * comment — "The issue state is unchanged" beside a block that had just been
-   * moved to `FAILED` or parked with a resume point, and "reply `/retry`"
-   * beside a notice that had just explained why `/retry` is refused. Only the
-   * CI path escaped, by accident: `github.event.issue.number` is empty on a
-   * `workflow_run` event. `runCli` turns this flag into a `$GITHUB_OUTPUT`
-   * marker the fallback step is gated on, so it covers what its own wording
-   * claims and nothing else: a job that died with nothing on the issue at all.
-   *
-   * A field rather than something derived from `status` and `state`, because
-   * neither says it. `failed` covers both a reported failure and a crash;
-   * `skipped` covers both a silent guardrail rejection and a refused command
-   * that answered on the issue; and the state block rides on the same call that
-   * posts, so "the state moved" and "a comment exists" are one event seen from
-   * the side that cannot distinguish the paths that post from the ones that do
-   * not. Required rather than optional so a new terminal path has to decide,
-   * the way `SystemPromptInput.nonce` makes forgetting the envelope a type
-   * error.
-   */
-  reported: boolean
+/**
+ * The end of an exhaustive `switch` over a discriminated union.
+ *
+ * Written out rather than left implicit for two reasons, and the second is the
+ * one that matters. The lint rule wanting every path to return cannot see that
+ * TypeScript has already proved this one unreachable — and the `never` parameter
+ * is what turns *adding* a union member into a compile error at every switch
+ * that did not grow a case for it. Which is exactly the property the `kind`
+ * switches were written for: a third trigger kind arrived, and the tests that
+ * had been spelled `!== 'issue'` would have bucketed it in silence.
+ */
+export const unreachable = (value: never): never => {
+  throw new Error(`Unreachable value: ${JSON.stringify(value)}`)
 }
