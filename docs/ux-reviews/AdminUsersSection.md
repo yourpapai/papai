@@ -74,7 +74,7 @@ design; the shell supplies it. Not filed.
 | 4. Feedback & state             | pass  | Loading, a fatal load failure, a non-fatal open-access failure, and a genuinely empty list each render a distinct, correctly-worded state; a blank add is blocked and explained.        |
 | 5. Content & language           | pass  | `Added by` renders "Open access" / "Announcement signup" pills or a truncated id, the remove confirmation names the person, and the confirm dialog states how Block differs from Remove. |
 | 6. Accessibility                | warn  | Labels, focus rings, and `aria-busy` now come correct, but the live-region roles are mounted with their text already inside them — see `admin-users-live-region-mounts-with-text` below. |
-| 7. Responsive / layout          | warn  | `minWidth: 1200px` (`f5da228ac`) makes `.settings-table__scroll`'s existing `overflow-x: auto` engage at 640px instead of crushing columns — `Remove` and the Added-by pill are both fully reachable by scrolling now — but the long username still truncates with no non-hover way to recover it on keyboard or touch — see `admin-users-username-truncates-silently`. |
+| 7. Responsive / layout          | pass  | `minWidth: 1200px` (`f5da228ac`) makes `.settings-table__scroll`'s existing `overflow-x: auto` engage at 640px instead of crushing columns, so `Remove` and the Added-by pill are both fully reachable by scrolling; a long username clips with an ellipsis and a working `title`, accepted as the remedy. |
 | 8. Spacing, alignment & sizing  | pass  | The open-access card draws its radius/padding/margin from the token scale, column widths no longer shift, and the Added-by pill now renders complete at 640px once the table's own horizontal scroll engages — re-measured directly, no more mid-word clipping. |
 | 9. Interaction & micro-states   | pass  | Every asynchronous control now announces its in-flight state: Add (`disabled`, "Adding…"), Refresh (`IconButton busy`), Remove (`busy={removing}`), and the open-access toggle (`busy={togglingAccess}`, "Saving…", `38bcf5382`). `Remove` is fully reachable at 640px via the table's own scroll. |
 
@@ -245,7 +245,11 @@ Severity-ranked, highest first.
 ### [Low] A long username truncates with no way to read it on keyboard or touch
 
 - **Id:** admin-users-username-truncates-silently
-- **Status:** open
+- **Status:** fixed
+- **Resolution (2026-08-08):** Closed by decision, accepting `title` as the remedy. The value
+  truncates with a visible ellipsis and a working native tooltip; the pointer-only reach of that
+  tooltip is accepted rather than replaced. The suggested fix below is recorded as the option not
+  taken, not as outstanding work.
 - **Dimension:** 7. Responsive / layout
 - **Where visible:** `AdminUsersSection-—-populated-narrow-1.png` and `settings-sections-admin-AdminUsersSection-Populated-1.png` — the 48-character fixture username (`a_very_long_telegram_username_that_will_not_fit`) now renders as `a_very_long_tele…` in both shots. Now that `table-layout: fixed` (`9fb8d8018`) holds the USERNAME column to its declared width, the ellipsis rule genuinely engages: measured directly, the `span.cell-text` carrying the username has `scrollWidth: 368` against `clientWidth: 136` at 640px and `clientWidth: 296` at 1280px — the content is reliably wider than the box at both breakpoints, so it clips.
 - **Source:** `client/shared/ui/DataTable.svelte:198-206` (`.ui-datatable__td`: `white-space: nowrap; overflow: hidden; text-overflow: ellipsis`) and `AdminUsersSection.svelte:306,368-372` (`.cell-text`, same three properties, plus `title={row.username}`). `title` is present and now actually load-bearing — a mouse user can hover the truncated cell and read the full username in the native tooltip. What remains: `title` has no keyboard or touch equivalent — a keyboard-only user tabbing to a row, or a touch user with no hover concept, has no way to recover the clipped portion of the value. That is the residue this finding narrows to.
