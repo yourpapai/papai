@@ -25,7 +25,7 @@ const planSchema = z.object({ steps: z.array(planStepSchema).min(1), summary: z.
 export type ExecutionPlan = z.infer<typeof planSchema>
 
 const PLAN_INSTRUCTIONS = [
-  'Break the approved spec into a granular, ordered execution plan.',
+  'Break the approved spec into a granular, ordered implementation plan.',
   'Every step names the files it touches and how it will be verified.',
   'Do not modify any files in this phase — planning only.',
 ].join('\n')
@@ -43,7 +43,7 @@ export const handlePlan: PhaseHandler = async (input): Promise<PhaseOutcome> => 
 
   const branch = branchNameFor(state.issueId)
   const feedback = changeRequest(input)
-  deps.log.info({ issue: state.issueId, branch, revising: feedback !== null }, 'Building execution plan')
+  deps.log.info({ issue: state.issueId, branch, revising: feedback !== null }, 'Building the plan')
 
   const envelope = mintEnvelope()
   const agent = await deps.agent()
@@ -54,8 +54,8 @@ export const handlePlan: PhaseHandler = async (input): Promise<PhaseOutcome> => 
     log: deps.log,
     request: {
       system: composeSystemPrompt({
-        phase: 'EXECUTION_PLAN',
-        skills: await deps.skills('EXECUTION_PLAN'),
+        phase: 'PLANNING',
+        skills: await deps.skills('PLANNING'),
         repoRoot: deps.config.repoRoot,
         nonce: envelope.nonce,
         instructions: PLAN_INSTRUCTIONS,
@@ -107,7 +107,7 @@ export const renderPlanMarkdown = (plan: ExecutionPlan): string => {
 
 const renderPlanComment = (markdown: string, branch: string, revision: number): string =>
   [
-    `### Execution plan (revision ${revision})`,
+    `### Plan (revision ${revision})`,
     '',
     markdown,
     '',

@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { parseSlashCommand } from './commands.js'
-import { react } from './feedback.js'
+import { react, settleReaction } from './feedback.js'
 import { evaluateGuardrails } from './guardrails.js'
 import type { TriggerEvent } from './guardrails.js'
 import { reconcileLabels, settleLabels } from './labels.js'
@@ -29,7 +29,7 @@ import type { AgentState, Phase, RunResult, TransitionSignal } from './types.js'
  */
 const HANDLERS: Partial<Record<Phase, PhaseHandler>> = {
   INIT_OR_CLARIFY: handleTriage,
-  EXECUTION_PLAN: handlePlan,
+  PLANNING: handlePlan,
   REVIEW_AND_MUTATE: handleImplement,
   PR_DELIVERY: handleDeliver,
   CI_FIX: handleCiFix,
@@ -80,9 +80,23 @@ export const runPipeline = async (options: RunOptions): Promise<RunResult> => {
   // arrives after the work is worth much less than one that arrives before it,
   // and this is the only acknowledgement any trigger gets. CI events fall
   // through it silently; `reactionTarget` decides that, not this call site.
-  await react(deps, event, 'eyes')
+  const acknowledgement = await react(deps, event, 'eyes')
 
-  return runAccepted(event, deps)
+  const result = await runAccepted(event, deps)
+
+  // The other end of that acknowledgement, and the reason it is held here rather
+  // than inside `runAccepted`: 👀 is placed before the run knows which of its
+  // several exits it will take, so the only place guaranteed to see both the
+  // handle and the outcome is the one frame that spans them. Every exit below is
+  // an ordinary `return`, so there is no path that skips it — a throw is the
+  // deliberate exception, and it is the crash the workflow's fallback comment
+  // exists to explain, where a stale 👀 is the least of what is left behind.
+  //
+  // Not reporting, for the reason `finish` is not: an emoji is not an account of
+  // what happened, so `result.reported` is passed through untouched.
+  await settleReaction(deps, event, acknowledgement, result.status)
+
+  return result
 }
 
 /**

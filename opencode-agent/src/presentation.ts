@@ -93,7 +93,7 @@ export const PRESENTATION_KEYS = [
   'INIT_OR_CLARIFY:working',
   'INIT_OR_CLARIFY:waiting',
   'DESIGN_SPEC',
-  'EXECUTION_PLAN',
+  'PLANNING',
   'PLAN_REVIEW',
   'REVIEW_AND_MUTATE',
   'PR_DELIVERY',
@@ -125,7 +125,7 @@ export const PRESENTATION: Record<PresentationKey, PhasePresentation> = {
     whoseTurn: 'you',
     headline: 'Design spec is waiting for you',
   },
-  EXECUTION_PLAN: {
+  PLANNING: {
     glyph: '🗺️',
     label: { suffix: 'planning', color: BLUE },
     whoseTurn: 'agent',

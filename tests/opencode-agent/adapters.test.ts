@@ -617,7 +617,7 @@ describe('obra-skills', () => {
   })
 
   test('fails a phase whose required skill is missing rather than degrading', async () => {
-    const attempt = loadPhaseSkills('EXECUTION_PLAN', {
+    const attempt = loadPhaseSkills('PLANNING', {
       repoRoot: '/repo',
       roots: ['skills'],
       read: () => Promise.reject(new Error('ENOENT')),
@@ -658,14 +658,14 @@ describe('obra-skills', () => {
 
   test('composeSystemPrompt inlines skill bodies and phase instructions', () => {
     const prompt = composeSystemPrompt({
-      phase: 'EXECUTION_PLAN',
+      phase: 'PLANNING',
       skills: [{ name: 'writing-plans', path: '/x', content: 'PLAN RULES' }],
       repoRoot: '/repo',
       nonce: 'abc123',
       instructions: 'Do the thing.',
     })
 
-    expect(prompt).toContain('Current phase: EXECUTION_PLAN')
+    expect(prompt).toContain('Current phase: PLANNING')
     expect(prompt).toContain('### Skill: writing-plans')
     expect(prompt).toContain('PLAN RULES')
     expect(prompt).toContain('Do the thing.')
@@ -1527,6 +1527,44 @@ describe('createOctokitApi', () => {
     // stranger's comment in some other issue entirely.
     expect(request?.url).not.toContain('/issues/comments/')
     expect(request?.body).toEqual({ content: 'confused' })
+  })
+
+  test('hands back the id the reaction was created with', async () => {
+    // The delete endpoints are addressed by reaction id and nothing else —
+    // there is no "remove my 👀 from this comment" call — so a `void` here made
+    // the acknowledgement unremovable, whatever the layer above wanted.
+    const captured: CapturedRequest[] = []
+
+    const reaction = await recordingApi(captured, { id: 314, content: 'eyes' }).addReaction(
+      { kind: 'comment', id: 8811 },
+      'eyes',
+    )
+
+    expect(reaction).toEqual({ id: 314 })
+  })
+
+  test('removes a reaction from the comment it was placed on', async () => {
+    const captured: CapturedRequest[] = []
+
+    await recordingApi(captured).removeReaction({ kind: 'comment', id: 8811 }, { id: 314 })
+
+    const [request] = captured
+    expect(request?.method).toBe('DELETE')
+    expect(request?.url).toContain('/repos/acme/widgets/issues/comments/8811/reactions/314')
+  })
+
+  test('removes a reaction from the issue itself, by the other endpoint', async () => {
+    // Routed by the same discriminant as the create, and wrong in the same way
+    // if it is not: issue 42 and comment 42 are two different things, and a
+    // delete aimed at the wrong one takes an emoji off a stranger's comment.
+    const captured: CapturedRequest[] = []
+
+    await recordingApi(captured).removeReaction({ kind: 'issue', number: 42 }, { id: 314 })
+
+    const [request] = captured
+    expect(request?.method).toBe('DELETE')
+    expect(request?.url).toContain('/repos/acme/widgets/issues/42/reactions/314')
+    expect(request?.url).not.toContain('/issues/comments/')
   })
 
   test('leaves the reaction content alone, as it does the branch names', async () => {
