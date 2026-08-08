@@ -8,7 +8,7 @@ See LICENSE in the project root for details.
 # Phase 09: Event-Driven Suggestions — Development Plan
 
 **Created**: 2026-03-20  
-**Scope**: User stories from `docs/user-stories/phase-09-event-driven-suggestions.md`  
+**Scope**: User stories from `docs/archive/user-stories/phase-09-event-driven-suggestions.md`  
 **Runtime**: Bun  
 **Test runner**: `bun:test`  
 **Linter**: oxlint (no `eslint-disable`, no `@ts-ignore`)
