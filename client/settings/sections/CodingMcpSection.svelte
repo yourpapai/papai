@@ -393,7 +393,6 @@
     gap: var(--gap-inline);
   }
   .settings-mcp__cap {
-    font-family: var(--font-mono);
     font-size: 10px;
     color: var(--text-dim);
   }
