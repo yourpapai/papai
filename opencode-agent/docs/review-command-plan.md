@@ -319,10 +319,31 @@ a refreshed one does not. The refusal reuses `refuseExhausted`'s shape with its
 own wording, since raising `AGENT_MAX_REVIEW_ATTEMPTS` is the remedy and
 `/retry` is not.
 
-_Whether this cap is worth having is the one open question below (§6.1): the
-review loop's `opencode run` subprocesses are invisible to `AGENT_MAX_TOKENS`,
-so an uncapped `/review` is the one unbounded spend in the pipeline — but a
-human types it each time, which is a bound of a sort._
+### A11 · The delivery hint, from the diff the agent just committed
+
+`/review` being explicit only helps if a maintainer knows when to reach for it,
+and the pipeline already holds the one fact that answers that: `guardStaged`
+calls `measure(staged)` between `git add --all` and the commit, and throws the
+figure away.
+
+- `Git.commitAll` returns `StagedTotals | null` instead of `boolean` — `null`
+  for a tree that was already clean, otherwise `measure`'s `{ files, lines }`.
+  The doc comment's argument survives intact ("the only did-anything-change
+  answer the pipeline needs"), and every existing call site tests truthiness, so
+  `if (!(await commitAll(…)))` keeps working unchanged in `implement.ts`,
+  `review.ts` and `ci-fix.ts`.
+- `handleImplement` patches `changedLines` into the state from what it just
+  committed.
+- `renderDelivery` **always** states that `/review` is available — a command
+  nobody can discover is not a feature — and **adds a recommendation line** when
+  `changedLines >= config.reviewHintLines`.
+- `reviewHintLines` from `AGENT_REVIEW_HINT_LINES`, default 200, bounded by
+  `LINES_RANGE`, forwarded in the workflow.
+
+The state field is the **raw count**, never a `shouldReview` boolean. A derived
+flag frozen at delivery time could only ever disagree with the threshold the
+config carries when the comment is read — the same argument that keeps
+`approved` out of the state block, where the phase already is the approval gate.
 
 ---
 
@@ -525,6 +546,11 @@ existing `drops bot senders and pull-request comments` case in
 rather than deleted — a pull-request comment carrying no `/review` is still
 dropped, and that half is the half worth keeping green.
 
+**`diff-guard.test.ts` / delivery** — `commitAll` reports the totals `measure`
+computed for the commit it made, and `null` for a clean tree; a delivery whose
+`changedLines` sits below `reviewHintLines` states that `/review` exists and
+does **not** recommend it, one above does both.
+
 **`presentation.test.ts`** — the existing exhaustiveness test covers the new row
 by construction; add the `CODE_REVIEW` glyph/label assertion beside the others.
 
@@ -539,30 +565,31 @@ already exists in spirit — extend it to `AGENT_MAX_REVIEW_ATTEMPTS`).
 
 ---
 
-## 6. Open questions
+## 6. Decisions
 
-**6.1 — Is `AGENT_MAX_REVIEW_ATTEMPTS` worth having?** The argument for: the
-review loop's `opencode run` subprocesses are invisible to `AGENT_MAX_TOKENS`
-(a stated README limitation), so `/review` is the one command in the pipeline
-whose spend nothing bounds but the job timeout. The argument against: a human
-types it, one pull request at a time, which is the bound. My recommendation is
-to build it — it is ~15 lines and mirrors `ciAttempts` exactly — but it is the
-first thing to cut if Stage A needs to be smaller.
+The four questions this document opened with, answered. Each is settled; the
+reasoning is kept because the alternative was live at the time.
 
-**6.2 — Should the pull request accept more than `/review`?** `/ask` on a pull
-request is a natural request and the plumbing would already be there. Left out
-deliberately: it widens the surface from "one command that names a branch the
-agent owns" to "a conversation", and the answer would still be posted on the
-issue, which is confusing in a way `/review` is not (its output is commits).
+**6.1 — `AGENT_MAX_REVIEW_ATTEMPTS` is built.** The review loop's `opencode run`
+subprocesses are invisible to `AGENT_MAX_TOKENS` (a stated README limitation),
+so `/review` is otherwise the one command in the pipeline whose spend nothing
+bounds but the job timeout. It mirrors `ciAttempts` exactly, per pull request,
+reset by a genuinely new one. See A10.
 
-**6.3 — Should there be an escape hatch back to inline review?** An
-`AGENT_REVIEW_TRIGGER=command|inline` flag would let a repository keep today's
-behaviour. My recommendation is **no**: it is a second code path through phase
-3 that nobody runs, and the review is one comment away.
+**6.2 — The pull request accepts `/review` and nothing else.** `/ask` there is a
+natural request and the plumbing would be free once Stage B lands, but it widens
+the surface from "one command naming a branch the agent owns" to "a
+conversation", and its answer would still be posted on the issue — confusing in
+a way `/review` is not, since `/review`'s real output is commits on the branch
+the reader is already looking at. `applyPullRequestCommand` refuses everything
+else through `refuseCommand`.
 
-**6.4 — Should delivery hint at `/review` conditionally?** e.g. suggest it only
-above a diff-size threshold. Cheap to add later from `parseNumstat`, which the
-diff guard already computes; not worth guessing a threshold now.
+**6.3 — There is no escape hatch back to inline review.** An
+`AGENT_REVIEW_TRIGGER=command|inline` flag would keep today's behaviour
+available, at the price of a second code path through phase 3 that nobody runs
+and every future edit has to keep working. The review is one comment away.
+
+**6.4 — Delivery hints at `/review` from the diff size.** See A11.
 
 ---
 
@@ -576,12 +603,13 @@ diff guard already computes; not worth guessing a threshold now.
 | 4   | `pull-request-body.ts` — extract the presentation renderer        | A     |
 | 5   | `phases/review.ts` + `orchestrator.ts` handler table              | A     |
 | 6   | `config.ts` review budget, `deliver.ts` budget reset and wording  | A     |
-| 7   | README, `CLAUDE.md`, worked example                               | A     |
-| 8   | `github.ts` `getPullRequestHead`, `pr-trigger.ts` resolver        | B     |
-| 9   | `TriggerEvent` third member; the nine `kind` sites                | B     |
-| 10  | guardrails for pull-request comments                              | B     |
-| 11  | workflow: `resolve` job, `if:` arm, job-level concurrency         | B     |
-| 12  | optional pull-request note (one door, best-effort)                | B     |
+| 7   | `commitAll` totals, `changedLines`, the conditional hint (§6.4)   | A     |
+| 8   | README, `CLAUDE.md`, worked example                               | A     |
+| 9   | `github.ts` `getPullRequestHead`, `pr-trigger.ts` resolver        | B     |
+| 10  | `TriggerEvent` third member; the nine `kind` sites                | B     |
+| 11  | guardrails for pull-request comments                              | B     |
+| 12  | workflow: `resolve` job, `if:` arm, job-level concurrency         | B     |
+| 13  | pull-request note (one door, best-effort)                         | B     |
 
 Stage A alone closes all three problems in §1.3 and is independently
 releasable. Stage B changes where the command can be typed, not what it does.
