@@ -109,9 +109,19 @@ jobs:
           # like somebody's issue.
           if [ "${#number}" -gt 16 ]; then number=''; fi
           if [ -n "$number" ]; then
-            # `10#` so a leading zero is read as decimal, not octal, and so the
-            # value printed matches the integer the pipeline would have parsed.
-            number=$((10#$number))
+            # Leading zeros stripped so the value printed matches the integer
+            # `issueNumberFromBranch` would have parsed — `agent/issue-007` is
+            # issue 7, and the differential test below compares the two.
+            #
+            # `sed` rather than the shorter `$((10#$number))`. That arithmetic
+            # form crashes Semgrep's `gha-curl-pipe-shell` rule with a
+            # MatchingError, and `--strict` turns one crashed rule into a failed
+            # security scan for the whole repository. Bisected to this line.
+            # `test` is safe to compare with directly: unlike `$(( ))` it reads a
+            # leading zero as decimal, so the strip is about the printed value,
+            # not about the comparison.
+            number="$(printf '%s' "$number" | sed 's/^0*//')"
+            number="${number:-0}"
             if [ "$number" -le 0 ] || [ "$number" -gt 9007199254740991 ]; then number=''; fi
           fi
           echo "number=$number" >> "$GITHUB_OUTPUT"
@@ -319,9 +329,11 @@ jobs:
           # every writer on it, or the knob is a half-truth.
           LABEL_PREFIX: ${{ vars.AGENT_LABEL_PREFIX }}
         run: |
-          shopt -s extglob
-          prefix="${LABEL_PREFIX##+([[:space:]])}"
-          prefix="${prefix%%+([[:space:]])}"
+          # `sed` rather than the shorter `${VAR##+([[:space:]])}`: extglob is
+          # the one construct in this file Semgrep's bash grammar cannot parse,
+          # and `--strict` fails the whole security scan on a single unparsed
+          # line — so an unscannable workflow costs more than a spawned process.
+          prefix="$(printf '%s' "$LABEL_PREFIX" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
           prefix="${prefix:-agent:}"
 
           if [ "${prefix,,}" = 'none' ]; then
@@ -337,5 +349,8 @@ jobs:
           # which state the issue is parked in, and this step has no idea which
           # that is. Only the marker that claims a run is in flight is this
           # step's to contradict.
-          gh issue edit "$ISSUE_NUMBER" --remove-label "${prefix}working" \
-            || echo "Could not remove ${prefix}working; the next run's reconcile takes it off."
+          # One statement, not a `\`-continued `||`: that continuation is the
+          # second thing Semgrep's bash grammar gives up on here.
+          if ! gh issue edit "$ISSUE_NUMBER" --remove-label "${prefix}working"; then
+            echo "Could not remove ${prefix}working; the next run's reconcile takes it off."
+          fi
