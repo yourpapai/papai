@@ -155,7 +155,7 @@ Starter dispositions; each item still gets the triage pass above.
 
 | Item                                                             | State                                      | Starter disposition                         |
 | ---------------------------------------------------------------- | ------------------------------------------ | ------------------------------------------- |
-| `specs/2026-06-30-readonly-exploration-sessions-design.md`       | pending, no plan, cross-service (magi)     | Lane 1                                      |
+| ~~`specs/2026-06-30-readonly-exploration-sessions-design.md`~~   | verified shipped in magi 2026-08-09 (auto-finish.ts, answer milestone, last_message) → archived | done |
 | `plans/2026-08-04-knip-facade-import-triage.md`                  | pending, plan-only, unstarted              | Lane 1 or Lane 3                            |
 | ~~`remaining/2025-03-24-prompt-injection-defense.md`~~           | adopted 2026-08-09 → `openspec/changes/prompt-injection-defense/` | done                                      |
 | `remaining/2026-03-20-phase-09-event-driven-suggestions.md`      | brief                                      | Lane 1 (residual) or Lane 3                 |
