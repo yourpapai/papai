@@ -256,7 +256,7 @@
   "src/plugins/types.ts": 0.572463768115942,
   "src/providers/auto-provision.ts": 0.8846153846153846,
   "src/providers/builtin-descriptors.ts": 1,
-  "src/providers/config-validation.ts": 0.6223776223776224,
+  "src/providers/config-validation.ts": 0.9790209790209791,
   "src/providers/errors.ts": 0.7605633802816901,
   "src/providers/membership/backfill.ts": 0.631578947368421,
   "src/providers/membership/ensure-member.ts": 0.5797101449275363,
