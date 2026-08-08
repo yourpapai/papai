@@ -930,19 +930,24 @@ both are 26–28 KB and neither applies to a single-session CI run.
 4. Optionally `AGENT_GITHUB_TOKEN`, a GitHub App installation token. Without it
    the agent's pushes do not trigger CI, so the CI-fix path never runs.
 5. Actions needs write access to contents, issues and pull requests.
-6. **Settings → Actions → General → Workflow permissions → "Allow GitHub Actions
-   to create and approve pull requests".** The `permissions:` block in the
-   workflow is not enough on its own: without this box ticked, `PR_DELIVERY`
-   fails with _"GitHub Actions is not permitted to create or approve pull
-   requests"_ on a branch that is already pushed and complete. An organisation
-   policy overrides the repository setting, so if the box is ticked here and the
-   refusal persists, it is set one level up. `AGENT_GITHUB_TOKEN` from step 4 is
-   the way out of both — a PAT or App token is not "GitHub Actions" as far as
-   this rule is concerned.
+6. **Actions must be allowed to create pull requests.** The `permissions:` block
+   in the workflow is not enough on its own: without this, `PR_DELIVERY` fails
+   with _"GitHub Actions is not permitted to create or approve pull requests"_ on
+   a branch that is already pushed and complete, and no `/retry` can change that.
+
+   The repository setting is Settings → Actions → General → Workflow permissions
+   → "Allow GitHub Actions to create and approve pull requests". **If that
+   checkbox is greyed out, the organisation owns the setting** and the repository
+   cannot override it — change it under the organisation's own Actions settings,
+   which unlocks it for every repository in the organisation.
+
+   `AGENT_GITHUB_TOKEN` from step 4 is usually the smaller step: a PAT or App
+   installation token is not "GitHub Actions" as far as this rule is concerned,
+   so it needs no policy change, and it is what the CI-fix path needs anyway.
 
    The failure comment names all of this and links a prefilled `compare` URL, so
-   the branch can be turned into a pull request by hand while the setting is
-   sorted out; `/retry` resumes from `PR_DELIVERY` once it is.
+   the branch can be turned into a pull request by hand meanwhile; `/retry`
+   resumes from `PR_DELIVERY` once the token or the setting is in place.
 
 Nothing to configure for `GITHUB_TOKEN` or `GITHUB_REPOSITORY` — see
 **Configuration** above for why the Actions runtime already supplies both.

@@ -71,12 +71,20 @@ export const isPullRequestCreationForbidden = (error: unknown): boolean =>
  * retry budget runs out on a condition no retry can change. That is exactly what
  * happened, twice, on the issue that prompted this.
  *
- * Both remedies are named because either one alone is a dead end for somebody:
- * the repository toggle is invisible to a maintainer without admin rights, and
- * an organisation policy overrides it, so a repository owner can tick the box and
- * still be refused. `AGENT_GITHUB_TOKEN` is the way out of both — the workflow
- * already prefers it over `GITHUB_TOKEN` — and it is what a repository wanting
- * CI to run on the agent's branch needs anyway.
+ * Both remedies are named because either one alone is a dead end for somebody,
+ * and the **greyed-out** case is called out by name because it is the one that
+ * wastes the most time: an organisation can lock the whole Workflow permissions
+ * section, and then the repository setting is not merely unticked but disabled,
+ * so a maintainer sent to "tick the box" arrives at a control they cannot click
+ * and has nothing telling them where the setting actually lives. That is the
+ * state the repository this was written for was in.
+ *
+ * `AGENT_GITHUB_TOKEN` is the way out of both, and the one to reach for first: a
+ * PAT or App installation token is not "GitHub Actions" as far as this rule is
+ * concerned, so it needs no policy change at all — it is scoped to this one
+ * workflow rather than loosening every repository in the organisation, and it is
+ * what a repository wanting CI to run on the agent's branch needs anyway, since
+ * pushes made with `GITHUB_TOKEN` deliberately trigger no workflows.
  *
  * The compare link is the third way out and the only one that needs no
  * permissions at all: phase 3 pushed the branch, so the pull request exists in
@@ -93,12 +101,15 @@ export const pullRequestForbiddenError = (compareUrl: string, branch: string): P
       '',
       'Unblock it either way, then reply `/retry`:',
       '',
-      '1. Settings → Actions → General → Workflow permissions → tick **Allow GitHub Actions to create and',
-      '   approve pull requests**. An organisation policy overrides the repository setting, so if the box is',
-      '   already ticked here, check the organisation too.',
-      '2. Or set the `AGENT_GITHUB_TOKEN` secret to a personal access token or GitHub App installation token',
-      '   with `pull_requests: write`. The workflow already prefers it over `GITHUB_TOKEN`, and it is what a',
-      "   repository that wants CI to run on the agent's branch needs regardless.",
+      '1. Set the `AGENT_GITHUB_TOKEN` secret to a personal access token or GitHub App installation token',
+      '   with `pull_requests: write`, and `AGENT_SELF_LOGIN` to the account it posts as. The workflow already',
+      '   prefers it over `GITHUB_TOKEN`; a token like that is not "GitHub Actions" as far as this rule goes,',
+      "   so it needs no policy change — and it is what a repository that wants CI to run on the agent's",
+      '   branch needs regardless, since pushes made with `GITHUB_TOKEN` trigger no workflows.',
+      '2. Or Settings → Actions → General → Workflow permissions → **Allow GitHub Actions to create and',
+      '   approve pull requests**. If that checkbox is **greyed out**, the organisation owns the setting and',
+      '   the repository cannot override it: change it under the organisation’s own Actions settings instead',
+      '   — which unlocks it for every repository in the organisation, so option 1 is usually the smaller step.',
       '',
       `Or open it by hand, prefilled: ${compareUrl}`,
     ].join('\n'),

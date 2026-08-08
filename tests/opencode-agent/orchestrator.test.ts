@@ -1177,10 +1177,11 @@ describe('delivery refused by the repository settings', () => {
     expect(result.status).toBe('failed')
     expect(harness.io.posted.at(-1)).toContain('Allow GitHub Actions to create and')
     expect(harness.io.posted.at(-1)).toContain('AGENT_GITHUB_TOKEN')
-    // The organisation half matters on its own: a repository owner can tick the
-    // box, be refused by a policy one level up, and have nothing to read that
-    // says why.
-    expect(harness.io.posted.at(-1)).toContain('organisation policy overrides')
+    // The greyed-out case matters on its own, and is the state the repository
+    // this was written for was in: an organisation can lock the whole Workflow
+    // permissions section, so "tick the box" sends a maintainer to a control
+    // they cannot click, with nothing saying where the setting really lives.
+    expect(harness.io.posted.at(-1)).toContain('greyed out')
   })
 
   test('offers the branch as a pull request anyone can open by hand', async () => {
