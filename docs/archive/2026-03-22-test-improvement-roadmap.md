@@ -8,7 +8,7 @@ See LICENSE in the project root for details.
 # Test Improvement Roadmap
 
 **Date:** 2026-03-22
-**Status:** Draft
+**Status:** Superseded — archived per [ADR-0315](../../adr/0315-archive-test-improvement-roadmap-plan.md). Phases 1–2, task 4.4.8, and tasks 6.3.1–6.3.4 landed in an evolved shape; remaining Phase 3–6 items are overtaken by the provider restructure and current quality gates (mutation ratchet, coverage floor, OpenSpec workflow). Only surviving action: bump Stryker `thresholds.break` 40→50 after a green `bun test:mutate` (task 6.3.5).
 **Goal:** Systematically address test quality gaps identified by full-suite audit of all 74 test files
 
 ---
