@@ -8,6 +8,7 @@
 
   import Confirm from '../../shared/Confirm.svelte'
   import Btn from '../../shared/ui/Btn.svelte'
+  import EmptyState from '../../shared/ui/EmptyState.svelte'
   import ErrorState from '../../shared/ui/ErrorState.svelte'
   import Field from '../../shared/ui/Field.svelte'
   import IconButton from '../../shared/ui/IconButton.svelte'
@@ -55,8 +56,35 @@
     return row.server.startsWith('plugin:') || pluginServers.some((p) => p.name === row.server)
   }
 
-  const hasEmptyServer = $derived(rows.some((r) => r.server.trim().length === 0))
+  const BLANK_SERVER_MESSAGE = 'Choose an MCP server.'
+  const DUPLICATE_SERVER_MESSAGE = 'Already selected in another row.'
+
+  // A row is invalid when it names no server, or repeats one an *earlier* row already
+  // claimed. Marking the later occurrence is what lets the message point somewhere: the
+  // first row is the one the user keeps. This is not cosmetic — resolveMcpServers is
+  // fail-closed and all-or-nothing, so saving a duplicate costs the context every MCP
+  // server, and the failure surfaces in a coding session rather than here.
+  function rowProblem(all: McpRow[], row: McpRow, index: number): string | undefined {
+    if (row.server.length === 0) return BLANK_SERVER_MESSAGE
+    if (all.slice(0, index).some((earlier) => earlier.server === row.server)) return DUPLICATE_SERVER_MESSAGE
+    return undefined
+  }
+
+  const rowProblems = $derived(rows.map((row, index) => rowProblem(rows, row, index)))
+  const hasRowProblem = $derived(rowProblems.some((problem) => problem !== undefined))
   const atCap = $derived(rows.length >= maxMcpServers)
+
+  // Removing every row on a context that already has stored servers makes Save an
+  // unconfirmed alias for Clear: hasRowProblem is vacuously false on an empty list, so
+  // Save would PATCH servers: [] without the danger-styled confirm dialog Clear requires.
+  // Disabling Save here leaves Clear as the one confirmed entrance to that outcome.
+  const wouldSilentlyClear = $derived(rows.length === 0 && currentData?.configured === true)
+
+  // `maxMcpServers` is optional in the client schema (fetcher-schemas.ts:94) and falls back
+  // to Infinity above, so guard on finiteness: a count is only meaningful against a real cap.
+  const capLabel = $derived(
+    Number.isFinite(maxMcpServers) ? `${rows.length} of ${maxMcpServers} servers used` : null,
+  )
 
   function snapshotRows(rs: McpRow[]): string {
     return JSON.stringify(rs.map((r) => ({ server: r.server, token: r.token })))
@@ -116,7 +144,7 @@
   }
 
   async function saveAll(): Promise<void> {
-    if (loading || saving || loadedContextId !== contextId || hasEmptyServer) return
+    if (loading || saving || loadedContextId !== contextId || hasRowProblem) return
     error = null
     status = null
     saving = true
@@ -181,13 +209,20 @@
   {#if currentData === null && loading}
     <p class="placeholder">Loading…</p>
   {:else if currentData === null && error !== null}
-    <ErrorState message={error} onRetry={() => void load(contextId)} />
+    <ErrorState
+      message="Couldn't load the MCP server settings for this context."
+      detail={error}
+      onRetry={() => void load(contextId)} />
   {:else if currentData !== null}
     {#if unreadableError !== null}
       <p class="status-error" role="alert">Stored credentials are unreadable. Re-enter your credentials to repair this context.</p>
     {/if}
     {#if noServersAvailable}
-      <p class="placeholder" data-testid="coding-mcp-catalog-empty">No MCP servers available — ask your operator.</p>
+      <div data-testid="coding-mcp-catalog-empty">
+        <EmptyState
+          title="No MCP servers available"
+          hint="Your operator hasn't published any MCP servers for this platform instance. Ask them to add one." />
+      </div>
     {:else}
       <p class="placeholder">
         Coding sessions can reach MCP servers on your behalf. Add a server per row — external servers need a credential;
@@ -195,10 +230,15 @@
       </p>
 
       <div class="settings-mcp">
+        {#if rows.length === 0}
+          <EmptyState
+            title="No MCP servers selected"
+            hint="Add a server to let coding sessions reach it on your behalf." />
+        {/if}
         {#each rows as row, index (index)}
           <div class="settings-mcp__row" data-testid={`coding-mcp-row-${index}`}>
             <div class="settings-mcp__field settings-mcp__field--server">
-              <Field label="MCP server">
+              <Field label="MCP server" error={rowProblems[index]}>
                 <Select
                   value={row.server}
                   options={serverOptions}
@@ -229,6 +269,7 @@
                 variant="outline"
                 size="sm"
                 testid={`coding-mcp-remove-${index}`}
+                disabled={saving || loading}
                 onClick={() => removeRow(index)}>
                 {#snippet children()}Remove{/snippet}
               </Btn>
@@ -237,14 +278,19 @@
         {/each}
 
         <div class="settings-field__actions">
-          <Btn
-            variant="secondary"
-            size="sm"
-            testid="coding-mcp-add"
-            disabled={saving || loading || atCap}
-            onClick={addRow}>
-            {#snippet children()}Add server{/snippet}
-          </Btn>
+          <div class="settings-mcp__add">
+            <Btn
+              variant="secondary"
+              size="sm"
+              testid="coding-mcp-add"
+              disabled={saving || loading || atCap}
+              onClick={addRow}>
+              {#snippet children()}Add server{/snippet}
+            </Btn>
+            {#if capLabel !== null}
+              <span class="settings-mcp__cap" data-testid="coding-mcp-cap">{capLabel}</span>
+            {/if}
+          </div>
           <div class="settings-field__actions-trailing">
             {#if currentData.configured}
               <Btn
@@ -252,6 +298,7 @@
                 size="sm"
                 testid="coding-mcp-clear"
                 disabled={saving || loading || clearing}
+                busy={clearing}
                 onClick={() => {
                   pendingClear = true
                   clearError = null
@@ -263,7 +310,8 @@
               variant="primary"
               size="sm"
               testid="coding-mcp-save"
-              disabled={!formDirty || saving || loading || clearing || hasEmptyServer}
+              disabled={!formDirty || saving || loading || clearing || hasRowProblem || wouldSilentlyClear}
+              busy={saving}
               onClick={() => void saveAll()}>
               {#snippet children()}{saving ? 'Saving…' : 'Save'}{/snippet}
             </Btn>
@@ -312,8 +360,17 @@
   .settings-mcp__field--token {
     flex: 1 1 260px;
   }
-  .settings-mcp__field :global(.ui-input) {
+  .settings-mcp__field :global(.ui-input),
+  .settings-mcp__field :global(.ui-select) {
     width: 100%;
+  }
+  /* .ui-select is a flex row (select + caret) and only grants its <select> flex-grow
+     under the `block` variant -- which also forces --row-h height and 14px text, a new
+     mismatch against Input's 12px. Grow the select here instead, so the two peer fields
+     match in width without diverging in type size. */
+  .settings-mcp__field :global(.ui-select select) {
+    flex: 1;
+    min-width: 0;
   }
   .settings-mcp__trailing {
     margin-left: auto;
@@ -323,6 +380,21 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--gap-inline);
+    /* Measured against *this* section's card geometry: the row cards use
+       padding: var(--gap-inline) plus a 1px border, putting their content edge at 13px.
+       CodingCredentialsSection.svelte and CodeHostSection.svelte use 14px because they
+       measured their own, different cards. Re-measure before changing this; do not
+       "unify" it with the siblings' value. */
+    padding-inline: 13px;
+  }
+  .settings-mcp__add {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-inline);
+  }
+  .settings-mcp__cap {
+    font-size: 10px;
+    color: var(--text-dim);
   }
   .settings-field__actions-trailing {
     display: flex;

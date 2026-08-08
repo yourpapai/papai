@@ -30,9 +30,20 @@
     empty?: Snippet
     /** Initial sort applied on mount (column must be sortable). */
     defaultSort?: { key: keyof Row & string; dir: SortDir }
+    /**
+     * Floor for the table's own width, applied only under fixed layout (every column
+     * declares a `width`). Fixed layout pins each column to its declared share of
+     * whatever width the table ends up with; on a narrow viewport that share can be
+     * too little for a column's actual content (a button, a pill) to render fully,
+     * with `.ui-datatable__td`'s `overflow:hidden` cutting it off. A `minWidth` set to
+     * the narrowest column's real content requirement (measured, not guessed) keeps
+     * every column usable and lets an ancestor `overflow-x: auto` wrapper scroll
+     * instead. Meaningless under auto layout, so it is only applied when fixed.
+     */
+    minWidth?: string
   }
 
-  let { columns, rows, cell, onRowClick, selectedKey, rowKey, empty, defaultSort }: Props = $props()
+  let { columns, rows, cell, onRowClick, selectedKey, rowKey, empty, defaultSort, minWidth }: Props = $props()
 
   let sortKey = $state<string | null>(defaultSort?.key ?? null)
   let sortDir = $state<SortDir>(defaultSort?.dir ?? 'asc')
@@ -89,9 +100,20 @@
       onRowClick?.(row)
     }
   }
+
+  // `table-layout: fixed` is required for a declared column `width` to actually hold (under the
+  // default `auto` layout it is only a hint content can override). Only opt in when EVERY column
+  // declares a width: a partial set is exactly the case where the browser must distribute leftover
+  // space across the width-less columns, which is unpredictable and can visibly reflow columns
+  // that were never meant to be pinned. A width-less consumer (no columns declare a width) also
+  // stays on auto layout — otherwise it would suddenly get equal-width columns.
+  const allColumnsHaveWidths = $derived(columns.every((c) => c.width !== undefined))
 </script>
 
-<table class="ui-datatable">
+<table
+  class="ui-datatable"
+  class:ui-datatable--fixed={allColumnsHaveWidths}
+  style:min-width={allColumnsHaveWidths ? (minWidth ?? null) : null}>
   <thead>
     <tr>
       {#each columns as col (col.key)}
@@ -149,6 +171,9 @@
     width: 100%;
     border-collapse: collapse;
     font-family: var(--font-mono);
+  }
+  .ui-datatable--fixed {
+    table-layout: fixed;
   }
   .ui-datatable__th {
     font-size: 10px;

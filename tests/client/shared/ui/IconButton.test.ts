@@ -45,3 +45,21 @@ test('spins while busy', () => {
   expect(target.querySelector('.ui-iconbtn--busy')).not.toBeNull()
   void unmount(c)
 })
+
+test('marks the button aria-busy while busy', () => {
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.querySelector<HTMLElement>('#root')!
+  const c = mount(IconButton, { target, props: { label: 'Refresh', glyph: '⟳', busy: true } })
+  flushSync()
+  expect(target.querySelector('button')!.getAttribute('aria-busy')).toBe('true')
+  void unmount(c)
+})
+
+test('omits aria-busy when not busy', () => {
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.querySelector<HTMLElement>('#root')!
+  const c = mount(IconButton, { target, props: { label: 'Refresh', glyph: '⟳' } })
+  flushSync()
+  expect(target.querySelector('button')!.hasAttribute('aria-busy')).toBe(false)
+  void unmount(c)
+})

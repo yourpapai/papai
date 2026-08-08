@@ -137,6 +137,7 @@ export const scenarios = {
   'settings-admin-users-empty': [...adminUsersHandlers.empty],
   'settings-admin-users-error': [...adminUsersHandlers.error],
   'settings-admin-users-loading': [...adminUsersHandlers.loading],
+  'settings-admin-users-open-access-error': [...adminUsersHandlers.openAccessError],
   'settings-admin-byok-populated': [...adminByokHandlers.populated],
   'settings-admin-byok-empty': [...adminByokHandlers.empty],
   'settings-admin-byok-error': [...adminByokHandlers.error],

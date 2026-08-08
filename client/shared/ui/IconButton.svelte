@@ -19,6 +19,7 @@
   class="ui-iconbtn"
   class:ui-iconbtn--busy={busy}
   aria-label={label}
+  aria-busy={busy ? 'true' : undefined}
   title={label}
   data-testid={testid}
   onclick={onClick}>

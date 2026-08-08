@@ -24,6 +24,7 @@ describe('msw scenarios', () => {
     'settings-byok-secret-set',
     'settings-kaneo-populated',
     'settings-admin-users-populated',
+    'settings-admin-users-open-access-error',
     'settings-admin-mcp-catalog-populated',
     'settings-admin-mcp-catalog-empty',
     'settings-plugins-configurable',

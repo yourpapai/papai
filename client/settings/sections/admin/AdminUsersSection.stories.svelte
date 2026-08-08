@@ -20,4 +20,6 @@
 
 <Story name="Error" parameters={{ fixtures: 'settings-admin-users-error' }} />
 
+<Story name="OpenAccessError" parameters={{ fixtures: 'settings-admin-users-open-access-error' }} />
+
 <Story name="Loading" parameters={{ fixtures: 'settings-admin-users-loading' }} />
