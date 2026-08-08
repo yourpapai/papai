@@ -364,6 +364,8 @@ describe('contain', () => {
     maxTokens: 5_000_000,
     diffLimits: { maxFiles: 100, maxLines: 20_000 },
     gitRemoteBase: 'https://github.com/',
+    runUrl: null,
+    labelPrefix: 'agent:',
     skillRoots: [],
   })
 
@@ -379,6 +381,7 @@ describe('contain', () => {
     issueBody: 'b',
     isPullRequest: false,
     commentBody: null,
+    commentId: null,
     repositoryOwner: 'acme',
     defaultBranch: 'master',
   }

@@ -35,6 +35,7 @@ import { collectText, decodeReply, decodeSessionId, decodeSessionUsage } from '.
 import type { SessionUsage } from '../../opencode-agent/src/sdk-contract.js'
 import { redactSecrets, scrubSecrets } from '../../opencode-agent/src/secrets.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
+import { STATUS_MARKER } from '../../opencode-agent/src/status-comment.js'
 import { PHASES } from '../../opencode-agent/src/types.js'
 
 describe('collectText', () => {
@@ -873,6 +874,9 @@ describe('untrusted envelope', () => {
 describe('renderThread', () => {
   const envelope = createEnvelope('abc123')
   const at = (id: number, authorLogin: string, body: string): IssueComment => ({ id, body, authorLogin })
+  /** One run's status comment, as the pipeline posts it: marked, agent-authored. */
+  const statusAt = (id: number): IssueComment =>
+    at(id, 'agent', `### 🛠️ Working\n\n${renderBlock(STATUS_MARKER, { run: `https://run/${id}` })}`)
 
   test('renders the tail of a long thread', () => {
     const thread = Array.from({ length: 30 }, (_unused, index) => at(index, 'maintainer', `comment ${index}`))
@@ -923,6 +927,39 @@ describe('renderThread', () => {
 
     expect(rendered).toContain('Visible.')
     expect(rendered).not.toContain('AGENT_STATE')
+  })
+
+  test('leaves the run’s status comments out of the prompt entirely', () => {
+    // Stage 3 put one status comment on the issue per run, and this renderer
+    // hands the model the tail of the thread regardless of who wrote it. A
+    // conversation spanning several runs would spend its window on progress
+    // tables, degrading exactly the phases that read the thread — triage,
+    // answering, and the classifier.
+    const conversation = [at(1, 'maintainer', 'Please add retries.'), at(2, 'agent', 'Here is the spec.')]
+    const withStatus = [statusAt(9), ...conversation, statusAt(10)]
+
+    expect(renderThread(envelope, withStatus)).toBe(renderThread(envelope, conversation))
+  })
+
+  test('spends the whole window on real conversation, not on progress tables', () => {
+    // Dropped before the window is taken, not after: filtering afterwards would
+    // still let a status comment consume one of the twenty slots.
+    const thread = [0, 2, 4].flatMap((index) => [at(index, 'maintainer', `comment ${index}`), statusAt(index + 1)])
+
+    const rendered = renderThread(envelope, thread, 3)
+
+    expect(rendered).toContain('comment 0')
+    expect(rendered).toContain('comment 2')
+    expect(rendered).toContain('comment 4')
+  })
+
+  test('keeps the artefact comments the agent wrote, which are the point', () => {
+    // The reason the filter is by marker and not by author: the spec, the plan
+    // and every phase report carry the same login as the status comment, and
+    // they are what the model is being asked to read.
+    const rendered = renderThread(envelope, [at(1, 'agent', 'Here is the design spec.')])
+
+    expect(rendered).toContain('Here is the design spec.')
   })
 
   test('caps the rendered size regardless of comment count', () => {
@@ -1185,6 +1222,72 @@ describe('config', () => {
     expect(loadConfig({ ...baseEnv, AGENT_MAX_ATTEMPTS: raw }, '/repo').maxAttempts).toBe(3)
   })
 
+  test('builds the URL of the run doing the work', () => {
+    // Every one of these is set by GitHub in the environment of every step, and
+    // `scrubSecrets` matches by value, so none of them is stripped on the way
+    // past — which is why the run link needs no workflow change at all.
+    const config = loadConfig({ ...baseEnv, GITHUB_RUN_ID: '1482' }, '/repo')
+
+    expect(config.runUrl).toBe('https://github.com/acme/widgets/actions/runs/1482')
+  })
+
+  test('points a re-run at its own attempt', () => {
+    // A re-run's logs live under the attempt path. Linking the run without it
+    // from a job on attempt 3 points a maintainer at the run it superseded.
+    const config = loadConfig({ ...baseEnv, GITHUB_RUN_ID: '1482', GITHUB_RUN_ATTEMPT: '3' }, '/repo')
+
+    expect(config.runUrl).toBe('https://github.com/acme/widgets/actions/runs/1482/attempts/3')
+  })
+
+  test.each(['1', '', 'lots', undefined])('leaves the attempt off a first attempt (%p)', (attempt) => {
+    // GitHub's own run link omits it, and an unparseable value is a link
+    // problem, not a reason to refuse to start.
+    const config = loadConfig({ ...baseEnv, GITHUB_RUN_ID: '1482', GITHUB_RUN_ATTEMPT: attempt }, '/repo')
+
+    expect(config.runUrl).toBe('https://github.com/acme/widgets/actions/runs/1482')
+  })
+
+  test('has no run URL when there is no run', () => {
+    // A local `--event-path` run is an ordinary way to drive this CLI, not a
+    // misconfiguration, so this is `null` rather than a throw or a broken link.
+    expect(loadConfig(baseEnv, '/repo').runUrl).toBeNull()
+  })
+
+  test('links the run on the host the rest of the pipeline talks to', () => {
+    // Same reason `gitRemoteBase` is configurable: an Enterprise Server install
+    // answers on its own host, and github.com has none of its runs.
+    const enterprise = { ...baseEnv, GITHUB_SERVER_URL: 'https://git.acme.internal', GITHUB_RUN_ID: '7' }
+
+    expect(loadConfig(enterprise, '/repo').runUrl).toBe('https://git.acme.internal/acme/widgets/actions/runs/7')
+  })
+
+  test('labels live under `agent:` unless the repository says otherwise', () => {
+    expect(loadConfig(baseEnv, '/repo').labelPrefix).toBe('agent:')
+  })
+
+  test('a repository with its own conventions can name the namespace', () => {
+    // The same shape as `AGENT_REVIEW_COMMAND`, and for the same reason: a
+    // hardcoded label set is the papai-specific hardcoding S2-4 was re-opened
+    // for.
+    expect(loadConfig({ ...baseEnv, AGENT_LABEL_PREFIX: 'bot/' }, '/repo').labelPrefix).toBe('bot/')
+  })
+
+  test.each(['none', 'NONE', ' none '])('%p switches labelling off entirely', (raw) => {
+    expect(loadConfig({ ...baseEnv, AGENT_LABEL_PREFIX: raw }, '/repo').labelPrefix).toBeNull()
+  })
+
+  test.each(['a,b', 'ag\tent', 'x'.repeat(33)])('rejects the prefix %p at load', (raw) => {
+    // At load, where the message names the variable — not at the first API
+    // call, which is inside a best-effort path that swallows what it is told.
+    expect(() => loadConfig({ ...baseEnv, AGENT_LABEL_PREFIX: raw }, '/repo')).toThrow('AGENT_LABEL_PREFIX')
+  })
+
+  test('a blank prefix means unset, not an empty namespace', () => {
+    // An empty prefix would make every label on the issue look agent-owned to
+    // the reconcile, which removes any it cannot account for.
+    expect(loadConfig({ ...baseEnv, AGENT_LABEL_PREFIX: '   ' }, '/repo').labelPrefix).toBe('agent:')
+  })
+
   test('parseChecks falls back to the defaults', () => {
     expect(parseChecks(undefined).map((check) => check.name)).toEqual(['lint', 'typecheck', 'test'])
   })
@@ -1397,6 +1500,136 @@ describe('createOctokitApi', () => {
     expect(request?.body).toEqual({ title: 'Renamed (#42)', body: 'Closes #42' })
   })
 
+  test('reacts on the comment that raised the run', async () => {
+    // The two reaction endpoints differ only in the path they address, and the
+    // adapter is the only layer that knows which is which: a phase test asserts
+    // the target the pipeline chose, never the URL that carried it.
+    const captured: CapturedRequest[] = []
+
+    await recordingApi(captured).addReaction({ kind: 'comment', id: 8811 }, 'eyes')
+
+    const [request] = captured
+    expect(request?.method).toBe('POST')
+    expect(request?.url).toContain('/repos/acme/widgets/issues/comments/8811/reactions')
+    expect(request?.body).toEqual({ content: 'eyes' })
+  })
+
+  test('reacts on the issue itself when no comment raised the run', async () => {
+    const captured: CapturedRequest[] = []
+
+    await recordingApi(captured).addReaction({ kind: 'issue', number: 42 }, 'confused')
+
+    const [request] = captured
+    expect(request?.method).toBe('POST')
+    expect(request?.url).toContain('/repos/acme/widgets/issues/42/reactions')
+    // Not `/issues/comments/42/reactions`: the same number means two different
+    // things to the two endpoints, and reacting to comment 42 would land on a
+    // stranger's comment in some other issue entirely.
+    expect(request?.url).not.toContain('/issues/comments/')
+    expect(request?.body).toEqual({ content: 'confused' })
+  })
+
+  test('leaves the reaction content alone, as it does the branch names', async () => {
+    // A four-value union the pipeline picks itself has nowhere for a credential
+    // to hide, so it takes the same exemption from `clean` that `head`/`base` do
+    // — and a redactor that rewrote it would send GitHub a content it rejects.
+    const captured: CapturedRequest[] = []
+
+    await recordingApi(captured, PR_JSON, ['rocket']).addReaction({ kind: 'issue', number: 42 }, 'rocket')
+
+    expect(captured[0]?.body).toEqual({ content: 'rocket' })
+  })
+
+  test('edits an existing comment rather than posting a new one', async () => {
+    // The distinction the whole one-comment budget rests on: a status comment
+    // that POSTed on every tick would be a comment a minute.
+    const captured: CapturedRequest[] = []
+
+    await recordingApi(captured).updateComment(9, 'still working')
+
+    const [request] = captured
+    expect(request?.method).toBe('PATCH')
+    expect(request?.url).toContain('/repos/acme/widgets/issues/comments/9')
+    expect(request?.body).toEqual({ body: 'still working' })
+  })
+
+  test('reads the labels the issue carries', async () => {
+    const captured: CapturedRequest[] = []
+
+    const names = await recordingApi(captured, [{ name: 'bug' }, { name: 'agent:working' }]).listLabels(42)
+
+    expect(names).toEqual(['bug', 'agent:working'])
+    expect(captured[0]?.method).toBe('GET')
+    expect(captured[0]?.url).toContain('/repos/acme/widgets/issues/42/labels')
+    // Paginated: an issue with more than a page of labels would otherwise look
+    // to the reconcile like one whose labels it does not own, and it would add
+    // its own back on every run.
+    expect(captured[0]?.url).toContain('per_page=100')
+  })
+
+  test('adds labels in one request rather than one apiece', async () => {
+    const captured: CapturedRequest[] = []
+
+    await recordingApi(captured).addLabels(42, ['agent:implementing', 'agent:working'])
+
+    expect(captured[0]?.method).toBe('POST')
+    expect(captured[0]?.url).toContain('/repos/acme/widgets/issues/42/labels')
+    expect(captured[0]?.body).toEqual({ labels: ['agent:implementing', 'agent:working'] })
+  })
+
+  test('removes one label from the issue, not from the repository', async () => {
+    // `DELETE /issues/{n}/labels/{name}` takes it off this issue;
+    // `DELETE /labels/{name}` deletes it everywhere, which would strip the
+    // label off every other issue that carries it.
+    const captured: CapturedRequest[] = []
+
+    await recordingApi(captured).removeLabel(42, 'agent:working')
+
+    expect(captured[0]?.method).toBe('DELETE')
+    expect(captured[0]?.url).toContain('/repos/acme/widgets/issues/42/labels/agent%3Aworking')
+  })
+
+  test('creates a label with the colour the palette gave it', async () => {
+    const captured: CapturedRequest[] = []
+
+    await recordingApi(captured).createLabel('agent:needs-you', 'd4a72c')
+
+    expect(captured[0]?.method).toBe('POST')
+    expect(captured[0]?.url).toContain('/repos/acme/widgets/labels')
+    expect(captured[0]?.body).toEqual({ name: 'agent:needs-you', color: 'd4a72c' })
+  })
+
+  test('treats a label that already exists as created', async () => {
+    // Creation is unconditional — the alternative is listing every repository
+    // label on every run — so the second run onwards answers 422. Swallowed
+    // here, where the HTTP status still exists: one layer up it is an `Error`
+    // message indistinguishable from a real refusal.
+    const api = createOctokitApi({
+      token: 'tok',
+      owner: 'acme',
+      repo: 'widgets',
+      secrets: [],
+      fetch: () => Promise.resolve(new Response('{"message":"Validation Failed"}', { status: 422 })),
+    })
+
+    expect(await api.createLabel('agent:done', '0e8a16')).toBeUndefined()
+  })
+
+  test('still reports a refusal that is not "it already exists"', async () => {
+    // A token without `issues: write` answers 403 here, and swallowing that
+    // would make the reconcile believe a label it cannot write exists.
+    const api = createOctokitApi({
+      token: 'tok',
+      owner: 'acme',
+      repo: 'widgets',
+      secrets: [],
+      fetch: () =>
+        Promise.resolve(new Response('{"message":"Resource not accessible by integration"}', { status: 403 })),
+    })
+
+    await expect(api.createLabel('agent:done', '0e8a16')).rejects.toThrow()
+  })
+
   test('asks for pull requests in every state, so a merged one is not invisible', async () => {
     // With `state=open` the API answers `[]` for a merged pull request — the
     // same answer it gives for a branch that never had one — and delivery
@@ -1423,6 +1656,10 @@ describe('createOctokitApi', () => {
 
   test.each([
     ['an issue comment', (api: GitHubApi): Promise<unknown> => api.createComment(42, `FAIL token=${LEAKED}`)],
+    // The second method that carries free text, and so the second that has to
+    // redact it. A status body is assembled from the same activity summaries and
+    // state fields a comment is, and an edit is no less public than a post.
+    ['an edited comment', (api: GitHubApi): Promise<unknown> => api.updateComment(9, `status token=${LEAKED}`)],
     [
       'a new pull request body',
       (api: GitHubApi): Promise<unknown> =>

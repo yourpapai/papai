@@ -32,10 +32,16 @@ const api = (login: () => Promise<string>): GitHubApi => {
     getAuthenticatedLogin: login,
     listIssueComments: unused,
     createComment: unused,
+    updateComment: unused,
     getIssue: unused,
     findPullRequest: unused,
     createPullRequest: unused,
     updatePullRequest: unused,
+    addReaction: unused,
+    listLabels: unused,
+    addLabels: unused,
+    removeLabel: unused,
+    createLabel: unused,
   }
 }
 

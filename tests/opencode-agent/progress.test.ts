@@ -540,6 +540,39 @@ describe('withHeartbeat', () => {
     expect(timer.cancels).toBe(1)
   })
 
+  test('hands the same snapshot to a second reader, and still writes the log line', async () => {
+    // The heartbeat already knows everything the live status comment wants to
+    // say, and said it only into a log nobody has a link to. Routing it keeps
+    // one clock in the pipeline — and the log half is unchanged, which is the
+    // half a CI reader still depends on.
+    const { log, lines } = recorder()
+    const timer = manual()
+    const ticks: ProgressSnapshot[] = []
+
+    await withHeartbeat(Promise.resolve('done'), {
+      everyMs: 60_000,
+      log,
+      snapshot,
+      schedule: timer.schedule,
+      onTick: (progress) => void ticks.push(progress),
+    })
+    timer.fire()
+
+    expect(ticks).toEqual([snapshot()])
+    expect(lines).toHaveLength(1)
+    expect(lines[0]?.message).toContain('not stuck')
+  })
+
+  test('a heartbeat with no second reader still ticks', async () => {
+    const { log, lines } = recorder()
+    const timer = manual()
+
+    await withHeartbeat(Promise.resolve('done'), { everyMs: 60_000, log, snapshot, schedule: timer.schedule })
+    timer.fire()
+
+    expect(lines).toHaveLength(1)
+  })
+
   test('schedules nothing at all when disabled', async () => {
     const { log } = recorder()
     const timer = manual()

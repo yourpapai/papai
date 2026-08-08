@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { findLatestBlock, readBlock, renderBlock } from './blocks.js'
+import { locateLatestBlock, readBlock, renderBlock } from './blocks.js'
 import type { IssueComment } from './blocks.js'
 import { agentStateSchema, InvalidTransitionError, STATE_VERSION } from './types.js'
 import type { AgentState, Phase, TransitionSignal } from './types.js'
@@ -118,7 +118,38 @@ export const findLatestState = (
   comments: readonly IssueComment[],
   agentLogin: string,
   issueId: number,
-): AgentState | null => toState(findLatestBlock(comments, agentLogin, STATE_MARKER, ownedBy(issueId)))
+): AgentState | null => {
+  const found = findLatestStateComment(comments, agentLogin, issueId)
+  return found === null ? null : found.state
+}
+
+/** The restored state, together with the comment it was restored from. */
+export interface StateComment {
+  comment: IssueComment
+  state: AgentState
+}
+
+/**
+ * The same scan as {@link findLatestState}, keeping the comment it selected.
+ *
+ * `state-persist.ts` rewrites that comment's block in place instead of posting a
+ * new one. Both functions come off one scan on purpose: the target of a rewrite
+ * has to be the comment the *reader* will look at next, and two independent
+ * scans agreeing is a coincidence rather than a property.
+ */
+export const findLatestStateComment = (
+  comments: readonly IssueComment[],
+  agentLogin: string,
+  issueId: number,
+): StateComment | null => {
+  const found = locateLatestBlock(comments, agentLogin, STATE_MARKER, ownedBy(issueId))
+  if (found === null) return null
+
+  const state = toState(found.block)
+  // `ownedBy` already parsed it, so this cannot be null; narrowing rather than
+  // asserting keeps that true if the acceptance predicate ever loosens.
+  return state === null ? null : { comment: found.comment, state }
+}
 
 const ownedBy =
   (issueId: number) =>

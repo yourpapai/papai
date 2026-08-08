@@ -58,7 +58,7 @@ export const handleCiFix: PhaseHandler = async (input): Promise<PhaseOutcome> =>
   const pushed = await commitAndPush(input, branch)
   deps.log.info({ issue: state.issueId, branch, passed: outcome.passed, pushed }, 'CI fix round finished')
 
-  return { signal: 'CI_FIXED', comment: renderCiReport(input, outcome, pushed) }
+  return { signal: 'CI_FIXED', comment: renderCiReport(input, outcome, pushed, deps.config.runUrl) }
 }
 
 const commitAndPush = async (input: PhaseInput, branch: string): Promise<boolean> => {
@@ -71,18 +71,38 @@ const commitAndPush = async (input: PhaseInput, branch: string): Promise<boolean
   return true
 }
 
-const runUrl = (input: PhaseInput): string | null => (input.trigger.kind === 'ci' ? input.trigger.runUrl : null)
+/** The red run that brought the pipeline here; absent unless CI triggered it. */
+const redRunUrl = (input: PhaseInput): string | null => (input.trigger.kind === 'ci' ? input.trigger.runUrl : null)
 
-const renderCiReport = (input: PhaseInput, outcome: CheckLoopResult, pushed: boolean): string => {
+/**
+ * The two runs this comment is about, told apart.
+ *
+ * There have always been two — the red one being repaired and the agent one
+ * doing the repairing — and this comment used to print only the first, under the
+ * bare word "run". A maintainer reading it had no way to tell which was meant,
+ * and no link at all to the job whose log would say what the repair actually
+ * did. Both come in as arguments: the red one is a fact about the event, the
+ * agent one a fact about the environment, and neither is a renderer's to fetch.
+ */
+const runLines = (red: string | null, agent: string | null): readonly string[] => [
+  ...(red === null ? [] : [`- Red run I am repairing: ${red}`]),
+  ...(agent === null ? [] : [`- This repair ran in: ${agent}`]),
+]
+
+const renderCiReport = (
+  input: PhaseInput,
+  outcome: CheckLoopResult,
+  pushed: boolean,
+  agentRunUrl: string | null,
+): string => {
   const { state, deps } = input
-  const url = runUrl(input)
   const lines = [
     `### CI fix attempt ${state.ciAttempts} of ${deps.config.maxCiAttempts}`,
     '',
-    url === null ? '' : `Triggered by a red run: ${url}`,
+    ...runLines(redRunUrl(input), agentRunUrl),
     `- Local checks: ${outcome.passed ? '✅ green' : '❌ still red'} after ${outcome.rounds} round(s)`,
     `- Pushed a fix: ${pushed ? 'yes' : 'no — nothing changed'}`,
-  ].filter((line) => line !== '')
+  ]
 
   if (!outcome.passed) {
     lines.push(

@@ -4,11 +4,15 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import { z } from 'zod'
 
+import { DEFAULT_LABEL_PREFIX } from '../../opencode-agent/src/config.js'
+import { issueNumberFromBranch } from '../../opencode-agent/src/git.js'
+import { WORKING_LABEL } from '../../opencode-agent/src/presentation.js'
 import { REPORTED_OUTPUT } from '../../opencode-agent/src/step-output.js'
 
 /**
@@ -147,6 +151,76 @@ const step = (fragment: string): WorkflowStep =>
 
 const checkoutStep = steps.find((candidate) => candidate.uses.startsWith('actions/checkout')) ?? NO_STEP
 
+/** The two steps whose bodies are executed below, rather than only read. */
+const resolveStep = step('resolve the issue number')
+const cleanupStep = step('working label')
+
+interface StepRun {
+  /** What the runner would colour the step by — and, for a best-effort step, the assertion. */
+  exitCode: number
+  /** `$GITHUB_OUTPUT` as the runner reads it back, so a later step's `if:` can be reasoned about. */
+  outputs: Record<string, string>
+  /** Every `gh` invocation the body made, argv joined: the whole of what it wrote to GitHub. */
+  gh: readonly string[]
+}
+
+const parseOutputs = (raw: string): Record<string, string> =>
+  Object.fromEntries(
+    raw
+      .split('\n')
+      .filter((line) => line.includes('='))
+      .map((line) => [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)]),
+  )
+
+/**
+ * Runs a step's `run:` body the way the runner would.
+ *
+ * Reading the YAML is enough for a condition — an `if:` is a value, and a test
+ * can compare it. It is not enough for a body: "resolves the same issue number
+ * the pipeline does", "no-ops under `AGENT_LABEL_PREFIX: none`" and "cannot fail
+ * the job" are all claims about what a shell script *does*, and a test that only
+ * greps the script for `none` passes against a script that reads the variable
+ * and ignores it. So the body is extracted from the workflow and executed:
+ * `bash -e` (the runner's default shell on Linux), `$GITHUB_OUTPUT` pointed
+ * somewhere readable, and `gh` replaced by a stub on `PATH` that records its
+ * argv and nothing else — no network, per this workspace's rule, and no way for
+ * a body under test to reach GitHub even if it tried.
+ */
+const runStepScript = async (script: string, env: Record<string, string>, ghExitCode = 0): Promise<StepRun> => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'agent-workflow-'))
+
+  try {
+    const ghLog = path.join(dir, 'gh.log')
+    const stub = path.join(dir, 'gh')
+    writeFileSync(stub, `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> '${ghLog}'\nexit ${ghExitCode}\n`)
+    chmodSync(stub, 0o755)
+
+    const outputPath = path.join(dir, 'github-output')
+    writeFileSync(outputPath, '')
+    const scriptPath = path.join(dir, 'step.sh')
+    writeFileSync(scriptPath, script)
+
+    const child = Bun.spawn(['bash', '-e', scriptPath], {
+      env: { PATH: `${dir}:${process.env['PATH'] ?? ''}`, GITHUB_OUTPUT: outputPath, ...env },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const exitCode = await child.exited
+
+    return {
+      exitCode,
+      outputs: parseOutputs(readFileSync(outputPath, 'utf8')),
+      gh: existsSync(ghLog)
+        ? readFileSync(ghLog, 'utf8')
+            .split('\n')
+            .filter((line) => line.length > 0)
+        : [],
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
 /**
  * Knobs the workflow deliberately does not forward, each with a reason a reader
  * can check. Anything else the README documents has to be passed through.
@@ -268,8 +342,29 @@ describe('steps', () => {
   })
 
   test('reports an infrastructure failure only when there is an issue to post to', () => {
+    // The issue number comes from the resolve step, never from the payload
+    // field directly: `github.event.issue.number` is empty on a `workflow_run`
+    // event, so gating on it here excluded every CI-fix run — a runner that died
+    // mid-repair posted nothing anywhere at all.
     expect(step('infrastructure failure').if).toContain('failure()')
-    expect(step('infrastructure failure').if).toContain('github.event.issue.number')
+    expect(step('infrastructure failure').if).toContain(`steps.${resolveStep.id}.outputs.number`)
+    expect(step('infrastructure failure').if).not.toContain('github.event.issue.number')
+    expect(step('infrastructure failure').env['ISSUE_NUMBER']).toBe(`\${{ steps.${resolveStep.id}.outputs.number }}`)
+  })
+
+  test('covers a cancelled job, which failure() does not select', () => {
+    // A run that looks hung is a run somebody cancels, and that is precisely
+    // when the issue must not fall silent. `failure()` is false for a cancelled
+    // job, so before this the maintainer who cancelled got nothing.
+    expect(step('infrastructure failure').if).toContain('cancelled()')
+  })
+
+  test('keeps the widened status test parenthesised, inside the reported gate', () => {
+    // `&&` binds tighter than `||` in GitHub expressions, so an unbracketed
+    // `failure() || cancelled() && …` reads as `failure() || (cancelled() && …)`
+    // — which restores the unconditional `if: failure()` this step spent a
+    // commit getting away from, double comment and all.
+    expect(step('infrastructure failure').if).toContain('(failure() || cancelled())')
   })
 
   test('falls back only when the pipeline did not report on the issue itself', () => {
@@ -284,6 +379,135 @@ describe('steps', () => {
     expect(step('infrastructure failure').if).toContain(
       `steps.${step('agent pipeline').id}.outputs.${REPORTED_OUTPUT} != 'true'`,
     )
+  })
+})
+
+/**
+ * Branch names the resolve step and `issueNumberFromBranch` must agree on.
+ *
+ * The realistic ones prove the CI-fix path resolves at all; the rest are the
+ * shapes a hand-written shell parse gets wrong — a nested path under the prefix,
+ * a suffix that is not digits, a branch that merely contains the prefix, issue
+ * zero, and a suffix large enough to wrap 64-bit arithmetic into a number that
+ * looks like somebody's issue.
+ */
+const BRANCH_CORPUS = [
+  'agent/issue-42',
+  'agent/issue-7',
+  'agent/issue-007',
+  'agent/issue-0',
+  'agent/issue-',
+  'agent/issue-x',
+  'agent/issue-12a',
+  'agent/issue-12/nested',
+  'feature/agent/issue-3',
+  'main',
+  'agent/issue-9007199254740991',
+  'agent/issue-9007199254740993',
+  'agent/issue-99999999999999999999',
+] as const
+
+/** What the resolve step printed to `$GITHUB_OUTPUT`, empty when it resolved nothing. */
+const resolvedNumber = async (env: Record<string, string>): Promise<string> => {
+  const run = await runStepScript(resolveStep.run, env)
+  return run.outputs['number'] ?? ''
+}
+
+/** The same answer from the pipeline's parser, in the shape a step output takes. */
+const parsedNumber = (branch: string): string => String(issueNumberFromBranch(branch) ?? '')
+
+describe('the issue number both feedback steps read', () => {
+  test('resolves before anything that can fail', () => {
+    // The whole point of the step: a job that dies in `bun install`, or is
+    // cancelled while the model is thinking, still has to know where to post. A
+    // resolve that depends on the checkout is a resolve that is absent in the
+    // cases it exists for.
+    expect(steps[0]?.name.toLowerCase()).toContain('resolve the issue number')
+    expect(steps[0]?.uses).toBe('')
+  })
+
+  test('agrees with issueNumberFromBranch on every branch shape', async () => {
+    // The workflow cannot import the pipeline's parser — GitHub expressions have
+    // no regular expressions and the checkout may not have happened yet — so the
+    // two parses exist twice and this is what keeps them one behaviour. Reading
+    // the script for the string `agent/issue-` would not: the interesting half
+    // is which suffixes it rejects.
+    const resolved = await Promise.all(
+      BRANCH_CORPUS.map(
+        async (branch) => `${branch} -> ${await resolvedNumber({ ISSUE_NUMBER: '', HEAD_BRANCH: branch })}`,
+      ),
+    )
+
+    expect(resolved).toEqual(BRANCH_CORPUS.map((branch) => `${branch} -> ${parsedNumber(branch)}`))
+  })
+
+  test('takes the issue event number when there is one, the branch when there is not', async () => {
+    const issueEvent = await resolvedNumber({ ISSUE_NUMBER: '42', HEAD_BRANCH: '' })
+    const ciEvent = await resolvedNumber({ ISSUE_NUMBER: '', HEAD_BRANCH: 'agent/issue-42' })
+    // No real payload carries both; pinning the precedence anyway, because the
+    // payload field is the direct answer and the branch is the inference.
+    const both = await resolvedNumber({ ISSUE_NUMBER: '17', HEAD_BRANCH: 'agent/issue-42' })
+
+    expect(issueEvent).toBe('42')
+    expect(ciEvent).toBe('42')
+    expect(both).toBe('17')
+  })
+})
+
+describe('the working-label cleanup', () => {
+  test('runs whatever the job did', () => {
+    // `agent:working` has exactly one failure mode: a runner killed mid-flight
+    // leaves it on. Every condition narrower than `always()` is a condition the
+    // kill can land outside of.
+    expect(cleanupStep.if).toBe('always()')
+    expect(cleanupStep.env['ISSUE_NUMBER']).toBe(`\${{ steps.${resolveStep.id}.outputs.number }}`)
+  })
+
+  test('removes the working label and touches nothing else', async () => {
+    const run = await runStepScript(cleanupStep.run, { ISSUE_NUMBER: '42', LABEL_PREFIX: '' })
+
+    // Not a clear-and-reapply: every other agent label names the state the issue
+    // is parked in, and this step has no idea which that is.
+    expect(run.gh).toEqual([`issue edit 42 --remove-label ${DEFAULT_LABEL_PREFIX}${WORKING_LABEL.suffix}`])
+    expect(run.exitCode).toBe(0)
+  })
+
+  test('applies the operator prefix rather than a hardcoded namespace', async () => {
+    const run = await runStepScript(cleanupStep.run, { ISSUE_NUMBER: '42', LABEL_PREFIX: 'bot/' })
+
+    expect(run.gh).toEqual([`issue edit 42 --remove-label bot/${WORKING_LABEL.suffix}`])
+  })
+
+  test('touches no label at all when labelling is switched off', async () => {
+    // A repository that opted out of the channel opted out of every writer on
+    // it. `labelPrefix()` trims and compares case-insensitively, so this does.
+    const runs = await Promise.all(
+      ['none', 'None', '  none  '].map((prefix) =>
+        runStepScript(cleanupStep.run, { ISSUE_NUMBER: '42', LABEL_PREFIX: prefix }),
+      ),
+    )
+
+    expect(runs.map((run) => run.gh)).toEqual([[], [], []])
+    expect(runs.map((run) => run.exitCode)).toEqual([0, 0, 0])
+  })
+
+  test('does nothing when no issue number could be resolved', async () => {
+    const run = await runStepScript(cleanupStep.run, { ISSUE_NUMBER: '', LABEL_PREFIX: '' })
+
+    expect(run.gh).toEqual([])
+    expect(run.exitCode).toBe(0)
+  })
+
+  test('never fails the job when the label write fails', async () => {
+    // The rule labels.ts states, on the one writer that is not in labels.ts. A
+    // rejected removal is the *ordinary* case on a healthy run — the in-run
+    // reconcile already took the label off, and removing a label an issue does
+    // not carry is a 404 — so a step that propagated it would paint most green
+    // runs red.
+    const run = await runStepScript(cleanupStep.run, { ISSUE_NUMBER: '42', LABEL_PREFIX: '' }, 1)
+
+    expect(run.gh).toHaveLength(1)
+    expect(run.exitCode).toBe(0)
   })
 })
 

@@ -69,6 +69,63 @@ jobs:
        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association || github.event.issue.author_association))
 
     steps:
+      # Which issue this run belongs to, resolved once and read by both feedback
+      # steps at the bottom of the job. First, before the checkout, because that
+      # is the point: a run that dies in `bun install`, or is cancelled while the
+      # model is thinking, must still know where to post — so this step may not
+      # depend on anything that can fail.
+      #
+      # Two sources, because the two event kinds carry different things.
+      # `github.event.issue.number` is the issue-triggered path and is empty on a
+      # `workflow_run` event, which knows only the branch that went red. That gap
+      # is not cosmetic: the fallback step below was gated on the issue number
+      # alone, so a runner that died during a CI-fix run posted nothing anywhere.
+      # `agent/issue-<n>` is the one link from a branch back to the conversation
+      # that started it, and `issueNumberFromBranch` in opencode-agent/src/git.ts
+      # already parses exactly that shape. The two must agree, so
+      # tests/opencode-agent/workflow.test.ts runs *this script* against *that
+      # function* over a corpus of branch names rather than trusting two
+      # hand-written parsers to stay in step.
+      - name: Resolve the issue number this run belongs to
+        id: issue
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          number="$ISSUE_NUMBER"
+          if [ -z "$number" ]; then
+            case "$HEAD_BRANCH" in
+              # Anchored at both ends like BRANCH_PATTERN is: a suffix carrying
+              # anything but digits — `agent/issue-12/nested`, `agent/issue-x` —
+              # is not a branch this pipeline owns, and a branch that merely
+              # contains the prefix is not one either.
+              agent/issue-*[!0-9]*) ;;
+              agent/issue-?*) number="${HEAD_BRANCH#agent/issue-}" ;;
+            esac
+          fi
+          # The same bounds `issueNumberFromBranch` applies: positive, and inside
+          # the safe-integer range. The length test comes first so an absurd
+          # suffix cannot wrap in the arithmetic below into a number that looks
+          # like somebody's issue.
+          if [ "${#number}" -gt 16 ]; then number=''; fi
+          if [ -n "$number" ]; then
+            # Leading zeros stripped so the value printed matches the integer
+            # `issueNumberFromBranch` would have parsed — `agent/issue-007` is
+            # issue 7, and the differential test below compares the two.
+            #
+            # `sed` rather than the shorter `$((10#$number))`. That arithmetic
+            # form crashes Semgrep's `gha-curl-pipe-shell` rule with a
+            # MatchingError, and `--strict` turns one crashed rule into a failed
+            # security scan for the whole repository. Bisected to this line.
+            # `test` is safe to compare with directly: unlike `$(( ))` it reads a
+            # leading zero as decimal, so the strip is about the printed value,
+            # not about the comparison.
+            number="$(printf '%s' "$number" | sed 's/^0*//')"
+            number="${number:-0}"
+            if [ "$number" -le 0 ] || [ "$number" -gt 9007199254740991 ]; then number=''; fi
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -178,6 +235,10 @@ jobs:
           AGENT_MAX_ATTEMPTS: ${{ vars.AGENT_MAX_ATTEMPTS }}
           AGENT_TIMEOUT_MS: ${{ vars.AGENT_TIMEOUT_MS }}
           AGENT_MAX_TOKENS: ${{ vars.AGENT_MAX_TOKENS }}
+          # The namespace the status labels live under, or `none` to switch
+          # them off. Forwarded like the other knobs because a repository with
+          # its own label conventions is the ordinary case, not the exception.
+          AGENT_LABEL_PREFIX: ${{ vars.AGENT_LABEL_PREFIX }}
           AGENT_LOG_LEVEL: ${{ vars.AGENT_LOG_LEVEL || 'info' }}
         run: |
           bun run opencode-agent/src/index.ts \
@@ -185,7 +246,7 @@ jobs:
             --event-name "$GITHUB_EVENT_NAME" \
             --repo-root "$GITHUB_WORKSPACE"
 
-      # For a job that died with nothing on the issue: an install failure, a
+      # For a job that stopped with nothing on the issue: an install failure, a
       # runner timeout, a cancelled job, a config error thrown before the first
       # comment could be posted, a crash.
       #
@@ -204,16 +265,92 @@ jobs:
       # runner processes a step's file commands in a `finally` around the
       # handler, so the marker survives that same step exiting 1. The job stays
       # red either way — the exit code is real signal.
+      #
+      # That gate is the part that works and it is unchanged. The other two
+      # conditions were the ones still too narrow, and both widenings sit
+      # *inside* it so neither can bring the double comment back:
+      #
+      #   - the issue number now comes from the resolve step, so the accident
+      #     above stops cutting both ways. A CI-fix runner that dies used to be
+      #     spared the duplicate and denied the report; it gets the report now,
+      #     and the `reported` gate is what keeps the duplicate away.
+      #   - `cancelled()` joins `failure()`. A cancelled job is the documented
+      #     consequence of a run with no visible progress: a run that looks hung
+      #     is a run somebody cancels, and that is exactly when the issue must
+      #     not fall silent. `failure()` is false for a cancelled job, so it was
+      #     never covered.
+      #
+      # The heading followed `cancelled()` in: it read "Agent job failed", which
+      # is now wrong for half of what this step speaks for. Telling a maintainer
+      # who cancelled a run that it failed is a small lie the comment has no
+      # need to tell, and "did not finish" is true of a crash, a runner timeout
+      # and a cancellation alike — which is exactly the set the `reported` gate
+      # leaves for this step.
       - name: Report an infrastructure failure on the issue
-        if: failure() && github.event.issue.number && steps.pipeline.outputs.reported != 'true'
+        if: (failure() || cancelled()) && steps.issue.outputs.number && steps.pipeline.outputs.reported != 'true'
         env:
           GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           printf '%s\n\n%s\n\n%s\n' \
-            '### Agent job failed' \
-            "The workflow run itself failed before or during the pipeline. Logs: $RUN_URL" \
+            '### Agent job did not finish' \
+            "The workflow run failed or was cancelled before or during the pipeline. Logs: $RUN_URL" \
             'The issue state is unchanged; reply `/retry` once the cause is addressed.' \
             > /tmp/agent-failure.md
           gh issue comment "$ISSUE_NUMBER" --body-file /tmp/agent-failure.md
+
+      # The second half of the `agent:working` mitigation, and it has to live
+      # here rather than in the pipeline. The in-run reconcile in
+      # opencode-agent/src/labels.ts takes the marker off at the end of every run
+      # that reaches its end — and the one failure mode the marker has is a run
+      # that never does: a runner killed by `timeout-minutes`, a cancelled job,
+      # an out-of-memory kill. Neither mitigation covers the other. This step
+      # cannot repair a label somebody edited by hand and cannot know which
+      # labels the state implies; the reconcile cannot run in a process that is
+      # already gone. So an issue is left claiming an agent is working on it
+      # until somebody happens to trigger another run, which is the state a list
+      # view is least able to argue with.
+      #
+      # Best-effort like every other feedback write, per the rule labels.ts
+      # states: a job whose only red step is this one has reported a failure that
+      # did not happen. Note that a failure here is the *ordinary* case on a
+      # healthy run — the reconcile already removed the label, and removing a
+      # label an issue does not carry is a 404.
+      - name: Take the working label off the issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+          # Read exactly the way `labelPrefix()` in src/config-values.ts reads
+          # it: trimmed, defaulted, and `none` compared case-insensitively. A
+          # repository that switched labelling off must not have this step reach
+          # for its labels either — opting out of a channel has to opt out of
+          # every writer on it, or the knob is a half-truth.
+          LABEL_PREFIX: ${{ vars.AGENT_LABEL_PREFIX }}
+        run: |
+          # `sed` rather than the shorter `${VAR##+([[:space:]])}`: extglob is
+          # the one construct in this file Semgrep's bash grammar cannot parse,
+          # and `--strict` fails the whole security scan on a single unparsed
+          # line — so an unscannable workflow costs more than a spawned process.
+          prefix="$(printf '%s' "$LABEL_PREFIX" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+          prefix="${prefix:-agent:}"
+
+          if [ "${prefix,,}" = 'none' ]; then
+            echo 'AGENT_LABEL_PREFIX=none: labelling is switched off, leaving the labels alone.'
+            exit 0
+          fi
+          if [ -z "$ISSUE_NUMBER" ]; then
+            echo 'No issue number for this run; there is nothing to clean up.'
+            exit 0
+          fi
+
+          # One label, never a clear-and-reapply: every other agent label states
+          # which state the issue is parked in, and this step has no idea which
+          # that is. Only the marker that claims a run is in flight is this
+          # step's to contradict.
+          # One statement, not a `\`-continued `||`: that continuation is the
+          # second thing Semgrep's bash grammar gives up on here.
+          if ! gh issue edit "$ISSUE_NUMBER" --remove-label "${prefix}working"; then
+            echo "Could not remove ${prefix}working; the next run's reconcile takes it off."
+          fi

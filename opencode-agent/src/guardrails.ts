@@ -23,6 +23,16 @@ export interface IssueTriggerEvent {
   issueBody: string
   isPullRequest: boolean
   commentBody: string | null
+  /**
+   * Id of the comment that raised this run; `null` for `issues.opened`, which
+   * has no comment to address.
+   *
+   * The schema below has always parsed it and this function always threw it
+   * away, which left the pipeline unable to address the one place the person
+   * waiting is actually looking. Carried now so feedback can land there rather
+   * than on the issue as a whole.
+   */
+  commentId: number | null
   repositoryOwner: string | null
   /** `repository.default_branch`; `null` when the payload omitted it. */
   defaultBranch: string | null
@@ -117,6 +127,7 @@ const parseIssueEvent = (eventName: string, payload: unknown): IssueTriggerEvent
     issueBody: issue.body ?? '',
     isPullRequest: issue.pull_request !== undefined && issue.pull_request !== null,
     commentBody: comment === undefined ? null : comment.body,
+    commentId: comment === undefined ? null : comment.id,
     repositoryOwner: repository === undefined ? null : repository.owner.login,
     defaultBranch: repository?.default_branch ?? null,
   }

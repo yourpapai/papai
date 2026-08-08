@@ -13,7 +13,7 @@ import type { Logger } from './logger.js'
 import { buildOpencodeConfig, modelRef } from './openai-config.js'
 import type { OpenAiSettings } from './openai-config.js'
 import { createProgressTracker, followEvents, withHeartbeat } from './progress.js'
-import type { EventFollower, ProgressTracker } from './progress.js'
+import type { EventFollower, ProgressSnapshot, ProgressTracker } from './progress.js'
 import { buildBody, decodeReply, decodeSessionId, decodeSessionUsage, parseModelRef } from './sdk-contract.js'
 import type { SdkPromptBody, SessionUsage } from './sdk-contract.js'
 
@@ -86,6 +86,16 @@ export interface OpenCodeAgentOptions {
   log: Logger
   /** Heartbeat period while a turn is outstanding. `0` disables it. */
   heartbeatMs?: number
+  /**
+   * Where each heartbeat goes besides the log.
+   *
+   * The adapter is the only layer that can see a turn in flight, and the live
+   * status comment on the issue is the only surface a maintainer has a link to
+   * — so the snapshot has to be handed out from here or the two never meet.
+   * Optional because most runs have nowhere to send it: a local `--event-path`
+   * run has no status comment at all.
+   */
+  onTick?: (snapshot: ProgressSnapshot) => void
   /** Injection seam for tests. Defaults to the real SDK server + client. */
   connect?: () => Promise<OpenCodeConnection>
 }
@@ -275,5 +285,10 @@ const bounded = (work: Promise<unknown>, options: OpenCodeAgentOptions, tracker:
         `The model did not answer within ${elapsed}ms (AGENT_TIMEOUT_MS). Raise it, or narrow the phase's work.`,
       ),
     ),
-    { everyMs: options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS, log: options.log, snapshot: tracker.snapshot },
+    {
+      everyMs: options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS,
+      log: options.log,
+      snapshot: tracker.snapshot,
+      onTick: options.onTick,
+    },
   )

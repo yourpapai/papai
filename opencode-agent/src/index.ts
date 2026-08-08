@@ -11,6 +11,7 @@ import { pathToFileURL } from 'node:url'
 import { loadConfig } from './config.js'
 import type { PipelineConfig } from './config.js'
 import { assembleDeps } from './deps.js'
+import { createOctokitApi } from './github.js'
 import type { FetchLike } from './github.js'
 import { parseTriggerEvent } from './guardrails.js'
 import type { TriggerEvent } from './guardrails.js'
@@ -25,6 +26,7 @@ import type { ProviderProxy } from './provider-proxy.js'
 import { pipelineSecrets, scrubSecrets } from './secrets.js'
 import { runCommand } from './shell.js'
 import type { CommandRunner } from './shell.js'
+import { createStatusReporter } from './status-reporter.js'
 import { recordReport } from './step-output.js'
 import { errorMessage } from './types.js'
 import type { RunResult } from './types.js'
@@ -174,6 +176,19 @@ export const contain = ({ config, event, log, run, options, createAgent }: Conta
   const contained: PipelineConfig = { ...config, openai: proxiedSettings(config.openai, proxy) }
   const create = createAgent ?? createOpenCodeAgent
 
+  // In this order because each needs the one before it: the status comment is
+  // written through the GitHub adapter, and the session's heartbeat is what
+  // keeps the status comment current, so the session is built last and handed
+  // the reporter's tick.
+  const github = createOctokitApi({
+    token: config.githubToken,
+    owner: config.owner,
+    repo: config.repo,
+    secrets,
+    fetch: options.fetch,
+  })
+  const status = createStatusReporter({ github, log, config: contained, now: () => Date.now() })
+
   const agent = memoizeAgent(() =>
     create({
       directory: contained.repoRoot,
@@ -181,13 +196,17 @@ export const contain = ({ config, event, log, run, options, createAgent }: Conta
       sessionTitle: `issue-${event.issueNumber}`,
       timeoutMs: contained.agentTimeoutMs,
       log,
+      // Not awaited, and it never rejects: reporting must not be able to fail
+      // the turn it is reporting on, and a heartbeat that waited on an HTTP
+      // round trip would no longer be a heartbeat.
+      onTick: (snapshot) => void status.tick(snapshot),
     }),
   )
 
   return {
     proxy,
     agent,
-    deps: assembleDeps({ config: contained, secrets, event, env: options.env, run, log, agent, fetch: options.fetch }),
+    deps: assembleDeps({ config: contained, secrets, event, env: options.env, run, log, agent, github, status }),
   }
 }
 
