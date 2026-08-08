@@ -594,7 +594,7 @@ comment in this pipeline is written from a finished phase outcome and is
 terminal by construction.
 
 ```markdown
-### 🛠️ Writing and reviewing the code — run in progress
+### 🛠️ Writing the code — run in progress
 
 **Job:** [this run](https://github.com/acme/widgets/actions/runs/1482) · started 14:02 UTC
 **Branch:** `agent/issue-42` · **Pull request:** _not opened yet_

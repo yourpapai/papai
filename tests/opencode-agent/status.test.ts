@@ -92,7 +92,7 @@ describe('renderStatus', () => {
     // is exactly what one presentation table exists to prevent.
     const body = renderStatus(view())
 
-    expect(body.split('\n')[0]).toBe('### 🛠️ Writing and reviewing the code — run in progress')
+    expect(body.split('\n')[0]).toBe('### 🛠️ Writing the code — run in progress')
   })
 
   test('links the job that is doing the work, and says when it started', () => {
@@ -289,7 +289,7 @@ describe('createStatusReporter', () => {
       expect(io.created).toHaveLength(1)
       expect(io.edits).toHaveLength(1)
       expect(io.edits[0]?.id).toBe(900)
-      expect(io.edits[0]?.body).toContain('Writing and reviewing the code')
+      expect(io.edits[0]?.body).toContain('Writing the code')
     })()
   })
 
@@ -437,7 +437,7 @@ describe('persistState', () => {
       withState(1, { phase: 'DESIGN_SPEC' }),
       withState(2, { phase: 'PLAN_REVIEW', tokensSpent: 100 }),
       { id: 3, body: 'looks good to me', authorLogin: 'maintainer' },
-      agentComment(4, '### 🛠️ Writing and reviewing the code — run in progress'),
+      agentComment(4, '### 🛠️ Writing the code — run in progress'),
     ]
     const edits: { id: number; body: string }[] = []
 
