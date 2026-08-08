@@ -30,10 +30,11 @@ const IMPLEMENT_INSTRUCTIONS = [
  * killed with the job discarded an implementation that had succeeded, and the
  * `/retry` that followed paid for a second model turn to redo it.
  *
- * The review is `CODE_REVIEW` now, entered by `/review` on the delivered pull
- * request. Do not grow it back in here: two independently expensive operations
- * with two independent failure modes sharing one phase, one job and one resume
- * point is the whole of what that split undid.
+ * The review is `CODE_REVIEW` now, entered by an explicit `/review` — typed on
+ * the issue, or on the delivered pull request, which resolves back to the same
+ * issue before anything else runs. Do not grow it back in here: two
+ * independently expensive operations with two independent failure modes sharing
+ * one phase, one job and one resume point is the whole of what that split undid.
  */
 export const handleImplement: PhaseHandler = async (input): Promise<PhaseOutcome> => {
   const { deps, state } = input

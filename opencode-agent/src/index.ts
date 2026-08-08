@@ -8,19 +8,20 @@ import path from 'node:path'
 import process from 'node:process'
 import { pathToFileURL } from 'node:url'
 
+import { memoizeAgent } from './agent-handle.js'
+import type { AgentHandle } from './agent-handle.js'
 import { loadConfig } from './config.js'
 import type { PipelineConfig } from './config.js'
 import { assembleDeps } from './deps.js'
 import { createOctokitApi } from './github.js'
-import type { FetchLike } from './github.js'
-import { parseTriggerEvent } from './guardrails.js'
-import type { TriggerEvent } from './guardrails.js'
+import type { FetchLike, GitHubApi } from './github.js'
 import { createPipelineLogger } from './logger.js'
 import type { Logger, LogLevel } from './logger.js'
 import { createOpenCodeAgent } from './opencode-adapter.js'
 import type { OpenCodeAgent, OpenCodeAgentOptions } from './opencode-adapter.js'
 import { runPipeline } from './orchestrator.js'
 import type { PhaseDeps } from './phase-context.js'
+import { resolvePullRequestTrigger } from './pr-trigger.js'
 import { proxiedSettings, startProviderProxy } from './provider-proxy.js'
 import type { ProviderProxy } from './provider-proxy.js'
 import { pipelineSecrets, scrubSecrets } from './secrets.js'
@@ -28,6 +29,8 @@ import { runCommand } from './shell.js'
 import type { CommandRunner } from './shell.js'
 import { createStatusReporter } from './status-reporter.js'
 import { recordReport } from './step-output.js'
+import { parseTriggerEvent } from './trigger-events.js'
+import type { TriggerEvent } from './trigger-events.js'
 import { errorMessage } from './types.js'
 import type { RunResult } from './types.js'
 
@@ -85,49 +88,6 @@ export const parseArgs = (argv: readonly string[], env: NodeJS.ProcessEnv): CliA
   }
 }
 
-export interface AgentHandle {
-  get: () => Promise<OpenCodeAgent>
-  /**
-   * Tokens this job has spent, or `0` when no session was ever opened.
-   *
-   * Zero is the honest answer, not a fallback: most phases never prompt the
-   * model, and booting a server to ask what it has not spent would cost more
-   * than the guardrail saves.
-   */
-  tokensUsed: () => Promise<number>
-  close: () => Promise<void>
-}
-
-/**
- * Boots the OpenCode session at most once per job, and exposes it for closing.
- *
- * Closing matters more than it looks: the session owns a spawned
- * `opencode serve` holding a listening socket, so a run that forgets to close
- * leaves the process alive after its work is done. Takes the factory as an
- * argument so this — the part with the actual logic — is testable without
- * booting a real server.
- */
-export const memoizeAgent = (create: () => Promise<OpenCodeAgent>): AgentHandle => {
-  let pending: Promise<OpenCodeAgent> | null = null
-
-  return {
-    get: () => {
-      pending ??= create()
-      return pending
-    },
-    tokensUsed: async () => {
-      if (pending === null) return 0
-      return (await pending).tokensUsed()
-    },
-    // Never boots a server just to shut one down, and never turns a teardown
-    // failure into a pipeline failure.
-    close: async () => {
-      if (pending === null) return
-      await pending.then((agent) => agent.close()).catch(() => undefined)
-    },
-  }
-}
-
 export interface MainOptions {
   argv: readonly string[]
   env: NodeJS.ProcessEnv
@@ -143,6 +103,17 @@ export interface ContainInput {
   log: Logger
   run: CommandRunner
   options: MainOptions
+  /**
+   * The GitHub adapter, built by the caller.
+   *
+   * It used to be built here, and moved out when the pull-request door arrived:
+   * a comment typed on a pull request names no issue, so `runCli` has to ask
+   * `getPullRequestHead` which issue this run is even about *before* there is a
+   * `TriggerEvent` to contain. Passed in rather than built twice, because two
+   * construction sites for one credentialled client is how one of them ends up
+   * missing the secrets that redact its outbound text.
+   */
+  github: GitHubApi
   /**
    * Seam for tests, defaulting to the real adapter.
    *
@@ -170,7 +141,7 @@ export interface Contained {
  * config, so scrubbing, redaction and the diff guard still know the value they
  * are protecting.
  */
-export const contain = ({ config, event, log, run, options, createAgent }: ContainInput): Contained => {
+export const contain = ({ config, event, log, run, options, github, createAgent }: ContainInput): Contained => {
   const secrets = pipelineSecrets(config)
   const proxy = startProviderProxy(config.openai, log)
   const contained: PipelineConfig = { ...config, openai: proxiedSettings(config.openai, proxy) }
@@ -179,14 +150,9 @@ export const contain = ({ config, event, log, run, options, createAgent }: Conta
   // In this order because each needs the one before it: the status comment is
   // written through the GitHub adapter, and the session's heartbeat is what
   // keeps the status comment current, so the session is built last and handed
-  // the reporter's tick.
-  const github = createOctokitApi({
-    token: config.githubToken,
-    owner: config.owner,
-    repo: config.repo,
-    secrets,
-    fetch: options.fetch,
-  })
+  // the reporter's tick. The adapter now arrives already built — see
+  // {@link ContainInput.github} — which changes where the first of the three
+  // comes from and nothing about the order of the other two.
   const status = createStatusReporter({ github, log, config: contained, now: () => Date.now() })
 
   const agent = memoizeAgent(() =>
@@ -211,6 +177,36 @@ export const contain = ({ config, event, log, run, options, createAgent }: Conta
 }
 
 /**
+ * The event this run acts on: the payload normalized, and — for a comment typed
+ * on a pull request — resolved back to the issue its branch names.
+ *
+ * `null` covers both halves of "nothing to do": a payload this pipeline does not
+ * act on, and a pull-request comment `resolvePullRequestTrigger` declined to
+ * claim. Both log their own reason, so this hands back only the fact.
+ */
+const readEvent = async (args: CliArgs, github: GitHubApi, log: Logger): Promise<TriggerEvent | null> => {
+  const payload: unknown = JSON.parse(await readFile(args.eventPath, 'utf8'))
+  const parsed = parseTriggerEvent(args.eventName, payload)
+  if (parsed === null) {
+    log.warn({ eventName: args.eventName }, 'Payload carries nothing this pipeline acts on')
+    return null
+  }
+
+  if (parsed.kind !== 'pending-pull-request') return parsed
+  return resolvePullRequestTrigger(parsed, github, log)
+}
+
+/** The credentialled client, built once and handed to both the resolver and `contain`. */
+const githubFor = (config: PipelineConfig, secrets: readonly string[], options: MainOptions): GitHubApi =>
+  createOctokitApi({
+    token: config.githubToken,
+    owner: config.owner,
+    repo: config.repo,
+    secrets,
+    fetch: options.fetch,
+  })
+
+/**
  * Entry point shared by the Action and by local `--event-path` runs.
  *
  * Returns a {@link RunResult} rather than exiting so the same call is drivable
@@ -223,23 +219,25 @@ export const runCli = async (options: MainOptions): Promise<RunResult> => {
   // `main` instead, and carries no credential.
   const config = loadConfig(options.env, args.repoRoot)
   const log = options.logger ?? createPipelineLogger(args.logLevel, config)
+  const secrets = pipelineSecrets(config)
 
   // Before anything can spawn a child. The OpenCode server inherits this
   // process's environment wholesale, so a credential left here is one the model
   // can read with `bash`.
-  const scrubbed = scrubSecrets(options.env, pipelineSecrets(config))
+  const scrubbed = scrubSecrets(options.env, secrets)
   if (scrubbed.length > 0) log.debug({ variables: scrubbed }, 'Removed credentials from the environment')
 
-  const payload: unknown = JSON.parse(await readFile(args.eventPath, 'utf8'))
-  const event = parseTriggerEvent(args.eventName, payload)
+  // Before the event is even known, because resolving a pull-request comment to
+  // its issue is an API call — see {@link ContainInput.github}.
+  const github = githubFor(config, secrets, options)
+  const event = await readEvent(args, github, log)
   if (event === null) {
-    log.warn({ eventName: args.eventName }, 'Payload carries nothing this pipeline acts on')
     // No marker: nothing was posted, and nothing needs one — this exits 0, so
     // the fallback step is out of scope either way.
     return { status: 'skipped', reason: 'Payload carries nothing to act on', state: null, reported: false }
   }
 
-  const { proxy, agent, deps } = contain({ config, event, log, run: options.run ?? runCommand, options })
+  const { proxy, agent, deps } = contain({ config, event, log, run: options.run ?? runCommand, options, github })
 
   log.info(
     { event: args.eventName, kind: event.kind, issue: event.issueNumber, model: config.openai.model },

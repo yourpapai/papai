@@ -6,7 +6,7 @@
 import { findArtifact, REPORT_MARKER } from '../artifacts.js'
 import { react } from '../feedback.js'
 import { branchNameFor } from '../git.js'
-import type { PullRequestPresentation, PullRequestRef, PullRequestStatus } from '../github.js'
+import type { PullRequestPresentation, PullRequestRef, PullRequestStatus } from '../github-pulls.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
 import { renderPresentation } from '../pull-request-body.js'
 import type { AgentState } from '../types.js'

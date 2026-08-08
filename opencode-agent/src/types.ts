@@ -224,6 +224,21 @@ export class InvalidTransitionError extends Error {
 /** Extracts a message from an unknown thrown value. */
 export const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
+/**
+ * The end of an exhaustive `switch` over a discriminated union.
+ *
+ * Written out rather than left implicit for two reasons, and the second is the
+ * one that matters. The lint rule wanting every path to return cannot see that
+ * TypeScript has already proved this one unreachable — and the `never` parameter
+ * is what turns *adding* a union member into a compile error at every switch
+ * that did not grow a case for it. Which is exactly the property the `kind`
+ * switches were written for: a third trigger kind arrived, and the tests that
+ * had been spelled `!== 'issue'` would have bucketed it in silence.
+ */
+export const unreachable = (value: never): never => {
+  throw new Error(`Unreachable value: ${JSON.stringify(value)}`)
+}
+
 export type RunStatus = 'skipped' | 'waiting' | 'completed' | 'failed'
 
 /** What one call to the pipeline concluded. `state` is null when nothing ran. */

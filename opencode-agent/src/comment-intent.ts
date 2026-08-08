@@ -104,6 +104,12 @@ const recordSkippedSpend = async (input: PhaseInput): Promise<AgentState> => {
  */
 export const applyIntent = async (input: PhaseInput): Promise<TriggerOutcome> => {
   const { state, trigger, deps } = input
+  // A positive test on the one kind that gets here, not `!== 'ci'`. Both other
+  // kinds are unreachable by construction — `applyTrigger` routes a red run and
+  // a pull-request comment away before this function exists — and the
+  // difference matters for the pull-request one: bucketed in, its `/review` body
+  // would be read as an *empty* comment, which is a model turn bought to
+  // misread something the resolver had already declined to claim.
   const body = trigger.kind === 'issue' ? trigger.commentBody : null
   if (body === null || body.trim().length === 0) return readAndSkip(input, 'Empty comment')
 
@@ -174,6 +180,9 @@ export const applyClarifyIntent = async (input: PhaseInput): Promise<TriggerOutc
   const { state, trigger, deps } = input
   const retriage: TriggerOutcome = { state, halt: null, answer: false }
 
+  // The same positive test, for the same reason as in {@link applyIntent} — and
+  // here a bucketed pull-request comment would be worse still, since a blank
+  // body in this phase falls through to a full triage turn.
   const body = trigger.kind === 'issue' ? trigger.commentBody : null
   if (body === null || body.trim().length === 0) return retriage
 

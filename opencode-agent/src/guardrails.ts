@@ -3,177 +3,31 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { z } from 'zod'
+import { branchNameFor } from './git.js'
+import type { PullRequestRefusal, PullRequestTriggerEvent } from './pr-trigger.js'
+import type { CiTriggerEvent, IssueTriggerEvent, TriggerEvent } from './trigger-events.js'
+import { unreachable } from './types.js'
 
-import { branchNameFor, issueNumberFromBranch } from './git.js'
+/**
+ * Whether the pipeline may act on an event it has already understood.
+ *
+ * The shapes and the parse live in `trigger-events.ts`; what is left here is
+ * policy, which is the half that has to be mirrored in the workflow's own `if:`
+ * so an event this would reject never boots a runner with the API keys mounted.
+ */
 
 /** Author associations GitHub reports for accounts with write access. */
 export const MAINTAINER_ASSOCIATIONS: ReadonlySet<string> = new Set(['OWNER', 'MEMBER', 'COLLABORATOR'])
 
-/** A human acting on the issue thread. Subject to the maintainer guardrails. */
-export interface IssueTriggerEvent {
-  kind: 'issue'
-  eventName: string
-  action: string
-  senderLogin: string
-  senderType: string
-  authorAssociation: string
-  issueNumber: number
-  issueTitle: string
-  issueBody: string
-  isPullRequest: boolean
-  commentBody: string | null
-  /**
-   * Id of the comment that raised this run; `null` for `issues.opened`, which
-   * has no comment to address.
-   *
-   * The schema below has always parsed it and this function always threw it
-   * away, which left the pipeline unable to address the one place the person
-   * waiting is actually looking. Carried now so feedback can land there rather
-   * than on the issue as a whole.
-   */
-  commentId: number | null
-  repositoryOwner: string | null
-  /** `repository.default_branch`; `null` when the payload omitted it. */
-  defaultBranch: string | null
-}
-
 /**
- * A completed check run on a branch the agent owns. Not subject to the
- * maintainer guardrails — nobody "sent" it — but gated on the branch belonging
- * to this pipeline.
+ * Every reason a trigger is dropped, in one vocabulary.
+ *
+ * The `PR_*` half is decided a layer earlier, in `pr-trigger.ts`, because
+ * resolving a pull-request comment to its issue is what discovers those facts —
+ * and a run refused there never reaches {@link evaluateGuardrails} at all. They
+ * are named here anyway: "why was this event dropped?" is one question, and an
+ * answer split across two vocabularies is one a reader has to know to ask twice.
  */
-export interface CiTriggerEvent {
-  kind: 'ci'
-  eventName: string
-  action: string
-  branch: string
-  issueNumber: number
-  conclusion: string
-  workflowName: string
-  runUrl: string
-  /**
-   * Whether the run that went red was on a branch of **this** repository.
-   *
-   * `head_branch` is attacker-controlled: a fork's branch name reaches this
-   * payload verbatim, so anyone can open a pull request from a branch called
-   * `agent/issue-42` and have its failing CI look, to every other field here,
-   * exactly like the agent's own branch going red.
-   */
-  fromThisRepository: boolean
-  /** `repository.default_branch`; `null` when the payload omitted it. */
-  defaultBranch: string | null
-}
-
-export type TriggerEvent = IssueTriggerEvent | CiTriggerEvent
-
-const issuePayloadSchema = z.object({
-  action: z.string().default(''),
-  sender: z.object({ login: z.string().min(1), type: z.string().default('User') }),
-  issue: z.object({
-    number: z.number().int().positive(),
-    title: z.string().default(''),
-    body: z.string().nullable().default(null),
-    author_association: z.string().default('NONE'),
-    pull_request: z.unknown().optional(),
-  }),
-  comment: z
-    .object({
-      id: z.number().int(),
-      body: z.string().nullable().default(null),
-      author_association: z.string().default('NONE'),
-    })
-    .optional(),
-  repository: z
-    .object({
-      owner: z.object({ login: z.string() }),
-      name: z.string(),
-      // Not defaulted: an absent default branch has to stay visibly absent so
-      // config resolution falls through to git instead of inheriting a guess.
-      default_branch: z.string().min(1).optional(),
-    })
-    .optional(),
-})
-
-const ciPayloadSchema = z.object({
-  action: z.string().default(''),
-  workflow_run: z.object({
-    name: z.string().default(''),
-    head_branch: z.string().nullable().default(null),
-    conclusion: z.string().nullable().default(null),
-    html_url: z.string().default(''),
-    // Absent on a payload shape that predates this check, and absent is not
-    // trusted: `fromThisRepository` below resolves it to `false`.
-    head_repository: z.object({ full_name: z.string().default('') }).optional(),
-  }),
-  repository: z.object({ default_branch: z.string().min(1).optional(), full_name: z.string().default('') }).optional(),
-})
-
-const parseIssueEvent = (eventName: string, payload: unknown): IssueTriggerEvent | null => {
-  const parsed = issuePayloadSchema.safeParse(payload)
-  if (!parsed.success) return null
-
-  const { action, sender, issue, comment, repository } = parsed.data
-  return {
-    kind: 'issue',
-    eventName,
-    action,
-    senderLogin: sender.login,
-    senderType: sender.type,
-    // For a comment event the *commenter's* rights decide, not the issue author's.
-    authorAssociation: comment === undefined ? issue.author_association : comment.author_association,
-    issueNumber: issue.number,
-    issueTitle: issue.title,
-    issueBody: issue.body ?? '',
-    isPullRequest: issue.pull_request !== undefined && issue.pull_request !== null,
-    commentBody: comment === undefined ? null : comment.body,
-    commentId: comment === undefined ? null : comment.id,
-    repositoryOwner: repository === undefined ? null : repository.owner.login,
-    defaultBranch: repository?.default_branch ?? null,
-  }
-}
-
-const parseCiEvent = (eventName: string, payload: unknown): CiTriggerEvent | null => {
-  const parsed = ciPayloadSchema.safeParse(payload)
-  if (!parsed.success) return null
-
-  const { action, workflow_run: run, repository } = parsed.data
-  const branch = run.head_branch
-  if (branch === null) return null
-
-  const issueNumber = issueNumberFromBranch(branch)
-  if (issueNumber === null) return null
-
-  return {
-    kind: 'ci',
-    eventName,
-    action,
-    branch,
-    issueNumber,
-    conclusion: run.conclusion ?? 'unknown',
-    workflowName: run.name,
-    runUrl: run.html_url,
-    // Compared, never defaulted to true: two absent names would otherwise be
-    // "equal" and wave through the very payload this exists to catch.
-    fromThisRepository:
-      run.head_repository !== undefined &&
-      repository !== undefined &&
-      run.head_repository.full_name.length > 0 &&
-      run.head_repository.full_name === repository.full_name,
-    defaultBranch: repository?.default_branch ?? null,
-  }
-}
-
-/**
- * Normalizes a raw webhook payload. Returns `null` when the payload carries
- * nothing the pipeline acts on — an unrelated branch, a run with no branch, a
- * dispatch with no issue — which the caller treats as "nothing to do".
- */
-export const parseTriggerEvent = (eventName: string, payload: unknown): TriggerEvent | null =>
-  eventName === 'workflow_run' || eventName === 'check_suite'
-    ? parseCiEvent(eventName, payload)
-    : parseIssueEvent(eventName, payload)
-
 export type GuardrailCode =
   | 'UNSUPPORTED_EVENT'
   | 'UNSUPPORTED_ACTION'
@@ -185,6 +39,7 @@ export type GuardrailCode =
   | 'CI_SELF'
   | 'CI_FOREIGN_REPOSITORY'
   | 'CI_FOREIGN_BRANCH'
+  | PullRequestRefusal
 
 export type GuardrailDecision = { allowed: true } | { allowed: false; code: GuardrailCode; reason: string }
 
@@ -211,14 +66,31 @@ const checkIssueShape = (event: IssueTriggerEvent): GuardrailDecision | null => 
   if (!actions.has(event.action)) {
     return deny('UNSUPPORTED_ACTION', `Action ${event.eventName}.${event.action} is not handled`)
   }
+  // Still the blanket refusal it always was, and it now covers exactly what is
+  // left: a pull-request comment `resolvePullRequestTrigger` did not claim —
+  // the wrong action, no comment at all, or a `/review` the resolver turned down
+  // — falls back to this parse and is refused here as it has always been.
   if (event.isPullRequest) return deny('PULL_REQUEST', 'Comment target is a pull request, not an issue')
   return null
 }
 
-const evaluateIssueGuardrails = (event: IssueTriggerEvent, options: GuardrailOptions): GuardrailDecision => {
-  const structural = checkIssueShape(event)
-  if (structural !== null) return structural
+/** What every human-authored event carries, whichever door it arrived through. */
+interface SenderFields {
+  senderLogin: string
+  senderType: string
+  authorAssociation: string
+}
 
+/**
+ * The three rules that apply to anything a person typed.
+ *
+ * Shared verbatim by the issue path and the pull-request one rather than
+ * restated for each: a `/review` typed on a pull request is a human write with
+ * exactly the reach an `/approve` on an issue has — it prompts the model, spends
+ * the issue's token budget and pushes commits — so a rule that held on one door
+ * and not on the other would be a hole in whichever was written second.
+ */
+const checkSender = (event: SenderFields, options: GuardrailOptions): GuardrailDecision => {
   if (event.senderType.toLowerCase() === 'bot') {
     return deny('BOT_SENDER', `Sender ${event.senderLogin} is a Bot account`)
   }
@@ -230,6 +102,11 @@ const evaluateIssueGuardrails = (event: IssueTriggerEvent, options: GuardrailOpt
   }
 
   return { allowed: true }
+}
+
+const evaluateIssueGuardrails = (event: IssueTriggerEvent, options: GuardrailOptions): GuardrailDecision => {
+  const structural = checkIssueShape(event)
+  return structural ?? checkSender(event, options)
 }
 
 /**
@@ -262,6 +139,37 @@ const evaluateCiGuardrails = (event: CiTriggerEvent, options: GuardrailOptions):
   return { allowed: true }
 }
 
-/** Applies every abort rule for the event's kind, in the order a reviewer expects. */
-export const evaluateGuardrails = (event: TriggerEvent, options: GuardrailOptions): GuardrailDecision =>
-  event.kind === 'issue' ? evaluateIssueGuardrails(event, options) : evaluateCiGuardrails(event, options)
+/**
+ * A resolved pull-request comment is nothing but a human write.
+ *
+ * Everything structural about it was settled by `resolvePullRequestTrigger`,
+ * which had to settle it in order to know which issue the run is even about:
+ * the event and action, the `/review`, the repository the branch lives in, that
+ * pull request's state, and the branch name itself. What is left is the sender,
+ * asked in the same words the issue path asks it — including the `confused`
+ * reaction `NOT_MAINTAINER` earns, which is placed by `runPipeline` on the code
+ * rather than on the kind and so needs nothing here to stay true.
+ */
+const evaluatePullRequestGuardrails = (event: PullRequestTriggerEvent, options: GuardrailOptions): GuardrailDecision =>
+  checkSender(event, options)
+
+/**
+ * Applies every abort rule for the event's kind, in the order a reviewer
+ * expects.
+ *
+ * A `switch` rather than the ternary this was: with three kinds, a fallthrough
+ * arm silently buckets whichever one is added next into the rules written for
+ * another, and an exhaustive switch makes that a compile error instead.
+ */
+export const evaluateGuardrails = (event: TriggerEvent, options: GuardrailOptions): GuardrailDecision => {
+  switch (event.kind) {
+    case 'issue':
+      return evaluateIssueGuardrails(event, options)
+    case 'ci':
+      return evaluateCiGuardrails(event, options)
+    case 'pull-request':
+      return evaluatePullRequestGuardrails(event, options)
+    default:
+      return unreachable(event)
+  }
+}

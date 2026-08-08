@@ -8,53 +8,16 @@ import { Octokit } from '@octokit/rest'
 import type { IssueComment } from './blocks.js'
 import { createLabelEndpoints } from './github-labels.js'
 import type { LabelApi } from './github-labels.js'
+import { createPullRequestEndpoints } from './github-pulls.js'
+import type { PullRequestApi } from './github-pulls.js'
 import type { IssueContext } from './phase-context.js'
 import { redactSecrets } from './secrets.js'
-
-/**
- * Everything about a pull request that is derived from live issue state, and so
- * has to be re-rendered every time delivery runs — not just the first time.
- *
- * Create and update share this type deliberately. Refreshing a reused pull
- * request used to patch the body alone, which left the title frozen at whatever
- * the issue was called when the branch was first delivered. Tying both calls to
- * one shape means a field added here cannot be wired into `create` and
- * forgotten in `update`; it fails to compile instead.
- */
-export interface PullRequestPresentation {
-  title: string
-  body: string
-}
-
-export interface PullRequestInput extends PullRequestPresentation {
-  head: string
-  base: string
-}
 
 export interface PostedComment {
   id: number
   url: string
   /** Who GitHub says wrote it — the only free, authoritative identity check. */
   authorLogin: string
-}
-
-export interface PullRequestRef {
-  number: number
-  url: string
-}
-
-/**
- * What became of a branch's pull request.
- *
- * `merged` and `closed` are reported rather than filtered out. Asking only for
- * *open* pull requests made a merged one indistinguishable from one that never
- * existed — the query came back `[]` either way — so a retry after a merge
- * opened a second pull request from the fully-merged branch.
- */
-export type PullRequestState = 'open' | 'merged' | 'closed'
-
-export interface PullRequestStatus extends PullRequestRef {
-  state: PullRequestState
 }
 
 /**
@@ -65,7 +28,7 @@ export interface PullRequestStatus extends PullRequestRef {
  * summaries and model prose, and any of those can carry a credential; a value
  * drawn from four literals the pipeline picks itself has nowhere for one to
  * hide. It is the same exemption the `head`/`base` branch names take in
- * {@link PullRequestInput} — computed here, so passed through untouched — and it
+ * `github-pulls.ts` — computed here, so passed through untouched — and it
  * is stated rather than implied, because "a new `GitHubApi` method that sends
  * free text must redact it" is a rule a silent exception erodes.
  */
@@ -92,7 +55,7 @@ export type ReactionTarget = { kind: 'issue'; number: number } | { kind: 'commen
  * unable to leave one of them out, which is the property the whole interface
  * exists for.
  */
-export interface GitHubApi extends LabelApi {
+export interface GitHubApi extends LabelApi, PullRequestApi {
   listIssueComments(issueNumber: number): Promise<IssueComment[]>
   /** Returns the created comment, including the author GitHub recorded. */
   createComment(issueNumber: number, body: string): Promise<PostedComment>
@@ -113,10 +76,6 @@ export interface GitHubApi extends LabelApi {
   updateComment(commentId: number, body: string): Promise<void>
   getIssue(issueNumber: number): Promise<IssueContext>
   getAuthenticatedLogin(): Promise<string>
-  /** The newest pull request from `head`, whatever became of it. */
-  findPullRequest(head: string): Promise<PullRequestStatus | null>
-  createPullRequest(input: PullRequestInput): Promise<PullRequestRef>
-  updatePullRequest(number: number, patch: PullRequestPresentation): Promise<void>
   /**
    * Places one reaction. Rejects like any other call — `feedback.ts` owns the
    * rule that a rejection here can never fail a run, because that is a decision
@@ -163,16 +122,6 @@ interface Repo {
   repo: string
 }
 
-/** The free-text half of a pull request, redacted. `head`/`base` are branch
- * names this pipeline computes, so they are left exactly as given. */
-const presentable = (
-  presentation: PullRequestPresentation,
-  clean: (text: string) => string,
-): PullRequestPresentation => ({
-  title: clean(presentation.title),
-  body: clean(presentation.body),
-})
-
 const listIssueComments = async (octokit: Octokit, repo: Repo, issueNumber: number): Promise<IssueComment[]> => {
   const comments = await octokit.paginate(octokit.rest.issues.listComments, {
     ...repo,
@@ -186,30 +135,6 @@ const listIssueComments = async (octokit: Octokit, repo: Repo, issueNumber: numb
     authorLogin: comment.user === null ? '' : comment.user.login,
   }))
 }
-
-const findPullRequest = async (octokit: Octokit, repo: Repo, head: string): Promise<PullRequestStatus | null> => {
-  const { data } = await octokit.rest.pulls.list({
-    ...repo,
-    state: 'all',
-    head: `${repo.owner}:${head}`,
-    sort: 'created',
-    direction: 'desc',
-    per_page: 1,
-  })
-
-  const existing = data[0]
-  if (existing === undefined) return null
-
-  return {
-    number: existing.number,
-    url: existing.html_url,
-    // `merged_at` rather than `merged`: the list endpoint carries the timestamp
-    // but not the boolean, which only the single-pull-request endpoint returns.
-    state: existing.merged_at === null ? closedOrOpen(existing.state) : 'merged',
-  }
-}
-
-const closedOrOpen = (state: string): PullRequestState => (state === 'open' ? 'open' : 'closed')
 
 /** Routes to whichever of the two reaction endpoints the target names. */
 const addReaction = async (
@@ -235,13 +160,15 @@ export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
 
   return {
     listIssueComments: (issueNumber) => listIssueComments(octokit, repo, issueNumber),
-    findPullRequest: (head) => findPullRequest(octokit, repo, head),
     // No `clean`: the content is a member of a four-value union this pipeline
     // picks, exactly like the `head`/`base` branch names above.
     addReaction: (target, content) => addReaction(octokit, repo, target, content),
     // Nor here, and for the same reason — a label name is this pipeline's own
     // prefix followed by a suffix from a closed table. See `github-labels.ts`.
     ...createLabelEndpoints(octokit, repo),
+    // The pull-request family does carry free text, so it is handed `clean`
+    // rather than exempted from it. See `github-pulls.ts`.
+    ...createPullRequestEndpoints(octokit, repo, clean),
 
     createComment: async (issueNumber, body) => {
       const { data } = await octokit.rest.issues.createComment({
@@ -261,18 +188,9 @@ export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
       return { number: data.number, title: data.title, body: data.body ?? '' }
     },
 
-    updatePullRequest: async (number, patch) => {
-      await octokit.rest.pulls.update({ ...repo, pull_number: number, ...presentable(patch, clean) })
-    },
-
     getAuthenticatedLogin: async () => {
       const { data } = await octokit.rest.users.getAuthenticated()
       return data.login
-    },
-
-    createPullRequest: async (input) => {
-      const { data } = await octokit.rest.pulls.create({ ...repo, ...input, ...presentable(input, clean) })
-      return { number: data.number, url: data.html_url }
     },
   }
 }

@@ -9,12 +9,12 @@ import type { ParsedCommand } from './commands.js'
 import type { PipelineConfig } from './config.js'
 import type { Git } from './git.js'
 import type { GitHubApi } from './github.js'
-import type { TriggerEvent } from './guardrails.js'
 import type { Logger } from './logger.js'
 import type { SkillDocument } from './obra-skills.js'
 import type { OpenCodeAgent } from './opencode-adapter.js'
 import type { ReviewRunResult } from './review-runner.js'
 import type { StatusReporter } from './status-reporter.js'
+import type { TriggerEvent } from './trigger-events.js'
 import type { AgentState, Phase } from './types.js'
 
 /** The issue a run is about, however the run was triggered. */

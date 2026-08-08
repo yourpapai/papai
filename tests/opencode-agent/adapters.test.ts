@@ -17,8 +17,9 @@ import { withDeadline } from '../../opencode-agent/src/deadline.js'
 import { PipelineError } from '../../opencode-agent/src/errors.js'
 import { createGit } from '../../opencode-agent/src/git.js'
 import type { GitOptions } from '../../opencode-agent/src/git.js'
+import type { PullRequestState } from '../../opencode-agent/src/github-pulls.js'
 import { createOctokitApi } from '../../opencode-agent/src/github.js'
-import type { GitHubApi, PullRequestState } from '../../opencode-agent/src/github.js'
+import type { GitHubApi } from '../../opencode-agent/src/github.js'
 import { createLogger, redact } from '../../opencode-agent/src/logger.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
 import { extractJsonObject, parseModelJson } from '../../opencode-agent/src/model-json.js'
@@ -1665,6 +1666,46 @@ describe('createOctokitApi', () => {
     const found = await recordingApi([], listing(apiState, mergedAt)).findPullRequest('agent/issue-42')
 
     expect(found).toEqual({ number: 3, url: 'https://example.test/pull/3', state: expected })
+  })
+
+  test('reads the branch and repository one pull request merges from', async () => {
+    // The lookup a comment typed on a pull request depends on: `head.ref` is the
+    // only link back to the issue, and `head.repo.full_name` is the only field
+    // that tells the agent's own branch from a fork that named one identically.
+    const captured: CapturedRequest[] = []
+    const payload = {
+      merged: false,
+      state: 'open',
+      head: { ref: 'agent/issue-42', repo: { full_name: 'acme/widgets' } },
+    }
+
+    const head = await recordingApi(captured, payload).getPullRequestHead(7)
+
+    expect(captured[0]?.method).toBe('GET')
+    expect(captured[0]?.url).toContain('/repos/acme/widgets/pulls/7')
+    expect(head).toEqual({ ref: 'agent/issue-42', repoFullName: 'acme/widgets', state: 'open' })
+  })
+
+  test.each<readonly [PullRequestState, boolean, string]>([
+    ['merged', true, 'closed'],
+    ['closed', false, 'closed'],
+    ['open', false, 'open'],
+  ])('reports the head of a %s pull request', async (expected, merged, apiState) => {
+    // This endpoint carries the `merged` boolean the list endpoint does not, so
+    // nothing here has to infer a merge from a timestamp.
+    const payload = { merged, state: apiState, head: { ref: 'agent/issue-42', repo: { full_name: 'acme/widgets' } } }
+
+    expect((await recordingApi([], payload).getPullRequestHead(7)).state).toBe(expected)
+  })
+
+  test('reports an empty repository name when the head repository is gone', async () => {
+    // A deleted fork, which GitHub reports as `head.repo: null`. Empty is the
+    // useful answer rather than a throw: the caller compares this against this
+    // repository's name, and an absent name loses that comparison — which is
+    // exactly the verdict a vanished fork deserves.
+    const payload = { merged: false, state: 'open', head: { ref: 'agent/issue-42', repo: null } }
+
+    expect((await recordingApi([], payload).getPullRequestHead(7)).repoFullName).toBe('')
   })
 
   test.each([

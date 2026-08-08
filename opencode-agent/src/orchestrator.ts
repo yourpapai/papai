@@ -4,9 +4,9 @@
 // See LICENSE in the project root for details.
 
 import { parseSlashCommand } from './commands.js'
+import type { ParsedCommand } from './commands.js'
 import { react } from './feedback.js'
 import { evaluateGuardrails } from './guardrails.js'
-import type { TriggerEvent } from './guardrails.js'
 import { reconcileLabels, settleLabels } from './labels.js'
 import type { IssueContext, MachineInput, PhaseDeps, PhaseHandler, PhaseInput, PhaseOutcome } from './phase-context.js'
 import { failAnswer, failRun } from './phase-failure.js'
@@ -20,8 +20,10 @@ import { handleTriage } from './phases/triage.js'
 import { postAndAppend, renderSettled } from './run-report.js'
 import { findLatestState, initialState, transition } from './state-manager.js'
 import { recordSpend, stopIfOverBudget } from './token-budget.js'
+import type { TriggerEvent } from './trigger-events.js'
 import type { TriggerOutcome } from './trigger-outcome.js'
 import { applyTrigger } from './triggers.js'
+import { unreachable } from './types.js'
 import type { AgentState, Phase, RunResult, TransitionSignal } from './types.js'
 
 /**
@@ -102,7 +104,7 @@ const runAccepted = async (event: TriggerEvent, deps: PhaseDeps): Promise<RunRes
   const thread = await deps.github.listIssueComments(event.issueNumber)
   const restored = findLatestState(thread, await deps.selfLogin(), event.issueNumber) ?? initialState(event.issueNumber)
   const issue = await resolveIssue(event, deps)
-  const command = event.kind === 'issue' ? parseSlashCommand(event.commentBody) : null
+  const command = triggerCommand(event)
 
   const base: PhaseInput = { state: restored, issue, trigger: event, command, thread, deps }
   const entry = await applyTrigger(base)
@@ -152,7 +154,37 @@ const runAccepted = async (event: TriggerEvent, deps: PhaseDeps): Promise<RunRes
  */
 const willWork = (entry: TriggerOutcome): boolean => entry.answer || HANDLERS[entry.state.phase] !== undefined
 
-/** The issue's title and body, from the payload when present, else the API. */
+/**
+ * The slash command this trigger carries, if a person typed one.
+ *
+ * Both human kinds are read, and a pull-request comment is read with the very
+ * same parser: `parseSlashCommand` requires the command to start a line and
+ * ignores fenced blocks, which is what makes `resolvePullRequestTrigger`'s
+ * cheap `/review` filter and this second reading agree rather than merely
+ * coincide.
+ */
+const triggerCommand = (event: TriggerEvent): ParsedCommand | null => {
+  switch (event.kind) {
+    case 'ci':
+      return null
+    case 'issue':
+      return parseSlashCommand(event.commentBody)
+    case 'pull-request':
+      return parseSlashCommand(event.commentBody)
+    default:
+      return unreachable(event)
+  }
+}
+
+/**
+ * The issue's title and body, from the payload when present, else the API.
+ *
+ * Only the issue kind carries them. A CI run names a branch and nothing else,
+ * and a **pull-request comment carries the pull request's** title and body —
+ * which is the reason that is a third kind rather than a flag on this one:
+ * passed through here, every phase downstream would reason over the pull request
+ * as though it were the issue, under the right field names.
+ */
 const resolveIssue = (event: TriggerEvent, deps: PhaseDeps): Promise<IssueContext> => {
   if (event.kind === 'issue') {
     return Promise.resolve({ number: event.issueNumber, title: event.issueTitle, body: event.issueBody })

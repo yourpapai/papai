@@ -12,18 +12,13 @@ import { DEFAULT_CHECKS } from '../../opencode-agent/src/config.js'
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
 import type { StagedTotals } from '../../opencode-agent/src/diff-guard.js'
 import type { Git } from '../../opencode-agent/src/git.js'
-import type {
-  GitHubApi,
-  PullRequestRef,
-  PullRequestStatus,
-  ReactionContent,
-  ReactionTarget,
-} from '../../opencode-agent/src/github.js'
-import type { CiTriggerEvent, IssueTriggerEvent } from '../../opencode-agent/src/guardrails.js'
+import type { PullRequestHead, PullRequestRef, PullRequestStatus } from '../../opencode-agent/src/github-pulls.js'
+import type { GitHubApi, ReactionContent, ReactionTarget } from '../../opencode-agent/src/github.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
 import type { AgentPromptRequest, OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
 import { runPipeline } from '../../opencode-agent/src/orchestrator.js'
 import type { PhaseDeps } from '../../opencode-agent/src/phase-context.js'
+import type { PullRequestTriggerEvent } from '../../opencode-agent/src/pr-trigger.js'
 import type { ReviewRunResult } from '../../opencode-agent/src/review-runner.js'
 import type { CommandResult } from '../../opencode-agent/src/shell.js'
 import {
@@ -35,6 +30,7 @@ import {
 } from '../../opencode-agent/src/state-manager.js'
 import { STATUS_MARKER } from '../../opencode-agent/src/status-comment.js'
 import { createStatusReporter } from '../../opencode-agent/src/status-reporter.js'
+import type { CiTriggerEvent, IssueTriggerEvent } from '../../opencode-agent/src/trigger-events.js'
 import type { AgentState, Phase, RunResult } from '../../opencode-agent/src/types.js'
 
 const AGENT_LOGIN = 'agent-bot'
@@ -106,6 +102,32 @@ const COMMENT_ID = 555
 const comment = (body: string): IssueTriggerEvent =>
   issueEvent({ eventName: 'issue_comment', action: 'created', commentBody: body, commentId: COMMENT_ID })
 
+/** The pull request the agent delivers this issue into, and a comment on it. */
+const PR_NUMBER = 7
+const PR_COMMENT_ID = 777
+
+/**
+ * A `/review` typed where the diff is, already resolved back to its issue.
+ *
+ * The resolution itself is `pr-trigger.ts`'s and is tested there; what these
+ * exercise is everything downstream of it, where a third `kind` either had to be
+ * decided or would have been bucketed with the issue events by an `!== 'issue'`.
+ */
+const prComment = (body: string, overrides: Partial<PullRequestTriggerEvent> = {}): PullRequestTriggerEvent => ({
+  kind: 'pull-request',
+  eventName: 'issue_comment',
+  action: 'created',
+  senderLogin: 'maintainer',
+  senderType: 'User',
+  authorAssociation: 'COLLABORATOR',
+  issueNumber: ISSUE,
+  prNumber: PR_NUMBER,
+  commentBody: body,
+  commentId: PR_COMMENT_ID,
+  defaultBranch: BASE_BRANCH,
+  ...overrides,
+})
+
 const ciEvent = (overrides: Partial<CiTriggerEvent> = {}): CiTriggerEvent => ({
   kind: 'ci',
   eventName: 'workflow_run',
@@ -148,6 +170,14 @@ interface PipelineIo {
   createdPr: PullRequestRef | null
   /** What the branch's pull request lookup reports, whatever became of it. */
   existingPr: PullRequestStatus | null
+  /**
+   * Times the run asked the API for the issue's own title and body.
+   *
+   * Counted rather than inferred from what was posted: a pull-request comment
+   * carries the *pull request's* title, so "did this run read the issue?" is the
+   * whole reason `pull-request` is a third kind and not a flag on the issue one.
+   */
+  getIssueCalls: number
   prBodies: string[]
   prTitles: string[]
   /** The account GitHub records as the author of the agent's comments. */
@@ -230,6 +260,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     committedTotals: { files: 2, lines: 12 },
     createdPr: null,
     existingPr: null,
+    getIssueCalls: 0,
     prBodies: [],
     prTitles: [],
     postedAs: AGENT_LOGIN,
@@ -287,9 +318,18 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       // one-comment budget rests on.
       return Promise.resolve()
     },
-    getIssue: () => Promise.resolve({ number: ISSUE, title: 'Add retries', body: 'Please add retries.' }),
+    getIssue: () => {
+      io.getIssueCalls += 1
+      return Promise.resolve({ number: ISSUE, title: 'Add retries', body: 'Please add retries.' })
+    },
     getAuthenticatedLogin: () => Promise.resolve(AGENT_LOGIN),
     findPullRequest: () => Promise.resolve(io.existingPr),
+    // Only `pr-trigger.ts` reads this, and it runs before `runPipeline` is
+    // called at all — so a pipeline test that reaches it has resolved a
+    // pull-request comment twice.
+    getPullRequestHead: (): Promise<PullRequestHead> => {
+      throw new Error('the head is resolved before the pipeline runs')
+    },
     createPullRequest: (input) => {
       io.prBodies.push(input.body)
       io.prTitles.push(input.title)
@@ -1414,6 +1454,140 @@ describe('/review — where it does not apply', () => {
     expect(result.status).toBe('completed')
     expect(harness.io.reviewCalls).toHaveLength(1)
     expect(latestPostedState(harness)).toMatchObject({ phase: 'COMPLETE', reviewAttempts: 3 })
+  })
+})
+
+/**
+ * The second door onto the same command: `/review` typed on the pull request,
+ * where the diff is, rather than on the issue.
+ *
+ * The asymmetry below is deliberate and is the whole shape of this path — typed
+ * on the pull request, answered on the **issue**. `findLatestState` scans the
+ * issue thread, so a block posted on the pull request would be a second source
+ * of truth the restore scan cannot see; what lands where the maintainer is
+ * looking is the 👀 on their comment and the loop's findings as commits.
+ */
+describe('/review — typed on the pull request', () => {
+  let harness: Harness
+
+  beforeEach(async () => {
+    harness = makeHarness()
+    await toDelivered(harness)
+  })
+
+  test('runs the loop and answers on the issue, not on the pull request', async () => {
+    const result = await runPipeline({ event: prComment('/review'), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(harness.io.reviewCalls).toHaveLength(1)
+    // Every comment this run posted went to the issue thread, which is the one
+    // the restore scan reads.
+    expect(harness.io.posted.at(-1)).toContain('Review report')
+    expect(latestPostedState(harness)).toMatchObject({ phase: 'COMPLETE', reviewAttempts: 1 })
+  })
+
+  test('the 👀 lands on the comment the maintainer typed', async () => {
+    // On the pull request, not on the issue this run answers on: the whole
+    // reaction channel exists to acknowledge the person waiting, and they are
+    // looking at the diff. One REST endpoint addresses either id, so the target
+    // is all that has to be right.
+    await runPipeline({ event: prComment('/review'), deps: harness.deps })
+
+    expect(harness.io.reactions[0]).toEqual({ target: { kind: 'comment', id: PR_COMMENT_ID }, content: 'eyes' })
+  })
+
+  test('reads the issue’s own title and body from the API', async () => {
+    // The payload carries the *pull request's*, which is why this is a third
+    // kind rather than a flag on the issue one: handed straight through, every
+    // phase would reason over the pull request as if it were the issue.
+    await runPipeline({ event: prComment('/review'), deps: harness.deps })
+
+    expect(harness.io.getIssueCalls).toBe(1)
+    expect(harness.io.prTitles.at(-1)).toContain('Add retries')
+  })
+
+  test.each([['/approve'], ['/cancel'], ['/retry'], ['/ask why that file?']])(
+    'refuses %p, because a pull request accepts one command',
+    async (body) => {
+      // Unreachable through the resolver, which drops anything but `/review`
+      // before it makes an API call — this is the door itself holding the same
+      // line, so a second way in cannot widen the surface by accident.
+      const result = await runPipeline({ event: prComment(body), deps: harness.deps })
+
+      expect(result.status).toBe('skipped')
+      expect(harness.io.reviewCalls).toEqual([])
+      expect(harness.io.posted.at(-1)).toContain('does not apply right now')
+      expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
+    },
+  )
+
+  test('a comment carrying no command at all moves nothing and pays no classifier', async () => {
+    // Also unreachable, and it must never reach `applyIntent`: that path reads
+    // `commentBody` off the *issue* kind alone, so a pull-request comment
+    // arriving there would be classified as an empty one — a model turn bought
+    // to misread a comment the resolver had already declined to claim.
+    const result = await runPipeline({ event: prComment('looks good to me'), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(harness.io.prompts).toEqual([])
+    expect(harness.io.posted).toEqual([])
+  })
+
+  test('a cancelled issue is refused through the same predicate the issue door uses', async () => {
+    // One rule with two doors, not two spellings of it: `commandApplies` is what
+    // refuses `/review` without a pull request, and it is the same function that
+    // builds the list the refusal comment offers.
+    harness = makeHarness()
+    seedState(harness, { phase: 'COMPLETE' })
+
+    const result = await runPipeline({ event: prComment('/review'), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(harness.io.reviewCalls).toEqual([])
+    expect(harness.io.posted[0]).toContain('What works here: `/ask`.')
+  })
+
+  test('past the budget it is refused before the signal is applied', async () => {
+    harness = makeHarness({ maxReviewAttempts: 2 })
+    seedState(harness, {
+      phase: 'COMPLETE',
+      prUrl: 'https://example.test/pull/7',
+      prNumber: PR_NUMBER,
+      reviewAttempts: 2,
+    })
+
+    const result = await runPipeline({ event: prComment('/review'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.reviewCalls).toEqual([])
+    expect(harness.io.posted[0]).toContain('AGENT_MAX_REVIEW_ATTEMPTS')
+    expect(latestPostedState(harness)).toMatchObject({ phase: 'COMPLETE', reviewAttempts: 2 })
+  })
+
+  test.each([
+    ['a bot', { senderType: 'Bot' }],
+    ['the agent itself', { senderLogin: AGENT_LOGIN }],
+  ])('drops %s in silence', async (_label, overrides) => {
+    const result = await runPipeline({ event: prComment('/review', overrides), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(harness.io.posted).toEqual([])
+    expect(harness.io.reactions).toEqual([])
+  })
+
+  test('answers a non-maintainer with the one reaction the issue path gives them', async () => {
+    // The sender rules are shared verbatim, so the judgement call made for the
+    // issue door — an outside contributor's comment must not vanish into a log
+    // they cannot read — holds here without being made a second time.
+    const result = await runPipeline({
+      event: prComment('/review', { authorAssociation: 'CONTRIBUTOR' }),
+      deps: harness.deps,
+    })
+
+    expect(result.status).toBe('skipped')
+    expect(result.reported).toBe(false)
+    expect(harness.io.reactions).toEqual([{ target: { kind: 'comment', id: PR_COMMENT_ID }, content: 'confused' }])
+    expect(harness.io.posted).toEqual([])
   })
 })
 

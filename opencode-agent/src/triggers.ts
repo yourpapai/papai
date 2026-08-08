@@ -6,7 +6,7 @@
 import { renderExhausted, renderReviewsExhausted } from './budget-notices.js'
 import { applyCiTrigger } from './ci-trigger.js'
 import { acceptedCommands, commandApplies, COMMAND_SIGNALS } from './commands.js'
-import type { ParsedCommand } from './commands.js'
+import type { ParsedCommand, SlashCommand } from './commands.js'
 import { applyClarifyIntent, applyIntent, readAndSkip } from './comment-intent.js'
 import { react } from './feedback.js'
 import type { PhaseInput } from './phase-context.js'
@@ -35,10 +35,14 @@ import { WAITING_PHASES } from './types.js'
 /**
  * Turns the trigger into a state move.
  *
- * A red CI run enters `CI_FIX`. An explicit slash command wins outright. A
- * plain maintainer comment is classified, because "review and refine" is a
- * conversation, not a command language — but the two phases that classify want
- * opposite defaults, so they read the same verdict through different branches.
+ * A red CI run enters `CI_FIX`. A comment typed on the **pull request** is the
+ * one-command door — {@link applyPullRequestCommand} — and is decided before the
+ * general command branch rather than inside it, because the two differ in what
+ * they accept and not in what they do with it. An explicit slash command on the
+ * issue wins outright. A plain maintainer comment is classified, because "review
+ * and refine" is a conversation, not a command language — but the two phases
+ * that classify want opposite defaults, so they read the same verdict through
+ * different branches.
  * On a waiting phase, {@link applyIntent} defaults to *question*, the only
  * reading that cannot destroy approved work. In `INIT_OR_CLARIFY` there is no
  * approved work yet and the comment is probably an answer the agent asked for,
@@ -48,11 +52,50 @@ export const applyTrigger = (input: PhaseInput): Promise<TriggerOutcome> => {
   const { state, trigger, command } = input
 
   if (trigger.kind === 'ci') return applyCiTrigger(input)
+  // Before the command branch below, not folded into it: a pull request is a
+  // narrower door onto the same commands, and the narrowing is what §6.2 of the
+  // plan settles. Everything after this line is the issue conversation.
+  if (trigger.kind === 'pull-request') return applyPullRequestCommand(input, command)
   if (command !== null) return applyCommand(input, command)
   if (state.phase === 'INIT_OR_CLARIFY') return applyClarifyIntent(input)
   if (!WAITING_PHASES.has(state.phase)) return readAndSkip(input, `No actionable command while in ${state.phase}`)
 
   return applyIntent(input)
+}
+
+/** The one command a pull request accepts. See {@link applyPullRequestCommand}. */
+const PULL_REQUEST_COMMAND: SlashCommand = '/review'
+
+/**
+ * Narrows the pull-request door to that command, then hands the rest over.
+ *
+ * Both refusals below are unreachable today by construction:
+ * `resolvePullRequestTrigger` produces this kind only for a body
+ * `parseSlashCommand` read as `/review`, so a comment carrying anything else
+ * never becomes an event at all. They are here because "the pull request accepts
+ * one command" is a decision (§6.2 — `/ask` there would widen the surface from a
+ * command naming a branch the agent owns to a conversation, and its answer would
+ * still land on the issue), and a decision enforced only by the layer that
+ * happens to filter first is one a second door quietly repeals.
+ *
+ * Everything past the narrowing goes through {@link applyCommand}, deliberately:
+ * the `prNumber !== null` predicate, the review budget and the list a refusal
+ * offers are one seam in `commands.ts` with two readers, and a pull-request door
+ * that restated any of them would be a second spelling free to disagree.
+ */
+const applyPullRequestCommand = (input: PhaseInput, command: ParsedCommand | null): Promise<TriggerOutcome> => {
+  const { state, deps } = input
+
+  if (command === null) {
+    deps.log.warn({ issue: state.issueId, pr: state.prNumber }, 'A pull-request comment carried no command')
+    return Promise.resolve({ state, halt: skip(state, 'A pull-request comment carrying no command'), answer: false })
+  }
+
+  if (command.command !== PULL_REQUEST_COMMAND) {
+    return refuseCommand(input, command.command, `${command.command} is not accepted on a pull request`)
+  }
+
+  return applyCommand(input, command)
 }
 
 const applyCommand = (input: PhaseInput, command: ParsedCommand): Promise<TriggerOutcome> => {
