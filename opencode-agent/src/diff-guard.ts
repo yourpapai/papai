@@ -103,24 +103,75 @@ export const inspectStaged = (
   limits: DiffLimits,
   secrets: readonly string[],
 ): DiffVerdict => {
+  const unacceptable = neverCommittable(files, diff, secrets)
+  if (unacceptable !== null) return { ok: false, reason: unacceptable }
+
+  const oversized = overSize(files, limits)
+  return oversized === null ? { ok: true } : { ok: false, reason: oversized }
+}
+
+/**
+ * The two refusals that are about **what** a change set contains, and that no
+ * deadline makes acceptable.
+ *
+ * A credential is in git history whether or not the file carrying it is later
+ * deleted, and a binary is a blob no line count can size — so both stay absolute
+ * on every path, including the salvage. Split out from the size caps for exactly
+ * that reason: {@link inspectSalvage} keeps these and relaxes those, and a shared
+ * predicate is what stops the two lists drifting into a salvage that quietly
+ * permits one of these.
+ *
+ * Checked before the caps, so a leak is never masked by a size complaint.
+ */
+const neverCommittable = (files: readonly StagedFile[], diff: string, secrets: readonly string[]): string | null => {
   const leaked = secrets.filter((secret) => secret.length > 0 && diff.includes(secret))
-  if (leaked.length > 0) {
-    // Never name the value, only the fact.
-    return { ok: false, reason: `the staged changes contain ${leaked.length} of this pipeline's own credentials` }
-  }
+  // Never name the value, only the fact.
+  if (leaked.length > 0) return `the staged changes contain ${leaked.length} of this pipeline's own credentials`
 
-  const { files: count, lines, binaries } = measure(files)
-  if (count > limits.maxFiles) {
-    return { ok: false, reason: `${count} files changed, over the limit of ${limits.maxFiles}: ${list(paths(files))}` }
-  }
-  if (lines > limits.maxLines) {
-    return { ok: false, reason: `${lines} lines changed, over the limit of ${limits.maxLines}` }
-  }
-  if (binaries.length > 0) {
-    return { ok: false, reason: `binary files cannot be size-checked and are not committed: ${list(binaries)}` }
-  }
+  const { binaries } = measure(files)
+  if (binaries.length > 0) return `binary files cannot be size-checked and are not committed: ${list(binaries)}`
 
-  return { ok: true }
+  return null
+}
+
+/** The two ceilings that exist to refuse a runaway `git add --all`. */
+const overSize = (files: readonly StagedFile[], limits: DiffLimits): string | null => {
+  const { files: count, lines } = measure(files)
+  if (count > limits.maxFiles)
+    return `${count} files changed, over the limit of ${limits.maxFiles}: ${list(paths(files))}`
+  if (lines > limits.maxLines) return `${lines} lines changed, over the limit of ${limits.maxLines}`
+
+  return null
+}
+
+/**
+ * The same judgement for a tree a wall-clock stop is trying to keep, where the
+ * caps **report** instead of refusing.
+ *
+ * The caps exist to turn down a runaway `git add --all` — a staged `node_modules`,
+ * a downloaded fixture, a build directory. On a partial tree they can also refuse
+ * for a reason that has nothing to do with a runaway, and discarding a real
+ * 3,000-line increment because the cap says 2,000 recreates the exact loss the
+ * salvage exists to prevent. So the figure rides out on {@link StagedTotals} and
+ * the notice says it was over the ceiling, which is the honest version of both.
+ *
+ * A deliberate widening of what a commit may look like, and therefore scoped to
+ * this one path and no other: `inspectStaged` is unchanged, and the secret and
+ * binary refusals are shared rather than re-stated so the widening cannot spread
+ * to them by omission.
+ */
+export type SalvageVerdict = { ok: true; overCap: string | null } | { ok: false; reason: string }
+
+export const inspectSalvage = (
+  files: readonly StagedFile[],
+  diff: string,
+  limits: DiffLimits,
+  secrets: readonly string[],
+): SalvageVerdict => {
+  const unacceptable = neverCommittable(files, diff, secrets)
+  if (unacceptable !== null) return { ok: false, reason: unacceptable }
+
+  return { ok: true, overCap: overSize(files, limits) }
 }
 
 const paths = (files: readonly StagedFile[]): string[] => files.map((file) => file.path)

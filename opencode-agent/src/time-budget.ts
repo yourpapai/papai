@@ -3,11 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { renderAnswerOutOfTime, renderOutOfTime } from './budget-notices.js'
 import type { PipelineConfig } from './config.js'
 import type { MachineInput } from './phase-context.js'
 import { postAndAppend } from './run-report.js'
 import type { RunResult } from './run-result.js'
+import { renderAnswerOutOfTime, renderOutOfTime } from './time-notices.js'
 import { recordSpend } from './token-budget.js'
 import { transition } from './transitions.js'
 
@@ -35,15 +35,21 @@ import { transition } from './transitions.js'
  *     where `/retry` under the same token ceiling is not;
  *   - the stop reports **`waiting`**, not `failed`. See {@link parkOutOfTime}.
  *
- * What it does not yet do is keep an interrupted turn's work. The check sits before
- * a handler, so the phase it refuses never starts and nothing is lost — but a turn
- * cut off *part-way* through is still a crash that discards its tree. That needs
- * `abort()` and a commit that bypasses the repository's hooks, and until it lands
- * this stage says nothing on the issue to suggest otherwise.
+ * The stop **in front of** a phase is all this module owns, and it loses nothing by
+ * construction: the phase it refuses never starts. The other stop — the clock running
+ * out *inside* a turn — lives in `turn-stop.ts`, because it is a different thing
+ * entirely: it aborts the model, asks for a handoff, salvages the tree with the
+ * repository's hooks bypassed, and only then parks in the same phase this one does.
+ * The two share `msToDeadline` and the park and nothing else, which is why the
+ * notices are two renderers rather than one with a branch: this one can truthfully
+ * say "nothing already done is lost" and that one cannot.
  */
 
 /** Only the fields the clock reasons over, so a test need not build a whole config. */
-export type TimeBudgetConfig = Pick<PipelineConfig, 'agentTimeoutMs' | 'jobDeadlineMs' | 'teardownReserveMs'>
+export type TimeBudgetConfig = Pick<
+  PipelineConfig,
+  'agentTimeoutMs' | 'jobDeadlineMs' | 'teardownReserveMs' | 'wrapUpMs'
+>
 
 /**
  * Milliseconds until this job is killed by its own timeout, or `null` when there
@@ -96,12 +102,24 @@ export const timeForAnotherPhase = (toDeadlineMs: number, config: TimeBudgetConf
  * reserve would compute `0` and hand the turn no bound whatsoever, the exact
  * opposite of what the shrinking is for. Clamped to 1ms instead: a turn that
  * cannot fit is refused at once, and a refusal is something the pipeline can post.
+ *
+ * **Two** slices come off, not one, and the second is what makes the stop worth
+ * having: the wrap-up is a second prompt in the same session, so a turn allowed to
+ * run right up to the teardown reserve leaves no room to ask it anything. A bound
+ * that fired with the whole remaining budget already spent would abort, find
+ * nothing left for the handoff, and salvage a tree with no account of it.
+ *
+ * With **no job deadline** neither slice applies and the configured cap stands
+ * alone. There is no total to divide into three — `AGENT_TIMEOUT_MS` bounds one
+ * turn by definition, not a run — so every `--event-path` run behaves exactly as it
+ * did before either slice existed.
  */
 export const turnTimeoutMs = (config: TimeBudgetConfig, nowMs: number): number => {
   const toDeadline = msToDeadline(config, nowMs)
   if (toDeadline === null) return config.agentTimeoutMs
 
-  return Math.max(1, Math.min(config.agentTimeoutMs, toDeadline - config.teardownReserveMs))
+  const forWork = toDeadline - config.teardownReserveMs - config.wrapUpMs
+  return Math.max(1, Math.min(config.agentTimeoutMs, forWork))
 }
 
 /**

@@ -44,6 +44,7 @@ export const OUTCOME_KEYS = [
   'TOKENS_SPENT',
   'ANSWER_TOKENS_SPENT',
   'TIME_SPENT',
+  'TIME_SPENT_PART_WAY',
   'ANSWER_TIME_SPENT',
   'CI_GAVE_UP',
   'REVIEWS_SPENT',
@@ -63,6 +64,9 @@ export type OutcomeKey = (typeof OUTCOME_KEYS)[number]
  *   spent ceiling the same glyph as a crash. `TIME_SPENT` joins that family, and is
  *   why it is worth stating twice: a wall-clock stop used to arrive as ❌ "the model
  *   did not answer within 1800000ms", about a turn that had answered 355 times.
+ *   `TIME_SPENT_PART_WAY` is that same stop reached from *inside* a turn rather than
+ *   in front of one — it is a separate key because the two comments make opposite
+ *   claims about what survived, and a shared one would have to hedge both.
  * - ⚠️ is a failed *answer*: the model turn broke but nothing moved, no attempt
  *   was spent and the issue is exactly where it was. ❌ there would tell a
  *   maintainer their delivered pull request had failed.
@@ -79,6 +83,7 @@ export const OUTCOME_GLYPHS: Record<OutcomeKey, string> = {
   TOKENS_SPENT: '⛔',
   ANSWER_TOKENS_SPENT: '⛔',
   TIME_SPENT: '⛔',
+  TIME_SPENT_PART_WAY: '⛔',
   ANSWER_TIME_SPENT: '⛔',
   CI_GAVE_UP: PRESENTATION.CI_FIX.glyph,
   REVIEWS_SPENT: '⛔',

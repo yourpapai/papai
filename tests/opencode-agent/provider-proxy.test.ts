@@ -362,6 +362,7 @@ describe('contain', () => {
     agentTimeoutMs: 1000,
     jobDeadlineMs: null,
     teardownReserveMs: 180_000,
+    wrapUpMs: 120_000,
     ciFixMaxRounds: 2,
     maxCiAttempts: 2,
     maxReviewAttempts: 3,
@@ -449,6 +450,7 @@ describe('contain', () => {
           sessionId: 's',
           prompt: () => Promise.resolve({ text: '', sessionId: 's' }),
           tokensUsed: () => Promise.resolve(0),
+          abort: () => Promise.resolve(true),
           close: () => Promise.resolve(),
         })
       },
@@ -474,9 +476,15 @@ describe('contain', () => {
     const seen: OpenCodeAgentOptions[] = []
     const nowMs = Date.UTC(2026, 7, 8, 12, 0)
     const run = contain({
-      // 90 seconds of job left, three of it reserved for the stop: nothing like
-      // the 1000ms cap, and the smaller number has to win.
-      config: { ...config(), agentTimeoutMs: 600_000, jobDeadlineMs: nowMs + 90_000, teardownReserveMs: 30_000 },
+      // 90 seconds of job left, 30 of it reserved for the stop and 10 for the
+      // wrap-up: nothing like the 600s cap, and the smaller number has to win.
+      config: {
+        ...config(),
+        agentTimeoutMs: 600_000,
+        jobDeadlineMs: nowMs + 90_000,
+        teardownReserveMs: 30_000,
+        wrapUpMs: 10_000,
+      },
       event,
       log: silentLog,
       run: () => Promise.resolve({ command: '', exitCode: 0, stdout: '', stderr: '' }),
@@ -489,6 +497,7 @@ describe('contain', () => {
           sessionId: 's',
           prompt: () => Promise.resolve({ text: '', sessionId: 's' }),
           tokensUsed: () => Promise.resolve(0),
+          abort: () => Promise.resolve(true),
           close: () => Promise.resolve(),
         })
       },
@@ -496,7 +505,7 @@ describe('contain', () => {
 
     await run.deps.agent()
 
-    expect(seen[0]?.timeoutMs).toBe(60_000)
+    expect(seen[0]?.timeoutMs).toBe(50_000)
     await run.proxy.close()
   })
 

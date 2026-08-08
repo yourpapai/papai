@@ -399,6 +399,11 @@ jobs:
           AGENT_JOB_STARTED_MS: ${{ steps.started.outputs.epoch }}
           AGENT_JOB_TIMEOUT_MINUTES: ${{ vars.AGENT_JOB_TIMEOUT_MINUTES || 90 }}
           AGENT_TEARDOWN_RESERVE_MS: ${{ vars.AGENT_TEARDOWN_RESERVE_MS }}
+          # The middle slice of that clock: what a turn stopped part-way through gets
+          # to finish the file it is in and say where it stopped. Held back from the
+          # work rather than from the reserve above, which pays for the commit and the
+          # comment and cannot be given away to a prompt.
+          AGENT_WRAP_UP_MS: ${{ vars.AGENT_WRAP_UP_MS }}
           AGENT_MAX_TOKENS: ${{ vars.AGENT_MAX_TOKENS }}
           # The namespace the status labels live under, or `none` to switch
           # them off. Forwarded like the other knobs because a repository with

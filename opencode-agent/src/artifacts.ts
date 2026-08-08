@@ -20,6 +20,19 @@ import type { IssueComment } from './blocks.js'
 export const SPEC_MARKER = 'AGENT_SPEC'
 export const PLAN_MARKER = 'AGENT_PLAN'
 export const REPORT_MARKER = 'AGENT_REPORT'
+/**
+ * The handoff a wall-clock stop leaves for the `/continue` that follows it: what
+ * the interrupted turn finished, what remains, and what it tried that did not work.
+ *
+ * A block like the others rather than a heading in the notice, for the reason this
+ * module exists at all — it is model-written markdown full of headings and lists,
+ * and every scraping scheme truncates that the moment the model writes one. It is
+ * also the artefact with the most to lose from a bad recovery: the "tried and did
+ * not work" section is the one thing a fresh session cannot re-derive from the
+ * diff and the plan, so a truncated read is not a cosmetic loss, it is a
+ * continuation re-treading ground somebody already paid for.
+ */
+export const HANDOFF_MARKER = 'AGENT_HANDOFF'
 
 const artifactSchema = z.object({
   text: z.string().min(1),
@@ -36,6 +49,39 @@ export const renderArtifact = (marker: string, text: string, revision: number): 
 export const findArtifact = (thread: readonly IssueComment[], agentLogin: string, marker: string): Artifact | null => {
   const result = artifactSchema.safeParse(findLatestBlock(thread, agentLogin, marker))
   return result.success ? result.data : null
+}
+
+/**
+ * The handoff a continuation should read, or `null` when there is none it should.
+ *
+ * Its **lifecycle** is the whole reason this is a function rather than a
+ * `findArtifact` call at the call site, and it has three parts:
+ *
+ *  - it is **written** by a stop that was interrupted part-way through a plan;
+ *  - it is **superseded** by the next one, for free — the blocks are appended to the
+ *    thread in order and `findArtifact` walks newest-first, so a second stop's note
+ *    is the one a third job reads;
+ *  - it is **retired** by a new plan, which is what the revision stamp is for. The
+ *    note describes progress against the plan the interrupted turn was implementing,
+ *    so a `/changes` that re-plans makes every claim in it a statement about work
+ *    nobody asked for any more — "done", "remaining" and "rejected" all measured
+ *    against a document that has been replaced. Stamped with `planRevision` and read
+ *    back only on a match, exactly as the report block records which plan it
+ *    implemented.
+ *
+ * What deliberately does **not** retire it is a `/retry` after a failed
+ * implementation of the same plan: the branch still carries the work the note
+ * describes, so it is still the best account of where things stand.
+ */
+export const findHandoff = (
+  thread: readonly IssueComment[],
+  agentLogin: string,
+  planRevision: number,
+): string | null => {
+  const handoff = findArtifact(thread, agentLogin, HANDOFF_MARKER)
+  if (handoff === null) return null
+
+  return handoff.revision === planRevision ? handoff.text : null
 }
 
 /** Reads an artefact's text, or throws via `onMissing` when it is not there. */

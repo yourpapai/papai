@@ -26,6 +26,7 @@ const budget = (overrides: Partial<TimeBudgetConfig> = {}): TimeBudgetConfig => 
   agentTimeoutMs: 30 * MINUTE,
   jobDeadlineMs: NOW + 90 * MINUTE,
   teardownReserveMs: 3 * MINUTE,
+  wrapUpMs: 2 * MINUTE,
   ...overrides,
 })
 
@@ -78,15 +79,30 @@ describe('turnTimeoutMs', () => {
     expect(turnTimeoutMs(budget(), NOW)).toBe(30 * MINUTE)
   })
 
-  test('shrinks to what is left of the job, minus the reserve', () => {
+  test('shrinks to what is left of the job, minus the reserve and the wrap-up', () => {
     // D3 of the finding, as one number: the turn cap defaulted to 30 minutes while
     // the job's ceiling was 90, so a turn opened at minute 75 was allowed to wait
     // until minute 105 — past a runner that dies at 90 having posted nothing at
     // all, which is the silence the per-turn deadline exists to prevent.
-    expect(turnTimeoutMs(budget(), NOW + 75 * MINUTE)).toBe(12 * MINUTE)
+    //
+    // Fifteen minutes left, three held back for the teardown and two for the
+    // wrap-up: the work gets ten.
+    expect(turnTimeoutMs(budget(), NOW + 75 * MINUTE)).toBe(10 * MINUTE)
+  })
+
+  test('leaves the wrap-up window out of the turn’s own bound', () => {
+    // The soft stop is a second prompt in the same job, so a turn allowed to run
+    // right up to the teardown reserve leaves nothing to ask it in — and the
+    // handoff note is the one thing only the model that did the work can write.
+    const noWrapUp = turnTimeoutMs(budget({ wrapUpMs: 5_000 }), NOW + 75 * MINUTE)
+
+    expect(noWrapUp - turnTimeoutMs(budget(), NOW + 75 * MINUTE)).toBe(2 * MINUTE - 5_000)
   })
 
   test('falls back to the configured cap when there is no job deadline', () => {
+    // Including the wrap-up: with no job there is no total to slice into three, and
+    // `AGENT_TIMEOUT_MS` bounds one turn by definition rather than a whole run — so
+    // an `--event-path` run behaves exactly as it did before either slice existed.
     expect(turnTimeoutMs(budget({ jobDeadlineMs: null }), NOW + 75 * MINUTE)).toBe(30 * MINUTE)
   })
 

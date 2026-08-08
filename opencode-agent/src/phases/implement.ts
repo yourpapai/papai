@@ -3,12 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { PLAN_MARKER, renderArtifact, REPORT_MARKER, requireArtifact } from '../artifacts.js'
-import { missingPlanError, noChangesError } from '../errors.js'
+import { findHandoff, PLAN_MARKER, renderArtifact, REPORT_MARKER, requireArtifact } from '../artifacts.js'
+import { isTurnDeadline, missingPlanError, noChangesError } from '../errors.js'
+import type { PipelineError } from '../errors.js'
 import { branchNameFor } from '../git.js'
 import { composeSystemPrompt } from '../obra-skills.js'
-import type { PhaseHandler, PhaseOutcome } from '../phase-context.js'
+import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
 import { buildImplementPrompt } from '../prompts.js'
+import { stopPartWayThrough } from '../turn-stop.js'
 import type { AgentState } from '../types.js'
 import { mintEnvelope } from './envelope.js'
 
@@ -43,19 +45,13 @@ export const handleImplement: PhaseHandler = async (input): Promise<PhaseOutcome
   const branch = branchNameFor(state.issueId)
   await deps.git.ensureBranch(branch, await deps.baseBranch())
 
-  const envelope = mintEnvelope()
-  const agent = await deps.agent()
-  await agent.prompt({
-    system: composeSystemPrompt({
-      phase: 'REVIEW_AND_MUTATE',
-      skills: await deps.skills('REVIEW_AND_MUTATE'),
-      repoRoot: deps.config.repoRoot,
-      nonce: envelope.nonce,
-      instructions: IMPLEMENT_INSTRUCTIONS,
-    }),
-    prompt: buildImplementPrompt(envelope, state.issueId, plan),
-    agent: 'build',
-  })
+  // A turn stopped by its own bound is a **ceiling reached**, not work that broke, so
+  // it leaves by a different door: the tree it was part-way through is committed and
+  // pushed, the issue parks in `INCOMPLETE`, and `/continue` picks this phase back up
+  // on a fresh clock. Every other rejection still falls through to `failRun`, which
+  // is the whole reason the deadline carries a distinguishable code.
+  const interrupted = await promptToImplement(input, plan)
+  if (interrupted !== null) return stopPartWayThrough({ input, branch, ...interrupted })
 
   // `commitAll` reports a clean tree itself, which is the same question a
   // separate `hasChanges` probe asked one `git status` earlier — two reads of a
@@ -80,6 +76,48 @@ export const handleImplement: PhaseHandler = async (input): Promise<PhaseOutcome
     // The raw count, not a verdict on it: `renderDelivery` compares it against
     // `reviewHintLines` as the config reads at delivery time, one phase later.
     patch: { changedLines: committed.lines },
+  }
+}
+
+/**
+ * The one model turn, and `null` unless its own bound stopped it part-way through.
+ *
+ * The system prompt travels back out with the failure because the wrap-up prompt has
+ * to run under the very same one: `mintEnvelope` is called once per handler so that
+ * the id in the system prompt and the id closing every delimiter agree, and a second
+ * mint here would hand the model an id that appears nowhere.
+ *
+ * The handoff, when the issue carries one, is a note the *previous* out-of-time run
+ * wrote about this same plan. Read through `findHandoff`, which is where the
+ * revision check lives — a note about a plan that has since been rewritten describes
+ * work nobody asked for any more.
+ */
+const promptToImplement = async (
+  input: PhaseInput,
+  plan: string,
+): Promise<{ stopped: PipelineError; system: string } | null> => {
+  const { deps, state } = input
+  const envelope = mintEnvelope()
+  const system = composeSystemPrompt({
+    phase: 'REVIEW_AND_MUTATE',
+    skills: await deps.skills('REVIEW_AND_MUTATE'),
+    repoRoot: deps.config.repoRoot,
+    nonce: envelope.nonce,
+    instructions: IMPLEMENT_INSTRUCTIONS,
+  })
+  const handoff = findHandoff(input.thread, await deps.selfLogin(), state.planRevision)
+
+  try {
+    const agent = await deps.agent()
+    await agent.prompt({
+      system,
+      prompt: buildImplementPrompt(envelope, state.issueId, plan, handoff),
+      agent: 'build',
+    })
+    return null
+  } catch (error) {
+    if (!isTurnDeadline(error)) throw error
+    return { stopped: error, system }
   }
 }
 

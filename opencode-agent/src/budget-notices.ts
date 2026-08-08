@@ -26,6 +26,9 @@ import type { Phase } from './types.js'
  * `outcomes.ts` own the glyphs — and `tests/opencode-agent/markdown.test.ts` asserts
  * that for this file as well as for `run-report.ts`, because a rule enforced only on
  * the file the renderers used to live in stops being a rule the moment they move.
+ * The **wall-clock** notices have since moved again, to `time-notices.ts`, when a
+ * third of them would not fit beside these — the same reason this module exists —
+ * and that test names all three files for the same reason.
  */
 
 /**
@@ -149,68 +152,4 @@ export const renderAnswerOverBudget = (spent: number, limit: number, phase: Phas
     '',
     `Nothing has changed: this issue is still in \`${phase}\`. Raise \`AGENT_MAX_TOKENS\` in the workflow and ask ` +
       'again.',
-  ].join('\n')
-
-/** Both wall-clock notices open on the same fact, so they state it identically. */
-const timeLine = (remainingMs: number, reserveMs: number): string =>
-  `This job is ${minutes(remainingMs)} from its own \`timeout-minutes\` ceiling, and holds ${minutes(reserveMs)} ` +
-  'back so a stop can post what it knows and record what it spent.'
-
-/**
- * A duration a maintainer can act on. Minutes, because that is the unit the job's
- * ceiling and the reserve are both set in — "180000 ms" is the same fact in a
- * shape nobody reads. Clamped at zero: a job already past its deadline has no
- * negative time left, it has none.
- */
-const minutes = (ms: number): string => `${(Math.max(0, ms) / 60_000).toFixed(1)} minutes`
-
-/**
- * The wall-clock notice, naming the phase the stop parked in front of.
- *
- * The one in this file whose remedy is **two independent things**, and stating
- * only one of them would be the trap this module exists to avoid. `/continue`
- * works on its own, because a fresh job starts with a fresh clock and picks up
- * from `resumeFrom` — which is what makes this different from
- * {@link renderOverBudget}, where a `/retry` under the same ceiling stops right
- * back where it was. Raising `AGENT_JOB_TIMEOUT_MINUTES` is the other half, and
- * the one that matters when a phase cannot fit in a job at all; the variable is a
- * repository variable rather than a workflow value because the workflow reads it
- * for its own `timeout-minutes:` too, where a workflow-level `env` is not
- * available.
- *
- * "Nothing already done is lost" is true of this stop and is not a figure of
- * speech: the check sits *before* the handler, so the phase it names never
- * started. A turn interrupted part-way through is a different stop and is not
- * this comment.
- */
-export const renderOutOfTime = (remainingMs: number, reserveMs: number, resumeFrom: Phase): string =>
-  [
-    outcomeHeading('TIME_SPENT', 'Out of time for this job'),
-    '',
-    timeLine(remainingMs, reserveMs),
-    '',
-    `So I stopped before starting \`${resumeFrom}\` rather than being killed part-way through it, and parked in ` +
-      '`INCOMPLETE`. Nothing already done is lost — that phase never started.',
-    `Reply \`/continue\` and I pick \`${resumeFrom}\` back up on a fresh job with a full clock. If it keeps ` +
-      'stopping here, raise the `AGENT_JOB_TIMEOUT_MINUTES` repository variable — the workflow reads it for both ' +
-      "the job's own `timeout-minutes:` and this bound — or reply `/cancel` to stop.",
-  ].join('\n')
-
-/**
- * The same ceiling, reported for a question rather than for the work.
- *
- * Separate from {@link renderOutOfTime} for the reason
- * {@link renderAnswerOverBudget} is separate: nothing was parked and nothing
- * moved, so promising a `/continue` that resumes a phase would describe a state
- * block that does not exist. What is true is narrower — the question was not put
- * to the model, and asking it again on the next job is the whole remedy.
- */
-export const renderAnswerOutOfTime = (remainingMs: number, reserveMs: number, phase: Phase): string =>
-  [
-    outcomeHeading('ANSWER_TIME_SPENT', 'Out of time for this job'),
-    '',
-    `${timeLine(remainingMs, reserveMs)} I did not put that question to the model.`,
-    '',
-    `Nothing has changed: this issue is still in \`${phase}\`. Ask again — the next job starts with a full clock ` +
-      '— or raise `AGENT_JOB_TIMEOUT_MINUTES` if the runs keep landing here.',
   ].join('\n')

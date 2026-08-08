@@ -409,7 +409,7 @@ Six bounds, each on a different kind of runaway.
 | Bound            | Where                                                                        | What it stops                                                             |
 | ---------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | Prompt size      | `prompt-budget.ts`                                                           | 12k characters of thread, and 12k across _all_ failing checks, per prompt |
-| Turn duration    | `AGENT_TIMEOUT_MS`, applied in `deadline.ts`                                 | A model turn that never answers                                           |
+| Turn duration    | `AGENT_TIMEOUT_MS`, applied in `deadline.ts`                                 | A turn that never answers — and one merely too slow, whose work is kept   |
 | Job wall clock   | `AGENT_JOB_TIMEOUT_MINUTES`, applied in `time-budget.ts`                     | A job dying on `timeout-minutes` with nothing posted at all               |
 | Provider hiccups | `provider-proxy.ts` — 3 attempts, with backoff                               | A single 429 or 5xx failing the phase                                     |
 | Rounds           | `AGENT_MAX_ATTEMPTS`, `AGENT_CI_FIX_MAX_ROUNDS`, `AGENT_MAX_REVIEW_ATTEMPTS` | An agent and CI bouncing off each other, and a review nothing else bounds |
@@ -591,13 +591,60 @@ With neither job knob set — every local `--event-path` run, and any workflow t
 has not been updated — there is no job deadline at all and nothing here fires; the
 run is bounded by `AGENT_TIMEOUT_MS` alone, exactly as it was before.
 
-What this does **not** yet do is keep the work of a turn that is cut off part-way
-through. The stop above sits _before_ a handler, so the phase it refuses never
-starts and nothing is lost — but a turn interrupted mid-edit still throws away its
-tree, because nothing can cancel the model's in-flight tool commands and a
-half-written file cannot be committed past the repository's own pre-commit hook.
-That needs `session.abort` and a salvage commit, and it is the next stage of the
-same finding.
+### The other stop: when the clock runs out _inside_ a turn
+
+The stop above sits _before_ a handler, so the phase it refuses never starts and
+nothing is lost. The stop that matters more is the one the finding actually came
+from: a turn already running when the clock ran out, cut off mid-`bash` with half a
+module written and thirty minutes of work in the tree. That one used to arrive as
+`❌ the model did not answer`, spend an attempt, and throw the tree away.
+
+It now spends the budget in **three** slices — work, wrap-up, teardown — and only
+the first is the model's to use freely. `turnTimeoutMs` subtracts both of the
+others, so a turn's own bound fires with room still left in the job:
+
+1. **Soft stop.** `session.abort`, then one prompt in the same session under
+   `AGENT_WRAP_UP_MS`: stop, start nothing new, finish only the file you are
+   part-way through, then say what you completed, what remains, and **what you tried
+   that did not work**. That last clause is what the window is for — a continuation
+   can read the diff and the plan, but nothing else can recover a rejected approach,
+   and a fresh session would try it again.
+2. **Hard stop.** `abort` again, unconditionally, whether the wrap-up replied,
+   refused or started editing. Nothing here depends on the model cooperating, and
+   `close()` is never the fallback: measured against a live server, an abort kills
+   the running tool child and leaves the server up, while `close()` — one SIGTERM to
+   one pid on POSIX — kills the server and **orphans** the tool child. `abort` is
+   the stop; `close()` is the leak, and the production log had been showing it all
+   along in the runner's `Terminate orphan process` lines.
+3. **Teardown.** `git.salvageAll`, which commits with `--no-verify` and pushes the
+   same way, then the notice, the handoff block and the state block.
+
+`--no-verify` is not a preference. `package.json`'s `prepare` copies
+`scripts/pre-commit.sh` into `.git/hooks/pre-commit` on any install where `.git`
+exists — the Actions runner included — and that hook runs lint, typecheck and
+format over the staged files. A tree interrupted mid-edit fails all of them, so
+without the flag `git commit` exits non-zero and the salvage loses exactly what it
+exists to keep. The diff guard still runs, and its four refusals split in two on
+this path: **secrets by value and binaries stay absolute**, because a credential is
+in history whether the file is later deleted or not, while the **file and line caps
+drop to reporting**, because discarding a real 3,000-line increment over a 2,000
+cap recreates the loss this whole item is about. The count rides out on
+`StagedTotals` into the notice and the state block.
+
+Everything about the salvage degrades to **"nothing pushed, and here is why"** and
+never to a new failure: the run it is rescuing is already out of time and cannot
+afford a second thing to go wrong. That covers a refused guard, a git that rejects,
+a push that cannot reach the remote — and a clean tree, which is a legitimate
+outcome rather than an error. One case pushes nothing on purpose: if **no** abort
+was accepted, the pipeline cannot show the tree has stopped being written to, and
+staging one in that state is the single thing this path must not do now that the
+size caps only report.
+
+The wrap-up's reply travels to the next job in an `AGENT_HANDOFF` block, like the
+spec, the plan and the report, and `buildImplementPrompt` includes it — enveloped
+as untrusted text, framed as a report to check rather than as instructions. It is
+stamped with the plan revision it describes, so a re-planned issue is never handed
+an account of work measured against a document that has been replaced.
 
 ## Watching a run
 
@@ -1117,6 +1164,7 @@ cannot drift.
 | `AGENT_JOB_STARTED_MS`                     | no       | unset — no job deadline                         | Epoch ms this job began; the workflow's first step    |
 | `AGENT_JOB_TIMEOUT_MINUTES`                | no       | unset — no job deadline                         | The job's own ceiling, shared with `timeout-minutes:` |
 | `AGENT_TEARDOWN_RESERVE_MS`                | no       | `180000`                                        | Held back from the job so a time stop can report      |
+| `AGENT_WRAP_UP_MS`                         | no       | `120000`                                        | The model's slice of a stop: finish up and hand over  |
 | `AGENT_MAX_TOKENS`                         | no       | `5000000`                                       | Model tokens one issue may spend, across all its jobs |
 | `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no       | `opencode-agent[bot]`                           | Commit identity                                       |
 | `AGENT_LABEL_PREFIX`                       | no       | `agent:`                                        | Namespace for the status labels; `none` disables them |
@@ -1173,6 +1221,12 @@ since the pair kept in step by hand is the defect S5-11 records.
 `AGENT_TEARDOWN_RESERVE_MS` accepts 1 000–1 800 000: below a second the reserve
 cannot post the comment and write the state block it exists for, and above half an
 hour it is larger than most jobs and stops every run before any phase begins.
+`AGENT_WRAP_UP_MS` accepts 5 000–900 000 and is the **third** slice of the same
+clock: below five seconds the window can only ever expire, buying a second abort
+and no handoff, and above fifteen minutes it is the work slice given away to the
+tidying — the wrap-up has one paragraph to write, not a file to refactor. Unlike
+the reserve it is taken off the _work_, which is why `turnTimeoutMs` subtracts
+both: a turn allowed to run right up to the reserve leaves nothing to ask it in.
 
 `AGENT_REVIEW_HINT_LINES` takes the line range `AGENT_MAX_CHANGED_LINES` takes,
 1–1 000 000, because it is the same quantity read off the same measurement — and

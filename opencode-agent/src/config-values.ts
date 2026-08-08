@@ -110,6 +110,18 @@ export const JOB_MINUTES_RANGE: IntRange = { min: 1, max: 1_440 }
 export const RESERVE_RANGE: IntRange = { min: 1_000, max: 1_800_000 }
 
 /**
+ * The model's own slice of the stop: one short prompt to finish the file it is
+ * part-way through and say what it tried.
+ *
+ * Five seconds is the floor because anything under it is a window that can only
+ * ever expire, buying a second abort and no handoff. Fifteen minutes is the
+ * ceiling, and it is the end that matters: this slice is taken off the *work*, so
+ * a large value is a job that spends its afternoon tidying — and the wrap-up has
+ * one paragraph to write, not a file to refactor.
+ */
+export const WRAP_UP_RANGE: IntRange = { min: 5_000, max: 900_000 }
+
+/**
  * Bounds on one commit. Generous enough for a real feature and its tests, small
  * enough that a staged `node_modules`, a downloaded fixture or a build directory
  * stops the run instead of landing in a public pull request.

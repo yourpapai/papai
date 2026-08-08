@@ -8,11 +8,9 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import {
-  renderAnswerOutOfTime,
   renderAnswerOverBudget,
   renderCiExhausted,
   renderExhausted,
-  renderOutOfTime,
   renderOverBudget,
   renderReviewsExhausted,
 } from '../../opencode-agent/src/budget-notices.js'
@@ -31,6 +29,8 @@ import {
   renderSettled,
 } from '../../opencode-agent/src/run-report.js'
 import { initialState } from '../../opencode-agent/src/state-manager.js'
+import { renderAnswerOutOfTime, renderOutOfTime, renderStoppedPartWay } from '../../opencode-agent/src/time-notices.js'
+import type { PartWayStop } from '../../opencode-agent/src/time-notices.js'
 import { transition } from '../../opencode-agent/src/transitions.js'
 import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
 
@@ -253,6 +253,91 @@ describe('the wall-clock notice', () => {
   })
 })
 
+/**
+ * The stop the finding is actually about: a turn interrupted mid-file, with the
+ * work kept. Shared by the notice's own tests and by the heading table below.
+ */
+const PART_WAY: PartWayStop = {
+  remainingMs: 150_000,
+  reserveMs: 180_000,
+  progress: { lastAction: 'ran bash', toolCalls: 355, tokens: 112_084, cost: 0 },
+  branch: 'agent/issue-42',
+  resumeFrom: 'REVIEW_AND_MUTATE',
+  kept: { files: 9, lines: 1_402 },
+  note: null,
+  handoff: '**Done** — the retry wrapper.\n**Tried and rejected** — a decorator, which broke typing.',
+}
+
+describe('the notice for a turn stopped part-way through', () => {
+  const notice = renderStoppedPartWay(PART_WAY)
+
+  test('says what the turn had done, because "it did not answer" was the original defect', () => {
+    // The comment a maintainer reads has to make the same correction the error
+    // message does: this turn worked for half an hour and was cut off, it did not
+    // hang. The figures are the heartbeat's own, already in hand.
+    expect(notice).toContain('355 tool calls')
+    expect(notice).toContain('112,084 tokens')
+    expect(notice).not.toContain('did not answer')
+  })
+
+  test('states what the branch now carries, with the figure rather than a claim', () => {
+    expect(notice).toContain('9 files')
+    expect(notice).toContain('1,402 lines')
+    expect(notice).toContain('`agent/issue-42`')
+  })
+
+  test('carries the handoff where a human reads it, as well as in the block', () => {
+    // The block is for the next prompt; this is for the person deciding whether to
+    // type `/continue` at all. Same text, two readers.
+    expect(notice).toContain('Tried and rejected')
+    expect(notice).toContain('a decorator, which broke typing')
+  })
+
+  test('offers `/continue`, and never `/retry`, which the park refuses', () => {
+    expect(notice).toContain('`/continue`')
+    expect(notice).toContain('`REVIEW_AND_MUTATE`')
+    expect(notice).not.toContain('/retry')
+  })
+
+  test('says plainly that nothing was pushed, and why, rather than implying work survived', () => {
+    // The one thing this comment must never do is claim a branch carries work it
+    // does not. Every degradation of the salvage lands here.
+    const lost = renderStoppedPartWay({ ...PART_WAY, kept: null, note: 'the staged changes contain a credential' })
+
+    expect(lost).toContain('Nothing was pushed')
+    expect(lost).toContain('contain a credential')
+    expect(lost).not.toContain('1,402 lines')
+  })
+
+  test('reports a commit that was over a size cap without pretending it was refused', () => {
+    const large = renderStoppedPartWay({ ...PART_WAY, note: '3000 lines changed, over the limit of 2000' })
+
+    expect(large).toContain('over the limit of 2000')
+    expect(large).toContain('1,402 lines')
+  })
+
+  test('says a clean tree is a clean tree rather than reporting a failure', () => {
+    const clean = renderStoppedPartWay({ ...PART_WAY, kept: null, note: 'nothing had been written yet', handoff: null })
+
+    expect(clean).toContain('nothing had been written yet')
+    expect(clean).toContain('`/continue`')
+  })
+
+  test('admits it has no handoff rather than leaving an empty section', () => {
+    // A missing note is the ordinary consequence of a wrap-up window that expired
+    // or a model that ignored it, and the continuation reads the comment: an empty
+    // heading would read as "it finished and had nothing to say".
+    const silent = renderStoppedPartWay({ ...PART_WAY, handoff: null })
+
+    expect(silent).toContain('no account of where it stopped')
+  })
+
+  test('speaks in minutes, like every other notice about a clock', () => {
+    expect(notice).toContain('2.5 minutes')
+    expect(notice).not.toContain('150000')
+  })
+})
+
 describe('comment headings', () => {
   const failed = transition(initialState(42), 'FAILED', { lastError: 'x' })
 
@@ -264,6 +349,7 @@ describe('comment headings', () => {
     ['TOKENS_SPENT', renderOverBudget(1, 2, 'PLANNING')],
     ['ANSWER_TOKENS_SPENT', renderAnswerOverBudget(1, 2, 'DESIGN_SPEC')],
     ['TIME_SPENT', renderOutOfTime(60_000, 180_000, 'REVIEW_AND_MUTATE')],
+    ['TIME_SPENT_PART_WAY', renderStoppedPartWay(PART_WAY)],
     ['ANSWER_TIME_SPENT', renderAnswerOutOfTime(60_000, 180_000, 'DESIGN_SPEC')],
     ['CI_GAVE_UP', renderCiExhausted('spent', null)],
     ['REVIEWS_SPENT', renderReviewsExhausted('spent', null)],
@@ -287,22 +373,25 @@ describe('comment headings', () => {
     expect(renderClosing(cancelled).startsWith(`### ${PRESENTATION['COMPLETE:cancelled'].glyph} Stopped`)).toBe(true)
   })
 
-  test.each(['run-report.ts', 'budget-notices.ts'])('no renderer in %s writes a heading of its own', (file) => {
-    // The class, not the instance. Nine renderers each picking a glyph by hand
-    // is the defect the tables exist to prevent, and it comes back the moment
-    // somebody adds a tenth with a literal `### ` — which every one of these
-    // renderers had until this stage. Comments are stripped first: several of
-    // them quote the old headings on purpose.
-    //
-    // Both files, because the guard is on the *class* and the budget notices
-    // moved into their own module when a third one would not fit beside them.
-    // A rule enforced on the file the renderers used to live in is a rule that
-    // stops being enforced the moment they move.
-    const source = readFileSync(path.join(import.meta.dir, '..', '..', 'opencode-agent', 'src', file), 'utf8')
-    const stripped = source.replaceAll(/\/\*[\s\S]*?\*\//gu, '').replaceAll(/^\s*\/\/.*$/gmu, '')
+  test.each(['run-report.ts', 'budget-notices.ts', 'time-notices.ts'])(
+    'no renderer in %s writes a heading of its own',
+    (file) => {
+      // The class, not the instance. Nine renderers each picking a glyph by hand
+      // is the defect the tables exist to prevent, and it comes back the moment
+      // somebody adds a tenth with a literal `### ` — which every one of these
+      // renderers had until this stage. Comments are stripped first: several of
+      // them quote the old headings on purpose.
+      //
+      // Both files, because the guard is on the *class* and the budget notices
+      // moved into their own module when a third one would not fit beside them.
+      // A rule enforced on the file the renderers used to live in is a rule that
+      // stops being enforced the moment they move.
+      const source = readFileSync(path.join(import.meta.dir, '..', '..', 'opencode-agent', 'src', file), 'utf8')
+      const stripped = source.replaceAll(/\/\*[\s\S]*?\*\//gu, '').replaceAll(/^\s*\/\/.*$/gmu, '')
 
-    expect(stripped).not.toMatch(/['"`]### /u)
-  })
+      expect(stripped).not.toMatch(/['"`]### /u)
+    },
+  )
 })
 
 describe('formatFailures', () => {

@@ -26,6 +26,7 @@ import {
   ROUND_RANGE,
   TIMEOUT_RANGE,
   TOKEN_RANGE,
+  WRAP_UP_RANGE,
 } from './config-values.js'
 import type { Env } from './config-values.js'
 import type { DiffLimits } from './diff-guard.js'
@@ -99,6 +100,18 @@ export interface PipelineConfig {
    * the runner death this whole bound exists to replace.
    */
   teardownReserveMs: number
+  /**
+   * The middle slice: how long the model gets to wrap up after a turn is stopped.
+   *
+   * Held back from the **work**, not from the teardown reserve: the reserve buys the
+   * commit, the comment and the state block that make a stop something other than a
+   * silence, and a wrap-up that ate it would leave nothing to report with.
+   *
+   * What it buys is the handoff note, the one thing only the model that did the work
+   * can write: what it finished, what remains, and what it tried that did not work.
+   * A fresh session can read the diff and the plan; it cannot recover that last line.
+   */
+  wrapUpMs: number
   /** Model tokens one issue may spend, across every job it runs. */
   maxTokens: number
   ciFixMaxRounds: number
@@ -266,6 +279,7 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     agentTimeoutMs: boundedInt(env, 'AGENT_TIMEOUT_MS', 1_800_000, TIMEOUT_RANGE),
     jobDeadlineMs: buildJobDeadline(env),
     teardownReserveMs: boundedInt(env, 'AGENT_TEARDOWN_RESERVE_MS', 180_000, RESERVE_RANGE),
+    wrapUpMs: boundedInt(env, 'AGENT_WRAP_UP_MS', 120_000, WRAP_UP_RANGE),
     ciFixMaxRounds: boundedInt(env, 'AGENT_CI_FIX_MAX_ROUNDS', 2, ROUND_RANGE),
     maxCiAttempts: boundedInt(env, 'AGENT_MAX_CI_ATTEMPTS', 3, ROUND_RANGE),
     maxReviewAttempts: boundedInt(env, 'AGENT_MAX_REVIEW_ATTEMPTS', 3, ROUND_RANGE),
