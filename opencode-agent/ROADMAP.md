@@ -1214,7 +1214,7 @@ two call sites that consume the identity.
 | S5-8 **[REWORDED, FIXED]** | Every check reruns every round              | `check-loop.ts` (was `review-loop.ts`) | The finding named a file that no longer exists; the behaviour was real and lived in `runCheckLoop`. Later rounds now re-run only what failed, and a full pass is what declares green. See below.                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | S5-9 **[MOOT]** — no work  | `parseMutationScore` is ambiguous at `1`    | — (was `review-loop.ts:130`)           | Zero references anywhere in the repository. The function went with S2-4, which replaced the hardcoded mutation check with the detected `review-loop/` workspace; the finding outlived its subject.                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | S5-10 **[SUPERSEDED]**     | The comment filter is gone by design (S1-3) | `agent-pipeline.yml:41-44`             | A comment merely mentioning `/approve` starts a job that then correctly skips. Harmless, noisy, billable.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| S5-11 **[OPEN]**           | The turn deadline abandons the work         | `deadline.ts`; `implement.ts`          | 30 minutes of steady progress — 355 tool calls, 112k tokens — discarded and reported as "the model did not answer", in a job with 59 minutes of its cap left. Three defects compose: the bound cannot cancel what it stops waiting for, nothing is committed until the turn returns, and the constant is unrelated to the runner cap it exists to stay under. A wall-clock stop is a **ceiling**, and this pipeline already owns that machinery. The pinned SDK exposes `session.abort`. See below.                                                                                                                                                          |
+| S5-11 **[OPEN]**           | The turn deadline abandons the work         | `deadline.ts`; `implement.ts`          | 30 minutes of steady progress — 355 tool calls, 112k tokens — discarded and reported as "the model did not answer", in a job with 59 minutes of its cap left. Three defects compose: the bound cannot cancel what it stops waiting for, nothing is committed until the turn returns, and the constant is unrelated to the runner cap it exists to stay under. A wall-clock stop is a **ceiling**: soft stop, unconditional hard stop, `--no-verify` salvage, park in `INCOMPLETE`, resume with `/continue`. See below.                                                                                                                                       |
 
 ### S5-3 — what the fix is, and what it deliberately is not
 
@@ -1422,13 +1422,15 @@ timeout in place of work that could have been kept.
   else. `abort` is the primitive that turns "we stopped waiting" into "it stopped
   working" — which is the whole of D1, and the precondition for salvaging
   anything at all. **Take it.**
-- **Park as a ceiling and continue on `/retry`.** Commit and push what the abort
-  left, post a partial report, park exactly as `parkOverBudget` does.
-  `ensureBranch` already fast-forwards the pushed branch, so the continuation
-  builds on the earlier work instead of redoing it, and the concurrency group —
-  keyed on the resolved branch, `cancel-in-progress: false` — queues the
-  continuation behind any job still on that branch rather than racing it.
-  **Take it:** no new phase, no new signal, no new trigger, no new door.
+- **Park as a ceiling and continue on `/continue`.** Commit and push what the
+  hard stop left, post a partial report and a handoff, park with `resumeFrom`
+  naming the phase, and **carry `attempts`** — nothing failed, so nothing may be
+  spent. `ensureBranch` already fast-forwards the pushed branch, so the
+  continuation builds on the earlier work instead of redoing it, and the
+  concurrency group — keyed on the resolved branch, `cancel-in-progress: false` —
+  queues it behind any job still on that branch rather than racing it. **Take
+  it**, with a **new waiting phase** rather than a park in `FAILED`: see
+  "`/continue`, and why it is a phase and not a flag" below.
 - **A `REVIEW_AND_MUTATE` self-loop in `TRANSITIONS`.** **Reject.** That phase is
   never persisted today, and three separate decisions in `state-manager.ts` lean
   on that fact — including the whole audit of which rows `CI_FAILED` may name.
@@ -1459,39 +1461,174 @@ timeout in place of work that could have been kept.
   committable. Never the mechanism: a model cannot estimate wall clock, and a
   bound that depends on it being right is not a bound.
 
+#### The stop, in order, and why it is two stops and not one
+
+A single hard stop is not enough: the model is most likely to be **mid-file** at
+the moment the clock runs out, and a tree with one half-written module in it is
+worth much less than the same tree with that module finished. So the budget is
+spent in three parts — work, wrap-up, teardown — and only the first is the
+model's to use freely.
+
+1. **Soft stop**, at `deadline − wrapUp − teardown`. `session.abort`, then one
+   short prompt in the same session, under its own `wrapUp` bound: _stop, start
+   nothing new, finish only the file you are part-way through, then say what you
+   completed and what remains._ The valuable product of this window is the
+   **handoff note**, not a tidier tree — it is what the next `/continue` reads,
+   and it is the one thing only the model that did the work can write.
+2. **Hard stop**, at `deadline − teardown`, and it is **unconditional**. Whether
+   the wrap-up replied, ignored the instruction or started editing again, the run
+   stops waiting: `abort` again, wait briefly for idle, and then **close the
+   server**. Closing it is what makes this hard rather than polite — `close()`
+   kills the process the model's `bash` and `write` children hang off, which is
+   the only thing that removes the "a file is mid-write while `git add` runs"
+   race. Nothing in this step may depend on the model, or the server, choosing
+   to cooperate.
+3. **Teardown**, the reserve. `git add --all`, the diff guard, the commit, the
+   push, the comment, the state block, the label. The observed tail for all of
+   that is about ten seconds; reserving two or three minutes is cheap and makes
+   the difference between a saved branch and the run we are trying to stop
+   having.
+
+**One ordering constraint that is a silent bug if missed:** read the session's
+usage **before** closing the server. `tokensUsed()` degrades to `0` with a `warn`
+when the server cannot answer, and CLAUDE.md is explicit that under-recording
+spend on the stopping path is the worst place in this pipeline to be blind —
+that is precisely the state a `/continue` comes back out of. Closing first and
+recording after would hand the next job a total with this whole turn missing
+from it. For the same reason the memoized handle in `agent-handle.ts` must not
+be reachable after step 2: a closed session handed to a later phase breaks, and
+the only correct continuation from a hard stop is the park.
+
+#### The salvage commit is `--no-verify`, and what that must **not** skip
+
+This is not a preference, it is the difference between the salvage working and
+not working at all. `package.json`'s `prepare` script copies
+`scripts/pre-commit.sh` into `.git/hooks/pre-commit` on any install where `.git`
+exists — **including the Actions runner**, which runs `bun install
+--frozen-lockfile`. That hook runs `scripts/check.sh --staged`, which is lint,
+typecheck and format:check over the staged files. So a tree with an unused
+import, an unformatted file or a half-typed expression in it — exactly what
+being interrupted mid-edit produces — **cannot be committed at all** today:
+`git commit` exits non-zero, `commitAll` throws `GitError`, and the salvage
+loses everything it was built to keep.
+
+So the salvage stages and commits with `--no-verify`, and pushes with it too.
+Worth recording as its own small finding that this coupling exists on the
+_ordinary_ path as well: the agent's normal implementation commit is silently
+gated on the repository's own pre-commit hook passing on the runner, which is a
+dependency nothing in this workspace declares and no test covers.
+
+What `--no-verify` skips is the repository's hooks. It does **not** skip
+`diff-guard.ts`, and the guard's four refusals split cleanly in two on this path:
+
+- **Secrets, by value, and binaries — still absolute.** A credential in a commit
+  is in history whether or not the file is later deleted, and neither refusal is
+  made more acceptable by the run being out of time. A salvage that trips these
+  pushes **nothing** and says so.
+- **The file and line caps — the ones that need a decision.** They exist to
+  refuse a runaway `git add --all`, and on a partial tree they can refuse for a
+  reason that has nothing to do with a runaway. Throwing away a real 3,000-line
+  increment because the cap says 2,000 recreates the exact loss this whole item
+  is about. Recommendation: on the salvage path the caps **report rather than
+  refuse** — the count already rides out on `StagedTotals` into the state block —
+  while the secret and binary refusals stay hard. That is a deliberate widening
+  of what a commit may look like, so it belongs behind the salvage path and
+  nowhere else.
+
+#### `/continue`, and why it is a phase and not a flag
+
+A time stop is not a failure, and the command that resumes it should not be the
+one that resumes failures. `/retry` means "the thing that broke, again";
+`/continue` means "you were not finished". Parking in `FAILED` and adding a
+second command accepted there would need a field on the state to tell the two
+parks apart, and every reader of `FAILED` would have to consult it.
+
+A **new waiting phase** is the shape this machine already has for "stopped,
+awaiting a human": a phase with no handler in `HANDLERS`, entered by a signal
+and left by a command. Concretely:
+
+- `INCOMPLETE`, no handler, `resumeFrom` naming the phase that ran out of time.
+- A signal into it, accepted from the phases that can be time-stopped —
+  `REVIEW_AND_MUTATE`, `CI_FIX`, `CODE_REVIEW`.
+- `CONTINUE`, accepted **only** in `INCOMPLETE`, moving to `resumeFrom` and
+  clearing it. That is `RETRY`'s branch in `transition` with a different guard,
+  so it should reuse that shape rather than grow a parallel one.
+- `attempts` carried, `lastError` left `null`, the spend recorded. A ⛔-family
+  glyph and its own rows in `presentation.ts` and `status-comment.ts`.
+
+Three consequences to settle rather than discover:
+
+- **The run's status should be `waiting`, not `failed`.** A run that saved its
+  work and parked for a human did not fail, and `waiting` exits 0 — so the
+  Actions page stops showing red for runs that behaved correctly. This
+  deliberately differs from `parkOverBudget`, which reports `failed`; the
+  difference is that a token stop starts no work and this one finishes some.
+  `reported` is `true` either way, so the fallback comment stays out of scope.
+- **No new `CI_FAILED` or `REVIEW_REQUESTED` rows.** The branch _is_ pushed in
+  `INCOMPLETE`, which is the one condition those rows normally want — but the
+  work is by definition unfinished, and CI-fixing or reviewing a half-done
+  increment is worse than waiting for the `/continue` that finishes it. Recorded
+  as a decision, in the same spirit as the absences already audited for those
+  two signals.
+- **What bounds a continuation is the token budget, not `attempts`.** That is
+  forced: `attempts` must not move, or the very `/continue` the notice invites
+  would eventually be refused by a gate the notice never mentioned — the same
+  collision `parkOverBudget` avoids. `AGENT_MAX_TOKENS` is per issue and
+  persisted, so it already spans an unbounded chain of continuations, and every
+  link in that chain is a human typing a command. A `continuations` counter only
+  becomes necessary if a continuation is ever made automatic, which is the
+  option rejected above.
+
 #### Staging
 
-**Stage 1, no new SDK surface.** Reclassify the stop as a ⛔ ceiling — renderer in
-`budget-notices.ts`, row in `presentation.ts`'s outcome table, park via
-`parkOverBudget`'s shape with `attempts` carried — and derive the deadline from
-the job. This alone closes D3 and D4 and what remains of S5-5, and it makes the
-notice's advice true for the first time.
+**Stage 1 — the stop tells the truth, and knows the real clock.** No new SDK
+surface. `INCOMPLETE`, the signal into it and `/continue` out of it; a ⛔-family
+renderer in `budget-notices.ts` and the rows in `presentation.ts` and
+`status-comment.ts`; the park carrying `attempts`; the run reported as `waiting`.
+Alongside it, the deadline derived from the job, split into work / wrap-up /
+teardown, checked before each phase where `stopIfOverBudget` already sits. This
+closes D3 and D4 and what remains of S5-5, and it makes the notice's advice true
+for the first time — but it still loses the work, because the tree is not yet
+safe to commit.
 
-**Stage 2, the work stops being lost.** `abort()` on the adapter, its shapes
-recorded from a live server; on a wall-clock stop `handleImplement` aborts, waits
-for idle, commits and pushes the quiescent tree, posts a partial report and a
-handoff, and parks as in stage 1. The salvage must degrade to "nothing pushed"
-on any failure of its own and never to a _new_ failure mode — a half-finished
-tree meeting the diff guard is the case to get right.
+**Stage 2 — the work stops being lost.** `abort()` and a `--no-verify` commit are
+the two halves and neither works alone. The adapter gains `abort()` and an idle
+wait, with its shapes recorded from a live server; `git.ts` gains a salvage
+commit that bypasses the hooks and relaxes the size caps to a report while
+keeping the secret and binary refusals hard; `handleImplement` gains the
+soft-stop / hard-stop / teardown sequence and posts the partial report and the
+handoff. The salvage must degrade to "nothing pushed, and here is why" on any
+failure of its own, never to a _new_ failure mode: the run it is rescuing is
+already out of time and cannot afford a second thing to go wrong.
 
-**Stage 3, the deadline stops mattering.** Step-wise implement, and the
-soft-deadline instruction.
+**Stage 3 — the deadline stops mattering.** Step-wise implement, one plan step per
+turn, and the soft-deadline line in `IMPLEMENT_INSTRUCTIONS`.
 
-#### To verify against a live server before building
+#### To verify before building
 
-Per the workspace rule, none of this may be guessed from the SDK's types —
+Per the workspace rule, nothing here may be guessed from the SDK's types.
 `bun run opencode-agent:test:live`, then record:
 
-- Does `abort` kill an in-flight `bash` child, and does it return with the tree
-  quiescent or with a `write` still in flight? Stage 2 rests entirely on this.
-- Does the session accept a follow-up prompt after an abort with its history
-  intact? If yes, stage 3's continuations cost only their new tool output; if no,
-  each one pays a full re-read and the economics change.
+- Does `abort` stop an in-flight `bash` child, and does it return with the tree
+  quiescent or with a `write` still in flight? The soft stop's usefulness rests
+  on this.
+- Does `close()` reliably take the model's tool children with it? The hard stop
+  rests on this, and it is the stronger claim of the two — if a `bash` survives
+  its server, the mid-write race survives with it and staging needs its own
+  fence.
+- Does the session accept the wrap-up prompt after an abort, with its history
+  intact? If no, the wrap-up window buys nothing and the handoff has to be
+  assembled from `session.messages` instead.
 - Can `session.diff` give the partial report its content without a second `git`
   pass?
-- What does the diff guard do to a partial tree — can a mid-edit change set trip
-  the secret scan or `AGENT_MAX_CHANGED_LINES` and turn a salvage into a hard
-  failure?
+
+And two that need no server, only the runner's own shape:
+
+- Confirm the pre-commit hook really is installed by `prepare` on the Actions
+  runner, and that `--no-verify` clears it — the whole salvage is downstream of
+  that one assumption.
+- Confirm a mid-edit tree does not trip the secret scan by accident, since that
+  refusal stays hard and is the one that pushes nothing.
 
 ### S5-7 — progress, and what it is deliberately not allowed to say
 
