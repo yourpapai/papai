@@ -1242,6 +1242,7 @@ Two conditions beside that gate were still too narrow, and both widenings sit
   fails the parse, a `/review` on a pull request the agent did not open — is one
   the pipeline would drop in-process with nothing posted anywhere, so refusing it
   a runner costs no feedback and saves booting a job with every secret mounted.
+
 - `cancelled()` joins `failure()`, which does not select a cancelled job. A run
   that looks hung is a run somebody cancels, and that is precisely the moment
   the issue must not fall silent. The heading followed: "Agent job failed" is
