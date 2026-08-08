@@ -156,6 +156,13 @@ describe('the outcome table', () => {
       // that had answered 355 times, which sent every reader looking for a hang.
       OUTCOME_GLYPHS.TIME_SPENT,
       OUTCOME_GLYPHS.ANSWER_TIME_SPENT,
+      // All three wall-clock stops, including the two that keep work: a turn cut off
+      // part-way through, and the clean stop between two plan steps. The second is the
+      // strongest case for the rule — the branch carries every finished step and the
+      // tree is clean, so a ❌ there would report a failure that not only did not
+      // happen but could not have.
+      OUTCOME_GLYPHS.TIME_SPENT_PART_WAY,
+      OUTCOME_GLYPHS.TIME_SPENT_BETWEEN_STEPS,
     ]
 
     expect(new Set(bounds).size).toBe(1)

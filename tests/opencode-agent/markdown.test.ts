@@ -29,8 +29,13 @@ import {
   renderSettled,
 } from '../../opencode-agent/src/run-report.js'
 import { initialState } from '../../opencode-agent/src/state-manager.js'
-import { renderAnswerOutOfTime, renderOutOfTime, renderStoppedPartWay } from '../../opencode-agent/src/time-notices.js'
-import type { PartWayStop } from '../../opencode-agent/src/time-notices.js'
+import {
+  renderAnswerOutOfTime,
+  renderOutOfTime,
+  renderStoppedBetweenSteps,
+  renderStoppedPartWay,
+} from '../../opencode-agent/src/time-notices.js'
+import type { BetweenStepsStop, PartWayStop } from '../../opencode-agent/src/time-notices.js'
 import { transition } from '../../opencode-agent/src/transitions.js'
 import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
 
@@ -266,6 +271,19 @@ const PART_WAY: PartWayStop = {
   kept: { files: 9, lines: 1_402 },
   note: null,
   handoff: '**Done** — the retry wrapper.\n**Tried and rejected** — a decorator, which broke typing.',
+  step: { number: 3, total: 5, title: 'Wire the wrapper into the client' },
+}
+
+/** The stop stage 3 makes the ordinary one: the clock runs out *between* two steps. */
+const BETWEEN_STEPS: BetweenStepsStop = {
+  remainingMs: 240_000,
+  reserveMs: 180_000,
+  branch: 'agent/issue-42',
+  resumeFrom: 'REVIEW_AND_MUTATE',
+  done: 2,
+  total: 5,
+  lines: 640,
+  next: 'Wire the wrapper into the client',
 }
 
 describe('the notice for a turn stopped part-way through', () => {
@@ -336,6 +354,77 @@ describe('the notice for a turn stopped part-way through', () => {
     expect(notice).toContain('2.5 minutes')
     expect(notice).not.toContain('150000')
   })
+
+  test('names the step it was interrupted on, not merely the phase', () => {
+    // With one turn per step, "part-way through the work" is not specific enough to
+    // act on: the branch carries the finished steps, so what a maintainer needs is
+    // which one was cut off — and the model's own handoff is about that step alone.
+    expect(notice).toContain('step 3 of 5')
+    expect(notice).toContain('Wire the wrapper into the client')
+  })
+
+  test('says nothing about steps for a plan that has none', () => {
+    // A plan approved before steps existed runs as one turn, and there is no step
+    // number to print. An invented "step 1 of 1" would tell a maintainer the plan
+    // had a structure it does not.
+    const oneShot = renderStoppedPartWay({ ...PART_WAY, step: null })
+
+    expect(oneShot).not.toContain('step 1')
+    expect(oneShot).toContain('`/continue`')
+  })
+})
+
+describe('the notice for a stop between two plan steps', () => {
+  const notice = renderStoppedBetweenSteps(BETWEEN_STEPS)
+
+  test('states how much of the plan is done and where it will pick up', () => {
+    expect(notice).toContain('2 of 5')
+    expect(notice).toContain('640 lines')
+    expect(notice).toContain('`agent/issue-42`')
+    expect(notice).toContain('Wire the wrapper into the client')
+  })
+
+  test('claims nothing was lost, which is only true because the step never started', () => {
+    // The claim `renderStoppedPartWay` may never make and this one may: every
+    // finished step is committed and pushed, the tree is clean, and the cursor is in
+    // the state block — so this stop costs the run nothing at all. That is the whole
+    // prize of walking the plan a step at a time.
+    expect(notice).toContain('Nothing is lost')
+    expect(notice).not.toContain('Nothing was pushed')
+  })
+
+  test('offers `/continue` and never `/retry`, like every other wall-clock notice', () => {
+    expect(notice).toContain('`/continue`')
+    expect(notice).toContain('`REVIEW_AND_MUTATE`')
+    expect(notice).not.toContain('/retry')
+    expect(notice).toContain('AGENT_JOB_TIMEOUT_MINUTES')
+  })
+
+  test('credits this job with what this job did, not with what the branch carries', () => {
+    // A continuation refused at its very first step: two steps are done and none of
+    // them by this job. Reporting "2 of 5 done, 0 lines committed" would read as a job
+    // that finished two steps and wrote nothing.
+    const refused = renderStoppedBetweenSteps({ ...BETWEEN_STEPS, lines: 0 })
+
+    expect(refused).toContain('2 of 5')
+    expect(refused).toContain('did not have the clock left')
+    expect(refused).not.toContain('0 lines')
+  })
+
+  test('reads as a stop before any step ran, rather than as a stop that did nothing', () => {
+    // The gate sits in front of every step including the first, so `done: 0` is
+    // reachable — and it is still a clean stop with a clean tree.
+    const none = renderStoppedBetweenSteps({ ...BETWEEN_STEPS, done: 0, lines: 0, next: 'Write the retry tests' })
+
+    expect(none).toContain('0 of 5')
+    expect(none).toContain('Write the retry tests')
+    expect(none).not.toContain('640 lines')
+  })
+
+  test('speaks in minutes, like every other notice about a clock', () => {
+    expect(notice).toContain('4.0 minutes')
+    expect(notice).not.toContain('240000')
+  })
 })
 
 describe('comment headings', () => {
@@ -350,6 +439,7 @@ describe('comment headings', () => {
     ['ANSWER_TOKENS_SPENT', renderAnswerOverBudget(1, 2, 'DESIGN_SPEC')],
     ['TIME_SPENT', renderOutOfTime(60_000, 180_000, 'REVIEW_AND_MUTATE')],
     ['TIME_SPENT_PART_WAY', renderStoppedPartWay(PART_WAY)],
+    ['TIME_SPENT_BETWEEN_STEPS', renderStoppedBetweenSteps(BETWEEN_STEPS)],
     ['ANSWER_TIME_SPENT', renderAnswerOutOfTime(60_000, 180_000, 'DESIGN_SPEC')],
     ['CI_GAVE_UP', renderCiExhausted('spent', null)],
     ['REVIEWS_SPENT', renderReviewsExhausted('spent', null)],

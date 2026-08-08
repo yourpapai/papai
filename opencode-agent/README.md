@@ -26,7 +26,11 @@ hidden HTML blocks:
   comment the pipeline posts, and rewritten **in place** by a run that spent
   model tokens and had nothing to post.
 - `<!-- AGENT_SPEC: … -->` — the current design spec.
-- `<!-- AGENT_PLAN: … -->` — the current implementation plan.
+- `<!-- AGENT_PLAN: … -->` — the current implementation plan, as **both** the
+  markdown a maintainer approved and the ordered steps it was rendered from. The
+  implementation walks those steps; it never parses the markdown back, which is the
+  rule the whole block channel exists for. A plan block without them — every plan
+  approved before they were carried — is implemented in one turn, permanently.
 - `<!-- AGENT_REPORT: … -->` — the newest report. The implementation one, until
   a `/review` writes its own under the same marker: the scan takes the newest
   block of a marker, and that is what a later pull-request refresh presents, so
@@ -80,7 +84,7 @@ value to point elsewhere.
 | `DESIGN_SPEC`       | —                                         | Waiting. The spec is under review                                | `/approve`, `/changes`, `/ask`, `/cancel` |
 | `PLANNING`          | spec approved                             | Planning skills produce a step breakdown; cuts `agent/issue-<n>` | Plan posted                               |
 | `PLAN_REVIEW`       | —                                         | Waiting. The plan is under review                                | `/approve`, `/changes`, `/ask`, `/cancel` |
-| `REVIEW_AND_MUTATE` | plan approved                             | Implements the plan, commits **and pushes**. Nothing else        | Changes pushed                            |
+| `REVIEW_AND_MUTATE` | plan approved                             | One turn per plan step, each committed **and pushed**            | Changes pushed                            |
 | `PR_DELIVERY`       | automatic                                 | Opens or refreshes the PR with `Closes #<n>`                     | PR opened                                 |
 | `CODE_REVIEW`       | `/review`, on the issue or its PR         | Runs the `review-loop/` workspace over the pushed branch         | Findings pushed, review reported          |
 | `CI_FIX`            | a red check run on `agent/issue-<n>`      | Reproduces CI locally, repairs, pushes                           | Fix pushed                                |
@@ -240,9 +244,10 @@ raw text in the failure comment.
 4. The maintainer replies `/approve`. The agent moves to `PLANNING`,
    cuts `agent/issue-42` from the default branch, and posts a step-by-step
    plan; `PLAN_REVIEW` waits for another `/approve`.
-5. Once approved, `REVIEW_AND_MUTATE` implements the plan, commits it and
-   pushes `agent/issue-42`. That is the whole phase — nothing has reviewed the
-   diff, and nothing is waiting to.
+5. Once approved, `REVIEW_AND_MUTATE` implements the plan **a step at a time**:
+   one model turn per step, each committed and pushed to `agent/issue-42` before
+   the next one starts. That is the whole phase — nothing has reviewed the diff,
+   and nothing is waiting to.
 6. `PR_DELIVERY` opens a pull request carrying `Closes #42`, one model turn
    after the approval. Its comment names `/review`; if the commit came to
    `AGENT_REVIEW_HINT_LINES` changed lines or more it also says it would run
@@ -641,10 +646,73 @@ staging one in that state is the single thing this path must not do now that the
 size caps only report.
 
 The wrap-up's reply travels to the next job in an `AGENT_HANDOFF` block, like the
-spec, the plan and the report, and `buildImplementPrompt` includes it — enveloped
+spec, the plan and the report, and the implement prompt includes it — enveloped
 as untrusted text, framed as a report to check rather than as instructions. It is
 stamped with the plan revision it describes, so a re-planned issue is never handed
-an account of work measured against a document that has been replaced.
+an account of work measured against a document that has been replaced, and it is
+handed to the **first** step of a continuation and to no later one, because that is
+the step it is an account of.
+
+### The unit of work is a plan step
+
+Salvaging an interrupted turn is the consolation prize. The prize is not needing to:
+if the implementation is one turn for the whole plan then a clock reached anywhere
+inside it costs whatever that turn had not written down, and if the unit of work is a
+**step** it costs at most one step — and usually nothing at all, because it lands
+between two of them.
+
+So the plan travels as data. The planning turn already produced JSON and the phase
+already threw the structure away, keeping only the markdown; now the steps ride in the
+`AGENT_PLAN` block beside the text, and the text a maintainer approves is _rendered
+from them_, so the plan somebody signed off on and the steps the implementation walks
+cannot disagree. They are never recovered by parsing the markdown back — that is the
+oldest rule here, and it exists because heading-scraping once truncated specs at their
+first `---`. `AGENT_PLAN` blocks with no steps in them are implemented in one turn,
+exactly as before, and that fallback is **permanent rather than a migration**: nothing
+can invent a step breakdown for a document a maintainer has already approved without
+one, and re-deriving it would mean a second planning turn inside the phase whose job is
+to implement.
+
+Then the walk: one turn per step, `commitAll`, `push`, next step. Pushing per step
+rather than once at the end is the same argument that put the push in this phase at
+all — an Actions working tree dies with the job, so work is durable the moment it is
+pushed and not before. Between two steps the tree is clean, the branch carries every
+finished step, and the state block records the cursor, which makes it the **best moment
+in the pipeline to stop**: the clock is checked in front of every step, and a step that
+cannot fit is not started. The run parks in `INCOMPLETE` under a notice of its own —
+one that can say both "work was done" and "nothing was lost", which neither of the
+other two wall-clock notices can — and the `/continue` picks up at the recorded step
+rather than re-implementing the branch.
+
+Five things worth stating outright, because each is a decision:
+
+- **the cursor is `stepsDone`**, a count in the state block, reset whenever a plan is
+  posted and when an implementation finishes. It counts into the plan
+  `planRevision` names, so a `/changes` starts the new plan from its first step;
+- **a step's turn gets the whole remaining clock**, not a share of it. A share needs an
+  estimate of what a step costs, which nothing here has, and it would bound an early
+  step tightly to reserve time a later one may not need. A step that finishes early
+  hands the rest to the next one;
+- **the per-turn bound is re-read for every turn.** It is derived from the job's
+  remaining clock, and one job now takes many turns, so a bound computed once when the
+  session booted would hand the last step of a long plan a bound sized against a clock
+  half an hour stale — which is the runner death this bound exists to prevent;
+- **a plan may declare at most `MAX_PLAN_STEPS` (25) steps.** Enforced on the ask, so
+  `promptForJson`'s single re-ask carries zod's own complaint and the ordinary outcome
+  is a coarser breakdown from the same planning turn. A step is a turn plus a commit
+  plus a push, so a step per edit spends the job on the boundaries rather than the work;
+- **`changedLines` sums across the steps of a run**, where it used to be overwritten by
+  each commit — harmless with one commit per phase, an under-report by a factor of the
+  plan's length now. It stays a raw count and never a verdict. The diff guard runs per
+  commit, so `AGENT_MAX_CHANGED_FILES` / `AGENT_MAX_CHANGED_LINES` now bound a **step**
+  rather than a whole implementation; those caps exist to refuse a runaway
+  `git add --all`, which is a property of one staging operation.
+
+The token ceiling deliberately stays **per phase**: its stop parks in `FAILED`, and
+firing it mid-walk would leave a `FAILED` issue whose branch carries half a plan, under
+a notice inviting a `/retry` into a phase that is partly done. The runaway it bounds is
+an issue across many jobs, which the check in front of the next phase still catches,
+and one job's overshoot is itself bounded by the clock this walk does check per step.
 
 ## Watching a run
 
@@ -1469,6 +1537,12 @@ under **Setup** is simply not written. Nothing else changes.
 | `src/state-manager.ts`                        | The `AGENT_STATE` block: rendering it, and restoring it from a thread   |
 | `src/transitions.ts`                          | The machine: which signals a phase accepts, and what each one does      |
 | `src/blocks.ts` / `src/artifacts.ts`          | The hidden-block channel and the spec/plan/report artefacts             |
+| `src/plan-steps.ts`                           | What a plan step is, and the markdown a plan's own steps render into    |
+| `src/phases/implement-steps.ts`               | Walking those steps: a turn, a commit, a push, and then the clock       |
+| `src/implement-prompts.ts`                    | What the model is told while implementing, and asked when interrupted   |
+| `src/turn-stop.ts` / `src/salvage.ts`         | Stopping a turn part-way through, and keeping what it had written       |
+| `src/time-notices.ts`                         | What a run says when the job's own wall clock stopped it                |
+| `src/phase-names.ts`                          | What a phase is called, including what it used to be called             |
 | `src/guardrails.ts`                           | Every abort rule, for each of the three kinds of event                  |
 | `src/commands.ts` / `src/intent.ts`           | Slash commands, and classifying plain replies                           |
 | `src/openai-config.ts`                        | The single endpoint, and the OpenCode config both paths share           |

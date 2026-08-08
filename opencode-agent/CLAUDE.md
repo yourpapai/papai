@@ -36,11 +36,19 @@ findings: `ROADMAP.md`.
   from inside a running turn, with `src/salvage.ts` holding the git half of it;
   `src/transitions.ts` holds the state machine itself (the table,
   `canTransition`, `transition`) while `src/state-manager.ts` keeps only the block
-  channel that restores it from the issue; and `src/phase-failure.ts` decides what
+  channel that restores it from the issue, `src/phase-names.ts` holds what a phase is
+  **called** — the enum, the retired names and the migration that maps them, split
+  from `types.ts` and re-exported by it so callers keep naming one module for the
+  vocabulary; and `src/phase-failure.ts` decides what
   a run that broke is left looking like.
   Phase handlers in `src/phases/` return a `TransitionSignal`, a comment body and
   optional artefact blocks, and never write state or decide the next phase
-  themselves. `src/phases/review.ts` is the `review-loop/` workspace as a phase
+  themselves. `src/phases/implement.ts` is the one that delegates: `src/plan-steps.ts`
+  says what a step is, `src/phases/implement-steps.ts` walks them, and
+  `src/implement-prompts.ts` holds the three things said to the model inside that phase
+  — the standing instructions, one step, and the wrap-up asked for when a turn is cut
+  off — split from `prompts.ts` because they are the only prompts that arrive in
+  sequence within one phase, one session, one system prompt and one envelope. `src/phases/review.ts` is the `review-loop/` workspace as a phase
   of its own, entered from `COMPLETE` on `/review`; `src/pull-request-body.ts`
   renders the one pull request body both it and `handleDeliver` present, and
   takes the report as **text** because a handler cannot read its own block back —
@@ -86,7 +94,14 @@ findings: `ROADMAP.md`.
 - **Never scrape prose to recover an artefact.** Spec, plan, report and the
   wall-clock handoff travel in hidden blocks via `blocks.ts` / `artifacts.ts`.
   Heading-and-trailer scraping silently truncated specs at their first `---` rule;
-  do not reintroduce it.
+  do not reintroduce it. The plan is the case that had to grow a second half: its
+  block carries the ordered **steps** beside the text, and the text is _rendered from
+  them_ by `renderPlanMarkdown`, so the comment a maintainer approved and the list the
+  implementation walks cannot disagree. Reading the steps back out of the markdown
+  would be that same bug on a new surface, which is why `findPlan` exists and why a
+  `steps` field the schema cannot vouch for degrades to **no steps at all** rather than
+  to the steps it could parse — half a plan read as a whole plan is the failure being
+  avoided, and no steps is a shape this pipeline already runs correctly.
 - **Each artefact counts its own revisions.** `specRevision` and `planRevision`
   are separate fields and each handler renders and stores one of them, from a
   single local so the visible heading and the hidden block cannot disagree. They
@@ -302,6 +317,32 @@ findings: `ROADMAP.md`.
   because its **return type** is the point: clean, refused and committed-but-large
   are three ordinary outcomes here that each earn a different sentence on the issue,
   where `commitAll` has only `StagedTotals | null` and a throw.
+- **The unit of work is a plan step, and between two of them is where a run wants to
+  stop.** `handleImplement` reads the plan's steps and `phases/implement-steps.ts`
+  walks them: one turn, `commitAll`, `push`, next. Pushing **per step** is the same
+  argument that put the push in this phase rather than the next one — an Actions
+  working tree dies with the job, so work is durable the moment it is pushed and not
+  before — and it is what makes the wall clock cheap: at a step boundary the tree is
+  clean, the branch carries every finished step and `stepsDone` records the cursor, so
+  the clock is checked in front of every step (`timeForAnotherStep`, whose threshold is
+  exactly where `turnTimeoutMs` would have to clamp to 1 ms) and a step that cannot fit
+  is **not started**. That park is `OUT_OF_TIME` with a notice of its own, the only one
+  of the three that may say both "work was done" and "nothing was lost". Four things
+  not to undo. The gate is asked **only of a declared step**: a plan with no steps is
+  one indivisible turn, where refusing to start costs everything the turn would have
+  written and being interrupted salvages what it did. A step's turn gets the **whole**
+  remaining clock rather than a share, since a share needs an estimate of a step's cost
+  that nothing here has. `mintEnvelope` and `composeSystemPrompt` are called **once per
+  handler** and reused by every step and by the wrap-up, for the reason stage 2 already
+  reused them. And the per-turn bound handed to the adapter is a **function**, not a
+  number: it is derived from the job's remaining clock and one job now takes many
+  turns, so a number read when the session booted would hand the last step a bound
+  sized against a clock half an hour stale, which is the silent runner death the bound
+  exists to prevent. `stepsDone` is additive with a default and needed no
+  `STATE_VERSION` bump (rollback is one-way in the same narrow sense `INCOMPLETE`'s
+  was); it is reset by `handlePlan` and by a finished implementation, and a cursor past
+  the end of the plan walks from the top rather than reporting a plan nobody
+  implemented.
 - **The handoff is an artefact, and it is retired by a new plan.** The wrap-up's
   reply travels in an `AGENT_HANDOFF` block via `artifacts.ts` — never scraped out
   of the notice's prose — and `buildImplementPrompt` includes it enveloped, framed
@@ -553,7 +594,15 @@ not permitted to create or approve pull requests` is a repository or
   `reviewHintLines`. The figure was already computed to refuse a runaway commit
   and was being thrown away. Keep it a **count**, never a `shouldReview` flag: a
   verdict frozen at commit time can only disagree with the threshold the config
-  carries when the comment is read. `measure`'s `binaries` deliberately does not
+  carries when the comment is read. It is **summed across the steps of one run** and no
+  longer overwritten per commit — harmless while a phase made one commit, an
+  under-report by a factor of the plan's length once it makes one per step — and it is
+  patched only when the run committed something, so a continuation that kept nothing
+  does not overwrite an earlier run's figure with a 0 that reads as a small diff. Note
+  what a commit per step does to the guard's other half: the file and line caps now
+  bound a **step** rather than a whole implementation, which is right, since they exist
+  to refuse a runaway `git add --all` and that is a property of one staging operation
+  rather than of a plan. `measure`'s `binaries` deliberately does not
   ride along — a commit that got past the guard has none, so that list is a
   working detail of judging a change set rather than a fact about one.
 - Untrusted text (issue bodies, comments, **check output**) must go through the

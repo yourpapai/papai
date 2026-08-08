@@ -5,6 +5,7 @@
 
 import type { StagedTotals } from './diff-guard.js'
 import { outcomeHeading } from './outcomes.js'
+import type { StepMarker } from './plan-steps.js'
 import type { ProgressSnapshot } from './progress.js'
 import type { Phase } from './types.js'
 
@@ -88,6 +89,14 @@ export interface PartWayStop {
    */
   note: string | null
   handoff: string | null
+  /**
+   * The plan step the turn was cut off on, or `null` for a plan with no steps.
+   *
+   * Stated because with one turn per step "part-way through the work" is no longer
+   * specific enough to act on: the earlier steps are finished commits on the branch,
+   * and the handoff below is an account of this step alone.
+   */
+  step: StepMarker | null
 }
 
 /**
@@ -117,6 +126,7 @@ export const renderStoppedPartWay = (stop: PartWayStop): string =>
     timeLine(stop.remainingMs, stop.reserveMs),
     '',
     ...workedLine(stop.progress),
+    ...stepLine(stop.step),
     keptLine(stop),
     '',
     ...handoffSection(stop.handoff),
@@ -144,6 +154,23 @@ const workedLine = (progress: ProgressSnapshot | null): readonly string[] =>
         '',
       ]
 
+/**
+ * Which step it was on, and nothing at all when the plan has no steps.
+ *
+ * The earlier steps are already commits on this branch, so this sentence is what
+ * separates "the plan is two fifths done and step 3 was interrupted" from "something
+ * happened somewhere in the plan", which is what this notice said before the work was
+ * walked a step at a time.
+ */
+const stepLine = (step: StepMarker | null): readonly string[] =>
+  step === null
+    ? []
+    : [
+        `It was on **step ${step.number} of ${step.total}** — “${step.title}” — so everything before it is a ` +
+          'finished commit on the branch and only this one was cut off.',
+        '',
+      ]
+
 const keptLine = (stop: PartWayStop): string => {
   if (stop.kept === null) return `**Nothing was pushed**, and here is why: ${stop.note ?? 'the salvage found nothing'}.`
 
@@ -163,6 +190,73 @@ const handoffSection = (handoff: string | null): readonly string[] =>
   handoff === null
     ? ['I got no account of where it stopped out of the model, so the branch and the plan are all a continuation has.']
     : ['#### Where it stopped', '', handoff]
+
+/** What the run has to say when the clock ran out **between** two plan steps. */
+export interface BetweenStepsStop {
+  remainingMs: number
+  reserveMs: number
+  branch: string
+  resumeFrom: Phase
+  /** Steps of the plan finished, and how many it has. */
+  done: number
+  total: number
+  /** Lines this run's finished steps committed; `0` when it stopped before the first. */
+  lines: number
+  /** The step it stopped in front of, which is where a `/continue` picks up. */
+  next: string
+}
+
+/**
+ * The third wall-clock notice, and the one stage 3 exists to make the ordinary one.
+ *
+ * The other two are the interesting cases: a phase refused before it started, and a
+ * turn cut off mid-file. This is the boring one, which is the achievement — the clock
+ * ran out at a plan-step boundary, where every finished step is a commit that has
+ * already been pushed and the tree is clean. So it is the only one of the three that
+ * can say **both** halves at once: work was done *and* nothing was lost. `renderOutOfTime`
+ * can claim the second because nothing was done, and `renderStoppedPartWay` can never
+ * claim it at all.
+ *
+ * A separate renderer rather than a branch in either, for the reason those two are
+ * separate: a comment about a ceiling may only say things that are true, and a shared
+ * renderer would have to hedge "that phase never started" against "two of five steps
+ * are on the branch". It states the count, the size and the next step by name so the
+ * claim can be judged rather than trusted, exactly as the part-way notice states what
+ * the branch carries.
+ */
+export const renderStoppedBetweenSteps = (stop: BetweenStepsStop): string =>
+  [
+    outcomeHeading('TIME_SPENT_BETWEEN_STEPS', 'Out of time between plan steps'),
+    '',
+    timeLine(stop.remainingMs, stop.reserveMs),
+    '',
+    doneLine(stop),
+    `So I stopped rather than start step ${stop.done + 1}, “${stop.next}”, with too little of the clock left to ` +
+      'finish it. **Nothing is lost** — a step boundary is where this work is designed to be interrupted: the tree ' +
+      'is clean, the branch has every finished step, and the state block remembers which one is next.',
+    '',
+    `Reply \`/continue\` and I pick \`${stop.resumeFrom}\` back up on a fresh job with a full clock, starting at ` +
+      `step ${stop.done + 1}. If it keeps stopping here, raise the \`AGENT_JOB_TIMEOUT_MINUTES\` repository ` +
+      "variable — the workflow reads it for both the job's own `timeout-minutes:` and this bound — or reply " +
+      '`/cancel` to stop.',
+  ].join('\n')
+
+/**
+ * How much of the plan is done, and what **this job** contributed to it.
+ *
+ * Two facts rather than one, because they come apart in both directions and a comment
+ * about a ceiling may only say things that are true. A continuation refused at its
+ * very first step has steps done and committed nothing — reporting "2 of 5 done, 0
+ * lines" would credit this job with work an earlier one pushed — and a first job
+ * refused before step 1 has neither, which is still the cheapest possible stop rather
+ * than a failure.
+ */
+const doneLine = (stop: BetweenStepsStop): string =>
+  `**${stop.done} of ${stop.total}** steps of the plan are done.` +
+  (stop.lines === 0
+    ? ' This job did not have the clock left to start the next one.'
+    : ` This job committed ${stop.lines.toLocaleString('en-US')} lines of that and pushed each step to ` +
+      `\`${stop.branch}\` as it finished.`)
 
 /**
  * The same ceiling, reported for a question rather than for the work.

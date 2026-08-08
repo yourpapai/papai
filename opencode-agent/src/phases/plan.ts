@@ -3,26 +3,16 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { z } from 'zod'
-
-import { PLAN_MARKER, renderArtifact, requireArtifact, SPEC_MARKER } from '../artifacts.js'
+import { renderPlanArtifact, requireArtifact, SPEC_MARKER } from '../artifacts.js'
 import { promptForJson } from '../ask-json.js'
 import { missingSpecError } from '../errors.js'
 import { branchNameFor } from '../git.js'
 import { composeSystemPrompt } from '../obra-skills.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
+import { executionPlanSchema, renderPlanMarkdown } from '../plan-steps.js'
+import type { ExecutionPlan } from '../plan-steps.js'
 import { buildPlanPrompt } from '../prompts.js'
 import { mintEnvelope } from './envelope.js'
-
-const planStepSchema = z.object({
-  title: z.string().min(1),
-  files: z.array(z.string()).default([]),
-  verification: z.string().default(''),
-})
-
-const planSchema = z.object({ steps: z.array(planStepSchema).min(1), summary: z.string().default('') })
-
-export type ExecutionPlan = z.infer<typeof planSchema>
 
 const PLAN_INSTRUCTIONS = [
   'Break the approved spec into a granular, ordered implementation plan.',
@@ -45,31 +35,7 @@ export const handlePlan: PhaseHandler = async (input): Promise<PhaseOutcome> => 
   const feedback = changeRequest(input)
   deps.log.info({ issue: state.issueId, branch, revising: feedback !== null }, 'Building the plan')
 
-  const envelope = mintEnvelope()
-  const agent = await deps.agent()
-  const plan = await promptForJson({
-    agent,
-    schema: planSchema,
-    envelope,
-    log: deps.log,
-    request: {
-      system: composeSystemPrompt({
-        phase: 'PLANNING',
-        skills: await deps.skills('PLANNING'),
-        repoRoot: deps.config.repoRoot,
-        nonce: envelope.nonce,
-        instructions: PLAN_INSTRUCTIONS,
-      }),
-      prompt: buildPlanPrompt({
-        envelope,
-        issueNumber: state.issueId,
-        spec,
-        branch,
-        feedback,
-      }),
-      agent: 'plan',
-    },
-  })
+  const plan = await askForPlan(input, { spec, branch, feedback })
 
   await deps.git.ensureBranch(branch, await deps.baseBranch())
 
@@ -81,28 +47,57 @@ export const handlePlan: PhaseHandler = async (input): Promise<PhaseOutcome> => 
   return {
     signal: 'PLAN_POSTED',
     comment: renderPlanComment(markdown, branch, revision),
-    blocks: [renderArtifact(PLAN_MARKER, markdown, revision)],
+    // The steps ride in the block beside the text they were rendered into, so the
+    // implementation walks the very list this comment shows rather than a reading of
+    // it. Never recovered by parsing the markdown back: that is the workspace's
+    // oldest rule, and it exists because heading-scraping truncated specs.
+    blocks: [renderPlanArtifact(markdown, revision, plan.steps)],
+    // A new plan is a new list of steps, so the cursor into the old one means
+    // nothing. Reset here rather than in `transitions.ts` because it is a fact about
+    // what this handler *wrote*, not about the move `PLAN_POSTED` makes — and a
+    // cursor carried across a `/changes` would skip work nobody has done, the same
+    // argument that retires the handoff note on a plan revision.
+    patch: { stepsDone: 0 },
   }
+}
+
+/**
+ * The one model turn of this phase, asked for as **JSON**.
+ *
+ * Through `promptForJson`, which re-asks once with the validation complaint attached —
+ * which is also what enforces `MAX_PLAN_STEPS`: an over-long plan comes back coarser
+ * from the same turn rather than failing the phase. Never `agent.prompt` plus a parse.
+ */
+const askForPlan = async (
+  input: PhaseInput,
+  about: { spec: string; branch: string; feedback: string | null },
+): Promise<ExecutionPlan> => {
+  const { deps, state } = input
+  const envelope = mintEnvelope()
+
+  return promptForJson({
+    agent: await deps.agent(),
+    schema: executionPlanSchema,
+    envelope,
+    log: deps.log,
+    request: {
+      system: composeSystemPrompt({
+        phase: 'PLANNING',
+        skills: await deps.skills('PLANNING'),
+        repoRoot: deps.config.repoRoot,
+        nonce: envelope.nonce,
+        instructions: PLAN_INSTRUCTIONS,
+      }),
+      prompt: buildPlanPrompt({ envelope, issueNumber: state.issueId, ...about }),
+      agent: 'plan',
+    },
+  })
 }
 
 const changeRequest = (input: PhaseInput): string | null => {
   const { command } = input
   if (command === null || command.command !== '/changes') return null
   return command.argument.length > 0 ? command.argument : null
-}
-
-/** The plan as markdown — this exact text is what the implement phase acts on. */
-export const renderPlanMarkdown = (plan: ExecutionPlan): string => {
-  const steps = plan.steps.map((step, index) => {
-    const files = step.files.length === 0 ? '_(no files declared)_' : step.files.map((file) => `\`${file}\``).join(', ')
-    const verification = step.verification.trim() === '' ? '_(not stated)_' : step.verification.trim()
-    return `${index + 1}. **${step.title}**\n   - Files: ${files}\n   - Verified by: ${verification}`
-  })
-
-  const sections: string[] = []
-  if (plan.summary.trim() !== '') sections.push(plan.summary.trim())
-  sections.push(steps.join('\n'))
-  return sections.join('\n\n')
 }
 
 const renderPlanComment = (markdown: string, branch: string, revision: number): string =>

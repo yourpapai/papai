@@ -86,6 +86,31 @@ export const timeForAnotherPhase = (toDeadlineMs: number, config: TimeBudgetConf
   toDeadlineMs > config.teardownReserveMs
 
 /**
+ * Whether there is time for another **plan step**, which is a stricter question.
+ *
+ * Between two steps is the best moment in this pipeline to stop: the previous step is
+ * committed and pushed, the tree is clean, and the state block records the cursor —
+ * so the run loses nothing at all, where the same clock reached *inside* a step costs
+ * a salvage, a wrap-up window and a handoff nobody wanted to write. That is what
+ * earns a fussier bound than {@link timeForAnotherPhase}.
+ *
+ * The threshold is not a new knob and deliberately not a guess: it is the exact point
+ * where {@link turnTimeoutMs} runs out of room to express a positive work slice and
+ * clamps to 1ms. Below it a step would consist entirely of being stopped — the turn
+ * aborts immediately, the wrap-up has nothing to summarise, and the salvage stages a
+ * tree no model touched — so the honest thing is not to start it. Above it the step
+ * gets whatever the clock allows, and if that is not enough the stop *inside* the turn
+ * is still there to keep what it wrote.
+ *
+ * Asked only where there are steps to be between. A plan with none is one
+ * indivisible turn, and refusing to start it would cost the run everything the turn
+ * would have written, where starting it and being interrupted salvages what it did —
+ * see the walk in `phases/implement-steps.ts`.
+ */
+export const timeForAnotherStep = (toDeadlineMs: number, config: TimeBudgetConfig): boolean =>
+  toDeadlineMs > config.teardownReserveMs + config.wrapUpMs
+
+/**
  * The bound handed to one model turn: the per-turn cap, shrunk to fit what is left
  * of the job.
  *

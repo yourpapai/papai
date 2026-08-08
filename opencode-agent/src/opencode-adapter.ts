@@ -94,15 +94,25 @@ export interface OpenCodeAgentOptions {
   openai: OpenAiSettings
   sessionTitle: string
   /**
-   * Upper bound on one model turn, from `AGENT_TIMEOUT_MS`. Omitted means
-   * unbounded, which only a caller with nothing to bound should want — config
-   * range-checks that variable to at least a second.
+   * Upper bound on one model turn, from `AGENT_TIMEOUT_MS` shrunk to fit the job.
+   * Omitted means unbounded, which only a caller with nothing to bound should want —
+   * config range-checks that variable to at least a second.
    *
    * Every subprocess this pipeline drives already had one — the check runner and
    * the review loop both pass it to `runCommand` — and the in-process session,
    * the one turn that can run for twenty minutes, was the only path without.
+   *
+   * A **function** is the form that matters, and a number is kept only for callers
+   * with a fixed bound. The session is memoized for the whole job and the bound is
+   * derived from the job's remaining clock, so a number is read once — when the
+   * server first boots — and every later turn in that job carries a bound sized for a
+   * clock that has since moved. That was survivable while a job ran one turn per
+   * phase; with one turn per plan step it is the silence this bound exists to
+   * prevent, because a step starting six minutes before the runner's own
+   * `timeout-minutes` would be handed the thirty-minute cap and killed with the job.
+   * Resolved per turn in {@link bounded}, so the bound tracks the resource it protects.
    */
-  timeoutMs?: number
+  timeoutMs?: number | (() => number)
   /** Where progress goes. The adapter is the only thing that can see it. */
   log: Logger
   /** Heartbeat period while a turn is outstanding. `0` disables it. */
@@ -250,6 +260,12 @@ const startReporting = (
   }
 }
 
+/** This turn's bound: asked afresh when the caller supplied a way to ask. */
+const turnBound = (options: OpenCodeAgentOptions): number => {
+  const bound = options.timeoutMs ?? 0
+  return typeof bound === 'function' ? bound() : bound
+}
+
 /**
  * Wraps one turn in both of its bounds.
  *
@@ -262,7 +278,11 @@ const bounded = (work: Promise<unknown>, options: OpenCodeAgentOptions, tracker:
     // The snapshot is read *at the rejection*, not when the bound was armed: what
     // the phase needs to report is what the turn had managed by the time it was
     // stopped, and this is the last frame that can still see the tracker.
-    withDeadline(work, options.timeoutMs ?? 0, (elapsed) => turnDeadlineError(elapsed, tracker.snapshot())),
+    //
+    // The bound itself is read here, per turn, for the reason `timeoutMs` may be a
+    // function: a job now runs a turn per plan step, and a bound derived from the
+    // job's remaining clock has to be asked again each time or it stops tracking it.
+    withDeadline(work, turnBound(options), (elapsed) => turnDeadlineError(elapsed, tracker.snapshot())),
     {
       everyMs: options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS,
       log: options.log,

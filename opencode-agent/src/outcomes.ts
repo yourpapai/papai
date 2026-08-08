@@ -45,6 +45,7 @@ export const OUTCOME_KEYS = [
   'ANSWER_TOKENS_SPENT',
   'TIME_SPENT',
   'TIME_SPENT_PART_WAY',
+  'TIME_SPENT_BETWEEN_STEPS',
   'ANSWER_TIME_SPENT',
   'CI_GAVE_UP',
   'REVIEWS_SPENT',
@@ -67,6 +68,13 @@ export type OutcomeKey = (typeof OUTCOME_KEYS)[number]
  *   `TIME_SPENT_PART_WAY` is that same stop reached from *inside* a turn rather than
  *   in front of one — it is a separate key because the two comments make opposite
  *   claims about what survived, and a shared one would have to hedge both.
+ *   `TIME_SPENT_BETWEEN_STEPS` is the third of them and is the one stage 3 exists to
+ *   make ordinary: the clock reached at a plan-step boundary, where the tree is
+ *   committed, pushed and clean. It is not folded into `TIME_SPENT` even though both
+ *   stop in front of work and both lose nothing, because a maintainer reading one of
+ *   them is told a phase never started and reading the other is told two thirds of a
+ *   plan is on the branch — and it is not folded into `TIME_SPENT_PART_WAY`, whose
+ *   whole subject is what a stopped turn had half-written.
  * - ⚠️ is a failed *answer*: the model turn broke but nothing moved, no attempt
  *   was spent and the issue is exactly where it was. ❌ there would tell a
  *   maintainer their delivered pull request had failed.
@@ -84,6 +92,7 @@ export const OUTCOME_GLYPHS: Record<OutcomeKey, string> = {
   ANSWER_TOKENS_SPENT: '⛔',
   TIME_SPENT: '⛔',
   TIME_SPENT_PART_WAY: '⛔',
+  TIME_SPENT_BETWEEN_STEPS: '⛔',
   ANSWER_TIME_SPENT: '⛔',
   CI_GAVE_UP: PRESENTATION.CI_FIX.glyph,
   REVIEWS_SPENT: '⛔',

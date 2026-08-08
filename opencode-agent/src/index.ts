@@ -171,10 +171,13 @@ export const contain = ({ config, event, log, run, options, github, createAgent,
       sessionTitle: `issue-${event.issueNumber}`,
       // Shrunk to fit what is left of the job, never the bare `AGENT_TIMEOUT_MS`: a
       // per-turn cap outliving the runner is a bound that fires after the process
-      // is gone, which posts nothing. Read inside the memoized factory rather than
-      // beside it, because that is when the session is actually opened — which may
-      // be several phases into the job.
-      timeoutMs: turnTimeoutMs(contained, clock()),
+      // is gone, which posts nothing. A **function**, so it is re-read for every turn
+      // rather than once when the session boots: this session is memoized for the
+      // whole job and the job now runs a turn per plan step, so a number computed at
+      // the first prompt would hand the last step a bound sized for a clock half an
+      // hour stale — and a bound that outlives the runner posts nothing at all, which
+      // is exactly what it exists to prevent.
+      timeoutMs: () => turnTimeoutMs(contained, clock()),
       log,
       // Not awaited, and it never rejects: reporting must not be able to fail
       // the turn it is reporting on, and a heartbeat that waited on an HTTP

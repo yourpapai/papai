@@ -6,7 +6,12 @@
 import { describe, expect, test } from 'bun:test'
 
 import { withDeadline } from '../../opencode-agent/src/deadline.js'
-import { msToDeadline, timeForAnotherPhase, turnTimeoutMs } from '../../opencode-agent/src/time-budget.js'
+import {
+  msToDeadline,
+  timeForAnotherPhase,
+  timeForAnotherStep,
+  turnTimeoutMs,
+} from '../../opencode-agent/src/time-budget.js'
 import type { TimeBudgetConfig } from '../../opencode-agent/src/time-budget.js'
 
 /**
@@ -71,6 +76,38 @@ describe('timeForAnotherPhase', () => {
 
   test('reads the reserve from the config rather than assuming three minutes', () => {
     expect(timeForAnotherPhase(2 * MINUTE, budget({ teardownReserveMs: MINUTE }))).toBe(true)
+  })
+})
+
+describe('timeForAnotherStep', () => {
+  test('is true while a step could be handed a positive slice of work', () => {
+    expect(timeForAnotherStep(10 * MINUTE, budget())).toBe(true)
+  })
+
+  test('stops where `turnTimeoutMs` would have to clamp, and not one millisecond later', () => {
+    // The two are the same boundary read from opposite ends, which is why this is a
+    // predicate rather than a number somebody keeps in step by hand: below
+    // reserve + wrap-up, `turnTimeoutMs` clamps to 1ms, so the "step" would consist
+    // entirely of being stopped — an abort, a wrap-up window with nothing in front
+    // of it, and a salvage of a tree no model had touched.
+    expect(timeForAnotherStep(5 * MINUTE, budget())).toBe(false)
+    expect(timeForAnotherStep(5 * MINUTE + 1, budget())).toBe(true)
+    expect(turnTimeoutMs(budget(), NOW + 85 * MINUTE)).toBe(1)
+  })
+
+  test('is stricter than starting a phase, which is the whole point of the gap', () => {
+    // A phase may start on anything over the reserve, because refusing one costs
+    // the run nothing. Between two steps the tree is committed and pushed, so the
+    // pipeline can afford to be fussier: the window where a phase is allowed to
+    // begin and a step is not is exactly where a step would be interrupted.
+    const left = 4 * MINUTE
+
+    expect(timeForAnotherPhase(left, budget())).toBe(true)
+    expect(timeForAnotherStep(left, budget())).toBe(false)
+  })
+
+  test('refuses a job already past its deadline', () => {
+    expect(timeForAnotherStep(-MINUTE, budget())).toBe(false)
   })
 })
 

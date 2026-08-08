@@ -7,9 +7,10 @@ import { HANDOFF_MARKER, renderArtifact } from './artifacts.js'
 import { withDeadline } from './deadline.js'
 import { openCodeError } from './errors.js'
 import type { PipelineError } from './errors.js'
+import { buildWrapUpPrompt } from './implement-prompts.js'
 import type { OpenCodeAgent } from './opencode-adapter.js'
 import type { PhaseDeps, PhaseInput, PhaseOutcome } from './phase-context.js'
-import { WRAP_UP_PROMPT } from './prompts.js'
+import type { StepMarker } from './plan-steps.js'
 import type { SalvageOutcome } from './salvage.js'
 import { salvageWork } from './salvage.js'
 import { msToDeadline } from './time-budget.js'
@@ -51,6 +52,26 @@ export interface PartWayInput {
    * nowhere, which makes every real delimiter in the session look forged.
    */
   system: string
+  /**
+   * The plan step the turn was on, or `null` for a plan with no steps.
+   *
+   * Named in the notice a maintainer reads *and* in the wrap-up prompt, because with
+   * one turn per step the handoff is an account of one step rather than of a whole
+   * plan — "remaining" means remaining in this step.
+   */
+  step: StepMarker | null
+  /** Lines the steps that finished **before** this one committed on this run. */
+  committedLines: number
+  /** How many of those steps there were, so a run that committed nothing can say so. */
+  committed: number
+  /**
+   * Steps of the plan finished, absolutely — the cursor a `/continue` resumes at.
+   *
+   * Deliberately excludes the step being stopped: it was not finished, and the handoff
+   * is an account of how far into it the turn got, so the continuation redoes it with
+   * that note in hand rather than skipping to the next one.
+   */
+  done: number
 }
 
 /**
@@ -74,7 +95,14 @@ export const stopPartWayThrough = async (context: PartWayInput): Promise<PhaseOu
   const { deps, state } = input
 
   deps.log.warn(
-    { issue: state.issueId, branch, toDeadlineMs: msToDeadline(deps.config, deps.now()), ...stopped.progress },
+    {
+      issue: state.issueId,
+      branch,
+      step: context.step?.number,
+      of: context.step?.total,
+      toDeadlineMs: msToDeadline(deps.config, deps.now()),
+      ...stopped.progress,
+    },
     'Out of time part-way through the turn; stopping it and keeping what it wrote',
   )
 
@@ -85,7 +113,7 @@ export const stopPartWayThrough = async (context: PartWayInput): Promise<PhaseOu
   // child has no capacity to answer and the window would expire either way, buying
   // nothing and delaying the salvage.
   const softStopped = await agent.abort()
-  const handoff = softStopped ? await askForHandoff(agent, system, deps) : null
+  const handoff = softStopped ? await askForHandoff(agent, system, context.step, deps) : null
 
   // Step 2. Unconditional, and it depends on nothing the model chose to do: the
   // wrap-up may have replied, refused, or started editing again.
@@ -113,6 +141,13 @@ export const stopPartWayThrough = async (context: PartWayInput): Promise<PhaseOu
  */
 const parkedOutcome = (context: PartWayInput, salvage: SalvageOutcome, handoff: string | null): PhaseOutcome => {
   const { deps, state } = context.input
+  // Everything this run committed: the steps that finished plus whatever the salvage
+  // kept of the one that did not. Summed rather than overwritten, which is what
+  // `changedLines` now means — a figure that reported only the last commit was
+  // harmless while a phase made one and under-reports by a factor of the plan's
+  // length now.
+  const lines = context.committedLines + (salvage.kept?.lines ?? 0)
+  const committedAnything = context.committed > 0 || salvage.kept !== null
 
   return {
     signal: 'OUT_OF_TIME',
@@ -125,15 +160,16 @@ const parkedOutcome = (context: PartWayInput, salvage: SalvageOutcome, handoff: 
       kept: salvage.kept,
       note: salvage.note,
       handoff,
+      step: context.step,
     }),
     // Stamped with the plan it was implementing, which is what retires it: see
     // `findHandoff`. Absent rather than empty when there is no note, so a later job
     // reads the previous stop's account instead of an emptier one.
     blocks: handoff === null ? [] : [renderArtifact(HANDOFF_MARKER, handoff, state.planRevision)],
-    // The count of what was actually kept. Overwritten by the continuation's own
-    // commit, which is the same limitation `changedLines` already has across a
-    // `/retry`; recording it here is what makes a salvage nobody continues legible.
-    patch: salvage.kept === null ? {} : { changedLines: salvage.kept.lines },
+    // The cursor always, the count only when this run committed something: a run that
+    // kept nothing must not overwrite the figure an earlier run recorded for the same
+    // branch with a 0 that would read as "a small diff".
+    patch: { stepsDone: context.done, ...(committedAnything ? { changedLines: lines } : {}) },
   }
 }
 
@@ -150,10 +186,15 @@ const parkedOutcome = (context: PartWayInput, salvage: SalvageOutcome, handoff: 
  * the handoff is the *nicest* thing this stop produces and the commit is the
  * necessary one.
  */
-const askForHandoff = async (agent: OpenCodeAgent, system: string, deps: PhaseDeps): Promise<string | null> => {
+const askForHandoff = async (
+  agent: OpenCodeAgent,
+  system: string,
+  step: StepMarker | null,
+  deps: PhaseDeps,
+): Promise<string | null> => {
   try {
     const reply = await withDeadline(
-      agent.prompt({ system, prompt: WRAP_UP_PROMPT, agent: 'build' }),
+      agent.prompt({ system, prompt: buildWrapUpPrompt(step), agent: 'build' }),
       deps.config.wrapUpMs,
       (elapsed) => openCodeError(`The wrap-up did not answer within ${elapsed}ms (AGENT_WRAP_UP_MS)`),
     )

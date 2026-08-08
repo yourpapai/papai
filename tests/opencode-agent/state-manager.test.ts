@@ -107,6 +107,9 @@ describe('serializeState / extractState', () => {
       // below every threshold `LINES_RANGE` lets an operator set, so a block
       // written before the count existed recommends nothing.
       changedLines: 0,
+      // The plan-step cursor, defaulted for the same reason: 0 is "start at the
+      // first step", which is what every block written before it existed means.
+      stepsDone: 0,
       specRevision: 0,
       planRevision: 0,
       // Defaulted, which is why adding it needed no STATE_VERSION bump.
@@ -144,6 +147,16 @@ describe('serializeState / extractState', () => {
     const older = `<!-- ${STATE_MARKER}: {"v":2,"phase":"COMPLETE","issueId":5,"prNumber":7} -->`
 
     expect(extractState(older)).toMatchObject({ phase: 'COMPLETE', prNumber: 7, reviewAttempts: 0 })
+  })
+
+  test('a v2 block written before the plan-step cursor existed still restores', () => {
+    // `stepsDone` is additive with a default, so no `STATE_VERSION` bump — a bump
+    // strands every in-flight issue, and there is nothing here it would protect
+    // against: 0 means "start at the first step", and the plans those issues carry
+    // have no steps anyway, so they run as one turn exactly as they always did.
+    const older = `<!-- ${STATE_MARKER}: {"v":2,"phase":"REVIEW_AND_MUTATE","issueId":5} -->`
+
+    expect(extractState(older)).toMatchObject({ phase: 'REVIEW_AND_MUTATE', stepsDone: 0 })
   })
 
   test('stamps the current version on every write', () => {
