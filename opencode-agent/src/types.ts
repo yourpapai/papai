@@ -14,7 +14,16 @@ import { z } from 'zod'
  *
  * `CI_FIX` is entered from outside the issue conversation — a red check run on
  * the agent's own pull request — and returns to `COMPLETE` once the branch is
- * green again.
+ * green again. `CODE_REVIEW` is the other way back into a finished issue: it
+ * runs the `review-loop/` workspace over the pushed branch on an explicit
+ * `/review`, and returns to `COMPLETE` too.
+ *
+ * `REVIEW_AND_MUTATE` keeps its name although it no longer reviews anything —
+ * it implements and pushes, and `IMPLEMENT` would be the honest name. `phase` is
+ * read back out of hidden blocks on live issues, so *removing* a member
+ * invalidates every conversation in flight, which buys clarity in one file at
+ * the price of stranding the field. **Adding** one costs nothing for the same
+ * reason: no block written before this change names `CODE_REVIEW`.
  */
 export const PHASES = [
   'INIT_OR_CLARIFY',
@@ -23,6 +32,7 @@ export const PHASES = [
   'PLAN_REVIEW',
   'REVIEW_AND_MUTATE',
   'PR_DELIVERY',
+  'CODE_REVIEW',
   'CI_FIX',
   'COMPLETE',
   'FAILED',
@@ -30,7 +40,14 @@ export const PHASES = [
 
 export type Phase = (typeof PHASES)[number]
 
-/** Phases that wait on a human and run no handler of their own. */
+/**
+ * Phases that wait on a human and run no handler of their own.
+ *
+ * `CODE_REVIEW` is deliberately not one, although a human's `/review` is the
+ * only way in: the command moves the phase and the handler runs in the same job,
+ * exactly as `/approve` into `REVIEW_AND_MUTATE` does. A waiting phase is one
+ * the cascade *stops* at, and this one it never does.
+ */
 export const WAITING_PHASES: ReadonlySet<Phase> = new Set<Phase>(['DESIGN_SPEC', 'PLAN_REVIEW'])
 
 /**
@@ -48,6 +65,8 @@ export const TRANSITION_SIGNALS = [
   'PR_OPENED',
   'CI_FAILED',
   'CI_FIXED',
+  'REVIEW_REQUESTED',
+  'REVIEW_DONE',
   'CANCELLED',
   'FAILED',
   'RETRY',
@@ -96,6 +115,17 @@ export const agentStateSchema = z.object({
    * pull request is opened, or the notice could never be said again for it.
    */
   ciBudgetReported: z.boolean().default(false),
+  /**
+   * Review-loop rounds `/review` has spent on the delivered pull request.
+   *
+   * Per pull request, not per issue, and reset exactly where `ciAttempts` is —
+   * `handleDeliver`'s `existing === null` branch, a genuinely new pull request.
+   * It is also the *only* bound on `/review`: the loop's `opencode run`
+   * subprocesses are invisible to `AGENT_MAX_TOKENS`, so without this the one
+   * command in the pipeline that spawns a fleet of them is bounded by nothing
+   * but the job timeout.
+   */
+  reviewAttempts: z.number().int().min(0).default(0),
   /**
    * Revisions of the design spec and of the execution plan, counted apart.
    *

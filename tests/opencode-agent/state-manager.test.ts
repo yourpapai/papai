@@ -102,6 +102,7 @@ describe('serializeState / extractState', () => {
       attempts: 0,
       ciAttempts: 0,
       ciBudgetReported: false,
+      reviewAttempts: 0,
       specRevision: 0,
       planRevision: 0,
       // Defaulted, which is why adding it needed no STATE_VERSION bump.
@@ -129,6 +130,16 @@ describe('serializeState / extractState', () => {
     const older = `<!-- ${STATE_MARKER}: {"phase":"COMPLETE","issueId":5,"ciAttempts":3} -->`
 
     expect(extractState(older)).toMatchObject({ phase: 'COMPLETE', ciAttempts: 3, ciBudgetReported: false })
+  })
+
+  test('a v2 block written before the review budget existed still restores', () => {
+    // `CODE_REVIEW` and `reviewAttempts` arrived together, and neither needed a
+    // `STATE_VERSION` bump: the phase is an *added* enum member, which no old
+    // block names, and the counter defaults. An issue delivered before the
+    // deploy is therefore reviewable straight away rather than stranded.
+    const older = `<!-- ${STATE_MARKER}: {"v":2,"phase":"COMPLETE","issueId":5,"prNumber":7} -->`
+
+    expect(extractState(older)).toMatchObject({ phase: 'COMPLETE', prNumber: 7, reviewAttempts: 0 })
   })
 
   test('stamps the current version on every write', () => {
@@ -415,6 +426,7 @@ describe('transition', () => {
     ['CHANGES_COMMITTED', 'REVIEW_AND_MUTATE'],
     ['PR_OPENED', 'PR_DELIVERY'],
     ['CI_FIXED', 'CI_FIX'],
+    ['REVIEW_DONE', 'CODE_REVIEW'],
   ])('%s from %s clears the failure budget', (signal, phase) => {
     // `attempts` counts *consecutive* failures. Asking a clarifying question
     // and answering a question are handler successes just as much as posting a
@@ -472,17 +484,23 @@ describe('transition', () => {
     expect(fixing.ciAttempts).toBe(1)
   })
 
-  test.each<Phase>(['INIT_OR_CLARIFY', 'DESIGN_SPEC', 'EXECUTION_PLAN', 'PLAN_REVIEW', 'REVIEW_AND_MUTATE', 'FAILED'])(
-    'a red run is refused in %s',
-    (phase) => {
-      // Four of these have no pushed branch, so a fix round would run the checks
-      // against a branch cut fresh from the base. REVIEW_AND_MUTATE is another
-      // job mid-commit on the branch. FAILED is the close call: a forward move
-      // would reset `attempts`, leave the one phase `/retry` accepts, and end in
-      // COMPLETE claiming success for a delivery that never finished.
-      expect(canTransition(phase, 'CI_FAILED')).toBe(false)
-    },
-  )
+  test.each<Phase>([
+    'INIT_OR_CLARIFY',
+    'DESIGN_SPEC',
+    'EXECUTION_PLAN',
+    'PLAN_REVIEW',
+    'REVIEW_AND_MUTATE',
+    'CODE_REVIEW',
+    'FAILED',
+  ])('a red run is refused in %s', (phase) => {
+    // Four of these have no pushed branch, so a fix round would run the checks
+    // against a branch cut fresh from the base. REVIEW_AND_MUTATE and
+    // CODE_REVIEW are another job mid-commit on the branch. FAILED is the close
+    // call: a forward move would reset `attempts`, leave the one phase `/retry`
+    // accepts, and end in COMPLETE claiming success for a delivery that never
+    // finished.
+    expect(canTransition(phase, 'CI_FAILED')).toBe(false)
+  })
 
   test('CI attempts accumulate across rounds within one pull request', () => {
     let state = at('COMPLETE')
@@ -490,6 +508,62 @@ describe('transition', () => {
     state = transition(transition(state, 'CI_FAILED'), 'CI_FIXED')
 
     expect(state.ciAttempts).toBe(2)
+  })
+
+  test('a delivered issue enters CODE_REVIEW when a maintainer asks for one', () => {
+    const complete = at('COMPLETE')
+    const reviewing = transition(complete, 'REVIEW_REQUESTED')
+
+    expect(reviewing.phase).toBe('CODE_REVIEW')
+    expect(reviewing.reviewAttempts).toBe(1)
+    expect(transition(reviewing, 'REVIEW_DONE').phase).toBe('COMPLETE')
+  })
+
+  test.each<Phase>([
+    'INIT_OR_CLARIFY',
+    'DESIGN_SPEC',
+    'EXECUTION_PLAN',
+    'PLAN_REVIEW',
+    'REVIEW_AND_MUTATE',
+    'PR_DELIVERY',
+    'CODE_REVIEW',
+    'CI_FIX',
+    'FAILED',
+  ])('a review request is refused in %s', (phase) => {
+    // `REVIEW_REQUESTED` names exactly one row. The four phases before the
+    // branch exists have nothing to review; REVIEW_AND_MUTATE, CODE_REVIEW and
+    // CI_FIX are never persisted, so finding one means reading a hand-edited
+    // block; FAILED is parked under a comment asking for `/retry`. PR_DELIVERY
+    // is the one that differs from `CI_FAILED`, deliberately: that row exists
+    // to break a *silence*, and a refused `/review` answers on the issue.
+    expect(canTransition(phase, 'REVIEW_REQUESTED')).toBe(false)
+  })
+
+  test.each<Phase>([...PHASES].filter((phase) => phase !== 'CODE_REVIEW'))(
+    'a finished review is refused in %s',
+    (phase) => {
+      expect(canTransition(phase, 'REVIEW_DONE')).toBe(false)
+    },
+  )
+
+  test('nothing but a review request spends a review round', () => {
+    // `reviewAttempts` bounds the one command whose spend `maxTokens` cannot
+    // see, so a second signal quietly bumping it would shorten that budget by
+    // however many other moves an issue happens to make.
+    const reviewing = transition(at('COMPLETE'), 'REVIEW_REQUESTED')
+    expect(reviewing.reviewAttempts).toBe(1)
+
+    expect(transition(reviewing, 'REVIEW_DONE').reviewAttempts).toBe(1)
+    expect(transition(reviewing, 'ANSWERED').reviewAttempts).toBe(1)
+    expect(transition(transition(reviewing, 'REVIEW_DONE'), 'CI_FAILED').reviewAttempts).toBe(1)
+  })
+
+  test('review rounds accumulate across requests within one pull request', () => {
+    let state = at('COMPLETE')
+    state = transition(transition(state, 'REVIEW_REQUESTED'), 'REVIEW_DONE')
+    state = transition(transition(state, 'REVIEW_REQUESTED'), 'REVIEW_DONE')
+
+    expect(state.reviewAttempts).toBe(2)
   })
 
   test('CANCELLED parks any live phase in COMPLETE', () => {

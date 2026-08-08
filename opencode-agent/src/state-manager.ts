@@ -62,6 +62,21 @@ export const STATE_MARKER = 'AGENT_STATE'
  * `/retry` resumes the phase that broke, delivers, and reaches `COMPLETE`,
  * where the next red run is picked up as usual. The red checks are deferred
  * behind a maintainer, not abandoned.
+ *
+ * `REVIEW_REQUESTED` names exactly one row, and its absences are the same audit
+ * with one answer changed. The four phases before the branch exists have nothing
+ * to review; `REVIEW_AND_MUTATE`, `CODE_REVIEW` and `CI_FIX` are never
+ * persisted, so a `/review` appearing to find one is reading a hand-edited block
+ * and honouring it would put a second job on a branch another is mid-commit on;
+ * and `FAILED` is parked under a comment asking for `/retry`, where reviewing a
+ * delivery that did not finish reviews a branch nobody has claimed is complete.
+ *
+ * `PR_DELIVERY` is the one that differs from `CI_FAILED`, deliberately. That row
+ * exists because a refused red run is **silent** — nothing posted, nothing
+ * spent, and a maintainer with no way to learn the run was dropped. A refused
+ * `/review` answers on the issue through `refuseCommand`, naming what the phase
+ * does accept, so there is no silence to fix; and in `PR_DELIVERY` the pull
+ * request may not exist yet, which is precisely what the review reports against.
  */
 const TRANSITIONS: Record<Phase, Partial<Record<TransitionSignal, Phase>>> = {
   INIT_OR_CLARIFY: { NEEDS_CLARIFICATION: 'INIT_OR_CLARIFY', SPEC_POSTED: 'DESIGN_SPEC' },
@@ -70,8 +85,9 @@ const TRANSITIONS: Record<Phase, Partial<Record<TransitionSignal, Phase>>> = {
   PLAN_REVIEW: { CHANGES_REQUESTED: 'EXECUTION_PLAN', APPROVED: 'REVIEW_AND_MUTATE' },
   REVIEW_AND_MUTATE: { CHANGES_COMMITTED: 'PR_DELIVERY' },
   PR_DELIVERY: { PR_OPENED: 'COMPLETE', CI_FAILED: 'CI_FIX' },
+  CODE_REVIEW: { REVIEW_DONE: 'COMPLETE' },
   CI_FIX: { CI_FIXED: 'COMPLETE' },
-  COMPLETE: { CI_FAILED: 'CI_FIX' },
+  COMPLETE: { CI_FAILED: 'CI_FIX', REVIEW_REQUESTED: 'CODE_REVIEW' },
   FAILED: {},
 }
 
@@ -210,6 +226,7 @@ const forwardTransition = (
   attempts: 0,
   ...revisionBump(state, signal),
   ciAttempts: signal === 'CI_FAILED' ? state.ciAttempts + 1 : state.ciAttempts,
+  reviewAttempts: signal === 'REVIEW_REQUESTED' ? state.reviewAttempts + 1 : state.reviewAttempts,
   lastError: null,
   ...patch,
 })

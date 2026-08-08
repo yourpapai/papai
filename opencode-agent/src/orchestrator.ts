@@ -15,6 +15,7 @@ import { handleCiFix } from './phases/ci-fix.js'
 import { handleDeliver } from './phases/deliver.js'
 import { handleImplement } from './phases/implement.js'
 import { handlePlan } from './phases/plan.js'
+import { handleReview } from './phases/review.js'
 import { handleTriage } from './phases/triage.js'
 import { postAndAppend, renderSettled } from './run-report.js'
 import { findLatestState, initialState, transition } from './state-manager.js'
@@ -32,6 +33,7 @@ const HANDLERS: Partial<Record<Phase, PhaseHandler>> = {
   EXECUTION_PLAN: handlePlan,
   REVIEW_AND_MUTATE: handleImplement,
   PR_DELIVERY: handleDeliver,
+  CODE_REVIEW: handleReview,
   CI_FIX: handleCiFix,
 }
 

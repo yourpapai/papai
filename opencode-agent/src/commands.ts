@@ -4,10 +4,10 @@
 // See LICENSE in the project root for details.
 
 import { canTransition } from './state-manager.js'
-import type { Phase, TransitionSignal } from './types.js'
+import type { AgentState, TransitionSignal } from './types.js'
 
 /** Slash commands a maintainer can issue from an issue comment. */
-export const SLASH_COMMANDS = ['/approve', '/changes', '/ask', '/retry', '/cancel'] as const
+export const SLASH_COMMANDS = ['/approve', '/changes', '/ask', '/retry', '/cancel', '/review'] as const
 
 export type SlashCommand = (typeof SLASH_COMMANDS)[number]
 
@@ -92,22 +92,53 @@ export type CommentIntent = (typeof COMMENT_INTENTS)[number]
  * module is the command vocabulary, and what each command *means* to the machine
  * is part of it.
  */
-export const COMMAND_SIGNALS: Record<string, TransitionSignal> = {
+export const COMMAND_SIGNALS: Partial<Record<SlashCommand, TransitionSignal>> = {
   '/approve': 'APPROVED',
   '/changes': 'CHANGES_REQUESTED',
   '/retry': 'RETRY',
   '/cancel': 'CANCELLED',
+  '/review': 'REVIEW_REQUESTED',
 }
 
 /**
- * The commands `phase` would actually accept, straight from the transition
- * table, so a list shown to a maintainer cannot drift from what the machine will
- * take. `/ask` is appended unconditionally: answering asks nothing of the state
- * machine, so there is no phase in which it is refused.
+ * Commands whose availability the transition table cannot decide alone.
+ *
+ * There is one, and `COMPLETE` is why. That phase is where a **delivered** issue
+ * and a **cancelled** one both live, and the phase alone cannot tell them apart:
+ * `presentationKey` already splits them on the pull request, because a delivered
+ * issue and an abandoned one are not the same outcome. `/review` needs the same
+ * split — on a cancelled issue it would name a branch nobody asked for and
+ * report against a pull request that does not exist.
+ *
+ * One predicate with two readers rather than two spellings of one rule:
+ * {@link acceptedCommands} shows a maintainer the list, `triggers.ts` enforces
+ * it before applying the signal, and the offer and the gate cannot drift apart.
  */
-export const acceptedCommands = (phase: Phase): readonly string[] => [
-  ...Object.entries(COMMAND_SIGNALS)
-    .filter(([, signal]) => canTransition(phase, signal))
-    .map(([command]) => command),
-  '/ask',
-]
+const COMMAND_APPLIES: Partial<Record<SlashCommand, (state: AgentState) => boolean>> = {
+  '/review': (state) => state.prNumber !== null,
+}
+
+/** Whether `command` applies to this state, over and above what the phase takes. */
+export const commandApplies = (command: SlashCommand, state: AgentState): boolean => {
+  const applies = COMMAND_APPLIES[command]
+  return applies === undefined ? true : applies(state)
+}
+
+const accepts = (state: AgentState, command: SlashCommand): boolean => {
+  const signal = COMMAND_SIGNALS[command]
+  // `/ask` is the command with no signal, and it needs no special case here:
+  // answering asks nothing of the state machine, so there is nothing to refuse.
+  if (signal === undefined) return true
+  return canTransition(state.phase, signal) && commandApplies(command, state)
+}
+
+/**
+ * The commands this **state** would actually accept, straight from the
+ * transition table and the predicate above, so a list shown to a maintainer
+ * cannot drift from what the machine will take.
+ *
+ * It takes a state rather than a phase because `/review` needs one — see
+ * {@link COMMAND_APPLIES} — and both call sites already hold one.
+ */
+export const acceptedCommands = (state: AgentState): readonly string[] =>
+  SLASH_COMMANDS.filter((command) => accepts(state, command))

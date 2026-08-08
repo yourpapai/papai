@@ -3,13 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { renderExhausted, renderReviewsExhausted } from './budget-notices.js'
 import { applyCiTrigger } from './ci-trigger.js'
-import { acceptedCommands, COMMAND_SIGNALS } from './commands.js'
+import { acceptedCommands, commandApplies, COMMAND_SIGNALS } from './commands.js'
 import type { ParsedCommand } from './commands.js'
 import { applyClarifyIntent, applyIntent, readAndSkip } from './comment-intent.js'
 import { react } from './feedback.js'
 import type { PhaseInput } from './phase-context.js'
-import { postAndAppend, renderExhausted, renderRefusedCommand } from './run-report.js'
+import { postAndAppend, renderRefusedCommand } from './run-report.js'
 import { canTransition } from './state-manager.js'
 import { moveOrSkip, skip } from './trigger-outcome.js'
 import type { TriggerOutcome } from './trigger-outcome.js'
@@ -68,12 +69,32 @@ const applyCommand = (input: PhaseInput, command: ParsedCommand): Promise<Trigge
   const signal = COMMAND_SIGNALS[command.command]
   if (signal === undefined) return refuseCommand(input, command.command, `Unknown command ${command.command}`)
 
+  // The half of "does this command apply here" the transition table cannot
+  // answer, asked before either budget: `/review` on a *cancelled* issue is a
+  // wrong-command refusal, not a spent one, and `COMPLETE` is the one phase
+  // where the two are indistinguishable from the phase alone. Refused through
+  // the same door as a wrong phase, so the comment lists what does work — and
+  // `acceptedCommands` consults this very predicate to build that list.
+  if (!commandApplies(command.command, state)) {
+    return refuseCommand(input, command.command, `${command.command} does not apply to this issue`)
+  }
+
   // Before the move, not after it — see `refuseExhausted` below. Asked of the
   // transition table rather than of `state.phase` directly, so this cannot start
   // answering for a `/retry` the phase was going to turn down anyway: a retry
   // that does not apply here is a wrong-command refusal, not a spent budget.
   if (signal === 'RETRY' && canTransition(state.phase, signal) && state.attempts >= deps.config.maxAttempts) {
     return refuseExhausted(input)
+  }
+
+  // The same shape against the other command with a budget, and gated on the
+  // table for the same reason.
+  if (
+    signal === 'REVIEW_REQUESTED' &&
+    canTransition(state.phase, signal) &&
+    state.reviewAttempts >= deps.config.maxReviewAttempts
+  ) {
+    return refuseReviews(input)
   }
 
   const outcome = moveOrSkip(state, signal, deps, command.command)
@@ -99,7 +120,7 @@ const refuseCommand = async (input: PhaseInput, command: string, reason: string)
   // accept, from the transition table — but it arrives after `postAndAppend`,
   // while the reaction lands before the run has done anything at all.
   await react(deps, input.trigger, 'confused')
-  await postAndAppend(thread, input, renderRefusedCommand(command, state.phase, acceptedCommands(state.phase)), state)
+  await postAndAppend(thread, input, renderRefusedCommand(command, state.phase, acceptedCommands(state)), state)
 
   return { state, halt: skip(state, reason, true), answer: false }
 }
@@ -134,6 +155,29 @@ const refuseExhausted = async (input: PhaseInput): Promise<TriggerOutcome> => {
   deps.log.warn({ issue: state.issueId, attempts: state.attempts, resumeFrom: state.resumeFrom }, 'Retry budget spent')
 
   await postAndAppend(thread, input, renderExhausted(reason), state)
+
+  return { state, halt: { status: 'failed', reason, state, reported: true }, answer: false }
+}
+
+/**
+ * The same refusal against the review budget, and the same "before the move"
+ * reason: a `/review` applied and then regretted would park the issue in
+ * `CODE_REVIEW`, a handler phase no trigger re-enters, under a notice inviting
+ * the very command that had just become impossible. That is the exact shape of
+ * the bug {@link refuseExhausted} was written to close, on the other ceiling.
+ *
+ * Beside it rather than inside it because the remedy differs: nothing is parked
+ * here, so `/retry` cannot help, and `renderReviewsExhausted` names
+ * `AGENT_MAX_REVIEW_ATTEMPTS` instead. `failed` rather than a skip, matching
+ * both the retry notice and the CI one — a bound was reached and the run has
+ * said so on the issue.
+ */
+const refuseReviews = async (input: PhaseInput): Promise<TriggerOutcome> => {
+  const { state, thread, deps } = input
+  const reason = `Review budget exhausted (${state.reviewAttempts} of ${deps.config.maxReviewAttempts} reviews)`
+  deps.log.warn({ issue: state.issueId, reviewAttempts: state.reviewAttempts, pr: state.prNumber }, 'Reviews spent')
+
+  await postAndAppend(thread, input, renderReviewsExhausted(reason, state.prUrl), state)
 
   return { state, halt: { status: 'failed', reason, state, reported: true }, answer: false }
 }

@@ -74,6 +74,8 @@ export interface PipelineConfig {
   ciFixMaxRounds: number
   /** Ceiling on CI-fix rounds across the whole life of one pull request. */
   maxCiAttempts: number
+  /** Ceiling on `/review` rounds across the whole life of one pull request. */
+  maxReviewAttempts: number
   /** Above this, a FAILED issue stops auto-retrying and waits for `/retry`. */
   maxAttempts: number
   /** Ceilings a staged change set must stay under before it is committed. */
@@ -278,6 +280,7 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     agentTimeoutMs: boundedInt(env, 'AGENT_TIMEOUT_MS', 1_800_000, TIMEOUT_RANGE),
     ciFixMaxRounds: boundedInt(env, 'AGENT_CI_FIX_MAX_ROUNDS', 2, ROUND_RANGE),
     maxCiAttempts: boundedInt(env, 'AGENT_MAX_CI_ATTEMPTS', 3, ROUND_RANGE),
+    maxReviewAttempts: boundedInt(env, 'AGENT_MAX_REVIEW_ATTEMPTS', 3, ROUND_RANGE),
     maxAttempts: boundedInt(env, 'AGENT_MAX_ATTEMPTS', 3, ROUND_RANGE),
     maxTokens: boundedInt(env, 'AGENT_MAX_TOKENS', 5_000_000, TOKEN_RANGE),
     diffLimits: {

@@ -92,6 +92,18 @@ describe('the presentation table', () => {
     expect(presentationFor(CANCELLED, stance).whoseTurn).toBe('nobody')
   })
 
+  test('CODE_REVIEW is the agent working, not the issue waiting', () => {
+    // It is entered by a maintainer typing `/review`, which reads like a
+    // waiting state and is not one: the command moves the phase and the handler
+    // runs in the same job, so the issue is held by the agent throughout.
+    const reviewing = presentationFor(stateIn('CODE_REVIEW'), 'working')
+
+    expect(reviewing.glyph).toBe('🔬')
+    expect(reviewing.label.suffix).toBe('reviewing')
+    expect(reviewing.whoseTurn).toBe('agent')
+    expect(reviewing.headline).toBe('Reviewing the pull request')
+  })
+
   test('a failure is your turn — it waits for `/retry` or `/cancel`', () => {
     expect(presentationFor(stateIn('FAILED'), 'waiting').whoseTurn).toBe('you')
   })
@@ -117,7 +129,12 @@ describe('the outcome table', () => {
     // that a ceiling is not a failure: nothing broke, the run stopped because
     // it was told to. Giving them ❌ would undo that in the one place a
     // maintainer actually looks.
-    const bounds = [OUTCOME_GLYPHS.RETRIES_SPENT, OUTCOME_GLYPHS.TOKENS_SPENT, OUTCOME_GLYPHS.ANSWER_TOKENS_SPENT]
+    const bounds = [
+      OUTCOME_GLYPHS.RETRIES_SPENT,
+      OUTCOME_GLYPHS.TOKENS_SPENT,
+      OUTCOME_GLYPHS.ANSWER_TOKENS_SPENT,
+      OUTCOME_GLYPHS.REVIEWS_SPENT,
+    ]
 
     expect(new Set(bounds).size).toBe(1)
     expect(bounds).not.toContain(OUTCOME_GLYPHS.RUN_FAILED)

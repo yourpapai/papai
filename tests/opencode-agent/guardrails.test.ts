@@ -328,6 +328,6 @@ describe('parseSlashCommand', () => {
   })
 
   test('exposes exactly the documented command surface', () => {
-    expect([...SLASH_COMMANDS]).toEqual(['/approve', '/changes', '/ask', '/retry', '/cancel'])
+    expect([...SLASH_COMMANDS]).toEqual(['/approve', '/changes', '/ask', '/retry', '/cancel', '/review'])
   })
 })

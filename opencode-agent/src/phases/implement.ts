@@ -6,11 +6,9 @@
 import { PLAN_MARKER, renderArtifact, REPORT_MARKER, requireArtifact } from '../artifacts.js'
 import { missingPlanError, noChangesError } from '../errors.js'
 import { branchNameFor } from '../git.js'
-import { fence } from '../markdown.js'
 import { composeSystemPrompt } from '../obra-skills.js'
 import type { PhaseHandler, PhaseOutcome } from '../phase-context.js'
 import { buildImplementPrompt } from '../prompts.js'
-import type { ReviewOutcome, ReviewRunResult } from '../review-runner.js'
 import type { AgentState } from '../types.js'
 import { mintEnvelope } from './envelope.js'
 
@@ -21,12 +19,21 @@ const IMPLEMENT_INSTRUCTIONS = [
 ].join('\n')
 
 /**
- * Phase 3. Applies the plan, hands the working tree to the `review-loop/`
- * workspace, then commits **and pushes**.
+ * Phase 3. Applies the plan, commits it **and pushes**. It does not review.
  *
  * Pushing here rather than in phase 4 is deliberate: an Actions job's working
- * tree dies with the job, so a commit that is not pushed by the end of the
- * phase that made it cannot be recovered by any later retry.
+ * tree dies with the job, so a commit that is not pushed by the end of the phase
+ * that made it cannot be recovered by any later retry. That argument is stronger
+ * now than when it was written, because the push happens as early as it possibly
+ * can — the `review-loop/` workspace used to run between this phase's commit and
+ * its push, so a review that timed out, left the tree uncommittable, or was
+ * killed with the job discarded an implementation that had succeeded, and the
+ * `/retry` that followed paid for a second model turn to redo it.
+ *
+ * The review is `CODE_REVIEW` now, entered by `/review` on the delivered pull
+ * request. Do not grow it back in here: two independently expensive operations
+ * with two independent failure modes sharing one phase, one job and one resume
+ * point is the whole of what that split undid.
  */
 export const handleImplement: PhaseHandler = async (input): Promise<PhaseOutcome> => {
   const { deps, state } = input
@@ -49,23 +56,16 @@ export const handleImplement: PhaseHandler = async (input): Promise<PhaseOutcome
     agent: 'build',
   })
 
-  // Commit first so the review loop has a clean base to diff against, then let
-  // it review, fix and merge its own work back into this branch.
-  //
   // `commitAll` reports a clean tree itself, which is the same question a
   // separate `hasChanges` probe asked one `git status` earlier — two reads of a
   // tree that a long model turn had just finished writing to, free to disagree
   // and with no rule for which one won.
   if (!(await deps.git.commitAll(implementMessage(state.issueId)))) throw noChangesError(state.issueId)
 
-  const review = await deps.runReview(plan)
-
-  await deps.git.commitAll(reviewMessage(state.issueId))
   await deps.git.push(branch)
+  deps.log.info({ issue: state.issueId, branch }, 'Implementation pushed')
 
-  deps.log.info({ issue: state.issueId, branch, review: review.outcome }, 'Implementation pushed')
-
-  const report = renderReport(review)
+  const report = renderReport()
   return { signal: 'CHANGES_COMMITTED', comment: report, blocks: [reportBlock(report, state)] }
 }
 
@@ -88,31 +88,23 @@ const reportBlock = (report: string, state: AgentState): string =>
 const implementMessage = (issueNumber: number): string =>
   `feat(agent): implement issue #${issueNumber}\n\nRefs #${issueNumber}`
 
-const reviewMessage = (issueNumber: number): string =>
-  `fix(agent): apply review-loop findings for issue #${issueNumber}\n\nRefs #${issueNumber}`
-
-const REVIEW_LINE: Record<ReviewOutcome, (exitCode: number) => string> = {
-  passed: () => '✅ clean',
-  failed: (exitCode) => `❌ exited ${exitCode}`,
-  // Not a failure: this repository simply has no review loop configured, and
-  // saying "❌" for that would report every run elsewhere as permanently red.
-  unavailable: () => '— not configured for this repository',
-}
-
-const renderReport = (review: ReviewRunResult): string => {
-  const lines = ['### Implementation report', '', `- Review loop: ${REVIEW_LINE[review.outcome](review.exitCode)}`]
-
-  if (review.outcome !== 'unavailable') {
-    lines.push(
-      '',
-      '<details><summary>review-loop summary</summary>',
-      '',
-      // The summary is the workspace's own output and can contain fences.
-      fence(review.summary),
-      '',
-      '</details>',
-    )
-  }
-
-  return lines.join('\n')
-}
+/**
+ * What this phase has to say, which is now mostly what it has **not** done.
+ *
+ * The report block this becomes is what the pull request body carries, so the
+ * statement that nothing has reviewed the diff is read where a reviewer is
+ * looking at it. Naming `/review` there is the only way anybody learns the
+ * command exists; the run is otherwise indistinguishable from one where the
+ * review passed silently.
+ */
+const renderReport = (): string =>
+  [
+    '### Implementation report',
+    '',
+    'The approved plan is implemented, committed and pushed to the branch.',
+    '',
+    '- Review loop: not run — it is a separate step now',
+    '',
+    'Reply `/review` on the issue and I will run the `review-loop/` workspace over this branch and push ' +
+      'whatever it finds as further commits.',
+  ].join('\n')
