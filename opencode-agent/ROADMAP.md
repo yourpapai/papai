@@ -1477,12 +1477,11 @@ model's to use freely.
    and it is the one thing only the model that did the work can write.
 2. **Hard stop**, at `deadline − teardown`, and it is **unconditional**. Whether
    the wrap-up replied, ignored the instruction or started editing again, the run
-   stops waiting: `abort` again, wait briefly for idle, and then **close the
-   server**. Closing it is what makes this hard rather than polite — `close()`
-   kills the process the model's `bash` and `write` children hang off, which is
-   the only thing that removes the "a file is mid-write while `git add` runs"
-   race. Nothing in this step may depend on the model, or the server, choosing
-   to cooperate.
+   stops waiting: `abort` again, confirm the server has no tool child left, and
+   only **then** close the server. **`abort` is what stops the work; `close()` is
+   what leaks it** — measured, see below. Nothing in this step may depend on the
+   model choosing to cooperate, and nothing in it may treat `close()` as a
+   fallback for an `abort` that did not take.
 3. **Teardown**, the reserve. `git add --all`, the diff guard, the commit, the
    push, the comment, the state block, the label. The observed tail for all of
    that is about ten seconds; reserving two or three minutes is cheap and makes
@@ -1498,6 +1497,59 @@ recording after would hand the next job a total with this whole turn missing
 from it. For the same reason the memoized handle in `agent-handle.ts` must not
 be reachable after step 2: a closed session handed to a later phase breaks, and
 the only correct continuation from a hard stop is the park.
+
+#### Measured: what actually stops a running tool command — **verified**
+
+Run against a live `opencode-ai@1.18.7` server with `@opencode-ai/sdk@1.18.7` on
+Linux. Driven **without a model**: `POST /session/:id/shell` spawns the same
+`bash -l -c` child the bash *tool* does, it merely blocks until the command
+exits, so a `sleep` is enough to hold a tool child open and no provider
+credentials are needed. Worth folding both cases into
+`tests/opencode-agent/live-sdk.integration.ts`, because a pin bump can change
+either answer.
+
+The shape while a command is running — and the third column is the finding:
+
+| process         | pid   | ppid              | pgid      | note                  |
+| --------------- | ----- | ----------------- | --------- | --------------------- |
+| opencode server | 12674 | 12671             | **12671** | —                     |
+| tool child      | 12706 | 12674 (opencode)  | **12706** | `Ss` — session leader |
+| its leaf        | 12775 | 12706             | **12706** | the `sleep`           |
+
+A tool command is a **session leader in its own process group**, not in the
+server's. Then:
+
+| action                                             | opencode  | tool child                        |
+| -------------------------------------------------- | --------- | --------------------------------- |
+| `POST /session/:id/abort`                          | **alive** | **gone**                          |
+| `kill -TERM <opencode pid>` — i.e. SDK `close()`   | **gone**  | **alive**, reparented to `ppid 1` |
+
+Four things follow, and the first one corrects what this section used to say:
+
+- **`abort` is the hard stop; `close()` is not a stop at all.** It removes the
+  server and leaves the work running, detached. The earlier claim here — that
+  closing the server is "what makes this hard rather than polite" — was wrong,
+  and testing it before building on it is the whole reason it was written down as
+  an assumption rather than a fact.
+- **"Kill the process group instead" does not rescue it.** The tool child is in
+  its own session, so no group kill on the server's group can reach it.
+- **A failed `abort` needs a different fallback than a bigger hammer.** Either
+  enumerate the server's direct children *while it is still alive* and kill each
+  of their groups — the pipeline reaching around the SDK into process management
+  — or fence the staging step on the tree being quiescent for a few seconds.
+  The fence is cheaper, needs no new capability, and is what actually protects
+  `git add`; prefer it and treat the enumeration as the escalation.
+- **This is already visible in production.** The `Terminate orphan process` lines
+  for `opencode`, `bun`, three `bash` children and a `curl` at the end of the
+  failed run are not a curiosity: `close()` ran in `runCli`'s `finally`, orphaned
+  the tool children, and the runner had to kill them itself. The log was showing
+  this bug all along.
+
+One SDK detail behind it, worth recording because it looks like an oversight and
+determines which platform is affected: `stop()` in the SDK does a real **tree
+kill on Windows** (`taskkill /pid … /T /F`) and a bare `proc.kill()` on POSIX —
+one SIGTERM, one pid, no process group, no escalation to SIGKILL. POSIX is the
+platform with the leak, and POSIX is the platform CI runs on.
 
 #### The salvage commit is `--no-verify`, and what that must **not** skip
 
@@ -1682,13 +1734,15 @@ answer to that than any storage-tree smuggling.
 Per the workspace rule, nothing here may be guessed from the SDK's types.
 `bun run opencode-agent:test:live`, then record:
 
-- Does `abort` stop an in-flight `bash` child, and does it return with the tree
-  quiescent or with a `write` still in flight? The soft stop's usefulness rests
-  on this.
-- Does `close()` reliably take the model's tool children with it? The hard stop
-  rests on this, and it is the stronger claim of the two — if a `bash` survives
-  its server, the mid-write race survives with it and staging needs its own
-  fence.
+- ~~Does `abort` stop an in-flight `bash` child?~~ **Answered: yes.** See
+  "Measured" above.
+- ~~Does `close()` reliably take the model's tool children with it?~~
+  **Answered: no — it orphans them.** The staging fence is therefore not
+  optional; it is the fallback the design has to carry.
+- Whether `abort` returns with the tree already quiescent, or merely with the
+  process gone and its last `write` possibly half-applied. The measurement
+  covered process lifetime, not filesystem state, and the fence is sized by this
+  answer.
 - Does the session accept the wrap-up prompt after an abort, with its history
   intact? If no, the wrap-up window buys nothing and the handoff has to be
   assembled from `session.messages` instead.
