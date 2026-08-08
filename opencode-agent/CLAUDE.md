@@ -15,6 +15,15 @@ findings: `ROADMAP.md`.
   `AGENT_REPORT` for the artefacts. `AGENT_STATUS` is the odd one out — it marks
   the run's live status comment so `renderThread` can leave it out of a prompt,
   and it is read by nothing else.
+- An event is parsed before it is judged: `src/trigger-events.ts` says what a raw
+  payload **is** and `src/guardrails.ts` whether the pipeline may act on it. That
+  split is not tidiness — it is what lets `src/pr-trigger.ts` finish a parse
+  without importing the policy layer that will judge the finished event, which
+  would be a cycle. There are **three** doors, not two: an issue event, a red CI
+  run, and a comment typed on a pull request, which is the one `parseTriggerEvent`
+  cannot finish alone (`src/github-pulls.ts` reads the head that names its issue).
+  `src/agent-handle.ts` holds the memoized OpenCode session `index.ts` used to
+  own, which also ends `deps.ts` importing back from the module it was split from.
 - `src/triggers.ts` decides _whether and where_ an event moves the state — it
   keeps the slash commands and the dispatch — with the red-CI half in
   `src/ci-trigger.ts`, the plain-comment half in `src/comment-intent.ts`, and the
@@ -106,6 +115,39 @@ findings: `ROADMAP.md`.
   failure fixes more than a fail-fast round would — and later rounds re-run only
   what failed. Only a **full** pass may return `passed`: a narrowed round has not
   looked at the checks it skipped since before a repair edited the tree.
+- **The pull-request door resolves before it acts, and its lookup is not
+  swallowed.** State lives in hidden blocks on the **issue** and `findLatestState`
+  scans the issue thread, so a comment typed on a pull request names nothing this
+  pipeline can restore — `github.event.issue.number` there is the _pull request_.
+  `resolvePullRequestTrigger` in `pr-trigger.ts` recovers the issue from the head
+  branch, `agent/issue-<n>`, the same link a red CI run travels; that costs an API
+  call, which is why it is a second step and not a branch of the pure
+  `parseTriggerEvent`. Its **order is the design**: the `/review` test is free and
+  comes first, so every ordinary code-review comment on every pull request in the
+  repository is dropped with no lookup at all — the head lookup that follows is
+  not free, so nothing may be moved in front of it and nothing that reads its
+  answer may be moved behind. The fork check is the one to get right. `head.ref`
+  is attacker-controlled, so a pull request opened from a fork whose branch is
+  named `agent/issue-42` looks like the agent's own to every other field here;
+  without `PR_FOREIGN_REPOSITORY`, anyone who can open a pull request could type
+  `/review` and buy a privileged job that prompts the model, spends issue 42's
+  token budget and pushes commits to a real agent branch — the same attack
+  `CI_FOREIGN_REPOSITORY` answers through the other door. The lookup itself is
+  deliberately **not** caught, unlike every other GitHub call this pipeline
+  degrades to a `warn`: it is the only thing that says which issue the run is
+  about, and the fork guard reads its answer, so a rejection has to reach `runCli`
+  and leave the job red rather than become a skip indistinguishable from a comment
+  nobody typed. `TriggerEvent` gains a third member rather than a flag on the
+  issue one, because `resolveIssue` reads the issue's title and body straight off
+  that shape and this payload carries the _pull request's_ — a flag hands every
+  phase the wrong document under the right field names. Every `kind` test is an
+  exhaustive `switch` for the same reason, with `unreachable` making a fourth kind
+  a compile error rather than a silent bucketing. The report and the state block
+  still go to the issue whichever door was used, and that is not a preference: a
+  block on the pull request is a second source of truth the restore scan cannot
+  see. `applyPullRequestCommand` keeps refusing everything but `/review` even
+  though the resolver means nothing else can reach it, because a decision enforced
+  only by whichever layer filters first is one a second door quietly repeals.
 - **One model endpoint.** Everything goes through `openai-config.ts`; there are
   no provider-specific keys and no second place a model is named. OpenCode is
   never handed the real key: `provider-proxy.ts` holds it and `contain()` in
@@ -165,9 +207,15 @@ findings: `ROADMAP.md`.
   handler posts, and all three post the phase they moved _to_ — which is also why
   a check that goes red during a review is read against the `COMPLETE` block the
   issue is still carrying), and honouring a hand-edited one would put a second
-  job on a branch another is mid-commit on — the workflow's concurrency
-  group queues those two, but only while `workflow_run.head_branch` and
-  `agent/issue-<n>` agree, which is a coincidence and not a proof. **`FAILED`
+  job on a branch another is mid-commit on — the concurrency group queues those
+  two, and since the pull-request door it does so by construction rather than by
+  coincidence: the group is the `agent` job's own, keyed on
+  `needs.resolve.outputs.branch`, and `resolve` derives that branch from the issue
+  number it parsed, whichever of the three kinds the event was. Two spellings
+  happening to agree was the old proof and it was never one; one number is. What
+  that buys is ordering and not safety — the second job is queued rather than
+  concurrent, which is exactly why the hand-edited block still must not be
+  honoured. **`FAILED`
   stays out deliberately**, the close call: the branch is pushed there, but
   `CI_FAILED` is a forward move, so it would reset `attempts` and leave the one
   phase `/retry` accepts, and a fix that went green would park the issue in
@@ -193,12 +241,27 @@ findings: `ROADMAP.md`.
   agent for as long as anyone keeps replying `/retry`.
 - **A feedback channel has exactly one door, and that door swallows
   everything.** `react` in `feedback.ts`, `reconcileLabels` in `labels.ts`,
-  `attempt` in `status-reporter.ts`, `persistState` in `state-persist.ts` and
-  `refreshPullRequest` in `phases/review.ts` are each the only function in their
-  module that calls GitHub, and each catches every rejection and degrades it to a
+  `attempt` in `status-reporter.ts`, `persistState` in `state-persist.ts`,
+  `refreshPullRequest` in `phases/review.ts` and `noteReview` in
+  `pull-request-note.ts` are each the only function in their module that calls
+  GitHub, and each catches every rejection and degrades it to a
   `warn`; a caller reaches the same `RunResult` and the same **persisted state**
-  it would have reached with the channel absent. `refreshPullRequest` is the one that shows what the rule is
-  about, because the very same `updatePullRequest` is not decoration everywhere:
+  it would have reached with the channel absent. `noteReview` is the newest and
+  the one that leaves the issue entirely: it posts the two-line pointer a
+  `/review` typed on a **pull request** earns — the loop's verdict, whether the
+  findings became commits, and the `#n` where the report and the state block went
+  — and it fires on the trigger **kind**, in a `switch` beside `feedback.ts`'s,
+  never on the phase, since `CODE_REVIEW` is reached identically through both
+  doors and a phase test would draw a pointer for a maintainer already reading the
+  report. It is its own module rather than a second `try` beside
+  `refreshPullRequest` for the reason the rule states, and `RunResult` is absent
+  from its signature the way it is from `StatusReporter.finish`: `reported` means
+  "the issue carries this run's account of what happened" and gates the workflow's
+  fallback comment, so a note on the pull request — which that comment neither
+  reads nor could reach — must leave the flag **unreachable**, not merely
+  untouched. An edit that wanted to set it would have to change the interface
+  first. `refreshPullRequest` is the one that shows what the rule is about,
+  because the very same `updatePullRequest` is not decoration everywhere:
   in `handleDeliver` it **is** the work, so a rejection there is correctly fatal
   and correctly resumed from `PR_DELIVERY`. In the review phase the loop has run
   and its findings are already commits on a pushed branch, and the call only
@@ -212,8 +275,8 @@ findings: `ROADMAP.md`.
   channels make is decoration on work that matters and a fresh way to break a
   pipeline that used to work — a token without `issues: write`, a fork run, an
   organisation restricting who may create a label, a secondary rate limit — and a
-  convention honoured at five call sites is honoured at four the day somebody
-  adds a sixth. Adapters do **not** anticipate the rule: `github-labels.ts`
+  convention honoured at six call sites is honoured at five the day somebody
+  adds a seventh. Adapters do **not** anticipate the rule: `github-labels.ts`
   rejects a 403 like any other transport, and only swallows the 422 that means
   "this label already exists", because that is idempotence at the layer where an
   HTTP status still exists. The accepted cost is stated at the catch in

@@ -12,10 +12,15 @@ inside one job, and pushes only once both are done. This document audits what
 that costs, then plans the split: implement → push → pull request, with the
 review loop moved behind an explicit `/review` typed on the pull request.
 
-Nothing here is implemented. It is the design and the reasoning behind it, in
-the shape the rest of this workspace records decisions.
-
-Anchored on `claude/opencode-review-loop-command-2boppn`.
+**Both stages have since landed** on `claude/opencode-review-loop-command-2boppn`
+— Stage A in §3, Stage B in §4, including the note in §7's last row that §4's B4
+listed as optional. What follows is kept as the design and the reasoning behind
+it, in the shape the rest of this workspace records decisions; it is not a
+description of the code. `README.md` and `CLAUDE.md` are, and where any of this
+disagrees with them the code wins. Two details settled differently on the way in,
+both narrower than planned: the workflow's third `if:` arm also pins
+`github.event.action == 'created'`, and the `resolve` job takes
+`pull-requests: read` alone rather than that plus `issues: read`.
 
 ---
 

@@ -150,19 +150,26 @@ commands, so a plain reply — a clarifying answer, a question, a change request
 reaches the pipeline and the in-process guardrails decide what to do with it.
 
 This also closes **S6-8**, partly. `tests/opencode-agent/workflow.test.ts` parses
-the workflow and pins its trigger surface: the job condition carries no
-comment-body filter, the maintainer check reads the _commenter's_ association
-before the issue author's, CI events are admitted only when red and on an agent
-branch, and machine events are not asked for an author association. Both the
-comment-body guard and the concurrency guard were mutation-checked against the
-reintroduced defects.
+the workflow and pins its trigger surface: the **issue** arm of the job condition
+carries no comment-body filter, the maintainer check reads the _commenter's_
+association before the issue author's, CI events are admitted only when red and on
+an agent branch, and machine events are not asked for an author association. Both
+the comment-body guard and the concurrency guard were mutation-checked against the
+reintroduced defects. The pull-request arm added later _does_ filter on the body,
+for the opposite reason — there is no conversation to strand on that door, and
+every pull request collects ordinary review comments — so the test splits the
+condition into its top-level arms rather than asserting over the whole string.
 
 A second workflow bug surfaced while verifying this one and is fixed here: the
 concurrency group keyed issue events on the issue number and CI events on the
 branch, so `opencode-agent-42` and `opencode-agent-agent/issue-42` were different
 groups. A CI-fix run and a maintainer-triggered run for the same issue did not
-serialize, and both push the same branch. Both kinds now resolve to the branch
-name via `format()`._
+serialize, and both push the same branch. Both kinds resolved to the branch name
+via `format()` from then on. With a third kind that identity can no longer be
+spelled in an expression at all — `github.event.issue.number` on a pull-request
+comment is the pull request — so the group moved off the workflow and onto the
+`agent` job, keyed on the branch the `resolve` job computed. Same identity,
+computed rather than guessed._
 
 `src/phases/triage.ts:58` tells the maintainer "Reply in this thread and I will
 pick it up from there", and `src/orchestrator.ts:94-96` implements exactly that:
