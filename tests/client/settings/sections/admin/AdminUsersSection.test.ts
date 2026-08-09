@@ -908,6 +908,7 @@ describe('AdminUsersSection', () => {
     await drain()
     const line = target.querySelector('.status-success')!
     expect(line.getAttribute('role')).toBe('status')
+    expect(line.textContent).toContain('User unblocked.')
     void unmount(component)
   })
 
@@ -924,7 +925,9 @@ describe('AdminUsersSection', () => {
     flushSync()
     target.querySelector<HTMLButtonElement>('[data-testid="user-add"]')!.click()
     await drain()
-    expect(target.querySelector('.status-error')!.getAttribute('role')).toBe('alert')
+    const line = target.querySelector('.status-error')!
+    expect(line.getAttribute('role')).toBe('alert')
+    expect(line.textContent).not.toBe('')
     void unmount(component)
   })
 
