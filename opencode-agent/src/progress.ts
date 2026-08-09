@@ -8,6 +8,8 @@ import type { TranscriptRow } from './activity-detail.js'
 import { describeActivity } from './activity.js'
 import type { Activity } from './activity.js'
 import type { Logger } from './logger.js'
+import { foldStall, noStall, reportStall } from './turn-stall.js'
+import type { TurnStall } from './turn-stall.js'
 
 /**
  * Turning a silent model turn into a legible Actions log.
@@ -38,6 +40,16 @@ export interface ProgressSnapshot {
 export interface ProgressTracker {
   observe: (event: unknown) => void
   snapshot: () => ProgressSnapshot
+  /**
+   * What the provider was still doing wrong at this instant, or `null`.
+   *
+   * Asked when a turn returns, by the one caller that also holds the reply —
+   * neither signal is conclusive alone. An empty reply is ordinary enough on
+   * its own (a turn can end on a tool call), and a stall that a later step
+   * cleared is not a failure at all; together they are a turn that produced
+   * nothing because the model never answered.
+   */
+  stall: () => TurnStall | null
 }
 
 /** The encrypted transcript's write end, as the tracker sees it. */
@@ -101,6 +113,8 @@ interface TrackerState {
   lastCollapsed: string | null
   /** Running calls by callID, stamped on this clock: the duration's only source. */
   readonly running: Map<string, number>
+  /** What the provider has got wrong since the last step finished. */
+  sinceStep: TurnStall
 }
 
 /**
@@ -170,6 +184,9 @@ const observeOne = (event: unknown, context: TrackerContext): void => {
   const activity = describeActivity(event, context.sessionId)
   if (activity === null) return
 
+  // Ahead of the collapse gate below: see `foldStall`.
+  state.sinceStep = foldStall(state.sinceStep, activity)
+
   // `busy` is republished between every step; without this a hundred-step
   // turn writes a hundred identical lines and buries the tool calls.
   if (activity.collapseKey !== undefined) {
@@ -191,6 +208,13 @@ const observeOne = (event: unknown, context: TrackerContext): void => {
 
   if (activity.kind === 'step') {
     log.info({}, `✓ finished a step — ${state.tokens} tokens, ${state.toolCalls} tool calls so far`)
+    return
+  }
+
+  if (activity.kind === 'failure') {
+    // `error`, not `warn`: this is the provider saying it will not serve the
+    // turn, and it is the one line that explains a run which then stops.
+    log.error(activity.meta, `✗ the provider failed the turn — ${activity.summary}`)
     return
   }
 
@@ -216,7 +240,15 @@ export const createProgressTracker = (
     log,
     now: options.now ?? ((): number => Date.now()),
     transcript: options.transcript,
-    state: { lastAction: 'starting', toolCalls: 0, tokens: 0, cost: 0, lastCollapsed: null, running: new Map() },
+    state: {
+      lastAction: 'starting',
+      toolCalls: 0,
+      tokens: 0,
+      cost: 0,
+      lastCollapsed: null,
+      running: new Map(),
+      sinceStep: noStall(),
+    },
   }
 
   return {
@@ -227,53 +259,6 @@ export const createProgressTracker = (
       const { lastAction, toolCalls, tokens, cost } = context.state
       return { lastAction, toolCalls, tokens, cost }
     },
-  }
-}
-
-export interface EventFollower {
-  /** Resolves when the stream ends, however it ends. Never rejects. */
-  done: Promise<void>
-  /** Asks the stream to finish. Safe to call more than once. */
-  stop: () => void
-}
-
-/**
- * Drains an event stream into a tracker until it ends or is stopped.
- *
- * `for await` rather than the repo's `sequence.ts` helpers, which iterate a
- * collection already in hand: this consumes an open stream of unknown length,
- * which is the one case the no-`await`-in-a-loop rule exempts.
- *
- * `done` never rejects. The stream dies whenever the OpenCode server does —
- * including during an ordinary `close()` — and a teardown race must not become
- * an unhandled rejection that fails a run whose work is already finished.
- *
- * `stop` exists because a stream is not guaranteed to notice that its server is
- * gone. The SDK's SSE client reconnects for ever by default, so "wait for the
- * events to run out" is not a teardown step a caller can rely on; it has to be
- * able to say stop and move on.
- */
-export const followEvents = (source: AsyncIterable<unknown>, tracker: ProgressTracker): EventFollower => {
-  const iterator = source[Symbol.asyncIterator]()
-  let stopped = false
-
-  const drain = async (): Promise<void> => {
-    try {
-      for await (const event of { [Symbol.asyncIterator]: () => iterator }) {
-        if (stopped) break
-        tracker.observe(event)
-      }
-    } catch {
-      // The stream ending badly tells us nothing the caller can act on.
-    }
-  }
-
-  return {
-    done: drain(),
-    stop: (): void => {
-      stopped = true
-      // Unblocks a `next()` that is waiting on a socket nobody will write to.
-      void iterator.return?.(undefined)
-    },
+    stall: (): TurnStall | null => reportStall(context.state.sinceStep),
   }
 }

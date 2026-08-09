@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { withDeadline } from './deadline.js'
-import { isTurnDeadline, serverGoneError, turnDeadlineError } from './errors.js'
+import { isTurnDeadline, providerStalledError, serverGoneError, turnDeadlineError } from './errors.js'
 import { withHeartbeat } from './heartbeat.js'
 import type { Logger } from './logger.js'
 import type { ProgressSnapshot, ProgressTracker } from './progress.js'
@@ -150,6 +150,42 @@ const bounded = (work: Promise<unknown>, bounds: TurnBounds, tracker: ProgressTr
  * Not a retry, and it must not become one: the one layer that may retry is
  * `provider-proxy.ts`, which is the only one that still has an HTTP status.
  */
+/**
+ * The third way a turn ends badly: it returns, and the model never answered.
+ *
+ * Beside `runTurn` because it is the same question — how did this turn end —
+ * asked of the one case that does not arrive as a rejection. The turn resolves
+ * normally, the reply decodes normally, and there is simply nothing in it,
+ * because the session spent its whole time being refused by the provider and
+ * then gave up. Issue #239 shipped a pull request out of that: an empty turn,
+ * a `git add --all` over a tree holding one stray pid file, and a delivery.
+ *
+ * **Both** signals are required, and neither is sufficient. An empty reply on
+ * its own is a shape a healthy turn can reach — this pipeline discards the text
+ * of an implement turn precisely because it does not depend on it — so failing
+ * on it alone would fail runs that worked. A stall on its own says only that
+ * the provider had a bad minute somewhere in a turn that then recovered, which
+ * the tracker already reports by clearing it at the next finished step. Together
+ * they are the thing itself: no answer, and the provider still failing at the
+ * moment the session stopped trying.
+ *
+ * Takes the tracker rather than a pre-read stall so the read happens **after**
+ * the turn returns, which is the only instant that answers the question.
+ */
+export const requireAnswer = (text: string, tracker: ProgressTracker, bounds: TurnBounds): void => {
+  if (text.trim().length > 0) return
+
+  const stall = tracker.stall()
+  if (stall === null) return
+
+  bounds.log.error(
+    { retries: stall.retries, error: stall.failure?.name ?? null, statusCode: stall.failure?.statusCode ?? null },
+    'The turn returned with no answer while the provider was still failing; failing the turn rather than ' +
+      'committing whatever the tree holds',
+  )
+  throw providerStalledError(stall)
+}
+
 export const runTurn = async (
   connection: TurnConnection,
   sessionId: string,

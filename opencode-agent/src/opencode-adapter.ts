@@ -5,15 +5,17 @@
 
 import { withDeadline } from './deadline.js'
 import { openCodeError } from './errors.js'
+import { followEvents } from './event-follower.js'
+import type { EventFollower } from './event-follower.js'
 import type { Logger } from './logger.js'
 import { modelRef } from './openai-config.js'
 import type { OpenAiSettings } from './openai-config.js'
 import { connectSdk } from './opencode-connect.js'
-import { createProgressTracker, followEvents } from './progress.js'
-import type { EventFollower, ProgressTracker, TranscriptSink } from './progress.js'
+import { createProgressTracker } from './progress.js'
+import type { ProgressTracker, TranscriptSink } from './progress.js'
 import { buildBody, decodeAbort, decodeReply, parseModelRef } from './sdk-contract.js'
 import type { SessionUsage } from './sdk-contract.js'
-import { runTurn } from './turn-run.js'
+import { requireAnswer, runTurn } from './turn-run.js'
 import type { TurnBounds, TurnConnection } from './turn-run.js'
 
 export type { ModelRef, SdkPromptBody } from './sdk-contract.js'
@@ -136,7 +138,11 @@ export const createOpenCodeAgent = async (options: OpenCodeAgentOptions): Promis
     sessionId,
     prompt: async (request) => {
       const reply = await runTurn(connection, sessionId, buildBody(model, request), options, tracker)
-      return { text: decodeReply(reply), sessionId }
+      const text = decodeReply(reply)
+      // Here rather than inside `runTurn`, which never sees the decoded reply:
+      // the emptiness and the stall only mean anything together.
+      requireAnswer(text, tracker, options)
+      return { text, sessionId }
     },
     tokensUsed: async (): Promise<number> => {
       const usage = await connection.usage(sessionId).catch(() => null)

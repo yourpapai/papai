@@ -7,9 +7,10 @@ import { describe, expect, test } from 'bun:test'
 
 import type { TranscriptRow } from '../../opencode-agent/src/activity-detail.js'
 import { describeActivity } from '../../opencode-agent/src/activity.js'
+import { followEvents } from '../../opencode-agent/src/event-follower.js'
 import { withHeartbeat } from '../../opencode-agent/src/heartbeat.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
-import { createProgressTracker, followEvents } from '../../opencode-agent/src/progress.js'
+import { createProgressTracker } from '../../opencode-agent/src/progress.js'
 import type { ProgressSnapshot } from '../../opencode-agent/src/progress.js'
 
 const SESSION = 'ses_02414f224ffejPyZrczmjjX3YF'
@@ -188,6 +189,24 @@ const PART_DELTA = {
 
 const PLUGIN_ADDED = { type: 'plugin.added', properties: { id: 'core/config-reference' } } as const
 
+/**
+ * Built from the pinned SDK's own `EventSessionError` + `ApiError` types rather
+ * than recorded from a live server — a provider that gives up after twenty-five
+ * retries is not a state a stub can be pointed at on demand, and inventing the
+ * shape would be worse than naming where this one came from. The fields used
+ * here are the two `ApiError` shares with the other members of that union.
+ */
+const PROVIDER_ERROR = {
+  type: 'session.error',
+  properties: {
+    sessionID: SESSION,
+    error: {
+      name: 'APIError',
+      data: { message: 'rate limit reached', statusCode: 429, isRetryable: true },
+    },
+  },
+} as const
+
 interface Line {
   meta: unknown
   message: string
@@ -336,6 +355,93 @@ describe('describeActivity', () => {
     // already behind its own server — and must never be able to fail a phase
     // that was otherwise going fine.
     expect(describeActivity(event, SESSION)).toBeNull()
+  })
+})
+
+/**
+ * What a turn's end can be told from, which issue #239 had no way to ask.
+ *
+ * That run's implement turn was refused twenty-five times over twelve minutes,
+ * went idle without finishing another step, and returned an ordinary reply with
+ * no text in it. The stall is the half of the evidence the tracker holds; the
+ * empty reply is the half the adapter holds, and neither means anything alone.
+ */
+describe('the tracker records a provider that is still failing', () => {
+  const errors = (): { log: Logger; lines: Line[] } => {
+    const lines: Line[] = []
+    return {
+      lines,
+      log: {
+        debug: (): void => {},
+        info: (): void => {},
+        warn: (): void => {},
+        error: (meta, message): void => void lines.push({ meta, message }),
+      },
+    }
+  }
+
+  test('a turn that never stalled reports nothing', () => {
+    const tracker = createProgressTracker(SESSION, recorder().log)
+
+    tracker.observe(BUSY)
+    tracker.observe(STEP_FINISH)
+
+    expect(tracker.stall()).toBeNull()
+  })
+
+  test('counts every retry, including the ones whose line is collapsed away', () => {
+    // The count is folded in front of the collapse gate deliberately: a retry
+    // whose duplicate line is suppressed is still a retry that happened, and
+    // counting behind the gate would report twenty-five of them as one.
+    const tracker = createProgressTracker(SESSION, recorder().log)
+
+    tracker.observe(RETRY)
+    tracker.observe(RETRY)
+    tracker.observe(RETRY)
+
+    expect(tracker.stall()).toEqual({ retries: 3, failure: null })
+  })
+
+  test('a finished step clears it, because that is what recovery looks like', () => {
+    // The distinction the whole guard rests on: a turn that hit a rate limit,
+    // retried, recovered and carried on has not stalled, and must not be
+    // failed for a bad minute in the middle of a turn that worked.
+    const tracker = createProgressTracker(SESSION, recorder().log)
+
+    tracker.observe(RETRY)
+    tracker.observe(RETRY)
+    tracker.observe(STEP_FINISH)
+
+    expect(tracker.stall()).toBeNull()
+  })
+
+  test('keeps the provider failure, named and with its status code', () => {
+    const tracker = createProgressTracker(SESSION, recorder().log)
+
+    tracker.observe(PROVIDER_ERROR)
+
+    expect(tracker.stall()).toEqual({ retries: 0, failure: { name: 'APIError', statusCode: 429 } })
+  })
+
+  test('logs that failure at error, since it is what explains a run that then stops', () => {
+    const { log, lines } = errors()
+    const tracker = createProgressTracker(SESSION, log)
+
+    tracker.observe(PROVIDER_ERROR)
+
+    expect(lines).toHaveLength(1)
+    expect(lines[0]?.message).toContain('APIError (429)')
+  })
+
+  test('never carries the provider error text, which may quote a credential back', () => {
+    // The containment rule, on the event most likely to tempt a widening: a CI
+    // log is world-readable and is not covered by the outbound redaction.
+    const { log, lines } = errors()
+    const tracker = createProgressTracker(SESSION, log)
+
+    tracker.observe(PROVIDER_ERROR)
+
+    expect(JSON.stringify(lines)).not.toContain('rate limit reached')
   })
 })
 

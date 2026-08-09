@@ -72,6 +72,18 @@ client/assets
 .opencode/
 opencode.json
 
+# process bookkeeping a probe or a background server leaves behind — also
+# refused at staging by opencode-agent/src/stray-paths.ts, which is the
+# guardrail; this is so a human does not commit one either
+*.pid
+*.sock
+
+# process bookkeeping a probe or a background server leaves behind. The
+# guardrail is opencode-agent/src/stray-paths.ts, which refuses these at
+# staging; this is so a human does not commit one either
+*.pid
+*.sock
+
 # opencode-agent: vendored superpowers checkout + generated run inputs
 .superpowers/
 .opencode-agent/
