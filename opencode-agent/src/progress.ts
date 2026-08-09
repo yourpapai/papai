@@ -3,7 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { describeDetail } from './activity-detail.js'
+import type { TranscriptRow } from './activity-detail.js'
 import { describeActivity } from './activity.js'
+import type { Activity } from './activity.js'
 import type { Logger } from './logger.js'
 
 /**
@@ -18,7 +21,10 @@ import type { Logger } from './logger.js'
  * Two halves, because they answer different questions. Events answer "what
  * happened", and only fire when something does; the heartbeat answers "is it
  * still alive", which is the question a twenty-minute model call with no tool
- * use leaves open.
+ * use leaves open. This file is the first half; `heartbeat.ts` is the second,
+ * split off when the transcript sink pushed the pair past `max-lines` — it
+ * reads this one only through `ProgressSnapshot`, never the other way, so the
+ * dependency stays one-directional.
  */
 
 /** What a heartbeat reports when there is nothing new to say. */
@@ -34,6 +40,163 @@ export interface ProgressTracker {
   snapshot: () => ProgressSnapshot
 }
 
+/** The encrypted transcript's write end, as the tracker sees it. */
+export interface TranscriptSink {
+  write: (row: TranscriptRow) => void
+}
+
+export interface ProgressTrackerOptions {
+  /**
+   * The clock a duration is measured on, defaulting to the real one. Injected
+   * so a test can stand on both sides of a call rather than sampling
+   * `Date.now()` around it.
+   */
+  now?: () => number
+  /**
+   * Where the maintainer-only detail goes, when the run has a key.
+   *
+   * Fed from `activity-detail.ts` — the whitelist decoder — so the detail that
+   * leaves this process is a property of the decoder, not of a call site.
+   * Absent on a keyless run, which is the ordinary case and costs nothing.
+   */
+  transcript?: TranscriptSink
+}
+
+/** One decimal place: `3.2s` — a duration is orientation, not measurement. */
+const formatDuration = (ms: number): string => `${(ms / 1_000).toFixed(1)}s`
+
+/**
+ * The line one activity earns, or `null` for one that earns none.
+ *
+ * Two lines per tool call and no more: `▸ bash (running)` when it starts and
+ * `✓ bash 3.2s` when it ends, with `✗` for a failed one. A completion whose
+ * start was never seen carries no duration — the tracker's clock is the only
+ * honest source, since `state.time.start` belongs to the server's clock.
+ *
+ * Plain text, with the metadata left empty: the pretty line is the message,
+ * so a NDJSON renderer adds no structure and a text renderer loses nothing.
+ * Names, statuses, counts and durations only — the containment rule from
+ * `activity.ts` applies to the line exactly as it applied to the metadata.
+ */
+const toolLine = (activity: Activity, durationMs: number | null): string => {
+  const tool = String(activity.meta['tool'])
+  const status = String(activity.meta['status'])
+  if (status === 'running') return `▸ ${tool} (running)`
+  const duration = durationMs === null ? '' : ` ${formatDuration(durationMs)}`
+  return `${status === 'error' ? '✗' : '✓'} ${tool}${duration}`
+}
+
+const statusLine = (activity: Activity): string => {
+  const status = String(activity.meta['status'])
+  const attempt = activity.meta['attempt']
+  return attempt === undefined ? `● ${status}` : `● ${status} (attempt ${attempt})`
+}
+
+/** Everything one tracker accumulates, mutated in place by the observers below. */
+interface TrackerState {
+  lastAction: string
+  toolCalls: number
+  tokens: number
+  cost: number
+  lastCollapsed: string | null
+  /** Running calls by callID, stamped on this clock: the duration's only source. */
+  readonly running: Map<string, number>
+}
+
+/**
+ * One tracker's fixed surroundings, so the observers can live at module level.
+ *
+ * They were closures over `createProgressTracker`'s locals, which put the whole
+ * of the observation inside one function and past `max-lines-per-function`.
+ * Splitting them out needs the locals to become something nameable, and this is
+ * that — the state it mutates plus the three collaborators it never changes.
+ */
+interface TrackerContext {
+  readonly sessionId: string
+  readonly log: Logger
+  readonly now: () => number
+  readonly transcript: TranscriptSink | undefined
+  readonly state: TrackerState
+}
+
+/**
+ * The line a tool activity earns, and the duration to stamp beside it — or
+ * `null` for a republished start, which has already been counted and reported.
+ */
+const observeTool = (
+  activity: Activity,
+  context: TrackerContext,
+): { line: string; durationMs: number | null } | null => {
+  const { state } = context
+  const call = String(activity.meta['call'])
+  const status = String(activity.meta['status'])
+  if (status === 'running') {
+    // The server republishes the running state as the arguments stream in;
+    // ten republishes of one call are one call, one line and one count.
+    if (state.running.has(call)) return null
+    state.running.set(call, context.now())
+    state.toolCalls += 1
+    return { line: toolLine(activity, null), durationMs: null }
+  }
+
+  const started = state.running.get(call)
+  state.running.delete(call)
+  const durationMs = started === undefined ? null : context.now() - started
+  return { line: toolLine(activity, durationMs), durationMs }
+}
+
+/** Hands the maintainer-only detail to the transcript, when the run has one. */
+const feedTranscript = (
+  event: unknown,
+  activity: Activity,
+  durationMs: number | null,
+  context: TrackerContext,
+): void => {
+  if (context.transcript === undefined) return
+  const detail = describeDetail(event, context.sessionId)
+  if (detail === null) return
+  context.transcript.write({
+    time: new Date(context.now()).toISOString(),
+    tool: detail.tool,
+    status: String(activity.meta['status']),
+    detail: detail.detail,
+    durationMs,
+  })
+}
+
+/** Decodes one event, folds it into the running summary, and reports it. */
+const observeOne = (event: unknown, context: TrackerContext): void => {
+  const { log, state } = context
+  const activity = describeActivity(event, context.sessionId)
+  if (activity === null) return
+
+  // `busy` is republished between every step; without this a hundred-step
+  // turn writes a hundred identical lines and buries the tool calls.
+  if (activity.collapseKey !== undefined) {
+    if (activity.collapseKey === state.lastCollapsed) return
+    state.lastCollapsed = activity.collapseKey
+  }
+
+  state.tokens += activity.counts?.tokens ?? 0
+  state.cost += activity.counts?.cost ?? 0
+  state.lastAction = activity.summary
+
+  if (activity.kind === 'tool') {
+    const observed = observeTool(activity, context)
+    if (observed === null) return
+    feedTranscript(event, activity, observed.durationMs, context)
+    log.info({}, observed.line)
+    return
+  }
+
+  if (activity.kind === 'step') {
+    log.info({}, `✓ finished a step — ${state.tokens} tokens, ${state.toolCalls} tool calls so far`)
+    return
+  }
+
+  log.info({}, statusLine(activity))
+}
+
 /**
  * Logs each decoded event and keeps a running summary for the heartbeat.
  *
@@ -43,33 +206,27 @@ export interface ProgressTracker {
  * running totals makes a quiet twenty-minute stretch readable as *waiting on
  * one long model call* rather than as *stuck*.
  */
-export const createProgressTracker = (sessionId: string, log: Logger): ProgressTracker => {
-  let lastAction = 'starting'
-  let toolCalls = 0
-  let tokens = 0
-  let cost = 0
-  let lastCollapsed: string | null = null
+export const createProgressTracker = (
+  sessionId: string,
+  log: Logger,
+  options: ProgressTrackerOptions = {},
+): ProgressTracker => {
+  const context: TrackerContext = {
+    sessionId,
+    log,
+    now: options.now ?? ((): number => Date.now()),
+    transcript: options.transcript,
+    state: { lastAction: 'starting', toolCalls: 0, tokens: 0, cost: 0, lastCollapsed: null, running: new Map() },
+  }
 
   return {
     observe: (event): void => {
-      const activity = describeActivity(event, sessionId)
-      if (activity === null) return
-
-      // `busy` is republished between every step; without this a hundred-step
-      // turn writes a hundred identical lines and buries the tool calls.
-      if (activity.collapseKey !== undefined) {
-        if (activity.collapseKey === lastCollapsed) return
-        lastCollapsed = activity.collapseKey
-      }
-
-      toolCalls += activity.counts?.toolCalls ?? 0
-      tokens += activity.counts?.tokens ?? 0
-      cost += activity.counts?.cost ?? 0
-
-      lastAction = activity.summary
-      log.info(activity.meta, activity.message)
+      observeOne(event, context)
     },
-    snapshot: (): ProgressSnapshot => ({ lastAction, toolCalls, tokens, cost }),
+    snapshot: (): ProgressSnapshot => {
+      const { lastAction, toolCalls, tokens, cost } = context.state
+      return { lastAction, toolCalls, tokens, cost }
+    },
   }
 }
 
@@ -118,72 +275,5 @@ export const followEvents = (source: AsyncIterable<unknown>, tracker: ProgressTr
       // Unblocks a `next()` that is waiting on a socket nobody will write to.
       void iterator.return?.(undefined)
     },
-  }
-}
-
-export interface HeartbeatOptions {
-  everyMs: number
-  log: Logger
-  snapshot: () => ProgressSnapshot
-  /** Injected so a test does not spend real minutes proving this ticks. */
-  schedule?: (tick: () => void, everyMs: number) => { cancel: () => void }
-  /**
-   * A second reader of the same tick, when one is wired.
-   *
-   * The heartbeat already knows everything a live status surface wants to say
-   * and, until now, said it only into a log nobody has a link to. Routing the
-   * snapshot rather than duplicating the timer keeps one clock in the pipeline,
-   * and keeps the two readers from ever disagreeing about what a turn has done.
-   *
-   * The log half is unchanged and stays first: a reader that throws or hangs
-   * must not cost the line that was already being written. Nothing here awaits
-   * it either — the heartbeat's job is to fire on time, not to wait for whatever
-   * the tick is being reported to.
-   */
-  onTick?: (snapshot: ProgressSnapshot) => void
-}
-
-const realSchedule = (tick: () => void, everyMs: number): { cancel: () => void } => {
-  const timer = setInterval(tick, everyMs)
-  return {
-    cancel: (): void => {
-      clearInterval(timer)
-    },
-  }
-}
-
-/**
- * Says "still going, and here is what it has done so far" at a fixed interval
- * while `work` is outstanding.
- *
- * This is the half that actually answers the finding. Events only fire when
- * something happens, and the worst case — a single model call that thinks for
- * twenty minutes — produces no events at all, which is exactly the stretch that
- * reads as a hang. A tick that fires regardless is the only thing that
- * distinguishes "slow" from "dead" in a log.
- *
- * Must wrap the deadline rather than sit inside it: if the deadline rejects
- * while the underlying call is still pending, an inner heartbeat's cleanup
- * would never run and the interval would keep the process alive past the end of
- * the job.
- */
-export const withHeartbeat = async <T>(work: Promise<T>, options: HeartbeatOptions): Promise<T> => {
-  if (options.everyMs <= 0) return work
-
-  const started = Date.now()
-  const schedule = options.schedule ?? realSchedule
-  const timer = schedule(() => {
-    const progress = options.snapshot()
-    options.log.info(
-      { elapsedMs: Date.now() - started, ...progress },
-      'Still waiting on the model; the job is not stuck',
-    )
-    if (options.onTick !== undefined) options.onTick(progress)
-  }, options.everyMs)
-
-  try {
-    return await work
-  } finally {
-    timer.cancel()
   }
 }

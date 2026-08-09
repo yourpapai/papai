@@ -10,7 +10,7 @@ import { modelRef } from './openai-config.js'
 import type { OpenAiSettings } from './openai-config.js'
 import { connectSdk } from './opencode-connect.js'
 import { createProgressTracker, followEvents } from './progress.js'
-import type { EventFollower, ProgressTracker } from './progress.js'
+import type { EventFollower, ProgressTracker, TranscriptSink } from './progress.js'
 import { buildBody, decodeAbort, decodeReply, parseModelRef } from './sdk-contract.js'
 import type { SessionUsage } from './sdk-contract.js'
 import { runTurn } from './turn-run.js'
@@ -100,6 +100,14 @@ export interface OpenCodeAgentOptions extends TurnBounds {
   /** The single OpenAI-compatible endpoint this pipeline talks to. */
   openai: OpenAiSettings
   sessionTitle: string
+  /**
+   * The encrypted debug transcript, when the run has one.
+   *
+   * The adapter is the only layer that sees the event stream, so the
+   * maintainer-only detail has to leave from here or never leave at all.
+   * Absent on a keyless run, which is the ordinary case.
+   */
+  transcript?: TranscriptSink
   /** Injection seam for tests. Defaults to the real SDK server + client. */
   connect?: () => Promise<OpenCodeConnection>
 }
@@ -122,7 +130,7 @@ export const createOpenCodeAgent = async (options: OpenCodeAgentOptions): Promis
     throw openCodeError(`Failed to open OpenCode session: ${errorMessage(error)}`)
   }
 
-  const { tracker, shutdown } = startReporting(connection, sessionId, options.log)
+  const { tracker, shutdown } = startReporting(connection, sessionId, options.log, options.transcript)
 
   return {
     sessionId,
@@ -195,8 +203,9 @@ const startReporting = (
   connection: OpenCodeConnection,
   sessionId: string,
   log: Logger,
+  transcript?: TranscriptSink,
 ): { tracker: ProgressTracker; shutdown: () => Promise<void> } => {
-  const tracker = createProgressTracker(sessionId, log)
+  const tracker = createProgressTracker(sessionId, log, { transcript })
   let follower: EventFollower | null = null
   let stopped = false
 

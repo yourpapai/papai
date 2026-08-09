@@ -3,10 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { z } from 'zod'
-
-import type { CheckSpec } from './check-loop.js'
-
 /** Raised when the environment cannot produce a runnable configuration. */
 export class ConfigError extends Error {
   constructor(message: string) {
@@ -212,6 +208,42 @@ export const labelPrefix = (env: Env, key: string, fallback: string): string | n
   return configured
 }
 
+/**
+ * Bytes an AES-256-GCM key must decode to. Fixed rather than ranged: the
+ * transcript writer has exactly one algorithm and this is its one key size.
+ */
+const LOG_KEY_BYTES = 32
+
+/**
+ * `AGENT_LOG_KEY`, the debug transcript's symmetric key, as raw bytes.
+ *
+ * `null` when unset, and that is the ordinary case: most runs write no
+ * transcript, and the pipeline warns once and moves on rather than refusing to
+ * run. A **set** value that cannot work is different — it means an operator
+ * went to the trouble of configuring encryption and mistyped it, which is a
+ * `ConfigError` naming the variable, exactly like a range check failing.
+ *
+ * The canonical-base64 round-trip rejects what `Buffer.from(raw, 'base64')`
+ * would otherwise salvage: it silently ignores characters outside the alphabet
+ * and accepts any length, so `"!!!"` decodes to zero bytes without a peep.
+ */
+export const logKey = (env: Env, key: string): Uint8Array | null => {
+  const raw = optionalOrNull(env, key)
+  if (raw === null) return null
+
+  const bytes = Buffer.from(raw, 'base64')
+  if (bytes.byteLength !== LOG_KEY_BYTES || bytes.toString('base64') !== raw) {
+    throw new ConfigError(`${key} must be base64 of exactly ${LOG_KEY_BYTES} bytes (openssl rand -base64 32)`)
+  }
+
+  // A fresh allocation, not a view on the Buffer: `crypto.subtle` takes
+  // `Uint8Array<ArrayBuffer>`, and a Buffer's union with SharedArrayBuffer
+  // does not narrow to it.
+  const copy = new Uint8Array(bytes.byteLength)
+  copy.set(bytes)
+  return copy
+}
+
 /** Reads an integer knob, rejecting both malformed values and unusable ones. */
 export const boundedInt = (env: Env, key: string, fallback: number, range: IntRange): number => {
   const raw = optionalOrNull(env, key)
@@ -246,39 +278,7 @@ const parseBounded = (key: string, trimmed: string, range: IntRange): number => 
   return parsed
 }
 
-/** Parses `AGENT_CHECKS` — a JSON array of `{ name, argv }`. */
-
-/** One check the CI-fix loop runs, declared as `{ name, argv }` in `AGENT_CHECKS`. */
-const checkSpecSchema = z.object({ name: z.string().min(1), argv: z.array(z.string().min(1)).min(1) })
-
-/** Checks the CI-fix loop runs when the repo does not declare its own. */
-export const DEFAULT_CHECKS: readonly CheckSpec[] = [
-  { name: 'lint', argv: ['bun', 'run', 'lint'] },
-  { name: 'typecheck', argv: ['bun', 'run', 'typecheck'] },
-  { name: 'test', argv: ['bun', 'test'] },
-]
-
-/**
- * `AGENT_CHECKS`, which is this file's one non-scalar reading.
- *
- * Here rather than in `config.ts` for the reason the split states: this is *how* a
- * value is read out of the environment and refused when it cannot work, where
- * `config.ts` says *which* values a run needs. The two-stage parse is deliberate —
- * `safeJson` names the syntax error and the schema names the shape error, because
- * "AGENT_CHECKS is invalid" sends an operator looking in the wrong half.
- */
-export const parseChecks = (raw: string | undefined): readonly CheckSpec[] => {
-  if (raw === undefined || raw.trim().length === 0) return DEFAULT_CHECKS
-
-  const parsed = z.array(checkSpecSchema).min(1).safeParse(safeJson(raw))
-  if (!parsed.success) throw new ConfigError(`AGENT_CHECKS is not a valid check list: ${parsed.error.message}`)
-  return parsed.data
-}
-
-const safeJson = (raw: string): unknown => {
-  try {
-    return JSON.parse(raw)
-  } catch {
-    throw new ConfigError('AGENT_CHECKS must be valid JSON')
-  }
-}
+// `AGENT_CHECKS` is re-exported rather than moved out of reach: `config.ts` and
+// the suites name this module for the vocabulary, and a moved export would be a
+// rename dressed up as a file split. See `check-spec.ts` for why it left.
+export { DEFAULT_CHECKS, parseChecks } from './check-spec.js'

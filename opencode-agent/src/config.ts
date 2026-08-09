@@ -16,6 +16,7 @@ import {
   JOB_MINUTES_RANGE,
   labelPrefix,
   LINES_RANGE,
+  logKey,
   optional,
   optionalOrNull,
   parseChecks,
@@ -161,6 +162,16 @@ export interface PipelineConfig {
    * one value that must never reach it.
    */
   labelPrefix: string | null
+  /**
+   * The debug transcript's AES-256-GCM key, or `null` when no transcript is
+   * written.
+   *
+   * Raw bytes rather than the base64 the operator set, because its one consumer
+   * is `crypto.subtle`. `null` rather than required: most runs have no
+   * transcript, and a keyless run warns once and behaves exactly as it did
+   * before this existed.
+   */
+  logKey: Uint8Array | null
   skillRoots: readonly string[]
 }
 
@@ -257,13 +268,9 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     gitRemoteBase,
     runUrl: buildRunUrl(env, gitRemoteBase, owner, repo),
     labelPrefix: labelPrefix(env, 'AGENT_LABEL_PREFIX', DEFAULT_LABEL_PREFIX),
+    logKey: logKey(env, 'AGENT_LOG_KEY'),
     commitAuthorName: optional(env, 'AGENT_COMMIT_NAME', 'opencode-agent[bot]'),
     commitAuthorEmail: optional(env, 'AGENT_COMMIT_EMAIL', 'opencode-agent@users.noreply.github.com'),
-    // `check:full`, not an `&&` chain: chaining hides every failure after the
-    // first, so a branch that is red in lint *and* typecheck *and* tests reports
-    // one problem per repair round. check.sh runs them concurrently and reports
-    // all of them at once, and it leaves reports/checks/ and reports/test/ on
-    // disk for the agent to query instead of re-running to look.
     checkCommand: optional(env, 'AGENT_CHECK_COMMAND', 'bun check:full'),
     reviewCommand: resolveReviewCommand(env['AGENT_REVIEW_COMMAND'], repoRoot, existsSync),
     checks: parseChecks(env['AGENT_CHECKS']),

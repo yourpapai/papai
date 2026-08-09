@@ -17,6 +17,8 @@ import { mintEnvelope } from './envelope.js'
 const PLAN_INSTRUCTIONS = [
   'Break the approved spec into a granular, ordered implementation plan.',
   'Every step names the files it touches and how it will be verified.',
+  'No step may create or edit a file under .github/workflows/ — this pipeline cannot push one. Where the work ' +
+    'needs a workflow change, make the last step write down what a maintainer should apply by hand.',
   'Do not modify any files in this phase — planning only.',
 ].join('\n')
 

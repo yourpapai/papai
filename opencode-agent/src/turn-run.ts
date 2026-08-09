@@ -5,8 +5,8 @@
 
 import { withDeadline } from './deadline.js'
 import { isTurnDeadline, serverGoneError, turnDeadlineError } from './errors.js'
+import { withHeartbeat } from './heartbeat.js'
 import type { Logger } from './logger.js'
-import { withHeartbeat } from './progress.js'
 import type { ProgressSnapshot, ProgressTracker } from './progress.js'
 import type { SdkPromptBody } from './sdk-contract.js'
 import { errorMessage } from './types.js'

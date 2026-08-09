@@ -625,6 +625,31 @@ not permitted to create or approve pull requests` is a repository or
   recorded from a live server — re-record rather than adjusting by inspection,
   and note that the SDK's generated `Event` union is already behind its own
   server, which is why each decode is a `safeParse` yielding `null`.
+- **The agent cannot commit its own workflow, and that is enforced at staging.**
+  GitHub refuses a push from a GitHub App or an Actions token that creates or
+  updates a file under `.github/workflows/` unless the App holds the `workflows`
+  permission — and the `permissions:` block a workflow may grant its own
+  `GITHUB_TOKEN` has no `workflows` key, so the default token can never do it.
+  The refusal is **per push, not per file**: one blocked workflow file discards
+  the whole commit, which is how issue #240 lost two runs of finished, unrelated
+  work at several hundred thousand tokens each. `protected-paths.ts` names the
+  prefixes and `stageAllowed` in `git-commit.ts` takes them back out of the index
+  between `git add --all` and the guard, on **both** commit paths. Three things
+  not to undo. It **drops rather than refuses** — a refusal here would lose
+  exactly the work the remote would have lost, where dropping keeps the rest —
+  which is also why it lives beside the commit and not in `diff-guard.ts`, whose
+  job is to judge a change set and whose refusals are real outcomes. It
+  **reverts the working-tree copy**, not merely unstages it: an unstaged edit is
+  still an edit, so the next step's `git add --all` would stage it again for
+  ever, and a turn that wrote nothing else would hand `git commit` an empty index
+  to fail on — which is why `stageAllowed` returns what it dropped as well as
+  what is left, and why an emptied index reports "nothing to commit" instead. And
+  the prompts state the rule (`IMPLEMENT_INSTRUCTIONS`, `PLAN_INSTRUCTIONS`) so a
+  well-behaved turn never writes such a file, but a rule the model has to
+  remember is not a guardrail — the prompts are the courtesy, the staging step is
+  the mechanism. Widening `PROTECTED_PREFIXES` is a privilege decision: an agent
+  that can rewrite `agent-pipeline.yml` can rewrite the permissions, concurrency
+  group and secret wiring that bound it, in a job that job itself defines.
 - **Capabilities are deny-by-default.** `openai-config.ts` grants tools by name
   on top of `"*": "deny"`, per agent profile: `plan` (the read-only phases)
   cannot edit or run commands, `build` can. Add a capability by naming it, never
