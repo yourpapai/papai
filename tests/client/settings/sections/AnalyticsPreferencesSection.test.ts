@@ -160,7 +160,10 @@ describe('AnalyticsPreferencesSection', () => {
     ]) {
       expect(target.querySelector(`[data-testid="${id}"]`), id).not.toBeNull()
     }
-    expect(target.querySelector('[data-testid="analytics-effective"]')!.textContent).toContain('unknown')
+    expect(target.querySelector('[data-testid="analytics-field-local"]')!.textContent).toContain('No choice recorded')
+    expect(target.querySelector('[data-testid="analytics-field-external"]')!.textContent).toContain(
+      'external analytics stay off',
+    )
     void unmount(component)
   })
 
@@ -182,7 +185,7 @@ describe('AnalyticsPreferencesSection', () => {
     target.querySelector<HTMLButtonElement>('[data-testid="analytics-local-allow"]')!.click()
     await drain()
     expect(bodies).toEqual([JSON.stringify({ localLongitudinal: 'allow' })])
-    expect(target.querySelector('[data-testid="analytics-effective"]')!.textContent).toContain('allow')
+    expect(target.querySelector('[data-testid="analytics-field-local"]')!.textContent).toContain('Allowed since')
     expect(target.querySelector('[data-testid="analytics-success"]')!.getAttribute('role')).toBe('status')
     void unmount(component)
   })

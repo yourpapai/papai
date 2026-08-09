@@ -7,6 +7,7 @@
   import Confirm from '../../shared/Confirm.svelte'
   import Btn from '../../shared/ui/Btn.svelte'
   import ErrorState from '../../shared/ui/ErrorState.svelte'
+  import IconButton from '../../shared/ui/IconButton.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
   import SegmentedControl from '../../shared/ui/SegmentedControl.svelte'
   import {
@@ -17,6 +18,8 @@
     withdrawAnalytics,
   } from '../analytics-fetchers.js'
   import type { AnalyticsPreferencesResponse } from '../fetcher-schemas-analytics.js'
+  import SettingsFieldShell from '../components/SettingsFieldShell.svelte'
+  import { laneHint } from './analytics-preferences-copy.js'
 
   const CHOICE_OPTIONS = [
     { value: 'allow', label: 'Allow' },
@@ -103,14 +106,9 @@
     })
   }
 
-  const effectiveText = $derived(
-    data === null
-      ? ''
-      : `Local longitudinal: ${data.preference.localLongitudinal} · External pseudonymous: ${data.preference.externalPseudonymous}` +
-          (data.preference.effectiveAtMs === null
-            ? ''
-            : ` · effective ${new Date(data.preference.effectiveAtMs).toLocaleString()}`),
-  )
+  // Captured once per mount: the hint's legitimate-interest branch compares against the
+  // policy's effective date, which does not move while the section is open.
+  const nowMs = Date.now()
 
   $effect(() => {
     void load()
@@ -118,7 +116,19 @@
 </script>
 
 <section id="analytics" class="settings-section">
-  <PageHeader eyebrow="Personal" title="Analytics" />
+  <PageHeader
+    eyebrow="Personal"
+    title="Analytics"
+    sub="These choices apply to your own account only — never to a group or another member.">
+    {#snippet action()}
+      <IconButton
+        label="Refresh"
+        glyph="⟳"
+        busy={data === null && loadError === null}
+        onClick={() => void load()}
+        testid="analytics-refresh" />
+    {/snippet}
+  </PageHeader>
 
   {#if loadError !== null && data === null}
     <ErrorState title="Couldn't load analytics preferences" message={loadError} onRetry={() => void load()} />
@@ -130,33 +140,54 @@
       {#if data.notice.policyVersion !== null}· Policy v{data.notice.policyVersion}{/if}
     </p>
     <p class="settings-section__caption" data-testid="analytics-explanation">{data.explanation}</p>
-    <p class="settings-section__caption">These choices apply to your own account only — never to a group or another member.</p>
 
-    <div class="settings-field">
-      <span class="settings-field__label" id="analytics-local-label">Local longitudinal analytics</span>
-      <SegmentedControl
-        options={CHOICE_OPTIONS}
-        value={data.preference.localLongitudinal}
-        ariaLabel="Local longitudinal analytics"
-        ariaDescribedBy="analytics-local-label"
-        testidPrefix="analytics-local"
-        disabled={busy || !data.subjectRightsAvailable}
-        onChange={(value) => void choose('localLongitudinal', value)} />
-    </div>
+    <SettingsFieldShell
+      label="Local longitudinal analytics"
+      editorOpen={false}
+      testid="analytics-field-local"
+      hint={laneHint({
+        lane: 'localLongitudinal',
+        value: data.preference.localLongitudinal,
+        effectiveAtMs: data.preference.effectiveAtMs,
+        lawfulBasisMode: data.notice.lawfulBasisMode,
+        policyEffectiveAtMs: data.notice.policyEffectiveAtMs,
+        nowMs,
+      })}>
+      {#snippet head(describedBy)}
+        <SegmentedControl
+          options={CHOICE_OPTIONS}
+          value={data.preference.localLongitudinal}
+          ariaLabel="Local longitudinal analytics"
+          ariaDescribedBy={describedBy}
+          testidPrefix="analytics-local"
+          disabled={busy || !data.subjectRightsAvailable}
+          onChange={(value) => void choose('localLongitudinal', value)} />
+      {/snippet}
+    </SettingsFieldShell>
 
-    <div class="settings-field">
-      <span class="settings-field__label" id="analytics-external-label">External pseudonymous analytics</span>
-      <SegmentedControl
-        options={CHOICE_OPTIONS}
-        value={data.preference.externalPseudonymous}
-        ariaLabel="External pseudonymous analytics"
-        ariaDescribedBy="analytics-external-label"
-        testidPrefix="analytics-external"
-        disabled={busy || !data.subjectRightsAvailable}
-        onChange={(value) => void choose('externalPseudonymous', value)} />
-    </div>
-
-    <p class="settings-section__caption" data-testid="analytics-effective">{effectiveText}</p>
+    <SettingsFieldShell
+      label="External pseudonymous analytics"
+      editorOpen={false}
+      testid="analytics-field-external"
+      hint={laneHint({
+        lane: 'externalPseudonymous',
+        value: data.preference.externalPseudonymous,
+        effectiveAtMs: data.preference.effectiveAtMs,
+        lawfulBasisMode: data.notice.lawfulBasisMode,
+        policyEffectiveAtMs: data.notice.policyEffectiveAtMs,
+        nowMs,
+      })}>
+      {#snippet head(describedBy)}
+        <SegmentedControl
+          options={CHOICE_OPTIONS}
+          value={data.preference.externalPseudonymous}
+          ariaLabel="External pseudonymous analytics"
+          ariaDescribedBy={describedBy}
+          testidPrefix="analytics-external"
+          disabled={busy || !data.subjectRightsAvailable}
+          onChange={(value) => void choose('externalPseudonymous', value)} />
+      {/snippet}
+    </SettingsFieldShell>
 
     <div class="settings-actions">
       <Btn variant="outline" size="sm" disabled={busy} testid="analytics-export" onClick={() => void exportData()}>
@@ -222,14 +253,12 @@
     color: var(--text-dim);
     line-height: 1.45;
   }
-  .settings-field {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
+  :global(.settings-section#analytics [data-testid^='analytics-field-']) {
     margin-bottom: var(--gap-inline);
   }
-  .settings-field__label {
-    font-size: 13px;
+  /* The caption block and the first field are two different things; separate them on the
+     section rhythm (--gap-field), not the within-block one (--gap-inline). */
+  :global(.settings-section#analytics [data-testid='analytics-field-local']) {
+    margin-top: var(--gap-field);
   }
 </style>
