@@ -1608,7 +1608,7 @@ describe('config', () => {
   })
 
   test.each(['', ' ', '\n'])('a blank knob %p means unset, as it does for every other reader', (raw) => {
-    expect(loadConfig({ ...baseEnv, AGENT_MAX_ATTEMPTS: raw }, '/repo').maxAttempts).toBe(3)
+    expect(loadConfig({ ...baseEnv, AGENT_MAX_ATTEMPTS: raw }, '/repo').maxAttempts).toBe(5)
   })
 
   test('gives one turn an hour by default, not half of one', () => {

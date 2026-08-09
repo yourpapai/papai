@@ -289,7 +289,7 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     // matter here too: 0 would recommend a review on every delivery, which is
     // the same as having no recommendation.
     reviewHintLines: boundedInt(env, 'AGENT_REVIEW_HINT_LINES', 200, LINES_RANGE),
-    maxAttempts: boundedInt(env, 'AGENT_MAX_ATTEMPTS', 3, ROUND_RANGE),
+    maxAttempts: boundedInt(env, 'AGENT_MAX_ATTEMPTS', 5, ROUND_RANGE),
     maxTokens: boundedInt(env, 'AGENT_MAX_TOKENS', 5_000_000, TOKEN_RANGE),
     diffLimits: {
       maxFiles: boundedInt(env, 'AGENT_MAX_CHANGED_FILES', 100, FILES_RANGE),
