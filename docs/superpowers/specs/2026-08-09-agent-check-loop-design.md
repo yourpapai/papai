@@ -122,9 +122,12 @@ that Phase 6's advisory hook covers.
 }
 ```
 
-`runErrors` is not decoration: on a clean checkout without `bun install`, a full run produces **1,294 files of
-unhandled module errors and zero testcases** — the JUnit index is empty and only the log knows what happened.
-The schema has to represent that state or the query layer lies about it.
+`runErrors` is not decoration, and `totals` deliberately comes from the console summary rather than the JUnit
+root. On a clean checkout without `bun install`, a full run produces **1,294 files of unhandled module errors
+and zero testcases**, and Bun writes **no JUnit file at all**. Worse, in the mixed case — some files load,
+some do not — Bun *does* write JUnit, silently omits the unloadable files, and reports `failures="0"` on a run
+that exited 1. A report built from the JUnit root would call that run green. The schema has to represent this
+state, and the builder has to take totals from the log, or the query layer lies about it.
 
 ### 0.3 Joining JUnit to the log
 
@@ -133,8 +136,10 @@ Three measured facts drive this algorithm; each was verified directly against Bu
 | Fact                                                                                              | Consequence                                            |
 | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
 | A failure serialises as `<failure type="AssertionError" />` — no message, no diff, no stack        | the log is the only source of diagnosis                |
+| `type` is `AssertionError` even for a thrown non-assertion `Error`                                 | `type` carries no information; do not classify on it   |
 | JUnit `classname` is the describe chain **reversed** and `>` is **double-escaped** (`outer > inner > deep fails` in the console becomes `classname="inner &amp;gt; outer"`) | never key on `classname` verbatim — reverse and decode it |
 | Within one file, console `(fail)` order **equals** JUnit testcase order (verified with sibling describes sharing a leaf name) | positional join *scoped to a file* is sound; global positional order is not |
+| **A file that fails to load is omitted from JUnit entirely, and the run still reports `failures="0"`.** A mixed run (one good file, one unloadable) exits 1 and prints `2 pass / 1 fail / 1 error`, while its JUnit says `tests="2" failures="0"`. When *every* file fails to load, **no JUnit file is written at all**. | **JUnit systematically under-reports and can look green on a red run.** `totals` must come from the console summary, never from `<testsuites>`; `runErrors` from the log is the only record of load failures; the reader must tolerate a missing JUnit file. Any gate trusting JUnit alone would pass a broken run. |
 
 Algorithm:
 

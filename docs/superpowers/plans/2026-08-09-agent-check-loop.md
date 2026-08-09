@@ -116,17 +116,24 @@ export function parseJUnit(xml: string, cwd: string): JUnitRun
 export function decodeClassname(raw: string): string[]   // exported for the contract test
 ```
 
-**Two measured facts this task exists to encode** (verified against Bun 1.3.11 — see the design spec §0.3):
+**Measured facts this task exists to encode** (verified against Bun 1.3.11 — see the design spec §0.3):
 
 1. `classname` holds the describe chain **reversed** and the separator is **double-escaped**. A test declared as `describe('outer') > describe('inner') > test('deep fails')` serialises as `classname="inner &amp;gt; outer"`, which XML-decodes to `inner &gt; outer`. `decodeClassname` must decode **twice**, split on ` > `, and reverse — yielding `['outer', 'inner']`.
 2. `file` is repo-relative for in-tree files and absolute for out-of-tree ones. Normalize to repo-relative against `cwd`.
+3. `<failure type="…">` is always `AssertionError`, including for a thrown non-assertion `Error`. Carry `failed: boolean` only; never classify on `type`.
+4. **JUnit under-reports and can look green on a red run.** A file that fails to load is omitted from the document entirely and does not raise `failures`. `fixtures/junit-mixed.xml` is a recorded run that exited 1 and printed `2 pass / 1 fail / 1 error` while its root says `tests="2" failures="0"`. When *every* file fails to load, Bun writes **no JUnit file at all**. Consequence for Task 5: totals come from the console summary, never from `<testsuites>`.
 
-- [ ] **Step 1: Record the fixtures.** Generate them with real Bun, do not hand-write:
-  ```bash
-  bun test --reporter=junit --reporter-outfile=tests/scripts/test/fixtures/junit-nested.xml <a nested failing fixture>
-  ```
-  `junit-nested.xml` must contain sibling describes with a **shared leaf name** (`A > x`, `A > y`, `B > x`) — that ambiguity is the whole reason the join is positional. `junit-empty.xml` is a run that produced no testcases.
-- [ ] **Step 2: Write `tests/scripts/test/junit.test.ts` (red).** Assert `decodeClassname('inner &amp;gt; outer')` → `['outer', 'inner']` **verbatim** (`toEqual`, not `toContain`); assert `byFile` preserves document order; assert absolute `file` normalizes to repo-relative; assert `junit-empty.xml` yields zero cases and does not throw.
+**The fixtures already exist** — they were recorded from real Bun runs before this plan was executed and are committed under `tests/scripts/test/fixtures/`. Do not regenerate or hand-edit them:
+
+| Pair | What it captures |
+|---|---|
+| `junit-nested.xml` + `console-nested.log` | nested describe (reversed/double-escaped `classname`), sibling describes with a **shared leaf name** (`A > x`, `A > y`, `B > x`) — the ambiguity that forces a positional join — a thrown non-assertion error, and one passing test |
+| `junit-green.xml` + `console-green.log` | a clean run: no failures, summary only |
+| `junit-mixed.xml` + `console-mixed.log` | one loadable + one unloadable file: JUnit says `failures="0"`, the log says `1 fail / 1 error` |
+| *(none)* + `console-unhandled.log` | every file fails to load — **no JUnit file is written**; the log is the only evidence |
+
+- [ ] **Step 1: Read the recorded fixtures** and confirm each fact above against them before writing code.
+- [ ] **Step 2: Write `tests/scripts/test/junit.test.ts` (red).** Assert `decodeClassname('inner &amp;gt; outer')` → `['outer', 'inner']` **verbatim** (`toEqual`, not `toContain`); assert `byFile` preserves document order; assert absolute `file` normalizes to repo-relative; assert `junit-mixed.xml` parses to 2 non-failing cases and that the parser does **not** present it as a green run (`parseJUnit` reports what JUnit says; Task 5 is responsible for not trusting it); assert `parseJUnit('')` yields zero cases and does not throw.
 - [ ] **Step 3: Implement.** A regex/streaming scan over `<testcase …>` is sufficient and avoids an XML dependency; capture `name`, `classname`, `time`, `file`, `line`, and whether a `<failure`/`<error` child follows before the element closes. Read totals from the root `<testsuites>` attributes.
 - [ ] **Step 4: Run green; commit.**
 
@@ -167,8 +174,8 @@ Format notes to encode:
 - `# Unhandled error between tests` blocks have **no** marker and no testcase — they become `runErrors`. On a dependency-less checkout this is the *only* signal: 1,294 files of them and an empty JUnit index.
 - The trailing summary is ` N pass` / ` N fail` / ` N skip` / ` N expect() calls` / `Ran N tests across M files. [T]`.
 
-- [ ] **Step 1: Record the fixtures with real Bun** (same runs as Task 2's, so the pair is coherent). Include one out-of-tree relative header and one `# Unhandled error between tests` block.
-- [ ] **Step 2: Write `tests/scripts/test/console-log.test.ts` (red).** Assert per-file block counts and marker texts; assert `offset`/`length` slice back to the expected substring (`text.slice(offset, offset+length)`); assert `console-green.log` yields zero blocks and a parsed summary; assert `console-unhandled.log` yields `runErrors` and a `null`-ish summary.
+- [ ] **Step 1: Use the recorded fixtures from Task 2** (`console-nested.log`, `console-green.log`, `console-mixed.log`, `console-unhandled.log`). They are the same runs that produced the JUnit fixtures, so the pairs are coherent. Do not regenerate them.
+- [ ] **Step 2: Write `tests/scripts/test/console-log.test.ts` (red).** Assert per-file block counts and marker texts (`console-nested.log` → 4 blocks: `outer > inner > deep fails`, `A > x`, `A > y`, `B > x`); assert `offset`/`length` slice back to the expected substring (`text.slice(offset, offset+length)`); assert `console-green.log` yields zero blocks and `summary = { pass: 2, fail: 0, tests: 2, files: 1, … }`; assert `console-unhandled.log` yields one `runError` naming the module and `summary.fail === 1`; assert `console-mixed.log` yields `summary = { pass: 2, fail: 1, … }` **and** one `runError` — this is the pair that proves the summary must come from the log, since its JUnit says `failures="0"`.
 - [ ] **Step 3: Implement; run green; commit.**
 
 ---
@@ -244,13 +251,17 @@ export const RunReportSchema = z.object({
 })
 export type RunReport = z.infer<typeof RunReportSchema>
 
-export interface BuildReportInput { junitXml: string, logText: string, /* … meta … */ }
+export interface BuildReportInput { junitXml: string | null, logText: string, /* … meta … */ }
 export function buildReport(input: BuildReportInput): RunReport
 export function readReport(path: string, read: (p: string) => string | null): RunReport | null   // fail-open: null on missing/corrupt
 export function writeReport(report: RunReport, write: (p: string, s: string) => void): void       // rotates last-run.json → previous-run.json
 ```
 
-- [ ] **Step 1: Write `tests/scripts/test/report.test.ts` (red).** `buildReport` on the fixture pair produces the expected totals/failures/slowestFiles; `slowestFiles` is per-file summed testcase time, descending, capped at 20; `readReport` returns `null` for missing, for invalid JSON, and for a schema mismatch (never throws — this is the fail-open rule); `writeReport` rotates the previous report exactly once.
+**`totals` comes from the console summary, never from the JUnit root.** `fixtures/junit-mixed.xml` reports
+`tests="2" failures="0"` for a run that exited 1 with `2 pass / 1 fail / 1 error`; and when every file fails to
+load, `junitXml` is `null` because Bun writes no file. JUnit supplies per-test identity and timing only.
+
+- [ ] **Step 1: Write `tests/scripts/test/report.test.ts` (red).** `buildReport` on the nested fixture pair produces the expected totals/failures/slowestFiles; `slowestFiles` is per-file summed testcase time, descending, capped at 20; `readReport` returns `null` for missing, for invalid JSON, and for a schema mismatch (never throws — this is the fail-open rule); `writeReport` rotates the previous report exactly once. **Two regression tests that would catch a JUnit-trusting implementation:** the mixed pair must yield `totals.fail === 1` and one `runErrors` entry (not a green report), and `buildReport` with `junitXml: null` + `console-unhandled.log` must still produce a valid report with `totals.fail === 1`, zero `failures`, and one `runErrors` entry.
 - [ ] **Step 2: Implement; run green; commit.**
 
 ---
