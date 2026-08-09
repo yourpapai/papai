@@ -29,8 +29,10 @@ Summary:
   historical detail. Shipped plans drain to `docs/archive/` via
   `scripts/plan-adr-workflow.ts` (runbook Lane 0); a change that modifies a
   legacy-documented capability seeds its spec first (runbook Lane 2).
-- **No new files** under this tree, with two carve-outs:
-  - maintenance of the e2e planning workflow (`e2e-planning-workflow.md` and
-    `templates/`), which stays live and now targets `openspec/changes/`;
-  - `remaining/` briefs written by `scripts/plan-adr-workflow.ts`, which is
-    frozen as legacy-only tooling for processing this residual corpus.
+- **No new files** under this tree, with one carve-out:
+  `remaining/` briefs written by `scripts/plan-adr-workflow.ts`, which is
+  frozen as legacy-only tooling for processing this residual corpus.
+
+The e2e planning workflow and test-plan template moved out of this tree to
+`docs/operations/` (they are living operational docs, not legacy planning
+artifacts).

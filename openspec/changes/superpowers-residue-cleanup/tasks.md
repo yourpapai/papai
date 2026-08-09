@@ -18,9 +18,9 @@ not gate docs (design.md D5).
 
 ## 2. Move the living docs
 
-- [ ] 2.1 `git mv` the workflow doc to `docs/operations/e2e-planning-workflow.md` and the template to `docs/operations/templates/e2e-test-plan-template.md`; rewrite the Realism Tiers section header per design.md D2 (workflow table becomes canonical; archived spec demoted to historical); fix the in-doc "Starting Point" template path.
+- [x] 2.1 `git mv` the workflow doc to `docs/operations/e2e-planning-workflow.md` and the template to `docs/operations/templates/e2e-test-plan-template.md`; rewrite the Realism Tiers section header per design.md D2 (workflow table becomes canonical; archived spec demoted to historical); fix the in-doc "Starting Point" template path.
       Verify: `grep -n "superpowers" docs/operations/e2e-planning-workflow.md` returns nothing
-- [ ] 2.2 Update `tests/CLAUDE.md:133` (workflow/template location) and
+- [x] 2.2 Update `tests/CLAUDE.md:133` (workflow/template location) and
       remove the living-docs carve-out from `docs/superpowers/README.md`.
       Verify: `grep -rn "superpowers/e2e-planning-workflow\|superpowers/templates" --include="*.md" .` returns nothing outside `docs/archive/` and `docs/adr/`
 

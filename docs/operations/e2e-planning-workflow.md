@@ -39,8 +39,10 @@ Use this guide when you are:
 
 ## Realism Tiers
 
-Canonical definition: `docs/superpowers/specs/2026-07-23-tier-expansion-roadmap-design.md`.
-This table mirrors it; the spec wins on any disagreement.
+This table is the canonical definition of the realism tiers. The original
+owning spec was archived to
+`docs/archive/2026-07-23-tier-expansion-roadmap-design.md` (ADR-0324) and is
+now historical; where they disagree, this table wins.
 
 | Tier         | Meaning                                                                                                                                       | Still fakes                             |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
@@ -107,4 +109,4 @@ Every E2E plan must contain:
 
 ## Starting Point
 
-Copy `docs/superpowers/templates/e2e-test-plan-template.md` into `openspec/changes/<name>/e2e-plan.md` (inside the OpenSpec change proposed for the work) and fill it in with the workflow above.
+Copy `docs/operations/templates/e2e-test-plan-template.md` into `openspec/changes/<name>/e2e-plan.md` (inside the OpenSpec change proposed for the work) and fill it in with the workflow above.
