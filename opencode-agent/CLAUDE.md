@@ -619,9 +619,12 @@ not permitted to create or approve pull requests` is a repository or
 - **Progress reporting never carries content.** `activity.ts` decodes OpenCode's
   event stream through schemas that name only the scalar fields they want, so
   tool input, tool output, model text and a provider's error message have
-  nowhere to land. Do not widen a schema to "make the log more useful": a CI log
-  is world-readable on a public repository and is _not_ covered by the outbound
-  redaction in `github.ts`. Names, statuses and counts only. Every shape there is
+  nowhere to land. `session.error` is the event that most tempts a widening and
+  is decoded on exactly those terms — the error's **name and status code**, never
+  its `message`, which is where a rejected credential gets quoted back. Do not
+  widen a schema to "make the log more useful": a CI log is world-readable on a
+  public repository and is _not_ covered by the outbound redaction in
+  `github.ts`. Names, statuses and counts only. Every shape there is
   recorded from a live server — re-record rather than adjusting by inspection,
   and note that the SDK's generated `Event` union is already behind its own
   server, which is why each decode is a `safeParse` yielding `null`.
@@ -650,6 +653,37 @@ not permitted to create or approve pull requests` is a repository or
   the mechanism. Widening `PROTECTED_PREFIXES` is a privilege decision: an agent
   that can rewrite `agent-pipeline.yml` can rewrite the permissions, concurrency
   group and secret wiring that bound it, in a job that job itself defines.
+- **A process artefact is not a deliverable, and that is enforced at staging
+  too.** `stray-paths.ts` names `*.pid`, `*.sock` and `nohup.out`, and
+  `stageAllowed` takes them back out of the index alongside the protected paths.
+  It is a **separate list from `protected-paths.ts` on purpose**: that one is what
+  a push cannot carry, this one is what a commit is not for, and the two have
+  different remedies — a guardrail that conflates them is one nobody can reason
+  about when it fires. The failure it answers is issue #239, which delivered a
+  pull request whose whole diff was `serve3.pid`: the turn that was to write the
+  deliverable died first, the pid file was the only dirty path left, and one
+  stray line is not zero — so `walk.commits === 0` was false and
+  `noChangesError`, the single question the pipeline asks about an implementation
+  that produced nothing, answered wrong. Keep the list **short**: an entry here
+  claims that no repository this pipeline works on would ever track such a file,
+  which is only true of a runtime's own scratch. Anything a project might
+  legitimately version belongs in that project's `.gitignore`, where a maintainer
+  can see it and override it.
+- **A turn the model never answered is a failure, not an empty success.**
+  `turn-stall.ts` folds the event stream into what the provider has got wrong
+  **since the last finished step**, and `requireAnswer` in `turn-run.ts` fails the
+  turn when the decoded reply is empty _and_ that record is not. **Both halves are
+  required and neither may be dropped**: an empty reply alone is an ordinary shape
+  (the implement phase discards the text), and a stall alone describes a turn that
+  recovered — which is precisely what a `step-finish` clearing the record means.
+  Together they are issue #239's implement turn: refused 25 times over 12 minutes,
+  idle without another finished step, an empty envelope every layer read as
+  success, and a commit of whatever the tree happened to hold. It raises an
+  **ordinary failure**, not a ceiling: nothing was written so nothing can be
+  salvaged, and `FAILED` with its resume point intact is the right place to wait
+  out a quota that clears with time. The read happens **after** the turn returns
+  and in the adapter, the one place holding both signals — `runTurn` never sees
+  the decoded reply.
 - **Capabilities are deny-by-default.** `openai-config.ts` grants tools by name
   on top of `"*": "deny"`, per agent profile: `plan` (the read-only phases)
   cannot edit or run commands, `build` can. Add a capability by naming it, never

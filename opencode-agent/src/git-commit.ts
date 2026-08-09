@@ -9,6 +9,7 @@ import { diffGuardError } from './errors.js'
 import type { GitOptions } from './git.js'
 import { protectedAmong, protectedPathsNotice } from './protected-paths.js'
 import type { CommandResult } from './shell.js'
+import { strayAmong, strayPathsNotice } from './stray-paths.js'
 
 /**
  * Staging a change set, judging it, and committing it — the two ways this
@@ -78,17 +79,23 @@ const guardStaged = async (
 }
 
 /**
- * Stages everything, then takes back out whatever a push cannot carry.
+ * Stages everything, then takes back out what does not belong in a commit.
+ *
+ * Two lists, and they answer different questions. `protected-paths.ts` is what a
+ * push cannot **carry**: GitHub has already announced it will refuse a push that
+ * touches `.github/workflows/` from a token without the `workflows` permission,
+ * and a push is atomic, so a commit built around one such file cannot be
+ * delivered at all. `stray-paths.ts` is what a commit is not **for**: a pid file
+ * or a socket a probe left behind would push perfectly well, and is still not
+ * the work a step was asked for. They are kept apart because a guardrail that
+ * conflates "the remote refuses it" with "it is not a deliverable" is one nobody
+ * can reason about when it fires.
  *
  * Both commit paths go through this, and the reason it is here rather than in
  * `diff-guard.ts` is what it does with the answer. The guard *judges* a change
- * set and refusing is a real outcome for it; this is not a judgement at all —
- * GitHub has already announced it will refuse a push that touches
- * `.github/workflows/` from a token without the `workflows` permission, and a
- * push is atomic, so a commit built around one such file cannot be delivered at
- * all. Refusing here would lose the same work the remote would have lost.
- * Dropping the file keeps the rest, which is the only outcome with anything in
- * it.
+ * set and refusing is a real outcome for it; this is not a judgement at all.
+ * Refusing here would lose the same work the remote would have lost. Dropping
+ * the file keeps the rest, which is the only outcome with anything in it.
  *
  * The working-tree copy is reverted, not merely unstaged, and that is the part
  * that makes the guardrail stable rather than a loop. An unstaged edit is still
@@ -113,11 +120,37 @@ interface Staged {
   dropped: string[]
 }
 
+/** One reason a set of staged paths is coming back out, with that set. */
+interface Refusal {
+  paths: string[]
+  notice: string
+}
+
+/**
+ * What may not be committed, grouped by why — each group in staged order.
+ *
+ * Grouped rather than merged into one list because the two notices say different
+ * things and a maintainer reading the log has to know which fired: one says
+ * "apply this by hand or grant the permission", the other says "this was never
+ * work". A path that somehow matched both is reported once, under the reason
+ * that would have stopped the push, since that is the one with a remedy.
+ */
+const refusals = (paths: readonly string[]): Refusal[] => {
+  const cannotPush = protectedAmong(paths)
+  const notWork = strayAmong(paths).filter((path) => !cannotPush.includes(path))
+
+  return [
+    ...(cannotPush.length === 0 ? [] : [{ paths: cannotPush, notice: protectedPathsNotice(cannotPush) }]),
+    ...(notWork.length === 0 ? [] : [{ paths: notWork, notice: strayPathsNotice(notWork) }]),
+  ]
+}
+
 const stageAllowed = async (gitOrThrow: GitFn, options: GitOptions): Promise<Staged> => {
   await gitOrThrow('add', '--all')
 
   const staged = parseNumstat((await gitOrThrow('diff', '--cached', '--numstat')).stdout)
-  const blocked = protectedAmong(staged.map((file) => file.path))
+  const refused = refusals(staged.map((file) => file.path))
+  const blocked = refused.flatMap((refusal) => refusal.paths)
   if (blocked.length === 0) return { staged, dropped: [] }
 
   // `ls-tree` lists only the paths that exist in HEAD and says nothing about
@@ -129,7 +162,9 @@ const stageAllowed = async (gitOrThrow: GitFn, options: GitOptions): Promise<Sta
   if (tracked.length > 0) await gitOrThrow('checkout', 'HEAD', '--', ...tracked)
   if (added.length > 0) await gitOrThrow('clean', '--force', '--', ...added)
 
-  options.log.warn({ dropped: blocked }, protectedPathsNotice(blocked))
+  refused.forEach((refusal) => {
+    options.log.warn({ dropped: refusal.paths }, refusal.notice)
+  })
   return { staged: staged.filter((file) => !blocked.includes(file.path)), dropped: blocked }
 }
 

@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { ProgressSnapshot } from './progress.js'
+import type { TurnStall } from './turn-stall.js'
 
 /**
  * Failures a phase handler can raise. Almost all of them end the same way — the
@@ -216,6 +217,47 @@ export const serverGoneError = (transport: string): PipelineError =>
 /** Whether a rejection is that death. */
 export const isServerGone = (error: unknown): error is PipelineError =>
   error instanceof PipelineError && error.code === SERVER_GONE
+
+/**
+ * A turn the model never answered, because the provider was still refusing it.
+ *
+ * The failure issue #239 had no name for, and the one that cost the most: the
+ * session retried the model call twenty-five times over twelve minutes, went
+ * idle without finishing another step, and the prompt returned a perfectly
+ * ordinary envelope carrying no text. Every layer downstream read that as a
+ * finished turn — `decodeReply` checks the transport's `error` field and this
+ * failure is not in it, and the implement phase discards the reply — so the
+ * phase committed a working tree holding one stray pid file, opened a pull
+ * request and reported the plan implemented.
+ *
+ * Raised as an ordinary failure and **not** as a ceiling: it is neither of the
+ * two stops that salvage. There is nothing to salvage, since a turn the model
+ * never answered wrote nothing, and the remedy is a `/retry` — which is exactly
+ * right for the cause this shape usually has. A rate limit or a spent
+ * subscription window clears with time, and the run parks in `FAILED` with its
+ * resume point intact until somebody says go again.
+ *
+ * The count and the status code are the message, because they are what tells a
+ * maintainer which wait they are in for: twenty-five retries and a 429 is a
+ * quota to wait out, one failure and a 401 is a credential to fix.
+ */
+export const providerStalledError = (stall: TurnStall): PipelineError =>
+  new PipelineError(
+    'PROVIDER_STALLED',
+    'The model never answered this turn: the provider was still failing when the session gave up' +
+      retriesClause(stall.retries) +
+      failureClause(stall.failure) +
+      '. Nothing was written, so nothing is lost — but the turn has to fail here rather than commit whatever the ' +
+      'tree happened to hold, which is how a run with no deliverable once delivered a pull request. ' +
+      'A quota or rate limit clears with time: reply `/retry` when it has.',
+  )
+
+const retriesClause = (retries: number): string => (retries === 0 ? '' : ` after ${retries} retries`)
+
+const failureClause = (failure: TurnStall['failure']): string => {
+  if (failure === null) return ''
+  return failure.statusCode === null ? ` (${failure.name})` : ` (${failure.name} ${failure.statusCode})`
+}
 
 export const modelResponseError = (message: string, raw: string): PipelineError =>
   new PipelineError('MODEL_RESPONSE', `${message}\n\nRaw reply:\n${raw.slice(0, 2000)}`)

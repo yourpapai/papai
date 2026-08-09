@@ -562,6 +562,85 @@ describe('createOpenCodeAgent', () => {
     await agent.close()
   })
 
+  /**
+   * The turn that delivered issue #239's pull request, reproduced end to end.
+   *
+   * The session is refused `retries` times, never finishes another step, and the
+   * prompt then resolves with a well-formed reply carrying no text. Everything
+   * downstream read that as a finished implementation, so the phase committed a
+   * working tree holding one stray pid file and opened a pull request on it.
+   *
+   * The events are drained before the reply resolves, which is the ordering the
+   * real one had — the retries and the idle arrived over the stream minutes
+   * before the HTTP call came back — and is what makes this deterministic.
+   */
+  const stalledAgent = (retries: number, parts: readonly unknown[] = []): Promise<OpenCodeAgent> => {
+    let released = (): void => {}
+    const drained = new Promise<void>((resolve) => {
+      released = resolve
+    })
+    const events = [
+      ...Array.from({ length: retries }, (_unused, index) => ({
+        type: 'session.status',
+        properties: { sessionID: 'session-1', status: { type: 'retry', attempt: index + 1, message: 'slow down' } },
+      })),
+      { type: 'session.status', properties: { sessionID: 'session-1', status: { type: 'idle' } } },
+    ]
+
+    return createOpenCodeAgent({
+      directory: '/repo',
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      sessionTitle: 't',
+      log: silentLog,
+      connect: () =>
+        Promise.resolve({
+          createSession: () => Promise.resolve('session-1'),
+          sendPrompt: async (): Promise<unknown> => {
+            await drained
+            return { data: { parts } }
+          },
+          usage: noUsage,
+          abort: noAbort,
+          alive: stillThere,
+          events: () =>
+            Promise.resolve(
+              streamOf(events, () => {
+                released()
+              }),
+            ),
+          close: () => Promise.resolve(),
+        }),
+    })
+  }
+
+  test('fails a turn the model never answered while the provider was still failing', async () => {
+    const agent = await stalledAgent(25)
+
+    await expect(agent.prompt({ prompt: 'go' })).rejects.toThrow('The model never answered this turn')
+  })
+
+  test('names the retries, so a maintainer can tell a quota from a bad credential', async () => {
+    const agent = await stalledAgent(25)
+
+    await expect(agent.prompt({ prompt: 'go' })).rejects.toThrow('after 25 retries')
+  })
+
+  test('a turn that answered is untouched, however many retries it survived on the way', async () => {
+    // The signals only mean anything together: a run that was rate limited,
+    // retried and then did the work is a run that worked.
+    const agent = await stalledAgent(25, [{ type: 'text', text: 'implemented step 3' }])
+
+    expect((await agent.prompt({ prompt: 'go' })).text).toBe('implemented step 3')
+  })
+
+  test('an empty answer with no stall behind it is left alone', async () => {
+    // An implement turn's text is discarded by its caller, so emptiness on its
+    // own is an ordinary shape and must not fail a run that committed work.
+    const agent = await stalledAgent(0)
+
+    expect((await agent.prompt({ prompt: 'go' })).text).toBe('')
+  })
+
   test('fails a prompt that never answers, rather than running to the job timeout', async () => {
     // A job killed by its own timeout posts nothing — no failure comment, no
     // state block — so the issue is left in whatever phase it started in with no

@@ -12,6 +12,7 @@ import type { GitOptions, Salvage } from '../../opencode-agent/src/git.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
 import { isProtectedPath, protectedAmong } from '../../opencode-agent/src/protected-paths.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
+import { isStrayPath, strayAmong } from '../../opencode-agent/src/stray-paths.js'
 
 const LIMITS: DiffLimits = { maxFiles: 10, maxLines: 100 }
 const TOKEN = 'ghp_0123456789abcdefghijklmnop'
@@ -530,6 +531,107 @@ describe('commitAll drops what a push cannot carry', () => {
 
     expect(calls.some((call) => call.includes('ls-tree'))).toBe(false)
     expect(calls.some((call) => call.includes('clean'))).toBe(false)
+  })
+})
+
+/**
+ * The guardrail that keeps "this run committed nothing" answerable.
+ *
+ * Issue #239 delivered a pull request whose whole diff was `serve3.pid`, one
+ * line: the turn that was to write the deliverable died before writing it, and
+ * the only dirty path left was a pid file an experiment had dropped in the repo
+ * root. `noChangesError` fires on a walk that committed *nothing at all*, so one
+ * stray artefact was the difference between a reported failure and a reported
+ * delivery.
+ */
+describe('stray paths', () => {
+  test.each([['serve3.pid'], ['tmp/agent.sock'], ['nohup.out'], ['deep/nested/run.pid']])(
+    '%s is a process artefact rather than work',
+    (path) => {
+      expect(isStrayPath(path)).toBe(true)
+    },
+  )
+
+  test.each([
+    ['src/pid.ts'],
+    ['docs/sock.md'],
+    // A file *called* `.pid` is a file somebody named, not a pid file with no
+    // name — the suffix rule must not swallow it.
+    ['.pid'],
+    ['config/nohup.out.example'],
+    ['opencode-agent/src/git-commit.ts'],
+  ])('%s is ordinary', (path) => {
+    expect(isStrayPath(path)).toBe(false)
+  })
+
+  test('keeps the staged order, so the notice reads as the diff did', () => {
+    expect(strayAmong(['src/a.ts', 'b.pid', 'srv.sock', 'a.pid'])).toEqual(['b.pid', 'srv.sock', 'a.pid'])
+  })
+})
+
+/** A tree holding one finished file and the pid file a probe left behind. */
+const WITH_STRAY = {
+  ...DIRTY,
+  'git diff --cached --numstat': ['3\t1\tsrc/a.ts', '1\t0\tserve3.pid'].join('\n'),
+  'git ls-tree --name-only HEAD -- serve3.pid': '',
+}
+
+/** Issue #239's tree exactly: the deliverable never written, the pid file left. */
+const ONLY_STRAY = {
+  ...DIRTY,
+  'git diff --cached --numstat': '1\t0\tserve3.pid',
+  'git ls-tree --name-only HEAD -- serve3.pid': '',
+}
+
+describe('commitAll drops what a process left behind', () => {
+  test('commits the real work and measures only the real work', async () => {
+    const { run } = captureGit(WITH_STRAY)
+
+    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toEqual({ files: 1, lines: 4 })
+  })
+
+  test('removes the pid file, so the next step does not re-stage it for ever', async () => {
+    const { calls, run } = captureGit(WITH_STRAY)
+
+    await createGit(guardedGit(run, LIMITS)).commitAll('msg')
+
+    expect(calls).toContainEqual(['git', 'reset', '--', 'serve3.pid'])
+    expect(calls).toContainEqual(['git', 'clean', '--force', '--', 'serve3.pid'])
+  })
+
+  test('a turn that left only a pid file has committed nothing, and says so', async () => {
+    // The whole point: `null` is what reaches `walk.commits === 0` and becomes
+    // `noChangesError`. Issue #239 got `{ files: 1, lines: 1 }` here and opened
+    // a pull request on it.
+    const { calls, run } = captureGit(ONLY_STRAY)
+
+    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toBeNull()
+    expect(calls.some((call) => call.includes('commit'))).toBe(false)
+  })
+
+  test('says so at warn, naming the file and why it is out', async () => {
+    const warns: string[] = []
+    const { run } = captureGit(WITH_STRAY)
+
+    await createGit({ ...guardedGit(run, LIMITS), log: silentLog(warns) }).commitAll('msg')
+
+    expect(warns.join('\n')).toContain('serve3.pid')
+    expect(warns.join('\n')).toContain('not the work a step was asked for')
+  })
+
+  test('reports the two refusals apart, since their remedies differ', async () => {
+    const warns: string[] = []
+    const both = {
+      ...DIRTY,
+      'git diff --cached --numstat': ['3\t1\tsrc/a.ts', '9\t0\t.github/workflows/ci.yml', '1\t0\trun.pid'].join('\n'),
+      'git ls-tree --name-only HEAD -- .github/workflows/ci.yml run.pid': '.github/workflows/ci.yml\n',
+    }
+    const { run } = captureGit(both)
+
+    await createGit({ ...guardedGit(run, LIMITS), log: silentLog(warns) }).commitAll('msg')
+
+    expect(warns).toHaveLength(2)
+    expect(warns.find((warn) => warn.includes('run.pid'))).not.toContain('.github/workflows/ci.yml')
   })
 })
 
