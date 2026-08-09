@@ -86,6 +86,17 @@ findings: `ROADMAP.md`.
   testable without a filesystem or a remote, and neither has a literal fallback:
   a baked-in review path reported every run outside this repository as
   permanently red, and a `main` default killed every run inside it.
+- The OpenCode boundary is three files, split by what changes them.
+  `src/sdk-contract.ts` is what the SDK **says** — the shapes, recorded;
+  `src/opencode-connect.ts` is how it is **started and addressed** — a spawned
+  process, a port, a base URL; `src/opencode-adapter.ts` is the **session** the
+  pipeline holds — an id, a lifetime, a teardown. `src/turn-run.ts` is the fourth
+  and the newest: one **turn**, which is the thing with a clock, a heartbeat and
+  three ways to end. It owns the bound, the heartbeat and the failure
+  classification, and it never imports back from the adapter — `TurnBounds` and
+  `TurnConnection` are narrow slices that `OpenCodeAgentOptions` and
+  `OpenCodeConnection` extend, so each states what running a turn actually needs
+  rather than restating what an agent is.
 - Every external boundary is an injected interface (`GitHubApi`, `Git`,
   `CheckRunner`, `RunReview`, `OpenCodeAgent`, `ReadSkillFile`).
 
@@ -554,6 +565,20 @@ not permitted to create or approve pull requests` is a repository or
   phase `buildClassifyPrompt` briefs on what the phase means, because `none` is
   now load-bearing and a real answer is often a bare fragment that reads as
   chatter to a phase-blind classifier.
+- **A turn that broke says _which_ remote broke.** `runTurn` probes
+  `connection.alive()` on the failure path and raises `serverGoneError` when the
+  local `opencode serve` has stopped answering, instead of passing on the
+  transport's `The socket connection was closed unexpectedly` — a sentence that
+  names neither end of the socket and sends every reader to the model provider.
+  Three orderings there are load-bearing: a turn deadline leaves **before** the
+  probe (a ceiling relabelled as a crash throws away finished steps), a probe that
+  **rejects** reads as `false` rather than replacing the failure it was asked
+  about, and a failure over a server that still answers is passed through
+  untouched. It is a classification and must never become a **retry**: the one
+  layer that may retry is `provider-proxy.ts`, the only one that still has an HTTP
+  status. The workflow's post-mortem step is the other half — it reports the OOM
+  killer, the cgroup memory peak and a process census by `comm`, because _why_ the
+  server died is not visible from inside the process that lost it.
 - **Bounds go on the finished prompt, and on waiting.** `prompt-budget.ts` caps
   what reaches the model — per prompt, not per input, since a per-input cap
   bounds one log and nothing else. `deadline.ts` bounds waiting for a model turn;
@@ -618,9 +643,16 @@ not permitted to create or approve pull requests` is a repository or
 - One class per file: pipeline failures are constructed through the factories in
   `src/errors.ts` rather than new error subclasses.
 - Tests live in `tests/opencode-agent/`, follow `tests/CLAUDE.md`, and must not
-  touch the network. The one exception is `live-sdk.integration.ts`, which is
-  deliberately not a `*.test.ts` so default discovery skips it; it needs the
-  `opencode` CLI and is run via `bun run opencode-agent:test:live`.
+  touch the network. Two files are deliberately not `*.test.ts`, so default
+  discovery skips them; both need the `opencode` CLI and neither runs in CI.
+  `live-sdk.integration.ts` (`bun run opencode-agent:test:live`) is the recorder —
+  the SDK response fixtures in `adapters.test.ts` come from it, so re-run it rather
+  than adjusting a decoder by inspection when the pin moves.
+  `server-survival.integration.ts` (`bun run opencode-agent:test:survival`) is the
+  diagnostic: it drives candidate shell commands through `POST /session/:id/shell`
+  and asks after each whether this job's own server survived them. Both are driven
+  **without a model** — the shell endpoint spawns the same `bash -l -c` child the
+  bash tool does — which is what makes them cheap enough to run on a laptop.
 - When a command test asserts an outcome, assert the **persisted state**, not
   just the returned status — a state that is never posted never happened.
 - **The SDK response shapes are recorded, not guessed.** `sdk-contract.ts`'s

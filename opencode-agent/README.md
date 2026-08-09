@@ -1005,6 +1005,36 @@ holds.
 Token and cost totals ride along, per step and in every heartbeat, and the token
 half is now a ceiling as well as a reading — see **What bounds a run** above.
 
+### The post-mortem, for a job whose server died
+
+The rule above has a cost, and it was paid on issue #239: when a run failed three
+times with `The socket connection was closed unexpectedly`, nothing in the log
+could say why. That message is Bun's wording for a `fetch` whose peer went away
+and names neither end of it, so it reads as a model-provider problem — while the
+peer that had actually gone was the `opencode serve` this job spawned on
+loopback. The pipeline now says so itself: a turn that fails asks the server
+whether it is still there, and reports **the local OpenCode server stopped
+answering** rather than quoting the transport.
+
+_Why_ it died is not visible from inside the process that lost it, so a
+`if: failure()` step asks the runner before it disappears:
+
+```
+--- processes still alive (names only, no command lines) ---
+--- how many of them are opencode ---
+--- kernel out-of-memory kills ---
+--- peak memory for this job cgroup ---
+```
+
+Two live `opencode` processes means something started a second one; a line from
+the OOM killer means the runner ran out of memory. **Names and counts only**, by
+the same rule as the rest of this section — `ps` is asked for `comm` and never
+`args`, because a tool child's argument vector is model-authored content and this
+log is public. When you need the commands themselves, reproduce locally: see
+**Local runs** below, and `bun run opencode-agent:test:survival`, which drives
+candidate commands at a throwaway server and reports which of them it does not
+survive.
+
 ## Guardrails
 
 Policy lives in `src/guardrails.ts`. What an event _is_ lives in

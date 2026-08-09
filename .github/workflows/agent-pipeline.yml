@@ -416,6 +416,67 @@ jobs:
             --event-name "$GITHUB_EVENT_NAME" \
             --repo-root "$GITHUB_WORKSPACE"
 
+      # The two facts a dead pipeline cannot report about itself, collected while
+      # the runner still exists.
+      #
+      # Issue #239 failed three times in one phase and the cause could not be
+      # settled from any surviving evidence. The runner is ephemeral, the workflow
+      # uploads no artefacts, and the model turn is unrecoverable by design — so
+      # "the OpenCode server went away" was established, and *why* was not. The two
+      # candidates were an out-of-memory kill and a second `opencode` the model had
+      # started from `bash`; both are visible here for the width of a few
+      # milliseconds after the job fails, and nowhere else, ever again.
+      #
+      # **Names and counts only, never command lines.** `ps` is asked for `comm`
+      # rather than `args` deliberately: the argument vector of a tool child is
+      # model-authored content, and this log is world-readable on a public
+      # repository — the same rule `opencode-agent/src/activity.ts` enforces on the
+      # event stream, which is what keeps the pipeline's own logs safe to publish.
+      # Two live `opencode` processes is the finding; what either was told to do is
+      # not this step's to print. Get that from a local `--event-path` run.
+      #
+      # Every probe is individually optional and none may fail the job: `dmesg`
+      # needs privileges the runner may not grant, and the cgroup file is v2-only.
+      # A step that reports nothing is a step that found nothing worth reporting.
+      - name: Post-mortem for a failed pipeline
+        if: failure() && steps.pipeline.conclusion == 'failure'
+        run: |
+          echo '--- processes still alive (names only, no command lines) ---'
+          # `awk` drops the zero-RSS rows, which are kernel threads: there are over
+          # a hundred of them on a hosted runner and they would fill this list
+          # entirely, burying the handful of processes the failure is about.
+          ps -eo pid,ppid,pgid,rss,etime,comm --sort=-rss | awk 'NR == 1 || $4 > 0' | head -30
+
+          echo '--- how many of them are opencode ---'
+          # More than one is the finding: the pipeline spawns exactly one server,
+          # so a second is something the model started.
+          # `|| true`, not `|| echo 0`: `pgrep -c` already prints `0` when nothing
+          # matched *and* exits 1, so the obvious fallback prints the count twice.
+          pgrep -c -x opencode || true
+
+          echo '--- kernel out-of-memory kills ---'
+          # Collected to a file and then tested for size, rather than branching on
+          # the pipeline's status: the exit code of `a | grep | tail` is `tail`'s,
+          # which is 0 whether or not `grep` matched, so the obvious `if` would
+          # announce an OOM kill on every healthy runner.
+          # `sudo -n` so a runner that will not grant it says so and moves on.
+          sudo -n dmesg -T 2>/dev/null | grep -iE 'killed process|out of memory' | tail -20 > /tmp/agent-oom.txt || true
+          if [ -s /tmp/agent-oom.txt ]; then
+            cat /tmp/agent-oom.txt
+          else
+            echo 'No OOM kill found, or dmesg is not readable on this runner.'
+          fi
+
+          echo '--- peak memory for this job cgroup ---'
+          cat /sys/fs/cgroup/memory.peak 2>/dev/null || echo 'memory.peak is unavailable (cgroup v1, or not exposed).'
+          free -m || true
+
+          echo '--- opencode server log (size only; contents are model-adjacent) ---'
+          # Deliberately `wc -c`, not `cat`. The size says whether the server got
+          # far enough to write anything and whether it died mid-write; the
+          # contents are read from a local reproduction, not from a public log.
+          find "$HOME/.local/share/opencode/log" -type f -exec wc -c {} + 2>/dev/null || echo 'No opencode log directory.'
+
       # For a job that stopped with nothing on the issue: an install failure, a
       # runner timeout, a cancelled job, a config error thrown before the first
       # comment could be posted, a crash.

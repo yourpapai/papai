@@ -7,6 +7,7 @@ import { createServer } from 'node:net'
 
 import { createOpencodeClient, createOpencodeServer } from '@opencode-ai/sdk'
 
+import { withDeadline } from './deadline.js'
 import { buildOpencodeConfig } from './openai-config.js'
 import type { OpenAiSettings } from './openai-config.js'
 import type { OpenCodeConnection } from './opencode-adapter.js'
@@ -53,6 +54,44 @@ const reservePort = (): Promise<number> => {
 /** The SDK's own default is 5s, which a cold runner with a large repo can miss. */
 const SERVER_BOOT_TIMEOUT_MS = 60_000
 
+/**
+ * How long the liveness probe waits before calling the server gone.
+ *
+ * Short on purpose. This runs after a turn has already failed, on a loopback
+ * request to a process on the same host, and its whole value is being answered
+ * while the run is still able to report — a generous bound here buys nothing and
+ * delays the failure comment.
+ */
+const PROBE_TIMEOUT_MS = 5_000
+
+/**
+ * Whether the server answers at all, for {@link OpenCodeConnection.alive}.
+ *
+ * Deliberately the same call as `usage`, asked for its *transport* rather than
+ * its payload: whatever `session.get` answers, an answer at all means the server
+ * is up. Reusing a recorded endpoint rather than reaching for a health route
+ * keeps this workspace's rule intact — the SDK shapes here are recorded from a
+ * live server, and an endpoint nothing has driven is a guess.
+ *
+ * Bounded, because "gone" and "wedged" both have to end as `false`: a server
+ * whose event loop is stuck would otherwise hold this open for as long as the
+ * socket stays half-open, on a path that only ever runs while a failure is
+ * already being reported.
+ */
+const probeAlive = (
+  client: ReturnType<typeof createOpencodeClient>,
+  directory: string,
+  sessionId: string,
+): Promise<boolean> =>
+  withDeadline(
+    client.session.get({ path: { id: sessionId }, query: { directory } }),
+    PROBE_TIMEOUT_MS,
+    () => new Error('probe timed out'),
+  ).then(
+    () => true,
+    () => false,
+  )
+
 export const connectSdk = async (directory: string, openai: OpenAiSettings): Promise<OpenCodeConnection> => {
   // The provider, endpoint and model are pinned in the server's own config, so
   // the session cannot fall back to whatever credentials happen to be in env.
@@ -84,6 +123,7 @@ export const connectSdk = async (directory: string, openai: OpenAiSettings): Pro
     events: async () => (await client.event.subscribe({ sseMaxRetryAttempts: 0 })).stream,
     usage: async (sessionId) =>
       decodeSessionUsage(await client.session.get({ path: { id: sessionId }, query: { directory } })),
+    alive: (sessionId) => probeAlive(client, directory, sessionId),
     // The stop. Measured against a live server: this kills the tool child the
     // model is running and leaves the server itself up — which is the opposite of
     // what `close()` does, and the reason the two are not interchangeable.
