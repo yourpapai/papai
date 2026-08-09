@@ -408,13 +408,15 @@ else
           # ratchet and must not be rerouted.
           bun run test >"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
         fi
-        # The 17-control privacy contract, read off the run that just happened
-        # rather than re-proved by 57 nested `bun test` invocations. It needs a
-        # full-scope report, so it only runs when the suite itself passed — a
-        # partial run is exactly the evidence it is built to refuse.
-        if [ "$exit_code" -eq 0 ]; then
-          bun run analytics:privacy-contract >>"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
-        fi
+        # NOT gated here yet: `bun run analytics:privacy-contract` reads the
+        # report's per-file records, and those cannot currently be trusted.
+        # Bun's junit reporter collides on basename — two test files with the
+        # same basename in different directories collapse to one `file=`
+        # attribute, so 53 of 1306 files in a full run have no record at all
+        # even though every one of their tests ran and passed. Wiring the gate
+        # on that input blocks a green release, which is worse than the nested
+        # runs it replaced. The command and its tests ship; the check.sh gate
+        # waits on per-file accounting the report can stand behind.
       elif [ "$check" = "test:client" ]; then
         bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/ >"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
       elif [ "$check" = "review-loop:test" ]; then

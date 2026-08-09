@@ -522,8 +522,13 @@ bun security
 bun security:ci
 
 # Testing
-bun build:client   # still required once before `bun run test` on a clean checkout (test:coverage and check:full below build it automatically if missing)
-bun run test       # parallel (one worker process per file); the local default (CI runs serially)
+bun build:client   # `bun run test` now does this for you when the bundles are missing
+bun run test       # wrapper: builds bundles, runs the suite, persists reports/test/
+bun run test:failures  # read the last run's failures — does not re-run anything
+bun run test:show 3    # one failure's full diagnostic
+bun run test:log expect  # filter the last run's log
+bun run test:affected  # only the tests a change can reach
+bun run test:raw   # unwrapped `bun test --parallel`, writes no report
 bun test:serial    # serial run, for debugging isolation-sensitive failures
 bun test:client
 bun test:watch
@@ -548,7 +553,7 @@ Notes:
 
 - `bun start` builds the debug/admin clients first, then starts the bot.
 - `bun start:debug` also enables the local debug server.
-- `bun run test` excludes client and E2E suites (configured in `bunfig.toml`); run `bun test:client` and `bun test:e2e` separately. It runs `bun test --parallel` (one isolated worker process per file) — the local default; in CI, `scripts/check.sh` runs the suite serially to avoid exhausting the 4-vCPU runner. Bare `bun test` (Bun's built-in runner) stays serial; use `bun run test` or `bun test:serial` accordingly.
+- `bun run test` excludes client and E2E suites (configured in `bunfig.toml`); run `bun test:client` and `bun test:e2e` separately. It is a wrapper (`scripts/test/run-cli.ts`) that builds the client bundles when missing, chooses parallel or serial from the core count (parallel needs 8+; it is measurably slower on 4), and writes `reports/test/last-run.{log,junit.xml,json}`. **Query that report instead of re-running the suite to filter its output** — `bun run test:failures`, `test:show <id>`, `test:log <pattern>`, `test:status`, `test:slowest`. Bare `bun test` remains Bun's built-in runner and leaves no report.
 - `bun check` runs staged-file checks, while `bun check:full` runs the wider repo checks.
 
 ---

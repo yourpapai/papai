@@ -140,6 +140,7 @@ Three measured facts drive this algorithm; each was verified directly against Bu
 | JUnit `classname` is the describe chain **reversed** and `>` is **double-escaped** (`outer > inner > deep fails` in the console becomes `classname="inner &amp;gt; outer"`) | never key on `classname` verbatim — reverse and decode it, and decode in **one pass over all entities, twice**, not entity-by-entity (a sequential `&lt;`→`&gt;`→`&amp;` decode collapses `&amp;gt;` in one step and destroys the distinction). `name` is escaped only **once** — decoding it twice corrupts any test name containing `&` |
 | The double-escape leaves a **literal, unescaped `>` inside the `classname` attribute value** | the obvious `/<testcase[^>]*>/` scan truncates the element mid-attribute and silently drops `time`, `file` and `line`. A quote-aware tag scanner is required — this is the single biggest trap in "a regex scan is fine here" |
 | Within one file, console `(fail)` order **equals** JUnit testcase order (verified with sibling describes sharing a leaf name) | positional join *scoped to a file* is sound; global positional order is not |
+| **JUnit's `file` attribute collides on basename.** Two test files with the same basename in different directories collapse to a single `file=` value. Measured: `bun test tests/analytics/aggregate-release.test.ts tests/analytics/delivery/aggregate-release.test.ts` reports `Ran 10 tests across 2 files` and writes **one** file into JUnit. Across a full run this leaves **53 of 1306 files with no record at all**, every one of them green. | **Per-file accounting from JUnit is not trustworthy.** `totals` are unaffected (they come from the console, and the testcase count always matched exactly), and a failure whose `file` is wrong fails the join's cross-check and degrades loudly to `joinWarnings` rather than silently attaching the wrong diagnostic. But anything that asks *"did file X pass?"* — the privacy-contract gate, `slowestFiles` — is reading an incomplete index. The gate ships as a command and stays **out** of `check.sh` until per-file records can be trusted. |
 | **A file that fails to load is omitted from JUnit entirely, and the run still reports `failures="0"`.** A mixed run (one good file, one unloadable) exits 1 and prints `2 pass / 1 fail / 1 error`, while its JUnit says `tests="2" failures="0"`. When *every* file fails to load, **no JUnit file is written at all**. | **JUnit systematically under-reports and can look green on a red run.** `totals` must come from the console summary, never from `<testsuites>`; `runErrors` from the log is the only record of load failures; the reader must tolerate a missing JUnit file. Any gate trusting JUnit alone would pass a broken run. |
 
 Algorithm:
@@ -304,8 +305,13 @@ concern, not this one's.
 `docs/architecture/commands.md`. Shipping docs that describe a pipeline that does not exist is its own cost:
 an agent reads them and assumes it already has feedback it is not getting.
 
-**3.3** Raise the hook timeouts. `.claude/settings.json` gives PostToolUse **200 ms**; a targeted `bun test`
-needs ~3 s cold. Without this, 3.1 silently times out and looks like it works.
+**3.3** ~~Raise the hook timeouts.~~ **Withdrawn — the premise was wrong.** This step claimed
+`.claude/settings.json`'s PostToolUse `timeout: 200` was 200 ms and would kill a ~3 s targeted `bun test`
+before it could report. The field is in **seconds**. The Stop hook's `timeout: 300` sits next to an
+`execFileSync(..., { timeout: 300_000 })` inside `check-full.mjs`, which pins the unit: 300 s of config
+budget for a 300 000 ms internal budget. 200 s is ample for a targeted test run, and nothing needs changing.
+Recorded rather than deleted because the reasoning — *a hook killed at its timeout is indistinguishable from
+a hook that passed* — is still the right worry; it just does not apply at these values.
 
 ---
 

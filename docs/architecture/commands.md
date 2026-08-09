@@ -68,7 +68,11 @@ Every `Write`/`Edit`/`MultiEdit` on an implementation file in `src/` or `client/
 
 **Scope** — only implementation files: path starts with `src/`/`client/`, extension `.ts`/`.js`/`.tsx`/`.jsx`, not a test (`*.test.*`/`*.spec.*`). Everything else passes through, but test-file edits still verify the changed test passes. The `client/` tree mirrors `src/` for test resolution (`client/debug/foo.ts` → `tests/client/debug/foo.test.ts`).
 
-**Pipeline** — before write: (1) write-policy gate, (2) test-first gate, (3) API surface snapshot. After write: (4) test tracker for new tests, (5) import gate for tests under `tests/`, (6) targeted test run + coverage regression check, (7) API surface diff check.
+**Pipeline** — before write: (1) write-policy gate, (2) test-first gate. After write: (3) test tracker for new tests, (4) import gate for tests under `tests/`, (5) targeted run of the edited file's companion test.
+
+Step 5 is the inner loop's whole point: a couple of seconds after the edit, rather than minutes later in a full-suite run. Its output is capped at 3 000 characters (`.hooks/tdd/test-runner.mjs`).
+
+**Not wired.** `.hooks/tdd/checks/` also contains `snapshot-surface.mjs`, `verify-no-new-surface.mjs` and `check-uncommitted.mjs`. They are implemented and tested but no harness imports them, and this list used to describe two of them as live steps. The surface pair needs a session baseline that nothing currently writes; wiring them is a separate piece of work, not a documentation fix. They are named here so the next reader can tell "deliberately dormant" from "silently broken".
 
 **Write protections (blocked escape hatches):**
 
