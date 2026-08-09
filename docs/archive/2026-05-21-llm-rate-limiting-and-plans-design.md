@@ -11,8 +11,8 @@ See LICENSE in the project root for details.
 **Status:** Draft  
 **Source notes:**
 
-- [Detailed design note](../notes/llm-rate-limiting-and-plans.md)
-- [Phase decomposition note](../notes/llm-rate-limiting-and-plans-phases.md)
+- [Detailed design note](./llm-rate-limiting-and-plans.md)
+- [Phase decomposition note](./llm-rate-limiting-and-plans-phases.md)
 
 ## Context
 
@@ -98,7 +98,7 @@ summary. The phases are intentionally bottom-up: pure helpers and schema first,
 then quota engine primitives, then enforcement wiring, user-facing surfaces,
 admin APIs, dashboard UI, DM commands, and final cleanup.
 
-See [the phase decomposition note](../notes/llm-rate-limiting-and-plans-phases.md)
+See [the phase decomposition note](./llm-rate-limiting-and-plans-phases.md)
 for phase dependencies, per-phase test expectations, verification commands, and
 exit criteria.
 
@@ -119,5 +119,5 @@ plan. At a high level, coverage must include:
 
 ## References
 
-- Detailed rules and rationale: [../notes/llm-rate-limiting-and-plans.md](../notes/llm-rate-limiting-and-plans.md)
-- Work breakdown and sequencing: [../notes/llm-rate-limiting-and-plans-phases.md](../notes/llm-rate-limiting-and-plans-phases.md)
+- Detailed rules and rationale: [./llm-rate-limiting-and-plans.md](./llm-rate-limiting-and-plans.md)
+- Work breakdown and sequencing: [./llm-rate-limiting-and-plans-phases.md](./llm-rate-limiting-and-plans-phases.md)
