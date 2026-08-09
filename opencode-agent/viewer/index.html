@@ -31,6 +31,7 @@
         --line: #d1d9e0;
         --panel: #f6f8fa;
         --bad: #b35900;
+        --good: #1a7f37;
       }
       @media (prefers-color-scheme: dark) {
         :root {
@@ -40,6 +41,7 @@
           --line: #3d444d;
           --panel: #151b23;
           --bad: #e3a008;
+          --good: #3fb950;
         }
       }
       body {
@@ -105,10 +107,66 @@
         border-color: var(--fg);
         color: var(--fg);
       }
+      #drop.loaded {
+        border-style: solid;
+        border-color: var(--line);
+        color: var(--fg);
+      }
+      #drop .filename {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
       #status {
         margin: 0 0 1rem;
         min-height: 1.5rem;
         color: var(--bad);
+      }
+      #controls {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        padding: 0.5rem 0;
+        margin: 0 0 0.5rem;
+        background: var(--bg);
+      }
+      .copy-btn {
+        font: inherit;
+        font-size: 0.85rem;
+        padding: 0.35rem 0.75rem;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+        color: var(--fg);
+        cursor: pointer;
+      }
+      .copy-btn:hover:not(:disabled) {
+        border-color: var(--fg);
+      }
+      .copy-btn:focus-visible {
+        outline: 2px solid var(--fg);
+        outline-offset: 1px;
+      }
+      .copy-btn:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      #copy-status {
+        font-size: 0.8rem;
+        color: var(--muted);
+        min-height: 1.2rem;
+      }
+      #copy-status.ok {
+        color: var(--good);
+      }
+      #copy-status.bad {
+        color: var(--bad);
+      }
+      .hint {
+        font-size: 0.8rem;
+        color: var(--muted);
       }
       table {
         width: 100%;
@@ -140,6 +198,20 @@
       tr.unreadable td {
         color: var(--bad);
       }
+      #rows tbody tr {
+        cursor: pointer;
+      }
+      #rows tbody tr:hover td {
+        background: var(--panel);
+      }
+      #rows tbody tr.selected td {
+        background: var(--panel);
+        box-shadow: inset 3px 0 0 var(--fg);
+      }
+      #rows tbody tr:focus-visible {
+        outline: 2px solid var(--fg);
+        outline-offset: -2px;
+      }
       footer {
         margin-top: 2rem;
         color: var(--muted);
@@ -161,7 +233,10 @@
 
     <fieldset>
       <legend>Transcript</legend>
-      <div id="drop">Drop <code>debug-transcript.enc</code> here, or choose it below</div>
+      <div id="drop">
+        <span class="prompt">Drop <code>debug-transcript.enc</code> here, or choose it below</span>
+        <span class="accepted" hidden>Loaded <span class="filename"></span> — drop another to replace</span>
+      </div>
       <label for="file">Transcript file</label>
       <input id="file" type="file" accept=".enc,.txt,text/plain" />
     </fieldset>
@@ -173,6 +248,13 @@
     </fieldset>
 
     <p id="status" role="status"></p>
+
+    <div id="controls" hidden>
+      <button id="copy-all" type="button" class="copy-btn">Copy all</button>
+      <button id="copy-selected" type="button" class="copy-btn" disabled>Copy selected</button>
+      <span id="copy-hint" class="hint">Click rows to select; Shift-click for a range.</span>
+      <span id="copy-status" role="status"></span>
+    </div>
 
     <table id="rows" hidden>
       <thead>
@@ -277,15 +359,58 @@
             ),
         )
 
+      /**
+       * One decoded result as a single pipe-separated line of plain text.
+       *
+       * The five fields are the five table cells, in the same order and with the
+       * same blank-vs-present rules, so what is copied is exactly what is on
+       * screen — the table is the source of truth for the shape and this renders
+       * the same values into a line a chat or a note can carry. Plain text rather
+       * than TSV or JSON because a maintainer pasting a run's tool calls into an
+       * issue comment or a message is the reader this serves.
+       */
+      const HEADER_LINE = 'Time | Tool | Status | Detail | Took'
+      const formatDuration = (durationMs) => (durationMs === null ? '' : `${(durationMs / 1000).toFixed(1)}s`)
+
+      const formatLine = (result) => {
+        if (!result.ok) {
+          return '— | — | unreadable | This line could not be opened with this key. | '
+        }
+        const { time, tool, status, detail, durationMs } = result.row
+        return [time, tool, status, detail ?? '', formatDuration(durationMs)].join(' | ')
+      }
+
+      /**
+       * Every result as plain text: the header row the table shows, then one line
+       * per result, in the order the run produced them. Used by both copy paths,
+       * which differ only in which results they pass in — all of them, or the
+       * rows a maintainer clicked.
+       */
+      const formatLines = (results) => [HEADER_LINE, ...results.map(formatLine)].join('\n')
+
       const wire = () => {
         const fileInput = document.getElementById('file')
         const keyInput = document.getElementById('key')
         const dropZone = document.getElementById('drop')
+        const dropPrompt = dropZone.querySelector('.prompt')
+        const dropAccepted = dropZone.querySelector('.accepted')
+        const dropFilename = dropZone.querySelector('.filename')
         const statusLine = document.getElementById('status')
+        const controls = document.getElementById('controls')
+        const copyAllBtn = document.getElementById('copy-all')
+        const copySelectedBtn = document.getElementById('copy-selected')
+        const copyStatus = document.getElementById('copy-status')
         const table = document.getElementById('rows')
         const body = table.querySelector('tbody')
 
         let text = null
+        /** The decoded results currently drawn, in draw order. Cleared on each render. */
+        let currentResults = []
+        /** Indices of selected rows within `currentResults`. */
+        const selected = new Set()
+        /** The anchor a Shift-click extends from. `-1` until the first click. */
+        let anchor = -1
+        let statusTimer = 0
 
         const cell = (row, className, value) => {
           const element = document.createElement('td')
@@ -294,10 +419,102 @@
           row.append(element)
         }
 
+        /**
+         * Writes text to the clipboard, falling back to a hidden textarea when the
+         * async Clipboard API is unavailable. The page is served from a static
+         * host and opened from `file://`, neither of which every browser treats
+         * as the secure context the async API requires, so the fallback is the
+         * path some maintainers actually take.
+         */
+        const copyText = async (value) => {
+          if (navigator.clipboard?.writeText) {
+            try {
+              await navigator.clipboard.writeText(value)
+              return true
+            } catch {
+              // Fall through to the textarea path — a `file://` origin or a
+              // permission refusal both land here, and neither is fatal.
+            }
+          }
+          const area = document.createElement('textarea')
+          area.value = value
+          area.setAttribute('readonly', '')
+          area.style.position = 'fixed'
+          area.style.left = '-9999px'
+          document.body.append(area)
+          area.select()
+          let ok = false
+          try {
+            ok = document.execCommand('copy')
+          } catch {
+            ok = false
+          }
+          area.remove()
+          return ok
+        }
+
+        /** Flashes a one-line result of a copy, clearing itself after a beat. */
+        const flash = (ok, count) => {
+          copyStatus.classList.toggle('ok', ok)
+          copyStatus.classList.toggle('bad', !ok)
+          copyStatus.textContent = ok
+            ? `Copied ${count} ${count === 1 ? 'row' : 'rows'}.`
+            : 'Copy failed — select the rows and press ⌘C.'
+          window.clearTimeout(statusTimer)
+          statusTimer = window.setTimeout(() => {
+            copyStatus.textContent = ''
+            copyStatus.className = ''
+          }, 2500)
+        }
+
+        const syncSelection = () => {
+          for (const row of body.querySelectorAll('tr')) {
+            const index = Number(row.dataset.index)
+            row.classList.toggle('selected', selected.has(index))
+          }
+          const count = selected.size
+          copySelectedBtn.disabled = count === 0
+          copySelectedBtn.textContent = count === 0 ? 'Copy selected' : `Copy selected (${count})`
+        }
+
+        /** One click on a row: toggle, or — with Shift held — fill a range. */
+        const onRowActivate = (index, shiftKey) => {
+          if (shiftKey && anchor >= 0) {
+            const from = Math.min(anchor, index)
+            const to = Math.max(anchor, index)
+            for (let i = from; i <= to; i += 1) selected.add(i)
+          } else if (selected.has(index)) {
+            selected.delete(index)
+          } else {
+            selected.add(index)
+          }
+          anchor = index
+          syncSelection()
+        }
+
+        const copyAll = async () => {
+          if (currentResults.length === 0) return
+          const ok = await copyText(formatLines(currentResults))
+          flash(ok, currentResults.length)
+        }
+
+        const copySelected = async () => {
+          if (selected.size === 0) return
+          const indices = [...selected].sort((a, b) => a - b)
+          const results = indices.map((index) => currentResults[index])
+          const ok = await copyText(formatLines(results))
+          flash(ok, results.length)
+        }
+
         const render = (results) => {
+          currentResults = results
+          selected.clear()
+          anchor = -1
           body.replaceChildren()
-          for (const result of results) {
+          results.forEach((result, index) => {
             const row = document.createElement('tr')
+            row.tabIndex = 0
+            row.dataset.index = String(index)
             if (result.ok) {
               const { time, tool, status, detail, durationMs } = result.row
               cell(row, 'time', time)
@@ -313,9 +530,18 @@
               cell(row, 'detail', 'This line could not be opened with this key.')
               cell(row, 'duration', '')
             }
+            row.addEventListener('click', (event) => onRowActivate(index, event.shiftKey))
+            row.addEventListener('keydown', (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                onRowActivate(index, event.shiftKey)
+              }
+            })
             body.append(row)
-          }
+          })
           table.hidden = results.length === 0
+          controls.hidden = results.length === 0
+          syncSelection()
         }
 
         const refresh = async () => {
@@ -326,6 +552,7 @@
           } catch (error) {
             statusLine.textContent = error.message
             table.hidden = true
+            controls.hidden = true
             return
           }
 
@@ -336,14 +563,35 @@
           render(results)
         }
 
+        /** Shows the accepted filename beside the drop zone and on the input. */
+        const showAccepted = (file) => {
+          if (file === undefined || file === null) {
+            dropZone.classList.remove('loaded')
+            dropPrompt.hidden = false
+            dropAccepted.hidden = true
+            return
+          }
+          dropFilename.textContent = file.name
+          dropPrompt.hidden = true
+          dropAccepted.hidden = false
+          dropZone.classList.add('loaded')
+        }
+
         const take = async (file) => {
           if (file === undefined || file === null) return
+          showAccepted(file)
           text = await file.text()
           await refresh()
         }
 
-        fileInput.addEventListener('change', () => void take(fileInput.files?.[0]))
+        fileInput.addEventListener('change', () => {
+          const file = fileInput.files?.[0]
+          if (file) showAccepted(file)
+          void take(file)
+        })
         keyInput.addEventListener('input', () => void refresh())
+        copyAllBtn.addEventListener('click', () => void copyAll())
+        copySelectedBtn.addEventListener('click', () => void copySelected())
 
         for (const name of ['dragenter', 'dragover']) {
           dropZone.addEventListener(name, (event) => {
@@ -356,8 +604,26 @@
         }
         dropZone.addEventListener('drop', (event) => {
           event.preventDefault()
-          void take(event.dataTransfer?.files?.[0])
+          const file = event.dataTransfer?.files?.[0]
+          if (file) {
+            // Link the dropped file to the input too. The drop zone and the input
+            // are separate elements, and without this the input keeps reading "no
+            // file chosen" after a successful drop — which is what made the drop
+            // look as though it had done nothing. `DataTransfer.files` is the one
+            // assignment a script is allowed to make to a read-only `input.files`.
+            const transfer = new DataTransfer()
+            transfer.items.add(file)
+            fileInput.files = transfer.files
+          }
+          void take(file)
         })
+
+        // A file dropped outside the zone navigates the tab to the file; guard
+        // the whole window so a miss is a no-op. The drop zone's own handlers
+        // above still process drops that land inside it.
+        for (const name of ['dragover', 'drop']) {
+          window.addEventListener(name, (event) => event.preventDefault())
+        }
       }
 
       // Guarded so the test can import this same script in a runtime with no
