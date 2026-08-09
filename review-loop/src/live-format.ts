@@ -6,8 +6,8 @@
 import path from 'node:path'
 
 const ELLIPSIS = '\u2026'
-const ARROW = '\u25B6'
-const CHECK = '\u2713'
+export const ARROW = '\u25B6'
+export const CHECK = '\u2713'
 export const MIDDLE_DOT = '\u00B7'
 const TIMES = '×'
 
@@ -75,20 +75,26 @@ export function formatToolArg(tool: string, input: unknown): string {
   }
 }
 
-export function formatLiveLine(label: string, tool: string, arg: string, elapsedMs: number, toolCount: number): string {
-  const toolPart = tool === '' ? 'thinking' : arg === '' ? tool : `${tool} ${arg}`
-  const tools = `${toolCount} tool${toolCount === 1 ? '' : 's'}`
-  return `  ${label.padEnd(10)} ${ARROW} ${toolPart} ${MIDDLE_DOT} ${formatDuration(elapsedMs)} ${MIDDLE_DOT} ${tools}`
+export interface LiveUsage {
+  input: number
+  output: number
 }
 
-export function formatStepFooter(
+export function formatLiveLine(
   label: string,
+  tool: string,
+  arg: string,
   elapsedMs: number,
   toolCount: number,
-  tokens: { input: number; output: number },
+  usage: LiveUsage,
+  done = false,
 ): string {
+  const marker = done ? CHECK : ARROW
+  const toolPart = tool === '' ? 'thinking' : arg === '' ? tool : `${tool} ${arg}`
   const tools = `${toolCount} tool${toolCount === 1 ? '' : 's'}`
-  return `  ${label} ${CHECK} ${formatDuration(elapsedMs)} ${MIDDLE_DOT} ${tools} ${MIDDLE_DOT} in ${tokens.input} / out ${tokens.output}`
+  const head = `  ${label.padEnd(10)} ${marker} ${toolPart} ${MIDDLE_DOT} ${formatDuration(elapsedMs)} ${MIDDLE_DOT} ${tools}`
+  if (usage.input === 0 && usage.output === 0) return head
+  return `${head} ${MIDDLE_DOT} in ${formatTokenCount(usage.input)} / out ${formatTokenCount(usage.output)}`
 }
 
 export function formatTokenCount(n: number): string {

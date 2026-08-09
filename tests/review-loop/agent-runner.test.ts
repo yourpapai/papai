@@ -441,7 +441,7 @@ describe('agent-runner', () => {
     const liveOutput = live.map((batch) => batch.join('\n')).join('\n')
     expect(liveOutput).toContain('reviewer')
     expect(liveOutput).toContain('read')
-    expect(events.some((e) => e.includes('in 100 / out 5'))).toBe(true)
+    expect(liveOutput).toContain('in 100 / out 5')
     expect(readFileSync(logPath, 'utf8')).toContain('step_start')
   })
 })
