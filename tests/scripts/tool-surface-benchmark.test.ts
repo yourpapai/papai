@@ -71,7 +71,7 @@ describe('tool-surface benchmark runner', () => {
         '--models',
         'model-a,model-b',
         '--output',
-        'docs/superpowers/plans/tool-surface-benchmark-results.md',
+        'docs/research/tool-surface-benchmark-results.md',
         '--repetitions',
         '3',
       ])
@@ -80,9 +80,15 @@ describe('tool-surface benchmark runner', () => {
         baseUrl: 'https://llm.example/v1',
         apiKeyEnv: 'TEST_KEY',
         models: ['model-a', 'model-b'],
-        outputPath: 'docs/superpowers/plans/tool-surface-benchmark-results.md',
+        outputPath: 'docs/research/tool-surface-benchmark-results.md',
         repetitions: 3,
       })
+    })
+  })
+
+  it('defaults the output path to docs/research/', () => {
+    return loadModule().then(({ parseBenchmarkArgs }) => {
+      expect(parseBenchmarkArgs([]).outputPath).toBe('docs/research/tool-surface-benchmark-results.md')
     })
   })
 

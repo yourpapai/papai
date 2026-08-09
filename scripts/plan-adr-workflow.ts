@@ -4,12 +4,21 @@
 // See LICENSE in the project root for details.
 
 /**
- * plan-adr-workflow.ts
+ * plan-adr-workflow.ts  —  LEGACY-ONLY TOOLING
+ *
+ * This script processes the frozen docs/superpowers/ corpus only. Its input
+ * set (docs/superpowers/plans/) never grows: the tree is frozen and new work
+ * is planned through OpenSpec changes under openspec/changes/. For new work,
+ * `openspec archive` handles change/spec bookkeeping, and ADRs (when wanted)
+ * are written manually via the architecture-decision-records skill against
+ * the change's artifacts. Keep this script only to process the residual
+ * legacy corpus; do not point it at openspec/changes/.
  *
  * Walks through docs/superpowers/plans/, checks each plan's implementation
  * status via opencode, writes ADR documents for completed, superseded, or
  * low-value remaining-work plans using the architecture-decision-records skill,
- * and archives both the plan and its spec file.
+ * and archives both the plan and its spec file. Its remaining/ brief outputs
+ * are an explicit carve-out in the docs/superpowers/ freeze rule.
  *
  * Prerequisites:
  *   - opencode installed and in PATH

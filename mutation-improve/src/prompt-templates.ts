@@ -95,12 +95,17 @@ export function buildFixPrompt(input: {
     '',
     'HARD CONSTRAINTS (unchanged; the runner verifies these and REJECTS the iteration if violated):',
     '- MUST NOT edit anything under src/, client/, plugins/, or scripts/.',
-    '- Create or modify files ONLY under tests/ and docs/superpowers/, plus the one result JSON',
+    '- Create or modify files ONLY under tests/ and openspec/changes/, plus the one result JSON',
     '  below - do not create copies of it anywhere else.',
     '',
     `When done, REWRITE your result JSON to this ABSOLUTE path: ${input.outputPath}`,
     RESULT_SCHEMA_LINE,
   ].join('\n')
+}
+
+const improveChangePaths = (input: { file: string; date: string }): { specPath: string; planPath: string } => {
+  const changeDir = `openspec/changes/mutation-coverage-${input.date}-${stemFrom(input.file)}`
+  return { specPath: `${changeDir}/design.md`, planPath: `${changeDir}/tasks.md` }
 }
 
 export function buildImprovePrompt(input: {
@@ -110,9 +115,7 @@ export function buildImprovePrompt(input: {
   date: string
   outputPath: string
 }): string {
-  const stem = stemFrom(input.file)
-  const specPath = `docs/superpowers/specs/${input.date}-mutation-coverage-${stem}-design.md`
-  const planPath = `docs/superpowers/plans/${input.date}-mutation-coverage-${stem}.md`
+  const { specPath, planPath } = improveChangePaths(input)
   return [
     `You are the IMPROVE phase of an autonomous mutation-coverage improvement runner.`,
     `Target file: ${input.file} (current mutation score: ${input.beforeScore}; target: >= ${input.threshold})`,
@@ -146,7 +149,7 @@ export function buildImprovePrompt(input: {
     'HARD CONSTRAINTS (the runner verifies these and REJECTS the iteration if violated):',
     '- MUST NOT edit anything under src/, client/, plugins/, or scripts/. Test-only.',
     '- MUST NOT edit scripts/mutation/baseline.json (the runner owns it).',
-    '- Create or modify files ONLY under tests/ and docs/superpowers/, plus the one result JSON',
+    '- Create or modify files ONLY under tests/ and openspec/changes/, plus the one result JSON',
     '  above - do not create copies of it anywhere else. Any other new or changed file,',
     '  including under review-loop/ or mutation-improve/, fails the diff gate.',
     '- Run `bun test tests/<companion>` green before finishing.',

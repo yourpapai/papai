@@ -311,6 +311,107 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0306](0306-f4-http-story-family.md) | F4 HTTP-Surfaces Story Family — Behavioral Coverage for the Auth-Claim Exchange, Dashboard/Admin, Stats, Notify-Bearer, and Transcript-Proxy HTTP Domains | 2026-07-20 | Implemented (with divergence) |  |
 | [0307](0307-f5-scheduling-story-family.md) | F5 Scheduling Story Family — Behavioral Coverage for Recurring Tasks, Deferred Scheduled Prompts, and Condition-Driven Alerts | 2026-07-21 | Implemented (with divergence) |  |
 | [0308](0308-analytics-governance-and-delivery-lanes.md) | Analytics Governance and Delivery Lanes | 2026-07-24 | Accepted | - |
+| [0310](0310-archive-preprocessing-classifier-plan.md) | Archive the Pre-processing Classifier Plan — Do Not Implement as Written | 2026-08-07 | Accepted (plan archived) | - |
+| [0313](0313-archive-user-profile-memory-plan.md) | Archive the User Profile Memory Plan — Defer Phase A of Per-User Profile Memory | 2026-08-07 | Accepted (plan archived) | - |
+| [0314](0314-archive-phase-09-event-driven-suggestions-plan.md) | Archive the Phase 9 Event-Driven Suggestions Plan — Do Not Implement as Written | 2026-08-07 | Accepted (plan archived) | - |
+| [0315](0315-archive-test-improvement-roadmap-plan.md) | Archive the Test Improvement Roadmap Plan — Substantially Implemented, Remainder Not Worth Chasing | 2026-08-07 | Accepted (plan archived) | - |
+| [0316](0316-archive-db-foreign-keys-orphan-prevention-plan.md) | Archive the DB Foreign Keys & Orphan Prevention Plan — Keep the Narrowed Recurring-Table Cascade Scope | 2026-08-07 | Accepted (plan archived) | - |
+| [0317](0317-audio-message-transcription-stt-module.md) | Audio Message Transcription via a Sibling `src/stt/` Module with Whisper-Compatible Client | 2026-08-07 | Accepted | - |
+| [0318](0318-archive-calendar-sync-plan.md) | Archive the Calendar Sync Implementation Plan — Do Not Implement the CalDAV Sync Feature as Planned | 2026-08-07 | Accepted (plan archived) | - |
+| [0319](0319-hermetic-story-hardening-phase-1.md) | Hermetic Story Hardening Phase 1 — Immutable Runtime Inputs and Deny-by-Default Reads | 2026-07-13 | Accepted | - |
+| [0320](0320-f7-mcp-story-family.md) | F7 MCP Story Family — Behavioral Coverage for Both MCP Directions (papai-as-Client Tool Round-Trip and the Hosted Plugin-MCP Route) | 2026-07-22 | Accepted | - |
+| [0321](0321-alert-polling-optimization.md) | Alert Polling Optimization — Change Gate, Edge-Triggered Firing, and Batched Per-Context Dispatch | 2026-08-07 | Accepted | - |
+| [0322](0322-context-tools-clarity-conditional-payload-guidance.md) | Context-Tools Clarity — Conditional Failure-Case Payload Guidance Instead of System-Prompt Tokens | 2026-08-07 | Accepted | - |
+| [0323](0323-f8-interaction-story-family.md) | F8 Interaction Story Family — Promote the Permission-Decision Scenario to Executable, Park the Wire-Level Scenarios, and Close the Coverage-Expansion Program | 2026-07-23 | Implemented | - |
+| [0324](0324-tier-aware-scenario-catalog-ledger.md) | Tier-Aware Scenario Catalog Ledger — Machine-Checked Proving Tiers on Every Catalog Record | 2026-07-23 | Implemented | - |
+| [0325](0325-tier1-provider-real-parity-lane.md) | Tier 1 Provider-Real Parity Lane — One Shared Expectation Module Proven Against Fake and Real Kaneo | 2026-07-23 | Implemented | - |
+| [0326](0326-content-free-analytics-pipeline-staged-rollout.md) | Content-Free Analytics Pipeline — Fail-Closed Normalization, Closed Aggregates, and Evidence-Gated Staged Rollout | 2026-07-24 | Implemented | - |
+| [0327](0327-ci-line-coverage-floor-custom-aggregate-gate.md) | CI Line-Coverage Floor — Custom Aggregate Gate over a JSON Floor File, Enforced by coverage:ratchet in scripts/check.sh | 2026-07-24 | Implemented | - |
+| [0328](0328-stryker-drop-typescript-checker-ts7-unblock.md) | Drop the TS7-Incompatible @stryker-mutator/typescript-checker — Bun Runner Becomes the Sole Mutant-Killer | 2026-07-24 | Implemented | `be0f7c520` |
+| [0329](0329-t0-story-runner-line-coverage.md) | T0 Story-Runner Line Coverage — Opt-In --coverage Collection with SF-Normalized Lcov and a Ratcheting JSON Floor Gate | 2026-07-24 | Implemented | - |
+| [0330](0330-tier1b-e2e-parity-retrofit.md) | Tier 1b E2E Parity Retrofit — Fold the Kaneo-Only Domain Suites into the Shared Parity Lane and Retire the Duplicates | 2026-07-24 | Implemented | - |
+| [0331](0331-tier1b-domain-suite-triage-adjudication.md) | Tier 1b Domain-Suite Triage — Authoritative CORE/NEW/EXCLUDE/RESIDUE/META Classification and Controller Adjudication for the Parity Retrofit | 2026-07-24 | Implemented | - |
+| [0332](0332-tier2-process-real-smoke-lane.md) | Tier 2 Process-Real Smoke Lane — Dockerized Artifact Boot with Host Fakes, Eight `@2` Catalog Records | 2026-07-24 | Implemented | - |
+| [0333](0333-client-bundle-build-in-measurement-path.md) | Client-Bundle Build Guard in the Measurement Path — Presence-Checked `ensure-client-built` Invoked by `check.sh` and `test:coverage` | 2026-07-25 | Implemented | - |
+| [0334](0334-plugin-test-quality-behavior-only-mutation-survivors.md) | Plugin Test-Quality Improvement — Behavior-Only Mutation Survivor Killing via Indirect Boundary Tests and Paired-Runner Overrides | 2026-07-25 | Implemented | - |
+| [0335](0335-tier3-platform-adapter-lane.md) | Tier 3 Platform-Adapter Lane — Real Mattermost Adapter Paths In-Container Against Host Fakes, Nightly-Only | 2026-07-25 | Implemented | - |
+| [0336](0336-update-status-test-quality-schema-acceptance.md) | Update-Status Test-Quality Improvement — Schema-Refine Acceptance Tests as the Behavior-Only Precedent | 2026-07-25 | Implemented | - |
+| [0339](0339-chat-history-search-phase-2-semantic-embeddings.md) | Chat History Search Phase 2 — Semantic Embedding Search via Side Table, In-Memory Cosine, and Sweep-Only Write Path | 2026-08-06 | Implemented (with divergence) | - |
+| [0340](0340-message-edit-handling.md) | Message Edit Handling — Window-Dependent Policy over a Distinct `onMessageEdit` Channel | 2026-08-08 | Implemented | - |
+| [0341](0341-analytics-stage-b-readiness-fail-closed-gates-and-evidence-cli.md) | Analytics Stage B Readiness — Fail-Closed Delivery Gates and Evidence Report CLI | 2026-08-08 | Accepted | - |
+| [0342](0342-mutation-gate-pure-regression-ratchet.md) | Mutation Gate Becomes a Pure Regression Ratchet — Drop the 0.5 Floor, First-Touch Warn-and-Seed, Coverage-Derived Test Sets | 2026-07-28 | Implemented | - |
+| [0343](0343-message-edit-analytics-standalone-friction-companions.md) | Message-Edit Analytics — Standalone C0 Friction Companions over Turn/Semantics Coupling | 2026-08-08 | Implemented | - |
+| [0344](0344-control-height-token-scale-and-wcag-floor-ratchet.md) | Control-Height Token Scale with Test-Enforced WCAG Floor and Closed-World Ratchet | 2026-08-08 | Implemented | - |
+| [0345](0345-settings-field-error-channel.md) | Settings Field Error Channel — Server-Attributed 422s Routed Inline Under the Offending Field | 2026-07-31 | Implemented | - |
+| [0348](0348-debug-dashboard-ux-remediation.md) | Debug Dashboard UX Remediation — Shared-Primitive-First Phases, Interaction State off `selectedDetail`, Screenshot-Verified Visual Work | 2026-08-08 | Accepted (verified implemented) | - |
+| [0349](0349-rename-deferred-prompt-tool-surface-to-reminders-alerts.md) | Rename the Deferred-Prompt Tool Surface to Reminders & Alerts — Split Create Tool, Plain-Words Vocabulary, Legacy `tool_prefs` Alias | 2026-08-01 | Accepted | - |
+| [0350](0350-repositories-section-clarity.md) | Repositories Section Clarity — Shared Primitives, Confirmed Delete, and Token-Based Spacing in ReposSection | 2026-08-01 | Accepted | - |
+| [0351](0351-review-loop-verdict-first-report-and-issue-events.md) | Review-Loop Verdict-First Report and Structured Issue Events — Pure Format Module, Optional Reporter Seam, Ledger-Driven Summary | 2026-08-01 | Accepted | - |
+| [0352](0352-shared-primitive-accessibility.md) | Shared Primitive Accessibility — Extended Field Context, ARIA Required State, Heading Outline, and Input Disabled | 2026-08-01 | Accepted | - |
+| [0353](0353-two-pass-user-friendly-release-notes.md) | Two-Pass Humanization for User-Friendly Release Notes — Structured Classify Pass, Benefit-Framed Write Pass, Empty-Release Note | 2026-08-01 | Accepted | - |
+| [0354](0354-history-mutation-coverage.md) | History Mutation Coverage — Glob-Negation Sandbox Fix, Log-Contract Tests via Cache-Busted Module Reloads, Baseline Ratchet to 1.0 | 2026-08-02 | Accepted | - |
+| [0356](0356-dim-text-token-contrast-remediation.md) | Dim Text Token Contrast Remediation — Token-Level Retune, Alias Consolidation, Test-Enforced WCAG 4.5:1 Gate | 2026-08-02 | Accepted | - |
+| [0357](0357-token-vocabulary-retirement-and-license-header-repair.md) | Retire Legacy Design-Token Vocabulary and Repair License-Header Stamping | 2026-08-02 | Accepted | - |
+| [0358](0358-analytics-durationms-rounding-at-emission-and-subscriber.md) | Round Analytics `durationMs` at Emission and at the Subscriber Schema Boundary | 2026-08-02 | Accepted | - |
+| [0359](0359-ux-findings-backlog-stable-ids-generated-rollup.md) | UX Findings Backlog with Stable Ids and a Test-Gated Generated Roll-Up | 2026-08-08 | Accepted | - |
+| [0361](0361-create-recurring-task-mutation-coverage.md) | Create-Recurring-Task Mutation Coverage — Test-Only Kills via DI Injection and Schema-Direct Assertions | 2026-08-03 | Accepted | - |
+| [0362](0362-toolssection-ux-open-findings-fixes.md) | ToolsSection UX Open-Findings Fixes — Outline Preset State, Busy Confirm Bars, and an Additive `Btn.ariaPressed` | 2026-08-08 | Accepted | - |
+| [0363](0363-deferred-tool-handlers-mutation-coverage.md) | Deferred-Tool-Handlers Mutation Coverage — Test-Only Kills via Tracked Logger and Cache-Busted Re-Import | 2026-08-08 | Accepted | - |
+| [0364](0364-knip-facade-import-triage-over-ignore-suppression.md) | Replace knip Facade ignoreIssues with Codemod-Driven Import-Structure Triage | 2026-08-08 | Accepted | - |
+| [0365](0365-tool-status-labels-mutation-coverage.md) | Tool-Status-Labels Mutation Coverage — Test-Only Characterization via Exact-Equality Assertions and a Table-Driven Registry Pin | 2026-08-04 | Accepted | - |
+| [0366](0366-provider-pair-open-findings-fixes.md) | Provider-Pair Open-Findings Fixes — Server-Guaranteed Labels and No Silent Preselection | 2026-08-08 | Accepted | - |
+| [0367](0367-repossection-ux-close-out.md) | ReposSection UX Close-Out — Origin-Routed Feedback, Timer-as-Prop, and a Zero-Pixel Heading Promotion | 2026-08-08 | Accepted | - |
+| [0368](0368-search-memos-mutation-coverage.md) | Search-Memos Mutation Coverage — Companion Harness via Embeddings Module Mock and Cache-Busted Reload, Two Accepted Residual Mutants | 2026-08-04 | Accepted | - |
+| [0369](0369-shared-primitives-and-task-provider-close-out.md) | Shared Primitives and TaskProviderSection Close-Out — Secret Empty-String Guard, SegmentedControl Busy Caption, Call-Site Inset | 2026-08-08 | Accepted | - |
+| [0370](0370-shared-settings-css-central-fixes.md) | Shared settings.css Central Fixes — Token Status Margins, Placeholder Measure Cap, and Subgrid Form Layout | 2026-08-08 | Accepted | - |
+| [0371](0371-toolssection-ux-close-out.md) | ToolsSection UX Close-Out — Leaf-Control In-Flight Gating, One Confirmation Surface, Decorative Checkmark, Token Spacing, Outline Clear Trigger | 2026-08-08 | Accepted | - |
+| [0373](0373-youtrack-custom-field-values-mutation-coverage.md) | YouTrack Custom-Field-Values Mutation Coverage — Pure Unit-Test Companion File via Public Export, Five Accepted Residual Mutants | 2026-08-04 | Accepted | - |
+| [0374](0374-youtrack-validate-config-mutation-coverage.md) | YouTrack Validate-Config Mutation Coverage — Seven-Case Companion File Mirroring the Kaneo Twin, Zero Survivors | 2026-08-04 | Accepted | - |
+| [0375](0375-mutation-improve-hardening.md) | Mutation-Improve Hardening — Typed Error over Message Regex, NaN-Threshold Guard, and a Cross-Workspace Contract Guard | 2026-08-05 | Implemented | - |
+| [0376](0376-mutation-improve-runner.md) | Mutation-Improve Runner — Autonomous Single-Agent Mutation-Score Pipeline with Runner-Owned Measurement | 2026-08-05 | Implemented | - |
+| [0377](0377-pluginssection-ux-close-out.md) | PluginsSection UX Close-Out — PluginCard Extraction, Server-Returned Config Values, Per-Card Feedback, and Describedby over aria-pressed | 2026-08-08 | Accepted | - |
+| [0378](0378-ux-open-findings-fixes-close-out.md) | UX Open-Findings Fixes Close-Out (SP5) — Opt-in Shared Props, One-Way Hide, Hint Helper, Token Substitution, and One wont-fix | 2026-08-08 | Accepted | - |
+| [0379](0379-mutation-improve-runner-fixes.md) | Mutation-Improve Runner Gate & Finalize Fixes — Trust-Boundary Hardening of the Autonomous Pipeline | 2026-08-06 | Implemented | - |
+| [0380](0380-defer-chat-provider-as-plugin.md) | Defer chat-provider-as-plugin until the core/plugin-separation refactor lands | 2026-08-09 | Deferred | - |
+| [0381](0381-retire-llm-rate-limiting-and-plans.md) | Retire llm-rate-limiting-and-plans — archive the draft, restart fresh later | 2026-08-09 | Retired | - |
+| [0383](0383-mutation-coverage-src-byok-llm-blob-codec-ts.md) | Mutation Coverage for `src/byok-llm/blob-codec.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0384](0384-mutation-coverage-src-analytics-intent-classifier-ts.md) | Mutation Coverage for `src/analytics/intent/classifier.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0385](0385-mutation-coverage-plugins-task-provider-youtrack-classify-error-ts.md) | Mutation Coverage for `plugins/task-provider-youtrack/classify-error.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0386](0386-mutation-coverage-plugins-task-provider-youtrack-due-date-ts.md) | Mutation Coverage for `plugins/task-provider-youtrack/due-date.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0387](0387-mutation-coverage-src-errors-ts.md) | Mutation Coverage for `src/errors.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0388](0388-mutation-coverage-review-loop-src-live-format-ts.md) | Mutation Coverage for `review-loop/src/live-format.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0389](0389-mutation-coverage-plugins-task-provider-youtrack-query-builder-ts.md) | Mutation Coverage for `plugins/task-provider-youtrack/query-builder.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0390](0390-mutation-coverage-src-recurrence-ts.md) | Mutation Coverage for `src/recurrence.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0391](0391-mutation-coverage-plugins-task-provider-youtrack-create-field-helpers-ts.md) | Mutation Coverage for `plugins/task-provider-youtrack/create-field-helpers.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0392](0392-mutation-coverage-plugins-task-provider-youtrack-dedicated-fields-ts.md) | Mutation Coverage for `plugins/task-provider-youtrack/dedicated-fields.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0393](0393-mutation-coverage-plugins-task-provider-youtrack-field-engine-ts.md) | Mutation Coverage for `plugins/task-provider-youtrack/field-engine.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0394](0394-mutation-coverage-src-announcements-humanize-ts.md) | Mutation Coverage for `src/announcements/humanize.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0395](0395-mutation-coverage-plugins-task-provider-kaneo-list-tasks-query-ts.md) | Mutation Coverage for `plugins/task-provider-kaneo/list-tasks-query.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0396](0396-mutation-coverage-plugins-task-provider-kaneo-mappers-ts.md) | Mutation Coverage for `plugins/task-provider-kaneo/mappers.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0397](0397-mutation-coverage-src-tools-permission-gate-ts.md) | Mutation Coverage for `src/tools/permission-gate.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0398](0398-mutation-coverage-src-utils-scheduler-events-ts.md) | Mutation Coverage for `src/utils/scheduler.events.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0399](0399-mutation-coverage-src-utils-scheduler-helpers-ts.md) | Mutation Coverage for `src/utils/scheduler.helpers.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0400](0400-mutation-coverage-plugins-task-provider-kaneo-search-tasks-ts.md) | Mutation Coverage for `plugins/task-provider-kaneo/search-tasks.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0401](0401-mutation-coverage-review-loop-src-summary-burndown-ts.md) | Mutation Coverage for `review-loop/src/summary-burndown.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0402](0402-mutation-coverage-review-loop-src-summary-ts.md) | Mutation Coverage for `review-loop/src/summary.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0403](0403-mutation-coverage-plugins-task-provider-kaneo-task-status-ts.md) | Mutation Coverage for `plugins/task-provider-kaneo/task-status.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0404](0404-mutation-coverage-src-providers-config-validation-ts.md) | Mutation Coverage for `src/providers/config-validation.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0405](0405-mutation-coverage-client-shared-helpers-ts.md) | Mutation Coverage for `client/shared/helpers.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0406](0406-mutation-coverage-src-recurring-utils-ts.md) | Mutation Coverage for `src/recurring-utils.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0407](0407-mutation-coverage-src-reply-context-ts.md) | Mutation Coverage for `src/reply-context.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0408](0408-mutation-coverage-src-tools-tool-metadata-ts.md) | Mutation Coverage for `src/tools/tool-metadata.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0409](0409-mutation-coverage-plugins-task-provider-youtrack-helpers-ts.md) | Mutation Coverage for `plugins/task-provider-youtrack/helpers.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0410](0410-mutation-coverage-plugins-task-provider-youtrack-mappers-ts.md) | Mutation Coverage for `plugins/task-provider-youtrack/mappers.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0411](0411-ux-adminapp-findings.md) | AdminApp UX Open-Findings — Closed (Shipped) | 2026-08-09 | Accepted | - |
+| [0412](0412-ux-settingsapp-shell-findings.md) | SettingsApp Shell UX Open-Findings — Closed (Shipped) | 2026-08-09 | Accepted | - |
+| [0413](0413-ux-transcript-open-findings.md) | TranscriptApp Open-Findings — Closed (Shipped) | 2026-08-09 | Accepted | - |
+| [0414](0414-ux-transcript-ux-findings.md) | TranscriptApp UX Findings — Closed (Shipped) | 2026-08-09 | Accepted | - |
+| [0415](0415-ux-admin-instances-open-findings.md) | AdminInstancesSection UX Open-Findings — Closed (Shipped) | 2026-08-09 | Accepted | - |
+| [0416](0416-ux-admin-users-open-findings.md) | AdminUsersSection UX Open-Findings — Closed (Shipped) | 2026-08-09 | Accepted | - |
+| [0417](0417-ux-coding-mcp-open-findings.md) | CodingMcpSection UX Open-Findings — Closed (Shipped) | 2026-08-09 | Accepted | - |
+| [0418](0418-progress-stats-renderer.md) | Review-Loop Progress & Stats Renderer — Shipped | 2026-08-09 | Accepted | - |
+| [0419](0419-opencode-agent-check-loop.md) | opencode-agent Check-Loop — Shipped | 2026-08-09 | Accepted | - |
+| [0420](0420-master-openspec-rollout-strangler.md) | Roll out the OpenSpec migration to master via strangler drain-on-arrival | 2026-08-10 | Accepted | - |
 
 ## ADR Status Legend
 
@@ -318,6 +419,8 @@ ADRs capture the context, options considered, and rationale behind significant a
 - **Implemented (with divergence)** — Implemented but with notable deviations from the original plan
 - **Partially Implemented** — Some planned items present; others not implemented or replaced
 - **Not Implemented** — Plan was written but not executed
+- **Deferred** — Decision postponed; revisit trigger recorded in the ADR
+- **Retired** — Decision to stop pursuing; draft archived as historical record, fresh work starts later
 
 ## Creating a New ADR
 

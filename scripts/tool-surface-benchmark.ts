@@ -58,7 +58,7 @@ type ScenarioContext = Readonly<{
 const DEFAULT_BASE_URL = 'https://api.synthetic.new/openai/v1'
 const DEFAULT_API_KEY_ENV = 'TOOL_SURFACE_BENCHMARK_API_KEY'
 const DEFAULT_MODEL = 'hf:moonshotai/Kimi-K2.6'
-const DEFAULT_OUTPUT_PATH = 'docs/superpowers/plans/tool-surface-benchmark-results.md'
+const DEFAULT_OUTPUT_PATH = 'docs/research/tool-surface-benchmark-results.md'
 const MAX_ATTEMPTS = 3
 
 const present = (value: string | undefined): value is string => value !== undefined && value.length > 0
