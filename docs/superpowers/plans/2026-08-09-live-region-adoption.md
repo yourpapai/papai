@@ -20,7 +20,8 @@ See LICENSE in the project root for details.
 ## Global Constraints
 
 - `oxc/no-optional-chaining` is an **error** in `client/` and `src/`. Never write `?.` in these trees. The `{@render head?.()}` snippet-call idiom is pre-existing and exempt; do not copy it into new expressions.
-- `vitest(no-conditional-in-test)` is an **error**. No `if`, no ternary, no `&&` short-circuit inside a `test()` body. Hoist any conditional into a module-scope helper, following the existing `routePutPending` / `routeRefresh` convention in `tests/client/settings/sections/AnalyticsPreferencesSection.test.ts`.
+- `vitest(no-conditional-in-test)` is an **error**. No `if`, no ternary, no `&&` short-circuit, and **no `??`** inside a `test()` body — the rule counts every logical expression. Hoist any conditional into a module-scope helper, following the existing `routePutPending` / `routeRefresh` convention in `tests/client/settings/sections/AnalyticsPreferencesSection.test.ts`. Note that `textContent` is non-nullable under this repo's TS config, so `n.textContent` needs no `?? ''` and no `!` (precedent: `rowError` at `tests/client/settings/sections/CodingMcpSection.test.ts:54`).
+- `no-unused-vars` is an **error**. Never add a helper a task does not reference.
 - `explicit-function-return-type` is enforced. Every function, including arrow functions and test helpers, declares its return type.
 - Never add a lint-disable or type-ignore comment. A hook blocks them. Fix the underlying issue.
 - A `max-lines` or `max-lines-per-function` failure is a design signal: split the file or extract functions. Never delete blank lines or compress formatting to get under the limit.
@@ -390,7 +391,7 @@ with:
 
 ```ts
     const errorTexts = [...target.querySelectorAll('.ui-field__error')]
-      .map((n) => n.textContent ?? '')
+      .map((n) => n.textContent)
       .filter((t) => t !== '')
     expect(errorTexts.length).toBe(1)
     expect(errorTexts[0]).toContain('Add a group member')
@@ -424,14 +425,9 @@ with:
     expect([...target.querySelectorAll('.ui-field__error')].every((n) => n.textContent === '')).toBe(true)
 ```
 
-Then add this module-scope helper near `rowError` (around `:54`) and leave `rowError` itself unchanged:
-
-```ts
-// The error regions are always mounted now, so "no error" means every region is empty
-// rather than absent.
-const errorTexts = (target: HTMLElement): string[] =>
-  [...target.querySelectorAll('.ui-field__error')].map((n) => n.textContent ?? '').filter((t) => t !== '')
-```
+Leave `rowError` (around `:54`) unchanged. Do not add a shared `errorTexts` helper to this file —
+the two replacements above are self-contained, and an unreferenced module-scope helper fails
+`no-unused-vars`.
 
 - [ ] **Step 10: Migrate `AdminInstancesSection.test.ts`**
 
@@ -446,7 +442,7 @@ with:
 ```ts
     // Every field now carries an always-mounted region; an empty one means "no error here".
     const errors = [...target.querySelectorAll('.ui-field__error')]
-      .map((n) => n.textContent ?? '')
+      .map((n) => n.textContent)
       .filter((t) => t !== '')
 ```
 
@@ -1002,7 +998,8 @@ git commit -m "fix(admin): AdminUsersSection mounts its live regions before thei
 Closes UX finding `coding-mcp-live-region-mounts-with-text`.
 
 **Interfaces:**
-- Consumes: `LiveRegion` from Task 1; the `errorTexts` helper added to this test file in Task 2 Step 8.
+- Consumes: `LiveRegion` from Task 1. This test file has no shared `errorTexts` helper — Task 2
+  migrated its two affected assertions inline. Collect non-empty error text inline where needed.
 - Produces: nothing later tasks depend on, other than that Task 7's allowlist must not list this file.
 
 - [ ] **Step 1: Write the failing tests**
