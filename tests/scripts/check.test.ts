@@ -530,14 +530,24 @@ describe('check.sh full mode', () => {
     }
   })
 
-  test('a failing test check points at the query command, not a re-run', () => {
+  // The test lane runs a different command in each mode — the wrapper locally, the
+  // coverage lane under CI — so the argv that makes it fail differs too. The pointer
+  // is keyed on the check *name*, so it must not: asserting it in both modes is what
+  // keeps it from being accidentally coupled to whichever command the lane happens to
+  // run. Pinning CI explicitly also stops the ambient value deciding the outcome,
+  // which is what made this pass locally and fail in CI.
+  test.each([
+    ['outside CI', '', 'run test'],
+    ['under CI', 'true', 'test --coverage'],
+  ])('a failing test check points at the query command %s, not a re-run', (_label, ci, failMatch) => {
     const { repoDir, binDir, logFile } = createTempRepo()
 
     try {
       const env = createEnv({
         PATH: `${binDir}:${basePath}`,
         CHECK_LOG_FILE: logFile,
-        CHECK_FAIL_MATCH: 'run test',
+        CI: ci,
+        CHECK_FAIL_MATCH: failMatch,
       })
       const result = runCommand(repoDir, ['bash', 'scripts/check.sh'], env)
 
@@ -574,9 +584,12 @@ describe('check.sh full mode', () => {
     const { repoDir, binDir, logFile } = createTempRepo()
 
     try {
+      // `CI: ''` because this asserts the wrapper lane, which only runs outside CI —
+      // inheriting the ambient value made the assertion depend on where it ran.
       const env = createEnv({
         PATH: `${binDir}:${basePath}`,
         CHECK_LOG_FILE: logFile,
+        CI: '',
       })
       const result = runCommand(repoDir, ['bash', 'scripts/check.sh'], env)
 
