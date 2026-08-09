@@ -19,6 +19,7 @@ import type { ProviderProxy } from './provider-proxy.js'
 import { pipelineSecrets } from './secrets.js'
 import type { CommandRunner } from './shell.js'
 import { createStatusReporter } from './status-reporter.js'
+import type { StatusReporter } from './status-reporter.js'
 import { turnTimeoutMs } from './time-budget.js'
 import type { TriggerEvent } from './trigger-events.js'
 
@@ -79,6 +80,46 @@ export interface Contained {
 }
 
 /**
+ * What the session is opened with — the one place most of this file's reasoning
+ * lives, and its own function so `contain` stays inside
+ * `max-lines-per-function`.
+ *
+ * Takes the whole `ContainInput` rather than eight arguments, plus the three
+ * things `contain` derived before it: a parameter list restating the input's
+ * fields is the input's shape kept in step by hand.
+ */
+const sessionOptions = ({
+  input,
+  contained,
+  status,
+  clock,
+}: {
+  input: ContainInput
+  contained: PipelineConfig
+  status: StatusReporter
+  clock: () => number
+}): OpenCodeAgentOptions => ({
+  directory: contained.repoRoot,
+  openai: contained.openai,
+  sessionTitle: `issue-${input.event.issueNumber}`,
+  // Shrunk to fit what is left of the job, never the bare `AGENT_TIMEOUT_MS`: a
+  // per-turn cap outliving the runner is a bound that fires after the process
+  // is gone, which posts nothing. A **function**, so it is re-read for every turn
+  // rather than once when the session boots: this session is memoized for the
+  // whole job and the job now runs a turn per plan step, so a number computed at
+  // the first prompt would hand the last step a bound sized for a clock half an
+  // hour stale — and a bound that outlives the runner posts nothing at all, which
+  // is exactly what it exists to prevent.
+  timeoutMs: (): number => turnTimeoutMs(contained, clock()),
+  log: input.log,
+  transcript: input.transcript,
+  // Not awaited, and it never rejects: reporting must not be able to fail
+  // the turn it is reporting on, and a heartbeat that waited on an HTTP
+  // round trip would no longer be a heartbeat.
+  onTick: (snapshot): void => void status.tick(snapshot),
+})
+
+/**
  * Assembles the run with the provider credential held back.
  *
  * Everything downstream — the in-process session and the review loop's
@@ -88,17 +129,8 @@ export interface Contained {
  * config, so scrubbing, redaction and the diff guard still know the value they
  * are protecting.
  */
-export const contain = ({
-  config,
-  event,
-  log,
-  run,
-  options,
-  github,
-  transcript,
-  createAgent,
-  now,
-}: ContainInput): Contained => {
+export const contain = (input: ContainInput): Contained => {
+  const { config, event, log, run, options, github, createAgent, now } = input
   const secrets = pipelineSecrets(config)
   const proxy = startProviderProxy(config.openai, log)
   const contained: PipelineConfig = { ...config, openai: proxiedSettings(config.openai, proxy) }
@@ -113,28 +145,7 @@ export const contain = ({
   // comes from and nothing about the order of the other two.
   const status = createStatusReporter({ github, log, config: contained, now: clock })
 
-  const agent = memoizeAgent(() =>
-    create({
-      directory: contained.repoRoot,
-      openai: contained.openai,
-      sessionTitle: `issue-${event.issueNumber}`,
-      // Shrunk to fit what is left of the job, never the bare `AGENT_TIMEOUT_MS`: a
-      // per-turn cap outliving the runner is a bound that fires after the process
-      // is gone, which posts nothing. A **function**, so it is re-read for every turn
-      // rather than once when the session boots: this session is memoized for the
-      // whole job and the job now runs a turn per plan step, so a number computed at
-      // the first prompt would hand the last step a bound sized for a clock half an
-      // hour stale — and a bound that outlives the runner posts nothing at all, which
-      // is exactly what it exists to prevent.
-      timeoutMs: () => turnTimeoutMs(contained, clock()),
-      log,
-      transcript,
-      // Not awaited, and it never rejects: reporting must not be able to fail
-      // the turn it is reporting on, and a heartbeat that waited on an HTTP
-      // round trip would no longer be a heartbeat.
-      onTick: (snapshot) => void status.tick(snapshot),
-    }),
-  )
+  const agent = memoizeAgent(() => create(sessionOptions({ input, contained, status, clock })))
 
   const env = options.env
   const deps = assembleDeps({ config: contained, secrets, event, env, run, log, agent, github, status, now: clock })

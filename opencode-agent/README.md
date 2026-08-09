@@ -1167,6 +1167,42 @@ trustworthy attribution.
 Commands are spawned as argv vectors with `shell: false`, so untrusted text never
 reaches a shell.
 
+### Files the agent cannot commit
+
+`.github/workflows/**` is off limits, and not as a matter of taste.
+
+GitHub refuses a push from a GitHub App or an Actions token that creates or
+updates anything under `.github/workflows/` unless the App holds the `workflows`
+permission — and the `permissions:` block a workflow grants its own
+`GITHUB_TOKEN` has no `workflows` key at all, so the shipped default can never
+do it. The refusal is for the **whole push**, not the offending file: a commit
+carrying one blocked workflow file and forty good ones delivers none of them.
+Issue #240 lost two runs that way, several hundred thousand tokens each, on work
+that had nothing to do with the workflow.
+
+So `src/protected-paths.ts` names the prefixes and `git-commit.ts` takes them
+back out of the index between `git add --all` and the diff guard, on the
+ordinary commit and on the salvage alike. The file is **dropped, not refused** —
+refusing would lose the same work the remote would have lost — its working-tree
+copy is reverted (or removed, if the model created it) so the next step cannot
+stage it again, and the drop is reported at `warn` naming every path, because a
+guardrail nobody sees fire is indistinguishable from a model that quietly failed
+to make the edit. A turn that wrote _only_ such a file reports nothing to commit
+rather than handing `git commit` an empty index.
+
+`IMPLEMENT_INSTRUCTIONS` and the planning instructions both state the rule, so a
+well-behaved turn never writes one and a plan never contains a step that would.
+That is the courtesy; the staging step is the mechanism, and it is where the
+model has no say.
+
+**If you want the agent to change its own workflow**, grant the App behind
+`AGENT_GITHUB_TOKEN` the `workflows: write` permission, re-install it, and drop
+the prefix from `PROTECTED_PREFIXES`. Weigh it first: an agent that can rewrite
+`agent-pipeline.yml` can rewrite the permissions, the concurrency group, the
+guardrails and the secret wiring that bound it, from inside a job that file
+defines. The alternative costs a maintainer one commit — the agent says in its
+reply exactly what to apply.
+
 ### Capability containment
 
 Prompt-level defences fail eventually, so the model's capabilities are bounded
@@ -1629,9 +1665,15 @@ under **Setup** is simply not written. Nothing else changes.
 | `src/ask-json.ts`                             | Asking the model for JSON, with one repair re-ask on a bad reply        |
 | `src/prompt-budget.ts`                        | How much text a prompt carries, and what loses when it does not fit     |
 | `src/activity.ts`                             | What one OpenCode event means, and what of it may be said out loud      |
-| `src/progress.ts`                             | Reporting that, plus the heartbeat while a turn is outstanding          |
+| `src/activity-detail.ts`                      | The whitelist decoder feeding the encrypted transcript, and only it     |
+| `src/progress.ts`                             | Reporting that as `▸`/`✓` lines, and the summary a heartbeat reads      |
+| `src/heartbeat.ts`                            | "Still going" at a fixed interval while a turn is outstanding           |
+| `src/ci-groups.ts`                            | The one module allowed to spell Actions' `::group::` commands           |
+| `src/debug-transcript.ts`                     | The encrypted maintainer-only run log, when `AGENT_LOG_KEY` is set      |
+| `src/protected-paths.ts`                      | Paths a push by this pipeline cannot carry, dropped before the commit   |
 | `src/sdk-contract.ts`                         | The recorded request and response shapes the SDK speaks                 |
 | `src/config-values.ts`                        | Reading and range-checking one scalar from the environment              |
+| `src/check-spec.ts`                           | `AGENT_CHECKS`, the one config reading that parses a document           |
 | `src/config-discovery.ts`                     | The two settings asked of the checkout and the event, not the env       |
 | `src/deadline.ts`                             | The upper bound on waiting for work that has none of its own            |
 | `src/provider-proxy.ts`                       | Holds the provider key, and retries a transient upstream failure        |

@@ -2292,6 +2292,7 @@ const gitOptions = (run: CommandRunner, overrides: Partial<GitOptions> = {}): Gi
   authorEmail: 'agent@example.com',
   limits: { maxFiles: 100, maxLines: 20_000 },
   secrets: [],
+  log: { debug: (): void => {}, info: (): void => {}, warn: (): void => {}, error: (): void => {} },
   credential: null,
   ...overrides,
 })

@@ -124,6 +124,7 @@ export const assembleDeps = ({
     authorEmail: config.commitAuthorEmail,
     limits: config.diffLimits,
     secrets,
+    log,
     credential: { remote: config.gitRemoteBase, token: config.githubToken },
   })
 
