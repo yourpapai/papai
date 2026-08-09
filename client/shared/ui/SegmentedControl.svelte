@@ -29,6 +29,12 @@
     busy = false,
   }: Props = $props()
 
+  // A value matching no option (e.g. an unrecorded analytics choice) must still leave the
+  // group in the tab order — otherwise no keyboard can reach it. Fall back to the first
+  // option as the roving tab stop; `aria-checked` stays false everywhere, so nothing is
+  // wrongly announced as selected.
+  const activeIndex = $derived(Math.max(0, options.findIndex((opt) => opt.value === value)))
+
   function onKey(event: KeyboardEvent, index: number): void {
     if (disabled) return
     if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
@@ -50,7 +56,7 @@
         type="button"
         role="radio"
         aria-checked={value === opt.value ? 'true' : 'false'}
-        tabindex={value === opt.value ? 0 : -1}
+        tabindex={i === activeIndex ? 0 : -1}
         class="ui-seg__opt"
         class:ui-seg__opt--on={value === opt.value}
         {disabled}

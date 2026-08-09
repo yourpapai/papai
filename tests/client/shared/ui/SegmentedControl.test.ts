@@ -281,3 +281,42 @@ test('busy alone does not block interaction — only disabled does', () => {
   expect(picked).toBe('deny')
   void unmount(c)
 })
+
+test('an unmatched value leaves exactly one tab stop, on the first option', () => {
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.querySelector<HTMLElement>('#root')!
+  const c = mount(SegmentedControl, {
+    target,
+    props: { options, value: 'unknown', ariaLabel: 'Permission', onChange: () => {}, testidPrefix: 'perm' },
+  })
+  flushSync()
+  const tabIndexes = Array.from(target.querySelectorAll<HTMLButtonElement>('.ui-seg__opt')).map((b) => b.tabIndex)
+  expect(tabIndexes).toEqual([0, -1, -1])
+  void unmount(c)
+})
+
+test('an unmatched value still marks no option as checked', () => {
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.querySelector<HTMLElement>('#root')!
+  const c = mount(SegmentedControl, {
+    target,
+    props: { options, value: 'unknown', ariaLabel: 'Permission', onChange: () => {}, testidPrefix: 'perm' },
+  })
+  flushSync()
+  const checked = Array.from(target.querySelectorAll('.ui-seg__opt')).map((b) => b.getAttribute('aria-checked'))
+  expect(checked).toEqual(['false', 'false', 'false'])
+  void unmount(c)
+})
+
+test('a matched value keeps the tab stop on the selected option', () => {
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.querySelector<HTMLElement>('#root')!
+  const c = mount(SegmentedControl, {
+    target,
+    props: { options, value: 'deny', ariaLabel: 'Permission', onChange: () => {}, testidPrefix: 'perm' },
+  })
+  flushSync()
+  const tabIndexes = Array.from(target.querySelectorAll<HTMLButtonElement>('.ui-seg__opt')).map((b) => b.tabIndex)
+  expect(tabIndexes).toEqual([-1, -1, 0])
+  void unmount(c)
+})
