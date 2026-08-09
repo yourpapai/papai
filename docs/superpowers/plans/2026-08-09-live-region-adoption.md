@@ -968,7 +968,15 @@ Run:
 ```bash
 bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/settings/sections/admin/AdminUsersSection.test.ts
 ```
-Expected: PASS, all tests. The assertions at `:475`, `:556`, `:573`, `:907`, and `:925` already read text or attributes and need no change.
+Expected: PASS, all tests. The assertions at `:475`, `:556`, and `:573` already read text and need
+no change.
+
+`:907` and `:925` do need one. Both read only `getAttribute('role')`, which used to imply the node
+existed at all — the `{#if}` paragraph was absent until the action produced a message, so the `!`
+would have thrown. Once the region is always mounted, `role` is hard-coded by `tone` and both tests
+pass even if the action stops producing any text. Add a text assertion beside each role assertion:
+`expect(line.textContent).toContain('User unblocked.')` at `:907`, and
+`expect(line.textContent).not.toBe('')` at `:925`, where the expected message is not fixed.
 
 - [ ] **Step 8: Run the whole client suite**
 
