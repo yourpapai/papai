@@ -194,7 +194,7 @@ git commit -m "feat(ui): LiveRegion accepts an id and a replacement class"
 **Files:**
 - Modify: `client/shared/ui/Field.svelte:45-52` (markup) and `:84-91` (styles)
 - Test: `tests/client/shared/ui/Field.test.ts`
-- Migrate assertions in: `tests/client/shared/ui/field-context.test.ts:155`, `tests/client/settings/sections/CodingMcpSection.test.ts:93,109`, `tests/client/settings/sections/admin/AdminInstancesSection.test.ts:950`
+- Migrate assertions in: `tests/client/shared/ui/field-context.test.ts:141,155,166`, `tests/client/settings/sections/CodingIdentitySection.test.ts:142`, `tests/client/settings/sections/CodingMcpSection.test.ts:93,109`, `tests/client/settings/sections/admin/AdminInstancesSection.test.ts:950`
 
 **Interfaces:**
 - Consumes: `LiveRegion` with `id` and `class` from Task 1.
@@ -320,11 +320,28 @@ Run:
 ```bash
 bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/shared/ui tests/client/settings
 ```
-Expected: FAIL in `field-context.test.ts`, `CodingMcpSection.test.ts`, and `AdminInstancesSection.test.ts`. Steps 7-9 fix exactly those three files. If any other file fails, stop and report it — this list is meant to be complete.
+Expected: FAIL in `field-context.test.ts` (3 assertions), `CodingIdentitySection.test.ts` (1), `CodingMcpSection.test.ts` (2), and `AdminInstancesSection.test.ts` (1) — 7 failing assertions across 4 files. Steps 7-10 fix exactly those. If any other file fails, stop and report it — this list is meant to be complete.
 
-- [ ] **Step 7: Migrate `field-context.test.ts`**
+- [ ] **Step 7: Migrate `field-context.test.ts` — three assertions**
 
-At `tests/client/shared/ui/field-context.test.ts:155`, replace:
+This file has three structural assertions about `.ui-field`'s children, one per hint/error/neither case. All three move because the message box is now the third child in every case.
+
+At `:141` (in the hint case), replace:
+
+```ts
+    expect(field.children[2]!.classList.contains('ui-field__hint')).toBe(true)
+```
+
+with:
+
+```ts
+    expect(field.children[2]!.classList.contains('ui-field__msg')).toBe(true)
+    expect(field.children[2]!.querySelector('.ui-field__hint')!.textContent).toContain('https only')
+```
+
+`https only` is the hint the test mounts `FieldHintFixture` with at `:134`.
+
+At `:155` (in the error case), replace:
 
 ```ts
     expect(field.children[2]!.classList.contains('ui-field__error')).toBe(true)
@@ -339,7 +356,49 @@ with:
     expect(field.children[2]!.querySelector('.ui-field__error')!.textContent).toBe('boom')
 ```
 
-- [ ] **Step 8: Migrate `CodingMcpSection.test.ts`**
+At `:166` (in the neither-hint-nor-error case), replace:
+
+```ts
+    expect(field.children.length).toBe(2)
+```
+
+with:
+
+```ts
+    // The message box is unconditional now — it holds the always-mounted error region even
+    // when there is nothing to say, which is the whole point of the change.
+    expect(field.children.length).toBe(3)
+    expect(field.children[2]!.classList.contains('ui-field__msg')).toBe(true)
+    expect(field.children[2]!.textContent).toBe('')
+```
+
+That test's name says the control is the "second and last child", which is no longer true. Rename it to:
+
+```ts
+  test('wraps the children slot in a single control element as the second child when neither hint nor error is set', () => {
+```
+
+- [ ] **Step 8: Migrate `CodingIdentitySection.test.ts`**
+
+At `tests/client/settings/sections/CodingIdentitySection.test.ts:142`, replace:
+
+```ts
+    expect(target.querySelector('.ui-field__error')?.textContent).toContain('Add a group member')
+```
+
+with:
+
+```ts
+    const errorTexts = [...target.querySelectorAll('.ui-field__error')]
+      .map((n) => n.textContent ?? '')
+      .filter((t) => t !== '')
+    expect(errorTexts.length).toBe(1)
+    expect(errorTexts[0]).toContain('Add a group member')
+```
+
+`querySelector` used to find the section's only error node; now every field carries an empty region, so a bare `querySelector` would return whichever empty one comes first. Collecting the non-empty ones and asserting there is exactly one is both a correct migration and stronger than what it replaces.
+
+- [ ] **Step 9: Migrate `CodingMcpSection.test.ts`**
 
 At `tests/client/settings/sections/CodingMcpSection.test.ts:93`, replace:
 
@@ -374,7 +433,7 @@ const errorTexts = (target: HTMLElement): string[] =>
   [...target.querySelectorAll('.ui-field__error')].map((n) => n.textContent ?? '').filter((t) => t !== '')
 ```
 
-- [ ] **Step 9: Migrate `AdminInstancesSection.test.ts`**
+- [ ] **Step 10: Migrate `AdminInstancesSection.test.ts`**
 
 At `tests/client/settings/sections/admin/AdminInstancesSection.test.ts:950`, replace:
 
@@ -393,7 +452,7 @@ with:
 
 Leave the `expect(errors).toEqual(['Required', 'Required'])` line below it unchanged.
 
-- [ ] **Step 10: Run the whole client suite**
+- [ ] **Step 11: Run the whole client suite**
 
 Run:
 ```bash
@@ -401,7 +460,7 @@ bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-pa
 ```
 Expected: PASS, no failures.
 
-- [ ] **Step 11: Format, lint, commit**
+- [ ] **Step 12: Format, lint, commit**
 
 ```bash
 bun run format
