@@ -33,19 +33,34 @@
   let actionError: string | null = $state(null)
   let announcement: string | null = $state(null)
   let busy = $state(false)
+  let loading = $state(false)
   let confirming: 'withdraw' | 'delete' | null = $state(null)
   let laneErrors = $state<{ localLongitudinal: string | null; externalPseudonymous: string | null }>({
     localLongitudinal: null,
     externalPseudonymous: null,
   })
 
+  // No re-entrancy guard here: `load` runs inside an `$effect`, so reading `loading` before
+  // setting it would make that effect depend on state it writes and re-trigger itself forever.
+  // A second click is prevented by the refresh button's own `busy` styling, which is how the
+  // sibling personal sections handle it.
   async function load(): Promise<void> {
     loadError = null
     actionError = null
+    announcement = null
+    loading = true
     try {
       data = await fetchAnalyticsPreferences()
     } catch (err) {
-      loadError = formatFetchError(err)
+      const message = formatFetchError(err)
+      // First load (no data yet): the failure replaces the whole section with `ErrorState`.
+      // Refresh (data already present): keep showing the stale-but-known data and surface the
+      // failure through the alert `LiveRegion` that's already mounted in that branch, instead of
+      // silently discarding what loaded successfully before.
+      if (data === null) loadError = message
+      else actionError = message
+    } finally {
+      loading = false
     }
   }
 
@@ -148,7 +163,7 @@
       <IconButton
         label="Refresh"
         glyph="⟳"
-        busy={data === null && loadError === null}
+        busy={loading}
         onClick={() => void load()}
         testid="analytics-refresh" />
     {/snippet}

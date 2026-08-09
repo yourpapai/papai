@@ -94,6 +94,19 @@ const routePutFailure = (_url: string, init: RequestInit): Promise<Response> => 
   return Promise.resolve(getBody())
 }
 
+// The first GET is the mount-time load; every later GET is a refresh click. `after` is what the
+// refresh resolves to, so a test can hold it in flight or fail it without a conditional of its own.
+const routeRefresh = (after: () => Promise<Response>): (() => Promise<Response>) => {
+  let calls = 0
+  return () => {
+    calls += 1
+    return calls === 1 ? Promise.resolve(getBody()) : after()
+  }
+}
+
+const refreshNeverSettles = (): Promise<Response> => new Promise<Response>(() => {})
+const refreshFails = (): Promise<Response> => Promise.resolve(json({ error: 'boom' }, 500))
+
 const isGroupishTestId = (el: Element): boolean => {
   const id = el.getAttribute('data-testid') ?? ''
   return id.includes('group') || id.includes('member') || id.includes('context')
@@ -363,6 +376,34 @@ describe('AnalyticsPreferencesSection', () => {
     expect(errorEl.getAttribute('id')).toBe(describedBy)
     expect(field.querySelector(`#${describedBy}`)).toBe(errorEl)
     expect(field.querySelector(`#${describedBy}`)!.textContent).toContain('The setting was not changed.')
+    void unmount(component)
+  })
+
+  test('a refresh click marks the header IconButton busy while in flight', async () => {
+    setMockFetch(routeRefresh(refreshNeverSettles))
+    const { target, component } = render()
+    await drain()
+    const refreshBtn = target.querySelector<HTMLButtonElement>('[data-testid="analytics-refresh"]')!
+    expect(refreshBtn.getAttribute('aria-busy')).toBeNull()
+    refreshBtn.click()
+    flushSync()
+    expect(refreshBtn.getAttribute('aria-busy')).toBe('true')
+    expect(refreshBtn.classList.contains('ui-iconbtn--busy')).toBe(true)
+    void unmount(component)
+  })
+
+  test('a failed refresh after a successful load is announced and keeps the loaded data visible', async () => {
+    setMockFetch(routeRefresh(refreshFails))
+    const { target, component } = render()
+    await drain()
+    expect(target.querySelector('.ui-error')).toBeNull()
+    target.querySelector<HTMLButtonElement>('[data-testid="analytics-refresh"]')!.click()
+    await drain()
+    expect(target.querySelector('.ui-error')).toBeNull()
+    expect(target.querySelector('[data-testid="analytics-field-local"]')).not.toBeNull()
+    const error = target.querySelector('[data-testid="analytics-error"]')!
+    expect(error.textContent).toContain('Something went wrong on the server')
+    expect(error.getAttribute('role')).toBe('alert')
     void unmount(component)
   })
 
