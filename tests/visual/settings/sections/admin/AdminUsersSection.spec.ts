@@ -22,6 +22,11 @@ test.describe('settings/sections/admin/AdminUsersSection', () => {
     await expect(sharedPage).toHaveScreenshot()
   })
 
+  test('OpenAccessError', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-admin-adminuserssection--open-access-error')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
   test('Loading', async ({ sharedPage }) => {
     await switchStory(sharedPage, 'settings-sections-admin-adminuserssection--loading')
     await expect(sharedPage).toHaveScreenshot()
