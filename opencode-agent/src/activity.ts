@@ -32,6 +32,15 @@ import { z } from 'zod'
 
 /** One thing worth saying about a running turn. */
 export interface Activity {
+  /**
+   * Which of the three event families this came from.
+   *
+   * Carried rather than inferred: `progress.ts` renders a tool, a step and a
+   * session status to three different line shapes, and re-deriving the family
+   * from which meta keys happen to be present is exactly the guesswork
+   * `summary` and `collapseKey` were named to avoid.
+   */
+  kind: 'tool' | 'step' | 'status'
   message: string
   /** Structural only: names, statuses, counts. Never model or tool content. */
   meta: Record<string, string | number>
@@ -120,6 +129,7 @@ const describeTool = (event: unknown, sessionId: string): Activity | null => {
   if (part.state.status === 'pending') return null
 
   return {
+    kind: 'tool',
     message: 'Model tool call',
     meta: { tool: part.tool, status: part.state.status, call: part.callID },
     summary: `${part.tool} (${part.state.status})`,
@@ -134,6 +144,7 @@ const describeStep = (event: unknown, sessionId: string): Activity | null => {
 
   const { tokens, cost } = parsed.data.properties.part
   return {
+    kind: 'step',
     message: 'Model step finished',
     meta: { inputTokens: tokens.input, outputTokens: tokens.output, reasoningTokens: tokens.reasoning, cost },
     summary: 'finished a step',
@@ -148,6 +159,7 @@ const describeStatus = (event: unknown, sessionId: string): Activity | null => {
   const { status } = parsed.data.properties
   const attempt = status.attempt
   return {
+    kind: 'status',
     message: 'Model session status',
     meta: attempt === undefined ? { status: status.type } : { status: status.type, attempt },
     summary: status.type,

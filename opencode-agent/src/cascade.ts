@@ -12,6 +12,7 @@ import { handleImplement } from './phases/implement.js'
 import { handlePlan } from './phases/plan.js'
 import { handleReview } from './phases/review.js'
 import { handleTriage } from './phases/triage.js'
+import { presentationFor } from './presentation.js'
 import { postAndAppend, renderSettled } from './run-report.js'
 import type { RunResult } from './run-result.js'
 import { stopIfOutOfTime } from './time-budget.js'
@@ -127,7 +128,7 @@ export const driveMachine = async (input: MachineInput): Promise<RunResult> => {
   // as the one in flight.
   await input.deps.status.enter(state)
 
-  const attempt = await runHandler(handler, input)
+  const attempt = await runGrouped(handler, input)
   if (!attempt.ok) return input.answer ? failAnswer(input, attempt.error) : failRun(input, attempt.error)
 
   const { outcome, next } = attempt
@@ -163,6 +164,28 @@ const settle = async (input: MachineInput): Promise<RunResult> => {
 }
 
 type HandlerAttempt = { ok: true; outcome: PhaseOutcome; next: AgentState } | { ok: false; error: unknown }
+
+/**
+ * Runs one handler inside a collapsible Actions-log section named for its
+ * phase.
+ *
+ * The headline comes from the one presentation table every other surface
+ * reads, so the log folds the way the issue reads. The section wraps the
+ * handler and nothing in front of it — a phase the token or wall-clock budget
+ * refuses to start ran nothing, so it folds nothing. `endGroup` sits in a
+ * `finally`: a failed phase that left its section open would swallow every
+ * later line, the failure report included, into a collapsed group nobody
+ * opens.
+ */
+const runGrouped = async (handler: PhaseHandler, input: MachineInput): Promise<HandlerAttempt> => {
+  const { glyph, headline } = presentationFor(input.state, 'working')
+  input.deps.groups.startGroup(`${glyph} ${headline}`)
+  try {
+    return await runHandler(handler, input)
+  } finally {
+    input.deps.groups.endGroup()
+  }
+}
 
 /**
  * Runs one handler and applies its signal, both inside the same guard.

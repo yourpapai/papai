@@ -98,6 +98,7 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   gitRemoteBase: 'https://github.com/',
   runUrl: null,
   labelPrefix: 'agent:',
+  logKey: null,
   skillRoots: ['.superpowers/skills'],
   ...overrides,
 })
@@ -291,6 +292,8 @@ interface PipelineIo {
   labelError: Error | null
   /** Every comment edit, in order — the status comment's and the state rewrites'. */
   edits: { id: number; body: string }[]
+  /** The `::group::` sections the cascade opened and closed, in order. */
+  groups: string[]
   /**
    * What the status channel rejects with, when set.
    *
@@ -363,6 +366,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     labelReads: 0,
     labelError: null,
     edits: [],
+    groups: [],
     statusError: null,
     postError: null,
     nowMs: RUN_NOW_MS,
@@ -551,6 +555,10 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     // The same clock the status reporter reads, so a test that moves time moves it
     // for the job deadline and for the status comment at once.
     now: () => io.nowMs,
+    groups: {
+      startGroup: (headline) => void io.groups.push(`::group::${headline}`),
+      endGroup: () => void io.groups.push('::endgroup::'),
+    },
     config: pipelineConfig,
     log,
   }
@@ -4872,5 +4880,57 @@ describe('recording what a skipped classification cost', () => {
     expect(result.status).toBe('skipped')
     expect(spentIn(result)).toBe(0)
     expect(findLatestState(harness.io.thread, AGENT_LOGIN, ISSUE)?.tokensSpent).toBe(0)
+  })
+})
+
+describe('phase log groups', () => {
+  test('brackets each phase handler in a section named for the phase', async () => {
+    // One section per handler, from the one presentation table every other
+    // surface reads, so the log folds the same way the issue reads.
+    const harness = makeHarness()
+    harness.io.replies = [SPEC_REPLY]
+
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(harness.io.groups).toEqual(['::group::🔍 Reading the issue', '::endgroup::'])
+  })
+
+  test('brackets each phase of a cascade in order', async () => {
+    const harness = makeHarness()
+    await toPlanReview(harness)
+    harness.io.replies = ['Implemented.']
+    harness.io.groups.length = 0
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.groups).toEqual([
+      '::group::🛠️ Writing the code',
+      '::endgroup::',
+      '::group::📦 Opening the pull request',
+      '::endgroup::',
+    ])
+  })
+
+  test('closes the section even when the handler throws', async () => {
+    // `endGroup` belongs in a `finally`: a failed phase that left its section
+    // open would swallow every later line — the failure report included — into
+    // a collapsed group nobody opens.
+    const harness = makeHarness()
+    harness.io.promptFailures = [new Error('model exploded')]
+
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(harness.io.groups).toEqual(['::group::🔍 Reading the issue', '::endgroup::'])
+  })
+
+  test('a phase the budget refuses to start opens no section', async () => {
+    // The group wraps the handler, not the checks in front of it: a stopped
+    // phase ran nothing, so it folds nothing.
+    const harness = makeHarness()
+    seedState(harness, { phase: 'PLAN_REVIEW', tokensSpent: 6_000_000 })
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.groups).toEqual([])
   })
 })

@@ -67,4 +67,11 @@ export const redactSecrets = (text: string, secrets: readonly string[]): string 
  * redaction — so a credential added to the config cannot be wired into one and
  * forgotten by the other.
  */
-export const pipelineSecrets = (config: PipelineConfig): readonly string[] => [config.githubToken, config.openai.apiKey]
+export const pipelineSecrets = (config: PipelineConfig): readonly string[] => [
+  config.githubToken,
+  config.openai.apiKey,
+  // The transcript key, re-encoded to the base64 the environment holds: the
+  // scrub and the redaction match by value, and a credential stored as bytes
+  // would otherwise survive both.
+  ...(config.logKey === null ? [] : [Buffer.from(config.logKey).toString('base64')]),
+]

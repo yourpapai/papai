@@ -70,6 +70,7 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   gitRemoteBase: 'https://github.com/',
   runUrl: RUN_URL,
   labelPrefix: 'agent:',
+  logKey: null,
   skillRoots: [],
   ...overrides,
 })

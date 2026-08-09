@@ -1,0 +1,369 @@
+<!doctype html>
+<!--
+  SPDX-License-Identifier: BUSL-1.1
+  Copyright (c) 2026 Dmitriy Lazarev
+  Use of this software is governed by the Business Source License 1.1.
+  See LICENSE in the project root for details.
+
+  The reader for an encrypted debug transcript.
+
+  Deliberately one file with nothing fetched: it is served from GitHub Pages,
+  where a maintainer opens it while holding a decryption key, and a page that
+  pulled a script from somewhere else would be a page that could be made to
+  exfiltrate that key by whoever controls somewhere else. Everything here runs
+  in the tab, and neither the key nor the artefact leaves it — there is no
+  network call in this file at all.
+
+  The four steps below are the exact inverse of `src/debug-transcript.ts`'s
+  writer, and `tests/opencode-agent/transcript-viewer.test.ts` runs *this*
+  script against a transcript that module produced, so the two cannot drift.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent debug transcript</title>
+    <style>
+      :root {
+        --bg: #ffffff;
+        --fg: #1f2328;
+        --muted: #59636e;
+        --line: #d1d9e0;
+        --panel: #f6f8fa;
+        --bad: #b35900;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0d1117;
+          --fg: #e6edf3;
+          --muted: #9198a1;
+          --line: #3d444d;
+          --panel: #151b23;
+          --bad: #e3a008;
+        }
+      }
+      body {
+        margin: 0 auto;
+        padding: 2rem 1rem 4rem;
+        max-width: 68rem;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          15px/1.55 -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          Helvetica,
+          Arial,
+          sans-serif;
+      }
+      h1 {
+        font-size: 1.35rem;
+        margin: 0 0 0.25rem;
+      }
+      p.lede {
+        margin: 0 0 1.5rem;
+        color: var(--muted);
+      }
+      fieldset {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 1rem;
+        margin: 0 0 1rem;
+      }
+      legend {
+        padding: 0 0.4rem;
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+      label {
+        display: block;
+        margin-bottom: 0.35rem;
+        font-size: 0.85rem;
+        color: var(--muted);
+      }
+      input[type='password'],
+      input[type='file'] {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 0.5rem;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.85rem;
+      }
+      #drop {
+        border: 2px dashed var(--line);
+        border-radius: 6px;
+        padding: 1.5rem;
+        text-align: center;
+        color: var(--muted);
+        margin-bottom: 0.75rem;
+      }
+      #drop.over {
+        border-color: var(--fg);
+        color: var(--fg);
+      }
+      #status {
+        margin: 0 0 1rem;
+        min-height: 1.5rem;
+        color: var(--bad);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 0.4rem 0.6rem;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      th {
+        color: var(--muted);
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      td.detail {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        word-break: break-word;
+      }
+      td.time,
+      td.duration {
+        white-space: nowrap;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+      tr.unreadable td {
+        color: var(--bad);
+      }
+      footer {
+        margin-top: 2rem;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+      code {
+        background: var(--panel);
+        padding: 0.1rem 0.3rem;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Agent debug transcript</h1>
+    <p class="lede">
+      Drop the <code>debug-transcript.enc</code> from the run's artefact, paste the run's <code>AGENT_LOG_KEY</code>,
+      and read what the agent did. Nothing is uploaded — the file and the key stay in this tab.
+    </p>
+
+    <fieldset>
+      <legend>Transcript</legend>
+      <div id="drop">Drop <code>debug-transcript.enc</code> here, or choose it below</div>
+      <label for="file">Transcript file</label>
+      <input id="file" type="file" accept=".enc,.txt,text/plain" />
+    </fieldset>
+
+    <fieldset>
+      <legend>Key</legend>
+      <label for="key"> <code>AGENT_LOG_KEY</code> — the same base64 value the repository holds as a secret </label>
+      <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="base64, 32 bytes" />
+    </fieldset>
+
+    <p id="status" role="status"></p>
+
+    <table id="rows" hidden>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Tool</th>
+          <th>Status</th>
+          <th>Detail</th>
+          <th>Took</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <footer>
+      A line this key cannot open is reported and skipped, never guessed at: a transcript from a crashed run is often
+      truncated mid-line, and a partial transcript that reads is the point.
+    </footer>
+
+    <script type="module">
+      /** AES-GCM's nonce, as `debug-transcript.ts` writes it: 12 bytes, one per line. */
+      const NONCE_BYTES = 12
+
+      /** The key length `AGENT_LOG_KEY` is validated to at config load. */
+      const KEY_BYTES = 32
+
+      /**
+       * Base64 to bytes, with a real `ArrayBuffer` behind them.
+       *
+       * `atob` gives a binary string; the copy is what `crypto.subtle` accepts,
+       * and building the array element-wise is the one form that needs no
+       * library.
+       */
+      const unb64 = (value) => Uint8Array.from(atob(value), (character) => character.charCodeAt(0))
+
+      /**
+       * The pasted secret as key bytes, or a thrown complaint naming which of
+       * the two things is wrong — a mistyped key and a key from another run are
+       * different mistakes with the same symptom otherwise.
+       */
+      const parseKey = (pasted) => {
+        const trimmed = pasted.trim()
+        if (trimmed.length === 0) throw new Error('Paste the run’s AGENT_LOG_KEY.')
+
+        let bytes
+        try {
+          bytes = unb64(trimmed)
+        } catch {
+          throw new Error('That key is not valid base64.')
+        }
+        if (bytes.length !== KEY_BYTES) {
+          throw new Error(`That key is ${bytes.length} bytes; AGENT_LOG_KEY is ${KEY_BYTES}.`)
+        }
+        return bytes
+      }
+
+      const importKey = (bytes) => crypto.subtle.importKey('raw', bytes, 'AES-GCM', false, ['decrypt'])
+
+      /**
+       * One `<base64 nonce>.<base64 ciphertext>` line, decrypted and parsed.
+       *
+       * Line by line rather than file at a time, which is what makes a
+       * truncated transcript readable: a run killed mid-write leaves a final
+       * line that cannot be opened, and every line before it still can.
+       */
+      const decodeLine = async (key, line) => {
+        const [nonce, ciphertext] = line.split('.')
+        if (nonce === undefined || ciphertext === undefined) {
+          throw new Error('Not a transcript line: expected <nonce>.<ciphertext>')
+        }
+
+        const nonceBytes = unb64(nonce)
+        if (nonceBytes.length !== NONCE_BYTES) throw new Error('Not a transcript line: wrong nonce length')
+
+        const plaintext = await crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv: nonceBytes },
+          await importKey(key),
+          unb64(ciphertext),
+        )
+        return JSON.parse(new TextDecoder().decode(plaintext))
+      }
+
+      /**
+       * Every line of a transcript, each carrying whether it opened.
+       *
+       * Never rejects on a bad line: the whole reason the format is one
+       * self-contained envelope per line is that a partial artefact should
+       * still read, so a failure is a row rather than the end of the render.
+       */
+      const decodeAll = (key, text) =>
+        Promise.all(
+          text
+            .split('\n')
+            .filter((line) => line.trim().length > 0)
+            // `Promise.all` keeps the input order, and the order of the
+            // transcript is the order of the run — the only ordering these rows
+            // have, since each line's own timestamp is all it carries.
+            .map((line) =>
+              decodeLine(key, line)
+                .then((row) => ({ ok: true, row }))
+                .catch(() => ({ ok: false })),
+            ),
+        )
+
+      const wire = () => {
+        const fileInput = document.getElementById('file')
+        const keyInput = document.getElementById('key')
+        const dropZone = document.getElementById('drop')
+        const statusLine = document.getElementById('status')
+        const table = document.getElementById('rows')
+        const body = table.querySelector('tbody')
+
+        let text = null
+
+        const cell = (row, className, value) => {
+          const element = document.createElement('td')
+          element.className = className
+          element.textContent = value
+          row.append(element)
+        }
+
+        const render = (results) => {
+          body.replaceChildren()
+          for (const result of results) {
+            const row = document.createElement('tr')
+            if (result.ok) {
+              const { time, tool, status, detail, durationMs } = result.row
+              cell(row, 'time', time)
+              cell(row, 'tool', tool)
+              cell(row, 'status', status)
+              cell(row, 'detail', detail ?? '')
+              cell(row, 'duration', durationMs === null ? '' : `${(durationMs / 1000).toFixed(1)}s`)
+            } else {
+              row.className = 'unreadable'
+              cell(row, 'time', '—')
+              cell(row, 'tool', '—')
+              cell(row, 'status', 'unreadable')
+              cell(row, 'detail', 'This line could not be opened with this key.')
+              cell(row, 'duration', '')
+            }
+            body.append(row)
+          }
+          table.hidden = results.length === 0
+        }
+
+        const refresh = async () => {
+          if (text === null) return
+          let key
+          try {
+            key = parseKey(keyInput.value)
+          } catch (error) {
+            statusLine.textContent = error.message
+            table.hidden = true
+            return
+          }
+
+          const results = await decodeAll(key, text)
+          const unreadable = results.filter((result) => !result.ok).length
+          statusLine.textContent =
+            unreadable === 0 ? '' : `${unreadable} of ${results.length} lines could not be opened with this key.`
+          render(results)
+        }
+
+        const take = async (file) => {
+          if (file === undefined || file === null) return
+          text = await file.text()
+          await refresh()
+        }
+
+        fileInput.addEventListener('change', () => void take(fileInput.files?.[0]))
+        keyInput.addEventListener('input', () => void refresh())
+
+        for (const name of ['dragenter', 'dragover']) {
+          dropZone.addEventListener(name, (event) => {
+            event.preventDefault()
+            dropZone.classList.add('over')
+          })
+        }
+        for (const name of ['dragleave', 'drop']) {
+          dropZone.addEventListener(name, () => dropZone.classList.remove('over'))
+        }
+        dropZone.addEventListener('drop', (event) => {
+          event.preventDefault()
+          void take(event.dataTransfer?.files?.[0])
+        })
+      }
+
+      // Guarded so the test can import this same script in a runtime with no
+      // DOM and exercise the decoding, which is the half that has to stay in
+      // step with the writer.
+      if (typeof document !== 'undefined') wire()
+    </script>
+  </body>
+</html>
