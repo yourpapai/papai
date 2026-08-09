@@ -279,7 +279,8 @@ Severity-ranked, highest first.
 ### [Med] Status and error regions mount with their announcement already inside them
 
 - **Id:** admin-users-live-region-mounts-with-text
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** live-region adoption, commit 3c1f47924
 - **Dimension:** 6. Accessibility
 - **Where visible:** Not visible in a static frame — the defect is in *how* the announcement is inserted, not in its final rendered appearance, which looks correct in every populated/error/status shot.
 - **Source:** `client/settings/sections/admin/AdminUsersSection.svelte:204-205,228-231,359` — every status and error line in this section follows the shape `{#if x !== null}<p role="alert">{x}</p>{/if}` (or `role="status"`): the `{#if}` block means the `<p>` element with its `role` attribute and its text content are all created in a single DOM mutation. The same shape is the convention across the rest of the settings module — confirmed present in `client/settings/sections/IdentitySection.svelte:211-212`, `client/settings/sections/ByokSection.svelte:245-246`, `client/settings/sections/CodeHostSection.svelte:264-265,273`, and `client/settings/sections/admin/AdminInstancesSection.svelte:358-359`, among others. The WAI-ARIA Authoring Practices guidance on live regions is that this shape is unreliable: many assistive technologies only pick up a live region when a node that already exists in the tree has its content changed, not when a new node carrying both the role and the content arrives at once. The recommended shape is a persistent container — mounted once, empty — whose text content is set afterwards.
