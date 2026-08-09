@@ -26,7 +26,7 @@ not gate docs (design.md D5).
 
 ## 3. ADR annotation
 
-- [ ] 3.1 Add a Status note to `docs/adr/0324-tier-aware-scenario-catalog-ledger.md`:
+- [x] 3.1 Add a Status note to `docs/adr/0324-tier-aware-scenario-catalog-ledger.md`:
       tier canon inverted to `docs/operations/e2e-planning-workflow.md`
       (this change), matching the 0313/0316 annotation convention.
       Verify: `grep -n "Partially superseded\|canon" docs/adr/0324-*.md`

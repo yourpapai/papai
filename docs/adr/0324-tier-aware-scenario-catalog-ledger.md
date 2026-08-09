@@ -9,7 +9,12 @@ See LICENSE in the project root for details.
 
 ## Status
 
-Accepted
+Accepted — tier-canon note (2026-08-09): with the owning spec archived by
+the Lane 0 drain, the canonical Realism Tiers table moved to
+`docs/operations/e2e-planning-workflow.md`
+(`superpowers-residue-cleanup`, design D2). This ADR's "spec owns the
+table" statement is historical; enforcement in
+`tests/stories/catalog/coverage.ts` is unchanged.
 
 ## Date
 
