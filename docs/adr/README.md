@@ -372,6 +372,8 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0377](0377-pluginssection-ux-close-out.md) | PluginsSection UX Close-Out — PluginCard Extraction, Server-Returned Config Values, Per-Card Feedback, and Describedby over aria-pressed | 2026-08-08 | Accepted | - |
 | [0378](0378-ux-open-findings-fixes-close-out.md) | UX Open-Findings Fixes Close-Out (SP5) — Opt-in Shared Props, One-Way Hide, Hint Helper, Token Substitution, and One wont-fix | 2026-08-08 | Accepted | - |
 | [0379](0379-mutation-improve-runner-fixes.md) | Mutation-Improve Runner Gate & Finalize Fixes — Trust-Boundary Hardening of the Autonomous Pipeline | 2026-08-06 | Implemented | - |
+| [0380](0380-defer-chat-provider-as-plugin.md) | Defer chat-provider-as-plugin until the core/plugin-separation refactor lands | 2026-08-09 | Deferred | - |
+| [0381](0381-retire-llm-rate-limiting-and-plans.md) | Retire llm-rate-limiting-and-plans — archive the draft, restart fresh later | 2026-08-09 | Retired | - |
 
 ## ADR Status Legend
 
@@ -379,6 +381,8 @@ ADRs capture the context, options considered, and rationale behind significant a
 - **Implemented (with divergence)** — Implemented but with notable deviations from the original plan
 - **Partially Implemented** — Some planned items present; others not implemented or replaced
 - **Not Implemented** — Plan was written but not executed
+- **Deferred** — Decision postponed; revisit trigger recorded in the ADR
+- **Retired** — Decision to stop pursuing; draft archived as historical record, fresh work starts later
 
 ## Creating a New ADR
 
