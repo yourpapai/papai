@@ -9,7 +9,11 @@ See LICENSE in the project root for details.
 
 ## Status
 
-Accepted
+Accepted — point 3 partially superseded 2026-08-09 by
+`openspec/changes/db-foreign-keys-orphan-prevention/`: cascades were adopted
+for the per-user-owned tables only, re-scoped per this ADR's scope-model
+reasoning. The exclusion of group-shared durable assets
+(`scheduled_prompts` / `alert_prompts`) stands.
 
 ## Date
 

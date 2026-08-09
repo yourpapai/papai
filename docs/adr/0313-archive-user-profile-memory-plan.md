@@ -9,7 +9,10 @@ See LICENSE in the project root for details.
 
 ## Status
 
-Accepted
+Accepted — re-entry trigger fired 2026-08-09: the feature was re-proposed as
+`openspec/changes/user-profile-memory/` with drift-resolved scope (contextType
+threading already shipped; migration renumbered). This ADR's "not now, not
+this way" reasoning still stands for the archived plan itself.
 
 ## Date
 
