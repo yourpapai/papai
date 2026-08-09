@@ -8,6 +8,7 @@ import { afterEach, expect, test } from 'bun:test'
 import { flushSync, mount, unmount } from 'svelte'
 
 import LiveRegion from '../../../../client/shared/ui/LiveRegion.svelte'
+import { liveRegionHarnessState } from './live-region-harness.svelte.js'
 
 afterEach(() => {
   document.body.innerHTML = ''
@@ -52,5 +53,30 @@ test('an alert region is assertive and carries the error class', () => {
 test('an empty region stays in the document rather than unmounting', () => {
   const { target, component } = render({ message: '', tone: 'alert', testid: 'x-error' })
   expect(target.querySelectorAll('[data-testid="x-error"]').length).toBe(1)
+  void unmount(component)
+})
+
+test('the same DOM element survives a tone change instead of being recreated', () => {
+  liveRegionHarnessState.message = 'Preference saved.'
+  liveRegionHarnessState.tone = 'status'
+  liveRegionHarnessState.testid = 'x-live'
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.body.querySelector<HTMLElement>('#root')!
+  const component = mount(LiveRegion, { target, props: liveRegionHarnessState })
+  flushSync()
+  const before = target.querySelector('[data-testid="x-live"]')
+  expect(before).not.toBeNull()
+
+  liveRegionHarnessState.tone = 'alert'
+  liveRegionHarnessState.message = 'It failed.'
+  flushSync()
+
+  const after = target.querySelector('[data-testid="x-live"]')
+  expect(after).toBe(before)
+  expect(after!.getAttribute('role')).toBe('alert')
+  expect(after!.getAttribute('aria-live')).toBe('assertive')
+  expect(after!.classList.contains('status-error')).toBe(true)
+  expect(after!.textContent).toBe('It failed.')
+
   void unmount(component)
 })
