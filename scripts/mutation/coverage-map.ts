@@ -82,9 +82,28 @@ export interface DefaultCoverageMapDepsOptions {
 }
 
 /** Memoized per-batch candidate universe + import-scan context. */
-interface CandidateContext {
+export interface CandidateContext {
   readonly scan: () => readonly string[]
   readonly importsImpl: (testAbs: string, srcAbs: string) => boolean
+}
+
+/**
+ * Build the memoized context {@link listCandidateTests} needs: the runnable test universe
+ * (scanned once per batch) plus the import scan over memoized file contents. Callers that
+ * already memoize test-file reads for another purpose pass their reader in so the batch
+ * reads each test file exactly once.
+ */
+export function createCandidateContext(
+  projectRoot: string,
+  readTestContent?: (testAbs: string) => string,
+): CandidateContext {
+  const contentCache = new Map<string, string>()
+  const read = readTestContent ?? ((testAbs: string): string => readMemoizedContent(testAbs, contentCache))
+  let scanned: readonly string[] | undefined
+  return {
+    scan: () => (scanned ??= scanTestFiles(projectRoot)),
+    importsImpl: (testAbs, srcAbs) => scanImportsInContent(read(testAbs), testAbs, srcAbs),
+  }
 }
 
 /**
@@ -111,11 +130,7 @@ export function createDefaultCoverageMapDeps(
   const cache = openCoverageCache(cachePath)
   const contentCache = new Map<string, string>()
   const readTestContent = (testAbs: string): string => readMemoizedContent(testAbs, contentCache)
-  let scanned: readonly string[] | undefined
-  const ctx: CandidateContext = {
-    scan: () => (scanned ??= scanTestFiles(projectRoot)),
-    importsImpl: (testAbs, srcAbs) => scanImportsInContent(readTestContent(testAbs), testAbs, srcAbs),
-  }
+  const ctx = createCandidateContext(projectRoot, readTestContent)
   return {
     listCandidateTests: (srcFile) => listCandidateTests(srcFile, projectRoot, ctx),
     runCoverage: (testFile, runRoot) =>
@@ -139,7 +154,12 @@ const readMemoizedContent = (testAbs: string, cache: Map<string, string>): strin
   return content
 }
 
-const listCandidateTests = (srcFile: string, projectRoot: string, ctx: CandidateContext): string[] => {
+/**
+ * Tests that could plausibly cover `srcFile`: same-package-directory tests unioned with tests
+ * whose text imports the source. Repo-relative, sorted. Shared with `scripts/test/affected.ts`,
+ * which uses it as the second half of its selection (the graph walk is the first).
+ */
+export const listCandidateTests = (srcFile: string, projectRoot: string, ctx: CandidateContext): string[] => {
   const srcAbs = path.isAbsolute(srcFile) ? srcFile : path.resolve(projectRoot, srcFile)
   const srcRel = path.relative(projectRoot, srcAbs)
   const pkgDirAbs = path.resolve(projectRoot, samePackageTestDir(srcRel))

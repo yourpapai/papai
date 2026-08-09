@@ -408,6 +408,13 @@ else
           # ratchet and must not be rerouted.
           bun run test >"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
         fi
+        # The 17-control privacy contract, read off the run that just happened
+        # rather than re-proved by 57 nested `bun test` invocations. It needs a
+        # full-scope report, so it only runs when the suite itself passed — a
+        # partial run is exactly the evidence it is built to refuse.
+        if [ "$exit_code" -eq 0 ]; then
+          bun run analytics:privacy-contract >>"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
+        fi
       elif [ "$check" = "test:client" ]; then
         bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/ >"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
       elif [ "$check" = "review-loop:test" ]; then

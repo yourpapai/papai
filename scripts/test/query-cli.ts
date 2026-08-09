@@ -31,9 +31,9 @@ const VALUE_FLAGS = new Set(['-C', '--context', '--max'])
 const NEEDS_ARGUMENT = new Set(['show', 'log'])
 
 const USAGE = [
-  'usage: bun scripts/test/query.ts <command>',
+  'usage: bun scripts/test/query-cli.ts <command>',
   '  status | failures [--files] | slowest [n]',
-  '  show <#id | file:line | file | name substring>',
+  '  show <id | file:line | file | name substring>',
   '  log <pattern> [-C n] [--max n]',
 ].join('\n')
 

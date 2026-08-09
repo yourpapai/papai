@@ -3,17 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
-
-import { PUBLIC_DIR } from '../build-client.js'
-import { ensureClientBuilt, missingBundles, REQUIRED_BUNDLES } from '../ensure-client-built.js'
-import { computeFingerprint, defaultFingerprintDeps } from './fingerprint.js'
 import { parseWrapperArgs, selectMode } from './mode.js'
 import type { ExecutionMode } from './mode.js'
 import { LAST_RUN_JUNIT, LAST_RUN_LOG, REPORT_DIR } from './paths.js'
-import { buildReport, writeReport } from './report.js'
+import { buildReport } from './report.js'
 import type { RunReport, RunScope } from './report.js'
 
 /**
@@ -192,109 +185,4 @@ export function runWrapper(argv: readonly string[], deps: RunDeps): number {
   for (const line of formatSummary(report)) deps.print(line)
 
   return child.exitCode
-}
-
-const absolute = (cwd: string, relPath: string): string => path.resolve(cwd, relPath)
-
-/** Build the client bundles when they are missing, reusing the existing guard verbatim. */
-const realEnsureClientBuilt = (cwd: string): void => {
-  ensureClientBuilt({
-    publicDir: PUBLIC_DIR,
-    required: REQUIRED_BUNDLES,
-    missing: missingBundles,
-    build: (): void => {
-      const proc = Bun.spawnSync(['bun', 'scripts/build-client.ts'], { cwd, stdio: ['ignore', 'inherit', 'inherit'] })
-      if (proc.exitCode !== 0) throw new Error(`bun build:client failed with exit code ${String(proc.exitCode)}`)
-    },
-    log: (message: string): void => {
-      console.error(message)
-    },
-  })
-}
-
-/**
- * stdout and stderr share one file descriptor, so the captured log is byte-complete and
- * correctly interleaved. Piping them apart reorders `console.log` against `(fail)`.
- */
-const captureChild = (argv: readonly string[], cwd: string, stream: boolean): SpawnResult => {
-  const logPath = absolute(cwd, LAST_RUN_LOG)
-  fs.mkdirSync(absolute(cwd, REPORT_DIR), { recursive: true })
-  const fd = fs.openSync(logPath, 'w')
-  const startedAt = Date.now()
-  try {
-    const proc = Bun.spawnSync([...argv], { cwd, stdio: ['inherit', fd, fd] })
-    const output = fs.readFileSync(logPath, 'utf8')
-    if (stream) process.stderr.write(output)
-    return { exitCode: proc.exitCode, output, wallMs: Date.now() - startedAt }
-  } finally {
-    fs.closeSync(fd)
-  }
-}
-
-/** Bypass runs keep the terminal: nothing is captured because nothing is persisted. */
-const inheritChild = (argv: readonly string[], cwd: string): SpawnResult => {
-  const startedAt = Date.now()
-  const proc = Bun.spawnSync([...argv], { cwd, stdio: ['inherit', 'inherit', 'inherit'] })
-  return { exitCode: proc.exitCode, output: '', wallMs: Date.now() - startedAt }
-}
-
-const readFileOrNull = (filePath: string): string | null => {
-  try {
-    return fs.readFileSync(filePath, 'utf8')
-  } catch {
-    return null
-  }
-}
-
-const realGitSha = (cwd: string): string | null => {
-  try {
-    const proc = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd, stdio: ['ignore', 'pipe', 'ignore'] })
-    if (proc.exitCode !== 0) return null
-    const sha = proc.stdout.toString().trim()
-    return sha === '' ? null : sha
-  } catch {
-    return null
-  }
-}
-
-const realDeps = (cwd: string, bypass: boolean, stream: boolean): RunDeps => ({
-  cwd,
-  env: process.env,
-  cores: os.availableParallelism(),
-  ensureClientBuilt: (): void => {
-    realEnsureClientBuilt(cwd)
-  },
-  clearArtifacts: (): void => {
-    fs.mkdirSync(absolute(cwd, REPORT_DIR), { recursive: true })
-    fs.rmSync(absolute(cwd, LAST_RUN_LOG), { force: true })
-    fs.rmSync(absolute(cwd, LAST_RUN_JUNIT), { force: true })
-  },
-  spawn: (argv): SpawnResult => (bypass ? inheritChild(argv, cwd) : captureChild(argv, cwd, stream)),
-  fingerprint: (): string => computeFingerprint(defaultFingerprintDeps(cwd)),
-  gitSha: (): string | null => realGitSha(cwd),
-  readJUnit: (): string | null => readFileOrNull(absolute(cwd, LAST_RUN_JUNIT)),
-  writeArtifacts: (log, junitXml, report): void => {
-    fs.writeFileSync(absolute(cwd, LAST_RUN_LOG), log)
-    if (junitXml !== null) fs.writeFileSync(absolute(cwd, LAST_RUN_JUNIT), junitXml)
-    writeReport(report, {
-      read: (relPath) => readFileOrNull(absolute(cwd, relPath)),
-      write: (relPath, contents) => {
-        fs.writeFileSync(absolute(cwd, relPath), contents)
-      },
-    })
-  },
-  print: (line: string): void => {
-    process.stdout.write(`${line}\n`)
-  },
-  now: (): string => new Date().toISOString(),
-})
-
-function main(): void {
-  const argv = process.argv.slice(2)
-  const parsed = parseWrapperArgs(argv)
-  process.exit(runWrapper(argv, realDeps(path.resolve(import.meta.dir, '..', '..'), parsed.bypass, parsed.stream)))
-}
-
-if (import.meta.main) {
-  main()
 }

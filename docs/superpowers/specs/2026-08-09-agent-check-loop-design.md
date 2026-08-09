@@ -164,8 +164,14 @@ files** — cheap enough to compute on every write *and* every read.
 
 `gitSha` is recorded alongside but is not the staleness signal: an agent edits without committing, so HEAD is
 almost never the discriminator. Every query command compares the current fingerprint to the stored one and
-prefixes stale output with a single line: `⚠ 4 files changed since this run — re-run bun run test`. It still
-answers the question; it just refuses to imply the answer is current.
+prefixes stale output with a single line. It still answers the question; it just refuses to imply the answer
+is current.
+
+That line reads `⚠ source files changed since this run (fingerprint <old> → <new>) — re-run bun run test`.
+An earlier draft of this spec had it say *"N files changed"*, which is not implementable and was caught in
+review: a fingerprint is a digest over the whole file set, so the count of what moved is not recoverable from
+it, and nothing else in `QueryContext` carries that. Reporting a number here would have meant either storing
+the full file list in every report or inventing one. The banner says what it knows.
 
 ### 0.5 `check.sh` keeps its logs
 

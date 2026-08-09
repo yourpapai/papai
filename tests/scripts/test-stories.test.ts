@@ -28,6 +28,27 @@ import type { StoryRunnerSession } from '../../scripts/story/session.js'
 import { parseStoryRunnerArguments, runStoryTests, STORY_SEED } from '../../scripts/story/test-stories.js'
 import { writeFrozenCoverageSupport } from './story-frozen-inputs.helpers.js'
 
+/**
+ * Runs the story runner with its refusal captured rather than printed.
+ *
+ * A refusal lands on `console.error` — the one channel `tests/setup.ts`
+ * deliberately leaves open, because that is where a real diagnostic goes — so a
+ * suite that drives a dozen refusals on purpose fills an otherwise green run's
+ * log with lines that are not diagnostics at all. The two tests that assert on
+ * the text install their own spy instead, and keep asserting.
+ */
+const runStoryTestsQuietly = async (
+  args: readonly string[],
+  dependencies: Parameters<typeof runStoryTests>[1],
+): Promise<number> => {
+  const errorSpy = spyOn(console, 'error').mockImplementation(() => undefined)
+  try {
+    return await runStoryTests(args, dependencies)
+  } finally {
+    errorSpy.mockRestore()
+  }
+}
+
 const manifest = (treeHash: string): StoryManifest => ({
   version: 4,
   commit: '1234567',
@@ -188,7 +209,7 @@ describe('story runner reports and compatibility', () => {
       ...manifest('a'.repeat(64)),
       files: [{ path: 'tests/stories/a.story.test.ts', sha256: 'b'.repeat(64) }],
     }
-    const exitCode = await runStoryTests([], {
+    const exitCode = await runStoryTestsQuietly([], {
       cwd: '/repo',
       env: {},
       spawn: () => {
@@ -217,7 +238,7 @@ describe('story runner reports and compatibility', () => {
         ...manifest('a'.repeat(64)),
         files: [{ path: 'tests/stories/a.story.test.ts', sha256: 'b'.repeat(64) }],
       }
-      const exitCode = await runStoryTests([], {
+      const exitCode = await runStoryTestsQuietly([], {
         cwd: '/repo',
         env: {},
         spawn: () => {
@@ -518,7 +539,7 @@ describe('story runner reports and compatibility', () => {
   test('refuses compatibility without an explicit CLI or BASE_REF ref before spawning', async () => {
     let spawnCount = 0
 
-    const exitCode = await runStoryTests(['--compat'], {
+    const exitCode = await runStoryTestsQuietly(['--compat'], {
       cwd: '/repo',
       env: {},
       spawn: () => {
@@ -541,7 +562,7 @@ describe('story runner reports and compatibility', () => {
   test('compares manifests and stops before child spawn on mismatch', async () => {
     let spawnCount = 0
 
-    const exitCode = await runStoryTests(['--baseline-ref=base123'], {
+    const exitCode = await runStoryTestsQuietly(['--baseline-ref=base123'], {
       cwd: '/repo',
       env: {},
       spawn: () => {
@@ -740,7 +761,7 @@ describe('story report lifecycle', () => {
   test('invalid arguments remove both stale standard reports but preserve custom output', async () => {
     const fixture = reportFixture()
     try {
-      const exitCode = await runStoryTests(['--seed='], dependencies(fixture.root))
+      const exitCode = await runStoryTestsQuietly(['--seed='], dependencies(fixture.root))
 
       expect(exitCode).toBe(2)
       expect(existsSync(fixture.manifestPath)).toBe(false)
@@ -756,7 +777,7 @@ describe('story report lifecycle', () => {
     let builds = 0
     let spawns = 0
     try {
-      const exitCode = await runStoryTests(
+      const exitCode = await runStoryTestsQuietly(
         ['--rerun-each=4294967296'],
         dependencies(fixture.root, {
           buildCandidateManifest: () => {
@@ -786,7 +807,7 @@ describe('story report lifecycle', () => {
     try {
       mkdirSync(path.join(fixture.root, 'tests'), { recursive: true })
       symlinkSync(external, path.join(fixture.root, 'tests/stories'))
-      const exitCode = await runStoryTests(
+      const exitCode = await runStoryTestsQuietly(
         ['--manifest-only'],
         dependencies(fixture.root, { buildCandidateManifest: buildCandidateStoryManifest }),
       )
@@ -803,7 +824,7 @@ describe('story report lifecycle', () => {
   test('compatibility mismatch leaves the current candidate manifest and no JUnit', async () => {
     const fixture = reportFixture()
     try {
-      const exitCode = await runStoryTests(
+      const exitCode = await runStoryTestsQuietly(
         ['--baseline-ref=base'],
         dependencies(fixture.root, {
           ...sessionDependencies(testSession(fixture.root, manifest('a'.repeat(64)))),
@@ -823,7 +844,7 @@ describe('story report lifecycle', () => {
     const fixture = reportFixture()
     try {
       const candidate = manifest('a'.repeat(64))
-      const exitCode = await runStoryTests(
+      const exitCode = await runStoryTestsQuietly(
         [],
         dependencies(fixture.root, {
           ...sessionDependencies(testSession(fixture.root, candidate)),
@@ -848,7 +869,7 @@ describe('story report lifecycle', () => {
       files: [{ path: 'tests/stories/a.story.test.ts', sha256: 'b'.repeat(64) }],
     }
     try {
-      const exitCode = await runStoryTests(
+      const exitCode = await runStoryTestsQuietly(
         [],
         dependencies(fixture.root, {
           ...sessionDependencies(
@@ -933,7 +954,7 @@ describe('story report lifecycle', () => {
     verifyIntegrity.mockResolvedValueOnce(undefined)
     verifyIntegrity.mockRejectedValueOnce(new Error('Snapshot integrity check failed'))
     try {
-      const exitCode = await runStoryTests(
+      const exitCode = await runStoryTestsQuietly(
         [],
         dependencies(fixture.root, {
           ...sessionDependencies(
