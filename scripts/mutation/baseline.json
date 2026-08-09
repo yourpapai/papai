@@ -117,7 +117,7 @@
   "plugins/task-provider-youtrack/identity-resolver.ts": 0.5384615384615384,
   "plugins/task-provider-youtrack/issue-derived-fields.ts": 0.3076923076923077,
   "plugins/task-provider-youtrack/labels.ts": 0.5590551181102362,
-  "plugins/task-provider-youtrack/mappers.ts": 0.7984189723320159,
+  "plugins/task-provider-youtrack/mappers.ts": 0.9644268774703557,
   "plugins/task-provider-youtrack/operations/activities.ts": 0.7578947368421053,
   "plugins/task-provider-youtrack/operations/agiles.ts": 0.7816901408450704,
   "plugins/task-provider-youtrack/operations/attachments.ts": 0.36363636363636365,

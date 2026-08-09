@@ -625,3 +625,465 @@ describe('mapComment', () => {
     ])
   })
 })
+
+describe('mapIssueToTask custom field value guards', () => {
+  test('returns undefined when custom field value is null', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      created: 1704067200000,
+      updated: 1704153600000,
+      project: { id: 'proj-1' },
+      customFields: [{ $type: 'StateIssueCustomField', name: 'State', value: null }],
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
+
+    const result = mapIssueToTask(issue, 'https://example.com')
+
+    expect(result.status).toBeUndefined()
+  })
+
+  test('returns undefined when custom field object value has non-string login', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      created: 1704067200000,
+      updated: 1704153600000,
+      project: { id: 'proj-1' },
+      customFields: [{ $type: 'StateIssueCustomField', name: 'State', value: { login: 123 } }],
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
+
+    const result = mapIssueToTask(issue, 'https://example.com')
+
+    expect(result.status).toBeUndefined()
+  })
+
+  test('returns undefined when custom field value is a non-string scalar', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      created: 1704067200000,
+      updated: 1704153600000,
+      project: { id: 'proj-1' },
+      customFields: [{ $type: 'SimpleIssueCustomField' as const, name: 'State', value: 42 }],
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
+
+    const result = mapIssueToTask(issue, 'https://example.com')
+
+    expect(result.status).toBeUndefined()
+  })
+})
+
+describe('mapIssueToTask relation directions', () => {
+  test('maps depends (plural) relation outward as blocks', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      created: 1704067200000,
+      updated: 1704153600000,
+      project: { id: 'proj-1' },
+      customFields: [],
+      links: [
+        {
+          id: 'link-1',
+          direction: 'OUTWARD',
+          linkType: { id: 'lt-1', name: 'Depends' },
+          issues: [{ id: '456', idReadable: 'PROJ-2', summary: 'Blocking Task' }],
+        },
+      ],
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
+
+    const result = mapIssueToTask(issue, 'https://example.com')
+
+    expect(result.relations).toEqual([{ type: 'blocks', taskId: 'PROJ-2' }])
+  })
+
+  test('maps depend relation inward as blocked_by', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      created: 1704067200000,
+      updated: 1704153600000,
+      project: { id: 'proj-1' },
+      customFields: [],
+      links: [
+        {
+          id: 'link-1',
+          direction: 'INWARD',
+          linkType: { id: 'lt-1', name: 'Depend' },
+          issues: [{ id: '456', idReadable: 'PROJ-2', summary: 'Blocking Task' }],
+        },
+      ],
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
+
+    const result = mapIssueToTask(issue, 'https://example.com')
+
+    expect(result.relations).toEqual([{ type: 'blocked_by', taskId: 'PROJ-2' }])
+  })
+
+  test('maps duplicate relation inward as duplicate_of', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      created: 1704067200000,
+      updated: 1704153600000,
+      project: { id: 'proj-1' },
+      customFields: [],
+      links: [
+        {
+          id: 'link-1',
+          direction: 'INWARD',
+          linkType: { id: 'lt-1', name: 'Duplicate' },
+          issues: [{ id: '456', idReadable: 'PROJ-2', summary: 'Duplicate Task' }],
+        },
+      ],
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
+
+    const result = mapIssueToTask(issue, 'https://example.com')
+
+    expect(result.relations).toEqual([{ type: 'duplicate_of', taskId: 'PROJ-2' }])
+  })
+})
+
+describe('mapIssueToTask due date edge cases', () => {
+  test('finds due date even when a non-matching field precedes it', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      created: 1704067200000,
+      updated: 1704153600000,
+      project: { id: 'proj-1' },
+      customFields: [
+        {
+          $type: 'SingleEnumIssueCustomField' as const,
+          name: 'State',
+          value: { $type: 'EnumBundleElement' as const, name: 'Open' },
+        },
+        {
+          $type: 'DateIssueCustomField' as const,
+          name: 'Due Date',
+          value: Date.parse('2026-03-25T12:00:00.000Z'),
+        },
+      ],
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
+
+    const result = mapIssueToTask(issue, 'https://example.com')
+
+    expect(result.dueDate).toBe('2026-03-25')
+  })
+
+  test('treats a non-numeric due date value as absent', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      created: 1704067200000,
+      updated: 1704153600000,
+      project: { id: 'proj-1' },
+      customFields: [{ $type: 'DateIssueCustomField', name: 'Due Date', value: '2024-01-01' }],
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
+
+    const result = mapIssueToTask(issue, 'https://example.com')
+
+    expect(result.dueDate).toBeNull()
+  })
+})
+
+describe('mapIssueToTask null and empty guards', () => {
+  test('maps null reporter to undefined', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      created: 1704067200000,
+      updated: 1704153600000,
+      project: { id: 'proj-1' },
+      customFields: [],
+      reporter: null,
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
+
+    const result = mapIssueToTask(issue, 'https://example.com')
+
+    expect(result.reporter).toBeUndefined()
+  })
+
+  test('maps parent with empty issues to undefined', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      created: 1704067200000,
+      updated: 1704153600000,
+      project: { id: 'proj-1' },
+      customFields: [],
+      parent: { issues: [] },
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
+
+    const result = mapIssueToTask(issue, 'https://example.com')
+
+    expect(result.parent).toBeUndefined()
+  })
+
+  test('maps subtask with null resolved as open', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      created: 1704067200000,
+      updated: 1704153600000,
+      project: { id: 'proj-1' },
+      customFields: [],
+      subtasks: {
+        issues: [{ id: '200', idReadable: 'PROJ-2', summary: 'Subtask', resolved: null }],
+      },
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
+
+    const result = mapIssueToTask(issue, 'https://example.com')
+
+    expect(result.subtasks?.[0]?.status).toBe('open')
+  })
+})
+
+describe('mapIssueToTask visibility variants', () => {
+  test('maps unlimited visibility as public', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      created: 1704067200000,
+      updated: 1704153600000,
+      project: { id: 'proj-1' },
+      customFields: [],
+      visibility: { $type: 'UnlimitedVisibility' },
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
+
+    const result = mapIssueToTask(issue, 'https://example.com')
+
+    expect(result.visibility).toEqual({ kind: 'public' })
+  })
+
+  test('collapses empty permittedGroups on limited visibility', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      created: 1704067200000,
+      updated: 1704153600000,
+      project: { id: 'proj-1' },
+      customFields: [],
+      visibility: {
+        $type: 'LimitedVisibility',
+        permittedGroups: [],
+        permittedUsers: [{ id: 'user-1', login: 'alice', fullName: 'Alice Example' }],
+      },
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
+
+    const result = mapIssueToTask(issue, 'https://example.com')
+
+    expect(result.visibility).toEqual({
+      kind: 'restricted',
+      users: [{ id: 'user-1', login: 'alice', name: 'Alice Example' }],
+    })
+  })
+
+  test('collapses empty permittedUsers on limited visibility', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      created: 1704067200000,
+      updated: 1704153600000,
+      project: { id: 'proj-1' },
+      customFields: [],
+      visibility: {
+        $type: 'LimitedVisibility',
+        permittedUsers: [],
+        permittedGroups: [{ id: 'group-1', name: 'team-a' }],
+      },
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
+
+    const result = mapIssueToTask(issue, 'https://example.com')
+
+    expect(result.visibility).toEqual({
+      kind: 'restricted',
+      groups: [{ id: 'group-1', name: 'team-a' }],
+    })
+  })
+
+  test('collapses absent permittedUsers and permittedGroups on limited visibility', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      created: 1704067200000,
+      updated: 1704153600000,
+      project: { id: 'proj-1' },
+      customFields: [],
+      visibility: { $type: 'LimitedVisibility' },
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
+
+    const result = mapIssueToTask(issue, 'https://example.com')
+
+    expect(result.visibility).toEqual({ kind: 'restricted' })
+  })
+})
+
+describe('mapIssueToTask watchers variants', () => {
+  test('maps watchers object without issueWatchers to undefined', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      created: 1704067200000,
+      updated: 1704153600000,
+      project: { id: 'proj-1' },
+      customFields: [],
+      watchers: { hasStar: true },
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
+
+    const result = mapIssueToTask(issue, 'https://example.com')
+
+    expect(result.watchers).toBeUndefined()
+  })
+
+  test('maps empty issueWatchers list to undefined', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      created: 1704067200000,
+      updated: 1704153600000,
+      project: { id: 'proj-1' },
+      customFields: [],
+      watchers: { issueWatchers: [] },
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
+
+    const result = mapIssueToTask(issue, 'https://example.com')
+
+    expect(result.watchers).toBeUndefined()
+  })
+})
+
+describe('mapIssueToTask attachment and link guards', () => {
+  test('defaults missing attachment url to empty string', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      created: 1704067200000,
+      updated: 1704153600000,
+      project: { id: 'proj-1' },
+      customFields: [],
+      attachments: [{ id: 'a-1', name: 'no-url.txt' }],
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
+
+    const result = mapIssueToTask(issue, 'https://example.com')
+
+    expect(result.attachments?.[0]?.url).toBe('')
+  })
+
+  test('collapses empty attachments list to undefined', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      created: 1704067200000,
+      updated: 1704153600000,
+      project: { id: 'proj-1' },
+      customFields: [],
+      attachments: [],
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
+
+    const result = mapIssueToTask(issue, 'https://example.com')
+
+    expect(result.attachments).toBeUndefined()
+  })
+
+  test('omits relations when a link lacks linkType and issues', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      created: 1704067200000,
+      updated: 1704153600000,
+      project: { id: 'proj-1' },
+      customFields: [],
+      links: [{ id: 'link-1', direction: 'OUTWARD' }],
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
+
+    const result = mapIssueToTask(issue, 'https://example.com')
+
+    expect(result.relations).toBeUndefined()
+  })
+
+  test('defaults missing tags to empty labels', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      created: 1704067200000,
+      updated: 1704153600000,
+      project: { id: 'proj-1' },
+      customFields: [],
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
+
+    const result = mapIssueToTask(issue, 'https://example.com')
+
+    expect(result.labels).toEqual([])
+  })
+
+  test('defaults missing tag color to undefined', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      created: 1704067200000,
+      updated: 1704153600000,
+      project: { id: 'proj-1' },
+      customFields: [],
+      tags: [{ id: 'tag-1', name: 'bug' }],
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
+
+    const result = mapIssueToTask(issue, 'https://example.com')
+
+    expect(result.labels?.[0]?.color).toBeUndefined()
+  })
+})
+
+describe('mapIssueToListItem missing customFields', () => {
+  test('omitting customFields yields undefined state, priority, and dueDate', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      project: { id: 'proj-1' },
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueListSchema>
+
+    const result = mapIssueToListItem(issue, 'https://example.com')
+
+    expect(result.status).toBeUndefined()
+    expect(result.priority).toBeUndefined()
+    expect(result.dueDate).toBeUndefined()
+  })
+})
+
+describe('mapIssueToSearchResult missing project', () => {
+  test('omitting project yields undefined projectId', () => {
+    const issue = {
+      id: '123',
+      idReadable: 'PROJ-1',
+      summary: 'Test',
+      customFields: [],
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueListSchema>
+
+    const result = mapIssueToSearchResult(issue, 'https://example.com')
+
+    expect(result.projectId).toBeUndefined()
+  })
+})
