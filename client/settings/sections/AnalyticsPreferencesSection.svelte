@@ -19,7 +19,9 @@
   } from '../analytics-fetchers.js'
   import type { AnalyticsPreferencesResponse } from '../fetcher-schemas-analytics.js'
   import SettingsFieldShell from '../components/SettingsFieldShell.svelte'
-  import { laneHint } from './analytics-preferences-copy.js'
+  import LiveRegion from '../../shared/ui/LiveRegion.svelte'
+  import { formatFetchError } from '../../shared/format-error.js'
+  import { deleteStatusMessage, laneHint, RIGHTS_UNAVAILABLE_TEXT } from './analytics-preferences-copy.js'
 
   const CHOICE_OPTIONS = [
     { value: 'allow', label: 'Allow' },
@@ -32,10 +34,10 @@
   let announcement: string | null = $state(null)
   let busy = $state(false)
   let confirming: 'withdraw' | 'delete' | null = $state(null)
-
-  function messageFrom(err: unknown): string {
-    return err instanceof Error ? err.message : String(err)
-  }
+  let laneErrors = $state<{ localLongitudinal: string | null; externalPseudonymous: string | null }>({
+    localLongitudinal: null,
+    externalPseudonymous: null,
+  })
 
   async function load(): Promise<void> {
     loadError = null
@@ -43,7 +45,7 @@
     try {
       data = await fetchAnalyticsPreferences()
     } catch (err) {
-      loadError = messageFrom(err)
+      loadError = formatFetchError(err)
     }
   }
 
@@ -55,19 +57,31 @@
     try {
       announcement = await action()
     } catch (err) {
-      actionError = messageFrom(err)
+      actionError = formatFetchError(err)
     } finally {
       busy = false
     }
   }
 
+  // Not routed through `run`: a failed save belongs under the control that failed, not in
+  // the shared alert below the destructive actions, and the control silently snaps back to
+  // its stored value — so the message has to say the setting did not change.
   async function choose(lane: 'localLongitudinal' | 'externalPseudonymous', value: string): Promise<void> {
     if (value !== 'allow' && value !== 'deny') return
-    await run(async () => {
+    if (busy) return
+    laneErrors = { ...laneErrors, [lane]: null }
+    actionError = null
+    announcement = null
+    busy = true
+    try {
       const preference = await putAnalyticsPreferences({ [lane]: value })
       if (data !== null) data = { ...data, preference }
-      return 'Preference saved.'
-    })
+      announcement = 'Preference saved.'
+    } catch (err) {
+      laneErrors = { ...laneErrors, [lane]: `${formatFetchError(err)} The setting was not changed.` }
+    } finally {
+      busy = false
+    }
   }
 
   function downloadJson(filename: string, payload: unknown): void {
@@ -99,11 +113,21 @@
   }
 
   async function confirmDelete(): Promise<void> {
-    await run(async () => {
+    if (busy) return
+    actionError = null
+    announcement = null
+    busy = true
+    try {
       const result = await deleteAnalyticsData()
       confirming = null
-      return `Deletion ${result.status} (analytics only).`
-    })
+      const message = deleteStatusMessage(result.status)
+      if (message.tone === 'alert') actionError = message.text
+      else announcement = message.text
+    } catch (err) {
+      actionError = formatFetchError(err)
+    } finally {
+      busy = false
+    }
   }
 
   // Captured once per mount: the hint's legitimate-interest branch compares against the
@@ -140,19 +164,25 @@
       {#if data.notice.policyVersion !== null}· Policy v{data.notice.policyVersion}{/if}
     </p>
     <p class="settings-section__caption" data-testid="analytics-explanation">{data.explanation}</p>
+    {#if !data.subjectRightsAvailable}
+      <p class="settings-section__caption" data-testid="analytics-rights-unavailable">{RIGHTS_UNAVAILABLE_TEXT}</p>
+    {/if}
 
     <SettingsFieldShell
       label="Local longitudinal analytics"
       editorOpen={false}
       testid="analytics-field-local"
-      hint={laneHint({
-        lane: 'localLongitudinal',
-        value: data.preference.localLongitudinal,
-        effectiveAtMs: data.preference.effectiveAtMs,
-        lawfulBasisMode: data.notice.lawfulBasisMode,
-        policyEffectiveAtMs: data.notice.policyEffectiveAtMs,
-        nowMs,
-      })}>
+      error={laneErrors.localLongitudinal ?? undefined}
+      hint={data.subjectRightsAvailable
+        ? laneHint({
+            lane: 'localLongitudinal',
+            value: data.preference.localLongitudinal,
+            effectiveAtMs: data.preference.effectiveAtMs,
+            lawfulBasisMode: data.notice.lawfulBasisMode,
+            policyEffectiveAtMs: data.notice.policyEffectiveAtMs,
+            nowMs,
+          })
+        : undefined}>
       {#snippet head(describedBy)}
         <SegmentedControl
           options={CHOICE_OPTIONS}
@@ -161,6 +191,7 @@
           ariaDescribedBy={describedBy}
           testidPrefix="analytics-local"
           disabled={busy || !data.subjectRightsAvailable}
+          busy={busy}
           onChange={(value) => void choose('localLongitudinal', value)} />
       {/snippet}
     </SettingsFieldShell>
@@ -169,14 +200,17 @@
       label="External pseudonymous analytics"
       editorOpen={false}
       testid="analytics-field-external"
-      hint={laneHint({
-        lane: 'externalPseudonymous',
-        value: data.preference.externalPseudonymous,
-        effectiveAtMs: data.preference.effectiveAtMs,
-        lawfulBasisMode: data.notice.lawfulBasisMode,
-        policyEffectiveAtMs: data.notice.policyEffectiveAtMs,
-        nowMs,
-      })}>
+      error={laneErrors.externalPseudonymous ?? undefined}
+      hint={data.subjectRightsAvailable
+        ? laneHint({
+            lane: 'externalPseudonymous',
+            value: data.preference.externalPseudonymous,
+            effectiveAtMs: data.preference.effectiveAtMs,
+            lawfulBasisMode: data.notice.lawfulBasisMode,
+            policyEffectiveAtMs: data.notice.policyEffectiveAtMs,
+            nowMs,
+          })
+        : undefined}>
       {#snippet head(describedBy)}
         <SegmentedControl
           options={CHOICE_OPTIONS}
@@ -185,12 +219,18 @@
           ariaDescribedBy={describedBy}
           testidPrefix="analytics-external"
           disabled={busy || !data.subjectRightsAvailable}
+          busy={busy}
           onChange={(value) => void choose('externalPseudonymous', value)} />
       {/snippet}
     </SettingsFieldShell>
 
     <div class="settings-actions">
-      <Btn variant="outline" size="sm" disabled={busy} testid="analytics-export" onClick={() => void exportData()}>
+      <Btn
+        variant="outline"
+        size="sm"
+        disabled={busy || !data.subjectRightsAvailable}
+        testid="analytics-export"
+        onClick={() => void exportData()}>
         {#snippet children()}Export analytics data{/snippet}
       </Btn>
       <Btn
@@ -211,12 +251,8 @@
       </Btn>
     </div>
 
-    {#if actionError !== null}
-      <p class="status-error" role="alert" data-testid="analytics-error">{actionError}</p>
-    {/if}
-    {#if announcement !== null}
-      <p class="status-success" role="status" data-testid="analytics-success">{announcement}</p>
-    {/if}
+    <LiveRegion tone="alert" message={actionError} testid="analytics-error" />
+    <LiveRegion tone="status" message={announcement} testid="analytics-success" />
   {/if}
 </section>
 

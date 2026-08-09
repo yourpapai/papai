@@ -31,6 +31,19 @@ const preferencesPayload = {
   subjectRightsAvailable: true,
 } as const
 
+const rightsUnavailablePayload = {
+  ...preferencesPayload,
+  preference: { localLongitudinal: 'unknown', externalPseudonymous: 'unknown', effectiveAtMs: null },
+  subjectRightsAvailable: false,
+} as const
+
+const deleteFailedPayload = { status: 'failed', coverage: 'analytics_only' } as const
+
+const routeDeleteFailed = (url: string, init: RequestInit): Promise<Response> => {
+  if (init.method === 'POST' && url.endsWith('/delete')) return Promise.resolve(json(deleteFailedPayload))
+  return Promise.resolve(getBody())
+}
+
 const withdrawPayload = { status: 'completed', eventsRemoved: 2, deliveryRowsRemoved: 0, censorsApplied: 1 } as const
 const deletePayload = { status: 'completed', coverage: 'analytics_only' } as const
 const exportPayload = {
@@ -190,16 +203,21 @@ describe('AnalyticsPreferencesSection', () => {
     void unmount(component)
   })
 
-  test('a failed choice renders an error summary alert', async () => {
+  test('a failed choice reports under the lane it failed on and says nothing changed', async () => {
     setCsrfToken('csrf-an')
     setMockFetch(routePutFailure)
     const { target, component } = render()
     await drain()
     target.querySelector<HTMLButtonElement>('[data-testid="analytics-local-deny"]')!.click()
     await drain()
-    const alert = target.querySelector('[data-testid="analytics-error"]')
-    expect(alert).not.toBeNull()
-    expect(alert!.getAttribute('role')).toBe('alert')
+    const field = target.querySelector('[data-testid="analytics-field-local"]')!
+    const fieldError = field.querySelector('.settings-field__error')
+    expect(fieldError).not.toBeNull()
+    expect(fieldError!.getAttribute('role')).toBe('alert')
+    expect(fieldError!.textContent).toContain('The setting was not changed.')
+    expect(
+      target.querySelector('[data-testid="analytics-field-external"]')!.querySelector('.settings-field__error'),
+    ).toBeNull()
     void unmount(component)
   })
 
@@ -247,7 +265,7 @@ describe('AnalyticsPreferencesSection', () => {
     await drain()
     clickConfirmButton('Delete my analytics data')
     await drain()
-    expect(target.querySelector('[data-testid="analytics-success"]')!.textContent).toContain('completed')
+    expect(target.querySelector('[data-testid="analytics-success"]')!.textContent).toContain('has been deleted')
     void unmount(component)
   })
 
@@ -260,6 +278,82 @@ describe('AnalyticsPreferencesSection', () => {
     flushSync()
     const exportBtn = target.querySelector<HTMLButtonElement>('[data-testid="analytics-export"]')!
     expect(exportBtn.disabled).toBe(true)
+    void unmount(component)
+  })
+
+  test('the live regions exist before there is anything to announce', async () => {
+    setMockFetch(() => Promise.resolve(getBody()))
+    const { target, component } = render()
+    await drain()
+    const success = target.querySelector('[data-testid="analytics-success"]')
+    const error = target.querySelector('[data-testid="analytics-error"]')
+    expect(success).not.toBeNull()
+    expect(error).not.toBeNull()
+    expect(success!.textContent).toBe('')
+    expect(error!.textContent).toBe('')
+    expect(success!.getAttribute('aria-live')).toBe('polite')
+    expect(error!.getAttribute('aria-live')).toBe('assertive')
+    void unmount(component)
+  })
+
+  test('a failed deletion is announced as an alert, not as a success', async () => {
+    setCsrfToken('csrf-an')
+    setMockFetch(routeDeleteFailed)
+    const { target, component } = render()
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="analytics-delete"]')!.click()
+    await drain()
+    clickConfirmButton('Delete my analytics data')
+    await drain()
+    expect(target.querySelector('[data-testid="analytics-error"]')!.textContent).toContain('Deletion failed')
+    expect(target.querySelector('[data-testid="analytics-success"]')!.textContent).toBe('')
+    void unmount(component)
+  })
+
+  test('unavailable subject rights disable export alongside withdraw and delete', async () => {
+    setMockFetch(() => Promise.resolve(json(rightsUnavailablePayload)))
+    const { target, component } = render()
+    await drain()
+    for (const id of ['analytics-export', 'analytics-withdraw', 'analytics-delete']) {
+      expect(target.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`)!.disabled, id).toBe(true)
+    }
+    void unmount(component)
+  })
+
+  test('unavailable subject rights explain the deployment without claiming nothing is collected', async () => {
+    setMockFetch(() => Promise.resolve(json(rightsUnavailablePayload)))
+    const { target, component } = render()
+    await drain()
+    const notice = target.querySelector('[data-testid="analytics-rights-unavailable"]')
+    expect(notice).not.toBeNull()
+    expect(notice!.textContent).toContain('operator')
+    expect(notice!.textContent).toContain('Aggregate analytics')
+    expect(target.querySelector('[data-testid="analytics-field-local"]')!.textContent).not.toContain(
+      'No choice recorded',
+    )
+    void unmount(component)
+  })
+
+  test('the local lane radiogroup is described by its own status line', async () => {
+    setMockFetch(() => Promise.resolve(getBody()))
+    const { target, component } = render()
+    await drain()
+    const field = target.querySelector('[data-testid="analytics-field-local"]')!
+    const describedBy = field.querySelector('[role="radiogroup"]')!.getAttribute('aria-describedby')
+    expect(describedBy).not.toBeNull()
+    expect(field.querySelector(`#${describedBy}`)!.textContent).toContain('No choice recorded')
+    void unmount(component)
+  })
+
+  test('an in-flight save marks the radiogroup busy', async () => {
+    setCsrfToken('csrf-an')
+    setMockFetch(routePutPending)
+    const { target, component } = render()
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="analytics-local-allow"]')!.click()
+    flushSync()
+    const group = target.querySelector('[data-testid="analytics-field-local"]')!.querySelector('[role="radiogroup"]')!
+    expect(group.getAttribute('aria-busy')).toBe('true')
     void unmount(component)
   })
 })
