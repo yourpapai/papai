@@ -841,7 +841,7 @@ describe('ConfigFieldRow', () => {
     flushSync()
     target.querySelector<HTMLButtonElement>('[data-testid="cfg-save-timezone"]')!.click()
     await drain()
-    expect(target.querySelector('.settings-field__error')).not.toBeNull()
+    expect(target.querySelector('.settings-field__error')!.textContent).toBe('save failed')
     expect(target.querySelector('.settings-field__hint')).toBeNull()
     void unmount(component)
   })
