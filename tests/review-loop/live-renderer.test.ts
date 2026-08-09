@@ -51,10 +51,10 @@ describe('LiveRenderer', () => {
     expect(new LiveRenderer(stream).dynamic).toBe(true)
   })
 
-  test('non-TTY live scrolls with newline', () => {
+  test('non-TTY live is a no-op', () => {
     const { output, stream } = makeStream()
     new LiveRenderer(stream).live(['x'])
-    expect(output).toEqual(['x\n'])
+    expect(output).toEqual([])
   })
 
   test('TTY live writes clear-line + content with no newline', () => {
@@ -84,18 +84,12 @@ describe('LiveRenderer', () => {
   })
 
   test('ProgressReporter.live accepts an array of lines (one per active worker)', () => {
-    const captured: string[] = []
-    const stream = {
-      write: (s: string): boolean => {
-        captured.push(s)
-        return true
-      },
-      isTTY: false,
-    }
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
     const r = new LiveRenderer(stream)
     r.live(['line 1', 'line 2'])
-    expect(captured.join('')).toContain('line 1')
-    expect(captured.join('')).toContain('line 2')
+    const joined = output.join('')
+    expect(joined).toContain('line 1')
+    expect(joined).toContain('line 2')
   })
 })
 
@@ -251,6 +245,67 @@ describe('LiveRenderer slots', () => {
     expect(() => r.event('x')).not.toThrow()
     expect(r.dynamic).toBe(false)
     expect(() => r.slot('a', 'line')).not.toThrow()
+  })
+})
+
+describe('LiveRenderer commit', () => {
+  test('non-TTY commit prints the line once', () => {
+    const { stream, output } = makeStream()
+    const r = new LiveRenderer(stream)
+    r.slot('iter', '  improve    ▶ read a.ts')
+    r.commit('iter', 'iter 1 ✓ improved · src/x.ts')
+    expect(output).toEqual(['iter 1 ✓ improved · src/x.ts\n'])
+  })
+
+  test('non-TTY live() intermediate updates are suppressed', () => {
+    const { stream, output } = makeStream()
+    const r = new LiveRenderer(stream)
+    r.live(['working'])
+    r.live(['still working'])
+    expect(output).toEqual([])
+  })
+
+  test('TTY commit freezes the slot content as a permanent line', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.slot('a', 'line-a')
+    r.commit('a')
+    expect(output[output.length - 1]).toBe('line-a\n')
+  })
+
+  test('TTY commit with a replacement line prints it instead of the slot content', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.slot('a', 'line-a')
+    r.commit('a', 'iter 1 ✓ improved')
+    const joined = output.join('')
+    expect(output[output.length - 1]).toBe('iter 1 ✓ improved\n')
+    expect(joined).not.toContain('line-a\n')
+  })
+
+  test('TTY commit with a line but no slot still prints it', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.commit('iter', 'iter 1 ✗ failed · exception: boom')
+    expect(output).toEqual(['iter 1 ✗ failed · exception: boom\n'])
+  })
+
+  test('commit with neither slot nor line is a no-op', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.commit('missing')
+    expect(output).toEqual([])
+  })
+
+  test('a slot opened after commit renders as a fresh live line', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.slot('a', 'line-a')
+    r.commit('a')
+    r.slot('a', 'line-b')
+    const last = output[output.length - 1]!
+    expect(last).toContain('line-b')
+    expect(last.startsWith('\r')).toBe(true)
   })
 })
 
