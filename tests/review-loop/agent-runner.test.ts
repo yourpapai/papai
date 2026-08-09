@@ -398,19 +398,14 @@ describe('agent-runner', () => {
       }),
     ]
     const live: string[][] = []
-    const events: string[] = []
     const reporter: ProgressReporter = {
       dynamic: false,
-      event: (m) => {
-        events.push(m)
-      },
+      event() {},
       live: (m) => {
         live.push([...m])
       },
       clearLive() {},
-      log: (m) => {
-        events.push(m)
-      },
+      log() {},
     }
     const spawn = (
       _command: string,
