@@ -44,7 +44,9 @@ findings: `ROADMAP.md`.
   Phase handlers in `src/phases/` return a `TransitionSignal`, a comment body and
   optional artefact blocks, and never write state or decide the next phase
   themselves. `src/phases/implement.ts` is the one that delegates: `src/plan-steps.ts`
-  says what a step is, `src/phases/implement-steps.ts` walks them, and
+  says what a step is, `src/phases/implement-steps.ts` walks them,
+  `src/phases/implement-commit.ts` is what making one of them durable costs — the
+  commit, the repair rounds `src/commit-repair.ts` drives, and the push — and
   `src/implement-prompts.ts` holds the three things said to the model inside that phase
   — the standing instructions, one step, and the wrap-up asked for when a turn is cut
   off — split from `prompts.ts` because they are the only prompts that arrive in
@@ -78,8 +80,8 @@ findings: `ROADMAP.md`.
   where nothing did — with the **wall-clock** three in `src/time-notices.ts`,
   split off when a third of them would not fit beside the counter ceilings.
 - Config is read in two halves and discovered in a third. `src/config-values.ts`
-  reads and range-checks one scalar out of the environment, `src/config.ts` says
-  which values a run needs, and `src/config-discovery.ts` holds the two settings
+  reads and refuses one value out of the environment — every range-checked scalar, and
+  `AGENT_CHECKS`, its one non-scalar — `src/config.ts` says which values a run needs, and `src/config-discovery.ts` holds the two settings
   that are **asked for** rather than read — the review command, from whether the
   checkout has a `review-loop/`, and the base branch, from the event payload and
   then `origin/HEAD`. Both take their probe as an argument, so both ladders are
@@ -317,6 +319,28 @@ findings: `ROADMAP.md`.
   because its **return type** is the point: clean, refused and committed-but-large
   are three ordinary outcomes here that each earn a different sentence on the issue,
   where `commitAll` has only `StagedTotals | null` and a throw.
+- **A refused commit is repaired, never a failure on its own.** `commit-repair.ts`
+  wraps every `commitAll` this pipeline makes on the implement and CI-fix paths:
+  the repository's own `.git/hooks/pre-commit` gets to reject a tree, the model is
+  handed exactly what it printed, and the commit is issued again — bounded by
+  `AGENT_COMMIT_REPAIR_MAX_ROUNDS`. Without it `git commit` was the last place a
+  lint error could surface and the one place the pipeline had no answer for it, so
+  an implementation that had worked lost its phase to an unformatted file and cost a
+  `/retry`, which buys a fresh job that re-runs the model turn that had already
+  succeeded. Four things not to undo. Only a **`GitError`** is repaired — the diff
+  guard's refusals are `PipelineError`s raised before the commit is issued, and no
+  number of rounds may talk this into committing a staged credential. The last
+  rejection is what is finally **rethrown**, so a run that spends its rounds fails
+  exactly as it failed before the module existed and the change can only turn a
+  failure into a success. The repair prompt forbids the model to run git at all,
+  because "the commit was refused" reads to a model holding `bash` as an invitation
+  to commit with `--no-verify`, which is the salvage path's alone and would push a
+  tree neither the hook nor the guard accepted. And a repair turn is a **model
+  turn**, so `implement-commit.ts` catches `isTurnDeadline` around the whole loop and
+  leaves by the same door a stopped step leaves by — anything else would fail a run
+  whose tree was worth salvaging. `phases/review.ts` deliberately does not repair:
+  its findings come from `opencode run` subprocesses and it opens no session, so
+  repairing there would boot the OpenCode server for a phase built to avoid it.
 - **The unit of work is a plan step, and between two of them is where a run wants to
   stop.** `handleImplement` reads the plan's steps and `phases/implement-steps.ts`
   walks them: one turn, `commitAll`, `push`, next. Pushing **per step** is the same
