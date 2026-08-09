@@ -299,7 +299,7 @@ git commit -m "feat(ui): a live region that exists before it has anything to say
 **Files:**
 
 - Modify: `client/settings/components/SettingsFieldShell.svelte:61-67`
-- Test: `tests/client/settings/components/SettingsFieldShell.test.ts` (append if it exists; create with the header + imports below if it does not — check first with `ls tests/client/settings/components/`)
+- Test: `tests/client/settings/components/SettingsFieldShell.test.ts` (append if it exists; create with the standard four-line `//` BUSL header, `import { afterEach, expect, test } from 'bun:test'`, `import { createRawSnippet, flushSync, mount, unmount } from 'svelte'`, and `import SettingsFieldShell from '../../../../client/settings/components/SettingsFieldShell.svelte'` if it does not — check first with `ls tests/client/settings/components/`)
 
 **Interfaces:**
 
@@ -310,30 +310,57 @@ git commit -m "feat(ui): a live region that exists before it has anything to say
 
 - [ ] **Step 1: Write the failing test**
 
-Add to the shell's test file (create it with the standard four-line `//` BUSL header, `import { afterEach, expect, test } from 'bun:test'`, `import { flushSync, mount, unmount } from 'svelte'`, and `import SettingsFieldShell from '../../../../client/settings/components/SettingsFieldShell.svelte'` if it does not exist):
+Add to the shell's test file (see the Files block above for the header and imports if it does not yet exist):
+
+A snippet can be handed to `mount()` with `createRawSnippet`, so the parameter is directly assertable — no need to defer the proof to Task 6. Add `createRawSnippet` to the `svelte` import.
 
 ```ts
+const probeHead = createRawSnippet<[string | undefined]>((describedBy) => ({
+  render: () => `<span data-testid="probe" data-got="${describedBy() ?? 'none'}"></span>`,
+}))
+
 test('the head snippet receives the hint id when there is no error', () => {
   document.body.innerHTML = '<div id="root"></div>'
   const target = document.body.querySelector<HTMLElement>('#root')!
   const c = mount(SettingsFieldShell, {
     target,
-    props: { label: 'Lane', hint: 'Allowed since 2027-01-15 09:00', testid: 'f' },
+    props: { label: 'Lane', hint: 'Allowed since 2027-01-15 08:00', head: probeHead },
   })
   flushSync()
-  const hint = target.querySelector('.settings-field__hint')
-  expect(hint).not.toBeNull()
-  expect(hint!.id).toMatch(/^settings-field-hint-\d+$/)
+  const hintId = target.querySelector('.settings-field__hint')!.id
+  expect(hintId).not.toBe('')
+  expect(target.querySelector('[data-testid="probe"]')!.getAttribute('data-got')).toBe(hintId)
+  void unmount(c)
+})
+
+test('the head snippet still receives the error id when there is an error', () => {
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.body.querySelector<HTMLElement>('#root')!
+  const c = mount(SettingsFieldShell, {
+    target,
+    props: { label: 'Lane', hint: 'Allowed.', error: 'Nope.', head: probeHead },
+  })
+  flushSync()
+  const errorId = target.querySelector('.settings-field__error')!.id
+  expect(errorId).not.toBe('')
+  expect(target.querySelector('[data-testid="probe"]')!.getAttribute('data-got')).toBe(errorId)
+  void unmount(c)
+})
+
+test('the head snippet receives nothing when there is neither error nor hint', () => {
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.body.querySelector<HTMLElement>('#root')!
+  const c = mount(SettingsFieldShell, { target, props: { label: 'Lane', head: probeHead } })
+  flushSync()
+  expect(target.querySelector('[data-testid="probe"]')!.getAttribute('data-got')).toBe('none')
   void unmount(c)
 })
 ```
 
-Because a snippet cannot be passed from a plain `mount()` call, assert the wiring end-to-end in Task 6's section test instead (`the local lane's radiogroup is described by its status line`). This step's test only pins that the hint element carries the id the shell will now hand down.
-
-- [ ] **Step 2: Run it**
+- [ ] **Step 2: Run the tests and watch the first one fail**
 
 Run: `bun test tests/client/settings/components/SettingsFieldShell.test.ts`
-Expected: PASS — the hint id already exists. This test is a regression pin, not a red bar; it exists so a later refactor cannot silently drop `hintId`.
+Expected: FAIL, 1 test — `the head snippet receives the hint id when there is no error` gets `"none"` where the hint id was expected. The other two pass already and must keep passing.
 
 - [ ] **Step 3: Change the id handed to the head snippet**
 
