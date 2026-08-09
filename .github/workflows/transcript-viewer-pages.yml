@@ -1,0 +1,65 @@
+name: Transcript viewer
+
+# Publishes `opencode-agent/viewer/` to GitHub Pages, which is where a
+# maintainer opens it to read an encrypted debug transcript.
+#
+# It is a *hosted* page rather than a file in the repository for one reason: the
+# flow the agent's comment describes is two clicks — download the artefact,
+# open the link — and "clone the repository, then open a file URL" is not that.
+# The page fetches nothing and has no back end; Pages is a static host and this
+# workflow is the whole deployment.
+#
+# Deliberately separate from `agent-pipeline.yml`. Pages needs `pages: write`
+# and `id-token: write`, and the agent job holds every repository secret and
+# runs model-authored code — so the two grants stay in two files, and the one
+# that publishes is triggered only by a push to master that a human merged.
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'opencode-agent/viewer/**'
+      - '.github/workflows/transcript-viewer-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time, and never cancel one in flight: a cancelled Pages
+# deploy can leave the site on the previous build with no run to say so, and
+# this page is read during an incident.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      # The directory as it sits in the repository. There is no build step and
+      # there must not become one: the page's guarantee is that what a
+      # maintainer runs against a decryption key is the source that was
+      # reviewed, and a bundler is a step between those two.
+      - name: Upload the viewer
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: opencode-agent/viewer
+
+      - name: Deploy to Pages
+        id: deploy
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0

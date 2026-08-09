@@ -411,11 +411,82 @@ jobs:
           # its own label conventions is the ordinary case, not the exception.
           AGENT_LABEL_PREFIX: ${{ vars.AGENT_LABEL_PREFIX }}
           AGENT_LOG_LEVEL: ${{ vars.AGENT_LOG_LEVEL || 'info' }}
+          # The one knob here that is a **secret** rather than a `vars` entry,
+          # and the only one whose absence is the ordinary case. With it unset
+          # the run behaves exactly as it did before the transcript existed: one
+          # warning, no file, no artefact, and a public log identical to the one
+          # a keyless run always wrote. With it set, the maintainer-only detail
+          # the Actions log deliberately withholds is encrypted under it — so
+          # the value is what decides whether that detail is readable at all,
+          # and it must never appear in a `vars` entry, which is world-readable
+          # on a public repository.
+          AGENT_LOG_KEY: ${{ secrets.AGENT_LOG_KEY }}
         run: |
           bun run opencode-agent/src/index.ts \
             --event-path "$GITHUB_EVENT_PATH" \
             --event-name "$GITHUB_EVENT_NAME" \
             --repo-root "$GITHUB_WORKSPACE"
+
+      # The encrypted debug transcript, if this run had a key.
+      #
+      # `always()`, because the run this artefact is most wanted for is the one
+      # that died: the writer creates the file empty up front and encrypts one
+      # self-contained envelope per line, so a runner killed mid-turn leaves a
+      # truncated file that still reads up to the last whole line.
+      #
+      # `hashFiles(...) != ''` is how a keyless run — the ordinary case — skips
+      # this without a red step: no key, no file, nothing to upload. It is also
+      # what keeps `steps.transcript.outputs.artifact-id` empty, which is the
+      # gate the comment below reads.
+      #
+      # Uploading ciphertext to an artefact anyone with repository read access
+      # can download is the whole design, not an oversight: the file is
+      # AES-256-GCM under `AGENT_LOG_KEY`, and pipeline credentials are redacted
+      # by value *before* encryption, so even the key holder never reads one
+      # back. Seven days because this is an incident aid, not a record.
+      - name: Upload the encrypted debug transcript
+        id: transcript
+        if: always() && hashFiles('.opencode-agent/debug-transcript.enc') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: debug-transcript-${{ github.run_id }}
+          path: .opencode-agent/debug-transcript.enc
+          retention-days: 7
+
+      # Two links and a sentence, which is the whole flow a maintainer was
+      # promised: click the artefact (one click, downloads while logged in),
+      # open the viewer, drop the file in, paste the key.
+      #
+      # Gated on the artefact **id** rather than on the run's outcome: a
+      # transcript is worth reading after a green run too — a phase that did the
+      # wrong thing correctly leaves no failure to attach a comment to — and a
+      # keyless run must stay silent, which an empty id is exactly.
+      #
+      # The key is never in the comment, and there is no URL parameter that
+      # could carry it. That is the point of the split: the artefact is behind
+      # repository access, the key is behind the secret store, and the page
+      # brings them together in a tab that talks to neither.
+      - name: Link the transcript on the issue
+        if: always() && needs.resolve.outputs.issue && steps.transcript.outputs.artifact-id != ''
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ needs.resolve.outputs.issue }}
+          # The upload action's own output rather than a hand-built path: it is
+          # the URL GitHub actually serves the artefact from, and a URL assembled
+          # here would be a second spelling to keep in step with theirs.
+          ARTIFACT_URL: ${{ steps.transcript.outputs.artifact-url }}
+          # Derived rather than hardcoded, so a fork publishes its own page: this
+          # is the default Pages URL for `<owner>.github.io/<repo>`, which is
+          # what `transcript-viewer-pages.yml` deploys to.
+          VIEWER_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+        run: |
+          printf '%s\n\n%s\n\n%s\n\n%s\n' \
+            '<details><summary>🔐 Encrypted debug transcript for this run</summary>' \
+            "- [Download the transcript]($ARTIFACT_URL) — the \`.enc\` file, inside the zip." \
+            "- [Open the viewer]($VIEWER_URL) — drop the file in and paste this repository's \`AGENT_LOG_KEY\`." \
+            '</details>' \
+            > /tmp/agent-transcript.md
+          gh issue comment "$ISSUE_NUMBER" --body-file /tmp/agent-transcript.md
 
       # The two facts a dead pipeline cannot report about itself, collected while
       # the runner still exists.
