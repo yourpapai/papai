@@ -126,6 +126,12 @@ describe('formatLiveLine', () => {
   test('hides the token segment while both counts are zero', () => {
     expect(formatLiveLine('improve', 'read', 'a.ts', 5000, 1, { input: 0, output: 0 })).not.toContain('in ')
   })
+  test('shows the token segment when only output is zero', () => {
+    expect(formatLiveLine('improve', 'read', 'a.ts', 5000, 1, { input: 5, output: 0 })).toContain('in 5 / out 0')
+  })
+  test('shows the token segment when only input is zero', () => {
+    expect(formatLiveLine('improve', 'read', 'a.ts', 5000, 1, { input: 0, output: 2 })).toContain('in 0 / out 2')
+  })
   test('done=true swaps the arrow for a check mark', () => {
     const line = formatLiveLine('improve', 'read', 'a.ts', 5000, 1, { input: 5, output: 2 }, true)
     expect(line).toBe(`  improve    \u2713 read a.ts \u00B7 5s \u00B7 1 tool \u00B7 in 5 / out 2`)
