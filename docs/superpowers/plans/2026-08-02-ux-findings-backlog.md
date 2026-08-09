@@ -719,7 +719,7 @@ Expected: PASS. Then deliberately break currency to confirm the gate bites:
 
 ```bash
 printf '\n' >> docs/ux-reviews/_BACKLOG.md
-bun test tests/scripts/ux-backlog.test.ts 2>&1 | tail -5
+bun run test tests/scripts/ux-backlog.test.ts
 bun run ux:backlog
 ```
 

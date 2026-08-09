@@ -72,7 +72,7 @@ const githubFor = (config: PipelineConfig, secrets: readonly string[], options: 
     owner: config.owner,
     repo: config.repo,
     secrets,
-    fetch: options.fetch,
+    ...options.octokit,
   })
 
 /** The run itself, once everything it needs is assembled. Extracted so the

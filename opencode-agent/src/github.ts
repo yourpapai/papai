@@ -76,6 +76,24 @@ export interface OctokitApiOptions {
    * pipeline asked for.
    */
   fetch?: FetchLike
+  /**
+   * Octokit's own logger.
+   *
+   * `@octokit/plugin-request-log` narrates every request through it, and a
+   * rejected call lands on `error`, which Octokit defaults to `console.error`.
+   * That default is deliberate in production and untouched when this is
+   * omitted; a test that drives a refusal on purpose hands in a sink so the
+   * expected 403 does not read as a real diagnostic in the test log.
+   */
+  log?: OctokitLog
+}
+
+/** The four levels Octokit's logger carries, all of which it requires. */
+export interface OctokitLog {
+  debug: (message: string) => unknown
+  info: (message: string) => unknown
+  warn: (message: string) => unknown
+  error: (message: string) => unknown
 }
 
 /**
@@ -110,7 +128,9 @@ export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
   const clean = (text: string): string => redactSecrets(text, options.secrets)
   // An undefined `fetch` falls through to `globalThis.fetch` inside
   // `@octokit/request`, so the production path is unchanged.
-  const octokit = new Octokit({ auth: options.token, request: { fetch: options.fetch } })
+  // An undefined `log` falls through to Octokit's own default logger, so the
+  // production path is unchanged there too.
+  const octokit = new Octokit({ auth: options.token, log: options.log, request: { fetch: options.fetch } })
 
   return {
     listIssueComments: (issueNumber) => listIssueComments(octokit, repo, issueNumber),

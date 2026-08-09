@@ -271,7 +271,7 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     logKey: logKey(env, 'AGENT_LOG_KEY'),
     commitAuthorName: optional(env, 'AGENT_COMMIT_NAME', 'opencode-agent[bot]'),
     commitAuthorEmail: optional(env, 'AGENT_COMMIT_EMAIL', 'opencode-agent@users.noreply.github.com'),
-    checkCommand: optional(env, 'AGENT_CHECK_COMMAND', 'bun run lint && bun run typecheck && bun test'),
+    checkCommand: optional(env, 'AGENT_CHECK_COMMAND', 'bun check:full'),
     reviewCommand: resolveReviewCommand(env['AGENT_REVIEW_COMMAND'], repoRoot, existsSync),
     checks: parseChecks(env['AGENT_CHECKS']),
     reviewMaxRounds: boundedInt(env, 'AGENT_REVIEW_MAX_ROUNDS', 4, ROUND_RANGE),

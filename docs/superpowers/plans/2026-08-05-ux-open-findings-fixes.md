@@ -1390,7 +1390,7 @@ Expected: all three severity buckets read `_None._`, and `## Deferred` contains 
 
 - [ ] **Step 6: Run the backlog tests**
 
-Run: `bun test tests/scripts/ux-backlog.test.ts 2>&1 | tail -10`
+Run: `bun run test tests/scripts/ux-backlog.test.ts`
 Expected: PASS. The "is current" test proves the committed `_BACKLOG.md` matches a fresh regeneration — it fails if the file was hand-edited. The "covers every review document" test still expects 18.
 
 - [ ] **Step 7: Confirm zero client changes**

@@ -70,6 +70,32 @@ Mandatory; pino with structured metadata-first calls. `debug` — function entry
 
 See `tests/CLAUDE.md`. Prefer DI over `mock.module()` where the module supports it. Helpers (`schemaValidates()`, `getToolExecutor()`, `setMockFetch()`, `restoreFetch()`) live in `tests/utils/test-helpers.ts`; `tests/mock-reset.ts` resets common mocks per test. The repo mixes DI-first and legacy delayed-import/mock suites — follow the local pattern unless intentionally refactoring style. Mutation testing (Stryker) runs as a blocking per-file ratchet gate in CI (`test:mutate:changed` on PRs; `scripts/mutation/baseline.json` is the monotonic per-file floor, seeded on master from changed files via `test:mutate:changed --base=HEAD~1 --update-baseline` / `seedMerge`) but is not in the write-hook pipeline.
 
+## Running and inspecting checks
+
+**Run once, then read. Never re-run a check to filter its output differently.** `bun run test` persists the
+whole run to `reports/test/` — log, JUnit index, and a joined `last-run.json`. Every follow-up question is a
+read against that artifact, so a second question costs milliseconds instead of another full suite.
+
+| Want                                     | Command                              |
+| ---------------------------------------- | ------------------------------------ |
+| the failures, with `file:line`           | `bun run test:failures`              |
+| one failure's full diagnostic            | `bun run test:show <id>`             |
+| a different filter over the same run     | `bun run test:log <pattern> [-C n]`  |
+| what the last run was, and if it's stale | `bun run test:status`                |
+| where the wall time went                 | `bun run test:slowest`               |
+| just the tests a change can reach        | `bun run test:affected [--base=REF]` |
+
+`test:affected` is a static-import heuristic — it cannot see `mock.module()` targets, computed dynamic
+imports, or behaviour reached through DI seams, and it says so on every run. Use it in the loop; run the full
+suite before committing.
+
+`bun check:full` leaves the same kind of evidence: each check's output stays in `reports/checks/<name>.log`,
+and a failure tells you which file to open rather than which command to run again.
+
+Approximate costs on a 4-vCPU container, so a run can be budgeted rather than guessed: full suite ~3–4 min,
+`lint` 35 s, `typecheck` 24 s, `knip` 4.6 s, `format:check` 2.9 s, `duplicates` 1.3 s. The query commands are
+all sub-second. `bun run test:raw` is the unwrapped escape hatch and writes no report.
+
 ## Pi Workflow
 
 When the harness supports `obra/superpowers` skills, preserve that workflow. Load `using-superpowers` at session start before acting; load any other applicable skill before responding, editing, or running commands; do not rely on memory of skill contents — load the current text each time.

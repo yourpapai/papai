@@ -6,7 +6,7 @@
 import path from 'node:path'
 import process from 'node:process'
 
-import type { FetchLike } from './github.js'
+import type { OctokitApiOptions } from './github.js'
 import type { Logger, LogLevel } from './logger.js'
 import type { CommandRunner } from './shell.js'
 
@@ -29,8 +29,8 @@ export interface MainOptions {
   env: NodeJS.ProcessEnv
   logger?: Logger
   run?: CommandRunner
-  /** Transport seam for tests; the GitHub adapter's own `fetch` option. */
-  fetch?: FetchLike
+  /** Seams for tests, forwarded verbatim as the GitHub adapter's own options. */
+  octokit?: Pick<OctokitApiOptions, 'fetch' | 'log'>
 }
 
 export class UsageError extends Error {

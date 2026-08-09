@@ -23,6 +23,13 @@ export interface CoverageMapDeps {
   readonly runCoverage: (testFile: string, projectRoot: string) => ReadonlyMap<string, number>
   /** Optional: persist any batched coverage-cache writes once the batch completes. */
   readonly flush?: () => void
+  /**
+   * Optional: where the "no covering test" notice goes. Defaults to
+   * `console.error`, so a real `bun scripts/mutation/paired-run.ts` still
+   * reports an uncovered source on stderr. A caller that owns its own reporter
+   * — or a test that drives the uncovered case on purpose — passes one here.
+   */
+  readonly warn?: (message: string) => void
 }
 
 export interface BuildCoverageMapInput {
@@ -34,6 +41,11 @@ export interface BuildCoverageMapInput {
 /** Build {sourceFile -> testFiles that cover it} for the requested sources. */
 export function buildCoverageMap(input: BuildCoverageMapInput): CoverageMap {
   const out: CoverageMap = {}
+  const warn =
+    input.deps.warn ??
+    ((message: string): void => {
+      console.error(message)
+    })
   try {
     for (const srcFile of input.sourceFiles) {
       const candidates = input.deps.listCandidateTests(srcFile)
@@ -43,8 +55,7 @@ export function buildCoverageMap(input: BuildCoverageMapInput): CoverageMap {
         if ((hits.get(srcFile) ?? 0) > 0) covering.push(testFile)
       }
       if (covering.length > 0) out[srcFile] = covering
-      else
-        console.error(`coverage-map: no covering test found for ${srcFile} (checked ${candidates.length} candidates)`)
+      else warn(`coverage-map: no covering test found for ${srcFile} (checked ${candidates.length} candidates)`)
     }
   } finally {
     input.deps.flush?.()
@@ -71,9 +82,28 @@ export interface DefaultCoverageMapDepsOptions {
 }
 
 /** Memoized per-batch candidate universe + import-scan context. */
-interface CandidateContext {
+export interface CandidateContext {
   readonly scan: () => readonly string[]
   readonly importsImpl: (testAbs: string, srcAbs: string) => boolean
+}
+
+/**
+ * Build the memoized context {@link listCandidateTests} needs: the runnable test universe
+ * (scanned once per batch) plus the import scan over memoized file contents. Callers that
+ * already memoize test-file reads for another purpose pass their reader in so the batch
+ * reads each test file exactly once.
+ */
+export function createCandidateContext(
+  projectRoot: string,
+  readTestContent?: (testAbs: string) => string,
+): CandidateContext {
+  const contentCache = new Map<string, string>()
+  const read = readTestContent ?? ((testAbs: string): string => readMemoizedContent(testAbs, contentCache))
+  let scanned: readonly string[] | undefined
+  return {
+    scan: () => (scanned ??= scanTestFiles(projectRoot)),
+    importsImpl: (testAbs, srcAbs) => scanImportsInContent(read(testAbs), testAbs, srcAbs),
+  }
 }
 
 /**
@@ -100,11 +130,7 @@ export function createDefaultCoverageMapDeps(
   const cache = openCoverageCache(cachePath)
   const contentCache = new Map<string, string>()
   const readTestContent = (testAbs: string): string => readMemoizedContent(testAbs, contentCache)
-  let scanned: readonly string[] | undefined
-  const ctx: CandidateContext = {
-    scan: () => (scanned ??= scanTestFiles(projectRoot)),
-    importsImpl: (testAbs, srcAbs) => scanImportsInContent(readTestContent(testAbs), testAbs, srcAbs),
-  }
+  const ctx = createCandidateContext(projectRoot, readTestContent)
   return {
     listCandidateTests: (srcFile) => listCandidateTests(srcFile, projectRoot, ctx),
     runCoverage: (testFile, runRoot) =>
@@ -128,7 +154,12 @@ const readMemoizedContent = (testAbs: string, cache: Map<string, string>): strin
   return content
 }
 
-const listCandidateTests = (srcFile: string, projectRoot: string, ctx: CandidateContext): string[] => {
+/**
+ * Tests that could plausibly cover `srcFile`: same-package-directory tests unioned with tests
+ * whose text imports the source. Repo-relative, sorted. Shared with `scripts/test/affected.ts`,
+ * which uses it as the second half of its selection (the graph walk is the first).
+ */
+export const listCandidateTests = (srcFile: string, projectRoot: string, ctx: CandidateContext): string[] => {
   const srcAbs = path.isAbsolute(srcFile) ? srcFile : path.resolve(projectRoot, srcFile)
   const srcRel = path.relative(projectRoot, srcAbs)
   const pkgDirAbs = path.resolve(projectRoot, samePackageTestDir(srcRel))

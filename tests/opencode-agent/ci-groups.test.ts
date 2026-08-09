@@ -38,9 +38,22 @@ describe('createCiGroups', () => {
 
   test('writes to stdout by default, not through the logger', () => {
     // The default sink is the point: a `::group::` line only folds the log if
-    // the runner sees it raw.
-    const groups = createCiGroups()
+    // the runner sees it raw. Capture the write rather than letting it land —
+    // asserting the destination is what the test is for, and a real `::endgroup::`
+    // on stdout is a stray line in every suite run that never opened a group.
+    const written: string[] = []
+    const original = process.stdout.write.bind(process.stdout)
+    process.stdout.write = ((chunk: string): boolean => {
+      written.push(chunk)
+      return true
+    }) as typeof process.stdout.write
 
-    expect(() => groups.endGroup()).not.toThrow()
+    try {
+      createCiGroups().endGroup()
+    } finally {
+      process.stdout.write = original
+    }
+
+    expect(written).toEqual(['::endgroup::\n'])
   })
 })
