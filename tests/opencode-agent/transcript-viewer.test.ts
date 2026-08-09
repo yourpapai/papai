@@ -56,6 +56,8 @@ interface Viewer {
   parseKey: (pasted: string) => Uint8Array
   decodeLine: (key: Uint8Array, line: string) => Promise<ViewerRow>
   decodeAll: (key: Uint8Array, text: string) => Promise<Decoded[]>
+  formatLine: (result: Decoded) => string
+  formatLines: (results: readonly Decoded[]) => string
 }
 
 /**
@@ -72,6 +74,8 @@ const viewerSchema = z.object({
   parseKey: z.custom<Viewer['parseKey']>(isFunction),
   decodeLine: z.custom<Viewer['decodeLine']>(isFunction),
   decodeAll: z.custom<Viewer['decodeAll']>(isFunction),
+  formatLine: z.custom<Viewer['formatLine']>(isFunction),
+  formatLines: z.custom<Viewer['formatLines']>(isFunction),
 })
 
 /**
@@ -84,7 +88,11 @@ const viewerSchema = z.object({
  */
 const loadViewer = async (): Promise<Viewer> => {
   const file = path.join(workDir, 'viewer.mjs')
-  await writeFile(file, `${scriptOf(html)}\nexport { parseKey, decodeLine, decodeAll }\n`, 'utf8')
+  await writeFile(
+    file,
+    `${scriptOf(html)}\nexport { parseKey, decodeLine, decodeAll, formatLine, formatLines }\n`,
+    'utf8',
+  )
   const module: unknown = await import(file)
   return viewerSchema.parse(module)
 }
@@ -193,6 +201,45 @@ describe('the key box', () => {
     [Buffer.from(new Uint8Array(16)).toString('base64'), '16 bytes'],
   ])('says what is wrong with %p rather than failing to decrypt', (pasted, expected) => {
     expect(keyErrorOf(pasted)).toContain(expected)
+  })
+})
+
+/** A decoded result with any field overridden, for the formatter tests. */
+const decoded = (over: Partial<ViewerRow> = {}): Decoded => ({ ok: true, row: { ...BASH_ROW, ...over } })
+
+describe('the copy formatter', () => {
+  test('renders a complete row as pipe-separated text, matching the table cells', () => {
+    expect(viewer.formatLine(decoded())).toBe('2026-08-09T12:00:00.000Z | bash | completed | bun test | 3.2s')
+  })
+
+  test('leaves the detail field empty when the row carried none', () => {
+    expect(viewer.formatLine(decoded({ detail: null }))).toBe('2026-08-09T12:00:00.000Z | bash | completed |  | 3.2s')
+  })
+
+  test('leaves the duration empty when the tool was still running', () => {
+    expect(viewer.formatLine(decoded({ durationMs: null }))).toBe(
+      '2026-08-09T12:00:00.000Z | bash | completed | bun test | ',
+    )
+  })
+
+  test('marks an unreadable line the way the table draws it', () => {
+    expect(viewer.formatLine({ ok: false })).toBe(
+      '— | — | unreadable | This line could not be opened with this key. | ',
+    )
+  })
+
+  test('formatLines adds the table header and joins every line in order', () => {
+    const text = viewer.formatLines([
+      decoded(),
+      { ok: false },
+      decoded({ tool: 'read', detail: null, durationMs: null }),
+    ])
+    expect(text.split('\n')).toEqual([
+      'Time | Tool | Status | Detail | Took',
+      '2026-08-09T12:00:00.000Z | bash | completed | bun test | 3.2s',
+      '— | — | unreadable | This line could not be opened with this key. | ',
+      '2026-08-09T12:00:00.000Z | read | completed |  | ',
+    ])
   })
 })
 

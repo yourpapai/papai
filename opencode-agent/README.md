@@ -1421,7 +1421,7 @@ cannot drift.
 | `AGENT_MAX_CI_ATTEMPTS`                    | no       | `3`                                             | CI-fix jobs per pull request                           |
 | `AGENT_MAX_REVIEW_ATTEMPTS`                | no       | `3`                                             | `/review` rounds per pull request                      |
 | `AGENT_REVIEW_HINT_LINES`                  | no       | `200`                                           | Diff size at which a delivery recommends `/review`     |
-| `AGENT_MAX_ATTEMPTS`                       | no       | `3`                                             | Failures before `/retry` stops resuming                |
+| `AGENT_MAX_ATTEMPTS`                       | no       | `5`                                             | Failures before `/retry` stops resuming                |
 | `AGENT_MAX_CHANGED_FILES`                  | no       | `100`                                           | Files one commit may carry                             |
 | `AGENT_MAX_CHANGED_LINES`                  | no       | `20000`                                         | Lines one commit may change                            |
 | `AGENT_TIMEOUT_MS`                         | no       | `3600000`                                       | Timeout for one model turn, and for each subprocess    |
