@@ -1574,8 +1574,9 @@ loses everything it was built to keep.
 So the salvage stages and commits with `--no-verify`, and pushes with it too.
 Worth recording as its own small finding that this coupling exists on the
 _ordinary_ path as well: the agent's normal implementation commit is silently
-gated on the repository's own pre-commit hook passing on the runner, which is a
-dependency nothing in this workspace declares and no test covers.
+gated on the repository's own pre-commit hook passing on the runner, which was a
+dependency nothing in this workspace declared and no test covered. **[FIXED]** —
+see S5-12 below; it is now declared, covered, and repaired rather than fatal.
 
 What `--no-verify` skips is the repository's hooks. It does **not** skip
 `diff-guard.ts`, and the guard's four refusals split cleanly in two on this path:
@@ -1841,6 +1842,53 @@ And two that need no server, only the runner's own shape:
   keeping open: the scan is by **value** against this pipeline's own credentials, so
   an accidental trip needs a real key in the diff — but the one thing that would
   produce one is a tool the model ran writing its own environment to a file.
+
+### S5-12 — a refused commit ended the run, and the fix was one prompt away — **[FIXED]**
+
+_Observed live on issue #240._ A twelve-step plan; the implementation turn wrote ten
+of them and the tests it added were green. Then `git commit`: `package.json`'s
+`prepare` had installed `scripts/pre-commit.sh` as `.git/hooks/pre-commit` on the
+runner, the hook ran `scripts/check.sh --staged`, and eleven lint errors, one type
+error and two unformatted files came back. `commitAll` threw `GitError`,
+`handleImplement` had no branch for it, the run parked in `FAILED` with
+`resumeFrom: REVIEW_AND_MUTATE`, and the notice invited a `/retry` — which buys a
+whole fresh job that re-runs the model turn that had already succeeded, on a plan
+whose remaining work the handoff had already described in detail.
+
+The output that would have fixed it was in the pipeline's hands at the moment it
+threw. So `commit-repair.ts` hands it back to the same session, enveloped like any
+other check output, and commits again — `AGENT_COMMIT_REPAIR_MAX_ROUNDS` attempts,
+default 3. Wired on the implement path and on the CI-fix commit, which is refused by
+the same hook for the same reason and whose own loop reproduces a different set of
+checks entirely.
+
+Four things the fix deliberately does not do, each of which would have made it worse
+than the failure it replaces:
+
+- **it does not repair the diff guard.** Its refusals — a staged credential, a
+  binary, a runaway `git add --all` — are `PipelineError`s raised before the commit
+  is issued, and only a `GitError` enters the loop. No number of rounds can argue
+  this pipeline into committing a secret;
+- **it does not change what a spent budget looks like.** The last rejection is
+  rethrown, so the same message reaches the issue and the same `/retry` is offered.
+  The change can turn a failure into a success and cannot turn a success into a
+  different failure;
+- **it does not let the model commit.** A model holding `bash` reads "the commit was
+  refused" as an invitation to commit with `--no-verify`, which is the salvage path's
+  alone; the prompt forbids running git at all, and a test holds that;
+- **it does not swallow the clock.** A repair round is a model turn, so
+  `implement-commit.ts` catches `isTurnDeadline` around the whole loop and leaves by
+  the door a stopped step already leaves by — park in `INCOMPLETE`, salvage,
+  `/continue`. Anything else would fail a run whose tree was worth keeping.
+
+`phases/review.ts` is left out on cost: its findings arrive from `opencode run`
+subprocesses and the phase opens no session, so repairing there would boot the
+OpenCode server for a phase built to avoid it.
+
+Two files moved to keep `max-lines` honest rather than to tidy: the commit half of the
+step walk is now `phases/implement-commit.ts` (what one step costs, against
+`implement-steps.ts`'s which step runs next), and `AGENT_CHECKS`' parse moved to
+`config-values.ts`, which is where reading a value out of the environment already lived.
 
 ### S5-7 — progress, and what it is deliberately not allowed to say
 

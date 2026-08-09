@@ -3,6 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { z } from 'zod'
+
+import type { CheckSpec } from './check-loop.js'
+
 /** Raised when the environment cannot produce a runnable configuration. */
 export class ConfigError extends Error {
   constructor(message: string) {
@@ -221,3 +225,38 @@ const parseBounded = (key: string, trimmed: string, range: IntRange): number => 
 }
 
 /** Parses `AGENT_CHECKS` — a JSON array of `{ name, argv }`. */
+
+/** One check the CI-fix loop runs, declared as `{ name, argv }` in `AGENT_CHECKS`. */
+const checkSpecSchema = z.object({ name: z.string().min(1), argv: z.array(z.string().min(1)).min(1) })
+
+/** Checks the CI-fix loop runs when the repo does not declare its own. */
+export const DEFAULT_CHECKS: readonly CheckSpec[] = [
+  { name: 'lint', argv: ['bun', 'run', 'lint'] },
+  { name: 'typecheck', argv: ['bun', 'run', 'typecheck'] },
+  { name: 'test', argv: ['bun', 'test'] },
+]
+
+/**
+ * `AGENT_CHECKS`, which is this file's one non-scalar reading.
+ *
+ * Here rather than in `config.ts` for the reason the split states: this is *how* a
+ * value is read out of the environment and refused when it cannot work, where
+ * `config.ts` says *which* values a run needs. The two-stage parse is deliberate —
+ * `safeJson` names the syntax error and the schema names the shape error, because
+ * "AGENT_CHECKS is invalid" sends an operator looking in the wrong half.
+ */
+export const parseChecks = (raw: string | undefined): readonly CheckSpec[] => {
+  if (raw === undefined || raw.trim().length === 0) return DEFAULT_CHECKS
+
+  const parsed = z.array(checkSpecSchema).min(1).safeParse(safeJson(raw))
+  if (!parsed.success) throw new ConfigError(`AGENT_CHECKS is not a valid check list: ${parsed.error.message}`)
+  return parsed.data
+}
+
+const safeJson = (raw: string): unknown => {
+  try {
+    return JSON.parse(raw)
+  } catch {
+    throw new ConfigError('AGENT_CHECKS must be valid JSON')
+  }
+}

@@ -1348,6 +1348,7 @@ describe('config', () => {
     ['AGENT_MAX_ATTEMPTS', '999999999'],
     ['AGENT_MAX_CI_ATTEMPTS', '21'],
     ['AGENT_CI_FIX_MAX_ROUNDS', '0'],
+    ['AGENT_COMMIT_REPAIR_MAX_ROUNDS', '0'],
     // A hint threshold of zero recommends `/review` on every delivery, which is
     // the same as not having a threshold at all.
     ['AGENT_REVIEW_HINT_LINES', '0'],
@@ -1386,6 +1387,7 @@ describe('config', () => {
     ['AGENT_REVIEW_POOL_SIZE', 'reviewPoolSize'],
     ['AGENT_TIMEOUT_MS', 'agentTimeoutMs'],
     ['AGENT_CI_FIX_MAX_ROUNDS', 'ciFixMaxRounds'],
+    ['AGENT_COMMIT_REPAIR_MAX_ROUNDS', 'commitRepairMaxRounds'],
     ['AGENT_MAX_CI_ATTEMPTS', 'maxCiAttempts'],
     ['AGENT_MAX_ATTEMPTS', 'maxAttempts'],
     ['AGENT_MAX_TOKENS', 'maxTokens'],

@@ -411,14 +411,14 @@ cover it.
 
 Six bounds, each on a different kind of runaway.
 
-| Bound            | Where                                                                        | What it stops                                                             |
-| ---------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Prompt size      | `prompt-budget.ts`                                                           | 12k characters of thread, and 12k across _all_ failing checks, per prompt |
-| Turn duration    | `AGENT_TIMEOUT_MS`, applied in `deadline.ts`                                 | A turn that never answers — and one merely too slow, whose work is kept   |
-| Job wall clock   | `AGENT_JOB_TIMEOUT_MINUTES`, applied in `time-budget.ts`                     | A job dying on `timeout-minutes` with nothing posted at all               |
-| Provider hiccups | `provider-proxy.ts` — 3 attempts, with backoff                               | A single 429 or 5xx failing the phase                                     |
-| Rounds           | `AGENT_MAX_ATTEMPTS`, `AGENT_CI_FIX_MAX_ROUNDS`, `AGENT_MAX_REVIEW_ATTEMPTS` | An agent and CI bouncing off each other, and a review nothing else bounds |
-| Total spend      | `AGENT_MAX_TOKENS`, per **issue**                                            | An issue quietly costing more than it is worth                            |
+| Bound            | Where                                                                                                          | What it stops                                                                                                      |
+| ---------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Prompt size      | `prompt-budget.ts`                                                                                             | 12k characters of thread, and 12k across _all_ failing checks, per prompt                                          |
+| Turn duration    | `AGENT_TIMEOUT_MS`, applied in `deadline.ts`                                                                   | A turn that never answers — and one merely too slow, whose work is kept                                            |
+| Job wall clock   | `AGENT_JOB_TIMEOUT_MINUTES`, applied in `time-budget.ts`                                                       | A job dying on `timeout-minutes` with nothing posted at all                                                        |
+| Provider hiccups | `provider-proxy.ts` — 3 attempts, with backoff                                                                 | A single 429 or 5xx failing the phase                                                                              |
+| Rounds           | `AGENT_MAX_ATTEMPTS`, `AGENT_CI_FIX_MAX_ROUNDS`, `AGENT_MAX_REVIEW_ATTEMPTS`, `AGENT_COMMIT_REPAIR_MAX_ROUNDS` | An agent and CI bouncing off each other, a review nothing else bounds, and a tree the repository will never accept |
+| Total spend      | `AGENT_MAX_TOKENS`, per **issue**                                                                              | An issue quietly costing more than it is worth                                                                     |
 
 The prompt caps are on the **finished prompt**, not on any one input: a per-input
 cap bounds one log and nothing else, and three red checks at 8k each still put
@@ -713,6 +713,44 @@ firing it mid-walk would leave a `FAILED` issue whose branch carries half a plan
 a notice inviting a `/retry` into a phase that is partly done. The runaway it bounds is
 an issue across many jobs, which the check in front of the next phase still catches,
 and one job's overshoot is itself bounded by the clock this walk does check per step.
+
+### A refused commit is repaired, not a failure
+
+A repository that gates commits on its own checks makes `git commit` the last place
+a lint error can surface, and it used to be the one place the pipeline had no answer
+for it. `package.json`'s `prepare` installs `scripts/pre-commit.sh` as
+`.git/hooks/pre-commit` on any install where `.git` exists — the Actions runner
+included — and it runs lint, typecheck, `format:check` and the licence scan over the
+staged files. So an implementation turn that wrote working code with one unformatted
+file in it could not commit at all: the phase threw, the issue parked in `FAILED`, and
+a maintainer had to reply `/retry` to buy a whole fresh job — one that re-ran the model
+turn that had already succeeded — for a fix the model could have made in seconds from
+the output git had just printed.
+
+Now `commit-repair.ts` hands that output straight back to the same session, enveloped
+like any other check output, and commits again. Bounded by
+`AGENT_COMMIT_REPAIR_MAX_ROUNDS` (default 3 attempts, so two repairs), and a rejection
+that outlives its rounds fails exactly as it did before — same message, same `FAILED`,
+same `/retry` — so the change can only turn a failure into a success. Three things it
+deliberately does not do:
+
+- **it does not repair the diff guard.** A staged credential, a binary or a runaway
+  `git add --all` is refused before the commit is ever issued and still ends the run;
+  no number of repair rounds can talk the pipeline into committing a secret;
+- **it does not commit for itself.** The repair prompt edits the tree and the pipeline
+  re-stages, re-guards and re-commits, so nothing reaches history that the hook and the
+  guard have not both accepted. `--no-verify` remains the salvage path's alone;
+- **it does not become a check runner.** The repository's hook is the judge; the
+  pipeline never chooses, runs or interprets the checks, and the only verdict it reads
+  is whether `git commit` was accepted. That is what keeps this separate from
+  `check-loop.ts`, which owns a named set of commands and decides what green means.
+
+The CI-fix phase's commit gets the same treatment for the same reason: the checks it
+reproduces are the ones CI ran, and the ones a commit has to satisfy are the
+repository's own over the staged files. The `/review` phase does not, and that is a
+cost decision rather than an oversight — its findings arrive from `opencode run`
+subprocesses and the phase opens no session of its own, so repairing there would mean
+booting the OpenCode server for a phase built to avoid it.
 
 ## Watching a run
 
@@ -1222,6 +1260,7 @@ cannot drift.
 | `AGENT_REVIEW_MAX_ROUNDS`                  | no       | `4`                                             | review-loop rounds                                    |
 | `AGENT_REVIEW_POOL_SIZE`                   | no       | `2`                                             | review-loop worker pool                               |
 | `AGENT_CI_FIX_MAX_ROUNDS`                  | no       | `2`                                             | Repair rounds per CI-fix job                          |
+| `AGENT_COMMIT_REPAIR_MAX_ROUNDS`           | no       | `3`                                             | Commit attempts when the repo's own checks refuse one |
 | `AGENT_MAX_CI_ATTEMPTS`                    | no       | `3`                                             | CI-fix jobs per pull request                          |
 | `AGENT_MAX_REVIEW_ATTEMPTS`                | no       | `3`                                             | `/review` rounds per pull request                     |
 | `AGENT_REVIEW_HINT_LINES`                  | no       | `200`                                           | Diff size at which a delivery recommends `/review`    |

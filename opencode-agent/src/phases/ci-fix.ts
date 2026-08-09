@@ -5,10 +5,13 @@
 
 import { formatFailures, runCheckLoop } from '../check-loop.js'
 import type { CheckLoopResult } from '../check-loop.js'
+import { buildCommitRepairPrompt, commitWithRepair } from '../commit-repair.js'
 import { branchNameFor } from '../git.js'
 import { composeSystemPrompt } from '../obra-skills.js'
+import type { OpenCodeAgent } from '../opencode-adapter.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
 import { buildCiFixPrompt } from '../prompts.js'
+import type { UntrustedEnvelope } from '../prompts.js'
 import { mintEnvelope } from './envelope.js'
 
 const CI_FIX_INSTRUCTIONS = [
@@ -55,19 +58,47 @@ export const handleCiFix: PhaseHandler = async (input): Promise<PhaseOutcome> =>
     },
   })
 
-  const pushed = await commitAndPush(input, branch)
+  const pushed = await commitAndPush(input, branch, { agent, envelope, system })
   deps.log.info({ issue: state.issueId, branch, passed: outcome.passed, pushed }, 'CI fix round finished')
 
   return { signal: 'CI_FIXED', comment: renderCiReport(input, outcome, pushed, deps.config.runUrl) }
 }
 
-const commitAndPush = async (input: PhaseInput, branch: string): Promise<boolean> => {
-  const committed = await input.deps.git.commitAll(
-    `fix(agent): repair CI for issue #${input.state.issueId}\n\nRefs #${input.state.issueId}`,
-  )
-  if (!committed) return false
+/** The session and the two things every prompt in this phase is composed against. */
+interface Turn {
+  agent: OpenCodeAgent
+  envelope: UntrustedEnvelope
+  system: string
+}
 
-  await input.deps.git.push(branch)
+/**
+ * Commits the repair, and lets the repository refuse it once or twice first.
+ *
+ * The checks this phase reproduces are the ones **CI** ran; the ones a commit has
+ * to satisfy are the repository's own, over the staged files, and they are not the
+ * same set — so a round that got every configured check green can still be turned
+ * away at the commit, which used to lose the fix and the whole phase with it. Same
+ * treatment as the implementation's commit, and the same session: this one has the
+ * repair in its context already.
+ */
+const commitAndPush = async (input: PhaseInput, branch: string, turn: Turn): Promise<boolean> => {
+  const { deps, state } = input
+  const committed = await commitWithRepair({
+    commit: () => deps.git.commitAll(`fix(agent): repair CI for issue #${state.issueId}\n\nRefs #${state.issueId}`),
+    repair: async (rejection, round) => {
+      await turn.agent.prompt({
+        system: turn.system,
+        prompt: buildCommitRepairPrompt(turn.envelope, rejection, round),
+        agent: 'build',
+      })
+    },
+    maxRounds: deps.config.commitRepairMaxRounds,
+    log: deps.log,
+    issue: state.issueId,
+  })
+  if (committed === null) return false
+
+  await deps.git.push(branch)
   return true
 }
 
