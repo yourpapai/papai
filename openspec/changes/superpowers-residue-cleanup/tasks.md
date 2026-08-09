@@ -41,6 +41,6 @@ not gate docs (design.md D5).
 
 ## 5. Gate
 
-- [ ] 5.1 `openspec validate superpowers-residue-cleanup --strict`,
+- [x] 5.1 `openspec validate superpowers-residue-cleanup --strict`,
       `bun run lint`, `bun run format:check`.
       Verify: all pass
