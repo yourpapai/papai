@@ -11,6 +11,7 @@
   import type { Snippet } from 'svelte'
 
   import { setFieldError, setFieldLabelId } from './field-context.js'
+  import LiveRegion from './LiveRegion.svelte'
 
   interface Props {
     label: string
@@ -47,8 +48,10 @@
     {label}{#if required}<span class="ui-field__req" aria-hidden="true">*</span>{/if}
   </span>
   <div class="ui-field__control">{@render children()}</div>
-  {#if error}<span class="ui-field__error" id={errorId} role="alert">{error}</span>{:else if hint}<span
-      class="ui-field__hint" id={hintId}>{hint}</span>{/if}
+  <div class="ui-field__msg">
+    <LiveRegion tone="alert" message={error ?? null} id={errorId} class="ui-field__error" />
+    {#if !error && hint}<span class="ui-field__hint" id={hintId}>{hint}</span>{/if}
+  </div>
 </div>
 
 <style>
@@ -85,8 +88,18 @@
     font-size: 10px;
     color: var(--text-dim);
   }
-  .ui-field__error {
+  /* :global because the class is handed to LiveRegion, and a class passed to a child
+     component does not pick up this component's scoped styles. Scoped to the message box
+     so it stays a Field rule rather than an app-wide one. */
+  .ui-field__msg :global(.ui-field__error) {
     font-size: 10px;
     color: var(--danger);
+  }
+  /* The region stays mounted so a screen reader can hear it change, which means it is
+     still a grid child when it holds no text -- and a zero-height grid child consumes a
+     full row gap. It cannot be display:none'd or visibility:hidden'd without leaving the
+     accessibility tree, so cancel the gap instead of removing the box. */
+  .ui-field__msg:not(:has(*:not(:empty))) {
+    margin-top: -6px;
   }
 </style>

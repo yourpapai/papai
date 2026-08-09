@@ -90,7 +90,7 @@ describe('CodingMcpSection row validation', () => {
     await drain()
 
     expect(rowError(target, 1)).toBe('Already selected in another row.')
-    expect(target.querySelector('[data-testid="coding-mcp-row-0"] .ui-field__error')).toBeNull()
+    expect(target.querySelector('[data-testid="coding-mcp-row-0"] .ui-field__error')!.textContent).toBe('')
     expect(saveButton(target).disabled).toBe(true)
     void unmount(component)
   })
@@ -106,7 +106,7 @@ describe('CodingMcpSection row validation', () => {
     pickServer(target, 1, 'docs')
     await drain()
 
-    expect(target.querySelector('.ui-field__error')).toBeNull()
+    expect([...target.querySelectorAll('.ui-field__error')].every((n) => n.textContent === '')).toBe(true)
     expect(saveButton(target).disabled).toBe(false)
     void unmount(component)
   })
