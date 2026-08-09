@@ -1434,6 +1434,21 @@ describe('config', () => {
     expect(loadConfig({ ...baseEnv, AGENT_SELF_LOGIN: 'agent-bot' }, '/repo').selfLoginOverride).toBe('agent-bot')
   })
 
+  test('checks the repo the way the repo checks itself', () => {
+    // Was `bun run lint && bun run typecheck && bun test`. The `&&` chain meant a
+    // lint failure hid the typecheck and test results, so a run that was red in
+    // three places reported one and cost three repair rounds to uncover. It also
+    // used bare `bun test`, which is Bun's builtin runner and bypasses the
+    // wrapper that persists reports/test/ — so the agent had nothing to query
+    // afterwards. `check:full` runs every check concurrently and leaves both
+    // reports/checks/ and reports/test/ behind.
+    expect(loadConfig(baseEnv, '/repo').checkCommand).toBe('bun check:full')
+  })
+
+  test('AGENT_CHECK_COMMAND still overrides the default', () => {
+    expect(loadConfig({ ...baseEnv, AGENT_CHECK_COMMAND: 'make verify' }, '/repo').checkCommand).toBe('make verify')
+  })
+
   test.each(['0', '-1', '2.5', 'lots', '1e3', '01', '7 rounds'])('rejects the unparseable round count %p', (raw) => {
     expect(() => loadConfig({ ...baseEnv, AGENT_MAX_ATTEMPTS: raw }, '/repo')).toThrow('AGENT_MAX_ATTEMPTS')
   })

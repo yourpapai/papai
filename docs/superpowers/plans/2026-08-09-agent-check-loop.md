@@ -452,7 +452,9 @@ export function buildReverseGraph(deps: GraphDeps): Map<string, Set<string>>   /
 export function reachableTests(graph: Map<string, Set<string>>, seeds: readonly string[], depth: number): Set<string>
 ```
 
-`resolveSpecifier` tries, in order: `.js`→`.ts`, `.js`→`.tsx`, the literal path, `+ '.ts'`, `+ '/index.ts'`. Only relative specifiers (`./`, `../`) participate — the repo uses no path aliases. Import matching regex: `/(?:from|import|require)\s*\(?\s*['"](\.[^'"]+)['"]/g`, which covers static imports, `require`, `mock.module`, and dynamic `import()` with a **literal** specifier.
+`resolveSpecifier` tries, in order: `.js`→`.ts`, `.js`→`.tsx`, the literal path, `+ '.ts'`, `+ '/index.ts'`. Only relative specifiers (`./`, `../`) participate — the repo uses no path aliases. Import matching regex: `/(?:from|import|require)\s*\(?\s*['"](\.[^'"]+)['"]/gu`, which covers static imports, type imports, re-exports, `require`, and dynamic `import()` with a **literal** specifier.
+
+It does **not** match `mock.module('…')` — the token before the parenthesis is `module`, which the regex does not anchor on. Keep it that way. Widening it was measured to add 123 raw matches and overshoot the reference edge count, and Task 12's mandatory banner already tells the agent the selection cannot see `mock.module` targets. The honest caveat is worth more than the extra edges.
 
 `reachableTests` is a breadth-limited traversal: expand non-test importers up to `depth` hops, collect test files encountered at any hop.
 

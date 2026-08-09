@@ -281,6 +281,7 @@ describe('story runner reports and compatibility', () => {
           },
           buildCandidateManifest: () => Promise.resolve(candidate),
           ...sessionDependencies(session),
+          assertLinuxSandboxBackend: () => undefined,
           buildBaselineManifest: () => Promise.resolve(candidate),
           writeManifest: () => {
             rmSync(liveStory)
@@ -361,6 +362,7 @@ describe('story runner reports and compatibility', () => {
         },
         buildCandidateManifest: () => Promise.resolve(candidate),
         ...sessionDependencies(session),
+        assertLinuxSandboxBackend: () => undefined,
         buildBaselineManifest: () => Promise.resolve(candidate),
         writeManifest: (_manifest, outputPath) => {
           writeFileSync(outputPath, 'current manifest')
@@ -419,6 +421,7 @@ describe('story runner reports and compatibility', () => {
           return { exited: Promise.resolve(0), kill: (): void => undefined }
         },
         ...sessionDependencies(session),
+        assertLinuxSandboxBackend: () => undefined,
         buildCandidateManifest: () => Promise.resolve(candidate),
         buildBaselineManifest: () => Promise.resolve(candidate),
         writeManifest: () => {
@@ -522,6 +525,7 @@ describe('story runner reports and compatibility', () => {
         spawnCount += 1
         throw new Error('must not spawn')
       },
+      assertLinuxSandboxBackend: () => undefined,
       buildCandidateManifest: () => Promise.resolve(manifest('a'.repeat(64))),
       buildBaselineManifest: () => Promise.resolve(manifest('a'.repeat(64))),
       writeManifest: () => Promise.resolve(),
@@ -544,6 +548,7 @@ describe('story runner reports and compatibility', () => {
         spawnCount += 1
         throw new Error('must not spawn')
       },
+      assertLinuxSandboxBackend: () => undefined,
       buildCandidateManifest: () => Promise.resolve(manifest('a'.repeat(64))),
       buildBaselineManifest: () => Promise.resolve(manifest('b'.repeat(64))),
       writeManifest: () => Promise.resolve(),
@@ -573,6 +578,7 @@ describe('story runner reports and compatibility', () => {
         return { exited: Promise.resolve(0), kill: (): void => undefined }
       },
       ...sessionDependencies(session),
+      assertLinuxSandboxBackend: () => undefined,
       buildCandidateManifest: () => {
         actions.push('candidate')
         return Promise.resolve(candidate)
@@ -723,6 +729,9 @@ describe('story report lifecycle', () => {
       removeReport: (reportPath) => rm(reportPath, { force: true }),
       discoverStories: () => Promise.resolve(['./tests/stories/a.story.test.ts']),
       discoverContracts: () => Promise.resolve(['./tests/stories/harness/a.test.ts']),
+      // The sandbox preflight is a real Docker probe; these tests assert runner behavior after it,
+      // so stub the seam by default. Tests that exercise preflight failure override it.
+      assertLinuxSandboxBackend: () => undefined,
       ...sessionDependencies(testSession(root, sessionManifest)),
       ...overrides,
     }
