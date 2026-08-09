@@ -33,7 +33,7 @@ not gate docs (design.md D5).
 
 ## 4. Latent-item triage (report-only, design.md D4)
 
-- [ ] 4.1 Code-check `notes/llm-rate-limiting-and-plans.md` (billing/plans
+- [x] 4.1 Code-check `notes/llm-rate-limiting-and-plans.md` (billing/plans
       side) and `specs/2026-05-23-chat-provider-as-plugin-design.md` per
       the migration runbook's triage signals; record findings as a comment
       on this change's PR / commit message. No deletions or adoptions here.
