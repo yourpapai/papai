@@ -313,4 +313,19 @@ describe('CodingMcpSection dead-end states', () => {
     expect(empty.querySelector<HTMLElement>('.ui-empty__title')!.textContent.trim()).toBe('No MCP servers available')
     void unmount(component)
   })
+
+  test('the section status and error regions are mounted and empty once data has loaded', async () => {
+    setMockFetch(loadedMock)
+    const { target, component } = mountSection()
+    await drain()
+    const err = target.querySelector<HTMLElement>('.status-error')!
+    const ok = target.querySelector<HTMLElement>('.status-success')!
+    expect(err.getAttribute('role')).toBe('alert')
+    expect(err.getAttribute('aria-live')).toBe('assertive')
+    expect(err.textContent).toBe('')
+    expect(ok.getAttribute('role')).toBe('status')
+    expect(ok.getAttribute('aria-live')).toBe('polite')
+    expect(ok.textContent).toBe('')
+    void unmount(component)
+  })
 })
