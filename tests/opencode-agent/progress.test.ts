@@ -5,10 +5,11 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { describeActivity } from '../../opencode-agent/src/activity.js'
 import type { TranscriptRow } from '../../opencode-agent/src/activity-detail.js'
+import { describeActivity } from '../../opencode-agent/src/activity.js'
+import { withHeartbeat } from '../../opencode-agent/src/heartbeat.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
-import { createProgressTracker, followEvents, withHeartbeat } from '../../opencode-agent/src/progress.js'
+import { createProgressTracker, followEvents } from '../../opencode-agent/src/progress.js'
 import type { ProgressSnapshot } from '../../opencode-agent/src/progress.js'
 
 const SESSION = 'ses_02414f224ffejPyZrczmjjX3YF'
@@ -403,8 +404,10 @@ describe('createProgressTracker', () => {
   test('two different calls to the same tool are two lines', () => {
     const { log, lines } = recorder()
     const tracker = createProgressTracker(SESSION, log)
-    const second = structuredClone(TOOL_RUNNING)
-    second.properties.part.callID = 'call_2'
+    // Spread rather than clone-and-assign: the fixture is `as const`, so its
+    // `callID` is readonly and `structuredClone` carries that through.
+    const part = { ...TOOL_RUNNING.properties.part, callID: 'call_2' }
+    const second = { ...TOOL_RUNNING, properties: { ...TOOL_RUNNING.properties, part } }
 
     tracker.observe(TOOL_RUNNING)
     tracker.observe(second)

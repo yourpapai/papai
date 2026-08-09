@@ -70,7 +70,11 @@ const importKey = (key: Uint8Array): Promise<CryptoKey> =>
 
 const encodeLine = async (key: CryptoKey, plaintext: string): Promise<string> => {
   const nonce = crypto.getRandomValues(new Uint8Array(NONCE_BYTES))
-  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, key, new TextEncoder().encode(plaintext))
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: nonce },
+    key,
+    new TextEncoder().encode(plaintext),
+  )
   return `${Buffer.from(nonce).toString('base64')}.${Buffer.from(ciphertext).toString('base64')}`
 }
 
@@ -82,7 +86,8 @@ const encodeLine = async (key: CryptoKey, plaintext: string): Promise<string> =>
  */
 export const decryptTranscriptLine = async (key: Uint8Array, line: string): Promise<TranscriptRow> => {
   const [nonce, ciphertext] = line.split('.')
-  if (nonce === undefined || ciphertext === undefined) throw new Error('Not a transcript line: expected <nonce>.<ciphertext>')
+  if (nonce === undefined || ciphertext === undefined)
+    throw new Error('Not a transcript line: expected <nonce>.<ciphertext>')
 
   const decrypted = await crypto.subtle.decrypt(
     { name: 'AES-GCM', iv: copiedBytes(Buffer.from(nonce, 'base64')) },
@@ -123,7 +128,10 @@ export const createDebugTranscript = (options: DebugTranscriptOptions): DebugTra
         const plaintext = redactSecrets(JSON.stringify(row), options.secrets)
         appendFileSync(options.path, `${await encodeLine(await key, plaintext)}\n`, 'utf8')
       })
-      queue = queue.catch(() => {})
+      queue = queue.catch(() => {
+        // Deliberately nothing: the rejection is dropped so the next write, and
+        // the `close()` that awaits this chain, still see a settled promise.
+      })
     },
     close: (): Promise<void> => queue,
   }

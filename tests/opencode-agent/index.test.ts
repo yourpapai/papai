@@ -9,15 +9,15 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
+import type { TranscriptRow } from '../../opencode-agent/src/activity-detail.js'
+import { loadConfig } from '../../opencode-agent/src/config.js'
 import { TRANSCRIPT_DIR, TRANSCRIPT_FILE } from '../../opencode-agent/src/debug-transcript.js'
+import { createOctokitApi } from '../../opencode-agent/src/github.js'
 import { contain, runCli } from '../../opencode-agent/src/index.js'
 import { createLogger, createPipelineLogger } from '../../opencode-agent/src/logger.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
 import type { OpenCodeAgentOptions } from '../../opencode-agent/src/opencode-adapter.js'
-import { createOctokitApi } from '../../opencode-agent/src/github.js'
-import { loadConfig } from '../../opencode-agent/src/config.js'
 import type { TriggerEvent } from '../../opencode-agent/src/trigger-events.js'
-import type { TranscriptRow } from '../../opencode-agent/src/activity-detail.js'
 
 /**
  * The transcript's wiring through the CLI: created only when the run has a
@@ -126,7 +126,9 @@ describe('runCli transcript lifecycle', () => {
     // Compared without the timestamps, which are the one thing two runs may
     // legitimately differ by.
     const timeless = (lines: string[]): string[] =>
-      lines.filter((line) => !line.includes('AGENT_LOG_KEY')).map((line) => line.replace(/"time":"[^"]*"/u, '"time":""'))
+      lines
+        .filter((line) => !line.includes('AGENT_LOG_KEY'))
+        .map((line) => line.replace(/"time":"[^"]*"/u, '"time":""'))
 
     expect(timeless(keyless)).toEqual(timeless(keyed))
   })

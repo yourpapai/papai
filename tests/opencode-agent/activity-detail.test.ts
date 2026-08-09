@@ -18,13 +18,30 @@ const OTHER = 'ses_somebody_else'
  * transcript. The shapes are the same recorded ones `progress.test.ts` carries.
  */
 
-const toolEvent = (tool: string, input: Record<string, unknown>, status = 'running'): unknown => ({
+const toolEvent = (tool: string, input: Record<string, unknown>, status = 'running'): unknown =>
+  toolEventWithState(tool, { status, input })
+
+/**
+ * The same event with the tool part's `state` given whole, for the two cases
+ * that need a field `toolEvent` does not model — a completed call's `output`.
+ * Built as a literal rather than poked into a returned event, which needs a
+ * type assertion `no-unsafe-type-assertion` refuses.
+ */
+const toolEventWithState = (tool: string, state: Record<string, unknown>): unknown => ({
   type: 'message.part.updated',
   properties: {
     sessionID: SESSION,
-    part: { type: 'tool', tool, callID: 'call_1', state: { status, input } },
+    part: { type: 'tool', tool, callID: 'call_1', state },
   },
 })
+
+/**
+ * The decoded detail as a string, `''` when there is none.
+ *
+ * A module-level helper because `??` inside a test body trips
+ * `vitest(no-conditional-in-test)`.
+ */
+const detailOf = (event: unknown): string => describeDetail(event, SESSION)?.detail ?? ''
 
 describe('describeDetail', () => {
   test('carries a bash command, which is what a failing run is usually about', () => {
@@ -38,9 +55,7 @@ describe('describeDetail', () => {
   test('truncates a bash command at 200 characters', () => {
     // A command can be a heredoc carrying a whole file; the transcript is a
     // debugging aid, not a second copy of the working tree.
-    const detail = describeDetail(toolEvent('bash', { command: `x${'y'.repeat(500)}` }), SESSION)?.detail ?? ''
-
-    expect(detail).toHaveLength(200)
+    expect(detailOf(toolEvent('bash', { command: `x${'y'.repeat(500)}` }))).toHaveLength(200)
   })
 
   test.each([['read'], ['edit'], ['write']])('carries the file path for %s', (tool) => {
@@ -62,16 +77,21 @@ describe('describeDetail', () => {
   })
 
   test('never carries the tool output, which is an entire file', () => {
-    const event = toolEvent('read', { filePath: 'package.json' }, 'completed') as {
-      properties: { part: { state: Record<string, unknown> } }
-    }
-    event.properties.part.state['output'] = '<content>\n1: { "name": "papai" }'
+    const event = toolEventWithState('read', {
+      status: 'completed',
+      input: { filePath: 'package.json' },
+      output: '<content>\n1: { "name": "papai" }',
+    })
 
     expect(JSON.stringify(describeDetail(event, SESSION))).not.toContain('papai')
   })
 
   test('never carries a file’s new contents from an edit or a write', () => {
-    const event = toolEvent('write', { filePath: 'src/secret.ts', content: 'export const key = "hunter2"' }, 'completed')
+    const event = toolEvent(
+      'write',
+      { filePath: 'src/secret.ts', content: 'export const key = "hunter2"' },
+      'completed',
+    )
 
     expect(JSON.stringify(describeDetail(event, SESSION))).not.toContain('hunter2')
   })

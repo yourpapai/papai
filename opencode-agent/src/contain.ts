@@ -5,11 +5,11 @@
 
 import { memoizeAgent } from './agent-handle.js'
 import type { AgentHandle } from './agent-handle.js'
+import type { MainOptions } from './cli-args.js'
 import type { PipelineConfig } from './config.js'
 import { assembleDeps } from './deps.js'
 import type { GitHubApi } from './github.js'
 import type { Logger } from './logger.js'
-import type { MainOptions } from './cli-args.js'
 import { createOpenCodeAgent } from './opencode-adapter.js'
 import type { OpenCodeAgent, OpenCodeAgentOptions } from './opencode-adapter.js'
 import type { PhaseDeps } from './phase-context.js'
@@ -88,7 +88,17 @@ export interface Contained {
  * config, so scrubbing, redaction and the diff guard still know the value they
  * are protecting.
  */
-export const contain = ({ config, event, log, run, options, github, transcript, createAgent, now }: ContainInput): Contained => {
+export const contain = ({
+  config,
+  event,
+  log,
+  run,
+  options,
+  github,
+  transcript,
+  createAgent,
+  now,
+}: ContainInput): Contained => {
   const secrets = pipelineSecrets(config)
   const proxy = startProviderProxy(config.openai, log)
   const contained: PipelineConfig = { ...config, openai: proxiedSettings(config.openai, proxy) }

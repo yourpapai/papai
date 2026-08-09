@@ -5,8 +5,8 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { ConfigError, loadConfig } from '../../opencode-agent/src/config.js'
 import { logKey } from '../../opencode-agent/src/config-values.js'
+import { ConfigError, loadConfig } from '../../opencode-agent/src/config.js'
 import { pipelineSecrets } from '../../opencode-agent/src/secrets.js'
 
 /** `openssl rand -base64 32`, and the bytes it decodes to. */

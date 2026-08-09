@@ -41,6 +41,15 @@ const linesIn = (filePath: string): string[] =>
     .split('\n')
     .filter((line) => line.length > 0)
 
+/**
+ * One line by index, `''` when the file was shorter than the test expected.
+ *
+ * A module-level helper because `??` inside a test body trips
+ * `vitest(no-conditional-in-test)`; the length assertions beside each call are
+ * what actually establish the line is there.
+ */
+const at = (lines: readonly string[], index: number): string => lines[index] ?? ''
+
 describe('createDebugTranscript', () => {
   test('writes one <base64 nonce>.<base64 ciphertext> line per row, and round-trips', async () => {
     const filePath = path.join(workDir, 'round-trip.enc')
@@ -53,8 +62,8 @@ describe('createDebugTranscript', () => {
     const lines = linesIn(filePath)
     expect(lines).toHaveLength(2)
     for (const line of lines) expect(line).toMatch(/^[A-Za-z0-9+/=]+\.[A-Za-z0-9+/=]+$/u)
-    expect(await decryptTranscriptLine(KEY, lines[0] ?? '')).toEqual(ROW)
-    expect((await decryptTranscriptLine(KEY, lines[1] ?? '')).detail).toBe('src/retry.ts')
+    expect(await decryptTranscriptLine(KEY, at(lines, 0))).toEqual(ROW)
+    expect((await decryptTranscriptLine(KEY, at(lines, 1))).detail).toBe('src/retry.ts')
   })
 
   test('uses a fresh nonce per line, so two identical rows encrypt differently', async () => {
@@ -83,8 +92,7 @@ describe('createDebugTranscript', () => {
     transcript.write({ ...ROW, detail: `git push https://x:${secret}@github.com/acme/widgets` })
     await transcript.close()
 
-    const [line] = linesIn(filePath)
-    const row = await decryptTranscriptLine(KEY, line ?? '')
+    const row = await decryptTranscriptLine(KEY, at(linesIn(filePath), 0))
     expect(row.detail).toBe('git push https://x:[redacted]@github.com/acme/widgets')
     expect(readFileSync(filePath, 'utf8')).not.toContain(secret)
   })
@@ -118,7 +126,7 @@ describe('createDebugTranscript', () => {
     await transcript.close()
 
     const wrong = new Uint8Array(32).fill(9)
-    await expect(decryptTranscriptLine(wrong, linesIn(filePath)[0] ?? '')).rejects.toThrow()
+    await expect(decryptTranscriptLine(wrong, at(linesIn(filePath), 0))).rejects.toThrow()
   })
 })
 
@@ -168,6 +176,6 @@ describe('createRunTranscript', () => {
     await transcript?.close()
 
     const lines = linesIn(path.join(repoRoot, TRANSCRIPT_DIR, TRANSCRIPT_FILE))
-    expect(await decryptTranscriptLine(KEY, lines[0] ?? '')).toEqual(ROW)
+    expect(await decryptTranscriptLine(KEY, at(lines, 0))).toEqual(ROW)
   })
 })

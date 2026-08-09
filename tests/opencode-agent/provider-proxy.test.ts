@@ -386,7 +386,7 @@ describe('contain', () => {
     gitRemoteBase: 'https://github.com/',
     runUrl: null,
     labelPrefix: 'agent:',
-  logKey: null,
+    logKey: null,
     skillRoots: [],
   })
 
