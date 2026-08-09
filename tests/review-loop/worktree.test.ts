@@ -78,6 +78,11 @@ describe('worktree', () => {
     expect(existsSync(path.join(wtPath, 'node_modules'))).toBe(false)
   })
 
+  test('execGit rejects when the git command fails', async () => {
+    const repoRoot = makeTempDir('worktree-repo-')
+    await expect(execGit(repoRoot, ['status'])).rejects.toThrow()
+  })
+
   test('worktreeExists returns true after create, false after remove', async () => {
     const repoRoot = makeTempDir('worktree-repo-')
     await execGit(repoRoot, ['init'])

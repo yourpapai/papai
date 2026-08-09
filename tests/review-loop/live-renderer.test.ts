@@ -26,6 +26,20 @@ function makeStream(opts: { isTTY?: boolean; columns?: number } = {}): {
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
+
+async function pollUntil(predicate: () => boolean, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (!predicate() && Date.now() < deadline) {
+    await sleep(50)
+  }
+  return predicate()
+}
+
 describe('LiveRenderer', () => {
   test('event writes a scrolling line', () => {
     const { output, stream } = makeStream()
@@ -370,6 +384,78 @@ describe('withLivePhase', () => {
     expect(result).toBe('done')
     expect(slots[slots.length - 1]).toEqual(['build', null])
   })
+
+  test('announces the phase start with an event', async () => {
+    const events: string[] = []
+    const reporter: ProgressReporter = {
+      dynamic: false,
+      event: (m) => {
+        events.push(m)
+      },
+      live: () => {},
+      clearLive: () => {},
+      log: () => {},
+    }
+    await withLivePhase(reporter, 'build', () => Promise.resolve('x'))
+    expect(events).toEqual(['[build] running...'])
+  })
+
+  test('durationMs measures elapsed wall time', async () => {
+    const reporter: ProgressReporter = {
+      dynamic: false,
+      event: () => {},
+      live: () => {},
+      clearLive: () => {},
+      log: () => {},
+    }
+    const { durationMs } = await withLivePhase(reporter, 'build', () => Promise.resolve('x'))
+    expect(durationMs).toBeGreaterThanOrEqual(0)
+    expect(durationMs).toBeLessThan(60_000)
+  })
+
+  // Poll-until-tick with a generous bound: the 1s interval can fire late under
+  // mutation-run load, but it must fire (a missing tick means reporter.dynamic
+  // was lost). Never assert after a fixed sleep — that flakes.
+  test('ticks the slot while a dynamic phase runs', async () => {
+    const slots: Array<readonly [string, string | null]> = []
+    const reporter: ProgressReporter = {
+      dynamic: true,
+      event: () => {},
+      live: () => {},
+      clearLive: () => {},
+      log: () => {},
+      slot: (key, line) => {
+        slots.push([key, line] as const)
+      },
+    }
+    await withLivePhase(reporter, 'build', () => pollUntil(() => slots.length > 0, 10_000))
+    expect(slots.length).toBeGreaterThan(0)
+    expect(slots[0]![0]).toBe('build')
+    expect(slots[0]![1]).toContain('[build]')
+  }, 15_000)
+
+  test('stops ticking after the phase completes', async () => {
+    const slots: Array<readonly [string, string | null]> = []
+    const reporter: ProgressReporter = {
+      dynamic: true,
+      event: () => {},
+      live: () => {},
+      clearLive: () => {},
+      log: () => {},
+      slot: (key, line) => {
+        slots.push([key, line] as const)
+      },
+    }
+    const { result: sawTick } = await withLivePhase(reporter, 'build', () =>
+      pollUntil(() => slots.some(([, line]) => line !== null), 10_000),
+    )
+    expect(sawTick).toBe(true)
+    // Completion nulls the slot; the interval must be cleared too.
+    expect(slots[slots.length - 1]).toEqual(['build', null])
+    const callsAtEnd = slots.length
+    await sleep(2_500)
+    expect(slots.length).toBe(callsAtEnd)
+  }, 20_000)
 })
 
 describe('LiveRenderer stats', () => {
