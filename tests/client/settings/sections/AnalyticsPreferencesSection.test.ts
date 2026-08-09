@@ -229,8 +229,9 @@ describe('AnalyticsPreferencesSection', () => {
     expect(fieldError!.getAttribute('role')).toBe('alert')
     expect(fieldError!.textContent).toContain('The setting was not changed.')
     expect(
-      target.querySelector('[data-testid="analytics-field-external"]')!.querySelector('.settings-field__error'),
-    ).toBeNull()
+      target.querySelector('[data-testid="analytics-field-external"]')!.querySelector('.settings-field__error')!
+        .textContent,
+    ).toBe('')
     void unmount(component)
   })
 

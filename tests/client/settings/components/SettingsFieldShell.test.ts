@@ -96,7 +96,7 @@ describe('SettingsFieldShell', () => {
     const { component, target } = render({ label: 'Model', hint: 'Leave blank for the agent default.' })
     flushSync()
     expect(target.querySelector('.settings-field__hint')!.textContent).toContain('Leave blank')
-    expect(target.querySelector('.settings-field__error')).toBeNull()
+    expect(target.querySelector('.settings-field__error')!.textContent).toBe('')
     void unmount(component)
   })
 
@@ -139,7 +139,7 @@ describe('SettingsFieldShell', () => {
   test('treats an empty error string as no error, in both the markup and the context', () => {
     const { component, target } = render({ label: 'Model', hint: 'a hint', error: '' })
     flushSync()
-    expect(target.querySelector('.settings-field__error')).toBeNull()
+    expect(target.querySelector('.settings-field__error')!.textContent).toBe('')
     expect(target.querySelector('.settings-field__hint')!.textContent).toContain('a hint')
     void unmount(component)
 
@@ -214,5 +214,33 @@ describe('SettingsFieldShell', () => {
     flushSync()
     expect(target.querySelector('[data-testid="probe"]')!.getAttribute('data-got')).toBe('none')
     void unmount(c)
+  })
+
+  test('the error region is in the DOM before any error exists', () => {
+    const { component, target } = render({ label: 'Model' })
+    flushSync()
+    const err = target.querySelector<HTMLElement>('.settings-field__error')
+    expect(err).not.toBeNull()
+    expect(err!.getAttribute('role')).toBe('alert')
+    expect(err!.getAttribute('aria-live')).toBe('assertive')
+    expect(err!.textContent).toBe('')
+    void unmount(component)
+  })
+
+  test('the same error element is reused when an error arrives', () => {
+    const { component, target } = render({ label: 'Model', error: 'Too short.' })
+    flushSync()
+    const err = target.querySelector<HTMLElement>('.settings-field__error')!
+    expect(err.textContent).toContain('Too short.')
+    expect(err.id).not.toBe('')
+    void unmount(component)
+  })
+
+  test('the hint is replaced by the error rather than shown alongside it', () => {
+    const { component, target } = render({ label: 'Model', hint: 'a hint', error: 'Too short.' })
+    flushSync()
+    expect(target.querySelector('.settings-field__hint')).toBeNull()
+    expect(target.querySelector('.settings-field__error')!.textContent).toContain('Too short.')
+    void unmount(component)
   })
 })
