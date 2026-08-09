@@ -14,7 +14,13 @@ import { resolveBaseBranch, resolveReviewCommand } from '../../opencode-agent/sr
 import { loadConfig, parseChecks } from '../../opencode-agent/src/config.js'
 import type { Env } from '../../opencode-agent/src/config.js'
 import { withDeadline } from '../../opencode-agent/src/deadline.js'
-import { isTurnDeadline, openCodeError, PipelineError, turnDeadlineError } from '../../opencode-agent/src/errors.js'
+import {
+  isServerGone,
+  isTurnDeadline,
+  openCodeError,
+  PipelineError,
+  turnDeadlineError,
+} from '../../opencode-agent/src/errors.js'
 import { createGit } from '../../opencode-agent/src/git.js'
 import type { GitOptions } from '../../opencode-agent/src/git.js'
 import type { PullRequestState } from '../../opencode-agent/src/github-pulls.js'
@@ -44,7 +50,7 @@ import type { SessionUsage } from '../../opencode-agent/src/sdk-contract.js'
 import { redactSecrets, scrubSecrets } from '../../opencode-agent/src/secrets.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
 import { STATUS_MARKER } from '../../opencode-agent/src/status-comment.js'
-import { PHASES } from '../../opencode-agent/src/types.js'
+import { errorMessage, PHASES } from '../../opencode-agent/src/types.js'
 
 describe('collectText', () => {
   test('joins text parts and drops everything else', () => {
@@ -317,6 +323,9 @@ const noUsage = (): Promise<SessionUsage | null> => Promise.resolve({ tokens: 0,
 /** An abort nobody in this test is asking about, answering the recorded shape. */
 const noAbort = (): Promise<unknown> => Promise.resolve({ data: true })
 
+/** A server that is still there, for the tests the liveness probe is not about. */
+const stillThere = (): Promise<boolean> => Promise.resolve(true)
+
 describe('createOpenCodeAgent', () => {
   const fakeConnection = (sink: { bodies: SdkPromptBody[]; closed: number }, reply: unknown): OpenCodeConnection => ({
     createSession: (): Promise<string> => Promise.resolve('session-9'),
@@ -327,6 +336,7 @@ describe('createOpenCodeAgent', () => {
     events: noEvents,
     usage: noUsage,
     abort: noAbort,
+    alive: stillThere,
     close: (): Promise<void> => {
       sink.closed += 1
       return Promise.resolve()
@@ -407,6 +417,7 @@ describe('createOpenCodeAgent', () => {
           events: noEvents,
           usage: noUsage,
           abort: noAbort,
+          alive: stillThere,
           close: () => {
             closed += 1
             return Promise.resolve()
@@ -433,6 +444,9 @@ describe('createOpenCodeAgent', () => {
           events: noEvents,
           usage: noUsage,
           abort: noAbort,
+          // Deliberately the *unhelpful* answer: a deadline must win on its own,
+          // not because the probe happened to agree the server was fine.
+          alive: () => Promise.resolve(false),
           close: () => Promise.resolve(),
         }),
     })
@@ -457,6 +471,7 @@ describe('createOpenCodeAgent', () => {
           sendPrompt: () => Promise.resolve({ data: { parts: [] } }),
           usage: noUsage,
           abort: noAbort,
+          alive: stillThere,
           events: () =>
             Promise.resolve(
               streamOf(
@@ -486,6 +501,7 @@ describe('createOpenCodeAgent', () => {
           events: noEvents,
           usage: () => Promise.resolve({ tokens: 3602, cost: 0.014 }),
           abort: noAbort,
+          alive: stillThere,
           close: () => Promise.resolve(),
         }),
     })
@@ -512,6 +528,7 @@ describe('createOpenCodeAgent', () => {
           events: noEvents,
           usage,
           abort: noAbort,
+          alive: stillThere,
           close: () => Promise.resolve(),
         }),
     })
@@ -534,6 +551,7 @@ describe('createOpenCodeAgent', () => {
           sendPrompt: () => Promise.resolve({ data: { parts: [{ type: 'text', text: 'fine' }] } }),
           usage: noUsage,
           abort: noAbort,
+          alive: stillThere,
           events: () => Promise.reject(new Error('/event is not available')),
           close: () => Promise.resolve(),
         }),
@@ -563,6 +581,86 @@ describe('createOpenCodeAgent', () => {
     expect(isTurnDeadline(rejection)).toBe(true)
   })
 
+  /**
+   * A turn that breaks, over a server that answers a liveness probe as the test says.
+   *
+   * The default failure is verbatim what issue #239 reported twice: Bun's message
+   * for a socket that went away, which names neither end of it.
+   */
+  const brokenTurnAgent = (
+    alive: () => Promise<boolean>,
+    failure: Error = new Error('The socket connection was closed unexpectedly'),
+  ): Promise<OpenCodeAgent> =>
+    createOpenCodeAgent({
+      directory: '/repo',
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      sessionTitle: 't',
+      log: silentLog,
+      connect: () =>
+        Promise.resolve({
+          createSession: () => Promise.resolve('session-1'),
+          sendPrompt: () => Promise.reject(failure),
+          events: noEvents,
+          usage: noUsage,
+          abort: noAbort,
+          alive,
+          close: () => Promise.resolve(),
+        }),
+    })
+
+  test('names the server that went away, rather than repeating the socket error', async () => {
+    // Issue #239 failed twice with "The socket connection was closed unexpectedly",
+    // which sends a reader to the model provider. It was the `opencode serve` this
+    // job spawned — proven only because the *next* call, a loopback `session.get`
+    // that never touches a provider, failed too. That inference is what this makes
+    // into a statement the failure comment can carry on its own.
+    const agent = await brokenTurnAgent(() => Promise.resolve(false))
+
+    const rejection = await agent.prompt({ prompt: 'go' }).catch((error: unknown) => error)
+
+    expect(isServerGone(rejection)).toBe(true)
+    expect(errorMessage(rejection)).toContain('OpenCode server')
+    // The transport's own words are kept: they are the only evidence of *how* it went.
+    expect(errorMessage(rejection)).toContain('The socket connection was closed unexpectedly')
+  })
+
+  test('leaves a failure alone while the server is still answering', async () => {
+    // The probe has to be able to say "not this" or it is just a relabelling of
+    // every rejection, and a rate limit reported as a dead server is a worse lie
+    // than the bare socket message this replaces.
+    const agent = await brokenTurnAgent(stillThere, new Error('rate limited'))
+
+    const rejection = await agent.prompt({ prompt: 'go' }).catch((error: unknown) => error)
+
+    expect(isServerGone(rejection)).toBe(false)
+    expect(errorMessage(rejection)).toBe('rate limited')
+  })
+
+  test('reads a probe that cannot answer as a server that is not there', async () => {
+    // A probe that throws is evidence, not an accident to propagate: it must never
+    // replace the failure it was asked about, which is what an unguarded `await`
+    // here would do.
+    const agent = await brokenTurnAgent(() => Promise.reject(new Error('connection refused')))
+
+    const rejection = await agent.prompt({ prompt: 'go' }).catch((error: unknown) => error)
+
+    expect(isServerGone(rejection)).toBe(true)
+    expect(errorMessage(rejection)).toContain('The socket connection was closed unexpectedly')
+  })
+
+  test('a turn stopped by its own bound stays a deadline, whatever the probe says', async () => {
+    // Order matters. `settleWalk` parks the issue in `INCOMPLETE` and keeps the
+    // branch for a deadline, and fails the run for everything else — so a timed-out
+    // turn relabelled by a probe that happens to answer `false` would throw away
+    // finished steps.
+    const agent = await hangingAgent(5)
+
+    const rejection = await agent.prompt({ prompt: 'go' }).catch((error: unknown) => error)
+
+    expect(isTurnDeadline(rejection)).toBe(true)
+    expect(isServerGone(rejection)).toBe(false)
+  })
+
   /** A connection whose `abort` answers however the test wants it to. */
   const abortingAgent = (answer: () => Promise<unknown>, log = silentLog): Promise<OpenCodeAgent> =>
     createOpenCodeAgent({
@@ -577,6 +675,7 @@ describe('createOpenCodeAgent', () => {
           events: noEvents,
           usage: noUsage,
           abort: answer,
+          alive: stillThere,
           close: () => Promise.resolve(),
         }),
     })
@@ -637,6 +736,7 @@ describe('createOpenCodeAgent', () => {
           events: noEvents,
           usage: noUsage,
           abort: noAbort,
+          alive: stillThere,
           close: () => Promise.resolve(),
         }),
     })

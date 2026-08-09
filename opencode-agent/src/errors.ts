@@ -176,6 +176,47 @@ export const turnDeadlineError = (elapsedMs: number, progress: ProgressSnapshot)
 export const isTurnDeadline = (error: unknown): error is PipelineError =>
   error instanceof PipelineError && error.code === TURN_DEADLINE
 
+/** The other failure a reader cannot diagnose from its message alone. */
+const SERVER_GONE = 'OPENCODE_SERVER_GONE'
+
+/**
+ * A turn whose OpenCode server stopped answering, named rather than quoted.
+ *
+ * Issue #239 failed twice with `The socket connection was closed unexpectedly`,
+ * which is Bun's wording for a `fetch` whose peer went away and names neither
+ * end of it. Every reader starts at the model provider, because that is the only
+ * remote a model turn obviously has. It was the `opencode serve` **this job
+ * spawned** — established only afterwards, and only by inference: the
+ * `session.get` that `tokensUsed()` makes next failed too, and that call is a
+ * loopback request no provider is on the path of. So the evidence was in hand at
+ * the moment of failure and thrown away, and the run reported the one sentence
+ * that sends you the wrong way.
+ *
+ * This asks the question instead of leaving it to be reconstructed from two log
+ * lines a week later. The transport's own message is kept, because it is the only
+ * account of *how* the socket went; what is added is which socket it was, and
+ * where to look for the cause — the post-mortem step, which reports an
+ * out-of-memory kill and a second `opencode` process precisely because neither is
+ * visible from here.
+ *
+ * Distinguishable by code for the reason {@link turnDeadlineError} is, and it is
+ * checked **after** that one: a deadline is a ceiling the phase salvages work for,
+ * and a turn cut off by its own bound must keep meaning that even when the probe
+ * that runs afterwards finds the server gone too.
+ */
+export const serverGoneError = (transport: string): PipelineError =>
+  new PipelineError(
+    SERVER_GONE,
+    'The local OpenCode server stopped answering mid-turn, so this turn ended with nothing to show for it. ' +
+      `The transport reported: ${transport}. That is the \`opencode serve\` this job spawned on loopback — ` +
+      'not the model provider — so look at the run’s post-mortem step for an out-of-memory kill or for a ' +
+      'second `opencode` process the model started from `bash`.',
+  )
+
+/** Whether a rejection is that death. */
+export const isServerGone = (error: unknown): error is PipelineError =>
+  error instanceof PipelineError && error.code === SERVER_GONE
+
 export const modelResponseError = (message: string, raw: string): PipelineError =>
   new PipelineError('MODEL_RESPONSE', `${message}\n\nRaw reply:\n${raw.slice(0, 2000)}`)
 

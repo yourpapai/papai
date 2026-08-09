@@ -2134,6 +2134,64 @@ in the proxy's `authorization` header. Removed, with the invariant written down
 instead. What survives is `formatFailures`' `>` versus `>=`, where slicing the
 tail of a string that is exactly the budget returns the same string.
 
+### S5-12 — a dead server reported as a socket, and a cause no log could settle
+
+Issue #239 failed three times in `REVIEW_AND_MUTATE` and never committed a step.
+Two distinct failures, not one, and telling them apart took the whole thread:
+
+- **Run 1** hit `AGENT_TIMEOUT_MS` with the server healthy — 355 tool calls,
+  heartbeats frozen on `bash (running)` for three-minute stretches, and teardown
+  reporting a **second** `opencode` process, a `bun`, three `bash` and a `curl`
+  left alive. A foreground child that never exited.
+- **Runs 2 and 3** died mid-turn with `The socket connection was closed
+unexpectedly`, Bun's wording for a `fetch` whose peer went away.
+
+That message names neither end of the socket, so it reads as a provider problem.
+It was not: the `session.get` that `tokensUsed()` makes next failed too — the
+`"did not report session usage"` warning is present in runs 2 and 3 and **absent**
+in run 1 — and that call is loopback. The `opencode serve` this job spawned had
+died. Issue #240, in the same phase with the same model and profile, ran sixteen
+minutes and 152 tool calls and reached `idle` cleanly, so this is not general
+flakiness.
+
+The **cause** of the server's death is still open, and the honest reason is that
+nothing survived to settle it. The runner is ephemeral, the workflow uploads no
+artefacts, and `activity.ts` keeps tool input out of the log by design — so
+whether the model typed `pkill opencode`, whether the runner ran out of memory, or
+whether the server crashed cannot be recovered from run 31280928888 or any other.
+
+What was in reach, and is now done:
+
+1. **The failure names itself.** `serverGoneError` in `errors.ts`, raised by
+   `runTurn` in the new `turn-run.ts`, which probes `connection.alive()` on the
+   failure path only and reports the death rather than quoting the transport. The
+   probe is the same `session.get` the inference above was drawn from — turned
+   from something reconstructed a week later into something the run says at the
+   time. Ordering is load-bearing and tested three ways: a turn deadline leaves
+   first, a probe that rejects reads as `false`, and a live server leaves an
+   ordinary failure alone.
+2. **The runner is asked what it saw, before it disappears.** A post-mortem step
+   in `agent-pipeline.yml`, `if: failure()`, reporting the OOM killer, the cgroup
+   memory peak and a process census. **Names and counts only** — `ps` is asked for
+   `comm`, never `args`, because a tool child's argument vector is model-authored
+   content and that log is world-readable, which is `activity.ts`'s rule applied to
+   the one place it had not been. Two live `opencode` processes is the finding;
+   what either was told to do is not that step's to print.
+3. **The kill is reproducible without a model.**
+   `tests/opencode-agent/server-survival.integration.ts`
+   (`bun run opencode-agent:test:survival`) drives candidate commands through
+   `POST /session/:id/shell` — the same `bash -l -c` child the bash tool spawns, no
+   credentials needed — and probes the server after each. The `pkill` hypothesis is
+   deliberately **not** a row: automating it means killing every `opencode` on the
+   host. If every row comes back `alive`, that is what is left.
+
+The finding underneath all three is not a pipeline bug. Plan step 2 told the model
+to "run the live-run experiments against the real `opencode` binary" inside the
+container whose control plane _is_ an `opencode serve` on loopback, with the
+`build` profile's unrestricted `bash`. A research plan that drives this pipeline's
+own tooling belongs in a separate job; the three items above make the next such
+run legible rather than preventing it.
+
 Measured coverage of the spike's own suite:
 
 | File                  | Lines  | Functions | Gap                                                                                                |
