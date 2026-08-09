@@ -15,6 +15,12 @@ const AgentConfigSchema = z.object({
   model: z.string().min(1),
   extraArgs: z.array(z.string()).default([]),
   timeoutMs: z.number().int().min(0).default(1_800_000),
+  // Inactivity watchdog: kills the agent subprocess when it produces no stdout
+  // for this long (hung LLM stream — observed repeatedly against degraded
+  // providers) and lets runAgent retry once instead of burning the whole
+  // timeoutMs. The window must exceed the slowest healthy step (measured ~7min
+  // gaps between transcript events on a loaded provider), hence 10min default.
+  inactivityTimeoutMs: z.number().int().min(0).default(600_000),
 })
 
 export const MutationImproveConfigSchema = z.object({
