@@ -12,6 +12,12 @@ import { Glob } from 'bun'
 // `role="alert"` / `role="status"` / `aria-live` means a hand-rolled region that is almost
 // certainly mounted together with its message.
 //
+// What this deliberately does not catch: a dynamic `role={...}` binding (the form
+// LiveRegion.svelte itself uses), an `aria-live` reaching an element only through a prop
+// spread, and an error paragraph carrying `class="status-error"` with no role at all --
+// that last one is a separate known gap across ~22 files. The guard stops the common
+// literal copy-paste, not every possible spelling.
+//
 // These files are knowingly still on the old shape. The list is the checked-in form of a
 // deliberate scope decision, not a backlog of unknowns -- it shrinks as sections convert.
 // See docs/superpowers/specs/2026-08-09-live-region-adoption-design.md.
