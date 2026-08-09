@@ -6,6 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { describeActivity } from '../../opencode-agent/src/activity.js'
+import type { TranscriptRow } from '../../opencode-agent/src/activity-detail.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
 import { createProgressTracker, followEvents, withHeartbeat } from '../../opencode-agent/src/progress.js'
 import type { ProgressSnapshot } from '../../opencode-agent/src/progress.js'
@@ -58,6 +59,59 @@ const TOOL_COMPLETED = {
       id: 'prt_fdbeb1386001mFXY8OuVRslEEl',
       sessionID: SESSION,
       messageID: 'msg_fdbeb107d001oVo9AQ5GFCdn92',
+    },
+  },
+} as const
+
+/** The same recorded shape, for a bash call — the one whose input is a command. */
+const BASH_RUNNING = {
+  type: 'message.part.updated',
+  properties: {
+    sessionID: SESSION,
+    part: {
+      type: 'tool',
+      tool: 'bash',
+      callID: 'call_bash',
+      state: { status: 'running', input: { command: 'cat secret.txt' }, time: { start: 1786101044113 } },
+    },
+  },
+} as const
+
+const BASH_COMPLETED = {
+  type: 'message.part.updated',
+  properties: {
+    sessionID: SESSION,
+    part: {
+      type: 'tool',
+      tool: 'bash',
+      callID: 'call_bash',
+      state: { status: 'completed', input: { command: 'cat secret.txt' }, output: 'hunter2\n' },
+    },
+  },
+} as const
+
+const BASH_ERRORED = {
+  type: 'message.part.updated',
+  properties: {
+    sessionID: SESSION,
+    part: {
+      type: 'tool',
+      tool: 'bash',
+      callID: 'call_bash',
+      state: { status: 'error', input: { command: 'cat secret.txt' }, error: 'exit 1' },
+    },
+  },
+} as const
+
+const GREP_RUNNING = {
+  type: 'message.part.updated',
+  properties: {
+    sessionID: SESSION,
+    part: {
+      type: 'tool',
+      tool: 'grep',
+      callID: 'call_grep',
+      state: { status: 'running', input: { pattern: 'retryOperation' } },
     },
   },
 } as const
@@ -285,14 +339,113 @@ describe('describeActivity', () => {
 })
 
 describe('createProgressTracker', () => {
-  test('logs each activity as it arrives', () => {
+  /** A clock the test moves by hand, so durations are exact rather than sampled. */
+  const manualClock = (start = 1_000_000): { now: () => number; advance: (ms: number) => void } => {
+    let current = start
+    return {
+      now: (): number => current,
+      advance: (ms): void => {
+        current += ms
+      },
+    }
+  }
+
+  test('a running/completed pair for one call emits exactly two lines', () => {
+    const { log, lines } = recorder()
+    const clock = manualClock()
+    const tracker = createProgressTracker(SESSION, log, { now: clock.now })
+
+    tracker.observe(BASH_RUNNING)
+    clock.advance(3_200)
+    tracker.observe(BASH_COMPLETED)
+
+    expect(lines.map((line) => line.message)).toEqual(['▸ bash (running)', '✓ bash 3.2s'])
+  })
+
+  test('stamps a failed call with its own glyph', () => {
+    const { log, lines } = recorder()
+    const clock = manualClock()
+    const tracker = createProgressTracker(SESSION, log, { now: clock.now })
+
+    tracker.observe(BASH_RUNNING)
+    clock.advance(1_000)
+    tracker.observe(BASH_ERRORED)
+
+    expect(lines.map((line) => line.message)).toEqual(['▸ bash (running)', '✗ bash 1.0s'])
+  })
+
+  test('a completion whose start was never seen carries no duration', () => {
+    // The tracker's clock is the duration's only source — `state.time.start`
+    // belongs to the server's clock — so a completion that arrives alone has
+    // nothing honest to stamp.
+    const { log, lines } = recorder()
+    const tracker = createProgressTracker(SESSION, log)
+
+    tracker.observe(TOOL_COMPLETED)
+
+    expect(lines.map((line) => line.message)).toEqual(['✓ read'])
+  })
+
+  test('a republished running event for the same call emits one line, and counts once', () => {
+    // The server republishes the running state as arguments stream in; ten
+    // republishes of one call are one call, not ten.
+    const { log, lines } = recorder()
+    const tracker = createProgressTracker(SESSION, log)
+
+    tracker.observe(TOOL_RUNNING)
+    tracker.observe(TOOL_RUNNING)
+    tracker.observe(TOOL_RUNNING)
+
+    expect(lines).toHaveLength(1)
+    expect(tracker.snapshot().toolCalls).toBe(1)
+  })
+
+  test('two different calls to the same tool are two lines', () => {
+    const { log, lines } = recorder()
+    const tracker = createProgressTracker(SESSION, log)
+    const second = structuredClone(TOOL_RUNNING)
+    second.properties.part.callID = 'call_2'
+
+    tracker.observe(TOOL_RUNNING)
+    tracker.observe(second)
+
+    expect(lines.map((line) => line.message)).toEqual(['▸ read (running)', '▸ read (running)'])
+    expect(tracker.snapshot().toolCalls).toBe(2)
+  })
+
+  test('activity lines go through log.info as plain text with an empty meta object', () => {
+    // The pretty line is the message; nothing rides in the metadata, so a
+    // NDJSON renderer adds no structure and a text renderer loses nothing.
+    const { log, lines } = recorder()
+    const tracker = createProgressTracker(SESSION, log)
+
+    tracker.observe(BASH_RUNNING)
+
+    expect(lines).toEqual([{ meta: {}, message: '▸ bash (running)' }])
+  })
+
+  test('a finished step appends the cumulative tokens and tool calls', () => {
     const { log, lines } = recorder()
     const tracker = createProgressTracker(SESSION, log)
 
     tracker.observe(TOOL_RUNNING)
     tracker.observe(STEP_FINISH)
 
-    expect(lines.map((line) => line.message)).toEqual(['Model tool call', 'Model step finished'])
+    expect(lines.map((line) => line.message)).toEqual([
+      '▸ read (running)',
+      '✓ finished a step — 1540 tokens, 1 tool calls so far',
+    ])
+  })
+
+  test('the session status reads as a plain-text state line', () => {
+    const { log, lines } = recorder()
+    const tracker = createProgressTracker(SESSION, log)
+
+    tracker.observe(BUSY)
+    tracker.observe(IDLE)
+    tracker.observe(RETRY)
+
+    expect(lines.map((line) => line.message)).toEqual(['● busy', '● idle', '● retry (attempt 1)'])
   })
 
   test('collapses a repeated status, which is republished between every step', () => {
@@ -306,18 +459,57 @@ describe('createProgressTracker', () => {
     tracker.observe(BUSY)
     tracker.observe(IDLE)
 
-    expect(lines.map((line) => line.message)).toEqual(['Model session status', 'Model session status'])
+    expect(lines.map((line) => line.message)).toEqual(['● busy', '● idle'])
   })
 
-  test('reports the same status again after something else happened', () => {
+  test('public lines never carry a command, a file path or a grep pattern', () => {
+    // The containment rule, asserted on the lines themselves rather than on the
+    // schemas that enforce it: the one regression this file must never grow.
     const { log, lines } = recorder()
     const tracker = createProgressTracker(SESSION, log)
 
-    tracker.observe(BUSY)
-    tracker.observe(IDLE)
-    tracker.observe(BUSY)
+    tracker.observe(BASH_RUNNING)
+    tracker.observe(BASH_COMPLETED)
+    tracker.observe(GREP_RUNNING)
+    tracker.observe(TOOL_RUNNING)
+    tracker.observe(TOOL_COMPLETED)
 
-    expect(lines).toHaveLength(3)
+    const printed = lines.map((line) => line.message).join('\n')
+    expect(printed).not.toContain('secret.txt')
+    expect(printed).not.toContain('cat ')
+    expect(printed).not.toContain('package.json')
+    expect(printed).not.toContain('retryOperation')
+  })
+
+  test('feeds the transcript sink the activity-detail line when one is wired', () => {
+    const { log } = recorder()
+    const clock = manualClock()
+    const rows: TranscriptRow[] = []
+    const tracker = createProgressTracker(SESSION, log, {
+      now: clock.now,
+      transcript: { write: (row) => void rows.push(row) },
+    })
+
+    tracker.observe(BASH_RUNNING)
+    clock.advance(2_000)
+    tracker.observe(BASH_COMPLETED)
+
+    expect(rows).toEqual([
+      {
+        time: new Date(1_000_000).toISOString(),
+        tool: 'bash',
+        status: 'running',
+        detail: 'cat secret.txt',
+        durationMs: null,
+      },
+      {
+        time: new Date(1_002_000).toISOString(),
+        tool: 'bash',
+        status: 'completed',
+        detail: 'cat secret.txt',
+        durationMs: 2_000,
+      },
+    ])
   })
 
   test('counts a tool call once it starts, not when it finishes', () => {
@@ -333,18 +525,6 @@ describe('createProgressTracker', () => {
 
     expect(started.snapshot().toolCalls).toBe(1)
     expect(finished.snapshot().toolCalls).toBe(0)
-  })
-
-  test('does not collapse two identical tool calls the way it collapses a status', () => {
-    // Tool activities carry a status too, so a collapse rule that keys off
-    // "has a status" would silently hide a repeated call.
-    const { log, lines } = recorder()
-    const tracker = createProgressTracker(SESSION, log)
-
-    tracker.observe(TOOL_RUNNING)
-    tracker.observe(TOOL_RUNNING)
-
-    expect(lines).toHaveLength(2)
   })
 
   test('accumulates what the turn has done, for the heartbeat to report', () => {

@@ -5,6 +5,7 @@
 
 import type { IssueComment } from './blocks.js'
 import type { CheckRunner } from './check-loop.js'
+import type { CiGroups } from './ci-groups.js'
 import type { ParsedCommand } from './commands.js'
 import type { PipelineConfig } from './config.js'
 import type { Git } from './git.js'
@@ -78,6 +79,16 @@ export interface PhaseDeps {
    * checks and the deadline the session is handed cannot disagree.
    */
   now: () => number
+  /**
+   * The Actions log's collapsible sections, as an injected boundary like every
+   * other.
+   *
+   * Required rather than optional so a caller has to decide: the command lines
+   * are only interpreted by the runner when they arrive raw on stdout, which is
+   * exactly what a local `--event-path` run writes too — harmless there, a
+   * folded log in CI.
+   */
+  groups: CiGroups
   config: PipelineConfig
   log: Logger
 }

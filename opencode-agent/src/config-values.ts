@@ -190,6 +190,42 @@ export const labelPrefix = (env: Env, key: string, fallback: string): string | n
   return configured
 }
 
+/**
+ * Bytes an AES-256-GCM key must decode to. Fixed rather than ranged: the
+ * transcript writer has exactly one algorithm and this is its one key size.
+ */
+const LOG_KEY_BYTES = 32
+
+/**
+ * `AGENT_LOG_KEY`, the debug transcript's symmetric key, as raw bytes.
+ *
+ * `null` when unset, and that is the ordinary case: most runs write no
+ * transcript, and the pipeline warns once and moves on rather than refusing to
+ * run. A **set** value that cannot work is different — it means an operator
+ * went to the trouble of configuring encryption and mistyped it, which is a
+ * `ConfigError` naming the variable, exactly like a range check failing.
+ *
+ * The canonical-base64 round-trip rejects what `Buffer.from(raw, 'base64')`
+ * would otherwise salvage: it silently ignores characters outside the alphabet
+ * and accepts any length, so `"!!!"` decodes to zero bytes without a peep.
+ */
+export const logKey = (env: Env, key: string): Uint8Array | null => {
+  const raw = optionalOrNull(env, key)
+  if (raw === null) return null
+
+  const bytes = Buffer.from(raw, 'base64')
+  if (bytes.byteLength !== LOG_KEY_BYTES || bytes.toString('base64') !== raw) {
+    throw new ConfigError(`${key} must be base64 of exactly ${LOG_KEY_BYTES} bytes (openssl rand -base64 32)`)
+  }
+
+  // A fresh allocation, not a view on the Buffer: `crypto.subtle` takes
+  // `Uint8Array<ArrayBuffer>`, and a Buffer's union with SharedArrayBuffer
+  // does not narrow to it.
+  const copy = new Uint8Array(bytes.byteLength)
+  copy.set(bytes)
+  return copy
+}
+
 /** Reads an integer knob, rejecting both malformed values and unusable ones. */
 export const boundedInt = (env: Env, key: string, fallback: number, range: IntRange): number => {
   const raw = optionalOrNull(env, key)

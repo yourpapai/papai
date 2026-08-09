@@ -470,7 +470,7 @@ describe('createOpenCodeAgent', () => {
     await consumed
     await agent.close()
 
-    expect(lines).toEqual(['Model session status'])
+    expect(lines).toEqual(['● busy'])
   })
 
   test('reports what the session has spent, from the server', async () => {

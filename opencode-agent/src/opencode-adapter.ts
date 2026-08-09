@@ -9,8 +9,9 @@ import type { Logger } from './logger.js'
 import { modelRef } from './openai-config.js'
 import type { OpenAiSettings } from './openai-config.js'
 import { connectSdk } from './opencode-connect.js'
-import { createProgressTracker, followEvents, withHeartbeat } from './progress.js'
-import type { EventFollower, ProgressSnapshot, ProgressTracker } from './progress.js'
+import { withHeartbeat } from './progress.js'
+import type { ProgressSnapshot, ProgressTracker, TranscriptSink } from './progress.js'
+import { startReporting } from './session-reporting.js'
 import { buildBody, decodeAbort, decodeReply, parseModelRef } from './sdk-contract.js'
 import type { SdkPromptBody, SessionUsage } from './sdk-contract.js'
 
@@ -127,6 +128,14 @@ export interface OpenCodeAgentOptions {
    * run has no status comment at all.
    */
   onTick?: (snapshot: ProgressSnapshot) => void
+  /**
+   * The encrypted debug transcript, when the run has one.
+   *
+   * The adapter is the only layer that sees the event stream, so the
+   * maintainer-only detail has to leave from here or never leave at all.
+   * Absent on a keyless run, which is the ordinary case.
+   */
+  transcript?: TranscriptSink
   /** Injection seam for tests. Defaults to the real SDK server + client. */
   connect?: () => Promise<OpenCodeConnection>
 }
@@ -158,7 +167,7 @@ export const createOpenCodeAgent = async (options: OpenCodeAgentOptions): Promis
     throw openCodeError(`Failed to open OpenCode session: ${errorMessage(error)}`)
   }
 
-  const { tracker, shutdown } = startReporting(connection, sessionId, options.log)
+  const { tracker, shutdown } = startReporting(connection, sessionId, options.log, options.transcript)
 
   return {
     sessionId,
@@ -208,55 +217,6 @@ const abortSession = async (connection: OpenCodeConnection, sessionId: string, l
   } catch (error) {
     log.warn({ sessionId, error: errorMessage(error) }, 'Could not abort the model turn')
     return false
-  }
-}
-
-/** How long teardown waits for reporting to wind down before giving up on it. */
-const SHUTDOWN_GRACE_MS = 5_000
-
-/**
- * Starts draining the event stream into a tracker, and hands back the off switch.
- *
- * Detached on purpose: the stream runs for the life of the server, so awaiting
- * it inline would never return. Nothing it does can reject, and a failed
- * subscription costs the run its progress log and nothing else — this is
- * reporting, and reporting must not be able to fail the work it reports on.
- *
- * `shutdown` stops the drain and then waits for it, so a `close()` that races a
- * still-arriving event does not cut it off mid-observation. Bounded, because
- * the one thing worse than losing a progress line is teardown hanging on the
- * reporting it is trying to shut down.
- */
-const startReporting = (
-  connection: OpenCodeConnection,
-  sessionId: string,
-  log: Logger,
-): { tracker: ProgressTracker; shutdown: () => Promise<void> } => {
-  const tracker = createProgressTracker(sessionId, log)
-  let follower: EventFollower | null = null
-  let stopped = false
-
-  const finished = connection
-    .events()
-    .then(async (stream) => {
-      follower = followEvents(stream, tracker)
-      // `shutdown()` can win the race against a slow subscription.
-      if (stopped) follower.stop()
-      await follower.done
-    })
-    .catch((error: unknown) => {
-      log.warn({ error: errorMessage(error) }, 'No progress events; the run is unaffected')
-    })
-
-  return {
-    tracker,
-    shutdown: async (): Promise<void> => {
-      stopped = true
-      follower?.stop()
-      await withDeadline(finished, SHUTDOWN_GRACE_MS, () => new Error('unused')).catch(() => {
-        log.debug({}, 'Progress reporting did not wind down in time; continuing teardown')
-      })
-    },
   }
 }
 

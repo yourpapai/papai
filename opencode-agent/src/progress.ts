@@ -4,6 +4,9 @@
 // See LICENSE in the project root for details.
 
 import { describeActivity } from './activity.js'
+import type { Activity } from './activity.js'
+import { describeDetail } from './activity-detail.js'
+import type { TranscriptRow } from './activity-detail.js'
 import type { Logger } from './logger.js'
 
 /**
@@ -34,6 +37,58 @@ export interface ProgressTracker {
   snapshot: () => ProgressSnapshot
 }
 
+/** The encrypted transcript's write end, as the tracker sees it. */
+export interface TranscriptSink {
+  write: (row: TranscriptRow) => void
+}
+
+export interface ProgressTrackerOptions {
+  /**
+   * The clock a duration is measured on, defaulting to the real one. Injected
+   * so a test can stand on both sides of a call rather than sampling
+   * `Date.now()` around it.
+   */
+  now?: () => number
+  /**
+   * Where the maintainer-only detail goes, when the run has a key.
+   *
+   * Fed from `activity-detail.ts` — the whitelist decoder — so the detail that
+   * leaves this process is a property of the decoder, not of a call site.
+   * Absent on a keyless run, which is the ordinary case and costs nothing.
+   */
+  transcript?: TranscriptSink
+}
+
+/** One decimal place: `3.2s` — a duration is orientation, not measurement. */
+const formatDuration = (ms: number): string => `${(ms / 1_000).toFixed(1)}s`
+
+/**
+ * The line one activity earns, or `null` for one that earns none.
+ *
+ * Two lines per tool call and no more: `▸ bash (running)` when it starts and
+ * `✓ bash 3.2s` when it ends, with `✗` for a failed one. A completion whose
+ * start was never seen carries no duration — the tracker's clock is the only
+ * honest source, since `state.time.start` belongs to the server's clock.
+ *
+ * Plain text, with the metadata left empty: the pretty line is the message,
+ * so a NDJSON renderer adds no structure and a text renderer loses nothing.
+ * Names, statuses, counts and durations only — the containment rule from
+ * `activity.ts` applies to the line exactly as it applied to the metadata.
+ */
+const toolLine = (activity: Activity, durationMs: number | null): string => {
+  const tool = String(activity.meta['tool'])
+  const status = String(activity.meta['status'])
+  if (status === 'running') return `▸ ${tool} (running)`
+  const duration = durationMs === null ? '' : ` ${formatDuration(durationMs)}`
+  return `${status === 'error' ? '✗' : '✓'} ${tool}${duration}`
+}
+
+const statusLine = (activity: Activity): string => {
+  const status = String(activity.meta['status'])
+  const attempt = activity.meta['attempt']
+  return attempt === undefined ? `● ${status}` : `● ${status} (attempt ${attempt})`
+}
+
 /**
  * Logs each decoded event and keeps a running summary for the heartbeat.
  *
@@ -43,12 +98,46 @@ export interface ProgressTracker {
  * running totals makes a quiet twenty-minute stretch readable as *waiting on
  * one long model call* rather than as *stuck*.
  */
-export const createProgressTracker = (sessionId: string, log: Logger): ProgressTracker => {
+export const createProgressTracker = (sessionId: string, log: Logger, options: ProgressTrackerOptions = {}): ProgressTracker => {
+  const now = options.now ?? ((): number => Date.now())
   let lastAction = 'starting'
   let toolCalls = 0
   let tokens = 0
   let cost = 0
   let lastCollapsed: string | null = null
+  /** Running calls by callID, stamped on this clock: the duration's only source. */
+  const running = new Map<string, number>()
+
+  const observeTool = (activity: Activity): { line: string; durationMs: number | null } | null => {
+    const call = String(activity.meta['call'])
+    const status = String(activity.meta['status'])
+    if (status === 'running') {
+      // The server republishes the running state as the arguments stream in;
+      // ten republishes of one call are one call, one line and one count.
+      if (running.has(call)) return null
+      running.set(call, now())
+      toolCalls += 1
+      return { line: toolLine(activity, null), durationMs: null }
+    }
+
+    const started = running.get(call)
+    running.delete(call)
+    const durationMs = started === undefined ? null : now() - started
+    return { line: toolLine(activity, durationMs), durationMs }
+  }
+
+  const feedTranscript = (event: unknown, activity: Activity, durationMs: number | null): void => {
+    if (options.transcript === undefined) return
+    const detail = describeDetail(event, sessionId)
+    if (detail === null) return
+    options.transcript.write({
+      time: new Date(now()).toISOString(),
+      tool: detail.tool,
+      status: String(activity.meta['status']),
+      detail: detail.detail,
+      durationMs,
+    })
+  }
 
   return {
     observe: (event): void => {
@@ -62,12 +151,24 @@ export const createProgressTracker = (sessionId: string, log: Logger): ProgressT
         lastCollapsed = activity.collapseKey
       }
 
-      toolCalls += activity.counts?.toolCalls ?? 0
       tokens += activity.counts?.tokens ?? 0
       cost += activity.counts?.cost ?? 0
-
       lastAction = activity.summary
-      log.info(activity.meta, activity.message)
+
+      if (activity.kind === 'tool') {
+        const observed = observeTool(activity)
+        if (observed === null) return
+        feedTranscript(event, activity, observed.durationMs)
+        log.info({}, observed.line)
+        return
+      }
+
+      if (activity.kind === 'step') {
+        log.info({}, `✓ finished a step — ${tokens} tokens, ${toolCalls} tool calls so far`)
+        return
+      }
+
+      log.info({}, statusLine(activity))
     },
     snapshot: (): ProgressSnapshot => ({ lastAction, toolCalls, tokens, cost }),
   }
