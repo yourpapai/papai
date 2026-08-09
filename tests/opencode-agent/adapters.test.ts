@@ -1416,6 +1416,21 @@ describe('config', () => {
     expect(loadConfig({ ...baseEnv, AGENT_MAX_ATTEMPTS: raw }, '/repo').maxAttempts).toBe(3)
   })
 
+  test('gives one turn an hour by default, not half of one', () => {
+    // The default used to be 30 minutes, and that number — not the job's 90-minute
+    // ceiling — is what every long run actually stopped on: three consecutive runs
+    // ended at the same 33 minutes of wall clock, each one a single turn aborted at
+    // its cap, wrapped up and parked, with an hour of paid-for runner left unused.
+    // A turn is the granularity a plan step runs at, and a step worth doing is
+    // routinely worth more than half an hour.
+    //
+    // Safe against the ceiling it sits under precisely because `turnTimeoutMs`
+    // takes the *smaller* of the two: a turn opened late in the job still gets what
+    // is left of it minus the reserve and the wrap-up, so raising this can lengthen
+    // a turn that has room and can never let one outlive the runner.
+    expect(loadConfig(baseEnv, '/repo').agentTimeoutMs).toBe(3_600_000)
+  })
+
   /** Two facts a runner knows and nothing else does, as the workflow forwards them. */
   const JOB_STARTED = Date.UTC(2026, 7, 8, 12, 0)
   const jobEnv: Env = {

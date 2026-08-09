@@ -566,6 +566,16 @@ token ceiling is checked, whether there is time to start another one.
 the `git add`, the commit, the push, the comment, the state block and the label a
 stop still has to do, against an observed tail of about ten seconds.
 
+With the shrink in place the per-turn cap is free to be generous, and it now is:
+`AGENT_TIMEOUT_MS` defaults to an **hour** rather than the half-hour above. The
+30-minute default outlived the defect that made it dangerous and became the
+opposite problem — with the job ceiling at 90 it was the _only_ bound long runs
+ever reached, and three consecutive live runs ended at the same 33 minutes of
+wall clock, each one a single turn aborted at its cap, wrapped up and parked with
+an hour of paid-for runner unspent. Raising it cannot recreate D3, because the
+`min` above is what stands between a turn and the runner: a turn opened late gets
+what is left of the job minus the two slices, whatever this is set to.
+
 **A wall-clock stop is a ceiling reached, not work that broke**, and the pipeline
 says so in the vocabulary it already had: ⛔ rather than ❌, and a park in
 `INCOMPLETE` rather than in `FAILED`. That is a phase of its own, not a flag,
@@ -1267,7 +1277,7 @@ cannot drift.
 | `AGENT_MAX_ATTEMPTS`                       | no       | `3`                                             | Failures before `/retry` stops resuming               |
 | `AGENT_MAX_CHANGED_FILES`                  | no       | `100`                                           | Files one commit may carry                            |
 | `AGENT_MAX_CHANGED_LINES`                  | no       | `20000`                                         | Lines one commit may change                           |
-| `AGENT_TIMEOUT_MS`                         | no       | `1800000`                                       | Timeout for one model turn, and for each subprocess   |
+| `AGENT_TIMEOUT_MS`                         | no       | `3600000`                                       | Timeout for one model turn, and for each subprocess   |
 | `AGENT_JOB_STARTED_MS`                     | no       | unset — no job deadline                         | Epoch ms this job began; the workflow's first step    |
 | `AGENT_JOB_TIMEOUT_MINUTES`                | no       | unset — no job deadline                         | The job's own ceiling, shared with `timeout-minutes:` |
 | `AGENT_TEARDOWN_RESERVE_MS`                | no       | `180000`                                        | Held back from the job so a time stop can report      |

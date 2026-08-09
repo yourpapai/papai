@@ -10,6 +10,7 @@ import { resolveReviewCommand } from './config-discovery.js'
 import {
   boundedInt,
   boundedIntOrNull,
+  DEFAULT_TURN_TIMEOUT_MS,
   EPOCH_MS_RANGE,
   FILES_RANGE,
   JOB_MINUTES_RANGE,
@@ -263,7 +264,7 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     checks: parseChecks(env['AGENT_CHECKS']),
     reviewMaxRounds: boundedInt(env, 'AGENT_REVIEW_MAX_ROUNDS', 4, ROUND_RANGE),
     reviewPoolSize: boundedInt(env, 'AGENT_REVIEW_POOL_SIZE', 2, POOL_RANGE),
-    agentTimeoutMs: boundedInt(env, 'AGENT_TIMEOUT_MS', 1_800_000, TIMEOUT_RANGE),
+    agentTimeoutMs: boundedInt(env, 'AGENT_TIMEOUT_MS', DEFAULT_TURN_TIMEOUT_MS, TIMEOUT_RANGE),
     jobDeadlineMs: buildJobDeadline(env),
     teardownReserveMs: boundedInt(env, 'AGENT_TEARDOWN_RESERVE_MS', 180_000, RESERVE_RANGE),
     wrapUpMs: boundedInt(env, 'AGENT_WRAP_UP_MS', 120_000, WRAP_UP_RANGE),

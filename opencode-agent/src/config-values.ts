@@ -76,6 +76,28 @@ export const ROUND_RANGE: IntRange = { min: 1, max: 20 }
 export const TIMEOUT_RANGE: IntRange = { min: 1_000, max: 7_200_000 }
 
 /**
+ * An hour for one model turn, and for each subprocess.
+ *
+ * A constant beside its range rather than a literal at the call site, because the
+ * two only mean anything together — this has to be a value the range would accept
+ * as an override, and the pair drifting apart is the class of bug the "default
+ * would itself be accepted" test exists to catch.
+ *
+ * Half an hour before, which outlived the defect that chose it. The turn cap and
+ * the job ceiling used to be two hand-kept numbers, and 30-against-90 was the
+ * safe side of that; once `turnTimeoutMs` started deriving the turn's bound from
+ * the job's own clock, the danger was gone and only the smallness was left. What
+ * that cost was measurable: with the ceiling at 90 this was the *only* bound long
+ * runs ever reached, and three consecutive live runs ended at the same 33 minutes
+ * of wall clock — each one a single turn aborted at its cap, wrapped up and
+ * parked, with an hour of paid-for runner unspent. Raising it cannot bring the
+ * old defect back, because a turn is handed the **smaller** of this and what is
+ * left of the job: one opened late still shrinks to fit the runner it will die
+ * with, whatever this says.
+ */
+export const DEFAULT_TURN_TIMEOUT_MS = 3_600_000
+
+/**
  * When the job began, as epoch milliseconds, from the runner rather than from an
  * operator.
  *
