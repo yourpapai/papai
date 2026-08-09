@@ -374,7 +374,43 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0379](0379-mutation-improve-runner-fixes.md) | Mutation-Improve Runner Gate & Finalize Fixes — Trust-Boundary Hardening of the Autonomous Pipeline | 2026-08-06 | Implemented | - |
 | [0380](0380-defer-chat-provider-as-plugin.md) | Defer chat-provider-as-plugin until the core/plugin-separation refactor lands | 2026-08-09 | Deferred | - |
 | [0381](0381-retire-llm-rate-limiting-and-plans.md) | Retire llm-rate-limiting-and-plans — archive the draft, restart fresh later | 2026-08-09 | Retired | - |
-| [0382](0382-batch-archive-master-merge-arrivals.md) | Batch Lane-0 archive of master-merge arrivals into the frozen superpowers tree | 2026-08-09 | Implemented | - |
+| [0383](0383-mutation-coverage-src-byok-llm-blob-codec-ts.md) | Mutation Coverage for `src/byok-llm/blob-codec.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0384](0384-mutation-coverage-src-analytics-intent-classifier-ts.md) | Mutation Coverage for `src/analytics/intent/classifier.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0385](0385-mutation-coverage-plugins-task-provider-youtrack-classify-error-ts.md) | Mutation Coverage for `plugins/task-provider-youtrack/classify-error.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0386](0386-mutation-coverage-plugins-task-provider-youtrack-due-date-ts.md) | Mutation Coverage for `plugins/task-provider-youtrack/due-date.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0387](0387-mutation-coverage-src-errors-ts.md) | Mutation Coverage for `src/errors.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0388](0388-mutation-coverage-review-loop-src-live-format-ts.md) | Mutation Coverage for `review-loop/src/live-format.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0389](0389-mutation-coverage-plugins-task-provider-youtrack-query-builder-ts.md) | Mutation Coverage for `plugins/task-provider-youtrack/query-builder.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0390](0390-mutation-coverage-src-recurrence-ts.md) | Mutation Coverage for `src/recurrence.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0391](0391-mutation-coverage-plugins-task-provider-youtrack-create-field-helpers-ts.md) | Mutation Coverage for `plugins/task-provider-youtrack/create-field-helpers.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0392](0392-mutation-coverage-plugins-task-provider-youtrack-dedicated-fields-ts.md) | Mutation Coverage for `plugins/task-provider-youtrack/dedicated-fields.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0393](0393-mutation-coverage-plugins-task-provider-youtrack-field-engine-ts.md) | Mutation Coverage for `plugins/task-provider-youtrack/field-engine.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0394](0394-mutation-coverage-src-announcements-humanize-ts.md) | Mutation Coverage for `src/announcements/humanize.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0395](0395-mutation-coverage-plugins-task-provider-kaneo-list-tasks-query-ts.md) | Mutation Coverage for `plugins/task-provider-kaneo/list-tasks-query.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0396](0396-mutation-coverage-plugins-task-provider-kaneo-mappers-ts.md) | Mutation Coverage for `plugins/task-provider-kaneo/mappers.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0397](0397-mutation-coverage-src-tools-permission-gate-ts.md) | Mutation Coverage for `src/tools/permission-gate.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0398](0398-mutation-coverage-src-utils-scheduler-events-ts.md) | Mutation Coverage for `src/utils/scheduler.events.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0399](0399-mutation-coverage-src-utils-scheduler-helpers-ts.md) | Mutation Coverage for `src/utils/scheduler.helpers.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0400](0400-mutation-coverage-plugins-task-provider-kaneo-search-tasks-ts.md) | Mutation Coverage for `plugins/task-provider-kaneo/search-tasks.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0401](0401-mutation-coverage-review-loop-src-summary-burndown-ts.md) | Mutation Coverage for `review-loop/src/summary-burndown.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0402](0402-mutation-coverage-review-loop-src-summary-ts.md) | Mutation Coverage for `review-loop/src/summary.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0403](0403-mutation-coverage-plugins-task-provider-kaneo-task-status-ts.md) | Mutation Coverage for `plugins/task-provider-kaneo/task-status.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0404](0404-mutation-coverage-src-providers-config-validation-ts.md) | Mutation Coverage for `src/providers/config-validation.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0405](0405-mutation-coverage-client-shared-helpers-ts.md) | Mutation Coverage for `client/shared/helpers.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0406](0406-mutation-coverage-src-recurring-utils-ts.md) | Mutation Coverage for `src/recurring-utils.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0407](0407-mutation-coverage-src-reply-context-ts.md) | Mutation Coverage for `src/reply-context.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0408](0408-mutation-coverage-src-tools-tool-metadata-ts.md) | Mutation Coverage for `src/tools/tool-metadata.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0409](0409-mutation-coverage-plugins-task-provider-youtrack-helpers-ts.md) | Mutation Coverage for `plugins/task-provider-youtrack/helpers.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0410](0410-mutation-coverage-plugins-task-provider-youtrack-mappers-ts.md) | Mutation Coverage for `plugins/task-provider-youtrack/mappers.ts` — Test-Only Companion Tests, Shipped | 2026-08-09 | Accepted | - |
+| [0411](0411-ux-adminapp-findings.md) | AdminApp UX Open-Findings — Closed (Shipped) | 2026-08-09 | Accepted | - |
+| [0412](0412-ux-settingsapp-shell-findings.md) | SettingsApp Shell UX Open-Findings — Closed (Shipped) | 2026-08-09 | Accepted | - |
+| [0413](0413-ux-transcript-open-findings.md) | TranscriptApp Open-Findings — Closed (Shipped) | 2026-08-09 | Accepted | - |
+| [0414](0414-ux-transcript-ux-findings.md) | TranscriptApp UX Findings — Closed (Shipped) | 2026-08-09 | Accepted | - |
+| [0415](0415-ux-admin-instances-open-findings.md) | AdminInstancesSection UX Open-Findings — Closed (Shipped) | 2026-08-09 | Accepted | - |
+| [0416](0416-ux-admin-users-open-findings.md) | AdminUsersSection UX Open-Findings — Closed (Shipped) | 2026-08-09 | Accepted | - |
+| [0417](0417-ux-coding-mcp-open-findings.md) | CodingMcpSection UX Open-Findings — Closed (Shipped) | 2026-08-09 | Accepted | - |
+| [0418](0418-progress-stats-renderer.md) | Review-Loop Progress & Stats Renderer — Shipped | 2026-08-09 | Accepted | - |
+| [0419](0419-opencode-agent-check-loop.md) | opencode-agent Check-Loop — Shipped | 2026-08-09 | Accepted | - |
 
 ## ADR Status Legend
 
