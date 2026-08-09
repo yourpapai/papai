@@ -20,6 +20,7 @@ import path from 'node:path'
 import { z } from 'zod'
 
 import { runCli } from '../../review-loop/src/cli.js'
+import { captureStream, quietGit } from './test-helpers.js'
 
 const TraceEventSchema = z.object({
   event: z.string(),
@@ -137,20 +138,19 @@ function buildFixerResult(overrides?: { verdict?: string; fixed?: boolean }): st
   })
 }
 
-async function initRepo(repoPath: string, files: Record<string, string>): Promise<void> {
-  const { execFileSync } = await import('node:child_process')
-  execFileSync('git', ['init', repoPath])
-  execFileSync('git', ['-C', repoPath, 'config', 'user.email', 'test@test.com'])
-  execFileSync('git', ['-C', repoPath, 'config', 'user.name', 'Test'])
-  execFileSync('git', ['-C', repoPath, 'checkout', '-b', 'main'])
+function initRepo(repoPath: string, files: Record<string, string>): void {
+  quietGit(['init', repoPath])
+  quietGit(['-C', repoPath, 'config', 'user.email', 'test@test.com'])
+  quietGit(['-C', repoPath, 'config', 'user.name', 'Test'])
+  quietGit(['-C', repoPath, 'checkout', '-b', 'main'])
   writeFileSync(path.join(repoPath, '.gitignore'), '.review-loop/\n')
   for (const [relativePath, content] of Object.entries(files)) {
     const filePath = path.join(repoPath, relativePath)
     mkdirSync(path.dirname(filePath), { recursive: true })
     writeFileSync(filePath, content)
   }
-  execFileSync('git', ['-C', repoPath, 'add', '.'])
-  execFileSync('git', ['-C', repoPath, 'commit', '-m', 'init'])
+  quietGit(['-C', repoPath, 'add', '.'])
+  quietGit(['-C', repoPath, 'commit', '-m', 'init'])
 }
 
 async function runFakeScenario(opts: {
@@ -227,7 +227,7 @@ async function runFakeScenario(opts: {
   }
 
   try {
-    await runCli(cliArgs)
+    await runCli(cliArgs, captureStream())
   } finally {
     process.env['PATH'] = oldPath
     delete process.env['FAKE_OPENCODE_SCENARIO']
@@ -307,15 +307,14 @@ describe('review-loop fake integration', () => {
       }),
     )
 
-    const { execFileSync } = await import('node:child_process')
-    execFileSync('git', ['init', repoPath])
-    execFileSync('git', ['-C', repoPath, 'config', 'user.email', 'test@test.com'])
-    execFileSync('git', ['-C', repoPath, 'config', 'user.name', 'Test'])
-    execFileSync('git', ['-C', repoPath, 'checkout', '-b', 'main'])
+    quietGit(['init', repoPath])
+    quietGit(['-C', repoPath, 'config', 'user.email', 'test@test.com'])
+    quietGit(['-C', repoPath, 'config', 'user.name', 'Test'])
+    quietGit(['-C', repoPath, 'checkout', '-b', 'main'])
     writeFileSync(path.join(repoPath, '.gitignore'), '.review-loop/\n')
     writeFileSync(path.join(repoPath, 'README.md'), 'hello')
-    execFileSync('git', ['-C', repoPath, 'add', '.'])
-    execFileSync('git', ['-C', repoPath, 'commit', '-m', 'init'])
+    quietGit(['-C', repoPath, 'add', '.'])
+    quietGit(['-C', repoPath, 'commit', '-m', 'init'])
 
     mkdirSync(binDir, { recursive: true })
     createFakeOpencode(binDir)
@@ -325,7 +324,7 @@ describe('review-loop fake integration', () => {
     process.env['FAKE_OPENCODE_SCENARIO'] = scenarioPath
 
     try {
-      await runCli(['--config', configPath, '--plan', planPath])
+      await runCli(['--config', configPath, '--plan', planPath], captureStream())
     } finally {
       process.env['PATH'] = oldPath
       delete process.env['FAKE_OPENCODE_SCENARIO']
@@ -345,7 +344,7 @@ describe('fake agent with pool + inspector', () => {
     tempDirs.push(dir)
 
     const repoPath = path.join(dir, 'repo')
-    await initRepo(repoPath, {
+    initRepo(repoPath, {
       'src/a.ts': 'export const a = 1\n',
       'src/b.ts': 'export const b = 2\n',
       'src/c.ts': 'export const c = 3\n',
@@ -379,10 +378,7 @@ describe('fake agent with pool + inspector', () => {
     expect(inspectEvents.length).toBe(3)
     expect(inspectEvents.every((e) => e.addresses === true)).toBe(true)
 
-    const { execFileSync } = await import('node:child_process')
-    const commitCount = Number(
-      execFileSync('git', ['-C', repoPath, 'rev-list', '--count', 'main'], { encoding: 'utf8' }).trim(),
-    )
+    const commitCount = Number(quietGit(['-C', repoPath, 'rev-list', '--count', 'main']).trim())
     // init commit + 3 fix commits
     expect(commitCount).toBeGreaterThanOrEqual(4)
   })
@@ -392,7 +388,7 @@ describe('fake agent with pool + inspector', () => {
     tempDirs.push(dir)
 
     const repoPath = path.join(dir, 'repo')
-    await initRepo(repoPath, { 'src/queue.ts': 'export const queue = []\n' })
+    initRepo(repoPath, { 'src/queue.ts': 'export const queue = []\n' })
 
     const { summary, trace, ledger } = await runFakeScenario({
       dir,
@@ -433,7 +429,7 @@ describe('fake agent with pool + inspector', () => {
     tempDirs.push(dir)
 
     const repoPath = path.join(dir, 'repo')
-    await initRepo(repoPath, { 'src/queue.ts': 'export const queue = []\n' })
+    initRepo(repoPath, { 'src/queue.ts': 'export const queue = []\n' })
 
     const { runRoot, runId, summary, trace, ledger } = await runFakeScenario({
       dir,
@@ -460,10 +456,7 @@ describe('fake agent with pool + inspector', () => {
     expect(issues.length).toBe(1)
     expect(issues[0]?.status).toBe('closed')
 
-    const { execFileSync } = await import('node:child_process')
-    const commitCount = Number(
-      execFileSync('git', ['-C', repoPath, 'rev-list', '--count', 'main'], { encoding: 'utf8' }).trim(),
-    )
+    const commitCount = Number(quietGit(['-C', repoPath, 'rev-list', '--count', 'main']).trim())
     // init commit + 1 fix commit
     expect(commitCount).toBeGreaterThanOrEqual(2)
   })

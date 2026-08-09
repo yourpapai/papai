@@ -7,13 +7,19 @@
   "threshold": 0.95,
   "epsilon": 0.02,
   "mutateTimeoutMs": 1800000,
-  "buildTimeoutMs": 600000,
-  "checkCommand": "bun check:full",
+  "buildTimeoutMs": 1800000,
+  "buildFixAttempts": 2,
+  "checkCommand": "CI=true bun check:full",
   "mutateFileCommand": "bun test:mutate:file",
   "agent": {
     "model": "opencode/claude-sonnet-4-6",
     "extraArgs": [],
-    "timeoutMs": 1800000
+    "timeoutMs": 1800000,
+    "inactivityTimeoutMs": 600000
   },
-  "prBranchPrefix": "mutation-improve"
+  "prBranchPrefix": "mutation-improve",
+  "pricing": {
+    "anthropic/claude-sonnet-*": { "input": 3, "output": 15 },
+    "anthropic/claude-opus-*": { "input": 15, "output": 75 }
+  }
 }

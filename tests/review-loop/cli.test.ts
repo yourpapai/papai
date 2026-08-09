@@ -3,18 +3,28 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, spyOn, test } from 'bun:test'
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { runBuildCheck } from '../../review-loop/src/build-checker.js'
 import { MergeConflictError } from '../../review-loop/src/cli-errors.js'
-import { finalizeRun, parseCliArgs, resolvePlanPath, runCli, type FinalizeDeps } from '../../review-loop/src/cli.js'
+import {
+  finalizeRun,
+  parseCliArgs,
+  readPersistedRunStats,
+  resolvePlanPath,
+  runCli,
+  writeRunArtifacts,
+  type FinalizeDeps,
+} from '../../review-loop/src/cli.js'
 import type { ReviewLoopConfig } from '../../review-loop/src/config.js'
 import { createIssueLedger, saveIssueLedger, type IssueLedger } from '../../review-loop/src/issue-ledger.js'
 import { createRunState, PersistedRunStateSchema, type RunState } from '../../review-loop/src/run-state.js'
+import { RunStats } from '../../review-loop/src/run-stats.js'
 import { execGit } from '../../review-loop/src/worktree.js'
-import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir } from './test-helpers.js'
+import { captureStream, cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir, quietGit } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
 
@@ -285,13 +295,13 @@ interface RunCliFixture {
   getRunDir: () => string
 }
 
-async function setupRunCliFixtures(
+function setupRunCliFixtures(
   opts: {
     poolSize?: number
     inspector?: boolean
     checkCommand?: string
   } = {},
-): Promise<RunCliFixture> {
+): RunCliFixture {
   const dir = makeTempDir('cli-integration-')
   const binDir = path.join(dir, 'bin')
   const scenarioPath = path.join(dir, 'scenario.json')
@@ -318,15 +328,14 @@ async function setupRunCliFixtures(
   }
   writeFileSync(configPath, JSON.stringify(config))
 
-  const { execFileSync } = await import('node:child_process')
-  execFileSync('git', ['init', repoPath])
-  execFileSync('git', ['-C', repoPath, 'config', 'user.email', 'test@test.com'])
-  execFileSync('git', ['-C', repoPath, 'config', 'user.name', 'Test'])
-  execFileSync('git', ['-C', repoPath, 'checkout', '-b', 'main'])
+  quietGit(['init', repoPath])
+  quietGit(['-C', repoPath, 'config', 'user.email', 'test@test.com'])
+  quietGit(['-C', repoPath, 'config', 'user.name', 'Test'])
+  quietGit(['-C', repoPath, 'checkout', '-b', 'main'])
   writeFileSync(path.join(repoPath, '.gitignore'), '.review-loop/\n')
   writeFileSync(path.join(repoPath, 'README.md'), 'hello')
-  execFileSync('git', ['-C', repoPath, 'add', '.'])
-  execFileSync('git', ['-C', repoPath, 'commit', '-m', 'init'])
+  quietGit(['-C', repoPath, 'add', '.'])
+  quietGit(['-C', repoPath, 'commit', '-m', 'init'])
 
   mkdirSync(binDir, { recursive: true })
   const scriptPath = path.join(binDir, 'opencode')
@@ -338,7 +347,7 @@ async function setupRunCliFixtures(
     process.env['PATH'] = `${binDir}:${oldPath}`
     process.env['FAKE_OPENCODE_SCENARIO'] = scenarioPath
     try {
-      await runCli(args)
+      await runCli(args, captureStream())
     } finally {
       process.env['PATH'] = oldPath
       delete process.env['FAKE_OPENCODE_SCENARIO']
@@ -380,7 +389,7 @@ async function createResumableRunState(
 
 describe('runCli', () => {
   test('--pool-size overrides config.poolSize', async () => {
-    const fixture = await setupRunCliFixtures({ poolSize: 3 })
+    const fixture = setupRunCliFixtures({ poolSize: 3 })
     const scenario = {
       reviewerIssues: [JSON.stringify({ issues: [] })],
       fixerResults: [],
@@ -394,7 +403,7 @@ describe('runCli', () => {
   })
 
   test('--no-inspect skips inspector calls', async () => {
-    const fixture = await setupRunCliFixtures({ poolSize: 1, inspector: true })
+    const fixture = setupRunCliFixtures({ poolSize: 1, inspector: true })
     const scenario = {
       reviewerIssues: [
         JSON.stringify({
@@ -448,7 +457,7 @@ describe('runCli', () => {
   })
 
   test('stale worker worktrees from a prior run are cleaned at startup', async () => {
-    const fixture = await setupRunCliFixtures({ poolSize: 1 })
+    const fixture = setupRunCliFixtures({ poolSize: 1 })
     const runId = '2026-07-15T10-30-00-000Z-stale'
     const primaryWorktreePath = path.join(fixture.workDir, 'worktrees', runId)
     const staleWorkerPath = path.join(fixture.workDir, 'worktrees', `${runId}-worker-1`)
@@ -469,7 +478,7 @@ describe('runCli', () => {
   })
 
   test('stale worker worktrees from a prior crashed run are cleaned on a fresh start (no --resume-run)', async () => {
-    const fixture = await setupRunCliFixtures({ poolSize: 1 })
+    const fixture = setupRunCliFixtures({ poolSize: 1 })
     const crashedRunId = '2026-07-15T10-30-00-000Z-crashed'
     const crashedWorkerPath = path.join(fixture.workDir, 'worktrees', `${crashedRunId}-worker-1`)
 
@@ -495,7 +504,7 @@ describe('runCli', () => {
   })
 
   test('on fixer timeout (non-zero exit), the crashing issue is marked needs_human and the run still completes', async () => {
-    const fixture = await setupRunCliFixtures({ poolSize: 2 })
+    const fixture = setupRunCliFixtures({ poolSize: 2 })
     // Reviewer reports one issue; fixer exits non-zero (simulating timeout/error).
     const scenario = {
       reviewerIssues: [
@@ -543,7 +552,7 @@ describe('runCli', () => {
     // writeRunArtifacts, so any throw (build failure, merge conflict) skipped
     // the summary/metrics/trace write — leaving the user with no post-mortem
     // for a multi-hour run. writeRunArtifacts must run first.
-    const fixture = await setupRunCliFixtures({ poolSize: 1, checkCommand: 'false' })
+    const fixture = setupRunCliFixtures({ poolSize: 1, checkCommand: 'false' })
 
     const scenario = {
       reviewerIssues: [JSON.stringify({ issues: [] })],
@@ -557,5 +566,89 @@ describe('runCli', () => {
 
     const runDir = fixture.getRunDir()
     expect(existsSync(path.join(runDir, 'summary.txt'))).toBe(true)
+  })
+})
+
+describe('writeRunArtifacts stats persistence', () => {
+  test('writeRunArtifacts persists runStats into metrics.json and a Stats line into summary.txt', async () => {
+    const runDir = makeTempDir('rl-artifacts-')
+    const stats = new RunStats({
+      pricing: { 'm-*': { input: 3, output: 15 } },
+      startedAt: 0,
+      now: (): number => 60_000,
+    })
+    stats.addUsage('reviewer', { input: 100_000, output: 10_000, reasoning: 0, model: 'm-x' })
+    stats.addToolCalls('reviewer', 5)
+    await writeRunArtifacts(
+      runDir,
+      { doneReason: 'clean', rounds: 1, metrics: [], ledger: { issues: {} } },
+      { poolSize: 1, inspect: false, wallMs: 60_000, stats },
+    )
+    const persisted = await readPersistedRunStats(runDir)
+    expect(persisted?.totals.toolCalls).toBe(5)
+    expect(persisted?.totals.estimatedCostUsd).toBeCloseTo(0.45, 10)
+    const summary = await readFile(path.join(runDir, 'summary.txt'), 'utf8')
+    expect(summary).toContain('Stats: tools 5')
+  })
+
+  test('readPersistedRunStats returns undefined when metrics.json is missing or has no runStats', async () => {
+    const runDir = makeTempDir('rl-nostats-')
+    await expect(readPersistedRunStats(runDir)).resolves.toBeUndefined()
+  })
+
+  test('writeRunArtifacts without stats writes no runStats and no Stats line', async () => {
+    const runDir = makeTempDir('rl-artifacts-nostats-')
+    await writeRunArtifacts(
+      runDir,
+      { doneReason: 'clean', rounds: 1, metrics: [], ledger: { issues: {} } },
+      { poolSize: 1, inspect: false, wallMs: 1000 },
+    )
+    const metricsText = await readFile(path.join(runDir, 'metrics.json'), 'utf8')
+    expect(metricsText).not.toContain('runStats')
+    const summary = await readFile(path.join(runDir, 'summary.txt'), 'utf8')
+    expect(summary).not.toContain('Stats:')
+  })
+
+  test('writeRunArtifacts tolerates a result without metrics', async () => {
+    const runDir = makeTempDir('rl-artifacts-nometrics-')
+    await writeRunArtifacts(
+      runDir,
+      { doneReason: 'clean', rounds: 1, ledger: { issues: {} } },
+      { poolSize: 1, inspect: false, wallMs: 1000 },
+    )
+    const metricsText = await readFile(path.join(runDir, 'metrics.json'), 'utf8')
+    expect(metricsText).toContain('"inputTokens": 0')
+  })
+
+  test('writeRunArtifacts warns and still writes summary when metrics.json write fails', async () => {
+    const runDir = makeTempDir('rl-artifacts-eisdir-')
+    mkdirSync(path.join(runDir, 'metrics.json'))
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    await writeRunArtifacts(
+      runDir,
+      { doneReason: 'clean', rounds: 1, metrics: [], ledger: { issues: {} } },
+      { poolSize: 1, inspect: false, wallMs: 1000 },
+    )
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(String(warn.mock.calls[0]![0])).toContain('metrics.json write failed')
+    expect(existsSync(path.join(runDir, 'summary.txt'))).toBe(true)
+  })
+
+  test('readPersistedRunStats returns undefined for invalid JSON', async () => {
+    const runDir = makeTempDir('rl-badstats-json-')
+    writeFileSync(path.join(runDir, 'metrics.json'), 'not json')
+    await expect(readPersistedRunStats(runDir)).resolves.toBeUndefined()
+  })
+
+  test('readPersistedRunStats returns undefined when runStats violates the schema', async () => {
+    const runDir = makeTempDir('rl-badstats-schema-')
+    writeFileSync(path.join(runDir, 'metrics.json'), JSON.stringify({ runStats: { totals: { input: 'x' } } }))
+    await expect(readPersistedRunStats(runDir)).resolves.toBeUndefined()
+  })
+
+  test('readPersistedRunStats returns undefined when metrics.json has no runStats key', async () => {
+    const runDir = makeTempDir('rl-badstats-key-')
+    writeFileSync(path.join(runDir, 'metrics.json'), JSON.stringify({ doneReason: 'clean' }))
+    await expect(readPersistedRunStats(runDir)).resolves.toBeUndefined()
   })
 })

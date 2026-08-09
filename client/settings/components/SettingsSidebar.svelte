@@ -10,6 +10,8 @@
   }
   export interface SidebarGroup {
     kicker: string
+    /** Stable identity for collapse state; falls back to the kicker when absent. */
+    key?: string
     items: readonly SidebarItem[]
     danger?: boolean
     collapsible?: boolean
@@ -19,14 +21,14 @@
   interface Props {
     groups: readonly SidebarGroup[]
     activeId: string
-    onToggle?: (kicker: string) => void
+    onToggle?: (groupKey: string) => void
   }
 
   let { groups, activeId, onToggle }: Props = $props()
 </script>
 
 <aside class="settings-sidebar">
-  {#each groups as group (group.kicker)}
+  {#each groups as group (group.key ?? group.kicker)}
     <div class="settings-sidebar__group" class:settings-sidebar__group--danger={group.danger === true}>
       {#if group.collapsible === true}
         <button
@@ -34,7 +36,7 @@
           class="t-kicker settings-sidebar__kicker settings-sidebar__kicker--toggle"
           aria-expanded={group.collapsed !== true}
           data-testid={`sidebar-toggle-${group.kicker}`}
-          onclick={() => onToggle?.(group.kicker)}>
+          onclick={() => onToggle?.(group.key ?? group.kicker)}>
           <span class="settings-sidebar__chevron">{group.collapsed === true ? '▸' : '▾'}</span>
           {group.kicker}
         </button>
@@ -64,26 +66,28 @@
   .settings-sidebar {
     display: flex;
     flex-direction: column;
-    gap: 20px;
-    padding: 16px 12px;
+    gap: var(--s5);
+    padding: var(--s4) var(--s3);
     background: var(--surface-1);
     border-right: 1px solid var(--border);
-    position: sticky;
-    top: 0;
-    align-self: start;
-    max-height: 100vh;
+    /* Fills its grid track and scrolls inside it. No sticky/100vh box: that box was
+       taller than the scrollport it sat in, and being sticky, the outer scroll could
+       never bring its tail into view. */
+    height: 100%;
     overflow-y: auto;
   }
   .settings-sidebar__group--danger {
     border-left: 2px solid var(--danger);
-    padding-left: 10px;
-    margin-left: -12px;
+    padding-left: var(--s3);
+    margin-left: calc(-1 * var(--s3));
   }
+  /* gap and margin-bottom were 6px, snapped up to the nearest scale step (--s2, 8px)
+     rather than swapped like-for-like. */
   .settings-sidebar__kicker {
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin-bottom: 6px;
+    gap: var(--s2);
+    margin-bottom: var(--s2);
   }
   .settings-sidebar__kicker--toggle {
     background: none;
@@ -101,10 +105,13 @@
     color: var(--danger);
     border: 1px solid var(--danger);
     border-radius: var(--radius-pill);
-    padding: 0 6px;
+    /* horizontal padding was 6px, snapped up to the nearest scale step (--s2, 8px). */
+    padding: 0 var(--s2);
     font-size: 9px;
     letter-spacing: 0.08em;
   }
+  /* 2px is below the 4px scale on purpose: at --s1 (4px) a 16-item admin nav grows by
+     14px, which is what pushes its tail out of a short viewport. */
   .settings-sidebar__nav {
     display: flex;
     flex-direction: column;
@@ -113,7 +120,9 @@
   .settings-sidebar__link {
     color: var(--text-muted);
     text-decoration: none;
-    padding: 6px 8px;
+    /* vertical padding was 6px, snapped up to the nearest scale step (--s2, 8px);
+       horizontal was already 8px. */
+    padding: var(--s2);
     font-family: var(--font-mono);
     font-size: 12px;
     border-left: 2px solid transparent;
@@ -127,7 +136,7 @@
     border-left-color: var(--accent);
     background: var(--surface-2);
   }
-  @media (max-width: 720px) {
+  @media (max-width: 900px) {
     .settings-sidebar {
       display: none;
     }

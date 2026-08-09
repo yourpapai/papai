@@ -77,21 +77,59 @@ export const adminGlobals = $state({
   loading: false,
   data: null as GlobalStats | null,
   fetchedAt: null as number | null,
+  /** Why the last refresh failed, or null when the last refresh succeeded. */
+  error: null as string | null,
 })
 
 export async function refreshGlobals(): Promise<void> {
   adminGlobals.loading = true
+  adminGlobals.error = null
   try {
     const res = await fetch(`/stats/global?window=${encodeURIComponent(adminGlobals.window)}`, {
       headers: { Accept: 'application/json' },
     })
-    if (!res.ok) return
+    if (!res.ok) {
+      // Stale data stays on screen: the last good numbers are more useful than a blank
+      // dashboard, and the pill in the top bar is what says they are stale.
+      adminGlobals.error = `request failed with status ${res.status}`
+      return
+    }
     const body = await readBody(res)
     const parsed = GlobalStatsSchema.safeParse(body)
-    if (!parsed.success) return
+    if (!parsed.success) {
+      adminGlobals.error = 'response did not match the expected shape'
+      return
+    }
     adminGlobals.data = parsed.data
     adminGlobals.fetchedAt = Date.now()
+  } catch (err) {
+    // Network-level failures (offline, DNS, CORS) reject fetch() itself rather than
+    // resolving with a bad response; without this, the error would propagate as an
+    // unhandled rejection and the top bar would keep reporting "live".
+    adminGlobals.error = err instanceof Error ? err.message : String(err)
   } finally {
     adminGlobals.loading = false
   }
+}
+
+export interface ToolTotals {
+  total: number
+  ok: number
+  fail: number
+}
+
+/**
+ * Totals over `toolMix.topTools`. Shared so the Overview `tools` tile and the rail's
+ * `tools` quick stat cannot drift apart.
+ */
+export function toolTotalsFrom(stats: GlobalStats | null): ToolTotals | null {
+  const tools = stats?.toolMix?.topTools
+  if (tools === undefined) return null
+  let total = 0
+  let ok = 0
+  for (const t of tools) {
+    total += t.count
+    ok += Math.round(t.count * t.successRate)
+  }
+  return { total, ok, fail: total - ok }
 }

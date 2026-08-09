@@ -29,6 +29,9 @@ export default defineConfig({
   ],
   use: {
     baseURL: STORYBOOK_URL,
+    // Timestamps render in local time. Without a pinned zone the same fixture produces a
+    // different baseline on every machine and in CI.
+    timezoneId: 'UTC',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   expect: {

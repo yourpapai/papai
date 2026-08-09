@@ -13,6 +13,16 @@ import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from '../uti
 // Target on a dev laptop is ~500ms. The CI/headroom budget is 1000ms.
 const PERF_BUDGET_MS = 1000
 
+// The wall-clock budget assertion is opt-in via PAPAI_PERF_BUDGETS=1 (set on the serial
+// CI `Checks` job). `tests/CLAUDE.md` forbids fixed-wall-clock assertions in the default
+// `--parallel` run: under worker CPU contention the event loop starves and this budget
+// flakes (measured 1075ms against a 1000ms budget) without the query having regressed.
+// The correctness assertions below stay unconditional in every environment; only the
+// timing bound is gated, and it is gated as a *skipped, named* test so a reader can see
+// the budget was deferred rather than deleted.
+const PERF_BUDGETS_ENFORCED = process.env['PAPAI_PERF_BUDGETS'] === '1'
+const budgetTest = test.skipIf(!PERF_BUDGETS_ENFORCED)
+
 const DM_SUBJECTS = 700
 const GROUP_SUBJECTS = 300
 const TOTAL_SUBJECTS = DM_SUBJECTS + GROUP_SUBJECTS
@@ -92,13 +102,23 @@ describe('stats perf bench', () => {
     seedFixtures()
   })
 
-  test(`getGlobalStats({ noCache: true }) completes under ${PERF_BUDGET_MS}ms with 1k subjects + 100k messages`, () => {
-    const start = performance.now()
+  test('getGlobalStats({ noCache: true }) aggregates 1k subjects + 100k messages correctly', () => {
     const result = getGlobalStats({ noCache: true })
-    const elapsed = performance.now() - start
 
     expect(result.subjects.dmTotal).toBe(DM_SUBJECTS)
     expect(result.subjects.groupTotal).toBe(GROUP_SUBJECTS)
-    expect(elapsed).toBeLessThan(PERF_BUDGET_MS)
   })
+
+  budgetTest(
+    `getGlobalStats({ noCache: true }) completes under ${PERF_BUDGET_MS}ms with 1k subjects + 100k messages [wall-clock budget: runs only when PAPAI_PERF_BUDGETS=1, skipped under the parallel run]`,
+    () => {
+      const start = performance.now()
+      const result = getGlobalStats({ noCache: true })
+      const elapsed = performance.now() - start
+
+      expect(result.subjects.dmTotal).toBe(DM_SUBJECTS)
+      expect(result.subjects.groupTotal).toBe(GROUP_SUBJECTS)
+      expect(elapsed).toBeLessThan(PERF_BUDGET_MS)
+    },
+  )
 })

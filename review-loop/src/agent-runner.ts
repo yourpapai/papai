@@ -21,6 +21,10 @@ export interface SpawnResult {
   stdout: string
   stderr: string
   timedOut?: boolean
+  // True when the kill was triggered by the inactivity watchdog (no stdout for
+  // inactivityTimeoutMs) rather than the wall-clock timeout. Stalls are
+  // retryable: a hung provider stream is transient, unlike an over-budget run.
+  stalled?: boolean
 }
 
 export type LineSink = (line: string) => void
@@ -28,7 +32,7 @@ export type LineSink = (line: string) => void
 export type SpawnFn = (
   command: string,
   args: readonly string[],
-  options: { cwd: string; timeout?: number; killGraceMs?: number },
+  options: { cwd: string; timeout?: number; killGraceMs?: number; inactivityTimeoutMs?: number },
   onLine?: LineSink,
 ) => Promise<SpawnResult>
 
@@ -67,6 +71,7 @@ export interface RunAgentOptions<T> {
   reporter?: ProgressReporter
   onRetry?: () => void
   timeoutMs?: number
+  inactivityTimeoutMs?: number
 }
 
 interface AttemptResult<T> {
@@ -78,6 +83,7 @@ interface AttemptError {
   ok: false
   error: Error
   timedOut: boolean
+  stalled: boolean
 }
 
 type Attempt<T> = AttemptResult<T> | AttemptError
@@ -131,7 +137,7 @@ function attemptRun<T>(options: RunAgentOptions<T>, onLine?: LineSink): Promise<
       ...options.extraArgs,
       options.prompt,
     ],
-    { cwd: options.cwd, timeout: options.timeoutMs },
+    { cwd: options.cwd, timeout: options.timeoutMs, inactivityTimeoutMs: options.inactivityTimeoutMs },
     onLine,
   )
 }
@@ -145,6 +151,7 @@ async function runAttempt<T>(options: RunAgentOptions<T>, handler: LineHandler):
       ok: false,
       error: new Error(`${options.label} exited with code ${result.exitCode}: ${result.stderr}`),
       timedOut: result.timedOut === true,
+      stalled: result.stalled === true,
     }
   }
   try {
@@ -169,9 +176,15 @@ async function runAttempt<T>(options: RunAgentOptions<T>, handler: LineHandler):
         ok: false,
         error: new Error(`${options.label} did not write to the expected scratch path: ${agentFile}.${hint}`),
         timedOut: false,
+        stalled: false,
       }
     }
-    return { ok: false, error: error instanceof Error ? error : new Error(String(error)), timedOut: false }
+    return {
+      ok: false,
+      error: error instanceof Error ? error : new Error(String(error)),
+      timedOut: false,
+      stalled: false,
+    }
   }
 }
 
@@ -185,7 +198,10 @@ export async function runAgent<T>(options: RunAgentOptions<T>): Promise<AgentRun
   try {
     const first = await runAttempt(options, handler)
     if (first.ok) return finalize(first.value)
-    if (first.timedOut) throw new AgentRunError(first.error.message, buildUsage())
+    // Wall-clock timeouts are not retried (the task genuinely overran its
+    // budget), but stalls are: a hung provider stream is transient, and the
+    // retry usually lands on a healthy request path.
+    if (first.timedOut && !first.stalled) throw new AgentRunError(first.error.message, buildUsage())
     options.onRetry?.()
     const second = await runAttempt(options, handler)
     if (second.ok) return finalize(second.value)

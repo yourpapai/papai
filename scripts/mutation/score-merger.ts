@@ -83,3 +83,15 @@ export const mergeReports = (reports: readonly StrykerReport[]): MergedScore => 
     score: scored === 0 ? 0 : (counts.killed + counts.timeout) / scored,
   }
 }
+
+// Ids of mutants that count AGAINST the mutation score: Survived and NoCoverage
+// both sit in the `scored` denominator without contributing kills, so a residual
+// declaration must cover both buckets. Mutants without a string id are dropped:
+// they can never be set-matched against an agent's declared residual ids, and
+// keeping them would make a full-coverage check silently unverifiable.
+export const survivingMutantIds = (report: StrykerReport): string[] =>
+  reportMutants(report).flatMap((mutant) =>
+    (mutant.status === 'Survived' || mutant.status === 'NoCoverage') && typeof mutant.id === 'string'
+      ? [mutant.id]
+      : [],
+  )

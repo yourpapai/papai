@@ -26,11 +26,28 @@ describe('config', () => {
     expect(parsed.count).toBe(1)
     expect(parsed.threshold).toBe(0.95)
     expect(parsed.epsilon).toBe(0.02)
-    expect(parsed.checkCommand).toBe('bun check:full')
+    expect(parsed.checkCommand).toBe('CI=true bun check:full')
     expect(parsed.mutateFileCommand).toBe('bun test:mutate:file')
     expect(parsed.prBranchPrefix).toBe('mutation-improve')
     expect(parsed.agent.timeoutMs).toBe(1_800_000)
+    expect(parsed.agent.inactivityTimeoutMs).toBe(600_000)
     expect(parsed.mutateTimeoutMs).toBe(1_800_000)
+    expect(parsed.buildTimeoutMs).toBe(1_800_000)
+    expect(parsed.buildFixAttempts).toBe(2)
+  })
+
+  test('MutationImproveConfigSchema honors an explicit agent.inactivityTimeoutMs', () => {
+    const parsed = MutationImproveConfigSchema.parse({
+      ...minimalValid,
+      agent: { ...minimalValid.agent, inactivityTimeoutMs: 120_000 },
+    })
+    expect(parsed.agent.inactivityTimeoutMs).toBe(120_000)
+  })
+
+  test('MutationImproveConfigSchema honors an explicit buildFixAttempts and rejects negatives', () => {
+    expect(MutationImproveConfigSchema.parse({ ...minimalValid, buildFixAttempts: 0 }).buildFixAttempts).toBe(0)
+    expect(MutationImproveConfigSchema.parse({ ...minimalValid, buildFixAttempts: 5 }).buildFixAttempts).toBe(5)
+    expect(() => MutationImproveConfigSchema.parse({ ...minimalValid, buildFixAttempts: -1 })).toThrow()
   })
 
   test('MutationImproveConfigSchema strips the legacy agentTimeoutMs key', () => {
@@ -42,6 +59,28 @@ describe('config', () => {
   test('MutationImproveConfigSchema rejects threshold out of [0,1]', () => {
     expect(() => MutationImproveConfigSchema.parse({ ...minimalValid, threshold: 1.5 })).toThrow()
     expect(() => MutationImproveConfigSchema.parse({ ...minimalValid, threshold: -0.1 })).toThrow()
+  })
+
+  test('MutationImproveConfigSchema accepts an optional pricing table', () => {
+    const parsed = MutationImproveConfigSchema.parse({
+      ...minimalValid,
+      pricing: { 'm-*': { input: 3, output: 15 } },
+    })
+    expect(parsed.pricing).toEqual({ 'm-*': { input: 3, output: 15 } })
+  })
+
+  test('MutationImproveConfigSchema pricing is undefined when omitted', () => {
+    const parsed = MutationImproveConfigSchema.parse({ ...minimalValid })
+    expect(parsed.pricing).toBeUndefined()
+  })
+
+  test('MutationImproveConfigSchema rejects a malformed pricing entry', () => {
+    expect(() =>
+      MutationImproveConfigSchema.parse({
+        ...minimalValid,
+        pricing: { 'm-*': { input: 'x' } },
+      }),
+    ).toThrow()
   })
 
   test('loadMutationImproveConfig resolves workDir against repoRoot and creates it', async () => {

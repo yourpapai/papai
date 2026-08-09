@@ -5,17 +5,45 @@
 
 import path from 'node:path'
 
+import type { CappedEntry } from './capped-registry.js'
+
 const stemFrom = (file: string): string => {
   const base = path.basename(file).replace(/\.ts$/u, '')
   return base
 }
 
+const RESULT_SCHEMA_LINE =
+  'Schema: { specPath: string, planPath: string, testPaths: string[] (>=1),\n' +
+  'residuals: [{loc, why, mutantIds: string[]}], notes: string }.'
+
+// Both header forms spelled out verbatim: agents default to the // style they
+// see in source, but check.sh requires the HTML-comment form for docs/*.md and
+// rejects anything else at the pre-commit hook.
+const LICENSE_HEADER_LINES = [
+  '- SPDX license headers on any new file; emoji copied verbatim from source.',
+  '  Header styles: .ts files use `// SPDX-License-Identifier: BUSL-1.1` (plus copyright lines);',
+  '  .md files MUST use the HTML-comment form as the first lines of the file:',
+  '  <!--',
+  '  SPDX-License-Identifier: BUSL-1.1',
+  '  Copyright (c) 2026 Dmitriy Lazarev',
+  '  Use of this software is governed by the Business Source License 1.1.',
+  '  See LICENSE in the project root for details.',
+  '  -->',
+]
+
 export function buildSelectPrompt(input: {
   doneSet: readonly string[]
+  failedFiles: readonly string[]
+  cappedFiles: readonly CappedEntry[]
   baselineSummary: string
   outputPath: string
 }): string {
   const excluded = input.doneSet.length === 0 ? '(none)' : input.doneSet.join(', ')
+  const failed = input.failedFiles.length === 0 ? '(none)' : input.failedFiles.join(', ')
+  const capped =
+    input.cappedFiles.length === 0
+      ? '(none)'
+      : input.cappedFiles.map((e) => `${e.file} (ceiling ${e.score})`).join(', ')
   return [
     'You are the SELECT phase of an autonomous mutation-coverage improvement runner.',
     '',
@@ -31,6 +59,8 @@ export function buildSelectPrompt(input: {
     '- Files whose companion test cannot exercise the behaviour without a full chat/LLM runtime.',
     '',
     `Files already improved in this run (DO NOT pick): ${excluded}`,
+    `Files already attempted and FAILED this run (DO NOT pick; same gates, same model — a retry re-fails): ${failed}`,
+    `Files capped at their tests-only ceiling by earlier runs (DO NOT pick; the ceiling is already merged): ${capped}`,
     '',
     `baseline.json contents: ${input.baselineSummary}`,
     '',
@@ -41,6 +71,43 @@ export function buildSelectPrompt(input: {
   ].join('\n')
 }
 
+export function buildFixPrompt(input: {
+  file: string
+  attempt: number
+  maxAttempts: number
+  buildOutput: string
+  outputPath: string
+}): string {
+  return [
+    `You are the FIX phase of an autonomous mutation-coverage improvement runner.`,
+    `The runner's build gate (the repo's full check suite) FAILED in your worktree after your`,
+    `changes for ${input.file}. This is fix attempt ${input.attempt} of ${input.maxAttempts}.`,
+    '',
+    'Failed check output (tail):',
+    '---',
+    input.buildOutput,
+    '---',
+    '',
+    'Diagnose the failure and fix the cause. The output names the failing check and the files it',
+    'rejected; those are files YOU created or modified. Typical causes: formatting (run the',
+    "repo's formatter on your files), lint, typecheck errors, or a failing test you added.",
+    'Re-run the failing check until it passes before finishing.',
+    '',
+    'HARD CONSTRAINTS (unchanged; the runner verifies these and REJECTS the iteration if violated):',
+    '- MUST NOT edit anything under src/, client/, plugins/, or scripts/.',
+    '- Create or modify files ONLY under tests/ and openspec/changes/, plus the one result JSON',
+    '  below - do not create copies of it anywhere else.',
+    '',
+    `When done, REWRITE your result JSON to this ABSOLUTE path: ${input.outputPath}`,
+    RESULT_SCHEMA_LINE,
+  ].join('\n')
+}
+
+const improveChangePaths = (input: { file: string; date: string }): { specPath: string; planPath: string } => {
+  const changeDir = `openspec/changes/mutation-coverage-${input.date}-${stemFrom(input.file)}`
+  return { specPath: `${changeDir}/design.md`, planPath: `${changeDir}/tasks.md` }
+}
+
 export function buildImprovePrompt(input: {
   file: string
   beforeScore: number
@@ -48,10 +115,7 @@ export function buildImprovePrompt(input: {
   date: string
   outputPath: string
 }): string {
-  const stem = stemFrom(input.file)
-  const changeDir = `openspec/changes/mutation-coverage-${input.date}-${stem}`
-  const specPath = `${changeDir}/design.md`
-  const planPath = `${changeDir}/tasks.md`
+  const { specPath, planPath } = improveChangePaths(input)
   return [
     `You are the IMPROVE phase of an autonomous mutation-coverage improvement runner.`,
     `Target file: ${input.file} (current mutation score: ${input.beforeScore}; target: >= ${input.threshold})`,
@@ -68,16 +132,27 @@ export function buildImprovePrompt(input: {
     '   MUST use exact equality toBe(...) - never startsWith/endsWith/toContain where a full string is',
     '   knowable. One test per mutant class.',
     '5. RESIDUALS. Enumerate equivalent mutants that survive and genuinely cannot be killed, with per-loc',
-    '   reasoning.',
+    '   reasoning. Each entry MUST list the Stryker mutant ids it covers (mutantIds: string[]) exactly as',
+    '   they appear in your measured report (reports/paired/<stem>.stryker-report.json, "id" fields with',
+    '   status Survived or NoCoverage). The runner re-measures and set-matches the UNION of your mutantIds',
+    '   against its own surviving ids: they must be EQUAL — every survivor declared, nothing extra.',
     '',
-    `Write your result as JSON to this ABSOLUTE path: ${input.outputPath}`,
-    'Schema: { specPath: string, planPath: string, testPaths: string[] (>=1),',
-    'residuals: [{loc, why}], notes: string }.',
+    'CAPPED PATH. If the file\u2019s tests-only ceiling lands below the target (equivalent mutants / dead code',
+    'that only a src/ edit could remove), a full residual declaration still counts as success: the runner',
+    'merges your tests, ratchets the baseline to the measured score, and marks the file capped (outcome',
+    "'capped'), provided the score improved AND your declared mutantIds exactly cover every survivor.",
+    'A file below target with incomplete or padded mutantIds FAILS and all work is discarded.',
+    '',
+    `Write your result as JSON to this ABSOLUTE path (note the hidden .review-loop/ parent dir): ${input.outputPath}`,
+    RESULT_SCHEMA_LINE,
     '',
     'HARD CONSTRAINTS (the runner verifies these and REJECTS the iteration if violated):',
     '- MUST NOT edit anything under src/, client/, plugins/, or scripts/. Test-only.',
     '- MUST NOT edit scripts/mutation/baseline.json (the runner owns it).',
+    '- Create or modify files ONLY under tests/ and openspec/changes/, plus the one result JSON',
+    '  above - do not create copies of it anywhere else. Any other new or changed file,',
+    '  including under review-loop/ or mutation-improve/, fails the diff gate.',
     '- Run `bun test tests/<companion>` green before finishing.',
-    '- SPDX license headers on any new file; emoji copied verbatim from source.',
+    ...LICENSE_HEADER_LINES,
   ].join('\n')
 }

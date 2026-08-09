@@ -374,6 +374,7 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0379](0379-mutation-improve-runner-fixes.md) | Mutation-Improve Runner Gate & Finalize Fixes — Trust-Boundary Hardening of the Autonomous Pipeline | 2026-08-06 | Implemented | - |
 | [0380](0380-defer-chat-provider-as-plugin.md) | Defer chat-provider-as-plugin until the core/plugin-separation refactor lands | 2026-08-09 | Deferred | - |
 | [0381](0381-retire-llm-rate-limiting-and-plans.md) | Retire llm-rate-limiting-and-plans — archive the draft, restart fresh later | 2026-08-09 | Retired | - |
+| [0382](0382-batch-archive-master-merge-arrivals.md) | Batch Lane-0 archive of master-merge arrivals into the frozen superpowers tree | 2026-08-09 | Implemented | - |
 
 ## ADR Status Legend
 

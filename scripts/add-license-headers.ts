@@ -12,7 +12,7 @@ const USE_LINE = '// Use of this software is governed by the Business Source Lic
 const DETAILS_LINE = '// See LICENSE in the project root for details.'
 const COPYRIGHT_LINE_PATTERN = /^\/\/ Copyright \(c\) (\d{4})(?:-(\d{4}))? Dmitriy Lazarev$/u
 
-const SOURCE_ROOTS = ['src', 'client', 'scripts', 'review-loop/src', 'tests'] as const
+const SOURCE_ROOTS = ['src', 'client', 'scripts', 'review-loop/src', 'opencode-agent/src', 'tests'] as const
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx'])
 
 const SKIP_PATH_PREFIXES = ['tests/scripts/behavior-audit/fixtures/grep-sample/'] as const

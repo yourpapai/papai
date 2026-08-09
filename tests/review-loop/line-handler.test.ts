@@ -12,6 +12,7 @@ import { z } from 'zod'
 import type { RunAgentOptions, SpawnResult } from '../../review-loop/src/agent-runner.js'
 import { createLineHandler, enqueueLog } from '../../review-loop/src/line-handler.js'
 import type { ProgressReporter, UsageDelta } from '../../review-loop/src/progress-log.js'
+import { RunStats } from '../../review-loop/src/run-stats.js'
 import { cleanupTempDirs, makeTempDir } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
@@ -80,7 +81,45 @@ describe('createLineHandler reporter wiring', () => {
         part: { reason: 'stop', tokens: { input: 5, output: 2, reasoning: 1 }, cost: 0.5 },
       }),
     )
-    expect(deltas).toEqual([{ input: 5, output: 2, reasoning: 1, cost: 0.5 }])
+    expect(deltas).toEqual([{ input: 5, output: 2, reasoning: 1, cost: 0.5, label: 'drain', model: 'm' }])
+  })
+
+  test('step_finish delta carries label/model and tool calls accumulate per step', () => {
+    const cwd = makeTempDir('line-handler-stats-')
+    const stats = new RunStats()
+    const deltas: UsageDelta[] = []
+    const reporter = makeReporter({
+      stats,
+      usage: (d) => {
+        deltas.push(d)
+        stats.addUsage('drain', d)
+      },
+    })
+    const handler = createLineHandler({ ...makeOptions(cwd, path.join(cwd, 'agent.log')), reporter })
+    const stepStart = JSON.stringify({ type: 'step_start', timestamp: 1, part: {} })
+    const stepFinish = JSON.stringify({
+      type: 'step_finish',
+      part: { reason: 'stop', tokens: { input: 5, output: 2, reasoning: 1 }, cost: 0 },
+    })
+    const tool = (id: string): string =>
+      JSON.stringify({
+        type: 'tool_use',
+        part: { tool: 'read', callID: id, state: { status: 'running', input: { filePath: '/a/cli.ts' } } },
+      })
+    handler.onLine(stepStart)
+    handler.onLine(tool('c1'))
+    handler.onLine(stepFinish)
+    handler.onLine(stepStart)
+    handler.onLine(tool('c2'))
+    // duplicate callID from a later step must not double-count
+    handler.onLine(tool('c1'))
+    handler.onLine(stepFinish)
+    expect(deltas).toEqual([
+      { input: 5, output: 2, reasoning: 1, cost: 0, label: 'drain', model: 'm' },
+      { input: 5, output: 2, reasoning: 1, cost: 0, label: 'drain', model: 'm' },
+    ])
+    expect(stats.snapshot().totals.toolCalls).toBe(2)
+    expect(stats.snapshot().perLabel['drain']?.input).toBe(10)
   })
 
   test('tool progress goes to reporter.slot and dispose clears it', async () => {

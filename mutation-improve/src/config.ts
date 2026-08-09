@@ -8,12 +8,19 @@ import path from 'node:path'
 
 import { z } from 'zod'
 
+import { PricingTableSchema } from '../../review-loop/src/cost.js'
 import { detectGitRoot } from '../../review-loop/src/worktree.js'
 
 const AgentConfigSchema = z.object({
   model: z.string().min(1),
   extraArgs: z.array(z.string()).default([]),
   timeoutMs: z.number().int().min(0).default(1_800_000),
+  // Inactivity watchdog: kills the agent subprocess when it produces no stdout
+  // for this long (hung LLM stream — observed repeatedly against degraded
+  // providers) and lets runAgent retry once instead of burning the whole
+  // timeoutMs. The window must exceed the slowest healthy step (measured ~7min
+  // gaps between transcript events on a loaded provider), hence 10min default.
+  inactivityTimeoutMs: z.number().int().min(0).default(600_000),
 })
 
 export const MutationImproveConfigSchema = z.object({
@@ -25,11 +32,19 @@ export const MutationImproveConfigSchema = z.object({
   threshold: z.number().min(0).max(1).default(0.95),
   epsilon: z.number().min(0).max(1).default(0.02),
   mutateTimeoutMs: z.number().int().min(0).default(1_800_000),
-  buildTimeoutMs: z.number().int().min(0).default(600_000),
-  checkCommand: z.string().min(1).default('bun check:full'),
+  buildTimeoutMs: z.number().int().min(0).default(1_800_000),
+  // A failed checkCommand does not fail the iteration outright: the runner feeds
+  // the check output back to the agent and re-gates, this many times (0 = legacy
+  // fail-fast). Agent-authored files regularly trip format:check; retrying
+  // recovers that work instead of discarding it.
+  buildFixAttempts: z.number().int().min(0).default(2),
+  // Serial (CI=true) gate: `bun test --parallel` flakes with 15s timeouts under
+  // worker contention, which would randomly discard completed agent work.
+  checkCommand: z.string().min(1).default('CI=true bun check:full'),
   mutateFileCommand: z.string().min(1).default('bun test:mutate:file'),
   agent: AgentConfigSchema,
   prBranchPrefix: z.string().min(1).default('mutation-improve'),
+  pricing: PricingTableSchema.optional(),
 })
 
 export interface MutationImproveConfig extends z.infer<typeof MutationImproveConfigSchema> {

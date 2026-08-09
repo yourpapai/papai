@@ -10,6 +10,7 @@ import {
   activeContext,
   bootstrapSession,
   registerExpiryHandler,
+  retryBootstrap,
   setActiveContext,
   settingsSession,
 } from '../../../client/settings/session.svelte.js'
@@ -36,6 +37,7 @@ afterEach(() => {
   settingsSession.isBotAdmin = false
   settingsSession.isSuperAdmin = false
   settingsSession.display = ''
+  settingsSession.failureMessage = ''
   setCsrfToken('')
 })
 
@@ -79,6 +81,72 @@ describe('session store', () => {
     setMockFetch(() => Promise.resolve(json({ error: 'invalid or expired code' }, 401)))
     await bootstrapSession('SOMECODE')
     expect(settingsSession.status).toBe('unauthenticated')
+  })
+
+  test('a 500 marks the session failed and keeps the server message', async () => {
+    setMockFetch(() => Promise.resolve(json({ error: 'database unavailable' }, 500)))
+    await bootstrapSession(null)
+    expect(settingsSession.status).toBe('failed')
+    expect(settingsSession.failureMessage).toBe('database unavailable')
+  })
+
+  test('a 429 marks the session failed, not unauthenticated', async () => {
+    setMockFetch(() => Promise.resolve(json({ error: 'too many requests' }, 429)))
+    await bootstrapSession(null)
+    expect(settingsSession.status).toBe('failed')
+  })
+
+  test('a transport error marks the session failed', async () => {
+    setMockFetch(() => Promise.reject(new Error('network down')))
+    await bootstrapSession(null)
+    expect(settingsSession.status).toBe('failed')
+    expect(settingsSession.failureMessage).toBe('network down')
+  })
+
+  test('a 200 with an unparseable body marks the session failed', async () => {
+    setMockFetch(() => Promise.resolve(json({ nonsense: true })))
+    await bootstrapSession(null)
+    expect(settingsSession.status).toBe('failed')
+  })
+
+  test('a 401 clears any previous failure message', async () => {
+    setMockFetch(() => Promise.resolve(json({ error: 'boom' }, 500)))
+    await bootstrapSession(null)
+    expect(settingsSession.failureMessage).toBe('boom')
+    setMockFetch(() => Promise.resolve(json({ error: 'unauthenticated' }, 401)))
+    await bootstrapSession(null)
+    expect(settingsSession.status).toBe('unauthenticated')
+    expect(settingsSession.failureMessage).toBe('')
+  })
+
+  test('retryBootstrap replays the same code and can reach ready', async () => {
+    setMockFetch(() => Promise.resolve(json({ error: 'gateway timeout' }, 504)))
+    await bootstrapSession('CODE')
+    expect(settingsSession.status).toBe('failed')
+
+    const calledUrls: string[] = []
+    setMockFetch((url) => {
+      calledUrls.push(url)
+      return Promise.resolve(json(bootstrapPayload))
+    })
+    await retryBootstrap()
+    expect(calledUrls.some((u) => u.includes('/settings/auth/exchange'))).toBe(true)
+    expect(settingsSession.status).toBe('ready')
+    expect(settingsSession.failureMessage).toBe('')
+  })
+
+  test('retryBootstrap after a codeless bootstrap replays the bootstrap endpoint', async () => {
+    setMockFetch(() => Promise.resolve(json({ error: 'boom' }, 500)))
+    await bootstrapSession(null)
+
+    const calledUrls: string[] = []
+    setMockFetch((url) => {
+      calledUrls.push(url)
+      return Promise.resolve(json(bootstrapPayload))
+    })
+    await retryBootstrap()
+    expect(calledUrls.some((u) => u.includes('/settings/api/bootstrap'))).toBe(true)
+    expect(settingsSession.status).toBe('ready')
   })
 
   test('registerExpiryHandler flips status on a later 401', async () => {

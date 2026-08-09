@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { mergeReports } from '../../../scripts/mutation/score-merger.js'
+import { mergeReports, survivingMutantIds } from '../../../scripts/mutation/score-merger.js'
 import type { StrykerReport } from '../../../scripts/mutation/score-merger.js'
 
 const makeReport = (statuses: string[]): StrykerReport => ({
@@ -97,5 +97,43 @@ describe('mergeReports', () => {
     const out = mergeReports([makeReport(['Killed', 'WeirdNewBucket'])])
     expect(out.killed).toBe(1)
     expect(out.runtimeError).toBe(1)
+  })
+})
+
+describe('survivingMutantIds', () => {
+  test('returns ids of Survived and NoCoverage mutants only, since both count against the score', () => {
+    const ids = survivingMutantIds(makeReport(['Killed', 'Survived', 'NoCoverage', 'Timeout', 'Ignored']))
+    expect(ids).toEqual(['m1', 'm2'])
+  })
+
+  test('unions ids across all files in the report', () => {
+    const report: StrykerReport = {
+      files: {
+        'src/a.ts': { mutants: [{ id: 'a1', status: 'Survived' }] },
+        'src/b.ts': {
+          mutants: [
+            { id: 'b1', status: 'NoCoverage' },
+            { id: 'b2', status: 'Killed' },
+          ],
+        },
+      },
+    }
+    expect(survivingMutantIds(report)).toEqual(['a1', 'b1'])
+  })
+
+  test('returns an empty list for missing fields, empty reports, and all-killed reports', () => {
+    expect(survivingMutantIds({})).toEqual([])
+    expect(survivingMutantIds({ files: { 'src/x.ts': {} } })).toEqual([])
+    expect(survivingMutantIds(makeReport(['Killed', 'Timeout']))).toEqual([])
+  })
+
+  // A survivor without an id can never be matched against an agent-declared
+  // residual, so it must be excluded here; the pipeline's set-equality check
+  // then fails closed (not capped) instead of silently ignoring it.
+  test('skips mutants without a string id', () => {
+    const report: StrykerReport = {
+      files: { 'src/x.ts': { mutants: [{ status: 'Survived' }, { id: 'x1', status: 'Survived' }] } },
+    }
+    expect(survivingMutantIds(report)).toEqual(['x1'])
   })
 })

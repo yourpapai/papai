@@ -48,6 +48,12 @@ recorded as errored and excluded from the aggregate score; the run continues so
 one bad file never aborts the batch. Errored files appear in the summary as
 `errored=N` and carry the captured failure message for diagnosis.
 
+The Stryker binary is resolved by walking up from the working directory to the
+nearest ancestor `node_modules/.bin` (`scripts/mutation/stryker-bin.ts`,
+mirroring bun's own module resolution), so runs work from nested git worktrees
+that have no `node_modules` of their own — e.g. `mutation-improve`'s iteration
+worktrees — as long as an ancestor checkout has dependencies installed.
+
 ## Test-set resolution
 
 For each source file, `pairedRun` resolves the test set in this priority:

@@ -6,14 +6,20 @@
 <script lang="ts" generics="Row extends Record<string, unknown>">
   import type { Snippet } from 'svelte'
 
+  import Btn from '../../shared/ui/Btn.svelte'
   import DataTable from '../../shared/ui/DataTable.svelte'
+  import EmptyState from '../../shared/ui/EmptyState.svelte'
   import Input from '../../shared/ui/Input.svelte'
+
+  type SortDir = 'asc' | 'desc'
 
   interface Column<R extends Record<string, unknown>> {
     key: keyof R & string
     label: string
     align?: 'left' | 'right' | 'center'
     width?: string
+    sortable?: boolean
+    sortAccessor?: (row: R) => string | number
   }
   interface Props {
     columns: Column<Row>[]
@@ -24,8 +30,22 @@
     empty?: Snippet
     pageSize?: number
     searchPlaceholder?: string
+    defaultSort?: { key: keyof Row & string; dir: SortDir }
+    /** Forwarded to `DataTable` — see its own doc for when this matters. */
+    minWidth?: string
   }
-  let { columns, rows, rowKey, searchKeys, cell, empty, pageSize = 25, searchPlaceholder = 'Search…' }: Props = $props()
+  let {
+    columns,
+    rows,
+    rowKey,
+    searchKeys,
+    cell,
+    empty,
+    pageSize = 25,
+    searchPlaceholder = 'Search…',
+    defaultSort,
+    minWidth,
+  }: Props = $props()
 
   let query = $state('')
   let page = $state(0)
@@ -40,6 +60,9 @@
   const pageRows = $derived(filtered.slice(clampedPage * pageSize, clampedPage * pageSize + pageSize))
 
   function onSearch(v: string): void { query = v; page = 0 }
+  function clearSearch(): void { query = ''; page = 0 }
+
+  const noMatches = $derived(rows.length > 0 && filtered.length === 0)
 </script>
 
 <div class="settings-table">
@@ -48,7 +71,17 @@
     <span class="t-help">{filtered.length} result{filtered.length === 1 ? '' : 's'}</span>
   </div>
   <div class="settings-table__scroll">
-    <DataTable {columns} rows={pageRows} {cell} {rowKey} {empty} />
+    {#if noMatches}
+      <EmptyState title="No matches" icon="⌕" hint={`Nothing matches “${query.trim()}”.`}>
+        {#snippet action()}
+          <Btn variant="outline" size="sm" onClick={clearSearch} testid="settings-table-clear-search">
+            {#snippet children()}Clear search{/snippet}
+          </Btn>
+        {/snippet}
+      </EmptyState>
+    {:else}
+      <DataTable {columns} rows={pageRows} {cell} {rowKey} {empty} {defaultSort} {minWidth} />
+    {/if}
   </div>
   {#if pageCount > 1}
     <div class="settings-table__pager">

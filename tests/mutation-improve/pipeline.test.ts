@@ -8,10 +8,12 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { BaselineMap } from '../../mutation-improve/src/baseline.js'
+import type { CappedEntry } from '../../mutation-improve/src/capped-registry.js'
 import type { MutationImproveConfig } from '../../mutation-improve/src/config.js'
 import { runIteration, runPipeline, type PipelineDeps } from '../../mutation-improve/src/pipeline.js'
 import type { Result } from '../../mutation-improve/src/result-schema.js'
 import type { MutationImproveRunState } from '../../mutation-improve/src/run-state.js'
+import type { MeasuredScore } from '../../mutation-improve/src/score-reader.js'
 import type { Selection } from '../../mutation-improve/src/selection-schema.js'
 import { agentWritePath, type AgentUsage } from '../../review-loop/src/agent-runner.js'
 import { cleanupTempDirs, makeTempDir } from './test-helpers.js'
@@ -30,9 +32,10 @@ const config = (repoRoot: string, overrides: Partial<MutationImproveConfig> = {}
   epsilon: 0.02,
   mutateTimeoutMs: 1_800_000,
   buildTimeoutMs: 600_000,
+  buildFixAttempts: 2,
   checkCommand: 'bun check:full',
   mutateFileCommand: 'bun test:mutate:file',
-  agent: { model: 'm', extraArgs: [], timeoutMs: 1_800_000 },
+  agent: { model: 'm', extraArgs: [], timeoutMs: 1_800_000, inactivityTimeoutMs: 600_000 },
   prBranchPrefix: 'mutation-improve',
   ...overrides,
 })
@@ -73,15 +76,23 @@ const result: Result = {
 // second, etc. The impl calls measureScore twice per iteration (before/after), so
 // a 2-element array covers one iteration; chaining uses a 4-element array. We
 // clamp to the last element past the end (avoids `??` inside test bodies, which
-// trips vitest/no-conditional-in-test).
-const sequenceMeasure = (scores: readonly number[]): PipelineDeps['measureScore'] => {
+// trips vitest/no-conditional-in-test). Plain numbers map to empty surviving ids.
+const measured = (score: number, survivingMutantIds: readonly string[] = []): MeasuredScore => ({
+  score,
+  survivingMutantIds,
+})
+
+const sequenceMeasureDetailed = (steps: readonly MeasuredScore[]): PipelineDeps['measureScore'] => {
   let calls = 0
-  return (): Promise<number> => {
+  return (): Promise<MeasuredScore> => {
     calls += 1
-    const idx = Math.min(calls - 1, scores.length - 1)
-    return Promise.resolve(scores[idx] ?? 0)
+    const idx = Math.min(calls - 1, steps.length - 1)
+    return Promise.resolve(steps[idx] ?? measured(0))
   }
 }
+
+const sequenceMeasure = (scores: readonly number[]): PipelineDeps['measureScore'] =>
+  sequenceMeasureDetailed(scores.map((score) => measured(score)))
 
 // Sequence-based runSelectAgent fake: returns picks[0] on first call, picks[1] on
 // second, etc. Clamps past the end so we never produce `file: string | undefined`.
@@ -95,6 +106,51 @@ const sequenceSelect = (picks: readonly string[], selectionTemplate: Selection):
       value: { ...selectionTemplate, file, beforeScore: 0.5 },
       usage: emptyUsage(),
     })
+  }
+}
+
+// Sequence-based runBuildCheck fake: returns outcomes[0] on first call, etc.,
+// clamping to the last element past the end (same pattern as sequenceMeasure).
+const sequenceBuild = (
+  outcomes: readonly { passed: boolean; stdout: string; stderr: string }[],
+): PipelineDeps['runBuildCheck'] => {
+  let calls = 0
+  return (): Promise<{ passed: boolean; stdout: string; stderr: string }> => {
+    calls += 1
+    const idx = Math.min(calls - 1, outcomes.length - 1)
+    return Promise.resolve(outcomes[idx] ?? { passed: true, stdout: '', stderr: '' })
+  }
+}
+
+// Sequence-based execGit fake returning porcelain-status stdout per call.
+const sequenceGitStatus = (statuses: readonly string[]): PipelineDeps['execGit'] => {
+  let calls = 0
+  return (): Promise<{ stdout: string; stderr: string }> => {
+    calls += 1
+    const idx = Math.min(calls - 1, statuses.length - 1)
+    return Promise.resolve({ stdout: statuses[idx] ?? '', stderr: '' })
+  }
+}
+
+// Subcommand-keyed execGit fake: returns canned stdout for args[0] (e.g.
+// 'rev-parse'/'diff'), empty otherwise. Keeps conditionals out of test bodies
+// (no-conditional-in-test) and yields zeros for unscripted subcommands.
+const scriptedExecGit =
+  (responses: Record<string, string>): PipelineDeps['execGit'] =>
+  (_cwd: string, args: readonly string[]): Promise<{ stdout: string; stderr: string }> =>
+    Promise.resolve({ stdout: responses[args[0] ?? ''] ?? '', stderr: '' })
+
+// Sequence-based runImproveAgent fake: records each prompt into `prompts` and
+// returns results[0] on first call, etc., clamping to the last element.
+const sequenceImprove = (
+  results: readonly Result[],
+  prompts: string[],
+  fallback: Result,
+): PipelineDeps['runImproveAgent'] => {
+  return (_worktreePath: string, prompt: string): Promise<{ value: Result; usage: AgentUsage }> => {
+    prompts.push(prompt)
+    const idx = Math.min(prompts.length - 1, results.length - 1)
+    return Promise.resolve({ value: results[idx] ?? fallback, usage: emptyUsage() })
   }
 }
 
@@ -122,6 +178,7 @@ const happyDeps = (): PipelineDeps => {
     },
     runSelectAgent: () => Promise.resolve({ value: selection, usage: emptyUsage() }),
     runImproveAgent: () => Promise.resolve({ value: result, usage: emptyUsage() }),
+    cappedRegistry: { entries: [], record: () => Promise.resolve() },
     saveRunState: () => Promise.resolve(),
     log: { log: () => undefined, issue: undefined },
   }
@@ -207,7 +264,7 @@ describe('pipeline runIteration', () => {
     deps.measureScore = sequenceMeasure([0.46, 0.94])
     deps.runImproveAgent = (): Promise<{ value: Result; usage: AgentUsage }> =>
       Promise.resolve({
-        value: { ...result, residuals: [{ loc: 'L21', why: 'equivalent' }] },
+        value: { ...result, residuals: [{ loc: 'L21', why: 'equivalent', mutantIds: [] }] },
         usage: emptyUsage(),
       })
     const outcome = await runIteration(deps, 1)
@@ -240,6 +297,40 @@ describe('pipeline runIteration', () => {
     const outcome = await runIteration(deps, 1)
     expect(outcome.outcome).toBe('failed')
     expect(outcome.gate).toBe('merge')
+  })
+
+  test('finalize measures merge diff and reports it via log.diff', async () => {
+    const deps = happyDeps()
+    const diffs: Array<{ label: string; added: number; removed: number }> = []
+    deps.log = {
+      log: (): void => undefined,
+      diff: (label: string, d: { added: number; removed: number }): void => {
+        diffs.push({ label, ...d })
+      },
+    }
+    deps.execGit = scriptedExecGit({
+      'rev-parse': 'abc123\n',
+      diff: '301\t12\ttests/x.test.ts\n',
+    })
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('improved')
+    expect(diffs).toEqual([{ label: 'iter-1', added: 301, removed: 12 }])
+  })
+
+  test('merge conflict reports no diff', async () => {
+    const deps = happyDeps()
+    const diffs: unknown[] = []
+    deps.log = {
+      log: (): void => undefined,
+      diff: (): void => {
+        diffs.push(1)
+      },
+    }
+    deps.mergeWorktree = (): Promise<{ ok: false; conflictFiles: string[] }> =>
+      Promise.resolve({ ok: false, conflictFiles: ['scripts/mutation/baseline.json'] })
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.gate).toBe('merge')
+    expect(diffs).toEqual([])
   })
 
   // C2: an unexpected throw mid-pipeline must route through failIter so the
@@ -311,6 +402,44 @@ describe('pipeline runIteration', () => {
     }
     await runIteration(deps, 1)
     expect(buildCwd).toBe(path.join(deps.config.workDir, 'worktrees', 'r1-iter1'))
+  })
+
+  // bun always prints `error: script ... exited with code 1` to stderr when the
+  // check command fails, so a `stderr || stdout` reason never shows check.sh's
+  // stdout breakdown naming the failing check. Both streams must survive.
+  test('build gate failure reason includes stdout details even when stderr is non-empty', async () => {
+    const deps = happyDeps()
+    deps.runBuildCheck = (): Promise<{ passed: boolean; stdout: string; stderr: string }> =>
+      Promise.resolve({
+        passed: false,
+        stdout: '✗ test failed (exit code 1):\n---\n(fail) WorkerPool > closes cleanly\n---',
+        stderr: 'error: script "check:full" exited with code 1\n',
+      })
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    expect(outcome.gate).toBe('build')
+    expect(outcome.reason).toContain('error: script "check:full" exited with code 1')
+    expect(outcome.reason).toContain('(fail) WorkerPool > closes cleanly')
+  })
+
+  test('build gate failure persists the full combined output to build-output.log and tail-bounds the reason', async () => {
+    const deps = happyDeps()
+    const marker = 'UNIQUE-BUILD-FAILURE-MARKER'
+    deps.runBuildCheck = (): Promise<{ passed: boolean; stdout: string; stderr: string }> =>
+      Promise.resolve({
+        passed: false,
+        stdout: `${'x'.repeat(6000)}\n${marker}\n`,
+        stderr: 'error: script "check:full" exited with code 1\n',
+      })
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    expect(outcome.gate).toBe('build')
+    expect(outcome.reason).toContain(marker)
+    expect(outcome.reason?.length).toBeLessThan(4500)
+    const log = await readFile(path.join(deps.runState.runDir, 'iter', '1', 'build-output.log'), 'utf8')
+    expect(log).toContain('error: script "check:full" exited with code 1')
+    expect(log).toContain(marker)
+    expect(log.length).toBeGreaterThan(6000)
   })
 
   test('select agent receives the per-iteration outputPath', async () => {
@@ -422,6 +551,254 @@ describe('pipeline runIteration', () => {
   })
 })
 
+describe('pipeline capped gate', () => {
+  // The 2026-08-06 mappers.ts pattern: a file whose tests-only ceiling sits
+  // below threshold − ε was attempted 3x in one run, each attempt merged
+  // nothing and forced exit 1. With full residual coverage the runner now
+  // merges at the measured ceiling ('capped') instead of discarding the work.
+  const cappedDeps = (
+    after: MeasuredScore,
+    residuals: Result['residuals'],
+  ): { deps: PipelineDeps; recorded: [string, number][] } => {
+    const deps = happyDeps()
+    deps.measureScore = sequenceMeasureDetailed([measured(0.46), after])
+    deps.runImproveAgent = (): Promise<{ value: Result; usage: AgentUsage }> =>
+      Promise.resolve({ value: { ...result, residuals }, usage: emptyUsage() })
+    const recorded: [string, number][] = []
+    deps.cappedRegistry = {
+      entries: [],
+      record: (file: string, score: number): Promise<void> => {
+        recorded.push([file, score])
+        return Promise.resolve()
+      },
+    }
+    return { deps, recorded }
+  }
+
+  test('below-hatch score with full residual coverage merges as capped and records the cap', async () => {
+    const { deps, recorded } = cappedDeps(measured(0.85, ['s1', 's2']), [
+      { loc: 'src/x.ts:24', why: 'equivalent guard', mutantIds: ['s1', 's2'] },
+    ])
+    const outcome = await runIteration(deps, 1)
+    expect(outcome).toEqual({
+      iter: 1,
+      outcome: 'capped',
+      file: 'src/live-status/tool-status-labels.ts',
+      beforeScore: 0.46,
+      afterScore: 0.85,
+    })
+    expect(deps.runState.merged[0]?.capped).toBe(true)
+    expect(deps.runState.doneSet).toContain('src/live-status/tool-status-labels.ts')
+    expect(deps.runState.failed).toHaveLength(0)
+    const bumped = await deps.readBaseline(deps.config.repoRoot)
+    expect(bumped['src/live-status/tool-status-labels.ts']).toBe(0.85)
+    expect(recorded).toEqual([['src/live-status/tool-status-labels.ts', 0.85]])
+  })
+
+  // The real mappers.ts result.json grouped 9 mutants into 3 per-loc entries;
+  // the union across entries is what must equal the surviving set.
+  test('grouped residual entries cap when their union equals the surviving set', async () => {
+    const { deps } = cappedDeps(measured(0.857, ['2', '3', '4', '6', '16', '17', '18', '20', '37']), [
+      { loc: 'mappers.ts:24', why: 'equivalent null guard', mutantIds: ['2', '3', '4', '6'] },
+      { loc: 'mappers.ts:31', why: 'equivalent null guard', mutantIds: ['16', '17', '18', '20'] },
+      { loc: 'mappers.ts:92', why: 'unreachable fallback', mutantIds: ['37'] },
+    ])
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('capped')
+  })
+
+  test('epsilon-hatch pass stays improved and does NOT record a cap', async () => {
+    const { deps, recorded } = cappedDeps(measured(0.94), [{ loc: 'L21', why: 'equivalent', mutantIds: ['s1'] }])
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('improved')
+    expect(deps.runState.merged[0]?.capped).toBeUndefined()
+    expect(recorded).toEqual([])
+  })
+
+  test('partial residual coverage fails the score gate (not capped)', async () => {
+    const { deps, recorded } = cappedDeps(measured(0.85, ['s1', 's2']), [
+      { loc: 'src/x.ts:24', why: 'equivalent guard', mutantIds: ['s1'] },
+    ])
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    expect(outcome.gate).toBe('score')
+    expect(deps.runState.merged).toHaveLength(0)
+    expect(recorded).toEqual([])
+  })
+
+  // Set equality, not subset: a declared id that is not an actual survivor
+  // means the agent's bookkeeping is wrong (or padded) — fail closed.
+  test('declared ids naming a non-survivor fail the score gate', async () => {
+    const { deps } = cappedDeps(measured(0.85, ['s1']), [
+      { loc: 'src/x.ts:24', why: 'equivalent guard', mutantIds: ['s1', 's999'] },
+    ])
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    expect(outcome.gate).toBe('score')
+  })
+
+  // Without the improvement guard an agent could declare residuals over every
+  // survivor of a no-op run and "merge" spec docs that changed nothing.
+  test('full coverage without a score improvement fails the score gate', async () => {
+    const deps = happyDeps()
+    deps.measureScore = sequenceMeasureDetailed([measured(0.85, ['s1']), measured(0.85, ['s1'])])
+    deps.runImproveAgent = (): Promise<{ value: Result; usage: AgentUsage }> =>
+      Promise.resolve({
+        value: { ...result, residuals: [{ loc: 'src/x.ts:24', why: 'equivalent', mutantIds: ['s1'] }] },
+        usage: emptyUsage(),
+      })
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    expect(outcome.gate).toBe('score')
+  })
+})
+
+describe('pipeline select exclusions', () => {
+  const cappedEntry = (file: string): CappedEntry => ({
+    file,
+    score: 0.85,
+    cappedAt: '2026-08-06T00:00:00.000Z',
+    runId: 'r0',
+  })
+
+  test('select prompt lists this run’s failed files and the capped registry as do-not-pick', async () => {
+    const deps = happyDeps()
+    deps.runState.failed = [{ iter: 1, gate: 'score', reason: 'x', file: 'src/tools/memory.ts' }]
+    deps.cappedRegistry = { entries: [cappedEntry('src/capped.ts')], record: (): Promise<void> => Promise.resolve() }
+    let selectPrompt = ''
+    deps.runSelectAgent = (_worktreePath: string, prompt: string): Promise<{ value: Selection; usage: AgentUsage }> => {
+      selectPrompt = prompt
+      return Promise.resolve({ value: selection, usage: emptyUsage() })
+    }
+    await runIteration(deps, 1)
+    expect(selectPrompt).toContain('src/tools/memory.ts')
+    expect(selectPrompt).toContain('src/capped.ts')
+  })
+
+  test('picking a file that already failed this run is rejected at the select gate', async () => {
+    const deps = happyDeps()
+    deps.runState.failed = [{ iter: 1, gate: 'score', reason: 'x', file: 'src/tools/memory.ts' }]
+    deps.runSelectAgent = (): Promise<{ value: Selection; usage: AgentUsage }> =>
+      Promise.resolve({ value: { ...selection, file: 'src/tools/memory.ts' }, usage: emptyUsage() })
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    expect(outcome.gate).toBe('select')
+    expect(outcome.reason).toContain('already failed this run')
+  })
+
+  test('picking a capped-registry file is rejected at the select gate', async () => {
+    const deps = happyDeps()
+    deps.cappedRegistry = {
+      entries: [cappedEntry('src/tools/memory.ts')],
+      record: (): Promise<void> => Promise.resolve(),
+    }
+    deps.runSelectAgent = (): Promise<{ value: Selection; usage: AgentUsage }> =>
+      Promise.resolve({ value: { ...selection, file: 'src/tools/memory.ts' }, usage: emptyUsage() })
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    expect(outcome.gate).toBe('select')
+    expect(outcome.reason).toContain('capped')
+  })
+})
+
+describe('pipeline build-fix retry', () => {
+  // A failed check:full (e.g. oxfmt on an agent-authored test file) used to burn
+  // the whole iteration. The runner now feeds the failed check output back to
+  // the agent and re-gates, up to config.buildFixAttempts times.
+  test('build failure feeds the check output back to the agent and passes on retry', async () => {
+    const deps = happyDeps()
+    const marker = '✗ format:check failed (exit code 1)'
+    let builds = 0
+    const check = sequenceBuild([
+      {
+        passed: false,
+        stdout: `${marker}\ntests/x.test.ts\n`,
+        stderr: 'error: script "check:full" exited with code 1\n',
+      },
+      { passed: true, stdout: '', stderr: '' },
+    ])
+    deps.runBuildCheck = (worktreePath: string): Promise<{ passed: boolean; stdout: string; stderr: string }> => {
+      builds += 1
+      return check(worktreePath)
+    }
+    const prompts: string[] = []
+    const fixedResult: Result = { ...result, specPath: 'docs/superpowers/specs/fixed-design.md' }
+    deps.runImproveAgent = sequenceImprove([result, fixedResult], prompts, result)
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('improved')
+    expect(builds).toBe(2)
+    expect(prompts).toHaveLength(2)
+    expect(prompts[1]).toContain(marker)
+    expect(prompts[1]).toContain('MUST NOT edit anything under src/')
+    const worktreePath = path.join(deps.config.workDir, 'worktrees', 'r1-iter1')
+    const improveOut = path.join(deps.runState.runDir, 'iter', '1', 'result.json')
+    expect(prompts[1]).toContain(agentWritePath(worktreePath, improveOut))
+    // the fix agent's rewritten result replaces the original for finalize
+    expect(deps.runState.merged[0]?.specPath).toBe('docs/superpowers/specs/fixed-design.md')
+  })
+
+  test('exhausts buildFixAttempts then fails the build gate', async () => {
+    const deps = happyDeps()
+    let builds = 0
+    deps.runBuildCheck = (): Promise<{ passed: boolean; stdout: string; stderr: string }> => {
+      builds += 1
+      return Promise.resolve({
+        passed: false,
+        stdout: '✗ test failed\n',
+        stderr: 'error: script "check:full" exited with code 1\n',
+      })
+    }
+    let improveCalls = 0
+    deps.runImproveAgent = (): Promise<{ value: Result; usage: AgentUsage }> => {
+      improveCalls += 1
+      return Promise.resolve({ value: result, usage: emptyUsage() })
+    }
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    expect(outcome.gate).toBe('build')
+    expect(outcome.reason).toContain('✗ test failed')
+    // 1 initial build + 2 re-gates after fix attempts
+    expect(builds).toBe(3)
+    // 1 improve + 2 fix invocations
+    expect(improveCalls).toBe(3)
+  })
+
+  test('buildFixAttempts 0 fails immediately without a fix attempt', async () => {
+    const deps = happyDeps()
+    deps.config = config(deps.config.repoRoot, { buildFixAttempts: 0 })
+    let builds = 0
+    deps.runBuildCheck = (): Promise<{ passed: boolean; stdout: string; stderr: string }> => {
+      builds += 1
+      return Promise.resolve({ passed: false, stdout: '✗ lint failed\n', stderr: '' })
+    }
+    let improveCalls = 0
+    deps.runImproveAgent = (): Promise<{ value: Result; usage: AgentUsage }> => {
+      improveCalls += 1
+      return Promise.resolve({ value: result, usage: emptyUsage() })
+    }
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    expect(outcome.gate).toBe('build')
+    expect(builds).toBe(1)
+    expect(improveCalls).toBe(1)
+  })
+
+  test('diff-scope violation introduced during a fix attempt fails without further build retries', async () => {
+    const deps = happyDeps()
+    let builds = 0
+    const check = sequenceBuild([{ passed: false, stdout: '✗ format:check failed\n', stderr: '' }])
+    deps.runBuildCheck = (worktreePath: string): Promise<{ passed: boolean; stdout: string; stderr: string }> => {
+      builds += 1
+      return check(worktreePath)
+    }
+    deps.execGit = sequenceGitStatus([' M tests/live-status/x.test.ts\n', ' M src/foo.ts\n'])
+    const outcome = await runIteration(deps, 1)
+    expect(outcome.outcome).toBe('failed')
+    expect(outcome.gate).toBe('diff-scope')
+    expect(builds).toBe(1)
+  })
+})
+
 describe('pipeline runPipeline', () => {
   test('count chains: iteration 2 sees iteration 1 baseline bump; merge conflict aborts', async () => {
     const deps = happyDeps()
@@ -451,6 +828,22 @@ describe('pipeline runPipeline', () => {
     expect(results[0]?.gate).toBe('merge')
     expect(deps.runState.status).toBe('aborted')
     expect(deps.runState.currentIteration).toBe(1)
+  })
+
+  test('capped iteration completes the run without aborting or recording a failure', async () => {
+    const deps = happyDeps()
+    deps.measureScore = sequenceMeasureDetailed([measured(0.46), measured(0.85, ['s1'])])
+    deps.runImproveAgent = (): Promise<{ value: Result; usage: AgentUsage }> =>
+      Promise.resolve({
+        value: { ...result, residuals: [{ loc: 'src/x.ts:24', why: 'equivalent', mutantIds: ['s1'] }] },
+        usage: emptyUsage(),
+      })
+    const { results, aborted } = await runPipeline(deps)
+    expect(aborted).toBe(false)
+    expect(results).toHaveLength(1)
+    expect(results[0]?.outcome).toBe('capped')
+    expect(deps.runState.status).toBe('completed')
+    expect(deps.runState.failed).toHaveLength(0)
   })
 
   test('saves run state after each iteration', async () => {

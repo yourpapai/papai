@@ -87,4 +87,37 @@ describe('realSpawn', () => {
     expect(result.exitCode).toBe(0)
     expect(result.timedOut).toBe(false)
   })
+
+  test('kills a subprocess that stops producing output after inactivityTimeoutMs', async () => {
+    const result = await realSpawn('sh', ['-c', 'echo started; sleep 30'], {
+      cwd: process.cwd(),
+      inactivityTimeoutMs: 300,
+    })
+    expect(result.exitCode).toBe(1)
+    expect(result.stalled).toBe(true)
+    expect(result.timedOut).toBe(true)
+    expect(result.stderr).toContain('no output')
+  })
+
+  test('does not stall-kill a subprocess that keeps producing output', async () => {
+    const result = await realSpawn(
+      'sh',
+      ['-c', 'i=0; while [ "$i" -lt 10 ]; do echo tick; sleep 0.05; i=$((i + 1)); done'],
+      { cwd: process.cwd(), inactivityTimeoutMs: 1000 },
+    )
+    expect(result.exitCode).toBe(0)
+    expect(result.stalled).toBeUndefined()
+    expect(result.timedOut).toBe(false)
+  })
+
+  test('inactivity window restarts after each output chunk', async () => {
+    // Quiet for less than the window, then speak again: must survive past the
+    // original deadline and complete normally.
+    const result = await realSpawn('sh', ['-c', 'sleep 0.2; echo late; sleep 0.2; echo later'], {
+      cwd: process.cwd(),
+      inactivityTimeoutMs: 400,
+    })
+    expect(result.exitCode).toBe(0)
+    expect(result.stalled).toBeUndefined()
+  })
 })

@@ -22,7 +22,7 @@ See LICENSE in the project root for details.
 - `bun test:mutate:changed` — paired mutation run vs `origin/master`; this is what CI uses.
 - `bun test:mutate:seed --scores=PATH [--fresh-base=SHA]` — re-apply a persisted per-file scores snapshot to `scripts/mutation/baseline.json` via `seedMerge` without re-running Stryker; the CI `mutation-baseline` commit step loops over this when master moves mid-run (`--fresh-base` drops scores for files changed on master since the run's checkout).
 - `bun test:mutate:file <paths...>` — fast per-file paired run (`ignoreStatic:false` + companion tests), bypasses the static-bucket artifact.
-- `bun check` — staged-file lint/typecheck/format; `bun check:full` runs `scripts/check.sh`.
+- `bun check` — staged-file lint/typecheck/format; `bun check:full` runs `scripts/check.sh`. The full-mode license-headers check enumerates `git ls-files --cached --others --exclude-standard` (tracked **plus** untracked non-ignored files) so brand-new files in a worktree are header-checked before commit, matching what the pre-commit hook's `--staged` mode will enforce.
 - `bun check:bundle-isolation` — asserts the dev-only `client/stories/**` harness never leaked into production bundles.
 
 Analytics operator CLIs (full operator flows: `docs/operations/analytics-runbook.md`):
@@ -68,7 +68,11 @@ Every `Write`/`Edit`/`MultiEdit` on an implementation file in `src/` or `client/
 
 **Scope** — only implementation files: path starts with `src/`/`client/`, extension `.ts`/`.js`/`.tsx`/`.jsx`, not a test (`*.test.*`/`*.spec.*`). Everything else passes through, but test-file edits still verify the changed test passes. The `client/` tree mirrors `src/` for test resolution (`client/debug/foo.ts` → `tests/client/debug/foo.test.ts`).
 
-**Pipeline** — before write: (1) write-policy gate, (2) test-first gate, (3) API surface snapshot. After write: (4) test tracker for new tests, (5) import gate for tests under `tests/`, (6) targeted test run + coverage regression check, (7) API surface diff check.
+**Pipeline** — before write: (1) write-policy gate, (2) test-first gate. After write: (3) test tracker for new tests, (4) import gate for tests under `tests/`, (5) targeted run of the edited file's companion test.
+
+Step 5 is the inner loop's whole point: a couple of seconds after the edit, rather than minutes later in a full-suite run. Its output is capped at 3 000 characters (`.hooks/tdd/test-runner.mjs`).
+
+**Not wired.** `.hooks/tdd/checks/` also contains `snapshot-surface.mjs`, `verify-no-new-surface.mjs` and `check-uncommitted.mjs`. They are implemented and tested but no harness imports them, and this list used to describe two of them as live steps. The surface pair needs a session baseline that nothing currently writes; wiring them is a separate piece of work, not a documentation fix. They are named here so the next reader can tell "deliberately dormant" from "silently broken".
 
 **Write protections (blocked escape hatches):**
 

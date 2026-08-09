@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { ReportReadError, readStrykerReport } from '../../scripts/mutation/json-readers.js'
-import { mergeReports, type StrykerReport } from '../../scripts/mutation/score-merger.js'
+import { mergeReports, survivingMutantIds, type StrykerReport } from '../../scripts/mutation/score-merger.js'
 
 export const safeFileStem = (srcFile: string): string => srcFile.replaceAll(/[^a-zA-Z0-9._-]+/gu, '__')
 
@@ -16,6 +16,14 @@ export interface MeasureDeps {
   readReport?: (reportPath: string) => StrykerReport
 }
 
+// survivingMutantIds rides along with the score so the pipeline's capped-gate
+// can set-match the improve agent's declared residual mutant ids against the
+// runner-measured survivors without re-running the mutation command.
+export interface MeasuredScore {
+  readonly score: number
+  readonly survivingMutantIds: readonly string[]
+}
+
 function isRetryable(error: unknown): boolean {
   if (error instanceof ReportReadError) return true
   return (
@@ -23,15 +31,20 @@ function isRetryable(error: unknown): boolean {
   )
 }
 
-export async function measureMutationScore(deps: MeasureDeps, reportDir: string, srcFile: string): Promise<number> {
+export async function measureMutationScore(
+  deps: MeasureDeps,
+  reportDir: string,
+  srcFile: string,
+): Promise<MeasuredScore> {
   const read = deps.readReport ?? readStrykerReport
   const reportPath = reportPathFor(reportDir, srcFile)
-  const attempt = async (): Promise<number> => {
+  const attempt = async (): Promise<MeasuredScore> => {
     const result = await deps.exec()
     if (result.exitCode !== 0) {
       throw new Error(`mutation run failed (exit ${result.exitCode}): ${result.stderr}`)
     }
-    return mergeReports([read(reportPath)]).score
+    const report = read(reportPath)
+    return { score: mergeReports([report]).score, survivingMutantIds: survivingMutantIds(report) }
   }
   try {
     const score = await attempt()

@@ -8,6 +8,21 @@ import { afterEach, describe, expect, mock, test } from 'bun:test'
 import { runPreflight } from '../../../scripts/behavior-audit/preflight.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
+/**
+ * Runs the preflight with its refusal collected instead of printed.
+ *
+ * The default reporter is `console.error`, which the test setup deliberately
+ * leaves unsuppressed for real diagnostics — every refusal below is expected,
+ * so it is captured here and asserted rather than left to reach the log.
+ */
+const runRefusal = async (): Promise<{ exitCode: number; messages: string[] }> => {
+  const messages: string[] = []
+  const exitCode = await runPreflight((message) => {
+    messages.push(message)
+  })
+  return { exitCode, messages }
+}
+
 describe('preflight', () => {
   afterEach(() => {
     restoreFetch()
@@ -39,21 +54,33 @@ describe('preflight', () => {
     process.env['BEHAVIOR_AUDIT_MODEL'] = 'm'
     process.env['OPENAI_API_KEY'] = 'k'
     setMockFetch(() => Promise.resolve(new Response('{}')))
-    expect(await runPreflight()).toBe(1)
+
+    const { exitCode, messages } = await runRefusal()
+
+    expect(exitCode).toBe(1)
+    expect(messages).toEqual(['Error: BEHAVIOR_AUDIT_BASE_URL is not set'])
   })
 
   test('exits 1 when BEHAVIOR_AUDIT_MODEL is missing', async () => {
     process.env['BEHAVIOR_AUDIT_BASE_URL'] = 'https://x/v1'
     process.env['OPENAI_API_KEY'] = 'k'
     setMockFetch(() => Promise.resolve(new Response('{}')))
-    expect(await runPreflight()).toBe(1)
+
+    const { exitCode, messages } = await runRefusal()
+
+    expect(exitCode).toBe(1)
+    expect(messages).toEqual(['Error: BEHAVIOR_AUDIT_MODEL is not set'])
   })
 
   test('exits 1 when OPENAI_API_KEY is missing', async () => {
     process.env['BEHAVIOR_AUDIT_BASE_URL'] = 'https://x/v1'
     process.env['BEHAVIOR_AUDIT_MODEL'] = 'm'
     setMockFetch(() => Promise.resolve(new Response('{}')))
-    expect(await runPreflight()).toBe(1)
+
+    const { exitCode, messages } = await runRefusal()
+
+    expect(exitCode).toBe(1)
+    expect(messages).toEqual(['Error: OPENAI_API_KEY is not set'])
   })
 
   test('exits 1 when fetch throws (network error)', async () => {
@@ -61,7 +88,11 @@ describe('preflight', () => {
     process.env['BEHAVIOR_AUDIT_MODEL'] = 'm'
     process.env['OPENAI_API_KEY'] = 'k'
     setMockFetch(() => Promise.reject(new Error('ECONNREFUSED')))
-    expect(await runPreflight()).toBe(1)
+
+    const { exitCode, messages } = await runRefusal()
+
+    expect(exitCode).toBe(1)
+    expect(messages).toEqual(['Error: gateway unreachable: ECONNREFUSED'])
   })
 
   test('exits 1 on HTTP 401', async () => {
@@ -69,7 +100,11 @@ describe('preflight', () => {
     process.env['BEHAVIOR_AUDIT_MODEL'] = 'm'
     process.env['OPENAI_API_KEY'] = 'k'
     setMockFetch(() => Promise.resolve(new Response('unauthorized', { status: 401 })))
-    expect(await runPreflight()).toBe(1)
+
+    const { exitCode, messages } = await runRefusal()
+
+    expect(exitCode).toBe(1)
+    expect(messages).toEqual(['Error: auth rejected (HTTP 401)'])
   })
 
   test('exits 1 when model is not in response', async () => {
@@ -84,7 +119,11 @@ describe('preflight', () => {
         }),
       ),
     )
-    expect(await runPreflight()).toBe(1)
+
+    const { exitCode, messages } = await runRefusal()
+
+    expect(exitCode).toBe(1)
+    expect(messages).toEqual(['Error: model "missing-model" not offered by gateway (available: other-model)'])
   })
 
   test('exits 1 on malformed JSON', async () => {
@@ -92,7 +131,11 @@ describe('preflight', () => {
     process.env['BEHAVIOR_AUDIT_MODEL'] = 'm'
     process.env['OPENAI_API_KEY'] = 'k'
     setMockFetch(() => Promise.resolve(new Response('not-json', { status: 200 })))
-    expect(await runPreflight()).toBe(1)
+
+    const { exitCode, messages } = await runRefusal()
+
+    expect(exitCode).toBe(1)
+    expect(messages).toEqual(['Error: gateway returned malformed JSON'])
   })
 
   test('strips trailing slash from BEHAVIOR_AUDIT_BASE_URL when calling /models', async () => {

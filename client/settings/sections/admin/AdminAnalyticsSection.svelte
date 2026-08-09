@@ -218,7 +218,7 @@
 </script>
 
 <section id="analytics-admin" class="settings-section">
-  <PageHeader eyebrow="Admin" title="Analytics" />
+  <PageHeader eyebrow="Admin" title="Analytics policy" />
 
   {#if loadError !== null && data === null}
     <ErrorState title="Couldn't load analytics settings" message={loadError} onRetry={() => void load()} />

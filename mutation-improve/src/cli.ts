@@ -8,6 +8,7 @@ import path from 'node:path'
 import { runAgent } from '../../review-loop/src/agent-runner.js'
 import { createShellExec, runBuildCheck } from '../../review-loop/src/build-checker.js'
 import { LiveRenderer } from '../../review-loop/src/live-renderer.js'
+import { RunStats } from '../../review-loop/src/run-stats.js'
 import { realSpawn } from '../../review-loop/src/spawn.js'
 import {
   createWorktree,
@@ -17,13 +18,15 @@ import {
   resetWorktree,
 } from '../../review-loop/src/worktree.js'
 import { readBaseline, writeBaseline } from './baseline.js'
+import { type CappedRegistryStore, loadCappedRegistryStore } from './capped-registry.js'
 import { type MutationImproveConfig, loadMutationImproveConfig } from './config.js'
 import { assertIntegrationBranch, runFinalize } from './finalize.js'
 import { type IterationResult, runPipeline, type PipelineDeps } from './pipeline.js'
 import { ResultSchema } from './result-schema.js'
-import { createRunState, loadRunState, saveRunState, type MutationImproveRunState } from './run-state.js'
+import { createRunState, loadRunState, persistStats, saveRunState, type MutationImproveRunState } from './run-state.js'
 import { measureMutationScore } from './score-reader.js'
 import { SelectionSchema } from './selection-schema.js'
+import { buildRunSummary } from './summary.js'
 
 export interface CliArgs {
   configPath: string
@@ -113,6 +116,7 @@ function selectRunner(
       extraArgs: config.agent.extraArgs,
       reporter: log,
       timeoutMs: config.agent.timeoutMs,
+      inactivityTimeoutMs: config.agent.inactivityTimeoutMs,
     })
 }
 
@@ -134,6 +138,7 @@ function improveRunner(
       extraArgs: config.agent.extraArgs,
       reporter: log,
       timeoutMs: config.agent.timeoutMs,
+      inactivityTimeoutMs: config.agent.inactivityTimeoutMs,
     })
 }
 
@@ -141,6 +146,8 @@ function buildPipelineDeps(
   config: MutationImproveConfig,
   runState: MutationImproveRunState,
   log: LiveRenderer,
+  cappedRegistry: CappedRegistryStore,
+  stats: RunStats,
 ): PipelineDeps {
   return {
     config,
@@ -163,7 +170,11 @@ function buildPipelineDeps(
     writeBaseline,
     runSelectAgent: selectRunner(config, runState, log),
     runImproveAgent: improveRunner(config, runState, log),
-    saveRunState,
+    cappedRegistry,
+    saveRunState: async (state) => {
+      persistStats(state, stats)
+      await saveRunState(state)
+    },
     log,
   }
 }
@@ -218,8 +229,14 @@ export async function runCli(argv: readonly string[]): Promise<void> {
     await resetRunWorktrees(config.repoRoot, runState.runId, config.prBranchPrefix)
   }
 
-  const log = new LiveRenderer(process.stdout)
-  const deps = buildPipelineDeps(config, runState, log)
+  // Loaded before the pipeline so a corrupt registry fails fast instead of
+  // being discovered mid-run (or worse, silently reset, which would re-allow
+  // capped files and re-enter the re-pick loop it exists to prevent).
+  const cappedRegistry = await loadCappedRegistryStore(config.workDir, runState.runId)
+
+  const stats = RunStats.rehydrate(runState.stats, { pricing: config.pricing })
+  const log = new LiveRenderer(process.stdout, stats)
+  const deps = buildPipelineDeps(config, runState, log, cappedRegistry, stats)
   // I1: try/finally guarantees saveRunState runs even if runPipeline throws
   // (e.g. AgentRunError mid-pipeline), so --resume-run sees the last-known
   // in-memory progress instead of losing everything to a throw.
@@ -230,8 +247,11 @@ export async function runCli(argv: readonly string[]): Promise<void> {
     results = pipelineOut.results
     aborted = pipelineOut.aborted
   } finally {
+    persistStats(runState, stats)
     await saveRunState(runState)
   }
+
+  console.log(buildRunSummary({ runState, results, stats: stats.snapshot(), aborted }))
 
   const failed = results.filter((r) => r.outcome === 'failed')
   if (!args.noPr && runState.merged.length > 0 && !aborted) {

@@ -37,6 +37,24 @@ const openAccessUserPayload = {
   ],
 }
 
+const sortCheckPayload = {
+  users: [
+    { platform_user_id: '30', platform_instance_id: 'tg', username: 'zoe', added_by: 'admin' },
+    { platform_user_id: '10', platform_instance_id: 'tg', username: 'amy', added_by: 'admin' },
+    { platform_user_id: '20', platform_instance_id: 'tg', username: 'mike', added_by: 'admin' },
+  ],
+}
+
+const sortCheckMock = (url: string): Promise<Response> => {
+  if (url.includes('/admin/open-access')) return Promise.resolve(json(openAccessOff))
+  return Promise.resolve(json(sortCheckPayload))
+}
+
+const usernamesInOrder = (target: HTMLElement): string[] =>
+  [...target.querySelectorAll<HTMLElement>('tbody tr [data-testid^="user-username-"]')].map((el) =>
+    el.textContent.trim(),
+  )
+
 const blockedUserPayload = {
   users: [
     {
@@ -115,14 +133,53 @@ const openAccessOffMock = (url: string): Promise<Response> => {
   return Promise.resolve(json(usersPayload))
 }
 
+const noUsersMock = (url: string): Promise<Response> => {
+  if (url.includes('/open-access')) return Promise.resolve(json(openAccessOff))
+  return Promise.resolve(json({ users: [] }))
+}
+
 const openAccessOnMock = (url: string): Promise<Response> => {
   if (url.includes('/admin/open-access')) return Promise.resolve(json(openAccessOn))
   return Promise.resolve(json(usersPayload))
 }
 
+// Distinct from `pendingPayload` above (which `pendingDeleteMock` also relies on for its
+// UUID-shaped id) so the status-pill test can assert against a realistic @handle-derived
+// placeholder id without disturbing that other test's fixture.
+const ghostPendingPayload = {
+  users: [
+    {
+      platform_user_id: 'placeholder-@ghost',
+      platform_instance_id: 'tg',
+      username: 'ghost',
+      added_by: 'admin',
+    },
+  ],
+}
+
+const ghostPendingMock = (url: string): Promise<Response> => {
+  if (url.includes('/admin/open-access')) return Promise.resolve(json(openAccessOff))
+  return Promise.resolve(json(ghostPendingPayload))
+}
+
+// For the remove-confirmation label test: an @-handle-style username paired with the
+// placeholder id, so `removeUserLabel` has a name to render instead of falling back to
+// "this pending user". Distinct from the UUID-shaped `pendingPayload` above, which
+// `pendingDeleteMock` relies on.
+const handlePendingPayload = {
+  users: [
+    {
+      platform_user_id: 'placeholder-@ghost',
+      platform_instance_id: 'tg',
+      username: '@ghost',
+      added_by: 'admin',
+    },
+  ],
+}
+
 const pendingPayloadMock = (url: string): Promise<Response> => {
   if (url.includes('/admin/open-access')) return Promise.resolve(json(openAccessOff))
-  return Promise.resolve(json(pendingPayload))
+  return Promise.resolve(json(handlePendingPayload))
 }
 
 const openAccessUserMock = (url: string): Promise<Response> => {
@@ -189,12 +246,45 @@ const disableToggleMock = (url: string, init: RequestInit): Promise<Response> =>
   return Promise.resolve(json(usersPayload))
 }
 
+const usersFailMock = (url: string): Promise<Response> => {
+  if (url.includes('/open-access')) return Promise.resolve(json(openAccessOn))
+  return Promise.resolve(new Response(JSON.stringify({ error: 'users boom' }), { status: 500 }))
+}
+
+const openAccessFailMock = (url: string): Promise<Response> => {
+  if (url.includes('/open-access')) {
+    return Promise.resolve(new Response(JSON.stringify({ error: 'access boom' }), { status: 500 }))
+  }
+  return Promise.resolve(json(usersPayload))
+}
+
+const neverResolvingMock = (): Promise<Response> => new Promise<Response>(() => {})
+
+const hangingTogglePostMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/admin/open-access') && init.method === 'POST') return new Promise<Response>(() => {})
+  if (url.includes('/admin/open-access')) return Promise.resolve(json(openAccessOff))
+  return Promise.resolve(json(usersPayload))
+}
+
+let addPostCount = 0
+const countingAddMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/open-access')) return Promise.resolve(json(openAccessOff))
+  if (init.method === 'POST') {
+    addPostCount += 1
+    return new Promise<Response>((resolve) => {
+      setTimeout(() => resolve(json({ ok: true, pending: false })), 5)
+    })
+  }
+  return Promise.resolve(json(usersPayload))
+}
+
 afterEach(() => {
   capturedPostBody = undefined
   capturedDeleteBody = undefined
   capturedBlockBody = undefined
   enableToggleGetCount = 0
   disableToggleGetCount = 0
+  addPostCount = 0
   restoreFetch()
   setCsrfToken('')
 })
@@ -295,6 +385,25 @@ describe('AdminUsersSection', () => {
     void unmount(component)
   })
 
+  test('a failed add re-enables the Add button and restores its label', async () => {
+    setCsrfToken('c')
+    setMockFetch(postErrorMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="user-add-input"]')!
+    input.value = '77'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    const button = target.querySelector<HTMLButtonElement>('[data-testid="user-add"]')!
+    button.click()
+    await drain()
+    expect(button.disabled).toBe(false)
+    expect(button.textContent?.trim()).toBe('Add user')
+    void unmount(component)
+  })
+
   test('renders section header via PageHeader', async () => {
     setCsrfToken('c')
     setMockFetch(captureUsersMock)
@@ -319,16 +428,17 @@ describe('AdminUsersSection', () => {
     void unmount(component)
   })
 
-  test('renders a pending badge instead of the placeholder id', async () => {
-    setMockFetch(pendingPayloadMock)
+  test('a pending user shows a pending status pill and keeps a readable handle', async () => {
+    setMockFetch(ghostPendingMock)
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(AdminUsersSection, { target })
     await drain()
-    expect(target.querySelector('[data-testid="user-pending-badge"]')).not.toBeNull()
+    const pill = target.querySelector('[data-testid="user-status-placeholder-@ghost"]')!
+    expect(pill.textContent).toContain('pending')
     expect(target.textContent).toContain('ghost')
-    // the only row is pending → no IdCell rendered
-    expect(target.querySelector('.id-cell')).toBeNull()
+    // the placeholder prefix is machinery, not an identifier — it is not shown
+    expect(target.querySelector('tbody')!.textContent).not.toContain('placeholder-')
     void unmount(component)
   })
 
@@ -414,6 +524,22 @@ describe('AdminUsersSection', () => {
     void unmount(component)
   })
 
+  test('the open-access toggle announces its in-flight state with aria-busy', async () => {
+    setCsrfToken('c')
+    setMockFetch(hangingTogglePostMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    const toggle = target.querySelector<HTMLButtonElement>('[data-testid="open-access-toggle"]')!
+    expect(toggle.getAttribute('aria-busy')).toBe('false')
+    toggle.click()
+    await drain()
+    expect(toggle.textContent.trim()).toBe('Saving…')
+    expect(toggle.getAttribute('aria-busy')).toBe('true')
+    void unmount(component)
+  })
+
   test('enabling open access shows "enabled" in the toast (not "disabled")', async () => {
     setCsrfToken('c')
     setMockFetch(enableToggleMock)
@@ -448,15 +574,106 @@ describe('AdminUsersSection', () => {
     void unmount(component)
   })
 
-  test('a user row with added_by open-access shows a source badge', async () => {
+  test('added_by open-access reads as a labelled provenance, not a raw value', async () => {
     setMockFetch(openAccessUserMock)
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(AdminUsersSection, { target })
     await drain()
-    const badge = target.querySelector('[data-testid="user-source-99"]')
-    expect(badge).not.toBeNull()
-    expect(badge?.textContent).toContain('open-access')
+    const cell = target.querySelector('[data-testid="user-added-by-99"]')!
+    expect(cell.textContent).toContain('Open access')
+    expect(cell.textContent).not.toContain('open-access')
+    void unmount(component)
+  })
+
+  test('a blocked user gets a danger status pill', async () => {
+    setMockFetch(blockedUserMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    const pill = target.querySelector('.ui-pill--danger')!
+    expect(pill.textContent).toContain('blocked')
+    void unmount(component)
+  })
+
+  test('an active user gets an accent status pill', async () => {
+    setMockFetch(openAccessOffMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.querySelector('.ui-pill--accent')!.textContent).toContain('active')
+    void unmount(component)
+  })
+
+  test('the username cell carries a title so a truncated name is readable', async () => {
+    setMockFetch(openAccessOffMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.querySelector('[data-testid="user-username-42"]')!.getAttribute('title')).toBe('jane')
+    void unmount(component)
+  })
+
+  test('every column is width-pinned', async () => {
+    setMockFetch(openAccessOffMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    const headers = [...target.querySelectorAll('thead th')]
+    expect(headers.length).toBe(5)
+    const styles = headers.map((th) => String(th.getAttribute('style')))
+    expect(styles.every((style) => style.includes('width'))).toBe(true)
+    void unmount(component)
+  })
+
+  test('the four data columns render a sort control and the Actions column does not', async () => {
+    setMockFetch(openAccessOffMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    const headers = [...target.querySelectorAll('thead th')]
+    expect(headers.length).toBe(5)
+    expect(headers[0]!.querySelector('button.ui-datatable__sort')).not.toBeNull()
+    expect(headers[1]!.querySelector('button.ui-datatable__sort')).not.toBeNull()
+    expect(headers[2]!.querySelector('button.ui-datatable__sort')).not.toBeNull()
+    expect(headers[3]!.querySelector('button.ui-datatable__sort')).not.toBeNull()
+    expect(headers[4]!.querySelector('button.ui-datatable__sort')).toBeNull()
+    void unmount(component)
+  })
+
+  test('the table arrives sorted by username ascending, per defaultSort', async () => {
+    setMockFetch(sortCheckMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(usernamesInOrder(target)).toEqual(['amy', 'mike', 'zoe'])
+    const usernameHeader = target.querySelectorAll('thead th')[1]!
+    expect(usernameHeader.getAttribute('aria-sort')).toBe('ascending')
+    void unmount(component)
+  })
+
+  test('activating the username sort control reverses row order, and again restores it', async () => {
+    setMockFetch(sortCheckMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    const usernameHeader = target.querySelectorAll('thead th')[1]!
+    const sortButton = usernameHeader.querySelector<HTMLButtonElement>('button.ui-datatable__sort')!
+    sortButton.click()
+    flushSync()
+    expect(usernamesInOrder(target)).toEqual(['zoe', 'mike', 'amy'])
+    expect(usernameHeader.getAttribute('aria-sort')).toBe('descending')
+    sortButton.click()
+    flushSync()
+    expect(usernamesInOrder(target)).toEqual(['amy', 'mike', 'zoe'])
+    expect(usernameHeader.getAttribute('aria-sort')).toBe('ascending')
     void unmount(component)
   })
 
@@ -521,6 +738,202 @@ describe('AdminUsersSection', () => {
     await drain()
     expect(target.querySelector('.modal')).not.toBeNull()
     expect(target.querySelector('.modal .status-error')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('a failed user list replaces the body with a retryable error state', async () => {
+    setMockFetch(usersFailMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.querySelector('.ui-error')).not.toBeNull()
+    expect(target.querySelector('[data-testid="error-retry"]')).not.toBeNull()
+    expect(target.querySelector('tbody')).toBeNull()
+    expect(target.querySelector('[data-testid="user-add"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('a failed open-access read keeps the user list and disables the toggle', async () => {
+    setMockFetch(openAccessFailMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.textContent).toContain('jane')
+    const toggle = target.querySelector<HTMLButtonElement>('[data-testid="open-access-toggle"]')!
+    expect(toggle.disabled).toBe(true)
+    expect(toggle.textContent).toContain('Unavailable')
+    expect(target.querySelector('[data-testid="open-access-error"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('the open-access state pill is hidden until the value loads', async () => {
+    setMockFetch(openAccessFailMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.querySelector('[data-testid="open-access-state"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('a loaded open-access setting shows an enabled pill', async () => {
+    setMockFetch(openAccessOnMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.querySelector('[data-testid="open-access-state"]')!.textContent).toContain('enabled')
+    void unmount(component)
+  })
+
+  test('the first load shows a loading placeholder rather than an empty table', async () => {
+    setMockFetch(neverResolvingMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.textContent).toContain('Loading…')
+    expect(target.textContent).not.toContain('No users')
+    void unmount(component)
+  })
+
+  test('the remove confirmation names the person, not the storage id', async () => {
+    setMockFetch(pendingPayloadMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="user-remove-placeholder-@ghost"]')!.click()
+    flushSync()
+    expect(document.body.textContent).toContain('@ghost (pending)')
+    expect(document.body.textContent).not.toContain('placeholder-@ghost?')
+    void unmount(component)
+  })
+
+  test('the remove confirmation contrasts removal with blocking', async () => {
+    setMockFetch(openAccessOffMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="user-remove-42"]')!.click()
+    flushSync()
+    const hint = document.querySelector('.modal .confirm-hint')!
+    expect(hint.textContent.replace(/\s+/gu, ' ').trim()).toBe(
+      'They lose access entirely and drop off this list. To keep the record and revoke access reversibly, Block them instead.',
+    )
+    void unmount(component)
+  })
+
+  test('block is weighted below remove', async () => {
+    setMockFetch(openAccessOffMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    const block = target.querySelector('[data-testid="user-block-42"]')!
+    const remove = target.querySelector('[data-testid="user-remove-42"]')!
+    expect(block.className).not.toContain('danger')
+    expect(remove.className).toContain('danger')
+    void unmount(component)
+  })
+
+  test('submitting a blank id explains why nothing happened', async () => {
+    setCsrfToken('c')
+    setMockFetch(countingAddMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    target
+      .querySelector<HTMLFormElement>('form.settings-form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    await drain()
+    expect(target.textContent).toContain('Enter a numeric user ID or an @username.')
+    expect(addPostCount).toBe(0)
+    void unmount(component)
+  })
+
+  test('the add button is disabled while the id is blank', async () => {
+    setMockFetch(openAccessOffMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.querySelector<HTMLButtonElement>('[data-testid="user-add"]')!.disabled).toBe(true)
+    void unmount(component)
+  })
+
+  test('a pristine form shows no validation error', async () => {
+    setMockFetch(openAccessOffMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.textContent).not.toContain('Enter a numeric user ID or an @username.')
+    void unmount(component)
+  })
+
+  test('a double submit posts once', async () => {
+    setCsrfToken('c')
+    setMockFetch(countingAddMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="user-add-input"]')!
+    input.value = '99'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    const button = target.querySelector<HTMLButtonElement>('[data-testid="user-add"]')!
+    button.click()
+    button.click()
+    await drain()
+    expect(addPostCount).toBe(1)
+    void unmount(component)
+  })
+
+  test('the status line is announced politely', async () => {
+    setCsrfToken('c')
+    setMockFetch(unblockUserMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="user-block-77"]')!.click()
+    await drain()
+    const line = target.querySelector('.status-success')!
+    expect(line.getAttribute('role')).toBe('status')
+    void unmount(component)
+  })
+
+  test('the error line is announced assertively', async () => {
+    setCsrfToken('c')
+    setMockFetch(postErrorMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="user-add-input"]')!
+    input.value = '99'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="user-add"]')!.click()
+    await drain()
+    expect(target.querySelector('.status-error')!.getAttribute('role')).toBe('alert')
+    void unmount(component)
+  })
+
+  test('an empty list points at the add form instead of dead-ending', async () => {
+    setMockFetch(noUsersMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.textContent).toContain('No users yet')
+    expect(target.textContent).toContain('Add one above')
     void unmount(component)
   })
 })

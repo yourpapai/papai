@@ -12,6 +12,7 @@ import type { MutationImproveConfig } from '../../mutation-improve/src/config.js
 import { runPipeline, type PipelineDeps } from '../../mutation-improve/src/pipeline.js'
 import type { Result } from '../../mutation-improve/src/result-schema.js'
 import { createRunState } from '../../mutation-improve/src/run-state.js'
+import type { MeasuredScore } from '../../mutation-improve/src/score-reader.js'
 import type { Selection } from '../../mutation-improve/src/selection-schema.js'
 import type { AgentUsage } from '../../review-loop/src/agent-runner.js'
 import {
@@ -47,10 +48,10 @@ const improvedResult: Result = {
 // lives inside a test body (vitest/no-conditional-tests).
 const sequenceMeasure = (scores: readonly number[]): PipelineDeps['measureScore'] => {
   let calls = 0
-  return (): Promise<number> => {
+  return (): Promise<MeasuredScore> => {
     calls += 1
     const idx = Math.min(calls - 1, scores.length - 1)
-    return Promise.resolve(scores[idx] ?? 0)
+    return Promise.resolve({ score: scores[idx] ?? 0, survivingMutantIds: [] })
   }
 }
 
@@ -88,9 +89,10 @@ describe('integration real-git', () => {
       epsilon: 0.02,
       mutateTimeoutMs: 1_800_000,
       buildTimeoutMs: 600_000,
+      buildFixAttempts: 0,
       checkCommand: 'bun check:full',
       mutateFileCommand: 'bun test:mutate:file',
-      agent: { model: 'm', extraArgs: [], timeoutMs: 1_800_000 },
+      agent: { model: 'm', extraArgs: [], timeoutMs: 1_800_000, inactivityTimeoutMs: 600_000 },
       prBranchPrefix: 'mutation-improve',
     }
     const runState = await createRunState(config)
@@ -124,6 +126,7 @@ describe('integration real-git', () => {
       writeBaseline,
       runSelectAgent: () => Promise.resolve({ value: selection, usage: emptyUsage() }),
       runImproveAgent,
+      cappedRegistry: { entries: [], record: () => Promise.resolve() },
       saveRunState: () => Promise.resolve(),
       log: { log: () => undefined },
     }

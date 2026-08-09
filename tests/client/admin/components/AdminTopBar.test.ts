@@ -19,6 +19,7 @@ describe('AdminTopBar.svelte', () => {
     adminGlobals.data = null
     adminGlobals.fetchedAt = null
     adminGlobals.loading = false
+    adminGlobals.error = null
     document.body.innerHTML = '<div id="root"></div>'
     target = document.body.querySelector<HTMLElement>('#root')!
     setMockFetch(() =>
@@ -28,6 +29,7 @@ describe('AdminTopBar.svelte', () => {
 
   afterEach(() => {
     adminGlobals.window = '30d'
+    adminGlobals.error = null
     restoreFetch()
   })
 
@@ -63,5 +65,57 @@ describe('AdminTopBar.svelte', () => {
     expect(labels).toContain('1d')
     expect(labels).not.toContain('24h')
     void unmount(component)
+  })
+
+  test('the status pill reports fetch health rather than a hardcoded claim', async () => {
+    const url = new URL('../../../../client/admin/components/AdminTopBar.svelte', import.meta.url)
+    const svelte = await Bun.file(url).text()
+    expect(svelte).not.toContain('configured')
+    expect(svelte).toContain("{ tone: 'neutral' as const, text: 'loading' }")
+    expect(svelte).toContain("{ tone: 'warn' as const, text: 'stale' }")
+    expect(svelte).toContain("{ tone: 'accent' as const, text: 'live' }")
+  })
+
+  test('status pill reads "loading" while a refresh is in flight', () => {
+    adminGlobals.loading = true
+    const component = mount(AdminTopBar, { target, props: {} })
+    expect(target.textContent).toContain('loading')
+    void unmount(component)
+  })
+
+  test('status pill reads "loading" (not "stale") when a refresh is retried after a failure', () => {
+    adminGlobals.loading = true
+    adminGlobals.error = 'request failed with status 500'
+    const component = mount(AdminTopBar, { target, props: {} })
+    expect(target.textContent).toContain('loading')
+    expect(target.textContent).not.toContain('stale')
+    void unmount(component)
+  })
+
+  test('status pill reads "stale" after a failed refresh', () => {
+    adminGlobals.error = 'request failed with status 500'
+    const component = mount(AdminTopBar, { target, props: {} })
+    expect(target.textContent).toContain('stale')
+    void unmount(component)
+  })
+
+  test('status pill reads "live" once data is fresh', () => {
+    adminGlobals.loading = false
+    adminGlobals.error = null
+    const component = mount(AdminTopBar, { target, props: {} })
+    expect(target.textContent).toContain('live')
+    void unmount(component)
+  })
+
+  test('the refreshed label reads a ticking state, not Date.now() inside the derivation', async () => {
+    const url = new URL('../../../../client/admin/components/AdminTopBar.svelte', import.meta.url)
+    const svelte = await Bun.file(url).text()
+    const m = svelte.match(/const refreshedLabel = \$derived\.by\(\(\) => \{[\s\S]*?\n  \}\)/u)
+    expect(m).not.toBeNull()
+    const [derivation] = m!
+    expect(derivation).not.toContain('Date.now()')
+    expect(derivation).toContain('now - adminState.lastRefreshedAt')
+    expect(svelte).toContain('let now = $state(Date.now())')
+    expect(svelte).toContain('clearInterval(handle)')
   })
 })

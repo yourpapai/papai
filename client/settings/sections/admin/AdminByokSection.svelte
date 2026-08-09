@@ -71,7 +71,7 @@
 </script>
 
 <section id="byok-admin" class="settings-section">
-  <PageHeader eyebrow="Admin · System" title="BYOK LLM">
+  <PageHeader eyebrow="Admin · System" title="BYOK keys">
     {#snippet action()}
       <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load()} testid="admin-byok-refresh" />
     {/snippet}

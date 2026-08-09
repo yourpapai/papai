@@ -15,10 +15,10 @@ const reportWith = (killed: number, survived: number, noCoverage = 0, timeout = 
   files: {
     'src/foo.ts': {
       mutants: [
-        ...Array.from({ length: killed }, () => ({ status: 'Killed' })),
-        ...Array.from({ length: survived }, () => ({ status: 'Survived' })),
-        ...Array.from({ length: noCoverage }, () => ({ status: 'NoCoverage' })),
-        ...Array.from({ length: timeout }, () => ({ status: 'Timeout' })),
+        ...Array.from({ length: killed }, (_, i) => ({ id: `k${i}`, status: 'Killed' })),
+        ...Array.from({ length: survived }, (_, i) => ({ id: `s${i}`, status: 'Survived' })),
+        ...Array.from({ length: noCoverage }, (_, i) => ({ id: `n${i}`, status: 'NoCoverage' })),
+        ...Array.from({ length: timeout }, (_, i) => ({ id: `t${i}`, status: 'Timeout' })),
       ],
     },
   },
@@ -36,16 +36,27 @@ describe('score-reader', () => {
     )
   })
 
-  test('measureMutationScore reads the report after exec and returns (killed+timeout)/scored', async () => {
+  test('measureMutationScore reads the report after exec and returns (killed+timeout)/scored plus surviving ids', async () => {
     // 8 killed / (8+2) scored = 0.8
     const exec = mock(successfulExec)
-    const score = await measureMutationScore(
+    const measured = await measureMutationScore(
       { exec, readReport: () => reportWith(8, 2) },
       'reports/paired',
       'src/foo.ts',
     )
     expect(exec).toHaveBeenCalledTimes(1)
-    expect(score).toBeCloseTo(0.8, 5)
+    expect(measured.score).toBeCloseTo(0.8, 5)
+    expect(measured.survivingMutantIds).toEqual(['s0', 's1'])
+  })
+
+  test('measureMutationScore includes NoCoverage ids among the surviving ids', async () => {
+    const measured = await measureMutationScore(
+      { exec: successfulExec, readReport: () => reportWith(7, 1, 2) },
+      'reports/paired',
+      'src/foo.ts',
+    )
+    expect(measured.score).toBeCloseTo(0.7, 5)
+    expect(measured.survivingMutantIds).toEqual(['s0', 'n0', 'n1'])
   })
 
   test('measureMutationScore retries exec once when the report read throws ReportReadError, then succeeds', async () => {
@@ -53,9 +64,10 @@ describe('score-reader', () => {
     const readReport = mock((): StrykerReport => reportWith(10, 0)).mockImplementationOnce((): StrykerReport => {
       throw new ReportReadError('shape')
     })
-    const score = await measureMutationScore({ exec, readReport }, 'reports/paired', 'src/foo.ts')
+    const measured = await measureMutationScore({ exec, readReport }, 'reports/paired', 'src/foo.ts')
     expect(exec).toHaveBeenCalledTimes(2)
-    expect(score).toBe(1)
+    expect(measured.score).toBe(1)
+    expect(measured.survivingMutantIds).toEqual([])
   })
 
   test('measureMutationScore throws when exec exits non-zero, even if a stale report exists', async () => {
@@ -91,9 +103,9 @@ describe('score-reader', () => {
     const readReport = mock((): StrykerReport => reportWith(6, 0)).mockImplementationOnce((): StrykerReport => {
       throw enoent
     })
-    const score = await measureMutationScore({ exec, readReport }, 'reports/paired', 'src/foo.ts')
+    const measured = await measureMutationScore({ exec, readReport }, 'reports/paired', 'src/foo.ts')
     expect(exec).toHaveBeenCalledTimes(2)
-    expect(score).toBe(1)
+    expect(measured.score).toBe(1)
   })
 
   test('measureMutationScore does NOT retry on a plain (non-typed, non-ENOENT) error and propagates it', async () => {

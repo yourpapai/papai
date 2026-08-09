@@ -9,6 +9,7 @@ import path from 'node:path'
 
 import { z } from 'zod'
 
+import { PersistedStatsSchema, type RunStats } from '../../review-loop/src/run-stats.js'
 import type { MutationImproveConfig } from './config.js'
 
 const MergedEntrySchema = z.object({
@@ -18,6 +19,9 @@ const MergedEntrySchema = z.object({
   iter: z.number().int(),
   specPath: z.string().optional(),
   planPath: z.string().optional(),
+  // true when the iteration merged below threshold at its declared residual
+  // ceiling (outcome 'capped'); absent/false on fully-threshold-passing merges.
+  capped: z.boolean().optional(),
 })
 
 const FailedEntrySchema = z.object({
@@ -38,6 +42,7 @@ export const PersistedRunStateSchema = z.object({
   merged: z.array(MergedEntrySchema),
   failed: z.array(FailedEntrySchema),
   status: z.enum(['running', 'completed', 'aborted']),
+  stats: PersistedStatsSchema.optional(),
 })
 
 export type PersistedRunState = z.infer<typeof PersistedRunStateSchema>
@@ -89,4 +94,8 @@ export async function loadRunState(workDir: string, runId: string): Promise<Muta
 export async function saveRunState(state: MutationImproveRunState): Promise<void> {
   const persisted = PersistedRunStateSchema.parse(state)
   await writeFile(state.statePath, JSON.stringify(persisted, null, 2))
+}
+
+export function persistStats(state: MutationImproveRunState, stats: RunStats): void {
+  state.stats = stats.persist()
 }

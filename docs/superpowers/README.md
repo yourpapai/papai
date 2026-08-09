@@ -36,3 +36,12 @@ Summary:
 The e2e planning workflow and test-plan template moved out of this tree to
 `docs/operations/` (they are living operational docs, not legacy planning
 artifacts).
+
+## Late arrivals from origin/master
+
+`origin/master` has not adopted the OpenSpec migration and kept adding live
+plans + specs here after the freeze. Each merge of master drains those
+arrivals to `docs/archive/` as paired plan+spec pairs per Lane 0 rather than
+letting them accumulate under a frozen tree; the first such batch (74 files:
+mutation-coverage, UX findings, agent-check-loop) is covered by ADR-0382.
+This repeats on future merges until master itself migrates.

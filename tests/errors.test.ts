@@ -5,7 +5,15 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { providerError, systemError, isAppError, getUserMessage, webFetchError } from '../src/errors.js'
+import {
+  extractAppError,
+  providerError,
+  systemError,
+  isAppError,
+  getUserMessage,
+  webFetchError,
+} from '../src/errors.js'
+import { ProviderClassifiedError } from '../src/providers/errors.js'
 import { llmError, validationError } from './utils/test-errors.js'
 
 describe('providerError basic constructors', () => {
@@ -271,5 +279,76 @@ describe('getUserMessage for missing provider error codes', () => {
 
   test('returns correct message for invalidResponse', () => {
     expect(getUserMessage(providerError.invalidResponse())).toContain('unexpected response')
+  })
+})
+
+describe('extractAppError defensive extraction', () => {
+  test('returns null for null input', () => {
+    expect(extractAppError(null)).toBe(null)
+  })
+
+  test('returns null for {appError: non-AppError}', () => {
+    expect(extractAppError({ appError: 'not-an-error' })).toBe(null)
+  })
+
+  test('returns the inner AppError from {error: AppError}', () => {
+    const inner = providerError.authFailed()
+    expect(extractAppError({ error: inner })).toBe(inner)
+  })
+
+  test('returns null for {error: non-AppError}', () => {
+    expect(extractAppError({ error: 'not-an-error' })).toBe(null)
+  })
+
+  test('returns the inner ProviderError from a ProviderClassifiedError', () => {
+    const inner = providerError.authFailed()
+    expect(extractAppError(new ProviderClassifiedError('classified', inner))).toBe(inner)
+  })
+})
+
+describe('webFetchError.upstreamError without status', () => {
+  test('omits the status key entirely', () => {
+    expect(Object.hasOwn(webFetchError.upstreamError(), 'status')).toBe(false)
+  })
+})
+
+describe('getUserMessage exact-string regressions', () => {
+  test('validation invalid-input returns the full templated message', () => {
+    expect(getUserMessage(validationError.invalidInput('email', 'bad format'))).toBe('Invalid email: bad format')
+  })
+
+  test('llm default branch returns the AI-service fallback', () => {
+    const error = llmError.timeout()
+    const widen: { code: string } = error
+    widen.code = '__unknown'
+    expect(getUserMessage(error)).toBe('An AI service error occurred. Please try again later.')
+  })
+
+  test('validation default branch returns the invalid-input fallback', () => {
+    const error = validationError.missingRequired('x')
+    const widen: { code: string } = error
+    widen.code = '__unknown'
+    expect(getUserMessage(error)).toBe('Invalid input provided.')
+  })
+
+  test('system default branch returns the unexpected-error fallback', () => {
+    const error = systemError.unexpected(new Error('boom'))
+    const widen: { code: string } = error
+    widen.code = '__unknown'
+    expect(getUserMessage(error)).toBe('An unexpected error occurred. Please try again later.')
+  })
+
+  test('web-fetch default branch returns the fetch-failure fallback', () => {
+    const error = webFetchError.timeout()
+    const widen: { code: string } = error
+    widen.code = '__unknown'
+    expect(getUserMessage(error)).toBe("I couldn't fetch that page.")
+  })
+
+  test('top-level default branch returns the unexpected-error fallback', () => {
+    const error = systemError.unexpected(new Error('boom'))
+    const widen: { type: string } = error
+    widen.type = '__unknown'
+    expect(getUserMessage(error)).toBe('An unexpected error occurred. Please try again later.')
   })
 })

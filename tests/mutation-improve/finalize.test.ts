@@ -29,9 +29,10 @@ const config = (repoRoot: string): MutationImproveConfig => ({
   epsilon: 0.02,
   mutateTimeoutMs: 1,
   buildTimeoutMs: 1,
+  buildFixAttempts: 0,
   checkCommand: 'x',
   mutateFileCommand: 'x',
-  agent: { model: 'm', extraArgs: [], timeoutMs: 1 },
+  agent: { model: 'm', extraArgs: [], timeoutMs: 1, inactivityTimeoutMs: 600_000 },
   prBranchPrefix: 'mutation-improve',
 })
 
