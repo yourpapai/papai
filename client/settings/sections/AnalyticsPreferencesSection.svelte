@@ -229,6 +229,7 @@
         variant="outline"
         size="sm"
         disabled={busy || !data.subjectRightsAvailable}
+        busy={busy}
         testid="analytics-export"
         onClick={() => void exportData()}>
         {#snippet children()}Export analytics data{/snippet}
@@ -237,6 +238,7 @@
         variant="outline"
         size="sm"
         disabled={busy || !data.subjectRightsAvailable}
+        busy={busy}
         testid="analytics-withdraw"
         onClick={() => (confirming = 'withdraw')}>
         {#snippet children()}Withdraw consent{/snippet}
@@ -245,6 +247,7 @@
         variant="danger"
         size="sm"
         disabled={busy || !data.subjectRightsAvailable}
+        busy={busy}
         testid="analytics-delete"
         onClick={() => (confirming = 'delete')}>
         {#snippet children()}Delete analytics data{/snippet}

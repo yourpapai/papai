@@ -269,15 +269,19 @@ describe('AnalyticsPreferencesSection', () => {
     void unmount(component)
   })
 
-  test('buttons disable while an action is pending', async () => {
+  test('buttons disable and go busy while an action is pending', async () => {
     setCsrfToken('csrf-an')
     setMockFetch(routePutPending)
     const { target, component } = render()
     await drain()
     target.querySelector<HTMLButtonElement>('[data-testid="analytics-local-allow"]')!.click()
     flushSync()
-    const exportBtn = target.querySelector<HTMLButtonElement>('[data-testid="analytics-export"]')!
-    expect(exportBtn.disabled).toBe(true)
+    for (const id of ['analytics-export', 'analytics-withdraw', 'analytics-delete']) {
+      const btn = target.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`)!
+      expect(btn.disabled, id).toBe(true)
+      expect(btn.getAttribute('aria-busy'), id).toBe('true')
+      expect(btn.classList.contains('ui-btn--busy'), id).toBe(true)
+    }
     void unmount(component)
   })
 
@@ -342,6 +346,23 @@ describe('AnalyticsPreferencesSection', () => {
     const describedBy = field.querySelector('[role="radiogroup"]')!.getAttribute('aria-describedby')
     expect(describedBy).not.toBeNull()
     expect(field.querySelector(`#${describedBy}`)!.textContent).toContain('No choice recorded')
+    void unmount(component)
+  })
+
+  test('a failed lane save describes the radiogroup by its own error line', async () => {
+    setCsrfToken('csrf-an')
+    setMockFetch(routePutFailure)
+    const { target, component } = render()
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="analytics-local-deny"]')!.click()
+    await drain()
+    const field = target.querySelector('[data-testid="analytics-field-local"]')!
+    const describedBy = field.querySelector('[role="radiogroup"]')!.getAttribute('aria-describedby')
+    expect(describedBy).not.toBeNull()
+    const errorEl = field.querySelector('.settings-field__error')!
+    expect(errorEl.getAttribute('id')).toBe(describedBy)
+    expect(field.querySelector(`#${describedBy}`)).toBe(errorEl)
+    expect(field.querySelector(`#${describedBy}`)!.textContent).toContain('The setting was not changed.')
     void unmount(component)
   })
 
