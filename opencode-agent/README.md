@@ -566,6 +566,16 @@ token ceiling is checked, whether there is time to start another one.
 the `git add`, the commit, the push, the comment, the state block and the label a
 stop still has to do, against an observed tail of about ten seconds.
 
+With the shrink in place the per-turn cap is free to be generous, and it now is:
+`AGENT_TIMEOUT_MS` defaults to an **hour** rather than the half-hour above. The
+30-minute default outlived the defect that made it dangerous and became the
+opposite problem — with the job ceiling at 90 it was the _only_ bound long runs
+ever reached, and three consecutive live runs ended at the same 33 minutes of
+wall clock, each one a single turn aborted at its cap, wrapped up and parked with
+an hour of paid-for runner unspent. Raising it cannot recreate D3, because the
+`min` above is what stands between a turn and the runner: a turn opened late gets
+what is left of the job minus the two slices, whatever this is set to.
+
 **A wall-clock stop is a ceiling reached, not work that broke**, and the pipeline
 says so in the vocabulary it already had: ⛔ rather than ❌, and a park in
 `INCOMPLETE` rather than in `FAILED`. That is a phase of its own, not a flag,
@@ -1043,6 +1053,36 @@ holds.
 Token and cost totals ride along, per step and in every heartbeat, and the token
 half is now a ceiling as well as a reading — see **What bounds a run** above.
 
+### The post-mortem, for a job whose server died
+
+The rule above has a cost, and it was paid on issue #239: when a run failed three
+times with `The socket connection was closed unexpectedly`, nothing in the log
+could say why. That message is Bun's wording for a `fetch` whose peer went away
+and names neither end of it, so it reads as a model-provider problem — while the
+peer that had actually gone was the `opencode serve` this job spawned on
+loopback. The pipeline now says so itself: a turn that fails asks the server
+whether it is still there, and reports **the local OpenCode server stopped
+answering** rather than quoting the transport.
+
+_Why_ it died is not visible from inside the process that lost it, so a
+`if: failure()` step asks the runner before it disappears:
+
+```
+--- processes still alive (names only, no command lines) ---
+--- how many of them are opencode ---
+--- kernel out-of-memory kills ---
+--- peak memory for this job cgroup ---
+```
+
+Two live `opencode` processes means something started a second one; a line from
+the OOM killer means the runner ran out of memory. **Names and counts only**, by
+the same rule as the rest of this section — `ps` is asked for `comm` and never
+`args`, because a tool child's argument vector is model-authored content and this
+log is public. When you need the commands themselves, reproduce locally: see
+**Local runs** below, and `bun run opencode-agent:test:survival`, which drives
+candidate commands at a throwaway server and reports which of them it does not
+survive.
+
 ## Guardrails
 
 Policy lives in `src/guardrails.ts`. What an event _is_ lives in
@@ -1267,7 +1307,7 @@ cannot drift.
 | `AGENT_MAX_ATTEMPTS`                       | no       | `3`                                             | Failures before `/retry` stops resuming               |
 | `AGENT_MAX_CHANGED_FILES`                  | no       | `100`                                           | Files one commit may carry                            |
 | `AGENT_MAX_CHANGED_LINES`                  | no       | `20000`                                         | Lines one commit may change                           |
-| `AGENT_TIMEOUT_MS`                         | no       | `1800000`                                       | Timeout for one model turn, and for each subprocess   |
+| `AGENT_TIMEOUT_MS`                         | no       | `3600000`                                       | Timeout for one model turn, and for each subprocess   |
 | `AGENT_JOB_STARTED_MS`                     | no       | unset — no job deadline                         | Epoch ms this job began; the workflow's first step    |
 | `AGENT_JOB_TIMEOUT_MINUTES`                | no       | unset — no job deadline                         | The job's own ceiling, shared with `timeout-minutes:` |
 | `AGENT_TEARDOWN_RESERVE_MS`                | no       | `180000`                                        | Held back from the job so a time stop can report      |

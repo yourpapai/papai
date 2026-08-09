@@ -4,16 +4,17 @@
 // See LICENSE in the project root for details.
 
 import { withDeadline } from './deadline.js'
-import { openCodeError, turnDeadlineError } from './errors.js'
+import { openCodeError } from './errors.js'
 import type { Logger } from './logger.js'
 import { modelRef } from './openai-config.js'
 import type { OpenAiSettings } from './openai-config.js'
 import { connectSdk } from './opencode-connect.js'
-import { withHeartbeat } from './progress.js'
-import type { ProgressSnapshot, ProgressTracker, TranscriptSink } from './progress.js'
-import { startReporting } from './session-reporting.js'
+import { createProgressTracker, followEvents } from './progress.js'
+import type { EventFollower, ProgressTracker, TranscriptSink } from './progress.js'
 import { buildBody, decodeAbort, decodeReply, parseModelRef } from './sdk-contract.js'
-import type { SdkPromptBody, SessionUsage } from './sdk-contract.js'
+import type { SessionUsage } from './sdk-contract.js'
+import { runTurn } from './turn-run.js'
+import type { TurnBounds, TurnConnection } from './turn-run.js'
 
 export type { ModelRef, SdkPromptBody } from './sdk-contract.js'
 export { parseModelRef } from './sdk-contract.js'
@@ -62,10 +63,15 @@ export interface OpenCodeAgent {
   close(): Promise<void>
 }
 
-/** Minimal slice of the SDK surface the adapter drives. */
-export interface OpenCodeConnection {
+/**
+ * Minimal slice of the SDK surface the adapter drives.
+ *
+ * The two calls a *turn* makes — `sendPrompt` and `alive` — are inherited rather
+ * than restated: they are the contract `turn-run.ts` needs, and a second
+ * declaration here is a second thing to keep in step.
+ */
+export interface OpenCodeConnection extends TurnConnection {
   createSession(title: string): Promise<string>
-  sendPrompt(sessionId: string, body: SdkPromptBody): Promise<unknown>
   /**
    * The server's event stream, used only to report progress.
    *
@@ -89,45 +95,11 @@ export interface OpenCodeConnection {
   close(): Promise<void>
 }
 
-export interface OpenCodeAgentOptions {
+export interface OpenCodeAgentOptions extends TurnBounds {
   directory: string
   /** The single OpenAI-compatible endpoint this pipeline talks to. */
   openai: OpenAiSettings
   sessionTitle: string
-  /**
-   * Upper bound on one model turn, from `AGENT_TIMEOUT_MS` shrunk to fit the job.
-   * Omitted means unbounded, which only a caller with nothing to bound should want —
-   * config range-checks that variable to at least a second.
-   *
-   * Every subprocess this pipeline drives already had one — the check runner and
-   * the review loop both pass it to `runCommand` — and the in-process session,
-   * the one turn that can run for twenty minutes, was the only path without.
-   *
-   * A **function** is the form that matters, and a number is kept only for callers
-   * with a fixed bound. The session is memoized for the whole job and the bound is
-   * derived from the job's remaining clock, so a number is read once — when the
-   * server first boots — and every later turn in that job carries a bound sized for a
-   * clock that has since moved. That was survivable while a job ran one turn per
-   * phase; with one turn per plan step it is the silence this bound exists to
-   * prevent, because a step starting six minutes before the runner's own
-   * `timeout-minutes` would be handed the thirty-minute cap and killed with the job.
-   * Resolved per turn in {@link bounded}, so the bound tracks the resource it protects.
-   */
-  timeoutMs?: number | (() => number)
-  /** Where progress goes. The adapter is the only thing that can see it. */
-  log: Logger
-  /** Heartbeat period while a turn is outstanding. `0` disables it. */
-  heartbeatMs?: number
-  /**
-   * Where each heartbeat goes besides the log.
-   *
-   * The adapter is the only layer that can see a turn in flight, and the live
-   * status comment on the issue is the only surface a maintainer has a link to
-   * — so the snapshot has to be handed out from here or the two never meet.
-   * Optional because most runs have nowhere to send it: a local `--event-path`
-   * run has no status comment at all.
-   */
-  onTick?: (snapshot: ProgressSnapshot) => void
   /**
    * The encrypted debug transcript, when the run has one.
    *
@@ -139,15 +111,6 @@ export interface OpenCodeAgentOptions {
   /** Injection seam for tests. Defaults to the real SDK server + client. */
   connect?: () => Promise<OpenCodeConnection>
 }
-
-/**
- * How often a turn says it is still alive.
- *
- * A minute is short enough that a stalled job is obvious within one screen of
- * log, and long enough that a twenty-minute implement phase adds twenty lines
- * rather than swamping the tool calls that carry the real information.
- */
-const DEFAULT_HEARTBEAT_MS = 60_000
 
 /**
  * Boots a headless OpenCode server in-process and opens one session against the
@@ -172,7 +135,7 @@ export const createOpenCodeAgent = async (options: OpenCodeAgentOptions): Promis
   return {
     sessionId,
     prompt: async (request) => {
-      const reply = await bounded(connection.sendPrompt(sessionId, buildBody(model, request)), options, tracker)
+      const reply = await runTurn(connection, sessionId, buildBody(model, request), options, tracker)
       return { text: decodeReply(reply), sessionId }
     },
     tokensUsed: async (): Promise<number> => {
@@ -220,33 +183,52 @@ const abortSession = async (connection: OpenCodeConnection, sessionId: string, l
   }
 }
 
-/** This turn's bound: asked afresh when the caller supplied a way to ask. */
-const turnBound = (options: OpenCodeAgentOptions): number => {
-  const bound = options.timeoutMs ?? 0
-  return typeof bound === 'function' ? bound() : bound
-}
+/** How long teardown waits for reporting to wind down before giving up on it. */
+const SHUTDOWN_GRACE_MS = 5_000
 
 /**
- * Wraps one turn in both of its bounds.
+ * Starts draining the event stream into a tracker, and hands back the off switch.
  *
- * Heartbeat outside the deadline, never inside it: a deadline that fires leaves
- * the underlying call pending, so an inner heartbeat's cleanup would never run
- * and its interval would hold the process open past the end of the job.
+ * Detached on purpose: the stream runs for the life of the server, so awaiting
+ * it inline would never return. Nothing it does can reject, and a failed
+ * subscription costs the run its progress log and nothing else — this is
+ * reporting, and reporting must not be able to fail the work it reports on.
+ *
+ * `shutdown` stops the drain and then waits for it, so a `close()` that races a
+ * still-arriving event does not cut it off mid-observation. Bounded, because
+ * the one thing worse than losing a progress line is teardown hanging on the
+ * reporting it is trying to shut down.
  */
-const bounded = (work: Promise<unknown>, options: OpenCodeAgentOptions, tracker: ProgressTracker): Promise<unknown> =>
-  withHeartbeat(
-    // The snapshot is read *at the rejection*, not when the bound was armed: what
-    // the phase needs to report is what the turn had managed by the time it was
-    // stopped, and this is the last frame that can still see the tracker.
-    //
-    // The bound itself is read here, per turn, for the reason `timeoutMs` may be a
-    // function: a job now runs a turn per plan step, and a bound derived from the
-    // job's remaining clock has to be asked again each time or it stops tracking it.
-    withDeadline(work, turnBound(options), (elapsed) => turnDeadlineError(elapsed, tracker.snapshot())),
-    {
-      everyMs: options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS,
-      log: options.log,
-      snapshot: tracker.snapshot,
-      onTick: options.onTick,
+const startReporting = (
+  connection: OpenCodeConnection,
+  sessionId: string,
+  log: Logger,
+  transcript?: TranscriptSink,
+): { tracker: ProgressTracker; shutdown: () => Promise<void> } => {
+  const tracker = createProgressTracker(sessionId, log, { transcript })
+  let follower: EventFollower | null = null
+  let stopped = false
+
+  const finished = connection
+    .events()
+    .then(async (stream) => {
+      follower = followEvents(stream, tracker)
+      // `shutdown()` can win the race against a slow subscription.
+      if (stopped) follower.stop()
+      await follower.done
+    })
+    .catch((error: unknown) => {
+      log.warn({ error: errorMessage(error) }, 'No progress events; the run is unaffected')
+    })
+
+  return {
+    tracker,
+    shutdown: async (): Promise<void> => {
+      stopped = true
+      follower?.stop()
+      await withDeadline(finished, SHUTDOWN_GRACE_MS, () => new Error('unused')).catch(() => {
+        log.debug({}, 'Progress reporting did not wind down in time; continuing teardown')
+      })
     },
-  )
+  }
+}
