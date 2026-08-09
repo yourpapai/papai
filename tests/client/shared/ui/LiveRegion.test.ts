@@ -80,3 +80,47 @@ test('the same DOM element survives a tone change instead of being recreated', (
 
   void unmount(component)
 })
+
+test('an id prop lands on the region element so aria-describedby can point at it', () => {
+  const { target, component } = render({ message: null, tone: 'alert', id: 'field-err-1', testid: 'x-error' })
+  const el = target.querySelector('[data-testid="x-error"]')!
+  expect(el.getAttribute('id')).toBe('field-err-1')
+  void unmount(component)
+})
+
+test('no id attribute is emitted when the id prop is omitted', () => {
+  const { target, component } = render({ message: null, tone: 'alert', testid: 'x-error' })
+  expect(target.querySelector('[data-testid="x-error"]')!.hasAttribute('id')).toBe(false)
+  void unmount(component)
+})
+
+// The tone classes carry colour AND margin from settings.css. A caller class that only
+// wanted to restyle the text would silently lose to, or fight with, those rules -- so the
+// class replaces the tone default rather than joining it. `tone` still owns role/aria-live.
+test('a class prop replaces the tone class instead of joining it', () => {
+  const { target, component } = render({
+    message: 'boom',
+    tone: 'alert',
+    class: 'ui-field__error',
+    testid: 'x-error',
+  })
+  const el = target.querySelector('[data-testid="x-error"]')!
+  expect(el.classList.contains('ui-field__error')).toBe(true)
+  expect(el.classList.contains('status-error')).toBe(false)
+  expect(el.classList.contains('live-region')).toBe(true)
+  expect(el.getAttribute('role')).toBe('alert')
+  void unmount(component)
+})
+
+test('the tone class is still applied when no class prop is given', () => {
+  const { target, component } = render({ message: 'boom', tone: 'alert', testid: 'x-error' })
+  const el = target.querySelector('[data-testid="x-error"]')!
+  expect(el.classList.contains('status-error')).toBe(true)
+  void unmount(component)
+})
+
+test('an empty class string falls back to the tone class', () => {
+  const { target, component } = render({ message: 'boom', tone: 'alert', class: '', testid: 'x-error' })
+  expect(target.querySelector('[data-testid="x-error"]')!.classList.contains('status-error')).toBe(true)
+  void unmount(component)
+})

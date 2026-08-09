@@ -7,10 +7,20 @@
   interface Props {
     message: string | null
     tone: 'status' | 'alert'
+    // Set when a caller needs aria-describedby to point at this region.
+    id?: string
+    // Replaces the tone's default class rather than joining it: `status-error` and
+    // `status-success` (settings.css) carry colour AND margin, so a caller class meant
+    // only to restyle the text would end up contesting both with no clear winner.
+    // `tone` keeps owning role and aria-live, which is the accessibility contract.
+    class?: string
     testid?: string
   }
 
-  let { message, tone, testid }: Props = $props()
+  let { message, tone, id, class: className, testid }: Props = $props()
+
+  const toneClass = $derived(tone === 'alert' ? 'status-error' : 'status-success')
+  const visualClass = $derived(className === undefined || className === '' ? toneClass : className)
 </script>
 
 <!-- Always mounted, text swapped in place. A live region created in the same tick as its
@@ -22,7 +32,8 @@
      survives the tone change instead. Empty it collapses to zero height rather than
      unmounting, which keeps it in the accessibility tree. -->
 <p
-  class="live-region {tone === 'alert' ? 'status-error' : 'status-success'}"
+  class="live-region {visualClass}"
+  {id}
   role={tone === 'alert' ? 'alert' : 'status'}
   aria-live={tone === 'alert' ? 'assertive' : 'polite'}
   data-testid={testid}
