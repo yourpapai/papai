@@ -12,7 +12,7 @@ not gate docs (design.md D5).
 
 ## 1. Retire the dead extension
 
-- [ ] 1.1 Delete `docs/superpowers/extensions/compact-tools.ts` (pi runtime
+- [x] 1.1 Delete `docs/superpowers/extensions/compact-tools.ts` (pi runtime
       removed in `ec6cd43df`; nothing loads it).
       Verify: `grep -rn "compact-tools" --include="*.ts" --include="*.json" src/ plugins/ .opencode/ tests/` returns nothing
 
