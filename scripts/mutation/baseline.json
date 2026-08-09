@@ -113,7 +113,7 @@
   "plugins/task-provider-youtrack/entry-runtime.ts": 0,
   "plugins/task-provider-youtrack/field-engine.ts": 0.9688715953307393,
   "plugins/task-provider-youtrack/field-name-error.ts": 0.8,
-  "plugins/task-provider-youtrack/helpers.ts": 0.7391304347826086,
+  "plugins/task-provider-youtrack/helpers.ts": 0.9782608695652174,
   "plugins/task-provider-youtrack/identity-resolver.ts": 0.5384615384615384,
   "plugins/task-provider-youtrack/issue-derived-fields.ts": 0.3076923076923077,
   "plugins/task-provider-youtrack/labels.ts": 0.5590551181102362,
