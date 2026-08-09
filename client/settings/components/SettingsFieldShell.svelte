@@ -63,8 +63,9 @@
          context published here isn't visible in the parent's snippet scope. Pass the
          error id explicitly instead, and only when the error `<p>` below actually
          renders — otherwise the control would get an aria-describedby pointing at
-         nothing. -->
-    {@render head?.(error ? errorId : undefined)}
+         nothing. When no error is showing, hand down the hint id instead, so a head
+         control is described by the field's own status line rather than by nothing. -->
+    {@render head?.(error ? errorId : hint ? hintId : undefined)}
   </div>
   {#if editor && editorOpen}
     <div class="settings-field__editor">{@render editor(labelId)}</div>

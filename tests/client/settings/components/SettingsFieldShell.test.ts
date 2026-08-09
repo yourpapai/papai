@@ -174,4 +174,45 @@ describe('SettingsFieldShell', () => {
     expect(target.querySelector('.settings-field__req')!.getAttribute('aria-hidden')).toBe('true')
     void unmount(c)
   })
+
+  const probeHead = createRawSnippet<[string | undefined]>((describedBy) => ({
+    render: (): string => `<span data-testid="probe" data-got="${describedBy() ?? 'none'}"></span>`,
+  }))
+
+  test('the head snippet receives the hint id when there is no error', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(SettingsFieldShell, {
+      target,
+      props: { label: 'Lane', hint: 'Allowed since 2027-01-15 08:00', head: probeHead },
+    })
+    flushSync()
+    const hintId = target.querySelector('.settings-field__hint')!.id
+    expect(hintId).not.toBe('')
+    expect(target.querySelector('[data-testid="probe"]')!.getAttribute('data-got')).toBe(hintId)
+    void unmount(c)
+  })
+
+  test('the head snippet still receives the error id when there is an error', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(SettingsFieldShell, {
+      target,
+      props: { label: 'Lane', hint: 'Allowed.', error: 'Nope.', head: probeHead },
+    })
+    flushSync()
+    const errorId = target.querySelector('.settings-field__error')!.id
+    expect(errorId).not.toBe('')
+    expect(target.querySelector('[data-testid="probe"]')!.getAttribute('data-got')).toBe(errorId)
+    void unmount(c)
+  })
+
+  test('the head snippet receives nothing when there is neither error nor hint', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(SettingsFieldShell, { target, props: { label: 'Lane', head: probeHead } })
+    flushSync()
+    expect(target.querySelector('[data-testid="probe"]')!.getAttribute('data-got')).toBe('none')
+    void unmount(c)
+  })
 })
