@@ -9,6 +9,7 @@ Agent subprocess guards live in `src/spawn.ts` + `src/agent-runner.ts`: besides 
 ## Storage / Artifacts
 
 - The default `workDir` is `.review-loop/` relative to `repoRoot` (see `config.example.json`). The directory is created on demand via `mkdir`.
+- `createWorktree` runs `bun install` in the fresh worktree (skipped when no `package.json`): worktrees live under the main checkout so most deps resolve by walking up to its root `node_modules`, but non-hoisted workspace deps (e.g. opencode-agent's `@octokit/rest`) do not, and the build gate fails on TS2307/import errors without the install.
 - Per-run state lives at `<workDir>/runs/<runId>/state.json` (see `src/run-state.ts`).
 - Progress logs and transcripts land alongside the run state (see `src/progress-log.ts`).
 - `config.example.json` at the workspace root documents the expected config shape; real configs are loaded from the path passed via `--config` (defaults to `.review-loop/config.json`). The optional top-level `pricing` map (USD per 1M tokens, glob-matched against the agent model) enables estimated-cost display.
