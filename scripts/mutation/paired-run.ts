@@ -199,13 +199,21 @@ const resolveDeps = (deps: PairedRunDeps | undefined): PairedRunDeps => {
   return deps
 }
 
-const defaultBuildMapFor = (projectRoot: string): ((sourceFiles: readonly string[]) => CoverageMap) => {
+/**
+ * `log` is handed to the coverage map as its notice sink so an uncovered source
+ * is reported through this run's own reporter, alongside the per-file lines,
+ * rather than straight to `console.error` from two layers down.
+ */
+const defaultBuildMapFor = (
+  projectRoot: string,
+  log: (message: string) => void,
+): ((sourceFiles: readonly string[]) => CoverageMap) => {
   return (sourceFiles) => {
     try {
       return buildCoverageMap({
         sourceFiles,
         projectRoot,
-        deps: createDefaultCoverageMapDeps(projectRoot),
+        deps: { ...createDefaultCoverageMapDeps(projectRoot), warn: log },
       })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -222,7 +230,7 @@ export const pairedRun = (input: PairedRunInput): Promise<PairedRunResult> => {
   const base = deps.readBaseConfig(input.projectRoot)
   const overrides = deps.loadOverrides(input.projectRoot)
   fs.mkdirSync(input.reportDir, { recursive: true })
-  const buildMap = deps.buildMap ?? defaultBuildMapFor(input.projectRoot)
+  const buildMap = deps.buildMap ?? defaultBuildMapFor(input.projectRoot, deps.log)
   const coverageMap = buildMap(sourceFiles)
 
   const completed: CompletedFileRun[] = []

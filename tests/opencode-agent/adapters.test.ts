@@ -51,6 +51,7 @@ import { redactSecrets, scrubSecrets } from '../../opencode-agent/src/secrets.js
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
 import { STATUS_MARKER } from '../../opencode-agent/src/status-comment.js'
 import { errorMessage, PHASES } from '../../opencode-agent/src/types.js'
+import { silentOctokitLog } from './test-helpers.js'
 
 describe('collectText', () => {
   test('joins text parts and drops everything else', () => {
@@ -1863,6 +1864,7 @@ const recordingApi = (
       captured.push({ url, method: init?.method ?? 'GET', body: parseBody(init?.body) })
       return Promise.resolve(jsonResponse(payload))
     },
+    log: silentOctokitLog(),
   })
 
 describe('createOctokitApi', () => {
@@ -2027,6 +2029,9 @@ describe('createOctokitApi', () => {
       repo: 'widgets',
       secrets: [],
       fetch: () => Promise.resolve(new Response('{"message":"Validation Failed"}', { status: 422 })),
+      // The refusal is what the test drives; Octokit's request log would print
+      // it as an error line in the suite's output.
+      log: silentOctokitLog(),
     })
 
     expect(await api.createLabel('agent:done', '0e8a16')).toBeUndefined()
@@ -2042,6 +2047,7 @@ describe('createOctokitApi', () => {
       secrets: [],
       fetch: () =>
         Promise.resolve(new Response('{"message":"Resource not accessible by integration"}', { status: 403 })),
+      log: silentOctokitLog(),
     })
 
     await expect(api.createLabel('agent:done', '0e8a16')).rejects.toThrow()

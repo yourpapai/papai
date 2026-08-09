@@ -15,6 +15,7 @@ import { createLogger } from '../../opencode-agent/src/logger.js'
 import type { OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
 import { REPORTED_OUTPUT } from '../../opencode-agent/src/step-output.js'
+import { silentOctokitLog } from './test-helpers.js'
 
 const workDir = await mkdtemp(path.join(tmpdir(), 'opencode-agent-cli-'))
 
@@ -408,7 +409,7 @@ describe('runCli', () => {
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: { ...env, GITHUB_TOKEN: token },
       logger: silentLogger,
-      fetch: github.fetch,
+      octokit: { fetch: github.fetch },
     })
 
     expect(result.status).toBe('completed')
@@ -445,7 +446,7 @@ describe('runCli', () => {
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env,
       logger: silentLogger,
-      fetch: github.fetch,
+      octokit: { fetch: github.fetch },
     })
 
     expect(result.status).toBe('completed')
@@ -488,7 +489,7 @@ describe('runCli', () => {
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env,
       logger: silentLogger,
-      fetch: github.fetch,
+      octokit: { fetch: github.fetch },
     })
 
     expect(result.status).toBe('completed')
@@ -544,7 +545,7 @@ describe('runCli', () => {
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: { ...env, GITHUB_RUN_ID: '1482', AGENT_MAX_TOKENS: '50000' },
       logger: silentLogger,
-      fetch: github.fetch,
+      octokit: { fetch: github.fetch },
     })
 
     expect(result.status).toBe('failed')
@@ -588,7 +589,7 @@ describe('runCli', () => {
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: { ...env, AGENT_MAX_TOKENS: '50000' },
       logger: silentLogger,
-      fetch: github.fetch,
+      octokit: { fetch: github.fetch },
     })
 
     expect(result.status).toBe('failed')
@@ -617,7 +618,7 @@ describe('runCli', () => {
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: { ...env, AGENT_LABEL_PREFIX: 'none' },
       logger: silentLogger,
-      fetch: github.fetch,
+      octokit: { fetch: github.fetch },
     })
 
     expect(result.status).toBe('completed')
@@ -649,7 +650,9 @@ describe('runCli', () => {
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env,
       logger: silentLogger,
-      fetch: refusingLabels(github.fetch),
+      // The refusal is the point of the test; Octokit's request log would
+      // otherwise print it as an error line in the suite's output.
+      octokit: { fetch: refusingLabels(github.fetch), log: silentOctokitLog() },
     })
 
     expect(result.status).toBe('completed')
@@ -681,7 +684,9 @@ describe('runCli', () => {
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env,
       logger: silentLogger,
-      fetch: refusingReactions(github.fetch),
+      // As above: the refusal is expected, so its request-log line is not a
+      // diagnostic and must not reach the suite's output.
+      octokit: { fetch: refusingReactions(github.fetch), log: silentOctokitLog() },
     })
 
     expect(result.status).toBe('completed')
@@ -724,7 +729,7 @@ describe('runCli', () => {
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: { ...env, GITHUB_OUTPUT: output.path },
       logger: silentLogger,
-      fetch: github.fetch,
+      octokit: { fetch: github.fetch },
     })
 
     expect(result.status).toBe('failed')
@@ -790,7 +795,7 @@ describe('runCli', () => {
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: { ...env },
       logger: silentLogger,
-      fetch: github.fetch,
+      octokit: { fetch: github.fetch },
     })
 
     expect(result.reported).toBe(true)
@@ -863,7 +868,7 @@ describe('runCli', () => {
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env,
       logger: silentLogger,
-      fetch: github.fetch,
+      octokit: { fetch: github.fetch },
     })
 
     // `COMPLETE` with no pull request in the block is a cancelled issue, which
@@ -889,7 +894,7 @@ describe('runCli', () => {
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: { ...env, GITHUB_OUTPUT: output.path },
       logger: silentLogger,
-      fetch: github.fetch,
+      octokit: { fetch: github.fetch },
     })
 
     expect(result.status).toBe('skipped')
@@ -917,7 +922,7 @@ describe('runCli', () => {
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env,
       logger: silentLogger,
-      fetch: github.fetch,
+      octokit: { fetch: github.fetch },
     })
 
     expect(result.status).toBe('skipped')

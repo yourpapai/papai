@@ -23,6 +23,13 @@ export interface CoverageMapDeps {
   readonly runCoverage: (testFile: string, projectRoot: string) => ReadonlyMap<string, number>
   /** Optional: persist any batched coverage-cache writes once the batch completes. */
   readonly flush?: () => void
+  /**
+   * Optional: where the "no covering test" notice goes. Defaults to
+   * `console.error`, so a real `bun scripts/mutation/paired-run.ts` still
+   * reports an uncovered source on stderr. A caller that owns its own reporter
+   * — or a test that drives the uncovered case on purpose — passes one here.
+   */
+  readonly warn?: (message: string) => void
 }
 
 export interface BuildCoverageMapInput {
@@ -34,6 +41,11 @@ export interface BuildCoverageMapInput {
 /** Build {sourceFile -> testFiles that cover it} for the requested sources. */
 export function buildCoverageMap(input: BuildCoverageMapInput): CoverageMap {
   const out: CoverageMap = {}
+  const warn =
+    input.deps.warn ??
+    ((message: string): void => {
+      console.error(message)
+    })
   try {
     for (const srcFile of input.sourceFiles) {
       const candidates = input.deps.listCandidateTests(srcFile)
@@ -43,8 +55,7 @@ export function buildCoverageMap(input: BuildCoverageMapInput): CoverageMap {
         if ((hits.get(srcFile) ?? 0) > 0) covering.push(testFile)
       }
       if (covering.length > 0) out[srcFile] = covering
-      else
-        console.error(`coverage-map: no covering test found for ${srcFile} (checked ${candidates.length} candidates)`)
+      else warn(`coverage-map: no covering test found for ${srcFile} (checked ${candidates.length} candidates)`)
     }
   } finally {
     input.deps.flush?.()

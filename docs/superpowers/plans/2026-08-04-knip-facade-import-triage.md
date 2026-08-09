@@ -814,8 +814,8 @@ For each reported facade file, remove the unused import binding (or the whole im
 Run: `bun run typecheck && bun run lint && bun run knip`
 Expected: all three exit 0 (knip still passes — the ignore entries are still in place at this stage; this task's proof is typecheck/lint plus the diff review).
 
-Run: `bun test tests/client/ tests/plugins/ tests/scripts/ tests/debug/ tests/commands/ tests/instances/ 2>&1 | tail -4`
-Expected: `0 fail`.
+Run: `bun run test tests/client/ tests/plugins/ tests/scripts/ tests/debug/ tests/commands/ tests/instances/`
+Expected: `0 fail`. (The wrapper prints its own short summary and persists the run; use `bun run test:failures` to list any failures instead of re-running.)
 
 - [ ] **Step 6: Commit**
 
@@ -894,8 +894,8 @@ Remove the newly-unused import bindings in the pruned facades only (expected: `s
 Run: `bun run typecheck && bun run lint && bun run knip`
 Expected: exit 0.
 
-Run: `bun test tests/attachments/ tests/mcp/ tests/mcp-server/ tests/message-cache/ tests/plugins/ tests/chat/ tests/debug/ tests/deferred-prompts/ tests/recurring.test.ts tests/recurrence.test.ts tests/providers/ tests/scripts/ tests/llm-orchestrator-invoke.test.ts tests/llm-orchestrator-tool-events.test.ts tests/llm-orchestrator-attachments.test.ts tests/commands/ tests/instances/ tests/long-term-memory/ tests/bot-unauthorized-reply.test.ts tests/utils/ 2>&1 | tail -4`
-Expected: `0 fail`. (If a file in this list does not exist, drop it from the command.)
+Run: `bun run test tests/attachments/ tests/mcp/ tests/mcp-server/ tests/message-cache/ tests/plugins/ tests/chat/ tests/debug/ tests/deferred-prompts/ tests/recurring.test.ts tests/recurrence.test.ts tests/providers/ tests/scripts/ tests/llm-orchestrator-invoke.test.ts tests/llm-orchestrator-tool-events.test.ts tests/llm-orchestrator-attachments.test.ts tests/commands/ tests/instances/ tests/long-term-memory/ tests/bot-unauthorized-reply.test.ts tests/utils/`
+Expected: `0 fail`. (If a file in this list does not exist, drop it from the command.) The wrapper prints its own short summary and persists the run; use `bun run test:failures` to list any failures instead of re-running.
 
 - [ ] **Step 7: Commit**
 
@@ -945,8 +945,8 @@ Run: `bun run typecheck && bun run lint && bun run knip`
 Expected: exit 0.
 
 Run the serial suite (avoids the known pre-existing `--parallel` contention flake documented in the spec):
-Run: `bun test 2>&1 | tail -4`
-Expected: `0 fail`. Note this is the full 11k-test serial run (~5-10 min).
+Run: `bun run test --serial`
+Expected: `0 fail`. Note this is the full 11k-test serial run (~5-10 min) — it persists to `reports/test/`, so inspect it with `bun run test:failures` / `bun run test:log <pattern>` rather than paying for it twice.
 
 - [ ] **Step 6: Commit**
 
@@ -1037,8 +1037,8 @@ git commit -m "chore(knip): drop facade ignoreIssues resolved by import triage"
 
 - [ ] **Step 5: Full gate + CI**
 
-Run: `bun check:full 2>&1 | tail -16`
-Expected: 12/12 or 11/12 with ONLY the `test` lane failing — that lane's intermittent `--parallel` contention failures reproduce on clean master in this environment (documented in the spec); the serial run in Task 4 Step 5 is the authoritative local signal. Then:
+Run: `bun check:full`
+Expected: 12/12 or 11/12 with ONLY the `test` lane failing (inspect that lane with `bun run test:failures`; each other lane's output is in `reports/checks/<check>.log`) — that lane's intermittent `--parallel` contention failures reproduce on clean master in this environment (documented in the spec); the serial run in Task 4 Step 5 is the authoritative local signal. Then:
 
 ```bash
 git push origin dependabot/bun/bun-dependencies-aec7b819e5

@@ -14,7 +14,7 @@ import { loadConfig } from './config.js'
 import type { PipelineConfig } from './config.js'
 import { assembleDeps } from './deps.js'
 import { createOctokitApi } from './github.js'
-import type { FetchLike, GitHubApi } from './github.js'
+import type { GitHubApi, OctokitApiOptions } from './github.js'
 import { createPipelineLogger } from './logger.js'
 import type { Logger, LogLevel } from './logger.js'
 import { createOpenCodeAgent } from './opencode-adapter.js'
@@ -94,8 +94,8 @@ export interface MainOptions {
   env: NodeJS.ProcessEnv
   logger?: Logger
   run?: CommandRunner
-  /** Transport seam for tests; the GitHub adapter's own `fetch` option. */
-  fetch?: FetchLike
+  /** Seams for tests, forwarded verbatim as the GitHub adapter's own options. */
+  octokit?: Pick<OctokitApiOptions, 'fetch' | 'log'>
 }
 
 export interface ContainInput {
@@ -219,7 +219,7 @@ const githubFor = (config: PipelineConfig, secrets: readonly string[], options: 
     owner: config.owner,
     repo: config.repo,
     secrets,
-    fetch: options.fetch,
+    ...options.octokit,
   })
 
 /**

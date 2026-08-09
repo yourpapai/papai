@@ -1235,7 +1235,8 @@ git commit -m "feat(profile): add buildProfileContextMessage for prompt injectio
 Run grep to find all callers — this drives the scope of the test updates:
 
 ```fish
-bun run --silent test --bail 2>&1 | head -20
+bun run test --bail
+bun run test:failures
 ```
 
 Or simpler — locate each call site directly:
@@ -1425,7 +1426,8 @@ await deps.processMessage(reply, auth.storageContextId, msg.contextType, msg.use
 Run the full test suite to find every broken caller:
 
 ```fish
-bun test 2>&1 | grep -E '(FAIL|expected|argument)' | head -30
+bun run test
+bun run test:log 'FAIL|expected|argument'
 ```
 
 For each test file that fails because of the new parameter, add `'dm'` (or `'group'` where appropriate) at the right position. Likely affected files:
@@ -1467,7 +1469,7 @@ git commit -m "refactor(llm): thread contextType through orchestrator + builders
 ### Step 1: Read the existing test file
 
 ```fish
-bun test tests/memory.test.ts --bail 2>&1 | head -20
+bun run test tests/memory.test.ts --bail
 ```
 
 Open `tests/memory.test.ts`, find the `buildMemoryContextMessage` describe block, and read its existing tests for context.
