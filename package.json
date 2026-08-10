@@ -7,7 +7,8 @@
   "workspaces": [
     "review-loop",
     "mutation-improve",
-    "opencode-agent"
+    "opencode-agent",
+    "sdd-runner"
   ],
   "type": "module",
   "module": "src/index.ts",
@@ -37,6 +38,11 @@
     "mutation-improve:lint": "bun run --filter mutation-improve lint",
     "mutation-improve:format:check": "bun run --filter mutation-improve format:check",
     "mutation-improve:start": "bun run --filter mutation-improve start",
+    "sdd-runner:test": "bun run --filter sdd-runner test",
+    "sdd-runner:typecheck": "bun run --filter sdd-runner typecheck",
+    "sdd-runner:lint": "bun run --filter sdd-runner lint",
+    "sdd-runner:format:check": "bun run --filter sdd-runner format:check",
+    "sdd-runner:start": "bun run --filter sdd-runner start",
     "opencode-agent:test": "bun run --filter opencode-agent test",
     "opencode-agent:test:live": "bun run --filter opencode-agent test:live",
     "opencode-agent:test:survival": "bun run --filter opencode-agent test:survival",

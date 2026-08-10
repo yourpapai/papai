@@ -20,6 +20,8 @@ Detailed reference moved out of this file to keep it short. Read the relevant do
 | Storybook screenshots | [`docs/architecture/storybook-screenshots.md`](docs/architecture/storybook-screenshots.md)   | agent visual-feedback loop: generate specs, shoot stories, read PNGs                                                     |
 | Plugin system         | [`docs/architecture/plugins.md`](docs/architecture/plugins.md)                               | layout, lifecycle, storage, context facade, permissions, attachment transformers                                         |
 | Tools                 | [`docs/architecture/tools.md`](docs/architecture/tools.md)                                   | capability/context gating, `tool_prefs` permissions, presets, compaction/disclosure, memory bridge                       |
+| SDD pipeline          | [`docs/architecture/sdd-pipeline.md`](docs/architecture/sdd-pipeline.md)                     | stages, event model, depth profiles, gate protocol, runner commands                                                      |
+| SDD pipeline          | [`docs/architecture/sdd-pipeline.md`](docs/architecture/sdd-pipeline.md)                     | stages, event model, depth profiles, gate protocol, runner commands                                                      |
 
 ### Path-scoped `CLAUDE.md` files (read when working under that path)
 
@@ -103,13 +105,14 @@ When the harness supports `obra/superpowers` skills, preserve that workflow for 
 
 Planning runs on OpenSpec in this repo: code-behavior work enters through `/opsx:explore` / `/opsx:propose` and lives under `openspec/changes/<name>/`; `brainstorming` keeps non-code creative work only.
 
-| Trigger                                         | Route                                                                 |
-| ----------------------------------------------- | --------------------------------------------------------------------- |
-| "Let's build / add / change X" (code behavior)  | `/opsx:explore` or `/opsx:propose` — **not** brainstorming            |
-| Non-code creative work (docs, process, writing) | brainstorming (unchanged)                                             |
-| Bug / test failure                              | systematic-debugging; if root cause becomes a change, `/opsx:propose` |
-| Inside `/opsx:apply`                            | test-driven-development, verification-before-completion               |
-| Plan drifted from code                          | syncing-plan-with-code against `openspec/changes/<name>/` artifacts   |
+| Trigger                                         | Route                                                                                |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------ |
+| "Let's build / add / change X" (code behavior)  | `/opsx:explore` or `/opsx:propose` — **not** brainstorming                           |
+| Non-code creative work (docs, process, writing) | brainstorming (unchanged)                                                            |
+| Bug / test failure                              | systematic-debugging; if root cause becomes a change, `/opsx:propose`                |
+| Inside `/opsx:apply`                            | test-driven-development, verification-before-completion                              |
+| Autonomous SDD pipeline (`/sdd:auto`)           | `docs/architecture/sdd-pipeline.md`; use `/sdd:auto <task-file>` for end-to-end runs |
+| Plan drifted from code                          | syncing-plan-with-code against `openspec/changes/<name>/` artifacts                  |
 
 ## Codebase Search Protocol
 
