@@ -3,15 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { StagedTotals } from '../diff-guard.js'
 import { isTurnDeadline } from '../errors.js'
 import type { PipelineError } from '../errors.js'
 import { buildImplementPrompt } from '../implement-prompts.js'
 import type { PhaseInput } from '../phase-context.js'
-import { stepSubject } from '../plan-steps.js'
 import type { PlanStep, StepMarker } from '../plan-steps.js'
 import type { UntrustedEnvelope } from '../prompts.js'
 import { msToDeadline, timeForAnotherStep } from '../time-budget.js'
+import { commitStep } from './implement-commit.js'
 
 /**
  * Walking a plan one step at a time: a turn, a commit, a push, and then the clock.
@@ -60,6 +59,13 @@ import { msToDeadline, timeForAnotherStep } from '../time-budget.js'
  *    fixture), which is a property of one staging operation and not of a plan. The
  *    total is still recorded, summed, in `changedLines`.
  *
+ * What one step's commit *costs* lives in `implement-commit.ts` — the diff guard's
+ * verdict, the repair rounds a refused commit buys, and the push. The seam is which
+ * unit runs next against what committing a unit is allowed to look like, and it is
+ * why the clock now has two places to stop this walk rather than one: a step's own
+ * turn and a repair turn are both model turns, and both come back through
+ * {@link StepWalk.stopped}.
+ *
  * No `await` in a loop body (repo lint): the walk is tail recursion, bounded by
  * `MAX_PLAN_STEPS`.
  */
@@ -104,6 +110,15 @@ export interface StepWalk {
   kind: 'finished' | 'out-of-time' | 'interrupted'
   lines: number
   commits: number
+  /**
+   * Repair turns the commits of this run cost, summed across its steps.
+   *
+   * Counted rather than merely logged because it is the one thing about a run that
+   * succeeded which a maintainer would otherwise have no way to see: the branch
+   * carries the fix and the failure it fixed is in no comment at all. Zero is the
+   * ordinary case and says nothing on the issue.
+   */
+  repairs: number
   done: number
   /** The step the walk stopped on, or `null` for a plan with no steps. */
   step: StepMarker | null
@@ -117,7 +132,7 @@ type Unit = PlanStep | null
 export const walkPlanSteps = (walk: StepWalkInput): Promise<StepWalk> => {
   const from = cursor(walk)
   const units: readonly Unit[] = walk.steps.length === 0 ? [null] : walk.steps.slice(from)
-  return step({ ...walk, from }, units, 0, { lines: 0, commits: 0 })
+  return step({ ...walk, from }, units, 0, { lines: 0, commits: 0, repairs: 0 })
 }
 
 /**
@@ -143,6 +158,7 @@ const cursor = (walk: StepWalkInput): number => {
 interface Tally {
   lines: number
   commits: number
+  repairs: number
 }
 
 /**
@@ -157,9 +173,11 @@ const step = async (walk: StepWalkInput, units: readonly Unit[], index: number, 
 
   const { deps } = walk.input
   const marker = markerFor(walk, unit, index)
-  const at = (kind: StepWalk['kind'], stopped: PipelineError | null): StepWalk => ({
+  // `spent` defaults to the tally this step began with, and is passed explicitly by
+  // the one exit that happens after a commit attempt has been paid for.
+  const at = (kind: StepWalk['kind'], stopped: PipelineError | null, spent: Tally = tally): StepWalk => ({
     kind,
-    ...tally,
+    ...spent,
     done: walk.from + index,
     step: marker,
     stopped,
@@ -182,9 +200,18 @@ const step = async (walk: StepWalkInput, units: readonly Unit[], index: number, 
   if (stopped !== null) return at('interrupted', stopped)
 
   const committed = await commitStep(walk, marker)
+  const spent: Tally = { ...tally, repairs: tally.repairs + committed.repairs }
+
+  // A repair turn is a model turn, so the clock can run out inside one exactly as it
+  // can inside the step's own — and it leaves the same tree: written to, uncommitted,
+  // and worth salvaging. Handled here rather than swallowed in `commitStep` so both
+  // stops leave by the one door `settleWalk` already knows about.
+  if (committed.stopped !== null) return at('interrupted', committed.stopped, spent)
+
   return step(walk, units, index + 1, {
-    lines: tally.lines + (committed?.lines ?? 0),
-    commits: tally.commits + (committed === null ? 0 : 1),
+    ...spent,
+    lines: spent.lines + (committed.totals?.lines ?? 0),
+    commits: spent.commits + (committed.totals === null ? 0 : 1),
   })
 }
 
@@ -231,51 +258,4 @@ const promptForStep = async (
     if (!isTurnDeadline(error)) throw error
     return error
   }
-}
-
-/**
- * Commits and pushes what one step wrote, and reports how much that was.
- *
- * `null` — a clean tree — is an ordinary outcome per step rather than a failure: a
- * step whose work was already done by an earlier one, or whose turn concluded there
- * was nothing to change, leaves the plan unfinished rather than the run broken. Only a
- * whole walk that committed *nothing* is `noChangesError`, which is where that check
- * has to live now. Nothing is pushed for a step that committed nothing, because there
- * is nothing to push.
- */
-const commitStep = async (walk: StepWalkInput, marker: StepMarker | null): Promise<StagedTotals | null> => {
-  const { deps } = walk.input
-  const committed = await deps.git.commitAll(stepMessage(walk.input.state.issueId, marker))
-  if (committed === null) return null
-
-  await deps.git.push(walk.branch)
-  deps.log.info(
-    {
-      issue: walk.input.state.issueId,
-      branch: walk.branch,
-      step: marker?.number,
-      files: committed.files,
-      lines: committed.lines,
-    },
-    'Step committed and pushed',
-  )
-  return committed
-}
-
-/**
- * The commit message one step earns.
- *
- * A plan with no steps keeps the message the phase has always written, character for
- * character: that path is the fallback, and a fallback that changes what it writes is
- * a fallback in name only. A step names itself, so `git log --oneline` on the branch
- * reads as the plan a maintainer approved.
- */
-const stepMessage = (issueNumber: number, marker: StepMarker | null): string => {
-  const subject =
-    marker === null
-      ? `feat(agent): implement issue #${issueNumber}`
-      : `feat(agent): implement issue #${issueNumber} — step ${marker.number}/${marker.total}: ` +
-        stepSubject(marker.title)
-
-  return `${subject}\n\nRefs #${issueNumber}`
 }

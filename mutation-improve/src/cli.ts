@@ -21,6 +21,7 @@ import { readBaseline, writeBaseline } from './baseline.js'
 import { type CappedRegistryStore, loadCappedRegistryStore } from './capped-registry.js'
 import { type MutationImproveConfig, loadMutationImproveConfig } from './config.js'
 import { assertIntegrationBranch, runFinalize } from './finalize.js'
+import { ITER_SLOT_KEY, withIterPhase } from './iter-line.js'
 import { type IterationResult, runPipeline, type PipelineDeps } from './pipeline.js'
 import { ResultSchema } from './result-schema.js'
 import { createRunState, loadRunState, persistStats, saveRunState, type MutationImproveRunState } from './run-state.js'
@@ -112,10 +113,13 @@ function selectRunner(
       outputPath,
       outputSchema: SelectionSchema,
       label: 'select',
+      slotKey: ITER_SLOT_KEY,
+      commitOnDispose: false,
       logPath: path.join(runState.runDir, 'agent-output.log'),
       extraArgs: config.agent.extraArgs,
       reporter: log,
       timeoutMs: config.agent.timeoutMs,
+      inactivityTimeoutMs: config.agent.inactivityTimeoutMs,
     })
 }
 
@@ -133,10 +137,13 @@ function improveRunner(
       outputPath,
       outputSchema: ResultSchema,
       label: 'improve',
+      slotKey: ITER_SLOT_KEY,
+      commitOnDispose: false,
       logPath: path.join(runState.runDir, 'agent-output.log'),
       extraArgs: config.agent.extraArgs,
       reporter: log,
       timeoutMs: config.agent.timeoutMs,
+      inactivityTimeoutMs: config.agent.inactivityTimeoutMs,
     })
 }
 
@@ -156,14 +163,16 @@ function buildPipelineDeps(
     removeWorktree,
     mergeWorktree,
     execGit,
-    runBuildCheck: (worktreePath: string) => {
-      const exec = createShellExec(worktreePath, config.checkCommand, config.buildTimeoutMs)
-      return runBuildCheck({ exec: () => exec() })
-    },
-    measureScore: (worktreePath: string, srcFile: string) => {
-      const exec = createShellExec(worktreePath, `${config.mutateFileCommand} ${srcFile}`, config.mutateTimeoutMs)
-      return measureMutationScore({ exec: () => exec() }, path.join(worktreePath, 'reports', 'paired'), srcFile)
-    },
+    runBuildCheck: (worktreePath: string) =>
+      withIterPhase(log, 'build', () => {
+        const exec = createShellExec(worktreePath, config.checkCommand, config.buildTimeoutMs)
+        return runBuildCheck({ exec: () => exec() })
+      }),
+    measureScore: (worktreePath: string, srcFile: string) =>
+      withIterPhase(log, 'mutate', () => {
+        const exec = createShellExec(worktreePath, `${config.mutateFileCommand} ${srcFile}`, config.mutateTimeoutMs)
+        return measureMutationScore({ exec: () => exec() }, path.join(worktreePath, 'reports', 'paired'), srcFile)
+      }),
     readBaseline,
     writeBaseline,
     runSelectAgent: selectRunner(config, runState, log),

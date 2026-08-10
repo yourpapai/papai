@@ -31,6 +31,12 @@ export interface ProgressReporter {
   issue?(event: IssueProgressEvent): void
   statusSuffix?(): string
   slot?(key: string, line: string | null): void
+  /**
+   * Freezes a slot's live line as one permanent scrolled line and frees the key.
+   * `line` replaces the slot content when given. With neither slot nor line: no-op.
+   * In non-dynamic mode the line (if any) is printed and slot state is ignored.
+   */
+  commit?(key: string, line?: string): void
   usage?(delta: UsageDelta): void
   diff?(label: string, diff: DiffStats): void
 }

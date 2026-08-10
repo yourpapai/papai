@@ -15,28 +15,47 @@ import {
 type GitResult = { stdout: string; stderr: string }
 
 describe('diff-guard', () => {
-  test('ALLOWED_PREFIXES is tests/ and docs/superpowers/', () => {
-    expect(ALLOWED_PREFIXES).toEqual(['tests/', 'docs/superpowers/'])
+  test('ALLOWED_PREFIXES is tests/ and openspec/changes/', () => {
+    expect(ALLOWED_PREFIXES).toEqual(['tests/', 'openspec/changes/'])
   })
 
   test('classifyDiff splits allowed from violations', () => {
     const result = classifyDiff([
       'tests/live-status/x.test.ts',
-      'docs/superpowers/specs/x-design.md',
+      'openspec/changes/mutation-coverage-2026-08-05-foo/design.md',
       'src/foo.ts',
       'scripts/mutation/baseline.json',
     ])
-    expect(result.allowed).toEqual(['tests/live-status/x.test.ts', 'docs/superpowers/specs/x-design.md'])
+    expect(result.allowed).toEqual([
+      'tests/live-status/x.test.ts',
+      'openspec/changes/mutation-coverage-2026-08-05-foo/design.md',
+    ])
     expect(result.violations).toEqual(['src/foo.ts', 'scripts/mutation/baseline.json'])
+  })
+
+  test('classifyDiff rejects the frozen legacy tree', () => {
+    const result = classifyDiff(['docs/superpowers/specs/x-design.md', 'docs/superpowers/plans/p.md'])
+    expect(result.allowed).toEqual([])
+    expect(result.violations).toEqual(['docs/superpowers/specs/x-design.md', 'docs/superpowers/plans/p.md'])
   })
 
   test('runDiffGuard returns ok when all changed paths are allowed', async () => {
     const execGit = (_cwd: string, args: readonly string[]): Promise<GitResult> => {
       expect(args).toEqual(['status', '--porcelain', '--untracked-files=all'])
-      return Promise.resolve({ stdout: ' M tests/a.test.ts\n?? docs/superpowers/plans/p.md\n', stderr: '' })
+      return Promise.resolve({
+        stdout: ' M tests/a.test.ts\n?? openspec/changes/mutation-coverage-2026-08-05-a/tasks.md\n',
+        stderr: '',
+      })
     }
     const result = await runDiffGuard(execGit, '/repo/wt')
     expect(result).toEqual({ ok: true })
+  })
+
+  test('runDiffGuard rejects docs/superpowers/ writes', async () => {
+    const execGit = (): Promise<GitResult> =>
+      Promise.resolve({ stdout: '?? docs/superpowers/plans/p.md\n', stderr: '' })
+    const result = await runDiffGuard(execGit, '/repo/wt')
+    expect(result).toEqual({ ok: false, violations: ['docs/superpowers/plans/p.md'] })
   })
 
   test('runDiffGuard returns violations when src/ or baseline.json changed', async () => {
@@ -63,7 +82,7 @@ describe('diff-guard', () => {
 
   test('parsePorcelainPaths returns a single path for non-rename entries', () => {
     expect(parsePorcelainPaths(' M tests/a.test.ts')).toEqual(['tests/a.test.ts'])
-    expect(parsePorcelainPaths('?? "docs/superpowers/a b.md"')).toEqual(['docs/superpowers/a b.md'])
+    expect(parsePorcelainPaths('?? "openspec/changes/a b.md"')).toEqual(['openspec/changes/a b.md'])
   })
 
   test('parsePorcelainPaths splits rename entries into both endpoints', () => {

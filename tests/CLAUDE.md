@@ -2,6 +2,36 @@
 
 Runtime: **Bun** test runner (`bun:test`). No Jest or Vitest.
 
+## Running the suite
+
+`bun run test` is a wrapper (`scripts/test/run-cli.ts`), not a bare `bun test`. It builds the client bundles
+if they are missing, picks parallel or serial from the core count, and writes `reports/test/last-run.{log,junit.xml,json}`
+before printing a summary of at most fourteen lines. The exit code is the child's, unchanged.
+
+**Do not re-run a check to see its output differently.** `bun run test:failures`, `test:show <id>`,
+`test:log <pattern>`, `test:status` and `test:slowest` all answer from the persisted report without starting
+anything; `test:status` tells you whether the tree has moved since that run. `bun run test:affected` narrows
+to the tests a change can reach (static imports, depth 2 — it prints what it cannot see). `bun run test:raw`
+is the unwrapped escape hatch and leaves no report.
+
+Two Bun behaviours the wrapper works around, both pinned by tests:
+
+- Bun writes the `--reporter-outfile` **only** when at least one file loads, so the wrapper deletes the
+  previous JUnit before spawning. Without that, a catastrophic run would be silently described by the
+  previous run's index.
+- Bun does **not** propagate later `process.env` mutations to child processes the way Node does. Anything a
+  test's subprocesses must see (the pinned `GIT_CONFIG_GLOBAL`, for instance) has to be on the child's
+  startup environment — `tests/setup.ts` cannot deliver it.
+
+**Known Bun defect — JUnit `file` collides on basename.** Two test files with the same basename in different
+directories collapse to one `file=` attribute in the JUnit report; on a full run 53 of 1306 files end up with
+no record, all of them green. Run totals and failure diagnostics are unaffected (totals come from the console
+log, and a mis-attributed failure trips the join's cross-check and is reported as a `joinWarning` rather than
+silently mis-filed). But **do not build a gate on `report.files`** until this is fixed — that is why
+`bun run analytics:privacy-contract` exists as a command and is not wired into `check:full`. Reproduce with
+`bun test tests/analytics/aggregate-release.test.ts tests/analytics/delivery/aggregate-release.test.ts`:
+`Ran 10 tests across 2 files`, one file in the XML.
+
 ## Parallel Execution & Isolation
 
 The default local server-side run (`bun run test`) is `bun test --parallel`: each test
@@ -126,11 +156,11 @@ When DI is not available and module evaluation order matters:
 - Run E2E with `bun test:e2e`.
 - The Docker-backed Kaneo harness is **Tier 1: Provider-Real E2E**. Tier 0 does not replace it; provider-real tests remain responsible for Kaneo/container/API behavior.
 - Every catalog record carries a **proving tier** — the lowest tier that can prove the behavior — in `tests/stories/catalog/coverage.ts`. Executable records may only claim a tier in `LIVE_STORY_TIERS`, and their story ids must sit under that tier's `TIER_SUITE_ROOTS` prefix. Seam-pending records name the tier that unblocks them; `blocked:missing-implementation` records name none, because no tier reaches them. The runner prints per-tier totals on every run.
-- The 0Q compatibility proof is Tier 0 only. Higher tiers are regression lanes and never gate a refactor qualification. Canonical tier definitions: `docs/superpowers/specs/2026-07-23-tier-expansion-roadmap-design.md`.
+- The 0Q compatibility proof is Tier 0 only. Higher tiers are regression lanes and never gate a refactor qualification. Canonical tier definitions: the Realism Tiers table in `docs/operations/e2e-planning-workflow.md` (the original owning spec is archived in `docs/archive/`).
 - Prefer `KaneoTestClient` for new resource-management-heavy suites.
 - Track resources created outside the test client with `testClient.trackTask(...)` or the matching tracker helper when the suite uses `KaneoTestClient`.
 - The suite is in transition: many files already rely on shared preload/setup, but some older E2E files still use local `beforeAll`/`afterAll` hooks or manual cleanup. Follow the local pattern unless you are intentionally modernizing that suite.
-- Before proposing new E2E coverage, read `docs/superpowers/e2e-planning-workflow.md` and start from `docs/superpowers/templates/e2e-test-plan-template.md`.
+- Before proposing new E2E coverage, `/opsx:propose` a change and plan the coverage in its `openspec/changes/<name>/` artifacts; the e2e planning workflow (`docs/operations/e2e-planning-workflow.md`) and test-plan template (`docs/operations/templates/e2e-test-plan-template.md`) define the expected structure.
 
 ### Tier 3 — platform-adapter lane (`tests/platform/`, nightly)
 

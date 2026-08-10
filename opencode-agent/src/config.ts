@@ -5,21 +5,21 @@
 
 import { existsSync } from 'node:fs'
 
-import { z } from 'zod'
-
 import type { CheckSpec } from './check-loop.js'
 import { resolveReviewCommand } from './config-discovery.js'
 import {
   boundedInt,
   boundedIntOrNull,
-  ConfigError,
+  DEFAULT_TURN_TIMEOUT_MS,
   EPOCH_MS_RANGE,
   FILES_RANGE,
   JOB_MINUTES_RANGE,
   labelPrefix,
   LINES_RANGE,
+  logKey,
   optional,
   optionalOrNull,
+  parseChecks,
   POOL_RANGE,
   required,
   RESERVE_RANGE,
@@ -35,17 +35,11 @@ import { parseRepository } from './repository.js'
 
 // Re-exported so the many modules that already import them from here keep
 // working; they are declared next to the validators that raise and consume them.
-export { ConfigError } from './config-values.js'
+// `parseChecks` is *imported* as well as re-exported, and has to be: a bare re-export
+// binds no local name, and `loadConfig` calls it — which typechecks and then throws
+// `ReferenceError` at runtime.
+export { DEFAULT_CHECKS, ConfigError, parseChecks } from './config-values.js'
 export type { Env } from './config-values.js'
-
-const checkSpecSchema = z.object({ name: z.string().min(1), argv: z.array(z.string().min(1)).min(1) })
-
-/** Checks the CI-fix loop runs when the repo does not declare its own. */
-export const DEFAULT_CHECKS: readonly CheckSpec[] = [
-  { name: 'lint', argv: ['bun', 'run', 'lint'] },
-  { name: 'typecheck', argv: ['bun', 'run', 'typecheck'] },
-  { name: 'test', argv: ['bun', 'test'] },
-]
 
 export interface PipelineConfig {
   repoRoot: string
@@ -115,6 +109,17 @@ export interface PipelineConfig {
   /** Model tokens one issue may spend, across every job it runs. */
   maxTokens: number
   ciFixMaxRounds: number
+  /**
+   * Commit attempts one commit gets, including the first, when the repository's
+   * own pre-commit checks refuse it.
+   *
+   * Higher than `ciFixMaxRounds` on purpose, and the two are not the same
+   * quantity. A CI-fix round re-runs whole check suites and costs minutes; a
+   * commit repair round is one model turn over output already in hand, and what
+   * it is spent against is losing the phase — a `/retry` buys a fresh job that
+   * re-runs the model turn that had already succeeded. `1` disables repair.
+   */
+  commitRepairMaxRounds: number
   /** Ceiling on CI-fix rounds across the whole life of one pull request. */
   maxCiAttempts: number
   /** Ceiling on `/review` rounds across the whole life of one pull request. */
@@ -157,6 +162,16 @@ export interface PipelineConfig {
    * one value that must never reach it.
    */
   labelPrefix: string | null
+  /**
+   * The debug transcript's AES-256-GCM key, or `null` when no transcript is
+   * written.
+   *
+   * Raw bytes rather than the base64 the operator set, because its one consumer
+   * is `crypto.subtle`. `null` rather than required: most runs have no
+   * transcript, and a keyless run warns once and behaves exactly as it did
+   * before this existed.
+   */
+  logKey: Uint8Array | null
   skillRoots: readonly string[]
 }
 
@@ -169,22 +184,6 @@ export interface PipelineConfig {
  * this one rather than letting two spellings of the default drift apart.
  */
 export const DEFAULT_LABEL_PREFIX = 'agent:'
-
-export const parseChecks = (raw: string | undefined): readonly CheckSpec[] => {
-  if (raw === undefined || raw.trim().length === 0) return DEFAULT_CHECKS
-
-  const parsed = z.array(checkSpecSchema).min(1).safeParse(safeJson(raw))
-  if (!parsed.success) throw new ConfigError(`AGENT_CHECKS is not a valid check list: ${parsed.error.message}`)
-  return parsed.data
-}
-
-const safeJson = (raw: string): unknown => {
-  try {
-    return JSON.parse(raw)
-  } catch {
-    throw new ConfigError('AGENT_CHECKS must be valid JSON')
-  }
-}
 
 /**
  * Reads the single model endpoint.
@@ -269,18 +268,20 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     gitRemoteBase,
     runUrl: buildRunUrl(env, gitRemoteBase, owner, repo),
     labelPrefix: labelPrefix(env, 'AGENT_LABEL_PREFIX', DEFAULT_LABEL_PREFIX),
+    logKey: logKey(env, 'AGENT_LOG_KEY'),
     commitAuthorName: optional(env, 'AGENT_COMMIT_NAME', 'opencode-agent[bot]'),
     commitAuthorEmail: optional(env, 'AGENT_COMMIT_EMAIL', 'opencode-agent@users.noreply.github.com'),
-    checkCommand: optional(env, 'AGENT_CHECK_COMMAND', 'bun run lint && bun run typecheck && bun test'),
+    checkCommand: optional(env, 'AGENT_CHECK_COMMAND', 'bun check:full'),
     reviewCommand: resolveReviewCommand(env['AGENT_REVIEW_COMMAND'], repoRoot, existsSync),
     checks: parseChecks(env['AGENT_CHECKS']),
     reviewMaxRounds: boundedInt(env, 'AGENT_REVIEW_MAX_ROUNDS', 4, ROUND_RANGE),
     reviewPoolSize: boundedInt(env, 'AGENT_REVIEW_POOL_SIZE', 2, POOL_RANGE),
-    agentTimeoutMs: boundedInt(env, 'AGENT_TIMEOUT_MS', 1_800_000, TIMEOUT_RANGE),
+    agentTimeoutMs: boundedInt(env, 'AGENT_TIMEOUT_MS', DEFAULT_TURN_TIMEOUT_MS, TIMEOUT_RANGE),
     jobDeadlineMs: buildJobDeadline(env),
     teardownReserveMs: boundedInt(env, 'AGENT_TEARDOWN_RESERVE_MS', 180_000, RESERVE_RANGE),
     wrapUpMs: boundedInt(env, 'AGENT_WRAP_UP_MS', 120_000, WRAP_UP_RANGE),
     ciFixMaxRounds: boundedInt(env, 'AGENT_CI_FIX_MAX_ROUNDS', 2, ROUND_RANGE),
+    commitRepairMaxRounds: boundedInt(env, 'AGENT_COMMIT_REPAIR_MAX_ROUNDS', 3, ROUND_RANGE),
     maxCiAttempts: boundedInt(env, 'AGENT_MAX_CI_ATTEMPTS', 3, ROUND_RANGE),
     maxReviewAttempts: boundedInt(env, 'AGENT_MAX_REVIEW_ATTEMPTS', 3, ROUND_RANGE),
     // `LINES_RANGE`, the same bound `AGENT_MAX_CHANGED_LINES` takes, because it
@@ -288,7 +289,7 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     // matter here too: 0 would recommend a review on every delivery, which is
     // the same as having no recommendation.
     reviewHintLines: boundedInt(env, 'AGENT_REVIEW_HINT_LINES', 200, LINES_RANGE),
-    maxAttempts: boundedInt(env, 'AGENT_MAX_ATTEMPTS', 3, ROUND_RANGE),
+    maxAttempts: boundedInt(env, 'AGENT_MAX_ATTEMPTS', 5, ROUND_RANGE),
     maxTokens: boundedInt(env, 'AGENT_MAX_TOKENS', 5_000_000, TOKEN_RANGE),
     diffLimits: {
       maxFiles: boundedInt(env, 'AGENT_MAX_CHANGED_FILES', 100, FILES_RANGE),

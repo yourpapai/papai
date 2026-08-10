@@ -12,7 +12,7 @@ import { createShellExec, runBuildCheck, type ShellExecFn } from './build-checke
 import { MergeConflictError, formatBuildFailureMessage } from './cli-errors.js'
 import { loadReviewLoopConfig, type ReviewLoopConfig } from './config.js'
 import { createIssueLedger, loadIssueLedger, type IssueLedger } from './issue-ledger.js'
-import { LiveRenderer } from './live-renderer.js'
+import { LiveRenderer, type RendererStream } from './live-renderer.js'
 import { runReviewLoop, type ReviewLoopResult } from './loop-controller.js'
 import type { ProgressReporter } from './progress-log.js'
 import { createRunState, loadRunState, type RunState } from './run-state.js'
@@ -249,7 +249,11 @@ async function executeReviewLoop(
   await finalizeRun(config, runState, { exec, runBuildCheck, mergeWorktree, removeWorktree })
 }
 
-export async function runCli(argv: readonly string[]): Promise<void> {
+/**
+ * `stdout` is the live renderer's sink, real by default so a run still prints its
+ * progress. It writes past every console suppression, so a test can only quiet it here.
+ */
+export async function runCli(argv: readonly string[], stdout: RendererStream = process.stdout): Promise<void> {
   const startedAt = Date.now()
   const args = parseCliArgs(argv)
   const config = await loadReviewLoopConfig({ configPath: args.configPath, repoRoot: args.repoRoot })
@@ -267,7 +271,7 @@ export async function runCli(argv: readonly string[]): Promise<void> {
 
   const priorStats = args.resumeRunId === undefined ? undefined : await readPersistedRunStats(runState.runDir)
   const stats = RunStats.rehydrate(priorStats, { pricing: config.pricing })
-  const log = new LiveRenderer(process.stdout, stats)
+  const log = new LiveRenderer(stdout, stats)
   const exec = createShellExec(runState.worktreePath, config.checkCommand, config.buildTimeoutMs)
   const trace = createFileTraceLogger(runState.tracePath)
   await cleanWorkerWorktrees(runState.worktreePath, args.resumeRunId)

@@ -35,7 +35,7 @@ const config = (repoRoot: string, overrides: Partial<MutationImproveConfig> = {}
   buildFixAttempts: 2,
   checkCommand: 'bun check:full',
   mutateFileCommand: 'bun test:mutate:file',
-  agent: { model: 'm', extraArgs: [], timeoutMs: 1_800_000 },
+  agent: { model: 'm', extraArgs: [], timeoutMs: 1_800_000, inactivityTimeoutMs: 600_000 },
   prBranchPrefix: 'mutation-improve',
   ...overrides,
 })
@@ -873,5 +873,76 @@ describe('pipeline runPipeline', () => {
     const { aborted } = await runPipeline(deps)
     expect(aborted).toBe(true)
     expect(savedStatuses).toEqual(['aborted'])
+  })
+})
+
+describe('pipeline iteration commit line', () => {
+  const commitLog = (): { log: PipelineDeps['log']; commits: Array<readonly [string, string | undefined]> } => {
+    const commits: Array<readonly [string, string | undefined]> = []
+    return {
+      commits,
+      log: {
+        log: () => undefined,
+        commit: (key: string, line?: string) => {
+          commits.push([key, line] as const)
+        },
+      },
+    }
+  }
+
+  test('commits an improved summary line after a merged iteration', async () => {
+    const deps = happyDeps()
+    const { log, commits } = commitLog()
+    deps.log = log
+    await runPipeline(deps)
+    expect(commits).toHaveLength(1)
+    expect(commits[0]![0]).toBe('iter')
+    expect(commits[0]![1]).toContain('iter 1 ✓ improved')
+    expect(commits[0]![1]).toContain('src/live-status/tool-status-labels.ts')
+    expect(commits[0]![1]).toContain('46.0%→97.0%')
+  })
+
+  test('commits a failed summary line when the score gate fails', async () => {
+    const deps = happyDeps()
+    deps.measureScore = sequenceMeasure([0.46, 0.46])
+    deps.runImproveAgent = (): Promise<{ value: Result; usage: AgentUsage }> =>
+      Promise.resolve({ value: { ...result, residuals: [] }, usage: emptyUsage() })
+    const { log, commits } = commitLog()
+    deps.log = log
+    await runPipeline(deps)
+    expect(commits).toHaveLength(1)
+    expect(commits[0]![1]).toContain('iter 1 ✗ failed')
+    expect(commits[0]![1]).toContain('score:')
+  })
+
+  test('commits a skipped summary line when the file is already at threshold', async () => {
+    const deps = happyDeps()
+    deps.measureScore = sequenceMeasure([0.97])
+    const { log, commits } = commitLog()
+    deps.log = log
+    await runPipeline(deps)
+    expect(commits).toHaveLength(1)
+    expect(commits[0]![1]).toContain('iter 1 – skipped')
+    expect(commits[0]![1]).toContain('97.0% ≥ threshold')
+  })
+
+  test('a merge-abort still commits the failed line for its iteration', async () => {
+    const deps = happyDeps()
+    deps.mergeWorktree = (): Promise<{ ok: false; conflictFiles: string[] }> =>
+      Promise.resolve({ ok: false, conflictFiles: ['scripts/mutation/baseline.json'] })
+    const { log, commits } = commitLog()
+    deps.log = log
+    const { aborted } = await runPipeline(deps)
+    expect(aborted).toBe(true)
+    expect(commits).toHaveLength(1)
+    expect(commits[0]![1]).toContain('✗ failed')
+    expect(commits[0]![1]).toContain('merge:')
+  })
+
+  test('a log without commit runs the pipeline unchanged', async () => {
+    const deps = happyDeps()
+    const { results, aborted } = await runPipeline(deps)
+    expect(aborted).toBe(false)
+    expect(results[0]?.outcome).toBe('improved')
   })
 })

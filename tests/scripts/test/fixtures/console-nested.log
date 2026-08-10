@@ -1,0 +1,65 @@
+bun test v1.3.11 (af24e281)
+
+reports/fixture-gen/nested.test.ts:
+1 | import { describe, expect, test } from 'bun:test'
+2 | 
+3 | describe('outer', () => {
+4 |   describe('inner', () => {
+5 |     test('deep fails', () => {
+6 |       expect({ a: 1 }).toEqual({ a: 2 })
+                           ^
+error: expect(received).toEqual(expected)
+
+  {
+-   "a": 2,
++   "a": 1,
+  }
+
+- Expected  - 1
++ Received  + 1
+
+      at <anonymous> (/home/user/papai/reports/fixture-gen/nested.test.ts:6:24)
+(fail) outer > inner > deep fails [2.45ms]
+ 8 |   })
+ 9 | })
+10 | 
+11 | describe('A', () => {
+12 |   test('x', () => {
+13 |     expect('left').toBe('right')
+                        ^
+error: expect(received).toBe(expected)
+
+Expected: "right"
+Received: "left"
+
+      at <anonymous> (/home/user/papai/reports/fixture-gen/nested.test.ts:13:20)
+(fail) A > x [0.26ms]
+11 | describe('A', () => {
+12 |   test('x', () => {
+13 |     expect('left').toBe('right')
+14 |   })
+15 |   test('y', () => {
+16 |     expect(1).toBeGreaterThan(5)
+                   ^
+error: expect(received).toBeGreaterThan(expected)
+
+Expected: > 5
+Received: 1
+
+      at <anonymous> (/home/user/papai/reports/fixture-gen/nested.test.ts:16:15)
+(fail) A > y [0.30ms]
+17 |   })
+18 | })
+19 | 
+20 | describe('B', () => {
+21 |   test('x', () => {
+22 |     throw new Error('B x exploded')
+                                       ^
+error: B x exploded
+      at <anonymous> (/home/user/papai/reports/fixture-gen/nested.test.ts:22:35)
+(fail) B > x [0.13ms]
+
+ 1 pass
+ 4 fail
+ 4 expect() calls
+Ran 5 tests across 1 file. [168.00ms]

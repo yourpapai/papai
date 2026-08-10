@@ -378,6 +378,17 @@ const runStepScript = async (script: string, env: Record<string, string>, ghExit
 }
 
 /**
+ * The cleanup step's `run:` uses bash 4 parameter expansion (`${prefix,,}`),
+ * which the workflow ships because GitHub Actions runs it under Linux bash 5.
+ * macOS ships bash 3.2 as `/bin/bash`, which rejects that substitution, so the
+ * execution assertions on the cleanup step can only run where the host bash
+ * matches the runner the workflow targets. Probed directly rather than by
+ * version string: the feature the script depends on is the thing under test.
+ */
+const HOST_BASH_RUNS_CLEANUP_SCRIPT =
+  Bun.spawnSync(['bash', '-c', 'prefix=NoNe; [ "${prefix,,}" = none ]']).exitCode === 0
+
+/**
  * Knobs the workflow deliberately does not forward, each with a reason a reader
  * can check. Anything else the README documents has to be passed through.
  */
@@ -678,7 +689,7 @@ describe('the working-label cleanup', () => {
     expect(cleanupStep.env['ISSUE_NUMBER']).toBe('${{ needs.resolve.outputs.issue }}')
   })
 
-  test('removes the working label and touches nothing else', async () => {
+  test.if(HOST_BASH_RUNS_CLEANUP_SCRIPT)('removes the working label and touches nothing else', async () => {
     const run = await runStepScript(cleanupStep.run, { ISSUE_NUMBER: '42', LABEL_PREFIX: '' })
 
     // Not a clear-and-reapply: every other agent label names the state the issue
@@ -687,13 +698,13 @@ describe('the working-label cleanup', () => {
     expect(run.exitCode).toBe(0)
   })
 
-  test('applies the operator prefix rather than a hardcoded namespace', async () => {
+  test.if(HOST_BASH_RUNS_CLEANUP_SCRIPT)('applies the operator prefix rather than a hardcoded namespace', async () => {
     const run = await runStepScript(cleanupStep.run, { ISSUE_NUMBER: '42', LABEL_PREFIX: 'bot/' })
 
     expect(run.gh).toEqual([`issue edit 42 --remove-label bot/${WORKING_LABEL.suffix}`])
   })
 
-  test('touches no label at all when labelling is switched off', async () => {
+  test.if(HOST_BASH_RUNS_CLEANUP_SCRIPT)('touches no label at all when labelling is switched off', async () => {
     // A repository that opted out of the channel opted out of every writer on
     // it. `labelPrefix()` trims and compares case-insensitively, so this does.
     const runs = await Promise.all(
@@ -706,14 +717,14 @@ describe('the working-label cleanup', () => {
     expect(runs.map((run) => run.exitCode)).toEqual([0, 0, 0])
   })
 
-  test('does nothing when no issue number could be resolved', async () => {
+  test.if(HOST_BASH_RUNS_CLEANUP_SCRIPT)('does nothing when no issue number could be resolved', async () => {
     const run = await runStepScript(cleanupStep.run, { ISSUE_NUMBER: '', LABEL_PREFIX: '' })
 
     expect(run.gh).toEqual([])
     expect(run.exitCode).toBe(0)
   })
 
-  test('never fails the job when the label write fails', async () => {
+  test.if(HOST_BASH_RUNS_CLEANUP_SCRIPT)('never fails the job when the label write fails', async () => {
     // The rule labels.ts states, on the one writer that is not in labels.ts. A
     // rejected removal is the *ordinary* case on a healthy run — the in-run
     // reconcile already took the label off, and removing a label an issue does
@@ -733,5 +744,128 @@ describe('permissions', () => {
       issues: 'write',
       'pull-requests': 'write',
     })
+  })
+})
+
+/**
+ * The debug transcript's two workflow steps, which are the only part of that
+ * feature no TypeScript test can reach.
+ *
+ * Both are gated, and both gates are the feature: a repository with no
+ * `AGENT_LOG_KEY` — the ordinary case — must upload nothing and say nothing,
+ * and a run that died must still upload what it wrote.
+ */
+const transcriptStep = step('encrypted debug transcript')
+const transcriptComment = step('link the transcript')
+
+describe('the encrypted debug transcript', () => {
+  test('is passed a key from the secret store, never from a repository variable', () => {
+    // `vars` are world-readable on a public repository, and this value is what
+    // decides whether the transcript is readable at all.
+    expect(step('agent pipeline').env['AGENT_LOG_KEY']).toBe('${{ secrets.AGENT_LOG_KEY }}')
+  })
+
+  test('uploads on any outcome, because the run worth reading is the one that died', () => {
+    // The writer creates the file up front and encrypts one envelope per line,
+    // so a runner killed mid-turn leaves a truncated file that still reads.
+    expect(transcriptStep.if).toContain('always()')
+    expect(transcriptStep.with['path']).toBe('.opencode-agent/debug-transcript.enc')
+  })
+
+  test('skips a keyless run through the file, not through a second key test', () => {
+    // No key means no file. Gating on `hashFiles` rather than on
+    // `secrets.AGENT_LOG_KEY != ''` keeps one source of truth — the pipeline
+    // decides whether to write, and the workflow only reports what it found.
+    expect(transcriptStep.if).toContain("hashFiles('.opencode-agent/debug-transcript.enc') != ''")
+  })
+
+  test('names the artefact after the run, and lets it expire', () => {
+    expect(transcriptStep.with['name']).toBe('debug-transcript-${{ github.run_id }}')
+    expect(transcriptStep.with['retention-days']).toBe(7)
+  })
+
+  test('pins the upload action to the same commit the rest of the repository uses', () => {
+    expect(transcriptStep.uses).toMatch(/^actions\/upload-artifact@[\da-f]{40}$/u)
+  })
+
+  test('comments only when there is an artefact to link', () => {
+    // Gated on the artefact id rather than on the run's outcome: a transcript is
+    // worth reading after a green run too, and a keyless run must stay silent —
+    // which an empty id is exactly.
+    expect(transcriptComment.if).toContain("steps.transcript.outputs.artifact-id != ''")
+    expect(transcriptComment.if).toContain('needs.resolve.outputs.issue')
+    expect(transcriptStep.id).toBe('transcript')
+  })
+
+  test('links the artefact and the viewer, and carries no key', () => {
+    // The split is the containment: the artefact is behind repository access,
+    // the key behind the secret store, and the page brings them together in a
+    // tab that talks to neither. A key in the comment, or in a URL parameter,
+    // would undo all of it in one line.
+    const { env, run } = transcriptComment
+
+    expect(env['ARTIFACT_URL']).toBe('${{ steps.transcript.outputs.artifact-url }}')
+    expect(env['VIEWER_URL']).toContain('github.io')
+    expect(Object.keys(env)).not.toContain('AGENT_LOG_KEY')
+    expect(run).not.toContain('secrets.')
+    expect(`${JSON.stringify(env)} ${run}`).not.toContain('AGENT_LOG_KEY=')
+  })
+
+  test('derives the viewer URL from the repository, so a fork reads its own page', () => {
+    expect(transcriptComment.env['VIEWER_URL']).toContain('github.repository_owner')
+    expect(transcriptComment.env['VIEWER_URL']).toContain('github.event.repository.name')
+  })
+})
+
+const PAGES_PATH = path.join(import.meta.dir, '..', '..', '.github', 'workflows', 'transcript-viewer-pages.yml')
+
+const pagesSchema = z.object({
+  on: z.object({ push: z.object({ branches: z.array(z.string()), paths: z.array(z.string()) }) }),
+  permissions: z.record(z.string(), z.string()),
+  concurrency: z.object({ group: z.string(), 'cancel-in-progress': z.boolean() }),
+  jobs: z.object({ deploy: z.object({ steps: z.array(stepSchema) }) }),
+})
+
+const pages = pagesSchema.parse(Bun.YAML.parse(await Bun.file(PAGES_PATH).text()))
+const pagesStep = (fragment: string): WorkflowStep => stepOf(pages.jobs.deploy.steps, fragment)
+
+describe('the transcript viewer deployment', () => {
+  test('keeps the Pages grants out of the job that holds the agent secrets', () => {
+    // Pages needs `pages: write` and `id-token: write`; the agent job holds
+    // every repository secret and runs model-authored code. Two grants, two
+    // files, and this one is triggered only by a push a human merged.
+    expect(pages.permissions).toEqual({ contents: 'read', pages: 'write', 'id-token': 'write' })
+    expect(workflow.permissions['pages']).toBeUndefined()
+    expect(workflow.permissions['id-token']).toBeUndefined()
+  })
+
+  test('publishes from master, and only when the viewer changed', () => {
+    expect(pages.on.push.branches).toEqual(['master'])
+    expect(pages.on.push.paths).toContain('opencode-agent/viewer/**')
+  })
+
+  test('never cancels a deployment in flight', () => {
+    // A cancelled Pages deploy can leave the site on the previous build with no
+    // run saying so, and this page is read during an incident.
+    expect(pages.concurrency['cancel-in-progress']).toBe(false)
+  })
+
+  test('uploads the directory as it sits in the repository, with no build step', () => {
+    // The page's guarantee is that what a maintainer runs against a decryption
+    // key is the source that was reviewed. A bundler sits between those two.
+    expect(pagesStep('upload the viewer').with['path']).toBe('opencode-agent/viewer')
+    expect(pages.jobs.deploy.steps.map((entry) => entry.run).join(' ')).not.toContain('build')
+  })
+
+  test('pins every action to a commit, not a tag', () => {
+    // The YAML parser drops the `# vN` comment beside each pin, so the assertion
+    // is on the 40-hex sha alone — which is the half that is load-bearing.
+    for (const entry of pages.jobs.deploy.steps.filter((candidate) => candidate.uses.length > 0)) {
+      expect(entry.uses).toMatch(/@[\da-f]{40}$/u)
+    }
+  })
+
+  test('never persists a token into the checkout it publishes', () => {
+    expect(pagesStep('check out').with['persist-credentials']).toBe(false)
   })
 })

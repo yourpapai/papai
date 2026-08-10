@@ -117,7 +117,7 @@ const settleWalk = (settlement: Settlement): Promise<PhaseOutcome> => {
   // concluding there is nothing to do leaves the plan unfinished, not the run broken.
   if (walk.commits === 0) throw noChangesError(input.state.issueId)
 
-  const report = renderReport()
+  const report = renderReport(walk.repairs)
   return Promise.resolve({
     signal: 'CHANGES_COMMITTED',
     comment: report,
@@ -189,14 +189,23 @@ const reportBlock = (report: string, state: AgentState): string =>
  * looking at it. Naming `/review` there is the only way anybody learns the
  * command exists; the run is otherwise indistinguishable from one where the
  * review passed silently.
+ *
+ * The repair line is the same argument on a smaller scale. A commit the repository
+ * refused and the model then fixed leaves nothing behind on the issue — the branch
+ * carries the fix and the failure is in a job log nobody opens — so a run that paid
+ * for repair turns would read exactly like one that did not. Absent at zero, which
+ * is the ordinary case, so the report does not grow a line saying nothing happened.
  */
-const renderReport = (): string =>
+const renderReport = (repairs: number): string =>
   [
     '### Implementation report',
     '',
     'The approved plan is implemented, committed and pushed to the branch.',
     '',
     '- Review loop: not run — it is a separate step now',
+    ...(repairs === 0
+      ? []
+      : [`- Commit checks: refused a commit ${repairs} time(s); I fixed what they reported and committed again`]),
     '',
     // Both doors, because both are open. This line said "on the issue" while the
     // pull-request one was still unbuilt, and it is the last surface that did:

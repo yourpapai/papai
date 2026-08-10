@@ -12,6 +12,7 @@ import { enforceTdd } from '../../.hooks/tdd/checks/enforce-tdd.mjs'
 import { enforceWritePolicy } from '../../.hooks/tdd/checks/enforce-write-policy.mjs'
 import { trackTestWrite } from '../../.hooks/tdd/checks/track-test-write.mjs'
 import { verifyTestImport } from '../../.hooks/tdd/checks/verify-test-import.mjs'
+import { verifyTestsPass } from '../../.hooks/tdd/checks/verify-tests-pass.mjs'
 import { getSessionsDir } from '../../.hooks/tdd/paths.mjs'
 import { SessionState } from '../../.hooks/tdd/session-state.mjs'
 
@@ -150,9 +151,17 @@ const handleToolExecuteAfter = (
   trackTestWrite(ctx)
 
   const importResult = verifyTestImport(ctx)
-  if (!importResult) return
+  if (importResult) {
+    notifySession(client, input.sessionID, importResult.reason)
+    return
+  }
 
-  notifySession(client, input.sessionID, importResult.reason)
+  // The edited file's companion test, run now rather than discovered minutes later in a
+  // full-suite run. This plugin notifies where the Claude/Codex hooks block, so the
+  // failure reaches the session as a message and the agent decides what to do with it.
+  void verifyTestsPass(ctx).then((testsResult) => {
+    if (testsResult) notifySession(client, input.sessionID, testsResult.reason)
+  })
 }
 
 const handleSessionIdle = (

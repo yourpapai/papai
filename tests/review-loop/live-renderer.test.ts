@@ -26,6 +26,20 @@ function makeStream(opts: { isTTY?: boolean; columns?: number } = {}): {
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
+
+async function pollUntil(predicate: () => boolean, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (!predicate() && Date.now() < deadline) {
+    await sleep(50)
+  }
+  return predicate()
+}
+
 describe('LiveRenderer', () => {
   test('event writes a scrolling line', () => {
     const { output, stream } = makeStream()
@@ -51,10 +65,10 @@ describe('LiveRenderer', () => {
     expect(new LiveRenderer(stream).dynamic).toBe(true)
   })
 
-  test('non-TTY live scrolls with newline', () => {
+  test('non-TTY live is a no-op', () => {
     const { output, stream } = makeStream()
     new LiveRenderer(stream).live(['x'])
-    expect(output).toEqual(['x\n'])
+    expect(output).toEqual([])
   })
 
   test('TTY live writes clear-line + content with no newline', () => {
@@ -84,18 +98,12 @@ describe('LiveRenderer', () => {
   })
 
   test('ProgressReporter.live accepts an array of lines (one per active worker)', () => {
-    const captured: string[] = []
-    const stream = {
-      write: (s: string): boolean => {
-        captured.push(s)
-        return true
-      },
-      isTTY: false,
-    }
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
     const r = new LiveRenderer(stream)
     r.live(['line 1', 'line 2'])
-    expect(captured.join('')).toContain('line 1')
-    expect(captured.join('')).toContain('line 2')
+    const joined = output.join('')
+    expect(joined).toContain('line 1')
+    expect(joined).toContain('line 2')
   })
 })
 
@@ -254,6 +262,67 @@ describe('LiveRenderer slots', () => {
   })
 })
 
+describe('LiveRenderer commit', () => {
+  test('non-TTY commit prints the line once', () => {
+    const { stream, output } = makeStream()
+    const r = new LiveRenderer(stream)
+    r.slot('iter', '  improve    ▶ read a.ts')
+    r.commit('iter', 'iter 1 ✓ improved · src/x.ts')
+    expect(output).toEqual(['iter 1 ✓ improved · src/x.ts\n'])
+  })
+
+  test('non-TTY live() intermediate updates are suppressed', () => {
+    const { stream, output } = makeStream()
+    const r = new LiveRenderer(stream)
+    r.live(['working'])
+    r.live(['still working'])
+    expect(output).toEqual([])
+  })
+
+  test('TTY commit freezes the slot content as a permanent line', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.slot('a', 'line-a')
+    r.commit('a')
+    expect(output[output.length - 1]).toBe('line-a\n')
+  })
+
+  test('TTY commit with a replacement line prints it instead of the slot content', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.slot('a', 'line-a')
+    r.commit('a', 'iter 1 ✓ improved')
+    const joined = output.join('')
+    expect(output[output.length - 1]).toBe('iter 1 ✓ improved\n')
+    expect(joined).not.toContain('line-a\n')
+  })
+
+  test('TTY commit with a line but no slot still prints it', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.commit('iter', 'iter 1 ✗ failed · exception: boom')
+    expect(output).toEqual(['iter 1 ✗ failed · exception: boom\n'])
+  })
+
+  test('commit with neither slot nor line is a no-op', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.commit('missing')
+    expect(output).toEqual([])
+  })
+
+  test('a slot opened after commit renders as a fresh live line', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.slot('a', 'line-a')
+    r.commit('a')
+    r.slot('a', 'line-b')
+    const last = output[output.length - 1]!
+    expect(last).toContain('line-b')
+    expect(last.startsWith('\r')).toBe(true)
+  })
+})
+
 describe('status line', () => {
   test('combines round, activity, issues, and tokens', () => {
     const { stream, output } = makeStream({ isTTY: true, columns: 200 })
@@ -315,6 +384,78 @@ describe('withLivePhase', () => {
     expect(result).toBe('done')
     expect(slots[slots.length - 1]).toEqual(['build', null])
   })
+
+  test('announces the phase start with an event', async () => {
+    const events: string[] = []
+    const reporter: ProgressReporter = {
+      dynamic: false,
+      event: (m) => {
+        events.push(m)
+      },
+      live: () => {},
+      clearLive: () => {},
+      log: () => {},
+    }
+    await withLivePhase(reporter, 'build', () => Promise.resolve('x'))
+    expect(events).toEqual(['[build] running...'])
+  })
+
+  test('durationMs measures elapsed wall time', async () => {
+    const reporter: ProgressReporter = {
+      dynamic: false,
+      event: () => {},
+      live: () => {},
+      clearLive: () => {},
+      log: () => {},
+    }
+    const { durationMs } = await withLivePhase(reporter, 'build', () => Promise.resolve('x'))
+    expect(durationMs).toBeGreaterThanOrEqual(0)
+    expect(durationMs).toBeLessThan(60_000)
+  })
+
+  // Poll-until-tick with a generous bound: the 1s interval can fire late under
+  // mutation-run load, but it must fire (a missing tick means reporter.dynamic
+  // was lost). Never assert after a fixed sleep — that flakes.
+  test('ticks the slot while a dynamic phase runs', async () => {
+    const slots: Array<readonly [string, string | null]> = []
+    const reporter: ProgressReporter = {
+      dynamic: true,
+      event: () => {},
+      live: () => {},
+      clearLive: () => {},
+      log: () => {},
+      slot: (key, line) => {
+        slots.push([key, line] as const)
+      },
+    }
+    await withLivePhase(reporter, 'build', () => pollUntil(() => slots.length > 0, 10_000))
+    expect(slots.length).toBeGreaterThan(0)
+    expect(slots[0]![0]).toBe('build')
+    expect(slots[0]![1]).toContain('[build]')
+  }, 15_000)
+
+  test('stops ticking after the phase completes', async () => {
+    const slots: Array<readonly [string, string | null]> = []
+    const reporter: ProgressReporter = {
+      dynamic: true,
+      event: () => {},
+      live: () => {},
+      clearLive: () => {},
+      log: () => {},
+      slot: (key, line) => {
+        slots.push([key, line] as const)
+      },
+    }
+    const { result: sawTick } = await withLivePhase(reporter, 'build', () =>
+      pollUntil(() => slots.some(([, line]) => line !== null), 10_000),
+    )
+    expect(sawTick).toBe(true)
+    // Completion nulls the slot; the interval must be cleared too.
+    expect(slots[slots.length - 1]).toEqual(['build', null])
+    const callsAtEnd = slots.length
+    await sleep(2_500)
+    expect(slots.length).toBe(callsAtEnd)
+  }, 20_000)
 })
 
 describe('LiveRenderer stats', () => {

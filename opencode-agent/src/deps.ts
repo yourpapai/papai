@@ -5,6 +5,7 @@
 
 import type { AgentHandle } from './agent-handle.js'
 import type { CheckRunner } from './check-loop.js'
+import { createCiGroups } from './ci-groups.js'
 import { resolveBaseBranch } from './config-discovery.js'
 import type { Env, PipelineConfig } from './config.js'
 import { createGit } from './git.js'
@@ -123,6 +124,7 @@ export const assembleDeps = ({
     authorEmail: config.commitAuthorEmail,
     limits: config.diffLimits,
     secrets,
+    log,
     credential: { remote: config.gitRemoteBase, token: config.githubToken },
   })
 
@@ -140,6 +142,7 @@ export const assembleDeps = ({
     ),
     selfLogin: memoize(() => resolveSelfLogin({ override: config.selfLoginOverride, api: github, log })),
     now,
+    groups: createCiGroups(),
     config,
     log,
   }

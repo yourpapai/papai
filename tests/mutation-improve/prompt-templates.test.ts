@@ -49,7 +49,9 @@ describe('prompt-templates', () => {
     expect(prompt).toContain('toBe(')
     expect(prompt).toContain('0.95')
     expect(prompt).toContain('/run/iter/1/result.json')
-    expect(prompt).toContain('docs/superpowers/specs/2026-08-05-mutation-coverage-foo-design.md')
+    expect(prompt).toContain('openspec/changes/mutation-coverage-2026-08-05-foo/design.md')
+    expect(prompt).toContain('openspec/changes/mutation-coverage-2026-08-05-foo/tasks.md')
+    expect(prompt).not.toContain('docs/superpowers')
   })
 
   // The improve agent once wrote a stray copy of its result to `review-loop/result.json`
@@ -63,7 +65,7 @@ describe('prompt-templates', () => {
       date: '2026-08-05',
       outputPath: '/run/iter/1/result.json',
     })
-    expect(prompt).toContain('ONLY under tests/ and docs/superpowers/')
+    expect(prompt).toContain('ONLY under tests/ and openspec/changes/')
     expect(prompt).toContain('do not create copies')
   })
 
@@ -80,7 +82,7 @@ describe('prompt-templates', () => {
     expect(prompt).toContain('tests/foo.test.ts')
     expect(prompt).toContain('1 of 2')
     expect(prompt).toContain('MUST NOT edit anything under src/')
-    expect(prompt).toContain('ONLY under tests/ and docs/superpowers/')
+    expect(prompt).toContain('ONLY under tests/ and openspec/changes/')
     expect(prompt).toContain('/wt/.review-loop/result.json')
   })
 

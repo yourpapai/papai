@@ -1206,19 +1206,20 @@ two call sites that consume the identity.
 
 ## S5 — Robustness, cost, operability
 
-| #                          | Item                                        | Where                                  | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| -------------------------- | ------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| S5-1 **[FIXED]**           | No retry on transient model errors          | `provider-proxy.ts`                    | Three attempts with backoff, at the proxy rather than the adapter — the one layer that sees a real HTTP status, and the only one the review loop's subprocesses also pass through. See below.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| S5-2 **[FIXED]**           | No timeout on a prompt                      | `deadline.ts`; `opencode-adapter.ts`   | `AGENT_TIMEOUT_MS` now bounds a model turn, as it already bounded every subprocess. Server boot had a timeout; the turn itself did not. See below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| S5-3 **[FIXED]**           | No JSON-repair retry                        | `ask-json.ts`                          | `promptForJson` re-asks **once**, carrying the validation complaint and the rejected reply back to the model. See below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| S5-4 **[FIXED]**           | No prompt size budget                       | `prompt-budget.ts`                     | The thread half was already capped at 12k characters. The CI-fix half now is too, across all failures rather than each. See below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| S5-5 **[STILL OPEN]**      | `timeout-minutes: 45` is likely too low     | `agent-pipeline.yml:52` (was `:31`)    | Implement + up to 3 review rounds + 2 mutation rounds on a real repo can exceed it. **Premise partly overtaken, three times now:** S5-2 means one hung _turn_ now fails with a comment posted; S5-8 cuts the repeated full check runs; and the review loop has become the `/review` phase, so the longest job is one model turn and a pull request rather than a turn plus four review rounds, and the job that runs the loop implements nothing. The ceiling reads 90 minutes today, not 45. What was left of it — a job merely slow across several turns still dying silently — is what **S5-11**'s job-deadline half answers.                 |
-| S5-6 **[FIXED]**           | No cost ceiling                             | `types.ts`; `orchestrator.ts`          | A per-issue **token** budget, persisted in the state block so it survives the jobs it bounds. Tokens rather than currency, for a recorded reason. See below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| S5-7 **[FIXED]**           | No progress output during a phase           | `activity.ts`; `progress.ts`           | The event stream says what the model is doing; a heartbeat says it is still doing it. Neither ever logs content. See below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| S5-8 **[REWORDED, FIXED]** | Every check reruns every round              | `check-loop.ts` (was `review-loop.ts`) | The finding named a file that no longer exists; the behaviour was real and lived in `runCheckLoop`. Later rounds now re-run only what failed, and a full pass is what declares green. See below.                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| S5-9 **[MOOT]** — no work  | `parseMutationScore` is ambiguous at `1`    | — (was `review-loop.ts:130`)           | Zero references anywhere in the repository. The function went with S2-4, which replaced the hardcoded mutation check with the detected `review-loop/` workspace; the finding outlived its subject.                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| S5-10 **[SUPERSEDED]**     | The comment filter is gone by design (S1-3) | `agent-pipeline.yml:41-44`             | A comment merely mentioning `/approve` starts a job that then correctly skips. Harmless, noisy, billable.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| S5-11 **[DONE]**           | The turn deadline abandons the work         | `deadline.ts`; `implement.ts`          | 30 minutes of steady progress — 355 tool calls, 112k tokens — discarded and reported as "the model did not answer", in a job with 59 minutes of its cap left. Three defects compose: the bound cannot cancel what it stops waiting for, nothing is committed until the turn returns, and the constant is unrelated to the runner cap it exists to stay under. A wall-clock stop is a **ceiling**: soft stop, unconditional hard stop, `--no-verify` salvage, park in `INCOMPLETE`, resume with `/continue` — and since stage 3 the unit of work is a **plan step**, so the ordinary stop lands between two of them and costs nothing. See below. |
+| #                          | Item                                            | Where                                  | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| -------------------------- | ----------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| S5-1 **[FIXED]**           | No retry on transient model errors              | `provider-proxy.ts`                    | Three attempts with backoff, at the proxy rather than the adapter — the one layer that sees a real HTTP status, and the only one the review loop's subprocesses also pass through. See below.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| S5-2 **[FIXED]**           | No timeout on a prompt                          | `deadline.ts`; `opencode-adapter.ts`   | `AGENT_TIMEOUT_MS` now bounds a model turn, as it already bounded every subprocess. Server boot had a timeout; the turn itself did not. See below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| S5-3 **[FIXED]**           | No JSON-repair retry                            | `ask-json.ts`                          | `promptForJson` re-asks **once**, carrying the validation complaint and the rejected reply back to the model. See below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| S5-4 **[FIXED]**           | No prompt size budget                           | `prompt-budget.ts`                     | The thread half was already capped at 12k characters. The CI-fix half now is too, across all failures rather than each. See below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| S5-5 **[STILL OPEN]**      | `timeout-minutes: 45` is likely too low         | `agent-pipeline.yml:52` (was `:31`)    | Implement + up to 3 review rounds + 2 mutation rounds on a real repo can exceed it. **Premise partly overtaken, three times now:** S5-2 means one hung _turn_ now fails with a comment posted; S5-8 cuts the repeated full check runs; and the review loop has become the `/review` phase, so the longest job is one model turn and a pull request rather than a turn plus four review rounds, and the job that runs the loop implements nothing. The ceiling reads 90 minutes today, not 45. What was left of it — a job merely slow across several turns still dying silently — is what **S5-11**'s job-deadline half answers.                 |
+| S5-6 **[FIXED]**           | No cost ceiling                                 | `types.ts`; `orchestrator.ts`          | A per-issue **token** budget, persisted in the state block so it survives the jobs it bounds. Tokens rather than currency, for a recorded reason. See below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| S5-7 **[FIXED]**           | No progress output during a phase               | `activity.ts`; `progress.ts`           | The event stream says what the model is doing; a heartbeat says it is still doing it. Neither ever logs content. See below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| S5-8 **[REWORDED, FIXED]** | Every check reruns every round                  | `check-loop.ts` (was `review-loop.ts`) | The finding named a file that no longer exists; the behaviour was real and lived in `runCheckLoop`. Later rounds now re-run only what failed, and a full pass is what declares green. See below.                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| S5-9 **[MOOT]** — no work  | `parseMutationScore` is ambiguous at `1`        | — (was `review-loop.ts:130`)           | Zero references anywhere in the repository. The function went with S2-4, which replaced the hardcoded mutation check with the detected `review-loop/` workspace; the finding outlived its subject.                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| S5-10 **[SUPERSEDED]**     | The comment filter is gone by design (S1-3)     | `agent-pipeline.yml:41-44`             | A comment merely mentioning `/approve` starts a job that then correctly skips. Harmless, noisy, billable.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| S5-11 **[DONE]**           | The turn deadline abandons the work             | `deadline.ts`; `implement.ts`          | 30 minutes of steady progress — 355 tool calls, 112k tokens — discarded and reported as "the model did not answer", in a job with 59 minutes of its cap left. Three defects compose: the bound cannot cancel what it stops waiting for, nothing is committed until the turn returns, and the constant is unrelated to the runner cap it exists to stay under. A wall-clock stop is a **ceiling**: soft stop, unconditional hard stop, `--no-verify` salvage, park in `INCOMPLETE`, resume with `/continue` — and since stage 3 the unit of work is a **plan step**, so the ordinary stop lands between two of them and costs nothing. See below. |
+| S5-13 **[FIXED]**          | A turn nobody answered delivered a pull request | `turn-run.ts`; `stray-paths.ts`        | Issue #239's implement turn was refused by the provider 25 times over 12 minutes, went idle without finishing another step, and returned an empty reply that every layer read as success — so `git add --all` committed the one dirty path in the tree, a `serve3.pid` an experiment had left, and the run reported a delivery. Two independent guards now: an unanswered turn over a still-failing provider fails, and a process artefact is never a commit. See below.                                                                                                                                                                         |
 
 ### S5-3 — what the fix is, and what it deliberately is not
 
@@ -1574,8 +1575,9 @@ loses everything it was built to keep.
 So the salvage stages and commits with `--no-verify`, and pushes with it too.
 Worth recording as its own small finding that this coupling exists on the
 _ordinary_ path as well: the agent's normal implementation commit is silently
-gated on the repository's own pre-commit hook passing on the runner, which is a
-dependency nothing in this workspace declares and no test covers.
+gated on the repository's own pre-commit hook passing on the runner, which was a
+dependency nothing in this workspace declared and no test covered. **[FIXED]** —
+see S5-12 below; it is now declared, covered, and repaired rather than fatal.
 
 What `--no-verify` skips is the repository's hooks. It does **not** skip
 `diff-guard.ts`, and the guard's four refusals split cleanly in two on this path:
@@ -1842,6 +1844,53 @@ And two that need no server, only the runner's own shape:
   an accidental trip needs a real key in the diff — but the one thing that would
   produce one is a tool the model ran writing its own environment to a file.
 
+### S5-12 — a refused commit ended the run, and the fix was one prompt away — **[FIXED]**
+
+_Observed live on issue #240._ A twelve-step plan; the implementation turn wrote ten
+of them and the tests it added were green. Then `git commit`: `package.json`'s
+`prepare` had installed `scripts/pre-commit.sh` as `.git/hooks/pre-commit` on the
+runner, the hook ran `scripts/check.sh --staged`, and eleven lint errors, one type
+error and two unformatted files came back. `commitAll` threw `GitError`,
+`handleImplement` had no branch for it, the run parked in `FAILED` with
+`resumeFrom: REVIEW_AND_MUTATE`, and the notice invited a `/retry` — which buys a
+whole fresh job that re-runs the model turn that had already succeeded, on a plan
+whose remaining work the handoff had already described in detail.
+
+The output that would have fixed it was in the pipeline's hands at the moment it
+threw. So `commit-repair.ts` hands it back to the same session, enveloped like any
+other check output, and commits again — `AGENT_COMMIT_REPAIR_MAX_ROUNDS` attempts,
+default 3. Wired on the implement path and on the CI-fix commit, which is refused by
+the same hook for the same reason and whose own loop reproduces a different set of
+checks entirely.
+
+Four things the fix deliberately does not do, each of which would have made it worse
+than the failure it replaces:
+
+- **it does not repair the diff guard.** Its refusals — a staged credential, a
+  binary, a runaway `git add --all` — are `PipelineError`s raised before the commit
+  is issued, and only a `GitError` enters the loop. No number of rounds can argue
+  this pipeline into committing a secret;
+- **it does not change what a spent budget looks like.** The last rejection is
+  rethrown, so the same message reaches the issue and the same `/retry` is offered.
+  The change can turn a failure into a success and cannot turn a success into a
+  different failure;
+- **it does not let the model commit.** A model holding `bash` reads "the commit was
+  refused" as an invitation to commit with `--no-verify`, which is the salvage path's
+  alone; the prompt forbids running git at all, and a test holds that;
+- **it does not swallow the clock.** A repair round is a model turn, so
+  `implement-commit.ts` catches `isTurnDeadline` around the whole loop and leaves by
+  the door a stopped step already leaves by — park in `INCOMPLETE`, salvage,
+  `/continue`. Anything else would fail a run whose tree was worth keeping.
+
+`phases/review.ts` is left out on cost: its findings arrive from `opencode run`
+subprocesses and the phase opens no session, so repairing there would boot the
+OpenCode server for a phase built to avoid it.
+
+Two files moved to keep `max-lines` honest rather than to tidy: the commit half of the
+step walk is now `phases/implement-commit.ts` (what one step costs, against
+`implement-steps.ts`'s which step runs next), and `AGENT_CHECKS`' parse moved to
+`config-values.ts`, which is where reading a value out of the environment already lived.
+
 ### S5-7 — progress, and what it is deliberately not allowed to say
 
 A phase that runs for twenty minutes emitting nothing is, in a CI log,
@@ -2086,6 +2135,64 @@ in the proxy's `authorization` header. Removed, with the invariant written down
 instead. What survives is `formatFailures`' `>` versus `>=`, where slicing the
 tail of a string that is exactly the budget returns the same string.
 
+### S5-12 — a dead server reported as a socket, and a cause no log could settle
+
+Issue #239 failed three times in `REVIEW_AND_MUTATE` and never committed a step.
+Two distinct failures, not one, and telling them apart took the whole thread:
+
+- **Run 1** hit `AGENT_TIMEOUT_MS` with the server healthy — 355 tool calls,
+  heartbeats frozen on `bash (running)` for three-minute stretches, and teardown
+  reporting a **second** `opencode` process, a `bun`, three `bash` and a `curl`
+  left alive. A foreground child that never exited.
+- **Runs 2 and 3** died mid-turn with `The socket connection was closed
+unexpectedly`, Bun's wording for a `fetch` whose peer went away.
+
+That message names neither end of the socket, so it reads as a provider problem.
+It was not: the `session.get` that `tokensUsed()` makes next failed too — the
+`"did not report session usage"` warning is present in runs 2 and 3 and **absent**
+in run 1 — and that call is loopback. The `opencode serve` this job spawned had
+died. Issue #240, in the same phase with the same model and profile, ran sixteen
+minutes and 152 tool calls and reached `idle` cleanly, so this is not general
+flakiness.
+
+The **cause** of the server's death is still open, and the honest reason is that
+nothing survived to settle it. The runner is ephemeral, the workflow uploads no
+artefacts, and `activity.ts` keeps tool input out of the log by design — so
+whether the model typed `pkill opencode`, whether the runner ran out of memory, or
+whether the server crashed cannot be recovered from run 31280928888 or any other.
+
+What was in reach, and is now done:
+
+1. **The failure names itself.** `serverGoneError` in `errors.ts`, raised by
+   `runTurn` in the new `turn-run.ts`, which probes `connection.alive()` on the
+   failure path only and reports the death rather than quoting the transport. The
+   probe is the same `session.get` the inference above was drawn from — turned
+   from something reconstructed a week later into something the run says at the
+   time. Ordering is load-bearing and tested three ways: a turn deadline leaves
+   first, a probe that rejects reads as `false`, and a live server leaves an
+   ordinary failure alone.
+2. **The runner is asked what it saw, before it disappears.** A post-mortem step
+   in `agent-pipeline.yml`, `if: failure()`, reporting the OOM killer, the cgroup
+   memory peak and a process census. **Names and counts only** — `ps` is asked for
+   `comm`, never `args`, because a tool child's argument vector is model-authored
+   content and that log is world-readable, which is `activity.ts`'s rule applied to
+   the one place it had not been. Two live `opencode` processes is the finding;
+   what either was told to do is not that step's to print.
+3. **The kill is reproducible without a model.**
+   `tests/opencode-agent/server-survival.integration.ts`
+   (`bun run opencode-agent:test:survival`) drives candidate commands through
+   `POST /session/:id/shell` — the same `bash -l -c` child the bash tool spawns, no
+   credentials needed — and probes the server after each. The `pkill` hypothesis is
+   deliberately **not** a row: automating it means killing every `opencode` on the
+   host. If every row comes back `alive`, that is what is left.
+
+The finding underneath all three is not a pipeline bug. Plan step 2 told the model
+to "run the live-run experiments against the real `opencode` binary" inside the
+container whose control plane _is_ an `opencode serve` on loopback, with the
+`build` profile's unrestricted `bash`. A research plan that drives this pipeline's
+own tooling belongs in a separate job; the three items above make the next such
+run legible rather than preventing it.
+
 Measured coverage of the spike's own suite:
 
 | File                  | Lines  | Functions | Gap                                                                                                |
@@ -2115,6 +2222,69 @@ Specific gaps worth closing, beyond the raw percentages:
 - **S6-9 [PARTLY CLOSED]** `bun security` (Semgrep) could not run in the authoring environment — no Semgrep binary and no Docker — so the spike had not been through the repo's security scan. CI has now run it, and it found one blocking issue in `agent-pipeline.yml`. See below.
 
 ---
+
+### S5-13 — a turn nobody answered, and a pid file that passed for a deliverable
+
+Issue #239 delivered pull request #251. Its entire diff was one line:
+`serve3.pid`, containing `4854`.
+
+What happened, from the run's own log. The implement turn ran 41 minutes and 109
+tool calls, mostly `bash` — the approved plan's second step called for live
+experiments against a throwaway MCP server, in a scratch directory the plan
+itself placed **outside** the repository. At 13:48:33 the provider began refusing
+the model call. OpenCode retried 25 times over the next 12 minutes, the token and
+tool-call counters frozen the whole way, and the session then went `idle` without
+ever emitting another `step-finish`. The prompt call returned a well-formed reply
+envelope with no text in it.
+
+Nothing could tell that from a finished turn. `decodeReply` checks the
+transport's own `error` field and this failure is not in it; the implement phase
+discards the reply text entirely. So the walk committed, and the only dirty path
+in the tree was the pid file of the third `opencode serve` the experiment had
+started — one file, one line, which is not zero, so `walk.commits === 0` was
+false and `noChangesError` did not fire. The phase posted its canned report, the
+delivery phase opened the pull request, and the issue was labelled done. Roughly
+half a million tokens across five attempts, with no deliverable and no failure.
+
+Two guards, deliberately independent, because either alone leaves the other hole
+open:
+
+- **An unanswered turn is a failure.** `turn-stall.ts` folds the event stream
+  into "what has the provider got wrong **since the last finished step**", and
+  `requireAnswer` in `turn-run.ts` fails the turn when a reply comes back empty
+  _and_ that record is non-empty. Both halves are required. Emptiness alone is an
+  ordinary shape — the implement phase does not depend on the text — and a stall
+  alone says only that a turn recovered from a bad minute, which is exactly what
+  the next `step-finish` clearing the record means. Together they are the thing
+  itself. It raises an ordinary failure and not a ceiling: nothing was written,
+  so there is nothing to salvage, and `FAILED` with its resume point intact is
+  the right place to wait out a quota that clears with time.
+- **A process artefact is not work.** `stray-paths.ts` takes `*.pid`, `*.sock`
+  and `nohup.out` back out of the index between `git add --all` and the guard,
+  the way `protected-paths.ts` already does for what a push cannot carry — kept a
+  separate list, since "the remote refuses it" and "this was never a deliverable"
+  have different remedies and a guardrail that conflates them is one nobody can
+  reason about when it fires. With the pid file dropped, that tree stages nothing,
+  `commitAll` reports nothing to commit, and the question `noChangesError` asks
+  becomes answerable again.
+
+The diagnosis also cost more than it should have, and that is fixed too:
+`session.error` is now decoded and logged — the error's **name and status code
+only**, never its message, which is where a rejected credential would be quoted
+back into a world-readable CI log — so the next run of this shape says `APIError
+(429)` in the log instead of leaving a reader to infer a rate limit from the
+shape of a retry storm.
+
+**What is not fixed, and is the deeper cause.** The plan was approved before the
+steps travelled as data, so its block carries no `steps` and the whole six-step
+plan ran as one indivisible turn: no per-step commit, no per-step push, no clock
+gate, `stepsDone` stuck at 0. That legacy fallback is correct in itself, but a
+plan approved yesterday silently loses every durability property the walk was
+built for. Related and worse: nothing asks whether a plan's steps leave anything
+**committable** behind. This one front-loaded 40 minutes of deliberately
+uncommittable experimentation and put its only artefact in the last step but one,
+which is a plan the pipeline cannot make durable no matter how well the walk
+works. Both want their own finding.
 
 ## Suggested sequencing
 

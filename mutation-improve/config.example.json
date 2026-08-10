@@ -14,7 +14,8 @@
   "agent": {
     "model": "opencode/claude-sonnet-4-6",
     "extraArgs": [],
-    "timeoutMs": 1800000
+    "timeoutMs": 1800000,
+    "inactivityTimeoutMs": 600000
   },
   "prBranchPrefix": "mutation-improve",
   "pricing": {

@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { execFileSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -10,6 +11,7 @@ import path from 'node:path'
 import type { SpawnFn, SpawnResult } from '../../review-loop/src/agent-runner.js'
 import type { ReviewLoopConfig } from '../../review-loop/src/config.js'
 import type { Verdict } from '../../review-loop/src/issue-schema.js'
+import type { RendererStream } from '../../review-loop/src/live-renderer.js'
 import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
 import type { TraceEvent, TraceLogger } from '../../review-loop/src/trace-log.js'
 import type { Worker, WorkerPool } from '../../review-loop/src/worker-pool.js'
@@ -27,6 +29,18 @@ export function cleanupTempDirs(): void {
   for (const dir of tempDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true })
   }
+}
+
+/**
+ * Runs `git` with both of its output streams captured.
+ *
+ * `execFileSync` inherits the parent's stderr by default, so `git init`'s
+ * default-branch hint and `git checkout -b`'s "Switched to a new branch" line
+ * land in the test log where no console suppression can reach them. On failure
+ * the captured text is still attached to the thrown error by Node.
+ */
+export function quietGit(args: readonly string[]): string {
+  return execFileSync('git', [...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
 }
 
 export function createReviewLoopConfigFixture(
@@ -65,6 +79,26 @@ export function silentReporter(): ProgressReporter {
     live() {},
     clearLive() {},
     log() {},
+  }
+}
+
+/**
+ * A `RendererStream` that keeps what a run would have drawn instead of drawing it.
+ *
+ * `LiveRenderer` writes through `stream.write`, which the global console
+ * suppression in `tests/setup.ts` cannot reach — an integration run through
+ * `runCli` would otherwise print its whole progress log to the test output.
+ * The captured chunks stay available so a test can still assert on them.
+ */
+export function captureStream(): RendererStream & { chunks: string[]; text: () => string } {
+  const chunks: string[] = []
+  return {
+    chunks,
+    text: () => chunks.join(''),
+    write(chunk: string): boolean {
+      chunks.push(chunk)
+      return true
+    },
   }
 }
 

@@ -1,0 +1,635 @@
+<!doctype html>
+<!--
+  SPDX-License-Identifier: BUSL-1.1
+  Copyright (c) 2026 Dmitriy Lazarev
+  Use of this software is governed by the Business Source License 1.1.
+  See LICENSE in the project root for details.
+
+  The reader for an encrypted debug transcript.
+
+  Deliberately one file with nothing fetched: it is served from GitHub Pages,
+  where a maintainer opens it while holding a decryption key, and a page that
+  pulled a script from somewhere else would be a page that could be made to
+  exfiltrate that key by whoever controls somewhere else. Everything here runs
+  in the tab, and neither the key nor the artefact leaves it — there is no
+  network call in this file at all.
+
+  The four steps below are the exact inverse of `src/debug-transcript.ts`'s
+  writer, and `tests/opencode-agent/transcript-viewer.test.ts` runs *this*
+  script against a transcript that module produced, so the two cannot drift.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent debug transcript</title>
+    <style>
+      :root {
+        --bg: #ffffff;
+        --fg: #1f2328;
+        --muted: #59636e;
+        --line: #d1d9e0;
+        --panel: #f6f8fa;
+        --bad: #b35900;
+        --good: #1a7f37;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0d1117;
+          --fg: #e6edf3;
+          --muted: #9198a1;
+          --line: #3d444d;
+          --panel: #151b23;
+          --bad: #e3a008;
+          --good: #3fb950;
+        }
+      }
+      body {
+        margin: 0 auto;
+        padding: 2rem 1rem 4rem;
+        max-width: 68rem;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          15px/1.55 -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          Helvetica,
+          Arial,
+          sans-serif;
+      }
+      h1 {
+        font-size: 1.35rem;
+        margin: 0 0 0.25rem;
+      }
+      p.lede {
+        margin: 0 0 1.5rem;
+        color: var(--muted);
+      }
+      fieldset {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 1rem;
+        margin: 0 0 1rem;
+      }
+      legend {
+        padding: 0 0.4rem;
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+      label {
+        display: block;
+        margin-bottom: 0.35rem;
+        font-size: 0.85rem;
+        color: var(--muted);
+      }
+      input[type='password'],
+      input[type='file'] {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 0.5rem;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.85rem;
+      }
+      #drop {
+        border: 2px dashed var(--line);
+        border-radius: 6px;
+        padding: 1.5rem;
+        text-align: center;
+        color: var(--muted);
+        margin-bottom: 0.75rem;
+      }
+      #drop.over {
+        border-color: var(--fg);
+        color: var(--fg);
+      }
+      #drop.loaded {
+        border-style: solid;
+        border-color: var(--line);
+        color: var(--fg);
+      }
+      #drop .filename {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      #status {
+        margin: 0 0 1rem;
+        min-height: 1.5rem;
+        color: var(--bad);
+      }
+      #controls {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        padding: 0.5rem 0;
+        margin: 0 0 0.5rem;
+        background: var(--bg);
+      }
+      .copy-btn {
+        font: inherit;
+        font-size: 0.85rem;
+        padding: 0.35rem 0.75rem;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+        color: var(--fg);
+        cursor: pointer;
+      }
+      .copy-btn:hover:not(:disabled) {
+        border-color: var(--fg);
+      }
+      .copy-btn:focus-visible {
+        outline: 2px solid var(--fg);
+        outline-offset: 1px;
+      }
+      .copy-btn:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      #copy-status {
+        font-size: 0.8rem;
+        color: var(--muted);
+        min-height: 1.2rem;
+      }
+      #copy-status.ok {
+        color: var(--good);
+      }
+      #copy-status.bad {
+        color: var(--bad);
+      }
+      .hint {
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 0.4rem 0.6rem;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      th {
+        color: var(--muted);
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      td.detail {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        word-break: break-word;
+      }
+      td.time,
+      td.duration {
+        white-space: nowrap;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+      tr.unreadable td {
+        color: var(--bad);
+      }
+      #rows tbody tr {
+        cursor: pointer;
+      }
+      #rows tbody tr:hover td {
+        background: var(--panel);
+      }
+      #rows tbody tr.selected td {
+        background: var(--panel);
+        box-shadow: inset 3px 0 0 var(--fg);
+      }
+      #rows tbody tr:focus-visible {
+        outline: 2px solid var(--fg);
+        outline-offset: -2px;
+      }
+      footer {
+        margin-top: 2rem;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+      code {
+        background: var(--panel);
+        padding: 0.1rem 0.3rem;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Agent debug transcript</h1>
+    <p class="lede">
+      Drop the <code>debug-transcript.enc</code> from the run's artefact, paste the run's <code>AGENT_LOG_KEY</code>,
+      and read what the agent did. Nothing is uploaded — the file and the key stay in this tab.
+    </p>
+
+    <fieldset>
+      <legend>Transcript</legend>
+      <div id="drop">
+        <span class="prompt">Drop <code>debug-transcript.enc</code> here, or choose it below</span>
+        <span class="accepted" hidden>Loaded <span class="filename"></span> — drop another to replace</span>
+      </div>
+      <label for="file">Transcript file</label>
+      <input id="file" type="file" accept=".enc,.txt,text/plain" />
+    </fieldset>
+
+    <fieldset>
+      <legend>Key</legend>
+      <label for="key"> <code>AGENT_LOG_KEY</code> — the same base64 value the repository holds as a secret </label>
+      <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="base64, 32 bytes" />
+    </fieldset>
+
+    <p id="status" role="status"></p>
+
+    <div id="controls" hidden>
+      <button id="copy-all" type="button" class="copy-btn">Copy all</button>
+      <button id="copy-selected" type="button" class="copy-btn" disabled>Copy selected</button>
+      <span id="copy-hint" class="hint">Click rows to select; Shift-click for a range.</span>
+      <span id="copy-status" role="status"></span>
+    </div>
+
+    <table id="rows" hidden>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Tool</th>
+          <th>Status</th>
+          <th>Detail</th>
+          <th>Took</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <footer>
+      A line this key cannot open is reported and skipped, never guessed at: a transcript from a crashed run is often
+      truncated mid-line, and a partial transcript that reads is the point.
+    </footer>
+
+    <script type="module">
+      /** AES-GCM's nonce, as `debug-transcript.ts` writes it: 12 bytes, one per line. */
+      const NONCE_BYTES = 12
+
+      /** The key length `AGENT_LOG_KEY` is validated to at config load. */
+      const KEY_BYTES = 32
+
+      /**
+       * Base64 to bytes, with a real `ArrayBuffer` behind them.
+       *
+       * `atob` gives a binary string; the copy is what `crypto.subtle` accepts,
+       * and building the array element-wise is the one form that needs no
+       * library.
+       */
+      const unb64 = (value) => Uint8Array.from(atob(value), (character) => character.charCodeAt(0))
+
+      /**
+       * The pasted secret as key bytes, or a thrown complaint naming which of
+       * the two things is wrong — a mistyped key and a key from another run are
+       * different mistakes with the same symptom otherwise.
+       */
+      const parseKey = (pasted) => {
+        const trimmed = pasted.trim()
+        if (trimmed.length === 0) throw new Error('Paste the run’s AGENT_LOG_KEY.')
+
+        let bytes
+        try {
+          bytes = unb64(trimmed)
+        } catch {
+          throw new Error('That key is not valid base64.')
+        }
+        if (bytes.length !== KEY_BYTES) {
+          throw new Error(`That key is ${bytes.length} bytes; AGENT_LOG_KEY is ${KEY_BYTES}.`)
+        }
+        return bytes
+      }
+
+      const importKey = (bytes) => crypto.subtle.importKey('raw', bytes, 'AES-GCM', false, ['decrypt'])
+
+      /**
+       * One `<base64 nonce>.<base64 ciphertext>` line, decrypted and parsed.
+       *
+       * Line by line rather than file at a time, which is what makes a
+       * truncated transcript readable: a run killed mid-write leaves a final
+       * line that cannot be opened, and every line before it still can.
+       */
+      const decodeLine = async (key, line) => {
+        const [nonce, ciphertext] = line.split('.')
+        if (nonce === undefined || ciphertext === undefined) {
+          throw new Error('Not a transcript line: expected <nonce>.<ciphertext>')
+        }
+
+        const nonceBytes = unb64(nonce)
+        if (nonceBytes.length !== NONCE_BYTES) throw new Error('Not a transcript line: wrong nonce length')
+
+        const plaintext = await crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv: nonceBytes },
+          await importKey(key),
+          unb64(ciphertext),
+        )
+        return JSON.parse(new TextDecoder().decode(plaintext))
+      }
+
+      /**
+       * Every line of a transcript, each carrying whether it opened.
+       *
+       * Never rejects on a bad line: the whole reason the format is one
+       * self-contained envelope per line is that a partial artefact should
+       * still read, so a failure is a row rather than the end of the render.
+       */
+      const decodeAll = (key, text) =>
+        Promise.all(
+          text
+            .split('\n')
+            .filter((line) => line.trim().length > 0)
+            // `Promise.all` keeps the input order, and the order of the
+            // transcript is the order of the run — the only ordering these rows
+            // have, since each line's own timestamp is all it carries.
+            .map((line) =>
+              decodeLine(key, line)
+                .then((row) => ({ ok: true, row }))
+                .catch(() => ({ ok: false })),
+            ),
+        )
+
+      /**
+       * One decoded result as a single pipe-separated line of plain text.
+       *
+       * The five fields are the five table cells, in the same order and with the
+       * same blank-vs-present rules, so what is copied is exactly what is on
+       * screen — the table is the source of truth for the shape and this renders
+       * the same values into a line a chat or a note can carry. Plain text rather
+       * than TSV or JSON because a maintainer pasting a run's tool calls into an
+       * issue comment or a message is the reader this serves.
+       */
+      const HEADER_LINE = 'Time | Tool | Status | Detail | Took'
+      const formatDuration = (durationMs) => (durationMs === null ? '' : `${(durationMs / 1000).toFixed(1)}s`)
+
+      const formatLine = (result) => {
+        if (!result.ok) {
+          return '— | — | unreadable | This line could not be opened with this key. | '
+        }
+        const { time, tool, status, detail, durationMs } = result.row
+        return [time, tool, status, detail ?? '', formatDuration(durationMs)].join(' | ')
+      }
+
+      /**
+       * Every result as plain text: the header row the table shows, then one line
+       * per result, in the order the run produced them. Used by both copy paths,
+       * which differ only in which results they pass in — all of them, or the
+       * rows a maintainer clicked.
+       */
+      const formatLines = (results) => [HEADER_LINE, ...results.map(formatLine)].join('\n')
+
+      const wire = () => {
+        const fileInput = document.getElementById('file')
+        const keyInput = document.getElementById('key')
+        const dropZone = document.getElementById('drop')
+        const dropPrompt = dropZone.querySelector('.prompt')
+        const dropAccepted = dropZone.querySelector('.accepted')
+        const dropFilename = dropZone.querySelector('.filename')
+        const statusLine = document.getElementById('status')
+        const controls = document.getElementById('controls')
+        const copyAllBtn = document.getElementById('copy-all')
+        const copySelectedBtn = document.getElementById('copy-selected')
+        const copyStatus = document.getElementById('copy-status')
+        const table = document.getElementById('rows')
+        const body = table.querySelector('tbody')
+
+        let text = null
+        /** The decoded results currently drawn, in draw order. Cleared on each render. */
+        let currentResults = []
+        /** Indices of selected rows within `currentResults`. */
+        const selected = new Set()
+        /** The anchor a Shift-click extends from. `-1` until the first click. */
+        let anchor = -1
+        let statusTimer = 0
+
+        const cell = (row, className, value) => {
+          const element = document.createElement('td')
+          element.className = className
+          element.textContent = value
+          row.append(element)
+        }
+
+        /**
+         * Writes text to the clipboard, falling back to a hidden textarea when the
+         * async Clipboard API is unavailable. The page is served from a static
+         * host and opened from `file://`, neither of which every browser treats
+         * as the secure context the async API requires, so the fallback is the
+         * path some maintainers actually take.
+         */
+        const copyText = async (value) => {
+          if (navigator.clipboard?.writeText) {
+            try {
+              await navigator.clipboard.writeText(value)
+              return true
+            } catch {
+              // Fall through to the textarea path — a `file://` origin or a
+              // permission refusal both land here, and neither is fatal.
+            }
+          }
+          const area = document.createElement('textarea')
+          area.value = value
+          area.setAttribute('readonly', '')
+          area.style.position = 'fixed'
+          area.style.left = '-9999px'
+          document.body.append(area)
+          area.select()
+          let ok = false
+          try {
+            ok = document.execCommand('copy')
+          } catch {
+            ok = false
+          }
+          area.remove()
+          return ok
+        }
+
+        /** Flashes a one-line result of a copy, clearing itself after a beat. */
+        const flash = (ok, count) => {
+          copyStatus.classList.toggle('ok', ok)
+          copyStatus.classList.toggle('bad', !ok)
+          copyStatus.textContent = ok
+            ? `Copied ${count} ${count === 1 ? 'row' : 'rows'}.`
+            : 'Copy failed — select the rows and press ⌘C.'
+          window.clearTimeout(statusTimer)
+          statusTimer = window.setTimeout(() => {
+            copyStatus.textContent = ''
+            copyStatus.className = ''
+          }, 2500)
+        }
+
+        const syncSelection = () => {
+          for (const row of body.querySelectorAll('tr')) {
+            const index = Number(row.dataset.index)
+            row.classList.toggle('selected', selected.has(index))
+          }
+          const count = selected.size
+          copySelectedBtn.disabled = count === 0
+          copySelectedBtn.textContent = count === 0 ? 'Copy selected' : `Copy selected (${count})`
+        }
+
+        /** One click on a row: toggle, or — with Shift held — fill a range. */
+        const onRowActivate = (index, shiftKey) => {
+          if (shiftKey && anchor >= 0) {
+            const from = Math.min(anchor, index)
+            const to = Math.max(anchor, index)
+            for (let i = from; i <= to; i += 1) selected.add(i)
+          } else if (selected.has(index)) {
+            selected.delete(index)
+          } else {
+            selected.add(index)
+          }
+          anchor = index
+          syncSelection()
+        }
+
+        const copyAll = async () => {
+          if (currentResults.length === 0) return
+          const ok = await copyText(formatLines(currentResults))
+          flash(ok, currentResults.length)
+        }
+
+        const copySelected = async () => {
+          if (selected.size === 0) return
+          const indices = [...selected].sort((a, b) => a - b)
+          const results = indices.map((index) => currentResults[index])
+          const ok = await copyText(formatLines(results))
+          flash(ok, results.length)
+        }
+
+        const render = (results) => {
+          currentResults = results
+          selected.clear()
+          anchor = -1
+          body.replaceChildren()
+          results.forEach((result, index) => {
+            const row = document.createElement('tr')
+            row.tabIndex = 0
+            row.dataset.index = String(index)
+            if (result.ok) {
+              const { time, tool, status, detail, durationMs } = result.row
+              cell(row, 'time', time)
+              cell(row, 'tool', tool)
+              cell(row, 'status', status)
+              cell(row, 'detail', detail ?? '')
+              cell(row, 'duration', durationMs === null ? '' : `${(durationMs / 1000).toFixed(1)}s`)
+            } else {
+              row.className = 'unreadable'
+              cell(row, 'time', '—')
+              cell(row, 'tool', '—')
+              cell(row, 'status', 'unreadable')
+              cell(row, 'detail', 'This line could not be opened with this key.')
+              cell(row, 'duration', '')
+            }
+            row.addEventListener('click', (event) => onRowActivate(index, event.shiftKey))
+            row.addEventListener('keydown', (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                onRowActivate(index, event.shiftKey)
+              }
+            })
+            body.append(row)
+          })
+          table.hidden = results.length === 0
+          controls.hidden = results.length === 0
+          syncSelection()
+        }
+
+        const refresh = async () => {
+          if (text === null) return
+          let key
+          try {
+            key = parseKey(keyInput.value)
+          } catch (error) {
+            statusLine.textContent = error.message
+            table.hidden = true
+            controls.hidden = true
+            return
+          }
+
+          const results = await decodeAll(key, text)
+          const unreadable = results.filter((result) => !result.ok).length
+          statusLine.textContent =
+            unreadable === 0 ? '' : `${unreadable} of ${results.length} lines could not be opened with this key.`
+          render(results)
+        }
+
+        /** Shows the accepted filename beside the drop zone and on the input. */
+        const showAccepted = (file) => {
+          if (file === undefined || file === null) {
+            dropZone.classList.remove('loaded')
+            dropPrompt.hidden = false
+            dropAccepted.hidden = true
+            return
+          }
+          dropFilename.textContent = file.name
+          dropPrompt.hidden = true
+          dropAccepted.hidden = false
+          dropZone.classList.add('loaded')
+        }
+
+        const take = async (file) => {
+          if (file === undefined || file === null) return
+          showAccepted(file)
+          text = await file.text()
+          await refresh()
+        }
+
+        fileInput.addEventListener('change', () => {
+          const file = fileInput.files?.[0]
+          if (file) showAccepted(file)
+          void take(file)
+        })
+        keyInput.addEventListener('input', () => void refresh())
+        copyAllBtn.addEventListener('click', () => void copyAll())
+        copySelectedBtn.addEventListener('click', () => void copySelected())
+
+        for (const name of ['dragenter', 'dragover']) {
+          dropZone.addEventListener(name, (event) => {
+            event.preventDefault()
+            dropZone.classList.add('over')
+          })
+        }
+        for (const name of ['dragleave', 'drop']) {
+          dropZone.addEventListener(name, () => dropZone.classList.remove('over'))
+        }
+        dropZone.addEventListener('drop', (event) => {
+          event.preventDefault()
+          const file = event.dataTransfer?.files?.[0]
+          if (file) {
+            // Link the dropped file to the input too. The drop zone and the input
+            // are separate elements, and without this the input keeps reading "no
+            // file chosen" after a successful drop — which is what made the drop
+            // look as though it had done nothing. `DataTransfer.files` is the one
+            // assignment a script is allowed to make to a read-only `input.files`.
+            const transfer = new DataTransfer()
+            transfer.items.add(file)
+            fileInput.files = transfer.files
+          }
+          void take(file)
+        })
+
+        // A file dropped outside the zone navigates the tab to the file; guard
+        // the whole window so a miss is a no-op. The drop zone's own handlers
+        // above still process drops that land inside it.
+        for (const name of ['dragover', 'drop']) {
+          window.addEventListener(name, (event) => event.preventDefault())
+        }
+      }
+
+      // Guarded so the test can import this same script in a runtime with no
+      // DOM and exercise the decoding, which is the half that has to stay in
+      // step with the writer.
+      if (typeof document !== 'undefined') wire()
+    </script>
+  </body>
+</html>

@@ -60,6 +60,7 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   teardownReserveMs: 180_000,
   wrapUpMs: 120_000,
   ciFixMaxRounds: 2,
+  commitRepairMaxRounds: 3,
   maxCiAttempts: 3,
   maxReviewAttempts: 3,
   reviewHintLines: 200,
@@ -69,6 +70,7 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   gitRemoteBase: 'https://github.com/',
   runUrl: RUN_URL,
   labelPrefix: 'agent:',
+  logKey: null,
   skillRoots: [],
   ...overrides,
 })

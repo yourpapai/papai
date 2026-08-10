@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import type { YouTrackConfig } from '../../../plugins/task-provider-youtrack/client.js'
 import {
+  isoToMinutes,
   minutesToIso,
   paginate,
   parseDuration,
@@ -40,6 +41,19 @@ const mockFetchResponse = (data: unknown, status = 200): void => {
       }),
     ),
   )
+}
+
+const captureError = (fn: () => unknown): Error => {
+  let caught: unknown
+  try {
+    fn()
+  } catch (error) {
+    caught = error
+  }
+  if (!(caught instanceof Error)) {
+    throw new Error(`expected a thrown Error, got: ${String(caught)}`)
+  }
+  return caught
 }
 
 afterEach(() => {
@@ -112,6 +126,50 @@ describe('parseDuration', () => {
   test('rejects invalid ISO duration', () => {
     expect(() => parseDuration('PT')).toThrow('Invalid ISO-8601 duration')
   })
+
+  test('rejects empty input with the exact empty-duration message', () => {
+    const error = captureError(() => parseDuration(''))
+    expect(error.message).toBe('Duration cannot be empty')
+  })
+
+  test('trims surrounding whitespace before the empty guard and ISO detection', () => {
+    const error = captureError(() => parseDuration('   '))
+    expect(error.message).toBe('Duration cannot be empty')
+    expect(parseDuration('  PT2H  ')).toBe('PT2H')
+  })
+
+  test('requires PT at the start of an ISO duration', () => {
+    const error = captureError(() => parseDuration('5pt'))
+    expect(error.message).toBe('Unsupported duration format: "5pt"')
+  })
+
+  test('parses multi-digit integer hours', () => {
+    expect(parseDuration('12h')).toBe('PT12H')
+  })
+
+  test('parses hours with two decimal places', () => {
+    expect(parseDuration('1.25h')).toBe('PT1H15M')
+  })
+
+  test('rejects leading junk before an hours value', () => {
+    const error = captureError(() => parseDuration('x2h'))
+    expect(error.message).toBe('Unsupported duration format: "x2h"')
+  })
+
+  test('rejects trailing junk after an hours value', () => {
+    const error = captureError(() => parseDuration('2hx'))
+    expect(error.message).toBe('Unsupported duration format: "2hx"')
+  })
+
+  test('rejects leading junk before a minutes-only value', () => {
+    const error = captureError(() => parseDuration('x30m'))
+    expect(error.message).toBe('Unsupported duration format: "x30m"')
+  })
+
+  test('rejects trailing junk after a minutes-only value', () => {
+    const error = captureError(() => parseDuration('30mx'))
+    expect(error.message).toBe('Unsupported duration format: "30mx"')
+  })
 })
 
 // --- minutesToIso ---
@@ -143,6 +201,46 @@ describe('minutesToIso', () => {
 
   test('converts 1 minute to PT1M', () => {
     expect(minutesToIso(1)).toBe('PT1M')
+  })
+})
+
+// --- isoToMinutes ---
+
+describe('isoToMinutes', () => {
+  test('converts PT2H to 120 minutes', () => {
+    expect(isoToMinutes('PT2H')).toBe(120)
+  })
+
+  test('converts PT30M to 30 minutes', () => {
+    expect(isoToMinutes('PT30M')).toBe(30)
+  })
+
+  test('converts PT1H30M to 90 minutes', () => {
+    expect(isoToMinutes('PT1H30M')).toBe(90)
+  })
+
+  test('converts multi-digit hours PT12H to 720 minutes', () => {
+    expect(isoToMinutes('PT12H')).toBe(720)
+  })
+
+  test('requires PT at the start of the ISO duration', () => {
+    const error = captureError(() => isoToMinutes('xPT2H'))
+    expect(error.message).toBe('Invalid ISO-8601 duration: "xPT2H"')
+  })
+
+  test('requires the value to end at the minutes group', () => {
+    const error = captureError(() => isoToMinutes('PT2Hx'))
+    expect(error.message).toBe('Invalid ISO-8601 duration: "PT2Hx"')
+  })
+
+  test('throws the exact invalid-duration message for a non-matching value', () => {
+    const error = captureError(() => isoToMinutes('xyz'))
+    expect(error.message).toBe('Invalid ISO-8601 duration: "xyz"')
+  })
+
+  test('throws for an empty PT duration', () => {
+    const error = captureError(() => isoToMinutes('PT'))
+    expect(error.message).toBe('Invalid ISO-8601 duration: "PT"')
   })
 })
 
@@ -217,6 +315,24 @@ describe('paginate', () => {
     const result = await paginate(config, '/api/items', {}, ItemSchema.array())
     expect(result).toHaveLength(0)
   })
+
+  test('honours a non-zero initialSkip against the maxPages bound', async () => {
+    const page: Item[] = [{ id: '7', name: 'g' }]
+    let callCount = 0
+    installFetchMock(() => {
+      callCount++
+      return Promise.resolve(
+        new Response(JSON.stringify(page), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    })
+    const result = await paginate(config, '/api/items', {}, ItemSchema.array(), 1, 5, 3)
+    expect(callCount).toBe(1)
+    expect(result).toHaveLength(1)
+    expect(result[0]?.id).toBe('7')
+  })
 })
 
 // --- resolveWorkItemTypeId ---
@@ -262,5 +378,33 @@ describe('resolveWorkItemTypeId', () => {
   test('propagates API errors', async () => {
     installFetchMock(() => Promise.resolve(new Response(null, { status: 500 })))
     await expect(resolveWorkItemTypeId(config, 'Development')).rejects.toThrow()
+  })
+
+  test('targets the global work-item-types path when projectId is absent', async () => {
+    mockFetchResponse([{ id: '5-0', name: 'Development' }])
+    await resolveWorkItemTypeId(config, 'Development')
+    const url = new URL(fetchMock.mock.calls[0]![0])
+    expect(url.pathname).toBe('/api/admin/timeTrackingSettings/workItemTypes')
+  })
+
+  test('targets the project-scoped work-item-types path when projectId is provided', async () => {
+    mockFetchResponse([{ id: '5-2', name: 'Bug fixing' }])
+    await resolveWorkItemTypeId(config, 'Bug fixing', 'PROJECT-1')
+    const url = new URL(fetchMock.mock.calls[0]![0])
+    expect(url.pathname).toBe('/api/admin/projects/PROJECT-1/timeTrackingSettings/workItemTypes')
+  })
+
+  test('sends the exact fields query parameter', async () => {
+    mockFetchResponse([{ id: '5-0', name: 'Development' }])
+    await resolveWorkItemTypeId(config, 'Development')
+    const url = new URL(fetchMock.mock.calls[0]![0])
+    expect(url.searchParams.get('fields')).toBe('id,name')
+  })
+
+  test('issues the request with the GET method', async () => {
+    mockFetchResponse([{ id: '5-0', name: 'Development' }])
+    await resolveWorkItemTypeId(config, 'Development')
+    const init = fetchMock.mock.calls[0]![1]
+    expect(init.method).toBe('GET')
   })
 })

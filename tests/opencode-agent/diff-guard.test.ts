@@ -9,7 +9,10 @@ import { inspectSalvage, inspectStaged, measure, parseNumstat } from '../../open
 import type { DiffLimits, DiffVerdict, SalvageVerdict, StagedFile } from '../../opencode-agent/src/diff-guard.js'
 import { createGit, credentialEnv } from '../../opencode-agent/src/git.js'
 import type { GitOptions, Salvage } from '../../opencode-agent/src/git.js'
+import type { Logger } from '../../opencode-agent/src/logger.js'
+import { isProtectedPath, protectedAmong } from '../../opencode-agent/src/protected-paths.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
+import { isStrayPath, strayAmong } from '../../opencode-agent/src/stray-paths.js'
 
 const LIMITS: DiffLimits = { maxFiles: 10, maxLines: 100 }
 const TOKEN = 'ghp_0123456789abcdefghijklmnop'
@@ -217,7 +220,16 @@ const guardedGit = (run: CommandRunner, limits: DiffLimits, secrets: readonly st
   authorEmail: 'agent@example.com',
   limits,
   secrets,
+  log: silentLog(),
   credential: null,
+})
+
+/** A logger that records the warnings the guardrails emit and nothing else. */
+const silentLog = (warns: string[] = []): Logger => ({
+  debug: (): void => {},
+  info: (): void => {},
+  warn: (_meta, message): void => void warns.push(message),
+  error: (): void => {},
 })
 
 describe('credentialEnv', () => {
@@ -406,5 +418,245 @@ describe('salvageAll — the commit a wall-clock stop makes', () => {
 
     expect(calls).toContainEqual(['git', 'push', '-u', 'origin', 'agent/issue-1'])
     expect(calls).toContainEqual(['git', 'push', '--no-verify', '-u', 'origin', 'agent/issue-1'])
+  })
+})
+
+/**
+ * The guardrail that keeps a commit deliverable.
+ *
+ * GitHub refuses a push from this pipeline's token that touches
+ * `.github/workflows/`, and refuses it for the whole push rather than for the
+ * file — which is how issue #240 lost two runs of finished, unrelated work. So
+ * the enforcement is at staging, where the model has no say, and it drops
+ * rather than refuses: refusing here would lose exactly what the remote would.
+ */
+describe('protected paths', () => {
+  test.each([['.github/workflows/ci.yml'], ['.github/workflows/nested/thing.yaml']])(
+    '%s cannot be committed',
+    (path) => {
+      expect(isProtectedPath(path)).toBe(true)
+    },
+  )
+
+  test.each([
+    ['.github/dependabot.yml'],
+    ['.github/workflows-notes.md'],
+    ['docs/github/workflows/guide.md'],
+    ['opencode-agent/src/git.ts'],
+  ])('%s is ordinary', (path) => {
+    expect(isProtectedPath(path)).toBe(false)
+  })
+
+  test('keeps the staged order, so the notice reads as the diff did', () => {
+    expect(protectedAmong(['src/a.ts', '.github/workflows/b.yml', '.github/workflows/a.yml'])).toEqual([
+      '.github/workflows/b.yml',
+      '.github/workflows/a.yml',
+    ])
+  })
+})
+
+/** A run whose staged set mixes ordinary files with ones a push cannot carry. */
+const MIXED = {
+  ...DIRTY,
+  'git diff --cached --numstat': ['3\t1\tsrc/a.ts', '9\t0\t.github/workflows/agent-pipeline.yml'].join('\n'),
+  'git ls-tree --name-only HEAD -- .github/workflows/agent-pipeline.yml': '.github/workflows/agent-pipeline.yml\n',
+}
+
+/** The same, where the workflow file is one the model created. */
+const NEW_WORKFLOW = {
+  ...DIRTY,
+  'git diff --cached --numstat': ['3\t1\tsrc/a.ts', '40\t0\t.github/workflows/pages.yml'].join('\n'),
+  'git ls-tree --name-only HEAD -- .github/workflows/pages.yml': '',
+}
+
+describe('commitAll drops what a push cannot carry', () => {
+  test('commits the rest and measures only the rest', async () => {
+    const { calls, run } = captureGit(MIXED)
+
+    // 3+1 from src/a.ts alone: the workflow file's 9 lines are not in the commit
+    // and must not be in the figure the state block carries either.
+    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toEqual({ files: 1, lines: 4 })
+    expect(calls.some((call) => call.includes('commit'))).toBe(true)
+  })
+
+  test('unstages and restores a tracked workflow file, so the next step cannot re-stage it', async () => {
+    // Unstaging alone is not enough: an unstaged edit is still an edit, and the
+    // next step's `git add --all` would stage it again, for ever.
+    const { calls, run } = captureGit(MIXED)
+
+    await createGit(guardedGit(run, LIMITS)).commitAll('msg')
+
+    expect(calls).toContainEqual(['git', 'reset', '--', '.github/workflows/agent-pipeline.yml'])
+    expect(calls).toContainEqual(['git', 'checkout', 'HEAD', '--', '.github/workflows/agent-pipeline.yml'])
+    expect(calls.some((call) => call.includes('clean'))).toBe(false)
+  })
+
+  test('removes a workflow file the model created, which has no version to restore', async () => {
+    const { calls, run } = captureGit(NEW_WORKFLOW)
+
+    await createGit(guardedGit(run, LIMITS)).commitAll('msg')
+
+    expect(calls).toContainEqual(['git', 'clean', '--force', '--', '.github/workflows/pages.yml'])
+    expect(calls.some((call) => call.includes('checkout'))).toBe(false)
+  })
+
+  test('says so at warn, naming the files — a guardrail nobody sees fire is a silent bug', async () => {
+    const warns: string[] = []
+    const { run } = captureGit(MIXED)
+
+    await createGit({ ...guardedGit(run, LIMITS), log: silentLog(warns) }).commitAll('msg')
+
+    expect(warns.join('\n')).toContain('.github/workflows/agent-pipeline.yml')
+    expect(warns.join('\n')).toContain('workflows')
+  })
+
+  test('a turn that wrote only a workflow file reports nothing to commit, never an empty index', async () => {
+    // `git commit` on an empty index exits non-zero, which would reach
+    // `commit-repair` and spend its rounds on a tree no repair can change.
+    const onlyBlocked = {
+      ...DIRTY,
+      'git diff --cached --numstat': '9\t0\t.github/workflows/agent-pipeline.yml',
+      'git ls-tree --name-only HEAD -- .github/workflows/agent-pipeline.yml': '.github/workflows/agent-pipeline.yml\n',
+    }
+    const { calls, run } = captureGit(onlyBlocked)
+
+    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toBeNull()
+    expect(calls.some((call) => call.includes('commit'))).toBe(false)
+  })
+
+  test('leaves an ordinary change set alone, asking git nothing extra', async () => {
+    const { calls, run } = captureGit({ ...DIRTY, 'git diff --cached --numstat': '3\t1\tsrc/a.ts' })
+
+    await createGit(guardedGit(run, LIMITS)).commitAll('msg')
+
+    expect(calls.some((call) => call.includes('ls-tree'))).toBe(false)
+    expect(calls.some((call) => call.includes('clean'))).toBe(false)
+  })
+})
+
+/**
+ * The guardrail that keeps "this run committed nothing" answerable.
+ *
+ * Issue #239 delivered a pull request whose whole diff was `serve3.pid`, one
+ * line: the turn that was to write the deliverable died before writing it, and
+ * the only dirty path left was a pid file an experiment had dropped in the repo
+ * root. `noChangesError` fires on a walk that committed *nothing at all*, so one
+ * stray artefact was the difference between a reported failure and a reported
+ * delivery.
+ */
+describe('stray paths', () => {
+  test.each([['serve3.pid'], ['tmp/agent.sock'], ['nohup.out'], ['deep/nested/run.pid']])(
+    '%s is a process artefact rather than work',
+    (path) => {
+      expect(isStrayPath(path)).toBe(true)
+    },
+  )
+
+  test.each([
+    ['src/pid.ts'],
+    ['docs/sock.md'],
+    // A file *called* `.pid` is a file somebody named, not a pid file with no
+    // name — the suffix rule must not swallow it.
+    ['.pid'],
+    ['config/nohup.out.example'],
+    ['opencode-agent/src/git-commit.ts'],
+  ])('%s is ordinary', (path) => {
+    expect(isStrayPath(path)).toBe(false)
+  })
+
+  test('keeps the staged order, so the notice reads as the diff did', () => {
+    expect(strayAmong(['src/a.ts', 'b.pid', 'srv.sock', 'a.pid'])).toEqual(['b.pid', 'srv.sock', 'a.pid'])
+  })
+})
+
+/** A tree holding one finished file and the pid file a probe left behind. */
+const WITH_STRAY = {
+  ...DIRTY,
+  'git diff --cached --numstat': ['3\t1\tsrc/a.ts', '1\t0\tserve3.pid'].join('\n'),
+  'git ls-tree --name-only HEAD -- serve3.pid': '',
+}
+
+/** Issue #239's tree exactly: the deliverable never written, the pid file left. */
+const ONLY_STRAY = {
+  ...DIRTY,
+  'git diff --cached --numstat': '1\t0\tserve3.pid',
+  'git ls-tree --name-only HEAD -- serve3.pid': '',
+}
+
+describe('commitAll drops what a process left behind', () => {
+  test('commits the real work and measures only the real work', async () => {
+    const { run } = captureGit(WITH_STRAY)
+
+    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toEqual({ files: 1, lines: 4 })
+  })
+
+  test('removes the pid file, so the next step does not re-stage it for ever', async () => {
+    const { calls, run } = captureGit(WITH_STRAY)
+
+    await createGit(guardedGit(run, LIMITS)).commitAll('msg')
+
+    expect(calls).toContainEqual(['git', 'reset', '--', 'serve3.pid'])
+    expect(calls).toContainEqual(['git', 'clean', '--force', '--', 'serve3.pid'])
+  })
+
+  test('a turn that left only a pid file has committed nothing, and says so', async () => {
+    // The whole point: `null` is what reaches `walk.commits === 0` and becomes
+    // `noChangesError`. Issue #239 got `{ files: 1, lines: 1 }` here and opened
+    // a pull request on it.
+    const { calls, run } = captureGit(ONLY_STRAY)
+
+    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toBeNull()
+    expect(calls.some((call) => call.includes('commit'))).toBe(false)
+  })
+
+  test('says so at warn, naming the file and why it is out', async () => {
+    const warns: string[] = []
+    const { run } = captureGit(WITH_STRAY)
+
+    await createGit({ ...guardedGit(run, LIMITS), log: silentLog(warns) }).commitAll('msg')
+
+    expect(warns.join('\n')).toContain('serve3.pid')
+    expect(warns.join('\n')).toContain('not the work a step was asked for')
+  })
+
+  test('reports the two refusals apart, since their remedies differ', async () => {
+    const warns: string[] = []
+    const both = {
+      ...DIRTY,
+      'git diff --cached --numstat': ['3\t1\tsrc/a.ts', '9\t0\t.github/workflows/ci.yml', '1\t0\trun.pid'].join('\n'),
+      'git ls-tree --name-only HEAD -- .github/workflows/ci.yml run.pid': '.github/workflows/ci.yml\n',
+    }
+    const { run } = captureGit(both)
+
+    await createGit({ ...guardedGit(run, LIMITS), log: silentLog(warns) }).commitAll('msg')
+
+    expect(warns).toHaveLength(2)
+    expect(warns.find((warn) => warn.includes('run.pid'))).not.toContain('.github/workflows/ci.yml')
+  })
+})
+
+describe('salvageAll drops what a push cannot carry', () => {
+  test('keeps the rest of a stopped turn rather than losing the commit to the remote', async () => {
+    // This is the failure the guardrail exists for: the salvage committed the
+    // workflow file, the push was refused for the whole commit, and the run's
+    // finished work went with it.
+    const { calls, run } = captureGit(MIXED)
+
+    const salvaged = await createGit(guardedGit(run, LIMITS)).salvageAll('msg')
+
+    expect(salvaged).toEqual({ kind: 'committed', totals: { files: 1, lines: 4 }, overCap: null })
+    expect(calls).toContainEqual(['git', 'reset', '--', '.github/workflows/agent-pipeline.yml'])
+  })
+
+  test('a stopped turn that wrote only a workflow file salvages as clean', async () => {
+    const onlyBlocked = {
+      ...DIRTY,
+      'git diff --cached --numstat': '9\t0\t.github/workflows/agent-pipeline.yml',
+      'git ls-tree --name-only HEAD -- .github/workflows/agent-pipeline.yml': '.github/workflows/agent-pipeline.yml\n',
+    }
+    const { calls, run } = captureGit(onlyBlocked)
+
+    expect(await createGit(guardedGit(run, LIMITS)).salvageAll('msg')).toEqual({ kind: 'clean' })
+    expect(calls.some((call) => call.includes('commit'))).toBe(false)
   })
 })

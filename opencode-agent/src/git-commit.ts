@@ -4,10 +4,12 @@
 // See LICENSE in the project root for details.
 
 import { inspectSalvage, inspectStaged, measure, parseNumstat } from './diff-guard.js'
-import type { StagedTotals } from './diff-guard.js'
+import type { StagedFile, StagedTotals } from './diff-guard.js'
 import { diffGuardError } from './errors.js'
 import type { GitOptions } from './git.js'
+import { protectedAmong, protectedPathsNotice } from './protected-paths.js'
 import type { CommandResult } from './shell.js'
+import { strayAmong, strayPathsNotice } from './stray-paths.js'
 
 /**
  * Staging a change set, judging it, and committing it — the two ways this
@@ -57,8 +59,11 @@ export type GitFn = (...argv: readonly string[]) => Promise<CommandResult>
  * verdict that answered "yes, and here are the numbers" would make every caller
  * that only wants the yes narrow past them.
  */
-const guardStaged = async (gitOrThrow: GitFn, options: GitOptions): Promise<StagedTotals> => {
-  const staged = parseNumstat((await gitOrThrow('diff', '--cached', '--numstat')).stdout)
+const guardStaged = async (
+  gitOrThrow: GitFn,
+  options: GitOptions,
+  staged: readonly StagedFile[],
+): Promise<StagedTotals> => {
   const diff = (await gitOrThrow('diff', '--cached')).stdout
 
   const verdict = inspectStaged(staged, diff, options.limits, options.secrets)
@@ -72,6 +77,102 @@ const guardStaged = async (gitOrThrow: GitFn, options: GitOptions): Promise<Stag
   const { files, lines } = measure(staged)
   return { files, lines }
 }
+
+/**
+ * Stages everything, then takes back out what does not belong in a commit.
+ *
+ * Two lists, and they answer different questions. `protected-paths.ts` is what a
+ * push cannot **carry**: GitHub has already announced it will refuse a push that
+ * touches `.github/workflows/` from a token without the `workflows` permission,
+ * and a push is atomic, so a commit built around one such file cannot be
+ * delivered at all. `stray-paths.ts` is what a commit is not **for**: a pid file
+ * or a socket a probe left behind would push perfectly well, and is still not
+ * the work a step was asked for. They are kept apart because a guardrail that
+ * conflates "the remote refuses it" with "it is not a deliverable" is one nobody
+ * can reason about when it fires.
+ *
+ * Both commit paths go through this, and the reason it is here rather than in
+ * `diff-guard.ts` is what it does with the answer. The guard *judges* a change
+ * set and refusing is a real outcome for it; this is not a judgement at all.
+ * Refusing here would lose the same work the remote would have lost. Dropping
+ * the file keeps the rest, which is the only outcome with anything in it.
+ *
+ * The working-tree copy is reverted, not merely unstaged, and that is the part
+ * that makes the guardrail stable rather than a loop. An unstaged edit is still
+ * an edit: the next step's `git add --all` re-stages it, this drops it again,
+ * and a plan whose every remaining step is blocked would stage nothing but
+ * blocked files and hand `git commit` an empty index to fail on. A file not in
+ * `HEAD` is removed instead of restored, since there is no version to restore.
+ *
+ * Reported at `warn` and never silently: from every caller's side this is a
+ * commit that simply did not contain those files, and a guardrail nobody sees
+ * fire reads as a model that failed to make the edit.
+ *
+ * Returns what is left staged *and* what was taken out, derived from the set it
+ * just read rather than by asking git a second time — the two cannot disagree.
+ * Both halves are needed to tell the two empty indexes apart: a turn that wrote
+ * nothing was already handled by the `status` probe, while a turn that wrote
+ * *only* a protected file has to reach the callers' "nothing to commit" branch
+ * rather than `git commit`'s hard failure on an empty index.
+ */
+interface Staged {
+  staged: StagedFile[]
+  dropped: string[]
+}
+
+/** One reason a set of staged paths is coming back out, with that set. */
+interface Refusal {
+  paths: string[]
+  notice: string
+}
+
+/**
+ * What may not be committed, grouped by why — each group in staged order.
+ *
+ * Grouped rather than merged into one list because the two notices say different
+ * things and a maintainer reading the log has to know which fired: one says
+ * "apply this by hand or grant the permission", the other says "this was never
+ * work". A path that somehow matched both is reported once, under the reason
+ * that would have stopped the push, since that is the one with a remedy.
+ */
+const refusals = (paths: readonly string[]): Refusal[] => {
+  const cannotPush = protectedAmong(paths)
+  const notWork = strayAmong(paths).filter((path) => !cannotPush.includes(path))
+
+  return [
+    ...(cannotPush.length === 0 ? [] : [{ paths: cannotPush, notice: protectedPathsNotice(cannotPush) }]),
+    ...(notWork.length === 0 ? [] : [{ paths: notWork, notice: strayPathsNotice(notWork) }]),
+  ]
+}
+
+const stageAllowed = async (gitOrThrow: GitFn, options: GitOptions): Promise<Staged> => {
+  await gitOrThrow('add', '--all')
+
+  const staged = parseNumstat((await gitOrThrow('diff', '--cached', '--numstat')).stdout)
+  const refused = refusals(staged.map((file) => file.path))
+  const blocked = refused.flatMap((refusal) => refusal.paths)
+  if (blocked.length === 0) return { staged, dropped: [] }
+
+  // `ls-tree` lists only the paths that exist in HEAD and says nothing about
+  // the rest, so it partitions tracked from new without a second failing call.
+  const tracked = stdoutLines((await gitOrThrow('ls-tree', '--name-only', 'HEAD', '--', ...blocked)).stdout)
+  const added = blocked.filter((path) => !tracked.includes(path))
+
+  await gitOrThrow('reset', '--', ...blocked)
+  if (tracked.length > 0) await gitOrThrow('checkout', 'HEAD', '--', ...tracked)
+  if (added.length > 0) await gitOrThrow('clean', '--force', '--', ...added)
+
+  refused.forEach((refusal) => {
+    options.log.warn({ dropped: refusal.paths }, refusal.notice)
+  })
+  return { staged: staged.filter((file) => !blocked.includes(file.path)), dropped: blocked }
+}
+
+const stdoutLines = (stdout: string): string[] =>
+  stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
 
 /** The commit itself, identity stamped, with whatever extra flags the path needs. */
 const commit = (gitOrThrow: GitFn, options: GitOptions, message: string, extra: readonly string[]): Promise<unknown> =>
@@ -94,8 +195,12 @@ export const commitAll = async (
   const status = await gitOrThrow('status', '--porcelain')
   if (status.stdout.trim().length === 0) return null
 
-  await gitOrThrow('add', '--all')
-  const totals = await guardStaged(gitOrThrow, options)
+  const { staged, dropped } = await stageAllowed(gitOrThrow, options)
+  // Only when the drop is what emptied it: a `status`-dirty tree that stages no
+  // measurable change is an existing shape, and it still commits as it did.
+  if (staged.length === 0 && dropped.length > 0) return null
+
+  const totals = await guardStaged(gitOrThrow, options, staged)
   await commit(gitOrThrow, options, message, [])
   return totals
 }
@@ -122,8 +227,9 @@ export const salvageAll = async (gitOrThrow: GitFn, options: GitOptions, message
   const status = await gitOrThrow('status', '--porcelain')
   if (status.stdout.trim().length === 0) return { kind: 'clean' }
 
-  await gitOrThrow('add', '--all')
-  const staged = parseNumstat((await gitOrThrow('diff', '--cached', '--numstat')).stdout)
+  const { staged, dropped } = await stageAllowed(gitOrThrow, options)
+  if (staged.length === 0 && dropped.length > 0) return { kind: 'clean' }
+
   const verdict = inspectSalvage(staged, (await gitOrThrow('diff', '--cached')).stdout, options.limits, options.secrets)
   if (!verdict.ok) {
     // Leave the tree as it was found, for the reason `guardStaged` does.

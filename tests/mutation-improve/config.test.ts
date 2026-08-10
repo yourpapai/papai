@@ -30,9 +30,18 @@ describe('config', () => {
     expect(parsed.mutateFileCommand).toBe('bun test:mutate:file')
     expect(parsed.prBranchPrefix).toBe('mutation-improve')
     expect(parsed.agent.timeoutMs).toBe(1_800_000)
+    expect(parsed.agent.inactivityTimeoutMs).toBe(600_000)
     expect(parsed.mutateTimeoutMs).toBe(1_800_000)
     expect(parsed.buildTimeoutMs).toBe(1_800_000)
     expect(parsed.buildFixAttempts).toBe(2)
+  })
+
+  test('MutationImproveConfigSchema honors an explicit agent.inactivityTimeoutMs', () => {
+    const parsed = MutationImproveConfigSchema.parse({
+      ...minimalValid,
+      agent: { ...minimalValid.agent, inactivityTimeoutMs: 120_000 },
+    })
+    expect(parsed.agent.inactivityTimeoutMs).toBe(120_000)
   })
 
   test('MutationImproveConfigSchema honors an explicit buildFixAttempts and rejects negatives', () => {

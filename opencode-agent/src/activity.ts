@@ -32,6 +32,15 @@ import { z } from 'zod'
 
 /** One thing worth saying about a running turn. */
 export interface Activity {
+  /**
+   * Which of the three event families this came from.
+   *
+   * Carried rather than inferred: `progress.ts` renders a tool, a step and a
+   * session status to three different line shapes, and re-deriving the family
+   * from which meta keys happen to be present is exactly the guesswork
+   * `summary` and `collapseKey` were named to avoid.
+   */
+  kind: 'tool' | 'step' | 'status' | 'failure'
   message: string
   /** Structural only: names, statuses, counts. Never model or tool content. */
   meta: Record<string, string | number>
@@ -120,6 +129,7 @@ const describeTool = (event: unknown, sessionId: string): Activity | null => {
   if (part.state.status === 'pending') return null
 
   return {
+    kind: 'tool',
     message: 'Model tool call',
     meta: { tool: part.tool, status: part.state.status, call: part.callID },
     summary: `${part.tool} (${part.state.status})`,
@@ -134,10 +144,57 @@ const describeStep = (event: unknown, sessionId: string): Activity | null => {
 
   const { tokens, cost } = parsed.data.properties.part
   return {
+    kind: 'step',
     message: 'Model step finished',
     meta: { inputTokens: tokens.input, outputTokens: tokens.output, reasoningTokens: tokens.reasoning, cost },
     summary: 'finished a step',
     counts: { tokens: tokens.input + tokens.output, cost },
+  }
+}
+
+/**
+ * The session saying the provider would not serve it.
+ *
+ * Recorded from the 1.18.7 types: `session.error` carries a named error whose
+ * `data` differs per name, of which `message` and `statusCode` are the only
+ * fields more than one of them shares.
+ *
+ * **The message is deliberately not taken.** That is the containment rule this
+ * module exists to hold, and this is the event that most tempts a widening: a
+ * provider's error text is the natural place for a rejected credential to be
+ * quoted back, and a CI log on a public repository is world-readable and is not
+ * covered by the outbound redaction that guards issue comments. The name and
+ * the status code are a status and a number — they distinguish a 429 that will
+ * pass from a 401 that will not, which is the whole of what a maintainer needs
+ * from this line — and neither can carry a secret.
+ *
+ * `statusCode` is optional in the type and stays optional here: `UnknownError`
+ * and `MessageAbortedError` carry none, and an absent code must read as absent
+ * rather than as a zero.
+ */
+const errorEvent = z.object({
+  type: z.literal('session.error'),
+  properties: z.object({
+    sessionID: z.string().optional(),
+    error: z.object({ name: z.string(), data: z.object({ statusCode: z.number().optional() }).optional() }),
+  }),
+})
+
+const describeError = (event: unknown, sessionId: string): Activity | null => {
+  const parsed = errorEvent.safeParse(event)
+  if (!parsed.success) return null
+
+  // `sessionID` is optional on this event alone, and an error the server could
+  // not attribute is still this run's — there is one session per job.
+  const { sessionID, error } = parsed.data.properties
+  if (sessionID !== undefined && sessionID !== sessionId) return null
+
+  const statusCode = error.data?.statusCode
+  return {
+    kind: 'failure',
+    message: 'Model provider failure',
+    meta: statusCode === undefined ? { error: error.name } : { error: error.name, statusCode },
+    summary: statusCode === undefined ? error.name : `${error.name} (${statusCode})`,
   }
 }
 
@@ -148,6 +205,7 @@ const describeStatus = (event: unknown, sessionId: string): Activity | null => {
   const { status } = parsed.data.properties
   const attempt = status.attempt
   return {
+    kind: 'status',
     message: 'Model session status',
     meta: attempt === undefined ? { status: status.type } : { status: status.type, attempt },
     summary: status.type,
@@ -164,4 +222,7 @@ const describeStatus = (event: unknown, sessionId: string): Activity | null => {
  * All three mean the same thing to the caller: say nothing and carry on.
  */
 export const describeActivity = (event: unknown, sessionId: string): Activity | null =>
-  describeTool(event, sessionId) ?? describeStep(event, sessionId) ?? describeStatus(event, sessionId)
+  describeTool(event, sessionId) ??
+  describeStep(event, sessionId) ??
+  describeStatus(event, sessionId) ??
+  describeError(event, sessionId)

@@ -24,7 +24,7 @@ import { createIssueLedger, saveIssueLedger, type IssueLedger } from '../../revi
 import { createRunState, PersistedRunStateSchema, type RunState } from '../../review-loop/src/run-state.js'
 import { RunStats } from '../../review-loop/src/run-stats.js'
 import { execGit } from '../../review-loop/src/worktree.js'
-import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir } from './test-helpers.js'
+import { captureStream, cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir, quietGit } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
 
@@ -295,13 +295,13 @@ interface RunCliFixture {
   getRunDir: () => string
 }
 
-async function setupRunCliFixtures(
+function setupRunCliFixtures(
   opts: {
     poolSize?: number
     inspector?: boolean
     checkCommand?: string
   } = {},
-): Promise<RunCliFixture> {
+): RunCliFixture {
   const dir = makeTempDir('cli-integration-')
   const binDir = path.join(dir, 'bin')
   const scenarioPath = path.join(dir, 'scenario.json')
@@ -328,15 +328,14 @@ async function setupRunCliFixtures(
   }
   writeFileSync(configPath, JSON.stringify(config))
 
-  const { execFileSync } = await import('node:child_process')
-  execFileSync('git', ['init', repoPath])
-  execFileSync('git', ['-C', repoPath, 'config', 'user.email', 'test@test.com'])
-  execFileSync('git', ['-C', repoPath, 'config', 'user.name', 'Test'])
-  execFileSync('git', ['-C', repoPath, 'checkout', '-b', 'main'])
+  quietGit(['init', repoPath])
+  quietGit(['-C', repoPath, 'config', 'user.email', 'test@test.com'])
+  quietGit(['-C', repoPath, 'config', 'user.name', 'Test'])
+  quietGit(['-C', repoPath, 'checkout', '-b', 'main'])
   writeFileSync(path.join(repoPath, '.gitignore'), '.review-loop/\n')
   writeFileSync(path.join(repoPath, 'README.md'), 'hello')
-  execFileSync('git', ['-C', repoPath, 'add', '.'])
-  execFileSync('git', ['-C', repoPath, 'commit', '-m', 'init'])
+  quietGit(['-C', repoPath, 'add', '.'])
+  quietGit(['-C', repoPath, 'commit', '-m', 'init'])
 
   mkdirSync(binDir, { recursive: true })
   const scriptPath = path.join(binDir, 'opencode')
@@ -348,7 +347,7 @@ async function setupRunCliFixtures(
     process.env['PATH'] = `${binDir}:${oldPath}`
     process.env['FAKE_OPENCODE_SCENARIO'] = scenarioPath
     try {
-      await runCli(args)
+      await runCli(args, captureStream())
     } finally {
       process.env['PATH'] = oldPath
       delete process.env['FAKE_OPENCODE_SCENARIO']
@@ -390,7 +389,7 @@ async function createResumableRunState(
 
 describe('runCli', () => {
   test('--pool-size overrides config.poolSize', async () => {
-    const fixture = await setupRunCliFixtures({ poolSize: 3 })
+    const fixture = setupRunCliFixtures({ poolSize: 3 })
     const scenario = {
       reviewerIssues: [JSON.stringify({ issues: [] })],
       fixerResults: [],
@@ -404,7 +403,7 @@ describe('runCli', () => {
   })
 
   test('--no-inspect skips inspector calls', async () => {
-    const fixture = await setupRunCliFixtures({ poolSize: 1, inspector: true })
+    const fixture = setupRunCliFixtures({ poolSize: 1, inspector: true })
     const scenario = {
       reviewerIssues: [
         JSON.stringify({
@@ -458,7 +457,7 @@ describe('runCli', () => {
   })
 
   test('stale worker worktrees from a prior run are cleaned at startup', async () => {
-    const fixture = await setupRunCliFixtures({ poolSize: 1 })
+    const fixture = setupRunCliFixtures({ poolSize: 1 })
     const runId = '2026-07-15T10-30-00-000Z-stale'
     const primaryWorktreePath = path.join(fixture.workDir, 'worktrees', runId)
     const staleWorkerPath = path.join(fixture.workDir, 'worktrees', `${runId}-worker-1`)
@@ -479,7 +478,7 @@ describe('runCli', () => {
   })
 
   test('stale worker worktrees from a prior crashed run are cleaned on a fresh start (no --resume-run)', async () => {
-    const fixture = await setupRunCliFixtures({ poolSize: 1 })
+    const fixture = setupRunCliFixtures({ poolSize: 1 })
     const crashedRunId = '2026-07-15T10-30-00-000Z-crashed'
     const crashedWorkerPath = path.join(fixture.workDir, 'worktrees', `${crashedRunId}-worker-1`)
 
@@ -505,7 +504,7 @@ describe('runCli', () => {
   })
 
   test('on fixer timeout (non-zero exit), the crashing issue is marked needs_human and the run still completes', async () => {
-    const fixture = await setupRunCliFixtures({ poolSize: 2 })
+    const fixture = setupRunCliFixtures({ poolSize: 2 })
     // Reviewer reports one issue; fixer exits non-zero (simulating timeout/error).
     const scenario = {
       reviewerIssues: [
@@ -553,7 +552,7 @@ describe('runCli', () => {
     // writeRunArtifacts, so any throw (build failure, merge conflict) skipped
     // the summary/metrics/trace write — leaving the user with no post-mortem
     // for a multi-hour run. writeRunArtifacts must run first.
-    const fixture = await setupRunCliFixtures({ poolSize: 1, checkCommand: 'false' })
+    const fixture = setupRunCliFixtures({ poolSize: 1, checkCommand: 'false' })
 
     const scenario = {
       reviewerIssues: [JSON.stringify({ issues: [] })],

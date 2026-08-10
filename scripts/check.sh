@@ -22,6 +22,18 @@ done
 TMPDIR=$(mktemp -d) || { echo "Failed to create temp dir" >&2; exit 1; }
 trap 'rm -rf "$TMPDIR"' EXIT
 
+# Per-check output outlives the run, in reports/ (gitignored).
+#
+# It used to live in $TMPDIR and die with the trap above, which meant the only
+# copy of a failure was whatever scrolled past on stdout. Wanting a different
+# slice of it — more context, a different grep — meant running the check again,
+# and for `test` that is a multi-minute round trip to re-read bytes this script
+# already paid for. Cleared at the start rather than deleted at the end so the
+# newest run's output is what is on disk, with nothing stale beside it.
+CHECKS_REPORT_DIR="reports/checks"
+rm -rf "$CHECKS_REPORT_DIR"
+mkdir -p "$CHECKS_REPORT_DIR" || { echo "Failed to create $CHECKS_REPORT_DIR" >&2; exit 1; }
+
 # Sanitize check names for safe temp filenames (replace : with _)
 safe_name() { echo "${1//:/_}"; }
 
@@ -365,7 +377,7 @@ else
             header_checked_files+=("$file")
           fi
         done < <(git ls-files --cached --others --exclude-standard 2>/dev/null || true)
-        run_license_header_check "$TMPDIR/$fname.out" "${header_checked_files[@]+${header_checked_files[@]}}" || exit_code=$?
+        run_license_header_check "$CHECKS_REPORT_DIR/$fname.log" "${header_checked_files[@]+${header_checked_files[@]}}" || exit_code=$?
       elif [ "$check" = "test" ]; then
         # CI runners (4 vCPU, all checks already running concurrently) get
         # destabilized by worker-per-file --parallel: the VM is OOM-killed and
@@ -376,7 +388,7 @@ else
         # integration tests (e.g. review-loop worktree tests) time out under
         # --parallel worker contention.
         if [ "${CI:-}" = "true" ]; then
-          bun test --coverage --timeout 15000 >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+          bun test --coverage --timeout 15000 >"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
           # The coverage floor is enforced HERE, not by bun. bun's
           # `coverageThreshold` is a per-file rule, so it cannot express an
           # aggregate floor, and it fails silently (no text naming coverage as
@@ -386,17 +398,31 @@ else
           # passed: a test failure is its own diagnostic, and a partial run's
           # lcov would report a meaningless number.
           if [ "$exit_code" -eq 0 ]; then
-            bun coverage:ratchet >>"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+            bun coverage:ratchet >>"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
           fi
         else
-          bun test --parallel --timeout 15000 >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+          # Through the wrapper, not `bun test` directly, so a check:full run
+          # leaves the same reports/test/ artifact a direct run does and the
+          # failures are queryable with `bun run test:failures` afterwards. The
+          # CI branch above keeps its own invocation: the coverage lane owns the
+          # ratchet and must not be rerouted.
+          bun run test >"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
         fi
+        # NOT gated here yet: `bun run analytics:privacy-contract` reads the
+        # report's per-file records, and those cannot currently be trusted.
+        # Bun's junit reporter collides on basename — two test files with the
+        # same basename in different directories collapse to one `file=`
+        # attribute, so 53 of 1306 files in a full run have no record at all
+        # even though every one of their tests ran and passed. Wiring the gate
+        # on that input blocks a green release, which is worse than the nested
+        # runs it replaced. The command and its tests ship; the check.sh gate
+        # waits on per-file accounting the report can stand behind.
       elif [ "$check" = "test:client" ]; then
-        bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/ >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+        bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/ >"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
       elif [ "$check" = "review-loop:test" ]; then
-        bun test tests/review-loop --timeout 15000 >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+        bun test tests/review-loop --timeout 15000 >"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
       else
-        bun run "$check" >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+        bun run "$check" >"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
       fi
       echo "$exit_code" >"$TMPDIR/$fname.exit"
     ) &
@@ -427,8 +453,18 @@ else
       echo ""
       echo "✗ $check failed (exit code $exit_code):"
       echo "---"
-      cat "$TMPDIR/$fname.out"
+      cat "$CHECKS_REPORT_DIR/$fname.log"
       echo "---"
+      # Where to look, rather than what to run again. The output above is the
+      # whole of it, but a terminal scroll-back is not a place you can query.
+      case "$check" in
+        test|test:client|review-loop:test)
+          echo "→ bun run test:failures      (report already on disk; do not re-run to look)"
+          ;;
+        *)
+          echo "→ $CHECKS_REPORT_DIR/$fname.log"
+          ;;
+      esac
     else
       passed_checks+=("$check")
     fi

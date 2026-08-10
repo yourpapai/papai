@@ -1,0 +1,126 @@
+schema: spec-driven
+
+context: |
+  papai is a chat bot that manages tasks via LLM tool-calling. Users send
+  natural-language messages through configured chat platform instances
+  (Telegram, Mattermost, Discord, Kontur Talk); the bot invokes a configurable
+  OpenAI-compatible LLM via the Vercel AI SDK, executes capability-gated
+  task-tracker tools (Kaneo/YouTrack), and replies. Runtime behavior depends
+  on the source platform instance, assigned task instance, conversation
+  context, and per-user/group config stored in SQLite (drizzle ORM).
+
+  Tech stack:
+  - Runtime: Bun (never npm/npx; use `bun`, `bun test`, `bun run <script>`)
+  - Language: strict TypeScript; use `.js` extension in import paths
+  - Validation: Zod v4 for all external input and config boundaries
+  - LLM: Vercel AI SDK; chat: Grammy, Mattermost REST+WebSocket, discord.js
+  - Client SPA: Svelte at client/ (settings UI); Storybook for visual feedback
+  - DB: SQLite via drizzle; migrations under drizzle/ (drizzle.config.ts)
+
+  Key conventions:
+  - Error extraction: `error instanceof Error ? error.message : String(error)`
+  - Use `p-limit` for bounded concurrency over remote ops, never unbounded
+    `Promise.all`
+  - pino structured logging, metadata-first; never log tokens, API keys,
+    session cookies, or other secrets
+  - Never add lint-disable or type-ignore comments — hooks block them; fix
+    the underlying issue
+  - max-lines / max-lines-per-function failures are a design signal: split
+    the file or extract functions; do not compress formatting to game limits
+  - Prefer DI over `mock.module()` where the module supports it; test helpers
+    live in tests/utils/test-helpers.ts; tests/mock-reset.ts resets per test
+  - Prefer the `codeindex` MCP server (code_symbol / code_search /
+    code_impact) for structural code queries; grep/glob only for non-indexed
+    files
+
+  Domain model essentials:
+  - platform instance: DB-backed encrypted chat-platform config; ChatRouter
+    fans out across instances, tagging messages with platformInstanceId
+  - task instance: DB-backed encrypted task-provider config; nullable per
+    context (null = "not configured")
+  - scope model: live conversation state is thread-isolated (storage context
+    id); durable assets/config are group-shared (config context id); identity
+    and web-fetch quota are per-user (src/chat/context-scope.ts)
+  - guest mode: per-group toggle granting unrecognized users a hardcoded
+    read-only toolset; guests are never provisioned as members
+  - BYOK: per-config-context override of central LLM creds, stored encrypted
+  - tool_prefs: per-context JSON assigning every tool a three-state permission
+    (allow/ask/deny); resolved most-specific-wins
+  - mid-run steering: non-command messages inject into a live agent turn at
+    the next tool-step boundary
+  - All user-facing configuration happens in the settings UI (Svelte SPA at
+    /settings), not in chat commands
+
+  Verification commands:
+  - `bun test <path>` for focused tests; `bun test` for the suite
+  - `bun run typecheck`, `bun run lint` after code changes
+  - `bun security` (local Semgrep) for security-sensitive changes
+  - Mutation testing (Stryker) is a blocking per-file ratchet gate in CI
+    (`test:mutate:changed`); baseline in scripts/mutation/baseline.json
+
+rules:
+  proposal:
+    - Name the affected platform/task instances and state the config-context
+      scope impact (per-user vs group-shared vs thread-isolated)
+    - Include a "Non-goals" section listing explicitly out-of-scope behavior
+    - Reference existing capability specs under openspec/specs/ that the
+      change modifies, and docs/architecture/*.md docs it affects
+    - Keep proposals under 500 words; detail belongs in design.md
+  specs:
+    - Requirements use SHALL statements; every requirement has at least one
+      `#### Scenario:` with WHEN/THEN
+    - Cover scope-model edge cases where relevant — thread isolation,
+      group-shared config, guest-mode read-only toolset, unconfigured
+      (null) task instance
+    - For new tool surfaces, spec the capability gating and tool_prefs
+      (allow/ask/deny) behavior, including the confirmation flow for `ask`
+    - For provider changes, spec behavior across all affected platform
+      instances, not just the one that motivated the change
+    - Never log or expose secrets; specs involving credentials must state
+      encrypted-at-rest handling
+  design:
+    - State impact on capability/tool-prefs gating for any new tool surface
+    - State impact on the scope model — which ids (storage context, config
+      context, platform instance, user) key any new persisted state
+    - For DB changes, describe the drizzle migration and backfill strategy
+      for existing rows
+    - For new dependencies, justify why existing stack (AI SDK, Grammy,
+      discord.js, Zod, drizzle) cannot cover the need
+    - Note hook/TDD interactions — which new files the Write/Edit TDD hook
+      pipeline will gate, and the test-first order of work
+  tasks:
+    - Break tasks into independently verifiable chunks; order them test-first
+      (failing test before implementation)
+    - Every task ends with its verification command (e.g.
+      `bun test tests/path/to.test.ts`, `bun run typecheck`, `bun run lint`)
+    - Final task is always to run full `bun test`, `bun run typecheck`,
+      `bun run lint`, and update any affected docs/architecture/*.md pages
+
+operations:
+  apply:
+    guidance:
+      - Follow test-driven-development — write the failing test, watch it
+        fail, implement, watch it pass
+      - Respect the Write/Edit TDD hook pipeline; never bypass write
+        protections or add lint-disable comments
+      - Check off tasks.md checkboxes as each task completes; keep the file
+        current as filesystem state
+      - Run `bun security` when touching fetch, credentials, or plugin
+        surfaces
+      - Keep test output summaries concise; quote only the failing excerpts
+      - Commit each tasks.md section in its own commit as it completes; the
+        tasks.md checkbox state lands in the same commit as the work
+      - The change folder (openspec/changes/<name>/) rides with the code on
+        the same branch/PR; never commit implementation without artifacts
+  archive:
+    guidance:
+      - Before archiving, confirm all tasks.md checkboxes are complete and
+        `openspec validate --strict` passes
+      - Confirm merged specs under openspec/specs/ read as current truth
+        (no ADDED/MODIFIED/REMOVED framing left in main specs)
+      - Update docs/architecture/ pages whose behavior changed, in the same
+        commit or PR as the archive
+      - Summarize the archive outcome (shipped capabilities, spec files
+        touched) before finishing
+      - Archive after the PR merges, as a small follow-up commit on master —
+        not inside the implementation branch

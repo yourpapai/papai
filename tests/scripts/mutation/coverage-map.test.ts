@@ -63,16 +63,21 @@ describe('buildCoverageMap', () => {
     })
   })
 
-  it('omits sources with no covering test', () => {
+  it('omits sources with no covering test, and says so through the injected sink', () => {
+    const warnings: string[] = []
     const map = buildCoverageMap({
       sourceFiles: ['src/lonely.ts'],
       projectRoot: '/proj',
       deps: {
         listCandidateTests: () => ['tests/x.test.ts'],
         runCoverage: () => new Map([['src/other.ts', 1]]),
+        warn: (message) => {
+          warnings.push(message)
+        },
       },
     })
     expect(map).toEqual({})
+    expect(warnings).toEqual(['coverage-map: no covering test found for src/lonely.ts (checked 1 candidates)'])
   })
 
   it('calls flush exactly once after the batch completes', () => {
@@ -86,6 +91,7 @@ describe('buildCoverageMap', () => {
         flush: () => {
           flushCalls += 1
         },
+        warn: () => {},
       },
     })
     expect(flushCalls).toBe(1)
@@ -102,6 +108,7 @@ describe('buildCoverageMap', () => {
         flush: () => {
           flushCalls += 1
         },
+        warn: () => {},
       },
     })
     expect(flushCalls).toBe(1)

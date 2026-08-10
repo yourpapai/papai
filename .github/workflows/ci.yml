@@ -92,6 +92,10 @@ jobs:
           name: build-output
           path: public/
       - name: Run all checks
+        env:
+          # Enforce wall-clock perf budgets here: this job runs the suite serially, so
+          # the timing assertions are not subject to parallel-worker CPU contention.
+          PAPAI_PERF_BUDGETS: '1'
         run: bun check:full
       - name: Upload coverage report
         if: always()

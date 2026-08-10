@@ -84,7 +84,7 @@ Each of those reaches `failRun` (`orchestrator.ts:210`), which parks the issue
 in `FAILED` with `resumeFrom: REVIEW_AND_MUTATE`. And `/retry` from there
 re-enters `handleImplement` **from the top** — a second full implementation
 model turn, paid for again, because the first one's output was never pushed.
-The retry budget (`AGENT_MAX_ATTEMPTS`, default 3) is spent on re-doing work
+The retry budget (`AGENT_MAX_ATTEMPTS`, default 5) is spent on re-doing work
 that succeeded.
 
 ### 1.3 The three problems, named

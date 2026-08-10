@@ -14,7 +14,13 @@ import { resolveBaseBranch, resolveReviewCommand } from '../../opencode-agent/sr
 import { loadConfig, parseChecks } from '../../opencode-agent/src/config.js'
 import type { Env } from '../../opencode-agent/src/config.js'
 import { withDeadline } from '../../opencode-agent/src/deadline.js'
-import { isTurnDeadline, openCodeError, PipelineError, turnDeadlineError } from '../../opencode-agent/src/errors.js'
+import {
+  isServerGone,
+  isTurnDeadline,
+  openCodeError,
+  PipelineError,
+  turnDeadlineError,
+} from '../../opencode-agent/src/errors.js'
 import { createGit } from '../../opencode-agent/src/git.js'
 import type { GitOptions } from '../../opencode-agent/src/git.js'
 import type { PullRequestState } from '../../opencode-agent/src/github-pulls.js'
@@ -44,7 +50,8 @@ import type { SessionUsage } from '../../opencode-agent/src/sdk-contract.js'
 import { redactSecrets, scrubSecrets } from '../../opencode-agent/src/secrets.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
 import { STATUS_MARKER } from '../../opencode-agent/src/status-comment.js'
-import { PHASES } from '../../opencode-agent/src/types.js'
+import { errorMessage, PHASES } from '../../opencode-agent/src/types.js'
+import { silentOctokitLog } from './test-helpers.js'
 
 describe('collectText', () => {
   test('joins text parts and drops everything else', () => {
@@ -317,6 +324,9 @@ const noUsage = (): Promise<SessionUsage | null> => Promise.resolve({ tokens: 0,
 /** An abort nobody in this test is asking about, answering the recorded shape. */
 const noAbort = (): Promise<unknown> => Promise.resolve({ data: true })
 
+/** A server that is still there, for the tests the liveness probe is not about. */
+const stillThere = (): Promise<boolean> => Promise.resolve(true)
+
 describe('createOpenCodeAgent', () => {
   const fakeConnection = (sink: { bodies: SdkPromptBody[]; closed: number }, reply: unknown): OpenCodeConnection => ({
     createSession: (): Promise<string> => Promise.resolve('session-9'),
@@ -327,6 +337,7 @@ describe('createOpenCodeAgent', () => {
     events: noEvents,
     usage: noUsage,
     abort: noAbort,
+    alive: stillThere,
     close: (): Promise<void> => {
       sink.closed += 1
       return Promise.resolve()
@@ -407,6 +418,7 @@ describe('createOpenCodeAgent', () => {
           events: noEvents,
           usage: noUsage,
           abort: noAbort,
+          alive: stillThere,
           close: () => {
             closed += 1
             return Promise.resolve()
@@ -433,6 +445,9 @@ describe('createOpenCodeAgent', () => {
           events: noEvents,
           usage: noUsage,
           abort: noAbort,
+          // Deliberately the *unhelpful* answer: a deadline must win on its own,
+          // not because the probe happened to agree the server was fine.
+          alive: () => Promise.resolve(false),
           close: () => Promise.resolve(),
         }),
     })
@@ -457,6 +472,7 @@ describe('createOpenCodeAgent', () => {
           sendPrompt: () => Promise.resolve({ data: { parts: [] } }),
           usage: noUsage,
           abort: noAbort,
+          alive: stillThere,
           events: () =>
             Promise.resolve(
               streamOf(
@@ -470,7 +486,7 @@ describe('createOpenCodeAgent', () => {
     await consumed
     await agent.close()
 
-    expect(lines).toEqual(['Model session status'])
+    expect(lines).toEqual(['● busy'])
   })
 
   test('reports what the session has spent, from the server', async () => {
@@ -486,6 +502,7 @@ describe('createOpenCodeAgent', () => {
           events: noEvents,
           usage: () => Promise.resolve({ tokens: 3602, cost: 0.014 }),
           abort: noAbort,
+          alive: stillThere,
           close: () => Promise.resolve(),
         }),
     })
@@ -512,6 +529,7 @@ describe('createOpenCodeAgent', () => {
           events: noEvents,
           usage,
           abort: noAbort,
+          alive: stillThere,
           close: () => Promise.resolve(),
         }),
     })
@@ -534,6 +552,7 @@ describe('createOpenCodeAgent', () => {
           sendPrompt: () => Promise.resolve({ data: { parts: [{ type: 'text', text: 'fine' }] } }),
           usage: noUsage,
           abort: noAbort,
+          alive: stillThere,
           events: () => Promise.reject(new Error('/event is not available')),
           close: () => Promise.resolve(),
         }),
@@ -541,6 +560,85 @@ describe('createOpenCodeAgent', () => {
 
     expect((await agent.prompt({ prompt: 'go' })).text).toBe('fine')
     await agent.close()
+  })
+
+  /**
+   * The turn that delivered issue #239's pull request, reproduced end to end.
+   *
+   * The session is refused `retries` times, never finishes another step, and the
+   * prompt then resolves with a well-formed reply carrying no text. Everything
+   * downstream read that as a finished implementation, so the phase committed a
+   * working tree holding one stray pid file and opened a pull request on it.
+   *
+   * The events are drained before the reply resolves, which is the ordering the
+   * real one had — the retries and the idle arrived over the stream minutes
+   * before the HTTP call came back — and is what makes this deterministic.
+   */
+  const stalledAgent = (retries: number, parts: readonly unknown[] = []): Promise<OpenCodeAgent> => {
+    let released = (): void => {}
+    const drained = new Promise<void>((resolve) => {
+      released = resolve
+    })
+    const events = [
+      ...Array.from({ length: retries }, (_unused, index) => ({
+        type: 'session.status',
+        properties: { sessionID: 'session-1', status: { type: 'retry', attempt: index + 1, message: 'slow down' } },
+      })),
+      { type: 'session.status', properties: { sessionID: 'session-1', status: { type: 'idle' } } },
+    ]
+
+    return createOpenCodeAgent({
+      directory: '/repo',
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      sessionTitle: 't',
+      log: silentLog,
+      connect: () =>
+        Promise.resolve({
+          createSession: () => Promise.resolve('session-1'),
+          sendPrompt: async (): Promise<unknown> => {
+            await drained
+            return { data: { parts } }
+          },
+          usage: noUsage,
+          abort: noAbort,
+          alive: stillThere,
+          events: () =>
+            Promise.resolve(
+              streamOf(events, () => {
+                released()
+              }),
+            ),
+          close: () => Promise.resolve(),
+        }),
+    })
+  }
+
+  test('fails a turn the model never answered while the provider was still failing', async () => {
+    const agent = await stalledAgent(25)
+
+    await expect(agent.prompt({ prompt: 'go' })).rejects.toThrow('The model never answered this turn')
+  })
+
+  test('names the retries, so a maintainer can tell a quota from a bad credential', async () => {
+    const agent = await stalledAgent(25)
+
+    await expect(agent.prompt({ prompt: 'go' })).rejects.toThrow('after 25 retries')
+  })
+
+  test('a turn that answered is untouched, however many retries it survived on the way', async () => {
+    // The signals only mean anything together: a run that was rate limited,
+    // retried and then did the work is a run that worked.
+    const agent = await stalledAgent(25, [{ type: 'text', text: 'implemented step 3' }])
+
+    expect((await agent.prompt({ prompt: 'go' })).text).toBe('implemented step 3')
+  })
+
+  test('an empty answer with no stall behind it is left alone', async () => {
+    // An implement turn's text is discarded by its caller, so emptiness on its
+    // own is an ordinary shape and must not fail a run that committed work.
+    const agent = await stalledAgent(0)
+
+    expect((await agent.prompt({ prompt: 'go' })).text).toBe('')
   })
 
   test('fails a prompt that never answers, rather than running to the job timeout', async () => {
@@ -563,6 +661,86 @@ describe('createOpenCodeAgent', () => {
     expect(isTurnDeadline(rejection)).toBe(true)
   })
 
+  /**
+   * A turn that breaks, over a server that answers a liveness probe as the test says.
+   *
+   * The default failure is verbatim what issue #239 reported twice: Bun's message
+   * for a socket that went away, which names neither end of it.
+   */
+  const brokenTurnAgent = (
+    alive: () => Promise<boolean>,
+    failure: Error = new Error('The socket connection was closed unexpectedly'),
+  ): Promise<OpenCodeAgent> =>
+    createOpenCodeAgent({
+      directory: '/repo',
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      sessionTitle: 't',
+      log: silentLog,
+      connect: () =>
+        Promise.resolve({
+          createSession: () => Promise.resolve('session-1'),
+          sendPrompt: () => Promise.reject(failure),
+          events: noEvents,
+          usage: noUsage,
+          abort: noAbort,
+          alive,
+          close: () => Promise.resolve(),
+        }),
+    })
+
+  test('names the server that went away, rather than repeating the socket error', async () => {
+    // Issue #239 failed twice with "The socket connection was closed unexpectedly",
+    // which sends a reader to the model provider. It was the `opencode serve` this
+    // job spawned — proven only because the *next* call, a loopback `session.get`
+    // that never touches a provider, failed too. That inference is what this makes
+    // into a statement the failure comment can carry on its own.
+    const agent = await brokenTurnAgent(() => Promise.resolve(false))
+
+    const rejection = await agent.prompt({ prompt: 'go' }).catch((error: unknown) => error)
+
+    expect(isServerGone(rejection)).toBe(true)
+    expect(errorMessage(rejection)).toContain('OpenCode server')
+    // The transport's own words are kept: they are the only evidence of *how* it went.
+    expect(errorMessage(rejection)).toContain('The socket connection was closed unexpectedly')
+  })
+
+  test('leaves a failure alone while the server is still answering', async () => {
+    // The probe has to be able to say "not this" or it is just a relabelling of
+    // every rejection, and a rate limit reported as a dead server is a worse lie
+    // than the bare socket message this replaces.
+    const agent = await brokenTurnAgent(stillThere, new Error('rate limited'))
+
+    const rejection = await agent.prompt({ prompt: 'go' }).catch((error: unknown) => error)
+
+    expect(isServerGone(rejection)).toBe(false)
+    expect(errorMessage(rejection)).toBe('rate limited')
+  })
+
+  test('reads a probe that cannot answer as a server that is not there', async () => {
+    // A probe that throws is evidence, not an accident to propagate: it must never
+    // replace the failure it was asked about, which is what an unguarded `await`
+    // here would do.
+    const agent = await brokenTurnAgent(() => Promise.reject(new Error('connection refused')))
+
+    const rejection = await agent.prompt({ prompt: 'go' }).catch((error: unknown) => error)
+
+    expect(isServerGone(rejection)).toBe(true)
+    expect(errorMessage(rejection)).toContain('The socket connection was closed unexpectedly')
+  })
+
+  test('a turn stopped by its own bound stays a deadline, whatever the probe says', async () => {
+    // Order matters. `settleWalk` parks the issue in `INCOMPLETE` and keeps the
+    // branch for a deadline, and fails the run for everything else — so a timed-out
+    // turn relabelled by a probe that happens to answer `false` would throw away
+    // finished steps.
+    const agent = await hangingAgent(5)
+
+    const rejection = await agent.prompt({ prompt: 'go' }).catch((error: unknown) => error)
+
+    expect(isTurnDeadline(rejection)).toBe(true)
+    expect(isServerGone(rejection)).toBe(false)
+  })
+
   /** A connection whose `abort` answers however the test wants it to. */
   const abortingAgent = (answer: () => Promise<unknown>, log = silentLog): Promise<OpenCodeAgent> =>
     createOpenCodeAgent({
@@ -577,6 +755,7 @@ describe('createOpenCodeAgent', () => {
           events: noEvents,
           usage: noUsage,
           abort: answer,
+          alive: stillThere,
           close: () => Promise.resolve(),
         }),
     })
@@ -637,6 +816,7 @@ describe('createOpenCodeAgent', () => {
           events: noEvents,
           usage: noUsage,
           abort: noAbort,
+          alive: stillThere,
           close: () => Promise.resolve(),
         }),
     })
@@ -1334,6 +1514,21 @@ describe('config', () => {
     expect(loadConfig({ ...baseEnv, AGENT_SELF_LOGIN: 'agent-bot' }, '/repo').selfLoginOverride).toBe('agent-bot')
   })
 
+  test('checks the repo the way the repo checks itself', () => {
+    // Was `bun run lint && bun run typecheck && bun test`. The `&&` chain meant a
+    // lint failure hid the typecheck and test results, so a run that was red in
+    // three places reported one and cost three repair rounds to uncover. It also
+    // used bare `bun test`, which is Bun's builtin runner and bypasses the
+    // wrapper that persists reports/test/ — so the agent had nothing to query
+    // afterwards. `check:full` runs every check concurrently and leaves both
+    // reports/checks/ and reports/test/ behind.
+    expect(loadConfig(baseEnv, '/repo').checkCommand).toBe('bun check:full')
+  })
+
+  test('AGENT_CHECK_COMMAND still overrides the default', () => {
+    expect(loadConfig({ ...baseEnv, AGENT_CHECK_COMMAND: 'make verify' }, '/repo').checkCommand).toBe('make verify')
+  })
+
   test.each(['0', '-1', '2.5', 'lots', '1e3', '01', '7 rounds'])('rejects the unparseable round count %p', (raw) => {
     expect(() => loadConfig({ ...baseEnv, AGENT_MAX_ATTEMPTS: raw }, '/repo')).toThrow('AGENT_MAX_ATTEMPTS')
   })
@@ -1348,6 +1543,7 @@ describe('config', () => {
     ['AGENT_MAX_ATTEMPTS', '999999999'],
     ['AGENT_MAX_CI_ATTEMPTS', '21'],
     ['AGENT_CI_FIX_MAX_ROUNDS', '0'],
+    ['AGENT_COMMIT_REPAIR_MAX_ROUNDS', '0'],
     // A hint threshold of zero recommends `/review` on every delivery, which is
     // the same as not having a threshold at all.
     ['AGENT_REVIEW_HINT_LINES', '0'],
@@ -1386,6 +1582,7 @@ describe('config', () => {
     ['AGENT_REVIEW_POOL_SIZE', 'reviewPoolSize'],
     ['AGENT_TIMEOUT_MS', 'agentTimeoutMs'],
     ['AGENT_CI_FIX_MAX_ROUNDS', 'ciFixMaxRounds'],
+    ['AGENT_COMMIT_REPAIR_MAX_ROUNDS', 'commitRepairMaxRounds'],
     ['AGENT_MAX_CI_ATTEMPTS', 'maxCiAttempts'],
     ['AGENT_MAX_ATTEMPTS', 'maxAttempts'],
     ['AGENT_MAX_TOKENS', 'maxTokens'],
@@ -1411,7 +1608,22 @@ describe('config', () => {
   })
 
   test.each(['', ' ', '\n'])('a blank knob %p means unset, as it does for every other reader', (raw) => {
-    expect(loadConfig({ ...baseEnv, AGENT_MAX_ATTEMPTS: raw }, '/repo').maxAttempts).toBe(3)
+    expect(loadConfig({ ...baseEnv, AGENT_MAX_ATTEMPTS: raw }, '/repo').maxAttempts).toBe(5)
+  })
+
+  test('gives one turn an hour by default, not half of one', () => {
+    // The default used to be 30 minutes, and that number — not the job's 90-minute
+    // ceiling — is what every long run actually stopped on: three consecutive runs
+    // ended at the same 33 minutes of wall clock, each one a single turn aborted at
+    // its cap, wrapped up and parked, with an hour of paid-for runner left unused.
+    // A turn is the granularity a plan step runs at, and a step worth doing is
+    // routinely worth more than half an hour.
+    //
+    // Safe against the ceiling it sits under precisely because `turnTimeoutMs`
+    // takes the *smaller* of the two: a turn opened late in the job still gets what
+    // is left of it minus the reserve and the wrap-up, so raising this can lengthen
+    // a turn that has room and can never let one outlive the runner.
+    expect(loadConfig(baseEnv, '/repo').agentTimeoutMs).toBe(3_600_000)
   })
 
   /** Two facts a runner knows and nothing else does, as the workflow forwards them. */
@@ -1731,6 +1943,7 @@ const recordingApi = (
       captured.push({ url, method: init?.method ?? 'GET', body: parseBody(init?.body) })
       return Promise.resolve(jsonResponse(payload))
     },
+    log: silentOctokitLog(),
   })
 
 describe('createOctokitApi', () => {
@@ -1895,6 +2108,9 @@ describe('createOctokitApi', () => {
       repo: 'widgets',
       secrets: [],
       fetch: () => Promise.resolve(new Response('{"message":"Validation Failed"}', { status: 422 })),
+      // The refusal is what the test drives; Octokit's request log would print
+      // it as an error line in the suite's output.
+      log: silentOctokitLog(),
     })
 
     expect(await api.createLabel('agent:done', '0e8a16')).toBeUndefined()
@@ -1910,6 +2126,7 @@ describe('createOctokitApi', () => {
       secrets: [],
       fetch: () =>
         Promise.resolve(new Response('{"message":"Resource not accessible by integration"}', { status: 403 })),
+      log: silentOctokitLog(),
     })
 
     await expect(api.createLabel('agent:done', '0e8a16')).rejects.toThrow()
@@ -2175,6 +2392,7 @@ const gitOptions = (run: CommandRunner, overrides: Partial<GitOptions> = {}): Gi
   authorEmail: 'agent@example.com',
   limits: { maxFiles: 100, maxLines: 20_000 },
   secrets: [],
+  log: { debug: (): void => {}, info: (): void => {}, warn: (): void => {}, error: (): void => {} },
   credential: null,
   ...overrides,
 })

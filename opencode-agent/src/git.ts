@@ -6,6 +6,7 @@
 import type { DiffLimits, StagedTotals } from './diff-guard.js'
 import { commitAll, salvageAll } from './git-commit.js'
 import type { GitFn, Salvage } from './git-commit.js'
+import type { Logger } from './logger.js'
 import type { CommandResult, CommandRunner } from './shell.js'
 
 // Re-exported so every caller keeps naming one module for "what git does here";
@@ -22,6 +23,15 @@ export interface GitOptions {
   limits: DiffLimits
   /** Credential values that must never reach a commit, whatever file holds them. */
   secrets: readonly string[]
+  /**
+   * Where a dropped path is reported.
+   *
+   * The one thing these operations have to *say* rather than return: excluding
+   * a file a push cannot carry is silent success from every caller's point of
+   * view, and a guardrail nobody can see firing is indistinguishable from a
+   * model that quietly failed to make the edit.
+   */
+  log: Logger
   /**
    * How git authenticates to the remote, or `null` for an anonymous checkout.
    *

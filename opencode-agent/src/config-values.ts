@@ -72,6 +72,28 @@ export const ROUND_RANGE: IntRange = { min: 1, max: 20 }
 export const TIMEOUT_RANGE: IntRange = { min: 1_000, max: 7_200_000 }
 
 /**
+ * An hour for one model turn, and for each subprocess.
+ *
+ * A constant beside its range rather than a literal at the call site, because the
+ * two only mean anything together — this has to be a value the range would accept
+ * as an override, and the pair drifting apart is the class of bug the "default
+ * would itself be accepted" test exists to catch.
+ *
+ * Half an hour before, which outlived the defect that chose it. The turn cap and
+ * the job ceiling used to be two hand-kept numbers, and 30-against-90 was the
+ * safe side of that; once `turnTimeoutMs` started deriving the turn's bound from
+ * the job's own clock, the danger was gone and only the smallness was left. What
+ * that cost was measurable: with the ceiling at 90 this was the *only* bound long
+ * runs ever reached, and three consecutive live runs ended at the same 33 minutes
+ * of wall clock — each one a single turn aborted at its cap, wrapped up and
+ * parked, with an hour of paid-for runner unspent. Raising it cannot bring the
+ * old defect back, because a turn is handed the **smaller** of this and what is
+ * left of the job: one opened late still shrinks to fit the runner it will die
+ * with, whatever this says.
+ */
+export const DEFAULT_TURN_TIMEOUT_MS = 3_600_000
+
+/**
  * When the job began, as epoch milliseconds, from the runner rather than from an
  * operator.
  *
@@ -186,6 +208,42 @@ export const labelPrefix = (env: Env, key: string, fallback: string): string | n
   return configured
 }
 
+/**
+ * Bytes an AES-256-GCM key must decode to. Fixed rather than ranged: the
+ * transcript writer has exactly one algorithm and this is its one key size.
+ */
+const LOG_KEY_BYTES = 32
+
+/**
+ * `AGENT_LOG_KEY`, the debug transcript's symmetric key, as raw bytes.
+ *
+ * `null` when unset, and that is the ordinary case: most runs write no
+ * transcript, and the pipeline warns once and moves on rather than refusing to
+ * run. A **set** value that cannot work is different — it means an operator
+ * went to the trouble of configuring encryption and mistyped it, which is a
+ * `ConfigError` naming the variable, exactly like a range check failing.
+ *
+ * The canonical-base64 round-trip rejects what `Buffer.from(raw, 'base64')`
+ * would otherwise salvage: it silently ignores characters outside the alphabet
+ * and accepts any length, so `"!!!"` decodes to zero bytes without a peep.
+ */
+export const logKey = (env: Env, key: string): Uint8Array | null => {
+  const raw = optionalOrNull(env, key)
+  if (raw === null) return null
+
+  const bytes = Buffer.from(raw, 'base64')
+  if (bytes.byteLength !== LOG_KEY_BYTES || bytes.toString('base64') !== raw) {
+    throw new ConfigError(`${key} must be base64 of exactly ${LOG_KEY_BYTES} bytes (openssl rand -base64 32)`)
+  }
+
+  // A fresh allocation, not a view on the Buffer: `crypto.subtle` takes
+  // `Uint8Array<ArrayBuffer>`, and a Buffer's union with SharedArrayBuffer
+  // does not narrow to it.
+  const copy = new Uint8Array(bytes.byteLength)
+  copy.set(bytes)
+  return copy
+}
+
 /** Reads an integer knob, rejecting both malformed values and unusable ones. */
 export const boundedInt = (env: Env, key: string, fallback: number, range: IntRange): number => {
   const raw = optionalOrNull(env, key)
@@ -220,4 +278,7 @@ const parseBounded = (key: string, trimmed: string, range: IntRange): number => 
   return parsed
 }
 
-/** Parses `AGENT_CHECKS` — a JSON array of `{ name, argv }`. */
+// `AGENT_CHECKS` is re-exported rather than moved out of reach: `config.ts` and
+// the suites name this module for the vocabulary, and a moved export would be a
+// rename dressed up as a file split. See `check-spec.ts` for why it left.
+export { DEFAULT_CHECKS, parseChecks } from './check-spec.js'

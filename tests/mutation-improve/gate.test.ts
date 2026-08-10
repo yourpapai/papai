@@ -67,7 +67,7 @@ const gateDeps = (
     buildFixAttempts: 0,
     checkCommand: 'bun check:full',
     mutateFileCommand: 'bun test:mutate:file',
-    agent: { model: 'm', extraArgs: [], timeoutMs: 1_800_000 },
+    agent: { model: 'm', extraArgs: [], timeoutMs: 1_800_000, inactivityTimeoutMs: 600_000 },
     prBranchPrefix: 'mutation-improve',
   }
   const runState: MutationImproveRunState = {

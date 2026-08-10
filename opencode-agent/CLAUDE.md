@@ -44,7 +44,9 @@ findings: `ROADMAP.md`.
   Phase handlers in `src/phases/` return a `TransitionSignal`, a comment body and
   optional artefact blocks, and never write state or decide the next phase
   themselves. `src/phases/implement.ts` is the one that delegates: `src/plan-steps.ts`
-  says what a step is, `src/phases/implement-steps.ts` walks them, and
+  says what a step is, `src/phases/implement-steps.ts` walks them,
+  `src/phases/implement-commit.ts` is what making one of them durable costs — the
+  commit, the repair rounds `src/commit-repair.ts` drives, and the push — and
   `src/implement-prompts.ts` holds the three things said to the model inside that phase
   — the standing instructions, one step, and the wrap-up asked for when a turn is cut
   off — split from `prompts.ts` because they are the only prompts that arrive in
@@ -78,14 +80,25 @@ findings: `ROADMAP.md`.
   where nothing did — with the **wall-clock** three in `src/time-notices.ts`,
   split off when a third of them would not fit beside the counter ceilings.
 - Config is read in two halves and discovered in a third. `src/config-values.ts`
-  reads and range-checks one scalar out of the environment, `src/config.ts` says
-  which values a run needs, and `src/config-discovery.ts` holds the two settings
+  reads and refuses one value out of the environment — every range-checked scalar, and
+  `AGENT_CHECKS`, its one non-scalar — `src/config.ts` says which values a run needs, and `src/config-discovery.ts` holds the two settings
   that are **asked for** rather than read — the review command, from whether the
   checkout has a `review-loop/`, and the base branch, from the event payload and
   then `origin/HEAD`. Both take their probe as an argument, so both ladders are
   testable without a filesystem or a remote, and neither has a literal fallback:
   a baked-in review path reported every run outside this repository as
   permanently red, and a `main` default killed every run inside it.
+- The OpenCode boundary is three files, split by what changes them.
+  `src/sdk-contract.ts` is what the SDK **says** — the shapes, recorded;
+  `src/opencode-connect.ts` is how it is **started and addressed** — a spawned
+  process, a port, a base URL; `src/opencode-adapter.ts` is the **session** the
+  pipeline holds — an id, a lifetime, a teardown. `src/turn-run.ts` is the fourth
+  and the newest: one **turn**, which is the thing with a clock, a heartbeat and
+  three ways to end. It owns the bound, the heartbeat and the failure
+  classification, and it never imports back from the adapter — `TurnBounds` and
+  `TurnConnection` are narrow slices that `OpenCodeAgentOptions` and
+  `OpenCodeConnection` extend, so each states what running a turn actually needs
+  rather than restating what an agent is.
 - Every external boundary is an injected interface (`GitHubApi`, `Git`,
   `CheckRunner`, `RunReview`, `OpenCodeAgent`, `ReadSkillFile`).
 
@@ -317,6 +330,28 @@ findings: `ROADMAP.md`.
   because its **return type** is the point: clean, refused and committed-but-large
   are three ordinary outcomes here that each earn a different sentence on the issue,
   where `commitAll` has only `StagedTotals | null` and a throw.
+- **A refused commit is repaired, never a failure on its own.** `commit-repair.ts`
+  wraps every `commitAll` this pipeline makes on the implement and CI-fix paths:
+  the repository's own `.git/hooks/pre-commit` gets to reject a tree, the model is
+  handed exactly what it printed, and the commit is issued again — bounded by
+  `AGENT_COMMIT_REPAIR_MAX_ROUNDS`. Without it `git commit` was the last place a
+  lint error could surface and the one place the pipeline had no answer for it, so
+  an implementation that had worked lost its phase to an unformatted file and cost a
+  `/retry`, which buys a fresh job that re-runs the model turn that had already
+  succeeded. Four things not to undo. Only a **`GitError`** is repaired — the diff
+  guard's refusals are `PipelineError`s raised before the commit is issued, and no
+  number of rounds may talk this into committing a staged credential. The last
+  rejection is what is finally **rethrown**, so a run that spends its rounds fails
+  exactly as it failed before the module existed and the change can only turn a
+  failure into a success. The repair prompt forbids the model to run git at all,
+  because "the commit was refused" reads to a model holding `bash` as an invitation
+  to commit with `--no-verify`, which is the salvage path's alone and would push a
+  tree neither the hook nor the guard accepted. And a repair turn is a **model
+  turn**, so `implement-commit.ts` catches `isTurnDeadline` around the whole loop and
+  leaves by the same door a stopped step leaves by — anything else would fail a run
+  whose tree was worth salvaging. `phases/review.ts` deliberately does not repair:
+  its findings come from `opencode run` subprocesses and it opens no session, so
+  repairing there would boot the OpenCode server for a phase built to avoid it.
 - **The unit of work is a plan step, and between two of them is where a run wants to
   stop.** `handleImplement` reads the plan's steps and `phases/implement-steps.ts`
   walks them: one turn, `commitAll`, `push`, next. Pushing **per step** is the same
@@ -554,6 +589,20 @@ not permitted to create or approve pull requests` is a repository or
   phase `buildClassifyPrompt` briefs on what the phase means, because `none` is
   now load-bearing and a real answer is often a bare fragment that reads as
   chatter to a phase-blind classifier.
+- **A turn that broke says _which_ remote broke.** `runTurn` probes
+  `connection.alive()` on the failure path and raises `serverGoneError` when the
+  local `opencode serve` has stopped answering, instead of passing on the
+  transport's `The socket connection was closed unexpectedly` — a sentence that
+  names neither end of the socket and sends every reader to the model provider.
+  Three orderings there are load-bearing: a turn deadline leaves **before** the
+  probe (a ceiling relabelled as a crash throws away finished steps), a probe that
+  **rejects** reads as `false` rather than replacing the failure it was asked
+  about, and a failure over a server that still answers is passed through
+  untouched. It is a classification and must never become a **retry**: the one
+  layer that may retry is `provider-proxy.ts`, the only one that still has an HTTP
+  status. The workflow's post-mortem step is the other half — it reports the OOM
+  killer, the cgroup memory peak and a process census by `comm`, because _why_ the
+  server died is not visible from inside the process that lost it.
 - **Bounds go on the finished prompt, and on waiting.** `prompt-budget.ts` caps
   what reaches the model — per prompt, not per input, since a per-input cap
   bounds one log and nothing else. `deadline.ts` bounds waiting for a model turn;
@@ -570,12 +619,71 @@ not permitted to create or approve pull requests` is a repository or
 - **Progress reporting never carries content.** `activity.ts` decodes OpenCode's
   event stream through schemas that name only the scalar fields they want, so
   tool input, tool output, model text and a provider's error message have
-  nowhere to land. Do not widen a schema to "make the log more useful": a CI log
-  is world-readable on a public repository and is _not_ covered by the outbound
-  redaction in `github.ts`. Names, statuses and counts only. Every shape there is
+  nowhere to land. `session.error` is the event that most tempts a widening and
+  is decoded on exactly those terms — the error's **name and status code**, never
+  its `message`, which is where a rejected credential gets quoted back. Do not
+  widen a schema to "make the log more useful": a CI log is world-readable on a
+  public repository and is _not_ covered by the outbound redaction in
+  `github.ts`. Names, statuses and counts only. Every shape there is
   recorded from a live server — re-record rather than adjusting by inspection,
   and note that the SDK's generated `Event` union is already behind its own
   server, which is why each decode is a `safeParse` yielding `null`.
+- **The agent cannot commit its own workflow, and that is enforced at staging.**
+  GitHub refuses a push from a GitHub App or an Actions token that creates or
+  updates a file under `.github/workflows/` unless the App holds the `workflows`
+  permission — and the `permissions:` block a workflow may grant its own
+  `GITHUB_TOKEN` has no `workflows` key, so the default token can never do it.
+  The refusal is **per push, not per file**: one blocked workflow file discards
+  the whole commit, which is how issue #240 lost two runs of finished, unrelated
+  work at several hundred thousand tokens each. `protected-paths.ts` names the
+  prefixes and `stageAllowed` in `git-commit.ts` takes them back out of the index
+  between `git add --all` and the guard, on **both** commit paths. Three things
+  not to undo. It **drops rather than refuses** — a refusal here would lose
+  exactly the work the remote would have lost, where dropping keeps the rest —
+  which is also why it lives beside the commit and not in `diff-guard.ts`, whose
+  job is to judge a change set and whose refusals are real outcomes. It
+  **reverts the working-tree copy**, not merely unstages it: an unstaged edit is
+  still an edit, so the next step's `git add --all` would stage it again for
+  ever, and a turn that wrote nothing else would hand `git commit` an empty index
+  to fail on — which is why `stageAllowed` returns what it dropped as well as
+  what is left, and why an emptied index reports "nothing to commit" instead. And
+  the prompts state the rule (`IMPLEMENT_INSTRUCTIONS`, `PLAN_INSTRUCTIONS`) so a
+  well-behaved turn never writes such a file, but a rule the model has to
+  remember is not a guardrail — the prompts are the courtesy, the staging step is
+  the mechanism. Widening `PROTECTED_PREFIXES` is a privilege decision: an agent
+  that can rewrite `agent-pipeline.yml` can rewrite the permissions, concurrency
+  group and secret wiring that bound it, in a job that job itself defines.
+- **A process artefact is not a deliverable, and that is enforced at staging
+  too.** `stray-paths.ts` names `*.pid`, `*.sock` and `nohup.out`, and
+  `stageAllowed` takes them back out of the index alongside the protected paths.
+  It is a **separate list from `protected-paths.ts` on purpose**: that one is what
+  a push cannot carry, this one is what a commit is not for, and the two have
+  different remedies — a guardrail that conflates them is one nobody can reason
+  about when it fires. The failure it answers is issue #239, which delivered a
+  pull request whose whole diff was `serve3.pid`: the turn that was to write the
+  deliverable died first, the pid file was the only dirty path left, and one
+  stray line is not zero — so `walk.commits === 0` was false and
+  `noChangesError`, the single question the pipeline asks about an implementation
+  that produced nothing, answered wrong. Keep the list **short**: an entry here
+  claims that no repository this pipeline works on would ever track such a file,
+  which is only true of a runtime's own scratch. Anything a project might
+  legitimately version belongs in that project's `.gitignore`, where a maintainer
+  can see it and override it.
+- **A turn the model never answered is a failure, not an empty success.**
+  `turn-stall.ts` folds the event stream into what the provider has got wrong
+  **since the last finished step**, and `requireAnswer` in `turn-run.ts` fails the
+  turn when the decoded reply is empty _and_ that record is not. **Both halves are
+  required and neither may be dropped**: an empty reply alone is an ordinary shape
+  (the implement phase discards the text), and a stall alone describes a turn that
+  recovered — which is precisely what a `step-finish` clearing the record means.
+  Together they are issue #239's implement turn: refused 25 times over 12 minutes,
+  idle without another finished step, an empty envelope every layer read as
+  success, and a commit of whatever the tree happened to hold. It raises an
+  **ordinary failure**, not a ceiling: nothing was written so nothing can be
+  salvaged, and `FAILED` with its resume point intact is the right place to wait
+  out a quota that clears with time. The read happens **after** the turn returns
+  and in the adapter, the one place holding both signals — `runTurn` never sees
+  the decoded reply.
 - **Capabilities are deny-by-default.** `openai-config.ts` grants tools by name
   on top of `"*": "deny"`, per agent profile: `plan` (the read-only phases)
   cannot edit or run commands, `build` can. Add a capability by naming it, never
@@ -618,9 +726,16 @@ not permitted to create or approve pull requests` is a repository or
 - One class per file: pipeline failures are constructed through the factories in
   `src/errors.ts` rather than new error subclasses.
 - Tests live in `tests/opencode-agent/`, follow `tests/CLAUDE.md`, and must not
-  touch the network. The one exception is `live-sdk.integration.ts`, which is
-  deliberately not a `*.test.ts` so default discovery skips it; it needs the
-  `opencode` CLI and is run via `bun run opencode-agent:test:live`.
+  touch the network. Two files are deliberately not `*.test.ts`, so default
+  discovery skips them; both need the `opencode` CLI and neither runs in CI.
+  `live-sdk.integration.ts` (`bun run opencode-agent:test:live`) is the recorder —
+  the SDK response fixtures in `adapters.test.ts` come from it, so re-run it rather
+  than adjusting a decoder by inspection when the pin moves.
+  `server-survival.integration.ts` (`bun run opencode-agent:test:survival`) is the
+  diagnostic: it drives candidate shell commands through `POST /session/:id/shell`
+  and asks after each whether this job's own server survived them. Both are driven
+  **without a model** — the shell endpoint spawns the same `bash -l -c` child the
+  bash tool does — which is what makes them cheap enough to run on a laptop.
 - When a command test asserts an outcome, assert the **persisted state**, not
   just the returned status — a state that is never posted never happened.
 - **The SDK response shapes are recorded, not guessed.** `sdk-contract.ts`'s

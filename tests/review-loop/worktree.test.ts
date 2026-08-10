@@ -43,6 +43,46 @@ describe('worktree', () => {
     expect(branch.stdout.trim()).toContain('review-loop/test-run')
   })
 
+  test('createWorktree installs dependencies when the worktree has a package.json', async () => {
+    const repoRoot = makeTempDir('worktree-repo-')
+    await execGit(repoRoot, ['init'])
+    await execGit(repoRoot, ['config', 'user.email', 'test@test.com'])
+    await execGit(repoRoot, ['config', 'user.name', 'Test'])
+    await execGit(repoRoot, ['checkout', '-b', 'main'])
+
+    writeFileSync(path.join(repoRoot, 'package.json'), '{"name":"wt-test","dependencies":{}}')
+    await execGit(repoRoot, ['add', '.'])
+    await execGit(repoRoot, ['commit', '-m', 'init'])
+
+    const wtPath = path.join(repoRoot, '.review-loop', 'worktree')
+    await createWorktree(repoRoot, wtPath, 'test-run')
+
+    expect(existsSync(path.join(wtPath, 'node_modules'))).toBe(true)
+  })
+
+  test('createWorktree without a package.json skips the install', async () => {
+    const repoRoot = makeTempDir('worktree-repo-')
+    await execGit(repoRoot, ['init'])
+    await execGit(repoRoot, ['config', 'user.email', 'test@test.com'])
+    await execGit(repoRoot, ['config', 'user.name', 'Test'])
+    await execGit(repoRoot, ['checkout', '-b', 'main'])
+
+    writeFileSync(path.join(repoRoot, 'README.md'), 'hello')
+    await execGit(repoRoot, ['add', '.'])
+    await execGit(repoRoot, ['commit', '-m', 'init'])
+
+    const wtPath = path.join(repoRoot, '.review-loop', 'worktree')
+    await createWorktree(repoRoot, wtPath, 'test-run')
+
+    expect(existsSync(wtPath)).toBe(true)
+    expect(existsSync(path.join(wtPath, 'node_modules'))).toBe(false)
+  })
+
+  test('execGit rejects when the git command fails', async () => {
+    const repoRoot = makeTempDir('worktree-repo-')
+    await expect(execGit(repoRoot, ['status'])).rejects.toThrow()
+  })
+
   test('worktreeExists returns true after create, false after remove', async () => {
     const repoRoot = makeTempDir('worktree-repo-')
     await execGit(repoRoot, ['init'])

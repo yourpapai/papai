@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="bun test" tests="5" assertions="4" failures="4" skipped="0" time="0.168711784">
+  <testsuite name="reports/fixture-gen/nested.test.ts" file="reports/fixture-gen/nested.test.ts" tests="5" assertions="4" failures="4" skipped="0" time="0" hostname="vm">
+    <testsuite name="outer" file="reports/fixture-gen/nested.test.ts" line="3" tests="1" assertions="1" failures="1" skipped="0" time="0" hostname="vm">
+      <testsuite name="inner" file="reports/fixture-gen/nested.test.ts" line="4" tests="1" assertions="1" failures="1" skipped="0" time="0.002" hostname="vm">
+        <testcase name="deep fails" classname="inner &amp;gt; outer" time="0.002451" file="reports/fixture-gen/nested.test.ts" line="5" assertions="1">
+          <failure type="AssertionError" />
+        </testcase>
+      </testsuite>
+    </testsuite>
+    <testsuite name="A" file="reports/fixture-gen/nested.test.ts" line="11" tests="2" assertions="2" failures="2" skipped="0" time="0" hostname="vm">
+      <testcase name="x" classname="A" time="0.000261" file="reports/fixture-gen/nested.test.ts" line="12" assertions="1">
+        <failure type="AssertionError" />
+      </testcase>
+      <testcase name="y" classname="A" time="0.000297" file="reports/fixture-gen/nested.test.ts" line="15" assertions="1">
+        <failure type="AssertionError" />
+      </testcase>
+    </testsuite>
+    <testsuite name="B" file="reports/fixture-gen/nested.test.ts" line="20" tests="2" assertions="1" failures="1" skipped="0" time="0" hostname="vm">
+      <testcase name="x" classname="B" time="0.000131" file="reports/fixture-gen/nested.test.ts" line="21" assertions="0">
+        <failure type="AssertionError" />
+      </testcase>
+      <testcase name="passes" classname="B" time="0.000023" file="reports/fixture-gen/nested.test.ts" line="24" assertions="1" />
+    </testsuite>
+  </testsuite>
+</testsuites>

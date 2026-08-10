@@ -411,14 +411,14 @@ cover it.
 
 Six bounds, each on a different kind of runaway.
 
-| Bound            | Where                                                                        | What it stops                                                             |
-| ---------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Prompt size      | `prompt-budget.ts`                                                           | 12k characters of thread, and 12k across _all_ failing checks, per prompt |
-| Turn duration    | `AGENT_TIMEOUT_MS`, applied in `deadline.ts`                                 | A turn that never answers — and one merely too slow, whose work is kept   |
-| Job wall clock   | `AGENT_JOB_TIMEOUT_MINUTES`, applied in `time-budget.ts`                     | A job dying on `timeout-minutes` with nothing posted at all               |
-| Provider hiccups | `provider-proxy.ts` — 3 attempts, with backoff                               | A single 429 or 5xx failing the phase                                     |
-| Rounds           | `AGENT_MAX_ATTEMPTS`, `AGENT_CI_FIX_MAX_ROUNDS`, `AGENT_MAX_REVIEW_ATTEMPTS` | An agent and CI bouncing off each other, and a review nothing else bounds |
-| Total spend      | `AGENT_MAX_TOKENS`, per **issue**                                            | An issue quietly costing more than it is worth                            |
+| Bound            | Where                                                                                                          | What it stops                                                                                                      |
+| ---------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Prompt size      | `prompt-budget.ts`                                                                                             | 12k characters of thread, and 12k across _all_ failing checks, per prompt                                          |
+| Turn duration    | `AGENT_TIMEOUT_MS`, applied in `deadline.ts`                                                                   | A turn that never answers — and one merely too slow, whose work is kept                                            |
+| Job wall clock   | `AGENT_JOB_TIMEOUT_MINUTES`, applied in `time-budget.ts`                                                       | A job dying on `timeout-minutes` with nothing posted at all                                                        |
+| Provider hiccups | `provider-proxy.ts` — 3 attempts, with backoff                                                                 | A single 429 or 5xx failing the phase                                                                              |
+| Rounds           | `AGENT_MAX_ATTEMPTS`, `AGENT_CI_FIX_MAX_ROUNDS`, `AGENT_MAX_REVIEW_ATTEMPTS`, `AGENT_COMMIT_REPAIR_MAX_ROUNDS` | An agent and CI bouncing off each other, a review nothing else bounds, and a tree the repository will never accept |
+| Total spend      | `AGENT_MAX_TOKENS`, per **issue**                                                                              | An issue quietly costing more than it is worth                                                                     |
 
 The prompt caps are on the **finished prompt**, not on any one input: a per-input
 cap bounds one log and nothing else, and three red checks at 8k each still put
@@ -565,6 +565,16 @@ token ceiling is checked, whether there is time to start another one.
 `AGENT_TEARDOWN_RESERVE_MS` is the slice held back from that — three minutes for
 the `git add`, the commit, the push, the comment, the state block and the label a
 stop still has to do, against an observed tail of about ten seconds.
+
+With the shrink in place the per-turn cap is free to be generous, and it now is:
+`AGENT_TIMEOUT_MS` defaults to an **hour** rather than the half-hour above. The
+30-minute default outlived the defect that made it dangerous and became the
+opposite problem — with the job ceiling at 90 it was the _only_ bound long runs
+ever reached, and three consecutive live runs ended at the same 33 minutes of
+wall clock, each one a single turn aborted at its cap, wrapped up and parked with
+an hour of paid-for runner unspent. Raising it cannot recreate D3, because the
+`min` above is what stands between a turn and the runner: a turn opened late gets
+what is left of the job minus the two slices, whatever this is set to.
 
 **A wall-clock stop is a ceiling reached, not work that broke**, and the pipeline
 says so in the vocabulary it already had: ⛔ rather than ❌, and a park in
@@ -713,6 +723,44 @@ firing it mid-walk would leave a `FAILED` issue whose branch carries half a plan
 a notice inviting a `/retry` into a phase that is partly done. The runaway it bounds is
 an issue across many jobs, which the check in front of the next phase still catches,
 and one job's overshoot is itself bounded by the clock this walk does check per step.
+
+### A refused commit is repaired, not a failure
+
+A repository that gates commits on its own checks makes `git commit` the last place
+a lint error can surface, and it used to be the one place the pipeline had no answer
+for it. `package.json`'s `prepare` installs `scripts/pre-commit.sh` as
+`.git/hooks/pre-commit` on any install where `.git` exists — the Actions runner
+included — and it runs lint, typecheck, `format:check` and the licence scan over the
+staged files. So an implementation turn that wrote working code with one unformatted
+file in it could not commit at all: the phase threw, the issue parked in `FAILED`, and
+a maintainer had to reply `/retry` to buy a whole fresh job — one that re-ran the model
+turn that had already succeeded — for a fix the model could have made in seconds from
+the output git had just printed.
+
+Now `commit-repair.ts` hands that output straight back to the same session, enveloped
+like any other check output, and commits again. Bounded by
+`AGENT_COMMIT_REPAIR_MAX_ROUNDS` (default 3 attempts, so two repairs), and a rejection
+that outlives its rounds fails exactly as it did before — same message, same `FAILED`,
+same `/retry` — so the change can only turn a failure into a success. Three things it
+deliberately does not do:
+
+- **it does not repair the diff guard.** A staged credential, a binary or a runaway
+  `git add --all` is refused before the commit is ever issued and still ends the run;
+  no number of repair rounds can talk the pipeline into committing a secret;
+- **it does not commit for itself.** The repair prompt edits the tree and the pipeline
+  re-stages, re-guards and re-commits, so nothing reaches history that the hook and the
+  guard have not both accepted. `--no-verify` remains the salvage path's alone;
+- **it does not become a check runner.** The repository's hook is the judge; the
+  pipeline never chooses, runs or interprets the checks, and the only verdict it reads
+  is whether `git commit` was accepted. That is what keeps this separate from
+  `check-loop.ts`, which owns a named set of commands and decides what green means.
+
+The CI-fix phase's commit gets the same treatment for the same reason: the checks it
+reproduces are the ones CI ran, and the ones a commit has to satisfy are the
+repository's own over the staged files. The `/review` phase does not, and that is a
+cost decision rather than an oversight — its findings arrive from `opencode run`
+subprocesses and the phase opens no session of its own, so repairing there would mean
+booting the OpenCode server for a phase built to avoid it.
 
 ## Watching a run
 
@@ -974,14 +1022,37 @@ by dropping the first word.
 ### The Actions log
 
 Still the deep dive, and the only place that says what the model is doing
-second by second:
+second by second. Each phase is a collapsible section, and each tool call is a
+pair of lines with the time it took:
 
 ```
-Model tool call        { tool: "read", status: "running", call: "call_1" }
-Model step finished    { inputTokens: 1200, outputTokens: 340, cost: 0.004 }
+::group::🛠️ Writing and reviewing the code
+▸ read (running)
+✓ read 0.1s
+▸ bash (running)
+✓ bash 3.2s
+✓ finished a step — 1527 tokens, 2 tool calls so far
+▸ edit (running)
+✗ edit 0.4s
 Still waiting on the model; the job is not stuck
                        { elapsedMs: 60011, lastAction: "read (running)", toolCalls: 7, tokens: 41200, cost: 0.31 }
+::endgroup::
 ```
+
+Three things about that shape are decisions rather than styling. The glyphs are
+`▸` starting, `✓` finished, `✗` failed and `●` a session status, and the
+duration comes from the pipeline's own clock rather than the server's `time.start`
+— a completion whose start was never seen carries no duration instead of a
+wrong one. A tool call is **two lines and no more**: the server republishes the
+running state as the arguments stream in, and ten republishes of one call used
+to be ten identical lines and a tool-call count ten times too high. And the
+section headings come from the same presentation table the issue comments and
+the labels read, so the log folds the way the issue reads.
+
+The line is the message and the metadata is empty, deliberately: a JSON renderer
+adds no structure to `✓ bash 3.2s` and a plain-text renderer loses nothing. The
+heartbeat is the exception and keeps its fields, because a snapshot is exactly
+the sort of thing structured logging is for.
 
 Two halves, answering different questions. OpenCode's event stream says **what**
 the model is doing, and only fires when something happens. The heartbeat, once a
@@ -1004,6 +1075,94 @@ holds.
 
 Token and cost totals ride along, per step and in every heartbeat, and the token
 half is now a ceiling as well as a reading — see **What bounds a run** above.
+
+### The debug transcript, for the detail the log may not carry
+
+The rule above — names, statuses and counts, never content — is what makes the
+Actions log safe to publish, and it is also what makes it thin exactly when a
+run has gone wrong. `✗ bash 0.4s` says a command failed; **which** command is
+the thing you actually want, and it cannot go in a world-readable log.
+
+So it goes somewhere else, encrypted, and only if an operator asks for it.
+
+1. Generate a key and store it as the repository secret `AGENT_LOG_KEY`:
+
+   ```sh
+   openssl rand -base64 32
+   ```
+
+2. Enable Pages once, under **Settings → Pages → Source: GitHub Actions**. The
+   `Transcript viewer` workflow publishes `opencode-agent/viewer/` on every push
+   to master that touches it, and on demand.
+
+3. From then on, every run that has a key uploads a `debug-transcript-<run id>`
+   artefact and comments two links on the issue. Download the artefact, open the
+   viewer, drop the `.enc` file in, paste the key.
+
+**Without the secret nothing changes.** The pipeline warns once that no
+transcript will be written, writes no file, uploads no artefact and posts no
+comment, and the public log is byte-for-byte the one it always wrote.
+
+What the transcript carries is a whitelist, not "the rest of the event":
+`src/activity-detail.ts` names one scalar field per tool — `command` for bash
+(truncated at 200 characters, because a command can be a heredoc carrying a
+whole file), `filePath` for read, edit and write, `pattern` for grep and glob —
+and everything else decodes to no detail at all. Tool **output**, file contents
+and the model's own text have nowhere to land in that shape, which is why the
+transcript is not simply "the log with the redaction switched off".
+
+Two properties do the containment, and both are in `src/debug-transcript.ts`:
+
+- every line is AES-256-GCM under a fresh 12-byte nonce, written as
+  `<base64 nonce>.<base64 ciphertext>`, so the artefact reads as noise to anyone
+  without the key — and decrypts **line by line**, which is what lets a run
+  killed mid-write leave a truncated file that still reads up to its last whole
+  line;
+- `redactSecrets` runs **before** encryption and by value, so a pipeline
+  credential that reached a bash command is not in the ciphertext at all. Even
+  the key holder never reads one back.
+
+The viewer is one file with no network access in it — no script, stylesheet or
+font from anywhere else. That is not tidiness: it is a page opened by someone
+holding a decryption key, and a third-party script on it would be code that
+could take the key, controlled by whoever controls that origin.
+`tests/opencode-agent/transcript-viewer.test.ts` imports the page's own script
+and decodes a transcript the real writer produced, so the reader and the writer
+cannot drift apart unnoticed.
+
+The key is never in the comment and never in a URL. The artefact sits behind
+repository read access, the key behind the secret store, and the page brings
+them together in a tab that talks to neither.
+
+### The post-mortem, for a job whose server died
+
+The rule above has a cost, and it was paid on issue #239: when a run failed three
+times with `The socket connection was closed unexpectedly`, nothing in the log
+could say why. That message is Bun's wording for a `fetch` whose peer went away
+and names neither end of it, so it reads as a model-provider problem — while the
+peer that had actually gone was the `opencode serve` this job spawned on
+loopback. The pipeline now says so itself: a turn that fails asks the server
+whether it is still there, and reports **the local OpenCode server stopped
+answering** rather than quoting the transport.
+
+_Why_ it died is not visible from inside the process that lost it, so a
+`if: failure()` step asks the runner before it disappears:
+
+```
+--- processes still alive (names only, no command lines) ---
+--- how many of them are opencode ---
+--- kernel out-of-memory kills ---
+--- peak memory for this job cgroup ---
+```
+
+Two live `opencode` processes means something started a second one; a line from
+the OOM killer means the runner ran out of memory. **Names and counts only**, by
+the same rule as the rest of this section — `ps` is asked for `comm` and never
+`args`, because a tool child's argument vector is model-authored content and this
+log is public. When you need the commands themselves, reproduce locally: see
+**Local runs** below, and `bun run opencode-agent:test:survival`, which drives
+candidate commands at a throwaway server and reports which of them it does not
+survive.
 
 ## Guardrails
 
@@ -1088,6 +1247,42 @@ trustworthy attribution.
 
 Commands are spawned as argv vectors with `shell: false`, so untrusted text never
 reaches a shell.
+
+### Files the agent cannot commit
+
+`.github/workflows/**` is off limits, and not as a matter of taste.
+
+GitHub refuses a push from a GitHub App or an Actions token that creates or
+updates anything under `.github/workflows/` unless the App holds the `workflows`
+permission — and the `permissions:` block a workflow grants its own
+`GITHUB_TOKEN` has no `workflows` key at all, so the shipped default can never
+do it. The refusal is for the **whole push**, not the offending file: a commit
+carrying one blocked workflow file and forty good ones delivers none of them.
+Issue #240 lost two runs that way, several hundred thousand tokens each, on work
+that had nothing to do with the workflow.
+
+So `src/protected-paths.ts` names the prefixes and `git-commit.ts` takes them
+back out of the index between `git add --all` and the diff guard, on the
+ordinary commit and on the salvage alike. The file is **dropped, not refused** —
+refusing would lose the same work the remote would have lost — its working-tree
+copy is reverted (or removed, if the model created it) so the next step cannot
+stage it again, and the drop is reported at `warn` naming every path, because a
+guardrail nobody sees fire is indistinguishable from a model that quietly failed
+to make the edit. A turn that wrote _only_ such a file reports nothing to commit
+rather than handing `git commit` an empty index.
+
+`IMPLEMENT_INSTRUCTIONS` and the planning instructions both state the rule, so a
+well-behaved turn never writes one and a plan never contains a step that would.
+That is the courtesy; the staging step is the mechanism, and it is where the
+model has no say.
+
+**If you want the agent to change its own workflow**, grant the App behind
+`AGENT_GITHUB_TOKEN` the `workflows: write` permission, re-install it, and drop
+the prefix from `PROTECTED_PREFIXES`. Weigh it first: an agent that can rewrite
+`agent-pipeline.yml` can rewrite the permissions, the concurrency group, the
+guardrails and the secret wiring that bound it, from inside a job that file
+defines. The alternative costs a maintainer one commit — the agent says in its
+reply exactly what to apply.
 
 ### Capability containment
 
@@ -1206,37 +1401,39 @@ used by the in-process SDK session _and_, via `OPENCODE_CONFIG_CONTENT`, by the
 `opencode run` subprocesses the review loop spawns — one definition, so the two
 cannot drift.
 
-| Variable                                   | Required | Default                                         | Purpose                                               |
-| ------------------------------------------ | -------- | ----------------------------------------------- | ----------------------------------------------------- |
-| `LLM_API_KEY`                              | yes      | —                                               | Model credentials                                     |
-| `LLM_MODEL`                                | yes      | —                                               | Model name, e.g. `gpt-5`                              |
-| `LLM_BASE_URL`                             | yes      | —                                               | Any OpenAI-compatible endpoint                        |
-| `GITHUB_TOKEN`                             | no       | the job's own `secrets.GITHUB_TOKEN`            | Comments, branches, pull requests; see below          |
-| `GITHUB_REPOSITORY`                        | no       | the job's own `owner/repo`                      | `owner/repo`; see below                               |
-| `AGENT_SELF_LOGIN`                         | no       | derived from the token                          | Login the agent posts as; see above                   |
-| `AGENT_WORKFLOW_NAME`                      | no       | `OpenCode Issue Agent`                          | This workflow's name, for the CI recursion guard      |
-| `AGENT_BASE_BRANCH`                        | no       | detected                                        | Branch the PR targets; see below                      |
-| `AGENT_CHECK_COMMAND`                      | no       | `bun run lint && bun run typecheck && bun test` | review-loop's build gate                              |
-| `AGENT_REVIEW_COMMAND`                     | no       | detected                                        | JSON argv running the review loop; `none` disables it |
-| `AGENT_CHECKS`                             | no       | lint / typecheck / test                         | JSON `[{ "name", "argv" }]` the CI-fix phase runs     |
-| `AGENT_REVIEW_MAX_ROUNDS`                  | no       | `4`                                             | review-loop rounds                                    |
-| `AGENT_REVIEW_POOL_SIZE`                   | no       | `2`                                             | review-loop worker pool                               |
-| `AGENT_CI_FIX_MAX_ROUNDS`                  | no       | `2`                                             | Repair rounds per CI-fix job                          |
-| `AGENT_MAX_CI_ATTEMPTS`                    | no       | `3`                                             | CI-fix jobs per pull request                          |
-| `AGENT_MAX_REVIEW_ATTEMPTS`                | no       | `3`                                             | `/review` rounds per pull request                     |
-| `AGENT_REVIEW_HINT_LINES`                  | no       | `200`                                           | Diff size at which a delivery recommends `/review`    |
-| `AGENT_MAX_ATTEMPTS`                       | no       | `3`                                             | Failures before `/retry` stops resuming               |
-| `AGENT_MAX_CHANGED_FILES`                  | no       | `100`                                           | Files one commit may carry                            |
-| `AGENT_MAX_CHANGED_LINES`                  | no       | `20000`                                         | Lines one commit may change                           |
-| `AGENT_TIMEOUT_MS`                         | no       | `1800000`                                       | Timeout for one model turn, and for each subprocess   |
-| `AGENT_JOB_STARTED_MS`                     | no       | unset — no job deadline                         | Epoch ms this job began; the workflow's first step    |
-| `AGENT_JOB_TIMEOUT_MINUTES`                | no       | unset — no job deadline                         | The job's own ceiling, shared with `timeout-minutes:` |
-| `AGENT_TEARDOWN_RESERVE_MS`                | no       | `180000`                                        | Held back from the job so a time stop can report      |
-| `AGENT_WRAP_UP_MS`                         | no       | `120000`                                        | The model's slice of a stop: finish up and hand over  |
-| `AGENT_MAX_TOKENS`                         | no       | `5000000`                                       | Model tokens one issue may spend, across all its jobs |
-| `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no       | `opencode-agent[bot]`                           | Commit identity                                       |
-| `AGENT_LABEL_PREFIX`                       | no       | `agent:`                                        | Namespace for the status labels; `none` disables them |
-| `AGENT_LOG_LEVEL`                          | no       | `info`                                          | `debug`, `info`, `warn`, `error`                      |
+| Variable                                   | Required | Default                                         | Purpose                                                |
+| ------------------------------------------ | -------- | ----------------------------------------------- | ------------------------------------------------------ |
+| `LLM_API_KEY`                              | yes      | —                                               | Model credentials                                      |
+| `LLM_MODEL`                                | yes      | —                                               | Model name, e.g. `gpt-5`                               |
+| `LLM_BASE_URL`                             | yes      | —                                               | Any OpenAI-compatible endpoint                         |
+| `GITHUB_TOKEN`                             | no       | the job's own `secrets.GITHUB_TOKEN`            | Comments, branches, pull requests; see below           |
+| `GITHUB_REPOSITORY`                        | no       | the job's own `owner/repo`                      | `owner/repo`; see below                                |
+| `AGENT_SELF_LOGIN`                         | no       | derived from the token                          | Login the agent posts as; see above                    |
+| `AGENT_WORKFLOW_NAME`                      | no       | `OpenCode Issue Agent`                          | This workflow's name, for the CI recursion guard       |
+| `AGENT_BASE_BRANCH`                        | no       | detected                                        | Branch the PR targets; see below                       |
+| `AGENT_CHECK_COMMAND`                      | no       | `bun run lint && bun run typecheck && bun test` | review-loop's build gate                               |
+| `AGENT_REVIEW_COMMAND`                     | no       | detected                                        | JSON argv running the review loop; `none` disables it  |
+| `AGENT_CHECKS`                             | no       | lint / typecheck / test                         | JSON `[{ "name", "argv" }]` the CI-fix phase runs      |
+| `AGENT_REVIEW_MAX_ROUNDS`                  | no       | `4`                                             | review-loop rounds                                     |
+| `AGENT_REVIEW_POOL_SIZE`                   | no       | `2`                                             | review-loop worker pool                                |
+| `AGENT_CI_FIX_MAX_ROUNDS`                  | no       | `2`                                             | Repair rounds per CI-fix job                           |
+| `AGENT_COMMIT_REPAIR_MAX_ROUNDS`           | no       | `3`                                             | Commit attempts when the repo's own checks refuse one  |
+| `AGENT_MAX_CI_ATTEMPTS`                    | no       | `3`                                             | CI-fix jobs per pull request                           |
+| `AGENT_MAX_REVIEW_ATTEMPTS`                | no       | `3`                                             | `/review` rounds per pull request                      |
+| `AGENT_REVIEW_HINT_LINES`                  | no       | `200`                                           | Diff size at which a delivery recommends `/review`     |
+| `AGENT_MAX_ATTEMPTS`                       | no       | `5`                                             | Failures before `/retry` stops resuming                |
+| `AGENT_MAX_CHANGED_FILES`                  | no       | `100`                                           | Files one commit may carry                             |
+| `AGENT_MAX_CHANGED_LINES`                  | no       | `20000`                                         | Lines one commit may change                            |
+| `AGENT_TIMEOUT_MS`                         | no       | `3600000`                                       | Timeout for one model turn, and for each subprocess    |
+| `AGENT_JOB_STARTED_MS`                     | no       | unset — no job deadline                         | Epoch ms this job began; the workflow's first step     |
+| `AGENT_JOB_TIMEOUT_MINUTES`                | no       | unset — no job deadline                         | The job's own ceiling, shared with `timeout-minutes:`  |
+| `AGENT_TEARDOWN_RESERVE_MS`                | no       | `180000`                                        | Held back from the job so a time stop can report       |
+| `AGENT_WRAP_UP_MS`                         | no       | `120000`                                        | The model's slice of a stop: finish up and hand over   |
+| `AGENT_MAX_TOKENS`                         | no       | `5000000`                                       | Model tokens one issue may spend, across all its jobs  |
+| `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no       | `opencode-agent[bot]`                           | Commit identity                                        |
+| `AGENT_LABEL_PREFIX`                       | no       | `agent:`                                        | Namespace for the status labels; `none` disables them  |
+| `AGENT_LOG_LEVEL`                          | no       | `info`                                          | `debug`, `info`, `warn`, `error`                       |
+| `AGENT_LOG_KEY`                            | no       | unset — no transcript                           | Secret: base64 32 bytes; encrypts the debug transcript |
 
 `LLM_MODEL` and `LLM_BASE_URL` are both required rather than defaulted: with a
 model gateway that is not necessarily OpenAI's own, there is no base URL or
@@ -1369,8 +1566,16 @@ both are 26–28 KB and neither applies to a single-session CI run.
    the token the `resolve` job's `gh api …/pulls/<n>` call uses when it is set, so
    whatever you put there needs to be able to read a pull request in this
    repository.
-5. Actions needs write access to contents, issues and pull requests.
-6. **Actions must be allowed to create pull requests.** The `permissions:` block
+5. Optionally the repository secret `AGENT_LOG_KEY` — `openssl rand -base64 32`
+   — which turns on the encrypted debug transcript and the two links the agent
+   comments beside a run. It needs Pages enabled once, under Settings → Pages →
+   Source: GitHub Actions, so the `Transcript viewer` workflow has somewhere to
+   publish. Leave it unset and nothing about a run changes; see **The debug
+   transcript** above. Note that `AGENT_GITHUB_TOKEN` cannot push a workflow
+   file unless its App holds the `workflows` permission — which is why the
+   agent refuses to commit one at all, see **Files the agent cannot commit**.
+6. Actions needs write access to contents, issues and pull requests.
+7. **Actions must be allowed to create pull requests.** The `permissions:` block
    in the workflow is not enough on its own: without this, `PR_DELIVERY` fails
    with _"GitHub Actions is not permitted to create or approve pull requests"_ on
    a branch that is already pushed and complete, and no `/retry` can change that.
@@ -1550,9 +1755,15 @@ under **Setup** is simply not written. Nothing else changes.
 | `src/ask-json.ts`                             | Asking the model for JSON, with one repair re-ask on a bad reply        |
 | `src/prompt-budget.ts`                        | How much text a prompt carries, and what loses when it does not fit     |
 | `src/activity.ts`                             | What one OpenCode event means, and what of it may be said out loud      |
-| `src/progress.ts`                             | Reporting that, plus the heartbeat while a turn is outstanding          |
+| `src/activity-detail.ts`                      | The whitelist decoder feeding the encrypted transcript, and only it     |
+| `src/progress.ts`                             | Reporting that as `▸`/`✓` lines, and the summary a heartbeat reads      |
+| `src/heartbeat.ts`                            | "Still going" at a fixed interval while a turn is outstanding           |
+| `src/ci-groups.ts`                            | The one module allowed to spell Actions' `::group::` commands           |
+| `src/debug-transcript.ts`                     | The encrypted maintainer-only run log, when `AGENT_LOG_KEY` is set      |
+| `src/protected-paths.ts`                      | Paths a push by this pipeline cannot carry, dropped before the commit   |
 | `src/sdk-contract.ts`                         | The recorded request and response shapes the SDK speaks                 |
 | `src/config-values.ts`                        | Reading and range-checking one scalar from the environment              |
+| `src/check-spec.ts`                           | `AGENT_CHECKS`, the one config reading that parses a document           |
 | `src/config-discovery.ts`                     | The two settings asked of the checkout and the event, not the env       |
 | `src/deadline.ts`                             | The upper bound on waiting for work that has none of its own            |
 | `src/provider-proxy.ts`                       | Holds the provider key, and retries a transient upstream failure        |

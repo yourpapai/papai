@@ -19,7 +19,8 @@ import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import { DEFAULT_CHECKS } from '../../opencode-agent/src/config.js'
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
 import type { StagedTotals } from '../../opencode-agent/src/diff-guard.js'
-import { turnDeadlineError } from '../../opencode-agent/src/errors.js'
+import { diffGuardError, turnDeadlineError } from '../../opencode-agent/src/errors.js'
+import { GitError } from '../../opencode-agent/src/git.js'
 import type { Git, Salvage } from '../../opencode-agent/src/git.js'
 import type { PullRequestHead, PullRequestRef, PullRequestStatus } from '../../opencode-agent/src/github-pulls.js'
 import type { ReactionContent, ReactionRef, ReactionTarget } from '../../opencode-agent/src/github-reactions.js'
@@ -87,6 +88,7 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   teardownReserveMs: 180_000,
   wrapUpMs: 120_000,
   ciFixMaxRounds: 2,
+  commitRepairMaxRounds: 3,
   maxCiAttempts: 2,
   maxAttempts: 3,
   maxReviewAttempts: 2,
@@ -96,6 +98,7 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   gitRemoteBase: 'https://github.com/',
   runUrl: null,
   labelPrefix: 'agent:',
+  logKey: null,
   skillRoots: ['.superpowers/skills'],
   ...overrides,
 })
@@ -289,6 +292,8 @@ interface PipelineIo {
   labelError: Error | null
   /** Every comment edit, in order — the status comment's and the state rewrites'. */
   edits: { id: number; body: string }[]
+  /** The `::group::` sections the cascade opened and closed, in order. */
+  groups: string[]
   /**
    * What the status channel rejects with, when set.
    *
@@ -361,6 +366,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     labelReads: 0,
     labelError: null,
     edits: [],
+    groups: [],
     statusError: null,
     postError: null,
     nowMs: RUN_NOW_MS,
@@ -549,6 +555,10 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     // The same clock the status reporter reads, so a test that moves time moves it
     // for the job deadline and for the status comment at once.
     now: () => io.nowMs,
+    groups: {
+      startGroup: (headline) => void io.groups.push(`::group::${headline}`),
+      endGroup: () => void io.groups.push('::endgroup::'),
+    },
     config: pipelineConfig,
     log,
   }
@@ -574,6 +584,47 @@ const hostileGit = (): Git => {
     defaultBranch: (): Promise<string | null> => refuse('symbolic-ref'),
   }
 }
+
+/**
+ * The repository's own pre-commit hook turning a commit away.
+ *
+ * A `GitError` and not a `PipelineError`, which is the distinction the repair loop
+ * reads: the diff guard refuses before the commit is issued and stays fatal, while
+ * this is the commit itself being judged by whatever the checkout installed.
+ */
+const hookRefusal = (stderr: string): GitError =>
+  new GitError({ command: 'git commit -m …', exitCode: 1, stdout: '', stderr })
+
+/**
+ * A git whose first `refusals` commits are turned away by that hook.
+ *
+ * Module-level so no test body carries the conditional, and it still records every
+ * attempt — how many there were is the point of most of the tests that use it.
+ */
+const refuseFirstCommits = (harness: Harness, refusals: number, stderr: string): void => {
+  const left = { count: refusals }
+  harness.deps.git.commitAll = (message): Promise<StagedTotals | null> => {
+    harness.io.gitCalls.push(`commit:${message.split('\n')[0]}`)
+    if (left.count === 0) return Promise.resolve(harness.io.committedTotals)
+    left.count -= 1
+    return Promise.reject(hookRefusal(stderr))
+  }
+}
+
+/** A git that refuses each distinct commit message once — one refusal per plan step. */
+const refuseEachCommitOnce = (harness: Harness, stderr: string): void => {
+  const refused = new Set<string>()
+  harness.deps.git.commitAll = (message): Promise<StagedTotals | null> => {
+    const subject = message.split('\n')[0] ?? ''
+    harness.io.gitCalls.push(`commit:${subject}`)
+    if (refused.has(subject)) return Promise.resolve(harness.io.committedTotals)
+    refused.add(subject)
+    return Promise.reject(hookRefusal(stderr))
+  }
+}
+
+/** The nth prompt's system text, so a test asserting on it carries no narrowing. */
+const systemAt = (harness: Harness, index: number): string => harness.io.prompts[index]?.system ?? ''
 
 const latestPostedState = (harness: Harness): AgentState | null => {
   const last = harness.io.posted.at(-1)
@@ -1915,6 +1966,24 @@ describe('CI fixing', () => {
     await runPipeline({ event: ciEvent(), deps: harness.deps })
 
     expect(String(harness.io.prompts.at(-1)?.prompt)).toContain('lint blew up')
+    expect(harness.io.gitCalls).toContain(`push:agent/issue-${ISSUE}`)
+  })
+
+  /**
+   * The checks this phase reproduces are the ones **CI** ran; the ones a commit has to
+   * satisfy are the repository's own, over the staged files, and they are not the same
+   * set — so a round that got every configured check green can still be turned away at
+   * the commit, which used to lose the fix and the whole phase with it.
+   */
+  test('a commit the repository refuses is repaired here too', async () => {
+    harness.io.checkResults.set('lint', { command: 'lint', exitCode: 1, stdout: 'lint blew up', stderr: '' })
+    harness.io.replies = ['Fixed the lint error.', 'Fixed the formatting too.']
+    refuseFirstCommits(harness, 1, 'format:check failed')
+
+    const result = await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(String(harness.io.prompts.at(-1)?.prompt)).toContain('format:check failed')
     expect(harness.io.gitCalls).toContain(`push:agent/issue-${ISSUE}`)
   })
 
@@ -3675,6 +3744,170 @@ describe('implementing the plan a step at a time', () => {
   })
 })
 
+/**
+ * The commit the repository refuses, and the run that used to end there.
+ *
+ * Issue #240 is the record: an implementation turn wrote working code with eleven
+ * lint errors, one type error and two unformatted files in it, `.git/hooks/pre-commit`
+ * refused the commit, and a run that had implemented ten of twelve plan steps parked in
+ * `FAILED` under a `/retry` that would have bought a whole fresh job to re-run a turn
+ * that had already succeeded.
+ */
+describe('a commit the repository refuses', () => {
+  const HOOK_OUTPUT = '✗ lint failed (exit code 1):\n::error file=src/a.ts,title=eslint(max-lines)::Too many lines.'
+
+  const refusingGit = (harness: Harness, refusals: number): void => refuseFirstCommits(harness, refusals, HOOK_OUTPUT)
+
+  const commitAttempts = (harness: Harness): string[] =>
+    harness.io.gitCalls.filter((call) => call.startsWith('commit:'))
+
+  test('is handed back to the model and committed again, rather than failing the run', async () => {
+    const harness = makeHarness()
+    await toPlanReview(harness)
+    harness.io.prompts.length = 0
+    harness.io.replies = ['Implemented.', 'Fixed the lint errors.']
+    refusingGit(harness, 1)
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(commitAttempts(harness)).toHaveLength(2)
+    expect(harness.io.gitCalls).toContain(`push:agent/issue-${ISSUE}`)
+    expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
+  })
+
+  test('the repair prompt carries what the hook printed, enveloped', async () => {
+    const harness = makeHarness()
+    await toPlanReview(harness)
+    harness.io.prompts.length = 0
+    harness.io.replies = ['Implemented.', 'Fixed.']
+    refusingGit(harness, 1)
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    const repair = harness.io.prompts[1]
+    expect(repair?.prompt).toContain('could not be committed')
+    expect(repair?.prompt).toContain('eslint(max-lines)')
+    expect(repair?.prompt).toContain('source="commit-check-output"')
+    // The handler's own system prompt and nonce, so the delimiter the check output
+    // is wrapped in is the one the model was told to trust.
+    expect(repair?.system).toBe(systemAt(harness, 0))
+    expect(repair?.agent).toBe('build')
+  })
+
+  test('says on the issue that it repaired, so a run that paid for one is not silent', async () => {
+    const harness = makeHarness()
+    await toPlanReview(harness)
+    harness.io.replies = ['Implemented.', 'Fixed.']
+    refusingGit(harness, 1)
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.posted.join('\n')).toContain('refused a commit 1 time(s)')
+  })
+
+  test('a run whose commits were all accepted says nothing about repairs', async () => {
+    const harness = makeHarness()
+    await toPlanReview(harness)
+    harness.io.replies = ['Implemented.']
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.posted.join('\n')).not.toContain('refused a commit')
+  })
+
+  test('spends the rounds it is given and then fails exactly as it used to', async () => {
+    // The invariant that makes this change unable to make anything worse: the last
+    // refusal is what reaches the issue, and `/retry` still resumes the phase.
+    const harness = makeHarness({ commitRepairMaxRounds: 2 })
+    await toPlanReview(harness)
+    harness.io.prompts.length = 0
+    harness.io.replies = ['Implemented.', 'I tried.']
+    refusingGit(harness, 5)
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(commitAttempts(harness)).toHaveLength(2)
+    expect(harness.io.prompts).toHaveLength(2)
+
+    const state = latestPostedState(harness)
+    expect(state?.phase).toBe('FAILED')
+    expect(state?.resumeFrom).toBe('REVIEW_AND_MUTATE')
+    expect(state?.lastError).toContain('eslint(max-lines)')
+  })
+
+  test('`AGENT_COMMIT_REPAIR_MAX_ROUNDS=1` restores the behaviour this replaced', async () => {
+    const harness = makeHarness({ commitRepairMaxRounds: 1 })
+    await toPlanReview(harness)
+    harness.io.prompts.length = 0
+    harness.io.replies = ['Implemented.']
+    refusingGit(harness, 5)
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(commitAttempts(harness)).toHaveLength(1)
+    expect(harness.io.prompts).toHaveLength(1)
+  })
+
+  test('repairs each refused step of a plan on its own', async () => {
+    const harness = makeHarness()
+    await toPlanReview(harness, planReply(2))
+    harness.io.prompts.length = 0
+    harness.io.replies = ['one', 'fixed one', 'two', 'fixed two']
+    // Every commit is refused once: step 1, its repair, step 2, its repair.
+    refuseEachCommitOnce(harness, HOOK_OUTPUT)
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('completed')
+    expect(commitAttempts(harness)).toHaveLength(4)
+    expect(harness.io.prompts).toHaveLength(4)
+    expect(harness.io.posted.join('\n')).toContain('refused a commit 2 time(s)')
+  })
+
+  /**
+   * A repair turn is a model turn, so the clock can run out inside one exactly as it
+   * can inside the step's own — and it leaves the same tree: written to, uncommitted,
+   * and worth salvaging. Both stops therefore have to leave by the same door.
+   */
+  test('a clock that stops a repair turn parks and salvages rather than failing', async () => {
+    const harness = makeHarness({ wrapUpMs: 30_000 })
+    await toPlanReview(harness)
+    harness.io.prompts.length = 0
+    harness.io.promptFailures = [null, turnDeadlineError(1_800_000, PROGRESS)]
+    harness.io.replies = ['Implemented.', HANDOFF]
+    refusingGit(harness, 1)
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(latestPostedState(harness)?.phase).toBe('INCOMPLETE')
+    expect(harness.io.gitCalls).toContain(`push:agent/issue-${ISSUE}:no-verify`)
+  })
+
+  /**
+   * The guard's refusals are raised before the commit is issued and must stay fatal:
+   * a repair round that could argue with them would be a route to committing a
+   * staged credential.
+   */
+  test('the diff guard is never repaired', async () => {
+    const harness = makeHarness()
+    await toPlanReview(harness)
+    harness.io.prompts.length = 0
+    harness.io.replies = ['Implemented.']
+    harness.deps.git.commitAll = (): Promise<StagedTotals | null> =>
+      Promise.reject(diffGuardError('a credential value appears in the staged diff'))
+
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.prompts).toHaveLength(1)
+    expect(latestPostedState(harness)?.lastError).toContain('Refusing to commit')
+  })
+})
+
 /** Just the contents, in order — the target is asserted where it is the point. */
 const reactionsOf = (harness: Harness): ReactionContent[] => harness.io.reactions.map((entry) => entry.content)
 
@@ -4647,5 +4880,57 @@ describe('recording what a skipped classification cost', () => {
     expect(result.status).toBe('skipped')
     expect(spentIn(result)).toBe(0)
     expect(findLatestState(harness.io.thread, AGENT_LOGIN, ISSUE)?.tokensSpent).toBe(0)
+  })
+})
+
+describe('phase log groups', () => {
+  test('brackets each phase handler in a section named for the phase', async () => {
+    // One section per handler, from the one presentation table every other
+    // surface reads, so the log folds the same way the issue reads.
+    const harness = makeHarness()
+    harness.io.replies = [SPEC_REPLY]
+
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(harness.io.groups).toEqual(['::group::🔍 Reading the issue', '::endgroup::'])
+  })
+
+  test('brackets each phase of a cascade in order', async () => {
+    const harness = makeHarness()
+    await toPlanReview(harness)
+    harness.io.replies = ['Implemented.']
+    harness.io.groups.length = 0
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.groups).toEqual([
+      '::group::🛠️ Writing the code',
+      '::endgroup::',
+      '::group::📦 Opening the pull request',
+      '::endgroup::',
+    ])
+  })
+
+  test('closes the section even when the handler throws', async () => {
+    // `endGroup` belongs in a `finally`: a failed phase that left its section
+    // open would swallow every later line — the failure report included — into
+    // a collapsed group nobody opens.
+    const harness = makeHarness()
+    harness.io.promptFailures = [new Error('model exploded')]
+
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(harness.io.groups).toEqual(['::group::🔍 Reading the issue', '::endgroup::'])
+  })
+
+  test('a phase the budget refuses to start opens no section', async () => {
+    // The group wraps the handler, not the checks in front of it: a stopped
+    // phase ran nothing, so it folds nothing.
+    const harness = makeHarness()
+    seedState(harness, { phase: 'PLAN_REVIEW', tokensSpent: 6_000_000 })
+
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.groups).toEqual([])
   })
 })

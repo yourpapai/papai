@@ -121,6 +121,23 @@ export class LiveRenderer implements ProgressReporter {
     this.renderBlock()
   }
 
+  commit(key: string, line?: string): void {
+    this.touch()
+    const finalLine = line ?? this.slots.get(key)
+    this.slots.delete(key)
+    if (finalLine === undefined) {
+      if (this.dynamic) this.renderBlock()
+      return
+    }
+    if (!this.dynamic) {
+      this.writeSafe(`${finalLine}\n`)
+      return
+    }
+    this.clearBlock()
+    this.writeSafe(`${finalLine}\n`)
+    this.renderBlock()
+  }
+
   usage(delta: UsageDelta): void {
     this.touch()
     this.usageTotals.input += delta.input
@@ -151,9 +168,6 @@ export class LiveRenderer implements ProgressReporter {
 
   live(lines: readonly string[]): void {
     if (!this.dynamic) {
-      for (const line of lines) {
-        this.writeSafe(`${line}\n`)
-      }
       return
     }
     this.writeBlock([...lines])

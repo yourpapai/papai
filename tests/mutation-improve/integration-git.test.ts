@@ -92,7 +92,7 @@ describe('integration real-git', () => {
       buildFixAttempts: 0,
       checkCommand: 'bun check:full',
       mutateFileCommand: 'bun test:mutate:file',
-      agent: { model: 'm', extraArgs: [], timeoutMs: 1_800_000 },
+      agent: { model: 'm', extraArgs: [], timeoutMs: 1_800_000, inactivityTimeoutMs: 600_000 },
       prBranchPrefix: 'mutation-improve',
     }
     const runState = await createRunState(config)
@@ -104,10 +104,9 @@ describe('integration real-git', () => {
     const runImproveAgent: PipelineDeps['runImproveAgent'] = (
       worktreePath,
     ): Promise<{ value: Result; usage: AgentUsage }> => {
-      mkdirSync(path.join(worktreePath, 'docs', 'superpowers', 'specs'), { recursive: true })
-      mkdirSync(path.join(worktreePath, 'docs', 'superpowers', 'plans'), { recursive: true })
-      writeFileSync(path.join(worktreePath, 'docs', 'superpowers', 'specs', 'x-design.md'), '# spec\n')
-      writeFileSync(path.join(worktreePath, 'docs', 'superpowers', 'plans', 'x.md'), '# plan\n')
+      mkdirSync(path.join(worktreePath, 'openspec', 'changes', 'mutation-coverage-run-x'), { recursive: true })
+      writeFileSync(path.join(worktreePath, 'openspec', 'changes', 'mutation-coverage-run-x', 'design.md'), '# spec\n')
+      writeFileSync(path.join(worktreePath, 'openspec', 'changes', 'mutation-coverage-run-x', 'tasks.md'), '# plan\n')
       writeFileSync(path.join(worktreePath, 'tests', 'foo.test.ts'), "import { test } from 'bun:test'\n")
       return Promise.resolve({ value: improvedResult, usage: emptyUsage() })
     }

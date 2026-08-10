@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { ProgressSnapshot } from './progress.js'
+import type { TurnStall } from './turn-stall.js'
 
 /**
  * Failures a phase handler can raise. Almost all of them end the same way — the
@@ -175,6 +176,88 @@ export const turnDeadlineError = (elapsedMs: number, progress: ProgressSnapshot)
  */
 export const isTurnDeadline = (error: unknown): error is PipelineError =>
   error instanceof PipelineError && error.code === TURN_DEADLINE
+
+/** The other failure a reader cannot diagnose from its message alone. */
+const SERVER_GONE = 'OPENCODE_SERVER_GONE'
+
+/**
+ * A turn whose OpenCode server stopped answering, named rather than quoted.
+ *
+ * Issue #239 failed twice with `The socket connection was closed unexpectedly`,
+ * which is Bun's wording for a `fetch` whose peer went away and names neither
+ * end of it. Every reader starts at the model provider, because that is the only
+ * remote a model turn obviously has. It was the `opencode serve` **this job
+ * spawned** — established only afterwards, and only by inference: the
+ * `session.get` that `tokensUsed()` makes next failed too, and that call is a
+ * loopback request no provider is on the path of. So the evidence was in hand at
+ * the moment of failure and thrown away, and the run reported the one sentence
+ * that sends you the wrong way.
+ *
+ * This asks the question instead of leaving it to be reconstructed from two log
+ * lines a week later. The transport's own message is kept, because it is the only
+ * account of *how* the socket went; what is added is which socket it was, and
+ * where to look for the cause — the post-mortem step, which reports an
+ * out-of-memory kill and a second `opencode` process precisely because neither is
+ * visible from here.
+ *
+ * Distinguishable by code for the reason {@link turnDeadlineError} is, and it is
+ * checked **after** that one: a deadline is a ceiling the phase salvages work for,
+ * and a turn cut off by its own bound must keep meaning that even when the probe
+ * that runs afterwards finds the server gone too.
+ */
+export const serverGoneError = (transport: string): PipelineError =>
+  new PipelineError(
+    SERVER_GONE,
+    'The local OpenCode server stopped answering mid-turn, so this turn ended with nothing to show for it. ' +
+      `The transport reported: ${transport}. That is the \`opencode serve\` this job spawned on loopback — ` +
+      'not the model provider — so look at the run’s post-mortem step for an out-of-memory kill or for a ' +
+      'second `opencode` process the model started from `bash`.',
+  )
+
+/** Whether a rejection is that death. */
+export const isServerGone = (error: unknown): error is PipelineError =>
+  error instanceof PipelineError && error.code === SERVER_GONE
+
+/**
+ * A turn the model never answered, because the provider was still refusing it.
+ *
+ * The failure issue #239 had no name for, and the one that cost the most: the
+ * session retried the model call twenty-five times over twelve minutes, went
+ * idle without finishing another step, and the prompt returned a perfectly
+ * ordinary envelope carrying no text. Every layer downstream read that as a
+ * finished turn — `decodeReply` checks the transport's `error` field and this
+ * failure is not in it, and the implement phase discards the reply — so the
+ * phase committed a working tree holding one stray pid file, opened a pull
+ * request and reported the plan implemented.
+ *
+ * Raised as an ordinary failure and **not** as a ceiling: it is neither of the
+ * two stops that salvage. There is nothing to salvage, since a turn the model
+ * never answered wrote nothing, and the remedy is a `/retry` — which is exactly
+ * right for the cause this shape usually has. A rate limit or a spent
+ * subscription window clears with time, and the run parks in `FAILED` with its
+ * resume point intact until somebody says go again.
+ *
+ * The count and the status code are the message, because they are what tells a
+ * maintainer which wait they are in for: twenty-five retries and a 429 is a
+ * quota to wait out, one failure and a 401 is a credential to fix.
+ */
+export const providerStalledError = (stall: TurnStall): PipelineError =>
+  new PipelineError(
+    'PROVIDER_STALLED',
+    'The model never answered this turn: the provider was still failing when the session gave up' +
+      retriesClause(stall.retries) +
+      failureClause(stall.failure) +
+      '. Nothing was written, so nothing is lost — but the turn has to fail here rather than commit whatever the ' +
+      'tree happened to hold, which is how a run with no deliverable once delivered a pull request. ' +
+      'A quota or rate limit clears with time: reply `/retry` when it has.',
+  )
+
+const retriesClause = (retries: number): string => (retries === 0 ? '' : ` after ${retries} retries`)
+
+const failureClause = (failure: TurnStall['failure']): string => {
+  if (failure === null) return ''
+  return failure.statusCode === null ? ` (${failure.name})` : ` (${failure.name} ${failure.statusCode})`
+}
 
 export const modelResponseError = (message: string, raw: string): PipelineError =>
   new PipelineError('MODEL_RESPONSE', `${message}\n\nRaw reply:\n${raw.slice(0, 2000)}`)

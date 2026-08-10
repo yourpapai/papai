@@ -1,11 +1,11 @@
 ---
 name: designing-new-provider
-description: Use when the user asks to add, integrate, support, evaluate, or research a new chat platform (Telegram/Mattermost-like) or task tracker (Kaneo/YouTrack-like) provider in papai — covers anything from "could papai talk to Linear?" through to a finished, approved implementation plan
+description: Use when the user asks to add, integrate, support, evaluate, or research a new chat platform (Telegram/Mattermost-like) or task tracker (Kaneo/YouTrack-like) provider in papai — covers anything from "could papai talk to Linear?" through to a finished, approved OpenSpec change ready for implementation
 ---
 
 # Designing a New papai Provider
 
-Take a user request like "let's add Linear support" or "could we integrate Slack?" through research, brainstorming, design, and a TDD-ordered implementation plan that **another session** will execute.
+Take a user request like "let's add Linear support" or "could we integrate Slack?" through research, exploration, and design into an OpenSpec change (proposal + design + TDD-ordered tasks) that **another session** will implement via `/opsx:apply`.
 
 <HARD-GATE>
 This skill is RESEARCH AND DESIGN ONLY.
@@ -22,12 +22,12 @@ You MUST NOT, under any circumstance during this skill:
 
 Only these outputs are allowed:
 
-- Markdown files under `docs/` and `docs/plans/`
+- OpenSpec change artifacts under `openspec/changes/<change-name>/` (`proposal.md`, `design.md`, `tasks.md`)
 - Reading any file in the repo
 - Calling research tools (`context7`, `synthetic` web search, `WebFetch`)
 - Asking the user clarifying questions
 
-Implementation happens in a SEPARATE session, executed by a different agent against the plan you produce. You do not get to start it. Hand off and stop.
+Implementation happens in a SEPARATE session, executed by a different agent against the change you produce. You do not get to start it. Hand off and stop.
 </HARD-GATE>
 
 ## When to Use
@@ -48,9 +48,11 @@ The full research / design / plan brief lives at **`docs/prompts/add-new-provide
 
 - The `<<…>>` inputs the user must supply (provider name, API URL, auth model, hosting, scope, non-goals)
 - The mandatory research order (project context → API docs via `context7` → capability mapping → risks)
-- The two deliverables (design doc + implementation plan) and their exact section structure
+- The required design sections and the per-task TDD structure (red → green → commit)
 - The quality bar self-review checklist
 - The exhaustive "what NOT to do" list
+
+The brief predates OpenSpec: where it tells the agent to write `docs/<name>-provider-design.md` and `docs/plans/YYYY-MM-DD-<name>-implementation.md`, those deliverables now land in the change's artifacts — the goal/scope/non-goals become `proposal.md`, the design content becomes `design.md`, and the implementation tasks become `tasks.md`. Everything else in the brief (research order, section content, quality bar) still applies.
 
 This skill is the **discipline wrapper** around that brief. The brief tells you _what_ to produce. This skill enforces _that you stop after producing it_.
 
@@ -60,23 +62,28 @@ Create one `TodoWrite` task per step and complete them **in order**. Do not para
 
 1. **Read the brief.** Open `docs/prompts/add-new-provider.md` and read it in full.
 2. **Collect inputs.** Ask the user for every `<<…>>` placeholder, **one question at a time**. Do not invent values, do not batch.
-3. **Brainstorm.** **REQUIRED SUB-SKILL:** Use `brainstorming` to refine intent, surface assumptions, and propose 2–3 design directions. Save the spec where that skill instructs, then return here.
+3. **Explore.** **REQUIRED SUB-SKILL:** Use `/opsx:explore` (openspec-explore) to refine intent, surface assumptions, and weigh 2–3 design directions. Return here once a direction is settled.
 4. **Research.** Execute the "Mandatory research steps" from the brief, in order:
    - Read every `CLAUDE.md` listed in the brief (`CLAUDE.md`, `src/providers/CLAUDE.md`, `src/chat/CLAUDE.md`, `src/tools/CLAUDE.md`, `tests/CLAUDE.md`).
    - Read the relevant interface in full (`src/providers/types.ts` for task, `src/chat/types.ts` for chat).
    - Read at least one full reference implementation: YouTrack (`src/providers/youtrack/`) for task, Telegram (`src/chat/telegram/`) for chat.
    - **Fetch the target API documentation via `context7`** — do not rely on training data. APIs drift. If `context7` lacks the docs, fall back to web search and cite the official URL.
    - Build the capability matrix and domain-type mapping defined in the brief.
-5. **Write the design document** at the path the brief specifies (`docs/<provider-name>-provider-design.md` or `docs/<provider-name>-chat-design.md`), with all 14 sections from `docs/youtrack-full-api-design.md` as the template. Get explicit user approval.
-6. **Write the implementation plan.** **REQUIRED SUB-SKILL:** Use `writing-plans` to author `docs/plans/YYYY-MM-DD-<provider-name>-implementation.md`. Every task must follow the TDD red → green → commit pipeline shown in `docs/plans/2026-04-08-youtrack-api-implementation.md`. Get explicit user approval.
-7. **Hand off.** Produce a single short paragraph the user can paste into a fresh executor session. Then **stop**. Do not begin Phase 1. Do not "just check that it compiles". End your turn.
+5. **Propose the change.** **REQUIRED SUB-SKILL:** Use `/opsx:propose` (openspec-propose) to create the change, carrying the brief's deliverables into its artifacts:
+   - `proposal.md` — goal, scope, non-goals, capability summary
+   - `design.md` — the brief's 14 design sections, modelled on `docs/youtrack-full-api-design.md`
+   - `tasks.md` — the TDD-ordered implementation tasks (red → green → commit per task), modelled on `docs/plans/2026-04-08-youtrack-api-implementation.md`
+
+   Get explicit user approval of the artifacts.
+
+6. **Hand off.** Produce a single short paragraph the user can paste into a fresh executor session. Then **stop**. Do not begin task 1. Do not "just check that it compiles". End your turn.
 
 ## Hard Constraints from papai (Bake into Design, Do Not Implement)
 
-These come from the project's `CLAUDE.md` files. The plan must encode them; this skill must not act on them.
+These come from the project's `CLAUDE.md` files. The change's tasks must encode them; this skill must not act on them.
 
 - **Runtime:** Bun (not Node). **Validation:** Zod v4. **LLM:** Vercel AI SDK. **Lint/format:** oxlint / oxfmt. **Logging:** pino structured JSON.
-- **TDD hook pipeline is enforced at runtime.** See `CLAUDE.md` → "TDD Enforcement (Hooks)". Plans that try to write impl before tests will be blocked. Design every task as red → green → commit.
+- **TDD hook pipeline is enforced at runtime.** See `CLAUDE.md` → "TDD Enforcement (Hooks)". Tasks that try to write impl before tests will be blocked. Design every task as red → green → commit.
 - **`.js` extension** in every relative import path (Bun ESM resolution).
 - **No `lint-disable`, `@ts-ignore`, `@ts-nocheck`** — ever. Fix the underlying issue.
 - **Capability gating in the same task** that adds the operation. Tools never see a half-wired capability.
@@ -92,14 +99,14 @@ Agents under pressure rationalise their way into "just a tiny bit" of code. **Al
 | Rationalization                                                       | Reality                                                                                                    |
 | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | "I'll scaffold an empty `index.ts` so the design feels concrete"      | Empty files are still files. The hook pipeline will catch them and waste the turn.                         |
-| "The design is done, Phase 1 is small, I'll just start"               | You don't get to decide. Hand off and stop.                                                                |
-| "I need to write the test file to know if the API surface is right"   | Test cases live in the implementation plan as fenced code blocks, not as `.test.ts` files on disk.         |
-| "The user said 'go ahead' so they meant implement"                    | "Go ahead" after a design = "approve and write the plan". Confirm before touching code.                    |
+| "The design is done, task 1 is small, I'll just start"                | You don't get to decide. Hand off and stop.                                                                |
+| "I need to write the test file to know if the API surface is right"   | Test cases live in the change's `tasks.md` as fenced code blocks, not as `.test.ts` files on disk.         |
+| "The user said 'go ahead' so they meant implement"                    | "Go ahead" after a design = "approve and finish the artifacts". Confirm before touching code.              |
 | "Editing the registry is just one line, not really implementation"    | Registry edits are implementation. They alter runtime behaviour and trigger the hook pipeline.             |
 | "I'll add the capability string to `types.ts` so the design is valid" | The design is valid as markdown. Type changes are implementation.                                          |
 | "Writing the schema file is just data, not logic"                     | `.ts` files under `src/` are implementation regardless of content.                                         |
 | "I'll spike a scratch script to verify the API works"                 | If the script lives outside the repo and you delete it after, fine. If it touches `src/`, it is forbidden. |
-| "I already designed it in my head, the markdown is busywork"          | The markdown is the deliverable. Without it, the executor session has nothing to act on.                   |
+| "I already designed it in my head, the markdown is busywork"          | The artifacts are the deliverable. Without them, the executor session has nothing to act on.               |
 | "Following the spirit, not the letter"                                | **Violating the letter of the rules is violating the spirit of the rules.**                                |
 
 ## Red Flags — STOP and Re-read the HARD-GATE
@@ -113,24 +120,23 @@ Agents under pressure rationalise their way into "just a tiny bit" of code. **Al
 - Thinking "the design and a tiny implementation are basically the same artefact"
 - Thinking "the user clearly wants this shipped, not just designed"
 
-**All of these mean: stop, finish design + plan as markdown, hand off, end the turn.**
+**All of these mean: stop, finish the change artifacts, hand off, end the turn.**
 
 ## Quick Reference
 
-| Step                   | Output                                           | Sub-skill              |
-| ---------------------- | ------------------------------------------------ | ---------------------- |
-| 1. Read brief          | (mental model)                                   | —                      |
-| 2. Collect inputs      | answers to `<<…>>` placeholders                  | —                      |
-| 3. Brainstorm          | spec markdown                                    | `brainstorming`        |
-| 4. Research            | capability matrix + risk list (notes)            | `context7`, file reads |
-| 5. Design doc          | `docs/<name>-provider-design.md`                 | —                      |
-| 6. Implementation plan | `docs/plans/YYYY-MM-DD-<name>-implementation.md` | `writing-plans`        |
-| 7. Hand off            | one-paragraph paste-prompt for executor session  | —                      |
+| Step              | Output                                               | Sub-skill              |
+| ----------------- | ---------------------------------------------------- | ---------------------- |
+| 1. Read brief     | (mental model)                                       | —                      |
+| 2. Collect inputs | answers to `<<…>>` placeholders                      | —                      |
+| 3. Explore        | settled design direction                             | `/opsx:explore`        |
+| 4. Research       | capability matrix + risk list (notes)                | `context7`, file reads |
+| 5. Propose change | `openspec/changes/<name>/` proposal + design + tasks | `/opsx:propose`        |
+| 6. Hand off       | one-paragraph paste-prompt for executor session      | —                      |
 
-## Common Mistakes (Bake Into the Plan)
+## Common Mistakes (Bake Into the Change)
 
 - **Skipping `context7`.** Training data lies. Always fetch the target API fresh.
-- **Designing horizontally** (all reads, then all writes, then all collaboration). Phase 1 must be a thin **vertical** slice: auth → list → create → read end-to-end.
+- **Designing horizontally** (all reads, then all writes, then all collaboration). The first phase must be a thin **vertical** slice: auth → list → create → read end-to-end.
 - **Copying YouTrack-only concepts** (state bundles, work items, sprints) into providers that don't have them. Map honestly, use `extra` for one-provider data.
 - **Over-extending shared types.** A new field on `Task` requires at least one _other_ provider that could fill it.
 - **Unbounded pagination.** Every list operation needs `MAX_PAGES`.
@@ -142,22 +148,23 @@ Agents under pressure rationalise their way into "just a tiny bit" of code. **Al
 
 Respond, verbatim or close to it:
 
-> The `designing-new-provider` skill makes this session research and design only. The implementation plan I'm about to write is meant to run in a **fresh** session — that keeps the executor's context clean and lets the TDD hook pipeline enforce red → green per task. Want me to (a) finish the plan and hand it off to a new session, or (b) explicitly override the skill and start implementing here (your call, but it bypasses the discipline this skill enforces)?
+> The `designing-new-provider` skill makes this session research and design only. The change I'm about to propose is meant to be implemented in a **fresh** session via `/opsx:apply` — that keeps the executor's context clean and lets the TDD hook pipeline enforce red → green per task. Want me to (a) finish the change artifacts and hand them off to a new session, or (b) explicitly override the skill and start implementing here (your call, but it bypasses the discipline this skill enforces)?
 
 Wait for an **explicit** override. Do not assume one. "Sure" is not explicit. "Yes, override the skill and implement now" is.
 
 ## Hand-Off Template
 
-When the plan is approved, end your turn with something like:
+When the change is approved, end your turn with something like:
 
-> Design + plan are committed:
+> Change proposed and approved:
 >
-> - `docs/<name>-provider-design.md`
-> - `docs/plans/YYYY-MM-DD-<name>-implementation.md`
+> - `openspec/changes/<change-name>/proposal.md`
+> - `openspec/changes/<change-name>/design.md`
+> - `openspec/changes/<change-name>/tasks.md`
 >
-> To execute, open a fresh Claude Code session and paste:
+> To execute, open a fresh session and paste:
 >
-> > Use the `executing-plans` skill against `docs/plans/YYYY-MM-DD-<name>-implementation.md`. Start with Phase 1, Task 1.1. Follow the TDD pipeline strictly — the project's hook system will block any deviation.
+> > Use `/opsx:apply <change-name>`. Start with task 1. Follow the TDD pipeline strictly — the project's hook system will block any deviation.
 >
 > I'm stopping here per the `designing-new-provider` skill.
 

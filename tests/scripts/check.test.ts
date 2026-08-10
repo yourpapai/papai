@@ -5,7 +5,16 @@
 
 // Integration tests for ../../scripts/check.js (check.sh — no TS module; shell script under test)
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -456,7 +465,9 @@ describe('check.sh full mode', () => {
     }
   })
 
-  test('runs the server test suite in parallel outside CI', () => {
+  test('delegates the server suite to the wrapper outside CI', () => {
+    // The wrapper owns mode selection and writes reports/test/, so a check:full
+    // run leaves the same queryable artifact a direct `bun run test` does.
     const { repoDir, binDir, logFile } = createTempRepo()
 
     try {
@@ -470,13 +481,14 @@ describe('check.sh full mode', () => {
       expect(result.exitCode).toBe(0)
 
       const calls = readFileSync(logFile, 'utf8')
-      expect(calls).toContain('bun test --parallel')
+      expect(calls).toContain('bun run test')
+      expect(calls).not.toContain('bun test --parallel')
     } finally {
       rmSync(repoDir, { recursive: true, force: true })
     }
   })
 
-  test('invokes bun test directly without a concurrency override', () => {
+  test('leaves every check its own log under reports/checks', () => {
     const { repoDir, binDir, logFile } = createTempRepo()
 
     try {
@@ -487,9 +499,104 @@ describe('check.sh full mode', () => {
       const result = runCommand(repoDir, ['bash', 'scripts/check.sh'], env)
 
       expect(result.exitCode).toBe(0)
+      const written = readdirSync(path.join(repoDir, 'reports', 'checks')).sort()
+      expect(written).toContain('lint.log')
+      expect(written).toContain('typecheck.log')
+      // `:` is not a filename, and safe_name() has always mapped it to `_`.
+      expect(written).toContain('format_check.log')
+      expect(written).toContain('review-loop_lint.log')
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+
+  test('a failing check leaves its output on disk and says where', () => {
+    const { repoDir, binDir, logFile } = createTempRepo()
+
+    try {
+      const env = createEnv({
+        PATH: `${binDir}:${basePath}`,
+        CHECK_LOG_FILE: logFile,
+        CHECK_FAIL_MATCH: 'run typecheck',
+      })
+      const result = runCommand(repoDir, ['bash', 'scripts/check.sh'], env)
+
+      expect(result.exitCode).toBe(1)
+      expect(result.stdout).toContain('✗ typecheck failed')
+      expect(result.stdout).toContain('→ reports/checks/typecheck.log')
+      expect(existsSync(path.join(repoDir, 'reports', 'checks', 'typecheck.log'))).toBe(true)
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+
+  // The test lane runs a different command in each mode — the wrapper locally, the
+  // coverage lane under CI — so the argv that makes it fail differs too. The pointer
+  // is keyed on the check *name*, so it must not: asserting it in both modes is what
+  // keeps it from being accidentally coupled to whichever command the lane happens to
+  // run. Pinning CI explicitly also stops the ambient value deciding the outcome,
+  // which is what made this pass locally and fail in CI.
+  test.each([
+    ['outside CI', '', 'run test'],
+    ['under CI', 'true', 'test --coverage'],
+  ])('a failing test check points at the query command %s, not a re-run', (_label, ci, failMatch) => {
+    const { repoDir, binDir, logFile } = createTempRepo()
+
+    try {
+      const env = createEnv({
+        PATH: `${binDir}:${basePath}`,
+        CHECK_LOG_FILE: logFile,
+        CI: ci,
+        CHECK_FAIL_MATCH: failMatch,
+      })
+      const result = runCommand(repoDir, ['bash', 'scripts/check.sh'], env)
+
+      expect(result.exitCode).toBe(1)
+      expect(result.stdout).toContain('→ bun run test:failures')
+      expect(result.stdout).toContain('do not re-run to look')
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+
+  test('clears stale logs at the start so only this run is on disk', () => {
+    const { repoDir, binDir, logFile } = createTempRepo()
+
+    try {
+      const checksDir = path.join(repoDir, 'reports', 'checks')
+      mkdirSync(checksDir, { recursive: true })
+      writeFileSync(path.join(checksDir, 'from-a-previous-run.log'), 'stale\n')
+
+      const env = createEnv({
+        PATH: `${binDir}:${basePath}`,
+        CHECK_LOG_FILE: logFile,
+      })
+      expect(runCommand(repoDir, ['bash', 'scripts/check.sh'], env).exitCode).toBe(0)
+
+      expect(existsSync(path.join(checksDir, 'from-a-previous-run.log'))).toBe(false)
+      expect(existsSync(path.join(checksDir, 'lint.log'))).toBe(true)
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+
+  test('invokes each lane without a concurrency override', () => {
+    const { repoDir, binDir, logFile } = createTempRepo()
+
+    try {
+      // `CI: ''` because this asserts the wrapper lane, which only runs outside CI —
+      // inheriting the ambient value made the assertion depend on where it ran.
+      const env = createEnv({
+        PATH: `${binDir}:${basePath}`,
+        CHECK_LOG_FILE: logFile,
+        CI: '',
+      })
+      const result = runCommand(repoDir, ['bash', 'scripts/check.sh'], env)
+
+      expect(result.exitCode).toBe(0)
 
       const calls = readFileSync(logFile, 'utf8')
-      expect(calls).toContain('bun test')
+      expect(calls).toContain('bun run test')
       expect(calls).toContain('bun --conditions=browser test --preload ./tests/client-setup.ts')
       expect(calls).toContain('bun test tests/review-loop')
       expect(calls).not.toContain('--max-concurrency')
