@@ -15,7 +15,7 @@ See LICENSE in the project root for details.
 
 **Tech Stack:** Svelte 5 runes, TypeScript (strict), `bun:test`, `@crvy/strybk` + Playwright for screenshots, `oxfmt` formatter, `oxlint`.
 
-**Design spec:** `docs/superpowers/specs/2026-08-09-live-region-adoption-design.md`
+**Design spec:** `docs/archive/2026-08-09-live-region-adoption-design.md`
 
 ## Global Constraints
 
@@ -1147,7 +1147,7 @@ import { Glob } from 'bun'
 //
 // These files are knowingly still on the old shape. The list is the checked-in form of a
 // deliberate scope decision, not a backlog of unknowns -- it shrinks as sections convert.
-// See docs/superpowers/specs/2026-08-09-live-region-adoption-design.md.
+// See docs/archive/2026-08-09-live-region-adoption-design.md.
 const ALLOWLIST = [
   'debug/DebugApp.svelte',
   'settings/components/PluginCard.svelte',

@@ -15,7 +15,7 @@ See LICENSE in the project root for details.
 
 **Tech Stack:** Bun test runner (`bun:test`), Svelte 5 runes, `svelte`'s `mount`/`flushSync`/`unmount` for component tests, Zod v4 schemas, msw for Storybook fixtures, `@crvy/strybk` + Playwright for visual states.
 
-**Spec:** `docs/superpowers/specs/2026-08-09-analytics-preferences-ux-findings-design.md`
+**Spec:** `docs/archive/2026-08-09-analytics-preferences-ux-findings-design.md`
 
 ## Global Constraints
 

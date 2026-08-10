@@ -45,5 +45,8 @@ arrivals to `docs/archive/` as paired plan+spec pairs per Lane 0 rather than
 letting them accumulate under a frozen tree; the first such batch (74 files:
 mutation-coverage, UX findings, agent-check-loop) is covered by one ADR per
 archived plan at lane-0 parity — ADRs 0383–0419. The second batch
-(single-line-live-renderer: 1 plan + 1 spec) drains under ADR-0421. This
-repeats on future merges until master itself migrates.
+(single-line-live-renderer: 1 plan + 1 spec) drains under ADR-0421. The third
+batch arrived from the `ui-ux-review-04` branch (2 plans + 2 specs) and drains
+under ADR-0422 (analytics-preferences consent findings) and ADR-0423
+(live-region adoption). This repeats on future merges until master itself
+migrates.
