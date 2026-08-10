@@ -412,6 +412,7 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0418](0418-progress-stats-renderer.md) | Review-Loop Progress & Stats Renderer — Shipped | 2026-08-09 | Accepted | - |
 | [0419](0419-opencode-agent-check-loop.md) | opencode-agent Check-Loop — Shipped | 2026-08-09 | Accepted | - |
 | [0420](0420-master-openspec-rollout-strangler.md) | Roll out the OpenSpec migration to master via strangler drain-on-arrival | 2026-08-10 | Accepted | - |
+| [0421](0421-single-line-live-renderer.md) | Single-Line Live Renderer — Shipped | 2026-08-10 | Accepted | - |
 
 ## ADR Status Legend
 
