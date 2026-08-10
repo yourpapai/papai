@@ -13,6 +13,7 @@
   import Field from '../../shared/ui/Field.svelte'
   import IconButton from '../../shared/ui/IconButton.svelte'
   import Input from '../../shared/ui/Input.svelte'
+  import LiveRegion from '../../shared/ui/LiveRegion.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Select from '../../shared/ui/Select.svelte'
   import type { CodingCredentialsResponse } from '../fetcher-schemas.js'
@@ -55,6 +56,8 @@
   function selectedIsInternal(row: McpRow): boolean {
     return row.server.startsWith('plugin:') || pluginServers.some((p) => p.name === row.server)
   }
+
+  const UNREADABLE_TEXT = 'Stored credentials are unreadable. Re-enter your credentials to repair this context.'
 
   const BLANK_SERVER_MESSAGE = 'Choose an MCP server.'
   const DUPLICATE_SERVER_MESSAGE = 'Already selected in another row.'
@@ -203,8 +206,11 @@
     {/snippet}
   </PageHeader>
 
-  {#if currentData !== null && error !== null}<p class="status-error" role="alert">{error}</p>{/if}
-  {#if status !== null}<p class="status-success" role="status">{status}</p>{/if}
+  <!-- The `currentData !== null` guard moves from the markup into the message: before data
+       exists the failure is shown by ErrorState below, but the region itself must already
+       be mounted so a later failure can be announced rather than appearing with its text. -->
+  <LiveRegion tone="alert" message={currentData === null ? null : error} />
+  <LiveRegion tone="status" message={status} />
 
   {#if currentData === null && loading}
     <p class="placeholder">Loading…</p>
@@ -214,9 +220,7 @@
       detail={error}
       onRetry={() => void load(contextId)} />
   {:else if currentData !== null}
-    {#if unreadableError !== null}
-      <p class="status-error" role="alert">Stored credentials are unreadable. Re-enter your credentials to repair this context.</p>
-    {/if}
+    <LiveRegion tone="alert" message={unreadableError === null ? null : UNREADABLE_TEXT} />
     {#if noServersAvailable}
       <div data-testid="coding-mcp-catalog-empty">
         <EmptyState

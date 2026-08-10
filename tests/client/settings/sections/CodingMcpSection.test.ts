@@ -90,7 +90,7 @@ describe('CodingMcpSection row validation', () => {
     await drain()
 
     expect(rowError(target, 1)).toBe('Already selected in another row.')
-    expect(target.querySelector('[data-testid="coding-mcp-row-0"] .ui-field__error')).toBeNull()
+    expect(target.querySelector('[data-testid="coding-mcp-row-0"] .ui-field__error')!.textContent).toBe('')
     expect(saveButton(target).disabled).toBe(true)
     void unmount(component)
   })
@@ -106,7 +106,7 @@ describe('CodingMcpSection row validation', () => {
     pickServer(target, 1, 'docs')
     await drain()
 
-    expect(target.querySelector('.ui-field__error')).toBeNull()
+    expect([...target.querySelectorAll('.ui-field__error')].every((n) => n.textContent === '')).toBe(true)
     expect(saveButton(target).disabled).toBe(false)
     void unmount(component)
   })
@@ -311,6 +311,21 @@ describe('CodingMcpSection dead-end states', () => {
 
     const empty = target.querySelector<HTMLElement>('[data-testid="coding-mcp-catalog-empty"]')!
     expect(empty.querySelector<HTMLElement>('.ui-empty__title')!.textContent.trim()).toBe('No MCP servers available')
+    void unmount(component)
+  })
+
+  test('the section status and error regions are mounted and empty once data has loaded', async () => {
+    setMockFetch(loadedMock)
+    const { target, component } = mountSection()
+    await drain()
+    const err = target.querySelector<HTMLElement>('.status-error')!
+    const ok = target.querySelector<HTMLElement>('.status-success')!
+    expect(err.getAttribute('role')).toBe('alert')
+    expect(err.getAttribute('aria-live')).toBe('assertive')
+    expect(err.textContent).toBe('')
+    expect(ok.getAttribute('role')).toBe('status')
+    expect(ok.getAttribute('aria-live')).toBe('polite')
+    expect(ok.textContent).toBe('')
     void unmount(component)
   })
 })

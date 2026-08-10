@@ -947,7 +947,8 @@ describe('AdminInstancesSection', () => {
     await drain()
     // Nothing has been touched: the id error stays hidden, but the type error must show,
     // because an empty option list is not something the operator can touch their way out of.
-    const errors = [...target.querySelectorAll('.ui-field__error')].map((n) => n.textContent)
+    // Every field now carries an always-mounted region; an empty one means "no error here".
+    const errors = [...target.querySelectorAll('.ui-field__error')].map((n) => n.textContent).filter((t) => t !== '')
     expect(errors).toEqual(['Required', 'Required'])
     void unmount(component)
   })

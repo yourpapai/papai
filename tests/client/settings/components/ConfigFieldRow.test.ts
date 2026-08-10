@@ -841,7 +841,7 @@ describe('ConfigFieldRow', () => {
     flushSync()
     target.querySelector<HTMLButtonElement>('[data-testid="cfg-save-timezone"]')!.click()
     await drain()
-    expect(target.querySelector('.settings-field__error')).not.toBeNull()
+    expect(target.querySelector('.settings-field__error')!.textContent).toBe('save failed')
     expect(target.querySelector('.settings-field__hint')).toBeNull()
     void unmount(component)
   })
@@ -906,7 +906,7 @@ describe('ConfigFieldRow', () => {
       onSaved: () => {},
     })
     flushSync()
-    expect(target.querySelector('[data-testid="cfg-saved-timezone"]')).toBeNull()
+    expect(target.querySelector('[data-testid="cfg-saved-timezone"]')!.textContent).toBe('')
 
     const input = target.querySelector<HTMLInputElement>('[data-testid="cfg-input-timezone"]')!
     input.value = 'Europe/Berlin'
@@ -944,7 +944,7 @@ describe('ConfigFieldRow', () => {
     target.querySelector<HTMLButtonElement>('[data-testid="cfg-save-timezone"]')!.click()
     await drain()
 
-    expect(target.querySelector('[data-testid="cfg-saved-timezone"]')).toBeNull()
+    expect(target.querySelector('[data-testid="cfg-saved-timezone"]')!.textContent).toBe('')
     void unmount(component)
   })
 
@@ -975,6 +975,30 @@ describe('ConfigFieldRow', () => {
     await drain()
 
     expect(target.querySelector('[data-testid="cfg-saved-ai_output"]')?.textContent).toContain('Saved')
+    void unmount(component)
+  })
+
+  test('the saved marker region is mounted and empty before any save', () => {
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'timezone',
+        storageKey: 'timezone',
+        label: 'Timezone',
+        required: true,
+        sensitive: false,
+        kind: 'preference',
+        hasValue: true,
+        value: 'UTC',
+      },
+      onSaved: () => {},
+    })
+    flushSync()
+    const marker = target.querySelector<HTMLElement>('[data-testid="cfg-saved-timezone"]')
+    expect(marker).not.toBeNull()
+    expect(marker!.getAttribute('role')).toBe('status')
+    expect(marker!.getAttribute('aria-live')).toBe('polite')
+    expect(marker!.textContent).toBe('')
     void unmount(component)
   })
 })

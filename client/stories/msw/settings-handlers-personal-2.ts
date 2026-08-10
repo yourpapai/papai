@@ -258,3 +258,27 @@ export const analyticsWithdrawalInProgressHandlers: HttpHandler[] = [
     HttpResponse.json({ status: 'in_progress', coverage: 'analytics_only' }),
   ),
 ]
+
+// The operator has not configured the governance keyring: every subject right 503s, and the
+// per-lane hints are replaced by one paragraph. Aggregate collection continues regardless
+// (src/analytics/governance/eligibility.ts:136), so the copy must not claim otherwise.
+export const analyticsRightsUnavailableHandlers: HttpHandler[] = [
+  http.get('/settings/api/analytics/preferences', () =>
+    HttpResponse.json({ ...analyticsPreferencesPopulated, subjectRightsAvailable: false }),
+  ),
+]
+
+// Legitimate interest, past its effective date, with no recorded choice: the local lane is
+// collected until denied, while the external lane still stays off until allowed.
+export const analyticsLegitimateInterestHandlers: HttpHandler[] = [
+  http.get('/settings/api/analytics/preferences', () =>
+    HttpResponse.json({
+      ...analyticsPreferencesPopulated,
+      notice: {
+        ...analyticsPreferencesPopulated.notice,
+        lawfulBasisMode: 'legitimate_interest',
+        policyEffectiveAtMs: 1_700_000_000_000,
+      },
+    }),
+  ),
+]

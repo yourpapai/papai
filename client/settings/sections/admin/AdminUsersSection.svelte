@@ -18,6 +18,7 @@
   import Field from '../../../shared/ui/Field.svelte'
   import IconButton from '../../../shared/ui/IconButton.svelte'
   import Input from '../../../shared/ui/Input.svelte'
+  import LiveRegion from '../../../shared/ui/LiveRegion.svelte'
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
   import SettingsTable from '../../components/SettingsTable.svelte'
   import IdCell from '../../components/IdCell.svelte'
@@ -64,6 +65,12 @@
     pendingRemovalRow === null
       ? ''
       : removeUserLabel({ username: pendingRemovalRow.username, userId: pendingRemovalRow.platform_user_id }),
+  )
+
+  // Composed in script rather than in markup so the region carries either a complete
+  // sentence or nothing -- never a bare trailing em-dash while it waits for text.
+  const openAccessMessage = $derived(
+    openAccessError === null ? null : `Could not read the open DM access setting — ${openAccessError}`,
   )
 
   const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err))
@@ -215,8 +222,8 @@
     {/snippet}
   </PageHeader>
 
-  {#if error !== null}<p class="status-error" role="alert">{error}</p>{/if}
-  {#if status !== null}<p class="status-success" role="status">{status}</p>{/if}
+  <LiveRegion tone="alert" message={error} />
+  <LiveRegion tone="status" message={status} />
 
   {#if usersLoadError !== null}
     <ErrorState
@@ -239,11 +246,7 @@
         <p class="open-access-hint">
           Anyone can DM this bot. New users are added automatically and listed below; block individuals to revoke.
         </p>
-        {#if openAccessError !== null}
-          <p class="status-error" role="alert" data-testid="open-access-error">
-            Could not read the open DM access setting — {openAccessError}
-          </p>
-        {/if}
+        <LiveRegion tone="alert" message={openAccessMessage} testid="open-access-error" />
       </div>
       <Btn
         variant={openDmAccess ? 'danger' : 'primary'}
@@ -372,7 +375,7 @@
         They lose access entirely and drop off this list. To keep the record and revoke access reversibly, Block them
         instead.
       </p>
-      {#if removeError !== null}<p class="status-error" role="alert">{removeError}</p>{/if}
+      <LiveRegion tone="alert" message={removeError} />
     {/snippet}
   </Confirm>
 </section>

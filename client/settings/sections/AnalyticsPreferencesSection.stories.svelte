@@ -28,3 +28,9 @@
 
 <!-- delete returns queued in_progress status -->
 <Story name="WithdrawalInProgress" args={{ contextId: CONTEXT_ID, scope: 'personal' }} parameters={{ fixtures: 'settings-analytics-withdrawal-in-progress' }} />
+
+<!-- the operator has not configured governance: every right is unavailable -->
+<Story name="RightsUnavailable" args={{ contextId: CONTEXT_ID, scope: 'personal' }} parameters={{ fixtures: 'settings-analytics-rights-unavailable' }} />
+
+<!-- legitimate interest past its effective date: unset does not mean off on the local lane -->
+<Story name="LegitimateInterestUnset" args={{ contextId: CONTEXT_ID, scope: 'personal' }} parameters={{ fixtures: 'settings-analytics-legitimate-interest-unset' }} />

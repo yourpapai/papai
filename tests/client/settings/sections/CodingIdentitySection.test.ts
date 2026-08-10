@@ -139,7 +139,11 @@ describe('CodingIdentitySection', () => {
     flushSync()
     const save = target.querySelector<HTMLButtonElement>('[data-testid="coding-identity-save"]')!
     expect(save.disabled).toBe(true)
-    expect(target.querySelector('.ui-field__error')?.textContent).toContain('Add a group member')
+    const errorTexts = [...target.querySelectorAll('.ui-field__error')]
+      .map((n) => n.textContent)
+      .filter((t) => t !== '')
+    expect(errorTexts.length).toBe(1)
+    expect(errorTexts[0]).toContain('Add a group member')
     void unmount(component)
   })
 

@@ -14,6 +14,7 @@
   import Secret from '../../shared/ui/Secret.svelte'
   import SegmentedControl from '../../shared/ui/SegmentedControl.svelte'
   import Confirm from '../../shared/Confirm.svelte'
+  import LiveRegion from '../../shared/ui/LiveRegion.svelte'
   import SettingsFieldShell from './SettingsFieldShell.svelte'
 
   interface Props {
@@ -148,9 +149,11 @@
 </script>
 
 {#snippet savedMarker()}
-  {#if justSaved}
-    <span class="settings-field__saved" role="status" data-testid={`cfg-saved-${field.key}`}>✓ Saved</span>
-  {/if}
+  <LiveRegion
+    tone="status"
+    message={justSaved ? '✓ Saved' : null}
+    class="settings-field__saved"
+    testid={`cfg-saved-${field.key}`} />
 {/snippet}
 
 {#if isEnum}
@@ -236,9 +239,19 @@
     font-size: 12px;
   }
 
-  .settings-field__saved {
+  /* :global because the class is handed to LiveRegion, and a class passed to a child
+     component does not pick up this component's scoped styles. */
+  :global(.settings-field__head .settings-field__saved) {
     color: var(--success);
     font-size: 11px;
     white-space: nowrap;
+  }
+  /* The marker is the last child of .settings-field__head, a flex row with
+     gap: var(--gap-tight) whose label carries margin-right: auto -- so the slack sits
+     left of the controls and a trailing gap would shove them 8px inward. The marker
+     stays mounted so the save can be announced, and it cannot be hidden without leaving
+     the accessibility tree, so cancel the gap it claims while empty instead. */
+  :global(.settings-field__head .settings-field__saved:empty) {
+    margin-left: calc(-1 * var(--gap-tight));
   }
 </style>

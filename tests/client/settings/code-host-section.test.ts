@@ -738,7 +738,7 @@ describe('CodeHostSection', () => {
     const banner = target.querySelector('.status-error')
     expect(banner).not.toBeNull()
     expect(banner!.textContent).toContain('Instance URL required.')
-    expect(target.querySelector('.settings-field__error')).toBeNull()
+    expect([...target.querySelectorAll('.settings-field__error')].every((n) => n.textContent === '')).toBe(true)
     void unmount(component)
   })
 
@@ -762,7 +762,7 @@ describe('CodeHostSection', () => {
     const banner = target.querySelector('.status-error')
     expect(banner).not.toBeNull()
     expect(banner!.textContent).toContain('Unknown field.')
-    expect(target.querySelector('.settings-field__error')).toBeNull()
+    expect([...target.querySelectorAll('.settings-field__error')].every((n) => n.textContent === '')).toBe(true)
     void unmount(component)
   })
 
@@ -786,7 +786,7 @@ describe('CodeHostSection', () => {
     const banner = target.querySelector('.status-error')
     expect(banner).not.toBeNull()
     expect(banner!.textContent).toContain('Something went wrong.')
-    expect(target.querySelector('.settings-field__error')).toBeNull()
+    expect([...target.querySelectorAll('.settings-field__error')].every((n) => n.textContent === '')).toBe(true)
     void unmount(component)
   })
 
