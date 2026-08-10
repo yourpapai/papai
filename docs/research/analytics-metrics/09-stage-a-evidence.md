@@ -157,6 +157,7 @@ the same pass.
 | 2026-08-06 | true | — | none | 0 | 50 (invalid_value=50) | 0 | ok | — |
 | 2026-08-07 | true | — | none | 0 | 98 (invalid_value=98) | 0 | ok | — |
 | 2026-08-08 | true | — | none | 0 | 4 (invalid_value=4) | 0 | ok | — |
+| 2026-08-09 | true | — | none | 0 | 26 (invalid_value=26) | 0 | ok | — |
 
 | Week | Freshness | Reconciliation delta | Rejects | Overflow | Expiry check | Notes |
 |---|---|---|---|---|---|---|
