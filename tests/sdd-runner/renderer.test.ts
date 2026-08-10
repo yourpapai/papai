@@ -84,8 +84,6 @@ describe('formatEvent', () => {
         round: 2,
         verdict: 'converged',
         counts: { blocker: 0, material: 0, nitpick: 1 },
-        seq: 5,
-        ts: '2026-08-10T10:00:05.000Z',
       },
       'normal',
     )
@@ -100,8 +98,6 @@ describe('formatEvent', () => {
         type: 'tool_use',
         agent: 'reviewer-1',
         tool: 'code_search',
-        seq: 3,
-        ts: '2026-08-10T10:00:03.000Z',
       },
       'normal',
     )
@@ -115,8 +111,6 @@ describe('formatEvent', () => {
         type: 'tool_use',
         agent: 'reviewer-1',
         tool: 'code_search',
-        seq: 3,
-        ts: '2026-08-10T10:00:03.000Z',
       },
       'debug',
     )
@@ -154,8 +148,6 @@ describe('createRenderer (integration smoke)', () => {
       round: 2,
       verdict: 'converged',
       counts: { blocker: 0, material: 0, nitpick: 1 },
-      seq: 5,
-      ts: '2026-08-10T10:00:05.000Z',
     })
     expect(output.join('')).toContain('review')
   })

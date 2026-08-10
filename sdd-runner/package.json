@@ -8,7 +8,7 @@
     "lint": "cd .. && oxlint --config .oxlintrc.json sdd-runner/src tests/sdd-runner",
     "format": "cd .. && oxfmt --write sdd-runner/src tests/sdd-runner --ignore-path=.oxfmtignore",
     "format:check": "cd .. && oxfmt --check sdd-runner/src tests/sdd-runner --ignore-path=.oxfmtignore",
-    "start": "bun run src/cli.ts"
+    "start": "bun run src/index.ts"
   },
   "dependencies": {
     "p-limit": "^7.3.1",

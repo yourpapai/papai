@@ -99,6 +99,17 @@ function makeGitExec(
   return (): Promise<{ stdout: string; stderr: string }> => Promise.resolve({ stdout: porcelain, stderr: '' })
 }
 
+function sequencedExecGit(
+  outputs: readonly string[],
+): (cwd: string, args: readonly string[]) => Promise<{ stdout: string; stderr: string }> {
+  let i = 0
+  return (): Promise<{ stdout: string; stderr: string }> => {
+    const stdout = outputs[Math.min(i, outputs.length - 1)] ?? ''
+    i += 1
+    return Promise.resolve({ stdout, stderr: '' })
+  }
+}
+
 interface AgentHandle {
   readonly agent: AgentLayerDeps
   readonly emitted: EventInput[]
@@ -267,7 +278,16 @@ describe('runStageAgent', () => {
   it('halts resumable when the diff guard flags edits outside the change folder', async () => {
     const dir = makeDir()
     const fake = makeFakeSpawn('findings-1.json', [{ write: VALID_FINDINGS }])
-    const { agent } = makeAgent(dir, fake, ' M src/chat/router.ts\n')
+    const emitted: EventInput[] = []
+    const execGit = sequencedExecGit(['', ' M src/chat/router.ts\n'])
+    const agent: AgentLayerDeps = {
+      spawn: fake.spawn,
+      config: makeConfig(dir),
+      execGit,
+      emit: (event) => {
+        emitted.push(EventInputSchema.parse(event))
+      },
+    }
     const run = runStageAgent(agent, makeOptions(dir, 'findings-1.json'))
     await expect(run).rejects.toThrow(/src\/chat\/router\.ts/u)
     expect(fake.calls.count).toBe(1)
@@ -301,5 +321,31 @@ describe('runStageAgent', () => {
     } finally {
       process.chdir(originalCwd)
     }
+  })
+
+  it('does not flag pre-existing dirty paths the agent did not touch (snapshot diff)', async () => {
+    const dir = makeDir()
+    const fake = makeFakeSpawn('findings-1.json', [{ write: VALID_FINDINGS }])
+    const preExisting = ' M package.json\n?? task.md\n M openspec/changes/add-thing/specs/x/spec.md\n'
+    const { agent } = makeAgent(dir, fake, preExisting)
+    const info = await runStageAgent(agent, makeOptions(dir, 'findings-1.json'))
+    expect(info.attempts).toBe(1)
+  })
+
+  it('still flags a path the agent newly dirties outside the change folder', async () => {
+    const dir = makeDir()
+    const execGit = sequencedExecGit(['', ' M src/chat/router.ts\n'])
+    const fake = makeFakeSpawn('findings-1.json', [{ write: VALID_FINDINGS }])
+    const emitted: EventInput[] = []
+    const agent: AgentLayerDeps = {
+      spawn: fake.spawn,
+      config: makeConfig(dir),
+      execGit,
+      emit: (event) => {
+        emitted.push(EventInputSchema.parse(event))
+      },
+    }
+    const run = runStageAgent(agent, makeOptions(dir, 'findings-1.json'))
+    await expect(run).rejects.toThrow(/src\/chat\/router\.ts/u)
   })
 })

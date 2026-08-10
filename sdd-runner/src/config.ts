@@ -51,9 +51,10 @@ export async function loadRunnerConfig(configPath: string): Promise<RunnerConfig
     const detail = error instanceof Error ? error.message : String(error)
     throw new Error(`runner config invalid at ${configPath}: ${detail}`, { cause: error })
   }
-  const workDir = path.resolve(parsed.repoRoot, parsed.workDir)
+  const repoRoot = path.resolve(parsed.repoRoot)
+  const workDir = path.resolve(repoRoot, parsed.workDir)
   await mkdir(workDir, { recursive: true })
-  return { ...parsed, workDir }
+  return { ...parsed, repoRoot, workDir }
 }
 
 export function modelFor(config: RunnerConfig, role: AgentRole): string {

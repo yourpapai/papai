@@ -106,14 +106,22 @@ export class DiffGuardViolationError extends Error {
 const MAX_VALIDATION_ATTEMPTS = 2
 const ALLOWED_PREFIX = 'openspec/changes/'
 
-async function guardWorkingTree(execGit: ExecGitFn, cwd: string): Promise<void> {
-  const { stdout } = await execGit(cwd, ['status', '--porcelain', '--untracked-files=all'])
-  const paths = stdout
+function parseDirty(stdout: string): string[] {
+  return stdout
     .split('\n')
     .filter((line) => line.trim().length > 0)
     .flatMap(parsePorcelainPaths)
     .filter((entry) => entry.length > 0)
-  const violations = paths.filter((entry) => !entry.startsWith(ALLOWED_PREFIX))
+}
+
+async function snapshotWorkingTree(execGit: ExecGitFn, cwd: string): Promise<Set<string>> {
+  const { stdout } = await execGit(cwd, ['status', '--porcelain', '--untracked-files=all'])
+  return new Set(parseDirty(stdout))
+}
+
+async function guardWorkingTree(execGit: ExecGitFn, cwd: string, before: Set<string>): Promise<void> {
+  const after = await snapshotWorkingTree(execGit, cwd)
+  const violations = [...after].filter((entry) => !before.has(entry) && !entry.startsWith(ALLOWED_PREFIX))
   if (violations.length > 0) throw new DiffGuardViolationError(violations)
 }
 
@@ -122,6 +130,7 @@ async function attemptStageAgent<T>(
   options: RunStageAgentOptions<T>,
   attempt: number,
   lastError: string | null,
+  before: Set<string>,
 ): Promise<AgentRunInfo<T>> {
   const prompt =
     lastError === null ? options.prompt : `${options.prompt}\n\nPrevious attempt failed validation:\n${lastError}`
@@ -144,7 +153,7 @@ async function attemptStageAgent<T>(
       deps.emit({ altitude: 'L1', type: 'retrying', agent: options.label, reason: 'stall', attempt })
     },
   })
-  await guardWorkingTree(deps.execGit, options.cwd)
+  await guardWorkingTree(deps.execGit, options.cwd, before)
   const parsed = options.outputSchema.safeParse(result.value)
   if (parsed.success) {
     deps.emit({ altitude: 'L1', type: 'done', agent: options.label, usage: result.usage })
@@ -156,9 +165,13 @@ async function attemptStageAgent<T>(
     )
   }
   deps.emit({ altitude: 'L1', type: 'retrying', agent: options.label, reason: 'validation', attempt: attempt + 1 })
-  return attemptStageAgent(deps, options, attempt + 1, parsed.error.message)
+  return attemptStageAgent(deps, options, attempt + 1, parsed.error.message, before)
 }
 
-export function runStageAgent<T>(deps: AgentLayerDeps, options: RunStageAgentOptions<T>): Promise<AgentRunInfo<T>> {
-  return attemptStageAgent(deps, options, 1, null)
+export async function runStageAgent<T>(
+  deps: AgentLayerDeps,
+  options: RunStageAgentOptions<T>,
+): Promise<AgentRunInfo<T>> {
+  const before = await snapshotWorkingTree(deps.execGit, options.cwd)
+  return attemptStageAgent(deps, options, 1, null, before)
 }

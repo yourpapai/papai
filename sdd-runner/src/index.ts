@@ -17,6 +17,7 @@ import { readEvents } from './events.js'
 import { createOpenSpecDriver } from './openspec-driver.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
 import { runGateResume, runResume, runStart } from './orchestrator.js'
+import { createRenderer } from './renderer.js'
 import { buildReport } from './report.js'
 import type { ChangeDirSummary, ReportInput } from './report.js'
 import { loadRunState } from './run-state.js'
@@ -51,7 +52,6 @@ export async function readChangeSummary(repoRoot: string, changeName: string): P
   const artifacts = await listArtifacts(changeDir)
   return { tasksDone, tasksTotal, artifacts }
 }
-
 async function listArtifacts(dir: string): Promise<string[]> {
   let entries: Dirent[]
   try {
@@ -91,15 +91,17 @@ function shellExec(
 }
 
 async function buildHarness(): Promise<CliHarness> {
-  const configPath = process.env['SDD_RUNNER_CONFIG'] ?? path.join(process.cwd(), 'sdd-runner', 'config.json')
+  const configPath = process.env['SDD_RUNNER_CONFIG'] ?? path.join(import.meta.dir, '..', 'config.json')
   const config = await loadRunnerConfig(configPath)
   const driver: OpenSpecDriver = createOpenSpecDriver({ exec: shellExec(config.repoRoot), cwd: config.repoRoot })
   const execGit = makeExecGit()
+  const renderer = createRenderer(process.stdout, 'normal')
   const orchestratorDeps = {
     config,
     spawn: realSpawn,
     execGit,
     driver,
+    render: renderer.renderEvent,
     stdout: (line: string): void => {
       process.stdout.write(`${line}\n`)
     },

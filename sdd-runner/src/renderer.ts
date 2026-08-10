@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { STAGE_ORDER } from './events.js'
-import type { ReplayState, SddEvent } from './events.js'
+import type { EventInput, ReplayState } from './events.js'
 
 export type Verbosity = 'brief' | 'normal' | 'debug'
 
@@ -51,7 +51,7 @@ function shouldShow(altitude: string, verbosity: Verbosity): boolean {
   return verbosity === 'debug'
 }
 
-export function formatEvent(event: SddEvent, verbosity: Verbosity): string | null {
+export function formatEvent(event: EventInput, verbosity: Verbosity): string | null {
   if (!shouldShow(event.altitude, verbosity)) return null
   if (event.type === 'convergence')
     return `round ${event.round}: ${event.verdict} (${event.counts.blocker}b ${event.counts.material}m ${event.counts.nitpick}n)`
@@ -90,7 +90,7 @@ export function renderGateScreen(input: {
 
 export interface Renderer {
   readonly renderState: (state: ReplayState) => void
-  readonly renderEvent: (event: SddEvent) => void
+  readonly renderEvent: (event: EventInput) => void
 }
 
 export function createRenderer(stream: RendererStream, verbosity: Verbosity): Renderer {
