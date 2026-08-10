@@ -16,6 +16,8 @@
 
 Outcomes per iteration: `improved` | `skipped` | `capped` | `failed`. The CLI exits 1 if any iteration failed or the run aborted (`capped` is a merge, not a failure). `runIteration` routes every throw through the same cleanup path so worktrees/branches are not leaked; `--reset-worktree` sweeps stale `<runId>-iterN` worktrees left by a killed process.
 
+Live output: every phase of an iteration renders into the single `'iter'` slot (`src/iter-line.ts`); `runPipeline` commits one summary line per iteration (`iter N ✓ improved · file · before→after · duration`), so a run's scrolled output is bounded by iteration count.
+
 ## Config & repoRoot
 
 `config.json` (shape in `config.example.json`) loads via `--config` (default: `config.json` next to this package). `repoRoot` is resolved then **snapped to the git toplevel** (`detectGitRoot` in `src/config.ts`), so `"repoRoot": "."` works even though `bun run --filter` sets the cwd to this package dir; non-git roots pass through unchanged. `workDir` resolves against the snapped root. Note `readBaseline` (`src/baseline.ts`) returns `{}` on ENOENT rather than erroring — a wrong root therefore surfaces as select-gate rejections, not a load error. Four timeouts exist: `agent.timeoutMs` (wall clock) and `agent.inactivityTimeoutMs` (no-stdout watchdog; a stall-killed agent is retried once by `runAgent`, unlike a wall-clock timeout) for agent subprocesses, top-level `mutateTimeoutMs` for the mutation-run exec, `buildTimeoutMs` for the build check. The default `checkCommand` is `CI=true bun check:full` — the serial path, because `bun test --parallel` flakes with 15s timeouts under worker contention and would randomly discard completed agent work.

@@ -14,6 +14,8 @@ import type { CappedRegistryStore } from './capped-registry.js'
 import type { MutationImproveConfig } from './config.js'
 import { recordFailure, type FailureEntry } from './failure-recorder.js'
 import { gatePhase, type PhaseResult } from './gate.js'
+import { formatIterLine, ITER_SLOT_KEY } from './iter-line.js'
+import { branchFor, runIdFor, worktreeFor } from './iter-paths.js'
 import { reportMergeDiff } from './merge-stats.js'
 import { buildImprovePrompt, buildSelectPrompt } from './prompt-templates.js'
 import { ResultSchema, type Result } from './result-schema.js'
@@ -49,19 +51,13 @@ export interface PipelineDeps {
   runImproveAgent: (worktreePath: string, prompt: string, outputPath: string) => Promise<AgentRunResult<Result>>
   cappedRegistry: CappedRegistryStore
   saveRunState: (state: MutationImproveRunState) => Promise<void>
-  log: { log: (msg: string) => void; issue?: unknown; diff?: (label: string, diff: DiffStats) => void }
-}
-
-function branchFor(deps: PipelineDeps, iter: number): string {
-  return `${deps.config.prBranchPrefix}/${deps.runState.runId}-iter${iter}`
-}
-
-function worktreeFor(deps: PipelineDeps, iter: number): string {
-  return path.join(deps.config.workDir, 'worktrees', `${deps.runState.runId}-iter${iter}`)
-}
-
-function runIdFor(deps: PipelineDeps, iter: number): string {
-  return `${deps.runState.runId}-iter${iter}`
+  log: {
+    log: (msg: string) => void
+    issue?: unknown
+    diff?: (label: string, diff: DiffStats) => void
+    slot?: (key: string, line: string | null) => void
+    commit?: (key: string, line?: string) => void
+  }
 }
 
 // ① SELECT — runner reads baseline; agent only suggests. Reject picks not in baseline
@@ -283,7 +279,9 @@ export async function runPipeline(deps: PipelineDeps): Promise<{ results: Iterat
   const runFrom = async (iter: number, aborted: boolean): Promise<{ results: IterationResult[]; aborted: boolean }> => {
     if (aborted || iter > deps.config.count) return { results, aborted }
     deps.runState.currentIteration = iter
+    const iterStart = Date.now()
     const outcome = await runIteration(deps, iter)
+    deps.log.commit?.(ITER_SLOT_KEY, formatIterLine(outcome, Date.now() - iterStart))
     results.push(outcome)
     if (outcome.gate === 'merge') {
       deps.runState.status = 'aborted'

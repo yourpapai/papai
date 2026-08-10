@@ -66,6 +66,17 @@ export interface RunAgentOptions<T> {
   outputPath: string
   outputSchema: z.ZodType<T>
   label: string
+  /**
+   * Slot identity for live rendering; defaults to `label`. Callers that run
+   * several agents as one on-screen unit (mutation-improve's iteration) pass a
+   * shared key so each agent's live line replaces the previous one in place.
+   */
+  slotKey?: string
+  /**
+   * When false, dispose leaves the slot live instead of committing it — the
+   * unit's owner (e.g. the mutation-improve pipeline) commits once at the end.
+   */
+  commitOnDispose?: boolean
   logPath: string
   extraArgs: readonly string[]
   reporter?: ProgressReporter
