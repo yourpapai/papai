@@ -15,7 +15,7 @@ See LICENSE in the project root for details.
 
 **Tech Stack:** Bun, TypeScript, bun:test.
 
-Spec: `docs/superpowers/specs/2026-08-09-single-line-live-renderer-design.md`
+Spec: `./2026-08-09-single-line-live-renderer-design.md`
 
 ## Global Constraints
 
