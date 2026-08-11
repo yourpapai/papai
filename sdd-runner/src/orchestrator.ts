@@ -27,6 +27,7 @@ import type { OrchestratorDeps, RunStartResult, StageContext } from './gate-dige
 import { resumeGate, vetoRedirects } from './gate.js'
 import { runIntake } from './intake.js'
 import { createMaterializer } from './materialize.js'
+import type { Verbosity } from './renderer.js'
 import { replayEvents } from './replay.js'
 import { runReviewLoop } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
@@ -41,6 +42,7 @@ export type { OrchestratorDeps, RunStartResult } from './gate-digest.js'
 export interface StartOptions {
   readonly taskFile: string
   readonly depthOverride?: DepthProfile
+  readonly verbosity?: Verbosity
 }
 
 export interface RunResumeResult {

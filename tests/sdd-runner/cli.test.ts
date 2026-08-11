@@ -61,7 +61,7 @@ describe('parseCliArgs', () => {
 function makeHarness(calls: string[]): CliHarness {
   return {
     runStart: (options) => {
-      calls.push(`start:${options.taskFile}:${options.depthOverride ?? '-'}`)
+      calls.push(`start:${options.taskFile}:${options.depthOverride ?? '-'}:${options.verbosity ?? '-'}`)
       return Promise.resolve({ runId: 'run-1', halted: 'gate', gateMdPath: '/x/gate-1.md', version: 1 })
     },
     runResume: (runId) => {
@@ -87,7 +87,13 @@ describe('main', () => {
     const calls: string[] = []
     const code = await main(['start', 'task.md', '--depth', 'S'], makeHarness(calls))
     expect(code).toBe(0)
-    expect(calls).toContain('start:task.md:S')
+    expect(calls).toContain('start:task.md:S:normal')
+  })
+
+  it('forwards --verbosity to runStart', async () => {
+    const calls: string[] = []
+    await main(['start', 'task.md', '--verbosity', 'debug'], makeHarness(calls))
+    expect(calls).toContain('start:task.md:-:debug')
   })
 
   it('routes resume and gate resume', async () => {

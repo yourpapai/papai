@@ -160,6 +160,25 @@ describe('formatEvent', () => {
     )
     expect(line).toContain('code_search')
   })
+
+  it('renders done events with a usage suffix (abbreviated tokens + cost) at normal verbosity', () => {
+    const line = formatEvent(
+      {
+        altitude: 'L1',
+        type: 'done',
+        agent: 'reviewer-r1',
+        usage: {
+          inputTokens: 12000,
+          outputTokens: 3400,
+          reasoningTokens: 200,
+          costUsd: 0.0142,
+          wallMs: 45000,
+        },
+      },
+      'normal',
+    )
+    expect(line).toBe('reviewer-r1 done \u00B7 in 12.0k out 3.4k \u00B7 $0.0142')
+  })
 })
 
 describe('createRenderer (integration smoke)', () => {
@@ -182,5 +201,28 @@ describe('createRenderer (integration smoke)', () => {
       counts: { blocker: 0, material: 0, nitpick: 1 },
     })
     expect(output.join('')).toContain('review')
+  })
+
+  it('with { dynamic: false } renders byte-identical line output on a TTY stream (no ANSI escapes)', () => {
+    const output: string[] = []
+    const stream = {
+      write(chunk: string): boolean {
+        output.push(chunk)
+        return true
+      },
+      isTTY: true,
+      columns: 80,
+    }
+    const renderer = createRenderer(stream, 'normal', { dynamic: false })
+    renderer.renderEvent({
+      altitude: 'L1',
+      type: 'done',
+      agent: 'reviewer-r1',
+      usage: { inputTokens: 10, outputTokens: 5, reasoningTokens: 0, costUsd: 0, wallMs: 100 },
+    })
+    const joined = output.join('')
+    expect(joined).not.toContain('\u001b[2K')
+    expect(joined).not.toContain('\r')
+    expect(joined).toContain('reviewer-r1 done')
   })
 })

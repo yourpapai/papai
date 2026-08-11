@@ -9,7 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { agentWritePath } from '../../review-loop/src/agent-runner.js'
-import type { SpawnFn, SpawnResult } from '../../review-loop/src/agent-runner.js'
+import type { LineSink, SpawnFn, SpawnResult } from '../../review-loop/src/agent-runner.js'
 import {
   AssumptionsSidecarSchema,
   DepthClassificationSchema,
@@ -69,13 +69,13 @@ interface FakeSpawn {
 
 function makeFakeSpawn(
   basename: string,
-  outcomes: Array<{ write?: string; result?: Partial<SpawnResult> }>,
+  outcomes: Array<{ write?: string; result?: Partial<SpawnResult>; lines?: readonly string[] }>,
 ): FakeSpawn {
   const prompts: string[] = []
   const models: string[] = []
   const inactivity: Array<number | undefined> = []
   const calls = { count: 0 }
-  const spawn: SpawnFn = (_command, args, options) => {
+  const spawn: SpawnFn = (_command, args, options, onLine) => {
     const outcome = outcomes[Math.min(calls.count, outcomes.length - 1)] ?? {}
     calls.count += 1
     prompts.push(String(args[args.length - 1]))
@@ -87,6 +87,10 @@ function makeFakeSpawn(
       const target = agentWritePath(options.cwd, basename)
       fs.mkdirSync(path.dirname(target), { recursive: true })
       fs.writeFileSync(target, write)
+    }
+    if (outcome.lines !== undefined && onLine !== undefined) {
+      const sink: LineSink = onLine
+      for (const line of outcome.lines) sink(line)
     }
     return Promise.resolve({ exitCode: 0, stdout: '', stderr: '', ...outcome.result })
   }
@@ -347,5 +351,23 @@ describe('runStageAgent', () => {
     }
     const run = runStageAgent(agent, makeOptions(dir, 'findings-1.json'))
     await expect(run).rejects.toThrow(/src\/chat\/router\.ts/u)
+  })
+
+  it('forwards an L0 tool_use event to the bus when the spawned agent emits an opencode tool_use line', async () => {
+    const dir = makeDir()
+    const toolUseLine = JSON.stringify({
+      type: 'tool_use',
+      part: {
+        tool: 'read',
+        callID: 'call-1',
+        state: { status: 'running', input: { filePath: 'foo.ts' } },
+      },
+    })
+    const fake = makeFakeSpawn('findings-1.json', [{ write: VALID_FINDINGS, lines: [toolUseLine] }])
+    const { agent, emitted } = makeAgent(dir, fake)
+    await runStageAgent(agent, makeOptions(dir, 'findings-1.json'))
+    const toolUseEvents = emitted.filter((e): e is Extract<EventInput, { type: 'tool_use' }> => e.type === 'tool_use')
+    expect(toolUseEvents.length).toBeGreaterThanOrEqual(1)
+    expect(toolUseEvents[0]).toMatchObject({ agent: 'reviewer-r1', tool: 'read', arg: 'foo.ts' })
   })
 })

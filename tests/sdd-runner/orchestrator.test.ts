@@ -189,6 +189,16 @@ describe('runStart', () => {
       fixture.spawnOrder.indexOf('atomicity.json'),
     )
   })
+
+  it('accepts a verbosity option on StartOptions (carried for the harness renderer)', async () => {
+    const fixture = makeFixture()
+    const result = await runStart(fixture.deps, {
+      taskFile: fixture.taskFile,
+      depthOverride: 'S',
+      verbosity: 'debug',
+    })
+    expect(result.halted).toBe('gate')
+  })
 })
 
 describe('runResume', () => {

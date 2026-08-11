@@ -11,6 +11,7 @@ import path from 'node:path'
 import { realSpawn } from '../../review-loop/src/spawn.js'
 import { main } from './cli.js'
 import type { CliHarness } from './cli.js'
+import { parseCliArgs } from './cli.js'
 import { discoverBranch, loadRunnerConfig } from './config.js'
 import type { ExecGitFn } from './config.js'
 import { readEvents } from './events.js'
@@ -18,6 +19,7 @@ import { createOpenSpecDriver } from './openspec-driver.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
 import { runGateResume, runResume, runStart } from './orchestrator.js'
 import { createRenderer } from './renderer.js'
+import type { Verbosity } from './renderer.js'
 import { buildReport } from './report.js'
 import type { ChangeDirSummary, ReportInput } from './report.js'
 import { loadRunState } from './run-state.js'
@@ -90,12 +92,12 @@ function shellExec(
     })
 }
 
-async function buildHarness(): Promise<CliHarness> {
+async function buildHarness(verbosity: Verbosity = 'normal'): Promise<CliHarness> {
   const configPath = process.env['SDD_RUNNER_CONFIG'] ?? path.join(import.meta.dir, '..', 'config.json')
   const config = await loadRunnerConfig(configPath)
   const driver: OpenSpecDriver = createOpenSpecDriver({ exec: shellExec(config.repoRoot), cwd: config.repoRoot })
   const execGit = makeExecGit()
-  const renderer = createRenderer(process.stdout, 'normal')
+  const renderer = createRenderer(process.stdout, verbosity)
   const orchestratorDeps = {
     config,
     spawn: realSpawn,
@@ -136,7 +138,9 @@ async function runEntry(): Promise<void> {
     process.stdout.write(`${USAGE}\n`)
     return
   }
-  const harness = await buildHarness()
+  const cmd = parseCliArgs(argv)
+  const verbosity = cmd.subcommand === 'start' ? cmd.verbosity : 'normal'
+  const harness = await buildHarness(verbosity)
   const code = await main(argv, harness)
   process.exit(code)
 }

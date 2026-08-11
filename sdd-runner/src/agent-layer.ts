@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { parsePorcelainPaths } from '../../mutation-improve/src/diff-guard.js'
 import { runAgent } from '../../review-loop/src/agent-runner.js'
 import type { AgentUsage, SpawnFn } from '../../review-loop/src/agent-runner.js'
+import { createAgentReporter } from './agent-reporter.js'
 import { modelFor } from './config.js'
 import type { AgentRole, ExecGitFn, RunnerConfig } from './config.js'
 import type { EventInput } from './events.js'
@@ -137,6 +138,7 @@ async function attemptStageAgent<T>(
   const model = modelFor(deps.config, options.role)
   deps.emit({ altitude: 'L1', type: 'spawned', agent: options.label, role: options.role, model })
   const absoluteOutput = path.join(options.sidecarDir, path.basename(options.outputPath))
+  const reporter = createAgentReporter(options.label, deps.emit)
   const result = await runAgent({
     spawn: deps.spawn,
     model,
@@ -149,6 +151,7 @@ async function attemptStageAgent<T>(
     extraArgs: [],
     timeoutMs: deps.config.timeouts.wallClockMs,
     inactivityTimeoutMs: deps.config.timeouts.inactivityMs,
+    reporter,
     onRetry: () => {
       deps.emit({ altitude: 'L1', type: 'retrying', agent: options.label, reason: 'stall', attempt })
     },

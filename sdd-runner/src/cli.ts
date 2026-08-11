@@ -19,7 +19,7 @@ export interface CliHarness {
 export async function main(argv: readonly string[], harness: CliHarness): Promise<number> {
   const cmd = parseCliArgs(argv)
   if (cmd.subcommand === 'start') {
-    await harness.runStart({ taskFile: cmd.taskFile, depthOverride: cmd.depth })
+    await harness.runStart({ taskFile: cmd.taskFile, depthOverride: cmd.depth, verbosity: cmd.verbosity })
     return 0
   }
   if (cmd.subcommand === 'resume') {

@@ -87,3 +87,18 @@ bun run sdd-runner:start -- report <runId> [--pr]
 ```
 
 Or via the thin wrapper: `/sdd:auto <task-file>` _(not yet implemented — intended papai chat command that shells out to `sdd-runner:start`; use the `bun run` form above for now)_.
+
+### Live rendering
+
+`bun run sdd-runner:start` picks its renderer once at harness construction (`index.ts buildHarness(verbosity)`):
+
+- **Dynamic (TTY, `normal`/`debug`)** — `DynamicRenderer` (`sdd-runner/src/live-renderer.ts`) redraws a fixed-position block on every event instead of scrolling. Three zones:
+  - **Pipeline map** (top) — the output of `renderPipelineMap(state)`, finally exercised live (it was tested but never called pre-change). One line per stage with `✓ done` / `▶ active (round n/cap)` / `· pending` / `— skipped` markers.
+  - **Slot lines** (middle) — one per active agent, driven by the new L0 `tool_use` events: `<agent> ▶ <tool> <arg?>`. Cleared on that agent's `done`.
+  - **Status line** (bottom) — `round n/cap · in <tok> / out <tok> · $<cost> · <elapsed>`, accumulated from `done` and `step_finish` events.
+  The L0 events reach the renderer through a `ProgressReporter` adapter (`agent-reporter.ts`) wired into the `runAgent` call at `agent-layer.ts`; `slot()` parses the review-loop slot line and emits `tool_use`, `usage()` emits `step_finish`, and the other reporter methods are no-ops (the renderer owns the block). ANSI primitives are inlined from `review-loop/src/live-renderer.ts` rather than imported cross-workspace; the `shared-tui-renderer` proposal can consolidate them later.
+- **Line (non-TTY / `--verbosity brief`)** — `LineRenderer` (`renderer.ts`), byte-identical to the pre-change append-only output. This is the CI / pipe / log-file contract; the TTY check is hard-gated so a redirect never gets ANSI escapes. The one additive change for both modes: `done` now renders `<agent> done · in <tok> out <tok> · $<cost>` instead of bare `<agent> done`.
+
+`--verbosity` is threaded from the CLI through `StartOptions.verbosity` and `buildHarness(verbosity)` to `createRenderer(stream, verbosity)`. `brief` suppresses L1; `debug` raises the altitude filter to show L0 tool-call/step events as scrolling lines in line mode (the dynamic mode always shows them in the block). Resume/gate/report inherit the harness's construction-time `normal` — those paths produce artifacts, not live progress.
+
+The deleted `--wait` flag and `renderGateScreen` (commit `fe3498040`, "placed for a live-watching TUI future that didn't ship") stay deleted — that was an interactive gate-editor concern, separate from progress rendering. The consumer that prompted re-visiting live output is the operator running `sdd-runner:start` interactively (most often via `/sdd:auto`).

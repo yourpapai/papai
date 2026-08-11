@@ -5,8 +5,9 @@
 
 import { STAGE_ORDER } from './events.js'
 import type { EventInput } from './events.js'
+import { DynamicRenderer } from './live-renderer.js'
 import { createReplayFolder } from './replay.js'
-import type { DigestRecord, ReplayState } from './replay.js'
+import type { DigestRecord, ReplayFolder, ReplayState } from './replay.js'
 
 export type Verbosity = 'brief' | 'normal' | 'debug'
 
@@ -14,6 +15,18 @@ export interface RendererStream {
   write(chunk: string): boolean
   readonly isTTY?: boolean
   readonly columns?: number
+}
+
+export interface RendererOptions {
+  readonly dynamic?: boolean
+}
+
+export const MIDDLE_DOT = '\u00B7'
+
+export function formatTokenCount(n: number): string {
+  if (n < 1000) return String(n)
+  if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`
+  return `${(n / 1_000_000).toFixed(2)}M`
 }
 
 const STAGE_ICONS: Record<string, string> = {
@@ -36,7 +49,7 @@ export function renderPipelineMap(state: ReplayState): string[] {
 
 export function formatDigestBody(record: DigestRecord): string {
   const { blocker, material, nitpick } = record.counts
-  return `${blocker}b ${material}m ${nitpick}n \u00b7 ${record.resolved} resolved \u00b7 ${record.dismissed} dismissed \u00b7 ${record.verdict}`
+  return `${blocker}b ${material}m ${nitpick}n ${MIDDLE_DOT} ${record.resolved} resolved ${MIDDLE_DOT} ${record.dismissed} dismissed ${MIDDLE_DOT} ${record.verdict}`
 }
 
 export function formatBurndownLine(record: DigestRecord): string {
@@ -73,7 +86,12 @@ export function formatEvent(event: EventInput, verbosity: Verbosity): string | n
   if (event.type === 'spawned') return `${event.agent} spawned (${event.role}, ${event.model})`
   if (event.type === 'retrying') return `${event.agent} retrying (${event.reason}, attempt ${event.attempt})`
   if (event.type === 'killed') return `${event.agent} killed (${event.cause})`
-  if (event.type === 'done') return `${event.agent} done`
+  if (event.type === 'done') {
+    const usage = event.usage
+    return `${event.agent} done ${MIDDLE_DOT} in ${formatTokenCount(usage.inputTokens)} out ${formatTokenCount(
+      usage.outputTokens,
+    )} ${MIDDLE_DOT} $${usage.costUsd.toFixed(4)}`
+  }
   return null
 }
 
@@ -82,24 +100,51 @@ export interface Renderer {
   readonly renderEvent: (event: EventInput) => void
 }
 
-export function createRenderer(stream: RendererStream, verbosity: Verbosity): Renderer {
-  const folder = createReplayFolder()
-  return {
-    renderState: (state) => {
-      const lines = renderPipelineMap(state)
-      const block = lines.join('\n')
-      stream.write(`${block}\n`)
-    },
-    renderEvent: (event) => {
-      folder.fold(event)
-      if (event.type === 'round_close') {
-        const perRound = folder.state.perRound
-        const last = perRound[perRound.length - 1]
-        if (last !== undefined) stream.write(`${formatBurndownLine(last)}\n`)
-        return
-      }
-      const line = formatEvent(event, verbosity)
-      if (line !== null) stream.write(`${line}\n`)
-    },
+/**
+ * Append-only line renderer — the CI / pipe / log-file contract. Byte-identical
+ * to the original `createRenderer` output; the body now lives on a class so the
+ * `createRenderer` picker can choose between this and the dynamic renderer.
+ */
+export class LineRenderer implements Renderer {
+  private readonly folder: ReplayFolder
+
+  constructor(
+    private readonly stream: RendererStream,
+    private readonly verbosity: Verbosity,
+    folder?: ReplayFolder,
+  ) {
+    this.folder = folder ?? createReplayFolder()
   }
+
+  renderState(state: ReplayState): void {
+    const lines = renderPipelineMap(state)
+    const block = lines.join('\n')
+    this.stream.write(`${block}\n`)
+  }
+
+  renderEvent(event: EventInput): void {
+    this.folder.fold(event)
+    if (event.type === 'round_close') {
+      const perRound = this.folder.state.perRound
+      const last = perRound[perRound.length - 1]
+      if (last !== undefined) this.stream.write(`${formatBurndownLine(last)}\n`)
+      return
+    }
+    const line = formatEvent(event, this.verbosity)
+    if (line !== null) this.stream.write(`${line}\n`)
+  }
+}
+
+/**
+ * Pick a renderer for the run. `opts.dynamic` defaults to `true`; CI / non-TTY /
+ * `--verbosity brief` always get the append-only `LineRenderer`. The dynamic
+ * branch returns `DynamicRenderer` (see `live-renderer.ts`) when a TTY is
+ * present and verbosity is not `brief`.
+ */
+export function createRenderer(stream: RendererStream, verbosity: Verbosity, opts?: RendererOptions): Renderer {
+  const wantsDynamic = opts?.dynamic !== false
+  if (wantsDynamic && stream.isTTY === true && verbosity !== 'brief') {
+    return new DynamicRenderer(stream, verbosity)
+  }
+  return new LineRenderer(stream, verbosity)
 }
