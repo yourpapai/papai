@@ -5,6 +5,12 @@ client/assets/
 # oxfmt 0.59 re-flows markdown tables and breaks cells containing pipes inside
 # code spans; keep long-form docs prose out of the formatter.
 docs/
+# sdd-runner materializes/edits these per round: agent-authored proposal/design
+# prose with D1/D2 decomposition tables, plus review.md carrying verbatim gap
+# quotes from those tables. oxfmt pads the tables and collapses whitespace
+# inside the verbatim quotes (e.g. "index.ts      — barrel" -> "index.ts —"),
+# corrupting the source-of-truth quote. Regenerated each round anyway.
+openspec/changes/
 # sdd-runner test scratch files (agent sidecar artifacts written to CWD by
 # fake spawn functions during bun test; cleaned per-test but may persist
 # into the format:check phase of check:full).
