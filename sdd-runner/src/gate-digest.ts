@@ -91,6 +91,7 @@ export async function presentGateAt(
       assumptions,
       blockers: findings.blockers,
       openMaterial: findings.material,
+      openNitpicks: findings.nitpicks,
       trajectory,
       capHitFired: reviewResult.outcome === 'cap-hit',
       summary: state.changeName,
@@ -133,7 +134,11 @@ export function blockersOf(result: ReviewLoopResult): GateBlocker[] {
   return findingsOf(result).blockers
 }
 
-export function findingsOf(result: ReviewLoopResult): { blockers: GateBlocker[]; material: GateFinding[] } {
+export function findingsOf(result: ReviewLoopResult): {
+  blockers: GateBlocker[]
+  material: GateFinding[]
+  nitpicks: GateFinding[]
+} {
   const blockers = result.openBlockers.map((entry) => ({
     id: entry.id,
     gap: entry.id,
@@ -144,7 +149,12 @@ export function findingsOf(result: ReviewLoopResult): { blockers: GateBlocker[];
     gap: entry.id,
     evidence: `${entry.resolution} — ${entry.outcome ?? entry.justification ?? ''}`,
   }))
-  return { blockers, material }
+  const nitpicks = result.openNitpicks.map((entry) => ({
+    id: entry.id,
+    gap: entry.id,
+    evidence: `${entry.resolution} — ${entry.outcome ?? entry.justification ?? ''}`,
+  }))
+  return { blockers, material, nitpicks }
 }
 
 export async function readReviewResultFromSidecars(
@@ -160,9 +170,10 @@ export async function readReviewResultFromSidecars(
       rounds: round,
       openBlockers: parsed.resolutions.filter((r) => r.class === 'BLOCKER'),
       openMaterial: parsed.resolutions.filter((r) => r.class === 'MATERIAL'),
+      openNitpicks: parsed.resolutions.filter((r) => r.class === 'NITPICK'),
     }
   } catch {
-    return { outcome, rounds: round, openBlockers: [], openMaterial: [] }
+    return { outcome, rounds: round, openBlockers: [], openMaterial: [], openNitpicks: [] }
   }
 }
 
@@ -178,7 +189,7 @@ export function costAndDuration(
 
 export async function applyConfirmAll(gateMdPath: string): Promise<void> {
   const md = await readFile(gateMdPath, 'utf8')
-  await writeFile(gateMdPath, md.replace(/- \[ \] ([AT]\d+)/gu, '- [x] $1'))
+  await writeFile(gateMdPath, md.replace(/- \[ \] ([AFT]\d+)/gu, '- [x] $1'))
 }
 
 export function buildDriftPrompt(files: readonly string[], tasksFile: string, cwd: string): string {

@@ -43,6 +43,7 @@ describe('blockersOf', () => {
         { id: 'F2', class: 'BLOCKER', resolution: 'dismissed', justification: 'nope' },
       ],
       openMaterial: [],
+      openNitpicks: [],
     }
     expect(blockersOf(result)).toEqual([
       { id: 'F1', gap: 'F1', evidence: 'defaulted' },
@@ -61,6 +62,7 @@ describe('findingsOf', () => {
         { id: 'F2', class: 'MATERIAL', resolution: 'edited', outcome: 'gap narrowed' },
         { id: 'F3', class: 'MATERIAL', resolution: 'dismissed', justification: 'answered in design' },
       ],
+      openNitpicks: [],
     }
     expect(findingsOf(result)).toEqual({
       blockers: [{ id: 'F1', gap: 'F1', evidence: 'defaulted' }],
@@ -68,6 +70,7 @@ describe('findingsOf', () => {
         { id: 'F2', gap: 'F2', evidence: 'edited — gap narrowed' },
         { id: 'F3', gap: 'F3', evidence: 'dismissed — answered in design' },
       ],
+      nitpicks: [],
     })
   })
 })
@@ -95,14 +98,15 @@ describe('costAndDuration', () => {
 })
 
 describe('applyConfirmAll', () => {
-  it('checks every assumption box in the gate file', async () => {
+  it('checks every assumption, finding, and ack box in the gate file', async () => {
     const dir = makeDir()
     const file = path.join(dir, 'gate-1.md')
-    fs.writeFileSync(file, '- [ ] A1 first\n  blast radius: x\n- [ ] A2 second\n')
+    fs.writeFileSync(file, '- [ ] A1 first\n- [ ] F1 gap\n- [ ] T1 ack\n')
     await applyConfirmAll(file)
     const md = fs.readFileSync(file, 'utf8')
     expect(md).toContain('- [x] A1 first')
-    expect(md).toContain('- [x] A2 second')
+    expect(md).toContain('- [x] F1 gap')
+    expect(md).toContain('- [x] T1 ack')
   })
 })
 

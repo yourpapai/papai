@@ -14,7 +14,7 @@ import {
   recordArtifactHashes,
   writeGateDigest,
 } from '../../sdd-runner/src/gate-model.js'
-import type { GateAssumption, GateBlocker } from '../../sdd-runner/src/gate-model.js'
+import type { GateAssumption, GateBlocker, GateFinding } from '../../sdd-runner/src/gate-model.js'
 import type { DigestRecord } from '../../sdd-runner/src/replay.js'
 
 const tmpDirs: string[] = []
@@ -32,6 +32,10 @@ function assumption(overrides: Partial<GateAssumption> = {}): GateAssumption {
 
 function blocker(overrides: Partial<GateBlocker> = {}): GateBlocker {
   return { id: 'B1', gap: 'no rollback path', evidence: 'searched design.md', ...overrides }
+}
+
+function finding(overrides: Partial<GateFinding> = {}): GateFinding {
+  return { id: 'F1', gap: 'design lacks rollback', evidence: 'edited — gap narrowed', ...overrides }
 }
 
 describe('recordArtifactHashes + detectHandEdits', () => {
@@ -62,6 +66,7 @@ describe('writeGateDigest', () => {
       assumptions: [assumption({ id: 'A2', blast_radius: 'whole bot' }), assumption()],
       blockers: [],
       openMaterial: [],
+      openNitpicks: [],
       trajectory: [],
       capHitFired: false,
       summary: 'add a thing',
@@ -85,6 +90,7 @@ describe('writeGateDigest', () => {
       assumptions: [assumption()],
       blockers: [blocker()],
       openMaterial: [],
+      openNitpicks: [],
       trajectory: [],
       capHitFired: false,
       summary: 'add a thing',
@@ -109,6 +115,7 @@ describe('writeGateDigest', () => {
       assumptions: [],
       blockers: [],
       openMaterial: [{ id: 'F1', gap: 'F1', evidence: 'edited — gap narrowed' }],
+      openNitpicks: [],
       trajectory,
       capHitFired: true,
       summary: 'add a thing',
@@ -120,6 +127,33 @@ describe('writeGateDigest', () => {
     expect(md).toContain('round 2: 0b 1m 0n · 1 resolved · 0 dismissed · open')
     expect(md).toContain('- [ ] F1')
     expect(md).toContain('resolver: edited — gap narrowed')
+  })
+
+  it('renders surviving nitpicks as informational entries at the final gate', () => {
+    const md = writeGateDigest({
+      version: 1,
+      mode: 'final',
+      changeName: 'add-thing',
+      runId: 'run-1',
+      assumptions: [],
+      blockers: [],
+      openMaterial: [],
+      openNitpicks: [
+        { id: 'F1', gap: 'F1', evidence: 'edited — typo fixed' },
+        { id: 'F2', gap: 'F2', evidence: 'dismissed — answered in design' },
+      ],
+      trajectory: [],
+      capHitFired: false,
+      summary: 'add a thing',
+      costUsd: 0.42,
+      durationMs: 120_000,
+    })
+    expect(md).toContain('### Nitpicks (informational)')
+    expect(md).toContain('F1')
+    expect(md).toContain('resolver: edited — typo fixed')
+    expect(md).toContain('F2')
+    expect(md).toContain('resolver: dismissed — answered in design')
+    expect(md).not.toContain('- [ ] F1')
   })
 })
 
@@ -185,6 +219,40 @@ describe('parseGateResponse', () => {
   it('leaves the protocol unchanged when no requiredAck is set (final mode or blockers open)', () => {
     const md = '## Gate\n\n- [x] A1\n- [x] A2\n'
     const response = parseGateResponse(md, { ...expected, blockers: [] })
+    expect(response.approved).toBe(true)
+  })
+
+  it('records a veto when an open-MATERIAL-finding box is left unchecked', () => {
+    const md = '## Gate\n\n- [x] T1 reviewed\n- [ ] F1 design lacks rollback\n'
+    const response = parseGateResponse(md, {
+      assumptions: [],
+      blockers: [],
+      findings: [finding()],
+      requiredAck: 'T1',
+    })
+    expect(response.approved).toBe(false)
+    expect(response.vetoes).toEqual([{ id: 'F1' }])
+  })
+
+  it('attaches a redirect when a → line follows an unchecked finding box', () => {
+    const md = '## Gate\n\n- [x] T1 reviewed\n- [ ] F1 design lacks rollback\n→ restructure around a helper\n'
+    const response = parseGateResponse(md, {
+      assumptions: [],
+      blockers: [],
+      findings: [finding()],
+      requiredAck: 'T1',
+    })
+    expect(response.vetoes).toEqual([{ id: 'F1', redirect: 'restructure around a helper' }])
+  })
+
+  it('approves when every open-MATERIAL-finding box is checked alongside T1', () => {
+    const md = '## Gate\n\n- [x] T1 reviewed\n- [x] F1 design lacks rollback\n'
+    const response = parseGateResponse(md, {
+      assumptions: [],
+      blockers: [],
+      findings: [finding()],
+      requiredAck: 'T1',
+    })
     expect(response.approved).toBe(true)
   })
 })

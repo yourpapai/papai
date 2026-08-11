@@ -177,7 +177,10 @@ describe('runReviewLoop', () => {
       taskText: 'TASK TEXT SENTINEL - must never reach the reviewer',
       conventions: 'project conventions here',
     })
-    expect(result).toEqual({ outcome: 'converged', rounds: 1, openBlockers: [], openMaterial: [] })
+    expect(result.outcome).toBe('converged')
+    expect(result.rounds).toBe(1)
+    expect(result.openBlockers).toEqual([])
+    expect(result.openMaterial).toEqual([])
     const reviewerPrompt = promptOf(fixture, 'reviewer-1')
     expect(reviewerPrompt).toContain('improve things')
     expect(reviewerPrompt).toContain('project conventions here')

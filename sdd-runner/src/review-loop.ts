@@ -48,6 +48,7 @@ export interface ReviewLoopResult {
   readonly rounds: number
   readonly openBlockers: readonly Resolution[]
   readonly openMaterial: readonly Resolution[]
+  readonly openNitpicks: readonly Resolution[]
 }
 
 async function runLens(
@@ -137,10 +138,14 @@ async function runRound(
   deps.emit({ altitude: 'L2', type: 'convergence', round, verdict, counts })
   await deps.materialize(round)
   deps.emit({ altitude: 'L2', type: 'round_close', round, cap })
-  if (verdict === 'converged') return { outcome: 'converged', rounds: round, openBlockers: [], openMaterial: [] }
+  if (verdict === 'converged') {
+    const openNitpicks = resolved.resolutions.filter((entry) => entry.class === 'NITPICK')
+    return { outcome: 'converged', rounds: round, openBlockers: [], openMaterial: [], openNitpicks }
+  }
   const openBlockers = resolved.resolutions.filter((entry) => entry.class === 'BLOCKER')
   const openMaterial = resolved.resolutions.filter((entry) => entry.class === 'MATERIAL')
-  if (round >= cap) return { outcome: 'cap-hit', rounds: round, openBlockers, openMaterial }
+  const openNitpicks = resolved.resolutions.filter((entry) => entry.class === 'NITPICK')
+  if (round >= cap) return { outcome: 'cap-hit', rounds: round, openBlockers, openMaterial, openNitpicks }
   return runRound(deps, options, round + 1, cap, openBlockers.length)
 }
 

@@ -65,6 +65,7 @@ export interface ResumeGateInput {
   readonly version: number
   readonly assumptions: readonly GateAssumption[]
   readonly blockers: readonly GateBlocker[]
+  readonly findings?: readonly GateBlocker[]
   readonly requiredAck?: string
 }
 
@@ -79,6 +80,7 @@ export async function resumeGate(deps: GateDeps, input: ResumeGateInput): Promis
   const response = parseGateResponse(md, {
     assumptions: input.assumptions,
     blockers: input.blockers,
+    ...(input.findings === undefined ? {} : { findings: input.findings }),
     ...(input.requiredAck === undefined ? {} : { requiredAck: input.requiredAck }),
   })
   if (response.abort) {

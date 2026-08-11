@@ -232,6 +232,23 @@ export interface RunGateResumeResult {
   readonly version: number
 }
 
+async function prepareResumeInput(
+  sidecarDir: string,
+  round: number,
+  gateMode: 'early' | 'final',
+): Promise<{
+  assumptions: readonly { id: string; text: string; blast_radius: string }[]
+  reviewResult: ReviewLoopResult
+  requiredAck: string | undefined
+}> {
+  const assumptions = await gatherAssumptions(sidecarDir, round)
+  const capHitFired = gateMode === 'early'
+  const reviewResult = await readReviewResultFromSidecars(sidecarDir, round, capHitFired ? 'cap-hit' : 'converged')
+  const findings = findingsOf(reviewResult)
+  const requiredAck = capHitFired && findings.blockers.length === 0 ? 'T1' : undefined
+  return { assumptions, reviewResult, requiredAck }
+}
+
 export async function runGateResume(
   deps: OrchestratorDeps,
   runId: string,
@@ -246,15 +263,8 @@ export async function runGateResume(
   const gateMdPath = path.join(state.runDir, `gate-${version}.md`)
   if (options.abort === true) await writeFile(gateMdPath, 'ABORT\n')
   else if (options.confirmAll === true) await applyConfirmAll(gateMdPath)
-  const assumptions = await gatherAssumptions(sidecarDir, state.round)
-  const capHitFired = state.gate.mode === 'early'
-  const reviewResult = await readReviewResultFromSidecars(
-    sidecarDir,
-    state.round,
-    capHitFired ? 'cap-hit' : 'converged',
-  )
+  const { assumptions, reviewResult, requiredAck } = await prepareResumeInput(sidecarDir, state.round, state.gate.mode)
   const findings = findingsOf(reviewResult)
-  const requiredAck = capHitFired && findings.blockers.length === 0 ? 'T1' : undefined
   const agent: AgentLayerDeps = { spawn: deps.spawn, config: deps.config, execGit: deps.execGit, emit }
   const outcome = await resumeGate(
     {
@@ -263,7 +273,13 @@ export async function runGateResume(
       changeDir,
       driftCheck: buildDriftCheck(agent, state, changeDir, sidecarDir, deps.config.repoRoot),
     },
-    { version, assumptions, blockers: findings.blockers, ...(requiredAck === undefined ? {} : { requiredAck }) },
+    {
+      version,
+      assumptions,
+      blockers: findings.blockers,
+      ...(findings.material.length > 0 ? { findings: findings.material } : {}),
+      ...(requiredAck === undefined ? {} : { requiredAck }),
+    },
   )
   if (outcome.kind === 'aborted') return finalizeGate(deps, state, 'aborted', version)
   if (outcome.kind === 'approved') return finalizeGate(deps, state, 'completed', version)

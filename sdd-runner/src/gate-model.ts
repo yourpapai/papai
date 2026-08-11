@@ -56,6 +56,7 @@ export interface GateDigestInput {
   readonly assumptions: readonly GateAssumption[]
   readonly blockers: readonly GateBlocker[]
   readonly openMaterial: readonly GateFinding[]
+  readonly openNitpicks: readonly GateFinding[]
   readonly trajectory: readonly DigestRecord[]
   readonly capHitFired: boolean
   readonly summary: string
@@ -100,6 +101,12 @@ export function writeGateDigest(input: GateDigestInput): string {
   if (input.mode === 'early' && input.blockers.length === 0 && input.capHitFired) {
     lines.push('', '### Trajectory reviewed', '', '- [ ] T1 I reviewed the trajectory and the open findings above')
   }
+  if (input.openNitpicks.length > 0) {
+    lines.push('', '### Nitpicks (informational)')
+    for (const nitpick of input.openNitpicks) {
+      lines.push('', `- ${nitpick.id} ${nitpick.gap}`, `  resolver: ${nitpick.evidence}`)
+    }
+  }
   lines.push('', '### Assumptions (blast-ranked)')
   for (const assumption of ranked) {
     lines.push('', `- [ ] ${assumption.id} ${assumption.text}`, `  blast radius: ${assumption.blast_radius}`)
@@ -129,6 +136,7 @@ export interface GateResponse {
 export interface ExpectedGateContent {
   readonly assumptions: readonly GateAssumption[]
   readonly blockers: readonly GateBlocker[]
+  readonly findings?: readonly GateFinding[]
   readonly requiredAck?: string
 }
 
@@ -148,6 +156,26 @@ interface ParseState {
   override: boolean
 }
 
+function processVetoBox(
+  state: ParseState,
+  line: string,
+  lineNo: number,
+  regex: RegExp,
+  ids: Set<string>,
+  label: string,
+): boolean {
+  const match = line.match(regex)
+  if (match === null) return false
+  const checked = classifyBox(`[${match[1] ?? ''}]`)
+  if (checked === null) throw new Error(`gate response line ${lineNo}: ambiguous checkbox mark`)
+  const id = match[2] ?? ''
+  if (!ids.has(id)) throw new Error(`gate response line ${lineNo}: unknown ${label} ${id}`)
+  if (checked) state.checked.add(id)
+  else state.vetoes.push({ id })
+  state.pendingRedirectFor = checked ? null : id
+  return true
+}
+
 function processLine(
   state: ParseState,
   line: string,
@@ -155,18 +183,10 @@ function processLine(
   prevLine: string,
   assumptionIds: Set<string>,
   blockerIds: Set<string>,
+  findingIds: Set<string>,
 ): void {
-  const boxMatch = line.match(/^\s*-\s*\[([^\]]+)\]\s*(A\d+)\b/u)
-  if (boxMatch !== null) {
-    const checked = classifyBox(`[${boxMatch[1] ?? ''}]`)
-    if (checked === null) throw new Error(`gate response line ${lineNo}: ambiguous checkbox mark`)
-    const id = boxMatch[2] ?? ''
-    if (!assumptionIds.has(id)) throw new Error(`gate response line ${lineNo}: unknown assumption ${id}`)
-    if (checked) state.checked.add(id)
-    else state.vetoes.push({ id })
-    state.pendingRedirectFor = checked ? null : id
-    return
-  }
+  if (processVetoBox(state, line, lineNo, /^\s*-\s*\[([^\]]+)\]\s*(A\d+)\b/u, assumptionIds, 'assumption')) return
+  if (processVetoBox(state, line, lineNo, /^\s*-\s*\[([^\]]+)\]\s*(F\d+)\b/u, findingIds, 'finding')) return
   const ackMatch = line.match(/^\s*-\s*\[([^\]]+)\]\s*(T\d+)\b/u)
   if (ackMatch !== null) {
     const checked = classifyBox(`[${ackMatch[1] ?? ''}]`)
@@ -223,9 +243,10 @@ export function parseGateResponse(markdown: string, expected: ExpectedGateConten
   const lines = markdown.split('\n')
   const assumptionIds = new Set(expected.assumptions.map((a) => a.id))
   const blockerIds = new Set(expected.blockers.map((b) => b.id))
+  const findingIds = new Set((expected.findings ?? []).map((f) => f.id))
   const state: ParseState = { vetoes: [], answers: [], checked: new Set(), pendingRedirectFor: null, override: false }
   lines.forEach((line, index) => {
-    processLine(state, line, index + 1, lines[index - 1] ?? '', assumptionIds, blockerIds)
+    processLine(state, line, index + 1, lines[index - 1] ?? '', assumptionIds, blockerIds, findingIds)
   })
   return finalizeResponse(state, expected)
 }

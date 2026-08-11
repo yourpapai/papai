@@ -76,6 +76,7 @@ describe('presentGate', () => {
       costUsd: 0.5,
       durationMs: 1000,
       openMaterial: [],
+      openNitpicks: [],
       trajectory: [],
       capHitFired: false,
     })
@@ -102,6 +103,7 @@ describe('resumeGate', () => {
       costUsd: 0,
       durationMs: 0,
       openMaterial: [],
+      openNitpicks: [],
       trajectory: [],
       capHitFired: false,
     })
@@ -133,6 +135,7 @@ describe('resumeGate', () => {
       costUsd: 0,
       durationMs: 0,
       openMaterial: [],
+      openNitpicks: [],
       trajectory: [],
       capHitFired: false,
     })
@@ -167,6 +170,7 @@ describe('resumeGate', () => {
       costUsd: 0,
       durationMs: 0,
       openMaterial: [],
+      openNitpicks: [],
       trajectory: [],
       capHitFired: false,
     })
@@ -199,6 +203,7 @@ describe('resumeGate', () => {
       costUsd: 0,
       durationMs: 0,
       openMaterial: [],
+      openNitpicks: [],
       trajectory: [],
       capHitFired: false,
     })

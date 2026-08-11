@@ -29,3 +29,10 @@
 
 - [x] 6.1 Update `docs/architecture/sdd-pipeline.md` "Gate protocol" section: note the MATERIAL-only cap-hit path, the trajectory block, the open-MATERIAL checkbox+veto semantics, and the `T1` trajectory-reviewed ack. Verify: manual read of the section
 - [x] 6.2 Full verification: `bun test`, `bun run typecheck`, `bun run lint`, `openspec validate sdd-runner-cap-hit-fidelity --strict`. Update any other affected `docs/architecture/*.md` pages surfaced by the run.
+
+## 7. Follow-on: F-box veto parsing + OQ2 nitpicks at final gate
+
+- [x] 7.1 Failing tests in `tests/sdd-runner/gate-model.test.ts`: parseGateResponse records a veto when an F-prefix finding box is left unchecked; attaches a redirect from `→` beneath it; approves when all F boxes are checked. Verify: `bun test tests/sdd-runner/gate-model.test.ts` (fails)
+- [x] 7.2 Implement F-branch in `processLine` (`gate-model.ts`) via extracted `processVetoBox` helper; add `findings?: readonly GateFinding[]` to `ExpectedGateContent`; thread `findingIds` through `parseGateResponse`. Thread `findings` through `ResumeGateInput` (`gate.ts`) + `runGateResume` (`orchestrator.ts`). Widen `applyConfirmAll` regex to `[AFT]`. Verify: `bun test tests/sdd-runner/gate-model.test.ts`; `bun run typecheck`
+- [x] 7.3 E2E test in `tests/sdd-runner/orchestrator.test.ts`: cap-hit gate with T1 checked but F1 unchecked → `outcome: 'veto'`, `gate-2.md` written. Verify: `bun test tests/sdd-runner/orchestrator.test.ts`
+- [x] 7.4 *(OQ2 resolved)* Add `openNitpicks` to `ReviewLoopResult` + `GateDigestInput`; populate in `runRound` on both convergence and cap-hit paths; extend `findingsOf` to return `{ blockers, material, nitpicks }`; render `### Nitpicks (informational)` section in `writeGateDigest` (plain bullets, no checkboxes). Verify: `bun test tests/sdd-runner/`; `bun run typecheck`

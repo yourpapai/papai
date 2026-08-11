@@ -306,6 +306,33 @@ describe('runGateResume', () => {
     await expect(runGateResume(fixture.deps, started.runId, {})).rejects.toThrow(/T1/u)
   })
 
+  it('records a veto when an open-MATERIAL-finding box is left unchecked at the cap-hit gate', async () => {
+    const materialFinding = {
+      id: 'F1',
+      class: 'MATERIAL',
+      gap: 'design lacks rollback',
+      question: 'how?',
+      code_evidence_attempted: 'searched design.md',
+    }
+    const materialResolution = { id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed gap' }
+    const fixture = makeFixture({
+      'findings-1.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-1.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-2.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-2.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-3.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-3.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+    })
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'M' })
+    const gatePath = path.join(fixture.deps.config.workDir, 'runs', started.runId, 'gate-1.md')
+    const gateMd = fs.readFileSync(gatePath, 'utf8')
+    fs.writeFileSync(gatePath, gateMd.replace('- [ ] T1', '- [x] T1'))
+
+    const result = await runGateResume(fixture.deps, started.runId, {})
+    expect(result.outcome).toBe('veto')
+    expect(result.version).toBe(2)
+  })
+
   it('marks the run completed on an approved gate', async () => {
     const fixture = makeFixture()
     const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })

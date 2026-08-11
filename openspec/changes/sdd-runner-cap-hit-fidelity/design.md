@@ -153,5 +153,5 @@ No data migration. `sdd-runner` run state is gitignored and per-run; old runs' `
 
 ## Open Questions
 
-- **OQ1.** Should the `T1` ack box (D2) also appear at the *final* gate when the run converged after a cap-hit override cycle, or only at the early gate? *Deferrable*: doesn't change this change's approach or task breakdown; answer after seeing the first post-D2 dogfood.
-- **OQ2.** Should the open-MATERIAL checkbox surface also apply at the final gate (post-atomicity) when the loop converged but had nitpicks, or stay early-gate-only? *Deferrable*: same.
+- **OQ1.** ~~Should the `T1` ack box (D2) also appear at the *final* gate when the run converged after a cap-hit override cycle, or only at the early gate?~~ **Resolved**: T1 stays early-gate-only. By the time the human reaches the final gate, they're approving the decomposed work product, not re-litigating the review loop. Requiring T1 there is friction without value.
+- **OQ2.** ~~Should the open-MATERIAL checkbox surface also apply at the final gate (post-atomicity) when the loop converged but had nitpicks, or stay early-gate-only?~~ **Resolved**: nitpicks are visible at the final gate as informational entries (plain bullets, no checkboxes) under `### Nitpicks (informational)`. No veto surface — nitpicks are by definition minor; the existing assumption-checkbox surface remains the approve mechanism. Implemented via `openNitpicks` on `ReviewLoopResult` + `GateDigestInput`.
