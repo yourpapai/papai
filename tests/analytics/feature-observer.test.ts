@@ -258,29 +258,27 @@ describe('tool and memory features', () => {
   test('recurring task creation emits feature_used recurring/create', async () => {
     await setupTestDb()
     const tool = makeCreateRecurringTaskTool('user-1', {
-      createRecurringTask: mock(
-        (): RecurringTaskRecord => ({
-          id: 'rec-1',
-          userId: 'user-1',
-          title: 'standup',
-          description: null,
-          priority: null,
-          status: null,
-          assignee: null,
-          labels: [],
-          projectId: 'proj-1',
-          triggerType: 'on_complete' as const,
-          rrule: null,
-          dtstartUtc: null,
-          timezone: 'UTC',
-          enabled: true,
-          catchUp: false,
-          lastRun: null,
-          nextRun: null,
-          createdAt: '2026-07-25T00:00:00.000Z',
-          updatedAt: '2026-07-25T00:00:00.000Z',
-        }),
-      ),
+      createRecurringTask: mock((): RecurringTaskRecord => ({
+        id: 'rec-1',
+        userId: 'user-1',
+        title: 'standup',
+        description: null,
+        priority: null,
+        status: null,
+        assignee: null,
+        labels: [],
+        projectId: 'proj-1',
+        triggerType: 'on_complete' as const,
+        rrule: null,
+        dtstartUtc: null,
+        timezone: 'UTC',
+        enabled: true,
+        catchUp: false,
+        lastRun: null,
+        nextRun: null,
+        createdAt: '2026-07-25T00:00:00.000Z',
+        updatedAt: '2026-07-25T00:00:00.000Z',
+      })),
     })
     const executor = getToolExecutor(tool)
     const scope = makeActorScope()
