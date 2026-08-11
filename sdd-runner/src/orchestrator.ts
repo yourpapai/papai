@@ -24,7 +24,7 @@ import {
   readReviewResultFromSidecars,
 } from './gate-digest.js'
 import type { OrchestratorDeps, RunStartResult, StageContext } from './gate-digest.js'
-import { resumeGate } from './gate.js'
+import { resumeGate, vetoRedirects } from './gate.js'
 import { runIntake } from './intake.js'
 import { createMaterializer } from './materialize.js'
 import { replayEvents } from './replay.js'
@@ -34,6 +34,7 @@ import { createRunState, loadRunState, saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
 import { deriveResumePoint } from './run-state.js'
 import { createStageMachine } from './stage-machine.js'
+import { runVetoUpdater, updateAssumptionsFromVetoes } from './veto-updater.js'
 
 export type { OrchestratorDeps, RunStartResult } from './gate-digest.js'
 
@@ -283,14 +284,14 @@ export async function runGateResume(
   )
   if (outcome.kind === 'aborted') return finalizeGate(deps, state, 'aborted', version)
   if (outcome.kind === 'approved') return finalizeGate(deps, state, 'completed', version)
+  const vetoes = vetoRedirects(outcome)
+  const ctx: StageContext = { cwd: deps.config.repoRoot, changeDir, sidecarDir, emit }
+  await updateAssumptionsFromVetoes(sidecarDir, state.round, vetoes)
+  const driftCheck = buildDriftCheck(agent, state, changeDir, sidecarDir, deps.config.repoRoot)
+  const { filesUpdated } = await runVetoUpdater({ driver: deps.driver, agent }, state, ctx, vetoes)
+  const driftFiles = filesUpdated.filter((file) => file.includes('specs/') || file.endsWith('tasks.md'))
+  if (driftFiles.length > 0) await driftCheck(driftFiles)
   const next = version + 1
-  await presentGateAt(
-    deps,
-    state,
-    { cwd: deps.config.repoRoot, changeDir, sidecarDir, emit },
-    reviewResult,
-    next,
-    state.gate.mode,
-  )
+  await presentGateAt(deps, state, ctx, reviewResult, next, state.gate.mode)
   return { runId, outcome: 'veto', version: next }
 }

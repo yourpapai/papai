@@ -8,6 +8,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { z } from 'zod'
+
 import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
 import { agentWritePath } from '../../review-loop/src/agent-runner.js'
 import { readEvents } from '../../sdd-runner/src/events.js'
@@ -63,6 +65,7 @@ function makeFixture(sidecarOverrides: Record<string, string> = {}): Fixture {
     'decompose-tasks.json': JSON.stringify({ tasks_file: 'openspec/changes/add-thing/tasks.md' }),
     'atomicity.json': JSON.stringify({ split: 0, merged: 0 }),
     'drift.json': JSON.stringify({ tasks_file: 'openspec/changes/add-thing/tasks.md' }),
+    'veto-updater.json': JSON.stringify({ files_updated: ['openspec/changes/add-thing/proposal.md'] }),
     ...sidecarOverrides,
   }
   const artifacts: Record<string, string> = {
@@ -70,6 +73,7 @@ function makeFixture(sidecarOverrides: Record<string, string> = {}): Fixture {
     'draft-specs.json': path.join(changeDir, 'specs', 'thing', 'spec.md'),
     'draft-design.json': path.join(changeDir, 'design.md'),
     'decompose-tasks.json': path.join(changeDir, 'tasks.md'),
+    'veto-updater.json': path.join(changeDir, 'proposal.md'),
   }
   const spawn: SpawnFn = (_command, args, options) => {
     const prompt = String(args[args.length - 1])
@@ -365,5 +369,41 @@ describe('runGateResume', () => {
     expect(result.outcome).toBe('approved')
     const driftSpawn = fixture.spawnOrder.slice(before).find((name) => name === 'drift.json')
     expect(driftSpawn).toBe('drift.json')
+  })
+
+  it('runs the veto updater at the final gate and re-presents gate-2 with redirected assumption text and new artifact hashes', async () => {
+    const assumption = {
+      id: 'A1',
+      text: 'guests stay read-only',
+      basis: 'default',
+      confidence: 'medium',
+      blast_radius: 'group replies',
+      status: 'open',
+    }
+    const fixture = makeFixture({
+      'resolutions-1.json': JSON.stringify({ resolutions: [], assumptions: [assumption] }),
+    })
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    const runDir = path.join(fixture.deps.config.workDir, 'runs', started.runId)
+    const gate1Path = path.join(runDir, 'gate-1.md')
+    const gate1 = fs.readFileSync(gate1Path, 'utf8')
+    expect(gate1).toContain('- [ ] A1 guests stay read-only')
+    fs.writeFileSync(
+      gate1Path,
+      gate1.replace('- [ ] A1 guests stay read-only', '- [ ] A1 guests stay read-only\n→ narrowed to dm-only'),
+    )
+
+    const result = await runGateResume(fixture.deps, started.runId, {})
+    expect(result.outcome).toBe('veto')
+    expect(result.version).toBe(2)
+
+    const gate2 = fs.readFileSync(path.join(runDir, 'gate-2.md'), 'utf8')
+    expect(gate2).toContain('- [ ] A1 narrowed to dm-only')
+
+    const HashesSchema = z.record(z.string(), z.string())
+    const hashes1 = HashesSchema.parse(JSON.parse(fs.readFileSync(path.join(runDir, 'gate-hashes-1.json'), 'utf8')))
+    const hashes2 = HashesSchema.parse(JSON.parse(fs.readFileSync(path.join(runDir, 'gate-hashes-2.json'), 'utf8')))
+    expect(hashes1['proposal.md']).not.toBe(hashes2['proposal.md'])
+    expect(fixture.spawnOrder).toContain('veto-updater.json')
   })
 })
