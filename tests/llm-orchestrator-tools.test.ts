@@ -46,8 +46,8 @@ const NO_STAGED_DOWNLOAD: StagedFileDownloadFn | undefined = undefined as Staged
 // mock. Bun's mock.module() is synchronous; the delayed `await import(…)` below
 // picks up the registered mock.
 // ---------------------------------------------------------------------------
-const buildToolDescriptorsSpy = mock(
-  (_provider: TaskProvider, _options: MakeToolsOptions): Promise<ToolSet> => Promise.resolve({}),
+const buildToolDescriptorsSpy = mock((_provider: TaskProvider, _options: MakeToolsOptions): Promise<ToolSet> =>
+  Promise.resolve({}),
 )
 const buildProviderlessToolDescriptorsSpy = mock((_options: MakeToolsOptions): Promise<ToolSet> => Promise.resolve({}))
 

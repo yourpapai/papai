@@ -24,8 +24,8 @@ void mock.module('../../src/mcp/user-endpoints.js', () => ({
 
 void mock.module('../../src/mcp/index.js', () => ({
   buildMcpToolSet: buildMcpToolSetSpy,
-  buildPluginMcpToolSet: mock(
-    (_ids: string[], _desc: unknown, _pool: unknown): Promise<ToolSet> => Promise.resolve({}),
+  buildPluginMcpToolSet: mock((_ids: string[], _desc: unknown, _pool: unknown): Promise<ToolSet> =>
+    Promise.resolve({}),
   ),
   mcpPool: { getOrCreateFromPlugin: mock(() => Promise.resolve({ hash: 'h', client: {} })) },
   convertMcpToolsToToolSet: mock(() => ({})),
@@ -42,8 +42,8 @@ beforeEach(async () => {
   }))
   void mock.module('../../src/mcp/index.js', () => ({
     buildMcpToolSet: buildMcpToolSetSpy,
-    buildPluginMcpToolSet: mock(
-      (_ids: string[], _desc: unknown, _pool: unknown): Promise<ToolSet> => Promise.resolve({}),
+    buildPluginMcpToolSet: mock((_ids: string[], _desc: unknown, _pool: unknown): Promise<ToolSet> =>
+      Promise.resolve({}),
     ),
     mcpPool: { getOrCreateFromPlugin: mock(() => Promise.resolve({ hash: 'h', client: {} })) },
     convertMcpToolsToToolSet: mock(() => ({})),
