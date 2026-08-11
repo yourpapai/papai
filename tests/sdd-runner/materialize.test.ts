@@ -74,6 +74,18 @@ describe('materializeReview', () => {
     expect(md).toContain('1 dismissed')
   })
 
+  it('renders the round verdict body in the canonical burndown field set', async () => {
+    const dir = makeDir()
+    const changeDir = path.join(dir, 'change')
+    const sidecarDir = path.join(dir, 'sidecars')
+    fs.mkdirSync(changeDir, { recursive: true })
+    writeJson(sidecarDir, 'findings-1.json', FINDINGS_R1)
+    writeJson(sidecarDir, 'resolutions-1.json', RESOLUTIONS_R1)
+    await materializeReview(changeDir, sidecarDir, 1)
+    const md = fs.readFileSync(path.join(changeDir, 'review.md'), 'utf8')
+    expect(md).toContain('**Verdict**: 0b 0m 1n \u00b7 0 resolved \u00b7 1 dismissed \u00b7 converged')
+  })
+
   it('regenerates wholesale: a second call replaces, never merges', async () => {
     const dir = makeDir()
     const changeDir = path.join(dir, 'change')

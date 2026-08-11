@@ -26,7 +26,7 @@ export const USAGE = [
   'sdd-runner — autonomous SDD pipeline',
   '',
   'Usage:',
-  '  sdd-runner start <task-file> [--depth S|M|L] [--wait] [--verbosity brief|normal|debug]',
+  '  sdd-runner start <task-file> [--depth S|M|L] [--verbosity brief|normal|debug]',
   '  sdd-runner resume <runId>',
   '  sdd-runner gate resume <runId> [--confirm-all] [--abort]',
   '  sdd-runner report <runId> [--pr]',

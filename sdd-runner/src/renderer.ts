@@ -4,7 +4,9 @@
 // See LICENSE in the project root for details.
 
 import { STAGE_ORDER } from './events.js'
-import type { EventInput, ReplayState } from './events.js'
+import type { EventInput } from './events.js'
+import { createReplayFolder } from './replay.js'
+import type { DigestRecord, ReplayState } from './replay.js'
 
 export type Verbosity = 'brief' | 'normal' | 'debug'
 
@@ -32,17 +34,19 @@ export function renderPipelineMap(state: ReplayState): string[] {
   })
 }
 
-export function renderBurndown(
-  verdict: {
-    readonly round: number
-    readonly verdict: 'converged' | 'open'
-    readonly counts: { readonly blocker: number; readonly material: number; readonly nitpick: number }
-  },
-  _cap: number,
-  resolved: number,
-): string {
-  const { blocker, material, nitpick } = verdict.counts
-  return `round ${verdict.round}: ${blocker}b ${material}m ${nitpick}n \u00b7 ${resolved} resolved \u00b7 ${verdict.verdict}`
+export function formatDigestBody(record: DigestRecord): string {
+  const { blocker, material, nitpick } = record.counts
+  return `${blocker}b ${material}m ${nitpick}n \u00b7 ${record.resolved} resolved \u00b7 ${record.dismissed} dismissed \u00b7 ${record.verdict}`
+}
+
+export function formatBurndownLine(record: DigestRecord): string {
+  return `round ${record.round}: ${formatDigestBody(record)}`
+}
+
+export function formatTrajectoryBlock(records: readonly DigestRecord[]): string {
+  if (records.length === 0) return ''
+  const lines = records.map(formatBurndownLine)
+  return ['### Cap-hit trajectory', ...lines].join('\n')
 }
 
 function shouldShow(altitude: string, verbosity: Verbosity): boolean {
@@ -53,8 +57,6 @@ function shouldShow(altitude: string, verbosity: Verbosity): boolean {
 
 export function formatEvent(event: EventInput, verbosity: Verbosity): string | null {
   if (!shouldShow(event.altitude, verbosity)) return null
-  if (event.type === 'convergence')
-    return `round ${event.round}: ${event.verdict} (${event.counts.blocker}b ${event.counts.material}m ${event.counts.nitpick}n)`
   if (event.type === 'stage_enter') return `[${event.stage}] entered`
   if (event.type === 'stage_exit') return `[${event.stage}] done`
   if (event.type === 'round_open') return `round ${event.round}/${event.cap} opened`
@@ -75,25 +77,13 @@ export function formatEvent(event: EventInput, verbosity: Verbosity): string | n
   return null
 }
 
-export function renderGateScreen(input: {
-  readonly changeName: string
-  readonly runId: string
-  readonly assumptions: readonly { readonly id: string; readonly text: string; readonly blast_radius: string }[]
-}): string {
-  const lines = [`Gate \u2014 ${input.changeName}`, '']
-  for (const assumption of input.assumptions) {
-    lines.push(`  ${assumption.id}: ${assumption.text} (blast: ${assumption.blast_radius})`)
-  }
-  lines.push('', `Resume with: gate resume ${input.runId}`)
-  return lines.join('\n')
-}
-
 export interface Renderer {
   readonly renderState: (state: ReplayState) => void
   readonly renderEvent: (event: EventInput) => void
 }
 
 export function createRenderer(stream: RendererStream, verbosity: Verbosity): Renderer {
+  const folder = createReplayFolder()
   return {
     renderState: (state) => {
       const lines = renderPipelineMap(state)
@@ -101,6 +91,13 @@ export function createRenderer(stream: RendererStream, verbosity: Verbosity): Re
       stream.write(`${block}\n`)
     },
     renderEvent: (event) => {
+      folder.fold(event)
+      if (event.type === 'round_close') {
+        const perRound = folder.state.perRound
+        const last = perRound[perRound.length - 1]
+        if (last !== undefined) stream.write(`${formatBurndownLine(last)}\n`)
+        return
+      }
       const line = formatEvent(event, verbosity)
       if (line !== null) stream.write(`${line}\n`)
     },

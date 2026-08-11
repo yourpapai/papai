@@ -214,18 +214,6 @@ export const SddEventSchema = z.discriminatedUnion('type', [
 ])
 export type SddEvent = z.infer<typeof SddEventSchema>
 
-export interface ReplayState {
-  readonly stages: Record<StageId, 'done' | 'active' | 'pending'>
-  readonly depth: DepthProfile | null
-  readonly round: { readonly current: number; readonly cap: number } | null
-  readonly lastVerdict: {
-    readonly round: number
-    readonly verdict: 'converged' | 'open'
-    readonly counts: FindingCounts
-  } | null
-  readonly gate: { readonly mode: 'early' | 'final'; readonly version: number; readonly answered: boolean } | null
-}
-
 function nextSeq(logPath: string): number {
   if (!fs.existsSync(logPath)) return 1
   const lines = fs
@@ -257,41 +245,4 @@ export function readEvents(logPath: string): SddEvent[] {
     }
   })
   return events
-}
-
-function initialStages(): Record<StageId, 'done' | 'active' | 'pending'> {
-  return {
-    intake: 'pending',
-    draft: 'pending',
-    review: 'pending',
-    decompose: 'pending',
-    atomicity: 'pending',
-    gate: 'pending',
-  }
-}
-
-function foldEvent(state: ReplayState, event: SddEvent): ReplayState {
-  if (event.type === 'stage_enter') {
-    const stages = { ...state.stages }
-    for (const id of STAGE_ORDER) if (stages[id] === 'active') stages[id] = 'done'
-    stages[event.stage] = 'active'
-    return { ...state, stages }
-  }
-  if (event.type === 'stage_exit') return { ...state, stages: { ...state.stages, [event.stage]: 'done' } }
-  if (event.type === 'depth') return { ...state, depth: event.profile }
-  if (event.type === 'round_open') return { ...state, round: { current: event.round, cap: event.cap } }
-  if (event.type === 'convergence') {
-    return { ...state, lastVerdict: { round: event.round, verdict: event.verdict, counts: event.counts } }
-  }
-  if (event.type === 'gate') {
-    if (event.action === 'presented')
-      return { ...state, gate: { mode: event.mode, version: event.version, answered: false } }
-    return state.gate === null ? state : { ...state, gate: { ...state.gate, answered: true } }
-  }
-  return state
-}
-
-export function replayEvents(logPath: string): ReplayState {
-  const initial: ReplayState = { stages: initialStages(), depth: null, round: null, lastVerdict: null, gate: null }
-  return readEvents(logPath).reduce(foldEvent, initial)
 }

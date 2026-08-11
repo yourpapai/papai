@@ -5,14 +5,14 @@
 
 import { describe, expect, it } from 'bun:test'
 
-import type { ReplayState } from '../../sdd-runner/src/events.js'
 import {
   createRenderer,
+  formatBurndownLine,
   formatEvent,
-  renderBurndown,
-  renderGateScreen,
+  formatTrajectoryBlock,
   renderPipelineMap,
 } from '../../sdd-runner/src/renderer.js'
+import type { ReplayState } from '../../sdd-runner/src/replay.js'
 
 const state: ReplayState = {
   stages: {
@@ -25,7 +25,14 @@ const state: ReplayState = {
   },
   depth: 'M',
   round: { current: 2, cap: 3 },
-  lastVerdict: { round: 1, verdict: 'open', counts: { blocker: 1, material: 0, nitpick: 0 } },
+  perRound: [],
+  lastVerdict: {
+    round: 1,
+    verdict: 'open',
+    counts: { blocker: 1, material: 0, nitpick: 0 },
+    resolved: 0,
+    dismissed: 0,
+  },
   gate: null,
 }
 
@@ -60,23 +67,61 @@ describe('renderPipelineMap', () => {
   })
 })
 
-describe('renderBurndown', () => {
-  it('formats a compact one-line burndown for a round close', () => {
-    const line = renderBurndown(
-      { round: 2, verdict: 'converged', counts: { blocker: 0, material: 0, nitpick: 1 } },
-      3,
-      2,
-    )
-    expect(line).toContain('round 2')
-    expect(line).toContain('0b')
-    expect(line).toContain('0m')
-    expect(line).toContain('1n')
-    expect(line).toContain('converged')
+describe('formatBurndownLine', () => {
+  it('produces the spec-mandated field set with trailing verdict and lowercase class letters', () => {
+    const line = formatBurndownLine({
+      round: 2,
+      counts: { blocker: 0, material: 0, nitpick: 1 },
+      resolved: 3,
+      dismissed: 2,
+      verdict: 'converged',
+    })
+    expect(line).toBe('round 2: 0b 0m 1n \u00b7 3 resolved \u00b7 2 dismissed \u00b7 converged')
+  })
+
+  it('includes all five fields and a trailing verdict for an open round', () => {
+    const line = formatBurndownLine({
+      round: 1,
+      counts: { blocker: 1, material: 2, nitpick: 0 },
+      resolved: 0,
+      dismissed: 1,
+      verdict: 'open',
+    })
+    expect(line).toBe('round 1: 1b 2m 0n \u00b7 0 resolved \u00b7 1 dismissed \u00b7 open')
+  })
+})
+
+describe('formatTrajectoryBlock', () => {
+  it('renders the heading followed by one burndown line per record', () => {
+    const block = formatTrajectoryBlock([
+      {
+        round: 1,
+        counts: { blocker: 2, material: 1, nitpick: 0 },
+        resolved: 1,
+        dismissed: 0,
+        verdict: 'open',
+      },
+      {
+        round: 2,
+        counts: { blocker: 0, material: 0, nitpick: 1 },
+        resolved: 3,
+        dismissed: 2,
+        verdict: 'converged',
+      },
+    ])
+    const lines = block.split('\n')
+    expect(lines[0]).toBe('### Cap-hit trajectory')
+    expect(lines[1]).toBe('round 1: 2b 1m 0n \u00b7 1 resolved \u00b7 0 dismissed \u00b7 open')
+    expect(lines[2]).toBe('round 2: 0b 0m 1n \u00b7 3 resolved \u00b7 2 dismissed \u00b7 converged')
+  })
+
+  it('returns an empty string (no heading) for empty input', () => {
+    expect(formatTrajectoryBlock([])).toBe('')
   })
 })
 
 describe('formatEvent', () => {
-  it('formats an L2 convergence event as a semantic one-liner', () => {
+  it('returns null for convergence (burndown renders at round_close instead)', () => {
     const line = formatEvent(
       {
         altitude: 'L2',
@@ -87,8 +132,7 @@ describe('formatEvent', () => {
       },
       'normal',
     )
-    expect(line).toContain('converged')
-    expect(line).toContain('round 2')
+    expect(line).toBeNull()
   })
 
   it('returns null for L0 events at normal verbosity', () => {
@@ -115,18 +159,6 @@ describe('formatEvent', () => {
       'debug',
     )
     expect(line).toContain('code_search')
-  })
-})
-
-describe('renderGateScreen', () => {
-  it('renders a gate digest with assumptions and the resume command', () => {
-    const screen = renderGateScreen({
-      changeName: 'add-thing',
-      runId: 'run-1',
-      assumptions: [{ id: 'A1', text: 'guests read-only', blast_radius: 'group replies' }],
-    })
-    expect(screen).toContain('gate resume run-1')
-    expect(screen).toContain('A1')
   })
 })
 

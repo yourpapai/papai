@@ -10,7 +10,6 @@ import type { AgentLayerDeps } from './agent-layer.js'
 import { deriveChangeName } from './config.js'
 import { runAtomicity, runDecompose } from './decompose.js'
 import { runDraft } from './draft.js'
-import { replayEvents } from './events.js'
 import type { DepthProfile, EventInput } from './events.js'
 import {
   applyConfirmAll,
@@ -26,6 +25,7 @@ import type { OrchestratorDeps, RunStartResult, StageContext } from './gate-dige
 import { resumeGate } from './gate.js'
 import { runIntake } from './intake.js'
 import { createMaterializer } from './materialize.js'
+import { replayEvents } from './replay.js'
 import { runReviewLoop } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
 import { createRunState, loadRunState, saveRunState } from './run-state.js'
@@ -38,7 +38,6 @@ export type { OrchestratorDeps, RunStartResult } from './gate-digest.js'
 export interface StartOptions {
   readonly taskFile: string
   readonly depthOverride?: DepthProfile
-  readonly wait?: boolean
 }
 
 export interface RunResumeResult {

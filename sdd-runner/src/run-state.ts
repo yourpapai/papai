@@ -10,7 +10,8 @@ import path from 'node:path'
 import { z } from 'zod'
 
 import { DepthProfileSchema, StageIdSchema } from './events.js'
-import type { ReplayState, StageId } from './events.js'
+import type { StageId } from './events.js'
+import type { ReplayState } from './replay.js'
 
 export const PersistedRunStateSchema = z.object({
   runId: z.string().min(1),

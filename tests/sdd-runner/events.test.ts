@@ -8,7 +8,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { appendEvent, readEvents, replayEvents } from '../../sdd-runner/src/events.js'
+import { appendEvent, readEvents } from '../../sdd-runner/src/events.js'
 
 const tmpDirs: string[] = []
 
@@ -113,73 +113,5 @@ describe('L2 semantic events', () => {
     const log = makeLog()
     appendEvent(log, { altitude: 'L2', type: 'gate', action: 'presented', mode: 'early', version: 1 }, at('00'))
     expect(readEvents(log)[0]).toMatchObject({ type: 'gate', mode: 'early', version: 1 })
-  })
-})
-
-describe('replayEvents', () => {
-  it('rebuilds stage map, current round, and gate state from the log alone', () => {
-    const log = makeLog()
-    const seq: Array<Parameters<typeof appendEvent>[1]> = [
-      { altitude: 'L2', type: 'stage_enter', stage: 'intake' },
-      { altitude: 'L2', type: 'depth', profile: 'M', rationale: 'multi-module', source: 'estimator' },
-      { altitude: 'L2', type: 'stage_exit', stage: 'intake' },
-      { altitude: 'L2', type: 'stage_enter', stage: 'draft' },
-      { altitude: 'L2', type: 'stage_exit', stage: 'draft' },
-      { altitude: 'L2', type: 'stage_enter', stage: 'review' },
-      { altitude: 'L2', type: 'round_open', round: 1, cap: 3 },
-      {
-        altitude: 'L2',
-        type: 'convergence',
-        round: 1,
-        verdict: 'open',
-        counts: { blocker: 2, material: 1, nitpick: 0 },
-      },
-      { altitude: 'L2', type: 'round_close', round: 1, cap: 3 },
-      { altitude: 'L2', type: 'round_open', round: 2, cap: 3 },
-      {
-        altitude: 'L2',
-        type: 'convergence',
-        round: 2,
-        verdict: 'converged',
-        counts: { blocker: 0, material: 0, nitpick: 1 },
-      },
-      { altitude: 'L2', type: 'round_close', round: 2, cap: 3 },
-      { altitude: 'L2', type: 'stage_exit', stage: 'review' },
-      { altitude: 'L2', type: 'stage_enter', stage: 'decompose' },
-      { altitude: 'L2', type: 'stage_exit', stage: 'decompose' },
-      { altitude: 'L2', type: 'stage_enter', stage: 'atomicity' },
-      { altitude: 'L2', type: 'stage_exit', stage: 'atomicity' },
-      { altitude: 'L2', type: 'stage_enter', stage: 'gate' },
-      { altitude: 'L2', type: 'gate', action: 'presented', mode: 'final', version: 1 },
-    ]
-    seq.forEach((event, i) => {
-      appendEvent(log, event, at(String(i).padStart(2, '0')))
-    })
-    const state = replayEvents(log)
-    expect(state.stages).toEqual({
-      intake: 'done',
-      draft: 'done',
-      review: 'done',
-      decompose: 'done',
-      atomicity: 'done',
-      gate: 'active',
-    })
-    expect(state.depth).toBe('M')
-    expect(state.round).toEqual({ current: 2, cap: 3 })
-    expect(state.lastVerdict).toEqual({
-      round: 2,
-      verdict: 'converged',
-      counts: { blocker: 0, material: 0, nitpick: 1 },
-    })
-    expect(state.gate).toEqual({ mode: 'final', version: 1, answered: false })
-  })
-
-  it('marks the in-flight stage active and later stages pending', () => {
-    const log = makeLog()
-    appendEvent(log, { altitude: 'L2', type: 'stage_enter', stage: 'intake' }, at('00'))
-    const state = replayEvents(log)
-    expect(state.stages.intake).toBe('active')
-    expect(state.stages.review).toBe('pending')
-    expect(state.stages.gate).toBe('pending')
   })
 })

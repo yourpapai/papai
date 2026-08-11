@@ -15,14 +15,18 @@ describe('parseCliArgs', () => {
     expect(cmd).toMatchObject({ taskFile: 'task.md', depth: 'S' })
   })
 
-  it('parses start with wait and verbosity flags', () => {
-    const cmd = parseCliArgs(['start', 'task.md', '--wait', '--verbosity', 'debug'])
-    expect(cmd).toMatchObject({ wait: true, verbosity: 'debug' })
+  it('parses start with verbosity flag', () => {
+    const cmd = parseCliArgs(['start', 'task.md', '--verbosity', 'debug'])
+    expect(cmd).toMatchObject({ verbosity: 'debug' })
   })
 
-  it('defaults verbosity to normal and wait to false', () => {
+  it('defaults verbosity to normal', () => {
     const cmd = parseCliArgs(['start', 'task.md'])
-    expect(cmd).toMatchObject({ verbosity: 'normal', wait: false })
+    expect(cmd).toMatchObject({ verbosity: 'normal' })
+  })
+
+  it('rejects the removed --wait flag as unknown', () => {
+    expect(() => parseCliArgs(['start', 'task.md', '--wait'])).toThrow(/unknown flag: --wait/u)
   })
 
   it('parses resume with a run id', () => {
@@ -57,7 +61,7 @@ describe('parseCliArgs', () => {
 function makeHarness(calls: string[]): CliHarness {
   return {
     runStart: (options) => {
-      calls.push(`start:${options.taskFile}:${options.depthOverride ?? '-'}:${options.wait ?? false}`)
+      calls.push(`start:${options.taskFile}:${options.depthOverride ?? '-'}`)
       return Promise.resolve({ runId: 'run-1', halted: 'gate', gateMdPath: '/x/gate-1.md', version: 1 })
     },
     runResume: (runId) => {
@@ -83,7 +87,7 @@ describe('main', () => {
     const calls: string[] = []
     const code = await main(['start', 'task.md', '--depth', 'S'], makeHarness(calls))
     expect(code).toBe(0)
-    expect(calls).toContain('start:task.md:S:false')
+    expect(calls).toContain('start:task.md:S')
   })
 
   it('routes resume and gate resume', async () => {

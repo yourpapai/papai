@@ -10,6 +10,8 @@ import { z } from 'zod'
 
 import type { AssumptionRecord, Finding, Resolution } from './agent-layer.js'
 import { FindingsSidecarSchema } from './agent-layer.js'
+import { formatDigestBody } from './renderer.js'
+import type { DigestRecord } from './replay.js'
 import { ResolverOutputSchema } from './review-loop.js'
 import { evaluateConvergence } from './review-model.js'
 
@@ -57,11 +59,14 @@ function renderRound(round: number, data: RoundData): string {
   const verdict = evaluateConvergence(data.resolutions)
   const resolved = data.resolutions.filter((r) => r.resolution !== 'dismissed').length
   const dismissed = data.resolutions.filter((r) => r.resolution === 'dismissed').length
-  const lines = [
-    `### Round ${round}`,
-    '',
-    `**Verdict**: ${verdict.verdict} — ${verdict.counts.blocker}b ${verdict.counts.material}m ${verdict.counts.nitpick}n · ${resolved} resolved · ${dismissed} dismissed`,
-  ]
+  const record: DigestRecord = {
+    round,
+    counts: verdict.counts,
+    resolved,
+    dismissed,
+    verdict: verdict.verdict,
+  }
+  const lines = [`### Round ${round}`, '', `**Verdict**: ${formatDigestBody(record)}`]
   if (data.findings.length === 0) {
     lines.push('', 'No findings recorded this round.')
     return lines.join('\n')

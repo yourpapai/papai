@@ -9,7 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { appendEvent } from '../../sdd-runner/src/events.js'
-import type { ReplayState } from '../../sdd-runner/src/events.js'
+import type { ReplayState } from '../../sdd-runner/src/replay.js'
 import { createRunState, deriveResumePoint, loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
 
 const tmpDirs: string[] = []
@@ -38,6 +38,7 @@ const emptyReplay: ReplayState = {
   },
   depth: null,
   round: null,
+  perRound: [],
   lastVerdict: null,
   gate: null,
 }
@@ -139,7 +140,13 @@ describe('deriveResumePoint', () => {
     const replay: ReplayState = {
       ...emptyReplay,
       round: { current: 2, cap: 3 },
-      lastVerdict: { round: 1, verdict: 'open', counts: { blocker: 1, material: 0, nitpick: 0 } },
+      lastVerdict: {
+        round: 1,
+        verdict: 'open',
+        counts: { blocker: 1, material: 0, nitpick: 0 },
+        resolved: 0,
+        dismissed: 0,
+      },
     }
     const point = deriveResumePoint(
       midRound,
@@ -155,13 +162,25 @@ describe('deriveResumePoint', () => {
     const afterReview = { ...created, depth: 'M' as const, stage: 'decompose' as const, round: 2 }
     const converged: ReplayState = {
       ...emptyReplay,
-      lastVerdict: { round: 2, verdict: 'converged', counts: { blocker: 0, material: 0, nitpick: 1 } },
+      lastVerdict: {
+        round: 2,
+        verdict: 'converged',
+        counts: { blocker: 0, material: 0, nitpick: 1 },
+        resolved: 0,
+        dismissed: 0,
+      },
     }
     const done = artifacts({ proposal: 'done', specs: 'done', design: 'done', review: 'done' })
     expect(deriveResumePoint(afterReview, done, converged).stage).toBe('decompose')
     const notConverged: ReplayState = {
       ...emptyReplay,
-      lastVerdict: { round: 1, verdict: 'open', counts: { blocker: 1, material: 0, nitpick: 0 } },
+      lastVerdict: {
+        round: 1,
+        verdict: 'open',
+        counts: { blocker: 1, material: 0, nitpick: 0 },
+        resolved: 0,
+        dismissed: 0,
+      },
     }
     expect(deriveResumePoint(afterReview, done, notConverged).stage).toBe('review')
   })
@@ -172,7 +191,13 @@ describe('deriveResumePoint', () => {
     const state = { ...created, depth: 'M' as const, stage: 'atomicity' as const, round: 1 }
     const converged: ReplayState = {
       ...emptyReplay,
-      lastVerdict: { round: 1, verdict: 'converged', counts: { blocker: 0, material: 0, nitpick: 0 } },
+      lastVerdict: {
+        round: 1,
+        verdict: 'converged',
+        counts: { blocker: 0, material: 0, nitpick: 0 },
+        resolved: 0,
+        dismissed: 0,
+      },
     }
     const arts = artifacts({ proposal: 'done', specs: 'done', design: 'done', review: 'done', tasks: 'done' })
     expect(deriveResumePoint(state, arts, converged).stage).toBe('atomicity')
@@ -186,7 +211,13 @@ describe('deriveResumePoint', () => {
     const state = { ...created, depth: 'S' as const, stage: 'atomicity' as const, round: 1 }
     const converged: ReplayState = {
       ...emptyReplay,
-      lastVerdict: { round: 1, verdict: 'converged', counts: { blocker: 0, material: 0, nitpick: 0 } },
+      lastVerdict: {
+        round: 1,
+        verdict: 'converged',
+        counts: { blocker: 0, material: 0, nitpick: 0 },
+        resolved: 0,
+        dismissed: 0,
+      },
     }
     const arts = artifacts({ proposal: 'done', specs: 'done', review: 'done', tasks: 'done' })
     expect(deriveResumePoint(state, arts, converged).stage).toBe('gate')
@@ -202,7 +233,7 @@ describe('event replay integration', () => {
     appendEvent(log, { altitude: 'L2', type: 'depth', profile: 'S', rationale: 'typo', source: 'override' })
     appendEvent(log, { altitude: 'L2', type: 'stage_exit', stage: 'intake' })
     appendEvent(log, { altitude: 'L2', type: 'stage_enter', stage: 'draft' })
-    const { replayEvents } = await import('../../sdd-runner/src/events.js')
+    const { replayEvents } = await import('../../sdd-runner/src/replay.js')
     const replay = replayEvents(log)
     expect(replay.stages.intake).toBe('done')
     expect(replay.stages.draft).toBe('active')

@@ -53,7 +53,7 @@ Bare approve with open blockers fails — override must be explicit.
 ## Commands
 
 ```bash
-bun run sdd-runner:start -- <task-file> [--depth S|M|L] [--wait] [--verbosity brief|normal|debug]
+bun run sdd-runner:start -- <task-file> [--depth S|M|L] [--verbosity brief|normal|debug]
 bun run sdd-runner:start -- resume <runId>
 bun run sdd-runner:start -- gate resume <runId> [--confirm-all] [--abort]
 bun run sdd-runner:start -- report <runId> [--pr]

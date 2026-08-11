@@ -19,7 +19,7 @@ export interface CliHarness {
 export async function main(argv: readonly string[], harness: CliHarness): Promise<number> {
   const cmd = parseCliArgs(argv)
   if (cmd.subcommand === 'start') {
-    await harness.runStart({ taskFile: cmd.taskFile, depthOverride: cmd.depth, wait: cmd.wait })
+    await harness.runStart({ taskFile: cmd.taskFile, depthOverride: cmd.depth })
     return 0
   }
   if (cmd.subcommand === 'resume') {
@@ -40,7 +40,6 @@ export type CliCommand =
       readonly subcommand: 'start'
       readonly taskFile: string
       readonly depth?: DepthProfile
-      readonly wait: boolean
       readonly verbosity: Verbosity
     }
   | { readonly subcommand: 'resume'; readonly runId: string }
@@ -56,15 +55,11 @@ function parseStart(args: readonly string[]): CliCommand {
   const taskFile = args[1]
   if (taskFile === undefined) throw new Error('start requires a task file path')
   let depth: DepthProfile | undefined
-  let wait = false
   let verbosity: Verbosity = 'normal'
   let i = 2
   while (i < args.length) {
     const arg = args[i]
-    if (arg === '--wait') {
-      wait = true
-      i += 1
-    } else if (arg === '--depth') {
+    if (arg === '--depth') {
       const val = args[i + 1] ?? ''
       const dp = DEPTH_VALUES[val]
       if (dp === undefined) throw new Error(`invalid --depth: ${val}`)
@@ -80,7 +75,7 @@ function parseStart(args: readonly string[]): CliCommand {
       throw new Error(`unknown flag: ${arg}`)
     }
   }
-  return { subcommand: 'start', taskFile, depth, wait, verbosity }
+  return { subcommand: 'start', taskFile, depth, verbosity }
 }
 
 function parseGate(args: readonly string[]): CliCommand {
